@@ -9,6 +9,10 @@ import { gatewayCall } from '$lib/server/gateway-rpc';
 // rather than the org-capability RBAC map (`/api/gateway` isn't in
 // apiWriteCapability's prefix list, and there's no "update" RBAC module).
 
+// update.run holds the RPC open through the npm install (40-120s in prod) —
+// keep the serverless function alive for the whole window (Vercel).
+export const config = { maxDuration: 300 };
+
 export const GET: RequestHandler = async ({ locals }) => {
   requireAdmin(locals);
   const status = await gatewayCall('update.status', {});
@@ -22,7 +26,18 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     return json(await gatewayCall('update.check', {}));
   }
   if (body.action === 'run') {
-    return json(await gatewayCall('update.run', {}));
+    // The gateway answers update.run only after the npm install completes,
+    // and it drops the WS when it restarts — so a timeout/close AFTER the run
+    // was dispatched is the install proceeding, NOT a failure. Only an
+    // explicit error response from update.run should read as failed.
+    // 290s < maxDuration so we always answer before the platform kills us.
+    try {
+      return json(await gatewayCall('update.run', {}, { timeoutMs: 290_000 }));
+    } catch (err) {
+      const msg = String((err as Error)?.message ?? err);
+      if (msg.includes('(request sent)')) return json({ ok: true, accepted: true });
+      throw err;
+    }
   }
   throw error(400, 'action must be "check" or "run"');
 };

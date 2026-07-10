@@ -18,8 +18,9 @@
 
     const activeHost = $derived(getActiveHost());
     const connected = $derived(conn.connected);
-    // Only admins may switch gateways. Everyone else gets a read-only status
-    // pill with a hover tooltip for the connection details.
+    // Gateway plumbing is admin-only: regular users never pick (or even see)
+    // which instance they're on — org assignment / the balancer decides.
+    // The pill renders nothing for non-admins.
     const canSwitch = $derived(isAdmin.value);
 
     // Server uptime (relocated from the agents-sidebar footer) — surfaced on
@@ -60,6 +61,7 @@
     }}
 />
 
+{#if canSwitch}
 <Tooltip
     label={detail}
     id="server-status-tip"
@@ -111,3 +113,4 @@
         </button>
     {/snippet}
 </Tooltip>
+{/if}

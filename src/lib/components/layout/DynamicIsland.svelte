@@ -7,6 +7,7 @@
   import { captureSnapshot, bugReporter } from '$lib/state/ui/bug-reporter.svelte';
   import { notifications, refreshNotifications } from '$lib/state/features/notifications.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
+  import { ui } from '$lib/state/ui/ui.svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -61,7 +62,13 @@
 
   <!-- Hover-revealed cluster: host pill, bug, and (when nothing is pending) the bell. -->
   <div class="ci">
-    <div class="ci-inner flex items-center gap-0.5">
+    <!-- `overflow: hidden` (needed for the 0fr collapse animation) clips the
+         host dropdown / notifications popup, which render as absolutely
+         positioned children of this cluster — lift it while a popup is open. -->
+    <div
+      class="ci-inner flex items-center gap-0.5"
+      class:popup-open={ui.dropdownOpen || notificationsOpen}
+    >
       <HostPill align="right" dot={false} />
 
       <div class="w-px h-4 bg-[var(--hairline)] mx-0.5"></div>
@@ -118,5 +125,8 @@
   .ci-inner {
     overflow: hidden;
     min-width: 0;
+  }
+  .ci-inner.popup-open {
+    overflow: visible;
   }
 </style>

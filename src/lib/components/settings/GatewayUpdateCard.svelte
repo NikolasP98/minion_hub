@@ -3,7 +3,7 @@
   import * as m from '$lib/paraglide/messages';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
-  import { updateState, applyUpdateStatus } from '$lib/state/gateway/update-state.svelte';
+  import { updateState, applyUpdateStatus, bumpUpdateProgress } from '$lib/state/gateway/update-state.svelte';
   import { configState, loadConfig, getField, beginRestart, restartState } from '$lib/state/config/config.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
@@ -68,43 +68,82 @@
     }
   }
 
+  function failInstall(message: string) {
+    updateState.installing = false;
+    updateState.progress = null;
+    toastError(message);
+  }
+
   async function installNow() {
     if (!updateState.pending || updateState.installing) return;
     if (!confirm(m.gateway_update_confirmInstall({ version: updateState.pending.version }))) return;
     updateState.installing = true;
+    updateState.progress = { phase: 'starting', pct: 5 };
     try {
+      // The POST now long-polls through the npm install (40-120s). Real
+      // progress arrives in parallel over the WS ('update.progress' events);
+      // the response here is just the terminal signal for the install step.
       const res = await fetch('/api/gateway/update', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'run' }),
       });
       if (isNoPermission(res)) {
-        updateState.installing = false;
-        toastError(m.gateway_update_noPermission());
+        failInstall(m.gateway_update_noPermission());
         return;
       }
-      if (!res.ok) throw new Error('run failed');
-      const body = (await res.json()) as { ok?: boolean };
-      if (body.ok) {
-        // Gateway will drop the WS connection to restart — arm the same
-        // restart machine the config-save flow uses (loading toast +
-        // 30s reconnect timeout + reconnected toast).
-        beginRestart();
-      } else {
-        updateState.installing = false;
-        toastError(m.gateway_update_installFailed());
+      if (!res.ok) {
+        // Explicit non-OK from the route = update.run itself errored (a
+        // timeout/WS-drop after the run was dispatched comes back 200
+        // {accepted:true}) — the only case that should read as failed.
+        failInstall(m.gateway_update_installFailed());
+        return;
       }
+      const body = (await res.json()) as { ok?: boolean; accepted?: boolean };
+      if (body.ok === false) {
+        failInstall(m.gateway_update_installFailed());
+        return;
+      }
+      bumpUpdateProgress(
+        body.accepted ? { phase: 'installing', pct: 15 } : { phase: 'installed', pct: 70 },
+      );
+      // Gateway will drop the WS connection to restart — arm the same
+      // restart machine the config-save flow uses (loading toast +
+      // 30s reconnect timeout + reconnected toast). Skip if the update
+      // already landed while the POST was in flight (pending cleared).
+      if (updateState.pending) beginRestart();
     } catch {
-      updateState.installing = false;
-      toastError(m.gateway_update_installFailed());
+      // Network hiccup between browser and hub AFTER the run may have been
+      // dispatched — not an explicit failure. Let the restart machine plus
+      // the 'update.applied' event / reconnect version check tell the story.
+      bumpUpdateProgress({ phase: 'installing', pct: 15 });
+      if (updateState.pending) beginRestart();
     }
   }
 
   const shortSha = $derived(gw.hello?.server?.commit?.slice(0, 7) ?? null);
+  // update.status's `current` is the full timestamped version
+  // (e.g. 2026.7.10-dev.20260710220841); hello.server.version can be a bare
+  // channel tag ("dev") — only use it as a fallback.
+  const currentVersion = $derived(updateState.current ?? gw.hello?.server?.version ?? null);
   const notifyTargets = $derived(
     (getField('update.notify') as { channel: string; to: string }[] | undefined) ?? [],
   );
   const installBusy = $derived(updateState.installing || restartState.phase === 'restarting');
+
+  const PROGRESS_LABELS: Record<string, () => string> = {
+    starting: m.gateway_update_phase_starting,
+    installing: m.gateway_update_phase_installing,
+    installed: m.gateway_update_phase_installed,
+    'watchdog-armed': m.gateway_update_phase_watchdog,
+    restarting: m.gateway_update_phase_restarting,
+    done: m.gateway_update_phase_done,
+  };
+  const progressLabel = $derived(
+    updateState.progress
+      ? (PROGRESS_LABELS[updateState.progress.phase]?.() ?? updateState.progress.phase)
+      : '',
+  );
 </script>
 
 <div class="border border-border rounded-lg overflow-hidden mb-6">
@@ -122,7 +161,7 @@
         <div class="min-w-0">
           <div class="text-xs text-muted-strong">{m.gateway_update_currentVersion()}</div>
           <div class="text-sm font-mono text-foreground">
-            v{gw.hello?.server?.version ?? '—'}
+            v{currentVersion ?? '—'}
             {#if shortSha}<span class="text-muted-strong">&nbsp;({shortSha})</span>{/if}
           </div>
         </div>
@@ -160,6 +199,37 @@
           </div>
           {#if updateState.pending.notes}
             <p class="text-xs text-muted-foreground mt-1 whitespace-pre-line">{updateState.pending.notes}</p>
+          {/if}
+        </div>
+      {/if}
+
+      {#if updateState.progress}
+        {@const pct = Math.max(0, Math.min(100, Math.round(updateState.progress.pct)))}
+        <div class="space-y-1">
+          <div class="flex items-center justify-between text-[10px] font-mono text-muted">
+            <span class="uppercase tracking-widest">{progressLabel}</span>
+            <span>{pct}%</span>
+          </div>
+          <div
+            class="h-1.5 rounded-full bg-border/60 overflow-hidden"
+            role="progressbar"
+            aria-valuenow={pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={progressLabel}
+          >
+            <!-- Width moves only on real signals (WS progress events or stage
+                 inference) — no time-based fake animation, just an eased tween
+                 between real values. -->
+            <div
+              class="h-full rounded-full transition-[width] duration-500 ease-out {pct >= 100
+                ? 'bg-success'
+                : 'bg-accent'}"
+              style="width: {pct}%"
+            ></div>
+          </div>
+          {#if updateState.progress.detail}
+            <p class="text-[10px] font-mono text-muted-strong">{updateState.progress.detail}</p>
           {/if}
         </div>
       {/if}

@@ -117,7 +117,7 @@ export interface UserHostRow {
   lastConnectedAt: number | null;
   /** Org currently ASSIGNED to this gateway instance (per-org volume tenancy
    * spec §3.4) — a mutable lease read-model, not ownership. Null = shared/
-   * default pool (today's single netcup gateway). */
+   * default pool. */
   orgId: string | null;
 }
 
@@ -294,20 +294,18 @@ export async function userHasGatewayAccess(
 }
 
 /**
- * Onboarding default-server policy. Until more gateways are provisioned and
- * load management exists, every new user connects to the single shared
- * `netcup` gateway. If the user has no gateway link yet, link netcup as their
- * default so onboarding (channel setup + agent creation, which run over the
- * gateway WS) has a live connection to establish.
+ * Onboarding default-server policy. If the user has no gateway link yet, link
+ * one as their default so onboarding (channel setup + agent creation, which
+ * run over the gateway WS) has a live connection to establish.
  *
- * Idempotent: no-op when the user already has any gateway link (don't override
- * an explicit selection) or when no `netcup` gateway is configured. Replace the
- * name match with real load-balancing once multiple gateways exist.
+ * Priority: the gateway currently assigned to the caller's active org
+ * (per-org volume tenancy §3.4 — `gateway.org_id` is a mutable assignment,
+ * not ownership), else the OLDEST token-bearing gateway row. Instances are
+ * neutral (no name-based pins — rows are being renamed to minion-1/minion-2);
+ * real load-balancing replaces the oldest-row fallback once it exists.
  *
- * Per-org volume tenancy (spec §3.4): when the caller's active `orgId` is
- * given and a gateway is currently assigned to it (`gateway.org_id` = mutable
- * assignment, not ownership), link that instead of the netcup pin. No
- * assignment → netcup fallback unchanged.
+ * Idempotent: no-op when the user already has any gateway link (don't
+ * override an explicit selection) or when no usable gateway row exists.
  */
 export async function ensureDefaultGatewayForUser(
   profileId: string,
@@ -339,16 +337,20 @@ export async function ensureDefaultGatewayForUser(
     }
   }
 
-  const [netcup] = await db
+  // Oldest token-bearing row = the shared default pool (`<> ''` also excludes
+  // NULL). Org routing above and resolveCredentialsForUser step-0 handle the
+  // specific cases; this is only the "some live gateway" onboarding fallback.
+  const [oldest] = await db
     .select({ id: gateway.id })
     .from(gateway)
-    .where(sql`lower(${gateway.name}) = 'netcup'`)
+    .where(sql`${gateway.tokenCiphertext} <> ''`)
+    .orderBy(gateway.createdAt)
     .limit(1);
-  if (!netcup) return;
+  if (!oldest) return;
 
   await db
     .insert(userGateway)
-    .values({ profileId, gatewayId: netcup.id, isDefault: true })
+    .values({ profileId, gatewayId: oldest.id, isDefault: true })
     .onConflictDoNothing();
 }
 

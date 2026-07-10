@@ -56,8 +56,11 @@ import {
 } from '$lib/state/config/config.svelte';
 import {
   updateState,
+  applyUpdateStatus,
+  bumpUpdateProgress,
   type PendingUpdate,
   type UpdateApplyResult,
+  type UpdateProgress,
 } from '$lib/state/gateway/update-state.svelte';
 import { extractText } from '$lib/utils/text';
 import type { ChatMessage } from '$lib/types/chat';
@@ -354,6 +357,11 @@ export async function wsConnect() {
       conn.connected = false;
       conn.connecting = false;
       conn.particleHue = 'red';
+      // Update install in flight (progress set, pending not yet confirmed
+      // landed): the gateway dropping the WS *is* the restart step.
+      if (updateState.pending && updateState.progress && updateState.progress.pct < 90) {
+        bumpUpdateProgress({ phase: 'restarting', pct: 90 });
+      }
       // The underlying socket is gone; detach the binary listener bound to it so
       // it doesn't leak or fire against a dead socket. onOpen re-wires the next
       // socket on reconnect.
@@ -605,11 +613,18 @@ function handleEvent(evt: Record<string, unknown>) {
       break;
     case 'update.available': {
       updateState.pending = evt.payload as PendingUpdate;
+      // A fresh pending update supersedes any leftover progress from the last install.
+      updateState.progress = null;
       toastInfo(
         m.gateway_update_available_title(),
         m.gateway_update_available_body({ version: updateState.pending.version }),
         { id: 'gateway-update' },
       );
+      break;
+    }
+    case 'update.progress': {
+      const p = evt.payload as UpdateProgress;
+      if (p && typeof p.pct === 'number') bumpUpdateProgress(p);
       break;
     }
     case 'update.applied': {
@@ -618,7 +633,9 @@ function handleEvent(evt: Record<string, unknown>) {
       updateState.installing = false;
       if (r.ok) {
         updateState.pending = null;
+        bumpUpdateProgress({ phase: 'done', pct: 100, version: r.to });
       } else {
+        updateState.progress = null;
         // A rolled-back update slower than the 30s restart window would
         // otherwise fail silently — this event is the authoritative failure
         // signal regardless of timing.
@@ -1079,6 +1096,39 @@ function applyAgentsList(agents: unknown[] | undefined, defaultId: string | unde
   }
 }
 
+/**
+ * Post-reconnect update-outcome check via update.status. `current` there is
+ * the full timestamped version (unlike hello.server.version, which can be a
+ * bare channel tag like "dev"), so it's the only reliable success signal.
+ */
+async function confirmUpdateOutcomeViaStatus(targetVersion: string): Promise<void> {
+  try {
+    const res = await fetch('/api/gateway/update');
+    if (!res.ok) return;
+    const status = (await res.json()) as {
+      current?: string | null;
+      pending?: PendingUpdate | null;
+      lastResult?: UpdateApplyResult | null;
+    };
+    applyUpdateStatus(status);
+    if (status.current === targetVersion) {
+      updateState.pending = null;
+      updateState.progress = { phase: 'done', pct: 100, version: targetVersion };
+      toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion }));
+    } else if (status.lastResult && !status.lastResult.ok) {
+      // Rolled back — the 'update.applied' handler owns the failure toast;
+      // just settle the bar.
+      updateState.progress = null;
+    } else if (status.pending?.version === targetVersion) {
+      // Reconnected on the old version with the update still pending.
+      updateState.progress = null;
+      toastWarning(m.gateway_update_restartMismatch());
+    }
+  } catch {
+    /* leave state as-is — 'update.applied' or the card's refetch settles it */
+  }
+}
+
 function onHelloOk(hello: HelloOk) {
   // Update-install outcome check, on EVERY reconnect regardless of
   // restartState.phase — a real update (npm install + restart + boot)
@@ -1094,14 +1144,20 @@ function onHelloOk(hello: HelloOk) {
     // The pending update landed (also covers reconnects after the 30s window).
     updateState.installing = false;
     updateState.pending = null;
+    updateState.progress = { phase: 'done', pct: 100, version: targetVersion };
     toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion }));
     updateToastShown = true;
+  } else if (targetVersion && (updateState.installing || updateState.progress)) {
+    // Install in flight but hello is inconclusive — prod gateways report a
+    // bare channel tag ("dev") in hello.server.version that never equals the
+    // full timestamped pending version. Confirm against update.status's
+    // `current` before judging the outcome; it also owns the outcome toast,
+    // so suppress the generic reconnect toast for this reconnect.
+    updateState.installing = false;
+    updateToastShown = true;
+    void confirmUpdateOutcomeViaStatus(targetVersion);
   } else if (updateState.installing) {
     updateState.installing = false;
-    if (targetVersion) {
-      toastWarning(m.gateway_update_restartMismatch());
-      updateToastShown = true;
-    }
   }
   // If gateway was restarting after a config save, signal reconnection —
   // silent when the update toast already covered this reconnect (one toast).

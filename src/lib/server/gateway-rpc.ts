@@ -162,11 +162,20 @@ async function gatewayCallWithCreds<T = unknown>(
       resolve(value);
     };
 
-    const timer = setTimeout(() => fail(new Error('gateway RPC timeout')), timeoutMs);
+    // "(request sent)" marks failures that happened AFTER the request was
+    // dispatched — for restart-inducing calls (update.run, config.patch) a
+    // drop/timeout at that stage usually means the gateway is restarting, not
+    // that the call failed. Callers can match on it to soften the error.
+    const timer = setTimeout(
+      () => fail(new Error(`gateway RPC timeout${requestId ? ' (request sent)' : ''}`)),
+      timeoutMs,
+    );
     timer.unref?.();
 
     ws.on('error', (err) => fail(err instanceof Error ? err : new Error(String(err))));
-    ws.on('close', () => fail(new Error('gateway WS closed before response')));
+    ws.on('close', () =>
+      fail(new Error(`gateway WS closed before response${requestId ? ' (request sent)' : ''}`)),
+    );
 
     ws.on('message', (raw) => {
       let frame: Record<string, unknown>;
