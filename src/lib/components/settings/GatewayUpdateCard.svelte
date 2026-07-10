@@ -12,11 +12,19 @@
   let checking = $state(false);
   let statusError = $state<string | null>(null);
 
+  // 401/403 = the user lacks platform-admin rights (the route is admin-gated),
+  // NOT a gateway connectivity problem — show the right copy for each.
+  function isNoPermission(res: Response): boolean {
+    return res.status === 401 || res.status === 403;
+  }
+
   async function refreshStatus(): Promise<void> {
     try {
       const res = await fetch('/api/gateway/update');
       if (!res.ok) {
-        statusError = m.gateway_update_disconnected();
+        statusError = isNoPermission(res)
+          ? m.gateway_update_noPermission()
+          : m.gateway_update_disconnected();
         return;
       }
       applyUpdateStatus(await res.json());
@@ -45,6 +53,10 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'check' }),
       });
+      if (isNoPermission(res)) {
+        toastError(m.gateway_update_noPermission());
+        return;
+      }
       if (!res.ok) throw new Error('check failed');
       applyUpdateStatus(await res.json());
       statusError = null;
@@ -66,6 +78,11 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'run' }),
       });
+      if (isNoPermission(res)) {
+        updateState.installing = false;
+        toastError(m.gateway_update_noPermission());
+        return;
+      }
       if (!res.ok) throw new Error('run failed');
       const body = (await res.json()) as { ok?: boolean };
       if (body.ok) {

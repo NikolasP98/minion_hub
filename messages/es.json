@@ -702,6 +702,7 @@
   "gateway_update_available_body": "La versión {version} está lista para instalar.",
   "gateway_update_upToDate": "El gateway está actualizado.",
   "gateway_update_disconnected": "Sin conexión con el gateway.",
+  "gateway_update_noPermission": "No tienes permiso para gestionar las actualizaciones del gateway.",
   "gateway_update_checkFailed": "Falló la búsqueda de actualizaciones.",
   "gateway_update_installFailed": "Falló la instalación. Revisa los registros del gateway.",
   "gateway_update_lastResultOk": "Última actualización: v{from} → v{to} exitosa.",

@@ -52,6 +52,7 @@ import {
   loadConfig,
   restartState,
   onRestartReconnected,
+  resetRestartState,
 } from '$lib/state/config/config.svelte';
 import {
   updateState,
@@ -615,7 +616,14 @@ function handleEvent(evt: Record<string, unknown>) {
       const r = evt.payload as UpdateApplyResult;
       updateState.lastResult = r;
       updateState.installing = false;
-      if (r.ok) updateState.pending = null;
+      if (r.ok) {
+        updateState.pending = null;
+      } else {
+        // A rolled-back update slower than the 30s restart window would
+        // otherwise fail silently — this event is the authoritative failure
+        // signal regardless of timing.
+        toastError(m.gateway_update_installFailed(), r.detail);
+      }
       break;
     }
     case 'channels.status':
@@ -1099,6 +1107,10 @@ function onHelloOk(hello: HelloOk) {
   // silent when the update toast already covered this reconnect (one toast).
   if (restartState.phase === 'restarting') {
     onRestartReconnected({ silent: updateToastShown });
+  } else if (updateToastShown) {
+    // A >30s update restart leaves phase 'failed' behind — clear it so the
+    // settings page's auto-save-on-reconnect (which requires 'idle') works.
+    resetRestartState();
   }
 
   sendRequest('agents.list', {})

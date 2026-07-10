@@ -751,6 +751,7 @@
   "gateway_update_available_body": "Version {version} is ready to install.",
   "gateway_update_upToDate": "Gateway is up to date.",
   "gateway_update_disconnected": "Not connected to gateway.",
+  "gateway_update_noPermission": "You don't have permission to manage gateway updates.",
   "gateway_update_checkFailed": "Update check failed.",
   "gateway_update_installFailed": "Install failed. Check gateway logs.",
   "gateway_update_lastResultOk": "Last update: v{from} → v{to} succeeded.",
