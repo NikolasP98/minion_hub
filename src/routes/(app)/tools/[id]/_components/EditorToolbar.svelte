@@ -18,6 +18,17 @@
 
     type Lang = "javascript" | "python" | "bash";
     type Status = "draft" | "published";
+    type PermAction = "view" | "create" | "edit" | "delete" | "export" | "manage";
+
+    // Static list mirroring `$server/services/rbac.service.ts` MODULES — kept
+    // as ids only (no imported label map) so this client component never
+    // pulls in server-only code; labels just capitalize the id via CSS.
+    const PERM_MODULES = [
+        "overview", "crm", "finance", "sales", "scheduling", "support", "projects",
+        "memberships", "comms", "brains", "stock", "ads", "pos", "agents", "channels",
+        "flows", "marketplace", "reliability", "settings", "users", "tools",
+    ] as const;
+    const PERM_ACTIONS: PermAction[] = ["view", "create", "edit", "delete", "export", "manage"];
 
     interface Props {
         isAdmin: boolean;
@@ -31,11 +42,14 @@
         dirty: boolean;
         running: boolean;
         publishing: boolean;
+        permModule: string;
+        permAction: PermAction;
         onNameInput: () => void;
         onSwitchLanguage: (lang: Lang) => void;
         onRunTool: () => void;
         onPublishTool: () => void;
         onToggleGatewayToolEnabled: () => void;
+        onPermChange: () => void;
     }
 
     let {
@@ -50,11 +64,14 @@
         dirty,
         running,
         publishing,
+        permModule = $bindable(),
+        permAction = $bindable(),
         onNameInput,
         onSwitchLanguage,
         onRunTool,
         onPublishTool,
         onToggleGatewayToolEnabled,
+        onPermChange,
     }: Props = $props();
 </script>
 
@@ -83,6 +100,35 @@
                 {status}
             </span>
             <span class="toolbar-source">{isGatewayTool ? m.builder_gatewaySource() : m.builder_customSource()}</span>
+
+            {#if !isGatewayTool && isAdmin}
+                <div class="toolbar-divider"></div>
+                <div class="perm-picker">
+                    <select
+                        class="perm-select"
+                        aria-label={m.tools_editor_permissionModuleLabel()}
+                        bind:value={permModule}
+                        onchange={onPermChange}
+                    >
+                        <option value="">{m.tools_editor_permissionNone()}</option>
+                        {#each PERM_MODULES as mod (mod)}
+                            <option value={mod}>{mod}</option>
+                        {/each}
+                    </select>
+                    {#if permModule}
+                        <select
+                            class="perm-select"
+                            aria-label={m.tools_editor_permissionActionLabel()}
+                            bind:value={permAction}
+                            onchange={onPermChange}
+                        >
+                            {#each PERM_ACTIONS as act (act)}
+                                <option value={act}>{act}</option>
+                            {/each}
+                        </select>
+                    {/if}
+                </div>
+            {/if}
         </div>
     </div>
 
@@ -468,5 +514,25 @@
         border-radius: 0.25rem;
         border: 1px solid var(--color-border);
         font-family: var(--font-mono, monospace);
+    }
+
+    /* ── Permission Picker ───────────────────────────────────────────── */
+    .perm-picker {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .perm-select {
+        font-size: 0.6875rem;
+        font-weight: 500;
+        text-transform: capitalize;
+        color: var(--color-foreground);
+        background: var(--color-bg3);
+        border: 1px solid var(--color-border);
+        border-radius: 0.25rem;
+        padding: 0.1875rem 0.375rem;
+        font-family: inherit;
+        cursor: pointer;
     }
 </style>

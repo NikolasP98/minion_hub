@@ -3,15 +3,21 @@
         Eye,
         EyeOff,
         Plus,
-        X,
         Trash2,
         ChevronDown,
         ChevronRight,
+        Copy,
     } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
 
     type Lang = "javascript" | "python" | "bash";
     type EnvVar = { key: string; value: string; revealed: boolean };
+    type VarTab = "env" | "system" | "module" | "database";
+    type VariablesData = {
+        system: Array<{ key: string; description: string }>;
+        module: Array<{ key: string; path: string; description: string }>;
+        database: Array<{ key: string; value: string; description: string }>;
+    } | null;
 
     interface Props {
         scriptCode: string;
@@ -20,6 +26,7 @@
         envVars: EnvVar[];
         envVarsExpanded: boolean;
         isAdmin: boolean;
+        variablesData: VariablesData;
         onCodeChange: () => void;
         onAddEnvVar: () => void;
         onRemoveEnvVar: (index: number) => void;
@@ -34,12 +41,19 @@
         envVars = $bindable(),
         envVarsExpanded,
         isAdmin,
+        variablesData,
         onCodeChange,
         onAddEnvVar,
         onRemoveEnvVar,
         onToggleReveal,
         onToggleExpanded,
     }: Props = $props();
+
+    let activeVarTab = $state<VarTab>("env");
+
+    function copyKey(key: string) {
+        navigator.clipboard?.writeText(key).catch(() => {});
+    }
 </script>
 
 <!-- Left Pane: Code Editor + Env Vars -->
@@ -57,81 +71,161 @@
         ></textarea>
     </div>
 
-    <!-- Env Vars Panel -->
+    <!-- Variables Panel: Env / System / Module / Database tabs -->
     <div class="env-panel" class:collapsed={!envVarsExpanded}>
-        <button
-            type="button"
-            class="env-header"
-            onclick={onToggleExpanded}
-        >
-            <span class="env-header-left">
+        <div class="env-header">
+            <button
+                type="button"
+                class="env-toggle"
+                onclick={onToggleExpanded}
+                title={envVarsExpanded ? "Collapse" : "Expand"}
+            >
                 {#if envVarsExpanded}
                     <ChevronDown size={14} />
                 {:else}
                     <ChevronRight size={14} />
                 {/if}
-                <span>{m.builder_envVarsTitle()}</span>
-                <span class="env-count">{envVars.length}</span>
-            </span>
-        </button>
+            </button>
+            <div class="var-tabs">
+                <button
+                    type="button"
+                    class="var-tab"
+                    class:active={activeVarTab === "env"}
+                    onclick={() => (activeVarTab = "env")}
+                >
+                    <span>{m.tools_editor_envVarsTab()}</span>
+                    <span class="env-count">{envVars.length}</span>
+                </button>
+                <button
+                    type="button"
+                    class="var-tab"
+                    class:active={activeVarTab === "system"}
+                    onclick={() => (activeVarTab = "system")}
+                >
+                    {m.tools_editor_systemVarsTab()}
+                </button>
+                <button
+                    type="button"
+                    class="var-tab"
+                    class:active={activeVarTab === "module"}
+                    onclick={() => (activeVarTab = "module")}
+                >
+                    {m.tools_editor_moduleVarsTab()}
+                </button>
+                <button
+                    type="button"
+                    class="var-tab"
+                    class:active={activeVarTab === "database"}
+                    onclick={() => (activeVarTab = "database")}
+                >
+                    {m.tools_editor_databaseVarsTab()}
+                </button>
+            </div>
+        </div>
 
         {#if envVarsExpanded}
             <div class="env-body">
-                {#each envVars as envVar, i (i)}
-                    <div class="env-row">
-                        <input
-                            type="text"
-                            class="env-key"
-                            bind:value={envVar.key}
-                            placeholder="KEY"
-                            oninput={onCodeChange}
-                        />
-                        <span class="env-eq">=</span>
-                        <div class="env-value-wrap">
-                            {#if envVar.revealed}
-                                <input
-                                    type="text"
-                                    class="env-value"
-                                    bind:value={envVar.value}
-                                    placeholder="value"
-                                    oninput={onCodeChange}
-                                />
-                            {:else}
-                                <input
-                                    type="password"
-                                    class="env-value"
-                                    bind:value={envVar.value}
-                                    placeholder="value"
-                                    oninput={onCodeChange}
-                                />
-                            {/if}
+                {#if activeVarTab === "env"}
+                    {#each envVars as envVar, i (i)}
+                        <div class="env-row">
+                            <input
+                                type="text"
+                                class="env-key"
+                                bind:value={envVar.key}
+                                placeholder="KEY"
+                                oninput={onCodeChange}
+                            />
+                            <span class="env-eq">=</span>
+                            <div class="env-value-wrap">
+                                {#if envVar.revealed}
+                                    <input
+                                        type="text"
+                                        class="env-value"
+                                        bind:value={envVar.value}
+                                        placeholder="value"
+                                        oninput={onCodeChange}
+                                    />
+                                {:else}
+                                    <input
+                                        type="password"
+                                        class="env-value"
+                                        bind:value={envVar.value}
+                                        placeholder="value"
+                                        oninput={onCodeChange}
+                                    />
+                                {/if}
+                                <button
+                                    type="button"
+                                    class="env-reveal"
+                                    onclick={() => onToggleReveal(i)}
+                                    title={envVar.revealed ? "Hide value" : "Reveal value"}
+                                >
+                                    {#if envVar.revealed}
+                                        <EyeOff size={12} />
+                                    {:else}
+                                        <Eye size={12} />
+                                    {/if}
+                                </button>
+                            </div>
                             <button
                                 type="button"
-                                class="env-reveal"
-                                onclick={() => onToggleReveal(i)}
-                                title={envVar.revealed ? "Hide value" : "Reveal value"}
+                                class="env-remove"
+                                onclick={() => onRemoveEnvVar(i)}
+                                title="Remove variable"
                             >
-                                {#if envVar.revealed}
-                                    <EyeOff size={12} />
-                                {:else}
-                                    <Eye size={12} />
-                                {/if}
+                                <Trash2 size={12} />
                             </button>
                         </div>
-                        <button
-                            type="button"
-                            class="env-remove"
-                            onclick={() => onRemoveEnvVar(i)}
-                            title="Remove variable"
-                        >
-                            <Trash2 size={12} />
-                        </button>
-                    </div>
-                {/each}
-                <button type="button" class="env-add" onclick={onAddEnvVar}>
-                    <Plus size={12} />
-                    <span>{m.builder_addVariable()}</span>
-                </button>
+                    {/each}
+                    <button type="button" class="env-add" onclick={onAddEnvVar}>
+                        <Plus size={12} />
+                        <span>{m.builder_addVariable()}</span>
+                    </button>
+                {:else if activeVarTab === "system"}
+                    {#each variablesData?.system ?? [] as v (v.key)}
+                        <div class="var-row">
+                            <div class="var-row-main">
+                                <span class="var-key">{v.key}</span>
+                                <button type="button" class="var-copy" onclick={() => copyKey(v.key)} title={m.tools_editor_copyKey()}>
+                                    <Copy size={11} />
+                                </button>
+                            </div>
+                            <span class="var-desc">{v.description}</span>
+                        </div>
+                    {:else}
+                        <div class="var-empty">{m.tools_editor_noVars()}</div>
+                    {/each}
+                {:else if activeVarTab === "module"}
+                    {#each variablesData?.module ?? [] as v (v.key)}
+                        <div class="var-row">
+                            <div class="var-row-main">
+                                <span class="var-key">{v.key}</span>
+                                <button type="button" class="var-copy" onclick={() => copyKey(v.key)} title={m.tools_editor_copyKey()}>
+                                    <Copy size={11} />
+                                </button>
+                            </div>
+                            <span class="var-path">{v.path}</span>
+                            <span class="var-desc">{v.description}</span>
+                        </div>
+                    {:else}
+                        <div class="var-empty">{m.tools_editor_noVars()}</div>
+                    {/each}
+                {:else}
+                    {#each variablesData?.database ?? [] as v (v.key)}
+                        <div class="var-row">
+                            <div class="var-row-main">
+                                <span class="var-key">{v.key}</span>
+                                <button type="button" class="var-copy" onclick={() => copyKey(v.key)} title={m.tools_editor_copyKey()}>
+                                    <Copy size={11} />
+                                </button>
+                            </div>
+                            {#if v.value}<span class="var-path">{v.value}</span>{/if}
+                            <span class="var-desc">{v.description}</span>
+                        </div>
+                    {:else}
+                        <div class="var-empty">{m.tools_editor_noVars()}</div>
+                    {/each}
+                {/if}
             </div>
         {/if}
     </div>
@@ -196,29 +290,64 @@
     .env-header {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        padding: 0.5rem 0.75rem;
+        gap: 0.5rem;
+        padding: 0.375rem 0.5rem;
+        flex-shrink: 0;
+    }
+
+    .env-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.25rem;
+        height: 1.25rem;
+        flex-shrink: 0;
         background: none;
         border: none;
         cursor: pointer;
-        width: 100%;
+        color: var(--color-muted);
+        transition: color var(--duration-fast) var(--ease-standard);
+    }
+
+    .env-toggle:hover {
+        color: var(--color-foreground);
+    }
+
+    /* ── Variable Tabs ───────────────────────────────────────────────── */
+    .var-tabs {
+        display: flex;
+        align-items: center;
+        gap: 0.125rem;
+        overflow-x: auto;
+    }
+
+    .var-tab {
+        display: flex;
+        align-items: center;
+        gap: 0.3125rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem;
+        background: none;
+        border: none;
+        cursor: pointer;
         color: var(--color-muted);
         font-family: inherit;
         font-size: 0.6875rem;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        transition: color var(--duration-fast) var(--ease-standard);
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
 
-    .env-header:hover {
+    .var-tab:hover {
         color: var(--color-foreground);
+        background: var(--color-bg3);
     }
 
-    .env-header-left {
-        display: flex;
-        align-items: center;
-        gap: 0.375rem;
+    .var-tab.active {
+        color: var(--color-accent);
+        background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     }
 
     .env-count {
@@ -362,5 +491,67 @@
         border-color: var(--color-accent);
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 4%, transparent);
+    }
+
+    /* ── Read-only Variable Rows (System / Module / Database) ────────── */
+    .var-row {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        padding: 0.375rem 0.5rem;
+        background: var(--color-bg3);
+        border: 1px solid var(--color-border);
+        border-radius: 0.375rem;
+    }
+
+    .var-row-main {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .var-key {
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+        color: var(--color-foreground);
+    }
+
+    .var-copy {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.125rem;
+        height: 1.125rem;
+        flex-shrink: 0;
+        border-radius: 0.25rem;
+        color: var(--color-muted);
+        background: none;
+        border: none;
+        cursor: pointer;
+        transition: color var(--duration-instant) var(--ease-standard);
+    }
+
+    .var-copy:hover {
+        color: var(--color-accent);
+    }
+
+    .var-path {
+        font-size: 0.6875rem;
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+        color: var(--color-accent);
+    }
+
+    .var-desc {
+        font-size: 0.6875rem;
+        color: var(--color-muted);
+    }
+
+    .var-empty {
+        font-size: 0.75rem;
+        color: var(--color-muted);
+        font-style: italic;
+        padding: 0.5rem;
     }
 </style>

@@ -35,7 +35,18 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     id,
     name: body.name ?? 'Untitled Tool',
     description: body.description ?? '',
-    scriptCode: body.scriptCode ?? '// Write your tool script here\n',
+    scriptCode:
+      body.scriptCode ??
+      `// MINION custom tool. Input arrives as MINION_TOOL_INPUT (JSON or text).
+// Available env vars: MINION_AGENT_ID, MINION_ORG_ID, MINION_USER_ID,
+// MINION_GATEWAY_URL, MINION_HUB_URL, MINION_TOOL_ID, MINION_TOOL_NAME
+// (see the System / Module / Database Vars tabs below for the full list).
+
+const input = process.env.MINION_TOOL_INPUT ?? '';
+const result = { ok: true, input };
+
+console.log(JSON.stringify(result));
+`,
     scriptLang: body.scriptLang ?? 'javascript',
     status: 'draft',
     tenantId: ctx.tenantId,
