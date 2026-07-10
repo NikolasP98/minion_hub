@@ -49,6 +49,12 @@
         database: Array<{ key: string; value: string; description: string }>;
     } | null>(null);
 
+    // ── Schema catalog (DB tables/columns) for editor intellisense + Queries
+    // tab. WP-8 lands the endpoint (C11); degrade to empty tables until then.
+    let schemaCatalog = $state<{
+        tables: Array<{ name: string; columns: Array<{ name: string; type: string }> }>;
+    } | null>(null);
+
     // ── Console state ───────────────────────────────────────────────────
     let consoleLines = $state<Array<{ text: string; type: "stdout" | "stderr" | "system" }>>([
         { text: "Ready. Click Run to execute.", type: "system" },
@@ -319,6 +325,10 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
             .then((r) => (r.ok ? r.json() : null))
             .then((d) => { variablesData = d; })
             .catch(() => {});
+        fetch('/api/builder/tools/schema-catalog')
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => { schemaCatalog = d; })
+            .catch(() => {});
     });
     onDestroy(() => autoSave.flush());
 
@@ -377,6 +387,7 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
             {envVarsExpanded}
             {isAdmin}
             {variablesData}
+            {schemaCatalog}
             onCodeChange={scheduleSave}
             onAddEnvVar={addEnvVar}
             onRemoveEnvVar={removeEnvVar}
