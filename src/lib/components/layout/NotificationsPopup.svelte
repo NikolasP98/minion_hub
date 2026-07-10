@@ -1,7 +1,8 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { Bell, ArrowRight } from 'lucide-svelte';
+  import { Bell, ArrowRight, Download } from 'lucide-svelte';
   import { scale } from 'svelte/transition';
+  import { updateState } from '$lib/state/gateway/update-state.svelte';
 
   interface PendingRequest {
     id: string;
@@ -74,6 +75,18 @@
 
     <!-- List -->
     <div class="max-h-72 overflow-y-auto">
+      {#if updateState.pending}
+        <a
+          href="/settings/gateways"
+          onclick={close}
+          class="flex items-center gap-2 px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-100 no-underline text-foreground"
+        >
+          <Download size={14} class="text-accent shrink-0" />
+          <span class="text-xs font-medium truncate">
+            {m.gateway_update_bellRow({ version: updateState.pending.version })}
+          </span>
+        </a>
+      {/if}
       {#if loading}
         <div class="flex items-center justify-center py-8">
           <div class="w-5 h-5 border-2 border-muted-foreground/30 border-t-accent rounded-full animate-spin"></div>

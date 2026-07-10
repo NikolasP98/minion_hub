@@ -1,8 +1,14 @@
+import { updateState } from '$lib/state/gateway/update-state.svelte';
+
 export const notifications = $state({
   pendingCount: 0,
   lastFetched: 0,
+  /** Total bell badge count — join requests + a pending gateway update (max 1). */
+  get badgeCount() {
+    return this.pendingCount + (updateState.pending ? 1 : 0);
+  },
   get hasPending() {
-    return this.pendingCount > 0;
+    return this.badgeCount > 0;
   },
 });
 

@@ -86,7 +86,7 @@
                 type="button"
                 onclick={() => (notificationsOpen = !notificationsOpen)}
                 class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150 relative"
-                aria-label="{notifications.pendingCount} pending access requests"
+                aria-label="{notifications.badgeCount} notifications"
                 title="Notifications"
                 aria-expanded={notificationsOpen}
             >
@@ -95,7 +95,7 @@
                     <span
                         class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-red-500 text-[9px] font-bold text-white leading-none"
                     >
-                        {notifications.pendingCount > 99 ? '99+' : notifications.pendingCount}
+                        {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
                     </span>
                 {/if}
             </button>
@@ -203,7 +203,7 @@
                     <span>Notifications</span>
                     {#if notifications.hasPending}
                         <span class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white leading-none">
-                            {notifications.pendingCount > 99 ? '99+' : notifications.pendingCount}
+                            {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
                         </span>
                     {/if}
                 </a>

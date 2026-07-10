@@ -25,7 +25,7 @@
       type="button"
       onclick={() => (notificationsOpen = !notificationsOpen)}
       class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors duration-[150ms] relative"
-      aria-label="{notifications.pendingCount} pending access requests"
+      aria-label="{notifications.badgeCount} notifications"
       title="Notifications"
       aria-expanded={notificationsOpen}
     >
@@ -34,7 +34,7 @@
         <span
           class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-red-500 text-[9px] font-bold text-white leading-none"
         >
-          {notifications.pendingCount > 99 ? '99+' : notifications.pendingCount}
+          {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
         </span>
       {/if}
     </button>

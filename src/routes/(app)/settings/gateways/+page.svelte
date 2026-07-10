@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invalidateAll, goto } from '$app/navigation';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
+  import GatewayUpdateCard from '$lib/components/settings/GatewayUpdateCard.svelte';
   import { addHost, removeHost, updateHost, hostsState } from '$lib/state/features/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
@@ -129,6 +130,8 @@
   <section>
     <h1 class="text-lg font-semibold mb-1">{m.hosts_title()}</h1>
     <p class="text-xs text-muted mb-5">Manage gateway connections. Adding here registers the gateway for WS connect and per-user credential resolution.</p>
+
+    <GatewayUpdateCard />
 
     <!-- Add form -->
     <div class="border border-border rounded-lg overflow-hidden mb-6">
