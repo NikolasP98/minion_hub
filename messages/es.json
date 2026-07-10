@@ -709,7 +709,7 @@
   "gateway_update_notifyTargets": "Destinos de notificación",
   "gateway_update_notifyNone": "No hay destinos de notificación configurados.",
   "gateway_update_notifyEditHint": "Edita en Config → update.notify",
-  "gateway_update_restarting": "El gateway se está reiniciando para aplicar la actualización…",
+  "gateway_update_restarting": "La actualización sigue en curso — el gateway está tardando más en reiniciarse. Esto puede tomar unos minutos.",
   "gateway_update_restartSuccess": "Gateway actualizado a la v{version}.",
   "gateway_update_restartMismatch": "El gateway se reinició pero la versión no cambió como se esperaba.",
   "gateway_update_bellRow": "Actualización de gateway v{version} disponible",

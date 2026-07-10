@@ -4,6 +4,7 @@
  */
 import { sendRequest } from '$lib/services/gateway-rpc';
 import { toaster, toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
+import { updateState } from '$lib/state/gateway/update-state.svelte';
 import * as m from '$lib/paraglide/messages';
 import { isAdmin } from '$lib/state/features/user.svelte';
 import {
@@ -108,12 +109,21 @@ export function beginRestart() {
         toaster.dismiss(_restartToastId);
         _restartToastId = null;
       }
-      toastError(m.config_reconnectFailed(), m.config_reconnectManually());
+      if (updateState.installing) {
+        // An update install (npm install + restart + boot) routinely exceeds
+        // this 30s window — that's expected, not a failure. Unstick the
+        // Updates card button and say what's actually happening instead of
+        // showing the generic reconnect-failed error.
+        updateState.installing = false;
+        toastWarning(m.gateway_update_restarting());
+      } else {
+        toastError(m.config_reconnectFailed(), m.config_reconnectManually());
+      }
     }
   }, RESTART_TIMEOUT_MS);
 }
 
-export function onRestartReconnected() {
+export function onRestartReconnected(opts?: { silent?: boolean }) {
   _clearRestartTimers();
   if (_restartToastId) {
     toaster.dismiss(_restartToastId);
@@ -121,7 +131,11 @@ export function onRestartReconnected() {
   }
   const dirty = _isDirty;
   Object.assign(restartState, applyReconnected(restartState, dirty));
-  if (dirty) {
+  // silent: the caller already showed a more specific toast for this
+  // reconnect (e.g. the update success/mismatch toast) — one toast per event.
+  if (opts?.silent) {
+    // no generic toast
+  } else if (dirty) {
     toastWarning(m.config_gatewayReconnected(), m.config_unsavedPreserved());
   } else {
     toastSuccess(m.config_gatewayReconnected(), m.config_changesApplied());

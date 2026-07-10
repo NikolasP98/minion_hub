@@ -758,7 +758,7 @@
   "gateway_update_notifyTargets": "Notify targets",
   "gateway_update_notifyNone": "No notify targets configured.",
   "gateway_update_notifyEditHint": "Edit in Config → update.notify",
-  "gateway_update_restarting": "Gateway restarting to apply update…",
+  "gateway_update_restarting": "Update still in progress — the gateway is taking longer to restart. This can take a few minutes.",
   "gateway_update_restartSuccess": "Gateway updated to v{version}.",
   "gateway_update_restartMismatch": "Gateway restarted but the version did not change as expected.",
   "gateway_update_bellRow": "Gateway update v{version} available",

@@ -1072,23 +1072,33 @@ function applyAgentsList(agents: unknown[] | undefined, defaultId: string | unde
 }
 
 function onHelloOk(hello: HelloOk) {
-  // If gateway was restarting after a config save, signal reconnection
-  if (restartState.phase === 'restarting') {
-    // If this restart was triggered by an update install, the 'update.applied'
-    // WS event (above) is the authoritative outcome, but it can race the
-    // reconnect — compare the version we see right now as a minimal fallback
-    // signal so the user always gets a toast.
-    if (updateState.installing) {
-      updateState.installing = false;
-      const targetVersion = updateState.pending?.version;
-      if (targetVersion && hello.server?.version === targetVersion) {
-        toastSuccess(m.gateway_update_restartSuccess({ version: hello.server.version }));
-        updateState.pending = null;
-      } else if (targetVersion) {
-        toastWarning(m.gateway_update_restartMismatch());
-      }
+  // Update-install outcome check, on EVERY reconnect regardless of
+  // restartState.phase — a real update (npm install + restart + boot)
+  // routinely exceeds the 30s restart window, so by the time the gateway is
+  // back the phase may already be 'failed' and `installing` already reset by
+  // the timeout. The 'update.applied' WS event is the authoritative result,
+  // but it can race the reconnect — the version comparison is a minimal
+  // fallback so the user always gets a toast and the Install button never
+  // sticks on "Installing…".
+  let updateToastShown = false;
+  const targetVersion = updateState.pending?.version;
+  if (targetVersion && hello.server?.version === targetVersion) {
+    // The pending update landed (also covers reconnects after the 30s window).
+    updateState.installing = false;
+    updateState.pending = null;
+    toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion }));
+    updateToastShown = true;
+  } else if (updateState.installing) {
+    updateState.installing = false;
+    if (targetVersion) {
+      toastWarning(m.gateway_update_restartMismatch());
+      updateToastShown = true;
     }
-    onRestartReconnected();
+  }
+  // If gateway was restarting after a config save, signal reconnection —
+  // silent when the update toast already covered this reconnect (one toast).
+  if (restartState.phase === 'restarting') {
+    onRestartReconnected({ silent: updateToastShown });
   }
 
   sendRequest('agents.list', {})
