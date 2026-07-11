@@ -31,13 +31,6 @@
 	};
 	const projStatuses = ['open', 'active', 'on_hold', 'completed', 'cancelled'];
 
-	const ISSUE_BADGE: Record<string, string> = {
-		in_progress: 'bg-accent/10 text-accent', blocked: 'bg-warning/10 text-warning',
-		todo: 'bg-muted text-muted-foreground', backlog: 'bg-muted text-muted-foreground',
-		in_review: 'bg-purple-500/10 text-purple-600', done: 'bg-success/10 text-success',
-		cancelled: 'bg-muted text-muted-strong',
-	};
-
 	const milestones = $derived(data.tasks.filter((t) => t.isMilestone));
 	const workTasks = $derived(data.tasks.filter((t) => !t.isMilestone && t.status !== 'cancelled'));
 	const assignOptions = $derived([
@@ -232,19 +225,38 @@
 						{/each}
 					</div>
 				{/if}
-				<!-- issues -->
-				<div class="iss-list">
-					{#each data.execution.issues as iss (iss.id)}
-						<a class="iss" href={`/workforce/issues/${iss.id}`}>
-							<span class="badge {ISSUE_BADGE[iss.status] ?? 'bg-muted text-muted-foreground'}">{iss.status}</span>
-							{#if iss.identifier}<span class="hid">{iss.identifier}</span>{/if}
-							<span class="iss-title">{iss.title}</span>
-							{#if iss.assigneeAgentId}<span class="iss-agent t-caption">{wfAgent(iss.assigneeAgentId)}</span>{/if}
-						</a>
-					{:else}
-						<p class="t-caption empty">No issues in the linked workforce project.</p>
-					{/each}
-				</div>
+				<!-- execution kanban: column = pipeline step, card owner = the step's agent -->
+				{#if data.execution.issues.length}
+					<div class="board exec-board">
+						{#each COLUMNS as col (col)}
+							{@const colIssues = data.execution.issues.filter((i) => i.status === col)}
+							<div class="col">
+								<header class="col-head">{colLabel[col]} <span class="cnt">{colIssues.length}</span></header>
+								<div class="col-body">
+									{#each colIssues as iss (iss.id)}
+										<a class="tcard iss-card" href={`/workforce/issues/${iss.id}`}>
+											<div class="tt">{iss.title}</div>
+											<div class="tmeta">
+												{#if iss.identifier}<span class="hid">{iss.identifier}</span>{/if}
+												{#if iss.status === 'in_review' && iss.assigneeUserId}
+													<span class="step-chip hitl">HITL approval · you</span>
+												{:else if iss.status === 'in_review' && iss.assigneeAgentId}
+													<span class="step-chip review">review · {wfAgent(iss.assigneeAgentId)}</span>
+												{:else if iss.assigneeAgentId}
+													<span class="step-chip">{wfAgent(iss.assigneeAgentId)}</span>
+												{:else if iss.assigneeUserId}
+													<span class="step-chip hitl">you</span>
+												{/if}
+											</div>
+										</a>
+									{/each}
+								</div>
+							</div>
+						{/each}
+					</div>
+				{:else}
+					<p class="t-caption empty">No issues in the linked workforce project.</p>
+				{/if}
 			{:else if data.workforceProjectId}
 				<p class="t-caption broken">Linked workforce project unavailable (backend down or project removed).</p>
 			{:else}
@@ -339,13 +351,12 @@
 	.ws-name { font-size: 0.82rem; display: flex; align-items: center; gap: 0.4rem; }
 	.primary { font-size: 0.66rem; border-radius: 999px; border: 1px solid var(--hairline); padding: 0 0.35rem; color: var(--color-primary); }
 	.ws-src { font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.iss-list { display: flex; flex-direction: column; }
-	.iss { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; font-size: 0.83rem; color: var(--color-foreground); text-decoration: none; }
-	.iss + .iss { border-top: 1px solid var(--hairline); }
-	.iss:hover { background: var(--color-bg3); }
-	.badge { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 999px; }
-	.iss-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.iss-agent { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.exec-board { grid-template-columns: repeat(6, minmax(140px, 1fr)); }
+	.iss-card { text-decoration: none; color: var(--color-foreground); }
+	.iss-card:hover { border-color: var(--color-primary); }
+	.step-chip { font-size: 0.68rem; padding: 0.05rem 0.4rem; border-radius: 999px; border: 1px solid var(--hairline); background: var(--color-bg3); color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+	.step-chip.review { color: var(--color-primary); border-color: color-mix(in oklab, var(--color-primary) 40%, transparent); }
+	.step-chip.hitl { color: var(--color-warning, #d97706); border-color: color-mix(in oklab, var(--color-warning, #d97706) 40%, transparent); }
 	.link-row { display: flex; gap: 0.5rem; align-items: center; }
 	.broken { color: var(--color-warning, #d97706); }
 	.ts { padding: 0.6rem 0.9rem; }

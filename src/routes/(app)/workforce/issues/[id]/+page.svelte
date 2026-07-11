@@ -51,6 +51,51 @@
 	}
 
 	const ancestors = $derived(issue.ancestors ?? []);
+
+	// --- pipeline (executionPolicy stages) -------------------------------
+	type StepState = 'done' | 'current' | 'pending';
+	type PipelineStep = { key: string; label: string; who: string; state: StepState };
+
+	function principalLabel(p: { type: 'agent' | 'user'; agentId?: string | null; userId?: string | null } | null): string {
+		if (!p) return '—';
+		return p.type === 'agent' ? actorLabel(p.agentId ?? null, null) : 'You (HITL)';
+	}
+
+	const pipeline = $derived.by((): PipelineStep[] => {
+		const policy = issue.executionPolicy;
+		if (!policy || policy.stages.length === 0) return [];
+		const state = issue.executionState ?? null;
+		const completed = new Set(state?.completedStageIds ?? []);
+		const stageActive = state?.status === 'pending';
+		const stageSteps: PipelineStep[] = policy.stages.map((s) => ({
+			key: s.id,
+			label: s.type === 'review' ? 'Review' : 'Approval',
+			who: principalLabel(s.participants[0] ?? null),
+			state: completed.has(s.id) ? 'done' : stageActive && state?.currentStageId === s.id ? 'current' : 'pending',
+		}));
+		const fixWho = state?.returnAssignee
+			? principalLabel(state.returnAssignee)
+			: actorLabel(issue.assigneeAgentId, issue.assigneeUserId);
+		const fixDone = issue.status === 'done' || stageActive || state?.status === 'completed';
+		const fix: PipelineStep = {
+			key: 'fix',
+			label: state?.status === 'changes_requested' ? 'Fix (changes requested)' : 'Fix',
+			who: fixWho,
+			state: fixDone ? 'done' : 'current',
+		};
+		const done: PipelineStep = { key: 'done', label: 'Done', who: '', state: issue.status === 'done' ? 'done' : 'pending' };
+		return [fix, ...stageSteps, done];
+	});
+
+	// --- origin traceability ---------------------------------------------
+	const githubOrigin = $derived.by(() => {
+		if ((issue.originKind as string | undefined) !== 'github_issue' || !issue.originId) return null;
+		const m = /^([^#]+)#(\d+)$/.exec(issue.originId);
+		if (!m) return null;
+		return { label: issue.originId, url: `https://github.com/${m[1]}/issues/${m[2]}` };
+	});
+
+	const workspace = $derived(issue.currentExecutionWorkspace ?? null);
 </script>
 
 <div class="p-6 space-y-6 max-w-5xl">
@@ -90,6 +135,36 @@
 			</div>
 		{/if}
 	</header>
+
+	<!-- Pipeline (kanban process steps, each owned by its linked agent) -->
+	{#if pipeline.length > 0}
+		<section class="rounded-lg border border-border bg-card px-4 py-3">
+			<h2 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Pipeline</h2>
+			<ol class="flex flex-wrap items-center gap-1">
+				{#each pipeline as step, i (step.key)}
+					{#if i > 0}<li aria-hidden="true" class="text-muted-foreground/50 px-1">→</li>{/if}
+					<li
+						class="flex items-center gap-2 rounded-full border px-3 py-1 text-xs
+							{step.state === 'done'
+							? 'border-green-500/40 bg-green-500/10 text-green-600'
+							: step.state === 'current'
+								? 'border-blue-500/50 bg-blue-500/10 text-blue-600 font-medium'
+								: 'border-border text-muted-foreground'}"
+					>
+						<span>{step.label}</span>
+						{#if step.who}<span class="opacity-75">· {step.who}</span>{/if}
+						{#if step.state === 'done'}<span aria-label="done">✓</span>{/if}
+						{#if step.state === 'current'}<span class="inline-block size-1.5 rounded-full bg-blue-500 animate-pulse" aria-label="current step"></span>{/if}
+					</li>
+				{/each}
+			</ol>
+			{#if issue.executionState?.lastDecisionOutcome}
+				<p class="mt-2 text-xs text-muted-foreground">
+					Last gate decision: <span class="font-medium {issue.executionState.lastDecisionOutcome === 'approved' ? 'text-green-600' : 'text-amber-600'}">{issue.executionState.lastDecisionOutcome.replace('_', ' ')}</span>
+				</p>
+			{/if}
+		</section>
+	{/if}
 
 	<!-- Two-column layout: main content + properties sidebar -->
 	<div class="grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-6">
@@ -268,6 +343,38 @@
 					</div>
 				{/if}
 			</div>
+
+			<!-- Traceability -->
+			{#if githubOrigin || workspace}
+				<div class="rounded-lg border border-border bg-card p-4 space-y-3 text-sm">
+					<h2 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Traceability</h2>
+					{#if githubOrigin}
+						<div>
+							<div class="text-xs uppercase tracking-wider text-muted-foreground mb-0.5">Origin</div>
+							<a class="font-mono text-xs text-blue-600 hover:underline break-all" href={githubOrigin.url} target="_blank" rel="noreferrer">
+								{githubOrigin.label}
+							</a>
+						</div>
+					{/if}
+					{#if workspace}
+						<div>
+							<div class="text-xs uppercase tracking-wider text-muted-foreground mb-0.5">Workspace</div>
+							<div class="space-y-0.5 text-xs">
+								<div><span class="text-muted-foreground">status</span> {workspace.status}</div>
+								{#if workspace.branchName}
+									<div class="font-mono break-all"><span class="text-muted-foreground font-sans">branch</span> {workspace.branchName}</div>
+								{/if}
+								{#if workspace.baseRef}
+									<div class="font-mono"><span class="text-muted-foreground font-sans">base</span> {workspace.baseRef}</div>
+								{/if}
+								{#if workspace.cwd}
+									<div class="font-mono break-all"><span class="text-muted-foreground font-sans">path</span> {workspace.cwd}</div>
+								{/if}
+							</div>
+						</div>
+					{/if}
+				</div>
+			{/if}
 		</aside>
 	</div>
 </div>
