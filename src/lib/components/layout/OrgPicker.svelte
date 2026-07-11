@@ -3,6 +3,7 @@
     import { page } from "$app/state";
     import { conn } from "$lib/state/gateway";
     import { wsConnect, wsDisconnect } from "$lib/services/gateway.svelte";
+    import { applyOrgAssignedHost } from "$lib/state/features/hosts.svelte";
     import { isAdmin } from "$lib/state/features/user.svelte";
     import { toastSuccess, toastError } from "$lib/state/ui/toast.svelte";
     import { Building2, Loader2, Check } from "lucide-svelte";
@@ -50,13 +51,17 @@
             // reflects the new org. Pages that fetch client-side react to the
             // changed activeOrgId in page.data.
             await invalidateAll();
+            // Re-point at the new org's assigned gateway (fresh page.data) —
+            // beats any stale manual pick from the previous org context.
+            const hostChanged = applyOrgAssignedHost();
             // The gateway JWT is minted once at WS connect (onChallenge) from the
             // active_org cookie, and the gateway org-scopes channels.status by that
             // claim. invalidateAll() refreshes server-loaded data but NOT the live
             // socket — so reconnect to re-handshake with the new org's JWT, else
             // gw.channels keeps the previous org's accounts. Cookie is already set
-            // above, so the reconnect picks up the new org.
-            if (conn.connected) {
+            // above, so the reconnect picks up the new org. Reconnect exactly once
+            // per user-initiated switch (also when the assigned host changed).
+            if (conn.connected || hostChanged) {
                 wsDisconnect();
                 void wsConnect();
             }

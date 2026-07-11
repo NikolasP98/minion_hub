@@ -4,6 +4,8 @@
   import { getActiveHost } from '$lib/state/features/hosts.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
+  import { isUpdateRestartExpected } from '$lib/state/gateway/update-state.svelte';
+  import { restartState } from '$lib/state/config/config.svelte';
   import { Spinner } from '$lib/components/ui';
   import { AlertTriangle, RotateCw, Settings2 } from 'lucide-svelte';
 
@@ -12,6 +14,10 @@
   // Only surface when we have a host we're supposed to be connected to, but aren't.
   // A persistent banner (not a toast): the condition lasts until it resolves.
   const show = $derived(!!activeHost && !conn.connected);
+  // The disconnect is the EXPECTED restart step of an update install or a
+  // config-save restart — show a calm amber "updating/restarting" line instead
+  // of the red outage banner. Red stays for unexpected disconnects.
+  const expectedRestart = $derived(isUpdateRestartExpected() || restartState.phase === 'restarting');
   const reconnecting = $derived(conn.connecting);
 
   let showDetail = $state(false);
@@ -27,13 +33,20 @@
 {#if show}
   <div
     class="shrink-0 flex flex-col gap-1.5 px-4 md:pr-44 py-2 text-xs border-b
-      {reconnecting
+      {reconnecting || expectedRestart
         ? 'bg-[color-mix(in_srgb,var(--color-warning)_12%,transparent)] border-[color-mix(in_srgb,var(--color-warning)_25%,transparent)] text-warning'
         : 'bg-[color-mix(in_srgb,var(--color-destructive)_12%,transparent)] border-[color-mix(in_srgb,var(--color-destructive)_25%,transparent)] text-destructive'}"
     role="status"
     aria-live="polite"
   >
-    {#if reconnecting}
+    {#if expectedRestart}
+      <div class="flex items-center gap-2.5">
+        <Spinner size="xs" class="!text-warning shrink-0" />
+        <span class="font-medium">
+          {isUpdateRestartExpected() ? m.connectionBanner_updating() : m.config_gatewayRestarting()}
+        </span>
+      </div>
+    {:else if reconnecting}
       <div class="flex items-center gap-2.5">
         <Spinner size="xs" class="!text-warning shrink-0" />
         <span class="font-medium">{m.connectionBanner_reconnecting({ host: activeHost?.name ?? '' })}</span>

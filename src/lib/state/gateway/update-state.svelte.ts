@@ -43,16 +43,84 @@ export const updateState = $state({
   pending: null as PendingUpdate | null,
   lastResult: null as UpdateApplyResult | null,
   installing: false,
+  /** Event truth — the max progress signal actually received (ratchet). */
   progress: null as UpdateProgress | null,
+  /**
+   * Presentation layer over `progress`. The real installed(70) /
+   * watchdog-armed(80) / restarting(90) events land within ~1s of each other,
+   * which read as the bar "skipping" stages — so the DISPLAYED stage advances
+   * through the received stages one at a time with a min dwell. It only ever
+   * shows stages that actually arrived and never leads `progress`.
+   */
+  display: null as UpdateProgress | null,
 });
+
+/** Min time each real stage stays on screen before the next queued one shows. */
+export const PROGRESS_DWELL_MS = 600;
+
+let displayQueue: UpdateProgress[] = [];
+let drainTimer: ReturnType<typeof setTimeout> | null = null;
+let displayAdvancedAt = 0;
+
+function scheduleDrain(): void {
+  if (drainTimer || displayQueue.length === 0) return;
+  const wait = Math.max(0, displayAdvancedAt + PROGRESS_DWELL_MS - Date.now());
+  drainTimer = setTimeout(() => {
+    drainTimer = null;
+    const next = displayQueue.shift();
+    if (next) {
+      updateState.display = next;
+      displayAdvancedAt = Date.now();
+    }
+    scheduleDrain();
+  }, wait);
+}
+
+/**
+ * True while an install is in flight and the gateway dropping the WS is the
+ * EXPECTED restart step — used to keep the Updates card mounted and to swap
+ * the red outage banner for a calm "updating" one.
+ */
+export function isUpdateRestartExpected(): boolean {
+  return (
+    updateState.installing || (updateState.progress !== null && updateState.progress.pct < 100)
+  );
+}
 
 /**
  * Ratchet: gateway events and client stage inference race each other around
- * the restart, so the bar only ever moves forward. Direct assignment to
- * `updateState.progress` (installNow start / explicit failure) resets it.
+ * the restart, so the bar only ever moves forward. Use `setUpdateProgress()`
+ * (not direct assignment) to reset/settle — it also clears the display queue.
  */
 export function bumpUpdateProgress(p: UpdateProgress): void {
-  if (!updateState.progress || p.pct >= updateState.progress.pct) updateState.progress = p;
+  if (updateState.progress && p.pct < updateState.progress.pct) return;
+  updateState.progress = p;
+  const tail = displayQueue.length > 0 ? displayQueue[displayQueue.length - 1] : updateState.display;
+  if (!updateState.display) {
+    // First signal of this install — show immediately.
+    displayQueue = [];
+    updateState.display = p;
+    displayAdvancedAt = Date.now();
+  } else if (tail && p.pct <= tail.pct) {
+    // Same-stage refresh (e.g. updated detail text) — replace in place, no dwell.
+    if (displayQueue.length > 0) displayQueue[displayQueue.length - 1] = p;
+    else updateState.display = p;
+  } else {
+    displayQueue.push(p);
+    scheduleDrain();
+  }
+}
+
+/** Terminal set/reset — clears any queued display stages so nothing replays. */
+export function setUpdateProgress(p: UpdateProgress | null): void {
+  if (drainTimer) {
+    clearTimeout(drainTimer);
+    drainTimer = null;
+  }
+  displayQueue = [];
+  updateState.progress = p;
+  updateState.display = p;
+  displayAdvancedAt = Date.now();
 }
 
 /**

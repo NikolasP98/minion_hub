@@ -58,6 +58,8 @@ import {
   updateState,
   applyUpdateStatus,
   bumpUpdateProgress,
+  setUpdateProgress,
+  isUpdateRestartExpected,
   type PendingUpdate,
   type UpdateApplyResult,
   type UpdateProgress,
@@ -596,7 +598,11 @@ function handleEvent(evt: Record<string, unknown>) {
     case 'shutdown': {
       const reason = (evt.payload as { reason?: string })?.reason ?? 'Gateway shutting down';
       ui.shutdownReason = reason;
-      toastError('Gateway shutdown', reason, { id: 'gateway-shutdown', duration: Infinity });
+      // Expected restart (update install / config save) — the progress bar and
+      // calm banner already tell the story; a sticky red toast is just noise.
+      if (!isUpdateRestartExpected() && restartState.phase !== 'restarting') {
+        toastError('Gateway shutdown', reason, { id: 'gateway-shutdown', duration: Infinity });
+      }
       break;
     }
     case 'cache.invalidate': {
@@ -614,7 +620,7 @@ function handleEvent(evt: Record<string, unknown>) {
     case 'update.available': {
       updateState.pending = evt.payload as PendingUpdate;
       // A fresh pending update supersedes any leftover progress from the last install.
-      updateState.progress = null;
+      setUpdateProgress(null);
       toastInfo(
         m.gateway_update_available_title(),
         m.gateway_update_available_body({ version: updateState.pending.version }),
@@ -635,7 +641,7 @@ function handleEvent(evt: Record<string, unknown>) {
         updateState.pending = null;
         bumpUpdateProgress({ phase: 'done', pct: 100, version: r.to });
       } else {
-        updateState.progress = null;
+        setUpdateProgress(null);
         // A rolled-back update slower than the 30s restart window would
         // otherwise fail silently — this event is the authoritative failure
         // signal regardless of timing.
@@ -1113,15 +1119,15 @@ async function confirmUpdateOutcomeViaStatus(targetVersion: string): Promise<voi
     applyUpdateStatus(status);
     if (status.current === targetVersion) {
       updateState.pending = null;
-      updateState.progress = { phase: 'done', pct: 100, version: targetVersion };
+      setUpdateProgress({ phase: 'done', pct: 100, version: targetVersion });
       toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion }));
     } else if (status.lastResult && !status.lastResult.ok) {
       // Rolled back — the 'update.applied' handler owns the failure toast;
       // just settle the bar.
-      updateState.progress = null;
+      setUpdateProgress(null);
     } else if (status.pending?.version === targetVersion) {
       // Reconnected on the old version with the update still pending.
-      updateState.progress = null;
+      setUpdateProgress(null);
       toastWarning(m.gateway_update_restartMismatch());
     }
   } catch {
@@ -1144,7 +1150,7 @@ function onHelloOk(hello: HelloOk) {
     // The pending update landed (also covers reconnects after the 30s window).
     updateState.installing = false;
     updateState.pending = null;
-    updateState.progress = { phase: 'done', pct: 100, version: targetVersion };
+    setUpdateProgress({ phase: 'done', pct: 100, version: targetVersion });
     toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion }));
     updateToastShown = true;
   } else if (targetVersion && (updateState.installing || updateState.progress)) {

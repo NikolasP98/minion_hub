@@ -96,12 +96,17 @@ export function beginRestart() {
   Object.assign(restartState, applyBeginRestart(restartState, Date.now()));
   if (_restartToastId) {
     toaster.dismiss(_restartToastId);
+    _restartToastId = null;
   }
-  _restartToastId = toaster.create({
-    title: m.config_gatewayRestarting(),
-    type: 'loading',
-    duration: Infinity,
-  });
+  // During an update install the Updates card's progress bar + the calm
+  // connection banner already narrate the restart — skip the duplicate toast.
+  if (!updateState.installing) {
+    _restartToastId = toaster.create({
+      title: m.config_gatewayRestarting(),
+      type: 'loading',
+      duration: Infinity,
+    });
+  }
   _restartTimeoutId = setTimeout(() => {
     if (restartState.phase === 'restarting') {
       restartState.phase = 'failed';

@@ -6,6 +6,9 @@ import { toastAsync } from '$lib/state/ui/toast.svelte';
 import * as m from '$lib/paraglide/messages';
 
 const HOSTS_CACHE_KEY = 'minion-dash-hosts-cache';
+/** Manual host pick — sessionStorage: respected for the current session only,
+ *  so a days-old selection can't override the org's assigned gateway. */
+const LAST_HOST_KEY = 'minion-dash-last-host';
 
 /**
  * Hosts now flow through the canonical (app)/+layout.server.ts bundle
@@ -13,9 +16,13 @@ const HOSTS_CACHE_KEY = 'minion-dash-hosts-cache';
  * fallback for the brief window before the layout-load completes (e.g.
  * pages outside (app)/ that still consume `hostsState`).
  *
- * activeHostId stays in localStorage and is exposed as writable state —
- * per spec it's a per-device user preference and does NOT belong in the
- * server-load bundle.
+ * activeHostId precedence ("the balancer decides where requests go"):
+ *   1. a manual pick made THIS session (sessionStorage — HostPill/HostsOverlay),
+ *   2. the active org's assigned host (page.data orgAssignedHostId),
+ *   3. first host.
+ * A persisted localStorage pick from previous days no longer pins users to a
+ * host their org isn't assigned to (it black-holed a FACES session on
+ * minion-1 while minion-2 was healthy).
  *
  * Tokens are never persisted client-side: see `fetchHostToken()`.
  */
@@ -115,8 +122,8 @@ export const hostsState = {
   set activeHostId(id: string | null) {
     local.activeHostId = id;
     if (id) saveLastActiveHost(id);
-    else if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem('minion-dash-last-host');
+    else if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(LAST_HOST_KEY);
     }
   },
 };
@@ -127,8 +134,9 @@ export function getActiveHost(): Host | null {
 }
 
 /**
- * Initialize activeHostId from localStorage and warm the cache from the
- * current page.data snapshot. No network — data is server-loaded.
+ * Initialize activeHostId and warm the cache from the current page.data
+ * snapshot. No network — data is server-loaded.
+ * Precedence: this-session manual pick > org-assigned host > first host.
  */
 export function loadHosts(): void {
   // Pull authoritative list from page.data (if (app)/+layout loaded);
@@ -139,21 +147,38 @@ export function loadHosts(): void {
     // Clear any stale overlay now that the layout-load has caught up.
     local.overlay = null;
   }
+  // Drop the legacy persisted pick — it used to win unconditionally and
+  // pinned sessions to hosts their org isn't assigned to.
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(LAST_HOST_KEY);
 
   const hosts = hostsState.hosts;
-  const lastId =
-    typeof localStorage !== 'undefined' ? localStorage.getItem('minion-dash-last-host') : null;
-  if (lastId && hosts.some((h) => h.id === lastId)) {
-    // Saved selection wins — never fight an explicit user choice.
-    local.activeHostId = lastId;
+  const sessionPick =
+    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(LAST_HOST_KEY) : null;
+  const orgHostId = pageOrgAssignedHostId();
+  if (sessionPick && hosts.some((h) => h.id === sessionPick)) {
+    // Explicit pick made this session — respect it until the tab closes.
+    local.activeHostId = sessionPick;
+  } else if (orgHostId && hosts.some((h) => h.id === orgHostId)) {
+    // The org's assigned gateway wins over any stale preference (§3.4).
+    local.activeHostId = orgHostId;
   } else if (hosts.length > 0) {
-    // No saved selection: default to the active org's assigned gateway when
-    // present among the user's hosts (§3.4), else first host (old behavior).
-    const orgHostId = pageOrgAssignedHostId();
-    const pick = orgHostId && hosts.some((h) => h.id === orgHostId) ? orgHostId : hosts[0].id;
-    local.activeHostId = pick;
-    saveLastActiveHost(pick);
+    local.activeHostId = hosts[0].id;
   }
+}
+
+/**
+ * Re-point at the active org's assigned host after an org switch (call after
+ * invalidateAll so page.data is fresh). Clears the session manual pick — it
+ * belonged to the previous org context. Returns true if the active host
+ * changed (caller should reconnect exactly once — no reconnect loops).
+ */
+export function applyOrgAssignedHost(): boolean {
+  const orgHostId = pageOrgAssignedHostId();
+  if (!orgHostId || !hostsState.hosts.some((h) => h.id === orgHostId)) return false;
+  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(LAST_HOST_KEY);
+  if (orgHostId === local.activeHostId) return false;
+  local.activeHostId = orgHostId;
+  return true;
 }
 
 export function selectHost(id: string): void {
@@ -241,8 +266,7 @@ export async function removeHost(id: string, options?: { silent?: boolean }) {
       const next = filtered[0]?.id ?? null;
       local.activeHostId = next;
       if (next) saveLastActiveHost(next);
-      else if (typeof localStorage !== 'undefined')
-        localStorage.removeItem('minion-dash-last-host');
+      else if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(LAST_HOST_KEY);
     }
     await invalidateHosts();
   };
@@ -263,7 +287,7 @@ export async function removeHost(id: string, options?: { silent?: boolean }) {
 }
 
 export function saveLastActiveHost(id: string) {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('minion-dash-last-host', id);
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem(LAST_HOST_KEY, id);
   }
 }

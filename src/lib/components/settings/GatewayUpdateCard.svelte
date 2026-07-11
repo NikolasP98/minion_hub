@@ -3,7 +3,13 @@
   import * as m from '$lib/paraglide/messages';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
-  import { updateState, applyUpdateStatus, bumpUpdateProgress } from '$lib/state/gateway/update-state.svelte';
+  import {
+    updateState,
+    applyUpdateStatus,
+    bumpUpdateProgress,
+    setUpdateProgress,
+    isUpdateRestartExpected,
+  } from '$lib/state/gateway/update-state.svelte';
   import { configState, loadConfig, getField, beginRestart, restartState } from '$lib/state/config/config.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
@@ -70,7 +76,7 @@
 
   function failInstall(message: string) {
     updateState.installing = false;
-    updateState.progress = null;
+    setUpdateProgress(null);
     toastError(message);
   }
 
@@ -78,7 +84,7 @@
     if (!updateState.pending || updateState.installing) return;
     if (!confirm(m.gateway_update_confirmInstall({ version: updateState.pending.version }))) return;
     updateState.installing = true;
-    updateState.progress = { phase: 'starting', pct: 5 };
+    setUpdateProgress({ phase: 'starting', pct: 5 });
     try {
       // The POST now long-polls through the npm install (40-120s). Real
       // progress arrives in parallel over the WS ('update.progress' events);
@@ -139,9 +145,24 @@
     restarting: m.gateway_update_phase_restarting,
     done: m.gateway_update_phase_done,
   };
+  // Render the dwell-smoothed display layer (truth stays in updateState.progress).
+  const shownProgress = $derived(updateState.display);
+  // Live elapsed-seconds counter for the long `installing` hold (real time,
+  // not fake progress) so the 15% plateau reads as alive.
+  let phaseElapsed = $state(0);
+  $effect(() => {
+    phaseElapsed = 0;
+    if (shownProgress?.phase !== 'installing') return;
+    const started = Date.now();
+    const t = setInterval(() => {
+      phaseElapsed = Math.floor((Date.now() - started) / 1000);
+    }, 1000);
+    return () => clearInterval(t);
+  });
   const progressLabel = $derived(
-    updateState.progress
-      ? (PROGRESS_LABELS[updateState.progress.phase]?.() ?? updateState.progress.phase)
+    shownProgress
+      ? (PROGRESS_LABELS[shownProgress.phase]?.() ?? shownProgress.phase) +
+          (shownProgress.phase === 'installing' && phaseElapsed > 0 ? ` — ${phaseElapsed}s` : '')
       : '',
   );
 </script>
@@ -154,7 +175,10 @@
   </div>
 
   <div class="p-4 space-y-3">
-    {#if !conn.connected}
+    <!-- An install in flight means the disconnect IS the expected restart step:
+         keep the card body (progress bar at "restarting — reconnecting…")
+         mounted instead of swapping to "Not connected to gateway." -->
+    {#if !conn.connected && !isUpdateRestartExpected() && restartState.phase !== 'restarting'}
       <p class="text-xs text-muted-foreground">{m.gateway_update_disconnected()}</p>
     {:else}
       <div class="flex items-center justify-between gap-3 flex-wrap">
@@ -203,8 +227,8 @@
         </div>
       {/if}
 
-      {#if updateState.progress}
-        {@const pct = Math.max(0, Math.min(100, Math.round(updateState.progress.pct)))}
+      {#if shownProgress}
+        {@const pct = Math.max(0, Math.min(100, Math.round(shownProgress.pct)))}
         <div class="space-y-1">
           <div class="flex items-center justify-between text-[10px] font-mono text-muted">
             <span class="uppercase tracking-widest">{progressLabel}</span>
@@ -228,8 +252,8 @@
               style="width: {pct}%"
             ></div>
           </div>
-          {#if updateState.progress.detail}
-            <p class="text-[10px] font-mono text-muted-strong">{updateState.progress.detail}</p>
+          {#if shownProgress.detail}
+            <p class="text-[10px] font-mono text-muted-strong">{shownProgress.detail}</p>
           {/if}
         </div>
       {/if}

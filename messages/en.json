@@ -2168,6 +2168,7 @@
   "notificationsPopup_pending": "Access request pending",
   "notificationsPopup_seeAll": "See all notifications",
   "connectionBanner_reconnecting": "Reconnecting to {host}…",
+  "connectionBanner_updating": "Gateway updating — reconnecting…",
   "connectionBanner_disconnected": "Server disconnected",
   "connectionBanner_manageHosts": "Manage hosts",
   "connectionBanner_retrying": "retrying automatically…",
