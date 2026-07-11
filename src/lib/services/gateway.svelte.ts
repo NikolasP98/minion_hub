@@ -41,6 +41,14 @@ import {
   applyOrgAssignedHost,
 } from '$lib/state/features/hosts.svelte';
 import { userState } from '$lib/state/features/user.svelte';
+import type { Host } from '$lib/types/host';
+import {
+  armEagerReconnect,
+  clearPendingEagerReconnect,
+  disarmEagerReconnect,
+  isEagerReconnectArmed,
+  scheduleEagerReconnect,
+} from './gateway/eager-reconnect';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
 import { toastError, toastInfo, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
@@ -234,54 +242,30 @@ async function handleAuthFatalClose(reason: string): Promise<void> {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function wsConnect() {
-  const host = getActiveHost();
-  if (!host?.url) return;
-  conn.closed = false;
-  conn.connecting = true;
-  conn.particleHue = 'amber';
+const OPERATOR_ROLE = 'operator';
+const OPERATOR_SCOPES = [
+  'operator.admin',
+  'operator.read',
+  'operator.write',
+  'operator.approvals',
+  'operator.pairing',
+];
 
-  gw.lastSeq = null;
-
-  // Close existing client before creating a new one
-  const existing = getClient();
-  if (existing) {
-    existing.close();
-    setClient(null);
-  }
-  teardownBinaryWiring();
-
-  const capturedHostId = hostsState.activeHostId;
-
-  // Fetch the gateway token fresh from the server. The token is NEVER read
-  // from localStorage — that's the whole point of this design. If the user
-  // isn't authenticated to the hub (401) or the server can't be reached,
-  // surface the failure immediately instead of attempting a handshake with
-  // a stale/missing token (which fails as a confusing NOT_PAIRED close).
-  if (!capturedHostId) {
-    conn.connecting = false;
-    return;
-  }
-  const fetched = await fetchHostToken(capturedHostId);
-  if (fetched === null) {
-    conn.connecting = false;
-    conn.particleHue = 'red';
-    const info = describeGatewayError('could not load gateway token');
-    setConnectError('could not load gateway token');
-    toastError(info.title, info.hint, { id: 'gateway-token-unavailable' });
-    return;
-  }
-  const token = fetched.trim();
-  const role = 'operator';
-  const scopes = [
-    'operator.admin',
-    'operator.read',
-    'operator.write',
-    'operator.approvals',
-    'operator.pairing',
-  ];
-
-  const newClient = new GatewayClient({
+/**
+ * Build a GatewayClient wired with the dashboard's auth/event/close handling.
+ * Shared by `wsConnect` (the main client) and `cutoverToHost` (the
+ * make-before-break backup client) — see specs/2026-07-11-ws-failover-eager-reconnect.md §3.2.
+ *
+ * Fencing: onEvent/onClose close over `client` (the instance being built) and
+ * bail out if `getClient() !== client`. This makes a stray close/event from a
+ * client that's no longer current (replaced by a cutover, or an eager
+ * recreate) a complete no-op — it can never clobber `conn` state or spawn a
+ * duplicate reconnect loop. Safe because these callbacks are only ever
+ * invoked asynchronously, after the `const client = new GatewayClient(...)`
+ * assignment has completed.
+ */
+function buildGatewayClient(host: Host, token: string): GatewayClient {
+  const client: GatewayClient = new GatewayClient({
     url: host.url,
     autoReconnect: true,
 
@@ -290,7 +274,10 @@ export async function wsConnect() {
       // socket. This fires on EVERY (re)connect — GatewayClient.scheduleReconnect
       // calls connect() internally, which creates a new socket and re-fires
       // onOpen. Wiring here (rather than only in the one-shot `.connect().then`)
-      // is what keeps binary sync alive across auto-reconnects.
+      // is what keeps binary sync alive across auto-reconnects. For a backup
+      // client (cutover) built before it's registered as current, this is a
+      // harmless no-op — rawSocket() still resolves the OLD client via
+      // getClient() until the atomic swap runs, so nothing gets mis-wired.
       wireBinaryListener();
     },
 
@@ -332,8 +319,8 @@ export async function wsConnect() {
           mode: 'ui',
           displayName: userState.user?.displayName ?? undefined,
         },
-        role,
-        scopes,
+        role: OPERATOR_ROLE,
+        scopes: OPERATOR_SCOPES,
         // `tool-events` opts this connection into live per-run tool events
         // (stream:'tool' agent frames) — drives the real-time activity verbs
         // and live tool rows in chat surfaces.
@@ -347,6 +334,9 @@ export async function wsConnect() {
     },
 
     onEvent(frame: EventFrame) {
+      // Fence: a client that's been replaced (cutover, or an eager recreate)
+      // must never mutate shared event-sequence/handler state.
+      if (getClient() !== client) return;
       const seq = typeof frame.seq === 'number' ? frame.seq : null;
       if (seq !== null) {
         if (gw.lastSeq !== null && seq > gw.lastSeq + 1) {
@@ -358,6 +348,12 @@ export async function wsConnect() {
     },
 
     onClose(code: number, reason: string) {
+      // Fence: ignore entirely if this client is no longer the current one —
+      // it was replaced by a cutover (H2) or an eager recreate (H1). Without
+      // this a stale close could flip `conn.connected` back to false right
+      // after a successful cutover, or spawn a duplicate reconnect loop.
+      if (getClient() !== client) return;
+
       conn.connected = false;
       conn.connecting = false;
       conn.particleHue = 'red';
@@ -370,6 +366,17 @@ export async function wsConnect() {
       // it doesn't leak or fire against a dead socket. onOpen re-wires the next
       // socket on reconnect.
       teardownBinaryWiring();
+
+      // 1012 Service Restart: the gateway's authoritative "this is a
+      // deliberate restart, come right back" signal (RFC 6455 registry).
+      // Arm the eager reconnect window and, when no update flow is already
+      // narrating the restart (isUpdateRestartExpected() covers that case
+      // via the bump above), fall back to the config-restart amber path so a
+      // manual gateway restart still ambers instead of reading as an outage.
+      if (code === 1012) {
+        armEagerReconnect();
+        if (!isUpdateRestartExpected()) beginRestart();
+      }
 
       // JWT rejected by the gateway (e.g. oidcIssuers not yet configured, or an
       // expired/invalid token): disable the JWT for the rest of the session and
@@ -392,11 +399,8 @@ export async function wsConnect() {
           }
           void wsConnect();
         }, JWT_RETRY_COOLDOWN_MS);
-        const c = getClient();
-        if (c) {
-          c.close();
-          setClient(null);
-        }
+        client.close();
+        setClient(null);
         void wsConnect();
         return;
       }
@@ -408,6 +412,17 @@ export async function wsConnect() {
       // ping-pong against the same stale credential indefinitely.
       if (isAuthFatalClose(code, reason)) {
         void handleAuthFatalClose(reason);
+        return;
+      }
+
+      // Eager reconnect (H1): while armed, bypass the shared client's own
+      // exponential backoff — tear this client down (close() cancels its
+      // internal reconnect timer) and schedule exactly one flat-cadence
+      // reconnect attempt instead of waiting out backoffMs.
+      if (isEagerReconnectArmed()) {
+        client.close();
+        setClient(null);
+        scheduleEagerReconnect(() => void wsConnect());
       }
     },
 
@@ -421,7 +436,54 @@ export async function wsConnect() {
   // trace and read as one session in any OTLP backend. No browser OTel SDK
   // needed — the shared client stamps each frame's traceparent as a child of
   // this root. (newTraceparent() with no parent mints a fresh root.)
-  newClient.setParentTraceparent(newTraceparent());
+  client.setParentTraceparent(newTraceparent());
+
+  return client;
+}
+
+export async function wsConnect() {
+  const host = getActiveHost();
+  if (!host?.url) return;
+  conn.closed = false;
+  conn.connecting = true;
+  conn.particleHue = 'amber';
+
+  gw.lastSeq = null;
+  // A fresh manual/programmatic connect supersedes any eager-reconnect
+  // attempt already in flight from a previous close (H1 stacking guard).
+  clearPendingEagerReconnect();
+
+  // Close existing client before creating a new one
+  const existing = getClient();
+  if (existing) {
+    existing.close();
+    setClient(null);
+  }
+  teardownBinaryWiring();
+
+  const capturedHostId = hostsState.activeHostId;
+
+  // Fetch the gateway token fresh from the server. The token is NEVER read
+  // from localStorage — that's the whole point of this design. If the user
+  // isn't authenticated to the hub (401) or the server can't be reached,
+  // surface the failure immediately instead of attempting a handshake with
+  // a stale/missing token (which fails as a confusing NOT_PAIRED close).
+  if (!capturedHostId) {
+    conn.connecting = false;
+    return;
+  }
+  const fetched = await fetchHostToken(capturedHostId);
+  if (fetched === null) {
+    conn.connecting = false;
+    conn.particleHue = 'red';
+    const info = describeGatewayError('could not load gateway token');
+    setConnectError('could not load gateway token');
+    toastError(info.title, info.hint, { id: 'gateway-token-unavailable' });
+    return;
+  }
+  const token = fetched.trim();
+
+  const newClient = buildGatewayClient(host, token);
 
   // Register the client in the leaf BEFORE connect() so onOpen (which fires the
   // moment the socket opens, and again on every auto-reconnect) sees it and can
@@ -438,6 +500,10 @@ export async function wsConnect() {
       conn.particleHue = 'blue';
       conn.connectedAt = Date.now();
       clearConnectError();
+      // A live handshake means whatever restart/outage this was riding out is
+      // over — stop probing eagerly and let the normal backoff resume for any
+      // future (unannounced) drop.
+      disarmEagerReconnect();
       // Successful handshake — clear the one-shot NOT_PAIRED refetch guard so a
       // future stale-token incident gets its own retry budget.
       notPairedRefetchAttempted = false;
@@ -485,6 +551,77 @@ export async function wsConnect() {
     });
 }
 
+/**
+ * Make-before-break cutover to `host` (H2): build a backup client, await its
+ * hello, then atomically swap it in as the main client — active-host state,
+ * binary wiring, and per-gateway data are all repointed at the new host —
+ * before closing the old client last. `conn.connected` never goes false
+ * during a successful cutover. On backup-connect failure the old client is
+ * left completely untouched (today's behavior).
+ */
+export async function cutoverToHost(host: Host): Promise<void> {
+  const fetched = await fetchHostToken(host.id);
+  if (fetched === null) return;
+  const token = fetched.trim();
+
+  const backup = buildGatewayClient(host, token);
+  let hello: HelloOk;
+  try {
+    hello = (await backup.connect()) as HelloOk;
+  } catch (err) {
+    console.error('[hub] cutover to host failed:', err);
+    backup.close();
+    return;
+  }
+
+  // Atomic swap. The old client's onClose is fenced (getClient() !== old, see
+  // buildGatewayClient) so closing it below is inert — it can't clobber any
+  // of the state we're about to set from the new client's perspective.
+  const old = getClient();
+  const oldHostId = hostsState.activeHostId;
+  setClient(backup);
+  if (hostsState.activeHostId !== host.id) hostsState.activeHostId = host.id;
+
+  // Re-wire the binary listener now that getClient() resolves to `backup` —
+  // its own onOpen fired while the old client was still current, so that
+  // first wire attempt was a no-op (see buildGatewayClient's onOpen note).
+  teardownBinaryWiring();
+  wireBinaryListener();
+
+  // Same per-gateway data reset a manual host switch does today.
+  resetGatewayData(oldHostId);
+
+  conn.connected = true;
+  conn.connecting = false;
+  conn.closed = false;
+  conn.particleHue = 'blue';
+  conn.connectedAt = Date.now();
+  conn.backoffMs = 800;
+  clearConnectError();
+  disarmEagerReconnect();
+  notPairedRefetchAttempted = false;
+
+  gw.hello = hello;
+  gw.presence = hello.snapshot?.presence ?? [];
+
+  const h = hostsState.hosts.find((x) => x.id === host.id);
+  if (h) {
+    h.lastConnectedAt = conn.connectedAt;
+    updateHost(
+      host.id,
+      { name: h.name, url: h.url, lastConnectedAt: conn.connectedAt },
+      { silent: true },
+    );
+  }
+
+  onHelloOk(hello);
+  resolveServerId();
+
+  // Close the OLD client last — its onClose is fenced, so this can't undo
+  // anything we just set.
+  if (old) old.close();
+}
+
 export function wsDisconnect() {
   conn.closed = true;
   conn.connected = false;
@@ -503,11 +640,27 @@ export function wsDisconnect() {
     clearTimeout(jwtRetryTimer);
     jwtRetryTimer = null;
   }
+  clearPendingEagerReconnect();
+
+  resetGatewayData(hostsState.activeHostId);
+
+  ui.shutdownReason = null;
+  clearConnectError();
+  conn.backoffMs = 800;
+}
+
+/**
+ * Per-gateway data reset shared by `wsDisconnect` (full teardown) and
+ * `cutoverToHost` (H2 — data reset while the socket stays live on the new
+ * client). `hostIdForAutosave` is the host being left, so the workshop
+ * layout is saved under the right key before it's cleared.
+ */
+function resetGatewayData(hostIdForAutosave: string | null): void {
   stopPolling();
   stopSqliteFlush();
 
   // Save current host's workshop layout before clearing state
-  autoSave(hostsState.activeHostId);
+  autoSave(hostIdForAutosave);
   resetWorkshop();
 
   // Clear session status timers and eviction timers
@@ -531,10 +684,6 @@ export function wsDisconnect() {
   // Reset chat/activity (shallow clear)
   for (const k of Object.keys(agentChat)) delete (agentChat as Record<string, unknown>)[k];
   for (const k of Object.keys(agentActivity)) delete (agentActivity as Record<string, unknown>)[k];
-
-  ui.shutdownReason = null;
-  clearConnectError();
-  conn.backoffMs = 800;
 }
 
 // `sendRequest` / `sendInstall` now live in the `gateway-rpc` leaf (to break the
@@ -633,6 +782,10 @@ function handleEvent(evt: Record<string, unknown>) {
     case 'update.progress': {
       const p = evt.payload as UpdateProgress;
       if (p && typeof p.pct === 'number') bumpUpdateProgress(p);
+      // The gateway is about to restart — arm eager reconnect so the drop
+      // (whenever it lands) gets a flat-cadence probe instead of exponential
+      // backoff.
+      if (p?.phase === 'restarting') armEagerReconnect();
       break;
     }
     case 'update.migrating': {
@@ -642,16 +795,21 @@ function handleEvent(evt: Record<string, unknown>) {
       const p = evt.payload as { version?: string; reason?: string } | undefined;
       if (applyOrgAssignedHost()) {
         // This session's org is actually assigned to a different, healthy
-        // instance (stale manual pick / admin browsing) — hop there now
-        // rather than riding out the drain on the wrong host.
-        if (conn.connected) {
-          wsDisconnect();
-          void wsConnect();
+        // instance (stale manual pick / admin browsing) — make-before-break
+        // cutover to it now (H2) rather than riding out the drain on the
+        // wrong host, or dropping to a visible disconnect.
+        const target = getActiveHost();
+        if (target) {
+          if (conn.connected) void cutoverToHost(target);
+          else void wsConnect();
         }
       } else {
-        // The org genuinely lives on the draining instance — arm the same
+        // The org genuinely lives on the draining instance — arm eager
+        // reconnect (H1: the drain window can be up to ~60s, but the actual
+        // drop/reconnect gap should be ~1s once it happens) and the same
         // "expected restart" flag the Updates card uses so the amber banner
         // (ConnectionBanner) shows before the drop, not after.
+        armEagerReconnect();
         bumpUpdateProgress({ phase: 'migrating', pct: 3, version: p?.version });
         beginRestart();
       }
