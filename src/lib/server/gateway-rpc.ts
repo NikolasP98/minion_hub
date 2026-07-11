@@ -271,6 +271,23 @@ export async function gatewayCallAsUser<T = unknown>(
   return gatewayCallWithCreds<T>(method, params, url, token, opts);
 }
 
+/**
+ * Call a gateway RPC against a SPECIFIC instance by its own url + decrypted
+ * token — bypasses user/org credential resolution entirely. Used by the
+ * fleet-update orchestrator (spec §3.2), which already holds each gateway
+ * row's own creds and must address instances individually rather than
+ * whichever one resolveCredentials* would pick.
+ */
+export async function gatewayCallToInstance<T = unknown>(
+  url: string,
+  token: string,
+  method: string,
+  params: Record<string, unknown> = {},
+  opts: { timeoutMs?: number } = {},
+): Promise<T> {
+  return gatewayCallWithCreds<T>(method, params, toWsUrl(url), token, opts);
+}
+
 // alert-watcher is surfaced as the Triage autonomous agent, not a plugin.
 const HIDDEN_PLUGIN_IDS = new Set(['alert-watcher', 'alerts']);
 

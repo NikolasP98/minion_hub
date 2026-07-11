@@ -182,6 +182,25 @@ export async function getGatewayTokenByServerId(serverId: string): Promise<strin
 }
 
 /**
+ * URL + decrypted token for one gateway row by id — the fleet-update
+ * orchestrator's per-instance credential lookup (spec §3.2). Unlike the
+ * user/org/system resolution chain, this addresses a SPECIFIC instance.
+ * `token_iv=''` means the ciphertext IS the plaintext token (legacy row).
+ */
+export async function getGatewayCredentialsById(
+  gatewayId: string,
+): Promise<{ url: string; token: string } | null> {
+  const [row] = await getCoreDb()
+    .select({ url: gateway.url, tokenCiphertext: gateway.tokenCiphertext, tokenIv: gateway.tokenIv })
+    .from(gateway)
+    .where(eq(gateway.id, gatewayId))
+    .limit(1);
+  if (!row?.tokenCiphertext) return null;
+  const token = row.tokenIv ? decrypt(row.tokenCiphertext, row.tokenIv) : row.tokenCiphertext;
+  return { url: row.url, token };
+}
+
+/**
  * Return the URL + decrypted token for a user's default (or first) linked gateway.
  * Called by gateway-rpc to resolve per-user credentials from Postgres.
  */
