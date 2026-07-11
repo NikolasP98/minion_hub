@@ -1536,6 +1536,7 @@
   "builder_gatewayToolsSection": "Herramientas del gateway",
   "builder_sourceLoading": "Cargando código fuente…",
   "builder_sourceReadonly": "Código fuente · solo lectura",
+  "builder_sourceStub": "Esquema de interfaz · actualiza el gateway para ver el código completo",
   "builder_sourceUnavailable": "La vista de código no está disponible en esta versión del gateway.",
   "tools_notFoundHint": "No existe ninguna herramienta llamada {id} en el gateway ni entre tus herramientas personalizadas.",
   "tools_waitingGateway": "Esperando conexión con el gateway…",

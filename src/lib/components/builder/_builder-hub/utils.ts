@@ -38,7 +38,9 @@ export function toolDescription(tool: { groups: string[]; requires?: { env?: str
     if (tool.requires?.env?.length) {
         parts.push(`needs: ${tool.requires.env.join(', ')}`);
     }
-    return parts.join(' · ') || 'Gateway tool';
+    // No filler fallback: repeating "Gateway tool" on 60+ cards is noise —
+    // the section header already states where the tool lives.
+    return parts.join(' · ');
 }
 
 export interface UnifiedTool {

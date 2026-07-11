@@ -16,10 +16,37 @@
 
     // ── Read-only source view (tools.inspect) ──────────────────────────
     // The gateway stringifies the tool's factory from the shipped bundle —
-    // exactly what runs in production. Older gateways lack the RPC; degrade
-    // to the config-only view.
+    // exactly what runs in production. Older gateways lack the RPC; render
+    // an honest interface stub from tools.status meta instead, so the IDE
+    // pane always shows something useful.
     let source = $state<string | null>(null);
-    let sourceState = $state<"loading" | "ready" | "unavailable">("loading");
+    let sourceState = $state<"loading" | "ready" | "stub">("loading");
+
+    function pascal(id: string): string {
+        return id.split(/[_-]/).map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join("");
+    }
+
+    function stubSource(t: ToolStatusEntry): string {
+        const pad = (k: string) => k.padEnd(12);
+        const meta: string[] = [];
+        if (t.groups.length) meta.push(`// ${pad("groups:")}${t.groups.map((g) => g.replace("group:", "")).join(", ")}`);
+        if (t.condition) meta.push(`// ${pad("condition:")}${t.condition}`);
+        if (t.permission) meta.push(`// ${pad("permission:")}${t.permission.module}.${t.permission.action}`);
+        if (t.requires?.env?.length) meta.push(`// ${pad("env:")}${t.requires.env.join(", ")}`);
+        if (t.requires?.bins?.length) meta.push(`// ${pad("binaries:")}${t.requires.bins.join(", ")}`);
+        if (t.mcpExport) meta.push(`// ${pad("mcp:")}exported`);
+        return [
+            `// ${t.display?.emoji ? t.display.emoji + " " : ""}${t.display?.title ?? t.id} — native gateway tool`,
+            `//`,
+            ...(meta.length ? [...meta, `//`] : []),
+            `// This tool is compiled into the gateway binary. The connected gateway`,
+            `// predates the tools.inspect RPC, so its bundled source can't be shown yet.`,
+            `// Update the gateway (Settings → Gateways → Updates) to view it here.`,
+            ``,
+            `export declare function create${pascal(t.id)}Tool(ctx: GatewayRuntime): AgentTool;`,
+            ``,
+        ].join("\n");
+    }
 
     onMount(async () => {
         try {
@@ -29,12 +56,13 @@
             if (typeof res?.source === "string" && res.source.length > 0) {
                 source = res.source;
                 sourceState = "ready";
-            } else {
-                sourceState = "unavailable";
+                return;
             }
         } catch {
-            sourceState = "unavailable";
+            // Older gateway — fall through to the stub.
         }
+        source = stubSource(gatewayTool);
+        sourceState = "stub";
     });
 
     const emptyCompletion = { envKeys: [], systemKeys: [], moduleKeys: [], databaseKeys: [], modulePaths: [], tables: [] };
@@ -48,18 +76,13 @@
             <Loader2 size={18} class="loading-spinner" />
             <span>{m.builder_sourceLoading()}</span>
         </div>
-    {:else if sourceState === "ready" && source !== null}
-        <div class="gw-source-head">
+    {:else if source !== null}
+        <div class="gw-source-head" class:stub={sourceState === "stub"}>
             <Code2 size={13} />
-            <span>{m.builder_sourceReadonly()}</span>
+            <span>{sourceState === "stub" ? m.builder_sourceStub() : m.builder_sourceReadonly()}</span>
         </div>
         <div class="gw-source-editor">
             <CodeMirrorEditor value={source} lang="javascript" readonly completionData={emptyCompletion} />
-        </div>
-    {:else}
-        <div class="gw-source-empty">
-            <Code2 size={18} />
-            <span>{m.builder_sourceUnavailable()}</span>
         </div>
     {/if}
 </div>
@@ -219,6 +242,11 @@
         color: var(--color-muted);
         border-bottom: 1px solid var(--color-border);
         flex-shrink: 0;
+    }
+
+    .gw-source-head.stub {
+        color: var(--color-warning, #d97706);
+        background: color-mix(in srgb, var(--color-warning, #d97706) 6%, transparent);
     }
 
     .gw-source-editor {
