@@ -51,7 +51,7 @@ export async function resolveSupabaseUser(
   let profile: ProfileRow | null = null;
   const full = await admin
     .from('profiles')
-    .select('id, email, display_name, role, avatar_url, created_at')
+    .select('id, email, display_name, role, avatar_url, created_at, username')
     .eq('id', userId)
     .single();
   if (!full.error && full.data) {
@@ -81,6 +81,7 @@ export async function resolveSupabaseUser(
           avatar_url: metadataAvatar,
           role: null,
           created_at: null,
+          username: null,
         },
     userId,
   );

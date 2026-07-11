@@ -11,7 +11,8 @@
 
   const { data } = $props();
 
-  let email = $state('');
+  let identifier = $state(''); // sign-in: email or username
+  let email = $state(''); // sign-up: email only
   let password = $state('');
   let displayName = $state('');
   let loading = $state(false);
@@ -49,10 +50,11 @@
     });
   }
 
-  async function enterApp(method: string) {
+  async function enterApp(method: string, identity?: string) {
     await loadHosts();
     if (hostsState.activeHostId) wsConnect();
-    posthog.identify(email, { email });
+    const id = identity ?? email;
+    posthog.identify(id, { email: id });
     posthog.capture('user_signed_in', { method });
     goto(redirectTo, { replaceState: true });
   }
@@ -64,14 +66,13 @@
     error = null;
     notice = null;
 
-    // Supabase Auth (GoTrue) is the sole provider. signInWithPassword /
-    // signUp set the SSR session cookie; the server (resolveViaSupabase)
-    // resolves the active org from organization_members + the active_org
-    // cookie — no client-side org activation (the Better Auth organization
-    // plugin is retired).
-    const supabase = supabaseBrowser();
-
     if (mode === 'signup') {
+      // Supabase Auth (GoTrue) is the sole provider. signUp sets the SSR
+      // session cookie; the server (resolveViaSupabase) resolves the active
+      // org from organization_members + the active_org cookie — no
+      // client-side org activation (the Better Auth organization plugin is
+      // retired).
+      const supabase = supabaseBrowser();
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -99,13 +100,20 @@
       return;
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    if (signInError) {
-      error = signInError.message ?? m.login_invalidCredentials();
+    // Sign-in accepts email OR username — the server resolves username→email
+    // and verifies the password (kept server-side so the mapping never leaks
+    // to the client) and sets the SSR session cookies on success.
+    const res = await fetch('/api/auth/password-login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ identifier, password }),
+    });
+    if (!res.ok) {
+      error = m.login_invalidCredentials();
       loading = false;
       return;
     }
-    await enterApp('email');
+    await enterApp('password', identifier);
   }
 </script>
 
@@ -144,18 +152,28 @@
               class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
             />
           </div>
+          <div class="space-y-1.5">
+            <label class="block text-[10px] font-mono text-muted uppercase tracking-wider" for="login-email">
+              {m.login_emailLabel()}
+            </label>
+            <input
+              id="login-email" type="email" autocomplete="email" required
+              bind:value={email} placeholder="admin@minion.hub"
+              class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
+            />
+          </div>
+        {:else}
+          <div class="space-y-1.5">
+            <label class="block text-[10px] font-mono text-muted uppercase tracking-wider" for="login-identifier">
+              {m.login_identifierLabel()}
+            </label>
+            <input
+              id="login-identifier" type="text" autocomplete="username" required
+              bind:value={identifier} placeholder="admin@minion.hub"
+              class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
+            />
+          </div>
         {/if}
-
-        <div class="space-y-1.5">
-          <label class="block text-[10px] font-mono text-muted uppercase tracking-wider" for="login-email">
-            {m.login_emailLabel()}
-          </label>
-          <input
-            id="login-email" type="email" autocomplete="email" required
-            bind:value={email} placeholder="admin@minion.hub"
-            class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
-          />
-        </div>
 
         <div class="space-y-1.5">
           <label class="block text-[10px] font-mono text-muted uppercase tracking-wider" for="login-password">
@@ -168,6 +186,14 @@
             class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
           />
         </div>
+
+        {#if mode === 'signin'}
+          <div class="flex justify-end -mt-1.5">
+            <a href="/login/forgot" class="text-[11px] font-mono text-muted hover:text-accent transition-colors">
+              {m.login_forgotLink()}
+            </a>
+          </div>
+        {/if}
 
         {#if error}
           <div class="text-[11px] font-mono text-red-400 bg-red-400/8 border border-red-400/20 rounded px-3 py-2">{error}</div>

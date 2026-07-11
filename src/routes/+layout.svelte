@@ -54,13 +54,19 @@
   onMount(async () => {
     installInterceptor();
 
+    const current = page.url.pathname;
+    // Public auth-flow pages (sign-in, forgot-password, recovery-link
+    // landing) must render for a signed-out visitor — mirrors the
+    // UNPROTECTED_PREFIXES SSR gate in hooks.server.ts. Without this
+    // exemption, `/login/forgot` and `/auth/reset` would bounce straight
+    // back to `/login` before the user can use them.
+    const isPublicAuthPage = current === '/login' || current.startsWith('/login/') || current.startsWith('/auth/');
+
     if (!userState.user) {
-      const current = page.url.pathname;
-      const redirectParam =
-        current !== '/' && current !== '/login'
-          ? `?redirectTo=${encodeURIComponent(current)}`
-          : '';
-      goto(`/login${redirectParam}`, { replaceState: true });
+      if (!isPublicAuthPage) {
+        const redirectParam = current !== '/' ? `?redirectTo=${encodeURIComponent(current)}` : '';
+        goto(`/login${redirectParam}`, { replaceState: true });
+      }
       return;
     }
 

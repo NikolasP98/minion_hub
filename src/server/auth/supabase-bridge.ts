@@ -12,6 +12,7 @@ export interface ProfileRow {
   avatar_url?: string | null;
   role: UserRole | null;
   created_at?: string | null;
+  username?: string | null;
 }
 
 export interface BridgedUser {
@@ -22,6 +23,7 @@ export interface BridgedUser {
   role: UserRole;
   supabaseId: string;
   createdAt: string | null;
+  username: string | null;
 }
 
 /**
@@ -41,5 +43,6 @@ export function mapProfileToUser(profile: ProfileRow, supabaseId: string): Bridg
     role,
     supabaseId,
     createdAt: profile.created_at ?? null,
+    username: profile.username ?? null,
   };
 }

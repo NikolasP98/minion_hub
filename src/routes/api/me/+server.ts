@@ -1,7 +1,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
-import { updateSupabaseProfile } from '$server/services/supabase-credential';
+import { updateSupabaseProfile, UsernameTakenError } from '$server/services/supabase-credential';
+import { normalizeUsername } from '$server/auth/username';
 
 export const GET: RequestHandler = async ({ locals }) => {
   const user = requireAuth(locals);
@@ -11,6 +12,7 @@ export const GET: RequestHandler = async ({ locals }) => {
     displayName: user.displayName,
     avatarUrl: user.avatarUrl ?? null,
     role: user.role,
+    username: user.username ?? null,
     createdAt: user.createdAt ?? null,
   });
 };
@@ -31,9 +33,11 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
     displayName?: unknown;
     avatarFileId?: unknown;
     avatarUrl?: unknown;
+    username?: unknown;
   };
 
-  const patch: { displayName?: string | null; avatarUrl?: string | null } = {};
+  const patch: { displayName?: string | null; avatarUrl?: string | null; username?: string | null } =
+    {};
 
   if (typeof body.displayName === 'string') {
     const name = body.displayName.trim();
@@ -49,10 +53,25 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
     patch.avatarUrl = body.avatarUrl;
   }
 
+  if (body.username === null || body.username === '') {
+    patch.username = null; // explicit clear
+  } else if (typeof body.username === 'string') {
+    const normalized = normalizeUsername(body.username);
+    if (!normalized) return json({ error: 'invalid_username' }, { status: 400 });
+    patch.username = normalized;
+  }
+
   if (Object.keys(patch).length === 0) throw error(400, 'nothing to update');
 
-  const ok = await updateSupabaseProfile(supabaseId, patch);
-  if (!ok) throw error(500, 'profile update failed');
+  try {
+    const ok = await updateSupabaseProfile(supabaseId, patch);
+    if (!ok) throw error(500, 'profile update failed');
+  } catch (e) {
+    if (e instanceof UsernameTakenError) {
+      return json({ error: 'username_taken' }, { status: 409 });
+    }
+    throw e;
+  }
 
   return json({ ok: true });
 };

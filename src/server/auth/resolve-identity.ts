@@ -212,6 +212,7 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
         role: bridged.role,
         supabaseId: bridged.supabaseId,
         createdAt: bridged.createdAt,
+        username: bridged.username,
       },
       orgId,
       tenantCtx,

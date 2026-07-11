@@ -222,19 +222,33 @@ export async function deleteIdentityByIdFromSupabase(identityId: string): Promis
   }
 }
 
+/** Thrown by {@link updateSupabaseProfile} when the requested username is already taken. */
+export class UsernameTakenError extends Error {
+  constructor() {
+    super('username already taken');
+    this.name = 'UsernameTakenError';
+  }
+}
+
 /**
  * Update the current user's own canonical Supabase profile. Keyed by the
  * supabase uuid (profiles.id). Only the fields present in `patch` are written.
- * Returns true on success.
+ * Returns true on success. Throws {@link UsernameTakenError} on a
+ * `profiles_username_key` unique-violation (PG code 23505).
  */
 export async function updateSupabaseProfile(
   supabaseId: string,
-  patch: { displayName?: string | null; avatarUrl?: string | null },
+  patch: { displayName?: string | null; avatarUrl?: string | null; username?: string | null },
 ): Promise<boolean> {
   const set: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.displayName !== undefined) set.display_name = patch.displayName;
   if (patch.avatarUrl !== undefined) set.avatar_url = patch.avatarUrl;
+  if (patch.username !== undefined) set.username = patch.username;
 
   const { error } = await supabaseAdmin().from('profiles').update(set).eq('id', supabaseId);
-  return !error;
+  if (error) {
+    if (error.code === '23505') throw new UsernameTakenError();
+    return false;
+  }
+  return true;
 }

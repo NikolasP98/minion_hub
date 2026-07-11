@@ -185,6 +185,12 @@ const finishApp: Handle = async ({ event, resolve }) => {
     ) {
       return resolve(event);
     }
+    // Pre-login auth endpoints: by definition the caller has no session yet.
+    // Each handler enforces its own rate limiting and never leaks whether an
+    // identifier exists (specs/2026-07-11-hub-password-username-auth.md).
+    if (path === '/api/auth/password-login' || path === '/api/auth/forgot-password') {
+      return resolve(event);
+    }
     // All other unauthenticated API requests get an explicit 401
     return new Response(JSON.stringify({ error: 'Authentication required' }), {
       status: 401,

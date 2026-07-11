@@ -19,6 +19,7 @@ describe('mapProfileToUser', () => {
       role: 'admin',
       supabaseId: 'supa-uuid-1',
       createdAt: null,
+      username: null,
     });
   });
 

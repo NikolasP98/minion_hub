@@ -15,6 +15,7 @@ declare global {
         avatarUrl?: string | null;
         role: 'user' | 'admin';
         createdAt?: string | null;
+        username?: string | null;
       };
       // Legacy session slot — Better Auth set this; Supabase mode leaves it
       // unset. Kept (minimally typed) for the defensive org-activation read in
