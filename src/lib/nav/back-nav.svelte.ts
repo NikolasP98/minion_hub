@@ -18,6 +18,14 @@ export function createBackNav(fallback: string, fallbackLabel: () => string) {
 	afterNavigate((nav) => {
 		if (nav.from && nav.from.url.pathname !== nav.to?.url.pathname) {
 			from = nav.from.url.pathname + nav.from.url.search;
+		} else if (!nav.from && typeof document !== 'undefined' && document.referrer) {
+			// Fallback: extract path+search from document.referrer for direct loads
+			try {
+				const refUrl = new URL(document.referrer);
+				if (refUrl.origin === location.origin && refUrl.pathname !== nav.to?.url.pathname) {
+					from = refUrl.pathname + refUrl.search;
+				}
+			} catch {}
 		}
 	});
 	return {
