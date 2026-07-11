@@ -8,6 +8,7 @@
     updateState,
     applyUpdateStatus,
     isUpdateRestartExpected,
+    setUpdateProgress,
   } from '$lib/state/gateway/update-state.svelte';
   import { configState, loadConfig, getField, restartState } from '$lib/state/config/config.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
@@ -62,6 +63,15 @@
     done: 'bg-success/10 text-success',
     failed: 'bg-destructive/10 text-destructive',
   };
+  // Round-5: stage-inferred fallback pct for the connected row's bar when no
+  // real `update.progress` WS event has landed yet (or ever, e.g. an older
+  // gateway build that doesn't emit them) — driven purely by this instance's
+  // own job state, independent of other instances' outcomes.
+  const STAGE_FALLBACK_PCT: Partial<Record<FleetInstanceState, number>> = {
+    draining: 10,
+    updating: 20,
+    verifying: 50,
+  };
 
   async function callFleet(body: Record<string, unknown>): Promise<FleetJob | null> {
     const res = await fetch('/api/gateway/fleet-update', {
@@ -79,10 +89,25 @@
   }
 
   /** Drive advance() sequentially while this component stays mounted — each
-   * call is exactly one instance step; stop on failed/aborted/done. */
+   * call is exactly one instance step; stop on failed/aborted/done.
+   *
+   * Round-5: `advance` is a single blocking call that only resolves once the
+   * whole instance step (drain+run+poll-verify, up to ~240s) finishes — so
+   * `job` never observed the draining/updating/verifying sub-states in
+   * between, and the per-row progress bar (gated on those states) never
+   * rendered even though the server was writing them the whole time. Poll
+   * the lightweight `status` action in parallel to pick those up live. */
   async function driveFleet(): Promise<void> {
     if (running) return;
     running = true;
+    const poll = setInterval(() => {
+      if (!running) return;
+      callFleet({ action: 'status' })
+        .then((s) => {
+          if (running && s) job = s;
+        })
+        .catch(() => {});
+    }, 3000);
     try {
       while (job?.active) {
         const next = await callFleet({ action: 'advance' });
@@ -102,6 +127,7 @@
       toastError(m.fleet_update_advanceFailed(), err instanceof Error ? err.message : undefined);
     } finally {
       running = false;
+      clearInterval(poll);
     }
   }
 
@@ -112,6 +138,11 @@
       const started = await callFleet({ action: 'start', targetVersion });
       if (!started) return;
       job = started;
+      // Round-5: arm the bar immediately (parity with the old single-instance
+      // installNow()) instead of waiting on the first WS update.progress
+      // event or status poll — only paints on the row(s) whose state later
+      // goes draining/updating/verifying (see rowBusy below).
+      setUpdateProgress({ phase: 'starting', pct: 5 });
       void driveFleet();
     } catch (err) {
       toastError(m.fleet_update_startFailed(), err instanceof Error ? err.message : undefined);
@@ -351,7 +382,8 @@
           <ul class="space-y-1.5">
             {#each job.instances as inst (inst.gatewayId)}
               {@const rowConnected = conn.connected && connectedUrl === inst.url}
-              {@const rowBusy = inst.state === 'updating' || inst.state === 'verifying'}
+              {@const rowBusy =
+                inst.state === 'draining' || inst.state === 'updating' || inst.state === 'verifying'}
               <li class="text-xs px-2 py-1.5 rounded border border-border/60 bg-bg/40 space-y-1">
                 <div class="flex items-center justify-between gap-2">
                   <span class="font-mono truncate">
@@ -369,12 +401,17 @@
 
                 <!-- Granular phase/pct bar only for the instance the browser is
                      actually connected to — `update.progress` WS events only
-                     ever arrive from that one gateway. -->
-                {#if rowConnected && rowBusy && shownProgress}
-                  {@const pct = Math.max(0, Math.min(100, Math.round(shownProgress.pct)))}
+                     ever arrive from that one gateway. Round-5: render
+                     whenever this row is busy even without a real progress
+                     event yet (stage-inferred pct fallback) — don't gate on
+                     `shownProgress`, which may never arm for this instance. -->
+                {#if rowConnected && rowBusy}
+                  {@const active = shownProgress ?? { phase: inst.state, pct: STAGE_FALLBACK_PCT[inst.state] ?? 0 }}
+                  {@const pct = Math.max(0, Math.min(100, Math.round(active.pct)))}
+                  {@const label = shownProgress ? progressLabel : STATE_LABELS[inst.state]()}
                   <div class="space-y-1">
                     <div class="flex items-center justify-between text-[10px] font-mono text-muted">
-                      <span class="uppercase tracking-widest">{progressLabel}</span>
+                      <span class="uppercase tracking-widest">{label}</span>
                       <span>{pct}%</span>
                     </div>
                     <div
@@ -383,7 +420,7 @@
                       aria-valuenow={pct}
                       aria-valuemin={0}
                       aria-valuemax={100}
-                      aria-label={progressLabel}
+                      aria-label={label}
                     >
                       <div
                         class="h-full rounded-full transition-[width] duration-500 ease-out {pct >= 100
@@ -392,7 +429,7 @@
                         style="width: {pct}%"
                       ></div>
                     </div>
-                    {#if shownProgress.detail}
+                    {#if shownProgress?.detail}
                       <p class="text-[10px] font-mono text-muted-strong">{shownProgress.detail}</p>
                     {/if}
                   </div>

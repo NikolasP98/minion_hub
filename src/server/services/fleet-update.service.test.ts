@@ -314,6 +314,112 @@ describe('advanceFleetUpdate', () => {
     // Only the single (failed) update.run call — no retry for a non-drain error.
     expect(mockCallToInstance).toHaveBeenCalledTimes(1);
   });
+
+  // ── round-5: prod incident — minion-2's install SUCCEEDED but the step
+  // was recorded as failed on a WS-handshake "Unexpected server response:
+  // 502" from the Tailscale funnel mid-restart. ──────────────────────────
+
+  test('round-5: a connection-level 502 during poll-verify is retried, not fatal', async () => {
+    await seedJob();
+    let statusCalls = 0;
+    mockCallToInstance.mockImplementation(async (_url: string, _token: string, method: string) => {
+      if (method === 'update.run') return { ok: true };
+      if (method === 'update.status') {
+        statusCalls += 1;
+        // First two polls hit the restarting gateway through the funnel proxy.
+        if (statusCalls <= 2) throw new Error('Unexpected server response: 502');
+        return { current: '2.0.0' };
+      }
+      throw new Error('unexpected');
+    });
+
+    vi.useFakeTimers();
+    try {
+      const pending = advanceFleetUpdate(TENANT);
+      await vi.advanceTimersByTimeAsync(5000); // poll 1: 502
+      await vi.advanceTimersByTimeAsync(5000); // poll 2: 502
+      await vi.advanceTimersByTimeAsync(5000); // poll 3: on target
+      const job = await pending;
+      expect(job?.instances[0].state).toBe('done');
+      expect(job?.instances[0].error).toBeUndefined();
+      expect(job?.status).toBe('running');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('round-5: update.run dying mid-flight (connection drop) does not fail — verify decides', async () => {
+    await seedJob();
+    mockCallToInstance.mockImplementation(async (_url: string, _token: string, method: string) => {
+      if (method === 'update.run') {
+        // No "failed:" substring — a transport-level throw, not an explicit
+        // application rejection (matches gateway-rpc.ts's ws 'error'/'close'/
+        // timeout wording).
+        throw new Error('gateway WS closed before response (request sent)');
+      }
+      if (method === 'update.status') return { current: '2.0.0' };
+      throw new Error('unexpected');
+    });
+
+    vi.useFakeTimers();
+    try {
+      const pending = advanceFleetUpdate(TENANT);
+      await vi.advanceTimersByTimeAsync(5000);
+      const job = await pending;
+      expect(job?.instances[0].state).toBe('done');
+      expect(job?.status).toBe('running');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('round-5: an explicit update.run error response still fails immediately (no poll-verify)', async () => {
+    await seedJob();
+    mockCallToInstance.mockImplementation(async (_url: string, _token: string, method: string) => {
+      if (method === 'update.run') {
+        throw new Error('gateway update.run failed: {"code":"INTERNAL","message":"disk full"}');
+      }
+      throw new Error('unexpected');
+    });
+    mockCallToInstance.mockClear(); // drop seedJob()'s snapshot calls
+
+    const job = await advanceFleetUpdate(TENANT);
+    expect(job?.instances[0].state).toBe('failed');
+    expect(job?.status).toBe('failed');
+    expect(job?.instances[0].error).toContain('disk full');
+    // Only the single (failed) update.run call — never reached poll-verify.
+    expect(mockCallToInstance).toHaveBeenCalledTimes(1);
+  });
+
+  test('round-5: reconcile-to-truth — version match at verify marks done even with a stale prior error', async () => {
+    const started = await seedJob();
+    // Simulate a stale `error` field on the current instance left over from
+    // some earlier bookkeeping — verify must override it once it observes
+    // the target version, per the reconcile-to-truth contract.
+    rows = rows.map((r) => {
+      if (r.id !== started.id) return r;
+      const cursor = JSON.parse(r.cursor ?? '{}');
+      cursor.instances[cursor.currentIndex].error = 'stale from a previous glitch';
+      return { ...r, cursor: JSON.stringify(cursor) };
+    });
+
+    mockCallToInstance.mockImplementation(async (_url: string, _token: string, method: string) => {
+      if (method === 'update.run') return { ok: true };
+      if (method === 'update.status') return { current: '2.0.0' };
+      throw new Error('unexpected');
+    });
+
+    vi.useFakeTimers();
+    try {
+      const pending = advanceFleetUpdate(TENANT);
+      await vi.advanceTimersByTimeAsync(5000);
+      const job = await pending;
+      expect(job?.instances[0].state).toBe('done');
+      expect(job?.instances[0].error).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('abortFleetUpdate', () => {

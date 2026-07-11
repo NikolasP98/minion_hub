@@ -268,6 +268,24 @@ function isDrainUnsupported(message: string): boolean {
 }
 
 /**
+ * True when `gatewayCallToInstance` failed with an EXPLICIT application-level
+ * rejection — the gateway was reached and definitively said no (bad auth,
+ * invalid params, an error field on the response) — as opposed to a
+ * connection-level failure (WS handshake 5xx, ECONNREFUSED/ECONNRESET,
+ * timeout) where we genuinely don't know whether the gateway received the
+ * request. `gateway-rpc.ts`'s `gatewayCallWithCreds` only ever includes the
+ * substring "failed:" for its two explicit-response paths (`gateway connect
+ * failed: …` and `` gateway ${method} failed: … ``); every transport-level
+ * throw (raw `ws` errors, WS-closed, RPC timeout) uses different wording.
+ * Round-5 fix: a restarting gateway behind the Tailscale funnel proxy
+ * legitimately 502s at the WS handshake mid-restart — that must NOT read as
+ * an explicit rejection.
+ */
+function isExplicitErrorResponse(message: string): boolean {
+  return message.includes('failed:');
+}
+
+/**
  * Execute exactly ONE step of the current instance: drain+run (with
  * `drain.graceMs`), then poll-verify up to ~240s tolerating unreachability
  * during the restart. Per-instance failure STOPS the rollout.
@@ -276,6 +294,15 @@ function isDrainUnsupported(message: string): boolean {
  * unknown param (it predates drain support), retry the identical call
  * without it instead of failing — the instance still updates, just without
  * the graceful drain step.
+ *
+ * Round-5: any connection-level failure of the `update.run` call itself
+ * (dropped mid-flight, WS handshake 5xx, timeout) is dispatch-uncertain, not
+ * a failure — the install may well have been dispatched and be proceeding.
+ * Only an explicit application-level rejection fails immediately; everything
+ * else falls through to poll-verify, which decides on the version actually
+ * reached (same accepted-semantics as the single-instance `/api/gateway/update`
+ * route, broadened here because the fleet flow has a verify step to fall
+ * back on).
  */
 async function runInstanceStep(
   inst: FleetInstance,
@@ -304,13 +331,13 @@ async function runInstanceStep(
         );
       } catch (retryErr) {
         const retryMsg = String((retryErr as Error)?.message ?? retryErr);
-        // "(request sent)" = the gateway accepted the run and dropped the WS
-        // to restart — same soft-fail convention as POST /api/gateway/update.
-        if (!retryMsg.includes('(request sent)')) return { ok: false, error: retryMsg };
+        if (isExplicitErrorResponse(retryMsg)) return { ok: false, error: retryMsg };
+        // else: connection-level — fall through to poll-verify.
       }
-    } else if (!msg.includes('(request sent)')) {
+    } else if (isExplicitErrorResponse(msg)) {
       return { ok: false, error: msg };
     }
+    // else: connection-level failure after dispatch — fall through to poll-verify.
   }
 
   const deadline = Date.now() + VERIFY_TIMEOUT_MS;
@@ -324,9 +351,16 @@ async function runInstanceStep(
         {},
         { timeoutMs: 8000 },
       );
+      // Reconcile-to-truth: version match wins regardless of anything that
+      // happened earlier in this step.
       if (status.current === inst.toVersion) return { ok: true, drainSupported };
-    } catch {
-      // Unreachable mid-restart — expected, keep polling.
+    } catch (err) {
+      const msg = String((err as Error)?.message ?? err);
+      // An explicit rejection (e.g. bad/expired token) is reachable-but-wrong
+      // — fail now rather than burn the full budget. A connection-level
+      // failure (unreachable mid-restart, WS handshake 5xx) is expected —
+      // keep polling.
+      if (isExplicitErrorResponse(msg)) return { ok: false, error: msg };
     }
   }
   return { ok: false, error: `did not reach ${inst.toVersion} within ${VERIFY_TIMEOUT_MS / 1000}s` };
@@ -379,6 +413,9 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
 
   inst.state = 'done';
   inst.drainSupported = result.drainSupported;
+  // Reconcile-to-truth: verify reaching the target version wins even if an
+  // earlier sub-step within this same call had recorded an error.
+  delete inst.error;
   cursor.currentIndex += 1;
   const done = cursor.currentIndex >= cursor.instances.length;
   await persist(row.id, cursor, done ? { status: 'done', finishedAt: Date.now() } : {});
