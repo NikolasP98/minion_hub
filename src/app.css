@@ -1197,3 +1197,14 @@ html[data-theme='crt'][data-crt-flicker='true'] body {
   font-weight: 600;
   cursor: default;
 }
+
+/* ── Password masking dots: smaller + spaced ──
+   Unlayered on purpose: must beat the text-sm utility (utilities layer) that
+   sizes these inputs. The mask glyphs render at the input's font size, so
+   shrink the font and add tracking; line-height pinned so field height still
+   matches text-sm inputs. */
+input[type='password'] {
+  font-size: 9px;
+  letter-spacing: 0.35em;
+  line-height: 1.25rem;
+}
