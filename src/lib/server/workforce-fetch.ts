@@ -26,7 +26,7 @@ export function baseUrl(): string {
  * `reference_hub_paperclip_auth_header_split` — the fix has regressed once
  * across a merge boundary (2026-05-12 → re-applied 2026-05-13 PR #43).
  */
-function authHeaders(token: string): Record<string, string> {
+export function authHeaders(token: string): Record<string, string> {
 	return token.startsWith('pcli_')
 		? { Authorization: `Bearer ${token}` }
 		: { 'x-hub-identity': token };

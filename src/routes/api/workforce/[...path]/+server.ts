@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { baseUrl } from '$lib/server/workforce-fetch';
+import { authHeaders, baseUrl } from '$lib/server/workforce-fetch';
 import type { RequestHandler } from './$types';
 
 const HOP_BY_HOP = new Set(['cookie', 'host', 'connection', 'content-length', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
@@ -17,7 +17,9 @@ const handler: RequestHandler = async ({ request, params, locals, url }) => {
 			forwardedHeaders[k] = v;
 		}
 	}
-	forwardedHeaders['x-hub-identity'] = identity.token;
+	// Board keys (pcli_) authenticate via Authorization: Bearer; only minted
+	// JWTs go through x-hub-identity — same split as workforceServerClient.
+	Object.assign(forwardedHeaders, authHeaders(identity.token));
 
 	const init: RequestInit = {
 		method: request.method,

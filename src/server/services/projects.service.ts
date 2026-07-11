@@ -87,7 +87,14 @@ export async function ensureSelfParty(
  * loads call it on view). Move behind a TTL/cron only if the roundtrip shows up
  * in page latency — a handful of agents per org makes it a non-issue today.
  */
+const agentPartySyncAt = new Map<string, number>();
+const AGENT_PARTY_SYNC_TTL_MS = 5 * 60_000;
+
 export async function syncAgentParties(ctx: CoreCtx, actor: Actor = { id: null, name: null }): Promise<number> {
+  // ponytail: per-agent upserts to cloud PG cost ~1s each — at tens of agents the
+  // sync dominates page load, so skip when this org synced within the TTL.
+  const last = agentPartySyncAt.get(ctx.tenantId);
+  if (last && Date.now() - last < AGENT_PARTY_SYNC_TTL_MS) return 0;
   try {
     const client = await workforceClientForOrg(ctx.tenantId, actor);
     const agents = (await client.agents.list(ctx.tenantId)) as Array<{ id: string; name?: string | null; status?: string }>;
@@ -97,6 +104,7 @@ export async function syncAgentParties(ctx: CoreCtx, actor: Actor = { id: null, 
       await ensureAgentParty(ctx, a.id, a.name ?? null);
       n += 1;
     }
+    agentPartySyncAt.set(ctx.tenantId, Date.now());
     return n;
   } catch {
     return 0; // workforce unreachable / no company / no creds — pickers just won't list agents
