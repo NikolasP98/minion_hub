@@ -46,10 +46,15 @@ export interface FleetInstance {
   name: string;
   url: string;
   state: FleetInstanceState;
-  connections: number;
+  /** null = unknown — gateway predates `connections` reporting, or was
+   * unreachable at snapshot time. UI renders "—", never "0 connections". */
+  connections: number | null;
   fromVersion: string | null;
   toVersion: string;
   error?: string;
+  /** false once this instance's `update.run` was retried without `drain`
+   * because the running build predates drain support (round-4 fix 1). */
+  drainSupported?: boolean;
 }
 
 interface FleetCursor {
@@ -149,10 +154,12 @@ export async function startFleetUpdate(
           name: row.name,
           url: row.url,
           current: null as string | null,
-          // ponytail: no usable token — can't even reach it. Treat as
-          // "unknown load" so it sorts last (most conservative) rather than
-          // silently skipping it out of the plan.
-          connections: Number.POSITIVE_INFINITY,
+          // Unreachable at snapshot time — connections truly unknown.
+          connections: null as number | null,
+          // ponytail: no usable token — can't even reach it. Sort last
+          // (most conservative) rather than silently skipping it out of the
+          // plan; unrelated to the "old gateway omits the field" case below.
+          sortConnections: Number.POSITIVE_INFINITY,
           createdAt: row.createdAt,
         };
       }
@@ -164,13 +171,18 @@ export async function startFleetUpdate(
           {},
           { timeoutMs: 8000 },
         );
+        const known = typeof status.connections === 'number';
         return {
           gatewayId: row.id,
           name: row.name,
           url: row.url,
           current: status.current ?? null,
-          // Defensive: gateways not yet running the §3.1 change omit `connections`.
-          connections: status.connections ?? 0,
+          // Defensive: gateways not yet running the §3.1 change omit
+          // `connections` entirely — unknown, not zero (round-4 fix 2).
+          connections: known ? (status.connections as number) : null,
+          // Sort key only: treat "reachable but doesn't report" as
+          // least-loaded so it isn't pushed to the back of the rollout.
+          sortConnections: known ? (status.connections as number) : 0,
           createdAt: row.createdAt,
         };
       } catch {
@@ -180,7 +192,8 @@ export async function startFleetUpdate(
           name: row.name,
           url: row.url,
           current: null as string | null,
-          connections: Number.POSITIVE_INFINITY,
+          connections: null as number | null,
+          sortConnections: Number.POSITIVE_INFINITY,
           createdAt: row.createdAt,
         };
       }
@@ -188,7 +201,7 @@ export async function startFleetUpdate(
   );
 
   snapshot.sort((a, b) => {
-    if (a.connections !== b.connections) return a.connections - b.connections;
+    if (a.sortConnections !== b.sortConnections) return a.sortConnections - b.sortConnections;
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
 
@@ -197,7 +210,7 @@ export async function startFleetUpdate(
     name: s.name,
     url: s.url,
     state: s.current === targetVersion ? 'done' : 'pending',
-    connections: Number.isFinite(s.connections) ? s.connections : 0,
+    connections: s.connections,
     fromVersion: s.current,
     toVersion: targetVersion,
   }));
@@ -247,15 +260,28 @@ export async function abortFleetUpdate(tenantId: string): Promise<FleetJobView |
   return toView(fresh!);
 }
 
+/** True when `update.run` was rejected specifically because the running
+ * gateway build predates the `drain` param (mixed-fleet, round-4 fix 1) —
+ * any other INVALID_REQUEST (or other error) still fails the step. */
+function isDrainUnsupported(message: string): boolean {
+  return message.includes('INVALID_REQUEST') && message.includes('drain');
+}
+
 /**
  * Execute exactly ONE step of the current instance: drain+run (with
  * `drain.graceMs`), then poll-verify up to ~240s tolerating unreachability
  * during the restart. Per-instance failure STOPS the rollout.
+ *
+ * Permanent mixed-fleet behavior: if the instance rejects `drain` as an
+ * unknown param (it predates drain support), retry the identical call
+ * without it instead of failing — the instance still updates, just without
+ * the graceful drain step.
  */
 async function runInstanceStep(
   inst: FleetInstance,
   token: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; drainSupported: boolean } | { ok: false; error: string }> {
+  let drainSupported = true;
   try {
     await gatewayCallToInstance(
       inst.url,
@@ -266,9 +292,25 @@ async function runInstanceStep(
     );
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);
-    // "(request sent)" = the gateway accepted the run and dropped the WS to
-    // restart — same soft-fail convention as POST /api/gateway/update.
-    if (!msg.includes('(request sent)')) return { ok: false, error: msg };
+    if (isDrainUnsupported(msg)) {
+      drainSupported = false;
+      try {
+        await gatewayCallToInstance(
+          inst.url,
+          token,
+          'update.run',
+          { restartDelayMs: 2000, timeoutMs: 300_000 },
+          { timeoutMs: 290_000 },
+        );
+      } catch (retryErr) {
+        const retryMsg = String((retryErr as Error)?.message ?? retryErr);
+        // "(request sent)" = the gateway accepted the run and dropped the WS
+        // to restart — same soft-fail convention as POST /api/gateway/update.
+        if (!retryMsg.includes('(request sent)')) return { ok: false, error: retryMsg };
+      }
+    } else if (!msg.includes('(request sent)')) {
+      return { ok: false, error: msg };
+    }
   }
 
   const deadline = Date.now() + VERIFY_TIMEOUT_MS;
@@ -282,7 +324,7 @@ async function runInstanceStep(
         {},
         { timeoutMs: 8000 },
       );
-      if (status.current === inst.toVersion) return { ok: true };
+      if (status.current === inst.toVersion) return { ok: true, drainSupported };
     } catch {
       // Unreachable mid-restart — expected, keep polling.
     }
@@ -336,6 +378,7 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
   }
 
   inst.state = 'done';
+  inst.drainSupported = result.drainSupported;
   cursor.currentIndex += 1;
   const done = cursor.currentIndex >= cursor.instances.length;
   await persist(row.id, cursor, done ? { status: 'done', finishedAt: Date.now() } : {});

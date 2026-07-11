@@ -3,17 +3,147 @@
   import * as m from '$lib/paraglide/messages';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
+  import { getActiveHost } from '$lib/state/features/hosts.svelte';
   import {
     updateState,
     applyUpdateStatus,
-    bumpUpdateProgress,
-    setUpdateProgress,
     isUpdateRestartExpected,
   } from '$lib/state/gateway/update-state.svelte';
-  import { configState, loadConfig, getField, beginRestart, restartState } from '$lib/state/config/config.svelte';
+  import { configState, loadConfig, getField, restartState } from '$lib/state/config/config.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
-  import { PackageCheck, Download, RotateCw, AlertTriangle } from 'lucide-svelte';
+  import { PackageCheck, Download, RotateCw, AlertTriangle, Square } from 'lucide-svelte';
+
+  const { gatewayCount = 1 }: { gatewayCount?: number } = $props();
+
+  // ── Fleet update (spec `specs/2026-07-11-fleet-update-orchestration.md`) ──
+  // "Install" always drives the fleet flow — a single instance is just a
+  // fleet of one (round-4 fix 3: fleet IS the update method, no second CTA).
+  type FleetInstanceState = 'pending' | 'draining' | 'updating' | 'verifying' | 'done' | 'failed';
+  type FleetInstance = {
+    gatewayId: string;
+    name: string;
+    url: string;
+    state: FleetInstanceState;
+    /** null = unknown (old gateway build, or unreachable at snapshot time). */
+    connections: number | null;
+    fromVersion: string | null;
+    toVersion: string;
+    error?: string;
+  };
+  type FleetJob = {
+    id: string;
+    targetVersion: string;
+    instances: FleetInstance[];
+    currentIndex: number;
+    status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+    error: string | null;
+    startedBy: string | null;
+    active: boolean;
+  };
+
+  let job = $state<FleetJob | null>(null);
+  let starting = $state(false);
+  let running = $state(false);
+
+  const STATE_LABELS: Record<FleetInstanceState, () => string> = {
+    pending: m.fleet_update_state_pending,
+    draining: m.fleet_update_state_draining,
+    updating: m.fleet_update_state_updating,
+    verifying: m.fleet_update_state_verifying,
+    done: m.fleet_update_state_done,
+    failed: m.fleet_update_state_failed,
+  };
+  const STATE_CLASS: Record<FleetInstanceState, string> = {
+    pending: 'bg-muted text-muted-foreground',
+    draining: 'bg-warning/10 text-warning',
+    updating: 'bg-warning/10 text-warning',
+    verifying: 'bg-warning/10 text-warning',
+    done: 'bg-success/10 text-success',
+    failed: 'bg-destructive/10 text-destructive',
+  };
+
+  async function callFleet(body: Record<string, unknown>): Promise<FleetJob | null> {
+    const res = await fetch('/api/gateway/fleet-update', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 409) {
+      toastError(m.fleet_update_alreadyActive());
+      return null;
+    }
+    if (!res.ok) throw new Error(`fleet-update ${body.action} failed: ${res.status}`);
+    const view = (await res.json()) as FleetJob | { active: false };
+    return 'instances' in view ? view : null;
+  }
+
+  /** Drive advance() sequentially while this component stays mounted — each
+   * call is exactly one instance step; stop on failed/aborted/done. */
+  async function driveFleet(): Promise<void> {
+    if (running) return;
+    running = true;
+    try {
+      while (job?.active) {
+        const next = await callFleet({ action: 'advance' });
+        if (!next) break;
+        job = next;
+      }
+      if (job?.status === 'failed') {
+        toastError(m.fleet_update_advanceFailed(), job.error ?? undefined);
+      } else if (job?.status === 'done') {
+        toastSuccess(m.fleet_update_completed({ version: job.targetVersion }));
+        // Done jobs don't linger in the card — refresh current/pending and
+        // drop back to the normal (no-job) view.
+        job = null;
+        await refreshStatus();
+      }
+    } catch (err) {
+      toastError(m.fleet_update_advanceFailed(), err instanceof Error ? err.message : undefined);
+    } finally {
+      running = false;
+    }
+  }
+
+  async function startFleet(targetVersion: string): Promise<void> {
+    if (starting || running) return;
+    starting = true;
+    try {
+      const started = await callFleet({ action: 'start', targetVersion });
+      if (!started) return;
+      job = started;
+      void driveFleet();
+    } catch (err) {
+      toastError(m.fleet_update_startFailed(), err instanceof Error ? err.message : undefined);
+    } finally {
+      starting = false;
+    }
+  }
+
+  async function abortFleet(): Promise<void> {
+    if (!job) return;
+    try {
+      const aborted = await callFleet({ action: 'abort' });
+      if (aborted) job = aborted;
+      toastSuccess(m.fleet_update_aborted());
+    } catch (err) {
+      toastError(m.fleet_update_advanceFailed(), err instanceof Error ? err.message : undefined);
+    }
+  }
+
+  /** A terminal-failed job isn't self-healing — surface a one-click restart
+   * of the same target version rather than bricking the card (round-4 fix 3). */
+  function retryFleet(): void {
+    if (!job) return;
+    void startFleet(job.targetVersion);
+  }
+
+  const doneCount = $derived(job?.instances.filter((i) => i.state === 'done').length ?? 0);
+  // The instance the admin's own browser is connected to — the only one WS
+  // `update.progress` events can arrive from, so it's the only row that gets
+  // the granular phase/pct bar (matched by url, same as the gateways page's
+  // Turso/PG dedup — see gateways/+page.svelte tursoUrlSet).
+  const connectedUrl = $derived(conn.connected ? (getActiveHost()?.url ?? null) : null);
 
   let checking = $state(false);
   let statusError = $state<string | null>(null);
@@ -48,6 +178,20 @@
     if (conn.connected && !configState.loaded && !configState.loading) {
       loadConfig().catch(() => {});
     }
+    // Resume an already-active (or terminal-failed) fleet job on mount — a
+    // page reload mid-rollout picks the driving loop back up; a failed job
+    // stays visible with its Retry action instead of vanishing.
+    (async () => {
+      try {
+        const status = await callFleet({ action: 'status' });
+        if (status && (status.active || status.status === 'failed')) {
+          job = status;
+          if (status.active) void driveFleet();
+        }
+      } catch {
+        // non-critical — the Install button still works from scratch
+      }
+    })();
   });
 
   async function checkNow() {
@@ -74,57 +218,17 @@
     }
   }
 
-  function failInstall(message: string) {
-    updateState.installing = false;
-    setUpdateProgress(null);
-    toastError(message);
-  }
-
-  async function installNow() {
-    if (!updateState.pending || updateState.installing) return;
-    if (!confirm(m.gateway_update_confirmInstall({ version: updateState.pending.version }))) return;
-    updateState.installing = true;
-    setUpdateProgress({ phase: 'starting', pct: 5 });
-    try {
-      // The POST now long-polls through the npm install (40-120s). Real
-      // progress arrives in parallel over the WS ('update.progress' events);
-      // the response here is just the terminal signal for the install step.
-      const res = await fetch('/api/gateway/update', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'run' }),
-      });
-      if (isNoPermission(res)) {
-        failInstall(m.gateway_update_noPermission());
-        return;
-      }
-      if (!res.ok) {
-        // Explicit non-OK from the route = update.run itself errored (a
-        // timeout/WS-drop after the run was dispatched comes back 200
-        // {accepted:true}) — the only case that should read as failed.
-        failInstall(m.gateway_update_installFailed());
-        return;
-      }
-      const body = (await res.json()) as { ok?: boolean; accepted?: boolean };
-      if (body.ok === false) {
-        failInstall(m.gateway_update_installFailed());
-        return;
-      }
-      bumpUpdateProgress(
-        body.accepted ? { phase: 'installing', pct: 15 } : { phase: 'installed', pct: 70 },
-      );
-      // Gateway will drop the WS connection to restart — arm the same
-      // restart machine the config-save flow uses (loading toast +
-      // 30s reconnect timeout + reconnected toast). Skip if the update
-      // already landed while the POST was in flight (pending cleared).
-      if (updateState.pending) beginRestart();
-    } catch {
-      // Network hiccup between browser and hub AFTER the run may have been
-      // dispatched — not an explicit failure. Let the restart machine plus
-      // the 'update.applied' event / reconnect version check tell the story.
-      bumpUpdateProgress({ phase: 'installing', pct: 15 });
-      if (updateState.pending) beginRestart();
-    }
+  /** Install button: confirm, then hand off to the fleet flow (round-4 fix 3
+   * — fleet IS the update method now, even for a single instance). */
+  function installNow() {
+    if (!updateState.pending || starting || running || job?.active) return;
+    if (
+      !confirm(
+        m.fleet_update_confirmStart({ version: updateState.pending.version, count: gatewayCount }),
+      )
+    )
+      return;
+    void startFleet(updateState.pending.version);
   }
 
   const shortSha = $derived(gw.hello?.server?.commit?.slice(0, 7) ?? null);
@@ -135,7 +239,7 @@
   const notifyTargets = $derived(
     (getField('update.notify') as { channel: string; to: string }[] | undefined) ?? [],
   );
-  const installBusy = $derived(updateState.installing || restartState.phase === 'restarting');
+  const installBusy = $derived(starting || running || !!job?.active || restartState.phase === 'restarting');
 
   const PROGRESS_LABELS: Record<string, () => string> = {
     migrating: m.gateway_update_phase_migrating,
@@ -199,7 +303,7 @@
             <RotateCw size={12} class={checking ? 'animate-spin' : ''} />
             {checking ? m.gateway_update_checking() : m.gateway_update_checkNow()}
           </button>
-          {#if updateState.pending}
+          {#if updateState.pending && !job?.active && job?.status !== 'failed'}
             <button
               onclick={installNow}
               disabled={installBusy}
@@ -228,33 +332,90 @@
         </div>
       {/if}
 
-      {#if shownProgress}
-        {@const pct = Math.max(0, Math.min(100, Math.round(shownProgress.pct)))}
-        <div class="space-y-1">
-          <div class="flex items-center justify-between text-[10px] font-mono text-muted">
-            <span class="uppercase tracking-widest">{progressLabel}</span>
-            <span>{pct}%</span>
+      {#if job && (job.active || job.status === 'failed')}
+        <div class="pt-2 border-t border-border/60 space-y-2">
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-[10px] font-mono text-muted uppercase tracking-widest">
+              {m.fleet_update_progress({ done: doneCount, total: job.instances.length })}
+            </span>
+            {#if job.active}
+              <button
+                onclick={abortFleet}
+                class="flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-mono bg-bg border-border text-muted hover:text-destructive"
+              >
+                <Square size={10} /> {m.fleet_update_abort()}
+              </button>
+            {/if}
           </div>
-          <div
-            class="h-1.5 rounded-full bg-border/60 overflow-hidden"
-            role="progressbar"
-            aria-valuenow={pct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={progressLabel}
-          >
-            <!-- Width moves only on real signals (WS progress events or stage
-                 inference) — no time-based fake animation, just an eased tween
-                 between real values. -->
-            <div
-              class="h-full rounded-full transition-[width] duration-500 ease-out {pct >= 100
-                ? 'bg-success'
-                : 'bg-accent'}"
-              style="width: {pct}%"
-            ></div>
-          </div>
-          {#if shownProgress.detail}
-            <p class="text-[10px] font-mono text-muted-strong">{shownProgress.detail}</p>
+
+          <ul class="space-y-1.5">
+            {#each job.instances as inst (inst.gatewayId)}
+              {@const rowConnected = conn.connected && connectedUrl === inst.url}
+              {@const rowBusy = inst.state === 'updating' || inst.state === 'verifying'}
+              <li class="text-xs px-2 py-1.5 rounded border border-border/60 bg-bg/40 space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="font-mono truncate">
+                    {inst.name}
+                    <span class="text-muted-strong"
+                      >&middot; {inst.connections === null
+                        ? '—'
+                        : m.fleet_update_connections({ count: inst.connections })}</span
+                    >
+                  </span>
+                  <span class="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium {STATE_CLASS[inst.state]}">
+                    {STATE_LABELS[inst.state]()}
+                  </span>
+                </div>
+
+                <!-- Granular phase/pct bar only for the instance the browser is
+                     actually connected to — `update.progress` WS events only
+                     ever arrive from that one gateway. -->
+                {#if rowConnected && rowBusy && shownProgress}
+                  {@const pct = Math.max(0, Math.min(100, Math.round(shownProgress.pct)))}
+                  <div class="space-y-1">
+                    <div class="flex items-center justify-between text-[10px] font-mono text-muted">
+                      <span class="uppercase tracking-widest">{progressLabel}</span>
+                      <span>{pct}%</span>
+                    </div>
+                    <div
+                      class="h-1.5 rounded-full bg-border/60 overflow-hidden"
+                      role="progressbar"
+                      aria-valuenow={pct}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={progressLabel}
+                    >
+                      <div
+                        class="h-full rounded-full transition-[width] duration-500 ease-out {pct >= 100
+                          ? 'bg-success'
+                          : 'bg-accent'}"
+                        style="width: {pct}%"
+                      ></div>
+                    </div>
+                    {#if shownProgress.detail}
+                      <p class="text-[10px] font-mono text-muted-strong">{shownProgress.detail}</p>
+                    {/if}
+                  </div>
+                {/if}
+
+                {#if inst.state === 'failed' && inst.error}
+                  <p class="text-[10px] text-destructive">{inst.error}</p>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+
+          {#if job.status === 'failed'}
+            <div class="flex items-center justify-between gap-2">
+              {#if job.error}<p class="text-xs text-destructive truncate">{job.error}</p>{/if}
+              <button
+                onclick={retryFleet}
+                disabled={starting}
+                class="shrink-0 flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50"
+              >
+                <RotateCw size={10} class={starting ? 'animate-spin' : ''} /> {m.fleet_update_retry()}
+              </button>
+            </div>
           {/if}
         </div>
       {/if}
