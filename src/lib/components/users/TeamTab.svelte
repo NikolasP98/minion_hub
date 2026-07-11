@@ -325,8 +325,8 @@
     {:else if users.length === 0}
       <div class="text-muted text-xs py-8 text-center">{m.users_noUsers()}</div>
     {:else}
-      <div class="bg-card border border-border rounded-lg overflow-x-auto">
-        <table class="w-full min-w-[420px] text-xs border-collapse">
+      <div class="bg-card border border-border rounded-lg overflow-x-auto -webkit-overflow-scrolling-touch">
+        <table class="w-full min-w-[640px] text-xs border-collapse">
           <thead>
             <tr class="border-b border-border bg-bg2">
               <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_name()}</th>
@@ -577,8 +577,8 @@
         {#if joinLinks.length > 0}
           <div class="mb-3">
             <h4 class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Join Links</h4>
-            <div class="bg-card border border-border rounded-lg overflow-x-auto">
-              <table class="w-full min-w-[420px] text-xs border-collapse">
+            <div class="bg-card border border-border rounded-lg overflow-x-auto -webkit-overflow-scrolling-touch">
+              <table class="w-full min-w-[520px] text-xs border-collapse">
                 <thead>
                   <tr class="border-b border-border bg-bg2">
                     <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">Link</th>
@@ -620,8 +620,8 @@
         {#if pendingRequests.length > 0}
           <div>
             <h4 class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Join Requests</h4>
-            <div class="bg-card border border-border rounded-lg overflow-x-auto">
-              <table class="w-full min-w-[420px] text-xs border-collapse">
+            <div class="bg-card border border-border rounded-lg overflow-x-auto -webkit-overflow-scrolling-touch">
+              <table class="w-full min-w-[580px] text-xs border-collapse">
                 <thead>
                   <tr class="border-b border-border bg-bg2">
                     <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_email()}</th>
