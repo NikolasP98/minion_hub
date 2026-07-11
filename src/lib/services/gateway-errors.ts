@@ -87,6 +87,19 @@ export function describeGatewayError(rawReason: string | null | undefined): Gate
     };
   }
 
+  // Browser-origin rejected by the gateway's control-UI allowlist. Seen
+  // transiently when a gateway restarts mid-update with an incomplete config
+  // (plugin manifests unreadable → config validation fails → allowlist empty)
+  // — NOT a token problem, so don't send people to rotate tokens.
+  if (r.includes('origin not allowed')) {
+    return {
+      title: 'Gateway refused this page’s origin',
+      hint: 'The gateway didn’t accept connections from this hub URL. If an update or restart is in progress this usually resolves itself in a minute — otherwise add this hub’s URL to gateway.controlUi.allowedOrigins.',
+      raw,
+      cta: 'retry',
+    };
+  }
+
   // Per-user connection limit.
   if (r.includes('connection_limit') || r.includes('too many connections')) {
     return {

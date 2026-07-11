@@ -31,6 +31,11 @@
     fromVersion: string | null;
     toVersion: string;
     error?: string;
+    /** True progress relayed server-side from the gateway's update.progress
+     * broadcasts and persisted in the job row (round-6) — renders for EVERY
+     * instance via job polling, not just the one this browser is connected to. */
+    progressPct?: number | null;
+    progressPhase?: string | null;
   };
   type FleetJob = {
     id: string;
@@ -217,7 +222,13 @@
         const status = await callFleet({ action: 'status' });
         if (status && (status.active || status.status === 'failed')) {
           job = status;
-          if (status.active) void driveFleet();
+          if (status.active) {
+            // Re-arm the expected-restart window (client state died with the
+            // reload) so a mid-rollout disconnect stays amber and the card
+            // body stays mounted (round-6).
+            if (!updateState.progress) setUpdateProgress({ phase: 'starting', pct: 5 });
+            void driveFleet();
+          }
         }
       } catch {
         // non-critical — the Install button still works from scratch
@@ -399,16 +410,25 @@
                   </span>
                 </div>
 
-                <!-- Granular phase/pct bar only for the instance the browser is
-                     actually connected to — `update.progress` WS events only
-                     ever arrive from that one gateway. Round-5: render
-                     whenever this row is busy even without a real progress
-                     event yet (stage-inferred pct fallback) — don't gate on
-                     `shownProgress`, which may never arm for this instance. -->
-                {#if rowConnected && rowBusy}
-                  {@const active = shownProgress ?? { phase: inst.state, pct: STAGE_FALLBACK_PCT[inst.state] ?? 0 }}
+                <!-- Per-instance progress bar for every busy row (round-6).
+                     Primary source: the job row's server-persisted pct/phase
+                     (relayed from the gateway's update.progress broadcasts by
+                     the orchestrator, picked up here by the 3s status poll) —
+                     works even when this browser's own gateway WS is down.
+                     The dwell-smoothed WS layer still wins for the instance
+                     this browser is connected to (instant + detail line). -->
+                {#if rowBusy}
+                  {@const jobPct = typeof inst.progressPct === 'number' ? inst.progressPct : null}
+                  {@const useWs = rowConnected && shownProgress != null}
+                  {@const active = useWs
+                    ? shownProgress
+                    : jobPct !== null
+                      ? { phase: inst.progressPhase ?? inst.state, pct: jobPct }
+                      : { phase: inst.state, pct: STAGE_FALLBACK_PCT[inst.state] ?? 0 }}
                   {@const pct = Math.max(0, Math.min(100, Math.round(active.pct)))}
-                  {@const label = shownProgress ? progressLabel : STATE_LABELS[inst.state]()}
+                  {@const label = useWs
+                    ? progressLabel
+                    : (PROGRESS_LABELS[active.phase]?.() ?? STATE_LABELS[inst.state]())}
                   <div class="space-y-1">
                     <div class="flex items-center justify-between text-[10px] font-mono text-muted">
                       <span class="uppercase tracking-widest">{label}</span>
@@ -457,7 +477,11 @@
         </div>
       {/if}
 
-      {#if updateState.lastResult}
+      <!-- Reconcile-to-truth: a "failed / rolled back" record is moot when the
+           gateway is ALREADY running that update's target version (e.g. the
+           orchestrator's verify timed out but a later manual/retried install
+           landed it) — suppress the scare line rather than contradict reality. -->
+      {#if updateState.lastResult && !(updateState.lastResult.ok === false && updateState.lastResult.to === currentVersion)}
         <p class="text-xs {updateState.lastResult.ok ? 'text-muted-foreground' : 'text-destructive'} flex items-center gap-1.5">
           {#if !updateState.lastResult.ok}<AlertTriangle size={12} />{/if}
           {updateState.lastResult.ok

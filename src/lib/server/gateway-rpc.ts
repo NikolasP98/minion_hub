@@ -124,7 +124,7 @@ async function gatewayCallWithCreds<T = unknown>(
   params: Record<string, unknown>,
   url: string,
   token: string,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; onEvent?: (event: string, payload: unknown) => void } = {},
 ): Promise<T> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -185,6 +185,15 @@ async function gatewayCallWithCreds<T = unknown>(
         return;
       }
       const type = frame.type;
+      // Broadcast events arrive on this socket while a long call (update.run)
+      // is in flight — the fleet orchestrator uses them for true progress.
+      if (type === 'event' && typeof frame.event === 'string' && frame.event !== 'connect.challenge' && opts.onEvent) {
+        try {
+          opts.onEvent(frame.event, frame.payload ?? frame.data ?? null);
+        } catch {
+          /* observer must never break the call */
+        }
+      }
       if (type === 'event' && frame.event === 'connect.challenge') {
         // Send connect request (token-only auth → admin role per ws-jwt-auth.ts Case 2).
         connectId = randomUUID();
@@ -283,7 +292,7 @@ export async function gatewayCallToInstance<T = unknown>(
   token: string,
   method: string,
   params: Record<string, unknown> = {},
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; onEvent?: (event: string, payload: unknown) => void } = {},
 ): Promise<T> {
   return gatewayCallWithCreds<T>(method, params, toWsUrl(url), token, opts);
 }

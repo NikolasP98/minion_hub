@@ -55,6 +55,12 @@ export interface FleetInstance {
   /** false once this instance's `update.run` was retried without `drain`
    * because the running build predates drain support (round-4 fix 1). */
   drainSupported?: boolean;
+  /** True progress relayed from the gateway's `update.progress` broadcasts,
+   * observed on the orchestrator's own WS during `update.run` and persisted
+   * here so the UI can render bars from job polling — independent of whether
+   * the browser's own gateway connection survives the restart (round-6). */
+  progressPct?: number | null;
+  progressPhase?: string | null;
 }
 
 interface FleetCursor {
@@ -307,15 +313,36 @@ function isExplicitErrorResponse(message: string): boolean {
 async function runInstanceStep(
   inst: FleetInstance,
   token: string,
+  persistNow: () => Promise<void>,
 ): Promise<{ ok: true; drainSupported: boolean } | { ok: false; error: string }> {
   let drainSupported = true;
+
+  // Relay the gateway's update.progress broadcasts (received on this very WS
+  // while update.run is in flight) into the job row so the UI's job polling
+  // shows true per-instance progress. Fire-and-forget persistence: events are
+  // seconds apart and last-write-wins is fine.
+  const onEvent = (event: string, payload: unknown) => {
+    if (event !== 'update.progress') return;
+    const p = payload as { phase?: string; pct?: number } | null;
+    if (!p || typeof p.pct !== 'number') return;
+    inst.state = 'updating';
+    inst.progressPct = p.pct;
+    inst.progressPhase = typeof p.phase === 'string' ? p.phase : null;
+    void persistNow().catch(() => {});
+  };
+
+  inst.state = 'draining';
+  inst.progressPct = 0;
+  inst.progressPhase = 'draining';
+  await persistNow().catch(() => {});
+
   try {
     await gatewayCallToInstance(
       inst.url,
       token,
       'update.run',
       { restartDelayMs: 2000, timeoutMs: 300_000, drain: { graceMs: 3000 } },
-      { timeoutMs: 290_000 },
+      { timeoutMs: 290_000, onEvent },
     );
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);
@@ -327,7 +354,7 @@ async function runInstanceStep(
           token,
           'update.run',
           { restartDelayMs: 2000, timeoutMs: 300_000 },
-          { timeoutMs: 290_000 },
+          { timeoutMs: 290_000, onEvent },
         );
       } catch (retryErr) {
         const retryMsg = String((retryErr as Error)?.message ?? retryErr);
@@ -339,6 +366,14 @@ async function runInstanceStep(
     }
     // else: connection-level failure after dispatch — fall through to poll-verify.
   }
+
+  inst.state = 'verifying';
+  // The connection drop that lands us here IS the restart in the common case.
+  if ((inst.progressPct ?? 0) < 90) {
+    inst.progressPct = 90;
+    inst.progressPhase = 'restarting';
+  }
+  await persistNow().catch(() => {});
 
   const deadline = Date.now() + VERIFY_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -394,16 +429,7 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
     return getFleetUpdateStatus(tenantId);
   }
 
-  inst.state = 'draining';
-  await persist(row.id, cursor);
-
-  inst.state = 'updating';
-  await persist(row.id, cursor);
-
-  inst.state = 'verifying';
-  await persist(row.id, cursor);
-
-  const result = await runInstanceStep(inst, creds.token);
+  const result = await runInstanceStep(inst, creds.token, () => persist(row.id, cursor));
   if (!result.ok) {
     inst.state = 'failed';
     inst.error = result.error;
@@ -412,6 +438,8 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
   }
 
   inst.state = 'done';
+  inst.progressPct = 100;
+  inst.progressPhase = 'done';
   inst.drainSupported = result.drainSupported;
   // Reconcile-to-truth: verify reaching the target version wins even if an
   // earlier sub-step within this same call had recorded an error.

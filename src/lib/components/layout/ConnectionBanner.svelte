@@ -17,7 +17,40 @@
   // The disconnect is the EXPECTED restart step of an update install or a
   // config-save restart — show a calm amber "updating/restarting" line instead
   // of the red outage banner. Red stays for unexpected disconnects.
-  const expectedRestart = $derived(isUpdateRestartExpected() || restartState.phase === 'restarting');
+  //
+  // isUpdateRestartExpected() is client-module state and dies on a hard reload
+  // or when the update was started from another tab — so while disconnected we
+  // ALSO ask the server whether a fleet update job is active (round-6): any
+  // connection failure during an active rollout stays amber, never red.
+  let fleetUpdateActive = $state(false);
+  $effect(() => {
+    if (!show) {
+      fleetUpdateActive = false;
+      return;
+    }
+    let cancelled = false;
+    const check = () => {
+      fetch('/api/gateway/fleet-update', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'status' }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((view: { active?: boolean } | null) => {
+          if (!cancelled) fleetUpdateActive = view?.active === true;
+        })
+        .catch(() => {});
+    };
+    check();
+    const t = setInterval(check, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  });
+  const expectedRestart = $derived(
+    isUpdateRestartExpected() || restartState.phase === 'restarting' || fleetUpdateActive,
+  );
   const reconnecting = $derived(conn.connecting);
 
   let showDetail = $state(false);
