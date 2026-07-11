@@ -20,6 +20,13 @@
     // ── Mode: gateway tool vs custom builder tool ───────────────────────
     let isGatewayTool = $state(false);
     let gatewayTool = $state<ToolStatusEntry | null>(null);
+    // Resolution bookkeeping: the builder API and the gateway are checked
+    // independently (the WS may connect long after mount on a direct page
+    // load); only when BOTH come back empty is the tool truly not found.
+    let resolved = $state(false);
+    let notFound = $state(false);
+    let builderChecked = $state(false);
+    let gatewayChecked = $state(false);
 
     // ── Form state ──────────────────────────────────────────────────────
     let name = $state("Untitled Tool");
@@ -254,34 +261,47 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
     }
 
     // ── Lifecycle ───────────────────────────────────────────────────────
-    onMount(async () => {
-        // Try to load as a gateway tool first
-        if (conn.connected) {
-            try {
-                const report = (await sendRequest('tools.status', {})) as ToolsStatusReport;
-                const found = report.tools.find((t) => t.id === toolId);
-                if (found) {
-                    isGatewayTool = true;
-                    gatewayTool = found;
-                    name = found.id;
-                    description = found.groups.map(g => g.replace('group:', '')).join(', ');
-                    status = found.enabled ? 'published' : 'draft';
-                    if (found.requires?.env?.length) {
-                        envVars = found.requires.env.map(e => ({ key: e, value: '', revealed: false }));
-                    }
-                    loading = false;
-                    return;
-                }
-            } catch {
-                // Not a gateway tool — fall through to builder tool load
-            }
+    function maybeFinishResolution() {
+        if (resolved) return;
+        if (builderChecked && gatewayChecked) {
+            notFound = true;
+            loading = false;
         }
-        // Load from builder tools API
+    }
+
+    async function loadGatewayTool() {
+        try {
+            const report = (await sendRequest('tools.status', {})) as ToolsStatusReport;
+            if (resolved) return;
+            const found = report.tools.find((t) => t.id === toolId);
+            if (found) {
+                resolved = true;
+                isGatewayTool = true;
+                gatewayTool = found;
+                name = found.id;
+                description = found.groups.map(g => g.replace('group:', '')).join(', ');
+                status = found.enabled ? 'published' : 'draft';
+                if (found.requires?.env?.length) {
+                    envVars = found.requires.env.map(e => ({ key: e, value: '', revealed: false }));
+                }
+                loading = false;
+                return;
+            }
+        } catch {
+            // Gateway unreachable or RPC failed — treat as "not a gateway tool".
+        }
+        gatewayChecked = true;
+        maybeFinishResolution();
+    }
+
+    async function loadBuilderTool() {
         try {
             const res = await fetch(`/api/builder/tools/${toolId}`);
             if (res.ok) {
                 const data = await res.json();
                 const tool = data.tool;
+                if (resolved) return;
+                resolved = true;
                 name = tool.name ?? 'Untitled Tool';
                 description = tool.description ?? '';
                 scriptLang = tool.scriptLang ?? 'javascript';
@@ -311,11 +331,29 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
                 } catch {
                     executionConfigRaw = {};
                 }
+                loading = false;
+                return;
             }
         } catch (e) {
             console.error('[tool-editor] Failed to load tool:', e);
         }
-        loading = false;
+        builderChecked = true;
+        maybeFinishResolution();
+    }
+
+    onMount(() => {
+        void loadBuilderTool();
+    });
+
+    // Gateway detection re-arms whenever the WS (re)connects — on a direct
+    // page load the socket is rarely up during onMount, which previously left
+    // native tools rendering as a phantom "Untitled Tool" draft.
+    let gatewayProbeStarted = false;
+    $effect(() => {
+        if (conn.connected && !resolved && !gatewayProbeStarted) {
+            gatewayProbeStarted = true;
+            void loadGatewayTool();
+        }
     });
 
     // Reference variables for the System/Module/Database tabs — fetched once,
@@ -341,11 +379,19 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
         void envVars;
         void permModule;
         void permAction;
-        if (!loading && !isGatewayTool) scheduleSave();
+        if (!loading && !isGatewayTool && !notFound) scheduleSave();
     });
 </script>
 
 <div class="tool-editor-page">
+{#if loading || notFound}
+    <!-- Minimal header: never show the editable "Untitled Tool" draft chrome
+         for a tool that hasn't resolved (or doesn't exist). -->
+    <div class="pending-bar">
+        <a href="/capabilities?tab=tools" class="pending-back" aria-label={m.common_back()}>←</a>
+        <span class="pending-title">{notFound ? toolId : m.builder_loadingTool()}</span>
+    </div>
+{:else}
 <EditorToolbar
     {isAdmin}
     {isGatewayTool}
@@ -367,12 +413,21 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
     onToggleGatewayToolEnabled={toggleGatewayToolEnabled}
     onPermChange={scheduleSave}
 />
+{/if}
 
 <!-- Main Content Area -->
 {#if loading}
     <div class="loading-container">
         <Loader2 size={24} class="loading-spinner" />
-        <span class="loading-text">{m.builder_loadingTool()}</span>
+        <span class="loading-text">
+            {builderChecked && !conn.connected ? m.tools_waitingGateway() : m.builder_loadingTool()}
+        </span>
+    </div>
+{:else if notFound}
+    <div class="loading-container notfound">
+        <span class="notfound-title">{m.tools_notFound()}</span>
+        <span class="loading-text">{m.tools_notFoundHint({ id: toolId ?? '' })}</span>
+        <a href="/capabilities?tab=tools" class="notfound-link">{m.tools_backToCapabilities()}</a>
     </div>
 {:else if isGatewayTool && gatewayTool}
     <GatewayToolView {gatewayTool} {isAdmin} onToggleGatewayToolEnabled={toggleGatewayToolEnabled} />
@@ -422,6 +477,37 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
         min-height: 0;
     }
 
+    /* ── Pending header (loading / not-found) ─────────────────────────── */
+    .pending-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-height: 2.75rem;
+        padding: 0.25rem 0.75rem;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .pending-back {
+        color: var(--color-muted);
+        text-decoration: none;
+        font-size: 1rem;
+        line-height: 1;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem;
+    }
+
+    .pending-back:hover {
+        color: var(--color-foreground);
+        background: var(--color-bg2);
+    }
+
+    .pending-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--color-muted);
+        font-family: var(--font-mono, monospace);
+    }
+
     /* ── Loading ──────────────────────────────────────────────────────── */
     .loading-container {
         display: flex;
@@ -429,6 +515,28 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
         justify-content: center;
         gap: 0.5rem;
         flex: 1;
+    }
+
+    .loading-container.notfound {
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+
+    .notfound-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--color-foreground);
+    }
+
+    .notfound-link {
+        margin-top: 0.5rem;
+        font-size: 0.8125rem;
+        color: var(--color-accent);
+        text-decoration: none;
+    }
+
+    .notfound-link:hover {
+        text-decoration: underline;
     }
 
     .loading-text {

@@ -55,4 +55,7 @@ export interface UnifiedTool {
     optional?: boolean;
     groups?: string[];
     permission?: ToolPermission;
+    /** Human title + emoji from the gateway registry's display meta. */
+    displayTitle?: string;
+    emoji?: string;
 }

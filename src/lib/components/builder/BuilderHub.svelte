@@ -171,8 +171,21 @@
     // ── Unified tool list ────────────────────────────────────────────
     let customToolsLoading = $state(false);
 
-    const unifiedTools = $derived<UnifiedTool[]>([
-        ...gatewayTools.map(t => ({
+    // Custom tools lead (they're the user's own work); gateway tools follow.
+    const customUnified = $derived<UnifiedTool[]>(
+        builderState.tools.map(t => ({
+            id: t.id,
+            name: t.name,
+            description: t.description,
+            source: 'custom' as const,
+            status: t.status,
+            scriptLang: t.scriptLang,
+            updatedAt: t.updatedAt,
+        })),
+    );
+
+    const gatewayUnified = $derived<UnifiedTool[]>(
+        gatewayTools.map(t => ({
             id: t.id,
             name: t.id,
             description: toolDescription(t),
@@ -183,17 +196,12 @@
             optional: t.optional,
             groups: t.groups,
             permission: t.permission,
+            displayTitle: t.display?.title,
+            emoji: t.display?.emoji,
         })),
-        ...builderState.tools.map(t => ({
-            id: t.id,
-            name: t.name,
-            description: t.description,
-            source: 'custom' as const,
-            status: t.status,
-            scriptLang: t.scriptLang,
-            updatedAt: t.updatedAt,
-        })),
-    ]);
+    );
+
+    const unifiedTools = $derived<UnifiedTool[]>([...customUnified, ...gatewayUnified]);
 
     onMount(async () => {
         if (!only || only === 'skills') loadBuiltSkills();
@@ -262,12 +270,30 @@
                     <span class="loading-text">{m.common_loading()}</span>
                 </div>
             {:else if activeTab === 'tools' && unifiedTools.length > 0}
-                <ToolsGrid
-                    tools={unifiedTools}
-                    {isAdmin}
-                    {groupDescriptions}
-                    onDeleteCustom={(id, name) => { deleteTarget = { type: 'tool', id, name }; }}
-                />
+                {#if customUnified.length > 0}
+                    <div class="tools-section-head">
+                        <span class="tools-section-title">{m.builder_customToolsSection()}</span>
+                        <span class="tools-section-count">{customUnified.length}</span>
+                    </div>
+                    <ToolsGrid
+                        tools={customUnified}
+                        {isAdmin}
+                        {groupDescriptions}
+                        onDeleteCustom={(id, name) => { deleteTarget = { type: 'tool', id, name }; }}
+                    />
+                {/if}
+                {#if gatewayUnified.length > 0}
+                    <div class="tools-section-head" class:mt={customUnified.length > 0}>
+                        <span class="tools-section-title">{m.builder_gatewayToolsSection()}</span>
+                        <span class="tools-section-count">{gatewayUnified.length}</span>
+                    </div>
+                    <ToolsGrid
+                        tools={gatewayUnified}
+                        {isAdmin}
+                        {groupDescriptions}
+                        onDeleteCustom={(id, name) => { deleteTarget = { type: 'tool', id, name }; }}
+                    />
+                {/if}
             {:else if activeTab === 'tools' && gatewayToolsError}
                 <div class="error-banner">
                     {gatewayToolsError}
@@ -328,6 +354,36 @@
 {/if}
 
 <style>
+    /* ── Tools section headers ───────────────────────────────────────── */
+    .tools-section-head {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .tools-section-head.mt {
+        margin-top: 2rem;
+    }
+
+    .tools-section-title {
+        font-size: 0.6875rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--color-muted);
+    }
+
+    .tools-section-count {
+        font-size: 0.625rem;
+        font-weight: 600;
+        color: var(--color-muted);
+        background: var(--color-bg3);
+        border: 1px solid var(--color-border);
+        border-radius: 9999px;
+        padding: 0.0625rem 0.4375rem;
+    }
+
     /* ── New Button ──────────────────────────────────────────────────── */
     .new-button {
         display: flex;

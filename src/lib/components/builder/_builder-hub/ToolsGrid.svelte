@@ -34,8 +34,15 @@
             <div class="item-card-inner">
                 <div class="item-card-header">
                     {#if tool.source === 'gateway'}
-                        <span class="item-emoji">{toolEmoji(tool)}</span>
-                        <span class="item-name font-mono">{tool.id}</span>
+                        <span class="item-emoji">{tool.emoji ?? toolEmoji(tool)}</span>
+                        {#if tool.displayTitle}
+                            <span class="item-title-stack">
+                                <span class="item-name">{tool.displayTitle}</span>
+                                <span class="item-subid font-mono">{tool.id}</span>
+                            </span>
+                        {:else}
+                            <span class="item-name font-mono">{tool.id}</span>
+                        {/if}
                     {:else}
                         <span class="item-emoji">🔧</span>
                         <span class="item-name">{tool.name}</span>
@@ -137,6 +144,21 @@
         font-size: 0.8125rem;
         font-weight: 600;
         color: var(--color-foreground);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .item-title-stack {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        gap: 0.0625rem;
+    }
+
+    .item-subid {
+        font-size: 0.625rem;
+        color: var(--color-muted);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;

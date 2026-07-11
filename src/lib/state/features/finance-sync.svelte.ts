@@ -20,7 +20,10 @@ async function fetchStatus(provider: string): Promise<void> {
     s.active = d.active ?? false;
     s.status = d.status ?? null;
     s.total = d.total ?? null;
-    s.processed = d.processed ?? 0;
+    // Clamp: the backend can report processed one past total on the final
+    // batch, and zag's progress machine throws (uncaught, breaks navigation)
+    // when value > max. Guard the invariant once here for all consumers.
+    s.processed = s.total == null ? (d.processed ?? 0) : Math.min(d.processed ?? 0, s.total);
     s.error = d.error ?? null;
   } catch {
     /* transient; keep last state */

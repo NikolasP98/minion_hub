@@ -16,6 +16,8 @@ export interface ToolStatusEntry {
   enabled: boolean;
   /** RBAC permission gate (C7 — optional until the gateway ships WP-1). */
   permission?: ToolPermission;
+  /** Registry display meta (emoji + human title) — optional until the gateway ships tools.inspect. */
+  display?: { emoji?: string; title?: string };
 }
 
 export interface ToolsStatusReport {

@@ -1,7 +1,10 @@
 <script lang="ts">
-    import { Power, PowerOff } from "lucide-svelte";
+    import { onMount } from "svelte";
+    import { Power, PowerOff, Loader2, Code2 } from "lucide-svelte";
     import type { ToolStatusEntry } from "$lib/types/tools";
+    import { sendRequest } from "$lib/services/gateway.svelte";
     import * as m from '$lib/paraglide/messages';
+    import CodeMirrorEditor from "./CodeMirrorEditor.svelte";
 
     interface Props {
         gatewayTool: ToolStatusEntry;
@@ -10,9 +13,57 @@
     }
 
     let { gatewayTool, isAdmin, onToggleGatewayToolEnabled }: Props = $props();
+
+    // ── Read-only source view (tools.inspect) ──────────────────────────
+    // The gateway stringifies the tool's factory from the shipped bundle —
+    // exactly what runs in production. Older gateways lack the RPC; degrade
+    // to the config-only view.
+    let source = $state<string | null>(null);
+    let sourceState = $state<"loading" | "ready" | "unavailable">("loading");
+
+    onMount(async () => {
+        try {
+            const res = (await sendRequest('tools.inspect', { toolId: gatewayTool.id })) as {
+                source?: string | null;
+            };
+            if (typeof res?.source === "string" && res.source.length > 0) {
+                source = res.source;
+                sourceState = "ready";
+            } else {
+                sourceState = "unavailable";
+            }
+        } catch {
+            sourceState = "unavailable";
+        }
+    });
+
+    const emptyCompletion = { envKeys: [], systemKeys: [], moduleKeys: [], databaseKeys: [], modulePaths: [], tables: [] };
 </script>
 
-<!-- Gateway Tool Detail View -->
+<!-- Gateway Tool Detail View: read-only source (left) + configuration (right) -->
+<div class="gateway-split">
+<div class="gw-source-pane">
+    {#if sourceState === "loading"}
+        <div class="gw-source-empty">
+            <Loader2 size={18} class="loading-spinner" />
+            <span>{m.builder_sourceLoading()}</span>
+        </div>
+    {:else if sourceState === "ready" && source !== null}
+        <div class="gw-source-head">
+            <Code2 size={13} />
+            <span>{m.builder_sourceReadonly()}</span>
+        </div>
+        <div class="gw-source-editor">
+            <CodeMirrorEditor value={source} lang="javascript" readonly completionData={emptyCompletion} />
+        </div>
+    {:else}
+        <div class="gw-source-empty">
+            <Code2 size={18} />
+            <span>{m.builder_sourceUnavailable()}</span>
+        </div>
+    {/if}
+</div>
+
 <div class="gateway-detail">
     <div class="gateway-detail-inner">
         <!-- Tool Info Section -->
@@ -136,22 +187,69 @@
         {/if}
     </div>
 </div>
+</div>
 
 <style>
-    /* ── Gateway Tool Detail View ─────────────────────────────────── */
-    .gateway-detail {
+    /* ── Split: source pane + config column ───────────────────────── */
+    .gateway-split {
+        display: flex;
         flex: 1;
         min-height: 0;
+        overflow: hidden;
+    }
+
+    .gw-source-pane {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--color-border);
+    }
+
+    .gw-source-head {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.5rem 0.875rem;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--color-muted);
+        border-bottom: 1px solid var(--color-border);
+        flex-shrink: 0;
+    }
+
+    .gw-source-editor {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .gw-source-empty {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        font-size: 0.8125rem;
+        color: var(--color-muted);
+    }
+
+    /* ── Gateway Tool Detail View ─────────────────────────────────── */
+    .gateway-detail {
+        width: min(26rem, 40%);
+        flex-shrink: 0;
+        min-height: 0;
         overflow-y: auto;
-        padding: 2rem;
+        padding: 1.25rem;
     }
 
     .gateway-detail-inner {
-        max-width: 640px;
-        margin: 0 auto;
         display: flex;
         flex-direction: column;
-        gap: 1.5rem;
+        gap: 1rem;
     }
 
     .gw-section {
