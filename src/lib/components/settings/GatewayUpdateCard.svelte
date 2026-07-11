@@ -138,6 +138,7 @@
   const installBusy = $derived(updateState.installing || restartState.phase === 'restarting');
 
   const PROGRESS_LABELS: Record<string, () => string> = {
+    migrating: m.gateway_update_phase_migrating,
     starting: m.gateway_update_phase_starting,
     installing: m.gateway_update_phase_installing,
     installed: m.gateway_update_phase_installed,

@@ -1,0 +1,343 @@
+/**
+ * Fleet update orchestrator (spec `specs/2026-07-11-fleet-update-orchestration.md` §3.2).
+ *
+ * Step-wise state machine, client-advanced — no long-running function (Vercel
+ * 300s ceiling), no new infra. State lives in the existing `bg_jobs` table
+ * (type `fleet_update`), one row per tenant's in-flight rollout: `cursor`
+ * holds `{ targetVersion, instances, currentIndex }` as JSON.
+ *
+ * ponytail: this does NOT go through bg-runtime's `advanceJob`/
+ * `registerJobHandler` — that machine loops handler.advance() until a time
+ * budget is spent (built for cron ticks doing several cheap rounds per tick).
+ * A fleet-update step is a single drain+run+poll cycle that can alone take up
+ * to ~243s, and the spec requires "advance = exactly ONE instance step" so
+ * the client can abort between instances — looping-until-budget would blur
+ * that boundary. Reading/writing `bg_jobs` directly is the smaller, correct
+ * fit; only the table (not the generic runner) is reused.
+ *
+ * ponytail: no distributed lease/claim — single admin driving this from one
+ * open tab is the expected usage (mirrors the single-admin assumption of the
+ * existing per-instance update card). Add a lease column the way
+ * bg-runtime.ts does if concurrent-admin races become a real problem.
+ */
+
+import { and, desc, eq, inArray } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { getCoreDb } from '$server/db/pg-client';
+import { bgJobs } from '$server/db/pg-schema/bg-jobs';
+import { listGatewaysForAdmin, getGatewayCredentialsById } from './gateway.pg.service';
+import { gatewayCallToInstance } from '$lib/server/gateway-rpc';
+
+const JOB_TYPE = 'fleet_update';
+const ACTIVE_STATUSES = ['queued', 'running'] as const;
+const POLL_INTERVAL_MS = 5000;
+const VERIFY_TIMEOUT_MS = 240_000;
+
+export type FleetInstanceState =
+  | 'pending'
+  | 'draining'
+  | 'updating'
+  | 'verifying'
+  | 'done'
+  | 'failed';
+
+export interface FleetInstance {
+  gatewayId: string;
+  name: string;
+  url: string;
+  state: FleetInstanceState;
+  connections: number;
+  fromVersion: string | null;
+  toVersion: string;
+  error?: string;
+}
+
+interface FleetCursor {
+  targetVersion: string;
+  instances: FleetInstance[];
+  currentIndex: number;
+}
+
+export type FleetJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+
+export interface FleetJobView {
+  id: string;
+  targetVersion: string;
+  instances: FleetInstance[];
+  currentIndex: number;
+  status: FleetJobStatus;
+  error: string | null;
+  startedBy: string | null;
+  active: boolean;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toView(row: typeof bgJobs.$inferSelect): FleetJobView {
+  const cursor = JSON.parse(row.cursor ?? '{}') as Partial<FleetCursor>;
+  return {
+    id: row.id,
+    targetVersion: cursor.targetVersion ?? '',
+    instances: cursor.instances ?? [],
+    currentIndex: cursor.currentIndex ?? 0,
+    status: row.status as FleetJobStatus,
+    error: row.error ?? null,
+    startedBy: row.userId ?? null,
+    active: row.status === 'queued' || row.status === 'running',
+  };
+}
+
+async function getActiveJobRow(tenantId: string) {
+  const [row] = await getCoreDb()
+    .select()
+    .from(bgJobs)
+    .where(
+      and(eq(bgJobs.tenantId, tenantId), eq(bgJobs.type, JOB_TYPE), inArray(bgJobs.status, [...ACTIVE_STATUSES])),
+    )
+    .orderBy(desc(bgJobs.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+async function getLatestJobRow(tenantId: string) {
+  const [row] = await getCoreDb()
+    .select()
+    .from(bgJobs)
+    .where(and(eq(bgJobs.tenantId, tenantId), eq(bgJobs.type, JOB_TYPE)))
+    .orderBy(desc(bgJobs.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+async function persist(
+  jobId: string,
+  cursor: FleetCursor,
+  patch: { status?: FleetJobStatus; error?: string | null; finishedAt?: number | null } = {},
+): Promise<void> {
+  await getCoreDb()
+    .update(bgJobs)
+    .set({
+      cursor: JSON.stringify(cursor),
+      updatedAt: Date.now(),
+      ...patch,
+    })
+    .where(eq(bgJobs.id, jobId));
+}
+
+/**
+ * Snapshot the fleet from the `gateway` rows, order least-connections-first
+ * (ties by created_at — canary = first), persist a new job. Refuses if a
+ * fleet job is already active for this tenant.
+ */
+export async function startFleetUpdate(
+  tenantId: string,
+  userId: string | null,
+  targetVersion: string,
+): Promise<FleetJobView> {
+  if (!targetVersion) throw new Error('targetVersion is required');
+  if (await getActiveJobRow(tenantId)) throw new Error('A fleet update is already in progress');
+
+  const rows = await listGatewaysForAdmin();
+  const snapshot = await Promise.all(
+    rows.map(async (row) => {
+      const creds = await getGatewayCredentialsById(row.id);
+      if (!creds) {
+        return {
+          gatewayId: row.id,
+          name: row.name,
+          url: row.url,
+          current: null as string | null,
+          // ponytail: no usable token — can't even reach it. Treat as
+          // "unknown load" so it sorts last (most conservative) rather than
+          // silently skipping it out of the plan.
+          connections: Number.POSITIVE_INFINITY,
+          createdAt: row.createdAt,
+        };
+      }
+      try {
+        const status = await gatewayCallToInstance<{ current?: string; connections?: number }>(
+          creds.url,
+          creds.token,
+          'update.status',
+          {},
+          { timeoutMs: 8000 },
+        );
+        return {
+          gatewayId: row.id,
+          name: row.name,
+          url: row.url,
+          current: status.current ?? null,
+          // Defensive: gateways not yet running the §3.1 change omit `connections`.
+          connections: status.connections ?? 0,
+          createdAt: row.createdAt,
+        };
+      } catch {
+        // Unreachable at snapshot time — same conservative fallback as above.
+        return {
+          gatewayId: row.id,
+          name: row.name,
+          url: row.url,
+          current: null as string | null,
+          connections: Number.POSITIVE_INFINITY,
+          createdAt: row.createdAt,
+        };
+      }
+    }),
+  );
+
+  snapshot.sort((a, b) => {
+    if (a.connections !== b.connections) return a.connections - b.connections;
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
+
+  const instances: FleetInstance[] = snapshot.map((s) => ({
+    gatewayId: s.gatewayId,
+    name: s.name,
+    url: s.url,
+    state: s.current === targetVersion ? 'done' : 'pending',
+    connections: Number.isFinite(s.connections) ? s.connections : 0,
+    fromVersion: s.current,
+    toVersion: targetVersion,
+  }));
+
+  let currentIndex = instances.findIndex((i) => i.state !== 'done');
+  if (currentIndex === -1) currentIndex = instances.length;
+  const status: FleetJobStatus = currentIndex >= instances.length ? 'done' : 'running';
+
+  const id = randomUUID();
+  const now = Date.now();
+  await getCoreDb()
+    .insert(bgJobs)
+    .values({
+      id,
+      tenantId,
+      userId,
+      type: JOB_TYPE,
+      refId: null,
+      status,
+      cursor: JSON.stringify({ targetVersion, instances, currentIndex } satisfies FleetCursor),
+      attempts: 0,
+      createdAt: now,
+      updatedAt: now,
+      startedAt: now,
+      finishedAt: status === 'done' ? now : null,
+    });
+
+  const [row] = await getCoreDb().select().from(bgJobs).where(eq(bgJobs.id, id)).limit(1);
+  return toView(row!);
+}
+
+/** Read the active (or most recent) fleet job for this tenant. Null = never started. */
+export async function getFleetUpdateStatus(tenantId: string): Promise<FleetJobView | null> {
+  const row = (await getActiveJobRow(tenantId)) ?? (await getLatestJobRow(tenantId));
+  return row ? toView(row) : null;
+}
+
+/** Abort before the next instance. An in-flight instance finishes its own watchdog-guarded update. */
+export async function abortFleetUpdate(tenantId: string): Promise<FleetJobView | null> {
+  const row = await getActiveJobRow(tenantId);
+  if (!row) return null;
+  await getCoreDb()
+    .update(bgJobs)
+    .set({ status: 'cancelled', updatedAt: Date.now(), finishedAt: Date.now() })
+    .where(eq(bgJobs.id, row.id));
+  const [fresh] = await getCoreDb().select().from(bgJobs).where(eq(bgJobs.id, row.id)).limit(1);
+  return toView(fresh!);
+}
+
+/**
+ * Execute exactly ONE step of the current instance: drain+run (with
+ * `drain.graceMs`), then poll-verify up to ~240s tolerating unreachability
+ * during the restart. Per-instance failure STOPS the rollout.
+ */
+async function runInstanceStep(
+  inst: FleetInstance,
+  token: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await gatewayCallToInstance(
+      inst.url,
+      token,
+      'update.run',
+      { restartDelayMs: 2000, timeoutMs: 300_000, drain: { graceMs: 3000 } },
+      { timeoutMs: 290_000 },
+    );
+  } catch (err) {
+    const msg = String((err as Error)?.message ?? err);
+    // "(request sent)" = the gateway accepted the run and dropped the WS to
+    // restart — same soft-fail convention as POST /api/gateway/update.
+    if (!msg.includes('(request sent)')) return { ok: false, error: msg };
+  }
+
+  const deadline = Date.now() + VERIFY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS);
+    try {
+      const status = await gatewayCallToInstance<{ current?: string }>(
+        inst.url,
+        token,
+        'update.status',
+        {},
+        { timeoutMs: 8000 },
+      );
+      if (status.current === inst.toVersion) return { ok: true };
+    } catch {
+      // Unreachable mid-restart — expected, keep polling.
+    }
+  }
+  return { ok: false, error: `did not reach ${inst.toVersion} within ${VERIFY_TIMEOUT_MS / 1000}s` };
+}
+
+/**
+ * Advance the active job by exactly one instance step. No-op (returns the
+ * current view) if there is no active job — covers a stale/duplicate call
+ * after the job already finished, failed, or was aborted.
+ */
+export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView | null> {
+  const row = await getActiveJobRow(tenantId);
+  if (!row) return getFleetUpdateStatus(tenantId);
+
+  const cursor = JSON.parse(row.cursor ?? '{}') as FleetCursor;
+  // Skip any instances already on target (bookkeeping only — no RPC calls).
+  while (cursor.currentIndex < cursor.instances.length && cursor.instances[cursor.currentIndex].state === 'done') {
+    cursor.currentIndex += 1;
+  }
+  if (cursor.currentIndex >= cursor.instances.length) {
+    await persist(row.id, cursor, { status: 'done', finishedAt: Date.now() });
+    return getFleetUpdateStatus(tenantId);
+  }
+
+  const inst = cursor.instances[cursor.currentIndex];
+  const creds = await getGatewayCredentialsById(inst.gatewayId);
+  if (!creds) {
+    inst.state = 'failed';
+    inst.error = 'gateway credentials not found';
+    await persist(row.id, cursor, { status: 'failed', error: inst.error, finishedAt: Date.now() });
+    return getFleetUpdateStatus(tenantId);
+  }
+
+  inst.state = 'draining';
+  await persist(row.id, cursor);
+
+  inst.state = 'updating';
+  await persist(row.id, cursor);
+
+  inst.state = 'verifying';
+  await persist(row.id, cursor);
+
+  const result = await runInstanceStep(inst, creds.token);
+  if (!result.ok) {
+    inst.state = 'failed';
+    inst.error = result.error;
+    await persist(row.id, cursor, { status: 'failed', error: result.error, finishedAt: Date.now() });
+    return getFleetUpdateStatus(tenantId);
+  }
+
+  inst.state = 'done';
+  cursor.currentIndex += 1;
+  const done = cursor.currentIndex >= cursor.instances.length;
+  await persist(row.id, cursor, done ? { status: 'done', finishedAt: Date.now() } : {});
+  return getFleetUpdateStatus(tenantId);
+}

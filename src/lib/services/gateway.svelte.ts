@@ -38,6 +38,7 @@ import {
   updateHost,
   saveLastActiveHost,
   fetchHostToken,
+  applyOrgAssignedHost,
 } from '$lib/state/features/hosts.svelte';
 import { userState } from '$lib/state/features/user.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
@@ -53,6 +54,7 @@ import {
   restartState,
   onRestartReconnected,
   resetRestartState,
+  beginRestart,
 } from '$lib/state/config/config.svelte';
 import {
   updateState,
@@ -631,6 +633,28 @@ function handleEvent(evt: Record<string, unknown>) {
     case 'update.progress': {
       const p = evt.payload as UpdateProgress;
       if (p && typeof p.pct === 'number') bumpUpdateProgress(p);
+      break;
+    }
+    case 'update.migrating': {
+      // Fleet-update orchestrator (spec §3.4) telling connected sessions an
+      // instance is about to drain — arrives BEFORE the WS drop, so we can
+      // react calmly instead of surprising the user with a bare disconnect.
+      const p = evt.payload as { version?: string; reason?: string } | undefined;
+      if (applyOrgAssignedHost()) {
+        // This session's org is actually assigned to a different, healthy
+        // instance (stale manual pick / admin browsing) — hop there now
+        // rather than riding out the drain on the wrong host.
+        if (conn.connected) {
+          wsDisconnect();
+          void wsConnect();
+        }
+      } else {
+        // The org genuinely lives on the draining instance — arm the same
+        // "expected restart" flag the Updates card uses so the amber banner
+        // (ConnectionBanner) shows before the drop, not after.
+        bumpUpdateProgress({ phase: 'migrating', pct: 3, version: p?.version });
+        beginRestart();
+      }
       break;
     }
     case 'update.applied': {
