@@ -20,7 +20,14 @@ export const POST: RequestHandler = async (event) => {
   if (typeof body.identifier !== 'string' || !body.identifier.trim()) return OK();
   const identifier = body.identifier.trim();
 
-  if (!checkRateLimit(`forgot:${identifier.toLowerCase()}`)) return OK();
+  // IP + identifier key — see password-login for the lockout-DoS rationale.
+  let ip = 'unknown';
+  try {
+    ip = event.getClientAddress();
+  } catch {
+    // unavailable in some test/adapter contexts
+  }
+  if (!checkRateLimit(`forgot:${ip}:${identifier.toLowerCase()}`)) return OK();
 
   const admin = supabaseAdmin();
   let email: string | null = identifier.includes('@') ? identifier : null;

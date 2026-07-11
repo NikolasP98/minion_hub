@@ -9,11 +9,14 @@
   // svelte-ignore state_referenced_locally -- seeds the editable field once
   // from the prop; a $derived would wipe in-progress user edits on refresh.
   let value = $state(username ?? '');
+  // svelte-ignore state_referenced_locally -- optimistic chip: locals.user is
+  // identity-cached (≤60s TTL) so the reloaded prop can lag a save.
+  let current = $state(username);
   let saving = $state(false);
   let error = $state<string | null>(null);
 
   const normalized = $derived(value.trim().toLowerCase());
-  const dirty = $derived(normalized !== (username ?? ''));
+  const dirty = $derived(normalized !== (current ?? ''));
 
   async function save() {
     if (saving || !dirty) return;
@@ -34,6 +37,7 @@
         return;
       }
       toastSuccess(m.account_security_usernameSaved());
+      current = normalized || null;
       await Promise.all([invalidate('app:security'), invalidate('app:user')]);
     } catch (e) {
       toastError(e instanceof Error ? e.message : m.account_security_saveFailed());
@@ -50,7 +54,7 @@
       <p class="mt-0.5 text-xs text-muted-foreground">{m.account_security_usernameHelp()}</p>
     </div>
     <span class="text-xs font-mono text-muted-foreground shrink-0 pt-0.5">
-      {username ? `@${username}` : m.account_security_usernameNotSet()}
+      {current ? `@${current}` : m.account_security_usernameNotSet()}
     </span>
   </div>
 

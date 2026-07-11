@@ -2,7 +2,6 @@
   import { goto } from '$app/navigation';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
-  import { supabaseBrowser } from '$lib/supabase/client';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -28,12 +27,15 @@
     }
 
     saving = true;
-    const { error: updateError } = await supabaseBrowser().auth.updateUser({
-      password: newPassword,
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tokenHash: data.tokenHash, newPassword }),
     });
     saving = false;
-    if (updateError) {
-      error = updateError.message;
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      error = payload.error === 'invalid_token' ? m.reset_invalidToken() : m.account_security_saveFailed();
       return;
     }
 

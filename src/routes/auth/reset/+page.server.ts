@@ -1,17 +1,11 @@
 import type { PageServerLoad } from './$types';
-import { supabaseServer } from '$server/supabase';
 
 export const load: PageServerLoad = async (event) => {
+  // Only check that a token is present — do NOT verify it here. The recovery
+  // token is single-use, and email link-scanners GET this URL before the user
+  // clicks; verifying on load would let a scanner consume the token (and be
+  // handed the session cookies). Verification happens on explicit submit via
+  // POST /api/auth/reset-password.
   const tokenHash = event.url.searchParams.get('token_hash');
-  if (!tokenHash) return { ok: false as const };
-
-  // Exchanges the recovery token for a session — sets the SSR session
-  // cookies on the response so the browser Supabase client (same cookies)
-  // can then call auth.updateUser({ password }) directly.
-  const { error } = await supabaseServer(event).auth.verifyOtp({
-    type: 'recovery',
-    token_hash: tokenHash,
-  });
-
-  return { ok: !error };
+  return { ok: Boolean(tokenHash), tokenHash };
 };

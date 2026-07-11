@@ -3,7 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { createClient } from '@supabase/supabase-js';
 import { env as publicEnv } from '$env/dynamic/public';
 import { requireAuth } from '$server/auth/authorize';
-import { supabaseAdmin } from '$server/supabase';
+import { supabaseAdmin, supabaseServer } from '$server/supabase';
 import { hasPasswordIdentity } from '$server/auth/password';
 
 /**
@@ -12,7 +12,8 @@ import { hasPasswordIdentity } from '$server/auth/password';
  * already exists, `currentPassword` is required and verified via a
  * throwaway, non-persisting anon client before the admin update runs.
  */
-export const POST: RequestHandler = async ({ locals, request }) => {
+export const POST: RequestHandler = async (event) => {
+  const { locals, request } = event;
   const user = requireAuth(locals);
   const supabaseId = user.supabaseId;
   if (!supabaseId) throw error(400, 'no supabase profile for this user');
@@ -51,6 +52,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     password: body.newPassword,
   });
   if (updateError) throw error(500, 'password update failed');
+
+  // Revoke every other session — a password change must invalidate refresh
+  // tokens a hijacker may hold. Best-effort: the change itself already stuck.
+  await supabaseServer(event)
+    .auth.signOut({ scope: 'others' })
+    .catch(() => {});
 
   return json({ ok: true, hadPassword });
 };

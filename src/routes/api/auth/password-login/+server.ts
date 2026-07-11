@@ -24,7 +24,15 @@ export const POST: RequestHandler = async (event) => {
   const identifier = body.identifier.trim();
   if (!identifier || !body.password) throw error(400, 'identifier and password required');
 
-  if (!checkRateLimit(`login:${identifier.toLowerCase()}`)) {
+  // Key on IP + identifier: identifier-only would let an attacker lock a
+  // victim out of their own login by spamming their username.
+  let ip = 'unknown';
+  try {
+    ip = event.getClientAddress();
+  } catch {
+    // unavailable in some test/adapter contexts
+  }
+  if (!checkRateLimit(`login:${ip}:${identifier.toLowerCase()}`)) {
     return json({ error: 'rate_limited' }, { status: 429 });
   }
 
