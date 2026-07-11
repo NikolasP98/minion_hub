@@ -151,6 +151,26 @@ describe('startFleetUpdate', () => {
     expect(job.instances[job.currentIndex].gatewayId).toBe('b');
   });
 
+  test('an instance on a NEWER build than the target is done, not a downgrade candidate', async () => {
+    // Stale-target trap: retrying an old target against instances already on a
+    // newer build must NOT try to "reach" (downgrade to) it — it would just
+    // time out. Both instances on 20260711212523 (> target 20260711050417).
+    mockListGateways.mockResolvedValue([
+      { id: 'a', name: 'A', url: 'ws://a', authMode: 'token', createdAt: new Date(100) },
+      { id: 'b', name: 'B', url: 'ws://b', authMode: 'token', createdAt: new Date(200) },
+    ]);
+    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockCallToInstance.mockResolvedValue({
+      current: '2026.7.11-dev.20260711212523',
+      connections: 0,
+    });
+
+    const job = await startFleetUpdate(TENANT, 'user1', '2026.7.10-dev.20260711050417');
+    expect(job.instances.every((i) => i.state === 'done')).toBe(true);
+    // All done → the job is immediately complete, never a running rollout.
+    expect(job.status).toBe('done');
+  });
+
   test('refuses when a fleet job is already active', async () => {
     mockListGateways.mockResolvedValue([
       { id: 'a', name: 'A', url: 'ws://a', authMode: 'token', createdAt: new Date() },
@@ -445,5 +465,81 @@ describe('abortFleetUpdate', () => {
 describe('getFleetUpdateStatus', () => {
   test('returns null when nothing was ever started', async () => {
     expect(await getFleetUpdateStatus(TENANT)).toBeNull();
+  });
+
+  function seedFailedJob(target: string, instances: { gatewayId: string; name: string; url: string }[]) {
+    rows.push({
+      id: 'ghost',
+      tenantId: TENANT,
+      userId: 'user1',
+      type: 'fleet_update',
+      refId: null,
+      status: 'failed',
+      cursor: JSON.stringify({
+        targetVersion: target,
+        currentIndex: 0,
+        instances: instances.map((i) => ({
+          ...i,
+          state: 'failed',
+          connections: null,
+          fromVersion: null,
+          toVersion: target,
+          error: `did not reach ${target} within 240s`,
+        })),
+      }),
+      error: `did not reach ${target} within 240s`,
+      attempts: 0,
+      createdAt: 1000,
+      updatedAt: 1000,
+      startedAt: 1000,
+      finishedAt: 1000,
+    });
+  }
+
+  test('retires a failed job the fleet has already rolled PAST (superseded → cancelled)', async () => {
+    // The prod phantom: a failed rollout to an ancient target while every
+    // instance now runs a newer build. It must stop resurfacing.
+    seedFailedJob('2026.7.10-dev.20260711050417', [
+      { gatewayId: 'a', name: 'minion-2', url: 'ws://a' },
+      { gatewayId: 'b', name: 'minion-1', url: 'ws://b' },
+    ]);
+    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockCallToInstance.mockImplementation(async (url: string) => ({
+      current:
+        url === 'ws://a' ? '2026.7.11-dev.20260711212523' : '2026.7.11-dev.20260711055010',
+    }));
+
+    const view = await getFleetUpdateStatus(TENANT);
+    expect(view?.status).toBe('cancelled');
+    expect(view?.active).toBe(false);
+    // Persisted: a second read hits the flipped row and skips the RPC path.
+    mockCallToInstance.mockClear();
+    const again = await getFleetUpdateStatus(TENANT);
+    expect(again?.status).toBe('cancelled');
+    expect(mockCallToInstance).not.toHaveBeenCalled();
+  });
+
+  test('keeps showing a failed rollback (instances still BEHIND the target)', async () => {
+    // A genuine recent failure: rolled back to an older build than the target.
+    // Not superseded — stays 'failed' so the card can offer a real Retry.
+    seedFailedJob('2026.7.11-dev.20260711212523', [
+      { gatewayId: 'a', name: 'minion-2', url: 'ws://a' },
+    ]);
+    mockGetCreds.mockResolvedValue({ url: 'ws://a', token: 'tok-a' });
+    mockCallToInstance.mockResolvedValue({ current: '2026.7.11-dev.20260711055010' });
+
+    const view = await getFleetUpdateStatus(TENANT);
+    expect(view?.status).toBe('failed');
+  });
+
+  test('does not retire when the only instance is unreachable (no confirmation)', async () => {
+    seedFailedJob('2026.7.10-dev.20260711050417', [
+      { gatewayId: 'a', name: 'minion-2', url: 'ws://a' },
+    ]);
+    mockGetCreds.mockResolvedValue({ url: 'ws://a', token: 'tok-a' });
+    mockCallToInstance.mockRejectedValue(new Error('Unexpected server response: 502'));
+
+    const view = await getFleetUpdateStatus(TENANT);
+    expect(view?.status).toBe('failed');
   });
 });

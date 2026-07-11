@@ -86,6 +86,68 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Monotonic order key for a build version. Versions end in a 14-digit build
+ * timestamp (`2026.7.11-dev.20260711212523`) that is strictly increasing and
+ * zero-padded — safe to compare numerically. Lexicographic compare of the
+ * whole string is NOT safe (minor `2026.7.9` vs `2026.7.10` breaks). Returns
+ * NaN when no timestamp suffix is present (e.g. a bare `dev` channel tag).
+ */
+function versionOrder(version: string | null | undefined): number {
+  if (!version) return NaN;
+  const m = version.match(/(\d{14})\s*$/);
+  return m ? Number(m[1]) : NaN;
+}
+
+/** An instance is "at or past" a target when it exactly matches it, or (when
+ * both parse) its build is >= the target's — the fleet only ever rolls
+ * FORWARD, so an instance already on a newer build is done, never a downgrade
+ * candidate. Without a comparable suffix, falls back to exact-match. */
+function isAtOrPast(current: string | null | undefined, target: string): boolean {
+  if (current === target) return true;
+  const c = versionOrder(current);
+  const t = versionOrder(target);
+  return !Number.isNaN(c) && !Number.isNaN(t) && c >= t;
+}
+
+/**
+ * A terminal FAILED fleet job is "superseded" once every reachable instance
+ * has moved to a build at or beyond the job's (failed) target — the fleet
+ * rolled forward past it, so the lingering "did not reach X" record is a
+ * phantom. Distinguishes supersession (instances NEWER than target) from a
+ * failed rollback (instances OLDER than target, still worth showing). Ignores
+ * unreachable instances; needs at least one live confirmation to retire.
+ */
+async function isFailedJobSuperseded(row: typeof bgJobs.$inferSelect): Promise<boolean> {
+  const cursor = JSON.parse(row.cursor ?? '{}') as Partial<FleetCursor>;
+  const target = cursor.targetVersion;
+  const instances = cursor.instances ?? [];
+  if (!target || Number.isNaN(versionOrder(target)) || instances.length === 0) return false;
+
+  let confirmed = false;
+  for (const inst of instances) {
+    const creds = await getGatewayCredentialsById(inst.gatewayId);
+    if (!creds) continue;
+    let current: string | undefined;
+    try {
+      const status = await gatewayCallToInstance<{ current?: string }>(
+        creds.url,
+        creds.token,
+        'update.status',
+        {},
+        { timeoutMs: 8000 },
+      );
+      current = status.current;
+    } catch {
+      continue; // unreachable — can't judge this instance
+    }
+    // Any instance still on/behind the target means the record isn't a phantom.
+    if (!isAtOrPast(current, target)) return false;
+    confirmed = true;
+  }
+  return confirmed;
+}
+
 function toView(row: typeof bgJobs.$inferSelect): FleetJobView {
   const cursor = JSON.parse(row.cursor ?? '{}') as Partial<FleetCursor>;
   return {
@@ -215,7 +277,11 @@ export async function startFleetUpdate(
     gatewayId: s.gatewayId,
     name: s.name,
     url: s.url,
-    state: s.current === targetVersion ? 'done' : 'pending',
+    // At-or-past target = done. The fleet only rolls forward: an instance
+    // already on a newer build must NOT be treated as pending (it would try to
+    // "reach" an older target it never will, then time out — the stale-target
+    // downgrade trap that produced the phantom "did not reach …050417" jobs).
+    state: isAtOrPast(s.current, targetVersion) ? 'done' : 'pending',
     connections: s.connections,
     fromVersion: s.current,
     toVersion: targetVersion,
@@ -250,8 +316,27 @@ export async function startFleetUpdate(
 
 /** Read the active (or most recent) fleet job for this tenant. Null = never started. */
 export async function getFleetUpdateStatus(tenantId: string): Promise<FleetJobView | null> {
-  const row = (await getActiveJobRow(tenantId)) ?? (await getLatestJobRow(tenantId));
-  return row ? toView(row) : null;
+  const active = await getActiveJobRow(tenantId);
+  if (active) return toView(active);
+
+  const latest = await getLatestJobRow(tenantId);
+  if (!latest) return null;
+
+  // getLatestJobRow is unconditional, so a terminal FAILED rollout lingers as
+  // the card's phantom forever (the card resurrects any active|failed job on
+  // mount, and Retry re-runs its stale target). Once the fleet has rolled
+  // forward past that target, retire the job (→ cancelled, which the card
+  // ignores) so it stops resurfacing. One-time reconcile: after the flip the
+  // row is no longer 'failed', so this RPC path is skipped on later reads.
+  if (latest.status === 'failed' && (await isFailedJobSuperseded(latest))) {
+    await getCoreDb()
+      .update(bgJobs)
+      .set({ status: 'cancelled', updatedAt: Date.now() })
+      .where(eq(bgJobs.id, latest.id));
+    return { ...toView(latest), status: 'cancelled', active: false };
+  }
+
+  return toView(latest);
 }
 
 /** Abort before the next instance. An in-flight instance finishes its own watchdog-guarded update. */
