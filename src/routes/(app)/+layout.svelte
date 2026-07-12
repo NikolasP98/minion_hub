@@ -2,7 +2,6 @@
 	import Topbar from '$lib/components/layout/Topbar.svelte';
 	import Sidebar from '$lib/components/layout/Sidebar.svelte';
 	import DynamicIsland from '$lib/components/layout/DynamicIsland.svelte';
-	import ConnectionBanner from '$lib/components/layout/ConnectionBanner.svelte';
 	import CommandPalette from '$lib/components/layout/CommandPalette.svelte';
 	import LiveRunWidget from '$lib/components/sessions/LiveRunWidget.svelte';
 	import FloatingAssistant from '$lib/components/layout/FloatingAssistant.svelte';
@@ -49,7 +48,6 @@
 		{/if}
 		<div class="shell-main flex flex-col flex-1 min-w-0 overflow-hidden">
 			<Topbar />
-			<ConnectionBanner />
 			<div class="flex-1 min-h-0 overflow-y-auto">
 				{#key moduleKey}
 					<div in:fadeIn={{ duration: 200 }} class="h-full">

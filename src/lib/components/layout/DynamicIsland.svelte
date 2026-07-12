@@ -1,12 +1,12 @@
 <script lang="ts">
   import ProfileMenu from './ProfileMenu.svelte';
   import NotificationsPopup from './NotificationsPopup.svelte';
+  import ConnectionStatusIndicator from './ConnectionStatusIndicator.svelte';
   import HostPill from '../hosts/HostPill.svelte';
   import { Search, Bug, Bell } from 'lucide-svelte';
   import { togglePalette } from '$lib/state/ui/command-palette.svelte';
   import { captureSnapshot, bugReporter } from '$lib/state/ui/bug-reporter.svelte';
   import { notifications, refreshNotifications } from '$lib/state/features/notifications.svelte';
-  import { conn } from '$lib/state/gateway/connection.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
@@ -52,13 +52,11 @@
          transition-[box-shadow,border-color] duration-[200ms] ease-[cubic-bezier(0.2,0,0,1)]"
   aria-label="Quick actions"
 >
-  <!-- Connection status dot — always visible at the far left. -->
-  <span
-    class="w-1.5 h-1.5 rounded-full shrink-0 ml-1 mr-0.5 transition-colors {conn.connected
-      ? 'bg-success shadow-[0_0_4px_var(--color-success)]'
-      : 'bg-warning shadow-[0_0_4px_var(--color-warning)] animate-pulse'}"
-    aria-hidden="true"
-  ></span>
+  <!-- Connection status dot — always visible at the far left. Hovering it opens
+       the status popover (uptime / reconnecting / error detail) to its left. -->
+  <div class="ml-1 mr-0.5">
+    <ConnectionStatusIndicator />
+  </div>
 
   <!-- Hover-revealed cluster: host pill, bug, and (when nothing is pending) the bell. -->
   <div class="ci">

@@ -807,8 +807,8 @@ function handleEvent(evt: Record<string, unknown>) {
         // The org genuinely lives on the draining instance — arm eager
         // reconnect (H1: the drain window can be up to ~60s, but the actual
         // drop/reconnect gap should be ~1s once it happens) and the same
-        // "expected restart" flag the Updates card uses so the amber banner
-        // (ConnectionBanner) shows before the drop, not after.
+        // "expected restart" flag the Updates card uses so the status dot
+        // (ConnectionStatusIndicator) ambers before the drop, not after.
         armEagerReconnect();
         bumpUpdateProgress({ phase: 'migrating', pct: 3, version: p?.version });
         beginRestart();

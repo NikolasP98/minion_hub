@@ -1,19 +1,18 @@
 <script lang="ts">
     import HostDropdown from "./HostDropdown.svelte";
-    import { Tooltip } from "$lib/components/ui";
     import { getActiveHost } from "$lib/state/features/hosts.svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
-    import { gw } from "$lib/state/gateway/gateway-data.svelte";
     import { isAdmin } from "$lib/state/features/user.svelte";
-    import { fmtTimeAgo, fmtUptime } from "$lib/utils/format";
     import * as m from "$lib/paraglide/messages";
 
     // `align` controls which edge the switcher dropdown anchors to — the notch
     // lives at the top-right so it opens right-aligned; the mobile topbar is
-    // left-aligned. `tooltipPlacement` follows suit.
+    // left-aligned.
     // `dot` renders the leading status dot. The DynamicIsland surfaces its own
-    // always-visible dot at the far left, so it hides this one to avoid doubling up.
+    // ConnectionStatusIndicator dot at the far left, so it hides this one to
+    // avoid doubling up. The uptime / reconnecting / error DETAIL now lives in
+    // that indicator's hover popover — the picker itself no longer tooltips.
     let { align = "left", dot = true }: { align?: "left" | "right"; dot?: boolean } = $props();
 
     const activeHost = $derived(getActiveHost());
@@ -23,24 +22,19 @@
     // The pill renders nothing for non-admins.
     const canSwitch = $derived(isAdmin.value);
 
-    // Server uptime (relocated from the agents-sidebar footer) — surfaced on
-    // hover for everyone, admins included.
-    const uptimeMs = $derived(
-        gw.hello && conn.connectedAt
-            ? (gw.hello.snapshot?.uptimeMs ?? 0) + (Date.now() - conn.connectedAt)
-            : null,
+    // Three-state dot (matches ConnectionStatusIndicator): green connected,
+    // amber connecting, red disconnected/error.
+    const dotClass = $derived(
+        connected
+            ? "bg-success shadow-[0_0_4px_var(--color-success)]"
+            : conn.connecting
+              ? "bg-warning shadow-[0_0_4px_var(--color-warning)] animate-pulse"
+              : "bg-destructive shadow-[0_0_4px_var(--color-destructive)] animate-pulse",
     );
 
-    // One-line connection summary shown on hover: name · status · uptime.
-    const detail = $derived(
+    const label = $derived(
         activeHost
-            ? `${activeHost.name} · ${connected ? "Connected" : "Disconnected"}${
-                  connected && uptimeMs != null ? ` · up ${fmtUptime(uptimeMs)}` : ""
-              }${
-                  !connected && activeHost.lastConnectedAt
-                      ? ` · last seen ${fmtTimeAgo(activeHost.lastConnectedAt)}`
-                      : ""
-              }`
+            ? `${activeHost.name} · ${connected ? "Connected" : conn.connecting ? "Reconnecting" : "Disconnected"}`
             : "No server connected",
     );
 
@@ -62,55 +56,40 @@
 />
 
 {#if canSwitch}
-<Tooltip
-    label={detail}
-    id="server-status-tip"
-    placement={align === "right" ? "left" : "bottom"}
-    openDelay={250}
-    asChild
->
-    {#snippet children(trigger)}
-        <button
-            type="button"
-            {...trigger}
-            class="relative flex items-center gap-1.5 h-6 px-1.5 max-w-[160px] rounded-[var(--radius-sm)] text-[12px] font-medium transition-colors whitespace-nowrap select-none {canSwitch
-                ? 'cursor-pointer'
-                : 'cursor-default'} {!activeHost
-                ? 'text-accent'
-                : 'text-muted-foreground'} {canSwitch
-                ? !activeHost
-                    ? 'hover:bg-white/[0.05]'
-                    : 'hover:text-foreground hover:bg-white/[0.04]'
-                : ''}"
-            onclick={handlePillClick}
-            aria-label={detail}
-            aria-haspopup={canSwitch && activeHost ? "menu" : undefined}
-        >
-            {#if activeHost}
-                {#if dot}
-                    <span
-                        class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors {connected
-                            ? 'bg-success shadow-[0_0_4px_var(--color-success)]'
-                            : 'bg-warning shadow-[0_0_4px_var(--color-warning)] animate-pulse'}"
-                    ></span>
-                {/if}
-                <span class="flex-1 overflow-hidden text-ellipsis text-left">{activeHost.name}</span>
-                {#if canSwitch}
-                    <span class="opacity-40 text-[9px] shrink-0">▾</span>
-                {/if}
-            {:else}
-                {#if dot}
-                    <span
-                        class="w-1.5 h-1.5 rounded-full shrink-0 bg-warning shadow-[0_0_4px_var(--color-warning)] animate-pulse"
-                    ></span>
-                {/if}
-                <span>{canSwitch ? m.hosts_addHost() : "No server"}</span>
+    <button
+        type="button"
+        class="relative flex items-center gap-1.5 h-6 px-1.5 max-w-[160px] rounded-[var(--radius-sm)] text-[12px] font-medium transition-colors whitespace-nowrap select-none {canSwitch
+            ? 'cursor-pointer'
+            : 'cursor-default'} {!activeHost
+            ? 'text-accent'
+            : 'text-muted-foreground'} {canSwitch
+            ? !activeHost
+                ? 'hover:bg-white/[0.05]'
+                : 'hover:text-foreground hover:bg-white/[0.04]'
+            : ''}"
+        onclick={handlePillClick}
+        aria-label={label}
+        aria-haspopup={canSwitch && activeHost ? "menu" : undefined}
+    >
+        {#if activeHost}
+            {#if dot}
+                <span class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors {dotClass}"></span>
             {/if}
+            <span class="flex-1 overflow-hidden text-ellipsis text-left">{activeHost.name}</span>
+            {#if canSwitch}
+                <span class="opacity-40 text-[9px] shrink-0">▾</span>
+            {/if}
+        {:else}
+            {#if dot}
+                <span
+                    class="w-1.5 h-1.5 rounded-full shrink-0 bg-warning shadow-[0_0_4px_var(--color-warning)] animate-pulse"
+                ></span>
+            {/if}
+            <span>{canSwitch ? m.hosts_addHost() : "No server"}</span>
+        {/if}
 
-            {#if ui.dropdownOpen && activeHost && canSwitch}
-                <HostDropdown {align} />
-            {/if}
-        </button>
-    {/snippet}
-</Tooltip>
+        {#if ui.dropdownOpen && activeHost && canSwitch}
+            <HostDropdown {align} />
+        {/if}
+    </button>
 {/if}
