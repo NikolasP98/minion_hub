@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { LayoutDashboard, Inbox, CheckCircle2, Target, FolderKanban, Users } from 'lucide-svelte';
+	import { LayoutDashboard, Inbox, CheckCircle2, Target, Layers, FolderKanban, Users } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { Tooltip } from '$lib/components/ui';
 
@@ -11,6 +11,7 @@
 		{ href: '/workforce/issues', label: m.workforce_issues(), icon: Inbox },
 		{ href: '/workforce/approvals', label: m.workforce_approvals(), icon: CheckCircle2 },
 		{ href: '/workforce/goals', label: m.workforce_goals(), icon: Target },
+		{ href: '/workforce/portfolios', label: m.workforce_portfolios(), icon: Layers },
 		{ href: '/workforce/projects', label: m.workforce_projects(), icon: FolderKanban },
 		{ href: '/workforce/org', label: m.workforce_org(), icon: Users },
 	];
