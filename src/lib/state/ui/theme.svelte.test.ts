@@ -1,18 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { theme } from './theme.svelte';
 
+// Mock syncPreferenceToServer at the top level
+vi.mock('./preference-sync.svelte', () => ({
+  syncPreferenceToServer: vi.fn(),
+}));
+
 describe('theme state — localStorage failure resilience', () => {
   let originalLocalStorage: Storage | undefined;
-  let syncSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     // Store original localStorage
     originalLocalStorage = globalThis.localStorage;
-    
-    // Mock syncPreferenceToServer to track calls
-    vi.mock('./preference-sync.svelte', () => ({
-      syncPreferenceToServer: (syncSpy = vi.fn()),
-    }));
   });
 
   afterEach(() => {
