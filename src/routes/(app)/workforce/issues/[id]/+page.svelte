@@ -282,9 +282,13 @@
 								<span class="font-mono text-xs text-muted-foreground shrink-0">{doc.key}</span>
 								<span class="flex-1 min-w-0 truncate font-medium">{doc.title ?? doc.key}</span>
 								<span class="shrink-0 text-xs text-muted-foreground">rev {doc.latestRevisionNumber}</span>
-								<time class="shrink-0 text-xs text-muted-foreground" datetime={new Date(doc.updatedAt).toISOString()}>
-									{formatDate(doc.updatedAt)}
-								</time>
+								{#if doc.updatedAt}
+									<time class="shrink-0 text-xs text-muted-foreground" datetime={new Date(doc.updatedAt).toISOString()}>
+										{formatDate(doc.updatedAt)}
+									</time>
+								{:else}
+									<span class="shrink-0 text-xs text-muted-foreground">{formatDate(doc.updatedAt)}</span>
+								{/if}
 							</li>
 						{/each}
 					</ul>
@@ -383,7 +387,15 @@
 				</div>
 				<div>
 					<div class="text-xs uppercase tracking-wider text-muted-foreground mb-0.5">Updated</div>
-					<div>{formatDate(issue.updatedAt)}</div>
+					<div>
+						{#if issue.updatedAt}
+							<time datetime={new Date(issue.updatedAt).toISOString()}>
+								{formatDate(issue.updatedAt)}
+							</time>
+						{:else}
+							{formatDate(issue.updatedAt)}
+						{/if}
+					</div>
 				</div>
 				{#if issue.startedAt}
 					<div>
