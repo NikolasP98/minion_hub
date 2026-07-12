@@ -28,7 +28,11 @@ export const sparklineStyle = {
   set(s: SparklineStyle) {
     current = s;
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, s);
+      try {
+        localStorage.setItem(STORAGE_KEY, s);
+      } catch {
+        // Storage failure is non-fatal - server sync will still happen
+      }
     }
     syncPreferenceToServer('sparklineStyle', { style: s });
   },
@@ -38,7 +42,11 @@ export const sparklineStyle = {
     if (s === 'area' || s === 'bar' || s === 'stepped') {
       current = s;
       if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY, s);
+        try {
+          localStorage.setItem(STORAGE_KEY, s);
+        } catch {
+          // Storage failure is non-fatal
+        }
       }
     }
   },
