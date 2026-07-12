@@ -25,7 +25,7 @@
         "@minion-stack/design-tokens": "^0.1.0",
         "@minion-stack/shared": "^0.9.0",
         "@minion-stack/ui": "^0.1.0",
-        "@minion-stack/workforce-client": "^0.2.0",
+        "@minion-stack/workforce-client": "^0.3.0",
         "@nikolasp98/plugin-ui-bridge": "^0.4.0",
         "@paralleldrive/cuid2": "^3.3.0",
         "@supabase/ssr": "^0.12",
@@ -373,7 +373,7 @@
 
     "@minion-stack/ui": ["@minion-stack/ui@0.1.0", "", { "peerDependencies": { "lucide-svelte": ">=0.400.0", "svelte": "^5.0.0" } }, "sha512-Z/LHSNvQUBsw1X9ZurCnUNSn82SVsUeFiEPlQd77kB4pX/alT/VG25KToAhrwbZA3m1AfzvRYseQJbbIQEwqcw=="],
 
-    "@minion-stack/workforce-client": ["@minion-stack/workforce-client@0.2.0", "", { "dependencies": { "jose": "^5.9.6" } }, "sha512-UG5pnKIe3+W0DqTni1lbeP4qhICBsyRecrRJoVr/e261L3eOLLigk6WDCZr3daY/Ma2Fxdy03GVv4q1dYGTTLg=="],
+    "@minion-stack/workforce-client": ["@minion-stack/workforce-client@0.3.0", "", { "dependencies": { "jose": "^5.9.6" } }, "sha512-6lOD60XIXDM4ykyzp7erMLhooCGFje92o/V3Sqv5ocjfU1NJkCw7kJpC75JvvkL9XG48+lH1BPsbl6+EQU0trA=="],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.6", "", { "dependencies": { "@tybys/wasm-util": "^0.10.3" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg=="],
 

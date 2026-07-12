@@ -22,7 +22,7 @@
     "@minion-stack/design-tokens": "^0.1.0",
     "@minion-stack/shared": "^0.9.0",
     "@minion-stack/ui": "^0.1.0",
-    "@minion-stack/workforce-client": "^0.2.0",
+    "@minion-stack/workforce-client": "^0.3.0",
     "@nikolasp98/plugin-ui-bridge": "^0.4.0",
     "@paralleldrive/cuid2": "^3.3.0",
     "@supabase/ssr": "^0.12",
