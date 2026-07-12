@@ -40,7 +40,9 @@ export const sparklineStyle = {
     if (s === 'area' || s === 'bar' || s === 'stepped') {
       current = s;
       if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY, s);
+        try {
+          localStorage.setItem(STORAGE_KEY, s);
+        } catch {}
       }
     }
   },
