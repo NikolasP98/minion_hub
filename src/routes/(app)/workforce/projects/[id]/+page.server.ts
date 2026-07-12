@@ -22,6 +22,7 @@ export const load: PageServerLoad = async (event) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('projects:detail');
+  const { companyId, workforceAvailable } = await event.parent();
 
   const project = await getProject(ctx, params.id);
   if (!project) throw error(404, 'Project not found');
@@ -54,13 +55,12 @@ export const load: PageServerLoad = async (event) => {
   // ── Execution layer (paperclip) ─────────────────────────────────────────────
   // When linked, surface the workforce project's workspaces/issues/goals inline.
   // When not linked, offer the org's workforce projects for linking. All best-effort.
-  const companyId = locals.workforceIdentity?.companyId ?? null;
   const workforceProjectId = workforceProjectIdOf(project);
   let execution: { project: Project; issues: Issue[]; agentNames: Record<string, string> } | null = null;
   let linkable: Array<{ id: string; name: string }> = [];
   let pipelines: Pipeline[] = [];
 
-  if (companyId) {
+  if (companyId && workforceAvailable) {
     const client = workforceServerClient(event);
     if (workforceProjectId) {
       try {
@@ -86,5 +86,5 @@ export const load: PageServerLoad = async (event) => {
     }
   }
 
-  return { project, tasks, progress, timesheets, agents, selfPartyId, partyMap, workforceProjectId, execution, linkable, pipelines, timeline };
+  return { project, tasks, progress, timesheets, agents, selfPartyId, partyMap, workforceProjectId, execution, linkable, pipelines, timeline, workforceAvailable };
 };

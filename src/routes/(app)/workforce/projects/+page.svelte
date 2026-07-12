@@ -108,6 +108,9 @@
 	<PageHeader title="Projects" subtitle="Where people and agents do the work — tasks, milestones, timesheets, execution" />
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
+		{#if !data.workforceAvailable}
+			<div class="offline" role="status"><Boxes size={15} /> {m.workforce_projects_executionUnavailable()}</div>
+		{/if}
 		<div class="kpis">
 			<div class="kpi"><GanttChartSquare size={16} /><span class="n">{data.stats.total}</span><span class="l">Projects</span></div>
 			<div class="kpi"><span class="n">{data.stats.active}</span><span class="l">Active</span></div>
@@ -201,6 +204,7 @@
 	.target { justify-self: end; font-variant-numeric: tabular-nums; }
 	.empty { padding: 1.25rem 1rem; }
 	.wf { padding: 0.25rem 0; }
+	.offline { display: flex; align-items: center; gap: 0.45rem; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-bg3); color: var(--color-muted-foreground); padding: 0.65rem 0.8rem; font-size: 0.8rem; }
 	.wf-head { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--color-muted-foreground); padding: 0.6rem 1rem 0.4rem; }
 	.wf-row { display: grid; grid-template-columns: 1fr 8rem auto; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; font-size: 0.86rem; }
 	.wf-row + .wf-row { border-top: 1px solid var(--hairline); }

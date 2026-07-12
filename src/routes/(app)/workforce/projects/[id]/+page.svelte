@@ -36,8 +36,8 @@
 	const milestones = $derived(data.tasks.filter((t) => t.isMilestone));
 	const workTasks = $derived(data.tasks.filter((t) => !t.isMilestone && t.status !== 'cancelled'));
 	const assignOptions = $derived([
-		...(data.selfPartyId ? [{ id: data.selfPartyId, label: 'Me' }] : []),
-		...data.agents.map((a) => ({ id: a.id, label: a.name ?? 'Agent' })),
+		...(data.selfPartyId ? [{ id: data.selfPartyId, label: 'Me', agent: false }] : []),
+		...data.agents.map((a) => ({ id: a.id, label: a.name ?? 'Agent', agent: true })),
 	]);
 
 	function partyName(id: string | null): string {
@@ -200,7 +200,7 @@
 										{#if t.assigneePartyId && !assignOptions.some((o) => o.id === t.assigneePartyId)}
 											<option value={t.assigneePartyId}>{partyName(t.assigneePartyId)}</option>
 										{/if}
-										{#each assignOptions as o (o.id)}<option value={o.id}>{o.label}</option>{/each}
+										{#each assignOptions as o (o.id)}<option value={o.id} disabled={!!o.agent && !data.workforceAvailable}>{o.label}{#if o.agent && !data.workforceAvailable} — {m.workforce_projects_agentUnavailable()}{/if}</option>{/each}
 									</select>
 								</div>
 								<select
@@ -220,17 +220,21 @@
 		</section>
 
 		<!-- execution layer (paperclip / workforce) -->
-		<section class="card exec">
+		<section class="card exec" class:offline={!data.workforceAvailable}>
 			<header class="exec-head">
 				<span><Boxes size={14} /> Execution (workforce)</span>
 				{#if data.workforceProjectId}
 					<span>
-						<a class="btn ghost sm" href={`/workforce/projects/${data.project.id}/pipelines`}>
-							<Workflow size={13} /> {m.workforce_pipelines_title()}
-						</a>
+						{#if data.workforceAvailable}
+							<a class="btn ghost sm" href={`/workforce/projects/${data.project.id}/pipelines`}>
+								<Workflow size={13} /> {m.workforce_pipelines_title()}
+							</a>
+						{:else}
+							<span class="btn ghost sm disabled" aria-disabled="true"><Workflow size={13} /> {m.workforce_pipelines_title()}</span>
+						{/if}
 						<button
 							class="btn ghost sm"
-							disabled={busy || !canAct('projects', 'edit')}
+							disabled={busy || !data.workforceAvailable || !canAct('projects', 'edit')}
 							title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 							onclick={() => patchProject({ workforceProjectId: null })}
 						><Unlink size={13} /> Unlink</button>
@@ -238,7 +242,9 @@
 				{/if}
 			</header>
 
-			{#if data.execution}
+			{#if !data.workforceAvailable}
+				<p class="t-caption empty">{m.workforce_projects_executionUnavailable()}</p>
+			{:else if data.execution}
 				<div class="exec-meta">
 					<span class="font-mono t-caption">{data.execution.project.urlKey}</span>
 					<span class="t-caption">lead {wfAgent(data.execution.project.leadAgentId)}</span>
@@ -400,6 +406,7 @@
 	.btn.ghost { background: var(--color-bg3); color: var(--color-foreground); }
 	.btn.sm { height: 1.7rem; font-size: 0.78rem; padding: 0 0.55rem; }
 	.btn:disabled { opacity: 0.5; cursor: default; }
+	.btn.disabled { opacity: 0.5; cursor: default; }
 	.board { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 0.6rem; align-items: start; }
 	.col { background: var(--color-bg2, var(--color-bg3)); border: 1px solid var(--hairline); border-radius: var(--radius-lg); min-height: 4rem; }
 	.col-head { font-size: 0.76rem; font-weight: 600; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--hairline); display: flex; justify-content: space-between; color: var(--color-muted-foreground); }
@@ -413,6 +420,7 @@
 	.mini { height: 1.6rem; font-size: 0.74rem; border-radius: var(--radius-sm, 4px); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.25rem; max-width: 100%; flex: 1; }
 	.mini.status { width: 100%; }
 	.exec { padding: 0.6rem 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
+	.exec.offline { opacity: 0.65; background: var(--color-bg3); }
 	.exec-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; color: var(--color-muted-foreground); }
 	.exec-head > span { display: inline-flex; align-items: center; gap: 0.4rem; }
 	.exec-meta { display: flex; flex-wrap: wrap; gap: 0.75rem; }

@@ -2240,6 +2240,8 @@
   "workforce_events": "eventos",
   "workforce_noActivityYet": "Sin actividad aún.",
   "workforce_pipelines_title": "Pipelines",
+  "workforce_projects_executionUnavailable": "La orquestación de agentes no está disponible. Los proyectos y las tareas siguen disponibles; las acciones de agentes están pausadas.",
+  "workforce_projects_agentUnavailable": "sin conexión",
   "workforce_pipelines_new": "Nuevo pipeline",
   "workforce_pipelines_none": "Aún no hay pipelines.",
   "workforce_pipelines_showArchived": "Mostrar archivados",

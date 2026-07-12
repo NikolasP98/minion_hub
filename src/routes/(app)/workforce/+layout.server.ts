@@ -1,5 +1,6 @@
 import { redirect, error } from '@sveltejs/kit';
 import { ensureWorkforceCompany } from '$lib/server/workforce-company';
+import { canRenderWithoutWorkforce } from '$lib/server/workforce-degradation';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -15,7 +16,7 @@ export const load: LayoutServerLoad = async (event) => {
   // the gate below — it must render WITHOUT being gated, or a no-org /
   // provision-failed user loops welcome → welcome forever.
   if (event.url.pathname === '/workforce/welcome') {
-    return { companyId: null };
+    return { companyId: null, workforceAvailable: false };
   }
 
   const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId ?? null;
@@ -23,6 +24,7 @@ export const load: LayoutServerLoad = async (event) => {
 
   // company.id === orgId. ensureWorkforceCompany is idempotent: it returns fast
   // when the company exists and creates it (with id=orgId) on first visit.
+  let workforceAvailable = true;
   try {
     await ensureWorkforceCompany(event, orgId);
   } catch (err) {
@@ -32,10 +34,14 @@ export const load: LayoutServerLoad = async (event) => {
     // real provisioning problem → reason-aware welcome.
     if (!status || status >= 500) {
       console.warn('[workforce] backend unreachable', err);
-      throw error(status && status >= 500 ? status : 502, 'Workforce backend unavailable');
+      if (!canRenderWithoutWorkforce(event.url.pathname)) {
+        throw error(status && status >= 500 ? status : 502, 'Workforce backend unavailable');
+      }
+      workforceAvailable = false;
+    } else {
+      console.warn('[workforce] provisioning failed', err);
+      throw redirect(302, '/workforce/welcome?reason=provision-failed');
     }
-    console.warn('[workforce] provisioning failed', err);
-    throw redirect(302, '/workforce/welcome?reason=provision-failed');
   }
 
   // Make the id visible to child +page.server.ts loads this request.
@@ -43,5 +49,5 @@ export const load: LayoutServerLoad = async (event) => {
     event.locals.workforceIdentity.companyId = orgId;
   }
 
-  return { companyId: orgId };
+  return { companyId: orgId, workforceAvailable };
 };

@@ -18,6 +18,7 @@ export const load: PageServerLoad = async (event) => {
   if (!ctx) throw error(401, 'Authentication required');
   if (!(await isModuleEnabled(ctx, 'projects'))) throw error(404, 'Projects module disabled');
   depends('projects:list');
+  const { companyId, workforceAvailable } = await event.parent();
 
   // Mirror workforce agents into the spine so the Lead/assignee pickers list them (best-effort).
   await syncAgentParties(ctx, { id: ctx.profileId ?? null, name: locals.user?.displayName ?? null, email: locals.user?.email ?? null });
@@ -25,9 +26,8 @@ export const load: PageServerLoad = async (event) => {
   const [projects, templates] = await Promise.all([listProjects(ctx, {}), listTemplates(ctx)]);
 
   // Paperclip projects (best-effort — the page must render if the backend is down).
-  const companyId = locals.workforceIdentity?.companyId ?? null;
   let workforce: Array<{ id: string; name: string; status: string; targetDate: string | null; color: string | null }> = [];
-  if (companyId) {
+  if (companyId && workforceAvailable) {
     try {
       const wf = await workforceServerClient(event).projects.list(companyId);
       const linked = new Set(projects.map((p) => workforceProjectIdOf(p)).filter(Boolean) as string[]);
@@ -43,5 +43,5 @@ export const load: PageServerLoad = async (event) => {
     acc[p.status] = (acc[p.status] ?? 0) + 1;
     return acc;
   }, {});
-  return { projects, templates, workforce, stats: { total: projects.length, active: byStatus.active ?? 0, open: byStatus.open ?? 0 } };
+  return { projects, templates, workforce, workforceAvailable, stats: { total: projects.length, active: byStatus.active ?? 0, open: byStatus.open ?? 0 } };
 };
