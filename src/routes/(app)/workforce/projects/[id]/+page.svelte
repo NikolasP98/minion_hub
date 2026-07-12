@@ -2,7 +2,7 @@
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
 	import { PageHeader } from '$lib/components/ui';
-	import { Flag, Plus, Clock, Boxes, Link2, Unlink } from 'lucide-svelte';
+	import { Flag, Plus, Clock, Boxes, Link2, Unlink, Workflow } from 'lucide-svelte';
 	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -199,12 +199,17 @@
 			<header class="exec-head">
 				<span><Boxes size={14} /> Execution (workforce)</span>
 				{#if data.workforceProjectId}
-					<button
-						class="btn ghost sm"
-						disabled={busy || !canAct('projects', 'edit')}
-						title={canAct('projects', 'edit') ? undefined : m.no_permission()}
-						onclick={() => patchProject({ workforceProjectId: null })}
-					><Unlink size={13} /> Unlink</button>
+					<span>
+						<a class="btn ghost sm" href={`/workforce/projects/${data.project.id}/pipelines`}>
+							<Workflow size={13} /> {m.workforce_pipelines_title()}
+						</a>
+						<button
+							class="btn ghost sm"
+							disabled={busy || !canAct('projects', 'edit')}
+							title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+							onclick={() => patchProject({ workforceProjectId: null })}
+						><Unlink size={13} /> Unlink</button>
+					</span>
 				{/if}
 			</header>
 

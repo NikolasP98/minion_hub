@@ -3,6 +3,7 @@
 	import type { IssueStatus } from '@minion-stack/workforce-client';
 	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
 	import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
+	import PipelineStepper from '$lib/components/workforce/PipelineStepper.svelte';
 
 	import { invalidateAll } from '$app/navigation';
 
@@ -177,24 +178,7 @@
 	{#if pipeline.length > 0}
 		<section class="rounded-lg border border-border bg-card px-4 py-3">
 			<h2 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Pipeline</h2>
-			<ol class="flex flex-wrap items-center gap-1">
-				{#each pipeline as step, i (step.key)}
-					{#if i > 0}<li aria-hidden="true" class="text-muted-foreground/50 px-1">→</li>{/if}
-					<li
-						class="flex items-center gap-2 rounded-full border px-3 py-1 text-xs
-							{step.state === 'done'
-							? 'border-green-500/40 bg-green-500/10 text-green-600'
-							: step.state === 'current'
-								? 'border-blue-500/50 bg-blue-500/10 text-blue-600 font-medium'
-								: 'border-border text-muted-foreground'}"
-					>
-						<span>{step.label}</span>
-						{#if step.who}<span class="opacity-75">· {step.who}</span>{/if}
-						{#if step.state === 'done'}<span aria-label="done">✓</span>{/if}
-						{#if step.state === 'current'}<span class="inline-block size-1.5 rounded-full bg-blue-500 animate-pulse" aria-label="current step"></span>{/if}
-					</li>
-				{/each}
-			</ol>
+			<PipelineStepper steps={pipeline} />
 			{#if issue.executionState?.lastDecisionOutcome}
 				<p class="mt-2 text-xs text-muted-foreground">
 					Last gate decision: <span class="font-medium {issue.executionState.lastDecisionOutcome === 'approved' ? 'text-green-600' : 'text-amber-600'}">{issue.executionState.lastDecisionOutcome.replace('_', ' ')}</span>
