@@ -28,7 +28,9 @@ export const sparklineStyle = {
   set(s: SparklineStyle) {
     current = s;
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, s);
+      try {
+        localStorage.setItem(STORAGE_KEY, s);
+      } catch {}
     }
     syncPreferenceToServer('sparklineStyle', { style: s });
   },

@@ -19,7 +19,9 @@ function loadConfig(): ThemeConfig {
 
 function saveConfig(cfg: ThemeConfig) {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  } catch {}
 }
 
 const initial = loadConfig();
