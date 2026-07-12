@@ -185,6 +185,7 @@ export function ensureAgentChat(agentId: string): AgentChatState {
   if (!agentChat[agentId]) {
     agentChat[agentId] = {
       messages: [],
+      sessionKey: `agent:${agentId}:main`,
       stream: null,
       streamMessage: null,
       streamDisplay: '',
@@ -198,6 +199,7 @@ export function ensureAgentChat(agentId: string): AgentChatState {
     };
   }
   const chat = agentChat[agentId];
+  chat.sessionKey ??= `agent:${agentId}:main`;
   // Older persisted/HMR states may predate these fields.
   chat.liveTools ??= [];
   chat.liveActivity ??= null;

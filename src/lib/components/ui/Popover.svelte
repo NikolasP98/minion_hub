@@ -24,6 +24,7 @@
     class?: string;
     /** Skip the default surface-3 styling — child brings its own panel. */
     bare?: boolean;
+    disabled?: boolean;
   }
 
   let {
@@ -33,6 +34,7 @@
     placement = 'bottom',
     class: cls = '',
     bare = false,
+    disabled = false,
   }: Props = $props();
 
   const popoverId = `ui-popover-${nextId++}`;
@@ -51,6 +53,7 @@
 
 <button
   {...api.getTriggerProps()}
+  {disabled}
   class="inline-flex items-center bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-[var(--radius-md)]"
 >
   {@render trigger()}

@@ -8,11 +8,13 @@ import { conn } from '$lib/state/gateway/connection.svelte';
 import { uuid } from '@minion-stack/shared';
 import { sendRequest } from '../gateway-rpc';
 
-export function loadChatHistory(agentId: string): Promise<void> {
+export function loadChatHistory(agentId: string, sessionKey?: string): Promise<void> {
   const chat = ensureAgentChat(agentId);
+  const targetSessionKey = sessionKey ?? chat.sessionKey ?? `agent:${agentId}:main`;
+  chat.sessionKey = targetSessionKey;
   const isInitialLoad = chat.messages.length === 0;
   if (isInitialLoad) chat.loading = true;
-  return sendRequest('chat.history', { sessionKey: `agent:${agentId}:main`, limit: 200 })
+  return sendRequest('chat.history', { sessionKey: targetSessionKey, limit: 200 })
     .then((res) => {
       const incoming = Array.isArray((res as { messages?: never[] })?.messages)
         ? (res as { messages: never[] }).messages
@@ -29,13 +31,20 @@ export function loadChatHistory(agentId: string): Promise<void> {
     });
 }
 
-/** New chat: reset the agent's session on the gateway and clear the local thread. */
+/**
+ * New chat: select a fresh named session key and clear the local thread.
+ * Do not reset/archive the previous key — keeping it in the session store is
+ * what makes it available from chat history.
+ */
 export async function resetChat(agentId: string): Promise<void> {
   const chat = ensureAgentChat(agentId);
-  await sendRequest('sessions.reset', { key: `agent:${agentId}:main`, reason: 'new' }).catch(
-    () => {},
-  );
+  const nextSessionKey = `agent:${agentId}:chat:${uuid()}`;
+  // Materialize the empty session immediately. Without this, the gateway only
+  // creates it on first send and the history popover cannot recover an empty
+  // newly-created conversation after the user switches away.
+  await sendRequest('sessions.patch', { key: nextSessionKey, label: null });
   chat.messages.splice(0, chat.messages.length);
+  chat.sessionKey = nextSessionKey;
   chat.stream = null;
   chat.streamMessage = null;
   chat.streamDisplay = '';
@@ -49,7 +58,7 @@ export function sendChatMsg(agentId: string) {
   const msg = chat.inputText.trim();
   if (!msg || chat.sending || !conn.connected) return;
 
-  const sessionKey = `agent:${agentId}:main`;
+  const sessionKey = chat.sessionKey ?? `agent:${agentId}:main`;
   const runId = uuid();
 
   pushChatMessage(chat, {

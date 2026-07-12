@@ -6,6 +6,8 @@ export interface ChatMessage {
 
 export interface AgentChatState {
   messages: ChatMessage[];
+  /** Gateway session currently displayed by this agent chat surface. */
+  sessionKey: string;
   stream: string | null;
   /**
    * The full partial assistant message from the latest streaming delta — carries

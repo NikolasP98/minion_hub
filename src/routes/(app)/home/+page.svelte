@@ -8,6 +8,7 @@
 	import EventModal from '$lib/components/my-agent/EventModal.svelte';
 	import EmailModal from '$lib/components/my-agent/EmailModal.svelte';
 	import ChatInput from '$lib/components/my-agent/ChatInput.svelte';
+	import ChatHistoryPopover from '$lib/components/my-agent/ChatHistoryPopover.svelte';
 	import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
 	import CallControls from '$lib/components/my-agent/CallControls.svelte';
 	import NotesPanel from '$lib/components/my-agent/NotesPanel.svelte';
@@ -46,6 +47,11 @@
 	} from '$lib/state/features/voice-call.svelte';
 	import { extractText, stripTtsTags } from '$lib/utils/text';
 	import {
+		normalizeTurnBranches,
+		projectTurnBranches,
+		type TurnBranch,
+	} from '$lib/chat/response-tree';
+	import {
 		getFeedToday,
 		type ObservationRow,
 		type CalendarItem,
@@ -54,7 +60,16 @@
 	import { createConnectedFetch } from '$lib/state/async.svelte';
 	import { distinctProviders } from '$lib/components/my-agent/provider';
 	import { dragContextIcon, type DragContextKind } from '$lib/utils/drag-context';
-	import { ChevronDown, MessageSquarePlus, Copy, CornerUpLeft, RotateCcw } from 'lucide-svelte';
+	import {
+		ChevronDown,
+		ChevronLeft,
+		ChevronRight,
+		MessageSquarePlus,
+		Copy,
+		CornerUpLeft,
+		Pencil,
+		RotateCcw,
+	} from 'lucide-svelte';
 	import { tick } from 'svelte';
 	import type { PageData } from './$types';
 
@@ -426,6 +441,10 @@
 		/** Dragged-context blocks parsed out of a user message — render as chips. */
 		chips: UserContextChip[];
 	}
+	let turnBranches = $state<Record<string, TurnBranch>>({});
+	let branchOwner = $state<string | null>(null);
+	let editingTurn = $state<string | null>(null);
+	let editText = $state('');
 	const renderedMessages = $derived.by<RenderedRow[]>(() => {
 		const seen = new Map<string, number>();
 		const rows: RenderedRow[] = [];
@@ -450,6 +469,51 @@
 		}
 		return rows;
 	});
+
+	/**
+	 * Render alternate attempts at the original prompt's position. The gateway
+	 * stores retries as ordinary appended turns and exposes no parent message id,
+	 * so branch membership is recorded when the user explicitly retries/edits.
+	 */
+	const visibleMessages = $derived(projectTurnBranches(renderedMessages, turnBranches));
+
+	// Retry/edit lineage is a UI read-model over the append-only gateway
+	// transcript. Persist it per agent so final-history reconciliation and a page
+	// refresh do not erase attempt navigation. The transcript remains the source
+	// of truth; invalid/stale keys are ignored by projectTurnBranches.
+	const branchStorageKey = (id: string, sessionKey: string) =>
+		`minion:chat-branches:v1:${id}:${sessionKey}`;
+	$effect(() => {
+		if (!agentId || typeof localStorage === 'undefined') return;
+		const sessionKey = chat?.sessionKey ?? `agent:${agentId}:main`;
+		const owner = `${agentId}:${sessionKey}`;
+		if (branchOwner === owner) return;
+		branchOwner = owner;
+		try {
+			turnBranches = normalizeTurnBranches(
+				JSON.parse(localStorage.getItem(branchStorageKey(agentId, sessionKey)) ?? '{}'),
+			);
+		} catch {
+			turnBranches = {};
+		}
+	});
+	$effect(() => {
+		if (!agentId || typeof localStorage === 'undefined') return;
+		const sessionKey = chat?.sessionKey ?? `agent:${agentId}:main`;
+		if (branchOwner !== `${agentId}:${sessionKey}`) return;
+		localStorage.setItem(branchStorageKey(agentId, sessionKey), JSON.stringify(turnBranches));
+	});
+
+	async function startNewChat() {
+		if (!agentId) return;
+		await resetChat(agentId);
+		turnBranches = {};
+	}
+
+	async function selectConversation(sessionKey: string) {
+		if (!agentId || sessionKey === chat?.sessionKey) return;
+		await loadChatHistory(agentId, sessionKey);
+	}
 
 	// Live status while a run streams: the context-aware verb from live tool
 	// events ("Reading…", "Remembering…") wins; falls back to block inspection,
@@ -545,21 +609,65 @@
 
 	// Retry re-asks the user turn that produced this row: for an assistant reply,
 	// re-send the nearest preceding user message; for a user message, re-send it.
+	async function registerAttempt(rootKey: string, text: string) {
+		if (sending || !agentId || !conn.connected) return;
+		const branch = turnBranches[rootKey] ?? { attempts: [rootKey], active: 0 };
+		const before = new Set(renderedMessages.map((row) => row.key));
+		handleSubmit(text, 'ask');
+		await tick();
+		// Resolve the optimistic row from the actual post-send projection instead
+		// of guessing its occurrence suffix. This remains correct if row-key
+		// generation changes or an identical prompt already exists elsewhere.
+		const attemptKey = [...renderedMessages]
+			.reverse()
+			.find((row) => row.role === 'user' && !before.has(row.key) && rowText(row).trim() === text)?.key;
+		if (!attemptKey) return;
+		branch.attempts.push(attemptKey);
+		branch.active = branch.attempts.length - 1;
+		turnBranches[rootKey] = branch;
+	}
+
+	function rootFor(key: string): string {
+		return Object.entries(turnBranches).find(([, branch]) => branch.attempts.includes(key))?.[0] ?? key;
+	}
+
 	function retryRow(ri: number) {
 		let ui = ri;
-		if (renderedMessages[ri]?.role === 'assistant') {
-			while (ui >= 0 && renderedMessages[ui].role !== 'user') ui--;
+		if (visibleMessages[ri]?.role === 'assistant') {
+			while (ui >= 0 && visibleMessages[ui].role !== 'user') ui--;
 		}
-		const src = renderedMessages[ui];
+		const src = visibleMessages[ui];
 		if (!src || src.role !== 'user') return;
 		const text = rowText(src).trim();
-		if (text) handleSubmit(text, 'ask');
+		if (text) void registerAttempt(rootFor(src.key), text);
+	}
+
+	function beginEdit(row: RenderedRow) {
+		editingTurn = rootFor(row.key);
+		editText = rowText(row);
+	}
+
+	function saveEdit() {
+		const text = editText.trim();
+		if (!editingTurn || !text || sending) return;
+		void registerAttempt(editingTurn, text);
+		editingTurn = null;
+		editText = '';
+	}
+
+	function selectAttempt(rootKey: string, delta: number) {
+		const branch = turnBranches[rootKey];
+		if (!branch) return;
+		branch.active = Math.max(0, Math.min(branch.attempts.length - 1, branch.active + delta));
 	}
 
 	function actionsFor(row: RenderedRow, ri: number): MessageAction[] {
 		return [
 			{ icon: Copy, label: m.chat_copy(), confirm: true, onclick: () => copyRow(row) },
 			{ icon: CornerUpLeft, label: m.chat_reply(), onclick: () => replyToRow(row) },
+			...(row.role === 'user'
+				? [{ icon: Pencil, label: m.chat_edit(), onclick: () => beginEdit(row) }]
+				: []),
 			{ icon: RotateCcw, label: m.chat_retry(), onclick: () => retryRow(ri) },
 		];
 	}
@@ -625,16 +733,26 @@
 						<AgentGreeting greeting={data.greeting} userName={data.userName} />
 					</div>
 				</div>
+				<div class="chat-header-actions">
+					{#if agentId}
+						<ChatHistoryPopover
+							{agentId}
+							activeSessionKey={chat?.sessionKey ?? `agent:${agentId}:main`}
+							disabled={!conn.connected || sending}
+							onselect={selectConversation}
+						/>
+					{/if}
 				<button
 					type="button"
 					class="new-chat"
 					disabled={!agentId || !conn.connected || sending}
 					title={m.chat_newChat()}
-					onclick={() => agentId && resetChat(agentId)}
+					onclick={startNewChat}
 				>
 					<MessageSquarePlus size={14} />
 					<span>{m.chat_newChat()}</span>
 				</button>
+				</div>
 			</header>
 
 			{#if voiceCall.error}
@@ -804,15 +922,15 @@
 			<!-- Chat section: typed messages AND the live call transcript land here.
 			     Grows to fill the space between the agenda and the input. -->
 			<section class="chat-section" aria-label={m.feed_conversationAria()}>
-				{#if renderedMessages.length > 0 || streamMessage || stream || sending}
+				{#if visibleMessages.length > 0 || streamMessage || stream || sending}
 					<div class="thread" bind:this={threadEl} onscroll={onThreadScroll}>
 						<div class="thread-inner">
-							{#each renderedMessages as row, ri (row.key)}
+							{#each visibleMessages as row, ri (row.key)}
 								<!-- One timestamp per MESSAGE BLOCK: a run of same-role rows (an
 								     agent turn spans several tool/reasoning messages) stamps only
 								     its last row, not every intermediate action. -->
 								{@const blockEnd =
-									ri === renderedMessages.length - 1 || renderedMessages[ri + 1].role !== row.role}
+									ri === visibleMessages.length - 1 || visibleMessages[ri + 1].role !== row.role}
 								{#if row.role === 'assistant'}
 									<!-- Assistant turn: ChatTurn owns its layout — quiet reasoning/tool
 									     rows OUTSIDE the bubble, the reply inside its own bubble.
@@ -829,6 +947,8 @@
 										{/if}
 									</div>
 								{:else}
+									{@const branchRoot = rootFor(row.key)}
+									{@const branch = turnBranches[branchRoot]}
 									<div class="bubble-row user">
 										{#if row.chips.length > 0}
 											<div class="sent-chips">
@@ -840,14 +960,31 @@
 												{/each}
 											</div>
 										{/if}
-										{#if row.text.trim().length > 0}
+									{#if row.text.trim().length > 0}
+										{#if editingTurn === branchRoot}
+											<div class="edit-turn">
+												<textarea bind:value={editText} aria-label={m.chat_edit()} rows="3"></textarea>
+												<div class="edit-actions">
+													<button type="button" onclick={() => (editingTurn = null)}>{m.chat_cancelEdit()}</button>
+													<button type="button" class="primary" disabled={!editText.trim() || sending} onclick={saveEdit}>{m.chat_saveEdit()}</button>
+												</div>
+											</div>
+										{:else}
 											<div class="bubble user">{row.text}</div>
-											<div class="msg-foot">
+										{/if}
+										<div class="msg-foot">
 												{#if row.ts}
 													<time class="bubble-time" title={exactTime(row.ts)}>{relTime(row.ts)}</time>
 												{/if}
-												<MessageActions actions={actionsFor(row, ri)} />
-											</div>
+											<MessageActions actions={actionsFor(row, ri)} />
+											{#if branch && branch.attempts.length > 1}
+												<div class="attempt-nav" aria-label={m.chat_attemptLabel({ current: branch.active + 1, total: branch.attempts.length })}>
+													<button type="button" disabled={branch.active === 0} title={m.chat_previousAttempt()} aria-label={m.chat_previousAttempt()} onclick={() => selectAttempt(branchRoot, -1)}><ChevronLeft size={13} /></button>
+													<span>{branch.active + 1}/{branch.attempts.length}</span>
+													<button type="button" disabled={branch.active === branch.attempts.length - 1} title={m.chat_nextAttempt()} aria-label={m.chat_nextAttempt()} onclick={() => selectAttempt(branchRoot, 1)}><ChevronRight size={13} /></button>
+												</div>
+											{/if}
+										</div>
 										{/if}
 									</div>
 								{/if}
@@ -1299,6 +1436,7 @@
 		cursor: pointer;
 		transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 	}
+	.chat-header-actions { display: flex; align-items: center; gap: 6px; }
 	.new-chat:hover:not(:disabled) {
 		color: var(--color-foreground);
 		border-color: color-mix(in srgb, var(--color-foreground) 24%, transparent);
@@ -1326,6 +1464,74 @@
 		padding: 0 2px;
 		font-variant-numeric: tabular-nums;
 		cursor: default;
+	}
+	.attempt-nav {
+		display: inline-flex;
+		align-items: center;
+		gap: 1px;
+		margin-left: 2px;
+		font-size: 10px;
+		color: var(--color-muted-foreground);
+		font-variant-numeric: tabular-nums;
+	}
+	.attempt-nav button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		padding: 0;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		color: inherit;
+		cursor: pointer;
+	}
+	.attempt-nav button:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+		color: var(--color-foreground);
+	}
+	.attempt-nav button:disabled {
+		opacity: 0.3;
+		cursor: default;
+	}
+	.edit-turn {
+		width: min(100%, 520px);
+		padding: 8px;
+		border: 1px solid color-mix(in srgb, var(--color-accent) 42%, transparent);
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--color-accent) 7%, var(--color-background));
+	}
+	.edit-turn textarea {
+		display: block;
+		width: 100%;
+		min-height: 72px;
+		resize: vertical;
+		border: 0;
+		outline: 0;
+		background: transparent;
+		color: var(--color-foreground);
+		font: inherit;
+	}
+	.edit-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 6px;
+		margin-top: 6px;
+	}
+	.edit-actions button {
+		padding: 5px 9px;
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 14%, transparent);
+		border-radius: 6px;
+		background: transparent;
+		color: var(--color-foreground);
+		font-size: 11px;
+		cursor: pointer;
+	}
+	.edit-actions .primary {
+		border-color: var(--color-accent);
+		background: var(--color-accent);
+		color: var(--color-accent-foreground, white);
 	}
 
 	.thinking-row {
