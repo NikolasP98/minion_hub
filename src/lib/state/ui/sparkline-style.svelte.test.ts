@@ -1,17 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { sparklineStyle } from './sparkline-style.svelte';
 
+// Mock syncPreferenceToServer at the top level
+vi.mock('./preference-sync.svelte', () => ({
+  syncPreferenceToServer: vi.fn(),
+}));
+
 describe('sparklineStyle — localStorage failure resilience', () => {
   let originalLocalStorage: Storage | undefined;
 
   beforeEach(() => {
     // Store original localStorage
     originalLocalStorage = globalThis.localStorage;
-    
-    // Mock syncPreferenceToServer
-    vi.mock('./preference-sync.svelte', () => ({
-      syncPreferenceToServer: vi.fn(),
-    }));
   });
 
   afterEach(() => {
