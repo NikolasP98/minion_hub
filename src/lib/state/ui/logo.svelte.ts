@@ -81,7 +81,11 @@ function loadConfig(): LogoConfig {
 
 function saveConfig(cfg: LogoConfig) {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(LOGO_STORAGE_KEY, JSON.stringify(cfg));
+  try {
+    localStorage.setItem(LOGO_STORAGE_KEY, JSON.stringify(cfg));
+  } catch {
+    // Storage failure is non-fatal - server sync will still happen
+  }
 }
 
 // Initialize state

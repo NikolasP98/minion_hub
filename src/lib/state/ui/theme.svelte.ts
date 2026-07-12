@@ -19,7 +19,11 @@ function loadConfig(): ThemeConfig {
 
 function saveConfig(cfg: ThemeConfig) {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  } catch {
+    // Storage failure is non-fatal - server sync will still happen
+  }
 }
 
 const initial = loadConfig();
