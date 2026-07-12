@@ -7,6 +7,8 @@
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { canAct } from '$lib/access/can.svelte';
+	import { pipelineColumns, type PipelineColumnBucket, type KanbanIssueLike } from '$lib/components/workforce/pipeline-columns';
+	import type { Issue } from '@minion-stack/workforce-client';
 
 	let { data }: { data: PageData } = $props();
 
@@ -47,6 +49,29 @@
 	function wfAgent(id: string | null): string {
 		if (!id) return '—';
 		return data.execution?.agentNames[id] ?? `${id.slice(0, 8)}…`;
+	}
+
+	// ── pipeline-step kanban (spec §2.1) ──────────────────────────────────
+	// Issue list rows carry execution_state scalars not on the client Issue type.
+	type IssueRow = Issue & KanbanIssueLike;
+	let pipelineChoice = $state('');
+	const activePipelines = $derived((data.pipelines ?? []).filter((p) => !p.archivedAt));
+	const selectedPipeline = $derived(
+		activePipelines.find((p) => p.id === pipelineChoice) ?? activePipelines[0] ?? null,
+	);
+	const pipelineBoard = $derived(
+		selectedPipeline && data.execution
+			? pipelineColumns(selectedPipeline.steps, data.execution.issues as IssueRow[])
+			: null,
+	);
+	function pipelineColLabel(col: PipelineColumnBucket<IssueRow>): string {
+		switch (col.kind) {
+			case 'intake': return m.workforce_kanban_intake();
+			case 'step': return selectedPipeline?.steps[col.stepIndex!]?.label ?? '—';
+			case 'review': return m.workforce_kanban_inReview();
+			case 'done': return m.workforce_kanban_done();
+			case 'blocked': return m.workforce_kanban_blocked();
+		}
 	}
 	function hhmm(min: number): string {
 		return `${Math.floor(min / 60)}h ${min % 60}m`;
@@ -232,33 +257,73 @@
 				{/if}
 				<!-- execution kanban: column = pipeline step, card owner = the step's agent -->
 				{#if data.execution.issues.length}
-					<div class="board exec-board">
-						{#each COLUMNS as col (col)}
-							{@const colIssues = data.execution.issues.filter((i) => i.status === col)}
-							<div class="col">
-								<header class="col-head">{colLabel[col]} <span class="cnt">{colIssues.length}</span></header>
-								<div class="col-body">
-									{#each colIssues as iss (iss.id)}
-										<a class="tcard iss-card" href={`/workforce/issues/${iss.id}`}>
-											<div class="tt">{iss.title}</div>
-											<div class="tmeta">
-												{#if iss.identifier}<span class="hid">{iss.identifier}</span>{/if}
-												{#if iss.status === 'in_review' && iss.assigneeUserId}
-													<span class="step-chip hitl">HITL approval · you</span>
-												{:else if iss.status === 'in_review' && iss.assigneeAgentId}
-													<span class="step-chip review">review · {wfAgent(iss.assigneeAgentId)}</span>
-												{:else if iss.assigneeAgentId}
-													<span class="step-chip">{wfAgent(iss.assigneeAgentId)}</span>
-												{:else if iss.assigneeUserId}
-													<span class="step-chip hitl">you</span>
-												{/if}
-											</div>
-										</a>
-									{/each}
+					{#if pipelineBoard && selectedPipeline}
+						{#if activePipelines.length > 1}
+							<label class="exec-meta t-caption">
+								{m.workforce_pipelines_title()}
+								<select class="mini" bind:value={pipelineChoice}>
+									{#each activePipelines as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+								</select>
+							</label>
+						{/if}
+						<div class="board exec-board" style={`grid-template-columns: repeat(${pipelineBoard.length}, minmax(140px, 1fr));`}>
+							{#each pipelineBoard as col (col.key)}
+								{@const step = col.stepIndex != null ? selectedPipeline.steps[col.stepIndex] : null}
+								<div class="col">
+									<header class="col-head">{pipelineColLabel(col)} <span class="cnt">{col.issues.length}</span></header>
+									<div class="col-body">
+										{#each col.issues as iss (iss.id)}
+											<a class="tcard iss-card" href={`/workforce/issues/${iss.id}`}>
+												<div class="tt">{iss.title}</div>
+												<div class="tmeta">
+													{#if iss.identifier}<span class="hid">{iss.identifier}</span>{/if}
+													{#if step && col.stepIndex != null && col.stepIndex > 0}
+														{#if step.participant.type === 'user'}
+															<span class="step-chip hitl">{step.label} · {m.workforce_kanban_you()}</span>
+														{:else}
+															<span class="step-chip review">{step.label} · {wfAgent(step.participant.agentId ?? null)}</span>
+														{/if}
+													{:else if iss.assigneeAgentId}
+														<span class="step-chip">{wfAgent(iss.assigneeAgentId)}</span>
+													{:else if iss.assigneeUserId}
+														<span class="step-chip hitl">{m.workforce_kanban_you()}</span>
+													{/if}
+												</div>
+											</a>
+										{/each}
+									</div>
 								</div>
-							</div>
-						{/each}
-					</div>
+							{/each}
+						</div>
+					{:else}
+						<div class="board exec-board">
+							{#each COLUMNS as col (col)}
+								{@const colIssues = data.execution.issues.filter((i) => i.status === col)}
+								<div class="col">
+									<header class="col-head">{colLabel[col]} <span class="cnt">{colIssues.length}</span></header>
+									<div class="col-body">
+										{#each colIssues as iss (iss.id)}
+											<a class="tcard iss-card" href={`/workforce/issues/${iss.id}`}>
+												<div class="tt">{iss.title}</div>
+												<div class="tmeta">
+													{#if iss.identifier}<span class="hid">{iss.identifier}</span>{/if}
+													{#if iss.status === 'in_review' && iss.assigneeUserId}
+														<span class="step-chip hitl">HITL approval · you</span>
+													{:else if iss.status === 'in_review' && iss.assigneeAgentId}
+														<span class="step-chip review">review · {wfAgent(iss.assigneeAgentId)}</span>
+													{:else if iss.assigneeAgentId}
+														<span class="step-chip">{wfAgent(iss.assigneeAgentId)}</span>
+													{:else if iss.assigneeUserId}
+														<span class="step-chip hitl">you</span>
+													{/if}
+												</div>
+											</a>
+										{/each}
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
 				{:else}
 					<p class="t-caption empty">No issues in the linked workforce project.</p>
 				{/if}

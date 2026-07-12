@@ -15,7 +15,7 @@ import {
 } from '$server/services/projects.service';
 import { workforceServerClient } from '$lib/server/workforce-fetch';
 import { listEntityTimeline } from '$server/services/activity.service';
-import type { Project, Issue } from '@minion-stack/workforce-client';
+import type { Project, Issue, Pipeline } from '@minion-stack/workforce-client';
 
 export const load: PageServerLoad = async (event) => {
   const { locals, params, depends } = event;
@@ -58,19 +58,22 @@ export const load: PageServerLoad = async (event) => {
   const workforceProjectId = workforceProjectIdOf(project);
   let execution: { project: Project; issues: Issue[]; agentNames: Record<string, string> } | null = null;
   let linkable: Array<{ id: string; name: string }> = [];
+  let pipelines: Pipeline[] = [];
 
   if (companyId) {
     const client = workforceServerClient(event);
     if (workforceProjectId) {
       try {
-        const [wfProject, issues, wfAgents] = await Promise.all([
+        const [wfProject, issues, wfAgents, wfPipelines] = await Promise.all([
           client.projects.get(workforceProjectId, companyId),
           client.issues.list(companyId, { projectId: workforceProjectId }),
           client.agents.list(companyId),
+          client.pipelines.list(companyId, { projectId: workforceProjectId }).catch(() => [] as Pipeline[]),
         ]);
         const agentNames: Record<string, string> = {};
         for (const a of wfAgents) agentNames[a.id] = a.name;
         execution = { project: wfProject, issues, agentNames };
+        pipelines = wfPipelines;
       } catch {
         execution = null; // link points at a gone/unreachable project — show "link broken" affordance
       }
@@ -83,5 +86,5 @@ export const load: PageServerLoad = async (event) => {
     }
   }
 
-  return { project, tasks, progress, timesheets, agents, selfPartyId, partyMap, workforceProjectId, execution, linkable, timeline };
+  return { project, tasks, progress, timesheets, agents, selfPartyId, partyMap, workforceProjectId, execution, linkable, pipelines, timeline };
 };

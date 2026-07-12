@@ -4,11 +4,12 @@
 	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
 	import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
 	import PipelineStepper from '$lib/components/workforce/PipelineStepper.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	import { invalidateAll } from '$app/navigation';
 
 	let { data }: { data: PageData } = $props();
-	const { issue, comments, documents, workProducts, approvals, children, agentNames } = $derived(data);
+	const { issue, comments, documents, workProducts, approvals, children, agentNames, decisions } = $derived(data);
 
 	let decisionComment = $state('');
 	let decisionBusy = $state(false);
@@ -107,7 +108,8 @@
 		const stageActive = state?.status === 'pending';
 		const stageSteps: PipelineStep[] = policy.stages.map((s) => ({
 			key: s.id,
-			label: s.type === 'review' ? 'Review' : 'Approval',
+			// eval stages compile to type 'review' — distinguish via meta.kind
+			label: s.meta?.kind === 'eval' ? m.workforce_pipeline_stepEval() : s.type === 'review' ? 'Review' : 'Approval',
 			who: principalLabel(s.participants[0] ?? null),
 			state: completed.has(s.id) ? 'done' : stageActive && state?.currentStageId === s.id ? 'current' : 'pending',
 		}));
@@ -123,6 +125,14 @@
 		};
 		const done: PipelineStep = { key: 'done', label: 'Done', who: '', state: issue.status === 'done' ? 'done' : 'pending' };
 		return [fix, ...stageSteps, done];
+	});
+
+	// Rubric of the CURRENT eval stage (if any) — shown collapsed in the Pipeline section.
+	const currentEvalRubric = $derived.by((): string | null => {
+		const state = issue.executionState;
+		if (!state || state.status !== 'pending' || !state.currentStageId) return null;
+		const stage = issue.executionPolicy?.stages.find((s) => s.id === state.currentStageId);
+		return stage?.meta?.kind === 'eval' ? (stage.meta.rubric ?? null) : null;
 	});
 
 	// --- origin traceability ---------------------------------------------
@@ -179,6 +189,30 @@
 		<section class="rounded-lg border border-border bg-card px-4 py-3">
 			<h2 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Pipeline</h2>
 			<PipelineStepper steps={pipeline} />
+			{#if decisions.length > 0}
+				<ul class="mt-3 space-y-1.5">
+					{#each decisions as d (d.id)}
+						<li class="flex flex-wrap items-center gap-2 text-xs">
+							<span class="uppercase tracking-wider text-muted-foreground">{d.stageType}</span>
+							<span class="rounded px-1.5 py-0.5 font-medium {d.outcome === 'approved' ? 'bg-green-500/10 text-green-600' : 'bg-amber-500/10 text-amber-600'}">
+								{d.outcome === 'approved' ? m.workforce_decision_approved() : m.workforce_decision_changesRequested()}
+							</span>
+							{#if d.score != null}
+								<span class="rounded bg-muted px-1.5 py-0.5 font-mono font-medium">{d.score}/{d.maxScore ?? '?'}</span>
+							{/if}
+							<time class="text-muted-foreground" datetime={new Date(d.createdAt).toISOString()}>{formatDate(d.createdAt)}</time>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if currentEvalRubric}
+				<details class="mt-3 text-xs">
+					<summary class="cursor-pointer font-medium text-muted-foreground hover:text-foreground">{m.workforce_issue_evalRubric()}</summary>
+					<div class="mt-2 rounded-md border border-border bg-background p-3">
+						<MarkdownMessage value={currentEvalRubric} />
+					</div>
+				</details>
+			{/if}
 			{#if issue.executionState?.lastDecisionOutcome}
 				<p class="mt-2 text-xs text-muted-foreground">
 					Last gate decision: <span class="font-medium {issue.executionState.lastDecisionOutcome === 'approved' ? 'text-green-600' : 'text-amber-600'}">{issue.executionState.lastDecisionOutcome.replace('_', ' ')}</span>

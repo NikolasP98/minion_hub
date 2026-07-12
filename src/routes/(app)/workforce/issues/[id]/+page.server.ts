@@ -12,7 +12,7 @@ export const load: PageServerLoad = async (event) => {
 	const client = workforceServerClient(event);
 
 	try {
-		const [issue, comments, documents, workProducts, approvals, children, agents] = await Promise.all([
+		const [issue, comments, documents, workProducts, approvals, children, agents, decisions] = await Promise.all([
 			client.issues.get(issueId),
 			client.issues.listComments(issueId),
 			client.issues.listDocuments(issueId),
@@ -20,12 +20,13 @@ export const load: PageServerLoad = async (event) => {
 			client.issues.listApprovals(issueId),
 			client.issues.list(companyId, { parentId: issueId }),
 			client.agents.list(companyId),
+			client.issues.listExecutionDecisions(issueId).catch(() => []),
 		]);
 
 		const agentNames: Record<string, string> = {};
 		for (const a of agents) agentNames[a.id] = a.name;
 
-		return { issue, comments, documents, workProducts, approvals, children, agentNames };
+		return { issue, comments, documents, workProducts, approvals, children, agentNames, decisions };
 	} catch (e: any) {
 		throw error(e?.status ?? 502, e?.status === 404 ? 'issue not found' : 'paperclip unavailable');
 	}
