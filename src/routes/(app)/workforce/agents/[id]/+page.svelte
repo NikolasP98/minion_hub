@@ -134,9 +134,15 @@
 					<div class="text-xs text-muted-foreground">{harness.activePrimary?.provider ?? agent.adapterType} · {harness.runtimeClass ?? '—'} · {harness.roleClass ?? agent.role}</div>
 					{#if harness.activeFallbacks.length}<div class="text-xs text-muted-foreground">{m.workforce_harness_fallbacks()}: {harness.activeFallbacks.map((item) => item.model).join(' → ')}</div>{/if}
 				</div>
-				<div class="rounded-md border border-dashed border-border bg-muted/30 p-3 space-y-2">
+				<div class="rounded-md border border-dashed border-border bg-muted/30 p-3 space-y-2" class:opacity-60={harness.recommendedPrimary?.executable === false}>
 					<div class="text-[11px] font-semibold uppercase tracking-wider text-amber-600">{m.workforce_harness_recommended()}</div>
 					<div class="text-sm font-medium font-mono">{harness.recommendedPrimary?.model ?? m.workforce_harness_noRecommendation()}</div>
+					{#if harness.recommendedPrimary}
+						<div class="text-xs text-muted-foreground">{harness.recommendedPrimary.runtimeKind ?? harness.recommendedPrimary.adapterType ?? '—'} · {harness.recommendedPrimary.provider ?? '—'}</div>
+					{/if}
+					{#if harness.recommendedPrimary?.bridgePending}
+						<span class="inline-flex rounded bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700">{m.workforce_harness_bridgePending()}</span>
+					{/if}
 					{#if harness.recommendedFallbacks.length}<div class="text-xs text-muted-foreground">{m.workforce_harness_fallbacks()}: {harness.recommendedFallbacks.map((item) => item.model).join(' → ')}</div>{/if}
 					<p class="text-xs text-muted-foreground">{m.workforce_harness_recommendationHint()}</p>
 				</div>

@@ -2272,6 +2272,7 @@
   "workforce_harness_optionalQualityScore": "Puntuación de calidad (opcional, 0–10)",
   "workforce_harness_humanScore": "Puntuación humana",
   "workforce_harness_executionRoster": "Equipo de ejecución · arnés actual",
+  "workforce_harness_bridgePending": "Se requiere el puente de ejecución antes de activarlo",
   "workforce_projects_executionUnavailable": "La orquestación de agentes no está disponible. Los proyectos y las tareas siguen disponibles; las acciones de agentes están pausadas.",
   "workforce_projects_agentUnavailable": "sin conexión",
   "workforce_pipelines_new": "Nuevo pipeline",

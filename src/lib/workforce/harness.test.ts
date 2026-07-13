@@ -9,6 +9,11 @@ describe('living harness normalization', () => {
 		expect(harness?.skills).toEqual(['review']);
 	});
 
+	it('preserves unavailable bridge metadata on recommendations', () => {
+		const harness = normalizeHarness({ agentId: 'a1', runtime: { recommended: { primary: { runtimeKind: 'minion_drone', model: 'claude-haiku-4-6', provider: 'anthropic', executable: false, bridgePending: true } } } });
+		expect(harness?.recommendedPrimary).toMatchObject({ runtimeKind: 'minion_drone', executable: false, bridgePending: true });
+	});
+
 	it('accepts wrapped batch responses', () => {
 		expect(normalizeHarnessBatch({ harnesses: [{ agentId: 'a1', revision: 1 }] }).a1?.revision).toBe(1);
 	});

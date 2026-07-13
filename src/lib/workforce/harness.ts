@@ -1,4 +1,11 @@
-export type HarnessModel = { model: string; provider: string | null };
+export type HarnessModel = {
+	model: string;
+	provider: string | null;
+	runtimeKind: string | null;
+	adapterType: string | null;
+	executable: boolean;
+	bridgePending: boolean;
+};
 
 export type HarnessSummary = {
 	agentId: string;
@@ -29,10 +36,17 @@ function number(value: unknown): number | null {
 	return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 function model(value: unknown): HarnessModel | null {
-	if (typeof value === 'string') return value.trim() ? { model: value, provider: null } : null;
+	if (typeof value === 'string') return value.trim() ? { model: value, provider: null, runtimeKind: null, adapterType: null, executable: true, bridgePending: false } : null;
 	const row = record(value);
 	const modelName = text(row?.model ?? row?.modelId ?? row?.name);
-	return modelName ? { model: modelName, provider: text(row?.provider) } : null;
+	return modelName ? {
+		model: modelName,
+		provider: text(row?.provider),
+		runtimeKind: text(row?.runtimeKind),
+		adapterType: text(row?.adapterType ?? row?.type),
+		executable: row?.executable !== false,
+		bridgePending: row?.bridgePending === true,
+	} : null;
 }
 function models(value: unknown): HarnessModel[] {
 	return Array.isArray(value) ? value.map(model).filter((item): item is HarnessModel => item !== null) : [];

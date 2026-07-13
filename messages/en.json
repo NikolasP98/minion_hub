@@ -2272,6 +2272,7 @@
   "workforce_harness_optionalQualityScore": "Quality score (optional, 0–10)",
   "workforce_harness_humanScore": "Human score",
   "workforce_harness_executionRoster": "Execution roster · current harness",
+  "workforce_harness_bridgePending": "Runtime bridge required before activation",
   "workforce_projects_executionUnavailable": "Agent orchestration is unavailable. Projects and tasks remain available; agent actions are paused.",
   "workforce_projects_agentUnavailable": "offline",
   "workforce_pipelines_new": "New pipeline",
