@@ -81,7 +81,13 @@ function loadConfig(): LogoConfig {
 
 function saveConfig(cfg: LogoConfig) {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(LOGO_STORAGE_KEY, JSON.stringify(cfg));
+  try {
+    localStorage.setItem(LOGO_STORAGE_KEY, JSON.stringify(cfg));
+  } catch {
+    // Best-effort persistence — storage may be unavailable (disabled,
+    // quota exceeded, restrictive privacy settings). The in-memory state
+    // and server sync must proceed regardless.
+  }
 }
 
 // Initialize state

@@ -19,7 +19,13 @@ function loadConfig(): ThemeConfig {
 
 function saveConfig(cfg: ThemeConfig) {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  } catch {
+    // Best-effort persistence — storage may be unavailable (disabled,
+    // quota exceeded, restrictive privacy settings). The in-memory state
+    // and server sync must proceed regardless.
+  }
 }
 
 const initial = loadConfig();
