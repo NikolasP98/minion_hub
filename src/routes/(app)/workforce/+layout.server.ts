@@ -12,6 +12,11 @@ import type { LayoutServerLoad } from './$types';
 export const load: LayoutServerLoad = async (event) => {
   if (!event.locals.user) throw redirect(302, '/login');
 
+  // Inbox uses this dependency for its six-second live refresh. Registering it
+  // here makes a backend outage recover without a full navigation: invalidating
+  // the Inbox reruns this availability probe as well as the child page load.
+  if (event.url.pathname === '/workforce/inbox') event.depends('app:inbox');
+
   // The welcome page is itself under this layout and is the redirect target for
   // the gate below — it must render WITHOUT being gated, or a no-org /
   // provision-failed user loops welcome → welcome forever.

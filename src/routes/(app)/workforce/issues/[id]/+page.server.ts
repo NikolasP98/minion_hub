@@ -18,6 +18,10 @@ export const load: PageServerLoad = async (event) => {
   const companyId = event.locals.workforceIdentity.companyId;
   const issueId = event.params.id;
   const client = workforceServerClient(event);
+  const viewerRoleKeys =
+    event.locals.workforceIdentity.roleAuthority === 'signed'
+      ? event.locals.workforceIdentity.roleKeys
+      : [];
 
   try {
     const [
@@ -66,6 +70,7 @@ export const load: PageServerLoad = async (event) => {
       decisions,
       pipelineTrace,
       viewerUserId: event.locals.workforceIdentity.userId,
+      viewerRoleKeys,
       workforceAvailable,
     };
   } catch (cause: unknown) {

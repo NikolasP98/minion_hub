@@ -15,6 +15,7 @@ const approvalStage: PipelineTraceStage = {
   kind: 'approval',
   participantType: 'user',
   participantUserId: 'user-1',
+  participantRoleKeys: [],
   onFailStepKey: 'implement',
   minScore: null,
   maxScore: null,
@@ -82,6 +83,39 @@ describe('activePipelineGate', () => {
     });
   });
 
+  it('recognizes an unassigned role-target stage only for an intersecting trusted viewer role', () => {
+    const roleTrace = {
+      ...trace,
+      currentStage: {
+        ...approvalStage,
+        participantType: 'role',
+        participantUserId: null,
+        participantRoleKeys: ['manager', 'security-reviewer'],
+      },
+    };
+    const roleIssue = { ...issue, assigneeUserId: null };
+
+    expect(activePipelineGate(roleIssue, roleTrace, 'user-2', ['security-reviewer'])).toMatchObject(
+      {
+        stage: { participantType: 'role' },
+      },
+    );
+    expect(activePipelineGate(roleIssue, roleTrace, 'user-2', ['staff'])).toBeNull();
+  });
+
+  it('does not let a matching role override a conflicting direct assignment', () => {
+    const roleTrace = {
+      ...trace,
+      currentStage: {
+        ...approvalStage,
+        participantType: 'role',
+        participantUserId: null,
+        participantRoleKeys: ['manager'],
+      },
+    };
+    expect(activePipelineGate(issue, roleTrace, 'user-2', ['manager'])).toBeNull();
+  });
+
   it.each([
     ['main issue', { ...issue, originKind: 'github_issue' }, trace, 'user-1'],
     ['terminal child', { ...issue, status: 'done' }, trace, 'user-1'],
@@ -110,7 +144,9 @@ describe('inline execution-policy compatibility', () => {
 
   it('keeps pending user stages actionable without treating pipeline_step children as inline', () => {
     expect(hasActiveInlinePipelineGate(inlineIssue)).toBe(true);
-    expect(hasActiveInlinePipelineGate({ ...inlineIssue, originKind: 'pipeline_step' })).toBe(false);
+    expect(hasActiveInlinePipelineGate({ ...inlineIssue, originKind: 'pipeline_step' })).toBe(
+      false,
+    );
   });
 
   it('preserves the shipped status/comment/feedbackScore mutation contract', () => {

@@ -31,6 +31,8 @@ declare global {
         token: string;
         userId: string;
         companyId: string | null;
+        roleKeys: string[];
+        roleAuthority: 'signed' | 'board';
       };
     }
   }

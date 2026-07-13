@@ -96,6 +96,7 @@ export function activePipelineGate(
   issue: PipelineGateIssue,
   trace: PipelineTrace | null,
   viewerUserId: string | null,
+  viewerRoleKeys: readonly string[] = [],
 ): PipelineGate | null {
   if (
     !trace ||
@@ -104,18 +105,30 @@ export function activePipelineGate(
     !trace.currentStage ||
     trace.currentStage.key !== trace.currentStepKey ||
     (trace.currentStage.kind !== 'approval' && trace.currentStage.kind !== 'eval') ||
-    trace.currentStage.participantType !== 'user' ||
+    (trace.currentStage.participantType !== 'user' &&
+      trace.currentStage.participantType !== 'role') ||
     issue.originKind !== 'pipeline_step' ||
     !issue.originId ||
     issue.originId !== trace.id ||
     !ACTIVE_STAGE_TASK_STATUSES.has(issue.status) ||
-    !issue.assigneeUserId ||
-    !viewerUserId ||
-    issue.assigneeUserId !== viewerUserId ||
-    trace.currentStage.participantUserId !== issue.assigneeUserId
+    !viewerUserId
   ) {
     return null;
   }
+
+  const directEligible =
+    trace.currentStage.participantType === 'user' &&
+    !!issue.assigneeUserId &&
+    issue.assigneeUserId === viewerUserId &&
+    trace.currentStage.participantUserId === issue.assigneeUserId;
+  const viewerRoles = new Set(viewerRoleKeys);
+  const roleEligible =
+    trace.currentStage.participantType === 'role' &&
+    !issue.assigneeUserId &&
+    !trace.currentStage.participantUserId &&
+    trace.currentStage.participantRoleKeys.length > 0 &&
+    trace.currentStage.participantRoleKeys.some((roleKey) => viewerRoles.has(roleKey));
+  if (!directEligible && !roleEligible) return null;
 
   const latestStageEvent = [...trace.events]
     .reverse()

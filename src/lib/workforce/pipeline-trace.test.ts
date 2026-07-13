@@ -92,10 +92,31 @@ describe('pipeline trace normalization', () => {
       kind: 'approval',
       participantType: 'user',
       participantUserId: 'user-1',
+      participantRoleKeys: [],
       onFailStepKey: 'classify',
       minScore: null,
       maxScore: null,
       rubric: null,
+    });
+  });
+
+  it('preserves frozen role targets for server-resolved HITL eligibility', () => {
+    const roleRun = {
+      ...run,
+      pipelineSnapshot: {
+        ...run.pipelineSnapshot,
+        steps: run.pipelineSnapshot.steps.map((step) =>
+          step.key === 'approval'
+            ? { ...step, participant: { type: 'role', roleKeys: ['manager', 'reviewer'] } }
+            : step,
+        ),
+      },
+    };
+
+    expect(normalizePipelineTrace(roleRun, [])?.currentStage).toMatchObject({
+      participantType: 'role',
+      participantUserId: null,
+      participantRoleKeys: ['manager', 'reviewer'],
     });
   });
 

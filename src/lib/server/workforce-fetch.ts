@@ -16,10 +16,11 @@ export function baseUrl(): string {
  * Pick the right auth header for the current workforce identity.
  *
  * Two auth modes are supported:
- *  - Board key (current prod): tokens prefixed `pcli_`. The Workforce backend's
+ *  - Board-key fallback: tokens prefixed `pcli_`. The Workforce backend's
  *    `server/src/middleware/auth.ts` only accepts these as `Authorization: Bearer <token>`.
- *  - JWT minted via HUB_WORKFORCE_SHARED_SECRET (legacy/dev): consumed by
- *    the backend's `middleware/hub-identity.ts` via the `x-hub-identity` header.
+ *  - User-scoped JWT minted via HUB_WORKFORCE_SHARED_SECRET: preferred for Hub
+ *    requests because it carries the signed actor and role keys; consumed by
+ *    the backend's `middleware/hub-identity.ts` via `x-hub-identity`.
  *
  * Sending the wrong header → backend 403 "Board access required" and every
  * workforce server-loader returns "workforce unavailable". See memory
@@ -95,6 +96,7 @@ export async function workforceClientForOrg(
 					email: actor?.email ?? null,
 					name: actor?.name ?? 'Projects',
 					companyId: orgId,
+					roleKeys: [],
 				});
 	return createWorkforceClient({ baseUrl: baseUrl(), fetch: globalThis.fetch, headers: authHeaders(token) });
 }

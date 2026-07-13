@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
-	import type { InboxItem } from './+page.server';
+	import type { InboxItem, PipelineHitlInboxItem } from '$lib/workforce/pipeline-inbox';
 	import * as m from '$lib/paraglide/messages';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
@@ -27,6 +27,13 @@
 		join_request: { icon: '+', tint: 'bg-blue-500/10 text-blue-600 border-blue-500/30', label: m.inbox_joinRequest() },
 		goal_achieved: { icon: '★', tint: 'bg-green-500/10 text-green-600 border-green-500/30', label: m.inbox_goalAchieved() },
 		paused: { icon: '⏸', tint: 'bg-muted text-muted-foreground border-border', label: m.inbox_paused() },
+		pipeline_hitl: { icon: '◇', tint: 'bg-violet-500/10 text-violet-600 border-violet-500/30', label: m.inbox_pipelineHitl() },
+	};
+
+	const TASK_STATUS_LABEL: Record<PipelineHitlInboxItem['taskStatus'], string> = {
+		todo: m.inbox_taskTodo(),
+		in_progress: m.inbox_taskInProgress(),
+		in_review: m.inbox_taskInReview(),
 	};
 
 	function bucketLabel(iso: string): string {
@@ -73,6 +80,11 @@
 		return 'system';
 	}
 
+	function assignmentLabel(item: PipelineHitlInboxItem): string {
+		if (item.assignmentKind === 'user') return m.inbox_pipelineAssignedToYou();
+		return m.inbox_pipelineAssignedRole({ role: item.assignmentRoleKeys.join(', ') });
+	}
+
 	onMount(() => startPolling('app:inbox', 6000));
 </script>
 
@@ -80,7 +92,9 @@
 	<header class="flex items-center justify-between flex-wrap gap-3">
 		<div class="flex items-center gap-3">
 			<h1 class="text-2xl font-semibold">{m.workforce_inbox()}</h1>
-			<LiveIndicator intervalMs={6000} />
+			{#if data.liveInboxAvailable}
+				<LiveIndicator intervalMs={6000} />
+			{/if}
 			{#if unreadCount > 0}
 				<span class="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
 					{unreadCount} {m.inbox_unread()}
@@ -106,6 +120,15 @@
 			</button>
 		</div>
 	</header>
+
+	{#if !data.liveInboxAvailable}
+		<div class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3" role="status">
+			<p class="text-sm font-medium text-amber-800 dark:text-amber-200">{m.inbox_liveUnavailableTitle()}</p>
+			<p class="mt-0.5 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+				{m.inbox_liveUnavailableDescription()}
+			</p>
+		</div>
+	{/if}
 
 	{#if filtered.length === 0}
 		<div class="rounded-lg border border-border bg-card p-12 flex flex-col items-center justify-center text-center">
@@ -155,8 +178,18 @@
 										<span aria-hidden="true">·</span>
 										<span class="font-mono">{item.entityType}</span>
 									{/if}
+									{#if item.type === 'pipeline_hitl'}
+										<span aria-hidden="true">·</span>
+										<span>{item.pipelineName}</span>
+										<span aria-hidden="true">·</span>
+										<span>{item.stageLabel}</span>
+										<span aria-hidden="true">·</span>
+										<span>{TASK_STATUS_LABEL[item.taskStatus]}</span>
+										<span aria-hidden="true">·</span>
+										<span>{assignmentLabel(item)}</span>
+									{/if}
 								</div>
-							</div>
+								</div>
 
 							<!-- Timestamp -->
 							<time

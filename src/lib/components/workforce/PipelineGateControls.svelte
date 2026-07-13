@@ -15,6 +15,7 @@
 		issue,
 		trace,
 		viewerUserId,
+		viewerRoleKeys = [],
 		workforceAvailable,
 		canEdit,
 		onDecisionRecorded = () => undefined,
@@ -22,6 +23,7 @@
 		issue: PipelineGateIssue;
 		trace: PipelineTrace | null;
 		viewerUserId: string | null;
+		viewerRoleKeys?: readonly string[];
 		workforceAvailable: boolean;
 		canEdit: boolean;
 		onDecisionRecorded?: () => void | Promise<void>;
@@ -32,7 +34,7 @@
 	let busy = $state(false);
 	let submitError = $state('');
 
-	const gate = $derived(activePipelineGate(issue, trace, viewerUserId));
+	const gate = $derived(activePipelineGate(issue, trace, viewerUserId, viewerRoleKeys));
 	const inlineGate = $derived(!gate && hasActiveInlinePipelineGate(issue));
 	function stageGateMutation(decision: PipelineGateDecision) {
 		if (!gate) return null;

@@ -33,6 +33,7 @@ export type PipelineTraceStage = {
   kind: string;
   participantType: string | null;
   participantUserId: string | null;
+  participantRoleKeys: string[];
   onFailStepKey: string | null;
   minScore: number | null;
   maxScore: number | null;
@@ -95,6 +96,7 @@ function traceStage(stage: Record<string, unknown> | null): PipelineTraceStage |
     kind,
     participantType: text(participant?.type),
     participantUserId: text(participant?.userId),
+    participantRoleKeys: texts(participant?.roleKeys),
     onFailStepKey: text(stage.onFailStepKey),
     minScore: finiteNumber(stage.minScore),
     maxScore: finiteNumber(stage.maxScore),
@@ -146,6 +148,7 @@ function semanticCategory(
   if (/classif|triage|tag|scope|intake/.test(stageText)) return 'classifier';
   if (
     participantType === 'user' ||
+    participantType === 'role' ||
     text(stage?.kind) === 'approval' ||
     /hitl|human|approval/.test(stageText)
   )

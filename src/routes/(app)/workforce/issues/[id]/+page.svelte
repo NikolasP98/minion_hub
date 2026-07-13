@@ -195,6 +195,7 @@
 		{issue}
 		trace={pipelineTrace}
 		viewerUserId={data.viewerUserId}
+		viewerRoleKeys={data.viewerRoleKeys}
 		workforceAvailable={data.workforceAvailable}
 		canEdit={canAct('projects', 'edit')}
 		onDecisionRecorded={invalidateAll}

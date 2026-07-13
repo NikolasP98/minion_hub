@@ -13,6 +13,7 @@ const trace = {
     kind: 'approval',
     participantType: 'user',
     participantUserId: 'user-1',
+    participantRoleKeys: [],
     onFailStepKey: 'implement',
     minScore: null,
     maxScore: null,
@@ -27,7 +28,7 @@ const trace = {
       childIssueId: 'child-1',
     },
   ],
-} as PipelineTrace;
+} as unknown as PipelineTrace;
 
 const issue = {
   id: 'child-1',
@@ -67,6 +68,27 @@ function renderInlineGate(): string {
   }).body;
 }
 
+function renderRoleGate(viewerRoleKeys: string[]): string {
+  return render(PipelineGateControls, {
+    props: {
+      issue: { ...issue, assigneeUserId: null },
+      trace: {
+        ...trace,
+        currentStage: {
+          ...trace.currentStage!,
+          participantType: 'role',
+          participantUserId: null,
+          participantRoleKeys: ['reviewer'],
+        },
+      },
+      viewerUserId: 'user-2',
+      viewerRoleKeys,
+      workforceAvailable: true,
+      canEdit: true,
+    },
+  }).body;
+}
+
 describe('PipelineGateControls', () => {
   it('renders explicit approval and request-changes controls for the current HITL child', () => {
     const body = renderGate(true);
@@ -98,5 +120,10 @@ describe('PipelineGateControls', () => {
     expect(body).toContain('Quality score (optional, 0–10)');
     expect(body).toContain('Approve');
     expect(body).toContain('Request changes');
+  });
+
+  it('renders a role-target gate only for a trusted eligible viewer role', () => {
+    expect(renderRoleGate(['reviewer'])).toContain('Human decision');
+    expect(renderRoleGate(['staff'])).not.toContain('Human decision');
   });
 });
