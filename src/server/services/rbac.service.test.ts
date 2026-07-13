@@ -6,6 +6,10 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
  * onConflict, delete, count-head select). Backs the `db` in-memory tables
  * below; reset per test in beforeEach.
  */
+type FakeQueryError = { message: string };
+
+const queryErrors: Record<string, FakeQueryError | undefined> = {};
+
 function makeFakeSupabase(db: Record<string, Record<string, unknown>[]>) {
 	function builder(table: string) {
 		const filters: Array<(r: Record<string, unknown>) => boolean> = [];
@@ -14,7 +18,9 @@ function makeFakeSupabase(db: Record<string, Record<string, unknown>[]>) {
 		let onConflict: string[] = [];
 		let countRequested = false;
 
-		async function run(): Promise<{ data: unknown; error: null; count?: number }> {
+		async function run(): Promise<{ data: unknown; error: FakeQueryError | null; count?: number }> {
+			const queryError = queryErrors[table];
+			if (queryError) return { data: null, error: queryError };
 			const rows = (db[table] ??= []);
 			if (mode === 'insert') {
 				const arr = Array.isArray(payload) ? payload : [payload!];
@@ -72,6 +78,7 @@ function makeFakeSupabase(db: Record<string, Record<string, unknown>[]>) {
 			},
 			async maybeSingle() {
 				const res = await run();
+				if (res.error) return res;
 				const arr = res.data as Record<string, unknown>[];
 				return { data: arr[0] ?? null, error: null };
 			},
@@ -99,6 +106,7 @@ function seedSystemCatalog() {
 
 beforeEach(() => {
 	for (const k of Object.keys(db)) delete db[k];
+	for (const k of Object.keys(queryErrors)) delete queryErrors[k];
 	seedSystemCatalog();
 	db.org_roles = [];
 	db.permission_rules = [];
@@ -116,6 +124,7 @@ import {
 	createCustomRole,
 	deleteCustomRole,
 	isAssignableRoleKey,
+	resolveCapabilities,
 } from './rbac.service';
 
 const ROW = (over: Record<string, unknown>) => ({
@@ -232,6 +241,48 @@ describe('legacyRoleKey — back-compat mapping', () => {
 		expect(legacyRoleKey('admin')).toBe('admin');
 		expect(legacyRoleKey('member')).toBe('manager');
 		expect(legacyRoleKey(null)).toBe('viewer');
+	});
+});
+
+describe('resolveCapabilities — fail-closed role authority', () => {
+	test('rejects a returned member_roles query error instead of falling back', async () => {
+		queryErrors.member_roles = { message: 'member roles unavailable' };
+		db.organization_members = [
+			{ organization_id: 'org1', profile_id: 'p1', role: 'owner' },
+		];
+
+		await expect(resolveCapabilities('org1', 'p1')).rejects.toThrow(
+			'Failed to resolve member role assignments',
+		);
+	});
+
+	test('rejects a returned legacy membership query error instead of minting viewer', async () => {
+		queryErrors.organization_members = { message: 'legacy membership unavailable' };
+
+		await expect(resolveCapabilities('org1', 'p1')).rejects.toThrow(
+			'Failed to resolve legacy organization membership',
+		);
+	});
+
+	test('rejects a returned permission_rules query error', async () => {
+		db.member_roles = [{ org_id: 'org1', profile_id: 'p1', role_key: 'staff' }];
+		queryErrors.permission_rules = { message: 'permission rules unavailable' };
+
+		await expect(resolveCapabilities('org1', 'p1')).rejects.toThrow(
+			'Failed to resolve role permission rules',
+		);
+	});
+
+	test('does not invent viewer authority when no membership exists', async () => {
+		expect((await resolveCapabilities('org1', 'p1')).roles).toEqual([]);
+	});
+
+	test('preserves viewer fallback for a present legacy membership with a null role', async () => {
+		db.organization_members = [
+			{ organization_id: 'org1', profile_id: 'p1', role: null },
+		];
+
+		expect((await resolveCapabilities('org1', 'p1')).roles).toEqual(['viewer']);
 	});
 });
 

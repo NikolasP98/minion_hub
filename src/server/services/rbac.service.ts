@@ -297,32 +297,49 @@ export function buildCapabilities(roles: string[], overrides: OverrideRow[]): Ca
 export async function resolveCapabilities(orgId: string, profileId: string): Promise<Capabilities> {
 	const admin = supabaseAdmin();
 
-	const { data: mr } = await admin
+	const memberRolesResult = await admin
 		.from('member_roles')
 		.select('role_key')
 		.eq('org_id', orgId)
 		.eq('profile_id', profileId);
-	let roles = ((mr ?? []) as Array<{ role_key: string }>).map((r) => r.role_key);
+	if (memberRolesResult.error) {
+		throw new Error('Failed to resolve member role assignments', { cause: memberRolesResult.error });
+	}
+	let roles = ((memberRolesResult.data ?? []) as Array<{ role_key: string }>).map((r) => r.role_key);
 
 	if (roles.length === 0) {
-		const { data: om } = await admin
+		const legacyMembershipResult = await admin
 			.from('organization_members')
 			.select('role')
 			.eq('organization_id', orgId)
 			.eq('profile_id', profileId)
 			.maybeSingle();
-		roles = [legacyRoleKey((om as { role: string | null } | null)?.role)];
+		if (legacyMembershipResult.error) {
+			throw new Error('Failed to resolve legacy organization membership', {
+				cause: legacyMembershipResult.error,
+			});
+		}
+		const legacyMembership = legacyMembershipResult.data as { role: string | null } | null;
+		// A present legacy row with a null/unknown role intentionally keeps the
+		// historical least-privilege viewer fallback. No membership row is not a
+		// role assignment and must remain an empty authority set.
+		roles = legacyMembership ? [legacyRoleKey(legacyMembership.role)] : [];
 	}
 
-	const { data: rules } = await admin
+	if (roles.length === 0) return buildCapabilities([], []);
+
+	const permissionRulesResult = await admin
 		.from('permission_rules')
 		.select(
 			'role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage, if_owner, field_level',
 		)
 		.eq('org_id', orgId)
 		.in('role_key', roles);
+	if (permissionRulesResult.error) {
+		throw new Error('Failed to resolve role permission rules', { cause: permissionRulesResult.error });
+	}
 
-	return buildCapabilities(roles, (rules ?? []) as OverrideRow[]);
+	return buildCapabilities(roles, (permissionRulesResult.data ?? []) as OverrideRow[]);
 }
 
 /**
