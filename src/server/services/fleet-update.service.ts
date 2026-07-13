@@ -15,13 +15,12 @@
  * that boundary. Reading/writing `bg_jobs` directly is the smaller, correct
  * fit; only the table (not the generic runner) is reused.
  *
- * ponytail: no distributed lease/claim — single admin driving this from one
- * open tab is the expected usage (mirrors the single-admin assumption of the
- * existing per-instance update card). Add a lease column the way
- * bg-runtime.ts does if concurrent-admin races become a real problem.
+ * Concurrency: start uses a serializable transaction; advance atomically claims
+ * the existing bg_jobs.lease_until field. This keeps multiple admin tabs and
+ * retried Vercel requests from dispatching the same update step twice.
  */
 
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { getCoreDb } from '$server/db/pg-client';
 import { bgJobs } from '$server/db/pg-schema/bg-jobs';
@@ -32,6 +31,10 @@ const JOB_TYPE = 'fleet_update';
 const ACTIVE_STATUSES = ['queued', 'running'] as const;
 const POLL_INTERVAL_MS = 5000;
 const VERIFY_TIMEOUT_MS = 240_000;
+// Longer than update.run (290s) + verify (240s), with margin for persistence.
+// A crashed request becomes reclaimable without allowing two live requests to
+// dispatch update.run for the same instance.
+const ADVANCE_LEASE_MS = 10 * 60_000;
 
 export type FleetInstanceState =
   | 'pending'
@@ -184,21 +187,6 @@ async function getLatestJobRow(tenantId: string) {
   return row ?? null;
 }
 
-async function persist(
-  jobId: string,
-  cursor: FleetCursor,
-  patch: { status?: FleetJobStatus; error?: string | null; finishedAt?: number | null } = {},
-): Promise<void> {
-  await getCoreDb()
-    .update(bgJobs)
-    .set({
-      cursor: JSON.stringify(cursor),
-      updatedAt: Date.now(),
-      ...patch,
-    })
-    .where(eq(bgJobs.id, jobId));
-}
-
 /**
  * Snapshot the fleet from the `gateway` rows, order least-connections-first
  * (ties by created_at — canary = first), persist a new job. Refuses if a
@@ -210,8 +198,6 @@ export async function startFleetUpdate(
   targetVersion: string,
 ): Promise<FleetJobView> {
   if (!targetVersion) throw new Error('targetVersion is required');
-  if (await getActiveJobRow(tenantId)) throw new Error('A fleet update is already in progress');
-
   const rows = await listGatewaysForAdmin();
   const snapshot = await Promise.all(
     rows.map(async (row) => {
@@ -248,9 +234,9 @@ export async function startFleetUpdate(
           // Defensive: gateways not yet running the §3.1 change omit
           // `connections` entirely — unknown, not zero (round-4 fix 2).
           connections: known ? (status.connections as number) : null,
-          // Sort key only: treat "reachable but doesn't report" as
-          // least-loaded so it isn't pushed to the back of the rollout.
-          sortConnections: known ? (status.connections as number) : 0,
+          // Unknown load is not a safe canary signal. Older gateways that omit
+          // this field may also lack graceful drain support, so sort them last.
+          sortConnections: known ? (status.connections as number) : Number.POSITIVE_INFINITY,
           createdAt: row.createdAt,
         };
       } catch {
@@ -293,22 +279,43 @@ export async function startFleetUpdate(
 
   const id = randomUUID();
   const now = Date.now();
-  await getCoreDb()
-    .insert(bgJobs)
-    .values({
-      id,
-      tenantId,
-      userId,
-      type: JOB_TYPE,
-      refId: null,
-      status,
-      cursor: JSON.stringify({ targetVersion, instances, currentIndex } satisfies FleetCursor),
-      attempts: 0,
-      createdAt: now,
-      updatedAt: now,
-      startedAt: now,
-      finishedAt: status === 'done' ? now : null,
-    });
+  const db = getCoreDb();
+  // The schema predates fleet jobs and has no partial unique index for one
+  // active job per tenant. A SERIALIZABLE transaction makes the predicate read
+  // ("no active fleet job") and insert atomic across Vercel instances: one of
+  // two concurrent starts commits and PostgreSQL aborts the other.
+  await db.transaction(
+    async (tx) => {
+      const [active] = await tx
+        .select({ id: bgJobs.id })
+        .from(bgJobs)
+        .where(
+          and(
+            eq(bgJobs.tenantId, tenantId),
+            eq(bgJobs.type, JOB_TYPE),
+            inArray(bgJobs.status, [...ACTIVE_STATUSES]),
+          ),
+        )
+        .limit(1);
+      if (active) throw new Error('A fleet update is already in progress');
+
+      await tx.insert(bgJobs).values({
+        id,
+        tenantId,
+        userId,
+        type: JOB_TYPE,
+        refId: null,
+        status,
+        cursor: JSON.stringify({ targetVersion, instances, currentIndex } satisfies FleetCursor),
+        attempts: 0,
+        createdAt: now,
+        updatedAt: now,
+        startedAt: now,
+        finishedAt: status === 'done' ? now : null,
+      });
+    },
+    { isolationLevel: 'serializable' },
+  );
 
   const [row] = await getCoreDb().select().from(bgJobs).where(eq(bgJobs.id, id)).limit(1);
   return toView(row!);
@@ -492,8 +499,49 @@ async function runInstanceStep(
  * after the job already finished, failed, or was aborted.
  */
 export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView | null> {
-  const row = await getActiveJobRow(tenantId);
+  const db = getCoreDb();
+  const now = Date.now();
+  const leaseUntil = now + ADVANCE_LEASE_MS;
+  // Atomic claim: only one request can move an unleased/expired active row to
+  // this lease value. Concurrent callers return status without dispatching a
+  // second update.run. leaseUntil is an existing bg_jobs recovery field.
+  const [row] = await db
+    .update(bgJobs)
+    .set({ leaseUntil, updatedAt: now })
+    .where(
+      and(
+        eq(bgJobs.tenantId, tenantId),
+        eq(bgJobs.type, JOB_TYPE),
+        inArray(bgJobs.status, [...ACTIVE_STATUSES]),
+        or(isNull(bgJobs.leaseUntil), lt(bgJobs.leaseUntil, now)),
+      ),
+    )
+    .returning();
   if (!row) return getFleetUpdateStatus(tenantId);
+
+  const persistClaimed = async (
+    cursor: FleetCursor,
+    patch: { status?: FleetJobStatus; error?: string | null; finishedAt?: number | null } = {},
+    release = false,
+  ): Promise<boolean> => {
+    const updated = await db
+      .update(bgJobs)
+      .set({
+        cursor: JSON.stringify(cursor),
+        updatedAt: Date.now(),
+        ...(release ? { leaseUntil: null } : {}),
+        ...patch,
+      })
+      .where(
+        and(
+          eq(bgJobs.id, row.id),
+          eq(bgJobs.status, 'running'),
+          eq(bgJobs.leaseUntil, leaseUntil),
+        ),
+      )
+      .returning({ id: bgJobs.id });
+    return updated.length === 1;
+  };
 
   const cursor = JSON.parse(row.cursor ?? '{}') as FleetCursor;
   // Skip any instances already on target (bookkeeping only — no RPC calls).
@@ -501,7 +549,7 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
     cursor.currentIndex += 1;
   }
   if (cursor.currentIndex >= cursor.instances.length) {
-    await persist(row.id, cursor, { status: 'done', finishedAt: Date.now() });
+    await persistClaimed(cursor, { status: 'done', finishedAt: Date.now() }, true);
     return getFleetUpdateStatus(tenantId);
   }
 
@@ -510,15 +558,17 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
   if (!creds) {
     inst.state = 'failed';
     inst.error = 'gateway credentials not found';
-    await persist(row.id, cursor, { status: 'failed', error: inst.error, finishedAt: Date.now() });
+    await persistClaimed(cursor, { status: 'failed', error: inst.error, finishedAt: Date.now() }, true);
     return getFleetUpdateStatus(tenantId);
   }
 
-  const result = await runInstanceStep(inst, creds.token, () => persist(row.id, cursor));
+  const result = await runInstanceStep(inst, creds.token, async () => {
+    await persistClaimed(cursor);
+  });
   if (!result.ok) {
     inst.state = 'failed';
     inst.error = result.error;
-    await persist(row.id, cursor, { status: 'failed', error: result.error, finishedAt: Date.now() });
+    await persistClaimed(cursor, { status: 'failed', error: result.error, finishedAt: Date.now() }, true);
     return getFleetUpdateStatus(tenantId);
   }
 
@@ -531,6 +581,6 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
   delete inst.error;
   cursor.currentIndex += 1;
   const done = cursor.currentIndex >= cursor.instances.length;
-  await persist(row.id, cursor, done ? { status: 'done', finishedAt: Date.now() } : {});
+  await persistClaimed(cursor, done ? { status: 'done', finishedAt: Date.now() } : {}, true);
   return getFleetUpdateStatus(tenantId);
 }

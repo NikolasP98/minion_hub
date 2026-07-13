@@ -16,9 +16,11 @@ type Row = {
   updatedAt: number;
   startedAt: number | null;
   finishedAt: number | null;
+  leaseUntil: number | null;
 };
 
 let rows: Row[] = [];
+let transactionTail = Promise.resolve();
 
 function matches(row: Row, whereFn: (r: Row) => boolean) {
   return whereFn(row);
@@ -46,11 +48,33 @@ const mockDb = {
   }),
   update: () => ({
     set: (patch: Partial<Row>) => ({
-      where: async (whereFn: (r: Row) => boolean) => {
-        rows = rows.map((r) => (matches(r, whereFn) ? { ...r, ...patch } : r));
+      where: (whereFn: (r: Row) => boolean) => {
+        const execute = () => {
+          const matched = rows.filter((r) => matches(r, whereFn));
+          rows = rows.map((r) => (matches(r, whereFn) ? { ...r, ...patch } : r));
+          return matched.map((r) => ({ ...r, ...patch }));
+        };
+        return {
+          then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+            Promise.resolve(execute()).then(resolve, reject),
+          returning: async () => execute(),
+        };
       },
     }),
   }),
+  transaction: async <T>(fn: (tx: typeof mockDb) => Promise<T>, _config?: unknown) => {
+    const previous = transactionTail;
+    let release!: () => void;
+    transactionTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await fn(mockDb);
+    } finally {
+      release();
+    }
+  },
 };
 
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: () => mockDb }));
@@ -70,6 +94,7 @@ vi.mock('$server/db/pg-schema/bg-jobs', () => ({
     updatedAt: 'updatedAt',
     startedAt: 'startedAt',
     finishedAt: 'finishedAt',
+    leaseUntil: 'leaseUntil',
   },
 }));
 
@@ -81,6 +106,12 @@ vi.mock('drizzle-orm', () => ({
       fns.every((f) => f(r)),
   desc: (col: string) => col,
   inArray: (col: string, vals: unknown[]) => (r: Row) => vals.includes((r as unknown as Record<string, unknown>)[col]),
+  isNull: (col: string) => (r: Row) => (r as unknown as Record<string, unknown>)[col] == null,
+  lt: (col: string, val: number) => (r: Row) => Number((r as unknown as Record<string, unknown>)[col]) < val,
+  or:
+    (...fns: ((r: Row) => boolean)[]) =>
+    (r: Row) =>
+      fns.some((f) => f(r)),
 }));
 
 // ── mock gateway.pg.service (fleet snapshot + per-row credentials) ─────────
@@ -108,6 +139,7 @@ const TENANT = 't1';
 
 beforeEach(() => {
   rows = [];
+  transactionTail = Promise.resolve();
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -182,6 +214,23 @@ describe('startFleetUpdate', () => {
     await expect(startFleetUpdate(TENANT, 'user1', '2.0.0')).rejects.toThrow(/already in progress/);
   });
 
+  test('concurrent starts create exactly one active fleet job', async () => {
+    mockListGateways.mockResolvedValue([
+      { id: 'a', name: 'A', url: 'ws://a', authMode: 'token', createdAt: new Date() },
+    ]);
+    mockGetCreds.mockResolvedValue({ url: 'ws://a', token: 'tok' });
+    mockCallToInstance.mockResolvedValue({ current: 'old', connections: 0 });
+
+    const results = await Promise.allSettled([
+      startFleetUpdate(TENANT, 'user1', '2.0.0'),
+      startFleetUpdate(TENANT, 'user2', '2.0.0'),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(rows.filter((row) => row.type === 'fleet_update' && row.status === 'running')).toHaveLength(1);
+  });
+
   test('permits a new job once the prior one is terminal (failed/cancelled/done)', async () => {
     mockListGateways.mockResolvedValue([
       { id: 'a', name: 'A', url: 'ws://a', authMode: 'token', createdAt: new Date() },
@@ -198,7 +247,7 @@ describe('startFleetUpdate', () => {
     });
   });
 
-  test('missing `connections` field is null (unknown), sorts as least-loaded (0)', async () => {
+  test('missing `connections` field is null (unknown) and sorts after known load', async () => {
     mockListGateways.mockResolvedValue([
       { id: 'a', name: 'A', url: 'ws://a', authMode: 'token', createdAt: new Date(100) },
       { id: 'b', name: 'B', url: 'ws://b', authMode: 'token', createdAt: new Date(200) },
@@ -217,8 +266,8 @@ describe('startFleetUpdate', () => {
     const b = job.instances.find((i) => i.gatewayId === 'b')!;
     expect(a.connections).toBeNull();
     expect(b.connections).toBe(3);
-    // unknown (sorted as 0) comes before b's real 3 connections.
-    expect(job.instances.map((i) => i.gatewayId)).toEqual(['a', 'b']);
+    // Unknown is not a safe canary signal, even when the known peer is busy.
+    expect(job.instances.map((i) => i.gatewayId)).toEqual(['b', 'a']);
   });
 });
 
@@ -254,6 +303,64 @@ describe('advanceFleetUpdate', () => {
       expect(job?.instances[0].state).toBe('done');
       expect(job?.currentIndex).toBe(1);
       expect(job?.status).toBe('running');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('concurrent advances claim the step once and dispatch one update.run', async () => {
+    await seedJob();
+    let releaseRun!: () => void;
+    const runBlocked = new Promise<void>((resolve) => {
+      releaseRun = resolve;
+    });
+    mockCallToInstance.mockImplementation(async (_url, _token, method) => {
+      if (method === 'update.run') return runBlocked;
+      if (method === 'update.status') return { current: '2.0.0' };
+      throw new Error('unexpected');
+    });
+
+    vi.useFakeTimers();
+    try {
+      const first = advanceFleetUpdate(TENANT);
+      await vi.advanceTimersByTimeAsync(0);
+      const second = advanceFleetUpdate(TENANT);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockCallToInstance.mock.calls.filter((call) => call[2] === 'update.run')).toHaveLength(1);
+
+      releaseRun();
+      await vi.advanceTimersByTimeAsync(5000);
+      await Promise.all([first, second]);
+      expect(mockCallToInstance.mock.calls.filter((call) => call[2] === 'update.run')).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('abort remains terminal when an in-flight advance later succeeds', async () => {
+    await seedJob();
+    let releaseRun!: () => void;
+    const runBlocked = new Promise<void>((resolve) => {
+      releaseRun = resolve;
+    });
+    mockCallToInstance.mockImplementation(async (_url, _token, method) => {
+      if (method === 'update.run') return runBlocked;
+      if (method === 'update.status') return { current: '2.0.0' };
+      throw new Error('unexpected');
+    });
+
+    vi.useFakeTimers();
+    try {
+      const advancing = advanceFleetUpdate(TENANT);
+      await vi.advanceTimersByTimeAsync(0);
+      const aborted = await abortFleetUpdate(TENANT);
+      expect(aborted?.status).toBe('cancelled');
+
+      releaseRun();
+      await vi.advanceTimersByTimeAsync(5000);
+      const final = await advancing;
+      expect(final?.status).toBe('cancelled');
+      expect(rows.find((row) => row.type === 'fleet_update')?.status).toBe('cancelled');
     } finally {
       vi.useRealTimers();
     }

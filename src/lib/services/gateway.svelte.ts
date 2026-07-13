@@ -38,7 +38,7 @@ import {
   updateHost,
   saveLastActiveHost,
   fetchHostToken,
-  applyOrgAssignedHost,
+  getOrgAssignedHost,
 } from '$lib/state/features/hosts.svelte';
 import { userState } from '$lib/state/features/user.svelte';
 import type { Host } from '$lib/types/host';
@@ -49,6 +49,7 @@ import {
   isEagerReconnectArmed,
   scheduleEagerReconnect,
 } from './gateway/eager-reconnect';
+import { ConnectionLifecycleFence, isDistinctCutoverTarget } from './gateway/connection-lifecycle';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
 import { toastError, toastInfo, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
@@ -165,6 +166,11 @@ let pollPresenceTimer: ReturnType<typeof setInterval> | null = null;
 // fatal close halts the reconnect loop and surfaces a CTA instead of letting
 // the shared client autoReconnect with the same stale credential forever.
 let notPairedRefetchAttempted = false;
+// Fences overlapping lifecycle operations while they await token fetches or a
+// backup handshake. Client identity fences socket callbacks; this generation
+// additionally prevents an older async wsConnect/cutover from installing
+// itself after a newer user action or reconnect attempt has won.
+const lifecycleFence = new ConnectionLifecycleFence();
 
 // ─── Gateway JWT (multi-tenant org identity) ────────────────────────────────
 // When PUBLIC_GATEWAY_JWT_AUTH is enabled the dashboard additionally presents a
@@ -356,7 +362,8 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
 
       conn.connected = false;
       conn.connecting = false;
-      conn.particleHue = 'red';
+      const expectedRestart = code === 1012 || isEagerReconnectArmed();
+      conn.particleHue = expectedRestart ? 'amber' : 'red';
       // Update install in flight (progress set, pending not yet confirmed
       // landed): the gateway dropping the WS *is* the restart step.
       if (updateState.pending && updateState.progress && updateState.progress.pct < 90) {
@@ -442,6 +449,7 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
 }
 
 export async function wsConnect() {
+  const generation = lifecycleFence.begin();
   const host = getActiveHost();
   if (!host?.url) return;
   conn.closed = false;
@@ -473,8 +481,14 @@ export async function wsConnect() {
     return;
   }
   const fetched = await fetchHostToken(capturedHostId);
+  if (!lifecycleFence.isCurrent(generation)) return;
   if (fetched === null) {
     conn.connecting = false;
+    if (isEagerReconnectArmed()) {
+      conn.particleHue = 'amber';
+      scheduleEagerReconnect(() => void wsConnect());
+      return;
+    }
     conn.particleHue = 'red';
     const info = describeGatewayError('could not load gateway token');
     setConnectError('could not load gateway token');
@@ -493,6 +507,10 @@ export async function wsConnect() {
   void newClient
     .connect()
     .then((hello) => {
+      if (!lifecycleFence.isCurrent(generation) || getClient() !== newClient) {
+        newClient.close();
+        return;
+      }
       const wasReconnect = conn.backoffMs > 800;
       conn.backoffMs = 800;
       conn.connected = true;
@@ -543,6 +561,12 @@ export async function wsConnect() {
       resolveServerId();
     })
     .catch((err) => {
+      if (!lifecycleFence.isCurrent(generation) || getClient() !== newClient) return;
+      if (isEagerReconnectArmed()) {
+        conn.particleHue = 'amber';
+        scheduleEagerReconnect(() => void wsConnect());
+        return;
+      }
       console.error('[hub] connect failed:', err);
       const raw = String((err as Error)?.message ?? err);
       const info = describeGatewayError(raw);
@@ -559,9 +583,15 @@ export async function wsConnect() {
  * during a successful cutover. On backup-connect failure the old client is
  * left completely untouched (today's behavior).
  */
-export async function cutoverToHost(host: Host): Promise<void> {
+export async function cutoverToHost(
+  host: Host,
+  sourceHostId = hostsState.activeHostId,
+): Promise<boolean> {
+  const sourceClient = getClient();
+  const generation = lifecycleFence.snapshot();
   const fetched = await fetchHostToken(host.id);
-  if (fetched === null) return;
+  if (!lifecycleFence.isCurrent(generation) || getClient() !== sourceClient) return false;
+  if (fetched === null) return false;
   const token = fetched.trim();
 
   const backup = buildGatewayClient(host, token);
@@ -571,14 +601,22 @@ export async function cutoverToHost(host: Host): Promise<void> {
   } catch (err) {
     console.error('[hub] cutover to host failed:', err);
     backup.close();
-    return;
+    return false;
+  }
+
+  // The source may have dropped (and eager reconnect may have started) while
+  // the backup handshake was in flight. Never let that now-stale cutover
+  // overwrite the newer connection lifecycle.
+  if (!lifecycleFence.isCurrent(generation) || getClient() !== sourceClient || !conn.connected) {
+    backup.close();
+    return false;
   }
 
   // Atomic swap. The old client's onClose is fenced (getClient() !== old, see
   // buildGatewayClient) so closing it below is inert — it can't clobber any
   // of the state we're about to set from the new client's perspective.
   const old = getClient();
-  const oldHostId = hostsState.activeHostId;
+  lifecycleFence.invalidate();
   setClient(backup);
   if (hostsState.activeHostId !== host.id) hostsState.activeHostId = host.id;
 
@@ -589,7 +627,7 @@ export async function cutoverToHost(host: Host): Promise<void> {
   wireBinaryListener();
 
   // Same per-gateway data reset a manual host switch does today.
-  resetGatewayData(oldHostId);
+  resetGatewayData(sourceHostId);
 
   conn.connected = true;
   conn.connecting = false;
@@ -620,9 +658,11 @@ export async function cutoverToHost(host: Host): Promise<void> {
   // Close the OLD client last — its onClose is fenced, so this can't undo
   // anything we just set.
   if (old) old.close();
+  return true;
 }
 
 export function wsDisconnect() {
+  lifecycleFence.invalidate();
   conn.closed = true;
   conn.connected = false;
   conn.connecting = false;
@@ -692,6 +732,12 @@ function resetGatewayData(hostIdForAutosave: string | null): void {
 export { sendRequest, sendInstall };
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
+
+function enterEagerRestartFallback(version?: string): void {
+  armEagerReconnect();
+  bumpUpdateProgress({ phase: 'migrating', pct: 3, version });
+  beginRestart();
+}
 
 async function resolveServerId() {
   try {
@@ -793,25 +839,31 @@ function handleEvent(evt: Record<string, unknown>) {
       // instance is about to drain — arrives BEFORE the WS drop, so we can
       // react calmly instead of surprising the user with a bare disconnect.
       const p = evt.payload as { version?: string; reason?: string } | undefined;
-      if (applyOrgAssignedHost()) {
-        // This session's org is actually assigned to a different, healthy
-        // instance (stale manual pick / admin browsing) — make-before-break
-        // cutover to it now (H2) rather than riding out the drain on the
-        // wrong host, or dropping to a visible disconnect.
-        const target = getActiveHost();
-        if (target) {
-          if (conn.connected) void cutoverToHost(target);
-          else void wsConnect();
-        }
+      const sourceHostId = hostsState.activeHostId;
+      const sourceHost = getActiveHost();
+      const assignedHost = getOrgAssignedHost();
+      if (isDistinctCutoverTarget(sourceHost, assignedHost)) {
+        // This session's org is assigned to a different candidate (stale
+        // manual pick / admin browsing). Its successful hello
+        // is the only available trustworthy health proof; lastConnectedAt is
+        // historical and deliberately isn't treated as liveness.
+        if (conn.connected) {
+          // Arm before the parallel handshake so a source drop during cutover
+          // still gets flat probes. A successful cutover disarms it.
+          armEagerReconnect();
+          void cutoverToHost(assignedHost, sourceHostId).then((ok) => {
+            if (!ok && hostsState.activeHostId === sourceHostId) {
+              enterEagerRestartFallback(p?.version);
+            }
+          });
+        } else enterEagerRestartFallback(p?.version);
       } else {
         // The org genuinely lives on the draining instance — arm eager
         // reconnect (H1: the drain window can be up to ~60s, but the actual
         // drop/reconnect gap should be ~1s once it happens) and the same
         // "expected restart" flag the Updates card uses so the status dot
         // (ConnectionStatusIndicator) ambers before the drop, not after.
-        armEagerReconnect();
-        bumpUpdateProgress({ phase: 'migrating', pct: 3, version: p?.version });
-        beginRestart();
+        enterEagerRestartFallback(p?.version);
       }
       break;
     }

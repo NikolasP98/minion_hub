@@ -181,6 +181,13 @@ export function applyOrgAssignedHost(): boolean {
   return true;
 }
 
+/** Return the org-assigned host without mutating the active connection pick. */
+export function getOrgAssignedHost(): Host | null {
+  const orgHostId = pageOrgAssignedHostId();
+  if (!orgHostId) return null;
+  return hostsState.hosts.find((host) => host.id === orgHostId) ?? null;
+}
+
 export function selectHost(id: string): void {
   if (!hostsState.hosts.some((h) => h.id === id)) return;
   local.activeHostId = id;
