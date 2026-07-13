@@ -156,6 +156,33 @@ describe('buildPipelineGateMutation', () => {
     });
   });
 
+  it('preserves optional human quality feedback on stage-task approval gates', () => {
+    expect(
+      buildPipelineGateMutation({
+        gate,
+        decision: 'approve',
+        summary: 'Plan is actionable.',
+        feedbackScore: 9,
+      }),
+    ).toEqual({
+      ok: true,
+      payload: {
+        status: 'done',
+        pipelineOutcome: 'passed',
+        pipelineSummary: 'Plan is actionable.',
+        feedbackScore: 9,
+      },
+    });
+    expect(
+      buildPipelineGateMutation({
+        gate,
+        decision: 'approve',
+        summary: 'Plan is actionable.',
+        feedbackScore: 11,
+      }),
+    ).toEqual({ ok: false, error: 'score_invalid' });
+  });
+
   it('requests changes with terminal done plus typed failed outcome so the retry edge fires', () => {
     expect(
       buildPipelineGateMutation({
@@ -187,7 +214,7 @@ describe('buildPipelineGateMutation', () => {
     ).toEqual({ ok: false, error: 'retry_unavailable' });
   });
 
-  it('preserves an explicit eval score but never invents or leaks one into approval stages', () => {
+  it('preserves an explicit eval score but never leaks eval or human scores across gate types', () => {
     expect(
       buildPipelineGateMutation({ gate, decision: 'approve', summary: 'Approved.', evalScore: 9 }),
     ).toEqual({
@@ -213,6 +240,7 @@ describe('buildPipelineGateMutation', () => {
         decision: 'approve',
         summary: 'Meets the rubric.',
         evalScore: 8,
+        feedbackScore: 3,
       }),
     ).toEqual({
       ok: true,

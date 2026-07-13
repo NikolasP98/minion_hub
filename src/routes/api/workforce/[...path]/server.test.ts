@@ -26,6 +26,7 @@ describe('workforce proxy pipeline gate mutation', () => {
       pipelineOutcome: 'failed',
       pipelineSummary: 'Regression coverage is incomplete.',
       evalScore: 6,
+      feedbackScore: 4,
     };
     const url = new URL('http://hub.test/api/workforce/issues/child-1');
 
@@ -42,7 +43,7 @@ describe('workforce proxy pipeline gate mutation', () => {
 
     expect(response.status).toBe(200);
     expect(upstreamFetch).toHaveBeenCalledOnce();
-    const [target, init] = upstreamFetch.mock.calls[0];
+    const [target, init] = upstreamFetch.mock.calls[0] as unknown as [string, RequestInit];
     expect(target).toBe('http://workforce.test/api/issues/child-1');
     expect(init.method).toBe('PATCH');
     expect((init.headers as Record<string, string>)['x-hub-identity']).toBe('signed-token');

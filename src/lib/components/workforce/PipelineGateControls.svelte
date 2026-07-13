@@ -34,9 +34,18 @@
 
 	const gate = $derived(activePipelineGate(issue, trace, viewerUserId));
 	const inlineGate = $derived(!gate && hasActiveInlinePipelineGate(issue));
+	function stageGateMutation(decision: PipelineGateDecision) {
+		if (!gate) return null;
+		return buildPipelineGateMutation({
+			gate,
+			decision,
+			summary,
+			...(gate.permitsEvalScore ? { evalScore: scoreInput } : { feedbackScore: scoreInput }),
+		});
+	}
 	const approveResult = $derived.by(() => {
 		if (gate) {
-			return buildPipelineGateMutation({ gate, decision: 'approve', summary, evalScore: scoreInput });
+			return stageGateMutation('approve');
 		}
 		if (inlineGate) {
 			return buildInlinePipelineGateMutation({ decision: 'approve', comment: summary, feedbackScore: scoreInput });
@@ -45,7 +54,7 @@
 	});
 	const changesResult = $derived.by(() => {
 		if (gate) {
-			return buildPipelineGateMutation({ gate, decision: 'request_changes', summary, evalScore: scoreInput });
+			return stageGateMutation('request_changes');
 		}
 		if (inlineGate) {
 			return buildInlinePipelineGateMutation({ decision: 'request_changes', comment: summary, feedbackScore: scoreInput });
@@ -75,7 +84,7 @@
 	async function decide(decision: PipelineGateDecision) {
 		if ((!gate && !inlineGate) || busy || !workforceAvailable || !canEdit) return;
 		const result = gate
-			? buildPipelineGateMutation({ gate, decision, summary, evalScore: scoreInput })
+			? stageGateMutation(decision)!
 			: buildInlinePipelineGateMutation({ decision, comment: summary, feedbackScore: scoreInput });
 		if (!result.ok) {
 			submitError = validationMessage(result.error);
@@ -145,7 +154,7 @@
 			bind:value={summary}
 		></textarea>
 
-		{#if gate?.permitsEvalScore || inlineGate}
+		{#if gate || inlineGate}
 			<div class="mt-3 flex flex-wrap items-end gap-3">
 				<label class="text-xs font-medium text-foreground" for="pipeline-gate-score">
 					{gate?.permitsEvalScore ? m.workforce_gate_scoreLabel() : m.workforce_harness_optionalQualityScore()}

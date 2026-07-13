@@ -74,6 +74,7 @@ describe('PipelineGateControls', () => {
     expect(body).toContain('Decision summary');
     expect(body).toContain('Approve');
     expect(body).toContain('Request changes');
+    expect(body).toContain('Quality score (optional, 0–10)');
     expect(body).toContain('retries implement');
     expect(body).not.toContain('Approve → Done');
   });

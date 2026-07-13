@@ -28,6 +28,7 @@ export type PipelineGateMutation = {
   pipelineOutcome: 'passed' | 'failed';
   pipelineSummary: string;
   evalScore?: number;
+  feedbackScore?: number;
 };
 
 export type InlinePipelineGateMutation = {
@@ -140,6 +141,7 @@ export function buildPipelineGateMutation(input: {
   decision: PipelineGateDecision;
   summary: string;
   evalScore?: number;
+  feedbackScore?: number;
 }): PipelineGateMutationResult {
   const summary = input.summary.trim();
   if (!summary) return { ok: false, error: 'summary_required' };
@@ -149,6 +151,7 @@ export function buildPipelineGateMutation(input: {
   }
 
   let evalScore: number | undefined;
+  let feedbackScore: number | undefined;
   if (input.gate.permitsEvalScore) {
     const { minScore, maxScore } = input.gate.stage;
     if (
@@ -167,6 +170,15 @@ export function buildPipelineGateMutation(input: {
       return { ok: false, error: 'score_below_threshold' };
     }
     evalScore = input.evalScore;
+  } else if (input.feedbackScore !== undefined) {
+    if (
+      !Number.isFinite(input.feedbackScore) ||
+      input.feedbackScore < 0 ||
+      input.feedbackScore > 10
+    ) {
+      return { ok: false, error: 'score_invalid' };
+    }
+    feedbackScore = input.feedbackScore;
   }
 
   return {
@@ -176,6 +188,7 @@ export function buildPipelineGateMutation(input: {
       pipelineOutcome: input.decision === 'approve' ? 'passed' : 'failed',
       pipelineSummary: summary,
       ...(evalScore === undefined ? {} : { evalScore }),
+      ...(feedbackScore === undefined ? {} : { feedbackScore }),
     },
   };
 }
