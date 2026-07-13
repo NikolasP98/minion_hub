@@ -12,8 +12,10 @@
 	const { issue, comments, documents, workProducts, approvals, children, agentNames, decisions } = $derived(data);
 
 	let decisionComment = $state('');
+	let feedbackScore = $state<number | undefined>(undefined);
 	let decisionBusy = $state(false);
 	let decisionError = $state('');
+	const feedbackValid = $derived(feedbackScore == null || (feedbackScore >= 0 && feedbackScore <= 10));
 
 	// The HITL gate: a pending user-participant stage awaiting a disposition.
 	const awaitingMyDecision = $derived(
@@ -23,7 +25,7 @@
 	);
 
 	async function decide(outcome: 'approve' | 'request_changes') {
-		if (decisionBusy || !decisionComment.trim()) return;
+		if (decisionBusy || !decisionComment.trim() || !feedbackValid) return;
 		decisionBusy = true;
 		decisionError = '';
 		try {
@@ -33,6 +35,7 @@
 				body: JSON.stringify({
 					status: outcome === 'approve' ? 'done' : 'in_progress',
 					comment: decisionComment.trim(),
+					...(feedbackScore == null ? {} : { feedbackScore }),
 				}),
 			});
 			if (!res.ok) {
@@ -40,6 +43,7 @@
 				return;
 			}
 			decisionComment = '';
+			feedbackScore = undefined;
 			await invalidateAll();
 		} finally {
 			decisionBusy = false;
@@ -197,8 +201,11 @@
 							<span class="rounded px-1.5 py-0.5 font-medium {d.outcome === 'approved' ? 'bg-green-500/10 text-green-600' : 'bg-amber-500/10 text-amber-600'}">
 								{d.outcome === 'approved' ? m.workforce_decision_approved() : m.workforce_decision_changesRequested()}
 							</span>
-							{#if d.score != null}
+							{#if d.score != null && !d.actorUserId}
 								<span class="rounded bg-muted px-1.5 py-0.5 font-mono font-medium">{d.score}/{d.maxScore ?? '?'}</span>
+							{/if}
+							{#if d.actorUserId && d.score != null}
+								<span class="rounded bg-blue-500/10 px-1.5 py-0.5 font-mono font-medium text-blue-600">{m.workforce_harness_humanScore()}: {d.score}/{d.maxScore ?? 10}</span>
 							{/if}
 							<time class="text-muted-foreground" datetime={new Date(d.createdAt).toISOString()}>{formatDate(d.createdAt)}</time>
 						</li>
@@ -227,15 +234,19 @@
 						placeholder="Decision comment (required)…"
 						bind:value={decisionComment}
 					></textarea>
+					<label class="flex items-center gap-2 text-xs text-muted-foreground">
+						{m.workforce_harness_optionalQualityScore()}
+						<input class="w-20 rounded-md border border-border bg-background px-2 py-1 text-foreground" type="number" min="0" max="10" step="0.5" bind:value={feedbackScore} />
+					</label>
 					<div class="flex items-center gap-2">
 						<button
 							class="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-							disabled={decisionBusy || !decisionComment.trim()}
+							disabled={decisionBusy || !decisionComment.trim() || !feedbackValid}
 							onclick={() => decide('approve')}
 						>Approve → Done</button>
 						<button
 							class="rounded-md border border-amber-500/50 px-3 py-1.5 text-xs font-medium text-amber-600 disabled:opacity-50"
-							disabled={decisionBusy || !decisionComment.trim()}
+							disabled={decisionBusy || !decisionComment.trim() || !feedbackValid}
 							onclick={() => decide('request_changes')}
 						>Request changes</button>
 						{#if decisionError}<span class="text-xs text-red-500">{decisionError}</span>{/if}

@@ -241,6 +241,18 @@
 					</span>
 				{/if}
 			</header>
+			{#if data.harnessRoster.length}
+				<div class="t-caption">{m.workforce_harness_executionRoster()}</div>
+				<div class="roster">
+					{#each data.harnessRoster as harness (harness.agentId)}
+						<a class="agent-card" class:disabled={!data.workforceAvailable} href={data.workforceAvailable ? `/workforce/agents/${harness.agentId}` : undefined} aria-disabled={!data.workforceAvailable}>
+							<span class="agent-name">{harness.name}</span>
+							<span class="t-caption font-mono">{harness.activePrimary?.model ?? m.workforce_harness_offline()}</span>
+							<span class="t-caption">r{harness.revision ?? '?'} · {harness.performance.successRate == null ? '—' : `${Math.round(harness.performance.successRate * 100)}%`}</span>
+						</a>
+					{/each}
+				</div>
+			{/if}
 
 			{#if !data.workforceAvailable}
 				<p class="t-caption empty">{m.workforce_projects_executionUnavailable()}</p>
@@ -421,6 +433,11 @@
 	.mini.status { width: 100%; }
 	.exec { padding: 0.6rem 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
 	.exec.offline { opacity: 0.65; background: var(--color-bg3); }
+	.roster { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.45rem; }
+	.agent-card { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.5rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 0.45rem 0.55rem; color: var(--color-foreground); text-decoration: none; }
+	.agent-card:hover { border-color: var(--color-primary); }
+	.agent-card.disabled { pointer-events: none; filter: grayscale(1); }
+	.agent-name { grid-column: 1 / -1; font-size: 0.78rem; font-weight: 600; }
 	.exec-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; color: var(--color-muted-foreground); }
 	.exec-head > span { display: inline-flex; align-items: center; gap: 0.4rem; }
 	.exec-meta { display: flex; flex-wrap: wrap; gap: 0.75rem; }

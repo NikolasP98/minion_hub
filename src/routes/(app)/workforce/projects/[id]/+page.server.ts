@@ -13,7 +13,8 @@ import {
   workforceProjectIdOf,
   type PartyLite,
 } from '$server/services/projects.service';
-import { workforceServerClient } from '$lib/server/workforce-fetch';
+import { workforceRawFetch, workforceServerClient } from '$lib/server/workforce-fetch';
+import { harnessAgentIds, normalizeHarnessBatch, type HarnessSummary } from '$lib/workforce/harness';
 import { listEntityTimeline } from '$server/services/activity.service';
 import type { Project, Issue, Pipeline } from '@minion-stack/workforce-client';
 
@@ -59,6 +60,10 @@ export const load: PageServerLoad = async (event) => {
   let execution: { project: Project; issues: Issue[]; agentNames: Record<string, string> } | null = null;
   let linkable: Array<{ id: string; name: string }> = [];
   let pipelines: Pipeline[] = [];
+  let harnessRoster: Array<HarnessSummary & { name: string }> = [...new Set(tasks.map((task) => task.assigneePartyId).filter((id): id is string => !!id))]
+    .map((partyId) => partyMap[partyId])
+    .filter((party): party is PartyLite => !!party?.agentId)
+    .map((party) => ({ agentId: party.agentId!, name: party.name ?? 'Agent', revision: null, hash: null, roleClass: null, runtimeClass: null, activePrimary: null, activeFallbacks: [], recommendedPrimary: null, recommendedFallbacks: [], tools: [], skills: [], learningPolicy: null, performance: { successRate: null, avgScore: null, runCount: null, costCents: null } }));
 
   if (companyId && workforceAvailable) {
     const client = workforceServerClient(event);
@@ -74,6 +79,15 @@ export const load: PageServerLoad = async (event) => {
         for (const a of wfAgents) agentNames[a.id] = a.name;
         execution = { project: wfProject, issues, agentNames };
         pipelines = wfPipelines;
+        const rosterIds = harnessAgentIds(wfPipelines, issues);
+        if (rosterIds.length) {
+          const batch = await workforceRawFetch<unknown>(event, `/api/companies/${companyId}/agent-harnesses?agentIds=${encodeURIComponent(rosterIds.join(','))}`).catch(() => []);
+          const harnesses = normalizeHarnessBatch(batch);
+          harnessRoster = rosterIds.map((agentId) => ({
+            ...(harnesses[agentId] ?? { agentId, revision: null, hash: null, roleClass: null, runtimeClass: null, activePrimary: null, activeFallbacks: [], recommendedPrimary: null, recommendedFallbacks: [], tools: [], skills: [], learningPolicy: null, performance: { successRate: null, avgScore: null, runCount: null, costCents: null } }),
+            name: agentNames[agentId] ?? `${agentId.slice(0, 8)}…`,
+          }));
+        }
       } catch {
         execution = null; // link points at a gone/unreachable project — show "link broken" affordance
       }
@@ -86,5 +100,5 @@ export const load: PageServerLoad = async (event) => {
     }
   }
 
-  return { project, tasks, progress, timesheets, agents, selfPartyId, partyMap, workforceProjectId, execution, linkable, pipelines, timeline, workforceAvailable };
+  return { project, tasks, progress, timesheets, agents, selfPartyId, partyMap, workforceProjectId, execution, linkable, pipelines, timeline, workforceAvailable, harnessRoster };
 };

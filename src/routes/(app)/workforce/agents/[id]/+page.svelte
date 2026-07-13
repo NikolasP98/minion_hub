@@ -4,9 +4,10 @@
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
-	const { agent, costTrend, runs, issues } = $derived(data);
+	const { agent, costTrend, runs, issues, harness, harnessSignals, harnessProposals } = $derived(data);
 
 	const trendValues = $derived(costTrend.map((p) => p.cents));
 	const totalCostCents = $derived(trendValues.reduce((s, n) => s + n, 0));
@@ -111,6 +112,56 @@
 			</div>
 		</div>
 	</header>
+
+	<!-- Living Harness: active execution truth is deliberately separate from recommendations. -->
+	<section class="rounded-lg border border-border bg-card p-4 space-y-4">
+		<div class="flex items-start justify-between gap-3">
+			<div>
+				<h2 class="text-sm font-semibold">{m.workforce_harness_title()}</h2>
+				<p class="text-xs text-muted-foreground">{m.workforce_harness_subtitle()}</p>
+			</div>
+			{#if harness}
+				<span class="rounded bg-muted px-2 py-1 font-mono text-xs" title={harness.hash ?? undefined}>
+					r{harness.revision ?? '?'} · {harness.hash?.slice(0, 8) ?? m.workforce_harness_unpinned()}
+				</span>
+			{/if}
+		</div>
+		{#if harness}
+			<div class="grid gap-3 md:grid-cols-2">
+				<div class="rounded-md border border-border bg-background p-3 space-y-2">
+					<div class="text-[11px] font-semibold uppercase tracking-wider text-green-600">{m.workforce_harness_active()}</div>
+					<div class="text-sm font-medium font-mono">{harness.activePrimary?.model ?? '—'}</div>
+					<div class="text-xs text-muted-foreground">{harness.activePrimary?.provider ?? agent.adapterType} · {harness.runtimeClass ?? '—'} · {harness.roleClass ?? agent.role}</div>
+					{#if harness.activeFallbacks.length}<div class="text-xs text-muted-foreground">{m.workforce_harness_fallbacks()}: {harness.activeFallbacks.map((item) => item.model).join(' → ')}</div>{/if}
+				</div>
+				<div class="rounded-md border border-dashed border-border bg-muted/30 p-3 space-y-2">
+					<div class="text-[11px] font-semibold uppercase tracking-wider text-amber-600">{m.workforce_harness_recommended()}</div>
+					<div class="text-sm font-medium font-mono">{harness.recommendedPrimary?.model ?? m.workforce_harness_noRecommendation()}</div>
+					{#if harness.recommendedFallbacks.length}<div class="text-xs text-muted-foreground">{m.workforce_harness_fallbacks()}: {harness.recommendedFallbacks.map((item) => item.model).join(' → ')}</div>{/if}
+					<p class="text-xs text-muted-foreground">{m.workforce_harness_recommendationHint()}</p>
+				</div>
+			</div>
+			<div class="grid gap-3 sm:grid-cols-3 text-xs">
+				<div><span class="text-muted-foreground">{m.workforce_harness_skills()}</span><div class="mt-1">{harness.skills.join(', ') || '—'}</div></div>
+				<div><span class="text-muted-foreground">{m.workforce_harness_tools()}</span><div class="mt-1">{harness.tools.join(', ') || '—'}</div></div>
+				<div><span class="text-muted-foreground">{m.workforce_harness_learningPolicy()}</span><div class="mt-1">{harness.learningPolicy ?? '—'}</div></div>
+			</div>
+			<div class="flex flex-wrap gap-2 text-xs">
+				<span class="rounded bg-muted px-2 py-1">{m.workforce_harness_runs()}: {harness.performance.runCount ?? '—'}</span>
+				<span class="rounded bg-muted px-2 py-1">{m.workforce_harness_success()}: {harness.performance.successRate == null ? '—' : `${Math.round(harness.performance.successRate * 100)}%`}</span>
+				<span class="rounded bg-muted px-2 py-1">{m.workforce_harness_score()}: {harness.performance.avgScore?.toFixed(1) ?? '—'}</span>
+				<span class="rounded bg-muted px-2 py-1">{m.workforce_harness_revisions()}: {data.harnessRevisionCount}</span>
+			</div>
+			{#if harnessSignals.length || harnessProposals.length}
+				<div class="grid gap-3 md:grid-cols-2 text-xs">
+					<div><h3 class="font-medium mb-1">{m.workforce_harness_recentSignals()}</h3>{#each harnessSignals as signal (signal.id)}<p class="text-muted-foreground">{signal.kind} · {signal.summary}</p>{/each}</div>
+					<div><h3 class="font-medium mb-1">{m.workforce_harness_recentProposals()}</h3>{#each harnessProposals as proposal (proposal.id)}<p class="text-muted-foreground"><span class="text-amber-600">{proposal.status}</span> · {proposal.summary}</p>{/each}</div>
+				</div>
+			{/if}
+		{:else}
+			<p class="text-sm text-muted-foreground">{m.workforce_harness_unavailable()}</p>
+		{/if}
+	</section>
 
 	<!-- 3-column KPI row: cost / runs / issues -->
 	<section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
