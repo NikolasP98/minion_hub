@@ -3,7 +3,7 @@
 	import { invalidate, goto } from '$app/navigation';
 	import { PageHeader } from '$lib/components/ui';
 	import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
-	import { GanttChartSquare, FolderPlus, Sparkles, Boxes } from 'lucide-svelte';
+	import { GanttChartSquare, FolderPlus, Sparkles, Boxes, FolderGit2, Layers3 } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { canAct } from '$lib/access/can.svelte';
 
@@ -156,22 +156,43 @@
 		</section>
 
 		<!-- Paperclip execution-layer projects not yet linked to a native project. -->
-		{#if data.workforce.length}
-			<section class="card wf">
-				<header class="wf-head"><Boxes size={14} /> From the workforce backend (not linked)</header>
-				{#each data.workforce as p (p.id)}
-					<div class="wf-row">
-						<span class="name">
-							{#if p.color}<span class="dot" style="background:{p.color}"></span>{/if}{p.name}
-						</span>
-						<span class="status t-caption">{p.status}</span>
-						<button
-							class="btn ghost sm"
-							disabled={busy || !canAct('projects', 'edit')}
-							title={canAct('projects', 'edit') ? undefined : m.no_permission()}
-							onclick={() => importWorkforce(p)}
-						>Import →</button>
-					</div>
+		{#if data.workforceGroups.length}
+			<section class="wf-registry" aria-labelledby="execution-projects-title">
+				<header class="wf-registry-head">
+					<span id="execution-projects-title"><Boxes size={14} /> {m.workforce_projects_executionProjects()}</span>
+					<span class="t-caption">{m.workforce_projects_unlinkedHint()}</span>
+				</header>
+				{#each data.workforceGroups as repository (repository.key)}
+					<article class="card wf-repository">
+						<header class="wf-repository-head">
+							<span class="wf-repository-icon"><FolderGit2 size={15} /></span>
+							<span class="wf-kind">{m.workforce_projects_repository()}</span>
+							<strong>{repository.repositoryKey ?? m.workforce_projects_ungroupedRepository()}</strong>
+						</header>
+						{#each repository.groups as group (group.key)}
+							<section class="wf-concern">
+								<header class="wf-concern-head">
+									<span class="wf-concern-icon"><Layers3 size={12} /></span>
+									<span class="wf-kind">{m.workforce_projects_concern()}</span>
+									<span>{group.groupKey ?? m.workforce_projects_ungroupedConcern()}</span>
+								</header>
+								{#each group.projects as p (p.id)}
+									<div class="wf-row">
+										<span class="name">
+											{#if p.color}<span class="dot" style="background:{p.color}"></span>{/if}{p.name}
+										</span>
+										<span class="status t-caption">{p.status}</span>
+										<button
+											class="btn ghost sm"
+											disabled={busy || !canAct('projects', 'edit')}
+											title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+											onclick={() => importWorkforce(p)}
+										>{m.workforce_projects_import()}</button>
+									</div>
+								{/each}
+							</section>
+						{/each}
+					</article>
 				{/each}
 			</section>
 		{/if}
@@ -203,11 +224,21 @@
 	.s-cancelled { color: var(--color-muted-foreground); text-decoration: line-through; }
 	.target { justify-self: end; font-variant-numeric: tabular-nums; }
 	.empty { padding: 1.25rem 1rem; }
-	.wf { padding: 0.25rem 0; }
 	.offline { display: flex; align-items: center; gap: 0.45rem; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-bg3); color: var(--color-muted-foreground); padding: 0.65rem 0.8rem; font-size: 0.8rem; }
-	.wf-head { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--color-muted-foreground); padding: 0.6rem 1rem 0.4rem; }
+	.wf-registry { display: flex; flex-direction: column; gap: 0.65rem; }
+	.wf-registry-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0 0.15rem; color: var(--color-muted-foreground); }
+	.wf-registry-head > span:first-child { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--color-foreground); }
+	.wf-repository { overflow: hidden; }
+	.wf-repository-head { display: flex; align-items: center; gap: 0.45rem; min-height: 2.4rem; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--hairline); background: linear-gradient(90deg, color-mix(in oklab, var(--color-primary) 8%, var(--color-bg3)), var(--color-card) 55%); }
+	.wf-repository-icon { display: inline-flex; color: var(--color-primary); }
+	.wf-repository-head strong { font-family: monospace; font-size: 0.82rem; letter-spacing: 0.015em; }
+	.wf-kind { color: var(--color-muted-foreground); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; }
+	.wf-concern + .wf-concern { border-top: 1px solid var(--hairline); }
+	.wf-concern-head { display: flex; align-items: center; gap: 0.4rem; padding: 0.45rem 1rem 0.3rem; color: var(--color-muted-foreground); font-family: monospace; font-size: 0.72rem; }
+	.wf-concern-icon { display: inline-flex; color: var(--color-muted-foreground); }
 	.wf-row { display: grid; grid-template-columns: 1fr 8rem auto; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; font-size: 0.86rem; }
-	.wf-row + .wf-row { border-top: 1px solid var(--hairline); }
+	.wf-row + .wf-row { border-top: 1px solid color-mix(in oklab, var(--hairline) 70%, transparent); }
+	.wf-row:hover { background: var(--color-bg3); }
 	.name { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
 	.dot { width: 0.6rem; height: 0.6rem; border-radius: 999px; flex: 0 0 auto; }
 </style>
