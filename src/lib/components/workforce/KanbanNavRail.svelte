@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { LayoutDashboard, Inbox, CheckCircle2, Target, Layers, FolderKanban, Users } from 'lucide-svelte';
+	import { LayoutDashboard, Inbox, MailOpen, CheckCircle2, Target, Layers, FolderKanban, Users } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { Tooltip } from '$lib/components/ui';
 
@@ -9,6 +9,7 @@
 	const items = [
 		{ href: '/workforce', label: m.workforce_dashboard(), icon: LayoutDashboard },
 		{ href: '/workforce/issues', label: m.workforce_issues(), icon: Inbox },
+		{ href: '/workforce/inbox', label: m.workforce_inbox(), icon: MailOpen },
 		{ href: '/workforce/approvals', label: m.workforce_approvals(), icon: CheckCircle2 },
 		{ href: '/workforce/goals', label: m.workforce_goals(), icon: Target },
 		{ href: '/workforce/portfolios', label: m.workforce_portfolios(), icon: Layers },
