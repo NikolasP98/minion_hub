@@ -26,43 +26,56 @@ function matches(row: Row, whereFn: (r: Row) => boolean) {
   return whereFn(row);
 }
 
-const mockDb = {
-  select: () => ({
-    from: () => ({
-      where: (whereFn: (r: Row) => boolean) => ({
-        orderBy: () => ({
-          limit: async (n: number) =>
-            rows
-              .filter((r) => matches(r, whereFn))
-              .sort((a, b) => b.createdAt - a.createdAt)
-              .slice(0, n),
-        }),
-        limit: async (n: number) => rows.filter((r) => matches(r, whereFn)).slice(0, n),
+const select = () => ({
+  from: () => ({
+    where: (whereFn: (r: Row) => boolean) => ({
+      orderBy: () => ({
+        limit: async (n: number) =>
+          rows
+            .filter((r) => matches(r, whereFn))
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .slice(0, n),
       }),
+      limit: async (n: number) => rows.filter((r) => matches(r, whereFn)).slice(0, n),
     }),
   }),
-  insert: () => ({
-    values: async (v: Partial<Row>) => {
-      rows.push(v as Row);
+});
+
+const insert = () => ({
+  values: async (v: Partial<Row>) => {
+    rows.push(v as Row);
+  },
+});
+
+const update = () => ({
+  set: (patch: Partial<Row>) => ({
+    where: (whereFn: (r: Row) => boolean) => {
+      const execute = () => {
+        const matched = rows.filter((r) => matches(r, whereFn));
+        rows = rows.map((r) => (matches(r, whereFn) ? { ...r, ...patch } : r));
+        return matched.map((r) => ({ ...r, ...patch }));
+      };
+      return {
+        then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+          Promise.resolve(execute()).then(resolve, reject),
+        returning: async () => execute(),
+      };
     },
   }),
-  update: () => ({
-    set: (patch: Partial<Row>) => ({
-      where: (whereFn: (r: Row) => boolean) => {
-        const execute = () => {
-          const matched = rows.filter((r) => matches(r, whereFn));
-          rows = rows.map((r) => (matches(r, whereFn) ? { ...r, ...patch } : r));
-          return matched.map((r) => ({ ...r, ...patch }));
-        };
-        return {
-          then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
-            Promise.resolve(execute()).then(resolve, reject),
-          returning: async () => execute(),
-        };
-      },
-    }),
-  }),
-  transaction: async <T>(fn: (tx: typeof mockDb) => Promise<T>, _config?: unknown) => {
+});
+
+type MockDb = {
+  select: typeof select;
+  insert: typeof insert;
+  update: typeof update;
+  transaction: <T>(fn: (tx: MockDb) => Promise<T>, config?: unknown) => Promise<T>;
+};
+
+const mockDb: MockDb = {
+  select,
+  insert,
+  update,
+  transaction: async <T>(fn: (tx: MockDb) => Promise<T>, _config?: unknown) => {
     const previous = transactionTail;
     let release!: () => void;
     transactionTail = new Promise<void>((resolve) => {
@@ -600,6 +613,7 @@ describe('getFleetUpdateStatus', () => {
       updatedAt: 1000,
       startedAt: 1000,
       finishedAt: 1000,
+      leaseUntil: null,
     });
   }
 
