@@ -145,6 +145,7 @@
 		{:else}
 			<ol class="ml-2 border-l border-border/80">
 				{#each trace.events as event (event.id)}
+					{@const runtime = runtimeLabel(event.resolvedAdapterType, event.resolvedProvider, event.resolvedModel)}
 					<li class="relative pb-4 pl-5 last:pb-0">
 						<span class="absolute -left-[4.5px] top-1.5 size-2 rounded-full border border-card bg-muted-foreground/70"></span>
 						<div class="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -159,7 +160,7 @@
 							<span>#{event.sequence}</span>
 							{#if event.attempt != null}<span>{m.workforce_trace_attempt()} {event.attempt}</span>{/if}
 							{#if event.score != null}<span>{m.workforce_trace_score()} {event.score}/{event.maxScore ?? '?'}</span>{/if}
-							{#if runtimeLabel(event.resolvedAdapterType, event.resolvedProvider, event.resolvedModel) as runtime}
+							{#if runtime}
 								<span>{m.workforce_trace_runtime()} {runtime}</span>
 							{/if}
 							{#if event.harnessRevisionId}<span title={event.harnessRevisionId}>{m.workforce_trace_harness()} {shortId(event.harnessRevisionId)}</span>{/if}
