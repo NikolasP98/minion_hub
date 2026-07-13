@@ -9,17 +9,19 @@ describe('workforce identity role claims', () => {
       'staff',
       '',
       null,
-      'x'.repeat(129),
-      ...Array.from({ length: 70 }, (_, index) => `custom-${String(index).padStart(2, '0')}`),
+      'x'.repeat(81),
+      'invalid.role',
+      ...Array.from({ length: 24 }, (_, index) => `custom-${String(index).padStart(2, '0')}`),
     ]);
 
-    expect(roleKeys).toHaveLength(64);
+    expect(roleKeys).toHaveLength(20);
     expect(roleKeys).toEqual([...roleKeys].sort());
     expect(canonicalizeWorkforceRoleKeys([' staff ', 'owner', 'staff'])).toEqual([
       'owner',
       'staff',
     ]);
-    expect(roleKeys).not.toContain('x'.repeat(129));
+    expect(roleKeys).not.toContain('x'.repeat(81));
+    expect(roleKeys).not.toContain('invalid.role');
   });
 
   it('uses the canonical role set in the token-cache key', () => {

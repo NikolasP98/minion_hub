@@ -1,5 +1,6 @@
-const MAX_ROLE_KEYS = 64;
-const MAX_ROLE_KEY_LENGTH = 128;
+const MAX_ROLE_KEYS = 20;
+const MAX_ROLE_KEY_LENGTH = 80;
+const ROLE_KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/;
 
 /** Canonical, bounded role claims prevent oversized JWTs and cache fragmentation. */
 export function canonicalizeWorkforceRoleKeys(value: unknown): string[] {
@@ -9,7 +10,11 @@ export function canonicalizeWorkforceRoleKeys(value: unknown): string[] {
       value.flatMap((entry) => {
         if (typeof entry !== 'string') return [];
         const roleKey = entry.trim();
-        return roleKey.length > 0 && roleKey.length <= MAX_ROLE_KEY_LENGTH ? [roleKey] : [];
+        return roleKey.length > 0 &&
+          roleKey.length <= MAX_ROLE_KEY_LENGTH &&
+          ROLE_KEY_PATTERN.test(roleKey)
+          ? [roleKey]
+          : [];
       }),
     ),
   ]
