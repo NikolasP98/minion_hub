@@ -5,6 +5,10 @@ vi.mock('$lib/server/workforce-fetch', () => ({
   authHeaders: () => ({ 'x-hub-identity': 'signed-token' }),
 }));
 
+vi.mock('$server/config/urls', () => ({
+  hubBaseUrl: () => 'https://hub.example.test',
+}));
+
 import { PATCH } from './+server';
 
 afterEach(() => {
@@ -47,6 +51,8 @@ describe('workforce proxy pipeline gate mutation', () => {
     expect(target).toBe('http://workforce.test/api/issues/child-1');
     expect(init.method).toBe('PATCH');
     expect((init.headers as Record<string, string>)['x-hub-identity']).toBe('signed-token');
+    expect((init.headers as Record<string, string>)['x-forwarded-host']).toBe('hub.example.test');
+    expect((init.headers as Record<string, string>)['x-forwarded-proto']).toBe('https');
     expect(JSON.parse(new TextDecoder().decode(init.body as ArrayBuffer))).toEqual(payload);
   });
 });

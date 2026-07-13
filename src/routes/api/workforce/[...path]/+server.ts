@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { authHeaders, baseUrl } from '$lib/server/workforce-fetch';
+import { hubBaseUrl } from '$server/config/urls';
 import type { RequestHandler } from './$types';
 
 const HOP_BY_HOP = new Set(['cookie', 'host', 'connection', 'content-length', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
@@ -20,6 +21,11 @@ const handler: RequestHandler = async ({ request, params, locals, url }) => {
 	// Board keys (pcli_) authenticate via Authorization: Bearer; only minted
 	// JWTs go through x-hub-identity — same split as workforceServerClient.
 	Object.assign(forwardedHeaders, authHeaders(identity.token));
+	// Preserve the canonical public proxy boundary for Workforce's mutation
+	// origin guard. Never derive this trust signal from the inbound Host header.
+	const publicHub = new URL(hubBaseUrl());
+	forwardedHeaders['x-forwarded-host'] = publicHub.host;
+	forwardedHeaders['x-forwarded-proto'] = publicHub.protocol.slice(0, -1);
 
 	const init: RequestInit = {
 		method: request.method,
