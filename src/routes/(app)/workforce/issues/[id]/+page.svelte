@@ -4,12 +4,13 @@
 	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
 	import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
 	import PipelineStepper from '$lib/components/workforce/PipelineStepper.svelte';
+	import PipelineTrace from '$lib/components/workforce/PipelineTrace.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	import { invalidateAll } from '$app/navigation';
 
 	let { data }: { data: PageData } = $props();
-	const { issue, comments, documents, workProducts, approvals, children, agentNames, decisions } = $derived(data);
+	const { issue, comments, documents, workProducts, approvals, children, agentNames, decisions, pipelineTrace } = $derived(data);
 
 	let decisionComment = $state('');
 	let feedbackScore = $state<number | undefined>(undefined);
@@ -254,6 +255,11 @@
 				</div>
 			{/if}
 		</section>
+	{/if}
+
+	<!-- Durable, append-only routing and stage-attempt trace. Telemetry only; no execution controls. -->
+	{#if pipelineTrace}
+		<PipelineTrace trace={pipelineTrace} />
 	{/if}
 
 	<!-- Two-column layout: main content + properties sidebar -->
