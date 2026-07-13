@@ -5,51 +5,13 @@
 	import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
 	import PipelineStepper from '$lib/components/workforce/PipelineStepper.svelte';
 	import PipelineTrace from '$lib/components/workforce/PipelineTrace.svelte';
+	import PipelineGateControls from '$lib/components/workforce/PipelineGateControls.svelte';
+	import { canAct } from '$lib/access/can.svelte';
 	import * as m from '$lib/paraglide/messages';
-
 	import { invalidateAll } from '$app/navigation';
 
 	let { data }: { data: PageData } = $props();
 	const { issue, comments, documents, workProducts, approvals, children, agentNames, decisions, pipelineTrace } = $derived(data);
-
-	let decisionComment = $state('');
-	let feedbackScore = $state<number | undefined>(undefined);
-	let decisionBusy = $state(false);
-	let decisionError = $state('');
-	const feedbackValid = $derived(feedbackScore == null || (feedbackScore >= 0 && feedbackScore <= 10));
-
-	// The HITL gate: a pending user-participant stage awaiting a disposition.
-	const awaitingMyDecision = $derived(
-		issue.status === 'in_review' &&
-			issue.executionState?.status === 'pending' &&
-			issue.executionState.currentParticipant?.type === 'user',
-	);
-
-	async function decide(outcome: 'approve' | 'request_changes') {
-		if (decisionBusy || !decisionComment.trim() || !feedbackValid) return;
-		decisionBusy = true;
-		decisionError = '';
-		try {
-			const res = await fetch(`/api/workforce/issues/${issue.id}`, {
-				method: 'PATCH',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					status: outcome === 'approve' ? 'done' : 'in_progress',
-					comment: decisionComment.trim(),
-					...(feedbackScore == null ? {} : { feedbackScore }),
-				}),
-			});
-			if (!res.ok) {
-				decisionError = `decision failed (${res.status}): ${(await res.text()).slice(0, 200)}`;
-				return;
-			}
-			decisionComment = '';
-			feedbackScore = undefined;
-			await invalidateAll();
-		} finally {
-			decisionBusy = false;
-		}
-	}
 
 	const STATUS_LABELS: Record<IssueStatus, string> = {
 		in_progress: 'In Progress',
@@ -226,38 +188,19 @@
 					Last gate decision: <span class="font-medium {issue.executionState.lastDecisionOutcome === 'approved' ? 'text-green-600' : 'text-amber-600'}">{issue.executionState.lastDecisionOutcome.replace('_', ' ')}</span>
 				</p>
 			{/if}
-			{#if awaitingMyDecision}
-				<div class="mt-3 rounded-md border border-blue-500/30 bg-blue-500/5 p-3 space-y-2">
-					<p class="text-xs font-medium text-blue-600">This issue is waiting on your approval.</p>
-					<textarea
-						class="w-full rounded-md border border-border bg-background p-2 text-sm"
-						rows="2"
-						placeholder="Decision comment (required)…"
-						bind:value={decisionComment}
-					></textarea>
-					<label class="flex items-center gap-2 text-xs text-muted-foreground">
-						{m.workforce_harness_optionalQualityScore()}
-						<input class="w-20 rounded-md border border-border bg-background px-2 py-1 text-foreground" type="number" min="0" max="10" step="0.5" bind:value={feedbackScore} />
-					</label>
-					<div class="flex items-center gap-2">
-						<button
-							class="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-							disabled={decisionBusy || !decisionComment.trim() || !feedbackValid}
-							onclick={() => decide('approve')}
-						>Approve → Done</button>
-						<button
-							class="rounded-md border border-amber-500/50 px-3 py-1.5 text-xs font-medium text-amber-600 disabled:opacity-50"
-							disabled={decisionBusy || !decisionComment.trim() || !feedbackValid}
-							onclick={() => decide('request_changes')}
-						>Request changes</button>
-						{#if decisionError}<span class="text-xs text-red-500">{decisionError}</span>{/if}
-					</div>
-				</div>
-			{/if}
 		</section>
 	{/if}
 
-	<!-- Durable, append-only routing and stage-attempt trace. Telemetry only; no execution controls. -->
+	<PipelineGateControls
+		{issue}
+		trace={pipelineTrace}
+		viewerUserId={data.viewerUserId}
+		workforceAvailable={data.workforceAvailable}
+		canEdit={canAct('projects', 'edit')}
+		onDecisionRecorded={invalidateAll}
+	/>
+
+	<!-- Durable, append-only routing and stage-attempt trace. -->
 	{#if pipelineTrace}
 		<PipelineTrace trace={pipelineTrace} />
 	{/if}

@@ -3,8 +3,15 @@ import { workforceRawFetch, workforceServerClient } from '$lib/server/workforce-
 import { normalizePipelineTrace, pipelineRunId } from '$lib/workforce/pipeline-trace';
 import type { PageServerLoad } from './$types';
 
+function statusOf(value: unknown): number | undefined {
+  if (!value || typeof value !== 'object' || !('status' in value)) return undefined;
+  const status = (value as { status?: unknown }).status;
+  return typeof status === 'number' ? status : undefined;
+}
+
 export const load: PageServerLoad = async (event) => {
   if (!event.locals.user) throw redirect(302, '/login');
+  const { workforceAvailable } = await event.parent();
   if (!event.locals.workforceIdentity?.companyId) {
     throw redirect(302, '/workforce/welcome?reason=no-company');
   }
@@ -58,8 +65,11 @@ export const load: PageServerLoad = async (event) => {
       agentNames,
       decisions,
       pipelineTrace,
+      viewerUserId: event.locals.workforceIdentity.userId,
+      workforceAvailable,
     };
-  } catch (e: any) {
-    throw error(e?.status ?? 502, e?.status === 404 ? 'issue not found' : 'paperclip unavailable');
+  } catch (cause: unknown) {
+    const status = statusOf(cause);
+    throw error(status ?? 502, status === 404 ? 'issue not found' : 'paperclip unavailable');
   }
 };

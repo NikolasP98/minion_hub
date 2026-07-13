@@ -62,6 +62,10 @@
 		}
 	}
 
+	function outcomeLabel(outcome: 'passed' | 'failed'): string {
+		return outcome === 'passed' ? m.workforce_trace_outcomePassed() : m.workforce_trace_outcomeFailed();
+	}
+
 	function eventLabel(eventType: string): string {
 		switch (eventType) {
 			case 'run_created': return m.workforce_trace_eventRunCreated();
@@ -171,6 +175,14 @@
 							{/if}
 							<time class="ml-auto font-sans" datetime={event.occurredAt ?? undefined}>{formatDate(event.occurredAt)}</time>
 						</div>
+						{#if event.summary}
+							<p class="mt-1.5 rounded border border-border/70 bg-background px-2 py-1.5 text-xs leading-relaxed text-muted-foreground">
+								{#if event.outcome}
+									<span class="mr-1 font-semibold uppercase tracking-wider {event.outcome === 'passed' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}">{outcomeLabel(event.outcome)}</span>
+								{/if}
+								{event.summary}
+							</p>
+						{/if}
 					</li>
 				{/each}
 			</ol>

@@ -22,13 +22,28 @@ export type PipelineTraceEvent = {
   resolvedProvider: string | null;
   harnessRevisionId: string | null;
   participantType: string | null;
+  outcome: 'passed' | 'failed' | null;
+  summary: string | null;
   occurredAt: string | null;
+};
+
+export type PipelineTraceStage = {
+  key: string;
+  label: string;
+  kind: string;
+  participantType: string | null;
+  participantUserId: string | null;
+  onFailStepKey: string | null;
+  minScore: number | null;
+  maxScore: number | null;
+  rubric: string | null;
 };
 
 export type PipelineTrace = {
   id: string;
   status: string;
   currentStepKey: string | null;
+  currentStage: PipelineTraceStage | null;
   sourceOriginKind: string | null;
   sourceOriginId: string | null;
   pipelineName: string | null;
@@ -62,6 +77,29 @@ function finiteNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function pipelineOutcome(value: unknown): 'passed' | 'failed' | null {
+  return value === 'passed' || value === 'failed' ? value : null;
+}
+
+function traceStage(stage: Record<string, unknown> | null): PipelineTraceStage | null {
+  const key = text(stage?.key ?? stage?.id);
+  const label = text(stage?.label);
+  const kind = text(stage?.kind);
+  if (!stage || !key || !label || !kind) return null;
+  const participant = record(stage.participant);
+  return {
+    key,
+    label,
+    kind,
+    participantType: text(participant?.type),
+    participantUserId: text(participant?.userId),
+    onFailStepKey: text(stage.onFailStepKey),
+    minScore: finiteNumber(stage.minScore),
+    maxScore: finiteNumber(stage.maxScore),
+    rubric: text(stage.rubric),
+  };
 }
 
 function texts(value: unknown): string[] {
@@ -164,6 +202,7 @@ export function normalizePipelineTrace(
       const stage = stepKey ? (stages.get(stepKey) ?? null) : null;
       const participant = record(row.participant) ?? record(stage?.participant);
       const participantType = text(participant?.type);
+      const output = record(row.outputSnapshot) ?? record(row.output);
       return [
         {
           id: text(row.id ?? row.eventKey) ?? `${id}-event-${index}`,
@@ -183,16 +222,21 @@ export function normalizePipelineTrace(
           resolvedProvider: text(row.resolvedProvider ?? row.provider),
           harnessRevisionId: text(row.harnessRevisionId),
           participantType,
+          outcome: pipelineOutcome(output?.outcome),
+          summary: text(output?.summary),
           occurredAt: text(row.occurredAt ?? row.createdAt),
         },
       ];
     })
     .sort((left, right) => left.sequence - right.sequence);
 
+  const currentStepKey = text(run.currentStepKey);
+
   return {
     id,
     status: text(run.status) ?? 'unknown',
-    currentStepKey: text(run.currentStepKey),
+    currentStepKey,
+    currentStage: currentStepKey ? traceStage(stages.get(currentStepKey) ?? null) : null,
     sourceOriginKind: text(run.sourceOriginKind),
     sourceOriginId: text(run.sourceOriginId),
     pipelineName: text(snapshot.name ?? run.pipelineName),

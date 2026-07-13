@@ -4,7 +4,7 @@ import { normalizePipelineTrace, pipelineRunId } from './pipeline-trace';
 const run = {
   id: 'run-1',
   status: 'active',
-  currentStepKey: 'implement',
+  currentStepKey: 'approval',
   sourceOriginKind: 'github_issue',
   sourceOriginId: 'nikolasp98/minion_hub#56',
   selectedProjectId: 'project-1',
@@ -12,7 +12,14 @@ const run = {
     name: 'Bug fix',
     steps: [
       { key: 'classify', kind: 'work', label: 'Classify tags', participant: { type: 'agent' } },
-      { key: 'approval', kind: 'approval', label: 'Plan approval', participant: { type: 'user' } },
+      {
+        key: 'approval',
+        kind: 'approval',
+        label: 'Plan approval',
+        participant: { type: 'user', userId: 'user-1' },
+        onFailStepKey: 'classify',
+        maxAttempts: 2,
+      },
       { key: 'merge', kind: 'work', label: 'Code merger', participant: { type: 'agent' } },
     ],
   },
@@ -50,6 +57,7 @@ describe('pipeline trace normalization', () => {
             resolvedModel: 'claude-haiku',
             resolvedProvider: 'anthropic',
             harnessRevisionId: 'revision-1',
+            outputSnapshot: { outcome: 'passed', summary: 'Labels are complete' },
           },
           { id: 'e1', sequence: 1, eventType: 'run_created' },
         ],
@@ -72,6 +80,22 @@ describe('pipeline trace normalization', () => {
       score: 8.5,
       resolvedAdapterType: 'minion_drone',
       harnessRevisionId: 'revision-1',
+      outcome: 'passed',
+      summary: 'Labels are complete',
+    });
+  });
+
+  it('exposes the frozen current stage contract used by HITL controls', () => {
+    expect(normalizePipelineTrace(run, [])?.currentStage).toEqual({
+      key: 'approval',
+      label: 'Plan approval',
+      kind: 'approval',
+      participantType: 'user',
+      participantUserId: 'user-1',
+      onFailStepKey: 'classify',
+      minScore: null,
+      maxScore: null,
+      rubric: null,
     });
   });
 
