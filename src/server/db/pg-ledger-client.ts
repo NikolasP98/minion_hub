@@ -1,23 +1,18 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
-import postgres from 'postgres';
-import { env } from '$env/dynamic/private';
 import { messages } from '@minion-stack/db/pg';
+import { getPgClient } from './pg-pool';
 
 type LedgerDb = ReturnType<typeof drizzle<{ messages: typeof messages }>>;
 
 /** The transaction handle handed to `withOrg` callbacks. */
 export type LedgerTx = Parameters<Parameters<LedgerDb['transaction']>[0]>[0];
 
-let _client: ReturnType<typeof postgres> | null = null;
 let _db: LedgerDb | null = null;
 
 function getLedgerDb(): LedgerDb {
   if (_db) return _db;
-  const url = env.SUPABASE_DB_URL;
-  if (!url) throw new Error('SUPABASE_DB_URL is required for the ledger PG client');
-  _client = postgres(url, { prepare: false, max: 5 });
-  _db = drizzle(_client, { schema: { messages } });
+  _db = drizzle(getPgClient(), { schema: { messages } });
   return _db;
 }
 

@@ -63,25 +63,34 @@ function readHostsCache(): Host[] {
  * a stale cached token.
  */
 export async function fetchHostToken(id: string): Promise<string | null> {
-  try {
-    const res = await fetch(`/api/servers/${id}/token`, {
-      method: 'POST',
-      headers: { 'cache-control': 'no-store' },
-    });
-    if (res.status === 401) {
-      console.warn('[hosts] token fetch 401 — session required to connect');
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await fetch(`/api/servers/${id}/token`, {
+        method: 'POST',
+        headers: { 'cache-control': 'no-store' },
+      });
+      if (res.status === 401) {
+        console.warn('[hosts] token fetch 401 — session required to connect');
+        return null;
+      }
+      if (res.status === 503 && attempt === 0) {
+        const retryAfter = Number(res.headers.get('retry-after') ?? '1');
+        const delayMs = Math.min(2_000, Math.max(250, retryAfter * 1_000 || 1_000));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      if (!res.ok) {
+        console.warn(`[hosts] token fetch failed: ${res.status}`);
+        return null;
+      }
+      const data = (await res.json()) as { token?: string };
+      return data.token ?? null;
+    } catch (err) {
+      console.warn('[hosts] token fetch threw', err);
       return null;
     }
-    if (!res.ok) {
-      console.warn(`[hosts] token fetch failed: ${res.status}`);
-      return null;
-    }
-    const data = (await res.json()) as { token?: string };
-    return data.token ?? null;
-  } catch (err) {
-    console.warn('[hosts] token fetch threw', err);
-    return null;
   }
+  return null;
 }
 
 const local = $state({
@@ -233,7 +242,11 @@ export async function addHost(host: { name: string; url: string; token: string }
   );
 }
 
-export async function updateHost(id: string, updates: Partial<Omit<Host, 'id'>>, options?: { silent?: boolean }) {
+export async function updateHost(
+  id: string,
+  updates: Partial<Omit<Host, 'id'>>,
+  options?: { silent?: boolean },
+) {
   const run = async () => {
     const res = await fetch(`/api/servers/${id}`, {
       method: 'PUT',
