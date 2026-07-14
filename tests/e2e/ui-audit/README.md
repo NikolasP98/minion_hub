@@ -27,3 +27,12 @@ done
 ```
 
 Outputs are written under `test-results/ui-audit/`. `tests/ui-audit/current-baseline.json` is the immutable pre-program endpoint ledger; regenerate only when the route surface intentionally changes.
+
+Each route result records console errors, uncaught page errors, failed requests,
+failed same-origin GET responses, document overflow, duplicate IDs, accessible
+names for controls/dialogs, form-button types, invalid local links, visible route
+titles, and sub-24px interactive targets. The capture fails immediately for the
+critical deterministic invariants: unexplained document overflow, duplicate IDs,
+unnamed controls/dialogs, implicit form buttons, or empty/hash-only local links.
+Small target findings remain recorded for route review because authored canvas,
+terminal, and dense-data controls need context rather than a global exception.

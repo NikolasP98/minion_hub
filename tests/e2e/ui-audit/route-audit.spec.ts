@@ -4,6 +4,10 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { configuredPersona, type CapturePersonaId } from './personas';
 import { captureFixtures, resolveFixture } from './fixtures';
+import {
+  assertCriticalRuntimeDiagnostics,
+  collectRuntimeUiDiagnostics,
+} from './runtime-diagnostics';
 
 interface InventoryRoute {
   id: string;
@@ -66,7 +70,9 @@ test('authenticated route inventory produces a machine-readable audit run', asyn
       continue;
     }
     const consoleErrors: string[] = [];
+    const pageErrors: string[] = [];
     const networkFailures: string[] = [];
+    const failedSameOriginGets: string[] = [];
     const onConsole = (message: { type(): string; text(): string }) => {
       if (message.type() === 'error') consoleErrors.push(message.text());
     };
@@ -76,9 +82,27 @@ test('authenticated route inventory produces a machine-readable audit run', asyn
     }) => {
       networkFailures.push(`${request.url()} ${request.failure()?.errorText ?? 'failed'}`);
     };
+    const onPageError = (error: Error) => pageErrors.push(error.message);
+    const onResponse = (response: {
+      url(): string;
+      status(): number;
+      request(): { method(): string };
+    }) => {
+      const url = new URL(response.url());
+      if (
+        url.origin === new URL(page.url()).origin &&
+        response.request().method() === 'GET' &&
+        response.status() >= 400
+      ) {
+        failedSameOriginGets.push(`${response.status()} ${url.pathname}${url.search}`);
+      }
+    };
     page.on('console', onConsole);
+    page.on('pageerror', onPageError);
     page.on('requestfailed', onRequestFailed);
+    page.on('response', onResponse);
     const response = await page.goto(url, { waitUntil: 'networkidle' });
+    const diagnostics = await collectRuntimeUiDiagnostics(page);
     const screenshot = path.join(outputDir, `${personaId}--${viewport.id}--${route.id}.png`);
     await page.screenshot({ path: screenshot, fullPage: true });
     results.push({
@@ -92,10 +116,16 @@ test('authenticated route inventory produces a machine-readable audit run', asyn
         : 'captured',
       screenshot: path.relative(process.cwd(), screenshot),
       consoleErrors,
+      pageErrors,
       networkFailures,
+      failedSameOriginGets,
+      diagnostics,
     });
     page.off('console', onConsole);
+    page.off('pageerror', onPageError);
     page.off('requestfailed', onRequestFailed);
+    page.off('response', onResponse);
+    assertCriticalRuntimeDiagnostics(diagnostics, route.id);
   }
 
   for (const route of inventory.routes.filter((candidate) => candidate.kind === 'redirect')) {
