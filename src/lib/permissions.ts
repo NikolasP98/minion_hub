@@ -1,3 +1,6 @@
+import { ALL_SUBRESOURCES } from '$lib/routes/route-access-registry';
+import { routeAccessPolicyIdForPath } from '$lib/routes/route-access-policies';
+
 export const RESOURCE_PERMISSIONS = [
   'agents:view',
   'agents:edit',
@@ -99,49 +102,14 @@ export const WORKSPACE_ACTION_PERMISSIONS = [
  * Role Permission Manager. The `key` is a dotted module key (`crm.insights`) and
  * is what gets stored in permission_rules + checked by the engine; a sub-resource
  * INHERITS its parent module's caps unless explicitly overridden (see
- * rbac.service `buildCapabilities`). Single source of truth for: the role-manager
- * expandable rows, the sub view permission vocabulary, and the central route
- * guard's subpage mapping below.
+ * rbac.service `buildCapabilities`). The serializable route registry is the
+ * source of truth for the role-manager rows, sub-view vocabulary, and guards.
  */
-export interface SubResource {
-  /** Dotted module key, e.g. `crm.insights`. */
-  key: string;
-  label: string;
-  /** Pathname prefix the sub-resource gates. */
-  route: string;
-}
-export const MODULE_SUBRESOURCES: Record<string, SubResource[]> = {
-  crm: [
-    { key: 'crm.insights', label: 'Insights', route: '/crm/insights' },
-    { key: 'crm.cleanup', label: 'Data Cleanup', route: '/crm/cleanup' },
-    { key: 'crm.settings', label: 'Settings', route: '/crm/settings' },
-  ],
-  finance: [
-    { key: 'finance.products', label: 'Products', route: '/finances/products' },
-    { key: 'finance.settings', label: 'Settings', route: '/finances/settings' },
-  ],
-  scheduling: [
-    { key: 'scheduling.event-types', label: 'Event Types', route: '/scheduling/event-types' },
-    { key: 'scheduling.resources', label: 'Resources', route: '/scheduling/resources' },
-    { key: 'scheduling.reminders', label: 'Reminders', route: '/scheduling/reminders' },
-    { key: 'scheduling.settings', label: 'Settings', route: '/scheduling/settings' },
-  ],
-  ads: [{ key: 'ads.settings', label: 'Settings', route: '/socials/settings' }],
-  pos: [
-    { key: 'pos.sell', label: 'Sell', route: '/pos/sell' },
-    { key: 'pos.appointments', label: 'Appointments', route: '/pos/appointments' },
-    { key: 'pos.items', label: 'Catalog', route: '/pos/catalog' },
-    { key: 'pos.refills', label: 'Refills', route: '/pos/refills' },
-  ],
-  workspace: [
-    { key: 'workspace.gui', label: 'Remote Desktop', route: '/cloud/gui' },
-    { key: 'workspace.terminal', label: 'Terminal', route: '/cloud/terminal' },
-    { key: 'workspace.settings', label: 'Settings', route: '/cloud/settings' },
-  ],
-};
-
-/** Flat list of every sub-resource (parent-key agnostic). */
-export const ALL_SUBRESOURCES: SubResource[] = Object.values(MODULE_SUBRESOURCES).flat();
+export {
+  ALL_SUBRESOURCES,
+  MODULE_SUBRESOURCES,
+  type SubResource,
+} from '$lib/routes/route-access-registry';
 
 /**
  * Field-level (ERPNext "permission level") modules: those with a sensitive field
@@ -206,47 +174,11 @@ export const PERMISSIONS = [
  * (own RBAC guards via requireOrgCapability), `/home` + `/overview` (universal).
  * `/config` and `/orgs` stay platform-admin super-views.
  */
-const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
-  // business modules
-  ['/crm', 'crm:view'],
-  ['/finances', 'finance:view'],
-  ['/sales', 'sales:view'],
-  ['/scheduling', 'scheduling:view'],
-  ['/support', 'support:view'],
-  ['/memberships', 'memberships:view'],
-  ['/workforce', 'projects:view'],
-  ['/stock', 'stock:view'],
-  ['/brains', 'brains:view'],
-  ['/socials', 'ads:view'],
-  ['/pos', 'pos:view'],
-  // platform modules
-  ['/agents', 'agents:view'],
-  ['/capabilities', 'agents:view'],
-  ['/tools', 'agents:view'],
-  ['/prompt', 'agents:view'],
-  ['/sessions', 'agents:view'],
-  ['/flow-editor', 'flows:view'],
-  ['/channels', 'channels:view'],
-  ['/marketplace', 'marketplace:view'],
-  ['/reliability', 'reliability:view'],
-  ['/cloud', 'workspace:view'],
-  // section sub-resources (longest-prefix wins, so these override the parent
-  // module entry for their subpath — e.g. /crm/insights -> crm.insights:view)
-  ...ALL_SUBRESOURCES.map((s) => [s.route, `${s.key}:view`] as const),
-];
-
 export function requiredViewPermForPath(pathname: string): string | null {
-  let best: readonly [string, string] | null = null;
-  for (const entry of ROUTE_VIEW_PERMS) {
-    const prefix = entry[0];
-    if (
-      (pathname === prefix || pathname.startsWith(`${prefix}/`)) &&
-      (!best || prefix.length > best[0].length)
-    ) {
-      best = entry;
-    }
-  }
-  return best ? best[1] : null;
+  // Compatibility adapter for services and tests that still need the legacy
+  // permission string. Route access itself is resolved by the policy registry.
+  const policyId = routeAccessPolicyIdForPath(pathname);
+  return policyId.startsWith('permission:') ? policyId.slice('permission:'.length) : null;
 }
 
 export type Permission = (typeof PERMISSIONS)[number];

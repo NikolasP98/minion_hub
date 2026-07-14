@@ -54,8 +54,6 @@ export interface RouteMeta {
   matcher: (path: string) => boolean;
   /** Section grouping; `undefined` = standalone (reliability/settings/etc). */
   section?: SectionId;
-  /** Access-policy key gating visibility (see $lib/access/policy). */
-  requires?: string;
   /** Render in the sidebar nav. */
   inNav?: boolean;
   /** Expose as a "page" command in the ⌘K palette. */
@@ -109,7 +107,6 @@ export const ROUTES: RouteMeta[] = [
     icon: UsersRound,
     matcher: startsWith('/team'),
     section: 'organization',
-    requires: 'users.manage',
     inNav: true,
     inPalette: true,
     keywords: 'team members people users invite roles seats',
@@ -136,7 +133,6 @@ export const ROUTES: RouteMeta[] = [
     icon: Wrench,
     matcher: (p) => p.startsWith('/capabilities') || p.startsWith('/tools'),
     section: 'agents',
-    requires: 'agents.view',
     inNav: true,
     inPalette: true,
     keywords: 'capabilities tools skills gateway custom create edit',
@@ -148,7 +144,6 @@ export const ROUTES: RouteMeta[] = [
     icon: GitBranch,
     matcher: startsWith('/flow-editor'),
     section: 'agents',
-    requires: 'flows.view',
     inNav: true,
     inPalette: true,
     keywords: 'agent builder flows graph editor automation',
@@ -160,7 +155,6 @@ export const ROUTES: RouteMeta[] = [
     icon: Wand2,
     matcher: startsWith('/prompt'),
     section: 'agents',
-    requires: 'agents.view',
     inNav: true,
     inPalette: true,
     keywords: 'prompt builder craft',
@@ -172,7 +166,6 @@ export const ROUTES: RouteMeta[] = [
     icon: BrainCircuit,
     matcher: startsWith('/brains'),
     section: 'agents',
-    requires: 'brains.view',
     inNav: true,
     inPalette: true,
     keywords: 'ai brains knowledge base rag agents documents search embeddings',
@@ -185,7 +178,6 @@ export const ROUTES: RouteMeta[] = [
     title: () => m.reliability_title(),
     icon: Activity,
     matcher: startsWith('/reliability'),
-    requires: 'reliability.monitor',
     inNav: false,
     inPalette: true,
     keywords: 'health monitoring events uptime',
@@ -206,7 +198,6 @@ export const ROUTES: RouteMeta[] = [
     title: () => m.nav_cloud(),
     icon: Cloud,
     matcher: startsWith('/cloud'),
-    requires: 'workspace.view',
     inNav: false,
     inPalette: true,
     keywords: 'cloud workstation vm desktop terminal ssh exe.dev',
@@ -314,7 +305,6 @@ export const ROUTES: RouteMeta[] = [
     title: () => 'Notifications',
     icon: Bell,
     matcher: startsWith('/notifications'),
-    requires: 'users.manage',
     inNav: false,
     inPalette: true,
     keywords: 'alerts join requests pending',

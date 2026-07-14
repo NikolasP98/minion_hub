@@ -8,7 +8,7 @@
   import { createHotkey, createHotkeySequence, getHotkeyRegistrations } from '$lib/hotkeys';
   import { palettePageRoutes } from '$lib/nav/routes';
   import { BUILTIN_PLUGIN_ITEMS } from '$lib/components/layout/sections';
-  import { canClient, canViewPath } from '$lib/access/can.svelte';
+  import { canViewPath } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
 
   // Hand-rolled path → single-letter mnemonic. Deliberately short — only the
@@ -47,9 +47,7 @@
   const pluginItems = BUILTIN_PLUGIN_ITEMS.map((e) => e.item);
 
   // Resolve each hand-rolled entry against the two canonical nav registries
-  // (existence check) and gate it with that registry's own RBAC helper —
-  // ROUTES uses canClient(r.requires) (mirrors the command palette),
-  // plugin/business-module items use canViewPath (mirrors section side-menus).
+  // (existence check), then gate every destination through the route authority.
   const chords: Chord[] = CHORD_DEFS.map((c): Chord | null => {
     const route = routes.find((r) => r.path === c.path);
     if (route) {
@@ -57,7 +55,7 @@
         key: c.key,
         path: c.path,
         label: () => route.title(),
-        enabled: () => !route.requires || canClient(route.requires),
+        enabled: () => canViewPath(c.path),
       };
     }
     const item = pluginItems.find((i) => i.href === c.path);
