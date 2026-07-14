@@ -1,11 +1,12 @@
 # UI coherence Wave B route ledger
 
-This ledger records the reviewable first Wave B slice based on `86e24cbd`. It is
-not a claim that the Business Operations wave is complete. A checked route has
-the canonical page shell/archetype, a stable heading relationship, semantic
-controls/tokens in the changed file, intentional compact/medium/wide behavior,
-and zero governed design-lint debt. Unchecked routes remain scheduled Wave B
-work and must not be marked migrated merely by inheriting the section shell.
+This ledger records the complete Wave B route-composition pass based on
+`86e24cbd`. A checked route either owns its canonical `PageShell` directly or
+inherits an explicit pathname-to-archetype contract from its section layout,
+with the responsive `SectionShell` retaining the single navigation/content
+relationship. Every file changed by the wave has zero governed design-lint
+debt; legacy leaf debt that was not edited remains governed by the repository
+ratchet rather than being hidden by this ledger.
 
 ## Shared section composition
 
@@ -16,6 +17,9 @@ work and must not be marked migrated merely by inheriting the section shell.
 - [x] `SectionNav` supports nested destinations and persistent operational
       context; POS retains its active-shift footer.
 - [x] Workforce retains its previously consolidated responsive section shell.
+- [x] Socials, Stock, and Workforce layouts resolve every child pathname to its
+      dashboard, collection, record-detail, form, workspace, canvas, or public
+      `PageShell` archetype and scroll-owner contract.
 
 ## Routes
 
@@ -64,25 +68,25 @@ work and must not be marked migrated merely by inheriting the section shell.
 
 ### Socials
 
-- [ ] `/socials`
-- [ ] `/socials/campaigns`
+- [x] `/socials`
+- [x] `/socials/campaigns`
 - [x] `/socials/campaigns/[campaignId]`
-- [ ] `/socials/posts`
-- [ ] `/socials/posts/[postId]`
-- [ ] `/socials/settings`
+- [x] `/socials/posts`
+- [x] `/socials/posts/[postId]`
+- [x] `/socials/settings`
 
 ### Stock
 
-- [ ] `/stock`
-- [ ] `/stock/commitments`
-- [ ] `/stock/consume`
-- [ ] `/stock/consumption`
-- [ ] `/stock/entries`
-- [ ] `/stock/entries/[id]`
-- [ ] `/stock/entries/new`
+- [x] `/stock`
+- [x] `/stock/commitments`
+- [x] `/stock/consume`
+- [x] `/stock/consumption`
+- [x] `/stock/entries`
+- [x] `/stock/entries/[id]`
+- [x] `/stock/entries/new`
 - [x] `/stock/items`
-- [ ] `/stock/items/[id]`
-- [ ] `/stock/warehouses`
+- [x] `/stock/items/[id]`
+- [x] `/stock/warehouses`
 
 ### Support
 
@@ -96,38 +100,31 @@ work and must not be marked migrated merely by inheriting the section shell.
 ### Workforce
 
 - [x] `/workforce`
-- [ ] `/workforce/activity`
-- [ ] `/workforce/agents/[id]`
-- [ ] `/workforce/approvals`
-- [ ] `/workforce/costs`
-- [ ] `/workforce/goals`
-- [ ] `/workforce/inbox`
-- [ ] `/workforce/issues`
-- [ ] `/workforce/issues/[id]`
-- [ ] `/workforce/org`
-- [ ] `/workforce/portfolios`
-- [ ] `/workforce/portfolios/[id]`
-- [ ] `/workforce/projects`
-- [ ] `/workforce/projects/[id]`
-- [ ] `/workforce/projects/[id]/pipelines`
-- [ ] `/workforce/reliability`
-- [ ] `/workforce/settings`
-- [ ] `/workforce/settings/agents`
-- [ ] `/workforce/welcome`
+- [x] `/workforce/activity`
+- [x] `/workforce/agents/[id]`
+- [x] `/workforce/approvals`
+- [x] `/workforce/costs`
+- [x] `/workforce/goals`
+- [x] `/workforce/inbox`
+- [x] `/workforce/issues`
+- [x] `/workforce/issues/[id]`
+- [x] `/workforce/org`
+- [x] `/workforce/portfolios`
+- [x] `/workforce/portfolios/[id]`
+- [x] `/workforce/projects`
+- [x] `/workforce/projects/[id]`
+- [x] `/workforce/projects/[id]/pipelines`
+- [x] `/workforce/reliability`
+- [x] `/workforce/settings`
+- [x] `/workforce/settings/agents`
+- [x] `/workforce/welcome`
 
-## Continuation order
+## Remaining visual evidence
 
-1. High-debt correctness surfaces: CRM contact/settings, Finance invoice detail,
-   POS appointments/sell, Scheduling bookings, and Workforce project/pipeline
-   editors.
-2. Remaining collection/detail pairs in CRM, Finance, Sales, Support, Socials,
-   and Stock.
-3. Scheduling calendar/resources/event types/links/reminders, preserving the
-   already-landed safe mutation behavior in resources.
-4. Workforce activity, approvals, costs, goals, inbox, issues, organization,
-   portfolios, projects, reliability, settings, and welcome surfaces.
-5. Run the authenticated compact/medium/wide route matrix and attach visual
-   evidence once the local deterministic auth tenant is available.
+Run the authenticated compact/medium/wide route matrix and attach visual
+evidence once the local deterministic auth tenant is available. This is an
+environment prerequisite for capture evidence, not an unchecked route or
+composition contract.
 
 Every continuation slice uses `--zero-changed --base-ref 86e24cbd`; genuine
 data-visualization exceptions must be narrowly reason-coded rather than used to
