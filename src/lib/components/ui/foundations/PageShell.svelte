@@ -21,6 +21,7 @@
     scroll?: PageScrollMode;
     variant?: 'default' | 'crt' | 'voxelized' | 'canvas' | 'terminal';
     labelledBy?: string;
+    landmark?: boolean;
     class?: string;
   }
 
@@ -30,21 +31,35 @@
     scroll = 'page',
     variant = 'default',
     labelledBy,
+    landmark = true,
     class: cls = '',
   }: Props = $props();
 </script>
 
-<main
-  data-component="page-shell"
-  data-part="page-shell"
-  data-archetype={archetype}
-  data-scroll={scroll}
-  data-variant={variant}
-  aria-labelledby={labelledBy}
-  class={cls}
->
-  {@render children()}
-</main>
+{#if landmark}
+  <main
+    data-component="page-shell"
+    data-part="page-shell"
+    data-archetype={archetype}
+    data-scroll={scroll}
+    data-variant={variant}
+    aria-labelledby={labelledBy}
+    class={cls}
+  >
+    {@render children()}
+  </main>
+{:else}
+  <div
+    data-component="page-shell"
+    data-part="page-shell"
+    data-archetype={archetype}
+    data-scroll={scroll}
+    data-variant={variant}
+    class={cls}
+  >
+    {@render children()}
+  </div>
+{/if}
 
 <style>
   [data-component='page-shell'] {

@@ -4,6 +4,7 @@
   import { PackagePlus } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { PageHeader, Card, Button, Select, Combobox, EmptyState } from '$lib/components/ui';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
@@ -27,7 +28,9 @@
   // lost, so point the user at it instead of leaving the error a dead end.
   let draftBanner = $state<{ id: string; message: string } | null>(null);
 
-  const canSubmit = $derived(itemId !== '' && Number(qty) > 0 && rate !== '' && Number(rate) > 0 && warehouseId !== '');
+  const canSubmit = $derived(
+    itemId !== '' && Number(qty) > 0 && rate !== '' && Number(rate) > 0 && warehouseId !== '',
+  );
   const canEdit = canAct('stock', 'edit'); // stock write API is centrally gated on stock:edit (not pos:*) — see hooks.server.ts apiWriteCapability
 
   async function errMessage(res: Response): Promise<string> {
@@ -60,7 +63,9 @@
           if (!createRes.ok) throw new Error(await errMessage(createRes));
           const entry = (await createRes.json()) as { id: string; humanId: string | null };
 
-          const submitRes = await fetch(`/api/stock/entries/${entry.id}/submit`, { method: 'POST' });
+          const submitRes = await fetch(`/api/stock/entries/${entry.id}/submit`, {
+            method: 'POST',
+          });
           if (!submitRes.ok) {
             const draftErr = new Error(await errMessage(submitRes)) as Error & { draftId?: string };
             draftErr.draftId = entry.id;
@@ -70,11 +75,18 @@
         })(),
         {
           loading: `${m.pos_refill_submit()}…`,
-          getOutcome: (entry) => ({ type: 'success', title: m.pos_refill_success({ humanId: entry.humanId ?? '—' }) }),
+          getOutcome: (entry) => ({
+            type: 'success',
+            title: m.pos_refill_success({ humanId: entry.humanId ?? '—' }),
+          }),
           onError: (e) => {
             const draftId = (e as (Error & { draftId?: string }) | undefined)?.draftId;
-            if (draftId) draftBanner = { id: draftId, message: e instanceof Error ? e.message : String(e) };
-            return { title: m.pos_refill_submit(), description: e instanceof Error ? e.message : String(e) };
+            if (draftId)
+              draftBanner = { id: draftId, message: e instanceof Error ? e.message : String(e) };
+            return {
+              title: m.pos_refill_submit(),
+              description: e instanceof Error ? e.message : String(e),
+            };
           },
         },
       );
@@ -98,12 +110,12 @@
 
 <svelte:head><title>{m.pos_refill_title()} — {m.nav_pos()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
-  <PageHeader title={m.pos_refill_title()}>
+<PageShell archetype="form" scroll="region" labelledBy="pos-refills-title">
+  <PageHeader titleId="pos-refills-title" title={m.pos_refill_title()}>
     {#snippet leading()}<PackagePlus size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
-  <div class="flex-1 min-h-0 overflow-auto p-4">
+  <PageBody padding="compact" scroll="region">
     <div class="w-full max-w-2xl mx-auto flex flex-col gap-4">
       {#if draftBanner}
         <div class="banner">
@@ -134,9 +146,17 @@
           </div>
           <p class="hint">{m.pos_refill_cost_hint()}</p>
 
-          <PartyPicker bind:value={partyId} label={m.pos_refill_supplier()} types="company,person" />
+          <PartyPicker
+            bind:value={partyId}
+            label={m.pos_refill_supplier()}
+            types="company,person"
+          />
 
-          <Select bind:value={warehouseId} options={warehouseOptions} label={m.stock_field_to_warehouse()} />
+          <Select
+            bind:value={warehouseId}
+            options={warehouseOptions}
+            label={m.stock_field_to_warehouse()}
+          />
 
           <label class="fld">
             <span>{m.stock_field_note()}</span>
@@ -146,7 +166,13 @@
           {#if err}<p class="err-msg">{err}</p>{/if}
 
           <div class="flex justify-end">
-            <Button variant="primary" size="sm" disabled={!canSubmit || !canEdit || busy} loading={busy} onclick={submitReceipt}>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!canSubmit || !canEdit || busy}
+              loading={busy}
+              onclick={submitReceipt}
+            >
               {m.pos_refill_submit()}
             </Button>
           </div>
@@ -162,7 +188,9 @@
             {#each data.recent as r (r.id)}
               <a class="recent-row" href={`/stock/entries/${r.id}`}>
                 <span class="rid">{r.humanId ?? r.id.slice(0, 8)}</span>
-                <span class="ritem">{r.firstItemName ?? '—'}{r.lineCount > 1 ? ` +${r.lineCount - 1}` : ''}</span>
+                <span class="ritem"
+                  >{r.firstItemName ?? '—'}{r.lineCount > 1 ? ` +${r.lineCount - 1}` : ''}</span
+                >
                 <span class="rqty">{r.totalQty}</span>
                 <span class="rval">{formatMoney(r.value)}</span>
                 <span class="rdate">{fmtDate(r.createdAt)}</span>
@@ -172,31 +200,31 @@
         {/if}
       </div>
     </div>
-  </div>
-</div>
+  </PageBody>
+</PageShell>
 
 <style>
   .form {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3, 12px);
   }
   .row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.6rem;
+    gap: var(--space-2, 8px);
   }
   .fld {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.78rem;
+    gap: var(--space-1, 4px);
+    font-size: var(--font-size-caption, 12px);
     color: var(--color-muted-foreground);
   }
   .inp {
     min-height: 2rem;
-    padding: 0.4rem 0.5rem;
-    font-size: 0.82rem;
+    padding: var(--space-2, 8px) var(--space-2, 8px);
+    font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-sm);
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
@@ -204,24 +232,24 @@
     font-family: inherit;
   }
   .hint {
-    font-size: 0.72rem;
+    font-size: var(--font-size-caption, 12px);
     color: var(--color-muted-foreground);
-    margin-top: -0.4rem;
+    margin-top: calc(-1 * var(--space-2, 8px));
   }
   .err-msg {
-    font-size: 0.8rem;
+    font-size: var(--font-size-body, 14px);
     color: var(--color-destructive);
   }
   .banner {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.5rem 0.6rem;
+    gap: var(--space-2, 8px);
+    padding: var(--space-2, 8px) var(--space-2, 8px);
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, #f59e0b 14%, transparent);
-    color: #f59e0b;
-    font-size: 0.78rem;
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+    color: var(--color-warning);
+    font-size: var(--font-size-caption, 12px);
   }
   .banner a {
     color: inherit;
@@ -229,7 +257,7 @@
     white-space: nowrap;
   }
   .section-h {
-    font-size: 0.78rem;
+    font-size: var(--font-size-caption, 12px);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -238,16 +266,16 @@
   .recent-list {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: var(--space-1, 4px);
   }
   .recent-row {
     display: flex;
     align-items: center;
-    gap: 0.7rem;
-    padding: 0.4rem 0.6rem;
+    gap: var(--space-3, 12px);
+    padding: var(--space-2, 8px) var(--space-2, 8px);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
-    font-size: 0.8rem;
+    font-size: var(--font-size-body, 14px);
     color: var(--color-foreground);
     text-decoration: none;
   }

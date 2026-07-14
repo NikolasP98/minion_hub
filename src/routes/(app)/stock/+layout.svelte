@@ -1,9 +1,21 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import type { Snippet } from 'svelte';
   import StockNav from '$lib/components/stock/StockNav.svelte';
+  import { PageShell, SectionShell } from '$lib/components/ui/foundations';
+  import { stockRouteShell } from '$lib/routes/business-route-shells';
   let { children }: { children: Snippet } = $props();
+
+  const routeShell = $derived(stockRouteShell(page.url.pathname));
 </script>
-<div class="h-full flex">
-  <StockNav />
-  <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">{@render children()}</div>
-</div>
+
+<PageShell
+  archetype={routeShell.archetype}
+  scroll={routeShell.scroll}
+  landmark={routeShell.landmark}
+>
+  <SectionShell mode="responsive">
+    {#snippet navigation()}<StockNav />{/snippet}
+    {@render children()}
+  </SectionShell>
+</PageShell>

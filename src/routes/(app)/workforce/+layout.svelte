@@ -1,8 +1,12 @@
 <script lang="ts">
-	import { type Snippet } from 'svelte';
-	import KanbanNavRail from '$lib/components/workforce/KanbanNavRail.svelte';
-	import { SectionShell } from '$lib/components/ui/foundations';
-	let { children }: { children: Snippet } = $props();
+  import { page } from '$app/state';
+  import { type Snippet } from 'svelte';
+  import KanbanNavRail from '$lib/components/workforce/KanbanNavRail.svelte';
+  import { PageShell, SectionShell } from '$lib/components/ui/foundations';
+  import { workforceRouteShell } from '$lib/routes/business-route-shells';
+  let { children }: { children: Snippet } = $props();
+
+  const routeShell = $derived(workforceRouteShell(page.url.pathname));
 </script>
 
 <!--
@@ -17,9 +21,15 @@
 	scroll owner for ordinary workforce pages. Boards keep only their named inline
 	scroll region.
 -->
-<SectionShell mode="responsive">
-	{#snippet navigation()}<KanbanNavRail />{/snippet}
-	<main class="flex-1 min-w-0 min-h-0 overflow-y-auto">
-		{@render children()}
-	</main>
-</SectionShell>
+<PageShell
+  archetype={routeShell.archetype}
+  scroll={routeShell.scroll}
+  landmark={routeShell.landmark}
+>
+  <SectionShell mode="responsive">
+    {#snippet navigation()}<KanbanNavRail />{/snippet}
+    <div class="min-h-0 min-w-0 flex-1 overflow-y-auto">
+      {@render children()}
+    </div>
+  </SectionShell>
+</PageShell>

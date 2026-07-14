@@ -13,6 +13,8 @@
     badge?: string | number;
     disabled?: boolean;
     dot?: boolean;
+    /** Optional visual nesting for a subordinate destination. */
+    indent?: number;
   }
 
   export interface SectionNavGroup {
@@ -24,6 +26,7 @@
 
 <script lang="ts">
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
+  import type { Snippet } from 'svelte';
 
   interface Props {
     items: SectionNavItem[] | SectionNavGroup[];
@@ -32,6 +35,8 @@
     onSelect?: (id: string) => void;
     search?: { enabled: boolean; placeholder?: string };
     searchQuery?: string;
+    /** Persistent section context, such as the active POS shift. */
+    footer?: Snippet;
     class?: string;
   }
 
@@ -42,6 +47,7 @@
     onSelect,
     search,
     searchQuery = $bindable(''),
+    footer,
     class: cls = '',
   }: Props = $props();
 
@@ -96,6 +102,8 @@
               <a
                 href={item.href}
                 class:active
+                class:nested={!!item.indent}
+                style:--indent={item.indent ?? 0}
                 class="nav-item"
                 aria-current={active ? 'page' : undefined}
               >
@@ -114,6 +122,8 @@
               <button
                 type="button"
                 class:active
+                class:nested={!!item.indent}
+                style:--indent={item.indent ?? 0}
                 class="nav-item"
                 disabled={item.disabled}
                 aria-current={active ? 'page' : undefined}
@@ -130,6 +140,9 @@
       </div>
     {/each}
   </nav>
+  {#if footer}
+    <div class="nav-footer">{@render footer()}</div>
+  {/if}
 </aside>
 
 <style>
@@ -220,6 +233,9 @@
       color var(--duration-fast, 150ms) var(--ease-standard),
       background-color var(--duration-fast, 150ms) var(--ease-standard);
   }
+  .nav-item.nested {
+    padding-left: calc(var(--space-2, 8px) + var(--indent, 0) * var(--space-4, 16px));
+  }
   .nav-item:hover:not([aria-disabled='true']):not(:disabled) {
     color: var(--color-text-primary, var(--color-foreground));
     background: color-mix(
@@ -268,6 +284,10 @@
     border-radius: var(--radius-full, 9999px);
     background: var(--color-accent);
   }
+  .nav-footer {
+    flex: none;
+    border-top: 1px solid var(--color-border-subtle, var(--hairline));
+  }
 
   @media (max-width: 1279.98px) {
     [data-component='section-nav'] {
@@ -304,6 +324,13 @@
       width: auto;
       min-height: var(--control-height-touch, 44px);
       padding-inline: var(--space-3, 12px);
+    }
+    .nav-item.nested {
+      padding-left: var(--space-3, 12px);
+    }
+    .nav-footer {
+      border-top: 0;
+      border-bottom: 1px solid var(--color-border-subtle, var(--hairline));
     }
     .item-label {
       overflow: visible;

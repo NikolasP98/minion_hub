@@ -1,9 +1,21 @@
 <script lang="ts">
-    import type { Snippet } from 'svelte';
-    import AdsNav from '$lib/components/ads/AdsNav.svelte';
-    let { children }: { children: Snippet } = $props();
+  import { page } from '$app/state';
+  import type { Snippet } from 'svelte';
+  import AdsNav from '$lib/components/ads/AdsNav.svelte';
+  import { PageShell, SectionShell } from '$lib/components/ui/foundations';
+  import { socialsRouteShell } from '$lib/routes/business-route-shells';
+  let { children }: { children: Snippet } = $props();
+
+  const routeShell = $derived(socialsRouteShell(page.url.pathname));
 </script>
-<div class="h-full flex">
-    <AdsNav />
-    <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">{@render children()}</div>
-</div>
+
+<PageShell
+  archetype={routeShell.archetype}
+  scroll={routeShell.scroll}
+  landmark={routeShell.landmark}
+>
+  <SectionShell mode="responsive">
+    {#snippet navigation()}<AdsNav />{/snippet}
+    {@render children()}
+  </SectionShell>
+</PageShell>
