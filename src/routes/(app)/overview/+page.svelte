@@ -8,6 +8,8 @@
   import { agentArchetype } from '$lib/utils/agent-display';
   import { page } from '$app/state';
   import type { OrgArea } from '$server/services/org-areas.service';
+  import { onMount } from 'svelte';
+  import { Sheet } from '$lib/components/ui/foundations';
 
   let { data } = $props();
 
@@ -27,6 +29,15 @@
   let newName = $state('');
   let newColor = $state(AREA_COLORS[0]);
   let newIcon = $state(AREA_ICON_KEYS[0]);
+  let inspectorAsSheet = $state(false);
+
+  onMount(() => {
+    const query = window.matchMedia('(max-width: 1279.98px)');
+    const sync = () => (inspectorAsSheet = query.matches);
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  });
 
   async function api(path: string, method: string, body?: unknown) {
     busy = true;
@@ -68,6 +79,63 @@
   }
 </script>
 
+{#snippet inspectorContent()}
+  <!-- Create -->
+  <div class="rounded-lg border border-border p-2.5 flex flex-col gap-2">
+    <div class="text-xs font-semibold text-foreground">{m.overview_newArea()}</div>
+    <input
+      class="w-full bg-bg1 border border-border rounded px-2 py-1 text-foreground"
+      placeholder={m.overview_areaNamePlaceholder()}
+      bind:value={newName} />
+    <div class="flex flex-wrap gap-1">
+      {#each AREA_COLORS as c (c)}
+        <button type="button" aria-label={m.overview_selectColor()} class="w-5 h-5 rounded-full border-2 cursor-pointer {newColor === c ? 'border-foreground' : 'border-transparent'}" style="background-color: {c}" onclick={() => (newColor = c)}></button>
+      {/each}
+    </div>
+    <div class="flex flex-wrap gap-1">
+      {#each AREA_ICON_KEYS as k (k)}
+        {@const Ico = iconByName(k)}
+        <button type="button" aria-label={k} class="p-1 rounded border cursor-pointer {newIcon === k ? 'border-accent text-accent' : 'border-border text-muted hover:text-foreground'}" onclick={() => (newIcon = k)}>
+          {#if Ico}<Ico size={14} />{/if}
+        </button>
+      {/each}
+    </div>
+    <button type="button" class="px-2 py-1 rounded text-xs bg-accent text-white cursor-pointer disabled:opacity-50" disabled={busy || !newName.trim()} onclick={createArea}>{m.overview_createArea()}</button>
+  </div>
+
+  <!-- Existing areas + assignment -->
+  {#each data.areas as area (area.id)}
+    <div class="rounded-lg border border-border p-2.5 flex flex-col gap-2">
+      <div class="flex items-center justify-between">
+        <EntityChip ref={areaRef(area)} size="md" link={false} />
+        <button type="button" class="text-muted hover:text-destructive cursor-pointer" title={m.overview_deleteArea()} onclick={() => removeArea(area.id)}>&times;</button>
+      </div>
+      <details>
+        <summary class="cursor-pointer text-muted hover:text-foreground">{m.overview_agents()} ({area.agentIds.length})</summary>
+        <div class="mt-1 flex flex-col gap-0.5 max-h-40 overflow-y-auto">
+          {#each agents as a (a.id)}
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={area.agentIds.includes(a.id)} onchange={() => toggleAgent(area, a.id)} />
+              <span class="truncate">{a.name ?? a.id}</span>
+            </label>
+          {/each}
+        </div>
+      </details>
+      <details>
+        <summary class="cursor-pointer text-muted hover:text-foreground">{m.overview_users()} ({area.userIds.length})</summary>
+        <div class="mt-1 flex flex-col gap-0.5 max-h-40 overflow-y-auto">
+          {#each members as u (u.id)}
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={area.userIds.includes(u.id)} onchange={() => toggleUser(area, u.id)} />
+              <span class="truncate">{u.displayName ?? u.email ?? u.id}</span>
+            </label>
+          {/each}
+        </div>
+      </details>
+    </div>
+  {/each}
+{/snippet}
+
 <div class="flex h-full min-h-0 overflow-hidden relative">
   <!-- Graph fills full height; overflow-hidden keeps the canvas clipped to this
        column so it can never overlap the editing aside. -->
@@ -77,7 +145,7 @@
     <!-- Floating admin controls — top-LEFT of graph stage (top-right is occupied
          by the global profile/topbar notch), admin-only -->
     {#if data.isAdmin}
-      <div class="absolute top-3 left-3 z-10 flex items-center gap-2 bg-bg2/80 backdrop-blur border border-border rounded px-2 py-1.5">
+      <div class="absolute top-3 left-3 z-[var(--layer-sticky,10)] flex items-center gap-2 bg-bg2/80 backdrop-blur border border-border rounded px-2 py-1.5">
         {#if data.areas.length === 0}
           <button
             type="button"
@@ -93,62 +161,15 @@
     {/if}
   </div>
 
-  {#if editing && data.isAdmin}
-    <aside class="relative z-20 w-[320px] shrink-0 border-l border-border bg-bg2 overflow-y-auto text-[12px] p-3 flex flex-col gap-3">
-      <!-- Create -->
-      <div class="rounded-lg border border-border p-2.5 flex flex-col gap-2">
-        <div class="text-xs font-semibold text-foreground">{m.overview_newArea()}</div>
-        <input
-          class="w-full bg-bg1 border border-border rounded px-2 py-1 text-foreground"
-          placeholder={m.overview_areaNamePlaceholder()}
-          bind:value={newName} />
-        <div class="flex flex-wrap gap-1">
-          {#each AREA_COLORS as c (c)}
-            <button type="button" aria-label={m.overview_selectColor()} class="w-5 h-5 rounded-full border-2 cursor-pointer {newColor === c ? 'border-foreground' : 'border-transparent'}" style="background-color: {c}" onclick={() => (newColor = c)}></button>
-          {/each}
-        </div>
-        <div class="flex flex-wrap gap-1">
-          {#each AREA_ICON_KEYS as k (k)}
-            {@const Ico = iconByName(k)}
-            <button type="button" aria-label={k} class="p-1 rounded border cursor-pointer {newIcon === k ? 'border-accent text-accent' : 'border-border text-muted hover:text-foreground'}" onclick={() => (newIcon = k)}>
-              {#if Ico}<Ico size={14} />{/if}
-            </button>
-          {/each}
-        </div>
-        <button type="button" class="px-2 py-1 rounded text-xs bg-accent text-white cursor-pointer disabled:opacity-50" disabled={busy || !newName.trim()} onclick={createArea}>{m.overview_createArea()}</button>
-      </div>
-
-      <!-- Existing areas + assignment -->
-      {#each data.areas as area (area.id)}
-        <div class="rounded-lg border border-border p-2.5 flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <EntityChip ref={areaRef(area)} size="md" link={false} />
-            <button type="button" class="text-muted hover:text-destructive cursor-pointer" title={m.overview_deleteArea()} onclick={() => removeArea(area.id)}>&times;</button>
-          </div>
-          <details>
-            <summary class="cursor-pointer text-muted hover:text-foreground">{m.overview_agents()} ({area.agentIds.length})</summary>
-            <div class="mt-1 flex flex-col gap-0.5 max-h-40 overflow-y-auto">
-              {#each agents as a (a.id)}
-                <label class="flex items-center gap-1.5 cursor-pointer">
-                  <input type="checkbox" checked={area.agentIds.includes(a.id)} onchange={() => toggleAgent(area, a.id)} />
-                  <span class="truncate">{a.name ?? a.id}</span>
-                </label>
-              {/each}
-            </div>
-          </details>
-          <details>
-            <summary class="cursor-pointer text-muted hover:text-foreground">{m.overview_users()} ({area.userIds.length})</summary>
-            <div class="mt-1 flex flex-col gap-0.5 max-h-40 overflow-y-auto">
-              {#each members as u (u.id)}
-                <label class="flex items-center gap-1.5 cursor-pointer">
-                  <input type="checkbox" checked={area.userIds.includes(u.id)} onchange={() => toggleUser(area, u.id)} />
-                  <span class="truncate">{u.displayName ?? u.email ?? u.id}</span>
-                </label>
-              {/each}
-            </div>
-          </details>
-        </div>
-      {/each}
+  {#if editing && data.isAdmin && !inspectorAsSheet}
+    <aside class="relative z-[var(--layer-sticky,10)] w-[320px] shrink-0 border-l border-border bg-bg2 overflow-y-auto text-[12px] p-3 flex flex-col gap-3" aria-label={m.overview_editAreas()}>
+      {@render inspectorContent()}
     </aside>
   {/if}
 </div>
+
+{#if data.isAdmin && inspectorAsSheet}
+  <Sheet bind:open={editing} title={m.overview_editAreas()} placement="right" size="sm">
+    <div class="flex flex-col gap-3 text-[12px]">{@render inspectorContent()}</div>
+  </Sheet>
+{/if}

@@ -129,4 +129,29 @@
 	.sla { color: var(--c); font-weight: 600; font-size: 0.78rem; }
 	.when { justify-self: end; }
 	.empty { padding: 1.25rem 1rem; }
+	@media (max-width: 767.98px) {
+		.kpis { grid-template-columns: minmax(0, 1fr); }
+		.create { align-items: stretch; flex-direction: column; }
+		.inp, .sel { width: 100%; min-height: var(--control-height-touch, 44px); }
+		.list { gap: var(--space-2, 8px); padding: 0; background: transparent; border: 0; }
+		.row {
+			grid-template-columns: minmax(0, 1fr) auto;
+			grid-template-areas:
+				'priority status'
+				'subject subject'
+				'sla when';
+			gap: var(--space-1, 4px) var(--space-2, 8px);
+			min-height: var(--control-height-touch, 44px);
+			padding: var(--space-3, 12px);
+			border: 1px solid var(--color-border-default, var(--hairline));
+			border-radius: var(--radius-lg);
+			background: var(--color-surface-2, var(--color-card));
+		}
+		.row + .row { border-top: 1px solid var(--color-border-default, var(--hairline)); }
+		.pri { grid-area: priority; }
+		.subj { grid-area: subject; }
+		.status { grid-area: status; justify-self: end; }
+		.sla { grid-area: sla; }
+		.when { grid-area: when; }
+	}
 </style>

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "file": "src/lib/components/layout/MinionLogo.svelte",
+      "rule": "raw-color",
+      "allowance": 35,
+      "category": "illustration",
+      "reason": "Brand illustration palette is not semantic interface color."
+    },
+    {
+      "file": "src/lib/components/settings/CRTConfigModal.svelte",
+      "rule": "raw-color",
+      "allowance": 63,
+      "category": "theme-preview",
+      "reason": "The editor previews authored CRT palette values as data."
+    },
+    {
+      "file": "src/routes/(app)/tools/[id]/_components/CodeEditorPane.svelte",
+      "rule": "raw-color",
+      "allowance": 2,
+      "category": "syntax",
+      "reason": "Code-editor syntax colors belong to the named syntax palette."
+    },
+    {
+      "file": "src/lib/components/charts/Chart.svelte",
+      "rule": "raw-color",
+      "allowance": 12,
+      "category": "third-party-render-surface",
+      "reason": "ECharts receives serialized canvas renderer colors rather than CSS roles."
+    }
+  ]
+}

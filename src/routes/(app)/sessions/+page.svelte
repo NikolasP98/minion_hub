@@ -5,6 +5,9 @@
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import type { SessionRow } from '$lib/components/sessions/SessionsList.svelte';
+  import { Button, PageHeader } from '$lib/components/ui';
+  import { ArrowLeft } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let hubSessions = $state<SessionRow[]>([]);
   let selectedKey = $state<string | null>(null);
@@ -67,16 +70,19 @@
   );
 </script>
 
-<!-- ponytail: h-full not flex-1 — this div's parent ((app)/+layout.svelte's
-     content wrapper) is display:block, so flex-1/min-h-0 are inert and the
-     box grows to content height, defeating both children's virtualizers
-     (SessionsList + SessionViewer scroll containers inherit the unbounded
-     height). h-full resolves via percentage regardless of parent display. -->
-<div class="h-full flex overflow-hidden">
+<!-- This route is an explicit fixed-height master/detail workspace. The shell
+     provides the definite block size; list and transcript own their scrolling. -->
+<div class="flex h-full min-h-0 flex-col overflow-hidden">
+  <PageHeader title={m.breadcrumb_sessions()} subtitle={m.sessions_selectToView()} sticky={false} />
+  <div
+    data-component="sessions-master-detail"
+    data-has-selection={selectedKey ? 'true' : 'false'}
+    class="sessions-layout flex-1 min-h-0 overflow-hidden"
+  >
     <!-- Left panel: session list -->
-    <div class="w-[300px] shrink-0 border-r border-border flex flex-col overflow-hidden relative">
+    <div data-part="master" class="sessions-master shrink-0 border-r border-border flex flex-col overflow-hidden relative">
       {#if loadingSessions}
-        <div class="absolute top-0 left-0 right-0 h-[2px] bg-border z-10 overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-border z-[var(--layer-sticky,10)] overflow-hidden">
           <div class="h-full w-[40%] bg-accent rounded-sm animate-loading-slide"></div>
         </div>
       {/if}
@@ -88,7 +94,12 @@
     </div>
 
     <!-- Right panel: session viewer -->
-    <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
+    <div data-part="detail" class="sessions-detail flex-1 min-w-0 flex flex-col overflow-hidden">
+      <div class="sessions-back shrink-0 border-b border-border p-2">
+        <Button variant="ghost" size="sm" onclick={() => (selectedKey = null)}>
+          <ArrowLeft size={16} /> {m.common_back()}
+        </Button>
+      </div>
       <SessionViewer
         serverId={hostsState.activeHostId}
         sessionKey={selectedKey}
@@ -96,3 +107,37 @@
       />
     </div>
   </div>
+</div>
+
+<style>
+  .sessions-layout {
+    display: flex;
+  }
+  .sessions-master {
+    width: 300px;
+  }
+  .sessions-back {
+    display: none;
+  }
+  @media (max-width: 767.98px) {
+    .sessions-master {
+      width: 100%;
+      border-right: 0;
+    }
+    .sessions-detail {
+      display: none;
+    }
+    [data-has-selection='true'] .sessions-master {
+      display: none;
+    }
+    [data-has-selection='true'] .sessions-detail,
+    [data-has-selection='true'] .sessions-back {
+      display: flex;
+    }
+  }
+  @media (min-width: 768px) and (max-width: 1279.98px) {
+    .sessions-master {
+      width: 280px;
+    }
+  }
+</style>

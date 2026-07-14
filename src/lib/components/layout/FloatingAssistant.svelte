@@ -497,7 +497,7 @@
 {:else if callElsewhere && !assistant.open}
     <!-- Live-call status pill: keeps the call reachable after navigating away. -->
     <div
-        class="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 pl-2 pr-2.5 py-2 rounded-full bg-bg2 border border-accent/40 shadow-lg"
+        class="fixed bottom-[max(var(--space-4,16px),env(safe-area-inset-bottom,0px))] right-[max(var(--space-4,16px),env(safe-area-inset-right,0px))] z-[var(--layer-popover,40)] flex items-center gap-2.5 pl-2 pr-2.5 py-2 rounded-full bg-bg2 border border-accent/40 shadow-[var(--shadow-elevation-3,var(--shadow-md))]"
     >
         <button
             type="button"
@@ -538,7 +538,7 @@
         onpointermove={onLauncherPointerMove}
         onpointerup={onLauncherPointerUp}
         onclick={onLauncherClick}
-        class="fixed z-50 flex items-center gap-1.5 p-1.5 rounded-full bg-bg2 border border-border shadow-lg transition-colors hover:border-accent/50 hover:bg-bg3 group select-none touch-none {dragging ? 'cursor-grabbing shadow-2xl' : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'}"
+        class="fixed z-[var(--layer-popover,40)] flex items-center gap-1.5 p-1.5 rounded-full bg-bg2 border border-border shadow-[var(--shadow-elevation-3,var(--shadow-md))] transition-colors hover:border-accent/50 hover:bg-bg3 group select-none touch-none {dragging ? 'cursor-grabbing shadow-[var(--shadow-elevation-4,var(--shadow-lg))]' : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'}"
         style={launcherStyle}
         aria-label={m.floatingAssistant_openLabel()}
         title={m.floatingAssistant_openTitle()}
@@ -571,7 +571,7 @@
 {:else}
     <!-- Expanded panel — grows out of the launcher's corner, draggable by header -->
     <div
-        class="fixed z-50 w-[380px] h-[560px] flex flex-col bg-bg2 border border-border rounded-xl shadow-2xl overflow-hidden"
+        class="fixed z-[var(--layer-popover,40)] w-[min(380px,calc(100vw-var(--space-page-gutter,16px)-var(--space-page-gutter,16px)))] h-[min(560px,calc(100dvh-var(--space-page-gutter,16px)-var(--space-page-gutter,16px)-env(safe-area-inset-bottom,0px)))] flex flex-col bg-bg2 border border-border rounded-xl shadow-[var(--shadow-overlay,var(--shadow-xl,var(--shadow-lg)))] overflow-hidden"
         style={panelStyle}
     >
         <!-- Header (drag handle) -->

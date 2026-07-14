@@ -152,7 +152,7 @@
 </div>
 
 <style>
-	.wrap { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 1rem; max-width: 720px; }
+	.wrap { display: flex; flex-direction: column; gap: 0.6rem; padding: 1rem var(--space-page-gutter, 16px); max-width: calc(720px + var(--space-page-gutter, 16px) + var(--space-page-gutter, 16px)); }
 	.card { padding: 0.9rem 1rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--color-bg2); }
 	.card h3 { margin: 0 0 0.6rem; font-size: 0.95rem; }
 	.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.6rem; }
@@ -168,4 +168,10 @@
 	.small { font-size: 0.8rem; margin-top: 0.3rem; }
 	.err { color: var(--color-danger, #ef4444); font-size: 0.82rem; }
 	code { font-size: 0.75rem; opacity: 0.8; }
+	@media (max-width: 767.98px) {
+		.grid { grid-template-columns: minmax(0, 1fr); }
+		.actions, .def-head { align-items: stretch; flex-wrap: wrap; }
+		.def-head .spacer { display: none; }
+		.def-head strong { width: 100%; }
+	}
 </style>

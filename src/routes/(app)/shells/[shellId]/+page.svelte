@@ -10,7 +10,8 @@
     backupNow,
     type ShellSummary,
   } from '$lib/services/shells-rpc';
-  import { PageHeader } from '$lib/components/ui';
+  import { Badge, Button, PageHeader } from '$lib/components/ui';
+  import { ConfirmDialog } from '$lib/components/ui/foundations';
   import { ArrowLeft } from 'lucide-svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
 
@@ -19,6 +20,7 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let actionRunning = $state<string | null>(null);
+  let destroyOpen = $state(false);
 
   const shellId = $derived(page.params.shellId ?? '');
 
@@ -55,55 +57,77 @@
     if (!ms) return '—';
     return new Date(ms).toLocaleString();
   }
+
+  function statusValue(status: ShellSummary['status']): 'success' | 'warning' | 'info' | 'error' {
+    if (status === 'online') return 'success';
+    if (status === 'provisioning') return 'warning';
+    if (status === 'archived') return 'info';
+    return 'error';
+  }
+
+  async function confirmDestroy(): Promise<void> {
+    if (!shell) return;
+    actionRunning = 'destroy';
+    error = null;
+    try {
+      await destroyShell(shell.shellId);
+      await goto('/shells');
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      throw err;
+    } finally {
+      actionRunning = null;
+    }
+  }
 </script>
 
-<PageHeader
-  title={shell?.displayName ?? 'Shell'}
-  subtitle={shell ? `${shell.harness} · ${shell.vmName} · ${shell.region}` : undefined}
->
+<div class="flex h-full min-h-0 flex-col overflow-hidden">
+  <PageHeader
+    title={shell?.displayName ?? 'Shell'}
+    subtitle={shell ? `${shell.harness} · ${shell.vmName} · ${shell.region}` : undefined}
+  >
   {#snippet leading()}
-    <button type="button" class="back" onclick={back.go} aria-label={m.shellDetail_allShells()}>
+    <Button variant="ghost" size="icon" onclick={back.go} aria-label={m.shellDetail_allShells()}>
       <ArrowLeft size={16} class="text-accent shrink-0" />
-    </button>
+    </Button>
   {/snippet}
-  {#snippet actions()}
+  {#snippet primaryActions()}
     {#if shell}
-      <div class="status status-{shell.status}">{shell.status}</div>
+      <Badge variant="semantic" value={statusValue(shell.status)} size="sm">{shell.status}</Badge>
+    {/if}
+  {/snippet}
+  {#snippet secondaryActions()}
+    {#if shell}
       {#if shell.status === 'online'}
-        <button
+        <Button variant="secondary" size="sm"
           disabled={actionRunning !== null}
           onclick={() => void doAction('backup', () => backupNow(shell!.shellId))}
         >
           {actionRunning === 'backup' ? m.shellDetail_backingUp() : m.shellDetail_backupNow()}
-        </button>
-        <button
+        </Button>
+        <Button variant="secondary" size="sm"
           disabled={actionRunning !== null}
           onclick={() => void doAction('archive', () => archiveShell(shell!.shellId))}
         >
           {actionRunning === 'archive' ? m.shellDetail_archiving() : m.shellDetail_sleep()}
-        </button>
+        </Button>
       {/if}
-      <button
-        class="danger"
+      <Button
+        variant="danger"
+        size="sm"
         disabled={actionRunning !== null}
-        onclick={async () => {
-          if (!confirm(m.shellDetail_destroyConfirm({ name: shell!.displayName }))) {
-            return;
-          }
-          await doAction('destroy', () => destroyShell(shell!.shellId));
-          await goto('/shells');
-        }}
+        onclick={() => (destroyOpen = true)}
       >
         {m.shellDetail_destroy()}
-      </button>
+      </Button>
     {/if}
   {/snippet}
-</PageHeader>
-<main class="flex-1 min-h-0 overflow-y-auto">
-  <div class="page">
-  {#if error}
-    <div class="error">{error}</div>
-  {/if}
+  </PageHeader>
+  <main class="flex-1 min-h-0 overflow-y-auto">
+    <div class="page">
+    {#if error}
+      <div class="error">{error}</div>
+    {/if}
 
   {#if loading}
     <div class="empty">{m.common_loading()}</div>
@@ -161,8 +185,21 @@
     </div>
 
   {/if}
-  </div>
-</main>
+    </div>
+  </main>
+</div>
+
+{#if shell}
+  <ConfirmDialog
+    bind:open={destroyOpen}
+    title={m.shellDetail_destroy()}
+    message={m.shellDetail_destroyConfirm({ name: shell.displayName })}
+    confirmLabel={m.shellDetail_destroy()}
+    failureMessage={error ?? m.common_error()}
+    tone="danger"
+    onconfirm={confirmDestroy}
+  />
+{/if}
 
 <style>
   .page {
@@ -170,35 +207,12 @@
     max-width: 800px;
     margin: 0 auto;
   }
-  .back {
-    display: inline-flex;
-    align-items: center;
-    color: var(--color-text-muted, #6b7280);
-    text-decoration: none;
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-  }
-  .back:hover { color: var(--color-text, inherit); }
-  .status {
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .status-online { background: rgba(34, 197, 94, 0.15); color: rgb(22, 163, 74); }
-  .status-provisioning { background: rgba(245, 158, 11, 0.15); color: rgb(180, 83, 9); }
-  .status-archived { background: rgba(156, 163, 175, 0.2); color: rgb(75, 85, 99); }
-  .status-error { background: rgba(239, 68, 68, 0.15); color: rgb(185, 28, 28); }
   .alert {
     padding: 12px 16px;
-    border-radius: 6px;
-    background: rgba(239, 68, 68, 0.08);
-    border: 1px solid rgba(239, 68, 68, 0.2);
-    color: rgb(185, 28, 28);
+    border-radius: var(--radius-md);
+    background: var(--color-danger-surface, transparent);
+    border: 1px solid var(--color-danger-border, var(--color-destructive));
+    color: var(--color-danger-fg, var(--color-destructive));
     font-size: 13px;
     margin-bottom: 16px;
   }
@@ -206,8 +220,8 @@
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 0;
-    border: 1px solid var(--color-border, #e5e7eb);
-    border-radius: 6px;
+    border: 1px solid var(--color-border-default, var(--color-border));
+    border-radius: var(--radius-md);
     overflow: hidden;
   }
   .field {
@@ -215,48 +229,41 @@
     flex-direction: column;
     gap: 4px;
     padding: 12px 16px;
-    border-right: 1px solid var(--color-border, #e5e7eb);
-    border-bottom: 1px solid var(--color-border, #e5e7eb);
+    border-right: 1px solid var(--color-border-default, var(--color-border));
+    border-bottom: 1px solid var(--color-border-default, var(--color-border));
   }
   .field:nth-child(2n) { border-right: none; }
   .key {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--color-text-muted, #6b7280);
+    color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-weight: 600;
   }
   .val { font-size: 14px; }
-  .val.mono { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; }
+  .val.mono { font-family: var(--font-family-mono, var(--font-mono)); font-size: var(--font-size-mono, 12px); }
   .bytes {
-    color: var(--color-text-muted, #6b7280);
+    color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-size: 12px;
-  }
-  button {
-    padding: 6px 12px;
-    border: 1px solid var(--color-border, #e5e7eb);
-    border-radius: 6px;
-    background: var(--color-bg2, white);
-    cursor: pointer;
-    font-size: 13px;
-  }
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  button.danger {
-    color: rgb(185, 28, 28);
-    border-color: rgba(239, 68, 68, 0.3);
-  }
-  button.danger:hover {
-    background: rgba(239, 68, 68, 0.05);
   }
   .empty, .error {
     padding: 48px 24px;
     text-align: center;
-    color: var(--color-text-muted, #6b7280);
+    color: var(--color-text-tertiary, var(--color-muted-foreground));
   }
   .error {
-    color: rgb(185, 28, 28);
+    color: var(--color-danger-fg, var(--color-destructive));
+  }
+  @media (max-width: 767.98px) {
+    .page {
+      padding: var(--space-page-gutter, 16px);
+    }
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .field,
+    .field:nth-child(2n) {
+      border-right: 0;
+    }
   }
 </style>

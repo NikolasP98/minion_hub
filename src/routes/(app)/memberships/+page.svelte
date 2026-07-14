@@ -175,7 +175,7 @@
 </div>
 
 <style>
-	.stack { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
+	.stack { display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem var(--space-page-gutter, 16px) 0; }
 	.card { padding: 0.7rem 0.9rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--color-bg2); }
 	.row { display: flex; align-items: center; gap: 0.6rem; }
 	.new { flex-wrap: wrap; }
@@ -188,4 +188,17 @@
 	.every { display: flex; gap: 0.4rem; }
 	.inp { padding: 0.4rem 0.55rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--color-bg3); color: inherit; font-size: 0.86rem; }
 	.narrow { width: 4rem; }
+	@media (max-width: 767.98px) {
+		.row:not(.new) { align-items: flex-start; flex-wrap: wrap; }
+		.row:not(.new) .spacer { display: none; }
+		.row:not(.new) strong { width: 100%; }
+		.new { align-items: stretch; flex-direction: column; }
+		.new .inp { width: 100%; min-height: var(--control-height-touch, 44px); }
+		.grid { grid-template-columns: minmax(0, 1fr); }
+		.every { align-items: stretch; flex-direction: column; }
+		.narrow { width: 100%; }
+	}
+	@media (min-width: 768px) and (max-width: 1279.98px) {
+		.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	}
 </style>

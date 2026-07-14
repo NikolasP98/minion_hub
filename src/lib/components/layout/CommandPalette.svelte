@@ -148,13 +148,13 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-        class="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh]"
+        class="fixed inset-0 z-[var(--layer-command,70)] bg-[color-mix(in_srgb,var(--color-canvas,var(--color-bg))_60%,transparent)] backdrop-blur-sm flex items-start justify-center pt-[15dvh] px-[var(--space-page-gutter,16px)]"
         data-backdrop
         onclick={handleBackdropClick}
     >
         <!-- Palette container -->
         <div
-            class="w-full max-w-lg bg-bg2 border border-border rounded-xl shadow-2xl overflow-hidden"
+            class="w-full max-w-lg max-h-[calc(100dvh-30dvh-env(safe-area-inset-bottom,0px))] bg-bg2 border border-border rounded-xl shadow-[var(--shadow-overlay,var(--shadow-xl,var(--shadow-lg)))] overflow-hidden"
             style="animation: palette-in 150ms ease-out"
         >
             <!-- Search input -->
