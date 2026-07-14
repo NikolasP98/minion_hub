@@ -17,6 +17,7 @@
     data: { canConnect: boolean; canManage: boolean; cloudOrgId: string | null };
     children: Snippet;
   } = $props();
+
   let provisionOpen = $state(false);
 
   $effect(() => {
@@ -24,9 +25,6 @@
   });
 
   $effect(() => {
-    // refreshCloud mutates rune-backed loading state synchronously. Keep those
-    // mutations outside this effect's dependency graph so a completed refresh
-    // cannot retrigger itself forever.
     if (conn.connected) untrack(() => void refreshCloud());
   });
 
@@ -46,11 +44,17 @@
   }
 </script>
 
-<div class="h-full min-h-0 flex">
-  <CloudNav canConnect={data.canConnect} canManage={data.canManage} />
-  <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+<div class="cloud-layout">
+  <div class="cloud-nav-desktop">
+    <CloudNav canConnect={data.canConnect} canManage={data.canManage} />
+  </div>
+
+  <div class="cloud-workspace">
     <CloudHeader canManage={data.canManage} onProvision={() => (provisionOpen = true)} />
-    <div class="flex-1 min-h-0 overflow-hidden">
+    <div class="cloud-nav-compact">
+      <CloudNav mode="compact" canConnect={data.canConnect} canManage={data.canManage} />
+    </div>
+    <div class="cloud-content">
       {@render children()}
     </div>
   </div>
@@ -62,3 +66,51 @@
     onProvisioned={(result) => void provisioned(result)}
   />
 {/if}
+
+<style>
+  .cloud-layout,
+  .cloud-workspace,
+  .cloud-content {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .cloud-layout {
+    display: flex;
+    height: 100%;
+    background: var(--color-canvas);
+  }
+
+  .cloud-nav-desktop {
+    flex: none;
+    min-height: 0;
+  }
+
+  .cloud-workspace {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .cloud-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .cloud-nav-compact {
+    display: none;
+    flex: none;
+  }
+
+  @media (max-width: 767.98px) {
+    .cloud-nav-desktop {
+      display: none;
+    }
+
+    .cloud-nav-compact {
+      display: block;
+    }
+  }
+</style>
