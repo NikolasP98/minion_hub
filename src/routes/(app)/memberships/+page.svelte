@@ -5,6 +5,7 @@
 	import type { TabItem } from '$lib/components/ui';
 	import { RefreshCw } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
 
 	let { data }: { data: PageData } = $props();
 
@@ -25,32 +26,47 @@
 	let newPlanId = $state('');
 	let newCustomer = $state('');
 	let busy = $state(false);
+	let mutationError = $state<string | null>(null);
 
 	async function createMembership() {
 		if (!newPlanId) return;
 		busy = true;
+		mutationError = null;
 		try {
-			const res = await fetch('/api/memberships', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ planId: newPlanId, customerName: newCustomer.trim() || null }),
+			await jsonMutation({
+				input: '/api/memberships',
+				init: {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ planId: newPlanId, customerName: newCustomer.trim() || null }),
+				},
+				onSuccess: async () => {
+					newCustomer = '';
+					await invalidate('memberships:list');
+				},
 			});
-			if (res.ok) {
-				newCustomer = '';
-				await invalidate('memberships:list');
-			}
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
 		} finally {
 			busy = false;
 		}
 	}
 
 	async function setStatus(id: string, status: string) {
-		await fetch(`/api/memberships/${id}`, {
-			method: 'PATCH',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ status }),
-		});
-		await invalidate('memberships:list');
+		mutationError = null;
+		try {
+			await jsonMutation({
+				input: `/api/memberships/${id}`,
+				init: {
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ status }),
+				},
+				onSuccess: () => invalidate('memberships:list'),
+			});
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
+		}
 	}
 
 	// ── New plan (admin) ────────────────────────────────────────────────────────────
@@ -63,35 +79,49 @@
 	async function createPlan() {
 		if (!pName.trim()) return;
 		busy = true;
+		mutationError = null;
 		try {
-			const res = await fetch('/api/memberships/plans', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					name: pName.trim(),
-					price: pPrice ? Number(pPrice) : null,
-					currency: pCurrency || null,
-					intervalUnit: pUnit,
-					intervalCount: Number(pCount) || 1,
-				}),
+			await jsonMutation({
+				input: '/api/memberships/plans',
+				init: {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						name: pName.trim(),
+						price: pPrice ? Number(pPrice) : null,
+						currency: pCurrency || null,
+						intervalUnit: pUnit,
+						intervalCount: Number(pCount) || 1,
+					}),
+				},
+				onSuccess: async () => {
+					pName = '';
+					pPrice = '';
+					await invalidate('memberships:list');
+				},
 			});
-			if (res.ok) {
-				pName = '';
-				pPrice = '';
-				await invalidate('memberships:list');
-			}
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
 		} finally {
 			busy = false;
 		}
 	}
 
 	async function togglePlan(id: string, enabled: boolean) {
-		await fetch(`/api/memberships/plans/${id}`, {
-			method: 'PATCH',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ enabled }),
-		});
-		await invalidate('memberships:list');
+		mutationError = null;
+		try {
+			await jsonMutation({
+				input: `/api/memberships/plans/${id}`,
+				init: {
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ enabled }),
+				},
+				onSuccess: () => invalidate('memberships:list'),
+			});
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
+		}
 	}
 </script>
 
@@ -99,6 +129,9 @@
 
 <Tabs id="memberships-tabs" aria-label={m.a11y_tabs_memberships()} {tabs} bind:value={tab} />
 
+{#if mutationError}
+	<p class="mx-[var(--space-page-gutter,16px)] mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">{mutationError}</p>
+{/if}
 
 <div
 	id={`memberships-tabs-panel-${tab}`}

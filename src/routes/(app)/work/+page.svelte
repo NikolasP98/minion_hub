@@ -8,6 +8,7 @@
 	import { startPolling } from '$lib/utils/live-polling';
 	import type { WorkforceWorkItem } from '$lib/workforce/work-queue';
 	import * as m from '$lib/paraglide/messages';
+	import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
 
 	let { data }: { data: PageData } = $props();
 
@@ -21,6 +22,7 @@
 	onMount(() => startPolling('work:queue', 6000));
 
 	let tab = $state('queue');
+	let mutationError = $state<string | null>(null);
 	const tabs: TabItem[] = $derived([
 		{ value: 'queue', label: 'My Queue', count: data.items.length },
 		...(data.isAdmin ? [{ value: 'rules', label: 'Rules' }] : []),
@@ -28,12 +30,20 @@
 
 	// ── Reassign ────────────────────────────────────────────────────────────────
 	async function reassign(docType: string, docId: string, newOwner: string) {
-		await fetch('/api/work/reassign', {
-			method: 'PATCH',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ docType, docId, newOwner: newOwner || null }),
-		});
-		await invalidate('work:queue');
+		mutationError = null;
+		try {
+			await jsonMutation({
+				input: '/api/work/reassign',
+				init: {
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ docType, docId, newOwner: newOwner || null }),
+				},
+				onSuccess: () => invalidate('work:queue'),
+			});
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
+		}
 	}
 
 	// ── Rules (admin) ─────────────────────────────────────────────────────────────
@@ -54,34 +64,56 @@
 	async function createRule() {
 		if (!newName.trim() || newAssignees.length === 0) return;
 		busy = true;
+		mutationError = null;
 		try {
-			const res = await fetch('/api/assignment/rules', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ name: newName.trim(), docType: newDocType, strategy: newStrategy, assignees: newAssignees }),
+			await jsonMutation({
+				input: '/api/assignment/rules',
+				init: {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ name: newName.trim(), docType: newDocType, strategy: newStrategy, assignees: newAssignees }),
+				},
+				onSuccess: async () => {
+					newName = '';
+					newAssignees = [];
+					await invalidate('work:queue');
+				},
 			});
-			if (res.ok) {
-				newName = '';
-				newAssignees = [];
-				await invalidate('work:queue');
-			}
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
 		} finally {
 			busy = false;
 		}
 	}
 
 	async function toggleRule(id: string, enabled: boolean) {
-		await fetch(`/api/assignment/rules/${id}`, {
-			method: 'PATCH',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ enabled }),
-		});
-		await invalidate('work:queue');
+		mutationError = null;
+		try {
+			await jsonMutation({
+				input: `/api/assignment/rules/${id}`,
+				init: {
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ enabled }),
+				},
+				onSuccess: () => invalidate('work:queue'),
+			});
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
+		}
 	}
 
 	async function deleteRule(id: string) {
-		await fetch(`/api/assignment/rules/${id}`, { method: 'DELETE' });
-		await invalidate('work:queue');
+		mutationError = null;
+		try {
+			await jsonMutation({
+				input: `/api/assignment/rules/${id}`,
+				init: { method: 'DELETE' },
+				onSuccess: () => invalidate('work:queue'),
+			});
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
+		}
 	}
 
 	function toggleAssignee(id: string) {
@@ -92,6 +124,10 @@
 <PageHeader title="Work" subtitle="One queue for operational work and human factory gates" />
 
 <Tabs id="work-tabs" aria-label={m.a11y_tabs_work()} {tabs} bind:value={tab} />
+
+{#if mutationError}
+	<p class="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">{mutationError}</p>
+{/if}
 
 <div id={`work-tabs-panel-${tab}`} role="tabpanel" aria-labelledby={`work-tabs-tab-${tab}`}>
 {#if tab === 'queue'}
