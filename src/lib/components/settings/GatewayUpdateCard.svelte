@@ -285,7 +285,9 @@
   const notifyTargets = $derived(
     (getField('update.notify') as { channel: string; to: string }[] | undefined) ?? [],
   );
-  const installBusy = $derived(starting || running || !!job?.active || restartState.phase === 'restarting');
+  const installBusy = $derived(
+    starting || running || !!job?.active || restartState.phase === 'restarting',
+  );
 
   const PROGRESS_LABELS: Record<string, () => string> = {
     migrating: m.gateway_update_phase_migrating,
@@ -322,7 +324,9 @@
   <div class="relative px-4 py-3 border-b border-border bg-bg/60 flex items-center gap-2">
     <ScanLine speed={10} opacity={0.02} />
     <PackageCheck size={12} class="text-muted-strong" />
-    <span class="text-[10px] font-mono text-muted uppercase tracking-widest">{m.gateway_update_title()}</span>
+    <span class="text-[10px] font-mono text-muted uppercase tracking-widest"
+      >{m.gateway_update_title()}</span
+    >
   </div>
 
   <div class="p-4 space-y-3">
@@ -358,7 +362,8 @@
               <Download size={12} />
               {installBusy
                 ? m.gateway_update_installing()
-                : updateState.targetSource === 'external-image' || updateState.targetSource === 'mixed'
+                : updateState.targetSource === 'external-image' ||
+                    updateState.targetSource === 'mixed'
                   ? m.gateway_update_rolloutImage()
                   : m.gateway_update_installAndRestart()}
             </button>
@@ -377,7 +382,9 @@
             v{updateState.pending.version}
           </div>
           {#if updateState.pending.notes}
-            <p class="text-xs text-muted-foreground mt-1 whitespace-pre-line">{updateState.pending.notes}</p>
+            <p class="text-xs text-muted-foreground mt-1 whitespace-pre-line">
+              {updateState.pending.notes}
+            </p>
           {/if}
         </div>
       {/if}
@@ -393,7 +400,8 @@
                 onclick={abortFleet}
                 class="flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-mono bg-bg border-border text-muted hover:text-destructive"
               >
-                <Square size={10} /> {m.fleet_update_abort()}
+                <Square size={10} />
+                {m.fleet_update_abort()}
               </button>
             {/if}
           </div>
@@ -402,7 +410,9 @@
             {#each job.instances as inst (inst.gatewayId)}
               {@const rowConnected = conn.connected && connectedUrl === inst.url}
               {@const rowBusy =
-                inst.state === 'draining' || inst.state === 'updating' || inst.state === 'verifying'}
+                inst.state === 'draining' ||
+                inst.state === 'updating' ||
+                inst.state === 'verifying'}
               <li class="text-xs px-2 py-1.5 rounded border border-border/60 bg-bg/40 space-y-1">
                 <div class="flex items-center justify-between gap-2">
                   <span class="font-mono truncate">
@@ -413,7 +423,11 @@
                         : m.fleet_update_connections({ count: inst.connections })}</span
                     >
                   </span>
-                  <span class="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium {STATE_CLASS[inst.state]}">
+                  <span
+                    class="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium {STATE_CLASS[
+                      inst.state
+                    ]}"
+                  >
                     {STATE_LABELS[inst.state]()}
                   </span>
                 </div>
@@ -451,7 +465,8 @@
                       aria-label={label}
                     >
                       <div
-                        class="h-full rounded-full transition-[width] duration-500 ease-out {pct >= 100
+                        class="h-full rounded-full transition-[width] duration-500 ease-out {pct >=
+                        100
                           ? 'bg-success'
                           : 'bg-accent'}"
                         style="width: {pct}%"
@@ -478,7 +493,8 @@
                 disabled={starting}
                 class="shrink-0 flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50"
               >
-                <RotateCw size={10} class={starting ? 'animate-spin' : ''} /> {m.fleet_update_retry()}
+                <RotateCw size={10} class={starting ? 'animate-spin' : ''} />
+                {m.fleet_update_retry()}
               </button>
             </div>
           {/if}
@@ -490,16 +506,27 @@
            orchestrator's verify timed out but a later manual/retried install
            landed it) — suppress the scare line rather than contradict reality. -->
       {#if updateState.lastResult && !(updateState.lastResult.ok === false && updateState.lastResult.to === currentVersion)}
-        <p class="text-xs {updateState.lastResult.ok ? 'text-muted-foreground' : 'text-destructive'} flex items-center gap-1.5">
+        <p
+          class="text-xs {updateState.lastResult.ok
+            ? 'text-muted-foreground'
+            : 'text-destructive'} flex items-center gap-1.5"
+        >
           {#if !updateState.lastResult.ok}<AlertTriangle size={12} />{/if}
           {updateState.lastResult.ok
-            ? m.gateway_update_lastResultOk({ from: updateState.lastResult.from, to: updateState.lastResult.to })
-            : m.gateway_update_lastResultFailed({ version: updateState.lastResult.rolledBackTo ?? updateState.lastResult.from })}
+            ? m.gateway_update_lastResultOk({
+                from: updateState.lastResult.from,
+                to: updateState.lastResult.to,
+              })
+            : m.gateway_update_lastResultFailed({
+                version: updateState.lastResult.rolledBackTo ?? updateState.lastResult.from,
+              })}
         </p>
       {/if}
 
       <div class="pt-2 border-t border-border/60">
-        <div class="text-[10px] font-mono text-muted uppercase tracking-widest mb-1">{m.gateway_update_notifyTargets()}</div>
+        <div class="text-[10px] font-mono text-muted uppercase tracking-widest mb-1">
+          {m.gateway_update_notifyTargets()}
+        </div>
         {#if notifyTargets.length === 0}
           <p class="text-xs text-muted-strong">{m.gateway_update_notifyNone()}</p>
         {:else}
@@ -509,7 +536,9 @@
             {/each}
           </ul>
         {/if}
-        <a href="/config" class="text-[10px] text-accent hover:underline">{m.gateway_update_notifyEditHint()}</a>
+        <a href="/config" class="text-[10px] text-accent hover:underline"
+          >{m.gateway_update_notifyEditHint()}</a
+        >
       </div>
     {/if}
   </div>

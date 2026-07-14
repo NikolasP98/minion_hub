@@ -53,7 +53,8 @@ async function registryRequest(
   const challenge = response.headers.get('www-authenticate') ?? '';
   const realm = /realm="([^"]+)"/.exec(challenge)?.[1];
   if (!realm) return response;
-  if (realm !== 'https://ghcr.io/token') throw new Error('container registry returned an untrusted token realm');
+  if (realm !== 'https://ghcr.io/token')
+    throw new Error('container registry returned an untrusted token realm');
   const service = /service="([^"]+)"/.exec(challenge)?.[1];
   const scope = /scope="([^"]+)"/.exec(challenge)?.[1] ?? `repository:${repository}:pull`;
   const tokenUrl = new URL(realm);
@@ -62,15 +63,22 @@ async function registryRequest(
   const tokenHeaders: Record<string, string> = {};
   if (env.MINION_FLEET_UPDATE_REGISTRY_TOKEN) {
     const actor = env.MINION_FLEET_UPDATE_REGISTRY_USER;
-    if (!actor) throw new Error('container registry authentication requires MINION_FLEET_UPDATE_REGISTRY_USER');
+    if (!actor)
+      throw new Error(
+        'container registry authentication requires MINION_FLEET_UPDATE_REGISTRY_USER',
+      );
     tokenHeaders.authorization = `Basic ${Buffer.from(`${actor}:${env.MINION_FLEET_UPDATE_REGISTRY_TOKEN}`).toString('base64')}`;
   }
   const tokenResponse = await fetch(tokenUrl, { headers: tokenHeaders });
-  if (!tokenResponse.ok) throw new Error(`container registry token request failed (${tokenResponse.status})`);
+  if (!tokenResponse.ok)
+    throw new Error(`container registry token request failed (${tokenResponse.status})`);
   const tokenBody = (await tokenResponse.json()) as { token?: string; access_token?: string };
   const token = tokenBody.token ?? tokenBody.access_token;
   if (!token) throw new Error('container registry token response omitted token');
-  response = await fetch(url, { method: 'HEAD', headers: { ...headers, authorization: `Bearer ${token}` } });
+  response = await fetch(url, {
+    method: 'HEAD',
+    headers: { ...headers, authorization: `Bearer ${token}` },
+  });
   return response;
 }
 
@@ -80,7 +88,8 @@ export async function resolveExternalImageTarget(
   currentArtifacts: ImageArtifact[],
 ): Promise<ImageArtifact> {
   const image = env.MINION_FLEET_UPDATE_IMAGE;
-  if (!image) throw new Error('external image target resolution requires MINION_FLEET_UPDATE_IMAGE');
+  if (!image)
+    throw new Error('external image target resolution requires MINION_FLEET_UPDATE_IMAGE');
   const tag = env.MINION_FLEET_UPDATE_IMAGE_TAG || 'prd';
   const { registry, repository } = parseImage(image);
   if (registry !== 'ghcr.io') throw new Error('external image registry must be ghcr.io');
@@ -96,7 +105,8 @@ export async function resolveExternalImageTarget(
   const taggedImage = `${registry}/${repository}:${tag}`;
   const url = `https://${registry}/v2/${repository}/manifests/${encodeURIComponent(tag)}`;
   const response = await registryRequest(url, repository);
-  if (!response.ok) throw new Error(`container registry manifest resolution failed (${response.status})`);
+  if (!response.ok)
+    throw new Error(`container registry manifest resolution failed (${response.status})`);
   const digest = response.headers.get('docker-content-digest');
   if (!digest) throw new Error('container registry response omitted Docker-Content-Digest');
   return { image: taggedImage, digest };
@@ -169,7 +179,12 @@ export async function getExternalImageRolloutStatus(
   });
   if (!response.ok) throw new Error(`external image controller status failed (${response.status})`);
   const body = (await response.json()) as {
-    workflow_runs?: Array<{ display_title?: string; name?: string; status?: string; conclusion?: string | null }>;
+    workflow_runs?: Array<{
+      display_title?: string;
+      name?: string;
+      status?: string;
+      conclusion?: string | null;
+    }>;
   };
   const run = body.workflow_runs?.find(
     (candidate) =>

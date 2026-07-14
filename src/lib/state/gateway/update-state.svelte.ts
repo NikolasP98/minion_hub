@@ -99,7 +99,8 @@ export function isUpdateRestartExpected(): boolean {
 export function bumpUpdateProgress(p: UpdateProgress): void {
   if (updateState.progress && p.pct < updateState.progress.pct) return;
   updateState.progress = p;
-  const tail = displayQueue.length > 0 ? displayQueue[displayQueue.length - 1] : updateState.display;
+  const tail =
+    displayQueue.length > 0 ? displayQueue[displayQueue.length - 1] : updateState.display;
   if (!updateState.display) {
     // First signal of this install — show immediately.
     displayQueue = [];
