@@ -128,7 +128,7 @@
         class="w-full flex flex-col items-center justify-center py-2 px-1 border-l-3 border-b border-b-[color-mix(in srgb, var(--color-surface-3) 50%, transparent)] cursor-pointer transition-[background] duration-[var(--duration-fast)] hover:bg-[var(--color-text-primary)]/3 bg-transparent text-inherit {selected
             ? 'bg-bg3'
             : 'border-l-transparent'}"
-        style:border-left-color={selected ? accentColor : undefined}
+        style={selected ? `border-left-color: ${accentColor}` : undefined}
         onclick={handleClick}
     >
             {#if agent.emoji}
@@ -169,7 +169,7 @@
         class="group w-full h-8 flex items-center gap-2 px-2.5 border-l-2 cursor-pointer transition-[background] duration-[var(--duration-fast)] hover:bg-[var(--color-text-primary)]/3 bg-transparent text-inherit {selected
             ? 'bg-bg3'
             : 'border-l-transparent'}"
-        style:border-left-color={selected ? accentColor : undefined}
+        style={selected ? `border-left-color: ${accentColor}` : undefined}
         title={statusText}
         onclick={handleClick}
     >

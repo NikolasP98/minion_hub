@@ -46,9 +46,7 @@ import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
           <Button variant="ghost"
             type="button"
             class="text-[length:var(--font-size-telemetry)] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide hover:opacity-80 transition-opacity cursor-pointer"
-            style:background-color={`${meta.color}22`}
-            style:border={`1px solid ${meta.color}66`}
-            style:color={meta.color}
+            style={`background-color: ${meta.color}22; border: 1px solid ${meta.color}66; color: ${meta.color}`}
             title={`${meta.description} — click to edit`}
             onclick={onOpenEditor}
           >
@@ -58,9 +56,7 @@ import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
           <Button variant="ghost"
             type="button"
             class="text-[length:var(--font-size-telemetry)] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide hover:opacity-80 transition-opacity cursor-pointer"
-            style:background-color={`${meta.color}22`}
-            style:border={`1px solid ${meta.color}66`}
-            style:color={meta.color}
+            style={`background-color: ${meta.color}22; border: 1px solid ${meta.color}66; color: ${meta.color}`}
             title={`${meta.description} — click to inspect`}
             onclick={onOpenEditor}
           >

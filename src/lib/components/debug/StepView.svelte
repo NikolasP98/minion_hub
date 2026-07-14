@@ -94,7 +94,7 @@
     gap: var(--space-2);
   }
 
-  .gate-btn {
+  :global(.gate-btn) {
     flex: 1;
     display: flex;
     align-items: center;
@@ -110,7 +110,7 @@
     font: inherit;
   }
 
-  .gate-btn:hover {
+  :global(.gate-btn:hover) {
     background: var(--color-surface-3);
   }
 
@@ -119,11 +119,11 @@
     justify-content: flex-start;
   }
 
-  .row.fired .gate-btn {
+  .row.fired :global(.gate-btn) {
     color: var(--color-text-primary);
   }
 
-  .row.paused .gate-btn {
+  .row.paused :global(.gate-btn) {
     color: var(--color-warning-fg);
     background: var(--color-warning-surface);
     border-color: var(--color-warning-border);
@@ -146,7 +146,7 @@
     color: var(--color-text-disabled);
   }
 
-  .continue-btn {
+  :global(.continue-btn) {
     background: var(--color-accent);
     color: var(--color-on-accent);
     border: none;
@@ -158,7 +158,7 @@
     font-size: var(--font-size-body);
   }
 
-  .continue-btn:hover {
+  :global(.continue-btn:hover) {
     filter: brightness(1.15);
   }
 </style>

@@ -64,8 +64,7 @@ import type { VariableSpec } from '$lib/flows/master-flows';
             role="switch"
             aria-checked={v.enabled}
             disabled={!canEdit}
-            class="flow-exports__toggle"
-            class:flow-exports__toggle--on={v.enabled}
+            class={`flow-exports__toggle${v.enabled ? ' flow-exports__toggle--on' : ''}`}
             onclick={() => { if (canEdit) toggle(v.key, v.enabled); }}
             title={v.description ?? v.label}
           >
@@ -142,7 +141,7 @@ import type { VariableSpec } from '$lib/flows/master-flows';
   }
 
   /* Toggle switch */
-  .flow-exports__toggle {
+  :global(.flow-exports__toggle) {
     position: relative;
     width: 28px;
     height: 16px;
@@ -155,11 +154,11 @@ import type { VariableSpec } from '$lib/flows/master-flows';
     flex-shrink: 0;
   }
 
-  .flow-exports__toggle--on {
+  :global(.flow-exports__toggle--on) {
     background: var(--color-accent);
   }
 
-  .flow-exports__toggle:disabled {
+  :global(.flow-exports__toggle:disabled) {
     opacity: 0.45;
     cursor: not-allowed;
   }
@@ -176,7 +175,7 @@ import type { VariableSpec } from '$lib/flows/master-flows';
     pointer-events: none;
   }
 
-  .flow-exports__toggle--on .flow-exports__toggle-thumb {
+  :global(.flow-exports__toggle--on) .flow-exports__toggle-thumb {
     transform: translateX(12px);
   }
 </style>

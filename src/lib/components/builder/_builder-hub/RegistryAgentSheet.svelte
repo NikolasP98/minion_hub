@@ -159,7 +159,7 @@ import { goto } from "$app/navigation";
         margin-left: var(--space-1);
     }
 
-    .detail-close {
+    :global(.detail-close) {
         font-family: inherit;
         font-size: var(--font-size-page-title);
         line-height: 1;
@@ -171,7 +171,7 @@ import { goto } from "$app/navigation";
         flex-shrink: 0;
     }
 
-    .detail-close:hover {
+    :global(.detail-close:hover) {
         color: var(--color-foreground);
     }
 
@@ -219,7 +219,7 @@ import { goto } from "$app/navigation";
         border-top: 1px solid var(--color-border);
     }
 
-    .detail-btn {
+    :global(.detail-btn) {
         font-family: inherit;
         font-size: var(--font-size-caption);
         font-weight: 600;
@@ -230,22 +230,22 @@ import { goto } from "$app/navigation";
         border: none;
     }
 
-    .detail-btn.primary {
+    :global(.detail-btn.primary) {
         background: var(--color-accent);
         color: white;
     }
 
-    .detail-btn.primary:hover {
+    :global(.detail-btn.primary:hover) {
         filter: brightness(1.1);
     }
 
-    .detail-btn.secondary {
+    :global(.detail-btn.secondary) {
         background: var(--color-bg2);
         color: var(--color-muted);
         border: 1px solid var(--color-border);
     }
 
-    .detail-btn.secondary:hover {
+    :global(.detail-btn.secondary:hover) {
         color: var(--color-foreground);
         border-color: var(--color-foreground);
     }

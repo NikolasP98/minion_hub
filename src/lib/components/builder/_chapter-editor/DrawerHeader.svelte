@@ -54,7 +54,7 @@ import { X, AlertCircle } from "lucide-svelte";
 
     .flex-1 { flex: 1; }
 
-    .close-btn {
+    :global(.close-btn) {
         background: transparent;
         border: none;
         color: var(--color-muted);
@@ -67,5 +67,5 @@ import { X, AlertCircle } from "lucide-svelte";
         transition: color var(--duration-fast);
         flex-shrink: 0;
     }
-    .close-btn:hover { color: var(--color-foreground); }
+    :global(.close-btn:hover) { color: var(--color-foreground); }
 </style>

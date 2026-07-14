@@ -49,7 +49,7 @@ import { Lock, type Icon as IconType } from "lucide-svelte";
         width: fit-content;
     }
 
-    .tab-pill {
+    :global(.tab-pill) {
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -66,18 +66,18 @@ import { Lock, type Icon as IconType } from "lucide-svelte";
         font-family: inherit;
     }
 
-    .tab-pill:hover:not(:disabled) {
+    :global(.tab-pill:hover:not(:disabled)) {
         color: var(--color-foreground);
         background: var(--color-bg3);
     }
 
-    .tab-pill.active {
+    :global(.tab-pill.active) {
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 12%, transparent);
         box-shadow: var(--shadow-elevation-1);
     }
 
-    .tab-pill.active::after {
+    :global(.tab-pill.active)::after {
         content: '';
         position: absolute;
         bottom: -1px;
@@ -88,7 +88,7 @@ import { Lock, type Icon as IconType } from "lucide-svelte";
         border-radius: var(--radius-xs);
     }
 
-    .tab-pill.locked {
+    :global(.tab-pill.locked) {
         opacity: 0.5;
         cursor: not-allowed;
     }

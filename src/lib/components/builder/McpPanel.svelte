@@ -100,7 +100,7 @@
 <style>
     .mcp-card {
         border: 1px solid var(--hairline);
-        border-radius: var(--radius-lg, var(--radius-xs);
+        border-radius: var(--radius-lg);
         padding: var(--space-4);
         background: var(--color-bg2, color-mix(in srgb, var(--color-text-primary) 2%, transparent));
     }
@@ -111,7 +111,7 @@
         color: var(--color-muted);
         background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
         border: 1px solid var(--hairline);
-        border-radius: var(--radius-sm, var(--radius-xs);
+        border-radius: var(--radius-sm);
         padding: var(--space-1) var(--space-2);
     }
     .tag {
@@ -120,7 +120,7 @@
         letter-spacing: 0.06em;
         text-transform: uppercase;
         padding: var(--space-0-5) var(--space-1);
-        border-radius: var(--radius-xs, var(--radius-xs);
+        border-radius: var(--radius-xs);
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 14%, transparent);
     }
@@ -129,7 +129,7 @@
         color: var(--color-muted);
         background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
         border: 1px solid var(--hairline);
-        border-radius: var(--radius-sm, var(--radius-xs);
+        border-radius: var(--radius-sm);
         padding: var(--space-0-5) var(--space-2);
     }
     .empty-card {
@@ -140,7 +140,7 @@
         gap: var(--space-2);
         padding: var(--space-8) 0;
         border: 1px dashed var(--hairline);
-        border-radius: var(--radius-lg, var(--radius-xs);
+        border-radius: var(--radius-lg);
     }
     .empty-note {
         font-size: var(--font-size-body);

@@ -5,6 +5,7 @@
   import * as fileUpload from '@zag-js/file-upload';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Button, Modal } from '$lib/components/ui';
+  import { normalizeButtonProps } from '../button-props';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { UploadCloud, Trash2, RotateCcw } from 'lucide-svelte';
   import { dicebearPresets } from './dicebear';
@@ -189,7 +190,7 @@
           <UserAvatar {name} {email} {src} size={64} />
           <p class="text-xs text-muted-foreground">{m.usersui_dragImageHere()}</p>
           <Button variant="ghost" size="xs"
-            {...up.getTriggerProps()}
+            {...normalizeButtonProps(up.getTriggerProps())}
             class="inline-flex items-center gap-1.5 text-sm text-accent hover:underline bg-transparent border-none cursor-pointer"
           >
             <UploadCloud size={15} /> {m.usersui_upload()}

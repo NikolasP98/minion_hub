@@ -4,6 +4,7 @@
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Pencil, Check, X } from 'lucide-svelte';
   import { Button } from '$lib/components/ui';
+  import { normalizeButtonProps } from './button-props';
 
   let nextId = 0;
   const machineId = `name-edit-${nextId++}`;
@@ -60,7 +61,7 @@
 
   {#if api.editing}
     <Button variant="ghost" size="xs"
-      {...api.getSubmitTriggerProps()}
+      {...normalizeButtonProps(api.getSubmitTriggerProps())}
       class="grid place-items-center h-6 w-6 rounded text-accent hover:bg-accent/15 bg-transparent border-none cursor-pointer shrink-0 disabled:opacity-50"
       disabled={saving}
       aria-label={m.usersui_saveName()}
@@ -68,7 +69,7 @@
       <Check size={14} />
     </Button>
     <Button variant="ghost" size="xs"
-      {...api.getCancelTriggerProps()}
+      {...normalizeButtonProps(api.getCancelTriggerProps())}
       class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0"
       aria-label={m.common_cancel()}
     >
@@ -76,7 +77,7 @@
     </Button>
   {:else}
     <Button variant="ghost" size="xs"
-      {...api.getEditTriggerProps()}
+      {...normalizeButtonProps(api.getEditTriggerProps())}
       class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100 transition-opacity"
       aria-label={m.usersui_editName()}
     >

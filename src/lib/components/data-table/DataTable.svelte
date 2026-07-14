@@ -802,7 +802,7 @@
 						<Button variant="ghost" size="xs" class="backdrop" aria-label="close" onclick={() => (bulkOpen = false)}></Button>
 						<div class="col-menu" style="min-width:11rem">
 							{#each bulkActions as a (a.label)}
-								<Button variant="ghost" size="xs" class="bulk-item" class:danger={a.danger} onclick={() => runBulk(a)}>{a.label}</Button>
+								<Button variant="ghost" size="xs" class={`bulk-item${a.danger ? ' danger' : ''}`} onclick={() => runBulk(a)}>{a.label}</Button>
 							{/each}
 						</div>
 					{/if}
@@ -826,7 +826,7 @@
 					<div class="col-wrap">
 						<Tooltip label={m.data_table_columns()} asChild>
 							{#snippet children(p)}
-								<Button variant="ghost" size="xs" {...p} class="dt-tool" class:active-col={hidden.size > 0} aria-label={m.data_table_columns()} onclick={() => (colMenuOpen = !colMenuOpen)}>
+								<Button variant="ghost" size="xs" {...p} class={`dt-tool${hidden.size > 0 ? ' active-col' : ''}`} aria-label={m.data_table_columns()} onclick={() => (colMenuOpen = !colMenuOpen)}>
 									<Columns3 size={15} />
 								</Button>
 							{/snippet}
@@ -894,7 +894,7 @@
 					<tr class="text-left t-caption border-b border-[var(--hairline)]">
 						{#if selectable}
 							<th class="dt-th px-3 py-2">
-								<Button variant="ghost" size="xs" class="dt-check is-master" class:on={allSelected} class:ind={someSelected}
+								<Button variant="ghost" size="xs" class={`dt-check is-master${allSelected ? ' on' : ''}${someSelected ? ' ind' : ''}`}
 									role="checkbox" aria-checked={someSelected ? 'mixed' : allSelected} aria-label={m.data_table_select_all()} onclick={toggleAll}>
 									{#if someSelected}<Minus size={11} />{:else if allSelected}<Check size={11} />{/if}
 								</Button>
@@ -932,7 +932,7 @@
 											align={c.filter.align ?? (c.align === 'right' ? 'right' : 'left')}
 											optionIcon={c.filter.icon ? filterOptionIcon : undefined} onSelect={(s) => setFilter(c.key, s)} />
 									{:else if c.sortable !== false}
-										<Button variant="ghost" size="xs" class="sort-h" class:active={sorted} onclick={() => toggleSort(c)}>
+										<Button variant="ghost" size="xs" class={`sort-h${sorted ? ' active' : ''}`} onclick={() => toggleSort(c)}>
 											<span class="dt-hlabel">{c.label}</span>
 											{#if sorted}
 												{#if sortDir === 'asc'}<ArrowUp size={12} />{:else}<ArrowDown size={12} />{/if}
@@ -986,7 +986,7 @@
 								>
 									{#if selectable}
 										<td class="px-3 py-2">
-											<Button variant="ghost" size="xs" class="dt-check is-row" class:on={selectedIds.has(id)} role="checkbox" aria-checked={selectedIds.has(id)} aria-label="select row" onclick={(e) => toggleRow(id, e)}>
+													<Button variant="ghost" size="xs" class={`dt-check is-row${selectedIds.has(id) ? ' on' : ''}`} role="checkbox" aria-checked={selectedIds.has(id)} aria-label="select row" onclick={(e) => toggleRow(id, e)}>
 												{#if selectedIds.has(id)}<Check size={11} />{/if}
 											</Button>
 										</td>
@@ -994,7 +994,7 @@
 									{#if expandEnabled}
 										<td class="dt-tree-cell px-1 py-2 text-center" style="--tree-depth:{fi.depth}">
 											{#if canExpand}
-												<Button variant="ghost" size="xs" class="dt-exp" class:open={isOpen} aria-label={isOpen ? m.data_table_collapse() : m.data_table_expand()} onclick={(e) => toggleExpand(id, e)}>
+														<Button variant="ghost" size="xs" class={`dt-exp${isOpen ? ' open' : ''}`} aria-label={isOpen ? m.data_table_collapse() : m.data_table_expand()} onclick={(e) => toggleExpand(id, e)}>
 													<ChevronRight size={13} />
 												</Button>
 											{/if}
@@ -1041,7 +1041,7 @@
 <!-- Header context menu -->
 {#if ctxMenu}
 	{@const cc = byKey.get(ctxMenu.key)}
-	<Button variant="ghost" size="xs" class="backdrop" aria-label="close" onclick={() => (ctxMenu = null)} oncontextmenu={(e) => { e.preventDefault(); ctxMenu = null; }}></Button>
+	<Button variant="ghost" size="xs" class="backdrop" aria-label="close" onclick={() => (ctxMenu = null)} oncontextmenu={(e: MouseEvent) => { e.preventDefault(); ctxMenu = null; }}></Button>
 	<div class="ctx-menu" style="left:{ctxMenu.x}px; top:{ctxMenu.y}px">
 		{#if cc}
 			{#if cc.sortable !== false}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { normalizeButtonProps } from '$lib/components/users/button-props';
 import {
         X,
         ChevronLeft,
@@ -265,8 +266,8 @@ import {
                 {#each stepsData as stepData, index (index)}
                     <div class="step-item" {...api.getItemProps({ index })}>
                         <Button variant="ghost"
+                            {...normalizeButtonProps(api.getTriggerProps({ index }))}
                             class="step-trigger"
-                            {...api.getTriggerProps({ index })}
                         >
                             <span class="step-indicator" {...api.getIndicatorProps({ index })}>
                                 {#if api.getItemState({ index }).completed}
@@ -324,8 +325,8 @@ import {
             <div class="footer-left">
                 {#if api.hasPrevStep}
                     <Button variant="ghost"
+                        {...normalizeButtonProps(api.getPrevTriggerProps())}
                         class="btn btn--ghost"
-                        {...api.getPrevTriggerProps()}
                     >
                         <ChevronLeft size={14} />
                         {m.common_back()}

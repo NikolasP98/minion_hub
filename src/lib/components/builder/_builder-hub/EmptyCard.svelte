@@ -33,7 +33,7 @@ import { type Icon as IconType } from "lucide-svelte";
 </div>
 
 <style>
-    .empty-card {
+    :global(.empty-card) {
         display: flex;
         align-items: stretch;
         min-height: 10rem;
@@ -48,12 +48,12 @@ import { type Icon as IconType } from "lucide-svelte";
         color: inherit;
     }
 
-    .empty-card:hover:not(:disabled) {
+    :global(.empty-card:hover:not(:disabled)) {
         border-color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 4%, transparent);
     }
 
-    .empty-card:disabled {
+    :global(.empty-card:disabled) {
         cursor: not-allowed;
         opacity: 0.6;
     }

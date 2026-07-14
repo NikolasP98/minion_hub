@@ -32,7 +32,7 @@ import { Check } from "lucide-svelte";
         flex-shrink: 0;
     }
 
-    .btn {
+    :global(.btn) {
         display: inline-flex;
         align-items: center;
         gap: var(--space-1);
@@ -46,17 +46,17 @@ import { Check } from "lucide-svelte";
         border: none;
     }
 
-    .btn--ghost {
+    :global(.btn--ghost) {
         background: transparent;
         border: 1px solid var(--color-border);
         color: var(--color-muted);
     }
-    .btn--ghost:hover { color: var(--color-foreground); border-color: var(--color-foreground); }
+    :global(.btn--ghost:hover) { color: var(--color-foreground); border-color: var(--color-foreground); }
 
-    .btn--primary {
+    :global(.btn--primary) {
         background: var(--color-accent);
         color: white;
     }
-    .btn--primary:hover:not(:disabled) { filter: brightness(1.15); }
-    .btn--primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    :global(.btn--primary:hover:not(:disabled)) { filter: brightness(1.15); }
+    :global(.btn--primary:disabled) { opacity: 0.5; cursor: not-allowed; }
 </style>

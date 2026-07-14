@@ -276,7 +276,7 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         align-items: center;
     }
 
-    .cat-pill {
+    :global(.cat-pill) {
         font-family: inherit;
         font-size: var(--font-size-caption);
         font-weight: 500;
@@ -292,12 +292,12 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         gap: var(--space-1);
     }
 
-    .cat-pill:hover {
+    :global(.cat-pill:hover) {
         color: var(--color-foreground);
         border-color: var(--color-foreground);
     }
 
-    .cat-pill.active {
+    :global(.cat-pill.active) {
         color: var(--color-accent);
         border-color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 10%, transparent);
@@ -318,7 +318,7 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         position: relative;
     }
 
-    .more-pill {
+    :global(.more-pill) {
         opacity: 0.7;
     }
 
@@ -338,7 +338,7 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         padding: var(--space-1);
     }
 
-    .more-item {
+    :global(.more-item) {
         font-family: inherit;
         font-size: var(--font-size-caption);
         width: 100%;
@@ -353,11 +353,11 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         justify-content: space-between;
     }
 
-    .more-item:hover {
+    :global(.more-item:hover) {
         background: var(--color-bg3);
     }
 
-    .more-item.selected {
+    :global(.more-item.selected) {
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 10%, transparent);
     }
@@ -405,7 +405,7 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         color: var(--color-muted);
     }
 
-    .search-clear {
+    :global(.search-clear) {
         position: absolute;
         right: 0.375rem;
         color: var(--color-muted);
@@ -416,7 +416,7 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         display: flex;
     }
 
-    .search-clear:hover {
+    :global(.search-clear:hover) {
         color: var(--color-foreground);
     }
 
@@ -473,7 +473,7 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
     }
 
     /* ── Registry Cards ─────────────────────── */
-    .reg-card {
+    :global(.reg-card) {
         display: flex;
         align-items: stretch;
         min-height: 6rem;
@@ -489,7 +489,7 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         text-align: left;
     }
 
-    .reg-card:hover {
+    :global(.reg-card:hover) {
         background: var(--color-bg3);
         border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
     }

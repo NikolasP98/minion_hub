@@ -393,7 +393,7 @@ import { BookOpen, Bot, Wrench, Loader2 } from "lucide-svelte";
     }
 
     /* ── New Button ──────────────────────────────────────────────────── */
-    .new-button {
+    :global(.new-button) {
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -409,7 +409,7 @@ import { BookOpen, Bot, Wrench, Loader2 } from "lucide-svelte";
         font-family: inherit;
     }
 
-    .new-button:hover {
+    :global(.new-button:hover) {
         filter: brightness(1.1);
     }
 

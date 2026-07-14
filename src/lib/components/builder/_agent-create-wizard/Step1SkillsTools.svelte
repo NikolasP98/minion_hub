@@ -82,10 +82,9 @@ import { Loader2, Check } from "lucide-svelte";
                         {@const selected = selectedBuiltSkillIds.includes(skill.id)}
                         <Button variant="ghost"
                             type="button"
-                            class="icon-btn"
-                            class:selected
+                            class={`icon-btn${selected ? ' selected' : ''}`}
                             onclick={() => toggleBuiltSkill(skill.id)}
-                            onmouseenter={(e) => showPopover('built-skill', skill.id, e)}
+                            onmouseenter={(e: MouseEvent) => showPopover('built-skill', skill.id, e)}
                             onmousemove={trackCursor}
                             onmouseleave={hidePopover}
                             aria-label={skill.name}

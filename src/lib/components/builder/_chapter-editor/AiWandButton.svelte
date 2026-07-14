@@ -15,8 +15,7 @@ import { Sparkles, Loader2 } from "lucide-svelte";
 <!-- .ai-wand-btn styles live in the parent (ChapterEditor.svelte) so the
      `.field:hover .ai-wand-btn` parent-selector keeps working. -->
 <Button variant="ghost"
-    class="ai-wand-btn"
-    class:loading
+    class={`ai-wand-btn${loading ? ' loading' : ''}`}
     {onclick}
     disabled={loading}
     title={title ?? m.builder_aiFillField()}

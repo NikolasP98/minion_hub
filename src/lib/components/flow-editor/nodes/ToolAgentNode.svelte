@@ -93,7 +93,7 @@ import { Handle, Position } from '@xyflow/svelte';
   <Select size="sm"
     class="w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground mb-2"
     value={data.modelId}
-    onclick={(e) => e.stopPropagation()}
+    onclick={(e: MouseEvent) => e.stopPropagation()}
     onchange={(next) => patch({ modelId: String(next) })}
   >
     {#each models as mdl (mdl.id)}

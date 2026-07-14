@@ -374,6 +374,7 @@
     }
 
     function onLauncherPointerDown(e: PointerEvent) {
+        launcherEl = e.currentTarget as HTMLButtonElement;
         if (e.button !== 0 || !launcherEl) return;
         const r = launcherEl.getBoundingClientRect();
         pos = pos ?? { left: r.left, top: r.top };
@@ -533,7 +534,6 @@
     </div>
 {:else if !assistant.open}
     <Button variant="ghost" size="xs"
-        bind:this={launcherEl}
         type="button"
         onpointerdown={onLauncherPointerDown}
         onpointermove={onLauncherPointerMove}
@@ -744,13 +744,13 @@
             <div class="composer-modes" aria-label={m.factoryDesk_controlDesk()}>
                 <Button variant="ghost" size="xs"
                     type="button"
-                    class:active={composerMode === 'chat'}
+                    class={composerMode === 'chat' ? 'active' : undefined}
                     aria-pressed={composerMode === 'chat'}
                     onclick={() => (composerMode = 'chat')}
                 ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</Button>
                 <Button variant="ghost" size="xs"
                     type="button"
-                    class:active={composerMode === 'factory'}
+                    class={composerMode === 'factory' ? 'active' : undefined}
                     aria-pressed={composerMode === 'factory'}
                     onclick={() => (composerMode = 'factory')}
                 ><Factory size={11} /> {m.factoryDesk_modeFactory()}</Button>
@@ -810,7 +810,7 @@
         padding: var(--space-2);
         border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
     }
-    .composer-modes button {
+    .composer-modes :global(button) {
         display: inline-flex;
         align-items: center;
         gap: var(--space-1);
@@ -823,9 +823,9 @@
         letter-spacing: 0.06em;
         text-transform: uppercase;
     }
-    .composer-modes button:hover,
-    .composer-modes button:focus-visible { color: var(--color-foreground); outline: none; }
-    .composer-modes button.active {
+    .composer-modes :global(button:hover),
+    .composer-modes :global(button:focus-visible) { color: var(--color-foreground); outline: none; }
+    .composer-modes :global(button.active) {
         border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 8%, transparent);

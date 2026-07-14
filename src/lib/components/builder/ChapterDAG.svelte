@@ -388,7 +388,7 @@ import {
     }
 
     /* ── Add chapter button ───────────────────────────────────────────── */
-    .add-chapter-btn {
+    :global(.add-chapter-btn) {
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -404,13 +404,13 @@ import {
         font-family: inherit;
     }
 
-    .add-chapter-btn:hover {
+    :global(.add-chapter-btn:hover) {
         background: color-mix(in srgb, var(--color-accent) 18%, transparent);
         border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
     }
 
     /* ── Add condition button ─────────────────────────────────────────── */
-    .add-condition-btn {
+    :global(.add-condition-btn) {
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -426,7 +426,7 @@ import {
         font-family: inherit;
     }
 
-    .add-condition-btn:hover {
+    :global(.add-condition-btn:hover) {
         background: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 18%, transparent);
         border-color: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 40%, transparent);
     }
@@ -501,16 +501,16 @@ import {
     .staged-item:hover { background: var(--color-bg3); }
     .staged-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .staged-item-actions { display: flex; gap: var(--space-0-5); flex-shrink: 0; }
-    .staged-accept, .staged-reject {
+    :global(.staged-accept), :global(.staged-reject) {
         width: 22px; height: 22px;
         display: flex; align-items: center; justify-content: center;
         border: none; border-radius: var(--radius-sm);
         cursor: pointer; transition: all var(--duration-fast) var(--ease-standard); background: transparent;
     }
-    .staged-accept { color: var(--color-success, var(--color-success-fg)); }
-    .staged-accept:hover { background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 15%, transparent); }
-    .staged-reject { color: var(--color-danger-fg); }
-    .staged-reject:hover { background: var(--color-danger-surface); }
+    :global(.staged-accept) { color: var(--color-success, var(--color-success-fg)); }
+    :global(.staged-accept:hover) { background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 15%, transparent); }
+    :global(.staged-reject) { color: var(--color-danger-fg); }
+    :global(.staged-reject:hover) { background: var(--color-danger-surface); }
 
     /* Validation indicator on nodes */
     .chapter-dag-container :global(.svelte-flow__node.validation-warning) {
@@ -541,7 +541,7 @@ import {
         box-shadow: var(--shadow-overlay);
     }
 
-    .ctx-item {
+    :global(.ctx-item) {
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -558,11 +558,11 @@ import {
         transition: background var(--duration-instant) var(--ease-standard);
     }
 
-    .ctx-item.danger {
+    :global(.ctx-item.danger) {
         color: var(--color-danger-fg);
     }
 
-    .ctx-item.danger:hover {
+    :global(.ctx-item.danger:hover) {
         background: var(--color-danger-surface);
     }
 

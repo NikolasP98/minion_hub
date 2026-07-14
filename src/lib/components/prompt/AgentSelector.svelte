@@ -76,7 +76,7 @@ import { ChevronDown } from "lucide-svelte";
         border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
     }
 
-    .agent-selector select {
+    .agent-selector :global(select) {
         color: inherit;
         font: inherit;
     }

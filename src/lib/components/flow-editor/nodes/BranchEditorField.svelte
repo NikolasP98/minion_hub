@@ -102,7 +102,7 @@ import type { Snippet } from 'svelte';
   <Select size="sm"
     class="w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground mb-2"
     value={value.modelId ?? ''}
-    onclick={(e) => e.stopPropagation()}
+    onclick={(e: MouseEvent) => e.stopPropagation()}
     onchange={(next) => setModel(String(next))}
   >
     {#each models as mdl (mdl.id)}
@@ -133,7 +133,7 @@ import type { Snippet } from 'svelte';
           <Select size="sm"
             class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-0.5 py-0.5 text-foreground"
             value={branch.rule?.op ?? 'contains'}
-            onclick={(e) => e.stopPropagation()}
+            onclick={(e: MouseEvent) => e.stopPropagation()}
             onchange={(next) => updateRule(branch.id, { op: String(next) as RouterRuleOp })}
           >
             {#each OPS as op (op)}<option value={op}>{op}</option>{/each}

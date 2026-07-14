@@ -4,6 +4,7 @@
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Eye, Pencil } from 'lucide-svelte';
   import { Button, Modal } from '$lib/components/ui';
+  import { normalizeButtonProps } from './button-props';
   import UserAvatar from './UserAvatar.svelte';
   import AvatarEditorModal from './avatar/AvatarEditorModal.svelte';
 
@@ -39,7 +40,7 @@
 </script>
 
 <Button variant="ghost" size="xs"
-  {...api.getTriggerProps()}
+  {...normalizeButtonProps(api.getTriggerProps())}
   class="relative group rounded-full bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg2"
   aria-label={m.usersui_avatarOptions()}
 >
@@ -57,13 +58,13 @@
     class="min-w-36 rounded-[var(--radius-md)] surface-4 border border-[var(--elevation-4-border)] p-1 shadow-xl outline-none"
   >
     <Button variant="ghost" size="xs"
-      {...api.getItemProps({ value: 'view' })}
+      {...normalizeButtonProps(api.getItemProps({ value: 'view' }))}
       class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded text-sm text-foreground data-[highlighted]:bg-bg3 cursor-pointer bg-transparent border-none text-left"
     >
       <Eye size={14} class="text-muted-foreground" /> {m.usersui_view()}
     </Button>
     <Button variant="ghost" size="xs"
-      {...api.getItemProps({ value: 'edit' })}
+      {...normalizeButtonProps(api.getItemProps({ value: 'edit' }))}
       class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded text-sm text-foreground data-[highlighted]:bg-bg3 cursor-pointer bg-transparent border-none text-left"
     >
       <Pencil size={14} class="text-muted-foreground" /> {m.common_edit()}

@@ -34,8 +34,7 @@ import * as m from '$lib/paraglide/messages';
             {#each emojis as emoji (emoji)}
                 <Button variant="ghost"
                     type="button"
-                    class="picker-item"
-                    class:selected={emoji === value}
+                    class={`picker-item${emoji === value ? ' selected' : ''}`}
                     onclick={() => select(emoji)}
                 >{emoji}</Button>
             {/each}
@@ -49,7 +48,7 @@ import * as m from '$lib/paraglide/messages';
         display: inline-flex;
     }
 
-    .picker-trigger {
+    :global(.picker-trigger) {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -60,38 +59,38 @@ import * as m from '$lib/paraglide/messages';
         transition: all var(--duration-fast) var(--ease-standard);
     }
 
-    .picker-trigger:hover {
+    :global(.picker-trigger:hover) {
         border-color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 6%, transparent);
     }
 
-    .picker-trigger.sm {
+    :global(.picker-trigger.sm) {
         width: 2.25rem;
         height: 2.25rem;
         border-radius: var(--radius-md);
         border-width: 1.5px;
     }
 
-    .picker-trigger.sm .picker-current {
+    :global(.picker-trigger.sm) .picker-current {
         font-size: var(--font-size-page-title);
     }
 
-    .picker-trigger.md {
+    :global(.picker-trigger.md) {
         width: 2.75rem;
         height: 2.75rem;
     }
 
-    .picker-trigger.md .picker-current {
+    :global(.picker-trigger.md) .picker-current {
         font-size: var(--font-size-display);
     }
 
-    .picker-trigger.lg {
+    :global(.picker-trigger.lg) {
         width: 3.5rem;
         height: 3.5rem;
         border-radius: var(--radius-lg);
     }
 
-    .picker-trigger.lg .picker-current {
+    :global(.picker-trigger.lg) .picker-current {
         font-size: var(--font-size-display);
     }
 
@@ -99,7 +98,7 @@ import * as m from '$lib/paraglide/messages';
         line-height: 1;
     }
 
-    .picker-backdrop {
+    :global(.picker-backdrop) {
         position: fixed;
         inset: 0;
         z-index: var(--layer-debug);
@@ -125,7 +124,7 @@ import * as m from '$lib/paraglide/messages';
         box-shadow: var(--shadow-overlay);
     }
 
-    .picker-item {
+    :global(.picker-item) {
         width: 2.25rem;
         height: 2.25rem;
         display: flex;
@@ -139,11 +138,11 @@ import * as m from '$lib/paraglide/messages';
         transition: all var(--duration-instant) var(--ease-standard);
     }
 
-    .picker-item:hover {
+    :global(.picker-item:hover) {
         background: var(--color-bg3);
     }
 
-    .picker-item.selected {
+    :global(.picker-item.selected) {
         border-color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     }

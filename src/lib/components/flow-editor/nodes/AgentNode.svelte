@@ -172,7 +172,7 @@ import { Handle, Position } from '@xyflow/svelte';
   <Select size="sm"
     class="mt-1 w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
     value={data.agentKind ?? ''}
-    onclick={(e) => e.stopPropagation()}
+    onclick={(e: MouseEvent) => e.stopPropagation()}
     onchange={pickKind}
   >
     <option value="" disabled>Select type…</option>
@@ -185,7 +185,7 @@ import { Handle, Position } from '@xyflow/svelte';
     class="mt-1 w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground disabled:opacity-50"
     value={data.agentId}
     disabled={!data.agentKind}
-    onclick={(e) => e.stopPropagation()}
+    onclick={(e: MouseEvent) => e.stopPropagation()}
     onchange={pickInstance}
   >
     <option value="" disabled>{data.agentKind ? 'Select…' : 'Pick a type first'}</option>
