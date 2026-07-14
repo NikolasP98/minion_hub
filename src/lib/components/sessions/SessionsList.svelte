@@ -143,7 +143,7 @@
       bind:value={search}
     />
     {#if uniqueAgents.length > 1}
-      <Select class="w-full" size="sm" bind:value={agentFilter}>
+      <Select fieldClass="w-full" size="sm" bind:value={agentFilter}>
         <option value="">{m.sessions_allAgents()}</option>
         {#each uniqueAgents as aid (aid)}
           <option value={aid}>{aid}</option>

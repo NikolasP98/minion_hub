@@ -473,7 +473,7 @@
 
 								<Select
 									size="sm"
-									class="w-[104px] shrink-0"
+									fieldClass="w-[104px] shrink-0"
 									value={lvl}
 									options={LEVEL_OPTIONS}
 									disabled={!editable || saving === mod}

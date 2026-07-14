@@ -257,7 +257,8 @@ import type { PageData } from './$types';
 									</Select>
 								{/if}
 								<Select size="sm"
-									class="rounded-md border border-border bg-background px-2 py-1 text-sm max-w-[12rem]"
+									class="rounded-md border border-border bg-background px-2 py-1 text-sm"
+									fieldClass="max-w-[12rem]"
 									value={step.participantType === 'agent' ? `agent:${step.agentId}` : 'user'}
 									onchange={(value) => setParticipant(i, String(value))}
 								>

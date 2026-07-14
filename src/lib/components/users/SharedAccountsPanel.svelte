@@ -125,7 +125,7 @@
               <span class="block text-[length:var(--font-size-label)] text-muted-foreground truncate">{member.email}</span>
             </span>
             <Select
-              class="w-28"
+              fieldClass="w-28 shrink-0"
               size="xs"
               value={isService ? 'service' : 'person'}
               disabled={busy === member.id}

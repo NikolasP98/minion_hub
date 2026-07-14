@@ -247,7 +247,7 @@
         <div class="consumption-rows">
           {#each rows as row, idx (idx)}
             <div class="consumption-row">
-              <Select class="inp flex-1" bind:value={row.itemId}>
+              <Select class="inp" fieldClass="min-w-0 flex-1" bind:value={row.itemId}>
                 {#each optionsFor(idx) as item (item.id)}
                   <option value={item.id}>{item.code} — {item.name}</option>
                 {/each}

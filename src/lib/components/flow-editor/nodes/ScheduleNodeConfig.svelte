@@ -31,7 +31,8 @@ import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor
         }}
       />
       <Select size="sm"
-        class="flex-1 text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+        class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+        fieldClass="min-w-0 flex-1"
         value={unit}
         onchange={(next) => set({ unit: String(next) as ScheduleNodeData['unit'] })}
       >

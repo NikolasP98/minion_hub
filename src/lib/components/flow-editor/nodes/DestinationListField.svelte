@@ -76,7 +76,8 @@ import type { DestinationListValue, ChannelDestination } from '$lib/state/featur
     <label for="ch-channel" class="text-[length:var(--font-size-caption)] font-medium text-foreground">Channel</label>
     <Select size="sm"
       id="ch-channel"
-      class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
+      class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
+      fieldClass="w-full"
       value={channel}
       onchange={(value) => setChannel(String(value))}
     >
@@ -95,7 +96,8 @@ import type { DestinationListValue, ChannelDestination } from '$lib/state/featur
     <label for="ch-account" class="text-[length:var(--font-size-caption)] font-medium text-foreground">Sending account</label>
     <Select size="sm"
       id="ch-account"
-      class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
+      class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
+      fieldClass="w-full"
       value={value.accountId ?? ''}
       disabled={!channel}
       onchange={(next) => setAccount(String(next))}
@@ -172,7 +174,8 @@ import type { DestinationListValue, ChannelDestination } from '$lib/state/featur
             </p>
           {:else}
             <Select size="sm"
-              class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+              class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+              fieldClass="w-full"
               value={d.to}
               onchange={(next) => pickRegistered(i, String(next))}
             >

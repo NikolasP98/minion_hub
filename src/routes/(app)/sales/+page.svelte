@@ -75,6 +75,7 @@
           <Select
             size="sm"
             class="status-sel"
+            fieldClass="status-field"
             value={o.status}
             disabled={busy || !canAct('sales', 'edit')}
             title={canAct('sales', 'edit') ? undefined : m.no_permission()}
@@ -201,8 +202,10 @@
     .total {
       grid-area: total;
     }
-    :global(.status-sel) {
+    :global(.status-field) {
       grid-area: status;
+    }
+    :global(.status-sel) {
       min-height: var(--control-height-touch, 44px);
     }
     .when {

@@ -49,7 +49,8 @@ import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor
     <label for="sf-flow" class="text-[length:var(--font-size-caption)] font-medium text-foreground">Flow to run</label>
     <Select size="sm"
       id="sf-flow"
-      class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+      class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+      fieldClass="w-full"
       value={data.flowId ?? ''}
       onchange={(next) => setFlow(String(next))}
     >

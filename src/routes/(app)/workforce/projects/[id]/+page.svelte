@@ -191,6 +191,7 @@
 									{#if t.humanId}<span class="hid">{t.humanId}</span>{/if}
 									<Select size="sm"
 										class="mini"
+										fieldClass="min-w-0 flex-1"
 										value={t.assigneePartyId ?? ''}
 										disabled={busy || !canAct('projects', 'edit')}
 										title={canAct('projects', 'edit') ? undefined : m.no_permission()}
@@ -279,7 +280,7 @@
 						{#if activePipelines.length > 1}
 							<label class="exec-meta t-caption">
 								{m.workforce_pipelines_title()}
-								<Select size="sm" class="mini" bind:value={pipelineChoice}>
+								<Select size="sm" class="mini" fieldClass="min-w-0 flex-1" bind:value={pipelineChoice}>
 									{#each activePipelines as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
 								</Select>
 							</label>
@@ -349,7 +350,7 @@
 				<p class="t-caption broken">Linked workforce project unavailable (backend down or project removed).</p>
 			{:else}
 				<div class="link-row">
-					<Select size="sm" class="in" bind:value={linkChoice}>
+					<Select size="sm" class="in" fieldClass="min-w-0 flex-1" bind:value={linkChoice}>
 						<option value="">Link a workforce project…</option>
 						{#each data.linkable as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
 					</Select>

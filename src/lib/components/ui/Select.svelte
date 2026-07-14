@@ -27,7 +27,12 @@
     required?: boolean;
     id?: string;
     name?: string;
+    /** Historical Hub compatibility: styles the native select control. */
     class?: string;
+    /** Styles the outer FormField layout wrapper. */
+    fieldClass?: string;
+    /** Explicit additive styles for the native select control. */
+    selectClass?: string;
     onchange?: (value: SelectValue) => void;
     children?: Snippet;
     [key: string]: unknown;
@@ -52,7 +57,9 @@
     required = false,
     id,
     name,
-    class: cls = '',
+    class: legacyControlClass = '',
+    fieldClass = '',
+    selectClass: explicitControlClass = '',
     onchange,
     children,
     ...rest
@@ -62,10 +69,16 @@
   // historical Hub density through its canonical xs height token while the
   // shared primitive continues to own every interaction and semantic style.
   const sharedSize = $derived<SharedSelectSize>(size === 'xs' ? 'sm' : size);
-  const selectClass = $derived(
-    size === 'xs'
-      ? '!h-[var(--control-height-xs)] !px-[var(--space-2)] !text-[length:var(--font-size-caption)]'
-      : '',
+  const controlClass = $derived(
+    [
+      legacyControlClass,
+      explicitControlClass,
+      size === 'xs'
+        ? '!h-[var(--control-height-xs)] !px-[var(--space-2)] !text-[length:var(--font-size-caption)]'
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' '),
   );
 
   // Runtime values stay untouched. The cast only bridges the package's narrow
@@ -94,8 +107,8 @@
   {required}
   {id}
   {name}
-  class={cls}
-  {selectClass}
+  class={fieldClass}
+  selectClass={controlClass}
   {children}
   onchange={handleChange}
 />

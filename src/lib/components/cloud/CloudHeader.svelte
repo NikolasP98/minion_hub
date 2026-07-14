@@ -47,7 +47,7 @@
         options={shellOptions}
         onchange={choose}
         aria-label={m.cloud_server_picker()}
-        class="workspace-picker"
+        fieldClass="workspace-picker"
       />
     {:else if selected}
       <div class="single-server" title={selected.displayName}>

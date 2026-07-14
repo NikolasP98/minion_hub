@@ -125,7 +125,7 @@
           </div>
         {/if}
         <Select
-          class="field"
+          fieldClass="field"
           label="Status"
           value={o.status}
           options={STATUSES.map((status) => ({ value: status, label: statusLabel[status] }))}

@@ -159,7 +159,8 @@ import {
             {#if field.type === 'select'}
               <Select size="sm"
                 id="cfg-{field.key}"
-                class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+                class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+                fieldClass="w-full"
                 value={disp(field)}
                 onchange={(next) => set(field.key, String(next))}
               >
@@ -190,7 +191,8 @@ import {
             {:else if field.type === 'channel'}
               <Select size="sm"
                 id="cfg-{field.key}"
-                class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
+                class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
+                fieldClass="w-full"
                 value={disp(field)}
                 onchange={(next) => set(field.key, String(next))}
               >
