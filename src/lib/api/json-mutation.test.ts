@@ -25,7 +25,9 @@ describe('jsonMutation', () => {
     await jsonMutation<{ id: string }>({
       input: '/api/item',
       init: { method: 'POST' },
-      onSuccess: ({ id }) => committed.push(id),
+      onSuccess: ({ id }) => {
+        committed.push(id);
+      },
     });
 
     expect(committed).toEqual(['created']);
