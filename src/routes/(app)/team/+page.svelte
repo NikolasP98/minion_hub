@@ -5,13 +5,32 @@
   // /api/users endpoints enforce authorization server-side.
   import TeamTab from '$lib/components/users/TeamTab.svelte';
   import SharedAccountsPanel from '$lib/components/users/SharedAccountsPanel.svelte';
+  import { PageHeader } from '$lib/components/ui';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
 </script>
 
 <svelte:head>
   <title>Team · Minion</title>
 </svelte:head>
 
-<div class="h-full flex flex-col overflow-y-auto">
-  <TeamTab />
-  <SharedAccountsPanel />
-</div>
+<PageShell archetype="collection" scroll="page" labelledBy="team-title">
+  <PageHeader
+    titleId="team-title"
+    title="Team"
+    subtitle="Members, roles, invitations, and shared accounts"
+  />
+  <PageBody width="content">
+    <div class="team-stack">
+      <TeamTab />
+      <SharedAccountsPanel />
+    </div>
+  </PageBody>
+</PageShell>
+
+<style>
+  .team-stack {
+    display: grid;
+    align-content: start;
+    gap: var(--space-section, 24px);
+  }
+</style>

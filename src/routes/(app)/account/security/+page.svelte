@@ -3,16 +3,29 @@
   import * as m from '$lib/paraglide/messages';
   import UsernameCard from '$lib/components/users/UsernameCard.svelte';
   import PasswordCard from '$lib/components/users/PasswordCard.svelte';
+  import { PageHeader } from '$lib/components/ui';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
 
   let { data }: { data: PageData } = $props();
 </script>
 
-<div class="h-full overflow-y-auto p-6 md:p-10">
-  <div class="max-w-2xl mx-auto space-y-4">
-    <h1 class="text-lg font-semibold text-foreground">{m.account_nav_security()}</h1>
+<PageShell archetype="form" scroll="page" labelledBy="account-security-title">
+  <PageHeader
+    titleId="account-security-title"
+    title={m.account_nav_security()}
+    subtitle={m.account_nav_header()}
+  />
+  <PageBody width="reading">
+    <div class="account-card-stack">
+      <UsernameCard username={data.username} />
+      <PasswordCard hasPassword={data.hasPassword} />
+    </div>
+  </PageBody>
+</PageShell>
 
-    <UsernameCard username={data.username} />
-
-    <PasswordCard hasPassword={data.hasPassword} />
-  </div>
-</div>
+<style>
+  .account-card-stack {
+    display: grid;
+    gap: var(--space-4, 16px);
+  }
+</style>

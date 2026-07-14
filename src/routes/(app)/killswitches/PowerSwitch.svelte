@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Power, LoaderCircle } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
 
   interface Props {
     /** true = service live/running (green); false = killed (dim red). */
@@ -30,7 +31,6 @@
 
   let holding = $state(false);
 
-  const box = $derived(size === 'lg' ? 'h-28 w-28' : 'h-20 w-20');
   const glyph = $derived(size === 'lg' ? 34 : 26);
   const interactive = $derived(available && !busy);
 
@@ -73,18 +73,20 @@
   );
 </script>
 
-<button
+<Button
   type="button"
+  variant="ghost"
+  size="icon"
   role="switch"
   aria-checked={live}
   aria-busy={busy}
   aria-label={aria}
   disabled={!interactive}
-  class="power {box}"
-  class:live
-  class:killed={!live}
-  class:holding
-  class:unavailable={!available}
+  data-kill-switch
+  data-size={size}
+  data-state={live ? 'live' : 'killed'}
+  data-holding={holding ? 'true' : undefined}
+  data-available={available ? 'true' : 'false'}
   {onclick}
   onpointerdown={startHold}
   onpointerup={cancelHold}
@@ -100,77 +102,90 @@
   {:else}
     <Power size={glyph} strokeWidth={2.25} />
   {/if}
-</button>
+</Button>
 
 <style>
-  .power {
+  :global([data-kill-switch]) {
     position: relative;
     display: grid;
     place-items: center;
-    border-radius: 9999px;
+    width: 5rem;
+    height: 5rem;
+    border-radius: var(--radius-full);
     /* Stay a perfect circle: never let flexbox squash it into a pill, and pin
        the 1:1 ratio even if a parent constrains one axis. */
     flex-shrink: 0;
     aspect-ratio: 1;
     --tw-ring-inset: inset;
+    --power-hold-duration: 1200ms;
     transition:
-      box-shadow 250ms ease,
-      transform 120ms ease,
-      color 200ms ease,
-      background-color 200ms ease;
+      box-shadow var(--duration-normal) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard),
+      background-color var(--duration-fast) var(--ease-standard);
     outline: none;
+  }
+  :global([data-kill-switch][data-size='lg']) {
+    width: 7rem;
+    height: 7rem;
   }
   /* Kill the global square outline; use a round, in-color focus ring that
      follows the circle (an `outline` on a round element renders as a sharp
      rectangle in most browsers). currentColor = emerald when live, red when killed. */
-  .power:focus-visible {
+  :global([data-kill-switch]:focus-visible) {
     outline: none;
-    box-shadow:
-      inset 0 0 0 1px currentColor,
-      0 0 0 3px color-mix(in oklab, currentColor 45%, transparent),
+    --power-switch-shadow:
+      inset 0 0 0 1px currentColor, 0 0 0 3px color-mix(in oklab, currentColor 45%, transparent),
       0 0 28px -4px currentColor;
+    box-shadow: var(--power-switch-shadow);
   }
-  .power:not(:disabled):active {
+  :global([data-kill-switch]:not(:disabled):active) {
     transform: scale(0.94);
   }
 
   /* LIVE — energized emerald, soft glow */
-  .live {
-    color: var(--color-success, #34d399);
+  :global([data-kill-switch][data-state='live']) {
+    color: var(--color-success);
     background: radial-gradient(
       circle at 50% 38%,
-      color-mix(in oklab, var(--color-success, #10b981) 28%, transparent),
-      color-mix(in oklab, var(--color-success, #10b981) 6%, transparent)
+      color-mix(in oklab, var(--color-success) 28%, transparent),
+      color-mix(in oklab, var(--color-success) 6%, transparent)
     );
-    box-shadow:
-      inset 0 0 0 1px color-mix(in oklab, var(--color-success, #10b981) 55%, transparent),
-      0 0 26px -6px var(--color-success, #10b981);
+    --power-switch-shadow:
+      inset 0 0 0 1px color-mix(in oklab, var(--color-success) 55%, transparent),
+      0 0 26px -6px var(--color-success);
+    box-shadow: var(--power-switch-shadow);
   }
-  .live:hover:not(:disabled) {
-    box-shadow:
-      inset 0 0 0 1px color-mix(in oklab, var(--color-success, #10b981) 70%, transparent),
-      0 0 34px -4px var(--color-success, #10b981);
+  :global([data-kill-switch][data-state='live']:hover:not(:disabled)) {
+    --power-switch-shadow:
+      inset 0 0 0 1px color-mix(in oklab, var(--color-success) 70%, transparent),
+      0 0 34px -4px var(--color-success);
   }
 
   /* KILLED — powered down: dim red, NO glow (absence of light is the signal) */
-  .killed {
-    color: color-mix(in oklab, var(--color-destructive, #f87171) 80%, transparent);
+  :global([data-kill-switch][data-state='killed']) {
+    color: color-mix(in oklab, var(--color-destructive) 80%, transparent);
     background: radial-gradient(
       circle at 50% 38%,
-      color-mix(in oklab, var(--color-destructive, #ef4444) 12%, transparent),
+      color-mix(in oklab, var(--color-destructive) 12%, transparent),
       transparent
     );
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-destructive, #ef4444) 38%, transparent);
+    --power-switch-shadow: inset 0 0 0 1px
+      color-mix(in oklab, var(--color-destructive) 38%, transparent);
+    box-shadow: var(--power-switch-shadow);
   }
-  .killed:hover:not(:disabled) {
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-destructive, #ef4444) 60%, transparent);
+  :global([data-kill-switch][data-state='killed']:hover:not(:disabled)) {
+    --power-switch-shadow: inset 0 0 0 1px
+      color-mix(in oklab, var(--color-destructive) 60%, transparent);
   }
 
   /* UNAVAILABLE — intentionally inert, not broken */
-  .unavailable {
-    color: var(--color-muted-foreground, #71717a);
+  :global([data-kill-switch][data-available='false']) {
+    color: var(--color-muted-foreground);
     background: transparent;
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-muted-foreground, #71717a) 25%, transparent);
+    --power-switch-shadow: inset 0 0 0 1px
+      color-mix(in oklab, var(--color-muted-foreground) 25%, transparent);
+    box-shadow: var(--power-switch-shadow);
     border-style: dashed;
     cursor: not-allowed;
     opacity: 0.55;
@@ -189,15 +204,15 @@
   }
   .holdring-fill {
     fill: none;
-    stroke: var(--color-destructive, #ef4444);
+    stroke: var(--color-destructive);
     stroke-width: 4;
     stroke-linecap: round;
     /* 2·π·46 ≈ 289 */
     stroke-dasharray: 289;
     stroke-dashoffset: 289;
   }
-  .holding .holdring-fill {
-    animation: ks-fill 1200ms linear forwards;
+  :global([data-kill-switch][data-holding='true']) .holdring-fill {
+    animation: ks-fill var(--power-hold-duration) linear forwards;
   }
   @keyframes ks-fill {
     to {
@@ -205,10 +220,10 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .holding .holdring-fill {
-      animation-duration: 1200ms; /* keep the deliberate hold; just no easing flourish */
+    :global([data-kill-switch][data-holding='true']) .holdring-fill {
+      animation-duration: var(--power-hold-duration); /* Safety hold remains deliberate. */
     }
-    .power:not(:disabled):active {
+    :global([data-kill-switch]:not(:disabled):active) {
       transform: none;
     }
   }
