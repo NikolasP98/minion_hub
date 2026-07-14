@@ -299,10 +299,7 @@
           <div class="flex items-center gap-0.5 bg-bg2 rounded p-0.5 shrink-0">
             <Button variant="ghost"
               type="button"
-              class="text-[length:var(--font-size-telemetry)] px-2 py-1 rounded transition-colors"
-              class:bg-bg1={scope === 'global'}
-              class:text-foreground={scope === 'global'}
-              class:text-muted={scope !== 'global'}
+              class={`text-[length:var(--font-size-telemetry)] px-2 py-1 rounded transition-colors ${scope === 'global' ? 'bg-bg1 text-foreground' : 'text-muted'}`}
               onclick={() => (scope = 'global')}
               disabled={saving}
             >
@@ -310,10 +307,7 @@
             </Button>
             <Button variant="ghost"
               type="button"
-              class="text-[length:var(--font-size-telemetry)] px-2 py-1 rounded transition-colors"
-              class:bg-bg1={scope === 'agent'}
-              class:text-foreground={scope === 'agent'}
-              class:text-muted={scope !== 'agent'}
+              class={`text-[length:var(--font-size-telemetry)] px-2 py-1 rounded transition-colors ${scope === 'agent' ? 'bg-bg1 text-foreground' : 'text-muted'}`}
               onclick={() => (scope = 'agent')}
               disabled={saving}
               title={m.prose_agentOverrideTitle()}
@@ -338,11 +332,7 @@
           {#each slots as slot, i}
             <Button variant="ghost"
               type="button"
-              class="text-[length:var(--font-size-caption)] px-2 py-1 rounded-t border-b-2 transition-colors"
-              class:border-accent={activeIdx === i}
-              class:text-foreground={activeIdx === i}
-              class:border-transparent={activeIdx !== i}
-              class:text-muted={activeIdx !== i}
+              class={`text-[length:var(--font-size-caption)] px-2 py-1 rounded-t border-b-2 transition-colors ${activeIdx === i ? 'border-accent text-foreground' : 'border-transparent text-muted'}`}
               onclick={() => (activeIdx = i)}
             >
               {variantLabel(slot.variant)}
@@ -375,11 +365,7 @@
               {#each inspectorFiles as file, i}
                 <Button variant="ghost"
                   type="button"
-                  class="w-full text-left px-2 py-1.5 rounded border transition-colors flex items-center justify-between gap-2"
-                  class:border-accent={activeFileIdx === i}
-                  class:bg-bg2={activeFileIdx === i}
-                  class:border-border={activeFileIdx !== i}
-                  class:hover:bg-bg2={activeFileIdx !== i}
+                  class={`w-full text-left px-2 py-1.5 rounded border transition-colors flex items-center justify-between gap-2 ${activeFileIdx === i ? 'border-accent bg-bg2' : 'border-border hover:bg-bg2'}`}
                   onclick={() => (activeFileIdx = i)}
                 >
                   <span class="text-[length:var(--font-size-caption)] font-mono text-foreground truncate flex-1">

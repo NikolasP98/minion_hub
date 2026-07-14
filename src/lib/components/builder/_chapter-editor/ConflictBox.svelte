@@ -48,7 +48,7 @@ import { Sparkles } from "lucide-svelte";
 
     .conflict-options { display: flex; gap: var(--space-2); }
 
-    .conflict-opt {
+    :global(.conflict-opt) {
         font-family: inherit;
         font-size: var(--font-size-caption);
         font-weight: 600;
@@ -60,13 +60,13 @@ import { Sparkles } from "lucide-svelte";
         color: var(--color-foreground);
         transition: all var(--duration-fast) var(--ease-standard);
     }
-    .conflict-opt.mine:hover { border-color: var(--color-foreground); }
-    .conflict-opt.ai {
+    :global(.conflict-opt.mine:hover) { border-color: var(--color-foreground); }
+    :global(.conflict-opt.ai) {
         background: var(--color-accent);
         border-color: var(--color-accent);
         color: white;
     }
-    .conflict-opt.ai:hover { filter: brightness(1.15); }
+    :global(.conflict-opt.ai:hover) { filter: brightness(1.15); }
 
     .conflict-preview {
         font-size: var(--font-size-caption);

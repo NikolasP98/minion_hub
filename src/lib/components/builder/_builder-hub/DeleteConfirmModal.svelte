@@ -65,7 +65,7 @@ import * as m from '$lib/paraglide/messages';
         gap: var(--space-2);
     }
 
-    .confirm-btn {
+    :global(.confirm-btn) {
         font-family: inherit;
         font-size: var(--font-size-caption);
         font-weight: 600;
@@ -76,23 +76,23 @@ import * as m from '$lib/paraglide/messages';
         border: none;
     }
 
-    .confirm-btn.cancel {
+    :global(.confirm-btn.cancel) {
         background: var(--color-bg2);
         color: var(--color-muted);
         border: 1px solid var(--color-border);
     }
 
-    .confirm-btn.cancel:hover {
+    :global(.confirm-btn.cancel:hover) {
         color: var(--color-foreground);
         border-color: var(--color-foreground);
     }
 
-    .confirm-btn.delete {
+    :global(.confirm-btn.delete) {
         background: var(--color-danger-fg);
         color: white;
     }
 
-    .confirm-btn.delete:hover {
+    :global(.confirm-btn.delete:hover) {
         filter: brightness(1.1);
     }
 </style>

@@ -481,7 +481,7 @@ import { autosize } from '$lib/actions/autosize';
         gap: var(--space-2);
     }
 
-    .ai-btn {
+    :global(.ai-btn) {
         display: inline-flex;
         align-items: center;
         gap: var(--space-2);
@@ -497,15 +497,15 @@ import { autosize } from '$lib/actions/autosize';
         transition: filter var(--duration-fast), opacity var(--duration-fast);
         align-self: flex-start;
     }
-    .ai-btn:hover:not(:disabled) { filter: brightness(1.15); }
-    .ai-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    :global(.ai-btn:hover:not(:disabled)) { filter: brightness(1.15); }
+    :global(.ai-btn:disabled) { opacity: 0.5; cursor: not-allowed; }
 
     .ai-error { font-size: var(--font-size-caption); color: var(--color-danger-fg); }
 
     :global(.suggested-sparkle) { color: var(--color-accent); opacity: 0.7; }
 
     /* ── Advanced toggle ─────────────────────────────────────────────────── */
-    .advanced-toggle {
+    :global(.advanced-toggle) {
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -520,7 +520,7 @@ import { autosize } from '$lib/actions/autosize';
         cursor: pointer;
         transition: color var(--duration-fast);
     }
-    .advanced-toggle:hover { color: var(--color-foreground); }
+    :global(.advanced-toggle:hover) { color: var(--color-foreground); }
 
     .advanced-filled-dot {
         width: 6px;

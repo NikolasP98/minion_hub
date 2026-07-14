@@ -362,7 +362,7 @@ import { flowEditorState, setNodes, setPluginNodeDescriptors, setNodePresets, de
           <Button variant="ghost"
             onclick={node.add}
             draggable="true"
-            ondragstart={(e) => handleDragStart(e, nodeDragPayload(node))}
+            ondragstart={(e: DragEvent) => handleDragStart(e, nodeDragPayload(node))}
             class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
             title={node.label}
           >
@@ -376,7 +376,7 @@ import { flowEditorState, setNodes, setPluginNodeDescriptors, setNodePresets, de
       <Button variant="ghost"
         onclick={() => addPluginNode(d)}
         draggable="true"
-        ondragstart={(e) => handleDragStart(e, { type: d.kind === 'trigger' ? 'pluginTrigger' : 'pluginAction', descriptor: d })}
+        ondragstart={(e: DragEvent) => handleDragStart(e, { type: d.kind === 'trigger' ? 'pluginTrigger' : 'pluginAction', descriptor: d })}
         class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
       >
         <div class="w-6 h-6 rounded bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0">
@@ -405,7 +405,7 @@ import { flowEditorState, setNodes, setPluginNodeDescriptors, setNodePresets, de
               <Button variant="ghost"
                 onclick={node.add}
                 draggable="true"
-                ondragstart={(e) => handleDragStart(e, nodeDragPayload(node))}
+                ondragstart={(e: DragEvent) => handleDragStart(e, nodeDragPayload(node))}
                 class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
               >
                 <div class="w-6 h-6 rounded {node.bg} flex items-center justify-center shrink-0">

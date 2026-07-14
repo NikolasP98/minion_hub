@@ -449,7 +449,7 @@ import AgentRow from "./AgentRow.svelte";
                                                 ? 'bg-bg3 border-accent/50'
                                                 : 'bg-bg2 border-border hover:border-muted hover:bg-bg3'}"
                                             draggable="true"
-                                            ondragstart={(e) => {
+                                            ondragstart={(e: DragEvent) => {
                                                 e.dataTransfer?.setData('application/agent-move', JSON.stringify({ agentId: agent.id, fromGroupId: group.id }));
                                                 if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
                                             }}
@@ -488,7 +488,7 @@ import AgentRow from "./AgentRow.svelte";
                                         ? 'bg-bg3 border-accent/50'
                                         : 'bg-bg2 border-border hover:border-muted hover:bg-bg3'}"
                                     draggable="true"
-                                    ondragstart={(e) => {
+                                    ondragstart={(e: DragEvent) => {
                                         e.dataTransfer?.setData('application/agent-move', JSON.stringify({ agentId: agent.id, fromGroupId: null }));
                                         if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
                                     }}

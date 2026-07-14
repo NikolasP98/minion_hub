@@ -341,7 +341,7 @@
 </Modal>
 
 <style>
-  .source-card {
+  :global(.source-card) {
     display: flex;
     width: 100%;
     height: auto;
@@ -364,11 +364,11 @@
     flex-direction: column;
     align-items: flex-start;
   }
-  .source-card:hover:not(:disabled) {
+  :global(.source-card:hover:not(:disabled)) {
     background: var(--color-surface-2);
     border-color: var(--color-border-strong);
   }
-  .source-card:disabled {
+  :global(.source-card:disabled) {
     opacity: 0.45;
     cursor: not-allowed;
   }
@@ -380,7 +380,7 @@
     font-size: var(--font-size-label);
     color: var(--color-text-tertiary);
   }
-  .source-card-row {
+  :global(.source-card-row) {
     width: 100%;
   }
   .note-carta :global(.carta-theme__dark.carta-editor) {

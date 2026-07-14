@@ -243,7 +243,7 @@ import * as m from '$lib/paraglide/messages';
         color: var(--color-foreground);
     }
 
-    .close-btn {
+    :global(.close-btn) {
         background: none;
         border: none;
         color: var(--color-muted);
@@ -254,7 +254,7 @@ import * as m from '$lib/paraglide/messages';
         align-items: center;
         transition: color var(--duration-fast);
     }
-    .close-btn:hover { color: var(--color-foreground); }
+    :global(.close-btn:hover) { color: var(--color-foreground); }
 
     /* Prompt */
     .prompt-section {
@@ -298,7 +298,7 @@ import * as m from '$lib/paraglide/messages';
     .suggestions-row {
         display: flex; flex-wrap: wrap; gap: var(--space-1);
     }
-    .suggestion-pill {
+    :global(.suggestion-pill) {
         display: inline-flex; align-items: center; gap: var(--space-1);
         padding: var(--space-1) var(--space-2);
         font-size: var(--font-size-caption); font-weight: 500; font-family: inherit;
@@ -309,12 +309,12 @@ import * as m from '$lib/paraglide/messages';
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
     }
-    .suggestion-pill:hover {
+    :global(.suggestion-pill:hover) {
         background: color-mix(in srgb, var(--color-accent) 12%, transparent);
         border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
     }
 
-    .run-btn {
+    :global(.run-btn) {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -330,8 +330,8 @@ import * as m from '$lib/paraglide/messages';
         cursor: pointer;
         transition: filter var(--duration-fast);
     }
-    .run-btn:hover:not(:disabled) { filter: brightness(1.15); }
-    .run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    :global(.run-btn:hover:not(:disabled)) { filter: brightness(1.15); }
+    :global(.run-btn:disabled) { opacity: 0.5; cursor: not-allowed; }
 
     .prompt-hint {
         font-size: var(--font-size-caption);
@@ -380,7 +380,7 @@ import * as m from '$lib/paraglide/messages';
         overflow: hidden;
     }
 
-    .result-header {
+    :global(.result-header) {
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -396,7 +396,7 @@ import * as m from '$lib/paraglide/messages';
         border-radius: var(--radius-md);
         transition: background var(--duration-fast);
     }
-    .result-header:hover { background: var(--color-bg3); }
+    :global(.result-header:hover) { background: var(--color-bg3); }
 
     .result-status { display: flex; flex-shrink: 0; }
     .result-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }

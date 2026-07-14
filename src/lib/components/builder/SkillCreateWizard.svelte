@@ -146,7 +146,7 @@ import { autosize } from '$lib/actions/autosize';
         color: var(--color-foreground);
     }
 
-    .close-btn {
+    :global(.close-btn) {
         background: transparent;
         border: none;
         color: var(--color-muted);
@@ -158,7 +158,7 @@ import { autosize } from '$lib/actions/autosize';
         justify-content: center;
         transition: color var(--duration-fast);
     }
-    .close-btn:hover { color: var(--color-foreground); }
+    :global(.close-btn:hover) { color: var(--color-foreground); }
 
     .modal-body {
         padding: var(--space-4);
@@ -218,7 +218,7 @@ import { autosize } from '$lib/actions/autosize';
         border-top: 1px solid var(--color-border);
     }
 
-    .btn {
+    :global(.btn) {
         display: inline-flex;
         align-items: center;
         gap: var(--space-2);
@@ -232,19 +232,19 @@ import { autosize } from '$lib/actions/autosize';
         border: none;
     }
 
-    .btn.cancel {
+    :global(.btn.cancel) {
         background: transparent;
         border: 1px solid var(--color-border);
         color: var(--color-muted);
     }
-    .btn.cancel:hover { color: var(--color-foreground); border-color: var(--color-foreground); }
+    :global(.btn.cancel:hover) { color: var(--color-foreground); border-color: var(--color-foreground); }
 
-    .btn.create {
+    :global(.btn.create) {
         background: var(--color-accent);
         color: white;
     }
-    .btn.create:hover:not(:disabled) { filter: brightness(1.15); }
-    .btn.create:disabled { opacity: 0.5; cursor: not-allowed; }
+    :global(.btn.create:hover:not(:disabled)) { filter: brightness(1.15); }
+    :global(.btn.create:disabled) { opacity: 0.5; cursor: not-allowed; }
 
     :global(.spin) {
         animation: spin 1s linear infinite;

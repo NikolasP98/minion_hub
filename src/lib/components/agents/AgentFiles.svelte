@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { normalizeButtonProps } from '$lib/components/users/button-props';
 import { sendRequest } from '$lib/services/gateway.svelte';
   import { Carta, Markdown, MarkdownEditor } from 'carta-md';
   import * as m from '$lib/paraglide/messages';
@@ -325,9 +326,9 @@ import { sendRequest } from '$lib/services/gateway.svelte';
                     >
                       <!-- Chevron — programmatically rotated to work correctly at any nesting depth -->
                       <Button variant="ghost"
-                        class="shrink-0 text-muted hover:text-foreground transition-colors w-3 h-3 flex items-center justify-center"
                         tabindex="-1"
-                        {...api.getBranchTriggerProps(nodeProps)}
+                        {...normalizeButtonProps(api.getBranchTriggerProps(nodeProps))}
+                        class="shrink-0 text-muted hover:text-foreground transition-colors w-3 h-3 flex items-center justify-center"
                       >
                         <svg class="w-3 h-3 transition-transform duration-[var(--duration-fast)] {isExpanded ? 'rotate-90' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M9 18l6-6-6-6" />
