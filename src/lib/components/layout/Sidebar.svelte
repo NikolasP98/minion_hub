@@ -16,7 +16,7 @@
     Check,
   } from 'lucide-svelte';
   import NavIcon from './NavIcon.svelte';
-  import { Tooltip } from '$lib/components/ui';
+  import { Button, Tooltip } from '$lib/components/ui';
   import {
     getSections,
     getDynamicPluginsSections,
@@ -260,7 +260,7 @@
       href="/"
       class="flex items-center {collapsed
         ? 'justify-center'
-        : 'justify-center md:justify-start'} gap-2 h-9 px-1.5 rounded-[var(--radius-md)] hover:bg-white/[0.05] transition-colors duration-[150ms] group"
+        : 'justify-center md:justify-start'} gap-2 h-9 px-1.5 rounded-[var(--radius-md)] hover:bg-bg3 transition-colors duration-[150ms] group"
       aria-label="Minion Hub"
     >
       {#if collapsed}
@@ -277,7 +277,7 @@
           >
           {#if serverVersion}
             <span
-              class="ml-1.5 text-[10px] font-mono text-muted-foreground/70 whitespace-nowrap"
+              class="ml-1.5 text-[length:var(--font-size-telemetry)] font-mono text-muted-foreground/70 whitespace-nowrap"
               title={serverVersion}>{serverVersion}</span
             >
           {/if}
@@ -401,7 +401,7 @@
           {#if subItems.length}
             {@const open = !collapsedSubs[sub.id]}
             {#if !collapsed}
-              <button
+              <Button variant="ghost" size="xs"
                 type="button"
                 class="nav-subhead {rowJustify} {headCls}"
                 onclick={() => toggleSub(sub.id)}
@@ -413,7 +413,7 @@
                   <ChevronRight size={13} class="shrink-0 opacity-60" />
                 {/if}
                 <span class="t-label">{sub.label}</span>
-              </button>
+              </Button>
             {/if}
             {#if open || collapsed}
               {#each subItems as item (item.href)}
@@ -485,7 +485,7 @@
       asChild
     >
       {#snippet children(trigger)}
-        <button
+        <Button variant="ghost" size="xs"
           type="button"
           {...trigger}
           onclick={toggle}
@@ -498,7 +498,7 @@
             <PanelLeftClose size={18} class="nav-icon shrink-0" />
           {/if}
           <span class="nav-label {labelCls}">Collapse</span>
-        </button>
+        </Button>
       {/snippet}
     </Tooltip>
   </div>
@@ -512,7 +512,7 @@
         <span>{m.nav_isHome()}</span>
       </div>
     {:else}
-      <button
+      <Button variant="ghost" size="xs"
         type="button"
         class="ctx-item"
         role="menuitem"
@@ -520,7 +520,7 @@
       >
         <Star size={14} class="shrink-0" />
         <span>{m.nav_setAsHome()}</span>
-      </button>
+      </Button>
     {/if}
   </div>
 {/if}
@@ -541,11 +541,11 @@
   .nav-row {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
     min-height: 2.25rem;
     padding: 0 0.625rem;
     border-radius: var(--radius-md);
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body);
     font-weight: 500;
     color: var(--color-muted);
     text-decoration: none;
@@ -556,7 +556,7 @@
       background-color var(--duration-fast) var(--ease-standard);
   }
   .nav-row.sub-item {
-    margin-left: 0.5rem;
+    margin-left: var(--space-2);
   }
   /* Drag-to-reorder affordances */
   .grab {
@@ -582,7 +582,7 @@
   }
   .nav-row:hover {
     color: var(--color-foreground);
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--color-surface-1);
   }
   .nav-row:hover :global(.nav-icon) {
     opacity: 1;
@@ -624,14 +624,14 @@
     animation: indicator-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
   .nav-group-head {
-    padding: 0.5rem 0.625rem 0.25rem;
+    padding: var(--space-2) var(--space-3) var(--space-1);
   }
   .nav-subhead {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-2);
     width: 100%;
-    padding: 0.4rem 0.625rem 0.2rem;
+    padding: var(--space-2) var(--space-3) var(--space-1);
     background: none;
     border: none;
     cursor: pointer;
@@ -646,8 +646,8 @@
   .top-row {
     display: flex;
     flex-direction: row;
-    gap: 0.375rem;
-    padding: 0.25rem 0.5rem;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
     align-items: center;
   }
   .top-row.is-collapsed {
@@ -661,7 +661,7 @@
     gap: 0;
     height: 2rem;
     min-width: 2rem;
-    padding: 0 0.4rem;
+    padding: 0 var(--space-2);
     border-radius: var(--radius-md);
     color: var(--color-muted);
     text-decoration: none;
@@ -670,7 +670,7 @@
     transition:
       color var(--duration-fast) var(--ease-standard),
       background-color var(--duration-fast) var(--ease-standard),
-      width 260ms cubic-bezier(0.22, 1, 0.36, 1);
+      width var(--duration-normal) var(--ease-spring);
   }
   /* Inactive pills are square so their icon is dead-centered. */
   .top-pill:not(.active) {
@@ -679,7 +679,7 @@
   }
   .top-pill:hover {
     color: var(--color-foreground);
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--color-surface-1);
   }
   .top-pill.active {
     color: var(--color-accent);
@@ -688,7 +688,7 @@
     /* Content-sized (icon + expanding label) so width animates with the label
        instead of snapping wide via flex-grow. */
     flex: 0 1 auto;
-    padding: 0 0.6rem;
+    padding: 0 var(--space-3);
   }
   .top-label {
     max-width: 0;
@@ -696,17 +696,17 @@
     opacity: 0;
     overflow: hidden;
     white-space: nowrap;
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body);
     font-weight: 600;
     letter-spacing: 0.02em;
     transition:
-      max-width 260ms cubic-bezier(0.22, 1, 0.36, 1),
-      margin-left 260ms cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 200ms ease;
+      max-width var(--duration-normal) var(--ease-spring),
+      margin-left var(--duration-normal) var(--ease-spring),
+      opacity var(--duration-normal) var(--ease-standard);
   }
   .top-label.show {
     max-width: 140px;
-    margin-left: 0.5rem;
+    margin-left: var(--space-2);
     opacity: 1;
   }
 
@@ -724,25 +724,25 @@
   /* ── Right-click context menu ── */
   .ctx-menu {
     position: fixed;
-    z-index: 70;
+    z-index: var(--layer-command);
     min-width: 13rem;
-    padding: 0.25rem;
+    padding: var(--space-1);
     border-radius: var(--radius-md);
-    background: var(--color-bg2, #1a1a1f);
+    background: var(--color-bg2);
     border: 1px solid var(--color-border, var(--hairline));
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--shadow-overlay);
   }
   .ctx-item {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     width: 100%;
-    padding: 0.45rem 0.6rem;
+    padding: var(--space-2) var(--space-3);
     border: none;
     background: none;
     border-radius: var(--radius-sm);
     color: var(--color-foreground);
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body);
     text-align: left;
     cursor: pointer;
   }

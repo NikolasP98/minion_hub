@@ -17,6 +17,6 @@
 </script>
 
 <div class={wrapperClass}>
-	<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{label}</span>
+	<span class="text-[length:var(--font-size-telemetry)] text-muted-foreground uppercase tracking-wider font-medium">{label}</span>
 	<span class="text-lg font-bold {valueClass}">{value}</span>
 </div>

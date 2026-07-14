@@ -150,7 +150,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-        class="fixed inset-0 z-[var(--layer-command,70)] bg-[color-mix(in_srgb,var(--color-canvas,var(--color-bg))_60%,transparent)] backdrop-blur-sm flex items-start justify-center pt-[15dvh] px-[var(--space-page-gutter,16px)]"
+        class="fixed inset-0 z-[var(--layer-command,70)] bg-[color-mix(in_srgb,var(--color-canvas,var(--color-bg))_60%,transparent)] backdrop-blur-sm flex items-start justify-center pt-[clamp(var(--space-12),15dvh,10rem)] px-[var(--space-page-gutter,16px)]"
         data-backdrop
         onclick={handleBackdropClick}
     >
@@ -171,7 +171,7 @@
                     autocomplete="off"
                     spellcheck="false"
                 />
-                <kbd class="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-bg3 border border-border text-[10px] font-mono text-muted">
+                <kbd class="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-bg3 border border-border text-[length:var(--font-size-telemetry)] font-mono text-muted">
                     Esc
                 </kbd>
             </div>
@@ -190,7 +190,7 @@
                     {@const flatIdx = { value: 0 }}
                     {#each groups as group}
                         <div class="px-3 pt-2 pb-1">
-                            <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-strong">
+                            <span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong">
                                 {group.category}
                             </span>
                         </div>
@@ -200,7 +200,7 @@
                             <!-- svelte-ignore a11y_click_events_have_key_events -->
                             <!-- svelte-ignore a11y_no_static_element_interactions -->
                             <div
-                                class="mx-2 px-3 py-2 rounded-lg flex items-center gap-3 cursor-pointer transition-colors duration-75 {isSelected ? 'bg-accent/12 text-foreground' : 'text-muted hover:bg-bg3 hover:text-foreground'}"
+                                class="mx-2 px-3 py-2 rounded-lg flex items-center gap-3 cursor-pointer transition-colors duration-[var(--duration-instant)] {isSelected ? 'bg-accent/12 text-foreground' : 'text-muted hover:bg-bg3 hover:text-foreground'}"
                                 data-cmd-index={currentIdx}
                                 onmouseenter={() => { palette.selectedIndex = currentIdx; }}
                                 onclick={() => selectCommand(currentIdx)}
@@ -219,7 +219,7 @@
                                 {/if}
                                 <span class="text-sm flex-1 truncate">{cmd.label}</span>
                                 {#if cmd.category === 'page'}
-                                    <span class="text-[10px] text-muted-foreground font-mono shrink-0">{m.command_pageTag()}</span>
+                                    <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground font-mono shrink-0">{m.command_pageTag()}</span>
                                 {/if}
                             </div>
                         {/each}
@@ -228,7 +228,7 @@
             </div>
 
             <!-- Footer hint -->
-            <div class="px-4 py-2 border-t border-border flex items-center gap-4 text-[10px] text-muted-foreground">
+            <div class="px-4 py-2 border-t border-border flex items-center gap-4 text-[length:var(--font-size-telemetry)] text-muted-foreground">
                 <span class="flex items-center gap-1">
                     <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">&uarr;&darr;</kbd>
                     {m.command_hintNavigate()}

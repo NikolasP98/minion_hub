@@ -19,7 +19,7 @@
 <div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20 {extraClass}">
 	{@render icon?.()}
 	<span
-		class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground {labelClass}"
+		class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground {labelClass}"
 		>{label}</span
 	>
 	{@render actions?.()}

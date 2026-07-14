@@ -7,6 +7,7 @@
     import { isAdmin } from "$lib/state/features/user.svelte";
     import { toastSuccess, toastError } from "$lib/state/ui/toast.svelte";
     import { Building2, Loader2, Check } from "lucide-svelte";
+    import { Button } from '$lib/components/ui';
 
     type OrgEntry = { id: string; name: string; slug: string | null; role: string };
 
@@ -82,11 +83,11 @@
 
 {#if organizations.length > 0}
     <div class="relative w-full">
-        <button
+        <Button variant="ghost" size="xs"
             type="button"
             disabled={!!switchingTo}
-            class="relative w-full flex items-center gap-1.5 h-6 px-1.5 rounded-[var(--radius-sm)] text-[12px] font-medium transition-colors whitespace-nowrap select-none text-muted-foreground {canSwitch && !switchingTo
-                ? 'cursor-pointer hover:text-foreground hover:bg-white/[0.04]'
+            class="relative w-full flex items-center gap-1.5 h-6 px-1.5 rounded-[var(--radius-sm)] text-[length:var(--font-size-label)] font-medium transition-colors whitespace-nowrap select-none text-muted-foreground {canSwitch && !switchingTo
+                ? 'cursor-pointer hover:text-foreground hover:bg-bg3'
                 : 'cursor-default'} {switchingTo ? 'opacity-70' : ''}"
             onclick={(e) => {
                 e.stopPropagation();
@@ -104,13 +105,13 @@
             {/if}
             <span class="flex-1 overflow-hidden text-ellipsis text-left">{currentName}</span>
             {#if canSwitch && !switchingTo}
-                <span class="opacity-40 text-[9px] shrink-0">▾</span>
+                <span class="opacity-40 text-[length:var(--font-size-telemetry)] shrink-0">▾</span>
             {/if}
-        </button>
+        </Button>
 
         {#if open && canSwitch}
             <div
-                class="absolute top-[calc(100%+4px)] left-0 z-50 bg-bg2 border border-border rounded-lg shadow-md min-w-[180px] max-w-[260px] overflow-hidden"
+                class="absolute top-[calc(100%+4px)] left-0 z-[var(--layer-modal)] bg-bg2 border border-border rounded-lg shadow-md min-w-[180px] max-w-[260px] overflow-hidden"
                 role="menu"
                 tabindex="0"
                 onclick={(e) => e.stopPropagation()}
@@ -118,7 +119,7 @@
             >
                 {#each organizations as o (o.id)}
                     <div
-                        class="flex items-center gap-2 py-[9px] px-[14px] cursor-pointer text-[13px] text-foreground transition-colors hover:bg-bg3 {switchingTo
+                        class="!h-auto flex items-center gap-2 py-[var(--space-2)] px-[var(--space-4)] cursor-pointer text-[length:var(--font-size-body)] text-foreground transition-colors hover:bg-bg3 [&>span]:w-full [&>span]:justify-start {switchingTo
                             ? 'pointer-events-none opacity-60'
                             : ''}"
                         role="menuitem"

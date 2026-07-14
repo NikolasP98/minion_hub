@@ -5,12 +5,17 @@
   } = $props();
 
   const sizeMap = { sm: 'w-2 h-2', md: 'w-2.5 h-2.5', lg: 'w-3 h-3' };
-  const colorMap = { running: 'bg-success', thinking: 'bg-purple', idle: 'bg-muted-foreground', aborted: 'bg-warning' };
+  const colorMap = {
+    running: 'bg-success',
+    thinking: 'bg-[var(--color-status-thinking)]',
+    idle: 'bg-muted-foreground',
+    aborted: 'bg-warning',
+  };
   const glowMap: Record<string, string> = {
-    running: 'shadow-[0_0_6px_var(--color-success)]',
-    thinking: 'shadow-[0_0_6px_var(--color-purple)]',
+    running: 'text-success shadow-[var(--shadow-status-glow)]',
+    thinking: 'text-[var(--color-status-thinking)] shadow-[var(--shadow-status-glow)]',
     idle: '',
-    aborted: 'shadow-[0_0_6px_var(--color-warning)]',
+    aborted: 'text-warning shadow-[var(--shadow-status-glow)]',
   };
   const animMap: Record<string, string> = {
     running: 'animate-[dot-pulse_2s_ease_infinite]',

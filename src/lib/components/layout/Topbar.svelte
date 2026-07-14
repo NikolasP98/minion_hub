@@ -17,6 +17,7 @@
     import { notifications, refreshNotifications } from "$lib/state/features/notifications.svelte";
     import { onMount } from "svelte";
     import { userState, logout } from "$lib/state/features/user.svelte";
+    import { Button } from '$lib/components/ui';
 
     const allSections = $derived<Section[]>([
         ...getSections(),
@@ -54,15 +55,15 @@
     class="md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] h-14"
 >
     <div class="relative flex items-center h-full px-3 gap-2">
-        <button
+        <Button variant="ghost" size="xs"
             type="button"
             onclick={toggleMobileMenu}
-            class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150"
+            class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)]"
             aria-label={m.topbar_toggleMenu()}
             aria-expanded={mobileMenuOpen}
         >
             {#if mobileMenuOpen}<X size={20} />{:else}<Menu size={20} />{/if}
-        </button>
+        </Button>
 
         <a href="/" class="flex items-center gap-2 no-underline group shrink-0" aria-label="Minion Hub">
             <MinionLogo size="sm" />
@@ -77,22 +78,22 @@
 
         <div class="flex-1 min-w-0"></div>
 
-        <button
+        <Button variant="ghost" size="xs"
             type="button"
             onclick={() => togglePalette()}
-            class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150"
+            class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)]"
             aria-label="Open command palette"
             title="Command palette"
         >
             <Search size={18} />
-        </button>
+        </Button>
 
         <!-- Notification bell -->
         <div class="relative">
-            <button
+            <Button variant="ghost" size="xs"
                 type="button"
                 onclick={() => (notificationsOpen = !notificationsOpen)}
-                class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150 relative"
+                class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)] relative"
                 aria-label="{notifications.badgeCount} notifications"
                 title="Notifications"
                 aria-expanded={notificationsOpen}
@@ -100,12 +101,12 @@
                 <Bell size={18} />
                 {#if notifications.hasPending}
                     <span
-                        class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-red-500 text-[9px] font-bold text-white leading-none"
+                        class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-destructive text-[length:var(--font-size-telemetry)] font-bold text-accent-foreground leading-none"
                     >
                         {notifications.badgeCount > 99 ? "99+" : notifications.badgeCount}
                     </span>
                 {/if}
-            </button>
+            </Button>
             <NotificationsPopup bind:open={notificationsOpen} />
         </div>
 
@@ -114,12 +115,12 @@
 
     {#if mobileMenuOpen}
         <!-- Backdrop (below the header bar) -->
-        <button
-            class="fixed inset-0 top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-[var(--layer-base,0)] bg-[color-mix(in_srgb,var(--color-canvas,var(--color-bg))_40%,transparent)] cursor-default"
+        <Button variant="ghost" size="xs"
+            class="fixed inset-0 !h-auto top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-[var(--layer-base,0)] bg-[color-mix(in_srgb,var(--color-canvas,var(--color-bg))_40%,transparent)] cursor-default"
             onclick={closeMobileMenu}
             aria-label="Close menu"
             tabindex="-1"
-        ></button>
+        ></Button>
 
         <!-- Menu panel -->
         <div
@@ -133,7 +134,7 @@
                         {@const hasSubs = (section.subsections?.length ?? 0) > 0}
                         {#if items.length || hasSubs}
                             <div
-                                class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-strong mt-1"
+                                class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
                             >
                                 {section.label}
                             </div>
@@ -155,7 +156,7 @@
                                 {@const subItems = sub.items.filter((i) => canViewPath(i.href))}
                                 {#if subItems.length}
                                     <div
-                                        class="px-5 py-1 text-[10px] font-medium uppercase tracking-wider text-muted mt-0.5"
+                                        class="px-5 py-1 text-[length:var(--font-size-telemetry)] font-medium uppercase tracking-wider text-muted mt-0.5"
                                     >
                                         {sub.label}
                                     </div>
@@ -239,7 +240,7 @@
                         <span>Notifications</span>
                         {#if notifications.hasPending}
                             <span
-                                class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white leading-none"
+                                class="ml-auto text-[length:var(--font-size-telemetry)] font-bold px-1.5 py-0.5 rounded-full bg-destructive text-accent-foreground leading-none"
                             >
                                 {notifications.badgeCount > 99 ? "99+" : notifications.badgeCount}
                             </span>
@@ -254,10 +255,10 @@
                 </a>
 
                 <!-- Logout -->
-                <button type="button" onclick={logout} class="mobile-nav-link text-xs text-muted hover:text-red-400">
+                <Button variant="ghost" size="xs" type="button" onclick={logout} class="mobile-nav-link text-xs text-muted hover:text-destructive">
                     <LogOut size={15} />
                     <span>Log out</span>
-                </button>
+                </Button>
 
                 {#if isWorkforce}
                     <div class="px-3 py-2"><CompanySwitcher /></div>
@@ -294,10 +295,10 @@
     .mobile-nav-link {
         display: flex;
         align-items: center;
-        gap: 0.625rem;
-        padding: 0.5rem 0.75rem;
-        border-radius: 0.5rem;
-        font-size: 0.8125rem;
+        gap: var(--space-3);
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-lg);
+        font-size: var(--font-size-body);
         font-weight: 500;
         color: var(--color-muted);
         text-decoration: none;

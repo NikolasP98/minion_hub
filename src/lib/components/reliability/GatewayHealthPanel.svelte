@@ -218,33 +218,33 @@
 
 	{#if loading && !latest}
 		<div></div>
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.common_loading()}</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[length:var(--font-size-body)]">{m.common_loading()}</div>
 		<div></div>
 	{:else if error}
 		<div></div>
-		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[13px]">{error}</div>
+		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[length:var(--font-size-body)]">{error}</div>
 		<div></div>
 	{:else if !latest}
 		<div></div>
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.reliability_noHeartbeat()}</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[length:var(--font-size-body)]">{m.reliability_noHeartbeat()}</div>
 		<div></div>
 	{:else}
 		<!-- Row 2: STATS -->
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_uptime()}</span>
+				<span class="text-[length:var(--font-size-label)] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_uptime()}</span>
 				<span class="text-lg font-bold text-success tabular-nums whitespace-nowrap">{formatUptime(latest.uptimeMs)}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_gatewaySessions()}</span>
+				<span class="text-[length:var(--font-size-label)] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_gatewaySessions()}</span>
 				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{latest.activeSessions}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_gatewayAgents()}</span>
+				<span class="text-[length:var(--font-size-label)] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_gatewayAgents()}</span>
 				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{latest.activeAgents}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_gatewayMemory()}</span>
+				<span class="text-[length:var(--font-size-label)] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_gatewayMemory()}</span>
 				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">
 					{latest.memoryRssMb != null ? `${latest.memoryRssMb.toFixed(0)} MB` : '-'}
 				</span>
@@ -262,13 +262,13 @@
 		<div>
 			{#if channelGroups}
 				<div class="px-4 py-3 border-t border-border">
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground block mb-2">{m.reliability_channelStatus()}</span>
+					<span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground block mb-2">{m.reliability_channelStatus()}</span>
 					<div class="flex flex-wrap gap-x-5 gap-y-3">
 						{#each channelGroups as group (group.channel)}
 							<div class="flex flex-col gap-0.5 min-w-[100px]">
 								<div class="flex items-center gap-1.5 mb-0.5">
 									<ChannelBrandIcon channel={group.channel} size={12} class="text-muted-strong" />
-									<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-strong">{group.channel}</span>
+									<span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-strong">{group.channel}</span>
 								</div>
 								{#each group.accounts as { account, status: accStatus } (`${group.channel}:${account}`)}
 									<div class="flex items-center gap-1.5 h-5 pl-0.5" title={getChannelDotLabel(accStatus)}>
@@ -276,7 +276,7 @@
 											class="inline-block w-1.5 h-1.5 rounded-full shrink-0"
 											style:background-color={getChannelDotColor(accStatus)}
 										></span>
-										<span class="text-[11px] text-foreground/80">{account}</span>
+										<span class="text-[length:var(--font-size-label)] text-foreground/80">{account}</span>
 									</div>
 								{/each}
 							</div>

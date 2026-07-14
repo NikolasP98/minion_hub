@@ -21,8 +21,9 @@
     width: 1rem;
     height: 1rem;
     border-width: 2px;
-    border-color: rgba(var(--vx-glow-cyan), 0.6);
-    box-shadow: 0 0 6px 1px rgba(var(--vx-glow-cyan), 0.3);
+    border-color: color-mix(in srgb, var(--color-cyan) 60%, transparent);
+    color: color-mix(in srgb, var(--color-cyan) 30%, transparent);
+    box-shadow: var(--shadow-status-glow);
     animation: vx-border-pulse 3s ease-in-out infinite;
   }
 </style>

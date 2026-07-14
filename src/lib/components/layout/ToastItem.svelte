@@ -3,6 +3,7 @@
   import { normalizeProps, useMachine } from '@zag-js/svelte';
   import { X, Loader2, Info, CircleCheck, CircleAlert, TriangleAlert } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
 
   interface Props {
     toast: toast.Options;
@@ -58,13 +59,13 @@
       <p {...api.getDescriptionProps() as Record<string, unknown>} class="toast-desc">{api.description}</p>
     {/if}
   </div>
-  <button
+  <Button variant="ghost" size="xs"
     {...api.getCloseTriggerProps() as Record<string, unknown>}
     class="toast-close"
     aria-label={m.common_close()}
   >
     <X size={14} />
-  </button>
+  </Button>
   <div {...api.getGhostAfterProps() as Record<string, unknown>}></div>
 </div>
 
@@ -111,28 +112,28 @@
   .toast-icon {
     display: flex;
     align-items: center;
-    padding: 10px 0 10px 10px;
+    padding: var(--space-3) 0 var(--space-3) var(--space-3);
     color: var(--toast-accent);
     flex-shrink: 0;
   }
 
   .toast-content {
     flex: 1;
-    padding: 10px 8px;
+    padding: var(--space-3) var(--space-2);
     min-width: 0;
   }
 
   .toast-title {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body);
     font-weight: 600;
     color: var(--color-foreground);
     line-height: 1.3;
   }
 
   .toast-desc {
-    margin: 2px 0 0;
-    font-size: 0.75rem;
+    margin: var(--space-0-5) 0 0;
+    font-size: var(--font-size-label);
     color: var(--color-muted-foreground);
     line-height: 1.3;
   }

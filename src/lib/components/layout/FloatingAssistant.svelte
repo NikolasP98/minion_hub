@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { Button } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
     import { Sparkles, Minus, SquarePen, Send, ChevronDown, AlertCircle, Mic, MicOff, PhoneOff, Factory, MessageCircle } from 'lucide-svelte';
     import { voiceCall, mouth, toggleMute, endCall } from '$lib/state/features/voice-call.svelte';
@@ -483,7 +484,7 @@
     const launcherStyle = $derived.by(() => {
         if (!pos) return '';
         if (dragging) return `left:${pos.left}px; right:auto; top:${pos.top}px;`;
-        const ease = 'transition: left .26s cubic-bezier(.2,.8,.2,1), top .26s cubic-bezier(.2,.8,.2,1), right .26s cubic-bezier(.2,.8,.2,1);';
+        const ease = 'transition: left var(--duration-normal) var(--ease-standard), top var(--duration-normal) var(--ease-standard), right var(--duration-normal) var(--ease-standard);';
         const horiz = anchorRight
             ? `right:${Math.max(LAUNCH_MARGIN, vw - pos.left - launcherW())}px; left:auto;`
             : `left:${pos.left}px; right:auto;`;
@@ -499,20 +500,20 @@
     <div
         class="fixed bottom-[max(var(--space-4,16px),env(safe-area-inset-bottom,0px))] right-[max(var(--space-4,16px),env(safe-area-inset-right,0px))] z-[var(--layer-popover,40)] flex items-center gap-2.5 pl-2 pr-2.5 py-2 rounded-full bg-bg2 border border-accent/40 shadow-[var(--shadow-elevation-3,var(--shadow-md))]"
     >
-        <button
+        <Button variant="ghost" size="xs"
             type="button"
             onclick={() => (assistant.open = true)}
             class="flex items-center gap-2 group"
             title={m.a11y3_openCallTranscript()}
         >
-            <span class="w-7 h-7 rounded-full overflow-hidden bg-black/40 ring-1 ring-accent/50 shrink-0">
+            <span class="w-7 h-7 rounded-full overflow-hidden bg-[var(--color-overlay)] ring-1 ring-accent/50 shrink-0">
                 <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
             </span>
             <span class="text-xs font-medium text-foreground tabular-nums">
                 {CALL_STATUS_LABEL[voiceCall.status] ?? m.floatingAssistant_onCall()}
             </span>
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost" size="xs"
             type="button"
             onclick={toggleMute}
             class="w-7 h-7 flex items-center justify-center rounded-full border border-border hover:bg-bg3 transition-colors {voiceCall.muted ? 'text-accent border-accent/50' : 'text-foreground'}"
@@ -520,18 +521,18 @@
             aria-pressed={voiceCall.muted}
         >
             {#if voiceCall.muted}<MicOff size={13} />{:else}<Mic size={13} />{/if}
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost" size="xs"
             type="button"
             onclick={endCall}
             class="w-7 h-7 flex items-center justify-center rounded-full border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
             title={m.a11y3_endCall()}
         >
             <PhoneOff size={13} />
-        </button>
+        </Button>
     </div>
 {:else if !assistant.open}
-    <button
+    <Button variant="ghost" size="xs"
         bind:this={launcherEl}
         type="button"
         onpointerdown={onLauncherPointerDown}
@@ -553,21 +554,21 @@
              (no hardcoded max-width, no clipping). Flex items-center handles vertical
              centring; leading-tight + py-0.5 give descenders (g, y) room inside the clip. -->
         <span
-            class="grid grid-cols-[0fr] transition-[grid-template-columns] duration-200 ease-out {dragging
+            class="grid grid-cols-[0fr] transition-[grid-template-columns] duration-[var(--duration-normal)] ease-out {dragging
                 ? ''
                 : 'group-hover:grid-cols-[1fr]'}"
         >
             <span class="overflow-hidden min-w-0">
-                <span class="block px-1 py-0.5 whitespace-nowrap text-[13px] font-medium leading-tight text-foreground"
+                <span class="block px-1 py-0.5 whitespace-nowrap text-[length:var(--font-size-body)] font-medium leading-tight text-foreground"
                     >{m.floatingAssistant_askAnything()}</span
                 >
             </span>
         </span>
         <kbd
-            class="shrink-0 flex items-center h-5 px-1.5 rounded-md bg-bg3 text-[10px] font-medium font-mono leading-none text-muted-foreground border border-border"
+            class="shrink-0 flex items-center h-5 px-1.5 rounded-md bg-bg3 text-[length:var(--font-size-telemetry)] font-medium font-mono leading-none text-muted-foreground border border-border"
             >{kbdToggle}</kbd
         >
-    </button>
+    </Button>
 {:else}
     <!-- Expanded panel — grows out of the launcher's corner, draggable by header -->
     <div
@@ -587,11 +588,11 @@
             onpointerup={onPanelHeaderPointerUp}
         >
             <Sparkles size={13} class="text-accent shrink-0 ml-1" />
-            <span class="text-[11px] font-semibold text-foreground flex-1 truncate">{m.floatingAssistant_title()}</span>
+            <span class="text-[length:var(--font-size-label)] font-semibold text-foreground flex-1 truncate">{m.floatingAssistant_title()}</span>
             {#if !conn.connected && composerMode === 'chat'}
-                <span class="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500" title={m.floatingAssistant_offline()}></span>
+                <span class="shrink-0 w-1.5 h-1.5 rounded-full bg-warning" title={m.floatingAssistant_offline()}></span>
             {/if}
-            <button
+            <Button variant="ghost" size="xs"
                 type="button"
                 onclick={newChat}
                 class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
@@ -599,8 +600,8 @@
                 title={m.floatingAssistant_newChat()}
             >
                 <SquarePen size={14} />
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost" size="xs"
                 type="button"
                 onclick={closeAssistant}
                 class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
@@ -608,20 +609,20 @@
                 title={m.floatingAssistant_minimize()}
             >
                 <Minus size={15} />
-            </button>
+            </Button>
         </div>
 
         {#if callElsewhere}
             <!-- Live-call strip: status + controls while the call runs in the background -->
             <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-accent/30 bg-accent/5">
-                <span class="w-7 h-7 rounded-full overflow-hidden bg-black/40 ring-1 ring-accent/50 shrink-0">
+                <span class="w-7 h-7 rounded-full overflow-hidden bg-[var(--color-overlay)] ring-1 ring-accent/50 shrink-0">
                     <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
                 </span>
-                <span class="text-[11px] font-medium text-foreground flex-1 tabular-nums">
+                <span class="text-[length:var(--font-size-label)] font-medium text-foreground flex-1 tabular-nums">
                     On call · {CALL_STATUS_LABEL[voiceCall.status] ?? ''}
                     {#if voiceCall.interim}<span class="text-muted-foreground italic">“{voiceCall.interim}”</span>{/if}
                 </span>
-                <button
+                <Button variant="ghost" size="xs"
                     type="button"
                     onclick={toggleMute}
                     class="w-6 h-6 flex items-center justify-center rounded-md border border-border hover:bg-bg3 transition-colors {voiceCall.muted ? 'text-accent border-accent/50' : 'text-foreground'}"
@@ -629,15 +630,15 @@
                     aria-pressed={voiceCall.muted}
                 >
                     {#if voiceCall.muted}<MicOff size={12} />{:else}<Mic size={12} />{/if}
-                </button>
-                <button
+                </Button>
+                <Button variant="ghost" size="xs"
                     type="button"
                     onclick={endCall}
                     class="w-6 h-6 flex items-center justify-center rounded-md border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
                     title={m.a11y3_endCall()}
                 >
                     <PhoneOff size={12} />
-                </button>
+                </Button>
             </div>
         {/if}
 
@@ -655,16 +656,16 @@
                     <p>{m.factoryDesk_welcomeDescription()}</p>
                 </div>
             {:else if assistant.loading}
-                <div class="h-full flex items-center justify-center text-[11px] text-muted-foreground">
+                <div class="h-full flex items-center justify-center text-[length:var(--font-size-label)] text-muted-foreground">
                     {m.floatingAssistant_loading()}
                 </div>
             {:else if assistant.error}
                 <div class="h-full flex flex-col items-center justify-center text-center px-6">
                     <AlertCircle size={20} class="text-destructive mb-2" />
-                    <p class="text-[11px] text-muted-foreground">{assistant.error}</p>
+                    <p class="text-[length:var(--font-size-label)] text-muted-foreground">{assistant.error}</p>
                 </div>
             {:else if !assistant.personalAgentId}
-                <div class="h-full flex items-center justify-center text-[11px] text-muted-foreground">
+                <div class="h-full flex items-center justify-center text-[length:var(--font-size-label)] text-muted-foreground">
                     {m.floatingAssistant_connecting()}
                 </div>
             {:else if messages.length === 0 && !chat?.loading && !stream}
@@ -673,7 +674,7 @@
                         <Sparkles size={20} class="text-accent" />
                     </div>
                     <h3 class="text-sm font-semibold text-foreground mb-1">{greeting}</h3>
-                    <p class="text-[11px] text-muted-foreground leading-relaxed">
+                    <p class="text-[length:var(--font-size-label)] text-muted-foreground leading-relaxed">
                         {m.floatingAssistant_greeting()}
                     </p>
                 </div>
@@ -686,11 +687,11 @@
                         {@const text = cleanInboundForDisplay(extractText(msg) ?? '')}
                         {#if text}
                             <div class="flex flex-col gap-0.5 items-end">
-                                <div class="max-w-[85%] rounded-lg px-3 py-2 text-[12px] leading-relaxed break-words bg-accent/15 text-foreground border border-accent/20 whitespace-pre-wrap">
+                                <div class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-accent/15 text-foreground border border-accent/20 whitespace-pre-wrap">
                                     {text}
                                 </div>
                                 {#if msgTs(msg)}
-                                    <span class="text-[9px] text-muted-strong px-1 tabular-nums">
+                                    <span class="text-[length:var(--font-size-telemetry)] text-muted-strong px-1 tabular-nums">
                                         {fmtTime(msgTs(msg))}
                                     </span>
                                 {/if}
@@ -700,7 +701,7 @@
                         <div class="flex flex-col gap-0.5 items-start">
                             <ChatBlocks message={msg} toolResults={toolResultsById} compact />
                             {#if msgTs(msg)}
-                                <span class="text-[9px] text-muted-strong px-1 tabular-nums">
+                                <span class="text-[length:var(--font-size-telemetry)] text-muted-strong px-1 tabular-nums">
                                     {fmtTime(msgTs(msg))}
                                 </span>
                             {/if}
@@ -710,12 +711,12 @@
 
                 {#if stream !== null && stream !== ''}
                     <div class="flex flex-col gap-0.5 items-start">
-                        <div class="max-w-[85%] rounded-lg px-3 py-2 text-[12px] leading-relaxed break-words bg-bg3 text-foreground border border-dashed border-border opacity-90">
+                        <div class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-bg3 text-foreground border border-dashed border-border opacity-90">
                             <MarkdownMessage value={stripTtsTags(stream)} tone="assistant" />
                         </div>
                     </div>
                 {:else if sending}
-                    <div class="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground">
+                    <div class="flex items-center gap-2 px-3 py-2 text-[length:var(--font-size-label)] text-muted-foreground">
                         <span class="flex gap-1">
                             <span class="w-1 h-1 rounded-full bg-accent animate-pulse"></span>
                             <span class="w-1 h-1 rounded-full bg-accent animate-pulse" style="animation-delay: 100ms"></span>
@@ -726,7 +727,7 @@
                 {/if}
 
                 {#if chat?.lastError}
-                    <div class="flex items-start gap-1.5 px-2 py-1.5 text-[11px] text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
+                    <div class="flex items-start gap-1.5 px-2 py-1.5 text-[length:var(--font-size-label)] text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
                         <AlertCircle size={11} class="mt-0.5 shrink-0" />
                         <span class="break-words">{chat.lastError}</span>
                     </div>
@@ -741,23 +742,23 @@
         <!-- Scope badge + input -->
         <div class="shrink-0 border-t border-border bg-bg3/40">
             <div class="composer-modes" aria-label={m.factoryDesk_controlDesk()}>
-                <button
+                <Button variant="ghost" size="xs"
                     type="button"
                     class:active={composerMode === 'chat'}
                     aria-pressed={composerMode === 'chat'}
                     onclick={() => (composerMode = 'chat')}
-                ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</button>
-                <button
+                ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</Button>
+                <Button variant="ghost" size="xs"
                     type="button"
                     class:active={composerMode === 'factory'}
                     aria-pressed={composerMode === 'factory'}
                     onclick={() => (composerMode = 'factory')}
-                ><Factory size={11} /> {m.factoryDesk_modeFactory()}</button>
+                ><Factory size={11} /> {m.factoryDesk_modeFactory()}</Button>
                 {#if composerMode === 'factory'}
                     <span>{m.factoryDesk_factoryHint()}</span>
                 {/if}
             </div>
-            <div class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-muted-foreground border-b border-border/60">
+            <div class="flex items-center gap-1.5 px-3 py-1.5 text-[length:var(--font-size-telemetry)] text-muted-foreground border-b border-border/60">
                 <span class="font-semibold uppercase tracking-wider">{m.floatingAssistant_viewing()}:</span>
                 <span class="truncate flex-1">{scopeLabel}</span>
                 <ChevronDown size={10} class="opacity-50" />
@@ -771,9 +772,9 @@
                         rows="1"
                         placeholder={composerMode === 'factory' ? m.factoryDesk_placeholder() : canSend ? m.floatingAssistant_askAnything() : conn.connected ? m.common_loading() : m.floatingAssistant_offline()}
                         disabled={!canSubmit}
-                        class="flex-1 min-w-0 resize-none bg-bg border border-border rounded-md px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50 max-h-[120px] disabled:opacity-50"
+                        class="flex-1 min-w-0 resize-none bg-bg border border-border rounded-md px-2.5 py-1.5 text-[length:var(--font-size-label)] text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50 max-h-[120px] disabled:opacity-50"
                     ></textarea>
-                    <button
+                    <Button variant="ghost" size="xs"
                         type="button"
                         onclick={send}
                         disabled={!draft.trim() || !canSubmit}
@@ -781,7 +782,7 @@
                         aria-label={composerMode === 'factory' ? m.factoryDesk_submit() : m.floatingAssistant_send()}
                     >
                         <Send size={12} />
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>
@@ -804,20 +805,20 @@
     .composer-modes {
         display: flex;
         align-items: center;
-        gap: 0.25rem;
+        gap: var(--space-1);
         min-height: 2rem;
-        padding: 0.35rem 0.55rem;
+        padding: var(--space-2);
         border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
     }
     .composer-modes button {
         display: inline-flex;
         align-items: center;
-        gap: 0.25rem;
+        gap: var(--space-1);
         border: 1px solid transparent;
-        border-radius: 0.35rem;
-        padding: 0.25rem 0.4rem;
+        border-radius: var(--radius-md);
+        padding: var(--space-1) var(--space-2);
         color: var(--color-muted-foreground);
-        font-size: 0.58rem;
+        font-size: var(--font-size-telemetry);
         font-weight: 700;
         letter-spacing: 0.06em;
         text-transform: uppercase;
@@ -834,7 +835,7 @@
         flex: 1;
         overflow: hidden;
         color: var(--color-muted-foreground);
-        font-size: 0.52rem;
+        font-size: var(--font-size-telemetry);
         text-align: right;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -844,15 +845,15 @@
         place-items: center;
         width: 3rem;
         height: 3rem;
-        margin-bottom: 0.65rem;
+        margin-bottom: var(--space-3);
         border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
-        border-radius: 0.65rem;
+        border-radius: var(--radius-xl);
         color: var(--color-accent);
         background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 9%, transparent) 0 5px, transparent 5px 10px);
-        box-shadow: 0 0 1.5rem color-mix(in srgb, var(--color-accent) 10%, transparent);
+        box-shadow: var(--shadow-status-glow);
     }
-    .factory-welcome-status { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--color-muted-foreground); font-family: ui-monospace, monospace; font-size: 0.52rem; letter-spacing: 0.12em; text-transform: uppercase; }
-    .factory-welcome-status i { width: 0.35rem; height: 0.35rem; border-radius: 999px; background: #22c55e; box-shadow: 0 0 0.4rem #22c55e; }
-    .factory-welcome h3 { margin-top: 0.45rem; color: var(--color-foreground); font-size: 0.82rem; font-weight: 700; }
-    .factory-welcome p { margin-top: 0.3rem; max-width: 17rem; color: var(--color-muted-foreground); font-size: 0.65rem; line-height: 1.5; }
+    .factory-welcome-status { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--color-muted-foreground); font-family: ui-monospace, monospace; font-size: var(--font-size-telemetry); letter-spacing: 0.12em; text-transform: uppercase; }
+    .factory-welcome-status i { width: 0.35rem; height: 0.35rem; border-radius: var(--radius-full); background: var(--color-success); color: var(--color-success); box-shadow: var(--shadow-status-glow); }
+    .factory-welcome h3 { margin-top: var(--space-2); color: var(--color-foreground); font-size: var(--font-size-body); font-weight: 700; }
+    .factory-welcome p { margin-top: var(--space-1); max-width: 17rem; color: var(--color-muted-foreground); font-size: var(--font-size-telemetry); line-height: 1.5; }
 </style>

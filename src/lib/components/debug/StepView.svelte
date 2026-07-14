@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import {
     ALL_GATES,
     GATE_LABEL,
@@ -45,17 +46,17 @@
       {@const status = statusFor(gate)}
       {@const evt = eventsByStep.get(gate)}
       <li class="row" class:paused={status === 'paused'} class:fired={status === 'fired'}>
-        <button class="gate-btn" type="button" onclick={() => onSelect(gate)}>
+        <Button variant="ghost" size="xs" class="gate-btn" type="button" onclick={() => onSelect(gate)}>
           <span class="icon">{statusIcon(status)}</span>
           <span class="label">{GATE_LABEL[gate]}</span>
           {#if evt}
             <span class="ts">{new Date(evt.ts).toLocaleTimeString()}</span>
           {/if}
-        </button>
+        </Button>
         {#if status === 'paused'}
-          <button class="continue-btn" type="button" onclick={() => onContinue(gate)}>
+          <Button variant="primary" size="sm" class="continue-btn" type="button" onclick={() => onContinue(gate)}>
             ▶ Continue
-          </button>
+          </Button>
         {/if}
       </li>
     {/each}
@@ -65,14 +66,14 @@
 <style>
   .step-view {
     border: 1px solid var(--color-border);
-    border-radius: 8px;
-    padding: 1rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
     background: var(--color-surface-2);
   }
 
   h3 {
     margin: 0 0 0.75rem;
-    font-size: 0.85rem;
+    font-size: var(--font-size-body);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-text-tertiary);
@@ -84,24 +85,25 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   .row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .gate-btn {
     flex: 1;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 4px;
-    padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-sm);
+    height: auto;
+    padding: var(--space-2) var(--space-3);
     color: var(--color-text-tertiary);
     cursor: pointer;
     text-align: left;
@@ -110,6 +112,11 @@
 
   .gate-btn:hover {
     background: var(--color-surface-3);
+  }
+
+  :global(.gate-btn > span) {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .row.fired .gate-btn {
@@ -130,12 +137,12 @@
 
   .label {
     font-family: var(--font-mono, monospace);
-    font-size: 0.85rem;
+    font-size: var(--font-size-body);
   }
 
   .ts {
     margin-left: auto;
-    font-size: 0.75rem;
+    font-size: var(--font-size-label);
     color: var(--color-text-disabled);
   }
 
@@ -143,11 +150,12 @@
     background: var(--color-accent);
     color: var(--color-on-accent);
     border: none;
-    border-radius: 4px;
-    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-sm);
+    height: auto;
+    padding: var(--space-2) var(--space-3);
     font-weight: 600;
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: var(--font-size-body);
   }
 
   .continue-btn:hover {

@@ -50,7 +50,7 @@
   <header class="px-5 py-3 border-b border-border flex items-center justify-between gap-3">
     <div class="min-w-0">
       <h3 class="text-sm font-semibold text-foreground truncate">{label}</h3>
-      <p class="text-[11px] text-muted-foreground mt-0.5">
+      <p class="text-[length:var(--font-size-label)] text-muted-foreground mt-0.5">
         <span class="font-mono">{groupKey}</span>
         <span class="mx-1.5 opacity-50">·</span>
         {scopeLabel}
@@ -61,7 +61,7 @@
     </div>
     <a
       href={`/settings/plugins?plugin=${encodeURIComponent(ownerPlugin)}`}
-      class="text-[11px] text-accent hover:underline whitespace-nowrap"
+      class="text-[length:var(--font-size-label)] text-accent hover:underline whitespace-nowrap"
     >
       {m.dynamicSecretGroup_manage({ plugin: ownerPlugin })} →
     </a>
@@ -79,7 +79,7 @@
         <li class="px-5 py-3 flex items-center gap-3">
           <div class="flex-1 min-w-0">
             <p class="text-xs font-mono text-foreground truncate">{inst.instanceId}</p>
-            <p class="text-[10px] text-muted-foreground mt-0.5">
+            <p class="text-[length:var(--font-size-telemetry)] text-muted-foreground mt-0.5">
               {m.dynamicSecretGroup_lastChecked()}: {fmtTime(inst.lastProbeAt)}
             </p>
           </div>

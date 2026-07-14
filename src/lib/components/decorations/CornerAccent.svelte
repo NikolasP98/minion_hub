@@ -35,6 +35,7 @@
     width: 3px !important;
     height: 3px !important;
     opacity: 0.7 !important;
-    box-shadow: 0 0 2px 1px rgba(var(--vx-glow-cyan), 0.4);
+    color: color-mix(in srgb, var(--color-cyan) 40%, transparent);
+    box-shadow: var(--shadow-status-glow);
   }
 </style>

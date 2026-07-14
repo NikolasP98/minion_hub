@@ -5,6 +5,7 @@
     import type { Snippet } from 'svelte';
     import { ChevronRight } from 'lucide-svelte';
     import * as m from '$lib/paraglide/messages';
+    import { Button } from '$lib/components/ui';
 
     export type CollapseLevel = 'expanded' | 'mini' | 'collapsed';
 
@@ -198,14 +199,14 @@
 
     <!-- Popout tab: shown only when fully collapsed (zero width) -->
     {#if isCollapsed}
-        <button
+        <Button variant="ghost" size="xs"
             class="popout-tab"
             onclick={() => goExpanded()}
             aria-label={m.sidebar_expand()}
             title={m.sidebar_expand()}
         >
             <ChevronRight size={12} />
-        </button>
+        </Button>
     {/if}
 </div>
 
@@ -220,7 +221,7 @@
         justify-content: center;
         transition: background var(--duration-fast) var(--ease-standard);
         position: relative;
-        z-index: 10;
+        z-index: var(--layer-sticky);
     }
 
     .splitter-handle:hover,
@@ -231,7 +232,7 @@
     .splitter-grip {
         width: 2px;
         height: 20px;
-        border-radius: 1px;
+        border-radius: var(--radius-xs);
         background: var(--color-muted-foreground);
         opacity: 0;
         transition: opacity var(--duration-fast) var(--ease-standard);
@@ -258,8 +259,10 @@
         justify-content: center;
         color: var(--color-muted-foreground);
         cursor: pointer;
-        z-index: 20;
-        transition: color 0.15s, background 0.15s;
+        z-index: var(--layer-navigation);
+        transition:
+            color var(--duration-fast) var(--ease-standard),
+            background var(--duration-fast) var(--ease-standard);
         padding: 0;
     }
 

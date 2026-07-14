@@ -3,6 +3,7 @@
   import { Bell, ArrowRight, Download } from 'lucide-svelte';
   import { scale } from 'svelte/transition';
   import { updateState } from '$lib/state/gateway/update-state.svelte';
+  import { Button } from '$lib/components/ui';
 
   interface PendingRequest {
     id: string;
@@ -52,22 +53,22 @@
 </script>
 
 {#if open}
-  <button
-    class="fixed inset-0 z-40 cursor-default"
+  <Button variant="ghost" size="xs"
+    class="fixed inset-0 !h-auto z-[var(--layer-popover)] cursor-default"
     onclick={close}
     aria-label={m.common_close()}
     tabindex="-1"
-  ></button>
+  ></Button>
 
   <div
-    class="absolute right-0 top-full mt-1.5 z-50 w-80 bg-bg2 border border-border rounded-xl shadow-xl overflow-hidden"
+    class="absolute right-0 top-full mt-1.5 z-[var(--layer-modal)] w-80 bg-bg2 border border-border rounded-xl shadow-xl overflow-hidden"
     transition:scale={{ duration: 150, start: 0.95 }}
   >
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)]">
       <h3 class="text-sm font-semibold text-foreground">{m.notificationsPopup_title()}</h3>
       {#if requests.length > 0}
-        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent">
+        <span class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent">
           {requests.length}
         </span>
       {/if}
@@ -79,7 +80,7 @@
         <a
           href="/settings/gateways"
           onclick={close}
-          class="flex items-center gap-2 px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-100 no-underline text-foreground"
+          class="flex items-center gap-2 px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)] no-underline text-foreground"
         >
           <Download size={14} class="text-accent shrink-0" />
           <span class="text-xs font-medium truncate">
@@ -98,15 +99,15 @@
         </div>
       {:else}
         {#each requests as req (req.id)}
-          <div class="flex flex-col px-4 py-3 border-b border-[var(--hairline)] last:border-b-0 hover:bg-bg3/50 transition-colors duration-100">
+          <div class="flex flex-col px-4 py-3 border-b border-[var(--hairline)] last:border-b-0 hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)]">
             <div class="flex items-start justify-between gap-2">
               <span class="text-sm font-medium text-foreground truncate">{req.email}</span>
-              <span class="text-[10px] text-muted-foreground shrink-0">{timeAgo(req.createdAt)}</span>
+              <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground shrink-0">{timeAgo(req.createdAt)}</span>
             </div>
             {#if req.message}
               <p class="text-xs text-muted mt-0.5 line-clamp-2">{req.message}</p>
             {/if}
-            <span class="text-[10px] text-accent mt-1 font-medium">{m.notificationsPopup_pending()}</span>
+            <span class="text-[length:var(--font-size-telemetry)] text-accent mt-1 font-medium">{m.notificationsPopup_pending()}</span>
           </div>
         {/each}
       {/if}
@@ -116,7 +117,7 @@
     <a
       href="/notifications"
       onclick={close}
-      class="flex items-center justify-center gap-1.5 px-4 py-2.5 border-t border-[var(--hairline)] text-xs font-medium text-accent hover:bg-bg3 transition-colors duration-100 no-underline"
+      class="flex items-center justify-center gap-1.5 px-4 py-2.5 border-t border-[var(--hairline)] text-xs font-medium text-accent hover:bg-bg3 transition-colors duration-[var(--duration-fast)] no-underline"
     >
       {m.notificationsPopup_seeAll()}
       <ArrowRight size={12} />
