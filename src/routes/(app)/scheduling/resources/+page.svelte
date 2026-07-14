@@ -436,20 +436,6 @@
   .icon-btn:hover {
     background: var(--hairline);
   }
-  .add-link {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1, 4px);
-    font-size: var(--font-size-caption, 12px);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  .add-link:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
   .icon-btn-spacer {
     width: 26px;
     display: inline-block;

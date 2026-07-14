@@ -629,18 +629,6 @@
     max-height: 200px;
     overflow: auto;
   }
-  .slot {
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1, 4px);
-    font-size: var(--font-size-body, 14px);
-    background: var(--color-card);
-  }
-  .slot-on {
-    background: var(--accent);
-    color: var(--color-on-accent);
-    border-color: var(--accent);
-  }
   .search-wrap {
     position: relative;
   }
@@ -661,29 +649,5 @@
     box-shadow: var(--shadow-raised);
     max-height: 180px;
     overflow: auto;
-  }
-  .result {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: var(--space-2, 8px) var(--space-2, 8px);
-    font-size: var(--font-size-body, 14px);
-  }
-  .result:hover {
-    background: var(--hairline);
-  }
-  .act {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-muted-foreground);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1, 4px);
-  }
-  .act:hover {
-    background: var(--hairline);
-  }
-  .act.del:hover {
-    color: var(--color-destructive);
   }
 </style>

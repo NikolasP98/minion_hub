@@ -202,18 +202,6 @@
     background: transparent;
     user-select: all;
   }
-  .chip {
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-full);
-    padding: var(--space-1, 4px) var(--space-3, 12px);
-    font-size: var(--font-size-body, 14px);
-    background: var(--color-card);
-  }
-  .chip-on {
-    background: var(--accent);
-    color: var(--color-on-accent);
-    border-color: var(--accent);
-  }
   .act {
     display: inline-flex;
     align-items: center;
@@ -225,8 +213,5 @@
   }
   .act:hover {
     background: var(--hairline);
-  }
-  .act.del:hover {
-    color: var(--color-destructive);
   }
 </style>

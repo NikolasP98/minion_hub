@@ -380,21 +380,6 @@
     font-size: var(--font-size-body, 14px);
     width: 5.5rem;
   }
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2, 8px);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-full);
-    padding: var(--space-1, 4px) var(--space-3, 12px);
-    font-size: var(--font-size-body, 14px);
-    background: var(--color-card);
-  }
-  .chip-on {
-    background: var(--accent);
-    color: var(--color-on-accent);
-    border-color: var(--accent);
-  }
   .stage {
     display: flex;
     align-items: center;
@@ -417,29 +402,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1, 4px);
-  }
-  .icon-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1, 4px);
-    color: var(--color-muted-foreground);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1, 4px) var(--space-2, 8px);
-    font-size: var(--font-size-caption, 12px);
-  }
-  .icon-btn:hover {
-    background: var(--hairline);
-  }
-  .icon-btn:disabled {
-    opacity: 0.5;
-  }
-  .add {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1, 4px);
-    margin-top: var(--space-3, 12px);
-    font-size: var(--font-size-body, 14px);
-    color: var(--accent);
   }
   .preview {
     border: 1px dashed var(--hairline);

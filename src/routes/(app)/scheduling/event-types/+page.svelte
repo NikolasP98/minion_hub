@@ -143,27 +143,3 @@
     {/if}
   </PageBody>
 </PageShell>
-
-<style>
-  .icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-muted-foreground);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1, 4px);
-  }
-  .icon-btn:hover {
-    background: var(--hairline);
-  }
-  .icon-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .icon-btn:disabled:hover {
-    background: none;
-  }
-  .icon-btn.del:hover {
-    color: var(--color-destructive);
-  }
-</style>
