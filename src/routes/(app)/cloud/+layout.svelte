@@ -34,7 +34,7 @@
     loadHosts();
     if (conn.connected) void refreshCloud();
     const id = window.setInterval(() => {
-      if (conn.connected) void refreshCloud();
+      if (conn.connected) void refreshCloud({ background: true });
     }, 10_000);
     return () => window.clearInterval(id);
   });

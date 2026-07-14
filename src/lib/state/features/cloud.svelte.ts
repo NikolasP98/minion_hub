@@ -14,6 +14,19 @@ const state = $state({
   orgId: null as string | null,
 });
 
+interface CloudRefreshRequest {
+  orgId: string | null;
+  visible: boolean;
+  promise: Promise<void>;
+}
+
+let refreshInFlight: CloudRefreshRequest | null = null;
+
+export interface RefreshCloudOptions {
+  /** Background inventory polls must not look like a user-requested reconnect. */
+  background?: boolean;
+}
+
 export const cloudState = {
   get shells(): ShellSummary[] {
     return state.shells;
@@ -40,22 +53,47 @@ export function setCloudOrg(orgId: string | null): void {
   state.quota = null;
   state.error = null;
   state.loading = true;
+  state.refreshing = false;
 }
 
-export async function refreshCloud(): Promise<void> {
-  if (state.refreshing) return;
-  state.refreshing = true;
-  try {
-    const [shells, quota] = await Promise.all([listShells(), getQuota()]);
-    state.shells = shells;
-    state.quota = quota;
-    state.error = null;
-  } catch (err) {
-    state.error = err instanceof Error ? err.message : String(err);
-  } finally {
-    state.loading = false;
-    state.refreshing = false;
+export function refreshCloud(options: RefreshCloudOptions = {}): Promise<void> {
+  const requestedOrgId = state.orgId;
+  if (refreshInFlight?.orgId === requestedOrgId) {
+    if (!options.background && !refreshInFlight.visible) {
+      refreshInFlight.visible = true;
+      state.refreshing = true;
+    }
+    return refreshInFlight.promise;
   }
+
+  const request: CloudRefreshRequest = {
+    orgId: requestedOrgId,
+    visible: !options.background,
+    promise: Promise.resolve(),
+  };
+  if (request.visible) state.refreshing = true;
+
+  request.promise = Promise.all([listShells(), getQuota()])
+    .then(([shells, quota]) => {
+      // An organization switch can complete while the old request is in flight.
+      // Never let that response populate the next organization's Cloud surface.
+      if (state.orgId !== requestedOrgId) return;
+      state.shells = shells;
+      state.quota = quota;
+      state.error = null;
+    })
+    .catch((err: unknown) => {
+      if (state.orgId !== requestedOrgId) return;
+      state.error = err instanceof Error ? err.message : String(err);
+    })
+    .finally(() => {
+      if (state.orgId === requestedOrgId) state.loading = false;
+      if (state.orgId === requestedOrgId && request.visible) state.refreshing = false;
+      if (refreshInFlight === request) refreshInFlight = null;
+    });
+
+  refreshInFlight = request;
+  return request.promise;
 }
 
 export function cloudShell(id: string | null | undefined): ShellSummary | null {
