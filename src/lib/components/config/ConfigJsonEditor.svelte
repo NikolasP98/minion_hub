@@ -49,7 +49,7 @@
 
 <div class="flex flex-col gap-1">
   <textarea
-    class="bg-bg3 border rounded-[5px] text-foreground py-[5px] px-[9px] font-mono text-xs outline-none transition-colors resize-y min-h-[60px]
+    class="bg-bg3 border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] font-mono text-xs outline-none transition-colors resize-y min-h-[calc(var(--space-12)+var(--space-3))]
       {parseError ? 'border-destructive focus:border-destructive' : 'border-border focus:border-accent'}"
     rows="4"
     value={displayText}
@@ -57,6 +57,6 @@
     spellcheck="false"
   ></textarea>
   {#if parseError}
-    <p class="text-destructive text-[10px]">{parseError}</p>
+    <p class="text-destructive text-[length:var(--font-size-telemetry)]">{parseError}</p>
   {/if}
 </div>

@@ -9,7 +9,7 @@
         discard,
     } from "$lib/state/config/config.svelte";
     import { SvelteMap } from "svelte/reactivity";
-    import { Select } from "$lib/components/ui";
+    import { Button, Select } from "$lib/components/ui";
 
     type BindingPeer = { kind: "dm" | "group"; id: string };
     type BindingMatch = { channel: string; peer?: BindingPeer; chatType?: string; chatId?: string };
@@ -143,7 +143,7 @@
                                         ] ?? "🔗"}
                                     </span>
                                     <span
-                                        class="text-[10px] font-semibold px-2 py-0.5 rounded-full
+                                        class="text-[length:var(--font-size-telemetry)] font-semibold px-2 py-0.5 rounded-full
                     {b.match.peer?.kind === 'dm'
                                             ? 'bg-accent/15 text-accent'
                                             : 'bg-muted-foreground/20 text-muted-foreground'}"
@@ -155,16 +155,16 @@
                                         >{b.match.peer?.id ?? b.match.chatId ?? '—'}</span
                                     >
                                     <span
-                                        class="text-[10px] text-muted capitalize"
+                                        class="text-[length:var(--font-size-telemetry)] text-muted capitalize"
                                         >{b.match.channel}</span
                                     >
-                                    <button
+                                    <Button variant="ghost" size="xs"
                                         class="opacity-0 group-hover:opacity-100 transition-opacity text-muted hover:text-destructive bg-transparent border-none cursor-pointer text-xs font-[inherit]"
                                         onclick={() => removeBinding(globalIdx)}
                                         title={m.bindings_removeBinding()}
                                     >
                                         ✕
-                                    </button>
+                                    </Button>
                                 </div>
                             {/each}
                         </div>
@@ -209,12 +209,12 @@
                 {#if addError}
                     <p class="text-xs text-destructive">{addError}</p>
                 {/if}
-                <button
+                <Button variant="primary" size="sm"
                     type="submit"
-                    class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
+                    class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
                 >
                     {m.common_add()}
-                </button>
+                </Button>
             </form>
         </div>
     </div>
@@ -233,20 +233,20 @@
                     {m.saveBar_unsaved()}
                 {/if}
             </span>
-            <button
+            <Button variant="primary" size="sm"
                 class="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground bg-transparent cursor-pointer font-[inherit] hover:bg-bg3 transition-colors"
                 onclick={discard}
                 disabled={saving}
             >
                 {m.saveBar_discard()}
-            </button>
-            <button
-                class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+            </Button>
+            <Button variant="ghost" size="xs"
+                class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                 onclick={save}
                 disabled={saving}
             >
                 {saving ? m.common_loading() : m.saveBar_save()}
-            </button>
+            </Button>
         </div>
     {/if}
 {/if}

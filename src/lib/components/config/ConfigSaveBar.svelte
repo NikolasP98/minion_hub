@@ -8,11 +8,11 @@
 <!-- Normal save bar: dirty state only -->
 <div class="shrink-0 border-t border-border bg-bg2/80 backdrop-blur-sm px-6 py-3 flex items-center gap-3 animate-slide-up">
   {#if configState.saveError}
-    <span class="text-destructive text-[11px] flex-1 truncate">{configState.saveError}</span>
+    <span class="text-destructive text-[length:var(--font-size-label)] flex-1 truncate">{configState.saveError}</span>
   {:else if configState.lastSavedAt && !isDirty.value}
-    <span class="text-success text-[11px] flex-1">{m.saveBar_saved()}</span>
+    <span class="text-success text-[length:var(--font-size-label)] flex-1">{m.saveBar_saved()}</span>
   {:else}
-    <span class="text-muted-foreground text-[11px] flex-1">
+    <span class="text-muted-foreground text-[length:var(--font-size-label)] flex-1">
       {dirtyPaths.value.size === 1
         ? m.saveBar_sectionsModified({ count: dirtyPaths.value.size })
         : m.saveBar_sectionsModifiedPlural({ count: dirtyPaths.value.size })}

@@ -4,6 +4,7 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { Check, ChevronDown, Send } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
 
   type Identity = {
     id: string;
@@ -105,26 +106,26 @@
 </script>
 
 <div>
-  <button
+  <Button variant="ghost" size="xs"
     class="w-full flex items-center gap-3 px-3 py-2.5 bg-transparent border-none cursor-pointer text-left hover:bg-bg3/30 transition-colors"
     onclick={() => (open = !open)}
   >
     <ChannelBrandIcon channel="telegram" class="h-4 w-4 shrink-0" />
     <span class="flex-1 min-w-0">
       <span class="block text-sm text-foreground">Telegram</span>
-      <span class="block text-[11px] text-muted-foreground truncate">
+      <span class="block text-[length:var(--font-size-label)] text-muted-foreground truncate">
         {connected ? (identity?.displayName ?? identity?.externalId ?? 'Connected') : 'One-tap link — the bot confirms it’s you'}
       </span>
     </span>
     {#if connected}
-      <span class="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-500/12 text-green-400 border border-green-500/20 shrink-0">
+      <span class="inline-flex items-center gap-1 text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-success/15 text-success border border-success/20 shrink-0">
         <Check size={10} /> Connected
       </span>
     {:else}
-      <span class="text-[11px] text-muted-foreground shrink-0">Connect</span>
+      <span class="text-[length:var(--font-size-label)] text-muted-foreground shrink-0">Connect</span>
     {/if}
     <ChevronDown size={14} class="text-muted shrink-0 transition-transform {open ? 'rotate-180' : ''}" />
-  </button>
+  </Button>
 
   {#if open}
     <div class="px-3 pb-3 pt-1 space-y-2">
@@ -134,21 +135,21 @@
             Connected as <span class="text-foreground">{identity?.displayName ?? identity?.externalId}</span>
           </span>
           {#if identity}
-            <button
-              class="text-[11px] text-muted hover:text-destructive bg-transparent border-none cursor-pointer"
+            <Button variant="ghost" size="xs"
+              class="text-[length:var(--font-size-label)] text-muted hover:text-destructive bg-transparent border-none cursor-pointer"
               onclick={() => onDisconnect(identity!)}
             >
               Disconnect
-            </button>
+            </Button>
           {/if}
         </div>
       {:else if phase === 'idle'}
-        <button
+        <Button variant="primary" size="sm"
           class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90"
           onclick={start}
         >
           <Send size={12} /> Connect Telegram
-        </button>
+        </Button>
       {:else if phase === 'starting'}
         <div class="flex items-center gap-2 text-sm text-muted-foreground">
           <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
@@ -167,18 +168,18 @@
           <div class="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
           Waiting for you to open the bot and press Start…
         </div>
-        <button class="text-[11px] text-muted hover:text-foreground bg-transparent border-none cursor-pointer" onclick={reset}>
+        <Button variant="ghost" size="xs" class="text-[length:var(--font-size-label)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer" onclick={reset}>
           Cancel
-        </button>
+        </Button>
       {:else if phase === 'done'}
-        <div class="flex items-center gap-2 text-sm text-green-400">
-          <span class="w-2 h-2 rounded-full bg-green-400"></span> Telegram connected
+        <div class="flex items-center gap-2 text-sm text-success">
+          <span class="w-2 h-2 rounded-full bg-success"></span> Telegram connected
         </div>
       {:else if phase === 'error'}
         <div class="text-sm text-destructive">{errorMsg}</div>
-        <button class="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer" onclick={start}>
+        <Button variant="ghost" size="xs" class="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer" onclick={start}>
           Try again
-        </button>
+        </Button>
       {/if}
     </div>
   {/if}

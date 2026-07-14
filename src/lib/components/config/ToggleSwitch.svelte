@@ -32,7 +32,7 @@
   >
     <span
       {...api.getThumbProps()}
-      class="absolute top-[2px] left-[2px] w-3 h-3 rounded-full bg-white transition-transform shadow-sm
+      class="absolute top-[2px] left-[2px] w-3 h-3 rounded-full bg-accent-foreground transition-transform shadow-sm
         {api.checked ? 'translate-x-[14px]' : 'translate-x-0'}"
     ></span>
   </span>

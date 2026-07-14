@@ -47,7 +47,7 @@
 <Card padding="lg" class="max-w-xl">
   <div class="flex flex-col gap-4">
     <div class="flex items-center gap-3">
-      <div class="grid size-9 shrink-0 place-items-center rounded-lg bg-white/5 text-accent">
+      <div class="grid size-9 shrink-0 place-items-center rounded-lg bg-bg3 text-accent">
         <Bot size={18} />
       </div>
       <div class="min-w-0 flex-1">

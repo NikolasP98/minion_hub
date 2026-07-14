@@ -3,7 +3,7 @@
   import { onMount } from 'svelte';
   import IdentityLinkPopover from './IdentityLinkPopover.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
-  import { Popover } from '$lib/components/ui';
+  import { Button, Popover } from '$lib/components/ui';
 
   type Identity = {
     id: string;
@@ -60,7 +60,7 @@
 </script>
 
 <div class="bg-bg2 border border-border rounded-md p-3 space-y-2">
-  <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">{m.usersui_linkedIdentities()}</div>
+  <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold">{m.usersui_linkedIdentities()}</div>
   {#if loading}
     <div class="text-muted text-xs">{m.common_loading()}</div>
   {:else if identities.length === 0}
@@ -73,11 +73,11 @@
           <span class="text-muted w-20">{id.channel}</span>
           <span class="text-foreground flex-1">{id.displayName ?? id.channelUserId}</span>
           {#if id.verifiedAt}
-            <span class="text-green-400" title={m.usersui_verified()}>✓</span>
+            <span class="text-success" title={m.usersui_verified()}>✓</span>
           {:else}
-            <span class="text-yellow-400" title={m.usersui_pending()}>⏳</span>
+            <span class="text-warning" title={m.usersui_pending()}>⏳</span>
           {/if}
-          <button class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id.id)}>✕</button>
+          <Button variant="ghost" size="xs" class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id.id)}>✕</Button>
         </div>
       {/each}
     </div>

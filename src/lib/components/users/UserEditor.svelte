@@ -2,7 +2,7 @@
   import { onDestroy } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { validateAlias, normalizeAlias } from '$lib/utils/alias';
-  import { Select } from '$lib/components/ui';
+  import { Button, Select } from '$lib/components/ui';
   import IdentityList from './IdentityList.svelte';
   import { createAsyncDebouncer } from '$lib/pacer/index.svelte';
 
@@ -102,7 +102,7 @@
 
 <div class="space-y-3">
   <div class="bg-bg2 border border-border rounded-md p-3 space-y-2">
-    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">{m.usersui_identity()}</div>
+    <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold">{m.usersui_identity()}</div>
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
       <span class="text-muted">{m.usersui_name()}</span>
       <input class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent" bind:value={displayName} />
@@ -117,9 +117,9 @@
         <span class="text-muted">@</span>
         <input class="flex-1 bg-transparent outline-none" bind:value={alias} placeholder={m.usersui_aliasPlaceholder()} />
       </div>
-      <span class="text-[10px] w-20 text-right">
+      <span class="text-[length:var(--font-size-telemetry)] w-20 text-right">
         {#if availability === 'checking'}<span class="text-muted">{m.usersui_checking()}</span>
-        {:else if availability === 'available'}<span class="text-green-400">✓ {m.usersui_available()}</span>
+        {:else if availability === 'available'}<span class="text-success">✓ {m.usersui_available()}</span>
         {:else if availability === 'taken'}<span class="text-destructive">✗ {m.usersui_taken()}</span>
         {:else if availability === 'invalid'}<span class="text-destructive">⚠ {m.usersui_invalid()}</span>
         {/if}
@@ -137,12 +137,12 @@
   <IdentityList userId={user.id} />
 
   <div class="flex justify-end gap-2">
-    <button type="button" class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={onCancel}>{m.common_cancel()}</button>
-    <button type="button"
-      class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none font-semibold disabled:opacity-50"
+    <Button variant="ghost" size="xs" type="button" class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={onCancel}>{m.common_cancel()}</Button>
+    <Button variant="primary" size="sm" type="button"
+      class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none font-semibold disabled:opacity-50"
       disabled={!dirty || !aliasValid || saving}
       onclick={handleSave}>
       {saving ? m.usersui_saving() : m.common_save()}
-    </button>
+    </Button>
   </div>
 </div>

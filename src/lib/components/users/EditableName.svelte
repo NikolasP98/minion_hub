@@ -3,6 +3,7 @@
   import * as editable from '@zag-js/editable';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Pencil, Check, X } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
 
   let nextId = 0;
   const machineId = `name-edit-${nextId++}`;
@@ -47,7 +48,7 @@
     <!-- Preview: the name, double-click (or pencil) to edit -->
     <span
       {...api.getPreviewProps()}
-      class="truncate text-xl font-semibold text-foreground leading-tight cursor-text rounded px-0.5 -mx-0.5 hover:bg-white/[0.04]"
+      class="truncate text-xl font-semibold text-foreground leading-tight cursor-text rounded px-0.5 -mx-0.5 hover:bg-bg3"
     >
       {api.valueText}
     </span>
@@ -58,28 +59,28 @@
   </div>
 
   {#if api.editing}
-    <button
+    <Button variant="ghost" size="xs"
       {...api.getSubmitTriggerProps()}
       class="grid place-items-center h-6 w-6 rounded text-accent hover:bg-accent/15 bg-transparent border-none cursor-pointer shrink-0 disabled:opacity-50"
       disabled={saving}
       aria-label={m.usersui_saveName()}
     >
       <Check size={14} />
-    </button>
-    <button
+    </Button>
+    <Button variant="ghost" size="xs"
       {...api.getCancelTriggerProps()}
-      class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-white/[0.06] bg-transparent border-none cursor-pointer shrink-0"
+      class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0"
       aria-label={m.common_cancel()}
     >
       <X size={14} />
-    </button>
+    </Button>
   {:else}
-    <button
+    <Button variant="ghost" size="xs"
       {...api.getEditTriggerProps()}
-      class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-white/[0.06] bg-transparent border-none cursor-pointer shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100 transition-opacity"
+      class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100 transition-opacity"
       aria-label={m.usersui_editName()}
     >
       <Pencil size={13} />
-    </button>
+    </Button>
   {/if}
 </div>

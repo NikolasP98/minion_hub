@@ -3,7 +3,7 @@
   import * as menu from '@zag-js/menu';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Eye, Pencil } from 'lucide-svelte';
-  import { Modal } from '$lib/components/ui';
+  import { Button, Modal } from '$lib/components/ui';
   import UserAvatar from './UserAvatar.svelte';
   import AvatarEditorModal from './avatar/AvatarEditorModal.svelte';
 
@@ -38,36 +38,36 @@
   const api = $derived(menu.connect(service as any, normalizeProps));
 </script>
 
-<button
+<Button variant="ghost" size="xs"
   {...api.getTriggerProps()}
   class="relative group rounded-full bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg2"
   aria-label={m.usersui_avatarOptions()}
 >
   <UserAvatar {name} {email} {src} {size} />
   <span
-    class="absolute inset-0 rounded-full bg-black/40 grid place-items-center opacity-0 group-hover:opacity-100 group-data-[state=open]:opacity-100 transition-opacity"
+    class="absolute inset-0 rounded-full bg-[var(--color-overlay)] grid place-items-center opacity-0 group-hover:opacity-100 group-data-[state=open]:opacity-100 transition-opacity"
   >
-    <Pencil size={Math.round(size * 0.22)} class="text-white" />
+    <Pencil size={Math.round(size * 0.22)} class="text-accent-foreground" />
   </span>
-</button>
+</Button>
 
-<div {...api.getPositionerProps()} class="z-50">
+<div {...api.getPositionerProps()} class="z-[var(--layer-modal)]">
   <div
     {...api.getContentProps()}
     class="min-w-36 rounded-[var(--radius-md)] surface-4 border border-[var(--elevation-4-border)] p-1 shadow-xl outline-none"
   >
-    <button
+    <Button variant="ghost" size="xs"
       {...api.getItemProps({ value: 'view' })}
-      class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded text-sm text-foreground data-[highlighted]:bg-white/[0.06] cursor-pointer bg-transparent border-none text-left"
+      class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded text-sm text-foreground data-[highlighted]:bg-bg3 cursor-pointer bg-transparent border-none text-left"
     >
       <Eye size={14} class="text-muted-foreground" /> {m.usersui_view()}
-    </button>
-    <button
+    </Button>
+    <Button variant="ghost" size="xs"
       {...api.getItemProps({ value: 'edit' })}
-      class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded text-sm text-foreground data-[highlighted]:bg-white/[0.06] cursor-pointer bg-transparent border-none text-left"
+      class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded text-sm text-foreground data-[highlighted]:bg-bg3 cursor-pointer bg-transparent border-none text-left"
     >
       <Pencil size={14} class="text-muted-foreground" /> {m.common_edit()}
-    </button>
+    </Button>
   </div>
 </div>
 

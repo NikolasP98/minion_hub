@@ -173,14 +173,14 @@
   {#snippet header()}
     <div class="flex items-center gap-2">
       {#if step !== 'pick'}
-        <button
+        <Button variant="ghost" size="xs"
           type="button"
-          class="grid size-6 shrink-0 place-items-center rounded-md text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white"
+          class="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-bg3 hover:text-accent-foreground"
           aria-label={m.common_back()}
           onclick={() => (step = 'pick')}
         >
           <ChevronLeft size={16} />
-        </button>
+        </Button>
       {/if}
       <h2 class="t-heading truncate">{m.brains_source_dialog_title()}</h2>
     </div>
@@ -188,121 +188,121 @@
 
   {#if step === 'pick'}
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <button type="button" class="source-card" onclick={() => (step = 'note')}>
+      <Button variant="ghost" size="xs" type="button" class="source-card" onclick={() => (step = 'note')}>
         <PenLine size={20} />
         <span class="source-card-title">{m.brains_source_pick_note_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_note_desc()}</span>
-      </button>
-      <button type="button" class="source-card" onclick={() => (step = 'url')}>
+      </Button>
+      <Button variant="ghost" size="xs" type="button" class="source-card" onclick={() => (step = 'url')}>
         <Link2 size={20} />
         <span class="source-card-title">{m.brains_source_pick_link_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_link_desc()}</span>
-      </button>
-      <button type="button" class="source-card" onclick={() => (step = 'upload')}>
+      </Button>
+      <Button variant="ghost" size="xs" type="button" class="source-card" onclick={() => (step = 'upload')}>
         <Upload size={20} />
         <span class="source-card-title">{m.brains_source_pick_upload_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_upload_desc()}</span>
-      </button>
-      <button type="button" class="source-card" onclick={openAppData}>
+      </Button>
+      <Button variant="ghost" size="xs" type="button" class="source-card" onclick={openAppData}>
         <Blocks size={20} />
         <span class="source-card-title">{m.brains_source_pick_app_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_app_desc()}</span>
-      </button>
-      <button type="button" class="source-card source-card-disabled" disabled>
+      </Button>
+      <Button variant="ghost" size="xs" type="button" class="source-card source-card-disabled" disabled>
         <HardDrive size={20} />
         <span class="source-card-title">{m.brains_source_pick_drive_title()}</span>
         <span class="source-card-desc">{m.brains_source_coming_soon()}</span>
-      </button>
-      <button type="button" class="source-card source-card-disabled" disabled>
+      </Button>
+      <Button variant="ghost" size="xs" type="button" class="source-card source-card-disabled" disabled>
         <Cloud size={20} />
         <span class="source-card-title">{m.brains_source_pick_s3_title()}</span>
         <span class="source-card-desc">{m.brains_source_coming_soon()}</span>
-      </button>
+      </Button>
     </div>
   {:else if step === 'note'}
     <div class="flex flex-col gap-4">
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium text-white/70" for="source-note-title">{m.brains_note_name()}</label>
+        <label class="text-xs font-medium text-muted-foreground" for="source-note-title">{m.brains_note_name()}</label>
         <input
           id="source-note-title"
           type="text"
           bind:value={noteTitle}
           placeholder={m.brains_note_name_ph()}
           autocomplete="off"
-          class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0"
+          class="w-full rounded-lg border border-border bg-bg3 px-3 py-1.5 text-sm text-accent-foreground placeholder-white/30 outline-none focus:hover:border-[var(--color-border-strong)] focus:ring-0"
         />
       </div>
       <div class="flex flex-col gap-1.5">
-        <span class="text-xs font-medium text-white/70">{m.brains_note_content()}</span>
-        <div class="note-carta h-64 overflow-hidden rounded-lg border border-white/10">
+        <span class="text-xs font-medium text-muted-foreground">{m.brains_note_content()}</span>
+        <div class="note-carta h-64 overflow-hidden rounded-lg border border-border">
           <MarkdownEditor {carta} bind:value={noteContent} mode="tabs" theme="dark" placeholder={m.brains_note_content()} />
         </div>
       </div>
-      {#if error}<p class="text-xs text-red-400">{error}</p>{/if}
+      {#if error}<p class="text-xs text-destructive">{error}</p>{/if}
     </div>
   {:else if step === 'url'}
     <div class="flex flex-col gap-4">
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium text-white/70" for="source-url-title">{m.brains_url_name()}</label>
+        <label class="text-xs font-medium text-muted-foreground" for="source-url-title">{m.brains_url_name()}</label>
         <input
           id="source-url-title"
           type="text"
           bind:value={urlTitle}
           placeholder={m.brains_url_name_ph()}
           autocomplete="off"
-          class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0"
+          class="w-full rounded-lg border border-border bg-bg3 px-3 py-1.5 text-sm text-accent-foreground placeholder-white/30 outline-none focus:hover:border-[var(--color-border-strong)] focus:ring-0"
         />
       </div>
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium text-white/70" for="source-url-ref">{m.brains_url_ref()}</label>
+        <label class="text-xs font-medium text-muted-foreground" for="source-url-ref">{m.brains_url_ref()}</label>
         <input
           id="source-url-ref"
           type="url"
           bind:value={urlValue}
           placeholder={m.brains_url_ref_ph()}
           autocomplete="off"
-          class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0"
+          class="w-full rounded-lg border border-border bg-bg3 px-3 py-1.5 text-sm text-accent-foreground placeholder-white/30 outline-none focus:hover:border-[var(--color-border-strong)] focus:ring-0"
         />
       </div>
-      {#if error}<p class="text-xs text-red-400">{error}</p>{/if}
+      {#if error}<p class="text-xs text-destructive">{error}</p>{/if}
     </div>
   {:else if step === 'upload'}
     <div class="flex flex-col gap-4">
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium text-white/70" for="source-upload-title">{m.common_title()}</label>
+        <label class="text-xs font-medium text-muted-foreground" for="source-upload-title">{m.common_title()}</label>
         <input
           id="source-upload-title"
           type="text"
           bind:value={uploadTitle}
           autocomplete="off"
-          class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0"
+          class="w-full rounded-lg border border-border bg-bg3 px-3 py-1.5 text-sm text-accent-foreground placeholder-white/30 outline-none focus:hover:border-[var(--color-border-strong)] focus:ring-0"
         />
       </div>
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium text-white/70" for="source-upload-file">{m.brains_upload_file_label()}</label>
+        <label class="text-xs font-medium text-muted-foreground" for="source-upload-file">{m.brains_upload_file_label()}</label>
         <input
           id="source-upload-file"
           type="file"
           accept=".md,.txt,.csv"
           onchange={onFileChange}
-          class="text-sm text-white/70 file:mr-3 file:rounded-lg file:border-0 file:bg-white/[0.08] file:px-3 file:py-1.5 file:text-xs file:text-white"
+          class="text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-bg3 file:px-3 file:py-1.5 file:text-xs file:text-accent-foreground"
         />
-        <p class="text-[11px] text-white/40">{m.brains_upload_hint()}</p>
-        {#if uploadFileName}<p class="text-xs text-white/60">{uploadFileName}</p>{/if}
+        <p class="text-[length:var(--font-size-label)] text-muted-foreground">{m.brains_upload_hint()}</p>
+        {#if uploadFileName}<p class="text-xs text-muted-foreground">{uploadFileName}</p>{/if}
       </div>
-      {#if uploadError}<p class="text-xs text-red-400">{uploadError}</p>{/if}
-      {#if error}<p class="text-xs text-red-400">{error}</p>{/if}
+      {#if uploadError}<p class="text-xs text-destructive">{uploadError}</p>{/if}
+      {#if error}<p class="text-xs text-destructive">{error}</p>{/if}
     </div>
   {:else if step === 'app'}
     <div class="flex flex-col gap-2">
       {#if loadingSources}
-        <p class="text-sm text-white/50">{m.common_loading()}</p>
+        <p class="text-sm text-muted-foreground">{m.common_loading()}</p>
       {:else if moduleSources.length === 0}
-        <p class="text-sm text-white/50">{m.brains_source_app_empty()}</p>
+        <p class="text-sm text-muted-foreground">{m.brains_source_app_empty()}</p>
       {:else}
         {#each moduleSources as src (src.key)}
           {@const labels = MODULE_SOURCE_LABELS[src.key]}
-          <button
+          <Button variant="ghost" size="xs"
             type="button"
             class="source-card source-card-row"
             disabled={saving}
@@ -310,10 +310,10 @@
           >
             <span class="source-card-title">{labels?.label() ?? src.key}</span>
             <span class="source-card-desc">{labels?.desc() ?? ''}</span>
-          </button>
+          </Button>
         {/each}
       {/if}
-      {#if error}<p class="text-xs text-red-400">{error}</p>{/if}
+      {#if error}<p class="text-xs text-destructive">{error}</p>{/if}
     </div>
   {/if}
 
@@ -343,34 +343,42 @@
 <style>
   .source-card {
     display: flex;
+    width: 100%;
+    height: auto;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.375rem;
-    padding: 0.875rem;
-    border-radius: 0.75rem;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.04);
-    color: white;
+    justify-content: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-card-compact);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-1);
+    color: var(--color-text-primary);
     text-align: left;
     transition:
-      background-color 150ms,
-      border-color 150ms;
+      background-color var(--duration-fast) var(--ease-standard),
+      border-color var(--duration-fast) var(--ease-standard);
+  }
+  :global(.source-card > span) {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
   }
   .source-card:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.07);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: var(--color-surface-2);
+    border-color: var(--color-border-strong);
   }
   .source-card:disabled {
     opacity: 0.45;
     cursor: not-allowed;
   }
   .source-card-title {
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body);
     font-weight: 500;
   }
   .source-card-desc {
-    font-size: 0.6875rem;
-    color: rgba(255, 255, 255, 0.5);
+    font-size: var(--font-size-label);
+    color: var(--color-text-tertiary);
   }
   .source-card-row {
     width: 100%;

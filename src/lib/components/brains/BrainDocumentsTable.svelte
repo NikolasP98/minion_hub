@@ -79,10 +79,10 @@
 {#if documents.length === 0}
   <EmptyState title={m.brains_doc_empty()} compact />
 {:else}
-  <div class="overflow-x-auto rounded-xl border border-white/10">
+  <div class="overflow-x-auto rounded-xl border border-border">
     <table class="w-full text-left text-sm">
       <thead>
-        <tr class="border-b border-white/10 text-[11px] uppercase tracking-wide text-white/40">
+        <tr class="border-b border-border text-[length:var(--font-size-label)] uppercase tracking-wide text-muted-foreground">
           <th class="px-3 py-2 font-medium">{m.brains_doc_title()}</th>
           <th class="px-3 py-2 font-medium">{m.brains_doc_source()}</th>
           <th class="px-3 py-2 font-medium">{m.brains_doc_status()}</th>
@@ -92,11 +92,11 @@
       </thead>
       <tbody>
         {#each documents as doc (doc.id)}
-          <tr class="border-b border-white/5 last:border-0">
-            <td class="max-w-xs truncate px-3 py-2 text-white/90">
+          <tr class="border-b border-[var(--color-border-subtle)] last:border-0">
+            <td class="max-w-xs truncate px-3 py-2 text-foreground">
               {doc.title}
               {#if doc.status === 'failed' && doc.error}
-                <p class="truncate text-[11px] text-red-400/80" title={doc.error}>{doc.error}</p>
+                <p class="truncate text-[length:var(--font-size-label)] text-destructive" title={doc.error}>{doc.error}</p>
               {/if}
             </td>
             <td class="px-3 py-2">
@@ -115,30 +115,30 @@
                 </Badge>
               </span>
             </td>
-            <td class="px-3 py-2 text-white/50">{relativeTime(doc.updatedAt)}</td>
+            <td class="px-3 py-2 text-muted-foreground">{relativeTime(doc.updatedAt)}</td>
             {#if canEdit}
               <td class="px-3 py-2">
                 <div class="flex items-center gap-1">
-                  <button
+                  <Button variant="ghost" size="xs"
                     type="button"
-                    class="grid size-7 place-items-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white disabled:opacity-40"
+                    class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-bg3 hover:text-accent-foreground disabled:opacity-40"
                     aria-label={m.brains_doc_reingest()}
                     title={m.brains_doc_reingest()}
                     disabled={busyId === doc.id}
                     onclick={() => reingest(doc.id)}
                   >
                     <RotateCw size={14} />
-                  </button>
-                  <button
+                  </Button>
+                  <Button variant="ghost" size="xs"
                     type="button"
-                    class="grid size-7 place-items-center rounded-lg text-white/50 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                    class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
                     aria-label={m.brains_doc_delete()}
                     title={m.brains_doc_delete()}
                     disabled={busyId === doc.id}
                     onclick={() => remove(doc.id)}
                   >
                     <Trash2 size={14} />
-                  </button>
+                  </Button>
                 </div>
               </td>
             {/if}

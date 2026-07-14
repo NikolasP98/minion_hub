@@ -29,9 +29,9 @@
         <Terminal size={13} class="text-muted-strong" />
         <span class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.provision_output()}</span>
         {#if provisionState.running}
-            <span class="ml-auto text-[10px] text-accent font-medium animate-pulse">{m.provision_live()}</span>
+            <span class="ml-auto text-[length:var(--font-size-telemetry)] text-accent font-medium animate-pulse">{m.provision_live()}</span>
         {/if}
-        <span class="text-[10px] text-muted-strong {provisionState.running ? '' : 'ml-auto'}">
+        <span class="text-[length:var(--font-size-telemetry)] text-muted-strong {provisionState.running ? '' : 'ml-auto'}">
             {m.provision_logLines({ count: provisionState.logs.length })}
         </span>
     </div>

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { provisionState, saveConfig } from "$lib/state/features/provision.svelte";
     import { Server, Bot, Package, Radio, Key, Save, Loader2 } from "lucide-svelte";
-    import { Select } from '$lib/components/ui';
+    import { Button, Select } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -187,14 +187,14 @@
                 placeholder="sk-ant-..."
                 class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
             />
-            <p class="text-[10px] text-muted-strong mt-1">
+            <p class="text-[length:var(--font-size-telemetry)] text-muted-strong mt-1">
                 {m.provision_apiKeyHint()}
             </p>
         </div>
     </div>
 
     <!-- Save button -->
-    <button
+    <Button variant="primary" size="sm"
         type="button"
         class="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md bg-accent text-accent-foreground border-none cursor-pointer transition-colors hover:opacity-90 disabled:opacity-50 w-full justify-center"
         disabled={saving || provisionState.running}
@@ -207,5 +207,5 @@
             <Save size={14} />
             {m.provision_saveConfiguration()}
         {/if}
-    </button>
+    </Button>
 </div>
