@@ -1,10 +1,14 @@
 <script lang="ts">
-  import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks } from "lucide-svelte";
+  import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow } from "lucide-svelte";
   import { page } from "$app/state";
   import { isAdmin } from "$lib/state/features/user.svelte";
   import { TABS } from "$lib/utils/config-schema";
   import * as m from "$lib/paraglide/messages";
-  import { SideNav, type SideNavGroup, type SideNavItem } from "$lib/components/ui";
+  import {
+    SectionNav,
+    type SectionNavGroup,
+    type SectionNavItem,
+  } from '$lib/components/ui/foundations';
 
   interface Props {
     dirtyTabIds?: Set<string>;
@@ -14,7 +18,7 @@
   let { dirtyTabIds = new Set<string>(), onselect }: Props = $props();
 
   const ICON_MAP: Record<string, typeof Brain> = {
-    Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks,
+    Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow,
   };
 
   type HubTab = { id: string; label: string; icon: string; href: string; adminOnly: boolean };
@@ -28,6 +32,8 @@
     { id: 'gateways', label: 'Gateways', icon: 'Server', href: '/settings/gateways', adminOnly: true },
     { id: 'backups', label: 'Backups', icon: 'DatabaseBackup', href: '/settings/backups', adminOnly: true },
     { id: 'modules', label: 'Modules', icon: 'Blocks', href: '/settings/modules', adminOnly: true },
+    { id: 'notifications', label: 'Notifications', icon: 'Bell', href: '/settings/notifications', adminOnly: true },
+    { id: 'workflows', label: 'Workflows', icon: 'Workflow', href: '/settings/workflows', adminOnly: true },
   ];
   // "Team" group — admin route tabs.
   const TEAM_TABS: HubTab[] = [
@@ -43,6 +49,7 @@
   const queryS = $derived(page.url.searchParams.get('s'));
 
   function isHubActive(tab: HubTab): boolean {
+    if (pathname.startsWith('/settings/provision')) return tab.id === 'gateways';
     return pathname === tab.href || pathname.startsWith(tab.href + '/');
   }
   function isGatewayActive(id: string): boolean {
@@ -60,18 +67,18 @@
     return fallback;
   }
 
-  function hubItem(t: HubTab): SideNavItem {
+  function hubItem(t: HubTab): SectionNavItem {
     return { id: t.id, label: hubLabel(t.id, t.label), icon: ICON_MAP[t.icon], href: t.href };
   }
 
   // Build grouped sections; SideNav handles search filtering + empty-group culling.
-  const groups = $derived.by<SideNavGroup[]>(() => {
-    const out: SideNavGroup[] = [];
-    out.push({ label: 'General', items: GENERAL_TABS.map(hubItem) });
+  const groups = $derived.by<SectionNavGroup[]>(() => {
+    const out: SectionNavGroup[] = [];
+    out.push({ id: 'general', label: 'General', items: GENERAL_TABS.map(hubItem) });
     if (visibleGatewayTabs.length) {
       out.push({
+        id: 'server',
         label: 'Server',
-        adminOnly: true,
         items: visibleGatewayTabs.map((t) => ({
           id: t.id,
           label: t.label,
@@ -80,8 +87,8 @@
         })),
       });
     }
-    if (visibleHubTabs.length) out.push({ label: 'Hub', items: visibleHubTabs.map(hubItem) });
-    if (visibleTeamTabs.length) out.push({ label: 'Team', adminOnly: true, items: visibleTeamTabs.map(hubItem) });
+    if (visibleHubTabs.length) out.push({ id: 'hub', label: 'Hub', items: visibleHubTabs.map(hubItem) });
+    if (visibleTeamTabs.length) out.push({ id: 'team', label: 'Team', items: visibleTeamTabs.map(hubItem) });
     return out;
   });
 
@@ -94,10 +101,10 @@
   });
 </script>
 
-<SideNav
+<SectionNav
   items={groups}
   {activeId}
   ariaLabel="Settings"
   search={{ enabled: true, placeholder: 'Search settings' }}
-  onSelect={(id) => onselect?.(id)}
+  onSelect={onselect}
 />

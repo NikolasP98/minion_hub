@@ -3,6 +3,7 @@
     import SettingsNav from '$lib/components/settings/SettingsNav.svelte';
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
+    import { SectionShell } from '$lib/components/ui/foundations';
 
     interface Props {
         children: Snippet;
@@ -23,9 +24,9 @@
     }
 </script>
 
-<div class="h-full flex">
-    <SettingsNav onselect={handleSelect} />
+<SectionShell mode="responsive">
+    {#snippet navigation()}<SettingsNav onselect={handleSelect} />{/snippet}
     <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
         {@render children()}
     </div>
-</div>
+</SectionShell>

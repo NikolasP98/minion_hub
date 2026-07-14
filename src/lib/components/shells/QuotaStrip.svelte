@@ -40,8 +40,10 @@
     display: flex;
     gap: 8px;
     padding: 12px 16px;
-    border-bottom: 1px solid var(--color-border, #e5e7eb);
-    background: var(--color-surface-soft, #fafafa);
+    border-bottom: 1px solid var(--color-border-default, var(--color-border));
+    background: var(--color-surface-1, var(--color-bg2));
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
   }
   .pill {
     display: flex;
@@ -63,16 +65,25 @@
     font-variant-numeric: tabular-nums;
   }
   .green {
-    border-color: rgba(34, 197, 94, 0.4);
-    background: rgba(34, 197, 94, 0.06);
+    border-color: var(--color-success-border, var(--color-success));
+    background: var(--color-success-surface, transparent);
   }
   .amber {
-    border-color: rgba(245, 158, 11, 0.5);
-    background: rgba(245, 158, 11, 0.08);
+    border-color: var(--color-warning-border, var(--color-warning));
+    background: var(--color-warning-surface, transparent);
   }
   .red {
-    border-color: rgba(239, 68, 68, 0.6);
-    background: rgba(239, 68, 68, 0.1);
-    color: rgb(185, 28, 28);
+    border-color: var(--color-danger-border, var(--color-destructive));
+    background: var(--color-danger-surface, transparent);
+    color: var(--color-danger-fg, var(--color-destructive));
+  }
+  @media (max-width: 767.98px) {
+    .strip {
+      padding-inline: var(--space-page-gutter, 16px);
+    }
+    .pill {
+      flex: none;
+      min-height: var(--control-height-touch, 44px);
+    }
   }
 </style>

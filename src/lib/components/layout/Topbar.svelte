@@ -45,7 +45,7 @@
     });
 </script>
 
-<header class="md:hidden shrink-0 relative z-50 bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] h-14">
+<header class="md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] h-14">
     <div class="relative flex items-center h-full px-3 gap-2">
         <button
             type="button"
@@ -108,16 +108,16 @@
     {#if mobileMenuOpen}
         <!-- Backdrop (below the header bar) -->
         <button
-            class="fixed inset-0 top-14 z-40 bg-black/40 cursor-default"
+            class="fixed inset-0 top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-[var(--layer-base,0)] bg-[color-mix(in_srgb,var(--color-canvas,var(--color-bg))_40%,transparent)] cursor-default"
             onclick={closeMobileMenu}
             aria-label="Close menu"
             tabindex="-1"
         ></button>
 
         <!-- Menu panel -->
-        <div class="mobile-menu-panel absolute top-full left-0 right-0 z-50 bg-bg2/98 backdrop-blur-xl border-b border-border shadow-xl">
+        <div class="mobile-menu-panel absolute top-full left-0 right-0 z-[var(--layer-navigation,20)] bg-bg2/98 backdrop-blur-xl border-b border-border shadow-[var(--shadow-overlay,var(--shadow-xl,var(--shadow-lg)))]">
             <!-- Scroll body: domains + sections -->
-            <nav class="flex flex-col sm:flex-row sm:gap-4 max-h-[calc(70vh-3.5rem)] sm:max-h-[calc(75vh-3.5rem)] overflow-y-auto px-2 pt-2 pb-1">
+            <nav class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 overflow-y-auto px-2 pt-2 pb-1">
                 <div class="flex-1 min-w-0">
                     {#each allSections as section (section.id)}
                         {@const items = section.items.filter((i) => !i.requires || canClient(i.requires))}
@@ -239,6 +239,15 @@
 <style>
     .mobile-menu-panel {
         animation: menu-slide-in 200ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .mobile-menu-nav {
+        max-height: calc(70dvh - 3.5rem - env(safe-area-inset-bottom, 0px));
+        overscroll-behavior: contain;
+    }
+    @media (min-width: 640px) {
+        .mobile-menu-nav {
+            max-height: calc(75dvh - 3.5rem - env(safe-area-inset-bottom, 0px));
+        }
     }
     @keyframes menu-slide-in {
         from { opacity: 0; transform: translateY(-8px); }

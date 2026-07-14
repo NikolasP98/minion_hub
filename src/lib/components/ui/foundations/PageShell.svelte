@@ -1,0 +1,74 @@
+<script lang="ts" module>
+  export type RouteArchetype =
+    | 'dashboard'
+    | 'collection'
+    | 'record-detail'
+    | 'form'
+    | 'master-detail'
+    | 'workspace'
+    | 'canvas'
+    | 'terminal'
+    | 'public';
+  export type PageScrollMode = 'page' | 'region' | 'none';
+</script>
+
+<script lang="ts">
+  import type { Snippet } from 'svelte';
+
+  interface Props {
+    children: Snippet;
+    archetype: RouteArchetype;
+    scroll?: PageScrollMode;
+    variant?: 'default' | 'crt' | 'voxelized' | 'canvas' | 'terminal';
+    labelledBy?: string;
+    class?: string;
+  }
+
+  let {
+    children,
+    archetype,
+    scroll = 'page',
+    variant = 'default',
+    labelledBy,
+    class: cls = '',
+  }: Props = $props();
+</script>
+
+<main
+  data-component="page-shell"
+  data-part="page-shell"
+  data-archetype={archetype}
+  data-scroll={scroll}
+  data-variant={variant}
+  aria-labelledby={labelledBy}
+  class={cls}
+>
+  {@render children()}
+</main>
+
+<style>
+  [data-component='page-shell'] {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    color: var(--color-text-primary, var(--color-foreground));
+    background: var(--color-canvas, var(--color-bg));
+  }
+  [data-scroll='page'] {
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  [data-scroll='region'],
+  [data-scroll='none'] {
+    overflow: hidden;
+  }
+  [data-archetype='canvas'],
+  [data-archetype='terminal'],
+  [data-archetype='workspace'] {
+    isolation: isolate;
+  }
+</style>

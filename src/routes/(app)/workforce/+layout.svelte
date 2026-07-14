@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { type Snippet } from 'svelte';
 	import KanbanNavRail from '$lib/components/workforce/KanbanNavRail.svelte';
+	import { SectionShell } from '$lib/components/ui/foundations';
 	let { children }: { children: Snippet } = $props();
 </script>
 
@@ -11,24 +12,14 @@
 	expanded entries in the primary sidebar.
 
 	The right pane keeps the single shared scroll container the workforce subtree
-	relies on: the parent (app) layout is flex-col h-screen overflow-hidden with a
-	fixed Topbar, so without a scroll wrapper here every page that exceeds viewport
-	height gets clipped. flex-1 min-h-0 fills remaining height; overflow-y-auto
-	gives scroll without breaking pages that constrain their own height (e.g. the
-	org chart's h-[calc(100vh-3.5rem)] still resolves to the same value).
+	relies on. AppViewport owns dynamic viewport height and SectionShell owns the
+	responsive rail-to-strip transformation; this main region is the one vertical
+	scroll owner for ordinary workforce pages. Boards keep only their named inline
+	scroll region.
 -->
-<div class="kanban-shell">
-	<KanbanNavRail />
+<SectionShell mode="responsive">
+	{#snippet navigation()}<KanbanNavRail />{/snippet}
 	<main class="flex-1 min-w-0 min-h-0 overflow-y-auto">
 		{@render children()}
 	</main>
-</div>
-
-<style>
-	.kanban-shell {
-		display: flex;
-		height: 100%;
-		min-height: 0;
-		overflow: hidden;
-	}
-</style>
+</SectionShell>

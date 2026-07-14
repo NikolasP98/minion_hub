@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { LayoutDashboard, Inbox, MailOpen, CheckCircle2, Target, Layers, FolderKanban, Users } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
-	import { Tooltip } from '$lib/components/ui';
+	import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
 
 	// The KANBAN plugin's detail views — mirrors the /my-agent icon rail. Order +
 	// icons match the canonical route registry ($lib/nav/routes.ts workforce block).
@@ -33,67 +33,10 @@
 		}
 		return best;
 	});
+
+	const navItems = $derived<SectionNavItem[]>(
+		items.map((item) => ({ id: item.href, ...item })),
+	);
 </script>
 
-<nav class="nav-rail" aria-label={m.a11y3_kanbanNav()}>
-	{#each items as item (item.href)}
-		{@const Icon = item.icon}
-		{@const active = item.href === activeHref}
-		<Tooltip label={item.label} id={`kanban-nav-tip-${item.href}`} placement="right" openDelay={150} asChild>
-			{#snippet children(trigger)}
-				<a
-					href={item.href}
-					{...trigger}
-					class="nav-rail-item"
-					class:active
-					aria-label={item.label}
-					aria-current={active ? 'page' : undefined}
-				>
-					<Icon size={18} />
-				</a>
-			{/snippet}
-		</Tooltip>
-	{/each}
-</nav>
-
-<style>
-	.nav-rail {
-		width: 48px;
-		height: 100%;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 4px;
-		padding: 12px 0;
-		background: var(--color-bg);
-		border-right: 1px solid var(--color-border);
-		flex-shrink: 0;
-	}
-
-	.nav-rail-item {
-		width: 36px;
-		height: 36px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: var(--theme-radius, 8px);
-		color: var(--color-muted);
-		text-decoration: none;
-		transition: color 120ms ease, background 120ms ease;
-	}
-
-	.nav-rail-item:hover {
-		color: var(--color-foreground);
-		background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
-	}
-
-	.nav-rail-item.active {
-		color: var(--color-accent);
-		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-	}
-
-	.nav-rail-item:focus-visible {
-		outline: 2px solid var(--color-accent);
-		outline-offset: 2px;
-	}
-</style>
+<SectionNav items={navItems} activeId={activeHref} ariaLabel={m.a11y3_kanbanNav()} />
