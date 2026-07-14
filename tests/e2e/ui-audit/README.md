@@ -16,15 +16,22 @@ The seed performs a bounded relation-and-column preflight before it creates or r
 
 The seed owns the audit organization, persona role assignments, and Hub-native database fixtures. Gateway/Paperclip-backed detail routes use stable simulator contract IDs (`ui-audit-session`, `ui-audit-shell`, and `ui-audit-workforce-*`); configure local gateway/Paperclip simulators with those IDs when the capture must exercise populated external states. Without the simulators, the same URLs still produce deterministic unavailable/empty states and are recorded as such in the machine-readable run.
 
-Capture each persona and viewport explicitly:
+Capture each persona, certification viewport, and motion mode explicitly:
 
 ```bash
 for persona in owner manager member restricted; do
-  for viewport in wide medium compact; do
-    E2E_UI_AUDIT_PERSONA=$persona E2E_UI_AUDIT_VIEWPORT=$viewport bun run audit:ui:capture
+  for viewport in compact-360 compact-390 medium-portrait medium-landscape wide-1280 wide-1440; do
+    for motion in full reduced; do
+      E2E_UI_AUDIT_PERSONA=$persona E2E_UI_AUDIT_VIEWPORT=$viewport E2E_UI_AUDIT_MOTION=$motion bun run audit:ui:capture
+    done
   done
 done
 ```
+
+The six viewport IDs are the exact 360×800, 390×844, 768×1024, 1024×768,
+1280×800, and 1440×900 certification dimensions. The older `compact`,
+`medium`, and `wide` inputs remain deterministic aliases for 390, 768 portrait,
+and 1440 respectively; unknown values fail instead of silently taking a default.
 
 Outputs are written under `test-results/ui-audit/`. `tests/ui-audit/current-baseline.json` is the immutable pre-program endpoint ledger; regenerate only when the route surface intentionally changes.
 

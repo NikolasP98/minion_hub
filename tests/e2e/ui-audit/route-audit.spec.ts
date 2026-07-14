@@ -8,6 +8,7 @@ import {
   assertCriticalRuntimeDiagnostics,
   collectRuntimeUiDiagnostics,
 } from './runtime-diagnostics';
+import { resolveAuditViewport } from './viewports';
 
 interface InventoryRoute {
   id: string;
@@ -54,13 +55,11 @@ test('authenticated route inventory produces a machine-readable audit run', asyn
   await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
 
   const fixtures = captureFixtures();
-  const viewport =
-    process.env.E2E_UI_AUDIT_VIEWPORT === 'compact'
-      ? { width: 390, height: 844, id: 'compact' }
-      : process.env.E2E_UI_AUDIT_VIEWPORT === 'medium'
-        ? { width: 768, height: 1024, id: 'medium' }
-        : { width: 1440, height: 900, id: 'wide' };
+  const viewport = resolveAuditViewport(process.env.E2E_UI_AUDIT_VIEWPORT);
   await page.setViewportSize(viewport);
+  if (process.env.E2E_UI_AUDIT_MOTION === 'reduced') {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+  }
 
   const results: Array<Record<string, unknown>> = [];
   for (const route of inventory.routes.filter((candidate) => candidate.kind === 'screen')) {
@@ -171,6 +170,7 @@ test('authenticated route inventory produces a machine-readable audit run', asyn
     fixtureVersion: process.env.E2E_UI_AUDIT_FIXTURE_VERSION ?? 'unversioned',
     persona: personaId,
     viewport,
+    reducedMotion: process.env.E2E_UI_AUDIT_MOTION === 'reduced',
     project: testInfo.project.name,
     results,
   };
