@@ -157,7 +157,7 @@
     transition: transform var(--duration-fast) ease;
     transform: rotate(-90deg);
   }
-  :global(.toggle):global(.open) :global(svg) {
+  :global(.toggle.open) :global(svg) {
     transform: rotate(0deg);
   }
 

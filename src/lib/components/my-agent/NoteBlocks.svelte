@@ -536,21 +536,21 @@
       filter var(--duration-fast) ease,
       background var(--duration-fast) ease;
   }
-  :global(.nb-rv-btn):global(.reject) {
+  :global(.nb-rv-btn.reject) {
     color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
     background: transparent;
     border: 1px solid color-mix(in srgb, var(--color-foreground) 16%, transparent);
   }
-  :global(.nb-rv-btn):global(.reject):hover {
+  :global(.nb-rv-btn.reject):hover {
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
   }
-  :global(.nb-rv-btn):global(.confirm) {
+  :global(.nb-rv-btn.confirm) {
     color: var(--color-accent-foreground, var(--color-foreground));
     background: var(--color-accent);
     border: 1px solid var(--color-accent);
   }
-  :global(.nb-rv-btn):global(.confirm):hover {
+  :global(.nb-rv-btn.confirm):hover {
     filter: brightness(1.08);
   }
   .nb-ctl {
@@ -585,7 +585,7 @@
     opacity: 0.3;
     cursor: default;
   }
-  .nb-ctl :global([data-part='button']):global(.del):hover {
+  .nb-ctl :global([data-part='button'].del):hover {
     color: var(--color-accent);
   }
 

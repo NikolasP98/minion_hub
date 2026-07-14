@@ -156,7 +156,7 @@
   :global(.ip-tab):hover {
     color: var(--color-foreground);
   }
-  :global(.ip-tab):global(.on) {
+  :global(.ip-tab.on) {
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
   }
@@ -228,14 +228,14 @@
     color: color-mix(in srgb, var(--color-foreground) 80%, transparent);
     transition: background var(--duration-instant) ease;
   }
-  :global(.ip-cell):global(.emoji) {
+  :global(.ip-cell.emoji) {
     font-size: var(--font-size-display);
     line-height: 1;
   }
   :global(.ip-cell):hover {
     background: color-mix(in srgb, var(--color-foreground) 10%, transparent);
   }
-  :global(.ip-cell):global(.sel) {
+  :global(.ip-cell.sel) {
     background: color-mix(in srgb, var(--color-accent) 28%, transparent);
   }
   .ip-empty {

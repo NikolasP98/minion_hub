@@ -567,7 +567,7 @@
       background var(--duration-fast) ease;
   }
   :global(.tx-caret):hover,
-  :global(.tx-caret):global(.open) {
+  :global(.tx-caret.open) {
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
   }
@@ -613,7 +613,7 @@
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
-  :global(.tx-mi):global(.sub) {
+  :global(.tx-mi.sub) {
     font-size: var(--font-size-caption);
     color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
     padding-left: var(--space-3);

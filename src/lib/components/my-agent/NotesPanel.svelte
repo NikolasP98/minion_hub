@@ -723,7 +723,7 @@
   :global(.pin-btn):hover {
     color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
   }
-  :global(.pin-btn):global(.on) {
+  :global(.pin-btn.on) {
     color: var(--color-accent);
     transform: rotate(20deg);
   }
@@ -764,10 +764,10 @@
     transition: transform var(--duration-fast) ease;
     transform: rotate(-90deg);
   }
-  :global(.expand-btn):global(.on) :global(svg) {
+  :global(.expand-btn.on) :global(svg) {
     transform: rotate(0deg);
   }
-  :global(.expand-btn):global(.on) {
+  :global(.expand-btn.on) {
     color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
   }
 
@@ -814,7 +814,7 @@
   :global(.swatch):hover {
     transform: scale(1.15);
   }
-  :global(.swatch):global(.active) {
+  :global(.swatch.active) {
     box-shadow: var(--shadow-elevation-2);
   }
 
@@ -836,15 +836,15 @@
     color: color-mix(in srgb, var(--color-foreground) 85%, transparent);
     background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
   }
-  :global(.icon-btn):global(.sm) {
+  :global(.icon-btn.sm) {
     padding: var(--space-1);
   }
-  :global(.icon-btn):global(.danger):hover {
+  :global(.icon-btn.danger):hover {
     color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
-  :global(.icon-btn):global(.polish):hover,
-  :global(.icon-btn):global(.polish):global(.on) {
+  :global(.icon-btn.polish):hover,
+  :global(.icon-btn.polish.on) {
     color: var(--color-purple);
     background: color-mix(in srgb, var(--color-purple) 12%, transparent);
   }

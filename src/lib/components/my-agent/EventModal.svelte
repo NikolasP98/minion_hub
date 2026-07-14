@@ -344,7 +344,7 @@
     background: color-mix(in srgb, var(--color-foreground) 7%, transparent);
     border-color: var(--color-border);
   }
-  :global(.icon-act):global(.danger):hover {
+  :global(.icon-act.danger):hover {
     color: var(--color-brand);
     background: color-mix(in srgb, var(--color-brand) 12%, transparent);
     border-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
@@ -368,11 +368,11 @@
   :global(.act):hover {
     background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
   }
-  :global(.act):global(.primary) {
+  :global(.act.primary) {
     border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
     color: var(--color-accent);
   }
-  :global(.act):global(.primary):hover {
+  :global(.act.primary):hover {
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
 </style>

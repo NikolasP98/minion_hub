@@ -674,7 +674,7 @@
     background: color-mix(in srgb, var(--color-foreground) 7%, transparent);
     border-color: var(--color-border);
   }
-  :global(.icon-act):global(.danger):hover {
+  :global(.icon-act.danger):hover {
     color: var(--color-brand);
     background: color-mix(in srgb, var(--color-brand) 12%, transparent);
     border-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
@@ -703,15 +703,15 @@
   :global(.act):hover {
     background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
   }
-  :global(.act):global(.send) {
+  :global(.act.send) {
     border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
     background: color-mix(in srgb, var(--color-accent) 14%, transparent);
     color: var(--color-accent);
   }
-  :global(.act):global(.send):hover:not(:disabled) {
+  :global(.act.send):hover:not(:disabled) {
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
   }
-  :global(.act):global(.send):disabled {
+  :global(.act.send):disabled {
     opacity: 0.5;
     cursor: default;
   }

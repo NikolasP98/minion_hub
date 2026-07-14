@@ -139,7 +139,7 @@
       background var(--duration-fast) ease;
   }
   :global(.zs-trigger):hover,
-  :global(.zs-trigger):global(.on) {
+  :global(.zs-trigger.on) {
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
   }
@@ -203,7 +203,7 @@
     border: 1.5px solid color-mix(in srgb, var(--color-foreground) 30%, transparent);
     flex-shrink: 0;
   }
-  .zs-check:global(.on) {
+  :global(.zs-check.on) {
     background: var(--color-accent);
     border-color: var(--color-accent);
   }
@@ -218,10 +218,10 @@
     flex-shrink: 0;
     position: relative;
   }
-  .zs-radio:global(.on) {
+  :global(.zs-radio.on) {
     border-color: var(--color-accent);
   }
-  .zs-radio:global(.on)::after {
+  :global(.zs-radio.on)::after {
     content: '';
     position: absolute;
     inset: 2.5px;

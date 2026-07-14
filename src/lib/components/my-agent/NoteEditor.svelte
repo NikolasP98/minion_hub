@@ -938,7 +938,7 @@
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
   }
-  :global(.fmt-btn):global(.on) {
+  :global(.fmt-btn.on) {
     color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 16%, transparent);
   }
@@ -979,7 +979,7 @@
       color var(--duration-fast) ease;
   }
   :global(.slash-item):hover,
-  :global(.slash-item):global(.active) {
+  :global(.slash-item.active) {
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
   }

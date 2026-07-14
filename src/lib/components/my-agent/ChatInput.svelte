@@ -490,7 +490,7 @@
     text-align: left;
     width: 100%;
   }
-  :global(.sg-item):global(.active) {
+  :global(.sg-item.active) {
     background: color-mix(in srgb, var(--color-accent) 16%, transparent);
     color: var(--color-foreground);
   }

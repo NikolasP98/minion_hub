@@ -324,10 +324,10 @@
   :global(.add-item):hover:not(:disabled) {
     color: color-mix(in srgb, var(--color-foreground) 75%, transparent);
   }
-  :global(.add-item):global(.suggest) {
+  :global(.add-item.suggest) {
     color: color-mix(in srgb, var(--color-purple) 70%, transparent);
   }
-  :global(.add-item):global(.suggest):hover:not(:disabled) {
+  :global(.add-item.suggest):hover:not(:disabled) {
     color: var(--color-purple);
   }
   :global(.add-item):disabled {

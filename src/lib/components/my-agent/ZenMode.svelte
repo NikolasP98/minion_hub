@@ -316,7 +316,7 @@
       border-color var(--duration-fast) ease;
   }
   :global(.zen-polish):hover,
-  :global(.zen-polish):global(.on) {
+  :global(.zen-polish.on) {
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-purple) 22%, transparent);
     border-color: color-mix(in srgb, var(--color-purple) 55%, transparent);

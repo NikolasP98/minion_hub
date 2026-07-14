@@ -244,10 +244,10 @@
     align-items: start;
   }
   :global(.history-row):hover,
-  :global(.history-row):global(.active) {
+  :global(.history-row.active) {
     background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   }
-  :global(.history-row):global(.active) {
+  :global(.history-row.active) {
     box-shadow: var(--shadow-focus);
   }
   .history-icon {

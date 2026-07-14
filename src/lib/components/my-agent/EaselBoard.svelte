@@ -548,7 +548,7 @@
     background: color-mix(in srgb, var(--color-accent) 14%, transparent);
     border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
-  .tools :global([data-part='button']):global(.close):hover {
+  .tools :global([data-part='button'].close):hover {
     background: color-mix(in srgb, var(--color-foreground) 12%, transparent);
     border-color: color-mix(in srgb, var(--color-foreground) 18%, transparent);
   }
@@ -649,7 +649,7 @@
     background: color-mix(in srgb, var(--color-bg) 15%, transparent);
     border-radius: var(--radius-sm);
   }
-  :global(.handle):global(.resize) {
+  :global(.handle.resize) {
     position: absolute;
     right: -7px;
     bottom: -7px;
@@ -661,7 +661,7 @@
     cursor: nwse-resize;
     padding: 0;
   }
-  :global(.handle):global(.rotate) {
+  :global(.handle.rotate) {
     position: absolute;
     top: -22px;
     left: 50%;
@@ -675,7 +675,7 @@
     padding: 0;
   }
   /* Stem connecting the rotate handle to the item's top edge. */
-  :global(.handle):global(.rotate)::before {
+  :global(.handle.rotate)::before {
     content: '';
     position: absolute;
     left: 50%;
@@ -685,7 +685,7 @@
     margin-left: calc(-0.25 * var(--space-0-5));
     background: color-mix(in srgb, var(--color-accent) 60%, transparent);
   }
-  :global(.handle):global(.rotate):active {
+  :global(.handle.rotate):active {
     cursor: grabbing;
   }
   .item-tools {
@@ -713,7 +713,7 @@
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-foreground) 10%, transparent);
   }
-  .item-tools :global([data-part='button']):global(.del):hover {
+  .item-tools :global([data-part='button'].del):hover {
     color: var(--color-accent);
   }
   .empty-hint {

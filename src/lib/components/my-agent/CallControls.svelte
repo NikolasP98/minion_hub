@@ -209,17 +209,17 @@
   :global(.icon-btn):hover {
     background: color-mix(in srgb, var(--color-foreground) 10%, transparent);
   }
-  :global(.icon-btn):global(.muted) {
+  :global(.icon-btn.muted) {
     color: var(--color-accent);
     border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
-  :global(.icon-btn):global(.end) {
+  :global(.icon-btn.end) {
     color: var(--color-brand);
     border-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
     background: color-mix(in srgb, var(--color-brand) 10%, transparent);
   }
-  :global(.icon-btn):global(.end):hover {
+  :global(.icon-btn.end):hover {
     background: color-mix(in srgb, var(--color-brand) 20%, transparent);
   }
 
