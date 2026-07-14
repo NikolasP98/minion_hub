@@ -103,15 +103,18 @@ vi.mock('$server/db/pg-schema/bg-jobs', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
-  eq: (col: string, val: unknown) => (r: Row) => (r as unknown as Record<string, unknown>)[col] === val,
+  eq: (col: string, val: unknown) => (r: Row) =>
+    (r as unknown as Record<string, unknown>)[col] === val,
   and:
     (...fns: ((r: Row) => boolean)[]) =>
     (r: Row) =>
       fns.every((f) => f(r)),
   desc: (col: string) => col,
-  inArray: (col: string, vals: unknown[]) => (r: Row) => vals.includes((r as unknown as Record<string, unknown>)[col]),
+  inArray: (col: string, vals: unknown[]) => (r: Row) =>
+    vals.includes((r as unknown as Record<string, unknown>)[col]),
   isNull: (col: string) => (r: Row) => (r as unknown as Record<string, unknown>)[col] == null,
-  lt: (col: string, val: number) => (r: Row) => Number((r as unknown as Record<string, unknown>)[col]) < val,
+  lt: (col: string, val: number) => (r: Row) =>
+    Number((r as unknown as Record<string, unknown>)[col]) < val,
   or:
     (...fns: ((r: Row) => boolean)[]) =>
     (r: Row) =>
@@ -169,14 +172,20 @@ describe('getFleetUpdateAvailability', () => {
       { id: 'a', name: 'A', url: 'ws://a', authMode: 'token', createdAt: new Date() },
       { id: 'b', name: 'B', url: 'ws://b', authMode: 'token', createdAt: new Date() },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockImplementation(async (url: string) => ({
       current: '2026.7.12-dev',
       runtime: {
         kind: 'container',
         updateStrategy: 'external-image',
         controllerId: 'swarm:prod/minion',
-        artifact: { image: 'ghcr.io/example/minion:prd', digest: url === 'ws://a' ? 'sha256:new' : 'sha256:old' },
+        artifact: {
+          image: 'ghcr.io/example/minion:prd',
+          digest: url === 'ws://a' ? 'sha256:new' : 'sha256:old',
+        },
       },
     }));
 
@@ -210,7 +219,10 @@ describe('getFleetUpdateAvailability', () => {
       { id: 'a', name: 'container', url: 'ws://a', authMode: 'token', createdAt: new Date() },
       { id: 'b', name: 'systemd', url: 'ws://b', authMode: 'token', createdAt: new Date() },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockImplementation(async (url: string) =>
       url === 'ws://a'
         ? {
@@ -239,7 +251,10 @@ describe('startFleetUpdate', () => {
       { id: 'b', name: 'systemd-old', url: 'ws://b', authMode: 'token', createdAt: new Date(200) },
       { id: 'c', name: 'systemd-new', url: 'ws://c', authMode: 'token', createdAt: new Date(300) },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockImplementation(async (url: string) =>
       url === 'ws://a'
         ? {
@@ -257,7 +272,11 @@ describe('startFleetUpdate', () => {
 
     const job = await startFleetUpdate(TENANT, 'user1', 'sha256:new', 'external-image');
     expect(job.targetSource).toBe('external-image');
-    expect(job.instances.filter((instance) => instance.updateSource === 'package').every((instance) => instance.state === 'done')).toBe(true);
+    expect(
+      job.instances
+        .filter((instance) => instance.updateSource === 'package')
+        .every((instance) => instance.state === 'done'),
+    ).toBe(true);
 
     mockDispatchExternal.mockRejectedValue(new Error('controller unavailable'));
     mockCallToInstance.mockClear();
@@ -272,7 +291,10 @@ describe('startFleetUpdate', () => {
       { id: 'a', name: 'container', url: 'ws://a', authMode: 'token', createdAt: new Date(100) },
       { id: 'b', name: 'systemd', url: 'ws://b', authMode: 'token', createdAt: new Date(200) },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockImplementation(async (url: string) =>
       url === 'ws://a'
         ? {
@@ -297,7 +319,10 @@ describe('startFleetUpdate', () => {
       { id: 'a', name: 'minion-1', url: 'ws://a', authMode: 'token', createdAt: new Date(100) },
       { id: 'b', name: 'minion-2', url: 'ws://b', authMode: 'token', createdAt: new Date(200) },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockResolvedValue({
       current: '2026.7.12-dev',
       connections: 0,
@@ -334,7 +359,11 @@ describe('startFleetUpdate', () => {
     mockCallToInstance.mockResolvedValue({
       current: 'old',
       connections: 0,
-      runtime: { kind: 'container', updateStrategy: 'external-image', artifact: { digest: 'sha256:old' } },
+      runtime: {
+        kind: 'container',
+        updateStrategy: 'external-image',
+        artifact: { digest: 'sha256:old' },
+      },
     });
 
     const job = await startFleetUpdate(TENANT, 'user1', '2.0.0');
@@ -348,7 +377,10 @@ describe('startFleetUpdate', () => {
       { id: 'b', name: 'B', url: 'ws://b', authMode: 'token', createdAt: new Date(100) },
       { id: 'c', name: 'C', url: 'ws://c', authMode: 'token', createdAt: new Date(300) },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockImplementation(async (_url, _token, method, _params) => {
       if (method !== 'update.status') throw new Error('unexpected method');
       const conns: Record<string, number> = { a: 5, b: 5, c: 0 };
@@ -367,7 +399,10 @@ describe('startFleetUpdate', () => {
       { id: 'a', name: 'A', url: 'ws://a', authMode: 'token', createdAt: new Date(100) },
       { id: 'b', name: 'B', url: 'ws://b', authMode: 'token', createdAt: new Date(200) },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockImplementation(async (url: string) => ({
       current: url === 'ws://a' ? '2.0.0' : '1.0.0',
       connections: 0,
@@ -388,7 +423,10 @@ describe('startFleetUpdate', () => {
       { id: 'a', name: 'A', url: 'ws://a', authMode: 'token', createdAt: new Date(100) },
       { id: 'b', name: 'B', url: 'ws://b', authMode: 'token', createdAt: new Date(200) },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockResolvedValue({
       current: '2026.7.11-dev.20260711212523',
       connections: 0,
@@ -425,7 +463,9 @@ describe('startFleetUpdate', () => {
 
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
-    expect(rows.filter((row) => row.type === 'fleet_update' && row.status === 'running')).toHaveLength(1);
+    expect(
+      rows.filter((row) => row.type === 'fleet_update' && row.status === 'running'),
+    ).toHaveLength(1);
   });
 
   test('permits a new job once the prior one is terminal (failed/cancelled/done)', async () => {
@@ -449,7 +489,10 @@ describe('startFleetUpdate', () => {
       { id: 'a', name: 'A', url: 'ws://a', authMode: 'token', createdAt: new Date(100) },
       { id: 'b', name: 'B', url: 'ws://b', authMode: 'token', createdAt: new Date(200) },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockImplementation(async (_url: string, token: string, method: string) => {
       if (method !== 'update.status') throw new Error('unexpected method');
       // 'a' is on an old build that never reports `connections` at all.
@@ -490,7 +533,10 @@ describe('advanceFleetUpdate', () => {
       { id: 'a', name: 'A', url: 'ws://a', authMode: 'token', createdAt: new Date(100) },
       { id: 'b', name: 'B', url: 'ws://b', authMode: 'token', createdAt: new Date(200) },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockImplementation(async (_url, _token, method) => {
       if (method === 'update.status') return { current: '1.0.0', connections: 0 };
       return {};
@@ -526,7 +572,10 @@ describe('advanceFleetUpdate', () => {
       { id: 'a', name: 'minion-1', url: 'ws://a', authMode: 'token', createdAt: new Date(100) },
       { id: 'b', name: 'minion-2', url: 'ws://b', authMode: 'token', createdAt: new Date(200) },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockResolvedValue({
       current: '2026.7.12-dev',
       connections: 0,
@@ -586,12 +635,16 @@ describe('advanceFleetUpdate', () => {
       await vi.advanceTimersByTimeAsync(0);
       const second = advanceFleetUpdate(TENANT);
       await vi.advanceTimersByTimeAsync(0);
-      expect(mockCallToInstance.mock.calls.filter((call) => call[2] === 'update.run')).toHaveLength(1);
+      expect(mockCallToInstance.mock.calls.filter((call) => call[2] === 'update.run')).toHaveLength(
+        1,
+      );
 
       releaseRun();
       await vi.advanceTimersByTimeAsync(5000);
       await Promise.all([first, second]);
-      expect(mockCallToInstance.mock.calls.filter((call) => call[2] === 'update.run')).toHaveLength(1);
+      expect(mockCallToInstance.mock.calls.filter((call) => call[2] === 'update.run')).toHaveLength(
+        1,
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -834,7 +887,10 @@ describe('getFleetUpdateStatus', () => {
     expect(await getFleetUpdateStatus(TENANT)).toBeNull();
   });
 
-  function seedFailedJob(target: string, instances: { gatewayId: string; name: string; url: string }[]) {
+  function seedFailedJob(
+    target: string,
+    instances: { gatewayId: string; name: string; url: string }[],
+  ) {
     rows.push({
       id: 'ghost',
       tenantId: TENANT,
@@ -871,10 +927,12 @@ describe('getFleetUpdateStatus', () => {
       { gatewayId: 'a', name: 'minion-2', url: 'ws://a' },
       { gatewayId: 'b', name: 'minion-1', url: 'ws://b' },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockImplementation(async (url: string) => ({
-      current:
-        url === 'ws://a' ? '2026.7.11-dev.20260711212523' : '2026.7.11-dev.20260711055010',
+      current: url === 'ws://a' ? '2026.7.11-dev.20260711212523' : '2026.7.11-dev.20260711055010',
     }));
 
     const view = await getFleetUpdateStatus(TENANT);
@@ -905,7 +963,10 @@ describe('getFleetUpdateStatus', () => {
       { gatewayId: 'a', name: 'minion-1', url: 'ws://a' },
       { gatewayId: 'b', name: 'minion-2', url: 'ws://b' },
     ]);
-    mockGetCreds.mockImplementation(async (id: string) => ({ url: `ws://${id}`, token: `tok-${id}` }));
+    mockGetCreds.mockImplementation(async (id: string) => ({
+      url: `ws://${id}`,
+      token: `tok-${id}`,
+    }));
     mockCallToInstance.mockResolvedValue({
       current: '2026.7.12-dev',
       runtime: {
@@ -916,7 +977,10 @@ describe('getFleetUpdateStatus', () => {
       },
     });
 
-    expect(await getFleetUpdateStatus(TENANT)).toMatchObject({ status: 'cancelled', active: false });
+    expect(await getFleetUpdateStatus(TENANT)).toMatchObject({
+      status: 'cancelled',
+      active: false,
+    });
   });
 
   test('does not retire when the only instance is unreachable (no confirmation)', async () => {

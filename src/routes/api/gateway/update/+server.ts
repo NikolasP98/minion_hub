@@ -19,7 +19,11 @@ export const GET: RequestHandler = async ({ locals }) => {
   const fleet = await getFleetUpdateAvailability();
   if (fleet) return json(fleet);
   const status = await gatewayCall('update.status', {});
-  return json({ ...(status as Record<string, unknown>), updateSource: 'package', targetSource: 'package' });
+  return json({
+    ...(status as Record<string, unknown>),
+    updateSource: 'package',
+    targetSource: 'package',
+  });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -29,7 +33,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     const fleet = await getFleetUpdateAvailability(true);
     if (fleet) return json(fleet);
     const status = await gatewayCall('update.check', {});
-    return json({ ...(status as Record<string, unknown>), updateSource: 'package', targetSource: 'package' });
+    return json({
+      ...(status as Record<string, unknown>),
+      updateSource: 'package',
+      targetSource: 'package',
+    });
   }
   if (body.action === 'run') {
     // The gateway answers update.run only after the npm install completes,

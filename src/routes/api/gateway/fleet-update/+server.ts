@@ -29,7 +29,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     switch (body.action) {
       case 'start': {
         if (!body.targetVersion) throw error(400, 'targetVersion is required');
-        return json(await startFleetUpdate(tenantId, user.id, body.targetVersion, body.targetSource ?? 'mixed'));
+        return json(
+          await startFleetUpdate(
+            tenantId,
+            user.id,
+            body.targetVersion,
+            body.targetSource ?? 'mixed',
+          ),
+        );
       }
       case 'advance': {
         const view = await advanceFleetUpdate(tenantId);

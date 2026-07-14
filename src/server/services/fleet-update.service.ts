@@ -44,12 +44,7 @@ const EXTERNAL_VERIFY_TIMEOUT_MS = 15 * 60_000;
 const ADVANCE_LEASE_MS = 10 * 60_000;
 
 export type FleetInstanceState =
-  | 'pending'
-  | 'draining'
-  | 'updating'
-  | 'verifying'
-  | 'done'
-  | 'failed';
+  'pending' | 'draining' | 'updating' | 'verifying' | 'done' | 'failed';
 
 export interface FleetInstance {
   gatewayId: string;
@@ -144,7 +139,11 @@ function normalizeUpdateSource(status: GatewayUpdateStatus): NormalizedUpdateSou
       artifact(raw?.currentArtifact) ??
       artifact(raw?.artifact) ??
       artifact(raw?.current) ??
-      artifact({ image: raw?.image, digest: raw?.digest ?? raw?.imageDigest, version: raw?.version }),
+      artifact({
+        image: raw?.image,
+        digest: raw?.digest ?? raw?.imageDigest,
+        version: raw?.version,
+      }),
     targetArtifact:
       artifact(raw?.targetArtifact) ??
       artifact(raw?.availableArtifact) ??
@@ -193,7 +192,9 @@ export interface FleetUpdateAvailability {
 /** Fleet-aware availability replaces the selected-gateway npm check for
  * externally managed deployments. It resolves each controller's mutable tag
  * to a digest and reports pending when any replica differs. */
-export async function getFleetUpdateAvailability(forceCheck = false): Promise<FleetUpdateAvailability | null> {
+export async function getFleetUpdateAvailability(
+  forceCheck = false,
+): Promise<FleetUpdateAvailability | null> {
   const rows = await listGatewaysForAdmin();
   const snapshots: Array<{
     status: GatewayUpdateStatus & { pending?: { version?: string } | null };
@@ -203,22 +204,14 @@ export async function getFleetUpdateAvailability(forceCheck = false): Promise<Fl
     const creds = await getGatewayCredentialsById(row.id);
     if (!creds) continue;
     try {
-      let status = await gatewayCallToInstance<GatewayUpdateStatus & { pending?: { version?: string } | null }>(
-        creds.url,
-        creds.token,
-        'update.status',
-        {},
-        { timeoutMs: 8000 },
-      );
+      let status = await gatewayCallToInstance<
+        GatewayUpdateStatus & { pending?: { version?: string } | null }
+      >(creds.url, creds.token, 'update.status', {}, { timeoutMs: 8000 });
       const source = normalizeUpdateSource(status);
       if (forceCheck && source.kind === 'package') {
-        status = await gatewayCallToInstance<GatewayUpdateStatus & { pending?: { version?: string } | null }>(
-          creds.url,
-          creds.token,
-          'update.check',
-          {},
-          { timeoutMs: 20_000 },
-        );
+        status = await gatewayCallToInstance<
+          GatewayUpdateStatus & { pending?: { version?: string } | null }
+        >(creds.url, creds.token, 'update.check', {}, { timeoutMs: 20_000 });
       }
       snapshots.push({ status, source });
     } catch {
@@ -234,17 +227,22 @@ export async function getFleetUpdateAvailability(forceCheck = false): Promise<Fl
   if (external.some((snapshot) => !snapshot.source.controllerId)) {
     throw new Error('external-image gateway did not advertise a stable controllerId');
   }
-  const controllerIds = new Set(external.map((snapshot) => snapshot.source.controllerId).filter(Boolean));
+  const controllerIds = new Set(
+    external.map((snapshot) => snapshot.source.controllerId).filter(Boolean),
+  );
   let imagePending = false;
   let targetArtifact: ImageArtifact | undefined;
   for (const controllerId of controllerIds) {
     const members = external.filter((snapshot) => snapshot.source.controllerId === controllerId);
     const target = await resolveExternalImageTarget(
       controllerId!,
-      members.flatMap((member) => (member.source.currentArtifact ? [member.source.currentArtifact] : [])),
+      members.flatMap((member) =>
+        member.source.currentArtifact ? [member.source.currentArtifact] : [],
+      ),
     );
     targetArtifact ??= target;
-    if (members.some((member) => member.source.currentArtifact?.digest !== target.digest)) imagePending = true;
+    if (members.some((member) => member.source.currentArtifact?.digest !== target.digest))
+      imagePending = true;
   }
   const packagePending = packages
     .map((snapshot) => snapshot.status.pending?.version)
@@ -256,14 +254,14 @@ export async function getFleetUpdateAvailability(forceCheck = false): Promise<Fl
     .map((snapshot) => snapshot.status.current)
     .find((version): version is string => typeof version === 'string' && version.length > 0);
   const version =
-    packagePending ?? packageCurrent ?? targetArtifact?.version ?? targetArtifact?.digest ?? 'latest-image';
+    packagePending ??
+    packageCurrent ??
+    targetArtifact?.version ??
+    targetArtifact?.digest ??
+    'latest-image';
   const packageIsPending = !!packagePending;
   const targetSource: FleetTargetSource =
-    imagePending && packageIsPending
-      ? 'mixed'
-      : imagePending
-        ? 'external-image'
-        : 'package';
+    imagePending && packageIsPending ? 'mixed' : imagePending ? 'external-image' : 'package';
   return {
     current: snapshots[0].status.current ?? external[0]?.source.currentArtifact?.version ?? null,
     pending:
@@ -316,8 +314,10 @@ function artifactReached(
 ): boolean {
   if (source.kind === 'package') return false;
   const current = source.currentArtifact;
-  if (targetArtifact?.digest) return current?.digest === targetArtifact.digest && source.healthy === true;
-  if (targetArtifact?.version) return current?.version === targetArtifact.version && source.healthy === true;
+  if (targetArtifact?.digest)
+    return current?.digest === targetArtifact.digest && source.healthy === true;
+  if (targetArtifact?.version)
+    return current?.version === targetArtifact.version && source.healthy === true;
   return current?.version === targetVersion && source.healthy === true;
 }
 
@@ -408,7 +408,11 @@ async function getActiveJobRow(tenantId: string) {
     .select()
     .from(bgJobs)
     .where(
-      and(eq(bgJobs.tenantId, tenantId), eq(bgJobs.type, JOB_TYPE), inArray(bgJobs.status, [...ACTIVE_STATUSES])),
+      and(
+        eq(bgJobs.tenantId, tenantId),
+        eq(bgJobs.type, JOB_TYPE),
+        inArray(bgJobs.status, [...ACTIVE_STATUSES]),
+      ),
     )
     .orderBy(desc(bgJobs.createdAt))
     .limit(1);
@@ -518,12 +522,12 @@ export async function startFleetUpdate(
         : s.source.kind === 'external-image' && targetSource === 'package'
           ? 'done'
           : s.source.kind === 'external-image'
-        ? artifactReached(s.source, s.source.targetArtifact, targetVersion)
-          ? 'done'
-          : 'pending'
-        : isAtOrPast(s.current, targetVersion)
-          ? 'done'
-          : 'pending',
+            ? artifactReached(s.source, s.source.targetArtifact, targetVersion)
+              ? 'done'
+              : 'pending'
+            : isAtOrPast(s.current, targetVersion)
+              ? 'done'
+              : 'pending',
     connections: s.connections,
     fromVersion: s.current,
     toVersion: targetVersion,
@@ -579,7 +583,11 @@ export async function startFleetUpdate(
       inst.state = 'failed';
       inst.error = 'could not determine update source while gateway unreachable';
     }
-    if (targetSource !== 'package' && inst.updateSource === 'external-image' && !inst.controllerId) {
+    if (
+      targetSource !== 'package' &&
+      inst.updateSource === 'external-image' &&
+      !inst.controllerId
+    ) {
       inst.state = 'failed';
       inst.error = 'gateway advertises external-image updates without a stable controllerId';
     }
@@ -623,7 +631,12 @@ export async function startFleetUpdate(
         type: JOB_TYPE,
         refId: null,
         status,
-        cursor: JSON.stringify({ targetVersion, targetSource, instances, currentIndex } satisfies FleetCursor),
+        cursor: JSON.stringify({
+          targetVersion,
+          targetSource,
+          instances,
+          currentIndex,
+        } satisfies FleetCursor),
         attempts: 0,
         createdAt: now,
         updatedAt: now,
@@ -808,7 +821,10 @@ async function runInstanceStep(
       if (isExplicitErrorResponse(msg)) return { ok: false, error: msg };
     }
   }
-  return { ok: false, error: `did not reach ${inst.toVersion} within ${VERIFY_TIMEOUT_MS / 1000}s` };
+  return {
+    ok: false,
+    error: `did not reach ${inst.toVersion} within ${VERIFY_TIMEOUT_MS / 1000}s`,
+  };
 }
 
 async function runExternalImageStep(
@@ -816,7 +832,8 @@ async function runExternalImageStep(
   persistNow: () => Promise<void>,
 ): Promise<{ ok: true } | { ok: false; error: string; pending?: boolean }> {
   const first = members[0]?.inst;
-  if (!first?.controllerId) return { ok: false, error: 'external-image rollout has no controllerId' };
+  if (!first?.controllerId)
+    return { ok: false, error: 'external-image rollout has no controllerId' };
 
   if (!first.rolloutStartedAt) {
     const startedAt = Date.now();
@@ -854,7 +871,10 @@ async function runExternalImageStep(
   if (!controllerStatus || controllerStatus.status !== 'completed') {
     await persistNow().catch(() => {});
     if (Date.now() - (first.rolloutStartedAt ?? Date.now()) >= EXTERNAL_VERIFY_TIMEOUT_MS) {
-      return { ok: false, error: `external image controller operation ${first.operationId} timed out` };
+      return {
+        ok: false,
+        error: `external image controller operation ${first.operationId} timed out`,
+      };
     }
     return { ok: false, pending: true, error: 'external image controller is still running' };
   }
@@ -958,11 +978,7 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
         ...patch,
       })
       .where(
-        and(
-          eq(bgJobs.id, row.id),
-          eq(bgJobs.status, 'running'),
-          eq(bgJobs.leaseUntil, leaseUntil),
-        ),
+        and(eq(bgJobs.id, row.id), eq(bgJobs.status, 'running'), eq(bgJobs.leaseUntil, leaseUntil)),
       )
       .returning({ id: bgJobs.id });
     return updated.length === 1;
@@ -970,7 +986,10 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
 
   const cursor = JSON.parse(row.cursor ?? '{}') as FleetCursor;
   // Skip any instances already on target (bookkeeping only — no RPC calls).
-  while (cursor.currentIndex < cursor.instances.length && cursor.instances[cursor.currentIndex].state === 'done') {
+  while (
+    cursor.currentIndex < cursor.instances.length &&
+    cursor.instances[cursor.currentIndex].state === 'done'
+  ) {
     cursor.currentIndex += 1;
   }
   if (cursor.currentIndex >= cursor.instances.length) {
@@ -994,7 +1013,11 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
     if (!creds) {
       member.state = 'failed';
       member.error = 'gateway credentials not found';
-      await persistClaimed(cursor, { status: 'failed', error: member.error, finishedAt: Date.now() }, true);
+      await persistClaimed(
+        cursor,
+        { status: 'failed', error: member.error, finishedAt: Date.now() },
+        true,
+      );
       return getFleetUpdateStatus(tenantId);
     }
     membersWithCredentials.push({ inst: member, token: creds.token });
@@ -1019,7 +1042,11 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
         member.error = result.error;
       }
     }
-    await persistClaimed(cursor, { status: 'failed', error: result.error, finishedAt: Date.now() }, true);
+    await persistClaimed(
+      cursor,
+      { status: 'failed', error: result.error, finishedAt: Date.now() },
+      true,
+    );
     return getFleetUpdateStatus(tenantId);
   }
 
@@ -1033,7 +1060,10 @@ export async function advanceFleetUpdate(tenantId: string): Promise<FleetJobView
     delete member.error;
   }
   do cursor.currentIndex += 1;
-  while (cursor.currentIndex < cursor.instances.length && cursor.instances[cursor.currentIndex].state === 'done');
+  while (
+    cursor.currentIndex < cursor.instances.length &&
+    cursor.instances[cursor.currentIndex].state === 'done'
+  );
   const done = cursor.currentIndex >= cursor.instances.length;
   await persistClaimed(cursor, done ? { status: 'done', finishedAt: Date.now() } : {}, true);
   return getFleetUpdateStatus(tenantId);

@@ -30,7 +30,9 @@ describe('resolveExternalImageTarget', () => {
           },
         }),
       )
-      .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'registry-token' }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ token: 'registry-token' }), { status: 200 }),
+      )
       .mockResolvedValueOnce(
         new Response(null, { status: 200, headers: { 'docker-content-digest': 'sha256:target' } }),
       );
