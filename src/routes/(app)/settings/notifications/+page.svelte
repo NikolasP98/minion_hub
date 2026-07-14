@@ -5,6 +5,8 @@
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
 	import { PageHeader, Button, Select } from '$lib/components/ui';
+	import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 
@@ -70,20 +72,39 @@
 		};
 		busy = true;
 		try {
-			const res = editId
-				? await fetch(`/api/notifications/rules/${editId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-				: await fetch('/api/notifications/rules', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
-			if (res.ok) { reset(); await invalidate('settings:notifications'); }
-			else err = (await res.json().catch(() => ({}))).message ?? `Save failed (${res.status})`;
+			await jsonMutation({
+				input: editId ? `/api/notifications/rules/${editId}` : '/api/notifications/rules',
+				init: {
+					method: editId ? 'PATCH' : 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(payload),
+				},
+				onSuccess: async () => {
+					reset();
+					await invalidate('settings:notifications');
+				},
+			});
+		} catch (error) {
+			err = mutationErrorMessage(error, m.common_error());
 		} finally {
 			busy = false;
 		}
 	}
 
 	async function remove(id: string) {
-		await fetch(`/api/notifications/rules/${id}`, { method: 'DELETE' });
-		if (editId === id) reset();
-		await invalidate('settings:notifications');
+		err = '';
+		try {
+			await jsonMutation({
+				input: `/api/notifications/rules/${id}`,
+				init: { method: 'DELETE' },
+				onSuccess: async () => {
+					if (editId === id) reset();
+					await invalidate('settings:notifications');
+				},
+			});
+		} catch (error) {
+			err = mutationErrorMessage(error, m.common_error());
+		}
 	}
 </script>
 

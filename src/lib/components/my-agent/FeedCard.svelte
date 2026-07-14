@@ -15,6 +15,7 @@
 	const { title, subtitle, icon, onreply, onsnooze, ondismiss, onopen }: Props = $props();
 
 	function handleKey(e: KeyboardEvent) {
+		if (!onopen) return;
 		if (e.key === 'Enter' || e.key === ' ') {
 			e.preventDefault();
 			onopen?.();
@@ -24,8 +25,9 @@
 
 <div
 	class="card"
-	role="button"
-	tabindex="0"
+	class:interactive={!!onopen}
+	role={onopen ? 'button' : undefined}
+	tabindex={onopen ? 0 : undefined}
 	onclick={onopen}
 	onkeydown={handleKey}
 >
@@ -40,47 +42,49 @@
 			{/if}
 		</div>
 	</div>
-	<div class="actions" aria-label={m.feed_itemActions()}>
-		{#if onreply}
-			<button
-				type="button"
-				class="action"
-				aria-label={m.feed_reply()}
-				onclick={(e) => {
-					e.stopPropagation();
-					onreply?.();
-				}}
-			>
-				<Reply size={14} />
-			</button>
-		{/if}
-		{#if onsnooze}
-			<button
-				type="button"
-				class="action"
-				aria-label={m.feed_snooze24h()}
-				onclick={(e) => {
-					e.stopPropagation();
-					onsnooze?.();
-				}}
-			>
-				<Clock size={14} />
-			</button>
-		{/if}
-		{#if ondismiss}
-			<button
-				type="button"
-				class="action"
-				aria-label={m.feed_dismiss()}
-				onclick={(e) => {
-					e.stopPropagation();
-					ondismiss?.();
-				}}
-			>
-				<X size={14} />
-			</button>
-		{/if}
-	</div>
+	{#if onreply || onsnooze || ondismiss}
+		<div class="actions" aria-label={m.feed_itemActions()}>
+			{#if onreply}
+				<button
+					type="button"
+					class="action"
+					aria-label={m.feed_reply()}
+					onclick={(e) => {
+						e.stopPropagation();
+						onreply?.();
+					}}
+				>
+					<Reply size={14} />
+				</button>
+			{/if}
+			{#if onsnooze}
+				<button
+					type="button"
+					class="action"
+					aria-label={m.feed_snooze24h()}
+					onclick={(e) => {
+						e.stopPropagation();
+						onsnooze?.();
+					}}
+				>
+					<Clock size={14} />
+				</button>
+			{/if}
+			{#if ondismiss}
+				<button
+					type="button"
+					class="action"
+					aria-label={m.feed_dismiss()}
+					onclick={(e) => {
+						e.stopPropagation();
+						ondismiss?.();
+					}}
+				>
+					<X size={14} />
+				</button>
+			{/if}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -93,12 +97,15 @@
 		border-radius: 8px;
 		background: transparent;
 		border: 1px solid transparent;
-		cursor: pointer;
 		transition: background 120ms ease, border-color 120ms ease;
 	}
 
-	.card:hover,
-	.card:focus-visible {
+	.card.interactive {
+		cursor: pointer;
+	}
+
+	.card.interactive:hover,
+	.card.interactive:focus-visible {
 		background: color-mix(in srgb, var(--color-foreground) 2.5%, transparent);
 		border-color: color-mix(in srgb, var(--color-foreground) 6%, transparent);
 		outline: none;

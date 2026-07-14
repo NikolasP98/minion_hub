@@ -2,6 +2,8 @@
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
 	import { PageHeader, Button, Select } from '$lib/components/ui';
+	import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 
@@ -48,21 +50,33 @@
 		const states = statesText.split(',').map((s) => s.trim()).filter(Boolean);
 		busy = true;
 		try {
-			const res = await fetch('/api/workflow/defs', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ docType, name, enabled, states, transitions }),
+			await jsonMutation({
+				input: '/api/workflow/defs',
+				init: {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ docType, name, enabled, states, transitions }),
+				},
+				onSuccess: () => invalidate('settings:workflows'),
 			});
-			if (res.ok) await invalidate('settings:workflows');
-			else err = (await res.json().catch(() => ({}))).message ?? `Save failed (${res.status})`;
+		} catch (error) {
+			err = mutationErrorMessage(error, m.common_error());
 		} finally {
 			busy = false;
 		}
 	}
 
 	async function remove(id: string) {
-		await fetch(`/api/workflow/defs/${id}`, { method: 'DELETE' });
-		await invalidate('settings:workflows');
+		err = '';
+		try {
+			await jsonMutation({
+				input: `/api/workflow/defs/${id}`,
+				init: { method: 'DELETE' },
+				onSuccess: () => invalidate('settings:workflows'),
+			});
+		} catch (error) {
+			err = mutationErrorMessage(error, m.common_error());
+		}
 	}
 </script>
 

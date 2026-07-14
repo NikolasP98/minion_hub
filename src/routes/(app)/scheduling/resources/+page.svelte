@@ -8,6 +8,7 @@
 	import AvailabilityEditor from '$lib/components/scheduling/AvailabilityEditor.svelte';
 	import MemberCalendarStrip from '$lib/components/scheduling/MemberCalendarStrip.svelte';
 	import { canAct } from '$lib/access/can.svelte';
+	import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
 
 	let { data }: { data: PageData } = $props();
 
@@ -43,6 +44,7 @@
 
 	let expanded = $state<string | null>(null);
 	let busy = $state<string | null>(null);
+	let mutationError = $state<string | null>(null);
 
 	function initials(mb: Member): string {
 		const src = mb.displayName || mb.email || '?';
@@ -55,34 +57,56 @@
 
 	async function enroll(mb: Member) {
 		busy = mb.id;
+		mutationError = null;
 		try {
-			const res = await fetch('/api/scheduling/resources', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					name: mb.displayName || mb.email || 'Team member',
-					email: mb.email || null,
-					profileId: mb.id,
-				}),
+			await jsonMutation({
+				input: '/api/scheduling/resources',
+				init: {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						name: mb.displayName || mb.email || 'Team member',
+						email: mb.email || null,
+						profileId: mb.id,
+					}),
+				},
+				onSuccess: () => invalidate('scheduling:data'),
 			});
-			if (res.ok) await invalidate('scheduling:data');
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
 		} finally {
 			busy = null;
 		}
 	}
 
 	async function toggleActive(id: string, active: boolean) {
-		await fetch(`/api/scheduling/resources/${id}`, {
-			method: 'PATCH',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ active }),
-		});
-		await invalidate('scheduling:data');
+		mutationError = null;
+		try {
+			await jsonMutation({
+				input: `/api/scheduling/resources/${id}`,
+				init: {
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ active }),
+				},
+				onSuccess: () => invalidate('scheduling:data'),
+			});
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
+		}
 	}
 
 	async function remove(id: string) {
-		await fetch(`/api/scheduling/resources/${id}`, { method: 'DELETE' });
-		await invalidate('scheduling:data');
+		mutationError = null;
+		try {
+			await jsonMutation({
+				input: `/api/scheduling/resources/${id}`,
+				init: { method: 'DELETE' },
+				onSuccess: () => invalidate('scheduling:data'),
+			});
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
+		}
 	}
 
 	// Per-resource kebab menu. `active` doubles as the vacation flag: available
@@ -119,18 +143,24 @@
 	async function addCustom() {
 		if (!name.trim()) return;
 		adding = true;
+		mutationError = null;
 		try {
-			const res = await fetch('/api/scheduling/resources', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ name, email: email || null, timezone }),
+			await jsonMutation({
+				input: '/api/scheduling/resources',
+				init: {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ name, email: email || null, timezone }),
+				},
+				onSuccess: async () => {
+					name = '';
+					email = '';
+					showAdd = false;
+					await invalidate('scheduling:data');
+				},
 			});
-			if (res.ok) {
-				name = '';
-				email = '';
-				showAdd = false;
-				await invalidate('scheduling:data');
-			}
+		} catch (error) {
+			mutationError = mutationErrorMessage(error, m.common_error());
 		} finally {
 			adding = false;
 		}
@@ -147,6 +177,9 @@
 	</PageHeader>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
+		{#if mutationError}
+			<p class="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">{mutationError}</p>
+		{/if}
 		{#if showAdd}
 			<Card padding="md">
 				<div class="t-label mb-2">{m.sched_team_add_custom()}</div>
