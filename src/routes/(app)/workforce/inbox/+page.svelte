@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+  import { Button } from '$lib/components/ui';
+import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import type { InboxItem, PipelineHitlInboxItem } from '$lib/workforce/pipeline-inbox';
 	import * as m from '$lib/paraglide/messages';
@@ -104,20 +105,20 @@
 
 		<!-- Filter tabs -->
 		<div class="flex gap-1 rounded-lg border border-border bg-card p-1">
-			<button
+			<Button variant="ghost"
 				type="button"
 				class="px-3 py-1 rounded text-xs font-medium transition-colors {filter === 'all' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}"
 				onclick={() => (filter = 'all')}
 			>
 				{m.inbox_all()} ({items.length})
-			</button>
-			<button
+			</Button>
+			<Button variant="ghost"
 				type="button"
 				class="px-3 py-1 rounded text-xs font-medium transition-colors {filter === 'unread' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'}"
 				onclick={() => (filter = 'unread')}
 			>
 				{m.inbox_unread()} ({unreadCount})
-			</button>
+			</Button>
 		</div>
 	</header>
 
@@ -172,7 +173,7 @@
 								{#if item.body}
 									<p class="text-xs text-muted-foreground line-clamp-2">{item.body}</p>
 								{/if}
-								<div class="text-[10px] text-muted-strong flex items-center gap-1.5 pt-0.5">
+								<div class="t-telemetry text-muted-strong flex items-center gap-1.5 pt-0.5">
 									<span>{actorLabel(item.actorAgentId, item.actorUserId)}</span>
 									{#if item.entityType}
 										<span aria-hidden="true">·</span>

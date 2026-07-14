@@ -129,13 +129,13 @@
 		{#if harness}
 			<div class="grid gap-3 md:grid-cols-2">
 				<div class="rounded-md border border-border bg-background p-3 space-y-2">
-					<div class="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-success-fg)]">{m.workforce_harness_active()}</div>
+					<div class="t-label text-[var(--color-success-fg)]">{m.workforce_harness_active()}</div>
 					<div class="text-sm font-medium font-mono">{harness.activePrimary?.model ?? '—'}</div>
 					<div class="text-xs text-muted-foreground">{harness.activePrimary?.provider ?? agent.adapterType} · {harness.runtimeClass ?? '—'} · {harness.roleClass ?? agent.role}</div>
 					{#if harness.activeFallbacks.length}<div class="text-xs text-muted-foreground">{m.workforce_harness_fallbacks()}: {harness.activeFallbacks.map((item) => item.model).join(' → ')}</div>{/if}
 				</div>
 				<div class="rounded-md border border-dashed border-border bg-muted/30 p-3 space-y-2" class:opacity-60={harness.recommendedPrimary?.executable === false}>
-					<div class="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-warning-fg)]">{m.workforce_harness_recommended()}</div>
+					<div class="t-label text-[var(--color-warning-fg)]">{m.workforce_harness_recommended()}</div>
 					<div class="text-sm font-medium font-mono">{harness.recommendedPrimary?.model ?? m.workforce_harness_noRecommendation()}</div>
 					{#if harness.recommendedPrimary}
 						<div class="text-xs text-muted-foreground">{harness.recommendedPrimary.runtimeKind ?? harness.recommendedPrimary.adapterType ?? '—'} · {harness.recommendedPrimary.provider ?? '—'}</div>

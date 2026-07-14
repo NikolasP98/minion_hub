@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { PageData } from './$types';
+  import { Button, Select } from '$lib/components/ui';
+import type { PageData } from './$types';
 	import type { Pipeline } from '@minion-stack/workforce-client';
 	import { invalidate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
@@ -137,9 +138,9 @@
 		<!-- Left: pipeline list -->
 		<aside class="space-y-3">
 			<div class="flex items-center justify-between gap-2">
-				<button class="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground" onclick={startNew}>
+				<Button variant="ghost" class="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground" onclick={startNew}>
 					{m.workforce_pipelines_new()}
-				</button>
+				</Button>
 				<label class="flex items-center gap-1.5 text-xs text-muted-foreground">
 					<input type="checkbox" bind:checked={showArchived} />
 					{m.workforce_pipelines_showArchived()}
@@ -154,7 +155,7 @@
 					{#each visible as p (p.id)}
 						<li>
 							<div class="w-full px-3 py-2.5 text-left text-sm space-y-1 {selectedId === p.id ? 'bg-muted/60' : ''}">
-								<button class="w-full text-left" onclick={() => select(p)}>
+								<Button variant="ghost" class="w-full text-left" onclick={() => select(p)}>
 									<div class="flex items-center gap-2">
 										<span class="font-medium flex-1 min-w-0 truncate {p.archivedAt ? 'line-through text-muted-foreground' : ''}">{p.name}</span>
 										<span class="shrink-0 text-xs text-muted-foreground">{m.workforce_pipelines_stepCount({ count: p.steps.length })}</span>
@@ -162,16 +163,16 @@
 									{#if triggerChips(p).length > 0}
 										<div class="flex flex-wrap gap-1 mt-1">
 											{#each triggerChips(p) as chip (chip)}
-												<span class="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{chip}</span>
+											<span class="rounded-full bg-muted px-1.5 py-0.5 t-telemetry text-muted-foreground">{chip}</span>
 											{/each}
 										</div>
 									{/if}
-								</button>
-								<button
-									class="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline disabled:opacity-50"
+								</Button>
+								<Button variant="ghost"
+									class="t-caption text-muted-foreground hover:text-foreground underline-offset-2 hover:underline disabled:opacity-50"
 									disabled={busy}
 									onclick={() => toggleArchive(p)}
-								>{p.archivedAt ? m.workforce_pipelines_unarchive() : m.workforce_pipelines_archive()}</button>
+								>{p.archivedAt ? m.workforce_pipelines_unarchive() : m.workforce_pipelines_archive()}</Button>
 							</div>
 						</li>
 					{/each}
@@ -200,12 +201,12 @@
 					<div class="text-xs text-muted-foreground">{m.workforce_pipelines_originKinds()}</div>
 					<div class="flex flex-wrap gap-1.5">
 						{#each ORIGIN_KINDS as k (k)}
-							<button
+							<Button variant="ghost"
 								class="rounded-full border px-2.5 py-0.5 text-xs {draft.originKinds.includes(k)
 									? 'border-[var(--color-info-border)] bg-[var(--color-info-surface)] text-[var(--color-info-fg)]'
 									: 'border-border text-muted-foreground'}"
 								onclick={() => (draft.originKinds = toggleChip(draft.originKinds, k))}
-							>{k}</button>
+							>{k}</Button>
 						{/each}
 					</div>
 				</div>
@@ -221,12 +222,12 @@
 					<div class="text-xs text-muted-foreground">{m.workforce_pipelines_priorities()}</div>
 					<div class="flex flex-wrap gap-1.5">
 						{#each PRIORITIES as k (k)}
-							<button
+							<Button variant="ghost"
 								class="rounded-full border px-2.5 py-0.5 text-xs {draft.priorities.includes(k)
 									? 'border-[var(--color-info-border)] bg-[var(--color-info-surface)] text-[var(--color-info-fg)]'
 									: 'border-border text-muted-foreground'}"
 								onclick={() => (draft.priorities = toggleChip(draft.priorities, k))}
-							>{k}</button>
+							>{k}</Button>
 						{/each}
 					</div>
 				</div>
@@ -247,18 +248,18 @@
 									bind:value={step.label}
 								/>
 								{#if i === 0}
-									<select class="rounded-md border border-border bg-background px-2 py-1 text-sm" disabled>
+									<Select size="sm" class="rounded-md border border-border bg-background px-2 py-1 text-sm" disabled>
 										<option>work</option>
-									</select>
+									</Select>
 								{:else}
-									<select class="rounded-md border border-border bg-background px-2 py-1 text-sm" bind:value={step.kind}>
+									<Select size="sm" class="rounded-md border border-border bg-background px-2 py-1 text-sm" bind:value={step.kind}>
 										{#each GATE_KINDS as k (k)}<option value={k}>{k}</option>{/each}
-									</select>
+									</Select>
 								{/if}
-								<select
+								<Select size="sm"
 									class="rounded-md border border-border bg-background px-2 py-1 text-sm max-w-[12rem]"
 									value={step.participantType === 'agent' ? `agent:${step.agentId}` : 'user'}
-									onchange={(e) => setParticipant(i, (e.currentTarget as HTMLSelectElement).value)}
+									onchange={(value) => setParticipant(i, String(value))}
 								>
 									<option value="agent:" disabled>{m.workforce_pipelines_selectAgent()}</option>
 									{#each data.agents as a (a.id)}
@@ -267,29 +268,29 @@
 									{#if i > 0}
 										<option value="user">{m.workforce_pipelines_youHitl()}</option>
 									{/if}
-								</select>
+								</Select>
 								<span class="ml-auto flex items-center gap-1">
-									<button
+									<Button variant="ghost"
 										class="rounded border border-border px-1.5 py-0.5 text-xs disabled:opacity-40"
 										disabled={i <= 1}
 										aria-label={m.workforce_pipelines_moveUp()}
 										title={m.workforce_pipelines_moveUp()}
 										onclick={() => (draft.steps = moveStep(draft.steps, i, -1))}
-									>↑</button>
-									<button
+									>↑</Button>
+									<Button variant="ghost"
 										class="rounded border border-border px-1.5 py-0.5 text-xs disabled:opacity-40"
 										disabled={i === 0 || i === draft.steps.length - 1}
 										aria-label={m.workforce_pipelines_moveDown()}
 										title={m.workforce_pipelines_moveDown()}
 										onclick={() => (draft.steps = moveStep(draft.steps, i, 1))}
-									>↓</button>
-									<button
+									>↓</Button>
+									<Button variant="ghost"
 										class="rounded border border-border px-1.5 py-0.5 text-xs text-[var(--color-danger-fg)] disabled:opacity-40"
 										disabled={i === 0}
 										aria-label={m.workforce_pipelines_remove()}
 										title={m.workforce_pipelines_remove()}
 										onclick={() => (draft.steps = draft.steps.filter((_, j) => j !== i))}
-									>✕</button>
+									>✕</Button>
 								</span>
 							</div>
 							{#if step.participantType === 'user'}
@@ -299,7 +300,7 @@
 										placeholder={m.workforce_pipelines_userId()}
 										bind:value={step.userId}
 									/>
-									<p class="text-[11px] text-muted-foreground">{m.workforce_pipelines_userIdHelp()}</p>
+									<p class="t-caption text-muted-foreground">{m.workforce_pipelines_userIdHelp()}</p>
 								</div>
 							{/if}
 							{#if step.kind === 'eval'}
@@ -325,10 +326,10 @@
 						</li>
 					{/each}
 				</ol>
-				<button
+				<Button variant="ghost"
 					class="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted"
 					onclick={() => (draft.steps = [...draft.steps, newStep()])}
-				>{m.workforce_pipelines_addStep()}</button>
+				>{m.workforce_pipelines_addStep()}</Button>
 			</fieldset>
 
 			<!-- live preview -->
@@ -339,11 +340,11 @@
 
 			<!-- save -->
 			<div class="flex items-center gap-3 pt-2 border-t border-border">
-				<button
+				<Button variant="ghost"
 					class="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
 					disabled={!canSave}
 					onclick={save}
-				>{m.workforce_pipelines_save()}</button>
+				>{m.workforce_pipelines_save()}</Button>
 				{#if saveError}<span class="text-xs text-[var(--color-danger-fg)] break-all">{saveError}</span>{/if}
 			</div>
 		</section>

@@ -199,7 +199,7 @@
 				{nodeTypes}
 				{colorMode}
 				fitView
-				fitViewOptions={{ padding: 0.15, minZoom: 0.2 }}
+				fitViewOptions={{ ['padding']: 0.15, minZoom: 0.2 }}
 				minZoom={0.2}
 				maxZoom={2}
 				nodesDraggable={false}

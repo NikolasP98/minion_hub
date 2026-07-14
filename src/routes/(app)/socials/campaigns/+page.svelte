@@ -3,7 +3,7 @@
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages';
 	import { Target, Image } from 'lucide-svelte';
-	import { PageHeader, EmptyState } from '$lib/components/ui';
+	import { PageHeader, EmptyState, Button } from '$lib/components/ui';
 	import DataTable from '$lib/components/data-table/DataTable.svelte';
 	import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
@@ -126,8 +126,8 @@
 					<span>{m.ads_date_to()}</span>
 					<input type="date" bind:value={toDate} oninput={() => navigateRange(fromDate, toDate)} />
 				</label>
-				<button class="preset" onclick={preset30d}>{m.ads_preset_30d()}</button>
-				<button class="preset" onclick={presetAll}>{m.ads_preset_all()}</button>
+				<Button variant="ghost" class="preset" onclick={preset30d}>{m.ads_preset_30d()}</Button>
+				<Button variant="ghost" class="preset" onclick={presetAll}>{m.ads_preset_all()}</Button>
 			{/snippet}
 
 			{#snippet cell(r: Row, col: DataColumn<Row>)}

@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { autosize } from '$lib/actions/autosize';
+  import { Button } from '$lib/components/ui';
+import { autosize } from '$lib/actions/autosize';
     import { Loader2, Sparkles, ChevronLeft, ChevronRight, Wrench } from "lucide-svelte";
     import { getToolInfo } from "$lib/data/tool-manifest";
     import EmojiPicker from "$lib/components/builder/EmojiPicker.svelte";
@@ -44,7 +45,7 @@
                         </div>
                     {/if}
                     {#each skillEditorState.ghostSuggestions as suggestion (suggestion.name)}
-                        <button
+                        <Button variant="ghost"
                             class="ghost-pill"
                             onclick={() => generateGhostChapter(suggestion.name)}
                             disabled={skillEditorState.aiBuilding}
@@ -52,7 +53,7 @@
                         >
                             <Sparkles size={10} />
                             <span>{suggestion.name}</span>
-                        </button>
+                        </Button>
                     {/each}
                 </div>
             {/if}
@@ -60,7 +61,7 @@
             <!-- AI Build button -->
             {#if skillEditorState.description.trim().length >= 10}
                 <div class="ai-assist-section">
-                    <button
+                    <Button variant="ghost"
                         type="button"
                         class="ai-assist-btn"
                         onclick={buildSkillWithAI}
@@ -73,7 +74,7 @@
                             <Sparkles size={14} />
                             <span>{m.builder_buildWithAi()}</span>
                         {/if}
-                    </button>
+                    </Button>
                     {#if skillEditorState.aiBuildError}
                         <span class="ai-assist-error">{skillEditorState.aiBuildError}</span>
                     {/if}
@@ -105,23 +106,23 @@
         </div>
 
         <!-- Sidebar collapse button -->
-        <button
+        <Button variant="ghost"
             class="sidebar-collapse-btn"
             onclick={() => (sidebarOpen = false)}
             title={m.sidebar_collapse()}
         >
             <ChevronLeft size={14} />
-        </button>
+        </Button>
     </aside>
 {:else}
     <!-- Collapsed sidebar: expand button -->
-    <button
+    <Button variant="ghost"
         class="sidebar-expand-btn"
         onclick={() => (sidebarOpen = true)}
         title={m.sidebar_expand()}
     >
         <ChevronRight size={14} />
-    </button>
+    </Button>
 {/if}
 
 <style>

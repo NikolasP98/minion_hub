@@ -207,8 +207,8 @@
 									<input type="date" bind:value={toDate} oninput={() => navigate(fromDate, toDate)} />
 								</label>
 							</div>
-							<button class="preset" onclick={preset30d}>{m.ads_preset_30d()}</button>
-							<button class="preset" onclick={presetAll}>{m.ads_preset_all()}</button>
+							<Button variant="ghost" class="preset" onclick={preset30d}>{m.ads_preset_30d()}</Button>
+							<Button variant="ghost" class="preset" onclick={presetAll}>{m.ads_preset_all()}</Button>
 						</div>
 					{/snippet}
 					{#snippet cell(id)}{@render cellBody(id)}{/snippet}

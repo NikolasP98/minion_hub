@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
   import { ArrowLeftRight, X } from 'lucide-svelte';
-  import { PageHeader, Badge } from '$lib/components/ui';
+  import { PageHeader, Badge, Button } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
@@ -111,9 +111,9 @@
     {/snippet}
     {#snippet toolbar()}
       {#if data.partyFilter}
-        <button class="chip" onclick={() => goto('/stock/entries')}>
+        <Button variant="ghost" class="chip" onclick={() => goto('/stock/entries')}>
           {m.stock_col_party()}: {data.entries[0]?.partyName ?? data.partyFilter} <X size={11} />
-        </button>
+        </Button>
       {/if}
     {/snippet}
   </DataTable>

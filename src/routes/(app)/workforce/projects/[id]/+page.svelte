@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
-	import { PageHeader } from '$lib/components/ui';
+	import { PageHeader, Button, Select } from '$lib/components/ui';
 	import { Flag, Plus, Clock, Boxes, Link2, Unlink, Workflow } from 'lucide-svelte';
 	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
@@ -137,14 +137,14 @@
 				<div class="line">Customer: {partyName(data.project.customerPartyId)}</div>
 				<div class="line">Lead: {partyName(data.project.leadPartyId)}</div>
 				<label class="line">Status:
-					<select
+					<Select size="sm"
 						value={data.project.status}
 						disabled={busy || !canAct('projects', 'edit')}
 						title={canAct('projects', 'edit') ? undefined : m.no_permission()}
-						onchange={(e) => patchProject({ status: (e.currentTarget as HTMLSelectElement).value })}
+						onchange={(value) => patchProject({ status: String(value) })}
 					>
 						{#each projStatuses as s (s)}<option value={s}>{s}</option>{/each}
-					</select>
+					</Select>
 				</label>
 			</div>
 		</section>
@@ -164,18 +164,18 @@
 		<!-- add task -->
 		<div class="add">
 			<input class="in" placeholder="Add a task…" bind:value={newTaskTitle} onkeydown={(e) => e.key === 'Enter' && addTask(false)} />
-			<button
+			<Button variant="ghost"
 				class="btn"
 				disabled={busy || !newTaskTitle.trim() || !canAct('projects', 'edit')}
 				title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 				onclick={() => addTask(false)}
-			><Plus size={15} /> Task</button>
-			<button
+			><Plus size={15} /> Task</Button>
+			<Button variant="ghost"
 				class="btn ghost"
 				disabled={busy || !newTaskTitle.trim() || !canAct('projects', 'edit')}
 				title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 				onclick={() => addTask(true)}
-			><Flag size={14} /> Milestone</button>
+			><Flag size={14} /> Milestone</Button>
 		</div>
 
 		<!-- board -->
@@ -189,29 +189,29 @@
 								<div class="tt">{t.title}</div>
 								<div class="tmeta">
 									{#if t.humanId}<span class="hid">{t.humanId}</span>{/if}
-									<select
+									<Select size="sm"
 										class="mini"
 										value={t.assigneePartyId ?? ''}
 										disabled={busy || !canAct('projects', 'edit')}
 										title={canAct('projects', 'edit') ? undefined : m.no_permission()}
-										onchange={(e) => patchTask(t.id, { assigneePartyId: (e.currentTarget as HTMLSelectElement).value || null }, t.updatedAt)}
+										onchange={(value) => patchTask(t.id, { assigneePartyId: String(value) || null }, t.updatedAt)}
 									>
 										<option value="">Unassigned</option>
 										{#if t.assigneePartyId && !assignOptions.some((o) => o.id === t.assigneePartyId)}
 											<option value={t.assigneePartyId}>{partyName(t.assigneePartyId)}</option>
 										{/if}
 										{#each assignOptions as o (o.id)}<option value={o.id} disabled={!!o.agent && !data.workforceAvailable}>{o.label}{#if o.agent && !data.workforceAvailable} — {m.workforce_projects_agentUnavailable()}{/if}</option>{/each}
-									</select>
+									</Select>
 								</div>
-								<select
+								<Select size="sm"
 									class="mini status"
 									value={t.status}
 									disabled={busy || !canAct('projects', 'edit')}
 									title={canAct('projects', 'edit') ? undefined : m.no_permission()}
-									onchange={(e) => patchTask(t.id, { status: (e.currentTarget as HTMLSelectElement).value }, t.updatedAt)}
+									onchange={(value) => patchTask(t.id, { status: String(value) }, t.updatedAt)}
 								>
 									{#each COLUMNS as s (s)}<option value={s}>{colLabel[s]}</option>{/each}
-								</select>
+								</Select>
 							</div>
 						{/each}
 					</div>
@@ -232,12 +232,12 @@
 						{:else}
 							<span class="btn ghost sm disabled" aria-disabled="true"><Workflow size={13} /> {m.workforce_pipelines_title()}</span>
 						{/if}
-						<button
+						<Button variant="ghost"
 							class="btn ghost sm"
 							disabled={busy || !data.workforceAvailable || !canAct('projects', 'edit')}
 							title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 							onclick={() => patchProject({ workforceProjectId: null })}
-						><Unlink size={13} /> Unlink</button>
+						><Unlink size={13} /> Unlink</Button>
 					</span>
 				{/if}
 			</header>
@@ -279,9 +279,9 @@
 						{#if activePipelines.length > 1}
 							<label class="exec-meta t-caption">
 								{m.workforce_pipelines_title()}
-								<select class="mini" bind:value={pipelineChoice}>
+								<Select size="sm" class="mini" bind:value={pipelineChoice}>
 									{#each activePipelines as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-								</select>
+								</Select>
 							</label>
 						{/if}
 						<div class="board exec-board" style={`grid-template-columns: repeat(${pipelineBoard.length}, minmax(140px, 1fr));`}>
@@ -349,16 +349,16 @@
 				<p class="t-caption broken">Linked workforce project unavailable (backend down or project removed).</p>
 			{:else}
 				<div class="link-row">
-					<select class="in" bind:value={linkChoice}>
+					<Select size="sm" class="in" bind:value={linkChoice}>
 						<option value="">Link a workforce project…</option>
 						{#each data.linkable as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-					</select>
-					<button
+					</Select>
+					<Button variant="ghost"
 						class="btn ghost sm"
 						disabled={busy || !linkChoice || !canAct('projects', 'edit')}
 						title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 						onclick={() => patchProject({ workforceProjectId: linkChoice })}
-					><Link2 size={13} /> Link</button>
+					><Link2 size={13} /> Link</Button>
 				</div>
 				{#if data.linkable.length === 0}
 					<p class="t-caption empty">No workforce projects available to link.</p>
@@ -373,7 +373,7 @@
 				<input class="in date" type="date" bind:value={tsDate} />
 				<input class="in mins" type="number" min="1" bind:value={tsMinutes} title="Minutes" />
 				<input class="in" placeholder="What did you work on?" bind:value={tsDesc} />
-				<button class="btn" disabled={busy || !data.selfPartyId} onclick={logTime}>Log</button>
+				<Button variant="ghost" class="btn" disabled={busy || !data.selfPartyId} onclick={logTime}>Log</Button>
 			</div>
 			<div class="ts-list">
 				{#each data.timesheets as ts (ts.id)}

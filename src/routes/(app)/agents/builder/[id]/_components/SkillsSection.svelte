@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Grip, Plus, X, BookOpen } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { Grip, Plus, X, BookOpen } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
 
     interface SkillSlot { skillId: string; position: number; }
@@ -73,14 +74,14 @@
                                 <span class="slot-status {slot.info.status}">{slot.info.status}</span>
                             {/if}
                         </div>
-                        <button
+                        <Button variant="ghost"
                             type="button"
                             class="slot-remove"
                             onclick={() => onRemoveSkill(slot.skillId)}
                             title={m.common_remove()}
                         >
                             <X size={14} />
-                        </button>
+                        </Button>
                     </div>
                 {/each}
             </div>
@@ -88,14 +89,14 @@
 
         <!-- Drop zone / Add skill button -->
         <div class="skill-drop-zone-wrapper">
-            <button
+            <Button variant="ghost"
                 type="button"
                 class="skill-drop-zone"
                 onclick={onTogglePicker}
             >
                 <Plus size={14} />
                 <span>{m.builder_dropSkillHint()}</span>
-            </button>
+            </Button>
 
             {#if showSkillPicker}
                 <div class="skill-picker">
@@ -109,7 +110,7 @@
                         </div>
                     {:else}
                         {#each pickableSkills as skill (skill.id)}
-                            <button
+                            <Button variant="ghost"
                                 type="button"
                                 class="skill-picker-item"
                                 onclick={() => onAddSkill(skill.id)}
@@ -121,7 +122,7 @@
                                         <span class="picker-desc">{skill.description}</span>
                                     {/if}
                                 </div>
-                            </button>
+                            </Button>
                         {/each}
                     {/if}
                 </div>

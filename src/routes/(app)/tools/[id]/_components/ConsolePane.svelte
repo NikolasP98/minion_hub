@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Terminal, X } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { Terminal, X } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
 
     type ConsoleLine = { text: string; type: "stdout" | "stderr" | "system" };
@@ -26,7 +27,7 @@
             <Terminal size={14} />
             <span>{m.builder_console()}</span>
         </span>
-        <button
+        <Button variant="ghost"
             type="button"
             class="console-clear"
             onclick={onClearConsole}
@@ -34,7 +35,7 @@
         >
             <X size={12} />
             <span>{m.builder_clear()}</span>
-        </button>
+        </Button>
     </div>
     <div class="console-output" bind:this={consoleEl}>
         {#each consoleLines as line, i (i)}

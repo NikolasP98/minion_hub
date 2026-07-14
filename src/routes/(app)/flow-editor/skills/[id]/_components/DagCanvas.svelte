@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { BookOpen, Check, Sparkles, X } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { BookOpen, Check, Sparkles, X } from "lucide-svelte";
     import ChapterDAG from "$lib/components/builder/ChapterDAG.svelte";
     import {
         skillEditorState, skillEditorDerived,
@@ -23,13 +24,13 @@
             <h3 class="first-visit-title">{m.builder_firstVisitTitle()}</h3>
             <p class="first-visit-desc">{m.builder_firstVisitDesc()}</p>
             <div class="first-visit-actions">
-                <button type="button" class="first-visit-btn primary" onclick={() => { sidebarOpen = true; }}>
+                <Button variant="ghost" type="button" class="first-visit-btn primary" onclick={() => { sidebarOpen = true; }}>
                     <Sparkles size={14} />
                     {m.builder_openSidebarToBegin()}
-                </button>
-                <button type="button" class="first-visit-btn ghost" onclick={addChapter}>
+                </Button>
+                <Button variant="ghost" type="button" class="first-visit-btn ghost" onclick={addChapter}>
                     + {m.builder_addChapterManually()}
-                </button>
+                </Button>
             </div>
         </div>
     {:else}
@@ -50,14 +51,14 @@
         />
         {#if skillEditorState.stagedProposal}
             <div class="proposal-batch-actions">
-                <button class="batch-btn accept" onclick={acceptAllProposed}>
+                <Button variant="ghost" class="batch-btn accept" onclick={acceptAllProposed}>
                     <Check size={14} />
                     {m.builder_acceptAll({ count: skillEditorState.stagedProposal.chapters.length })}
-                </button>
-                <button class="batch-btn reject" onclick={rejectAllProposed}>
+                </Button>
+                <Button variant="ghost" class="batch-btn reject" onclick={rejectAllProposed}>
                     <X size={14} />
                     {m.builder_rejectAll()}
-                </button>
+                </Button>
             </div>
         {/if}
     {/if}

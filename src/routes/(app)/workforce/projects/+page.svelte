@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { invalidate, goto } from '$app/navigation';
-	import { PageHeader } from '$lib/components/ui';
+	import { PageHeader, Button, Select } from '$lib/components/ui';
 	import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
 	import { GanttChartSquare, FolderPlus, Sparkles, Boxes, FolderGit2, Layers3 } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -121,12 +121,12 @@
 			<div class="create-row">
 				<input class="in" placeholder="New project name…" bind:value={name} onkeydown={(e) => e.key === 'Enter' && create()} />
 				<input class="in date" type="date" bind:value={targetDate} title="Target date" />
-				<button
+				<Button variant="ghost"
 					class="btn"
 					disabled={busy || !name.trim() || !canAct('projects', 'edit')}
 					title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 					onclick={create}
-				><FolderPlus size={15} /> Create</button>
+				><FolderPlus size={15} /> Create</Button>
 			</div>
 			<div class="create-row">
 				<PartyPicker bind:value={customerPartyId} label="Customer" placeholder="Search customer…" types="person,company" />
@@ -134,11 +134,11 @@
 			</div>
 			{#if data.templates.length}
 				<div class="create-row">
-					<select class="in" bind:value={templateId}>
+					<Select size="sm" class="in" bind:value={templateId}>
 						<option value="">From template…</option>
 						{#each data.templates as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
-					</select>
-					<button class="btn ghost" disabled={busy || !templateId} onclick={instantiate}><Sparkles size={15} /> Instantiate</button>
+					</Select>
+					<Button variant="ghost" class="btn ghost" disabled={busy || !templateId} onclick={instantiate}><Sparkles size={15} /> Instantiate</Button>
 				</div>
 			{/if}
 		</section>
@@ -182,12 +182,12 @@
 											{#if p.color}<span class="dot" style="background:{p.color}"></span>{/if}{p.name}
 										</span>
 										<span class="status t-caption">{p.status}</span>
-										<button
+										<Button variant="ghost"
 											class="btn ghost sm"
 											disabled={busy || !canAct('projects', 'edit')}
 											title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 											onclick={() => importWorkforce(p)}
-										>{m.workforce_projects_import()}</button>
+										>{m.workforce_projects_import()}</Button>
 									</div>
 								{/each}
 							</section>

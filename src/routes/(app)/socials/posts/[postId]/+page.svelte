@@ -184,9 +184,9 @@
 		<aside class="comments-panel" class:is-open={mobileCommentsOpen}>
 			<header class="comments-head">
 				<span>{m.ads_post_detail_comments_title({ count: commentCount })}</span>
-				<button type="button" class="close-btn" onclick={() => (mobileCommentsOpen = false)} aria-label={m.common_close()}>
+				<Button variant="ghost" type="button" class="close-btn" onclick={() => (mobileCommentsOpen = false)} aria-label={m.common_close()}>
 					<X size={16} />
-				</button>
+				</Button>
 			</header>
 			<div class="comments-body">
 				{#if commentsLoaded}
@@ -205,10 +205,10 @@
 	</div>
 
 	<!-- Mobile toggle — comments panel becomes an overlay covering the content -->
-	<button type="button" class="comments-fab lg:hidden" onclick={() => (mobileCommentsOpen = true)} aria-label={m.ads_post_detail_comments_open()}>
+	<Button variant="ghost" type="button" class="comments-fab lg:hidden" onclick={() => (mobileCommentsOpen = true)} aria-label={m.ads_post_detail_comments_open()}>
 		<MessageCircle size={18} />
 		{#if commentCount > 0}<span class="fab-count">{commentCount}</span>{/if}
-	</button>
+	</Button>
 </div>
 
 <style>

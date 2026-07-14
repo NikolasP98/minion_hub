@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+  import { Button } from '$lib/components/ui';
+import { onMount } from "svelte";
     import { Power, PowerOff, Loader2, Code2 } from "lucide-svelte";
     import type { ToolStatusEntry } from "$lib/types/tools";
     import { sendRequest } from "$lib/services/gateway.svelte";
@@ -153,7 +154,7 @@
                     </div>
                 {/if}
                 {#if gatewayTool.requires?.env?.length}
-                    <div class="gw-field" style="margin-top: 0.75rem">
+                    <div class="gw-field" style="margin-top: var(--space-3)">
                         <span class="gw-label">{m.builder_envVars()}</span>
                         <div class="gw-tags">
                             {#each gatewayTool.requires.env as env (env)}
@@ -193,7 +194,7 @@
         <!-- Toggle Button (admin only) -->
         {#if isAdmin}
             <div class="gw-section">
-                <button
+                <Button variant="ghost"
                     type="button"
                     class="gw-toggle-btn {gatewayTool.enabled ? 'disable' : 'enable'}"
                     onclick={onToggleGatewayToolEnabled}
@@ -205,7 +206,7 @@
                         <Power size={16} />
                         <span>{m.builder_enableTool()}</span>
                     {/if}
-                </button>
+                </Button>
             </div>
         {/if}
     </div>

@@ -169,10 +169,10 @@
         <ul class="product-list">
           {#each filteredProducts as p (p.id)}
             <li>
-              <button class="product-btn" class:active={p.id === selectedProductId} onclick={() => selectProduct(p.id)}>
+              <Button variant="ghost" class="product-btn" class:active={p.id === selectedProductId} onclick={() => selectProduct(p.id)}>
                 <span class="product-name">{p.name}</span>
                 <span class="product-code">{p.code}</span>
-              </button>
+              </Button>
             </li>
           {/each}
         </ul>
@@ -264,24 +264,24 @@
             {:else if col.key === 'actions'}
               {#if editingId === c.id}
                 <div class="flex gap-1 justify-end">
-                  <button class="act-btn act-save" onclick={() => saveEdit(c.id)} disabled={editBusy}>✓</button>
-                  <button class="act-btn act-cancel" onclick={cancelEdit}>✗</button>
+                  <Button variant="ghost" class="act-btn act-save" onclick={() => saveEdit(c.id)} disabled={editBusy}>✓</Button>
+                  <Button variant="ghost" class="act-btn act-cancel" onclick={cancelEdit}>✗</Button>
                 </div>
                 {#if editErr}<p class="err-msg text-xs">{editErr}</p>{/if}
               {:else}
                 <div class="flex gap-1 justify-end">
-                  <button
+                  <Button variant="ghost"
                     class="act-btn act-edit"
                     onclick={() => startEdit(c)}
                     disabled={!canAct('stock', 'edit')}
                     title={canAct('stock', 'edit') ? undefined : m.no_permission()}
-                  >✎</button>
-                  <button
+                  >✎</Button>
+                  <Button variant="ghost"
                     class="act-btn act-cancel"
                     onclick={() => removeMapping(c.id)}
                     disabled={!canAct('stock', 'edit')}
                     title={canAct('stock', 'edit') ? undefined : m.no_permission()}
-                  ><Trash2 size={12} /></button>
+                  ><Trash2 size={12} /></Button>
                 </div>
               {/if}
             {/if}
@@ -310,7 +310,7 @@
     padding: var(--space-2) var(--space-3); border: none; border-bottom: 1px solid var(--hairline);
     background: transparent; cursor: pointer; color: var(--color-foreground);
   }
-  .product-btn:hover { background: rgba(255, 255, 255, 0.03); }
+  .product-btn:hover { background: color-mix(in srgb, var(--color-text-primary) 3%, transparent); }
   .product-btn.active { background: color-mix(in srgb, var(--color-accent) 10%, transparent); border-left: 2px solid var(--color-accent); }
   .product-name { font-size: var(--font-size-body); font-weight: 500; }
   .product-code { font-size: var(--font-size-caption); color: var(--color-muted-foreground); font-family: var(--font-mono, monospace); }
@@ -325,7 +325,7 @@
   .inp { height: 1.75rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
 
   .act-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--radius-sm); font-size: var(--font-size-body); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-muted-foreground); }
-  .act-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--color-foreground); }
+  .act-btn:hover { background: color-mix(in srgb, var(--color-text-primary) 6%, transparent); color: var(--color-foreground); }
   .act-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .act-save { color: var(--color-accent); }
   .act-cancel { color: var(--color-muted-foreground); }

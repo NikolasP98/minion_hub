@@ -1,5 +1,6 @@
 <script lang="ts">
-    import {
+  import { Button } from '$lib/components/ui';
+import {
         skillEditorState, executeDeleteChapter,
     } from '$lib/state/builder/skill-editor.svelte';
     import * as m from '$lib/paraglide/messages';
@@ -11,8 +12,8 @@
             <p class="confirm-title" id="delete-modal-title">Delete "{skillEditorState.chapterToDelete.name}"?</p>
             <p class="confirm-desc">{m.builder_deleteChapterDesc()}</p>
             <div class="confirm-actions">
-                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.chapterToDelete = null; }}>{m.builder_keepChapter()}</button>
-                <button type="button" class="confirm-btn delete" onclick={executeDeleteChapter}>{m.builder_deleteChapterBtn()}</button>
+                <Button variant="ghost" type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.chapterToDelete = null; }}>{m.builder_keepChapter()}</Button>
+                <Button variant="ghost" type="button" class="confirm-btn delete" onclick={executeDeleteChapter}>{m.builder_deleteChapterBtn()}</Button>
             </div>
         </div>
     </div>
@@ -23,7 +24,7 @@
         position: fixed;
         inset: 0;
         z-index: var(--layer-debug);
-        background: rgba(0, 0, 0, 0.5);
+        background: color-mix(in srgb, var(--color-canvas) 50%, transparent);
         backdrop-filter: blur(2px);
         display: flex;
         align-items: center;

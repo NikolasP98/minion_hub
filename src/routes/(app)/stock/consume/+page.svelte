@@ -205,7 +205,7 @@
                         oninput={(e) => setLineConsumption(l, Number((e.currentTarget as HTMLInputElement).value))}
                       />
                       <span class="qty-uom">{l.consumptionUom ?? l.uom}</span>
-                      <button class="rm-btn" title={m.common_remove()} onclick={() => removeLine(i)}><Trash2 size={13} /></button>
+                      <Button variant="ghost" class="rm-btn" title={m.common_remove()} onclick={() => removeLine(i)}><Trash2 size={13} /></Button>
                     </div>
                   </div>
                   {#if gMax > 0}

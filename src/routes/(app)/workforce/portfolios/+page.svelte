@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
-	import { PageHeader } from '$lib/components/ui';
+	import { PageHeader, Button } from '$lib/components/ui';
 	import { Layers, FolderPlus, Bot } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { canAct } from '$lib/access/can.svelte';
@@ -51,12 +51,12 @@
 					bind:value={name}
 					onkeydown={(e) => e.key === 'Enter' && create()}
 				/>
-				<button
+				<Button variant="ghost"
 					class="btn"
 					disabled={busy || !name.trim() || !canAct('projects', 'edit')}
 					title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 					onclick={create}
-				><FolderPlus size={15} /> {m.workforce_portfolios_create()}</button>
+				><FolderPlus size={15} /> {m.workforce_portfolios_create()}</Button>
 			</div>
 			<div class="create-row">
 				<textarea class="in ta" rows="2" placeholder={m.workforce_portfolios_objectivePlaceholder()} bind:value={objective}></textarea>

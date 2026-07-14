@@ -89,28 +89,28 @@
     {:else}
       <ul class="tree">
         {#each tree as w (w.id)}
-          <li class="row" style="padding-left: {w.depth * 1.5}rem">
+          <li class="row" style={`--tree-depth:${w.depth}`}>
             <span class="name">{w.name}</span>
             {#if w.isDefault}
               <span class="default-badge"><Star size={12} fill="currentColor" /> {m.stock_wh_default()}</span>
             {:else}
-              <button
+              <Button variant="ghost"
                 class="add-child"
                 onclick={() => setDefault(w.id)}
                 disabled={!canAct('stock', 'edit') || settingDefaultId === w.id}
                 title={canAct('stock', 'edit') ? m.stock_wh_set_default() : m.no_permission()}
               >
                 <Star size={12} /> {m.stock_wh_set_default()}
-              </button>
+              </Button>
             {/if}
-            <button
+            <Button variant="ghost"
               class="add-child"
               onclick={() => openNew(w.id)}
               disabled={!canAct('stock', 'create')}
               title={canAct('stock', 'create') ? m.stock_add_child() : m.no_permission()}
             >
               <Plus size={12} /> {m.stock_add_child()}
-            </button>
+            </Button>
           </li>
         {/each}
       </ul>
@@ -134,10 +134,10 @@
 
 <style>
   .tree { display: flex; flex-direction: column; gap: var(--space-1); max-width: 36rem; }
-  .row { display: flex; align-items: center; gap: var(--space-2); padding-top: var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--hairline); }
+  .row { display: flex; align-items: center; gap: var(--space-2); padding-top: var(--space-2); padding-bottom: var(--space-2); padding-left: calc(var(--tree-depth, 0) * var(--space-6)); border-bottom: 1px solid var(--hairline); }
   .name { flex: 1; font-size: var(--font-size-page-title); }
   .add-child { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-caption); color: var(--color-muted-foreground); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); cursor: pointer; }
-  .add-child:hover { color: var(--color-foreground); background: rgba(255, 255, 255, 0.05); }
+  .add-child:hover { color: var(--color-foreground); background: color-mix(in srgb, var(--color-text-primary) 5%, transparent); }
   .add-child:disabled { opacity: 0.5; cursor: not-allowed; }
   .default-badge { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-caption); color: var(--color-warning, var(--color-warning-fg)); }
   .fld { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-body); color: var(--color-muted-foreground); }

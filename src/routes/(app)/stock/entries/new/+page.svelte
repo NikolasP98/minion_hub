@@ -184,9 +184,9 @@
           <p class="t-caption">{m.stock_step_type_hint()}</p>
           <div class="type-grid">
             {#each ['receipt', 'issue', 'transfer', 'adjustment'] as t (t)}
-              <button class="type-btn" class:active={type === t} onclick={() => (type = t as EntryType)}>
+              <Button variant="ghost" class="type-btn" class:active={type === t} onclick={() => (type = t as EntryType)}>
                 {t === 'receipt' ? m.stock_type_receipt() : t === 'issue' ? m.stock_type_issue() : t === 'transfer' ? m.stock_type_transfer() : m.stock_type_adjustment()}
-              </button>
+              </Button>
             {/each}
           </div>
           <PartyPicker bind:value={partyId} label={m.stock_field_party()} />
@@ -256,7 +256,7 @@
                     <td class="num">{l.qty}</td>
                     <td>{l.fromWarehouseId ? warehouseLabel(l.fromWarehouseId) : '—'}</td>
                     <td>{l.toWarehouseId ? warehouseLabel(l.toWarehouseId) : '—'}</td>
-                    <td><button class="rm-btn" onclick={() => removeLine(i)}><Trash2 size={13} /></button></td>
+                    <td><Button variant="ghost" class="rm-btn" onclick={() => removeLine(i)}><Trash2 size={13} /></Button></td>
                   </tr>
                 {/each}
               </tbody>

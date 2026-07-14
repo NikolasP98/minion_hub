@@ -1,5 +1,6 @@
 <script lang="ts">
-    import {
+  import { Button, Select } from '$lib/components/ui';
+import {
         ArrowLeft,
         Wrench,
         Play,
@@ -77,9 +78,9 @@
 
 <div class="editor-toolbar">
     <div class="toolbar-left">
-        <button type="button" onclick={back.go} class="back-link" title="Back to Tools">
+        <Button variant="ghost" type="button" onclick={back.go} class="back-link" title="Back to Tools">
             <ArrowLeft size={16} />
-        </button>
+        </Button>
 
         <div class="toolbar-divider"></div>
 
@@ -104,28 +105,28 @@
             {#if !isGatewayTool && isAdmin}
                 <div class="toolbar-divider"></div>
                 <div class="perm-picker">
-                    <select
+                    <Select size="sm"
                         class="perm-select"
                         aria-label={m.tools_editor_permissionModuleLabel()}
                         bind:value={permModule}
-                        onchange={onPermChange}
+                        onchange={() => onPermChange()}
                     >
                         <option value="">{m.tools_editor_permissionNone()}</option>
                         {#each PERM_MODULES as mod (mod)}
                             <option value={mod}>{mod}</option>
                         {/each}
-                    </select>
+                    </Select>
                     {#if permModule}
-                        <select
+                        <Select size="sm"
                             class="perm-select"
                             aria-label={m.tools_editor_permissionActionLabel()}
                             bind:value={permAction}
-                            onchange={onPermChange}
+                            onchange={() => onPermChange()}
                         >
                             {#each PERM_ACTIONS as act (act)}
                                 <option value={act}>{act}</option>
                             {/each}
-                        </select>
+                        </Select>
                     {/if}
                 </div>
             {/if}
@@ -137,7 +138,7 @@
             <!-- Gateway tool: enable/disable toggle (admin only) -->
             {#if isAdmin}
                 <div class="toolbar-divider"></div>
-                <button
+                <Button variant="ghost"
                     type="button"
                     class="toolbar-btn {gatewayTool.enabled ? 'published' : 'run'}"
                     onclick={onToggleGatewayToolEnabled}
@@ -150,7 +151,7 @@
                         <Power size={14} />
                         <span class="hidden-sm">{m.builder_enable()}</span>
                     {/if}
-                </button>
+                </Button>
             {/if}
         {:else}
             <!-- Custom builder tool: IDE toolbar -->
@@ -158,21 +159,21 @@
                 <!-- Language Selector -->
                 <div class="lang-selector">
                     {#each langOptions as lang (lang.id)}
-                        <button
+                        <Button variant="ghost"
                             type="button"
                             class="lang-pill"
                             class:active={scriptLang === lang.id}
                             onclick={() => onSwitchLanguage(lang.id)}
                         >
                             {lang.label}
-                        </button>
+                        </Button>
                     {/each}
                 </div>
 
                 <div class="toolbar-divider"></div>
 
                 <!-- Run Button -->
-                <button
+                <Button variant="ghost"
                     type="button"
                     class="toolbar-btn run"
                     onclick={onRunTool}
@@ -185,7 +186,7 @@
                         <Play size={14} />
                     {/if}
                     <span class="hidden-sm">{m.builder_run()}</span>
-                </button>
+                </Button>
 
                 <div class="toolbar-divider"></div>
 
@@ -207,7 +208,7 @@
                 </span>
 
                 <!-- Publish Button -->
-                <button
+                <Button variant="ghost"
                     type="button"
                     class="toolbar-btn {status === 'published' ? 'published' : 'primary'}"
                     onclick={onPublishTool}
@@ -228,7 +229,7 @@
                                 ? m.builder_republish()
                                 : m.builder_publish()}</span
                     >
-                </button>
+                </Button>
             {:else}
                 <span class="toolbar-source">{scriptLang}</span>
             {/if}

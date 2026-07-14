@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertical } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
+import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertical } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 	import CodeMirrorEditor from './CodeMirrorEditor.svelte';
 	import { varAccessor, querySnippet, sqlTemplate, type Lang } from './tool-editor-snippets';
@@ -88,7 +89,7 @@
 	<!-- Variables Panel: Env / System / Module / Database / Queries tabs -->
 	<div class="env-panel" class:collapsed={!envVarsExpanded}>
 		<div class="env-header">
-			<button
+			<Button variant="ghost"
 				type="button"
 				class="env-toggle"
 				onclick={onToggleExpanded}
@@ -99,24 +100,24 @@
 				{:else}
 					<ChevronRight size={14} />
 				{/if}
-			</button>
+			</Button>
 			<div class="var-tabs">
-				<button type="button" class="var-tab" class:active={activeVarTab === 'env'} onclick={() => (activeVarTab = 'env')}>
+				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'env'} onclick={() => (activeVarTab = 'env')}>
 					<span>{m.tools_editor_envVarsTab()}</span>
 					<span class="env-count">{envVars.length}</span>
-				</button>
-				<button type="button" class="var-tab" class:active={activeVarTab === 'system'} onclick={() => (activeVarTab = 'system')}>
+				</Button>
+				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'system'} onclick={() => (activeVarTab = 'system')}>
 					{m.tools_editor_systemVarsTab()}
-				</button>
-				<button type="button" class="var-tab" class:active={activeVarTab === 'module'} onclick={() => (activeVarTab = 'module')}>
+				</Button>
+				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'module'} onclick={() => (activeVarTab = 'module')}>
 					{m.tools_editor_moduleVarsTab()}
-				</button>
-				<button type="button" class="var-tab" class:active={activeVarTab === 'database'} onclick={() => (activeVarTab = 'database')}>
+				</Button>
+				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'database'} onclick={() => (activeVarTab = 'database')}>
 					{m.tools_editor_databaseVarsTab()}
-				</button>
-				<button type="button" class="var-tab" class:active={activeVarTab === 'queries'} onclick={() => (activeVarTab = 'queries')}>
+				</Button>
+				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'queries'} onclick={() => (activeVarTab = 'queries')}>
 					{m.tools_editor_queriesTab()}
-				</button>
+				</Button>
 			</div>
 		</div>
 
@@ -144,7 +145,7 @@
 								{:else}
 									<input type="password" class="env-value" bind:value={envVar.value} placeholder="value" oninput={onCodeChange} />
 								{/if}
-								<button
+								<Button variant="ghost"
 									type="button"
 									class="env-reveal"
 									onclick={() => onToggleReveal(i)}
@@ -155,17 +156,17 @@
 									{:else}
 										<Eye size={12} />
 									{/if}
-								</button>
+								</Button>
 							</div>
-							<button type="button" class="env-remove" onclick={() => onRemoveEnvVar(i)} title="Remove variable">
+							<Button variant="ghost" type="button" class="env-remove" onclick={() => onRemoveEnvVar(i)} title="Remove variable">
 								<Trash2 size={12} />
-							</button>
+							</Button>
 						</div>
 					{/each}
-					<button type="button" class="env-add" onclick={onAddEnvVar}>
+					<Button variant="ghost" type="button" class="env-add" onclick={onAddEnvVar}>
 						<Plus size={12} />
 						<span>{m.builder_addVariable()}</span>
-					</button>
+					</Button>
 				{:else if activeVarTab === 'system'}
 					{#each variablesData?.system ?? [] as v (v.key)}
 						<div
@@ -178,9 +179,9 @@
 						>
 							<div class="var-row-main">
 								<span class="var-key"><GripVertical size={11} class="grip" />{v.key}</span>
-								<button type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
+								<Button variant="ghost" type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
 									<Copy size={11} />
-								</button>
+								</Button>
 							</div>
 							<span class="var-desc">{v.description}</span>
 						</div>
@@ -199,9 +200,9 @@
 						>
 							<div class="var-row-main">
 								<span class="var-key"><GripVertical size={11} class="grip" />{v.key}</span>
-								<button type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
+								<Button variant="ghost" type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
 									<Copy size={11} />
-								</button>
+								</Button>
 							</div>
 							<span class="var-path">{v.path}</span>
 							<span class="var-desc">{v.description}</span>
@@ -221,9 +222,9 @@
 						>
 							<div class="var-row-main">
 								<span class="var-key"><GripVertical size={11} class="grip" />{v.key}</span>
-								<button type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
+								<Button variant="ghost" type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
 									<Copy size={11} />
-								</button>
+								</Button>
 							</div>
 							{#if v.value}<span class="var-path">{v.value}</span>{/if}
 							<span class="var-desc">{v.description}</span>
@@ -249,9 +250,9 @@
 						>
 							<div class="snippet-head">
 								<span class="var-key"><GripVertical size={11} class="grip" />{v.path}</span>
-								<button type="button" class="var-copy" onclick={() => copyText(snippet)} title={m.tools_editor_copySnippet()}>
+								<Button variant="ghost" type="button" class="var-copy" onclick={() => copyText(snippet)} title={m.tools_editor_copySnippet()}>
 									<Copy size={11} />
-								</button>
+								</Button>
 							</div>
 							<pre class="snippet-code">{snippet}</pre>
 						</div>
@@ -272,9 +273,9 @@
 						>
 							<div class="snippet-head">
 								<span class="var-key"><GripVertical size={11} class="grip" />{tbl.name}</span>
-								<button type="button" class="var-copy" onclick={() => copyText(tmpl)} title={m.tools_editor_copySnippet()}>
+								<Button variant="ghost" type="button" class="var-copy" onclick={() => copyText(tmpl)} title={m.tools_editor_copySnippet()}>
 									<Copy size={11} />
-								</button>
+								</Button>
 							</div>
 							<pre class="snippet-code">{tmpl}</pre>
 						</div>

@@ -101,7 +101,7 @@
 				<Sparkline values={trendValues} width={1000} height={120} strokeWidth={2} />
 			</div>
 			<!-- Date labels (every other day to reduce noise) -->
-			<div class="flex justify-between text-[10px] text-muted-foreground font-mono px-1">
+      <div class="flex justify-between t-telemetry text-muted-foreground px-1">
 				{#each trend as p, i (p.date)}
 					{#if i === 0 || i === trend.length - 1 || i % 2 === 0}
 						<span>{p.date.slice(5)}</span>
@@ -198,7 +198,7 @@
 								style="width: {(row.cents / maxProviderCents) * 100}%"
 							></div>
 						</div>
-						<div class="text-[10px] text-muted-strong mt-1 font-mono">
+            <div class="t-telemetry text-muted-strong mt-1">
 							{row.requests} {m.costs_requests()}
 						</div>
 					</div>

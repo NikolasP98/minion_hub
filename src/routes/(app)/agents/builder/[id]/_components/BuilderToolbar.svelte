@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
+  import { Button } from '$lib/components/ui';
+import { onDestroy } from "svelte";
     import { ArrowLeft, Bot, Loader2, Check, Upload, Circle } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
     import { createBackNav } from '$lib/nav/back-nav.svelte';
@@ -51,9 +52,9 @@
 
 <div class="editor-toolbar">
     <div class="flex items-center gap-3 min-w-0">
-        <button type="button" onclick={back.go} class="back-link" title="Back to Agents" aria-label="Back to Agents">
+        <Button variant="ghost" type="button" onclick={back.go} class="back-link" title="Back to Agents" aria-label="Back to Agents">
             <ArrowLeft size={16} />
-        </button>
+        </Button>
 
         <div class="h-5 w-px bg-border/60 shrink-0"></div>
 
@@ -90,7 +91,7 @@
 
         <div class="h-4 w-px bg-border/60"></div>
 
-        <button
+        <Button variant="ghost"
             type="button"
             class="toolbar-btn {status === 'published' ? 'published' : 'primary'}"
             onclick={onPublish}
@@ -103,7 +104,7 @@
                 <Upload size={14} />
             {/if}
             <span class="hidden sm:inline">{publishing ? m.builder_publishing() : status === 'published' ? m.builder_republish() : m.builder_publish()}</span>
-        </button>
+        </Button>
     </div>
 </div>
 

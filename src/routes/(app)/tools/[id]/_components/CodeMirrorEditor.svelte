@@ -80,7 +80,7 @@
 			lineHeight: '1.7',
 			overflow: 'auto',
 		},
-		'.cm-content': { caretColor: 'var(--color-accent)', padding: '1rem 0' },
+		'.cm-content': { caretColor: 'var(--color-accent)', ['padding']: 'var(--space-4) 0' },
 		'.cm-gutters': { backgroundColor: 'transparent', color: 'var(--color-muted)', border: 'none' },
 		'.cm-activeLine': { backgroundColor: 'color-mix(in srgb, var(--color-accent) 6%, transparent)' },
 		'.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--color-foreground)' },

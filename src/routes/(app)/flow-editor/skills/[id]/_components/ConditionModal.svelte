@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { GitBranch, XCircle, CheckCircle2 } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { GitBranch, XCircle, CheckCircle2 } from "lucide-svelte";
     import {
         skillEditorState, skillEditorDerived,
         saveCondition, updateCondition,
@@ -13,7 +14,7 @@
             <div class="condition-modal-header">
                 <GitBranch size={16} class="condition-icon" />
                 <span class="condition-modal-title" id="condition-modal-title">{skillEditorState.editingCondition.id ? m.builder_editCondition() : m.builder_newCondition()}</span>
-                <button type="button" class="close-btn" onclick={() => { skillEditorState.editingCondition = null; }} aria-label="Close">&times;</button>
+                <Button variant="ghost" type="button" class="close-btn" onclick={() => { skillEditorState.editingCondition = null; }} aria-label="Close">&times;</Button>
             </div>
             <div class="condition-modal-body">
                 <div class="condition-field">
@@ -46,13 +47,13 @@
                 </div>
             </div>
             <div class="condition-modal-footer">
-                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.editingCondition = null; }}>{m.common_cancel()}</button>
-                <button
+                <Button variant="ghost" type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.editingCondition = null; }}>{m.common_cancel()}</Button>
+                <Button variant="ghost"
                     type="button"
                     class="confirm-btn primary"
                     disabled={!skillEditorDerived.conditionValidation.valid}
                     onclick={skillEditorState.editingCondition.id ? updateCondition : saveCondition}
-                >{skillEditorState.editingCondition.id ? m.builder_update() : m.builder_create()}</button>
+                >{skillEditorState.editingCondition.id ? m.builder_update() : m.builder_create()}</Button>
             </div>
         </div>
     </div>
@@ -63,7 +64,7 @@
         position: fixed;
         inset: 0;
         z-index: var(--layer-debug);
-        background: rgba(0, 0, 0, 0.5);
+        background: color-mix(in srgb, var(--color-canvas) 50%, transparent);
         backdrop-filter: blur(2px);
         display: flex;
         align-items: center;

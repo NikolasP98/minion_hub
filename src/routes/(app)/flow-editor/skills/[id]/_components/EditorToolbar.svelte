@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, RotateCcw, Wrench, X, FlaskConical } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, RotateCcw, Wrench, X, FlaskConical } from "lucide-svelte";
     import {
         skillEditorState, skillEditorDerived,
         scheduleSave, handlePublishClick, clearDryRun,
@@ -14,9 +15,9 @@
 
 <div class="editor-toolbar">
     <div class="flex items-center gap-3 min-w-0">
-        <button type="button" onclick={back.go} class="back-link" title="Back to Flows">
+        <Button variant="ghost" type="button" onclick={back.go} class="back-link" title="Back to Flows">
             <ArrowLeft size={16} />
-        </button>
+        </Button>
 
         <div class="h-5 w-px bg-border/60 shrink-0"></div>
 
@@ -62,7 +63,7 @@
 
         <div class="h-4 w-px bg-border/60"></div>
 
-        <button
+        <Button variant="ghost"
             type="button"
             class="toolbar-btn {showDryRun ? 'active' : ''}"
             title={m.builder_testRunSkill()}
@@ -70,9 +71,9 @@
         >
             <FlaskConical size={14} />
             <span class="hidden sm:inline">{m.builder_test()}</span>
-        </button>
+        </Button>
 
-        <button
+        <Button variant="ghost"
             type="button"
             class="toolbar-btn validation-btn {skillEditorDerived.worstLevel}"
             title={skillEditorDerived.validationTooltip}
@@ -86,8 +87,8 @@
                 <CheckCircle2 size={14} />
             {/if}
             <span class="hidden sm:inline">{m.builder_validationTitle()}</span>
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
             type="button"
             class="toolbar-btn {skillEditorState.status === 'published' ? 'published' : 'primary'}"
             onclick={handlePublishClick}
@@ -102,7 +103,7 @@
                 <Upload size={14} />
             {/if}
             <span class="hidden sm:inline">{skillEditorState.publishing ? m.builder_publishing() : skillEditorState.status === 'published' ? m.builder_republish() : m.builder_publish()}</span>
-        </button>
+        </Button>
     </div>
 </div>
 

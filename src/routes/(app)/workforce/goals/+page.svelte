@@ -116,13 +116,13 @@
 			{#each flat as goal (goal.id)}
 				<li
 					class="relative rounded-lg border border-border border-l-4 bg-card px-4 py-3 text-sm flex flex-col gap-1.5 transition-colors hover:border-foreground/30 {LEVEL_TINT[goal.level]}"
-					style="margin-left: {goal.depth * 1.5}rem"
+					style={`--goal-depth:${goal.depth}`}
 				>
 					<div class="flex items-center gap-3 flex-wrap">
-						<span class="rounded px-1.5 py-0.5 text-[10px] font-medium {STATUS_BADGE[goal.status]}">
+						<span class="rounded px-1.5 py-0.5 t-telemetry font-medium {STATUS_BADGE[goal.status]}">
 							{STATUS_LABELS[goal.status]}
 						</span>
-						<span class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+						<span class="t-telemetry uppercase tracking-wider text-muted-foreground">
 							{LEVEL_LABEL[goal.level]}
 						</span>
 						<span class="font-medium flex-1 min-w-0 truncate">{goal.title}</span>
@@ -136,3 +136,9 @@
 		</ul>
 	{/if}
 </main>
+
+<style>
+	li[style*='--goal-depth'] {
+		margin-left: calc(var(--goal-depth, 0) * var(--space-6));
+	}
+</style>
