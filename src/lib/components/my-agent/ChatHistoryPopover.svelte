@@ -5,6 +5,7 @@
   import { Popover } from '$lib/components/ui';
   import { sendRequest } from '$lib/services/gateway-rpc';
   import { History, MessageSquareText } from 'lucide-svelte';
+  import { untrack } from 'svelte';
 
   type HistorySession = {
     key: string;
@@ -113,7 +114,10 @@
   }
 
   $effect(() => {
-    if (open) void loadSessions();
+    // Track only the popover transition. loadSessions reads and writes
+    // `loading`, `sessions`, and props; tracking those here creates a request
+    // loop that reloads whenever the previous request finishes.
+    if (open) untrack(() => void loadSessions());
   });
 
   async function choose(key: string) {

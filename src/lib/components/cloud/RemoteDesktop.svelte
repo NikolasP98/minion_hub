@@ -3,6 +3,8 @@
   import { Expand, ExternalLink, Monitor, RefreshCw } from 'lucide-svelte';
   import { Button } from '$lib/components/ui';
   import { AsyncBoundary, type AsyncBoundaryState } from '$lib/components/ui/foundations';
+  import { onDestroy, untrack } from 'svelte';
+  import { AccessSessionSelection } from './access-session';
   import * as m from '$lib/paraglide/messages';
 
   let { shell }: { shell: ShellSummary } = $props();
@@ -11,6 +13,7 @@
   let error = $state<string | null>(null);
   let loading = $state(false);
   let generation = 0;
+  const sessionSelection = new AccessSessionSelection();
 
   const accessState = $derived.by<AsyncBoundaryState>(() => {
     if (loading || (!url && !error)) {
@@ -43,13 +46,13 @@
     return parsed.toString();
   }
 
-  async function connect(): Promise<void> {
+  async function connect(shellId = shell.shellId): Promise<void> {
     const current = ++generation;
     loading = true;
     error = null;
     url = null;
     try {
-      const access = await createShellAccess(shell.shellId, 'desktop');
+      const access = await createShellAccess(shellId, 'desktop');
       if (current !== generation) return;
       url = safeDesktopUrl(access.url);
     } catch (err) {
@@ -65,11 +68,15 @@
   }
 
   $effect(() => {
-    shell.shellId;
-    void connect();
-    return () => {
-      generation += 1;
-    };
+    const shellId = shell.shellId;
+    // Inventory polling replaces ShellSummary objects. Reconnect only when the
+    // selected workstation identity changes, not when its metadata refreshes.
+    if (!sessionSelection.select(shellId)) return;
+    untrack(() => void connect(shellId));
+  });
+
+  onDestroy(() => {
+    generation += 1;
   });
 </script>
 

@@ -3,6 +3,8 @@
   import { ExternalLink, RefreshCw, SquareTerminal } from 'lucide-svelte';
   import { Button } from '$lib/components/ui';
   import { AsyncBoundary, type AsyncBoundaryState } from '$lib/components/ui/foundations';
+  import { onDestroy, untrack } from 'svelte';
+  import { AccessSessionSelection } from './access-session';
   import * as m from '$lib/paraglide/messages';
 
   let { shell }: { shell: ShellSummary } = $props();
@@ -15,6 +17,7 @@
   let transport = $state<'websocket' | 'iframe' | null>(null);
   let cleanup: (() => void) | null = null;
   let generation = 0;
+  const sessionSelection = new AccessSessionSelection();
 
   const accessState = $derived.by<AsyncBoundaryState>(() => {
     if (connecting || (!transport && !error)) {
@@ -42,7 +45,7 @@
     throw new Error(m.cloud_access_invalid_url());
   }
 
-  async function connect(): Promise<void> {
+  async function connect(shellId = shell.shellId, displayName = shell.displayName): Promise<void> {
     const current = ++generation;
     cleanup?.();
     cleanup = null;
@@ -52,13 +55,13 @@
     transport = null;
     status = m.cloud_access_connecting();
     try {
-      const access = await createShellAccess(shell.shellId, 'terminal');
+      const access = await createShellAccess(shellId, 'terminal');
       if (current !== generation) return;
       const target = safeAccessUrl(access.url);
       accessUrl = target.url;
       transport = target.transport;
       if (target.transport === 'iframe') {
-        status = m.cloud_access_connected({ name: shell.displayName });
+        status = m.cloud_access_connected({ name: displayName });
         return;
       }
 
@@ -73,7 +76,7 @@
       const socket = new WebSocket(target.url, protocols);
       socket.binaryType = 'arraybuffer';
       socket.addEventListener('open', () => {
-        status = m.cloud_access_connected({ name: shell.displayName });
+        status = m.cloud_access_connected({ name: displayName });
         term.onData = (data: string) => {
           if (socket.readyState === WebSocket.OPEN) socket.send(data);
         };
@@ -104,13 +107,17 @@
   }
 
   $effect(() => {
-    shell.shellId;
-    void connect();
-    return () => {
-      generation += 1;
-      cleanup?.();
-      cleanup = null;
-    };
+    const shellId = shell.shellId;
+    // Preserve a live PTY when a background poll replaces metadata for the
+    // same workstation. A different shell id still creates a fresh transport.
+    if (!sessionSelection.select(shellId)) return;
+    untrack(() => void connect(shellId, shell.displayName));
+  });
+
+  onDestroy(() => {
+    generation += 1;
+    cleanup?.();
+    cleanup = null;
   });
 </script>
 
