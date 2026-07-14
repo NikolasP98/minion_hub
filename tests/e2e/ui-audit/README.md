@@ -33,6 +33,23 @@ The six viewport IDs are the exact 360×800, 390×844, 768×1024, 1024×768,
 `medium`, and `wide` inputs remain deterministic aliases for 390, 768 portrait,
 and 1440 respectively; unknown values fail instead of silently taking a default.
 
+The full route matrix uses each audit account's default theme. Representative
+theme review must not multiply all 135 screens by four. Use the route filter to
+capture a bounded shell, collection, form, detail, canvas, and terminal sample:
+
+```bash
+representative='/home,/agents,/settings/appearance,/crm/[contactId],/agents/workshop/[id],/terminal'
+for theme in dark light crt voxelized; do
+  E2E_UI_AUDIT_THEME=$theme E2E_UI_AUDIT_ROUTES=$representative E2E_UI_AUDIT_VIEWPORT=compact-390 bun run audit:ui:capture
+  E2E_UI_AUDIT_THEME=$theme E2E_UI_AUDIT_ROUTES=$representative E2E_UI_AUDIT_VIEWPORT=wide-1440 bun run audit:ui:capture
+done
+```
+
+Theme preparation snapshots the disposable persona's existing server preference,
+sets the requested canonical preset/accent, reloads, and restores the prior value
+after capture. Unknown theme IDs and route filters containing non-screen patterns
+fail rather than silently reducing coverage.
+
 Outputs are written under `test-results/ui-audit/`. `tests/ui-audit/current-baseline.json` is the immutable pre-program endpoint ledger; regenerate only when the route surface intentionally changes.
 
 Each route result records console errors, uncaught page errors, failed requests,
