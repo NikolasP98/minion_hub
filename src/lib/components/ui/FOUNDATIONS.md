@@ -3,6 +3,34 @@
 Import the Phase 3 components from `$lib/components/ui/foundations`. They are
 additive until each domain migration removes its superseded local recipe.
 
+## Canonical imports
+
+- Portable controls and feedback primitives come from `@minion-stack/ui`:
+  `Button`, `IconButton`, `Badge`, `Card`, `Input`, `Textarea`, `Select`,
+  `Checkbox`, `Radio`, `Toggle`, `Spinner`, and `Skeleton`.
+- Hub composition and overlay foundations come from
+  `$lib/components/ui/foundations`: `Dialog`, `ConfirmDialog`, `Sheet`,
+  `AsyncBoundary`, the app/page shells, fields, layers, and draggable windows.
+- `$lib/components/ui` still exposes compatibility adapters for the historical
+  Hub `Select`, `Toggle`, `Spinner`, and `Skeleton` APIs. They delegate their
+  interaction, semantics, tokens, and motion to `@minion-stack/ui`; do not use
+  these legacy prop shapes in new code.
+- `Modal` is deprecated. Its compatibility component delegates to `Dialog`, but
+  new surfaces must choose `Dialog`, `ConfirmDialog`, or `Sheet` explicitly from
+  `$lib/components/ui/foundations`.
+
+The components that intentionally remain Hub-local are composites rather than
+portable atoms:
+
+- `Combobox`, `MultiSelectFilter`, `Dropdown`, `Popover`, `Tooltip`, and `Tabs`
+  own Hub overlay, filtering, or routed-selection behavior.
+- `PageHeader` and `SideNav` encode Hub page and navigation composition.
+- `EmptyState` and `StatusDot` combine product-specific feedback content and
+  status expansion behavior.
+- `MathFormula` integrates the Hub's third-party math rendering surface.
+- `DraggableDialog` is a feature compatibility composite; new floating surfaces
+  use the keyboard- and viewport-aware `DraggableWindow` foundation.
+
 ## Composition contract
 
 ```svelte
@@ -11,7 +39,7 @@ additive until each domain migration removes its superseded local recipe.
   <SectionShell>
     {#snippet navigation()}<SectionNav items={navItems} ariaLabel={sectionLabel} />{/snippet}
     <PageShell archetype="collection" scroll="page" labelledBy="agents-title">
-      <PageHeader titleId="agents-title" title={title} {primaryActions} {overflowActions} />
+      <PageHeader titleId="agents-title" {title} {primaryActions} {overflowActions} />
       <PageBody><AgentCollection /></PageBody>
     </PageShell>
   </SectionShell>

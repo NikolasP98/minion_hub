@@ -1,7 +1,8 @@
 // UI primitives barrel.
 // Co-located shadcn-style. Import via `$lib/components/ui`.
-// Button/Badge/Card/Input are the shared design-system primitives, re-exported
-// from @minion-stack/ui (the canonical source) so hub + site stay in sync.
+// Button/Badge/Card/Input are direct shared design-system exports. Select,
+// Toggle, Spinner, and Skeleton remain thin Hub compatibility adapters over
+// that same package until their legacy prop names are retired.
 export { Button, Badge, Card, Input } from '@minion-stack/ui';
 export { default as Spinner } from './Spinner.svelte';
 export { default as Skeleton } from './Skeleton.svelte';
@@ -27,10 +28,12 @@ export type {
   CardPadding,
   InputSize,
 } from '@minion-stack/ui';
-export type { ModalSize } from './Modal.svelte';
-export type { SelectSize, SelectOption, SelectValue } from './Select.svelte';
+export type { ModalProps, ModalSize } from './Modal.svelte';
+export type { SelectProps, SelectSize, SelectOption, SelectValue } from './Select.svelte';
 export type { MultiSelectOption } from './MultiSelectFilter.svelte';
-export type { ToggleSize } from './Toggle.svelte';
+export type { ToggleProps, ToggleSize } from './Toggle.svelte';
+export type { SpinnerProps, SpinnerSize } from './Spinner.svelte';
+export type { SkeletonProps } from './Skeleton.svelte';
 export type { TabsSize, TabItem } from './Tabs.svelte';
 export type { EmptyStateTone } from './EmptyState.svelte';
 export type { SideNavItem, SideNavGroup } from './SideNav.svelte';
