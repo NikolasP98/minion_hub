@@ -21,11 +21,11 @@ work and must not be marked migrated merely by inheriting the section shell.
 
 ### CRM
 
-- [ ] `/crm`
-- [ ] `/crm/[contactId]`
-- [ ] `/crm/customers`
+- [x] `/crm`
+- [x] `/crm/[contactId]`
+- [x] `/crm/customers`
 - [x] `/crm/insights`
-- [ ] `/crm/settings`
+- [x] `/crm/settings`
 
 ### Finances
 
