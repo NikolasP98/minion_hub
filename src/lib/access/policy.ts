@@ -31,6 +31,7 @@ const BASE_ACCESS: Record<string, Capability> = {
   'channels.view': { permission: 'channels:view' },
   'flows.view': { permission: 'flows:view' },
   'marketplace.view': { permission: 'marketplace:view' },
+  'workspace.view': { permission: 'workspace:view' },
 };
 
 /** Super-view keys auto-register as admin-only. */

@@ -14,7 +14,13 @@ import { sendRequest } from './gateway-rpc';
 // Types (mirror @minion-stack/shared/gateway/shells.ts byte-for-byte)
 // ---------------------------------------------------------------------------
 
-export type ShellHarness = 'hermes' | 'claude-code' | 'codex' | (string & {});
+export type ShellHarness =
+  'hermes' | 'claude-code' | 'opencode' | 'minion-drone' | 'pi' | (string & {});
+
+export type CloudRuntime =
+  'hermes' | 'obsidian-cli' | 'chromium' | 'claude-code' | 'opencode' | 'minion-drone' | 'pi';
+
+export type ShellProvider = 'exedev' | (string & {});
 
 export type ShellStatus = 'provisioning' | 'online' | 'archived' | 'error';
 
@@ -30,16 +36,27 @@ export type ShellBackupCadence = 'hourly' | 'daily' | 'weekly' | 'manual';
 
 export interface ShellSummary {
   shellId: string;
+  orgId: string;
   vmName: string;
   displayName: string;
+  provider: ShellProvider;
+  blueprint: string;
+  isDefault: boolean;
   harness: ShellHarness;
+  runtimes: CloudRuntime[];
   image: string;
   region: string;
   status: ShellStatus;
   errorReason?: ShellErrorReason;
   errorMessage?: string;
+  cpu: number;
   diskGB: number;
   memoryMB: number;
+  sshHost?: string;
+  sshCommand?: string;
+  terminalUrl?: string;
+  guiUrl?: string;
+  noVncUrl?: string;
   archiveIdleMs: number | null;
   backupCadence: ShellBackupCadence;
   backupTarget: string;
@@ -62,19 +79,35 @@ export interface ShellsQuota {
 export interface ShellsProvisionParams {
   displayName: string;
   harness: ShellHarness;
+  orgId?: string;
+  provider?: ShellProvider;
+  blueprint?: string;
+  /** A workspace can host several runtimes; `harness` remains the primary
+   *  compatibility field for gateways predating the cloud workspace UI. */
+  runtimes?: CloudRuntime[];
+  image?: string;
+  cpu?: number;
   region?: string;
   diskGB?: number;
   memoryMB?: number;
   archiveIdleMs?: number | null;
   backupCadence?: ShellBackupCadence;
+  isDefault?: boolean;
   initialPrompt?: string;
+}
+
+export type ShellAccessKind = 'desktop' | 'terminal';
+
+export interface ShellAccessSession {
+  url: string;
+  token?: string;
 }
 
 export interface ShellsProvisionResponse {
   shellId: string;
   vmName: string;
   status: ShellStatus;
-  deviceToken: string;
+  shell?: ShellSummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,6 +131,25 @@ export async function provisionShell(
   params: ShellsProvisionParams,
 ): Promise<ShellsProvisionResponse> {
   return (await sendRequest('shells.provision', params)) as ShellsProvisionResponse;
+}
+
+/** Resolve the selected instance's provider-authenticated access endpoint.
+ * Providers may later return a short-lived ticket in `token`; exe.dev keeps
+ * authentication on its private GUI/terminal URL. */
+export async function createShellAccess(
+  shellId: string,
+  kind: ShellAccessKind,
+): Promise<ShellAccessSession> {
+  return (await sendRequest('shells.access', { shellId, kind })) as ShellAccessSession;
+}
+
+export async function restartShell(
+  shellId: string,
+): Promise<{ shellId: string; status: ShellStatus }> {
+  return (await sendRequest('shells.restart', { shellId })) as {
+    shellId: string;
+    status: ShellStatus;
+  };
 }
 
 export async function archiveShell(
