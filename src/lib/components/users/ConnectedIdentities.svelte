@@ -6,6 +6,7 @@
   import { supabaseBrowser } from '$lib/supabase/client';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { Check, X } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
 
   type Identity = {
     id: string;
@@ -71,7 +72,7 @@
 
 <div class="bg-bg2 border border-border rounded-md overflow-hidden">
   <div class="px-3 py-2.5 border-b border-border">
-    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">{m.usersui_signInAccounts()}</div>
+    <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold">{m.usersui_signInAccounts()}</div>
   </div>
 
   {#if oauthIdentities.length === 0}
@@ -80,26 +81,26 @@
     <div class="divide-y divide-border/60">
       {#each oauthIdentities as id (id.id)}
         <div class="flex items-center gap-3 px-3 py-2.5">
-          <span class="grid place-items-center h-6 w-6 rounded-full bg-bg3/50 text-[11px] font-semibold text-foreground shrink-0">
+          <span class="grid place-items-center h-6 w-6 rounded-full bg-bg3/50 text-[length:var(--font-size-label)] font-semibold text-foreground shrink-0">
             {id.provider === 'google' ? 'G' : id.provider.charAt(0).toUpperCase()}
           </span>
           <span class="flex-1 min-w-0">
             <span class="block text-sm text-foreground capitalize">{id.provider}</span>
-            <span class="block text-[11px] text-muted-foreground truncate">{id.externalId}</span>
+            <span class="block text-[length:var(--font-size-label)] text-muted-foreground truncate">{id.externalId}</span>
           </span>
           {#if id.verifiedAt}
-            <span class="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-500/12 text-green-400 border border-green-500/20 shrink-0">
+            <span class="inline-flex items-center gap-1 text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-success/15 text-success border border-success/20 shrink-0">
               <Check size={10} /> {m.usersui_verified()}
             </span>
           {/if}
           {#if canRemoveOauth}
-            <button
+            <Button variant="ghost" size="xs"
               class="grid place-items-center h-6 w-6 rounded text-muted hover:text-destructive hover:bg-bg3/40 bg-transparent border-none cursor-pointer shrink-0"
               title={m.usersui_disconnect()}
               onclick={() => unlink(id)}
             >
               <X size={13} />
-            </button>
+            </Button>
           {/if}
         </div>
       {/each}
@@ -108,9 +109,9 @@
 
   {#if !hasGoogle}
     <div class="px-3 py-2.5 border-t border-border/60">
-      <button class="text-xs px-2.5 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30 cursor-pointer" onclick={connectGoogle}>
+      <Button variant="ghost" size="xs" class="text-xs px-2.5 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30 cursor-pointer" onclick={connectGoogle}>
         {m.usersui_connectGoogle()}
-      </button>
+      </Button>
     </div>
   {/if}
 </div>

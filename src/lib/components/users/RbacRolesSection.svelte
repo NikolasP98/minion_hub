@@ -16,7 +16,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
 	import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
-	import { Select, Tabs, Modal } from '$lib/components/ui';
+	import { Button, Select, Tabs, Modal } from '$lib/components/ui';
 
 	type ActionSet = Record<string, boolean>;
 	type SubResourceCaps = { key: string; label: string; caps: ActionSet; overridden: boolean };
@@ -405,7 +405,7 @@
 	<div class="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
 		{#each actions as a (a)}
 			{@const st = sub ? { checked: sub.caps[a] ?? false, indeterminate: false } : parentState(rm, a)}
-			<label class="flex items-center gap-2 text-[12px] capitalize text-foreground">
+			<label class="flex items-center gap-2 text-[length:var(--font-size-label)] capitalize text-foreground">
 				<input
 					type="checkbox"
 					class="accent-accent disabled:opacity-40"
@@ -426,7 +426,7 @@
 {#snippet moduleList(mods: string[])}
 	<div class="overflow-hidden rounded-md border border-border bg-bg2/30">
 		{#if mods.length === 0}
-			<div class="px-3 py-5 text-center text-[12px] text-muted">No modules.</div>
+			<div class="px-3 py-5 text-center text-[length:var(--font-size-label)] text-muted">No modules.</div>
 		{:else}
 			<div class="divide-y divide-border/40">
 				{#each mods as mod (mod)}
@@ -438,7 +438,7 @@
 						{@const sensitiveHidden = rm.fieldScopable && rm.fieldLevel < SENSITIVE_FIELD_LEVEL}
 						<div>
 							<div class="flex items-center gap-2 px-3 py-2.5">
-								<button
+								<Button variant="ghost" size="xs"
 									type="button"
 									class="rounded p-0.5 text-muted hover:bg-muted/20 hover:text-foreground"
 									title={isOpen ? 'Hide advanced' : 'Advanced (granular actions, scope, sections)'}
@@ -446,18 +446,18 @@
 									onclick={() => (expanded[mod] = !isOpen)}
 								>
 									{#if isOpen}<ChevronDown class="h-3.5 w-3.5" />{:else}<ChevronRight class="h-3.5 w-3.5" />{/if}
-								</button>
+								</Button>
 
 								<div class="min-w-0 flex-1">
 									<span class="flex items-center gap-1.5">
-										<span class="truncate text-[13px] text-foreground">{rm.label}</span>
+										<span class="truncate text-[length:var(--font-size-body)] text-foreground">{rm.label}</span>
 										{#if changed}
 											<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" title="Customised for this organization"></span>
 										{/if}
 									</span>
 									<!-- read-only summary of advanced state; full controls live in the panel below -->
 									{#if (rm.ownerScopable && rm.ifOwner) || sensitiveHidden || rm.subResources.length}
-										<span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
+										<span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[length:var(--font-size-telemetry)] text-muted">
 											{#if rm.ownerScopable && rm.ifOwner}
 												<span class="inline-flex items-center gap-1"><UserCheck class="h-3 w-3" /> Own records</span>
 											{/if}
@@ -482,7 +482,7 @@
 								/>
 
 								{#if editable && changed}
-									<button
+									<Button variant="ghost" size="xs"
 										type="button"
 										class="shrink-0 rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
 										title="Reset module to default"
@@ -490,7 +490,7 @@
 										onclick={() => resetModule(rm)}
 									>
 										<RotateCcw class="h-3 w-3" />
-									</button>
+									</Button>
 								{/if}
 							</div>
 
@@ -501,9 +501,9 @@
 									{#if rm.ownerScopable || rm.fieldScopable}
 										<div class="flex flex-wrap gap-2">
 											{#if rm.ownerScopable}
-												<button
+												<Button variant="ghost" size="xs"
 													type="button"
-													class="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors {rm.ifOwner
+													class="inline-flex items-center gap-1 rounded px-2 py-1 text-[length:var(--font-size-label)] transition-colors {rm.ifOwner
 														? 'bg-accent/15 text-accent'
 														: 'border border-border text-muted hover:bg-muted/20'}"
 													title={rm.ifOwner
@@ -514,13 +514,13 @@
 												>
 													<UserCheck class="h-3 w-3" />
 													{rm.ifOwner ? 'Own records only' : 'All records'}
-												</button>
+												</Button>
 											{/if}
 											{#if rm.fieldScopable}
 												{@const hidden = rm.fieldLevel < SENSITIVE_FIELD_LEVEL}
-												<button
+												<Button variant="ghost" size="xs"
 													type="button"
-													class="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors {hidden
+													class="inline-flex items-center gap-1 rounded px-2 py-1 text-[length:var(--font-size-label)] transition-colors {hidden
 														? 'bg-muted/20 text-muted'
 														: 'border border-border text-muted hover:bg-muted/20'}"
 													title={hidden
@@ -531,30 +531,30 @@
 												>
 													{#if hidden}<EyeOff class="h-3 w-3" />{:else}<Eye class="h-3 w-3" />{/if}
 													{hidden ? 'Sensitive hidden' : 'Sensitive visible'}
-												</button>
+												</Button>
 											{/if}
 										</div>
 									{/if}
 
 									{#if rm.subResources.length}
 										<div class="space-y-2.5 border-t border-border/30 pt-2.5">
-											<span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Sections</span>
+											<span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted">Sections</span>
 											{#each rm.subResources as sub (sub.key)}
 												<div>
 													<span class="mb-1 flex items-center gap-1.5">
-														<span class="text-[11px] text-foreground">{sub.label}</span>
+														<span class="text-[length:var(--font-size-label)] text-foreground">{sub.label}</span>
 														{#if sub.overridden}
 															<span class="h-1.5 w-1.5 rounded-full bg-accent" title="Set independently of the module"></span>
 														{/if}
 														{#if editable && sub.overridden}
-															<button
+															<Button variant="ghost" size="xs"
 																type="button"
 																class="rounded p-0.5 text-muted hover:bg-muted/20 hover:text-foreground"
 																title="Reset section to inherit the module"
 																onclick={() => resetSub(sub)}
 															>
 																<RotateCcw class="h-3 w-3" />
-															</button>
+															</Button>
 														{/if}
 													</span>
 													{@render actionGrid(rm, sub)}
@@ -575,7 +575,7 @@
 <section class="mx-auto min-h-0 max-w-5xl flex-1 overflow-y-auto px-4 pt-6">
 	<header class="mb-5">
 		<h2 class="text-base font-semibold text-foreground">Roles</h2>
-		<p class="mt-0.5 text-[12px] text-muted">
+		<p class="mt-0.5 text-[length:var(--font-size-label)] text-muted">
 			What each role can see and do across the dashboard. Pick an access level per module — None,
 			View, Edit, or Full — or open <span class="text-foreground">Advanced</span> for granular actions,
 			record scope, and sections. Every action requires View. The agent inherits the signed-in user's
@@ -587,13 +587,13 @@
 		<!-- Role list — full list on lg+, compact picker below (keeps the detail full-width on medium screens) -->
 		<aside class="hidden overflow-hidden rounded-lg border border-border bg-card lg:block">
 			<div class="border-b border-border/60 px-3 py-2.5">
-				<span class="text-[11px] font-semibold uppercase tracking-wider text-muted">All roles</span>
+				<span class="text-[length:var(--font-size-label)] font-semibold uppercase tracking-wider text-muted">All roles</span>
 			</div>
 			<ul class="divide-y divide-border/40">
 				{#each roles as r (r.key)}
 					{@const active = r.key === selectedKey}
 					<li class="group relative">
-						<button
+						<Button variant="ghost" size="xs"
 							type="button"
 							class="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors {active
 								? 'bg-accent/10'
@@ -603,47 +603,47 @@
 							<span class="h-1.5 w-1.5 rounded-full {active ? 'bg-accent' : 'bg-muted/50'}"></span>
 							<span class="min-w-0 flex-1">
 								<span class="flex items-center gap-1.5">
-									<span class="truncate text-[13px] font-medium text-foreground">{r.name}</span>
+									<span class="truncate text-[length:var(--font-size-body)] font-medium text-foreground">{r.name}</span>
 									{#if r.key === 'owner'}
 										<Lock class="h-3 w-3 text-muted" />
 									{:else if r.isSystem}
 										<ShieldCheck class="h-3 w-3 text-muted" />
 									{:else}
-										<span class="rounded bg-accent/15 px-1 py-0.5 text-[9px] font-medium text-accent">
+										<span class="rounded bg-accent/15 px-1 py-0.5 text-[length:var(--font-size-telemetry)] font-medium text-accent">
 											{m.roles_customBadge()}
 										</span>
 									{/if}
 								</span>
 								{#if r.description}
-									<span class="block truncate text-[11px] text-muted">{r.description}</span>
+									<span class="block truncate text-[length:var(--font-size-label)] text-muted">{r.description}</span>
 								{/if}
 							</span>
-							<span class="inline-flex items-center gap-1 text-[10px] text-muted">
+							<span class="inline-flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-muted">
 								<Users class="h-3 w-3" />
 								{r.memberCount}
 							</span>
-						</button>
+						</Button>
 						<span
 							class="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100"
 						>
-							<button
+							<Button variant="ghost" size="xs"
 								type="button"
 								class="rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
 								title={m.roles_duplicate()}
 								onclick={() => openDuplicate(r)}
 							>
 								<Copy class="h-3 w-3" />
-							</button>
+							</Button>
 							{#if !r.isSystem}
-								<button
+								<Button variant="ghost" size="xs"
 									type="button"
-									class="rounded p-1 text-muted hover:bg-red-500/15 hover:text-red-500 disabled:pointer-events-none disabled:opacity-40"
+									class="rounded p-1 text-muted hover:bg-destructive/15 hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
 									title={r.memberCount > 0 ? m.roles_deleteInUse({ count: String(r.memberCount) }) : m.roles_deleteCustom()}
 									disabled={r.memberCount > 0 || deleting === r.key}
 									onclick={() => deleteCustomRole(r)}
 								>
 									<Trash2 class="h-3 w-3" />
-								</button>
+								</Button>
 							{/if}
 						</span>
 					</li>
@@ -667,28 +667,28 @@
 			{#if selected}
 				<div class="space-y-4 p-4 sm:p-5">
 					<div class="flex flex-wrap items-center gap-2">
-						<h3 class="text-[15px] font-semibold text-foreground">{selected.name}</h3>
+						<h3 class="text-[length:var(--font-size-section-title)] font-semibold text-foreground">{selected.name}</h3>
 						{#if selected.key === 'owner'}
-							<span class="inline-flex items-center gap-1 rounded bg-muted/20 px-1.5 py-0.5 text-[10px] text-muted">
+							<span class="inline-flex items-center gap-1 rounded bg-muted/20 px-1.5 py-0.5 text-[length:var(--font-size-telemetry)] text-muted">
 								<Lock class="h-3 w-3" /> Full access (locked)
 							</span>
 						{:else if selected.isSystem}
-							<span class="inline-flex items-center gap-1 rounded bg-muted/20 px-1.5 py-0.5 text-[10px] text-muted">
+							<span class="inline-flex items-center gap-1 rounded bg-muted/20 px-1.5 py-0.5 text-[length:var(--font-size-telemetry)] text-muted">
 								<ShieldCheck class="h-3 w-3" /> Built-in
 							</span>
 						{/if}
-						<span class="ml-auto inline-flex items-center gap-1 text-[11px] text-muted">
+						<span class="ml-auto inline-flex items-center gap-1 text-[length:var(--font-size-label)] text-muted">
 							<Users class="h-3 w-3" />
 							{selected.memberCount} member{selected.memberCount === 1 ? '' : 's'}
 						</span>
 					</div>
 
 					{#if selected.description}
-						<p class="-mt-2 text-[12px] text-muted">{selected.description}</p>
+						<p class="-mt-2 text-[length:var(--font-size-label)] text-muted">{selected.description}</p>
 					{/if}
 
 					<!-- Plain-language summary + role-level revert -->
-					<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+					<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[length:var(--font-size-label)]">
 						<span class="text-muted">Business data:</span>
 						<span class="text-foreground">{groupSummary(businessModules)}</span>
 						<span class="text-muted/50">·</span>
@@ -698,14 +698,14 @@
 							<span class="text-muted/50">·</span>
 							<span class="text-accent">{totalChanged} changed from default</span>
 							{#if editable}
-								<button
+								<Button variant="ghost" size="xs"
 									type="button"
-									class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-muted/20 hover:text-foreground disabled:opacity-50"
+									class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[length:var(--font-size-label)] text-muted hover:bg-muted/20 hover:text-foreground disabled:opacity-50"
 									disabled={saving === '__all__'}
 									onclick={revertAll}
 								>
 									<RotateCcw class="h-3 w-3" /> Revert all
-								</button>
+								</Button>
 							{/if}
 						{/if}
 					</div>
@@ -722,13 +722,13 @@
 							]}
 						/>
 						{#if tabChanged > 0}
-							<button
+							<Button variant="ghost" size="xs"
 								type="button"
-								class="text-[11px] text-muted hover:text-foreground"
+								class="text-[length:var(--font-size-label)] text-muted hover:text-foreground"
 								onclick={() => (onlyChanged = !onlyChanged)}
 							>
 								{showOnlyChanged ? `Show all (${tabMods.length})` : 'Only changed'}
-							</button>
+							</Button>
 						{/if}
 					</div>
 
@@ -737,7 +737,7 @@
 					</div>
 				</div>
 			{:else}
-				<div class="p-10 text-center text-[12px] text-muted">No roles found.</div>
+				<div class="p-10 text-center text-[length:var(--font-size-label)] text-muted">No roles found.</div>
 			{/if}
 		</div>
 	</div>
@@ -746,12 +746,12 @@
 <Modal bind:open={duplicateOpen} title={m.roles_duplicateTitle()} size="sm">
 	{#if duplicateSource}
 		<div class="space-y-3">
-			<p class="text-[12px] text-muted">{m.roles_duplicateDescription({ source: duplicateSource.name })}</p>
+			<p class="text-[length:var(--font-size-label)] text-muted">{m.roles_duplicateDescription({ source: duplicateSource.name })}</p>
 			<label class="block space-y-1">
-				<span class="text-[11px] font-medium text-foreground">{m.roles_duplicateNameLabel()}</span>
+				<span class="text-[length:var(--font-size-label)] font-medium text-foreground">{m.roles_duplicateNameLabel()}</span>
 				<input
 					type="text"
-					class="w-full rounded border border-border bg-bg2 px-2.5 py-1.5 text-[13px] text-foreground"
+					class="w-full rounded border border-border bg-bg2 px-2.5 py-1.5 text-[length:var(--font-size-body)] text-foreground"
 					placeholder={m.roles_duplicateNamePlaceholder()}
 					bind:value={duplicateName}
 					onkeydown={(e) => e.key === 'Enter' && submitDuplicate()}
@@ -760,20 +760,20 @@
 		</div>
 	{/if}
 	{#snippet footer()}
-		<button
+		<Button variant="primary" size="sm"
 			type="button"
-			class="rounded px-3 py-1.5 text-[12px] text-muted hover:bg-muted/20 hover:text-foreground"
+			class="rounded px-3 py-1.5 text-[length:var(--font-size-label)] text-muted hover:bg-muted/20 hover:text-foreground"
 			onclick={() => (duplicateOpen = false)}
 		>
 			{m.common_cancel()}
-		</button>
-		<button
+		</Button>
+		<Button variant="ghost" size="xs"
 			type="button"
-			class="rounded bg-accent px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+			class="rounded bg-accent px-3 py-1.5 text-[length:var(--font-size-label)] font-medium text-accent-foreground disabled:opacity-50"
 			disabled={!duplicateName.trim() || duplicating}
 			onclick={submitDuplicate}
 		>
 			{duplicating ? m.roles_creating() : m.roles_duplicateSubmit()}
-		</button>
+		</Button>
 	{/snippet}
 </Modal>

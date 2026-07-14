@@ -23,7 +23,7 @@
 {#if open}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    class="fixed inset-0 z-[var(--layer-modal)] flex items-center justify-center bg-[var(--color-overlay)] backdrop-blur-sm"
     onclick={oncancel}
     onkeydown={handleKeydown}
   >

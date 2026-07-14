@@ -5,7 +5,7 @@
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
-  import { Select, Popover } from '$lib/components/ui';
+  import { Button, Select, Popover } from '$lib/components/ui';
   import { MoreVertical, Check, X, Plus } from 'lucide-svelte';
   import UserEditor from './UserEditor.svelte';
 
@@ -329,9 +329,9 @@
         <table class="w-full min-w-[420px] text-xs border-collapse">
           <thead>
             <tr class="border-b border-border bg-bg2">
-              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_name()}</th>
-              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_roles()}</th>
-              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">Company</th>
+              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">{m.users_name()}</th>
+              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">{m.users_roles()}</th>
+              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">Company</th>
               <th class="px-4 py-2.5"></th>
             </tr>
           </thead>
@@ -344,16 +344,16 @@
                 <td class="px-4 py-3">
                   <div class="font-semibold text-foreground">{u.displayName ?? u.email}</div>
                   {#if u.displayName}
-                    <div class="text-muted text-[10px] mt-0.5">{u.email}</div>
+                    <div class="text-muted text-[length:var(--font-size-telemetry)] mt-0.5">{u.email}</div>
                   {/if}
                   {#if u.alias}
-                    <div class="text-accent text-[10px] mt-0.5">@{u.alias}</div>
+                    <div class="text-accent text-[length:var(--font-size-telemetry)] mt-0.5">@{u.alias}</div>
                   {/if}
                 </td>
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
                   {#if u.role === 'admin'}
                     <span
-                      class="inline-flex items-center h-6 px-2 rounded-md text-[10px] font-semibold border bg-bg3 border-border text-muted-foreground"
+                      class="inline-flex items-center h-6 px-2 rounded-md text-[length:var(--font-size-telemetry)] font-semibold border bg-bg3 border-border text-muted-foreground"
                       title="Platform admin — full access"
                     >
                       {m.users_role()}: admin
@@ -364,26 +364,26 @@
                         {@const roleName = rbacRoles.find((r) => r.key === roleKey)?.name ?? roleKey}
                         {@const lastOwner = roleKey === 'owner' && ownerCount <= 1}
                         <span
-                          class="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md text-[10px] font-semibold border bg-accent/10 text-foreground border-accent/30"
+                          class="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md text-[length:var(--font-size-telemetry)] font-semibold border bg-accent/10 text-foreground border-accent/30"
                         >
                           {roleName}
-                          <button
+                          <Button variant="ghost" size="xs"
                             type="button"
                             aria-label={`Remove ${roleName}`}
                             disabled={lastOwner}
                             title={lastOwner ? m.users_cannotRemoveLastOwner() : undefined}
-                            class="flex items-center justify-center w-3.5 h-3.5 rounded-sm hover:bg-white/15 cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            class="flex items-center justify-center w-3.5 h-3.5 rounded-sm hover:bg-bg3 cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             onclick={() => removeRole(u.id, roleKey)}
                           >
                             <X size={10} />
-                          </button>
+                          </Button>
                         </span>
                       {/each}
                       {#if rbacRoles.some((r) => !u.memberRoles.includes(r.key))}
                         <Popover placement="bottom" bare>
                           {#snippet trigger()}
                             <span
-                              class="inline-flex items-center gap-0.5 h-6 px-1.5 rounded-md text-[10px] font-medium border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-white/25 transition-colors"
+                              class="inline-flex items-center gap-0.5 h-6 px-1.5 rounded-md text-[length:var(--font-size-telemetry)] font-medium border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-[var(--color-border-strong)] transition-colors"
                               title={m.users_addRole()}
                             >
                               <Plus size={11} />
@@ -391,18 +391,18 @@
                           {/snippet}
                           <div
                             role="listbox"
-                            class="min-w-[140px] max-h-[240px] overflow-y-auto rounded-lg border border-border bg-bg2 shadow-[0_8px_24px_rgba(0,0,0,0.5)] p-1"
+                            class="min-w-[140px] max-h-[240px] overflow-y-auto rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay)] p-1"
                           >
                             {#each rbacRoles.filter((r) => !u.memberRoles.includes(r.key)) as r (r.key)}
-                              <button
+                              <Button variant="ghost" size="xs"
                                 type="button"
                                 role="option"
                                 aria-selected="false"
-                                class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[11px] cursor-pointer transition-colors text-muted-foreground hover:text-foreground hover:bg-bg3"
+                                class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[length:var(--font-size-label)] cursor-pointer transition-colors text-muted-foreground hover:text-foreground hover:bg-bg3"
                                 onclick={() => addRole(u.id, r.key)}
                               >
                                 {r.name}
-                              </button>
+                              </Button>
                             {/each}
                           </div>
                         </Popover>
@@ -412,17 +412,17 @@
                 </td>
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
                   {#if organizations.length === 0}
-                    <span class="text-muted text-[10px]">—</span>
+                    <span class="text-muted text-[length:var(--font-size-telemetry)]">—</span>
                   {:else}
                     <div class="flex items-center gap-1 flex-wrap max-w-[250px]">
                       {#each organizations as org (org.id)}
                         {@const isMember = (u.organizations ?? []).some((o) => o.id === org.id)}
-                        <button
+                        <Button variant="ghost" size="xs"
                           type="button"
-                          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer transition-colors
+                          class="inline-flex items-center px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] font-medium border cursor-pointer transition-colors
                             {isMember
                               ? 'bg-accent/15 text-accent border-accent/30 hover:bg-accent/25'
-                              : 'bg-bg2 text-muted-foreground border-border hover:border-white/20 hover:text-foreground'}"
+                              : 'bg-bg2 text-muted-foreground border-border hover:border-[var(--color-border-strong)] hover:text-foreground'}"
                           onclick={() => {
                             const current = new Set((u.organizations ?? []).map((o) => o.id));
                             if (current.has(org.id)) {
@@ -435,53 +435,53 @@
                           title={isMember ? `Member of ${org.name}` : `Add to ${org.name}`}
                         >
                           {org.name}
-                        </button>
+                        </Button>
                       {/each}
                     </div>
                   {/if}
                 </td>
                 <td class="px-4 py-3 text-right relative" onclick={(e) => e.stopPropagation()}>
-                  <button
+                  <Button variant="ghost" size="xs"
                     type="button"
                     class="text-muted hover:text-foreground transition-colors bg-transparent border-none cursor-pointer p-1 rounded-md hover:bg-bg2"
                     onclick={(e) => { e.stopPropagation(); openMenuId = openMenuId === u.id ? null : u.id; }}
                     title="Actions"
                   >
                     <MoreVertical size={14} />
-                  </button>
+                  </Button>
                   {#if openMenuId === u.id}
                     <div
-                      class="absolute right-2 top-full mt-1 z-50 w-44 bg-bg2 border border-border rounded-lg shadow-lg overflow-hidden py-1"
+                      class="absolute right-2 top-full mt-1 z-[var(--layer-modal)] w-44 bg-bg2 border border-border rounded-lg shadow-lg overflow-hidden py-1"
                       role="menu"
                       tabindex="-1"
                       onclick={(e) => e.stopPropagation()}
                       onkeydown={(e) => e.stopPropagation()}
                     >
-                      <button
+                      <Button variant="ghost" size="xs"
                         type="button"
                         class="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-bg3 transition-colors"
                         role="menuitem"
                         onclick={() => { toggleExpand(u.id); openMenuId = null; }}
                       >
                         Edit profile
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="ghost" size="xs"
                         type="button"
                         class="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-bg3 transition-colors"
                         role="menuitem"
                         onclick={() => { openMenuId = null; }}
                       >
                         Manage permissions
-                      </button>
+                      </Button>
                       <div class="border-t border-border my-1"></div>
-                      <button
+                      <Button variant="ghost" size="xs"
                         type="button"
                         class="w-full text-left px-3 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors"
                         role="menuitem"
                         onclick={() => { openMenuId = null; remove(u.id); }}
                       >
                         Delete user
-                      </button>
+                      </Button>
                     </div>
                   {/if}
                 </td>
@@ -505,12 +505,12 @@
       <!-- Invite section (below table) -->
       {#if can('users:invite')}
         <div class="mt-4 flex justify-end">
-          <button
-            class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
+          <Button variant="primary" size="sm"
+            class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
             onclick={() => (showInvite = !showInvite)}
           >
             {showInvite ? m.users_inviteCancelBtn() : m.users_inviteOpen()}
-          </button>
+          </Button>
         </div>
       {/if}
 
@@ -539,27 +539,27 @@
               <input
                 readonly
                 value={lastLinkUrl}
-                class="flex-1 bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-[11px] font-mono outline-none"
+                class="flex-1 bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-[length:var(--font-size-label)] font-mono outline-none"
               />
-              <button
+              <Button variant="ghost" size="xs"
                 type="button"
                 class="text-xs px-2.5 py-1.5 rounded-md bg-bg2 border border-border text-foreground cursor-pointer hover:border-accent/40"
                 onclick={() => copyLink(lastLinkUrl ?? '')}
               >
                 Copy
-              </button>
+              </Button>
             </div>
           {/if}
           {#if inviteError}
             <p class="text-xs text-destructive">{inviteError}</p>
           {/if}
-          <button
+          <Button variant="primary" size="sm"
             type="submit"
-            class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+            class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
             disabled={inviting}
           >
             {inviting ? m.users_creating() : 'Generate link'}
-          </button>
+          </Button>
         </form>
       {/if}
     {/if}
@@ -570,20 +570,20 @@
         <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
           Pending Access
           {#if joinLinks.length + pendingRequests.length > 0}
-            <span class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent/20 text-accent text-[9px] font-bold">{joinLinks.length + pendingRequests.length}</span>
+            <span class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent/20 text-accent text-[length:var(--font-size-telemetry)] font-bold">{joinLinks.length + pendingRequests.length}</span>
           {/if}
         </h3>
 
         {#if joinLinks.length > 0}
           <div class="mb-3">
-            <h4 class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Join Links</h4>
+            <h4 class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Join Links</h4>
             <div class="bg-card border border-border rounded-lg overflow-x-auto">
               <table class="w-full min-w-[420px] text-xs border-collapse">
                 <thead>
                   <tr class="border-b border-border bg-bg2">
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">Link</th>
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_role()}</th>
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">Uses</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">Link</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">{m.users_role()}</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">Uses</th>
                     <th class="px-4 py-2"></th>
                   </tr>
                 </thead>
@@ -591,23 +591,23 @@
                   {#each joinLinks as link (link.id)}
                     <tr class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors">
                       <td class="px-4 py-2.5">
-                        <button
-                          class="text-accent hover:underline bg-transparent border-none cursor-pointer text-[11px] font-mono p-0 max-w-[220px] truncate inline-block align-bottom"
+                        <Button variant="ghost" size="xs"
+                          class="text-accent hover:underline bg-transparent border-none cursor-pointer text-[length:var(--font-size-label)] font-mono p-0 max-w-[220px] truncate inline-block align-bottom"
                           title="Copy link"
                           onclick={() => copyLink(link.url)}
                         >
                           {link.url}
-                        </button>
+                        </Button>
                       </td>
                       <td class="px-4 py-2.5 text-muted">{link.role}</td>
                       <td class="px-4 py-2.5 text-muted">{link.uses_count}{link.max_uses != null ? `/${link.max_uses}` : ''}</td>
                       <td class="px-4 py-2.5 text-right">
-                        <button
+                        <Button variant="ghost" size="xs"
                           class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
                           onclick={() => revokeLink(link.id)}
                         >
                           Revoke
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   {/each}
@@ -619,14 +619,14 @@
 
         {#if pendingRequests.length > 0}
           <div>
-            <h4 class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Join Requests</h4>
+            <h4 class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Join Requests</h4>
             <div class="bg-card border border-border rounded-lg overflow-x-auto">
               <table class="w-full min-w-[420px] text-xs border-collapse">
                 <thead>
                   <tr class="border-b border-border bg-bg2">
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_email()}</th>
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">Message</th>
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_status()}</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">{m.users_email()}</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">Message</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">{m.users_status()}</th>
                     <th class="px-4 py-2"></th>
                   </tr>
                 </thead>
@@ -636,33 +636,33 @@
                       <td class="px-4 py-2.5 text-foreground">{req.email}</td>
                       <td class="px-4 py-2.5 text-muted max-w-[200px] truncate">{req.message ?? '—'}</td>
                       <td class="px-4 py-2.5">
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] font-semibold bg-warning/10 text-warning border border-warning/20">
                           Awaiting review
                         </span>
                       </td>
                       <td class="px-4 py-2.5">
                         <div class="flex items-center justify-end gap-2">
-                          <span class="text-muted text-[10px] mr-1">{new Date(req.createdAt).toLocaleDateString()}</span>
-                          <button
+                          <span class="text-muted text-[length:var(--font-size-telemetry)] mr-1">{new Date(req.createdAt).toLocaleDateString()}</span>
+                          <Button variant="ghost" size="xs"
                             type="button"
-                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-success/10 text-success border border-success/20 hover:bg-success/15 transition-colors cursor-pointer disabled:opacity-50"
+                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[length:var(--font-size-label)] font-semibold bg-success/10 text-success border border-success/20 hover:bg-success/15 transition-colors cursor-pointer disabled:opacity-50"
                             disabled={reviewingId === req.id}
                             onclick={() => reviewRequest(req, 'approve')}
                             title={m.notif_approve()}
                           >
                             <Check size={13} />
                             {m.notif_approve()}
-                          </button>
-                          <button
+                          </Button>
+                          <Button variant="ghost" size="xs"
                             type="button"
-                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/15 transition-colors cursor-pointer disabled:opacity-50"
+                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[length:var(--font-size-label)] font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/15 transition-colors cursor-pointer disabled:opacity-50"
                             disabled={reviewingId === req.id}
                             onclick={() => reviewRequest(req, 'deny')}
                             title={m.notif_deny()}
                           >
                             <X size={13} />
                             {m.notif_deny()}
-                          </button>
+                          </Button>
                         </div>
                       </td>
                     </tr>

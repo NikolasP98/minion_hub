@@ -16,6 +16,7 @@
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import { Puzzle } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
 
   type Identity = {
     id: string;
@@ -136,15 +137,15 @@
 
 <div class="bg-bg2 border border-border rounded-md overflow-hidden">
   <div class="flex items-center justify-between px-3 py-2.5 border-b border-border">
-    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">{m.usersui_channels()}</div>
+    <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold">{m.usersui_channels()}</div>
     {#if conn.connected}
-      <button
-        class="flex items-center gap-1 text-[10px] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
+      <Button variant="ghost" size="xs"
+        class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
         onclick={loadPlugins}
         title={m.usersui_refresh()}
       >
         <RefreshCw size={11} class={loading ? 'animate-spin' : ''} /> {m.usersui_refresh()}
-      </button>
+      </Button>
     {/if}
   </div>
 
@@ -158,7 +159,7 @@
       {#each otherPlugins as p (p.pluginId)}
         {@const isOpen = openPluginId === p.pluginId}
         <div>
-          <button
+          <Button variant="ghost" size="xs"
             class="w-full flex items-center gap-3 px-3 py-2.5 bg-transparent hover:bg-bg3/30 transition-colors cursor-pointer border-none text-left"
             onclick={() => toggle(p.pluginId)}
           >
@@ -172,11 +173,11 @@
             </span>
             <span class="flex-1 min-w-0">
               <span class="block text-sm text-foreground">{p.label}</span>
-              {#if p.description}<span class="block text-[11px] text-muted-foreground truncate">{p.description}</span>{/if}
+              {#if p.description}<span class="block text-[length:var(--font-size-label)] text-muted-foreground truncate">{p.description}</span>{/if}
             </span>
-            <span class="text-[11px] text-muted-foreground shrink-0">Connect</span>
+            <span class="text-[length:var(--font-size-label)] text-muted-foreground shrink-0">Connect</span>
             <ChevronDown size={14} class="text-muted shrink-0 transition-transform {isOpen ? 'rotate-180' : ''}" />
-          </button>
+          </Button>
 
           {#if isOpen}
             <div class="px-3 pb-3 pt-1">
@@ -197,13 +198,13 @@
                       class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
                     />
                   {/each}
-                  <button
+                  <Button variant="primary" size="sm"
                     class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
                     onclick={() => submitForm(p)}
                     disabled={submitting === p.pluginId}
                   >
                     <Plug size={12} /> {p.link.submitLabel ?? m.usersui_connectChannel({ label: p.label })}
-                  </button>
+                  </Button>
                 </div>
               {:else if p.link.mode === 'iframe'}
                 <div class="h-[420px]">
@@ -241,8 +242,8 @@
 
   <!-- Footnotes -->
   {#if !conn.connected}
-    <p class="text-[11px] text-muted-strong px-3 py-2.5 border-t border-border/60">{m.usersui_connectGatewayToLinkChannels()}</p>
+    <p class="text-[length:var(--font-size-label)] text-muted-strong px-3 py-2.5 border-t border-border/60">{m.usersui_connectGatewayToLinkChannels()}</p>
   {:else if loadError}
-    <p class="text-[11px] text-destructive px-3 py-2.5 border-t border-border/60">{loadError}</p>
+    <p class="text-[length:var(--font-size-label)] text-destructive px-3 py-2.5 border-t border-border/60">{loadError}</p>
   {/if}
 </div>

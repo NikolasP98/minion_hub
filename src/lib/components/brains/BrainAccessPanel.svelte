@@ -97,7 +97,7 @@
 
   <div class="flex flex-col gap-2">
     <div class="flex items-center justify-between">
-      <span class="text-xs font-medium text-white/70">{m.brains_access_rows()}</span>
+      <span class="text-xs font-medium text-muted-foreground">{m.brains_access_rows()}</span>
       <Button variant="secondary" size="sm" onclick={addRow}>
         {#snippet icon()}<Plus size={14} />{/snippet}
         {m.brains_access_add()}
@@ -105,13 +105,13 @@
     </div>
 
     {#if rows.length === 0}
-      <p class="rounded-lg border border-dashed border-white/10 px-3 py-4 text-center text-xs text-white/40">
+      <p class="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
         {m.brains_access_empty()}
       </p>
     {:else}
       <div class="flex flex-col gap-2">
         {#each rows as row, i (i)}
-          <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-2">
+          <div class="flex items-center gap-2 rounded-lg border border-border bg-bg3 p-2">
             <Select
               size="sm"
               class="w-28 shrink-0"
@@ -132,7 +132,7 @@
                 type="text"
                 bind:value={row.principalId}
                 placeholder={m.brains_access_principal_ph()}
-                class="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0"
+                class="min-w-0 flex-1 rounded-lg border border-border bg-bg3 px-2.5 py-1.5 text-xs text-accent-foreground placeholder-white/30 outline-none focus:hover:border-[var(--color-border-strong)] focus:ring-0"
               />
             {/if}
             <Select
@@ -144,21 +144,21 @@
                 { value: 'write', label: m.brains_access_level_write() },
               ]}
             />
-            <button
+            <Button variant="ghost" size="xs"
               type="button"
-              class="grid size-7 shrink-0 place-items-center rounded-lg text-white/50 transition-colors hover:bg-red-500/10 hover:text-red-400"
+              class="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               aria-label={m.brains_access_remove()}
               onclick={() => removeRow(i)}
             >
               <Trash2 size={14} />
-            </button>
+            </Button>
           </div>
         {/each}
       </div>
     {/if}
 
     {#if error}
-      <p class="text-xs text-red-400">{error}</p>
+      <p class="text-xs text-destructive">{error}</p>
     {/if}
 
     <div class="flex justify-end">

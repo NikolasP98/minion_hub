@@ -3,6 +3,7 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { Building2, User, ChevronDown, ChevronRight } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { Button, Select } from '$lib/components/ui';
 
   type Member = {
     id: string;
@@ -99,7 +100,7 @@
   <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-1">
     {m.shared_accountsTitle()}
   </h3>
-  <p class="text-[11px] text-muted-foreground mb-3">{m.shared_accountsDesc()}</p>
+  <p class="text-[length:var(--font-size-label)] text-muted-foreground mb-3">{m.shared_accountsDesc()}</p>
 
   {#if loading}
     <div class="text-muted text-xs py-6 text-center">{m.common_loading()}</div>
@@ -109,35 +110,33 @@
         {@const isService = member.accountType === 'service'}
         <div>
           <div class="flex items-center gap-3 px-4 py-3">
-            <button
+            <Button variant="ghost" size="xs"
               class="grid place-items-center h-7 w-7 rounded-full shrink-0 bg-transparent border-none cursor-pointer
                 {isService ? 'text-accent' : 'text-muted'}"
               title={isService ? m.shared_accountTypeShared() : m.shared_accountTypePersonal()}
               onclick={() => toggle(member)}
             >
               {#if isService}<Building2 size={15} />{:else}<User size={15} />{/if}
-            </button>
+            </Button>
             <span class="flex-1 min-w-0">
               <span class="block text-sm text-foreground truncate"
                 >{member.displayName ?? member.email}</span
               >
-              <span class="block text-[11px] text-muted-foreground truncate">{member.email}</span>
+              <span class="block text-[length:var(--font-size-label)] text-muted-foreground truncate">{member.email}</span>
             </span>
-            <select
-              class="bg-transparent border border-border rounded-md text-foreground px-2 py-1 text-[11px] outline-none cursor-pointer focus:border-accent disabled:opacity-50"
+            <Select
+              class="w-28"
+              size="xs"
               value={isService ? 'service' : 'person'}
               disabled={busy === member.id}
-              onchange={(e) =>
-                setAccountType(
-                  member,
-                  (e.currentTarget as HTMLSelectElement).value as 'person' | 'service',
-                )}
-            >
-              <option value="person">{m.shared_optionPersonal()}</option>
-              <option value="service">{m.shared_optionShared()}</option>
-            </select>
+              options={[
+                { value: 'person', label: m.shared_optionPersonal() },
+                { value: 'service', label: m.shared_optionShared() },
+              ]}
+              onchange={(value) => setAccountType(member, value as 'person' | 'service')}
+            />
             {#if isService}
-              <button
+              <Button variant="ghost" size="xs"
                 class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
                 onclick={() => toggle(member)}
                 title={m.shared_manageIdentities()}
@@ -145,20 +144,20 @@
                 {#if expanded === member.id}<ChevronDown size={14} />{:else}<ChevronRight
                     size={14}
                   />{/if}
-              </button>
+              </Button>
             {/if}
           </div>
 
           {#if expanded === member.id && isService}
             <div class="px-4 pb-3 pl-14">
               {#if !identitiesByUser[member.id]}
-                <div class="text-muted text-[11px] py-1">{m.shared_loadingIdentities()}</div>
+                <div class="text-muted text-[length:var(--font-size-label)] py-1">{m.shared_loadingIdentities()}</div>
               {:else if identitiesByUser[member.id].length === 0}
-                <div class="text-muted text-[11px] py-1">{m.shared_noIdentities()}</div>
+                <div class="text-muted text-[length:var(--font-size-label)] py-1">{m.shared_noIdentities()}</div>
               {:else}
                 <div class="flex flex-col gap-1.5">
                   {#each identitiesByUser[member.id] as id (id.id)}
-                    <label class="flex items-center gap-2 text-[11px] cursor-pointer">
+                    <label class="flex items-center gap-2 text-[length:var(--font-size-label)] cursor-pointer">
                       <input
                         type="checkbox"
                         checked={id.shareable}

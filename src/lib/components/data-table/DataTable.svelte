@@ -793,16 +793,16 @@
 				<div class="col-wrap">
 					<Tooltip label={m.data_table_bulk_actions()} asChild>
 						{#snippet children(p)}
-							<button {...p} class="dt-tool" aria-label={m.data_table_bulk_actions()} onclick={() => (bulkOpen = !bulkOpen)}>
+							<Button variant="ghost" size="xs" {...p} class="dt-tool" aria-label={m.data_table_bulk_actions()} onclick={() => (bulkOpen = !bulkOpen)}>
 								<MoreVertical size={15} />
-							</button>
+							</Button>
 						{/snippet}
 					</Tooltip>
 					{#if bulkOpen}
-						<button class="backdrop" aria-label="close" onclick={() => (bulkOpen = false)}></button>
+						<Button variant="ghost" size="xs" class="backdrop" aria-label="close" onclick={() => (bulkOpen = false)}></Button>
 						<div class="col-menu" style="min-width:11rem">
 							{#each bulkActions as a (a.label)}
-								<button class="bulk-item" class:danger={a.danger} onclick={() => runBulk(a)}>{a.label}</button>
+								<Button variant="ghost" size="xs" class="bulk-item" class:danger={a.danger} onclick={() => runBulk(a)}>{a.label}</Button>
 							{/each}
 						</div>
 					{/if}
@@ -816,9 +816,9 @@
 				{#if exportable}
 					<Tooltip label={m.data_table_export()} asChild>
 						{#snippet children(p)}
-							<button {...p} class="dt-tool" aria-label={m.data_table_export()} onclick={() => (exportOpen = true)}>
+							<Button variant="ghost" size="xs" {...p} class="dt-tool" aria-label={m.data_table_export()} onclick={() => (exportOpen = true)}>
 								<Download size={15} />
-							</button>
+							</Button>
 						{/snippet}
 					</Tooltip>
 				{/if}
@@ -826,13 +826,13 @@
 					<div class="col-wrap">
 						<Tooltip label={m.data_table_columns()} asChild>
 							{#snippet children(p)}
-								<button {...p} class="dt-tool" class:active-col={hidden.size > 0} aria-label={m.data_table_columns()} onclick={() => (colMenuOpen = !colMenuOpen)}>
+								<Button variant="ghost" size="xs" {...p} class="dt-tool" class:active-col={hidden.size > 0} aria-label={m.data_table_columns()} onclick={() => (colMenuOpen = !colMenuOpen)}>
 									<Columns3 size={15} />
-								</button>
+								</Button>
 							{/snippet}
 						</Tooltip>
 						{#if colMenuOpen}
-							<button class="backdrop" aria-label="close" onclick={() => (colMenuOpen = false)}></button>
+							<Button variant="ghost" size="xs" class="backdrop" aria-label="close" onclick={() => (colMenuOpen = false)}></Button>
 							<div class="col-menu">
 								<div class="col-menu-h">{m.data_table_columns_heading()}</div>
 								{#each orderedColumns as c (c.key)}
@@ -847,12 +847,12 @@
 										ondrop={reorderable ? () => onMenuDrop(c.key) : undefined}
 									>
 										{#if reorderable}<GripVertical size={12} class="col-grip" />{/if}
-										<button class="col-check-btn" disabled={!canHide} aria-label={c.label} onclick={() => canHide && toggleHidden(c.key)}>
+										<Button variant="ghost" size="xs" class="col-check-btn" disabled={!canHide} aria-label={c.label} onclick={() => canHide && toggleHidden(c.key)}>
 											<span class="col-check" class:on={!hidden.has(c.key)}>
 												{#if !hidden.has(c.key)}<Check size={11} />{/if}
 											</span>
 											<span class="col-label">{c.label}</span>
-										</button>
+										</Button>
 									</div>
 								{/each}
 							</div>
@@ -862,9 +862,9 @@
 				{#if onAdd}
 					<Tooltip label={addLabel ?? m.data_table_add()} asChild>
 						{#snippet children(p)}
-							<button {...p} class="dt-add" aria-label={addLabel ?? m.data_table_add()} disabled={addDisabled} onclick={onAdd}>
+							<Button variant="ghost" size="xs" {...p} class="dt-add" aria-label={addLabel ?? m.data_table_add()} disabled={addDisabled} onclick={onAdd}>
 								<Plus size={16} />
-							</button>
+							</Button>
 						{/snippet}
 					</Tooltip>
 				{/if}
@@ -890,14 +890,14 @@
 					     collapses to 0 (min-width forces horizontal scroll) when it overflows -->
 					<col />
 				</colgroup>
-				<thead class="sticky top-0 bg-bg/95 backdrop-blur z-20" bind:this={theadEl}>
+				<thead class="sticky top-0 bg-bg/95 backdrop-blur z-[var(--layer-navigation)]" bind:this={theadEl}>
 					<tr class="text-left t-caption border-b border-[var(--hairline)]">
 						{#if selectable}
 							<th class="dt-th px-3 py-2">
-								<button class="dt-check is-master" class:on={allSelected} class:ind={someSelected}
+								<Button variant="ghost" size="xs" class="dt-check is-master" class:on={allSelected} class:ind={someSelected}
 									role="checkbox" aria-checked={someSelected ? 'mixed' : allSelected} aria-label={m.data_table_select_all()} onclick={toggleAll}>
 									{#if someSelected}<Minus size={11} />{:else if allSelected}<Check size={11} />{/if}
-								</button>
+								</Button>
 							</th>
 						{/if}
 						{#if expandEnabled}<th class="dt-th"></th>{/if}
@@ -932,12 +932,12 @@
 											align={c.filter.align ?? (c.align === 'right' ? 'right' : 'left')}
 											optionIcon={c.filter.icon ? filterOptionIcon : undefined} onSelect={(s) => setFilter(c.key, s)} />
 									{:else if c.sortable !== false}
-										<button class="sort-h" class:active={sorted} onclick={() => toggleSort(c)}>
+										<Button variant="ghost" size="xs" class="sort-h" class:active={sorted} onclick={() => toggleSort(c)}>
 											<span class="dt-hlabel">{c.label}</span>
 											{#if sorted}
 												{#if sortDir === 'asc'}<ArrowUp size={12} />{:else}<ArrowDown size={12} />{/if}
 											{:else}<ChevronsUpDown size={11} class="dim" />{/if}
-										</button>
+										</Button>
 									{:else}
 										<span class="dt-hlabel">{c.label}</span>
 									{/if}
@@ -979,24 +979,24 @@
 									data-row-index={fi.rowIndex}
 									data-index={vi.index}
 									{@attach measureRow}
-									class="dt-row border-b border-[var(--hairline)] hover:bg-white/[0.03] transition-colors {onRowClick && !editing ? 'cursor-pointer' : ''}"
+									class="dt-row border-b border-[var(--hairline)] hover:bg-bg3 transition-colors {onRowClick && !editing ? 'cursor-pointer' : ''}"
 									class:child={fi.depth > 0}
 									class:focused={focusedIndex === fi.rowIndex}
 									onclick={!editing && (selectable || onRowClick) ? (e) => handleRowClick(id, row, e) : undefined}
 								>
 									{#if selectable}
 										<td class="px-3 py-2">
-											<button class="dt-check is-row" class:on={selectedIds.has(id)} role="checkbox" aria-checked={selectedIds.has(id)} aria-label="select row" onclick={(e) => toggleRow(id, e)}>
+											<Button variant="ghost" size="xs" class="dt-check is-row" class:on={selectedIds.has(id)} role="checkbox" aria-checked={selectedIds.has(id)} aria-label="select row" onclick={(e) => toggleRow(id, e)}>
 												{#if selectedIds.has(id)}<Check size={11} />{/if}
-											</button>
+											</Button>
 										</td>
 									{/if}
 									{#if expandEnabled}
-										<td class="px-1 py-2 text-center" style="padding-left:{6 + fi.depth * 16}px">
+										<td class="dt-tree-cell px-1 py-2 text-center" style="--tree-depth:{fi.depth}">
 											{#if canExpand}
-												<button class="dt-exp" class:open={isOpen} aria-label={isOpen ? m.data_table_collapse() : m.data_table_expand()} onclick={(e) => toggleExpand(id, e)}>
+												<Button variant="ghost" size="xs" class="dt-exp" class:open={isOpen} aria-label={isOpen ? m.data_table_collapse() : m.data_table_expand()} onclick={(e) => toggleExpand(id, e)}>
 													<ChevronRight size={13} />
-												</button>
+												</Button>
 											{/if}
 										</td>
 									{/if}
@@ -1017,12 +1017,12 @@
 										<td class="px-3 py-2 text-right">
 											{#if editing}
 												<div class="flex gap-1 justify-end">
-													<button class="act-btn act-save" onclick={(e) => commitEdit(row, e)} disabled={editBusy} title={m.data_table_save()}><Check size={13} /></button>
-													<button class="act-btn" onclick={cancelEdit} title={m.data_table_cancel()}><X size={13} /></button>
+													<Button variant="ghost" size="xs" class="act-btn act-save" onclick={(e) => commitEdit(row, e)} disabled={editBusy} title={m.data_table_save()}><Check size={13} /></Button>
+													<Button variant="ghost" size="xs" class="act-btn" onclick={cancelEdit} title={m.data_table_cancel()}><X size={13} /></Button>
 												</div>
 												{#if editErr}<p class="err-msg text-xs">{editErr}</p>{/if}
 											{:else}
-												<button class="act-btn act-edit" onclick={(e) => startEdit(row, e)} disabled={editDisabled || !canEdit} title={canEdit ? m.data_table_edit() : m.no_permission()}><Pencil size={13} /></button>
+												<Button variant="ghost" size="xs" class="act-btn act-edit" onclick={(e) => startEdit(row, e)} disabled={editDisabled || !canEdit} title={canEdit ? m.data_table_edit() : m.no_permission()}><Pencil size={13} /></Button>
 											{/if}
 										</td>
 									{/if}
@@ -1041,28 +1041,28 @@
 <!-- Header context menu -->
 {#if ctxMenu}
 	{@const cc = byKey.get(ctxMenu.key)}
-	<button class="backdrop" aria-label="close" onclick={() => (ctxMenu = null)} oncontextmenu={(e) => { e.preventDefault(); ctxMenu = null; }}></button>
+	<Button variant="ghost" size="xs" class="backdrop" aria-label="close" onclick={() => (ctxMenu = null)} oncontextmenu={(e) => { e.preventDefault(); ctxMenu = null; }}></Button>
 	<div class="ctx-menu" style="left:{ctxMenu.x}px; top:{ctxMenu.y}px">
 		{#if cc}
 			{#if cc.sortable !== false}
-				<button class="ctx-item" onclick={() => { setSort(cc, 'asc'); ctxMenu = null; }}><ArrowUp size={13} /> {m.data_table_sort_asc()}</button>
-				<button class="ctx-item" onclick={() => { setSort(cc, 'desc'); ctxMenu = null; }}><ArrowDown size={13} /> {m.data_table_sort_desc()}</button>
+				<Button variant="ghost" size="xs" class="ctx-item" onclick={() => { setSort(cc, 'asc'); ctxMenu = null; }}><ArrowUp size={13} /> {m.data_table_sort_asc()}</Button>
+				<Button variant="ghost" size="xs" class="ctx-item" onclick={() => { setSort(cc, 'desc'); ctxMenu = null; }}><ArrowDown size={13} /> {m.data_table_sort_desc()}</Button>
 				<div class="ctx-sep"></div>
 			{/if}
-			<button class="ctx-item" onclick={() => { toggleWrap(cc.key); ctxMenu = null; }}>
+			<Button variant="ghost" size="xs" class="ctx-item" onclick={() => { toggleWrap(cc.key); ctxMenu = null; }}>
 				<WrapText size={13} /> {m.data_table_wrap_text()}
 				{#if wrap.has(cc.key)}<Check size={12} class="ctx-check" />{/if}
-			</button>
+			</Button>
 			{#if numericKeys.has(cc.key)}
 				<div class="ctx-sep"></div>
 				<div class="ctx-h"><Sigma size={11} /> {m.data_table_aggregate()}</div>
 				{#each [['sum', m.data_table_agg_sum()], ['avg', m.data_table_agg_avg()], ['count', m.data_table_agg_count()]] as [mode, label] (mode)}
 					<!-- non-exclusive: toggle each; menu stays open so several can be enabled -->
-					<button class="ctx-item ctx-sub" onclick={() => toggleAggregate(cc.key, mode as AggMode)}>
+					<Button variant="ghost" size="xs" class="ctx-item ctx-sub" onclick={() => toggleAggregate(cc.key, mode as AggMode)}>
 						{@render aggIcon(mode as AggMode)}
 						{label}
 						{#if aggregates[cc.key]?.includes(mode as AggMode)}<Check size={12} class="ctx-check" />{/if}
-					</button>
+					</Button>
 				{/each}
 			{/if}
 		{/if}
@@ -1075,52 +1075,52 @@
 
 <style>
 	/* ── Compact toolbar ─────────────────────────────────────────────────── */
-	.dt-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.3rem 0.6rem; border-bottom: 1px solid var(--hairline); min-height: 2.25rem; }
-	.dt-count { font-size: 0.72rem; color: var(--color-muted-foreground); white-space: nowrap; }
+	.dt-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-bottom: 1px solid var(--hairline); min-height: 2.25rem; }
+	.dt-count { font-size: var(--font-size-label); color: var(--color-muted-foreground); white-space: nowrap; }
 	.dt-search { position: relative; display: inline-flex; align-items: center; min-width: 9rem; }
 	:global(.dt-search .dt-search-ico) { position: absolute; left: 0.35rem; color: var(--color-muted-foreground); pointer-events: none; }
-	.dt-search input { height: 1.65rem; width: 100%; padding: 0 0.4rem 0 1.4rem; font-size: 0.8rem; color: var(--color-foreground); background: transparent; border: 1px solid transparent; border-bottom-color: var(--hairline); border-radius: var(--radius-sm); transition: background-color 0.12s, border-color 0.12s; }
+	.dt-search input { height: 1.65rem; width: 100%; padding: 0 var(--space-2) 0 var(--space-6); font-size: var(--font-size-body); color: var(--color-foreground); background: transparent; border: 1px solid transparent; border-bottom-color: var(--hairline); border-radius: var(--radius-sm); transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard); }
 	.dt-search input::placeholder { color: var(--color-muted-foreground); opacity: 0.7; }
 	.dt-search input:hover { background: color-mix(in srgb, var(--color-foreground) 4%, transparent); }
 	.dt-search input:focus { outline: none; background: var(--color-bg3); border-color: color-mix(in srgb, var(--color-accent) 55%, transparent); }
-	.dt-tool { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); color: var(--color-muted-foreground); background: transparent; cursor: pointer; transition: background-color 0.12s, color 0.12s; }
+	.dt-tool { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); color: var(--color-muted-foreground); background: transparent; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
 	.dt-tool:hover { background: color-mix(in srgb, var(--color-foreground) 8%, transparent); color: var(--color-foreground); }
 	.dt-tool.active-col { color: var(--color-accent); }
-	.dt-add { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-accent-foreground, #fff); cursor: pointer; transition: filter 0.12s; }
+	.dt-add { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-on-accent); cursor: pointer; transition: filter var(--duration-fast) var(--ease-standard); }
 	.dt-add:hover { filter: brightness(1.08); }
 	.dt-add:disabled { opacity: 0.5; cursor: not-allowed; }
-	.bulk-item { display: block; width: 100%; text-align: left; padding: 0.4rem 0.55rem; font-size: 0.82rem; border-radius: var(--radius-sm, 6px); color: var(--color-foreground); cursor: pointer; }
+	.bulk-item { display: block; width: 100%; text-align: left; padding: var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); color: var(--color-foreground); cursor: pointer; }
 	.bulk-item:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
 	.bulk-item.danger { color: var(--color-destructive); }
 	.bulk-item.danger:hover { background: color-mix(in srgb, var(--color-destructive) 12%, transparent); }
 
 	/* ── Table + fixed layout (resize one col → others hold; scroll x) ─────── */
-	.dt-table { table-layout: fixed; border-collapse: collapse; }
+	.dt-table { --dt-shadow-before: inset 2px 0 0 0 var(--color-accent); --dt-shadow-after: inset -2px 0 0 0 var(--color-accent); table-layout: fixed; border-collapse: collapse; }
 	/* vertical-align:bottom pins every header's title to the cell bottom, so
 	   titles line up across columns no matter how many aggregates stack above. */
 	.dt-th { position: relative; user-select: none; vertical-align: bottom; }
 	.dt-table.dragging .dt-th { cursor: grabbing; }
-	.dt-th.dragging { z-index: 30; background: var(--color-card); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4); opacity: 0.97; cursor: grabbing; }
-	.dt-th.drop-before { box-shadow: inset 2px 0 0 0 var(--color-accent); }
-	.dt-th.drop-after { box-shadow: inset -2px 0 0 0 var(--color-accent); }
+	.dt-th.dragging { z-index: var(--layer-dropdown); background: var(--color-card); box-shadow: var(--shadow-elevation-3); opacity: 0.97; cursor: grabbing; }
+	.dt-th.drop-before { box-shadow: var(--dt-shadow-before); }
+	.dt-th.drop-after { box-shadow: var(--dt-shadow-after); }
 	.dt-hlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	/* Aggregates always stack vertically, above the title, right-aligned so the
 	   value column lines up and the trailing icon sits under the sort/filter arrow. */
-	.dt-agg-row { display: flex; flex-direction: column; align-items: flex-end; gap: 0.05rem; margin-bottom: 0.2rem; }
+	.dt-agg-row { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-0-5); margin-bottom: var(--space-1); }
 	/* Desaturated vs the pure accent a sorted header uses, so aggregate figures
 	   read as secondary and don't get confused with the active-sort colour.
 	   Override --dt-agg-color to retune. */
-	.dt-agg { display: inline-flex; align-items: center; gap: 0.15rem; font-size: 0.66rem; font-weight: 600; color: var(--dt-agg-color, color-mix(in srgb, var(--color-accent) 45%, var(--color-muted-foreground))); font-variant-numeric: tabular-nums; }
-	.sort-h { display: inline-flex; align-items: center; gap: 0.25rem; min-width: 0; font: inherit; color: inherit; cursor: pointer; }
+	.dt-agg { display: inline-flex; align-items: center; gap: var(--space-0-5); font-size: var(--font-size-telemetry); font-weight: 600; color: var(--dt-agg-color, color-mix(in srgb, var(--color-accent) 45%, var(--color-muted-foreground))); font-variant-numeric: tabular-nums; }
+	.sort-h { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; font: inherit; color: inherit; cursor: pointer; }
 	.sort-h.active { color: var(--color-accent); }
 	:global(.sort-h .dim) { opacity: 0.35; flex-shrink: 0; }
 	/* Drag grip pinned to the far LEFT edge of every header, regardless of the
 	   column's text alignment. Decorative — pointer-events off so the drag
 	   (th pointerdown) and the sort/filter controls beneath it still work. */
-	:global(.dt-th .grip) { position: absolute; left: 3px; bottom: 0.6rem; opacity: 0; cursor: grab; color: var(--color-muted-foreground); transition: opacity 0.12s; pointer-events: none; }
+	:global(.dt-th .grip) { position: absolute; left: 3px; bottom: 0.6rem; opacity: 0; cursor: grab; color: var(--color-muted-foreground); transition: opacity var(--duration-fast) var(--ease-standard); pointer-events: none; }
 	.dt-th:hover :global(.grip) { opacity: 0.45; }
-	.dt-resize { position: absolute; top: 0; right: -2px; width: 7px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; }
-	.dt-resize::after { content: ''; position: absolute; top: 25%; right: 3px; width: 1px; height: 50%; background: var(--hairline); transition: background-color 0.12s; }
+	.dt-resize { position: absolute; top: 0; right: -2px; width: 7px; height: 100%; cursor: col-resize; z-index: var(--layer-sticky); touch-action: none; }
+	.dt-resize::after { content: ''; position: absolute; top: 25%; right: 3px; width: 1px; height: 50%; background: var(--hairline); transition: background-color var(--duration-fast) var(--ease-standard); }
 	.dt-resize:hover::after, .dt-resize.resizing::after { background: var(--color-accent); }
 
 	/* Cells: clip by default (fixed widths); wrap opt-in via context menu. */
@@ -1132,55 +1132,56 @@
 	.dt-cell.dt-wrap :global(*) { white-space: normal; text-overflow: clip; overflow: visible; max-width: none; }
 	.dt-row.child { background: color-mix(in srgb, var(--color-foreground) 3%, transparent); }
 	/* Roving keyboard focus (j/k, arrows) — subtle, distinct from hover. */
-	.dt-row.focused { background: color-mix(in srgb, var(--color-accent) 8%, transparent); box-shadow: inset 2px 0 0 0 var(--color-accent); }
+	.dt-row.focused { background: color-mix(in srgb, var(--color-accent) 8%, transparent); box-shadow: var(--dt-shadow-before); }
+	.dt-tree-cell { padding-left: calc(var(--space-2) + var(--tree-depth) * var(--space-4)); }
 	/* Table wrapper is the grid-key scope (tabindex=0); suppress the mouse-click
 	   focus ring but keep it for keyboard focus. */
 	.dt-scroll { outline: none; }
 	.dt-scroll:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 
 	/* Expand toggle + custom block row */
-	.dt-exp { display: inline-flex; align-items: center; justify-content: center; width: 1.25rem; height: 1.25rem; border-radius: var(--radius-sm); color: var(--color-muted-foreground); cursor: pointer; transition: transform 0.15s, color 0.12s; }
+	.dt-exp { display: inline-flex; align-items: center; justify-content: center; width: 1.25rem; height: 1.25rem; border-radius: var(--radius-sm); color: var(--color-muted-foreground); cursor: pointer; transition: transform var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
 	.dt-exp:hover { color: var(--color-foreground); }
 	.dt-exp.open { transform: rotate(90deg); color: var(--color-accent); }
 	.dt-block-row > .dt-block { padding: 0; background: color-mix(in srgb, var(--color-foreground) 3%, transparent); border-bottom: 1px solid var(--hairline); }
 
 	/* ── Themed checkboxes ───────────────────────────────────────────────── */
-	.dt-check { display: inline-grid; place-items: center; width: 1rem; height: 1rem; border-radius: 4px; border: 1px solid; cursor: pointer; flex-shrink: 0; transition: background-color 0.12s, border-color 0.12s, color 0.12s; }
+	.dt-check { display: inline-grid; place-items: center; width: 1rem; height: 1rem; border-radius: var(--radius-sm); border: 1px solid; cursor: pointer; flex-shrink: 0; transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
 	.dt-check.is-row { border-color: color-mix(in srgb, var(--color-muted-foreground) 45%, transparent); background: transparent; color: transparent; }
 	.dt-check.is-row:hover { border-color: color-mix(in srgb, var(--color-accent) 60%, transparent); }
 	.dt-check.is-row.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-foreground, var(--color-bg)); }
 	.dt-check.is-master { border-color: color-mix(in srgb, var(--color-muted-foreground) 70%, transparent); background: var(--color-bg3); color: transparent; }
 	.dt-check.is-master.on, .dt-check.is-master.ind { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-foreground, var(--color-bg)); }
 
-	.dt-inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
+	.dt-inp { height: 1.75rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
 	.act-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: var(--radius-sm); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-muted-foreground); transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
-	.act-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--color-foreground); }
+	.act-btn:hover { background: var(--color-surface-2); color: var(--color-foreground); }
 	.act-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.act-save { color: var(--color-accent); }
 	.act-edit { opacity: 0.6; }
-	.err-msg { font-size: 0.8rem; color: var(--color-destructive); }
+	.err-msg { font-size: var(--font-size-label); color: var(--color-destructive); }
 
 	/* ── Column menu ─────────────────────────────────────────────────────── */
 	.col-wrap { position: relative; display: inline-flex; }
-	.backdrop { position: fixed; inset: 0; z-index: 40; background: transparent; }
-	.col-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 41; min-width: 13rem; max-height: 22rem; overflow: auto; background: var(--color-card); border: 1px solid var(--hairline); border-radius: var(--radius-md); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); padding: 0.3rem; }
-	.col-menu-h { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); padding: 0.3rem 0.4rem; }
-	.col-item { display: flex; align-items: center; gap: 0.35rem; border-radius: var(--radius-sm, 6px); }
+	.backdrop { position: fixed; inset: 0; z-index: var(--layer-dropdown); background: transparent; }
+	.col-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: var(--layer-popover); min-width: 13rem; max-height: 22rem; overflow: auto; background: var(--color-card); border: 1px solid var(--hairline); border-radius: var(--radius-md); box-shadow: var(--shadow-overlay); padding: var(--space-1); }
+	.col-menu-h { font-size: var(--font-size-telemetry); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); }
+	.col-item { display: flex; align-items: center; gap: var(--space-2); border-radius: var(--radius-sm); }
 	.col-item:hover { background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
 	.col-item.dragging { opacity: 0.5; }
-	:global(.col-item .col-grip) { color: var(--color-muted-foreground); cursor: grab; opacity: 0.5; flex-shrink: 0; margin-left: 0.15rem; }
-	.col-check-btn { display: flex; align-items: center; gap: 0.5rem; flex: 1; padding: 0.35rem 0.4rem 0.35rem 0.15rem; text-align: left; cursor: pointer; }
+	:global(.col-item .col-grip) { color: var(--color-muted-foreground); cursor: grab; opacity: 0.5; flex-shrink: 0; margin-left: var(--space-0-5); }
+	.col-check-btn { display: flex; align-items: center; gap: var(--space-2); flex: 1; padding: var(--space-2) var(--space-1); text-align: left; cursor: pointer; }
 	.col-check-btn:disabled { cursor: default; }
-	.col-check { display: grid; place-items: center; width: 1rem; height: 1rem; border-radius: 4px; border: 1px solid var(--hairline); flex-shrink: 0; color: var(--color-accent-foreground, var(--color-bg)); }
+	.col-check { display: grid; place-items: center; width: 1rem; height: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--hairline); flex-shrink: 0; color: var(--color-accent-foreground, var(--color-bg)); }
 	.col-check.on { background: var(--color-accent); border-color: var(--color-accent); }
-	.col-label { font-size: 0.82rem; }
+	.col-label { font-size: var(--font-size-body); }
 
 	/* ── Header context menu ─────────────────────────────────────────────── */
-	.ctx-menu { position: fixed; z-index: 60; min-width: 12rem; background: var(--color-card); border: 1px solid var(--hairline); border-radius: var(--radius-md); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); padding: 0.25rem; }
-	.ctx-item { display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; padding: 0.4rem 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm, 6px); color: var(--color-foreground); cursor: pointer; }
+	.ctx-menu { position: fixed; z-index: var(--layer-popover); min-width: 12rem; background: var(--color-card); border: 1px solid var(--hairline); border-radius: var(--radius-md); box-shadow: var(--shadow-overlay); padding: var(--space-1); }
+	.ctx-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; padding: var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); color: var(--color-foreground); cursor: pointer; }
 	.ctx-item:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
-	.ctx-item.ctx-sub { padding-left: 1.6rem; }
+	.ctx-item.ctx-sub { padding-left: var(--space-6); }
 	:global(.ctx-item .ctx-check) { margin-left: auto; color: var(--color-accent); }
-	.ctx-h { display: flex; align-items: center; gap: 0.35rem; font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); padding: 0.3rem 0.5rem 0.15rem; }
-	.ctx-sep { height: 1px; background: var(--hairline); margin: 0.2rem 0; }
+	.ctx-h { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-telemetry); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); }
+	.ctx-sep { height: 1px; background: var(--hairline); margin: var(--space-1) 0; }
 </style>

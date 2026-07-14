@@ -1,7 +1,7 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
   import { toastError } from '$lib/state/ui/toast.svelte';
-  import { Select } from '$lib/components/ui';
+  import { Button, Select } from '$lib/components/ui';
 
   let { userId, onCancel, onLinked }: { userId: string; onCancel: () => void; onLinked: () => void } = $props();
 
@@ -76,10 +76,10 @@
 </script>
 
 <div class="bg-card border border-border rounded-md p-3 w-80 shadow-lg space-y-2">
-  <div class="flex gap-2 text-[10px] uppercase tracking-wider">
-    <button class="px-2 py-1 rounded {tab === 'manual' ? 'bg-accent text-white' : 'text-muted'}" onclick={() => (tab = 'manual')}>{m.usersui_manual()}</button>
-    <button class="px-2 py-1 rounded {tab === 'verify' ? 'bg-accent text-white' : 'text-muted'}" onclick={() => (tab = 'verify')}>{m.usersui_verifyCode()}</button>
-    <button class="ml-auto text-muted text-xs" onclick={onCancel}>✕</button>
+  <div class="flex gap-2 text-[length:var(--font-size-telemetry)] uppercase tracking-wider">
+    <Button variant="ghost" size="xs" class="px-2 py-1 rounded {tab === 'manual' ? 'bg-accent text-accent-foreground' : 'text-muted'}" onclick={() => (tab = 'manual')}>{m.usersui_manual()}</Button>
+    <Button variant="ghost" size="xs" class="px-2 py-1 rounded {tab === 'verify' ? 'bg-accent text-accent-foreground' : 'text-muted'}" onclick={() => (tab = 'verify')}>{m.usersui_verifyCode()}</Button>
+    <Button variant="ghost" size="xs" class="ml-auto text-muted text-xs" onclick={onCancel}>✕</Button>
   </div>
 
   <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
@@ -98,16 +98,16 @@
       <span class="text-muted">{m.usersui_display()}</span>
       <input class="bg-bg border border-border rounded px-2 py-1" bind:value={displayName} />
     </label>
-    <button class="w-full text-xs px-3 py-1.5 rounded bg-accent text-white disabled:opacity-50" disabled={busy || !channelUserId} onclick={attachManual}>{m.usersui_attach()}</button>
+    <Button variant="primary" size="sm" class="w-full" disabled={busy || !channelUserId} onclick={attachManual}>{m.usersui_attach()}</Button>
   {:else}
     {#if !requestId}
-      <button class="w-full text-xs px-3 py-1.5 rounded bg-accent text-white disabled:opacity-50" disabled={busy || !channelUserId} onclick={sendCode}>{m.usersui_sendCode()}</button>
+      <Button variant="primary" size="sm" class="w-full" disabled={busy || !channelUserId} onclick={sendCode}>{m.usersui_sendCode()}</Button>
     {:else}
       <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
         <span class="text-muted">{m.usersui_code()}</span>
         <input class="bg-bg border border-border rounded px-2 py-1 tracking-widest" bind:value={code} placeholder="000000" />
       </label>
-      <button class="w-full text-xs px-3 py-1.5 rounded bg-accent text-white disabled:opacity-50" disabled={busy || code.length !== 6} onclick={confirmCode}>{m.usersui_confirmCode()}</button>
+      <Button variant="primary" size="sm" class="w-full" disabled={busy || code.length !== 6} onclick={confirmCode}>{m.usersui_confirmCode()}</Button>
     {/if}
   {/if}
 </div>

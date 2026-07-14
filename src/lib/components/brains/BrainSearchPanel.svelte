@@ -44,7 +44,7 @@
       type="text"
       bind:value={query}
       placeholder={m.brains_search_placeholder()}
-      class="w-full flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0"
+      class="w-full flex-1 rounded-lg border border-border bg-bg3 px-3 py-1.5 text-sm text-accent-foreground placeholder-white/30 outline-none focus:hover:border-[var(--color-border-strong)] focus:ring-0"
     />
     <Button type="submit" variant="primary" size="sm" disabled={!query.trim() || searching} loading={searching}>
       {#snippet icon()}<Search size={14} />{/snippet}
@@ -53,7 +53,7 @@
   </form>
 
   {#if error}
-    <p class="text-xs text-red-400">{error}</p>
+    <p class="text-xs text-destructive">{error}</p>
   {/if}
 
   {#if hits === null}
@@ -63,14 +63,14 @@
   {:else}
     <ol class="flex flex-col gap-2">
       {#each hits as hit (hit.chunkId)}
-        <li class="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+        <li class="rounded-xl border border-border bg-bg3 p-3">
           <div class="mb-1 flex items-center justify-between gap-2">
-            <span class="truncate text-xs font-semibold text-white/85">{hit.documentTitle}</span>
-            <span class="shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] text-white/50">
+            <span class="truncate text-xs font-semibold text-foreground">{hit.documentTitle}</span>
+            <span class="shrink-0 rounded-full bg-bg3 px-2 py-0.5 text-[length:var(--font-size-telemetry)] text-muted-foreground">
               {(hit.score * 100).toFixed(0)}% {m.brains_search_score()}
             </span>
           </div>
-          <p class="whitespace-pre-wrap text-xs leading-relaxed text-white/65">{hit.chunkText}</p>
+          <p class="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">{hit.chunkText}</p>
         </li>
       {/each}
     </ol>

@@ -2,6 +2,7 @@
     import { provisionState } from "$lib/state/features/provision.svelte";
     import { Circle, CheckCircle2, XCircle, Loader2, Play } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
+    import { Button } from '$lib/components/ui';
 
     interface Props {
         onrunfrom?: (phaseId: string) => void;
@@ -24,13 +25,13 @@
             <!-- Vertical connector line -->
             {#if !isLast}
                 <div class="absolute left-[11px] top-[24px] bottom-0 w-px
-                    {phase.status === 'complete' ? 'bg-green-500/30' : 'bg-border'}"></div>
+                    {phase.status === 'complete' ? 'bg-success/15' : 'bg-border'}"></div>
             {/if}
 
             <!-- Status icon -->
-            <div class="shrink-0 mt-0.5 relative z-10">
+            <div class="shrink-0 mt-0.5 relative z-[var(--layer-sticky)]">
                 {#if phase.status === 'complete'}
-                    <CheckCircle2 size={22} class="text-green-500" />
+                    <CheckCircle2 size={22} class="text-success" />
                 {:else if phase.status === 'running'}
                     <Loader2 size={22} class="text-accent animate-spin" />
                 {:else if phase.status === 'failed'}
@@ -50,7 +51,7 @@
                          'text-muted-foreground'}">
                         {phase.name}
                     </span>
-                    <span class="text-[10px] text-muted-strong font-mono">
+                    <span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono">
                         {m.provision_phase({ id: phase.id })}
                     </span>
                 </div>
@@ -58,14 +59,14 @@
 
                 <!-- Run from here button -->
                 {#if !provisionState.running && phase.id === firstResumable() && onrunfrom}
-                    <button
+                    <Button variant="outline" size="xs"
                         type="button"
-                        class="flex items-center gap-1 mt-1.5 px-2 py-1 text-[11px] font-medium rounded bg-accent/10 text-accent border border-accent/20 cursor-pointer hover:bg-accent/20 transition-colors"
+                        class="flex items-center gap-1 mt-1.5 px-2 py-1 text-[length:var(--font-size-label)] font-medium rounded bg-accent/10 text-accent border border-accent/20 cursor-pointer hover:bg-accent/20 transition-colors"
                         onclick={() => onrunfrom?.(phase.id)}
                     >
                         <Play size={10} />
                         {m.provision_runFromHere()}
-                    </button>
+                    </Button>
                 {/if}
             </div>
         </div>
