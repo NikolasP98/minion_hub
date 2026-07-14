@@ -108,6 +108,23 @@ const wellKnownHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
+/**
+ * exe.dev protects private workstation proxies with WebAuthn. Delegate only
+ * passkey assertion (not passkey creation) to exe.dev frames on Cloud pages so
+ * browser password managers such as 1Password can complete the ceremony in the
+ * embedded desktop instead of requiring a separate top-level login tab.
+ */
+const cloudPasskeyHandle: Handle = async ({ event, resolve }) => {
+  const response = await resolve(event);
+  if (event.url.pathname === '/cloud' || event.url.pathname.startsWith('/cloud/')) {
+    response.headers.set(
+      'Permissions-Policy',
+      'publickey-credentials-get=(self "https://*.exe.xyz")',
+    );
+  }
+  return response;
+};
+
 const UNPROTECTED_PREFIXES = ['/login', '/api/', '/invite/', '/.well-known/', '/auth/', '/book'];
 
 const appHandle: Handle = async ({ event, resolve }) => {
@@ -341,6 +358,7 @@ const workforceIdentityHandle: Handle = async ({ event, resolve }) => {
 
 export const handle = sequence(
   i18n.handle(),
+  cloudPasskeyHandle,
   posthogProxyHandle,
   wellKnownHandle,
   appHandle,

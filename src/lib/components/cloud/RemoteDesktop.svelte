@@ -10,10 +10,18 @@
   let loading = $state(false);
   let generation = 0;
 
-  function safeHttpUrl(raw: string): string {
+  function safeDesktopUrl(raw: string): string {
     const parsed = new URL(raw);
     if (parsed.protocol !== 'https:' && !(import.meta.env.DEV && parsed.protocol === 'http:')) {
       throw new Error(m.cloud_access_invalid_url());
+    }
+    // Current gateways return the explicit noVNC URL. Keep older/provider
+    // responses desktop-specific too instead of embedding their generic proxy
+    // landing page.
+    if (parsed.hostname.endsWith('.exe.xyz') && (parsed.pathname === '/' || parsed.pathname === '')) {
+      parsed.pathname = '/vnc.html';
+      parsed.searchParams.set('autoconnect', '1');
+      parsed.searchParams.set('resize', 'remote');
     }
     return parsed.toString();
   }
@@ -26,7 +34,7 @@
     try {
       const access = await createShellAccess(shell.shellId, 'desktop');
       if (current !== generation) return;
-      url = safeHttpUrl(access.url);
+      url = safeDesktopUrl(access.url);
     } catch (err) {
       if (current !== generation) return;
       error = err instanceof Error ? err.message : String(err);
@@ -77,7 +85,7 @@
       bind:this={frame}
       src={url}
       title={m.cloud_gui_frame_title({ name: shell.displayName })}
-      allow="clipboard-read; clipboard-write; fullscreen"
+      allow="clipboard-read; clipboard-write; fullscreen; publickey-credentials-get *"
       referrerpolicy="no-referrer"
     ></iframe>
   {/if}
