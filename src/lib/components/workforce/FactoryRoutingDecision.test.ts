@@ -49,6 +49,15 @@ const intake = {
     reason: 'Two projects overlap.',
     candidates: [
       {
+        projectId: 'intake',
+        key: 'bug-triage',
+        name: 'Bug Triage Intake',
+        repositoryKey: '*',
+        groupKey: 'intake',
+        confidence: 0.99,
+        reason: 'intake_fallback',
+      },
+      {
         projectId: 'core',
         key: 'core',
         name: 'Core',
@@ -94,6 +103,7 @@ describe('FactoryRoutingDecision', () => {
     const html = body('user-1');
     expect(html).toContain('Choose a production line');
     expect(html).toContain('Hub');
+    expect(html).not.toContain('Bug Triage Intake');
     expect(html.indexOf('Core')).toBeLessThan(html.indexOf('Hub'));
     expect(html.indexOf('Hub')).toBeLessThan(html.indexOf('Recommended'));
     expect(html).toContain('New governed project');

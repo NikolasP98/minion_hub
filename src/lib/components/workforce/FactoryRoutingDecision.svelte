@@ -2,7 +2,11 @@
 	import { Ban, Factory, GitBranch, Plus } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 	import {
+		FACTORY_SCOPES,
+		factoryRepositoryKeys,
 		recommendedRoutingCandidate,
+		selectableRoutingCandidates,
+		type FactoryScope,
 		type FactoryIntakeView,
 	} from '$lib/workforce/factory-intake';
 	import {
@@ -33,6 +37,8 @@
 
 	const gate = $derived(activePipelineGate(issue, trace, viewerUserId, viewerRoleKeys));
 	const routing = $derived(intake?.routingDecision ?? null);
+	const candidates = $derived(selectableRoutingCandidates(routing?.candidates ?? []));
+	const repositoryKeys = $derived(factoryRepositoryKeys(routing?.candidates ?? []));
 	const visible = $derived(
 		intake?.state === 'awaiting_routing_approval' &&
 		gate?.stage.key === 'routing-decision' &&
@@ -41,19 +47,26 @@
 
 	type Mode = 'existing_project' | 'new_project' | 'reject';
 	// svelte-ignore state_referenced_locally
-	let mode = $state<Mode>(routing?.candidates.length ? 'existing_project' : 'new_project');
+	let mode = $state<Mode>(candidates.length ? 'existing_project' : 'new_project');
 	// svelte-ignore state_referenced_locally
-	let projectId = $state(recommendedRoutingCandidate(routing?.candidates ?? [])?.projectId ?? routing?.candidates[0]?.projectId ?? '');
+	let projectId = $state(recommendedRoutingCandidate(candidates)?.projectId ?? candidates[0]?.projectId ?? '');
 	// svelte-ignore state_referenced_locally
 	let projectName = $state(routing?.newProjectProposal?.name ?? '');
 	// svelte-ignore state_referenced_locally
 	let projectDescription = $state(routing?.newProjectProposal?.description ?? '');
-	let repositoryKey = $state('');
+	// svelte-ignore state_referenced_locally
+	let repositoryKey = $state(repositoryKeys[0] ?? '');
 	let groupKey = $state('');
-	let scopes = $state('');
+	let scopes = $state<FactoryScope[]>([]);
 	let note = $state('');
 	let busy = $state(false);
 	let submitError = $state('');
+
+	function toggleScope(scope: FactoryScope) {
+		scopes = scopes.includes(scope)
+			? scopes.filter((candidate) => candidate !== scope)
+			: [...scopes, scope];
+	}
 
 	async function submit() {
 		if (!intake || busy || !workforceAvailable || !canEdit) return;
@@ -73,9 +86,9 @@
 				kind: mode,
 				name: projectName.trim(),
 				description: projectDescription.trim() || null,
-				repositoryKey: repositoryKey.trim(),
+				repositoryKey,
 				groupKey: groupKey.trim() || null,
-				scopes: scopes.split(',').map((scope) => scope.trim()).filter(Boolean),
+				scopes,
 			};
 		} else {
 			decision = { kind: 'reject' };
@@ -129,7 +142,7 @@
 
 		{#if mode === 'existing_project'}
 			<div class="candidates">
-				{#each routing.candidates as candidate (candidate.projectId)}
+				{#each candidates as candidate (candidate.projectId)}
 					<button type="button" class:selected={projectId === candidate.projectId} aria-pressed={projectId === candidate.projectId} onclick={() => (projectId = candidate.projectId)}>
 						<div class="candidate-head">
 							<strong>{candidate.name}</strong>
@@ -144,10 +157,31 @@
 		{:else if mode === 'new_project'}
 			<div class="new-project-grid">
 				<label>{m.factoryRouting_projectName()}<input bind:value={projectName} maxlength="160" /></label>
-				<label>{m.factoryRouting_repositoryKey()}<input bind:value={repositoryKey} maxlength="120" placeholder="NikolasP98/repository" /></label>
+				<label>
+					{m.factoryRouting_repositoryKey()}
+					<select bind:value={repositoryKey} disabled={repositoryKeys.length === 0}>
+						{#each repositoryKeys as candidateRepository (candidateRepository)}
+							<option value={candidateRepository}>{candidateRepository}</option>
+						{/each}
+					</select>
+				</label>
 				<label class="wide">{m.factoryRouting_projectDescription()}<textarea bind:value={projectDescription} maxlength="2000"></textarea></label>
 				<label>{m.factoryRouting_groupKey()}<input bind:value={groupKey} maxlength="120" /></label>
-				<label>{m.factoryRouting_scopes()}<input bind:value={scopes} /></label>
+				<fieldset class="scope-field">
+					<legend>{m.factoryRouting_scopes()}</legend>
+					<div class="scope-grid">
+						{#each FACTORY_SCOPES as scope (scope)}
+							<label class:checked={scopes.includes(scope)}>
+								<input
+									type="checkbox"
+									checked={scopes.includes(scope)}
+									onchange={() => toggleScope(scope)}
+								/>
+								{scope}
+							</label>
+						{/each}
+					</div>
+				</fieldset>
 			</div>
 		{/if}
 
@@ -182,9 +216,16 @@
 	.new-project-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; margin-top: 0.75rem; }
 	.new-project-grid .wide { grid-column: 1 / -1; }
 	label { display: flex; flex-direction: column; gap: 0.25rem; color: var(--muted-foreground); font-size: 0.68rem; font-weight: 600; }
-	input, textarea { width: 100%; border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.5rem 0.6rem; color: var(--foreground); background: var(--background); font-size: 0.75rem; outline: none; }
-	input:focus, textarea:focus { border-color: var(--accent); }
+	input, select, textarea { width: 100%; border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.5rem 0.6rem; color: var(--foreground); background: var(--background); font-size: 0.75rem; outline: none; }
+	input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+	select:disabled { cursor: not-allowed; opacity: 0.55; }
 	textarea { min-height: 4.5rem; resize: vertical; }
+	.scope-field { grid-column: 1 / -1; min-width: 0; }
+	.scope-field legend { color: var(--muted-foreground); font-size: 0.68rem; font-weight: 600; }
+	.scope-grid { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
+	.scope-grid label { position: relative; display: inline-flex; flex-direction: row; align-items: center; border: 1px solid var(--border); border-radius: 999px; padding: 0.3rem 0.55rem; color: var(--muted-foreground); background: var(--background); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.62rem; cursor: pointer; }
+	.scope-grid label.checked { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--background)); }
+	.scope-grid input { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; pointer-events: none; }
 	.note { margin-top: 0.75rem; }
 	.actions { display: flex; align-items: center; gap: 0.65rem; margin-top: 0.75rem; }
 	.submit { border-radius: 0.4rem; padding: 0.5rem 0.75rem; color: var(--background); background: var(--accent); font-size: 0.72rem; font-weight: 750; }

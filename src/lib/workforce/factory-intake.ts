@@ -38,6 +38,23 @@ export type FactoryRoutingCandidate = {
   reason: string;
 };
 
+export const FACTORY_SCOPES = [
+  'auth',
+  'crm',
+  'core',
+  'gateway',
+  'workforce',
+  'ui',
+  'data',
+  'plugins',
+  'ops',
+  'docs',
+] as const;
+
+export type FactoryScope = (typeof FACTORY_SCOPES)[number];
+
+const FACTORY_SCOPE_SET = new Set<string>(FACTORY_SCOPES);
+
 export type FactoryIntakeAttempt = { request: string; idempotencyKey: string };
 
 export function factoryIntakeAttempt(
@@ -52,9 +69,46 @@ export function factoryIntakeAttempt(
 export function recommendedRoutingCandidate(
   candidates: readonly FactoryRoutingCandidate[],
 ): FactoryRoutingCandidate | null {
-  const scored = candidates.filter((candidate) => candidate.confidence !== null);
+  const scored = selectableRoutingCandidates(candidates).filter(
+    (candidate) => candidate.confidence !== null,
+  );
   if (scored.length === 0) return null;
   return [...scored].sort((left, right) => (right.confidence ?? -1) - (left.confidence ?? -1))[0];
+}
+
+/** The governed intake line receives ambiguous work but is never a delivery target. */
+export function selectableRoutingCandidates(
+  candidates: readonly FactoryRoutingCandidate[],
+): FactoryRoutingCandidate[] {
+  return candidates.filter((candidate) => candidate.reason !== 'intake_fallback');
+}
+
+/**
+ * New production lines may clone only repositories frozen into a selectable
+ * portfolio candidate. Preserve projection order while removing duplicates.
+ */
+export function factoryRepositoryKeys(candidates: readonly FactoryRoutingCandidate[]): string[] {
+  return [
+    ...new Set(
+      selectableRoutingCandidates(candidates)
+        .map((candidate) => candidate.repositoryKey.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/** Shared UI/proxy allowlist matching Paperclip's factoryScopeSchema. */
+export function normalizeFactoryScopes(value: unknown): FactoryScope[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.flatMap((scope) => {
+        if (typeof scope !== 'string') return [];
+        const normalized = scope.trim();
+        return FACTORY_SCOPE_SET.has(normalized) ? [normalized as FactoryScope] : [];
+      }),
+    ),
+  ];
 }
 
 function record(value: unknown): Record<string, unknown> | null {

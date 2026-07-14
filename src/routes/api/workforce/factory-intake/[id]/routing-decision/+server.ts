@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { trustedWorkforceMutationHeaders, workforceRawFetch } from '$lib/server/workforce-fetch';
+import { normalizeFactoryScopes } from '$lib/workforce/factory-intake';
 import type { RequestHandler } from './$types';
 
 function text(value: unknown, max = 4000): string | null {
@@ -37,14 +38,7 @@ export const POST: RequestHandler = async (event) => {
     const name = text(decision?.name, 160);
     const repositoryKey = text(decision?.repositoryKey, 120);
     if (!name || !repositoryKey) throw error(400, 'name and repositoryKey are required');
-    const scopes = Array.isArray(decision?.scopes)
-      ? decision.scopes
-          .flatMap((scope) => {
-            const normalized = text(scope, 80);
-            return normalized ? [normalized] : [];
-          })
-          .slice(0, 30)
-      : [];
+    const scopes = normalizeFactoryScopes(decision?.scopes);
     safeDecision = {
       kind,
       name,

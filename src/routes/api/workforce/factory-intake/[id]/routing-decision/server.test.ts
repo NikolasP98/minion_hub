@@ -65,7 +65,7 @@ describe('factory routing-decision proxy', () => {
           description: 'A controlled production line.',
           repositoryKey: 'NikolasP98/minion_hub',
           groupKey: 'apps',
-          scopes: ['assistant', '', 42, 'workforce'],
+          scopes: ['assistant', '', 42, 'workforce', 'ui', 'workforce'],
         },
       }),
     );
@@ -76,7 +76,7 @@ describe('factory routing-decision proxy', () => {
       description: 'A controlled production line.',
       repositoryKey: 'NikolasP98/minion_hub',
       groupKey: 'apps',
-      scopes: ['assistant', 'workforce'],
+      scopes: ['workforce', 'ui'],
     });
   });
 

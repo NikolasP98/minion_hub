@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   factoryIntakeAttempt,
   factoryIntakeIsSettled,
+  factoryRepositoryKeys,
+  normalizeFactoryScopes,
   normalizeFactoryIntake,
   recommendedRoutingCandidate,
+  selectableRoutingCandidates,
 } from './factory-intake';
 
 describe('normalizeFactoryIntake', () => {
@@ -118,5 +121,43 @@ describe('recommendedRoutingCandidate', () => {
       },
     ];
     expect(recommendedRoutingCandidate(candidates)?.projectId).toBe('second');
+  });
+
+  it('never recommends or exposes the governed intake fallback as a delivery target', () => {
+    const candidates = [
+      {
+        projectId: 'intake',
+        key: 'bug-triage',
+        name: 'Bug Triage',
+        repositoryKey: '*',
+        groupKey: null,
+        confidence: 0.99,
+        reason: 'intake_fallback',
+      },
+      {
+        projectId: 'hub',
+        key: 'hub',
+        name: 'Hub',
+        repositoryKey: 'NikolasP98/minion_hub',
+        groupKey: 'apps',
+        confidence: 0.72,
+        reason: 'factory_candidate',
+      },
+    ];
+
+    expect(selectableRoutingCandidates(candidates).map((candidate) => candidate.projectId)).toEqual(
+      ['hub'],
+    );
+    expect(recommendedRoutingCandidate(candidates)?.projectId).toBe('hub');
+    expect(factoryRepositoryKeys(candidates)).toEqual(['NikolasP98/minion_hub']);
+  });
+});
+
+describe('normalizeFactoryScopes', () => {
+  it('keeps only unique scopes supported by the factory contract', () => {
+    expect(normalizeFactoryScopes(['workforce', 'assistant', '', 42, 'ui', 'workforce'])).toEqual([
+      'workforce',
+      'ui',
+    ]);
   });
 });
