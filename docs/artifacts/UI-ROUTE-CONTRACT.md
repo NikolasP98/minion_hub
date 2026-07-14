@@ -82,3 +82,30 @@ bun run vitest run src/lib/routes/route-design-contracts.test.ts
 Then run `bun run check`. Any new page must add its route metadata in the same
 change; any new dynamic route must add or reuse a deterministic fixture; any new
 nav destination must resolve through the manifest.
+
+### Frontend link and API scanner
+
+`src/server/ui-audit/frontend-contract-scanner.ts` adds a filesystem-backed
+contract for identifiable frontend navigation and API calls. It resolves static
+and templated `href`, route-object, and SvelteKit navigation destinations against
+the page manifest. It also resolves `fetch`, `fetchJson`, and `jsonMutation`
+calls against filesystem `+server` handlers and verifies the exported HTTP
+method.
+
+The current certified inventory is 142 page endpoints, 352 API handler files,
+288 navigation references, and 389 method-specific frontend API calls, with no
+unresolved destination or method mismatch. One Builder delete call deliberately
+uses a typed runtime segment shared by the agents, skills, and tools handlers;
+the test reason-codes those three compatible patterns and fails if the ambiguous
+set grows silently.
+
+Run the scanner gate with:
+
+```bash
+bun run vitest run src/server/ui-audit/frontend-contract-scanner.test.ts
+```
+
+This is a static contract, not a substitute for the authenticated browser
+matrix. URLs assembled entirely through runtime variables, indirect request
+wrappers, upstream gateway behavior, response schemas, authorization outcomes,
+and third-party links still require behavioral or browser verification.
