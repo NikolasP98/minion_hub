@@ -6,6 +6,7 @@ import {
   advanceFleetUpdate,
   getFleetUpdateStatus,
   abortFleetUpdate,
+  type FleetTargetSource,
 } from '$server/services/fleet-update.service';
 
 // Fleet update is a platform-level operation — admin-gated the same way as
@@ -21,13 +22,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const body = (await request.json().catch(() => ({}))) as {
     action?: string;
     targetVersion?: string;
+    targetSource?: FleetTargetSource;
   };
 
   try {
     switch (body.action) {
       case 'start': {
         if (!body.targetVersion) throw error(400, 'targetVersion is required');
-        return json(await startFleetUpdate(tenantId, user.id, body.targetVersion));
+        return json(await startFleetUpdate(tenantId, user.id, body.targetVersion, body.targetSource ?? 'mixed'));
       }
       case 'advance': {
         const view = await advanceFleetUpdate(tenantId);

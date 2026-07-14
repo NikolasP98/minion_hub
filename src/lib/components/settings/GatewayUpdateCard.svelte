@@ -40,6 +40,7 @@
   type FleetJob = {
     id: string;
     targetVersion: string;
+    targetSource: 'package' | 'external-image' | 'mixed';
     instances: FleetInstance[];
     currentIndex: number;
     status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
@@ -136,11 +137,14 @@
     }
   }
 
-  async function startFleet(targetVersion: string): Promise<void> {
+  async function startFleet(
+    targetVersion: string,
+    targetSource: 'package' | 'external-image' | 'mixed',
+  ): Promise<void> {
     if (starting || running) return;
     starting = true;
     try {
-      const started = await callFleet({ action: 'start', targetVersion });
+      const started = await callFleet({ action: 'start', targetVersion, targetSource });
       if (!started) return;
       job = started;
       // Round-5: arm the bar immediately (parity with the old single-instance
@@ -171,7 +175,7 @@
    * of the same target version rather than bricking the card (round-4 fix 3). */
   function retryFleet(): void {
     if (!job) return;
-    void startFleet(job.targetVersion);
+    void startFleet(job.targetVersion, job.targetSource);
   }
 
   const doneCount = $derived(job?.instances.filter((i) => i.state === 'done').length ?? 0);
@@ -270,7 +274,7 @@
       )
     )
       return;
-    void startFleet(updateState.pending.version);
+    void startFleet(updateState.pending.version, updateState.targetSource);
   }
 
   const shortSha = $derived(gw.hello?.server?.commit?.slice(0, 7) ?? null);
@@ -352,7 +356,11 @@
               class="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50"
             >
               <Download size={12} />
-              {installBusy ? m.gateway_update_installing() : m.gateway_update_installAndRestart()}
+              {installBusy
+                ? m.gateway_update_installing()
+                : updateState.targetSource === 'external-image' || updateState.targetSource === 'mixed'
+                  ? m.gateway_update_rolloutImage()
+                  : m.gateway_update_installAndRestart()}
             </button>
           {/if}
         </div>
