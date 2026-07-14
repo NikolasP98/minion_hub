@@ -6,6 +6,7 @@
 	import PipelineStepper from '$lib/components/workforce/PipelineStepper.svelte';
 	import PipelineTrace from '$lib/components/workforce/PipelineTrace.svelte';
 	import PipelineGateControls from '$lib/components/workforce/PipelineGateControls.svelte';
+	import FactoryRoutingDecision from '$lib/components/workforce/FactoryRoutingDecision.svelte';
 	import { canAct } from '$lib/access/can.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { invalidateAll } from '$app/navigation';
@@ -188,8 +189,19 @@
 					Last gate decision: <span class="font-medium {issue.executionState.lastDecisionOutcome === 'approved' ? 'text-green-600' : 'text-amber-600'}">{issue.executionState.lastDecisionOutcome.replace('_', ' ')}</span>
 				</p>
 			{/if}
-		</section>
+	</section>
 	{/if}
+
+	<FactoryRoutingDecision
+		{issue}
+		trace={pipelineTrace}
+		intake={data.factoryIntake}
+		viewerUserId={data.viewerUserId}
+		viewerRoleKeys={data.viewerRoleKeys}
+		workforceAvailable={data.workforceAvailable}
+		canEdit={canAct('projects', 'edit')}
+		onDecisionRecorded={invalidateAll}
+	/>
 
 	<PipelineGateControls
 		{issue}

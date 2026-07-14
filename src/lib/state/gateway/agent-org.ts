@@ -17,10 +17,10 @@
  * via `listBrainAgentIds`), and any `brain-*` id NOT in that set is hidden
  * rather than defaulting to MINION.
  */
-import { PUBLIC_DEFAULT_ORG_SLUG } from '$env/static/public';
+import { env } from '$env/dynamic/public';
 
 /** Org slugs (stable) used to map the name rule onto concrete org ids. */
-export const FACES_ORG_SLUG = PUBLIC_DEFAULT_ORG_SLUG || 'faces-sculptors';
+export const FACES_ORG_SLUG = env.PUBLIC_DEFAULT_ORG_SLUG || 'faces-sculptors';
 export const MINION_ORG_SLUG = 'minion';
 
 // Derived from the slug's first hyphen-separated segment so the default slug

@@ -16,6 +16,7 @@ import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
 import { trustedWorkforceViewerRoleKeys } from '$lib/server/workforce-viewer';
 import { canonicalizeWorkforceRoleKeys } from '$lib/server/workforce-role-keys';
+import { needsWorkforceIdentity } from '$lib/server/workforce-route';
 import { initCache } from '$lib/server/cache';
 import { getCoreDb } from '$server/db/pg-client';
 import { getUserPreferences } from '$server/services/user-preferences.service';
@@ -303,12 +304,7 @@ const workforceIdentityHandle: Handle = async ({ event, resolve }) => {
     // model). Only attach it for routes that consume it (the workforce UI + the
     // backend proxy) so non-workforce requests skip the work entirely.
     const path = event.url.pathname;
-    const needsCompany =
-      path.startsWith('/workforce') ||
-      path.startsWith('/api/workforce') ||
-      path.startsWith('/api/pc') ||
-      // The autonomous-agents page surfaces Workforce agents as a segregated group.
-      path.startsWith('/agents/autonomous');
+    const needsCompany = needsWorkforceIdentity(path);
     if (!needsCompany) return resolve(event);
     const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId ?? null;
     // Native single-id model: the Workforce company id IS the active org id

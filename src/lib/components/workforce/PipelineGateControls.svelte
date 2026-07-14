@@ -34,7 +34,11 @@
 	let busy = $state(false);
 	let submitError = $state('');
 
-	const gate = $derived(activePipelineGate(issue, trace, viewerUserId, viewerRoleKeys));
+	const gate = $derived.by(() => {
+		const active = activePipelineGate(issue, trace, viewerUserId, viewerRoleKeys);
+		// Factory routing is a typed three-way decision, not an approve/done gate.
+		return active?.stage.key === 'routing-decision' ? null : active;
+	});
 	const inlineGate = $derived(!gate && hasActiveInlinePipelineGate(issue));
 	function stageGateMutation(decision: PipelineGateDecision) {
 		if (!gate) return null;

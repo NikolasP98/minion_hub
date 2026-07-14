@@ -2,6 +2,7 @@ import { createWorkforceClient, type WorkforceClient } from '@minion-stack/workf
 import { env } from '$env/dynamic/private';
 import type { RequestEvent } from '@sveltejs/kit';
 import { mintWorkforceIdentity } from './workforce-identity';
+import { hubBaseUrl } from '$server/config/urls';
 
 /**
  * Base URL of the Workforce backend. `WORKFORCE_INTERNAL_URL` is the canonical
@@ -31,6 +32,20 @@ export function authHeaders(token: string): Record<string, string> {
 	return token.startsWith('pcli_')
 		? { Authorization: `Bearer ${token}` }
 		: { 'x-hub-identity': token };
+}
+
+/**
+ * Canonical public boundary asserted on trusted Hub→Workforce mutations.
+ * Never derive these values from the inbound Host/Origin headers.
+ */
+export function trustedWorkforceMutationHeaders(): Record<string, string> {
+	const publicHub = new URL(hubBaseUrl());
+	return {
+		origin: publicHub.origin,
+		referer: `${publicHub.origin}/`,
+		'x-forwarded-host': publicHub.host,
+		'x-forwarded-proto': publicHub.protocol.slice(0, -1),
+	};
 }
 
 export function workforceServerClient(event: RequestEvent): WorkforceClient {

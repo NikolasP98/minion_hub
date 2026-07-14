@@ -126,4 +126,23 @@ describe('PipelineGateControls', () => {
     expect(renderRoleGate(['reviewer'])).toContain('Human decision');
     expect(renderRoleGate(['staff'])).not.toContain('Human decision');
   });
+
+  it('does not downgrade a factory routing choice to generic approve/request changes', () => {
+    const routingTrace = {
+      ...trace,
+      currentStepKey: 'routing-decision',
+      currentStage: { ...trace.currentStage!, key: 'routing-decision', label: 'Routing decision' },
+    };
+    const body = render(PipelineGateControls, {
+      props: {
+        issue,
+        trace: routingTrace,
+        viewerUserId: 'user-1',
+        workforceAvailable: true,
+        canEdit: true,
+      },
+    }).body;
+    expect(body).not.toContain('Approve');
+    expect(body).not.toContain('Request changes');
+  });
 });
