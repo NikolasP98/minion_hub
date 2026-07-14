@@ -133,7 +133,7 @@
   .subtitle {
     font-size: var(--font-size-caption, 12px);
     color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
-    margin-top: var(--space-0.5, 2px);
+    margin-top: var(--space-0-5, 2px);
   }
 
   .actions {
