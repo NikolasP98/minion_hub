@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { Button } from '$lib/components/ui';
+import { goto } from '$app/navigation';
   import { Workflow, ChevronDown, ChevronRight, BookOpen } from 'lucide-svelte';
   import { MASTER_FLOWS } from '$lib/flows/master-flows';
 
@@ -12,7 +13,7 @@
 
 <section class="mb-6">
   <header class="flex items-center justify-between mb-2">
-    <button
+    <Button variant="ghost"
       type="button"
       class="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground"
       onclick={() => (collapsed = !collapsed)}
@@ -21,8 +22,8 @@
       <BookOpen size={12} class="text-accent" />
       <span class="text-foreground">Master Flows</span>
       <span class="text-muted/50">({MASTER_FLOWS.length})</span>
-    </button>
-    <span class="hidden sm:block text-[10px] font-mono text-muted/60 tracking-wide">
+    </Button>
+    <span class="hidden sm:block text-[length:var(--font-size-telemetry)] font-mono text-muted/60 tracking-wide">
       standard gateway behaviors · read-only
     </span>
   </header>
@@ -39,20 +40,20 @@
         >
           <div class="aspect-video bg-gradient-to-br from-accent/[0.07] to-transparent flex items-center justify-center relative">
             <Workflow size={32} class="text-accent/30 group-hover:text-accent/50 transition-colors" />
-            <div class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-[9px] font-mono uppercase tracking-wider ring-1 ring-accent/20">
+            <div class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-[length:var(--font-size-telemetry)] font-mono uppercase tracking-wider ring-1 ring-accent/20">
               <BookOpen size={9} /> master
             </div>
-            <div class="absolute bottom-2 right-2 text-[10px] font-mono text-muted/50">
+            <div class="absolute bottom-2 right-2 text-[length:var(--font-size-telemetry)] font-mono text-muted/50">
               {flow.nodes.length} steps
             </div>
           </div>
           <div class="px-4 py-3">
             <div class="text-sm font-semibold text-foreground truncate">{flow.name}</div>
-            <p class="text-[11px] text-muted mt-1 leading-snug line-clamp-2">{flow.description}</p>
+            <p class="text-[length:var(--font-size-caption)] text-muted mt-1 leading-snug line-clamp-2">{flow.description}</p>
             {#if flow.tags?.length}
               <div class="flex flex-wrap gap-1 mt-2">
                 {#each flow.tags as tag (tag)}
-                  <span class="px-1.5 py-0.5 rounded bg-bg3 text-muted text-[9px] font-mono">{tag}</span>
+                  <span class="px-1.5 py-0.5 rounded bg-bg3 text-muted text-[length:var(--font-size-telemetry)] font-mono">{tag}</span>
                 {/each}
               </div>
             {/if}

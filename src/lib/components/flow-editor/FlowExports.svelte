@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { VariableSpec } from '$lib/flows/master-flows';
+  import { Button } from '$lib/components/ui';
+import type { VariableSpec } from '$lib/flows/master-flows';
   import { resolveFlowVariables } from '$lib/flows/flow-variables';
   import * as m from '$lib/paraglide/messages';
 
@@ -59,7 +60,7 @@
           <span class="flow-exports__var-label">{v.label}</span>
           <span class="flow-exports__var-key">{v.key}</span>
           <span class="flow-exports__type-chip">{TYPE_LABELS[v.type] ?? v.type}</span>
-          <button
+          <Button variant="ghost"
             role="switch"
             aria-checked={v.enabled}
             disabled={!canEdit}
@@ -69,7 +70,7 @@
             title={v.description ?? v.label}
           >
             <span class="flow-exports__toggle-thumb"></span>
-          </button>
+          </Button>
         </li>
       {/each}
     </ul>
@@ -80,23 +81,23 @@
   .flow-exports {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
     min-width: 260px;
   }
 
   .flow-exports__label {
-    font-size: 11px;
+    font-size: var(--font-size-caption);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--color-text-tertiary, rgba(255 255 255 / 0.4));
-    margin: 0 0 0.25rem;
+    color: var(--color-text-tertiary, color-mix(in srgb, var(--color-text-primary) 40%, transparent));
+    margin: 0 0 var(--space-1);
   }
 
   .flow-exports__empty {
-    font-size: 12px;
-    color: var(--color-text-tertiary, rgba(255 255 255 / 0.35));
+    font-size: var(--font-size-caption);
+    color: var(--color-text-tertiary, color-mix(in srgb, var(--color-text-primary) 35%, transparent));
     margin: 0;
   }
 
@@ -106,37 +107,37 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.375rem;
+    gap: var(--space-2);
   }
 
   .flow-exports__item {
     display: grid;
     grid-template-columns: 1fr auto auto auto;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .flow-exports__var-label {
-    font-size: 12px;
-    color: var(--color-text-primary, rgba(255 255 255 / 0.85));
+    font-size: var(--font-size-caption);
+    color: var(--color-text-primary, color-mix(in srgb, var(--color-text-primary) 85%, transparent));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .flow-exports__var-key {
-    font-size: 10px;
+    font-size: var(--font-size-telemetry);
     font-family: var(--font-mono, monospace);
-    color: var(--color-text-tertiary, rgba(255 255 255 / 0.4));
+    color: var(--color-text-tertiary, color-mix(in srgb, var(--color-text-primary) 40%, transparent));
   }
 
   .flow-exports__type-chip {
-    font-size: 9px;
+    font-size: var(--font-size-telemetry);
     font-family: var(--font-mono, monospace);
-    background: var(--color-surface-2, rgba(255 255 255 / 0.08));
+    background: var(--color-surface-2, color-mix(in srgb, var(--color-text-primary) 8%, transparent));
     color: var(--color-accent);
-    border-radius: 3px;
-    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+    padding: 1px var(--space-1);
     white-space: nowrap;
   }
 
@@ -145,12 +146,12 @@
     position: relative;
     width: 28px;
     height: 16px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: none;
-    background: var(--color-surface-2, rgba(255 255 255 / 0.15));
+    background: var(--color-surface-2, color-mix(in srgb, var(--color-text-primary) 15%, transparent));
     cursor: pointer;
     padding: 0;
-    transition: background 0.15s;
+    transition: background var(--duration-fast);
     flex-shrink: 0;
   }
 
@@ -169,9 +170,9 @@
     left: 2px;
     width: 12px;
     height: 12px;
-    border-radius: 50%;
+    border-radius: var(--radius-full);
     background: white;
-    transition: transform 0.15s;
+    transition: transform var(--duration-fast);
     pointer-events: none;
   }
 

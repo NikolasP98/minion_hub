@@ -19,41 +19,41 @@
 <style>
   /* Prose tweaks: tighter spacing, monospace pre/code, accent inline code. */
   :global(.prose pre) {
-    font-size: 0.75rem;
+    font-size: var(--font-size-caption);
     line-height: 1.4;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 4px;
-    padding: 0.5rem;
+    background: color-mix(in srgb, var(--color-canvas) 25%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
     overflow-x: auto;
   }
   :global(.prose code) {
-    font-size: 0.75rem;
-    background: rgba(255, 255, 255, 0.06);
-    padding: 0.1em 0.3em;
-    border-radius: 3px;
+    font-size: var(--font-size-caption);
+    background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+    padding: var(--space-0-5) var(--space-1);
+    border-radius: var(--radius-xs);
   }
   :global(.prose pre code) {
     background: none;
     padding: 0;
   }
   :global(.prose h1, .prose h2, .prose h3, .prose h4) {
-    margin-top: 0.75rem;
-    margin-bottom: 0.4rem;
+    margin-top: var(--space-3);
+    margin-bottom: var(--space-2);
   }
   :global(.prose h2) {
-    font-size: 0.95rem;
+    font-size: var(--font-size-page-title);
     font-weight: 700;
   }
   :global(.prose h3) {
-    font-size: 0.85rem;
+    font-size: var(--font-size-body);
     font-weight: 600;
   }
   :global(.prose p, .prose ul, .prose ol) {
-    margin-top: 0.4rem;
-    margin-bottom: 0.4rem;
+    margin-top: var(--space-2);
+    margin-bottom: var(--space-2);
   }
   :global(.prose ul, .prose ol) {
-    padding-left: 1.25rem;
+    padding-left: var(--space-6);
   }
 </style>

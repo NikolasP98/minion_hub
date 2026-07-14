@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Handle, Position } from '@xyflow/svelte';
+  import { Button } from '$lib/components/ui';
+import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { ScheduleNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig } from '$lib/state/features/flow-editor.svelte';
@@ -18,7 +19,7 @@
   type="source"
   position={Position.Right}
   id="out"
-  class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900"
+  class="!w-3 !h-3 !border-2 !border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)]"
 />
 
 <div
@@ -28,20 +29,20 @@
   role="presentation"
 >
   <div class="flex items-center gap-2 mb-1.5">
-    <div class="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0">
-      <Clock size={12} class="text-amber-400" />
+    <div class="w-6 h-6 rounded-md bg-[var(--color-warning-surface)] flex items-center justify-center shrink-0">
+      <Clock size={12} class="text-[var(--color-warning-fg)]" />
     </div>
     <span class="text-xs font-semibold text-foreground truncate flex-1">{m.flownode_schedule()}</span>
-    <button
+    <Button variant="ghost"
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
       title={m.flownode_configureSchedule()}
       aria-label={m.flownode_configureSchedule()}
       onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
     >
       <Settings2 size={12} />
-    </button>
+    </Button>
   </div>
-  <span class="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">
+  <span class="inline-block text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]">
     {cadence}{atTime}
   </span>
 </div>

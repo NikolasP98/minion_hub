@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { flowEditorState, setNodes, setPluginNodeDescriptors, setNodePresets, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
+  import { Button } from '$lib/components/ui';
+import { flowEditorState, setNodes, setPluginNodeDescriptors, setNodePresets, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
   import type { FlowNodePreset } from '$lib/state/features/flow-editor.svelte';
   import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, HandoffNodeData, ReactionNodeData, SubflowNodeData, DatabaseNodeData, FileWriteNodeData, ScheduleNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
@@ -280,36 +281,36 @@
     {
       title: 'Triggers',
       nodes: [
-        { type: 'trigger', label: 'Channel Trigger', desc: 'Inbound message · one or more channels', icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addTriggerNode },
-        { type: 'schedule', label: 'Schedule', desc: 'Run on a recurring interval', icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addSchedule },
-        { type: 'promptBox', label: 'Prompt Box', desc: 'Manual text input', icon: Type, color: 'text-violet-400', bg: 'bg-violet-500/20', add: addPromptBox, dragLabel: 'Prompt' },
+        { type: 'trigger', label: 'Channel Trigger', desc: 'Inbound message · one or more channels', icon: Zap, color: 'text-[var(--color-warning-fg)]', bg: 'bg-[var(--color-warning-surface)]', add: addTriggerNode },
+        { type: 'schedule', label: 'Schedule', desc: 'Run on a recurring interval', icon: Clock, color: 'text-[var(--color-warning-fg)]', bg: 'bg-[var(--color-warning-surface)]', add: addSchedule },
+        { type: 'promptBox', label: 'Prompt Box', desc: 'Manual text input', icon: Type, color: 'text-[var(--color-purple)]', bg: 'bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]', add: addPromptBox, dragLabel: 'Prompt' },
       ],
     },
     {
       title: 'AI',
       nodes: [
-        { type: 'llm', label: 'LLM', desc: 'Direct model call', icon: Cpu, color: 'text-violet-400', bg: 'bg-violet-500/20', add: addLLMNode },
-        { type: 'agent', label: 'Agent', desc: 'Custom or personal agent', icon: Bot, color: 'text-indigo-400', bg: 'bg-indigo-500/20', add: addAgentNode },
-        { type: 'toolAgent', label: 'Tool Agent', desc: 'LLM with tool calls', icon: Wrench, color: 'text-emerald-400', bg: 'bg-emerald-500/20', add: addToolAgent },
+        { type: 'llm', label: 'LLM', desc: 'Direct model call', icon: Cpu, color: 'text-[var(--color-purple)]', bg: 'bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]', add: addLLMNode },
+        { type: 'agent', label: 'Agent', desc: 'Custom or personal agent', icon: Bot, color: 'text-[var(--color-purple)]', bg: 'bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]', add: addAgentNode },
+        { type: 'toolAgent', label: 'Tool Agent', desc: 'LLM with tool calls', icon: Wrench, color: 'text-[var(--color-success-fg)]', bg: 'bg-[var(--color-success-fg)]/20', add: addToolAgent },
       ],
     },
     {
       title: 'Logic & Data',
       nodes: [
-        { type: 'router', label: 'Router / Classify', desc: 'Branch or classify — rule, LLM rubric, or both', icon: Split, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addRouter },
-        { type: 'structured', label: 'Structured', desc: 'Extract JSON', icon: Braces, color: 'text-teal-300', bg: 'bg-teal-500/20', add: addStructured },
-        { type: 'transform', label: 'Transform', desc: 'Template text', icon: Braces, color: 'text-slate-300', bg: 'bg-slate-500/20', add: addTransform },
-        { type: 'database', label: 'Database', desc: 'Read / write a SQLite DB (CRUD)', icon: Database, color: 'text-teal-300', bg: 'bg-teal-500/20', add: addDatabase },
-        { type: 'subflow', label: 'Subflow', desc: 'Run another flow as a step', icon: Workflow, color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/20', add: addSubflow },
+        { type: 'router', label: 'Router / Classify', desc: 'Branch or classify — rule, LLM rubric, or both', icon: Split, color: 'text-[var(--color-warning-fg)]', bg: 'bg-[var(--color-warning-surface)]', add: addRouter },
+        { type: 'structured', label: 'Structured', desc: 'Extract JSON', icon: Braces, color: 'text-[var(--color-cyan)]', bg: 'bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]', add: addStructured },
+        { type: 'transform', label: 'Transform', desc: 'Template text', icon: Braces, color: 'text-[var(--color-text-tertiary)]', bg: 'bg-[var(--color-surface-2)]', add: addTransform },
+        { type: 'database', label: 'Database', desc: 'Read / write a SQLite DB (CRUD)', icon: Database, color: 'text-[var(--color-cyan)]', bg: 'bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]', add: addDatabase },
+        { type: 'subflow', label: 'Subflow', desc: 'Run another flow as a step', icon: Workflow, color: 'text-[var(--color-pink)]', bg: 'bg-[color-mix(in_srgb,var(--color-pink)_20%,transparent)]', add: addSubflow },
       ],
     },
     {
       title: 'Output',
       nodes: [
-        { type: 'channel', label: 'Channel', desc: 'Send to WhatsApp / Telegram / …', icon: Send, color: 'text-cyan-400', bg: 'bg-cyan-500/20', add: addChannelNode },
-        { type: 'handoff', label: 'Human Handoff', desc: 'Claim → suggest → relay to a human until /end', icon: Headset, color: 'text-rose-400', bg: 'bg-rose-500/20', add: addHandoff },
-        { type: 'reaction', label: 'Set Reaction', desc: 'Mark the trigger message with a status emoji', icon: SmilePlus, color: 'text-pink-400', bg: 'bg-pink-500/20', add: addReaction },
-        { type: 'fileWrite', label: 'Write File', desc: 'Save the message to a file', icon: FileText, color: 'text-slate-300', bg: 'bg-slate-500/20', add: addFileWrite },
+        { type: 'channel', label: 'Channel', desc: 'Send to WhatsApp / Telegram / …', icon: Send, color: 'text-[var(--color-cyan)]', bg: 'bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]', add: addChannelNode },
+        { type: 'handoff', label: 'Human Handoff', desc: 'Claim → suggest → relay to a human until /end', icon: Headset, color: 'text-[var(--color-danger-fg)]', bg: 'bg-[var(--color-danger-surface)]', add: addHandoff },
+        { type: 'reaction', label: 'Set Reaction', desc: 'Mark the trigger message with a status emoji', icon: SmilePlus, color: 'text-[var(--color-pink)]', bg: 'bg-[color-mix(in_srgb,var(--color-pink)_20%,transparent)]', add: addReaction },
+        { type: 'fileWrite', label: 'Write File', desc: 'Save the message to a file', icon: FileText, color: 'text-[var(--color-text-tertiary)]', bg: 'bg-[var(--color-surface-2)]', add: addFileWrite },
       ],
     },
   ];
@@ -327,16 +328,16 @@
 </script>
 
 <aside
-  class="shrink-0 bg-bg2 border-r border-border flex flex-col overflow-hidden transition-all duration-200 {collapsed
+  class="shrink-0 bg-bg2 border-r border-border flex flex-col overflow-hidden transition-all duration-[var(--duration-normal)] {collapsed
     ? 'w-9'
     : 'w-52'}"
 >
   <!-- Header / collapse toggle -->
   <div class="flex items-center border-b border-border {collapsed ? 'justify-center px-0 py-2' : 'justify-between px-3 py-2.5'}">
     {#if !collapsed}
-      <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">{m.flow_palette()}</h2>
+      <h2 class="text-[length:var(--font-size-telemetry)] font-semibold text-muted uppercase tracking-wider">{m.flow_palette()}</h2>
     {/if}
-    <button
+    <Button variant="ghost"
       onclick={() => (collapsed = !collapsed)}
       class="flex items-center justify-center w-5 h-5 rounded text-muted/60 hover:text-foreground hover:bg-bg3 transition-colors"
       title={collapsed ? m.flow_expandPalette() : m.flow_collapsePalette()}
@@ -346,7 +347,7 @@
       {:else}
         <ChevronLeft size={12} />
       {/if}
-    </button>
+    </Button>
   </div>
 
   {#if collapsed}
@@ -358,7 +359,7 @@
         {/if}
         {#each cat.nodes as node (node.label)}
           {@const Icon = node.icon}
-          <button
+          <Button variant="ghost"
             onclick={node.add}
             draggable="true"
             ondragstart={(e) => handleDragStart(e, nodeDragPayload(node))}
@@ -366,42 +367,42 @@
             title={node.label}
           >
             <Icon size={13} class={node.color} />
-          </button>
+          </Button>
         {/each}
       {/each}
     </div>
   {:else}
     {#snippet pluginButton(d: FlowNodeDescriptor)}
-      <button
+      <Button variant="ghost"
         onclick={() => addPluginNode(d)}
         draggable="true"
         ondragstart={(e) => handleDragStart(e, { type: d.kind === 'trigger' ? 'pluginTrigger' : 'pluginAction', descriptor: d })}
         class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
       >
-        <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0">
+        <div class="w-6 h-6 rounded bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0">
           {#if d.kind === 'trigger'}
-            <Zap size={12} class="text-violet-400" />
+            <Zap size={12} class="text-[var(--color-purple)]" />
           {:else}
-            <Puzzle size={12} class="text-violet-400" />
+            <Puzzle size={12} class="text-[var(--color-purple)]" />
           {/if}
         </div>
         <div class="min-w-0">
           <div class="text-xs font-medium text-foreground truncate">{d.label}</div>
-          <div class="text-[10px] text-muted truncate">{d.description || (d.kind === 'trigger' ? 'trigger' : 'action')}</div>
+          <div class="text-[length:var(--font-size-telemetry)] text-muted truncate">{d.description || (d.kind === 'trigger' ? 'trigger' : 'action')}</div>
         </div>
-      </button>
+      </Button>
     {/snippet}
 
     <div class="flex-1 overflow-y-auto py-3 px-2 space-y-4">
       {#each CATEGORIES as cat (cat.title)}
         <div>
-          <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
+          <p class="text-[length:var(--font-size-telemetry)] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
             {cat.title}
           </p>
           <div class="flex flex-col gap-0.5">
             {#each cat.nodes as node (node.label)}
               {@const Icon = node.icon}
-              <button
+              <Button variant="ghost"
                 onclick={node.add}
                 draggable="true"
                 ondragstart={(e) => handleDragStart(e, nodeDragPayload(node))}
@@ -412,9 +413,9 @@
                 </div>
                 <div class="min-w-0">
                   <div class="text-xs font-medium text-foreground truncate">{node.label}</div>
-                  <div class="text-[10px] text-muted truncate">{node.desc}</div>
+                  <div class="text-[length:var(--font-size-telemetry)] text-muted truncate">{node.desc}</div>
                 </div>
-              </button>
+              </Button>
             {/each}
             <!-- Plugin nodes that declared this function group -->
             {#each pluginsByCategory[cat.title] ?? [] as d (d.id)}
@@ -428,7 +429,7 @@
       {#if uncategorizedGroups.length > 0}
         {#each uncategorizedGroups as [pluginId, nodes] (pluginId)}
           <div>
-            <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
+            <p class="text-[length:var(--font-size-telemetry)] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
               {pluginId}
             </p>
             <div class="flex flex-col gap-0.5">

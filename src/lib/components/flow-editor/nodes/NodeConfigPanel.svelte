@@ -1,5 +1,6 @@
 <script lang="ts">
-  import {
+  import { Button, Select } from '$lib/components/ui';
+import {
     flowEditorState,
     descriptorForNode,
     updateNodeConfig,
@@ -76,7 +77,7 @@
 
 {#if node && (isChannel || isHandoff || isReaction || isSubflow || isDatabase || isFileWrite || isSchedule || isTrigger || fields.length > 0)}
   <div
-    class="absolute top-3 right-3 z-30 {isChannel || isHandoff || isTrigger ? 'w-80' : 'w-72'} max-h-[calc(100%-1.5rem)] overflow-y-auto bg-bg2 border border-border rounded-xl shadow-xl flex flex-col"
+    class="absolute top-3 right-3 z-[var(--layer-dropdown)] {isChannel || isHandoff || isTrigger ? 'w-80' : 'w-72'} max-h-[calc(100%-1.5rem)] overflow-y-auto bg-bg2 border border-border rounded-xl shadow-xl flex flex-col"
     role="dialog"
     tabindex="-1"
     aria-label={m.flowcfg_nodeConfig()}
@@ -86,17 +87,17 @@
         <Settings2 size={13} class="text-accent shrink-0" />
         <div class="min-w-0">
           <div class="text-xs font-semibold text-foreground truncate">{nodeLabel}</div>
-          <div class="text-[10px] text-muted truncate">{subtitle}</div>
+          <div class="text-[length:var(--font-size-telemetry)] text-muted truncate">{subtitle}</div>
         </div>
       </div>
-      <button
+      <Button variant="ghost"
         onclick={closeNodeConfig}
         class="p-1 rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors shrink-0"
         title={m.common_close()}
         aria-label={m.common_close()}
       >
         <X size={14} />
-      </button>
+      </Button>
     </div>
 
     {#if isChannel}
@@ -136,36 +137,36 @@
               <span class="text-xs font-medium text-foreground">{field.label}</span>
             </label>
           {:else if field.type === 'destination-list'}
-            <span class="text-[11px] font-medium text-foreground">{field.label}</span>
+            <span class="text-[length:var(--font-size-caption)] font-medium text-foreground">{field.label}</span>
             <DestinationListField
               value={(config[field.key] as DestinationListValue) ?? { destinations: [] }}
               onChange={(v) => set(field.key, v)}
             />
             {#if field.description}
-              <p class="text-[10px] text-muted leading-snug">{field.description}</p>
+              <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">{field.description}</p>
             {/if}
           {:else if field.type === 'branch-editor'}
-            <span class="text-[11px] font-medium text-foreground">{field.label}</span>
+            <span class="text-[length:var(--font-size-caption)] font-medium text-foreground">{field.label}</span>
             <BranchEditorField
               value={(config[field.key] as BranchConfig) ?? { mode: 'rule', branches: [] }}
               onChange={(v) => set(field.key, v)}
             />
             {#if field.description}
-              <p class="text-[10px] text-muted leading-snug">{field.description}</p>
+              <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">{field.description}</p>
             {/if}
           {:else}
-            <label for="cfg-{field.key}" class="text-[11px] font-medium text-foreground">{field.label}</label>
+            <label for="cfg-{field.key}" class="text-[length:var(--font-size-caption)] font-medium text-foreground">{field.label}</label>
             {#if field.type === 'select'}
-              <select
+              <Select size="sm"
                 id="cfg-{field.key}"
                 class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
                 value={disp(field)}
-                onchange={(e) => set(field.key, (e.target as HTMLSelectElement).value)}
+                onchange={(next) => set(field.key, String(next))}
               >
                 {#each field.options ?? [] as opt (opt.value)}
                   <option value={opt.value}>{opt.label}</option>
                 {/each}
-              </select>
+              </Select>
             {:else if field.type === 'textarea'}
               <textarea
                 id="cfg-{field.key}"
@@ -187,11 +188,11 @@
                 }}
               />
             {:else if field.type === 'channel'}
-              <select
+              <Select size="sm"
                 id="cfg-{field.key}"
                 class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
                 value={disp(field)}
-                onchange={(e) => set(field.key, (e.target as HTMLSelectElement).value)}
+                onchange={(next) => set(field.key, String(next))}
               >
                 <option value="">{m.flowcfg_selectChannel()}</option>
                 {#each channels as c (c.id)}
@@ -200,7 +201,7 @@
                 {#if disp(field) && !channels.some((c) => c.id === disp(field))}
                   <option value={disp(field)}>{disp(field)}</option>
                 {/if}
-              </select>
+              </Select>
             {:else}
               <input
                 id="cfg-{field.key}"
@@ -213,7 +214,7 @@
             {/if}
           {/if}
           {#if field.description}
-            <p class="text-[10px] text-muted leading-snug">{field.description}</p>
+            <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">{field.description}</p>
           {/if}
         </div>
       {/each}

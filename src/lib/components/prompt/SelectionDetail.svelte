@@ -1,5 +1,6 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages";
+  import { Button } from '$lib/components/ui';
+import * as m from "$lib/paraglide/messages";
   import type { SectionFull, SectionMeta } from "@minion-stack/shared";
   import { promptSections, clearSelection } from "$lib/state/features/prompt-sections.svelte";
   import { colorForLayer } from "$lib/utils/layer-colors";
@@ -156,13 +157,13 @@
       {/if}
     </span>
     {#if selected.size > 0}
-      <button
+      <Button variant="ghost"
         type="button"
-        class="text-[10px] text-muted hover:text-fg transition-colors"
+        class="text-[length:var(--font-size-telemetry)] text-muted hover:text-fg transition-colors"
         onclick={clearSelection}
       >
         {m.sel_clear()}
-      </button>
+      </Button>
     {/if}
   </div>
 
@@ -173,7 +174,7 @@
   {:else if isSingleCustom && editorActive}
     {@const color = colorForLayer(editorActive.layer)}
     <div class="flex-1 flex flex-col overflow-hidden">
-      <div class="shrink-0 px-3 py-2 border-b border-border flex flex-wrap items-center gap-2 text-[10px]">
+      <div class="shrink-0 px-3 py-2 border-b border-border flex flex-wrap items-center gap-2 text-[length:var(--font-size-telemetry)]">
         <span class="w-1.5 h-1.5 rounded-full {color.dot}"></span>
         <span class="font-mono text-fg/80">{editorActive.id}</span>
         <span class="px-1.5 py-0.5 rounded uppercase tracking-wider {color.badge}">
@@ -183,23 +184,23 @@
         <span class="text-muted">modes {editorActive.modes.join("/")}</span>
         {#if editorActive.cacheable}<span class="text-warning">⚡ cacheable</span>{/if}
         <span class="flex-1"></span>
-        <button
+        <Button variant="ghost"
           type="button"
           disabled={!promptSections.isDirty || saving}
           onclick={handleSave}
-          class="px-2 py-0.5 rounded border border-accent bg-accent/15 text-accent text-[10px] disabled:opacity-40"
+          class="px-2 py-0.5 rounded border border-accent bg-accent/15 text-accent text-[length:var(--font-size-telemetry)] disabled:opacity-40"
           title={m.sel_saveHint()}
         >
           {saving ? m.sel_saving() : m.common_save()}
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
           type="button"
           disabled={deleting}
           onclick={handleDelete}
-          class="px-2 py-0.5 rounded border border-destructive/60 bg-destructive/10 text-destructive text-[10px] disabled:opacity-40"
+          class="px-2 py-0.5 rounded border border-destructive/60 bg-destructive/10 text-destructive text-[length:var(--font-size-telemetry)] disabled:opacity-40"
         >
           {deleting ? m.sel_deleting() : m.common_delete()}
-        </button>
+        </Button>
       </div>
       <textarea
         class="flex-1 w-full p-3 font-mono text-xs bg-bg text-text resize-none outline-none border-0 focus:ring-0"
@@ -225,7 +226,7 @@
           <div class="border-t border-dashed border-border/50 my-1 mx-3"></div>
         {/if}
         <article class="px-3 py-2">
-          <header class="flex flex-wrap items-center gap-2 text-[10px] mb-2">
+          <header class="flex flex-wrap items-center gap-2 text-[length:var(--font-size-telemetry)] mb-2">
             <span class="w-1.5 h-1.5 rounded-full {color.dot}"></span>
             <span class="font-mono text-fg/80">{meta.id}</span>
             <span class="px-1.5 py-0.5 rounded uppercase tracking-wider {color.badge}">
@@ -244,18 +245,18 @@
               />
             </span>
             {#if meta.source === "builtin"}
-              <span class="text-zinc-400">{m.sel_builtin()}</span>
+              <span class="text-[var(--color-text-tertiary)]">{m.sel_builtin()}</span>
               {#if promptSections.disabledOverrides.includes(meta.id)}
-                <button
+                <Button variant="ghost"
                   type="button"
-                  class="ml-auto px-2 py-0.5 rounded border border-border text-[10px] hover:bg-bg2"
+                  class="ml-auto px-2 py-0.5 rounded border border-border text-[length:var(--font-size-telemetry)] hover:bg-bg2"
                   onclick={() => handleResetOverride(meta.id)}
                 >
                   {m.sel_resetOverride()}
-                </button>
+                </Button>
               {/if}
             {:else}
-              <span class="text-rose-300">{m.sel_custom()}</span>
+              <span class="text-[var(--color-danger-fg)]">{m.sel_custom()}</span>
             {/if}
           </header>
           {#if row.rendered}

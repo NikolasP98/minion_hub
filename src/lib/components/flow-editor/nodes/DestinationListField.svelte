@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { DestinationListValue, ChannelDestination } from '$lib/state/features/flow-editor.svelte';
+  import { Button, Select } from '$lib/components/ui';
+import type { DestinationListValue, ChannelDestination } from '$lib/state/features/flow-editor.svelte';
   import { conn } from '$lib/state/gateway';
   import {
     channelPlugins,
@@ -72,12 +73,12 @@
 <div class="flex flex-col gap-3">
   <!-- Channel selector -->
   <div class="flex flex-col gap-1">
-    <label for="ch-channel" class="text-[11px] font-medium text-foreground">Channel</label>
-    <select
+    <label for="ch-channel" class="text-[length:var(--font-size-caption)] font-medium text-foreground">Channel</label>
+    <Select size="sm"
       id="ch-channel"
       class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
       value={channel}
-      onchange={(e) => setChannel((e.target as HTMLSelectElement).value)}
+      onchange={(value) => setChannel(String(value))}
     >
       <option value="" disabled>{m.flowcfg_selectChannel()}</option>
       {#each channels as c (c.id)}
@@ -86,18 +87,18 @@
       {#if channel && !channels.some((c) => c.id === channel)}
         <option value={channel}>{channel}</option>
       {/if}
-    </select>
+    </Select>
   </div>
 
   <!-- Sending account (linked accounts only — no free text) -->
   <div class="flex flex-col gap-1">
-    <label for="ch-account" class="text-[11px] font-medium text-foreground">Sending account</label>
-    <select
+    <label for="ch-account" class="text-[length:var(--font-size-caption)] font-medium text-foreground">Sending account</label>
+    <Select size="sm"
       id="ch-account"
       class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
       value={value.accountId ?? ''}
       disabled={!channel}
-      onchange={(e) => setAccount((e.target as HTMLSelectElement).value)}
+      onchange={(next) => setAccount(String(next))}
     >
       <option value="">{m.flowcfg_anyLinkedAccount()}</option>
       {#each accounts as a (a.accountId)}
@@ -106,9 +107,9 @@
       {#if value.accountId && !accounts.some((a) => a.accountId === value.accountId)}
         <option value={value.accountId}>{value.accountId}</option>
       {/if}
-    </select>
+    </Select>
     {#if channel && accounts.length === 0}
-      <p class="text-[10px] text-amber-400/80 leading-snug">
+      <p class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 leading-snug">
         No linked account for {channel}. Link one in <span class="text-foreground">Settings → Channels</span> — the gateway can't send without it.
       </p>
     {/if}
@@ -116,21 +117,21 @@
 
   <!-- Destinations -->
   <div class="flex items-center justify-between pt-1">
-    <span class="text-[11px] font-semibold text-foreground">Destinations</span>
-    <button
-      class="flex items-center gap-1 text-[10px] text-accent hover:text-accent/80 transition-colors disabled:opacity-40"
+    <span class="text-[length:var(--font-size-caption)] font-semibold text-foreground">Destinations</span>
+    <Button variant="ghost"
+      class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-accent hover:text-accent/80 transition-colors disabled:opacity-40"
       onclick={addDest}
       disabled={!channel}
       title={channel ? m.flowcfg_addDestination() : m.flowcfg_pickChannelFirst()}
     >
       <Plus size={12} /> {m.common_add()}
-    </button>
+    </Button>
   </div>
 
   {#if !channel}
-    <p class="text-[10px] text-muted">{m.flowcfg_chooseChannelToAdd()}</p>
+    <p class="text-[length:var(--font-size-telemetry)] text-muted">{m.flowcfg_chooseChannelToAdd()}</p>
   {:else if destinations.length === 0}
-    <p class="text-[10px] text-muted">{m.flowcfg_noDestinationsYet()}</p>
+    <p class="text-[length:var(--font-size-telemetry)] text-muted">{m.flowcfg_noDestinationsYet()}</p>
   {/if}
 
   <div class="flex flex-col gap-2">
@@ -139,47 +140,47 @@
         <div class="flex items-center justify-between">
           <!-- Mode toggle: registered user vs custom -->
           <div class="flex items-center rounded-md bg-bg3 border border-border overflow-hidden">
-            <button
-              class="flex items-center gap-1 px-2 py-0.5 text-[10px] {d.kind === 'user' ? 'bg-cyan-500/25 text-cyan-200' : 'text-muted hover:text-foreground'}"
+            <Button variant="ghost"
+              class="flex items-center gap-1 px-2 py-0.5 text-[length:var(--font-size-telemetry)] {d.kind === 'user' ? 'bg-[color-mix(in_srgb,var(--color-cyan)_25%,transparent)] text-[var(--color-cyan)]' : 'text-muted hover:text-foreground'}"
               onclick={() => patchDest(i, { kind: 'user', to: '' })}
               title={m.flowcfg_pickLinkedUser()}
             >
               <User size={10} /> {m.flowcfg_registered()}
-            </button>
-            <button
-              class="flex items-center gap-1 px-2 py-0.5 text-[10px] {d.kind === 'custom' ? 'bg-cyan-500/25 text-cyan-200' : 'text-muted hover:text-foreground'}"
+            </Button>
+            <Button variant="ghost"
+              class="flex items-center gap-1 px-2 py-0.5 text-[length:var(--font-size-telemetry)] {d.kind === 'custom' ? 'bg-[color-mix(in_srgb,var(--color-cyan)_25%,transparent)] text-[var(--color-cyan)]' : 'text-muted hover:text-foreground'}"
               onclick={() => patchDest(i, { kind: 'custom' })}
               title={m.flowcfg_enterAddressManually()}
             >
               <Pencil size={10} /> {m.flowcfg_custom()}
-            </button>
+            </Button>
           </div>
-          <button
-            class="text-muted/60 hover:text-red-400 transition-colors"
+          <Button variant="ghost"
+            class="text-muted/60 hover:text-[var(--color-danger-fg)] transition-colors"
             onclick={() => removeDest(i)}
             title={m.flowcfg_removeDestination()}
             aria-label={m.flowcfg_removeDestination()}
           >
             <Trash2 size={12} />
-          </button>
+          </Button>
         </div>
 
         {#if d.kind === 'user'}
           {#if registered.length === 0}
-            <p class="text-[10px] text-amber-400/80 leading-snug">
+            <p class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 leading-snug">
               No one has linked their {channel || 'channel'} account yet. Switch to <span class="text-foreground">Custom</span>, or link an account in Settings.
             </p>
           {:else}
-            <select
+            <Select size="sm"
               class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
               value={d.to}
-              onchange={(e) => pickRegistered(i, (e.target as HTMLSelectElement).value)}
+              onchange={(next) => pickRegistered(i, String(next))}
             >
               <option value="" disabled>{m.flowcfg_selectRegisteredUser()}</option>
               {#each registered as e (e.id)}
                 <option value={e.to}>{e.label}{e.verified ? '' : ' (unverified)'}</option>
               {/each}
-            </select>
+            </Select>
           {/if}
         {:else}
           <input
@@ -191,12 +192,12 @@
           />
           <input
             type="text"
-            class="w-full text-[11px] bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+            class="w-full text-[length:var(--font-size-caption)] bg-bg3 border border-border rounded px-2 py-1 text-foreground"
             placeholder={m.flowcfg_labelOptional()}
             value={d.label ?? ''}
             oninput={(e) => patchDest(i, { label: (e.target as HTMLInputElement).value || undefined })}
           />
-          <p class="text-[10px] text-muted leading-snug">{hint.hint}</p>
+          <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">{hint.hint}</p>
         {/if}
       </div>
     {/each}

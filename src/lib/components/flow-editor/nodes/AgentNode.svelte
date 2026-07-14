@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Handle, Position } from '@xyflow/svelte';
+  import { Button, Select } from '$lib/components/ui';
+import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { AgentNodeData } from '$lib/state/features/flow-editor.svelte';
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
@@ -85,15 +86,15 @@
     setNodes(next);
   }
 
-  function pickKind(e: Event) {
-    const agentKind = (e.target as HTMLSelectElement).value as Kind;
+  function pickKind(value: string | number) {
+    const agentKind = String(value) as Kind;
     patch({ agentKind, agentId: '', label: agentKind === 'custom' ? 'Agent' : agentKind });
     if (agentKind === 'personal') loadPersonal();
     if (agentKind === 'drone') loadDrones();
   }
 
-  function pickInstance(e: Event) {
-    const agentId = (e.target as HTMLSelectElement).value;
+  function pickInstance(value: string | number) {
+    const agentId = String(value);
     const label = instanceOptions.find((o) => o.id === agentId)?.label ?? agentId;
     patch({ agentId, label });
   }
@@ -106,7 +107,7 @@
 <!-- Settings panel (shown above node when open) -->
 {#if showSettings}
   <div
-    class="absolute bottom-full mb-2 left-0 right-0 bg-bg2 border border-border rounded-lg p-3 shadow-xl z-50 min-w-48"
+    class="absolute bottom-full mb-2 left-0 right-0 bg-bg2 border border-border rounded-lg p-3 shadow-xl z-[var(--layer-modal)] min-w-48"
   >
     <div class="text-xs font-semibold text-muted mb-2">{m.flow_defaultValues()}</div>
     {#each Object.entries(data.defaultValues ?? {}) as [key, value] (key)}
@@ -132,7 +133,7 @@
     type="target"
     position={Position.Left}
     id={handle.id}
-    class="!w-3 !h-3 !border-2 !border-indigo-400 !bg-indigo-900 !z-10 {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] !z-[var(--layer-sticky)] {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/each}
 {#if !data.inputHandles?.length}
@@ -140,7 +141,7 @@
     type="target"
     position={Position.Left}
     id="default-in"
-    class="!w-3 !h-3 !border-2 !border-indigo-400 !bg-indigo-900 !z-10 {showHandles || isHandleConnected('default-in') ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] !z-[var(--layer-sticky)] {showHandles || isHandleConnected('default-in') ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/if}
 
@@ -161,15 +162,15 @@
   }}
 >
   <div class="flex items-center gap-2 mb-1">
-    <div class="w-6 h-6 rounded-md bg-indigo-500/20 flex items-center justify-center shrink-0">
-      <Bot size={12} class="text-indigo-400" />
+    <div class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0">
+      <Bot size={12} class="text-[var(--color-purple)]" />
     </div>
     <span class="text-xs font-semibold text-foreground truncate">{data.label || data.agentId}</span>
   </div>
 
   <!-- Type picker -->
-  <select
-    class="mt-1 w-full text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
+  <Select size="sm"
+    class="mt-1 w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
     value={data.agentKind ?? ''}
     onclick={(e) => e.stopPropagation()}
     onchange={pickKind}
@@ -177,11 +178,11 @@
     <option value="" disabled>Select type…</option>
     <option value="custom">Custom agent</option>
     <option value="personal">Personal agent</option>
-  </select>
+  </Select>
 
   <!-- Instance picker (disabled until a type is chosen) -->
-  <select
-    class="mt-1 w-full text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground disabled:opacity-50"
+  <Select size="sm"
+    class="mt-1 w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground disabled:opacity-50"
     value={data.agentId}
     disabled={!data.agentKind}
     onclick={(e) => e.stopPropagation()}
@@ -194,32 +195,32 @@
     {#if data.agentId && !instanceOptions.some((o) => o.id === data.agentId)}
       <option value={data.agentId}>{data.label || data.agentId}</option>
     {/if}
-  </select>
+  </Select>
 
   {#if data.agentKind === 'drone'}
-    <p class="mt-1 text-[9px] text-amber-400/80">Legacy drone node — choose a supported agent type</p>
+    <p class="mt-1 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80">Legacy drone node — choose a supported agent type</p>
   {/if}
 
   <!-- Session mode toggle -->
   <div class="mt-1.5 flex gap-1">
-    <button
-      class="flex-1 text-[9px] font-semibold rounded px-1 py-0.5 transition-colors
+    <Button variant="ghost"
+      class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors
         {(data.sessionMode ?? 'ephemeral') === 'ephemeral'
-          ? 'bg-indigo-500/25 text-indigo-300 border border-indigo-500/40'
+          ? 'bg-[color-mix(in_srgb,var(--color-purple)_25%,transparent)] text-[var(--color-purple)] border border-[color-mix(in_srgb,var(--color-purple)_40%,transparent)]'
           : 'text-muted/60 hover:text-muted border border-transparent'}"
       onclick={(e) => { e.stopPropagation(); setSessionMode('ephemeral'); }}
     >
       Ephemeral
-    </button>
-    <button
-      class="flex-1 text-[9px] font-semibold rounded px-1 py-0.5 transition-colors
+    </Button>
+    <Button variant="ghost"
+      class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors
         {(data.sessionMode ?? 'ephemeral') === 'shared'
-          ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
+          ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
           : 'text-muted/60 hover:text-muted border border-transparent'}"
       onclick={(e) => { e.stopPropagation(); setSessionMode('shared'); }}
     >
       Shared
-    </button>
+    </Button>
   </div>
 </div>
 
@@ -229,7 +230,7 @@
     type="source"
     position={Position.Right}
     id={handle.id}
-    class="!w-3 !h-3 !border-2 !border-emerald-400 !bg-emerald-900 {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[var(--color-success-border)] !bg-[var(--color-success-surface)] {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/each}
 {#if !data.outputHandles?.length}
@@ -237,7 +238,7 @@
     type="source"
     position={Position.Right}
     id="default-out"
-    class="!w-3 !h-3 !border-2 !border-emerald-400 !bg-emerald-900 {showHandles || isHandleConnected('default-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[var(--color-success-border)] !bg-[var(--color-success-surface)] {showHandles || isHandleConnected('default-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/if}
 
@@ -247,7 +248,7 @@
     type="source"
     position={Position.Bottom}
     id={handle.id}
-    class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900 {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)] {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/each}
 {#if !data.contextHandles?.length}
@@ -255,6 +256,6 @@
     type="source"
     position={Position.Bottom}
     id="context-out"
-    class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900 {showHandles || isHandleConnected('context-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)] {showHandles || isHandleConnected('context-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Handle, Position } from '@xyflow/svelte';
+  import { Select } from '$lib/components/ui';
+import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { LLMNodeData } from '$lib/state/features/flow-editor.svelte';
   import { flowEditorState, setNodes, openNodeContextMenu } from '$lib/state/features/flow-editor.svelte';
@@ -48,8 +49,8 @@
     setNodes(next);
   }
 
-  function handleChange(e: Event) {
-    const modelId = (e.target as HTMLSelectElement).value;
+  function handleChange(value: string | number) {
+    const modelId = String(value);
     const label = models.find((m) => m.id === modelId)?.name ?? modelId;
     pickModel(modelId, label);
   }
@@ -59,7 +60,7 @@
   type="source"
   position={Position.Right}
   id="out"
-  class="!w-3 !h-3 !border-2 !border-emerald-400 !bg-emerald-900"
+  class="!w-3 !h-3 !border-2 !border-[var(--color-success-border)] !bg-[var(--color-success-surface)]"
 />
 
 <div
@@ -68,8 +69,8 @@
   role="presentation"
 >
   <div class="flex items-center gap-2 mb-1">
-    <div class="w-6 h-6 rounded-md bg-violet-500/20 flex items-center justify-center shrink-0">
-      <Cpu size={12} class="text-violet-400" />
+    <div class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0">
+      <Cpu size={12} class="text-[var(--color-purple)]" />
     </div>
     <span class="text-xs font-semibold text-foreground truncate">
       {data.label || 'LLM'}
@@ -77,11 +78,11 @@
   </div>
 
   {#if defaultFallback}
-    <p class="text-[9px] text-amber-400/80 mb-1">Server offline — showing defaults</p>
+    <p class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 mb-1">Server offline — showing defaults</p>
   {/if}
 
-  <select
-    class="w-full text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
+  <Select size="sm"
+    class="w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
     value={data.modelId}
     onclick={(e) => e.stopPropagation()}
     onchange={handleChange}
@@ -92,5 +93,5 @@
     {#if data.modelId && !models.some((m) => m.id === data.modelId)}
       <option value={data.modelId}>{data.label || data.modelId}</option>
     {/if}
-  </select>
+  </Select>
 </div>

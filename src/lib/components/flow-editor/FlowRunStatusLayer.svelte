@@ -21,15 +21,15 @@
   );
 
   const styleByStatus: Record<string, string> = {
-    running: 'bg-amber-500 text-black ring-2 ring-amber-300/50 animate-pulse',
-    done: 'bg-emerald-500 text-black',
-    error: 'bg-red-500 text-white',
+    running: 'bg-[var(--color-warning-surface)] text-[var(--color-canvas)] ring-2 ring-[var(--color-warning-border)] animate-pulse',
+    done: 'bg-[var(--color-success-fg)] text-[var(--color-canvas)]',
+    error: 'bg-[var(--color-danger-fg)] text-[var(--color-text-primary)]',
     skipped: 'bg-bg3 text-muted/70 ring-1 ring-border',
   };
 </script>
 
 <!-- Live per-node run status, anchored to each node's top-left corner. -->
-<div class="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+<div class="pointer-events-none absolute inset-0 z-[var(--layer-sticky)] overflow-hidden">
   {#each badges as b (b.id)}
     <div
       class="absolute flex h-[18px] w-[18px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full shadow-md {styleByStatus[

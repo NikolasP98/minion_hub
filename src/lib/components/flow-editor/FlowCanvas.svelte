@@ -105,11 +105,11 @@
   function diffRing(id: string): string {
     const s = flowEditorState.previewDiff?.nodes[id];
     return s === 'added'
-      ? 'ring-2 ring-emerald-400'
+      ? 'ring-2 ring-[var(--color-success-border)]'
       : s === 'changed'
-        ? 'ring-2 ring-amber-400'
+        ? 'ring-2 ring-[var(--color-warning-border)]'
         : s === 'removed'
-          ? 'ring-2 ring-red-400 opacity-60'
+          ? 'ring-2 ring-[var(--color-danger-border)] opacity-60'
           : '';
   }
   const decoratedNodes = $derived(
@@ -386,30 +386,24 @@
   /* Run-status outline on the node, matching the status badge color. Applied
      via the `class` decorated onto each node in decoratedNodes. */
   :global(.svelte-flow__node.flow-status-running) {
-    border-radius: 0.75rem;
-    box-shadow:
-      0 0 0 2px rgb(245 158 11),
-      0 0 18px 3px rgb(245 158 11 / 0.45);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-elevation-2);
   }
   :global(.svelte-flow__node.flow-status-done) {
-    border-radius: 0.75rem;
-    box-shadow:
-      0 0 0 2px rgb(16 185 129),
-      0 0 12px 1px rgb(16 185 129 / 0.3);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-elevation-2);
   }
   :global(.svelte-flow__node.flow-status-error) {
-    border-radius: 0.75rem;
-    box-shadow:
-      0 0 0 2px rgb(239 68 68),
-      0 0 12px 1px rgb(239 68 68 / 0.3);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-elevation-2);
   }
   :global(.svelte-flow__node.flow-status-skipped) {
-    border-radius: 0.75rem;
-    box-shadow: 0 0 0 1.5px rgb(130 130 140 / 0.5);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-elevation-1);
     opacity: 0.6;
   }
   /* Keep node connectors (handles) above the node body for visibility. */
   :global(.svelte-flow__handle) {
-    z-index: 6;
+    z-index: var(--layer-sticky);
   }
 </style>

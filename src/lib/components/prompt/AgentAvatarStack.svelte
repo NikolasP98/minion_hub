@@ -88,36 +88,35 @@
 <style>
   .avatar-stack {
     /* Group hover spreads chips apart by setting --gap. */
-    --gap: -7px;
-    transition: padding 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    --gap: calc(-1 * var(--space-2));
+    transition: padding 220ms var(--ease-standard);
   }
   .avatar-stack:hover {
-    --gap: 3px;
+    --gap: var(--space-1);
   }
 
   .chip {
     width: var(--chip-size);
     height: var(--chip-size);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     margin-left: var(--gap);
-    border: 1.5px solid var(--color-canvas, #0a0a0a);
-    background: var(--color-bg2, #141414);
+    border: 1.5px solid var(--color-canvas, var(--color-canvas));
+    background: var(--color-bg2, var(--color-surface-1));
     overflow: visible;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition:
-      margin-left 280ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      transform 180ms ease-out,
-      box-shadow 180ms ease-out;
+    transition: margin-left 280ms var(--ease-standard),
+      transform 180ms var(--ease-standard),
+      box-shadow 180ms var(--ease-standard);
   }
   .chip:first-child {
     margin-left: 0;
   }
   .chip:hover {
     transform: translateY(-1px) scale(1.18);
-    box-shadow: 0 4px 10px -2px rgb(0 0 0 / 0.4);
-    z-index: 1000 !important;
+    box-shadow: var(--shadow-elevation-1);
+    z-index: var(--layer-debug) !important;
   }
 
   .chip > img,
@@ -125,24 +124,24 @@
   .chip > .mono {
     width: 100%;
     height: 100%;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: calc(var(--chip-size) * 0.55);
+    font-size: var(--font-size-body);
     line-height: 1;
     user-select: none;
   }
   .chip > .mono {
-    color: white;
+    color: var(--color-text-primary);
     font-weight: 600;
     font-family: ui-monospace, monospace;
-    font-size: calc(var(--chip-size) * 0.5);
+    font-size: var(--font-size-caption);
   }
   .chip.overflow > .mono {
     background: color-mix(in srgb, var(--color-accent) 20%, transparent);
     color: var(--color-accent);
-    font-size: calc(var(--chip-size) * 0.42);
+    font-size: var(--font-size-telemetry);
   }
 
   /* Tooltip: hidden by default, fades in on chip hover. Positioned above. */
@@ -151,20 +150,19 @@
     bottom: calc(100% + 6px);
     left: 50%;
     transform: translateX(-50%) translateY(2px);
-    padding: 3px 6px;
-    border-radius: 4px;
-    background: var(--color-canvas, #0a0a0a);
-    border: 1px solid var(--color-border, #2a2a2a);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--color-canvas, var(--color-canvas));
+    border: 1px solid var(--color-border, var(--color-surface-3));
     color: var(--color-text-primary);
-    font-size: 10px;
+    font-size: var(--font-size-telemetry);
     font-family: ui-monospace, monospace;
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition:
-      opacity 140ms ease-out,
-      transform 140ms ease-out;
-    z-index: 1001;
+    transition: opacity 140ms var(--ease-standard),
+      transform 140ms var(--ease-standard);
+    z-index: var(--layer-debug);
     max-width: 240px;
     overflow: hidden;
     text-overflow: ellipsis;

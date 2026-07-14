@@ -44,10 +44,10 @@
   }}
 >
   <div class="flex items-center gap-1.5 mb-2">
-    <div class="w-5 h-5 rounded bg-violet-500/20 flex items-center justify-center shrink-0">
-      <Type size={10} class="text-violet-400" />
+    <div class="w-5 h-5 rounded bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0">
+      <Type size={10} class="text-[var(--color-purple)]" />
     </div>
-    <span class="text-[11px] font-semibold text-muted">{data.label || 'Prompt'}</span>
+    <span class="text-[length:var(--font-size-caption)] font-semibold text-muted">{data.label || 'Prompt'}</span>
   </div>
 
   <textarea
@@ -64,5 +64,5 @@
   type="source"
   position={Position.Right}
   id="prompt-out"
-  class="!w-3 !h-3 !border-2 !border-emerald-400 !bg-emerald-900 {showHandles || isHandleConnected('prompt-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
+  class="!w-3 !h-3 !border-2 !border-[var(--color-success-border)] !bg-[var(--color-success-surface)] {showHandles || isHandleConnected('prompt-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
 />

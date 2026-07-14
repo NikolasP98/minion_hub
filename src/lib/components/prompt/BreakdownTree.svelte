@@ -1,5 +1,6 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages";
+  import { Button } from '$lib/components/ui';
+import * as m from "$lib/paraglide/messages";
   import type { SectionMeta } from "@minion-stack/shared";
   import { promptSections, patchUsage, toggleSelected, toggleGroupSelected, toggleLayerCollapsed } from "$lib/state/features/prompt-sections.svelte";
   import { colorForLayer, LAYER_ORDER, layerLabel } from "$lib/utils/layer-colors";
@@ -199,9 +200,9 @@
         {@const activeCount = group.items.filter((s) => isEffectivelyEnabled(s)).length}
         <!-- Group header -->
         <div
-          class="flex items-center gap-2 px-2 py-1.5 border-b border-border/60 bg-bg sticky top-0 z-10"
+          class="flex items-center gap-2 px-2 py-1.5 border-b border-border/60 bg-bg sticky top-0 z-[var(--layer-sticky)]"
         >
-          <button
+          <Button variant="ghost"
             type="button"
             class="w-4 h-4 flex items-center justify-center text-muted hover:text-fg shrink-0"
             aria-label={isOpen ? m.prompt_collapse() : m.prompt_expand()}
@@ -210,24 +211,24 @@
             <svg viewBox="0 0 12 12" class="w-3 h-3 transition-transform {isOpen ? 'rotate-90' : ''}">
               <path d="M4 2 L8 6 L4 10" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-          </button>
+          </Button>
           <SectionCheckbox
             state={checkboxState(group.items)}
             label={m.prompt_selectAll({ layer: layerLabel(group.key) })}
             onchange={() => toggleGroupSelected(group.key, group.items.map((s) => s.id))}
           />
           <span class="w-1.5 h-1.5 rounded-full shrink-0 {color.dot}"></span>
-          <span class="text-[11px] uppercase tracking-wider font-semibold text-fg flex-1 truncate">
+          <span class="text-[length:var(--font-size-caption)] uppercase tracking-wider font-semibold text-fg flex-1 truncate">
             {layerLabel(group.key)}
           </span>
           <AgentAvatarStack agents={groupAgents(group.items)} max={4} size={16} />
           <!-- Mirror item-row right-stack widths so columns align: order(w-9) bytes(w-12) cacheable(w-3) toggle(w-8) -->
           <span class="w-9 shrink-0" aria-hidden="true"></span>
-          <span class="text-[10px] text-muted-strong font-mono shrink-0 tabular-nums w-12 text-right">
+          <span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono shrink-0 tabular-nums w-12 text-right">
             {group.bytes > 0 ? formatBytes(group.bytes) : ""}
           </span>
           <span class="w-3 shrink-0" aria-hidden="true"></span>
-          <span class="text-[10px] text-muted font-mono shrink-0 tabular-nums w-8 text-right" title={m.prompt_activeTotal()}>
+          <span class="text-[length:var(--font-size-telemetry)] text-muted font-mono shrink-0 tabular-nums w-8 text-right" title={m.prompt_activeTotal()}>
             {activeCount}/{group.items.length}
           </span>
         </div>
@@ -264,13 +265,13 @@
               >
                 {section.id}
               </span>
-              <span class="text-[10px] text-muted-strong font-mono shrink-0 tabular-nums w-9 text-right">
+              <span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono shrink-0 tabular-nums w-9 text-right">
                 {section.order}
               </span>
-              <span class="text-[10px] text-muted-strong font-mono shrink-0 tabular-nums w-12 text-right">
+              <span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono shrink-0 tabular-nums w-12 text-right">
                 {meta ? formatBytes(meta.bytes) : ""}
               </span>
-              <span class="text-[10px] text-muted-strong shrink-0 w-3 text-center" title={meta?.cacheable ? m.prompt_cacheable() : ""}>
+              <span class="text-[length:var(--font-size-telemetry)] text-muted-strong shrink-0 w-3 text-center" title={meta?.cacheable ? m.prompt_cacheable() : ""}>
                 {meta?.cacheable ? "⚡" : ""}
               </span>
               <span data-no-toggle class="shrink-0">

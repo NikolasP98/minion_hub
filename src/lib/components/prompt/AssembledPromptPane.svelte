@@ -91,13 +91,13 @@
         <section
           data-section-id={row.id}
           data-pulse={isSelected ? pulseTick : 0}
-          class={`scroll-mt-4 rounded transition-all duration-200 border ${
+          class={`scroll-mt-4 rounded transition-all duration-[var(--duration-normal)] border ${
             isSelected
-              ? "border-accent/60 bg-accent/5 shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-accent)_25%,transparent)] highlight-pulse"
+              ? "border-accent/60 bg-accent/5 shadow-[var(--shadow-focus)] highlight-pulse"
               : "border-transparent"
           }`}
         >
-          <header class="flex items-center gap-2 px-3 py-1.5 border-b border-border/30 text-[10px]">
+          <header class="flex items-center gap-2 px-3 py-1.5 border-b border-border/30 text-[length:var(--font-size-telemetry)]">
             <span class="w-1.5 h-1.5 rounded-full {color.dot}"></span>
             <span class="font-mono text-fg/80">{row.id}</span>
             <span class="px-1.5 py-0.5 rounded uppercase tracking-wider {color.badge}">

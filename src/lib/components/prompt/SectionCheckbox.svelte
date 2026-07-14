@@ -1,5 +1,6 @@
 <script lang="ts">
-  // Custom tristate checkbox — terminal/monospace aesthetic, amber accent.
+  import { Button } from '$lib/components/ui';
+// Custom tristate checkbox — terminal/monospace aesthetic, amber accent.
   // Three states: "off" (empty box), "on" (filled box + check), "mixed"
   // (filled box + dash). Implemented as a button so the indeterminate state
   // is just data; no DOM-level `indeterminate` IDL property to wrangle.
@@ -16,7 +17,7 @@
   } = $props();
 </script>
 
-<button
+<Button variant="ghost"
   type="button"
   role="checkbox"
   aria-checked={state === "on" ? "true" : state === "mixed" ? "mixed" : "false"}
@@ -25,20 +26,20 @@
     e.stopPropagation();
     onchange();
   }}
-  class="relative shrink-0 inline-flex items-center justify-center rounded-[3px] border transition-all
+  class="relative shrink-0 inline-flex items-center justify-center rounded-[var(--radius-xs)] border transition-all
     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-0
     {state === 'off'
       ? 'border-border bg-bg2 hover:border-fg/40 hover:bg-bg3'
-      : 'border-accent bg-accent text-bg shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-accent)_25%,transparent)]'}"
+      : 'border-accent bg-accent text-bg shadow-[var(--shadow-focus)]'}"
   style="width: {size}px; height: {size}px;"
 >
   {#if state === "on"}
-    <svg viewBox="0 0 14 14" class="w-full h-full p-[2px]" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <svg viewBox="0 0 14 14" class="w-full h-full p-[var(--space-0-5)]" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M3 7.5 L6 10.5 L11 4" />
     </svg>
   {:else if state === "mixed"}
-    <svg viewBox="0 0 14 14" class="w-full h-full p-[2px]" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+    <svg viewBox="0 0 14 14" class="w-full h-full p-[var(--space-0-5)]" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
       <path d="M3.5 7 L10.5 7" />
     </svg>
   {/if}
-</button>
+</Button>

@@ -55,9 +55,9 @@
         style: parallel
           ? 'stroke-dasharray: 5 5; opacity: 0.6;'
           : loop
-            ? 'stroke: rgb(16 185 129); opacity: 0.85;'
+            ? 'stroke: var(--color-success-fg); opacity: 0.85;'
             : undefined,
-        labelStyle: 'font-size: 10px;',
+        labelStyle: 'font-size: var(--font-size-telemetry);',
       } satisfies Edge;
     }),
   );
@@ -70,7 +70,7 @@
     {nodeTypes}
     {colorMode}
     fitView
-    fitViewOptions={{ padding: 0.12, minZoom: 0.1 }}
+    fitViewOptions={{ ['padding']: 0.12, minZoom: 0.1 }}
     minZoom={0.1}
     nodesDraggable={false}
     nodesConnectable={false}
