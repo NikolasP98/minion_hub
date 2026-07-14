@@ -6,6 +6,7 @@
   import { ShoppingCart, LayoutGrid, List, Receipt, History } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { PageHeader, Badge, Button, EmptyState, Popover } from '$lib/components/ui';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { canAct } from '$lib/access/can.svelte';
   import { createHotkey } from '$lib/hotkeys';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
@@ -26,7 +27,12 @@
     try {
       const raw = localStorage.getItem(CART_KEY);
       if (!raw) return [];
-      const stored = JSON.parse(raw) as Array<{ productId: string; qty: number; unitPrice: number | null; discount: number }>;
+      const stored = JSON.parse(raw) as Array<{
+        productId: string;
+        qty: number;
+        unitPrice: number | null;
+        discount: number;
+      }>;
       const byId = new Map(sellables.map((s) => [s.productId, s]));
       // Stale entries (product deleted/deactivated since the cart was saved)
       // are dropped, not crashed on.
@@ -46,7 +52,14 @@
     if (!browser) return;
     localStorage.setItem(
       CART_KEY,
-      JSON.stringify(lines.map((l) => ({ productId: l.sellable.productId, qty: l.qty, unitPrice: l.unitPrice, discount: l.discount }))),
+      JSON.stringify(
+        lines.map((l) => ({
+          productId: l.sellable.productId,
+          qty: l.qty,
+          unitPrice: l.unitPrice,
+          discount: l.discount,
+        })),
+      ),
     );
   });
 
@@ -56,14 +69,18 @@
   let searchEl: HTMLInputElement | undefined = $state();
 
   const VIEW_KEY = 'pos-sell-view';
-  let view = $state<'gallery' | 'table'>(browser && localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'gallery');
+  let view = $state<'gallery' | 'table'>(
+    browser && localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'gallery',
+  );
   $effect(() => {
     if (browser) localStorage.setItem(VIEW_KEY, view);
   });
 
   createHotkey('/', () => searchEl?.focus(), { meta: { name: m.pos_sell_search_placeholder() } });
 
-  const categories = $derived(Array.from(new Set(data.sellables.map((s) => s.category ?? 'uncategorized'))).sort());
+  const categories = $derived(
+    Array.from(new Set(data.sellables.map((s) => s.category ?? 'uncategorized'))).sort(),
+  );
   const filtered = $derived(
     data.sellables.filter((s) => {
       if (activeCategory && (s.category ?? 'uncategorized') !== activeCategory) return false;
@@ -95,8 +112,20 @@
   const tableColumns = $derived<DataColumn<Sellable>[]>([
     { key: 'name', label: m.pos_sell_col_name(), custom: true, accessor: (s) => s.name },
     { key: 'category', label: m.pos_sell_col_category(), accessor: (s) => s.category ?? '—' },
-    { key: 'unitPrice', label: m.pos_sell_price(), align: 'right', custom: true, accessor: (s) => s.unitPrice ?? '' },
-    { key: 'stockQty', label: m.pos_catalog_col_stock(), align: 'right', custom: true, accessor: (s) => s.stockQty ?? '' },
+    {
+      key: 'unitPrice',
+      label: m.pos_sell_price(),
+      align: 'right',
+      custom: true,
+      accessor: (s) => s.unitPrice ?? '',
+    },
+    {
+      key: 'stockQty',
+      label: m.pos_catalog_col_stock(),
+      align: 'right',
+      custom: true,
+      accessor: (s) => s.stockQty ?? '',
+    },
   ]);
 
   // ── Customer + payments ──
@@ -109,14 +138,29 @@
   const anyPriceless = $derived(lines.some((l) => l.unitPrice == null || l.unitPrice <= 0));
   const paidCents = $derived(payments.reduce((s, p) => s + Math.round(p.amount * 100), 0));
   const remainingCents = $derived(totalCents - paidCents);
-  const tenderOk = $derived(payments.every((p) => p.method !== 'cash' || p.tendered == null || Math.round(p.tendered * 100) >= Math.round(p.amount * 100)));
-  const customerMissing = $derived(data.posSettings.requireCustomer && !crmContactId && !customerName);
+  const tenderOk = $derived(
+    payments.every(
+      (p) =>
+        p.method !== 'cash' ||
+        p.tendered == null ||
+        Math.round(p.tendered * 100) >= Math.round(p.amount * 100),
+    ),
+  );
+  const customerMissing = $derived(
+    data.posSettings.requireCustomer && !crmContactId && !customerName,
+  );
   // Server rejects tickets without an open shift (no_open_shift) — mirror that
   // in the UI so the cashier can't even try.
   const shiftOpen = $derived(!!page.data.openShift);
   let submitting = $state(false);
   const chargeDisabled = $derived(
-    !shiftOpen || lines.length === 0 || anyPriceless || customerMissing || paidCents !== totalCents || !tenderOk || submitting,
+    !shiftOpen ||
+      lines.length === 0 ||
+      anyPriceless ||
+      customerMissing ||
+      paidCents !== totalCents ||
+      !tenderOk ||
+      submitting,
   );
 
   // ── Submit ──
@@ -151,27 +195,40 @@
           });
           const j = await res.json().catch(() => ({}));
           if (!res.ok) {
-            const err = new Error(j?.error ?? `Failed (${res.status})`) as Error & { code?: string };
+            const err = new Error(j?.error ?? `Failed (${res.status})`) as Error & {
+              code?: string;
+            };
             err.code = j?.code;
             throw err;
           }
-          return j as { ok: true; ticket: { id: string; humanId: string | null }; stockWarning: { message: string } | null };
+          return j as {
+            ok: true;
+            ticket: { id: string; humanId: string | null };
+            stockWarning: { message: string } | null;
+          };
         })(),
         {
           loading: `${m.pos_sell_charge()}…`,
           getOutcome: (r) => ({
             type: r.stockWarning ? 'warning' : 'success',
             title: m.pos_sell_success({ humanId: r.ticket.humanId ?? '—' }),
-            description: r.stockWarning ? m.pos_stock_warning({ message: r.stockWarning.message }) : undefined,
+            description: r.stockWarning
+              ? m.pos_stock_warning({ message: r.stockWarning.message })
+              : undefined,
           }),
           onError: (err) => {
             const code = (err as { code?: string } | undefined)?.code;
             if (code === 'no_open_shift') return { title: m.pos_no_open_shift() };
-            return { title: m.pos_sell_charge(), description: err instanceof Error ? err.message : String(err) };
+            return {
+              title: m.pos_sell_charge(),
+              description: err instanceof Error ? err.message : String(err),
+            };
           },
         },
       );
-      stockBanner = result.stockWarning ? { ticketId: result.ticket.id, message: result.stockWarning.message } : null;
+      stockBanner = result.stockWarning
+        ? { ticketId: result.ticket.id, message: result.stockWarning.message }
+        : null;
       lines = [];
       payments = [];
       crmContactId = null;
@@ -194,14 +251,23 @@
           const res = await fetch(`/api/pos/tickets/${id}/post-stock`, { method: 'POST' });
           const j = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(j?.error ?? `Failed (${res.status})`);
-          return j as { ok: true; entryId: string | null; stockWarning: { message: string } | null };
+          return j as {
+            ok: true;
+            entryId: string | null;
+            stockWarning: { message: string } | null;
+          };
         })(),
         {
           loading: `${m.pos_post_stock_retry()}…`,
-          getOutcome: (r) => ({ type: r.stockWarning ? 'warning' : 'success', title: m.pos_post_stock_retry() }),
+          getOutcome: (r) => ({
+            type: r.stockWarning ? 'warning' : 'success',
+            title: m.pos_post_stock_retry(),
+          }),
         },
       );
-      stockBanner = result.stockWarning ? { ticketId: id, message: result.stockWarning.message } : null;
+      stockBanner = result.stockWarning
+        ? { ticketId: id, message: result.stockWarning.message }
+        : null;
       await invalidate('pos:sell');
     } catch {
       /* toastAsync already surfaced */
@@ -225,17 +291,27 @@
 
 <svelte:head><title>{m.pos_nav_sell()} — {m.nav_pos()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
-  <PageHeader title={m.pos_nav_sell()}>
+<PageShell
+  archetype="workspace"
+  scroll="region"
+  labelledBy="pos-sell-title"
+  class="pos-sell-surface"
+>
+  <PageHeader titleId="pos-sell-title" title={m.pos_nav_sell()}>
     {#snippet leading()}<ShoppingCart size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
-  <div class="flex-1 min-h-0 overflow-auto p-4">
+  <PageBody padding="compact" scroll="region">
     <div class="layout">
       <div class="catalog">
         <div class="catalog-head">
           <div class="search-row">
-            <input class="search-inp" placeholder={m.pos_sell_search_placeholder()} bind:value={search} bind:this={searchEl} />
+            <input
+              class="search-inp"
+              placeholder={m.pos_sell_search_placeholder()}
+              bind:value={search}
+              bind:this={searchEl}
+            />
 
             <Popover placement="bottom">
               {#snippet trigger()}
@@ -259,12 +335,25 @@
                         {#if t.status === 'void'}
                           <Badge variant="semantic" value="error" size="sm">{m.pos_void()}</Badge>
                         {:else if t.stockEntryId}
-                          <a href={`/stock/entries/${t.stockEntryId}`} title={m.pos_sell_view_entry()} class="stock-chip ok">✓</a>
+                          <a
+                            href={`/stock/entries/${t.stockEntryId}`}
+                            title={m.pos_sell_view_entry()}
+                            class="stock-chip ok">✓</a
+                          >
                         {:else if t.stockWarning}
-                          <span class="stock-chip warn" title={(t.stockWarning as { message: string }).message}>⚠</span>
+                          <span
+                            class="stock-chip warn"
+                            title={(t.stockWarning as { message: string }).message}>⚠</span
+                          >
                         {/if}
                         {#if t.status !== 'void' && canAct('pos', 'manage')}
-                          <button type="button" class="void-btn" onclick={() => voidTicketRow(t.id)}>{m.pos_void()}</button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            class="void-btn"
+                            onclick={() => voidTicketRow(t.id)}>{m.pos_void()}</Button
+                          >
                         {/if}
                       </div>
                     {/each}
@@ -289,14 +378,21 @@
                     {#each data.shifts as s (s.id)}
                       <div class="shift-row">
                         <span class="stime">{fmtTime(s.openedAt)}</span>
-                        <span class="stime">{s.closedAt ? fmtTime(s.closedAt) : m.pos_sell_shift_status_open()}</span>
+                        <span class="stime"
+                          >{s.closedAt ? fmtTime(s.closedAt) : m.pos_sell_shift_status_open()}</span
+                        >
                         {#if s.expected}
                           <div class="diffs">
                             {#each Object.keys(s.expected as Record<string, number>) as mth (mth)}
                               {@const exp = (s.expected as Record<string, number>)[mth] ?? 0}
-                              {@const cnt = ((s.counted as Record<string, number> | null)?.[mth]) ?? 0}
+                              {@const cnt =
+                                (s.counted as Record<string, number> | null)?.[mth] ?? 0}
                               {@const diff = Math.round((cnt - exp) * 100) / 100}
-                              <Badge variant="semantic" value={Math.abs(diff) < 0.01 ? 'success' : 'warning'} size="sm">{mth}: {formatMoney(diff)}</Badge>
+                              <Badge
+                                variant="semantic"
+                                value={Math.abs(diff) < 0.01 ? 'success' : 'warning'}
+                                size="sm">{mth}: {formatMoney(diff)}</Badge
+                              >
                             {/each}
                           </div>
                         {/if}
@@ -309,34 +405,52 @@
           </div>
           <div class="chips-row">
             <div class="chips">
-              <button type="button" class="chip-btn" class:on={activeCategory === null} onclick={() => (activeCategory = null)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                class={`chip-btn ${activeCategory === null ? 'on' : ''}`}
+                aria-pressed={activeCategory === null}
+                onclick={() => (activeCategory = null)}
+              >
                 {m.pos_sell_all_categories()}
-              </button>
+              </Button>
               {#each categories as c (c)}
-                <button type="button" class="chip-btn" class:on={activeCategory === c} onclick={() => (activeCategory = c)}>{c}</button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  class={`chip-btn ${activeCategory === c ? 'on' : ''}`}
+                  aria-pressed={activeCategory === c}
+                  onclick={() => (activeCategory = c)}>{c}</Button
+                >
               {/each}
             </div>
             <div class="view-toggle" role="group" aria-label={m.pos_sell_view_gallery()}>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 type="button"
-                class="vt-btn"
-                class:on={view === 'gallery'}
+                class={`vt-btn ${view === 'gallery' ? 'on' : ''}`}
+                aria-pressed={view === 'gallery'}
                 title={m.pos_sell_view_gallery()}
                 aria-label={m.pos_sell_view_gallery()}
                 onclick={() => (view = 'gallery')}
               >
                 <LayoutGrid size={14} />
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 type="button"
-                class="vt-btn"
-                class:on={view === 'table'}
+                class={`vt-btn ${view === 'table' ? 'on' : ''}`}
+                aria-pressed={view === 'table'}
                 title={m.pos_sell_view_table()}
                 aria-label={m.pos_sell_view_table()}
                 onclick={() => (view = 'table')}
               >
                 <List size={14} />
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -348,13 +462,23 @@
             {:else}
               <div class="grid">
                 {#each filtered as s (s.productId)}
-                  <button type="button" class="card" onclick={() => addLine(s)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    class="card"
+                    onclick={() => addLine(s)}
+                  >
                     <span class="cname">{s.name}</span>
-                    <span class="cprice">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
+                    <span class="cprice"
+                      >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
+                    >
                     {#if s.kind === 'product' && s.stockQty != null}
-                      <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm">{s.stockQty}</Badge>
+                      <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
+                        >{s.stockQty}</Badge
+                      >
                     {/if}
-                  </button>
+                  </Button>
                 {/each}
               </div>
             {/if}
@@ -378,10 +502,14 @@
                 {#if col.key === 'name'}
                   <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
                 {:else if col.key === 'unitPrice'}
-                  <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
+                  <span class="tabular-nums"
+                    >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
+                  >
                 {:else if col.key === 'stockQty'}
                   {#if s.kind === 'product' && s.stockQty != null}
-                    <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm">{s.stockQty}</Badge>
+                    <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
+                      >{s.stockQty}</Badge
+                    >
                   {:else}
                     —
                   {/if}
@@ -396,12 +524,21 @@
         {#if stockBanner}
           <div class="banner">
             <span>{m.pos_stock_warning({ message: stockBanner.message })}</span>
-            <Button size="sm" variant="outline" onclick={retryStock}>{m.pos_post_stock_retry()}</Button>
+            <Button size="sm" variant="outline" onclick={retryStock}
+              >{m.pos_post_stock_retry()}</Button
+            >
           </div>
         {/if}
-        <CustomerPicker bind:crmContactId bind:customerName required={data.posSettings.requireCustomer} />
+        <CustomerPicker
+          bind:crmContactId
+          bind:customerName
+          required={data.posSettings.requireCustomer}
+        />
         <div class="cart-scroll">
-          <SellCart bind:lines settings={{ allowPriceOverride: data.posSettings.allowPriceOverride }} />
+          <SellCart
+            bind:lines
+            settings={{ allowPriceOverride: data.posSettings.allowPriceOverride }}
+          />
         </div>
         <div class="charge-bar">
           <PaymentPanel {total} methods={data.posSettings.methods} bind:payments />
@@ -415,18 +552,24 @@
           {#if !shiftOpen}
             <div class="no-shift">{m.pos_no_open_shift()}</div>
           {/if}
-          <Button variant="primary" size="lg" disabled={chargeDisabled} loading={submitting} onclick={charge}>{m.pos_sell_charge()}</Button>
+          <Button
+            variant="primary"
+            size="lg"
+            disabled={chargeDisabled}
+            loading={submitting}
+            onclick={charge}>{m.pos_sell_charge()}</Button
+          >
         </div>
       </div>
     </div>
-  </div>
-</div>
+  </PageBody>
+</PageShell>
 
 <style>
   .layout {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 1rem;
+    gap: var(--space-4, 16px);
   }
   /* Desktop/tablet-landscape: the layout fills the visible scrollport so each
      column scrolls internally — search/filters and the charge bar stay put.
@@ -441,14 +584,14 @@
   .catalog {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: var(--space-2, 8px);
     min-width: 0;
     min-height: 0;
   }
   .catalog-head {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: var(--space-2, 8px);
     flex-shrink: 0;
   }
   /* Mobile: the page itself scrolls — keep search/filters pinned on top. */
@@ -459,10 +602,10 @@
       /* Sticky = stacking context, so the history popovers inside are capped
          at this z — must beat the DataTable sticky header and the sticky
          charge bar, or they paint over the open panel. */
-      z-index: 30;
+      z-index: var(--layer-popover, 30);
       background: var(--color-background);
-      padding: 1rem 0 0.5rem;
-      margin-top: -1rem;
+      padding: var(--space-4, 16px) 0 var(--space-2, 8px);
+      margin-top: calc(-1 * var(--space-4, 16px));
     }
   }
   .catalog-scroll {
@@ -473,12 +616,12 @@
   .chips-row {
     display: flex;
     align-items: flex-start;
-    gap: 0.5rem;
+    gap: var(--space-2, 8px);
   }
   .search-row {
     display: flex;
     align-items: stretch;
-    gap: 0.5rem;
+    gap: var(--space-2, 8px);
   }
   .search-row .search-inp {
     flex: 1;
@@ -488,7 +631,7 @@
   .hbtn {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-2, 8px);
     height: 100%;
     min-height: 2.2rem;
     padding: 0 0.8rem;
@@ -496,7 +639,7 @@
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
     color: var(--color-muted-foreground);
-    font-size: 0.8rem;
+    font-size: var(--font-size-body, 14px);
     white-space: nowrap;
   }
   .hbtn:hover {
@@ -511,16 +654,16 @@
   .hpanel {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2, 8px);
     width: min(34rem, 92vw);
     max-height: min(60vh, 30rem);
     overflow-y: auto;
-    padding: 0.6rem;
+    padding: var(--space-2, 8px);
   }
   .search-inp {
     min-height: 2.2rem;
-    padding: 0.5rem 0.7rem;
-    font-size: 0.88rem;
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-md);
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
@@ -529,20 +672,20 @@
   .chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.35rem;
+    gap: var(--space-2, 8px);
     flex: 1;
     min-width: 0;
   }
   .view-toggle {
     display: flex;
-    gap: 0.15rem;
+    gap: var(--space-1, 4px);
     flex-shrink: 0;
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
-    padding: 0.1rem;
+    padding: var(--space-0-5, 2px);
     background: var(--color-bg3);
   }
-  .vt-btn {
+  :global(.pos-sell-surface .vt-btn) {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -554,20 +697,20 @@
     color: var(--color-muted-foreground);
     cursor: pointer;
   }
-  .vt-btn.on {
+  :global(.pos-sell-surface .vt-btn.on) {
     color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
-  .chip-btn {
-    padding: 0.25rem 0.7rem;
-    border-radius: 999px;
+  :global(.pos-sell-surface .chip-btn) {
+    padding: var(--space-1, 4px) var(--space-3, 12px);
+    border-radius: var(--radius-full);
     border: 1px solid var(--hairline);
     background: var(--color-bg3);
     color: var(--color-muted-foreground);
-    font-size: 0.75rem;
+    font-size: var(--font-size-caption, 12px);
     cursor: pointer;
   }
-  .chip-btn.on {
+  :global(.pos-sell-surface .chip-btn.on) {
     border-color: var(--color-accent);
     color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
@@ -575,29 +718,29 @@
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 0.6rem;
+    gap: var(--space-2, 8px);
   }
-  .card {
+  :global(.pos-sell-surface .card) {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.3rem;
-    padding: 0.6rem;
+    gap: var(--space-1, 4px);
+    padding: var(--space-2, 8px);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-lg);
     background: var(--color-card);
     text-align: left;
     cursor: pointer;
   }
-  .card:hover {
+  :global(.pos-sell-surface .card:hover) {
     border-color: var(--color-accent);
   }
   .cname {
-    font-size: 0.84rem;
+    font-size: var(--font-size-body, 14px);
     font-weight: 500;
   }
   .cprice {
-    font-size: 0.8rem;
+    font-size: var(--font-size-body, 14px);
     color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
   }
@@ -616,25 +759,25 @@
   .tname {
     display: flex;
     align-items: baseline;
-    gap: 0.45rem;
+    gap: var(--space-2, 8px);
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     font-weight: 500;
   }
   .tcode {
-    font-size: 0.7rem;
+    font-size: var(--font-size-caption, 12px);
     color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
   }
   .cart-panel {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3, 12px);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-lg);
     background: var(--color-card);
-    padding: 0.85rem;
+    padding: var(--space-3, 12px);
     min-height: 0;
   }
   @media (min-width: 1024px) {
@@ -646,7 +789,7 @@
   .cart-scroll {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3, 12px);
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -662,13 +805,13 @@
   .charge-bar {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2, 8px);
     flex-shrink: 0;
     position: sticky;
     bottom: 0;
     background: var(--color-card);
     border-top: 1px solid var(--hairline);
-    padding: 0.6rem 0.85rem 0.85rem;
+    padding: var(--space-2, 8px) var(--space-3, 12px) var(--space-3, 12px);
     margin: 0 -0.85rem -0.85rem;
     border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   }
@@ -676,42 +819,42 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 0.95rem;
+    font-size: var(--font-size-page-title, 18px);
     font-weight: 600;
   }
   .total {
     font-variant-numeric: tabular-nums;
   }
   .remaining {
-    font-size: 0.82rem;
+    font-size: var(--font-size-body, 14px);
     font-weight: 600;
     text-align: right;
     color: var(--color-destructive);
   }
   .remaining.done {
-    color: var(--color-success, #4ade80);
+    color: var(--color-success);
   }
   .no-shift {
-    font-size: 0.78rem;
+    font-size: var(--font-size-caption, 12px);
     text-align: center;
-    padding: 0.3rem 0.5rem;
+    padding: var(--space-1, 4px) var(--space-2, 8px);
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, #f59e0b 12%, transparent);
-    color: #f59e0b;
+    background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+    color: var(--color-warning);
   }
   .banner {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.5rem 0.6rem;
+    gap: var(--space-2, 8px);
+    padding: var(--space-2, 8px) var(--space-2, 8px);
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, #f59e0b 14%, transparent);
-    color: #f59e0b;
-    font-size: 0.78rem;
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+    color: var(--color-warning);
+    font-size: var(--font-size-caption, 12px);
   }
   .section-h {
-    font-size: 0.78rem;
+    font-size: var(--font-size-caption, 12px);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -720,16 +863,16 @@
   .ticket-list {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: var(--space-1, 4px);
   }
   .ticket-row {
     display: flex;
     align-items: center;
-    gap: 0.7rem;
-    padding: 0.4rem 0.6rem;
+    gap: var(--space-3, 12px);
+    padding: var(--space-2, 8px) var(--space-2, 8px);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
-    font-size: 0.8rem;
+    font-size: var(--font-size-body, 14px);
   }
   .tid {
     font-variant-numeric: tabular-nums;
@@ -753,34 +896,34 @@
     color: var(--color-muted-foreground);
   }
   .stock-chip.ok {
-    color: var(--color-success, #4ade80);
+    color: var(--color-success);
   }
   .stock-chip.warn {
-    color: #f59e0b;
+    color: var(--color-warning);
   }
-  .void-btn {
+  :global(.pos-sell-surface .void-btn) {
     background: none;
     border: 1px solid var(--hairline);
     border-radius: var(--radius-sm);
-    padding: 0.2rem 0.5rem;
-    font-size: 0.72rem;
+    padding: var(--space-1, 4px) var(--space-2, 8px);
+    font-size: var(--font-size-caption, 12px);
     color: var(--color-destructive);
     cursor: pointer;
   }
   .shift-list {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: var(--space-2, 8px);
   }
   .shift-row {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.6rem;
-    padding: 0.4rem 0.6rem;
+    gap: var(--space-2, 8px);
+    padding: var(--space-2, 8px) var(--space-2, 8px);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
-    font-size: 0.78rem;
+    font-size: var(--font-size-caption, 12px);
   }
   .stime {
     color: var(--color-muted-foreground);
@@ -789,6 +932,6 @@
   .diffs {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.3rem;
+    gap: var(--space-1, 4px);
   }
 </style>

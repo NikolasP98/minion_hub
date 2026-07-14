@@ -41,10 +41,10 @@ work and must not be marked migrated merely by inheriting the section shell.
 
 ### POS
 
-- [ ] `/pos/appointments`
+- [x] `/pos/appointments`
 - [x] `/pos/catalog`
-- [ ] `/pos/refills`
-- [ ] `/pos/sell`
+- [x] `/pos/refills`
+- [x] `/pos/sell`
 
 ### Sales
 
