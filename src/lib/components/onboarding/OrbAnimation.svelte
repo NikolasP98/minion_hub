@@ -1,146 +1,217 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-
   interface Props {
     phase: 'dormant' | 'awakening' | 'forming' | 'connecting';
     agentName: string;
   }
 
   let { phase, agentName }: Props = $props();
-
-  let canvas: HTMLCanvasElement;
-  let ctx: CanvasRenderingContext2D | null;
-  let animFrame: number;
-  let particles: Particle[] = [];
-  let time = 0;
-
-  class Particle {
-    x: number; y: number;
-    vx: number; vy: number;
-    life: number; maxLife: number;
-    size: number;
-    hue: number;
-
-    constructor(cx: number, cy: number) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 0.3 + Math.random() * 1.5;
-      this.x = cx;
-      this.y = cy;
-      this.vx = Math.cos(angle) * speed;
-      this.vy = Math.sin(angle) * speed - 1;
-      this.life = 0;
-      this.maxLife = 80 + Math.random() * 120;
-      this.size = 1 + Math.random() * 3;
-      this.hue = 240 + Math.random() * 60;
-    }
-
-    update(dt: number) {
-      this.x += this.vx * dt;
-      this.y += this.vy * dt;
-      this.vy -= 0.003 * dt;
-      this.life += dt;
-    }
-
-    alive() { return this.life < this.maxLife; }
-    alpha() { return 1 - (this.life / this.maxLife); }
-  }
-
-  const PHASE_CONFIG = {
-    dormant:   { radius: 40, glow: 0.3, particles: 0,   pulse: 0.3,  hue: 260 },
-    awakening: { radius: 55, glow: 0.6, particles: 3,   pulse: 0.6,  hue: 250 },
-    forming:   { radius: 65, glow: 0.8, particles: 6,   pulse: 0.8,  hue: 230 },
-    connecting:{ radius: 70, glow: 1.0, particles: 10,  pulse: 1.0,  hue: 210 },
-  };
-
-  function draw(timestamp: number) {
-    if (!ctx || !canvas) return;
-    const dt = Math.min((timestamp - time) / 16.67, 3);
-    time = timestamp;
-
-    const cfg = PHASE_CONFIG[phase];
-    const w = canvas.width;
-    const h = canvas.height;
-    const cx = w / 2;
-    const cy = h / 2;
-
-    ctx.clearRect(0, 0, w, h);
-
-    // Spawn particles
-    if (phase !== 'dormant') {
-      for (let i = 0; i < cfg.particles; i++) {
-        particles.push(new Particle(cx, cy));
-      }
-    }
-
-    // Update + draw particles
-    particles = particles.filter(p => { p.update(dt); return p.alive(); });
-    for (const p of particles) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = `hsla(${p.hue}, 80%, 70%, ${p.alpha() * 0.7})`;
-      ctx.fill();
-    }
-
-    // Main orb — multiple glow layers
-    const pulse = Math.sin(timestamp * 0.002) * cfg.pulse * 0.3 + 1;
-
-    // Outer glow
-    const outerGrad = ctx.createRadialGradient(cx, cy, cfg.radius * 0.5, cx, cy, cfg.radius * 2.5 * pulse);
-    outerGrad.addColorStop(0, `hsla(${cfg.hue}, 90%, 60%, ${cfg.glow * 0.4})`);
-    outerGrad.addColorStop(0.5, `hsla(${cfg.hue}, 80%, 50%, ${cfg.glow * 0.15})`);
-    outerGrad.addColorStop(1, 'transparent');
-    ctx.beginPath();
-    ctx.arc(cx, cy, cfg.radius * 2.5 * pulse, 0, Math.PI * 2);
-    ctx.fillStyle = outerGrad;
-    ctx.fill();
-
-    // Inner glow
-    const innerGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cfg.radius * pulse);
-    innerGrad.addColorStop(0, `hsla(${cfg.hue}, 100%, 75%, 0.9)`);
-    innerGrad.addColorStop(0.4, `hsla(${cfg.hue}, 90%, 55%, 0.6)`);
-    innerGrad.addColorStop(0.7, `hsla(${cfg.hue}, 80%, 40%, 0.3)`);
-    innerGrad.addColorStop(1, 'transparent');
-    ctx.beginPath();
-    ctx.arc(cx, cy, cfg.radius * pulse, 0, Math.PI * 2);
-    ctx.fillStyle = innerGrad;
-    ctx.fill();
-
-    // Core
-    ctx.beginPath();
-    ctx.arc(cx, cy, cfg.radius * 0.3 * pulse, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${cfg.hue}, 100%, 90%, 0.9)`;
-    ctx.fill();
-
-    // Name label
-    if (agentName && phase !== 'dormant') {
-      ctx.font = '500 13px Inter, system-ui, sans-serif';
-      ctx.fillStyle = `hsla(${cfg.hue}, 80%, 80%, 0.7)`;
-      ctx.textAlign = 'center';
-      ctx.fillText(agentName, cx, cy + cfg.radius + 24);
-    }
-
-    animFrame = requestAnimationFrame(draw);
-  }
-
-  onMount(() => {
-    ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx!.scale(dpr, dpr);
-    animFrame = requestAnimationFrame(draw);
-
-    return () => cancelAnimationFrame(animFrame);
-  });
 </script>
 
-<canvas bind:this={canvas} class="orb-canvas"></canvas>
+<div
+  class="orb-field"
+  data-phase={phase}
+  role="img"
+  aria-label={agentName ? `${agentName} agent signal: ${phase}` : `Agent signal: ${phase}`}
+>
+  <span class="orbit orbit-outer" aria-hidden="true"></span>
+  <span class="orbit orbit-inner" aria-hidden="true"></span>
+  <span class="orb-core" aria-hidden="true"></span>
+  <span class="spark spark-one" aria-hidden="true"></span>
+  <span class="spark spark-two" aria-hidden="true"></span>
+  <span class="spark spark-three" aria-hidden="true"></span>
+  {#if agentName && phase !== 'dormant'}
+    <span class="agent-name">{agentName}</span>
+  {/if}
+</div>
 
 <style>
-  .orb-canvas {
-    width: 220px;
-    height: 220px;
-    border-radius: 50%;
+  .orb-field {
+    --orb-scale: 0.7;
+    --orb-energy: 0.36;
+    position: relative;
+    display: grid;
+    width: min(13.75rem, 68vw);
+    height: min(13.75rem, 68vw);
+    place-items: center;
+    color: var(--color-accent);
+  }
+
+  .orb-field[data-phase='awakening'] {
+    --orb-scale: 0.82;
+    --orb-energy: 0.56;
+  }
+
+  .orb-field[data-phase='forming'] {
+    --orb-scale: 0.94;
+    --orb-energy: 0.76;
+  }
+
+  .orb-field[data-phase='connecting'] {
+    --orb-scale: 1;
+    --orb-energy: 1;
+  }
+
+  .orb-field::before {
+    position: absolute;
+    width: 72%;
+    height: 72%;
+    content: '';
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--color-accent) calc(var(--orb-energy) * 28%), transparent),
+      transparent 68%
+    );
+    border-radius: var(--radius-full);
+    filter: blur(var(--space-4));
+    transform: scale(var(--orb-scale));
+    animation: aura-breathe calc(var(--duration-slow) * 8) var(--ease-standard) infinite alternate;
+  }
+
+  .orb-core {
+    position: relative;
+    width: 34%;
+    height: 34%;
+    background:
+      radial-gradient(
+        circle at 38% 34%,
+        color-mix(in srgb, var(--color-foreground) 88%, transparent),
+        transparent 16%
+      ),
+      radial-gradient(
+        circle,
+        color-mix(in srgb, var(--color-accent) 90%, var(--color-foreground)),
+        color-mix(in srgb, var(--color-accent) 56%, transparent) 58%,
+        transparent 72%
+      );
+    border: 1px solid color-mix(in srgb, var(--color-accent) 62%, transparent);
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-status-glow);
+    opacity: var(--orb-energy);
+    transform: scale(var(--orb-scale));
+    animation: core-breathe calc(var(--duration-slow) * 6) var(--ease-spring) infinite alternate;
+  }
+
+  .orbit {
+    position: absolute;
+    border: 1px solid
+      color-mix(in srgb, var(--color-accent) calc(var(--orb-energy) * 34%), transparent);
+    border-radius: var(--radius-full);
+    opacity: var(--orb-energy);
+  }
+
+  .orbit-outer {
+    width: 70%;
+    height: 70%;
+    animation: orbit-turn calc(var(--duration-slow) * 24) linear infinite;
+  }
+
+  .orbit-inner {
+    width: 52%;
+    height: 52%;
+    border-color: color-mix(
+      in srgb,
+      var(--color-brand-pink) calc(var(--orb-energy) * 34%),
+      transparent
+    );
+    animation: orbit-turn calc(var(--duration-slow) * 16) linear infinite reverse;
+  }
+
+  .orbit::after {
+    position: absolute;
+    top: calc(-1 * var(--space-1));
+    left: 50%;
+    width: var(--space-2);
+    height: var(--space-2);
+    content: '';
+    background: currentColor;
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-status-glow);
+  }
+
+  .spark {
+    position: absolute;
+    width: var(--space-1);
+    height: var(--space-1);
+    background: var(--color-accent);
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-status-glow);
+    opacity: calc(var(--orb-energy) * 0.8);
+    animation: spark-drift calc(var(--duration-slow) * 7) var(--ease-standard) infinite alternate;
+  }
+
+  .spark-one {
+    top: 24%;
+    left: 20%;
+  }
+
+  .spark-two {
+    right: 18%;
+    bottom: 30%;
+    animation-delay: calc(-1 * var(--duration-slow));
+  }
+
+  .spark-three {
+    bottom: 18%;
+    left: 34%;
+    color: var(--color-brand-pink);
+    background: currentColor;
+    animation-delay: calc(-2 * var(--duration-slow));
+  }
+
+  .agent-name {
+    position: absolute;
+    bottom: var(--space-2);
+    max-width: 90%;
+    overflow: hidden;
+    color: var(--color-muted);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-compact);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @keyframes core-breathe {
+    from {
+      transform: scale(calc(var(--orb-scale) * 0.94));
+    }
+    to {
+      transform: scale(calc(var(--orb-scale) * 1.06));
+    }
+  }
+
+  @keyframes aura-breathe {
+    from {
+      opacity: 0.56;
+      transform: scale(calc(var(--orb-scale) * 0.9));
+    }
+    to {
+      opacity: 1;
+      transform: scale(calc(var(--orb-scale) * 1.12));
+    }
+  }
+
+  @keyframes orbit-turn {
+    to {
+      transform: rotate(1turn);
+    }
+  }
+
+  @keyframes spark-drift {
+    from {
+      transform: translateY(var(--space-2)) scale(0.72);
+    }
+    to {
+      transform: translateY(calc(-1 * var(--space-2))) scale(1.18);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .orb-field::before,
+    .orb-core,
+    .orbit,
+    .spark {
+      animation: none;
+    }
   }
 </style>

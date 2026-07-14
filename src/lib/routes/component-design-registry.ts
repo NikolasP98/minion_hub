@@ -475,6 +475,30 @@ export const COMPONENT_DESIGN_REGISTRY = [
     },
   ),
   component(
+    'layout.public-task-shell',
+    '$lib/components/ui/foundations/PublicTaskShell.svelte',
+    {
+      size: ['narrow', 'medium', 'wide'],
+      tone: ['default', 'success', 'warning', 'danger'],
+    },
+    ['default', 'success', 'warning', 'danger', 'compact', 'medium', 'wide'],
+    [
+      'color.canvas',
+      'color.surface.*',
+      'color.status.*',
+      'layout.viewport.*',
+      'space.safe-area.*',
+      'shadow.overlay',
+      'motion.entrance.*',
+    ],
+    {
+      variantTypes: {
+        size: { typeName: 'PublicTaskShellSize' },
+        tone: { typeName: 'PublicTaskShellTone' },
+      },
+    },
+  ),
+  component(
     'layout.page-header',
     '$lib/components/ui/PageHeader.svelte',
     { sticky: ['false', 'true'] },

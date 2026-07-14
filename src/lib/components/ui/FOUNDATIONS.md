@@ -31,6 +31,25 @@ additive until each domain migration removes its superseded local recipe.
 - `SectionNav` uses an attached rail at wide widths and a labelled horizontal strip
   below 1280px. A disabled destination renders without `href`.
 
+## Public task routes
+
+`PublicTaskShell` is the complete composition boundary for login, recovery,
+invitation, joining, channel linking, onboarding, booking, and global route errors.
+It owns `100dvh`, safe-area padding, public-page scrolling, branded chrome, the
+stable title relationship, and the ambient entrance motion. Public screens put
+only their task-specific state and controls inside it; they must not add another
+full-height wrapper or local panel recipe.
+
+- Use `size="narrow"` for one-column credentials, `medium` for explanatory or
+  multi-step forms, and `wide` only when the task needs a grid or embedded setup
+  surface.
+- Use `tone` only for the screen's terminal/status state (`success`, `warning`,
+  `danger`). Validation messages inside a default task use semantic field/status
+  roles instead of changing the whole shell.
+- Supply `hero` for one expressive, non-essential visual such as the onboarding
+  agent signal. It must remain hidden from assistive technology when the title and
+  description already communicate the state.
+
 ## Fields
 
 `FormField` owns the label, helper/error geometry, unique IDs, and all ARIA links.

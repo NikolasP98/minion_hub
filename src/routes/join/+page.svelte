@@ -1,89 +1,122 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import type { SubmitFunction } from '@sveltejs/kit';
   import * as m from '$lib/paraglide/messages';
-  import type { PageData } from './$types';
-  let { data, form }: { data: PageData; form: any } = $props();
+  import { Button } from '$lib/components/ui';
+  import {
+    FormField,
+    PublicTaskShell,
+    type FormControlProps,
+  } from '$lib/components/ui/foundations';
+  import { KeyRound, TicketCheck, TriangleAlert } from 'lucide-svelte';
+  import type { ActionData, PageData } from './$types';
+
+  let { data, form }: { data: PageData; form: ActionData | null } = $props();
   let message = $state('');
+  let submitting = $state(false);
+
+  const trackSubmission: SubmitFunction = () => {
+    submitting = true;
+    return async ({ update }) => {
+      try {
+        await update();
+      } finally {
+        submitting = false;
+      }
+    };
+  };
 </script>
 
 <svelte:head>
   <title>Request Access — Minion Hub</title>
 </svelte:head>
 
-<div class="page">
-  <div class="card">
-    {#if data.mode === 'link'}
-      {#if data.linkError}
-        <div class="icon">⚠️</div>
-        <h1>{m.join_inviteUnavailable()}</h1>
-        <p class="subtitle">{data.linkError}</p>
-        <a href="/join" class="btn-primary linklike">{m.join_requestAccessInstead()}</a>
-      {:else}
-        <div class="icon">🎟️</div>
-        <h1>{m.join_joinOrg({ org: data.orgName ?? '' })}</h1>
-        <p class="subtitle">
-          {m.join_invitedToJoin({ org: data.orgName ?? '', role: data.role ?? '' })}
-        </p>
-        <form method="POST" action="?/consume" use:enhance>
-          <input type="hidden" name="token" value={data.token} />
-          <button type="submit" class="btn-primary">{m.join_joinOrgButton({ org: data.orgName ?? '' })}</button>
-        </form>
-        {#if form?.error}<p class="error">{form.error}</p>{/if}
-      {/if}
-    {:else}
-      <div class="icon">🔐</div>
-      <h1>{m.join_requestAccess()}</h1>
-      <p class="subtitle">
-        {m.join_notMemberSubtitle({ email: data.email })}
-      </p>
-      <form method="POST" action="?/request" use:enhance>
-        <div class="field">
-          <label for="msg">{m.join_messageLabel()}</label>
-          <textarea id="msg" name="message" bind:value={message} placeholder={m.join_messagePlaceholder()} rows={4} maxlength={500}></textarea>
-          <span class="charcount">{message.length}/500</span>
-        </div>
-        <button type="submit" class="btn-primary">{m.join_submitRequest()}</button>
-      </form>
-      {#if form?.error}<p class="error">{form.error}</p>{/if}
-    {/if}
-  </div>
-</div>
+{#snippet taskIcon()}
+  {#if data.mode === 'link' && data.linkError}
+    <TriangleAlert size={20} />
+  {:else if data.mode === 'link'}
+    <TicketCheck size={20} />
+  {:else}
+    <KeyRound size={20} />
+  {/if}
+{/snippet}
 
-<style>
-  .page {
-    display: flex; justify-content: center; align-items: center;
-    min-height: 100vh; min-height: 100dvh;
-    background: radial-gradient(ellipse at 50% 40%, var(--color-bg2) 0%, var(--color-bg) 70%);
-    padding: 2rem;
-  }
-  .card {
-    background: var(--elevation-2-bg);
-    border: 1px solid var(--elevation-2-border);
-    border-radius: var(--radius-xl); padding: 2.5rem;
-    max-width: 480px; width: 100%; text-align: center;
-    backdrop-filter: blur(20px);
-  }
-  .icon { font-size: 3rem; margin-bottom: 0.5rem; }
-  h1 { font-size: 1.4rem; font-weight: 700; color: var(--color-foreground); margin: 0 0 0.75rem; }
-  .subtitle { font-size: 0.85rem; color: var(--color-muted); line-height: 1.5; margin: 0 0 1.5rem; }
-  .field { display: flex; flex-direction: column; gap: 0.3rem; text-align: left; margin-bottom: 1rem; }
-  label { font-size: 0.75rem; font-weight: 500; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-  textarea {
-    background: var(--color-bg3); border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg); padding: 0.75rem 0.85rem;
-    color: var(--color-foreground); font-size: 0.9rem; font-family: inherit;
-    outline: none; resize: vertical; line-height: 1.5;
-  }
-  textarea:focus { border-color: var(--color-accent); }
-  textarea::placeholder { color: var(--color-muted-foreground); }
-  .charcount { font-size: 0.65rem; color: var(--color-muted-foreground); text-align: right; }
-  .btn-primary {
-    width: 100%; background: var(--color-accent); color: var(--color-accent-foreground);
-    border: none; border-radius: var(--radius-lg); padding: 0.85rem;
-    font-size: 0.95rem; font-weight: 600; cursor: pointer;
-    transition: opacity var(--duration-fast);
-  }
-  .btn-primary:hover { opacity: 0.9; }
-  .btn-primary.linklike { display: inline-block; text-decoration: none; box-sizing: border-box; }
-  .error { font-size: 0.8rem; color: var(--color-destructive); margin-top: 1rem; }
-</style>
+<PublicTaskShell
+  eyebrow={data.mode === 'link' ? 'Organization invitation' : 'Workspace access'}
+  title={data.mode === 'link'
+    ? data.linkError
+      ? m.join_inviteUnavailable()
+      : m.join_joinOrg({ org: data.orgName ?? '' })
+    : m.join_requestAccess()}
+  description={data.mode === 'link'
+    ? (data.linkError ?? m.join_invitedToJoin({ org: data.orgName ?? '', role: data.role ?? '' }))
+    : m.join_notMemberSubtitle({ email: data.email })}
+  tone={data.mode === 'link' && data.linkError ? 'warning' : 'default'}
+  icon={taskIcon}
+  size="medium"
+>
+  {#if data.mode === 'link'}
+    {#if data.linkError}
+      <Button href="/join" variant="primary" size="touch" class="w-full">
+        {m.join_requestAccessInstead()}
+      </Button>
+    {:else}
+      <form
+        method="POST"
+        action="?/consume"
+        use:enhance={trackSubmission}
+        class="flex flex-col gap-3"
+      >
+        <input type="hidden" name="token" value={data.token} />
+        <Button type="submit" variant="primary" size="touch" loading={submitting} class="w-full">
+          {m.join_joinOrgButton({ org: data.orgName ?? '' })}
+        </Button>
+        {#if form?.error}
+          <p
+            class="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-destructive)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-destructive)_10%,transparent)] px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
+            {form.error}
+          </p>
+        {/if}
+      </form>
+    {/if}
+  {:else}
+    <form
+      method="POST"
+      action="?/request"
+      use:enhance={trackSubmission}
+      class="flex flex-col gap-4"
+    >
+      {#snippet messageControl(control: FormControlProps)}
+        <textarea
+          {...control}
+          name="message"
+          bind:value={message}
+          placeholder={m.join_messagePlaceholder()}
+          rows={4}
+          maxlength={500}
+          class="min-h-28 w-full resize-y rounded-[var(--radius-md)] border border-border bg-bg px-3 py-2 text-sm leading-relaxed text-foreground outline-none transition-[border-color,box-shadow] duration-[var(--duration-fast)] placeholder:text-muted-foreground focus-visible:border-accent focus-visible:shadow-[var(--shadow-focus)]"
+        ></textarea>
+      {/snippet}
+      <FormField
+        id="join-message"
+        label={m.join_messageLabel()}
+        helper={`${message.length}/500`}
+        children={messageControl}
+      />
+
+      <Button type="submit" variant="primary" size="touch" loading={submitting} class="w-full">
+        {m.join_submitRequest()}
+      </Button>
+      {#if form?.error}
+        <p
+          class="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-destructive)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-destructive)_10%,transparent)] px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          {form.error}
+        </p>
+      {/if}
+    </form>
+  {/if}
+</PublicTaskShell>

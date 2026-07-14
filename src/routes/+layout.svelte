@@ -46,7 +46,11 @@
   // SvelteKit "Avoid using history.pushState(...)" router warning.
   if (!import.meta.env.VITE_DESKTOP) {
     afterNavigate(() => {
-      const ph = (window as Window & { posthog?: { capture: (e: string, p?: Record<string, unknown>) => void } }).posthog;
+      const ph = (
+        window as Window & {
+          posthog?: { capture: (e: string, p?: Record<string, unknown>) => void };
+        }
+      ).posthog;
       ph?.capture('$pageview');
     });
   }
@@ -60,7 +64,12 @@
     // UNPROTECTED_PREFIXES SSR gate in hooks.server.ts. Without this
     // exemption, `/login/forgot` and `/auth/reset` would bounce straight
     // back to `/login` before the user can use them.
-    const isPublicAuthPage = current === '/login' || current.startsWith('/login/') || current.startsWith('/auth/');
+    const isPublicAuthPage =
+      current === '/login' ||
+      current.startsWith('/login/') ||
+      current.startsWith('/auth/') ||
+      current.startsWith('/book/') ||
+      current === '/invite/accept';
 
     if (!userState.user) {
       if (!isPublicAuthPage) {
@@ -102,7 +111,7 @@
   <BugReporter />
 
   {#if conn.connecting}
-    <div class="fixed top-0 left-0 right-0 h-[2px] bg-bg3 z-50 overflow-hidden">
+    <div class="fixed top-0 left-0 right-0 h-[2px] bg-bg3 z-[var(--layer-toast)] overflow-hidden">
       <div class="h-full w-1/3 bg-accent animate-loading-slide"></div>
     </div>
   {/if}

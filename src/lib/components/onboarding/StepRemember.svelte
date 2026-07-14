@@ -1,92 +1,115 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
   import { submitOnEnter } from '$lib/hotkeys';
+  import { Button, Input, Select } from '$lib/components/ui';
+  import { FormField, type FormControlProps } from '$lib/components/ui/foundations';
   interface Props {
-    userName: string; timezone: string; language: string;
-    userContext: string; next: () => void; prev: () => void;
+    userName: string;
+    timezone: string;
+    language: string;
+    userContext: string;
+    next: () => void;
+    prev: () => void;
   }
-  let { userName = $bindable(''), timezone = $bindable('America/Lima'),
-        language = $bindable('es'), userContext = $bindable(''),
-        next, prev }: Props = $props();
+  let {
+    userName = $bindable(''),
+    timezone = $bindable('America/Lima'),
+    language = $bindable('es'),
+    userContext = $bindable(''),
+    next,
+    prev,
+  }: Props = $props();
 
-  const timezones = [
-    'America/Lima','America/Bogota','America/Mexico_City','America/Argentina/Buenos_Aires',
-    'America/Santiago','America/New_York','America/Chicago','America/Los_Angeles',
-    'Europe/London','Europe/Madrid','Europe/Paris','Europe/Berlin',
-    'Asia/Tokyo','Asia/Shanghai','Asia/Kolkata',
+  const timezoneIds = [
+    'America/Lima',
+    'America/Bogota',
+    'America/Mexico_City',
+    'America/Argentina/Buenos_Aires',
+    'America/Santiago',
+    'America/New_York',
+    'America/Chicago',
+    'America/Los_Angeles',
+    'Europe/London',
+    'Europe/Madrid',
+    'Europe/Paris',
+    'Europe/Berlin',
+    'Asia/Tokyo',
+    'Asia/Shanghai',
+    'Asia/Kolkata',
   ];
   const languages = [
-    { id: 'es', label: 'Español' },{ id: 'en', label: 'English' },
-    { id: 'pt', label: 'Português' },{ id: 'fr', label: 'Français' },{ id: 'de', label: 'Deutsch' },
+    { value: 'es', label: 'Español' },
+    { value: 'en', label: 'English' },
+    { value: 'pt', label: 'Português' },
+    { value: 'fr', label: 'Français' },
+    { value: 'de', label: 'Deutsch' },
   ];
-
+  const timezones = timezoneIds.map((value) => ({
+    value,
+    label: value
+      .replace('America/', '')
+      .replace('Europe/', '')
+      .replace('Asia/', '')
+      .replace('_', ' '),
+  }));
 </script>
 
-<div class="step">
-  <h2>{m.step_title()}</h2>
-  <p class="subtitle">{m.step_subtitle()}</p>
+<div class="flex flex-col gap-5">
+  <div>
+    <h2 class="text-base font-semibold text-foreground">{m.step_title()}</h2>
+    <p class="mt-1 text-sm leading-relaxed text-muted-foreground">{m.step_subtitle()}</p>
+  </div>
 
-  <div class="field">
-    <label for="uname">{m.step_yourName()}</label>
-    <input id="uname" type="text" bind:value={userName} placeholder={m.step_namePlaceholder()} maxlength={64} class="input" />
+  <Input
+    id="onboarding-user-name"
+    type="text"
+    label={m.step_yourName()}
+    bind:value={userName}
+    placeholder={m.step_namePlaceholder()}
+    maxlength={64}
+    size="touch"
+  />
+
+  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <Select
+      id="onboarding-timezone"
+      label={m.step_timezone()}
+      bind:value={timezone}
+      options={timezones}
+      class="min-w-0"
+    />
+    <Select
+      id="onboarding-language"
+      label={m.step_language()}
+      bind:value={language}
+      options={languages}
+      class="min-w-0"
+    />
   </div>
-  <div class="row">
-    <div class="field">
-      <label for="tz">{m.step_timezone()}</label>
-      <select id="tz" bind:value={timezone} class="input">
-        {#each timezones as tz}<option value={tz}>{tz.replace('America/','').replace('Europe/','').replace('Asia/','').replace('_',' ')}</option>{/each}
-      </select>
-    </div>
-    <div class="field">
-      <label for="lang">{m.step_language()}</label>
-      <select id="lang" bind:value={language} class="input">
-        {#each languages as lang}<option value={lang.id}>{lang.label}</option>{/each}
-      </select>
-    </div>
-  </div>
-  <div class="field">
-    <label for="ctx">{m.step_context()}</label>
-    <textarea id="ctx" bind:value={userContext} placeholder={m.step_contextPlaceholder()} rows={4} maxlength={500} class="input textarea" {@attach submitOnEnter(() => next())}></textarea>
-    <span class="charcount">{userContext.length}/500</span>
-  </div>
-  <div class="buttons">
-    <button class="btn-secondary" onclick={prev}>← {m.common_back()}</button>
-    <button class="btn-primary" onclick={next}>{m.step_continue()} →</button>
+
+  {#snippet contextControl(control: FormControlProps)}
+    <textarea
+      {...control}
+      bind:value={userContext}
+      placeholder={m.step_contextPlaceholder()}
+      rows={4}
+      maxlength={500}
+      class="min-h-28 w-full resize-y rounded-[var(--radius-md)] border border-border bg-bg px-3 py-2 text-sm leading-relaxed text-foreground outline-none transition-[border-color,box-shadow] duration-[var(--duration-fast)] placeholder:text-muted-foreground focus-visible:border-accent focus-visible:shadow-[var(--shadow-focus)]"
+      {@attach submitOnEnter(() => next())}></textarea>
+  {/snippet}
+  <FormField
+    id="onboarding-context"
+    label={m.step_context()}
+    helper={`${userContext.length}/500`}
+    children={contextControl}
+  />
+
+  <div class="flex flex-col-reverse gap-2 sm:flex-row">
+    <Button type="button" variant="secondary" size="touch" onclick={prev} class="sm:w-auto">
+      ← {m.common_back()}
+    </Button>
+    <Button type="button" variant="primary" size="touch" onclick={next} class="flex-1">
+      {m.step_continue()} →
+    </Button>
   </div>
 </div>
-
-<style>
-  .step { display: flex; flex-direction: column; gap: 1rem; }
-  h2 { font-size: 1.1rem; font-weight: 600; color: var(--color-foreground); margin: 0; }
-  .subtitle { font-size: 0.8rem; color: var(--color-muted-foreground); margin: 0; line-height: 1.4; }
-  .field { display: flex; flex-direction: column; gap: 0.3rem; flex: 1; }
-  label { font-size: 0.75rem; font-weight: 500; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-  .input {
-    background: var(--color-bg3); border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg); padding: 0.7rem 0.85rem;
-    color: var(--color-foreground); font-size: 0.9rem; font-family: inherit;
-    outline: none; transition: border-color var(--duration-fast);
-  }
-  .input:focus { border-color: var(--color-accent); }
-  .input::placeholder { color: var(--color-muted-foreground); }
-  select.input { cursor: pointer; appearance: none; }
-  select.input option { background: var(--color-bg2); color: var(--color-foreground); }
-  .textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
-  .charcount { font-size: 0.65rem; color: var(--color-muted-foreground); text-align: right; }
-  .row { display: flex; gap: 0.75rem; }
-  .buttons { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
-  .btn-primary {
-    background: var(--color-accent); color: var(--color-accent-foreground);
-    border: none; border-radius: var(--radius-lg); padding: 0.85rem 1.5rem;
-    font-size: 0.95rem; font-weight: 600; cursor: pointer; flex: 1;
-    transition: opacity var(--duration-fast), transform var(--duration-fast);
-  }
-  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
-  .btn-secondary {
-    background: var(--color-bg3); color: var(--color-muted);
-    border: 1px solid var(--color-border); border-radius: var(--radius-lg);
-    padding: 0.85rem 1.5rem; font-size: 0.95rem; font-weight: 500;
-    cursor: pointer; transition: background var(--duration-fast);
-  }
-  .btn-secondary:hover { background: var(--color-bg2); }
-</style>
