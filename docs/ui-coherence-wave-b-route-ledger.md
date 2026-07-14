@@ -29,11 +29,11 @@ work and must not be marked migrated merely by inheriting the section shell.
 
 ### Finances
 
-- [ ] `/finances`
-- [ ] `/finances/invoices`
-- [ ] `/finances/invoices/[id]`
+- [x] `/finances`
+- [x] `/finances/invoices`
+- [x] `/finances/invoices/[id]`
 - [x] `/finances/products`
-- [ ] `/finances/settings`
+- [x] `/finances/settings`
 
 ### Memberships
 
@@ -49,7 +49,7 @@ work and must not be marked migrated merely by inheriting the section shell.
 ### Sales
 
 - [x] `/sales`
-- [ ] `/sales/[id]`
+- [x] `/sales/[id]`
 
 ### Scheduling
 
@@ -87,7 +87,7 @@ work and must not be marked migrated merely by inheriting the section shell.
 ### Support
 
 - [x] `/support`
-- [ ] `/support/[id]`
+- [x] `/support/[id]`
 
 ### Work
 
