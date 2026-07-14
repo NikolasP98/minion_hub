@@ -3,7 +3,10 @@
 	import { invalidate } from '$app/navigation';
 	import { PageHeader, Button, Badge, Select, Tabs, EmptyState } from '$lib/components/ui';
 	import type { TabItem } from '$lib/components/ui';
-	import { Inbox } from 'lucide-svelte';
+	import { Inbox, Factory, Radio } from 'lucide-svelte';
+	import { onMount } from 'svelte';
+	import { startPolling } from '$lib/utils/live-polling';
+	import type { WorkforceWorkItem } from '$lib/workforce/work-queue';
 
 	let { data }: { data: PageData } = $props();
 
@@ -11,7 +14,10 @@
 		support_issue: 'Ticket',
 		crm_contact: 'Lead',
 		sales_order: 'Order',
+		workforce_hitl: 'Factory gate',
 	};
+
+	onMount(() => startPolling('work:queue', 6000));
 
 	let tab = $state('queue');
 	const tabs: TabItem[] = $derived([
@@ -38,6 +44,10 @@
 
 	function memberName(id: string) {
 		return data.members.find((m) => m.id === id)?.name ?? id;
+	}
+
+	function factoryItem(item: PageData['items'][number]): WorkforceWorkItem | null {
+		return item.docType === 'workforce_hitl' ? (item as WorkforceWorkItem) : null;
 	}
 
 	async function createRule() {
@@ -78,30 +88,46 @@
 	}
 </script>
 
-<PageHeader title="Work" subtitle="Items assigned to you across tickets, leads and orders" />
+<PageHeader title="Work" subtitle="One queue for operational work and human factory gates" />
 
 <Tabs {tabs} bind:value={tab} />
 
 {#if tab === 'queue'}
 	{#if data.items.length === 0}
-		<EmptyState icon={Inbox} title="Nothing on your plate" description="Assigned tickets, leads and orders will show up here." />
+		<EmptyState icon={Inbox} title="Nothing on your plate" description="Assigned records and production-line decisions will show up here." />
 	{:else}
 		<div class="queue">
 			{#each data.items as it (it.docType + it.id)}
-				<div class="row">
-					<Badge>{DOC_LABEL[it.docType] ?? it.docType}</Badge>
-					<a class="title" href={it.href}>{it.humanId ? `${it.humanId} · ` : ''}{it.title}</a>
-					{#if it.status}<span class="status">{it.status}</span>{/if}
+				{@const factory = factoryItem(it)}
+				<div class:factory-row={!!factory} class="row">
+					<Badge>
+						{#if factory}<Factory size={12} />{/if}
+						{DOC_LABEL[it.docType] ?? it.docType}
+					</Badge>
+					<div class="work-copy">
+						<a class="title" href={it.href}>{it.humanId ? `${it.humanId} · ` : ''}{it.title}</a>
+						{#if factory}
+							<span class="factory-meta">{factory.pipelineName} · {factory.stageLabel}{factory.assignmentKind === 'role' ? ` · ${factory.assignmentRoleKeys.join(', ')}` : ' · assigned to you'}</span>
+						{/if}
+					</div>
+					{#if it.status}<span class="status">{it.status.replaceAll('_', ' ')}</span>{/if}
 					<div class="spacer"></div>
-					<Select size="sm" value="" onchange={(v) => reassign(it.docType, it.id, String(v))}>
-						<option value="">Reassign…</option>
-						{#each data.members as m (m.id)}
-							<option value={m.id}>{m.name}</option>
-						{/each}
-					</Select>
+					{#if factory}
+						<a class="open-gate" href={it.href}>Open gate →</a>
+					{:else}
+						<Select size="sm" value="" onchange={(v) => reassign(it.docType, it.id, String(v))}>
+							<option value="">Reassign…</option>
+							{#each data.members as m (m.id)}
+								<option value={m.id}>{m.name}</option>
+							{/each}
+						</Select>
+					{/if}
 				</div>
 			{/each}
 		</div>
+	{/if}
+	{#if !data.workforceQueueAvailable}
+		<p class="factory-offline"><Radio size={12} /> Factory gates are temporarily offline; your other work remains available.</p>
 	{/if}
 {:else if tab === 'rules'}
 	<div class="rules">
@@ -166,6 +192,42 @@
 		border: 1px solid var(--border, #2a2a2a);
 		border-radius: 0.5rem;
 		background: var(--surface, #161616);
+	}
+	.row.factory-row {
+		border-left: 3px solid color-mix(in srgb, var(--accent, #4f7cff) 72%, #f59e0b);
+		background:
+			linear-gradient(90deg, color-mix(in srgb, var(--accent, #4f7cff) 7%, transparent), transparent 35%),
+			var(--surface, #161616);
+	}
+	.row :global(.badge) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+	}
+	.work-copy {
+		display: flex;
+		min-width: 0;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+	.factory-meta {
+		font-size: 0.7rem;
+		color: var(--muted-foreground, #888);
+	}
+	.open-gate {
+		font-size: 0.78rem;
+		font-weight: 650;
+		color: var(--accent, #4f7cff);
+		text-decoration: none;
+	}
+	.open-gate:hover { text-decoration: underline; }
+	.factory-offline {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin-top: 0.75rem;
+		font-size: 0.72rem;
+		color: var(--muted-foreground, #888);
 	}
 	.title {
 		font-weight: 500;

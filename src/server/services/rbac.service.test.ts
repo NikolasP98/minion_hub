@@ -398,6 +398,7 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
 	test('work + workforce map to projects (no /api/work ↔ /api/workforce collision)', () => {
 		expect(apiWriteCapability('/api/work/reassign', 'PATCH')).toEqual({ module: 'projects', action: 'edit' });
 		expect(apiWriteCapability('/api/workforce/anything', 'POST')).toEqual({ module: 'projects', action: 'edit' });
+		expect(apiWriteCapability('/api/workforce/factory-intake', 'POST')).toEqual({ module: 'projects', action: 'edit' });
 	});
 	test('org-config surfaces require settings:manage', () => {
 		expect(apiWriteCapability('/api/modules', 'PUT')).toEqual({ module: 'settings', action: 'manage' });

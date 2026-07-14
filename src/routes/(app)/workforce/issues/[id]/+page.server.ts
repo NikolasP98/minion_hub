@@ -1,6 +1,7 @@
 import { redirect, error } from '@sveltejs/kit';
 import { workforceRawFetch, workforceServerClient } from '$lib/server/workforce-fetch';
 import { normalizePipelineTrace, pipelineRunId } from '$lib/workforce/pipeline-trace';
+import { normalizeFactoryIntake } from '$lib/workforce/factory-intake';
 import type { PageServerLoad } from './$types';
 
 function statusOf(value: unknown): number | undefined {
@@ -55,6 +56,20 @@ export const load: PageServerLoad = async (event) => {
         ).catch(() => [])
       : [];
     const pipelineTrace = normalizePipelineTrace(pipelineRunRaw, pipelineEventsRaw);
+    const issueHierarchy = issue as typeof issue & {
+      parentId?: string | null;
+      ancestors?: Array<{ id: string }>;
+    };
+    const rootIssueId = issueHierarchy.ancestors?.[0]?.id ?? issueHierarchy.parentId ?? issue.id;
+    const factoryIntake =
+      pipelineTrace?.currentStepKey === 'routing-decision'
+        ? normalizeFactoryIntake(
+            await workforceRawFetch(
+              event,
+              `/api/factory-intakes/${encodeURIComponent(rootIssueId)}`,
+            ).catch(() => null),
+          )
+        : null;
 
     const agentNames: Record<string, string> = {};
     for (const a of agents) agentNames[a.id] = a.name;
@@ -69,6 +84,7 @@ export const load: PageServerLoad = async (event) => {
       agentNames,
       decisions,
       pipelineTrace,
+      factoryIntake,
       viewerUserId: event.locals.workforceIdentity.userId,
       viewerRoleKeys,
       workforceAvailable,

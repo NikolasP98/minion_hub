@@ -1,6 +1,6 @@
 <script lang="ts">
     import * as m from '$lib/paraglide/messages';
-    import { Sparkles, Minus, SquarePen, Send, ChevronDown, AlertCircle, Mic, MicOff, PhoneOff } from 'lucide-svelte';
+    import { Sparkles, Minus, SquarePen, Send, ChevronDown, AlertCircle, Mic, MicOff, PhoneOff, Factory, MessageCircle } from 'lucide-svelte';
     import { voiceCall, mouth, toggleMute, endCall } from '$lib/state/features/voice-call.svelte';
     import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
     import {
@@ -31,6 +31,15 @@
     import { page } from '$app/state';
     import { onMount, tick } from 'svelte';
     import { createHotkey, formatForDisplay } from '$lib/hotkeys';
+    import FactoryIntakeCard from '$lib/components/workforce/FactoryIntakeCard.svelte';
+    import {
+        factoryIntakeIsSettled,
+        factoryIntakeAttempt,
+        normalizeFactoryIntake,
+        type FactoryIntakeAttempt,
+        type FactoryIntakeView,
+    } from '$lib/workforce/factory-intake';
+    import { onDestroy } from 'svelte';
 
     let inputEl: HTMLTextAreaElement | undefined = $state();
     let messagesEl: HTMLDivElement | null = $state(null);
@@ -105,12 +114,38 @@
         !!assistant.personalAgentId && conn.connected && !sending,
     );
 
+    type ComposerMode = 'chat' | 'factory';
+    let composerMode = $state<ComposerMode>('chat');
+    let previousRoute = $state('');
+    let factorySending = $state(false);
+    let factoryIntake = $state<FactoryIntakeView | null>(null);
+    let factoryError = $state<string | null>(null);
+    let factoryPollTimer: ReturnType<typeof setTimeout> | null = null;
+    let factoryAttempt = $state<FactoryIntakeAttempt | null>(null);
+
+    // Route entry chooses a sensible default once. The explicit selector remains
+    // authoritative until the next navigation, so chat is always available.
+    $effect(() => {
+        const route = page.url.pathname;
+        if (route === previousRoute) return;
+        previousRoute = route;
+        composerMode = route === '/work' || route.startsWith('/workforce') ? 'factory' : 'chat';
+    });
+
+    const canSubmit = $derived(
+        composerMode === 'factory' ? !factorySending : canSend,
+    );
+
     // Local-only draft — written to chat.inputText only at send time, no
     // bidirectional $effect mirroring (that creates reactive loops that
     // interfere with chat.messages tracking downstream).
     let draft = $state('');
 
     function send() {
+        if (composerMode === 'factory') {
+            void submitFactoryIntake();
+            return;
+        }
         if (!canSend) return;
         const id = assistant.personalAgentId;
         if (!id) return;
@@ -122,6 +157,75 @@
         draft = '';
     }
 
+    function stopFactoryPolling() {
+        if (factoryPollTimer) clearTimeout(factoryPollTimer);
+        factoryPollTimer = null;
+    }
+
+    function scheduleFactoryPoll(issueId: string) {
+        stopFactoryPolling();
+        factoryPollTimer = setTimeout(() => void pollFactoryIntake(issueId), 2500);
+    }
+
+    async function pollFactoryIntake(issueId: string) {
+        try {
+            const response = await fetch(`/api/workforce/factory-intake/${encodeURIComponent(issueId)}`);
+            if (!response.ok) throw new Error('status unavailable');
+            const next = normalizeFactoryIntake(await response.json());
+            if (!next) throw new Error('invalid status response');
+            factoryIntake = next;
+            if (!factoryIntakeIsSettled(next)) scheduleFactoryPoll(next.issueId);
+        } catch {
+            // Keep the accepted intake card and its issue link. A transient
+            // polling failure must never imply that the ticket was lost.
+            if (factoryIntake && !factoryIntakeIsSettled(factoryIntake)) {
+                scheduleFactoryPoll(factoryIntake.issueId);
+            }
+        }
+    }
+
+    async function submitFactoryIntake() {
+        if (factorySending) return;
+        const request = draft.trim();
+        if (!request) return;
+        factoryAttempt = factoryIntakeAttempt(factoryAttempt, request, () => crypto.randomUUID());
+        factorySending = true;
+        factoryError = null;
+        factoryIntake = null;
+        stopFactoryPolling();
+        try {
+            const response = await fetch('/api/workforce/factory-intake', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    request,
+                    source: {
+                        kind: 'hub_assistant',
+                        route: page.url.pathname,
+                        selectedAgentId: ui.selectedAgentId ?? undefined,
+                    },
+                    idempotencyKey: factoryAttempt.idempotencyKey,
+                }),
+            });
+            if (!response.ok) throw new Error('factory unavailable');
+            const accepted = normalizeFactoryIntake(await response.json());
+            if (!accepted) {
+                factoryError = m.factoryDesk_invalidResponse();
+                return;
+            }
+            factoryIntake = accepted;
+            factoryAttempt = null;
+            draft = '';
+            if (!factoryIntakeIsSettled(accepted)) scheduleFactoryPoll(accepted.issueId);
+        } catch {
+            factoryError = m.factoryDesk_unavailable();
+        } finally {
+            factorySending = false;
+        }
+    }
+
+    onDestroy(stopFactoryPolling);
+
     function onInputKey(e: KeyboardEvent) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -130,6 +234,15 @@
     }
 
     function newChat() {
+        if (composerMode === 'factory') {
+            stopFactoryPolling();
+            factoryIntake = null;
+            factoryError = null;
+            factoryAttempt = null;
+            draft = '';
+            requestAnimationFrame(() => inputEl?.focus());
+            return;
+        }
         const id = assistant.personalAgentId;
         if (!id) return;
         void resetChat(id);
@@ -475,7 +588,7 @@
         >
             <Sparkles size={13} class="text-accent shrink-0 ml-1" />
             <span class="text-[11px] font-semibold text-foreground flex-1 truncate">{m.floatingAssistant_title()}</span>
-            {#if !conn.connected}
+            {#if !conn.connected && composerMode === 'chat'}
                 <span class="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500" title={m.floatingAssistant_offline()}></span>
             {/if}
             <button
@@ -534,7 +647,14 @@
             bind:this={messagesEl}
             onscroll={handleScroll}
         >
-            {#if assistant.loading}
+            {#if composerMode === 'factory'}
+                <div class="h-full flex flex-col items-center justify-center text-center px-7 factory-welcome">
+                    <div class="factory-welcome-mark"><Factory size={20} /></div>
+                    <span class="factory-welcome-status"><i></i>{m.factoryDesk_stateQueued()}</span>
+                    <h3>{m.factoryDesk_welcomeTitle()}</h3>
+                    <p>{m.factoryDesk_welcomeDescription()}</p>
+                </div>
+            {:else if assistant.loading}
                 <div class="h-full flex items-center justify-center text-[11px] text-muted-foreground">
                     {m.floatingAssistant_loading()}
                 </div>
@@ -614,8 +734,29 @@
             {/if}
         </div>
 
+        {#if composerMode === 'factory' && (factorySending || factoryIntake || factoryError)}
+            <FactoryIntakeCard intake={factoryIntake} pending={factorySending} error={factoryError} />
+        {/if}
+
         <!-- Scope badge + input -->
         <div class="shrink-0 border-t border-border bg-bg3/40">
+            <div class="composer-modes" aria-label={m.factoryDesk_controlDesk()}>
+                <button
+                    type="button"
+                    class:active={composerMode === 'chat'}
+                    aria-pressed={composerMode === 'chat'}
+                    onclick={() => (composerMode = 'chat')}
+                ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</button>
+                <button
+                    type="button"
+                    class:active={composerMode === 'factory'}
+                    aria-pressed={composerMode === 'factory'}
+                    onclick={() => (composerMode = 'factory')}
+                ><Factory size={11} /> {m.factoryDesk_modeFactory()}</button>
+                {#if composerMode === 'factory'}
+                    <span>{m.factoryDesk_factoryHint()}</span>
+                {/if}
+            </div>
             <div class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-muted-foreground border-b border-border/60">
                 <span class="font-semibold uppercase tracking-wider">{m.floatingAssistant_viewing()}:</span>
                 <span class="truncate flex-1">{scopeLabel}</span>
@@ -628,16 +769,16 @@
                         bind:value={draft}
                         onkeydown={onInputKey}
                         rows="1"
-                        placeholder={canSend ? m.floatingAssistant_askAnything() : conn.connected ? m.common_loading() : m.floatingAssistant_offline()}
-                        disabled={!canSend && !!assistant.personalAgentId}
+                        placeholder={composerMode === 'factory' ? m.factoryDesk_placeholder() : canSend ? m.floatingAssistant_askAnything() : conn.connected ? m.common_loading() : m.floatingAssistant_offline()}
+                        disabled={!canSubmit}
                         class="flex-1 min-w-0 resize-none bg-bg border border-border rounded-md px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50 max-h-[120px] disabled:opacity-50"
                     ></textarea>
                     <button
                         type="button"
                         onclick={send}
-                        disabled={!draft.trim() || !canSend}
+                        disabled={!draft.trim() || !canSubmit}
                         class="shrink-0 w-7 h-7 flex items-center justify-center rounded-md bg-accent text-bg hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                        aria-label={m.floatingAssistant_send()}
+                        aria-label={composerMode === 'factory' ? m.factoryDesk_submit() : m.floatingAssistant_send()}
                     >
                         <Send size={12} />
                     </button>
@@ -660,4 +801,58 @@
             transform: scale(1);
         }
     }
+    .composer-modes {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        min-height: 2rem;
+        padding: 0.35rem 0.55rem;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    }
+    .composer-modes button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        border: 1px solid transparent;
+        border-radius: 0.35rem;
+        padding: 0.25rem 0.4rem;
+        color: var(--muted-foreground);
+        font-size: 0.58rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+    .composer-modes button:hover,
+    .composer-modes button:focus-visible { color: var(--foreground); outline: none; }
+    .composer-modes button.active {
+        border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+        color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 8%, transparent);
+    }
+    .composer-modes span {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        color: var(--muted-foreground);
+        font-size: 0.52rem;
+        text-align: right;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .factory-welcome-mark {
+        display: grid;
+        place-items: center;
+        width: 3rem;
+        height: 3rem;
+        margin-bottom: 0.65rem;
+        border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+        border-radius: 0.65rem;
+        color: var(--accent);
+        background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, transparent) 0 5px, transparent 5px 10px);
+        box-shadow: 0 0 1.5rem color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+    .factory-welcome-status { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--muted-foreground); font-family: ui-monospace, monospace; font-size: 0.52rem; letter-spacing: 0.12em; text-transform: uppercase; }
+    .factory-welcome-status i { width: 0.35rem; height: 0.35rem; border-radius: 999px; background: #22c55e; box-shadow: 0 0 0.4rem #22c55e; }
+    .factory-welcome h3 { margin-top: 0.45rem; color: var(--foreground); font-size: 0.82rem; font-weight: 700; }
+    .factory-welcome p { margin-top: 0.3rem; max-width: 17rem; color: var(--muted-foreground); font-size: 0.65rem; line-height: 1.5; }
 </style>
