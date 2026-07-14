@@ -205,7 +205,7 @@
 
     .error-text {
         font-size: 12px;
-        color: var(--color-error, #ef4444);
+        color: var(--color-danger-fg);
         margin: 0;
     }
 

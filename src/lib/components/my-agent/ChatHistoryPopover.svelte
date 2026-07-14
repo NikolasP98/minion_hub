@@ -158,8 +158,8 @@
 </Popover>
 
 <style>
-	.history-trigger { display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid var(--color-border); border-radius: 9px; color: var(--color-muted-foreground); background: color-mix(in srgb, var(--color-background) 90%, transparent); transition: 140ms ease; }
-	.history-trigger:hover { color: var(--color-foreground); border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-background)); }
+	.history-trigger { display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid var(--color-border); border-radius: 9px; color: var(--color-muted-foreground); background: color-mix(in srgb, var(--color-canvas) 90%, transparent); transition: 140ms ease; }
+	.history-trigger:hover { color: var(--color-foreground); border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-canvas)); }
 	.history-trigger.disabled { pointer-events: none; opacity: .45; }
 	.history-panel { position: relative; isolation: isolate; z-index: 100; width: min(360px, calc(100vw - 24px)); overflow: hidden; border: 1px solid var(--elevation-3-border); border-radius: 14px; background-color: var(--elevation-3-bg); box-shadow: var(--shadow-xl), 0 18px 45px rgb(0 0 0 / 18%); }
 	.history-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 9px; border-bottom: 1px solid var(--color-border); font-size: 12px; font-weight: 650; }

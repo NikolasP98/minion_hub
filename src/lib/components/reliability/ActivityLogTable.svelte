@@ -112,7 +112,7 @@
 	// Severity = ordinal alarm ramp; aligned with the page palette (council 2026-05-29).
 	const severityClasses: Record<string, string> = {
 		critical: 'bg-destructive text-primary-foreground',
-		high: 'bg-warning text-[var(--color-warning-contrast,var(--color-canvas))]',
+		high: 'bg-warning text-[var(--color-canvas)]',
 		medium: 'bg-info text-primary-foreground',
 		low: 'bg-muted-foreground text-primary-foreground',
 		info: 'bg-accent/80 text-primary-foreground',

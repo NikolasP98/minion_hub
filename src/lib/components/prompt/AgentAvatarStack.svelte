@@ -100,8 +100,8 @@
     height: var(--chip-size);
     border-radius: 999px;
     margin-left: var(--gap);
-    border: 1.5px solid var(--bg, #0a0a0a);
-    background: var(--bg2, #141414);
+    border: 1.5px solid var(--color-canvas, #0a0a0a);
+    background: var(--color-bg2, #141414);
     overflow: visible;
     display: inline-flex;
     align-items: center;
@@ -140,8 +140,8 @@
     font-size: calc(var(--chip-size) * 0.5);
   }
   .chip.overflow > .mono {
-    background: rgb(var(--accent-rgb, 250 204 21) / 0.2);
-    color: rgb(var(--accent-rgb, 250 204 21));
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    color: var(--color-accent);
     font-size: calc(var(--chip-size) * 0.42);
   }
 
@@ -153,9 +153,9 @@
     transform: translateX(-50%) translateY(2px);
     padding: 3px 6px;
     border-radius: 4px;
-    background: var(--bg, #0a0a0a);
-    border: 1px solid var(--border, #2a2a2a);
-    color: var(--fg, #e5e5e5);
+    background: var(--color-canvas, #0a0a0a);
+    border: 1px solid var(--color-border, #2a2a2a);
+    color: var(--color-text-primary);
     font-size: 10px;
     font-family: ui-monospace, monospace;
     white-space: nowrap;

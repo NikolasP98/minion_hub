@@ -634,7 +634,7 @@
   }
   .linked {
     font-size: var(--font-size-caption, 12px);
-    color: var(--accent);
+    color: var(--color-accent);
   }
   .results {
     position: absolute;
@@ -646,7 +646,7 @@
     background: var(--color-card);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-raised);
+    box-shadow: var(--shadow-elevation-2);
     max-height: 180px;
     overflow: auto;
   }

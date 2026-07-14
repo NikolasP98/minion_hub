@@ -196,41 +196,41 @@
 {/if}
 
 <style>
-	.routing-panel { border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)); border-radius: 0.7rem; padding: 1rem; background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 42%), var(--card); box-shadow: inset 4px 0 0 color-mix(in srgb, var(--accent) 72%, #f59e0b); }
+	.routing-panel { border: 1px solid color-mix(in srgb, var(--color-accent) 38%, var(--color-border)); border-radius: 0.7rem; padding: 1rem; background: linear-gradient(110deg, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 42%), var(--color-card); box-shadow: inset 4px 0 0 color-mix(in srgb, var(--color-accent) 72%, #f59e0b); }
 	header { display: flex; align-items: flex-start; gap: 0.75rem; }
-	.factory-mark { display: grid; place-items: center; width: 2rem; height: 2rem; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 0.45rem; color: var(--accent); background: var(--background); }
-	h2 { color: var(--foreground); font-size: 0.78rem; font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; }
-	header p { margin-top: 0.2rem; max-width: 46rem; color: var(--muted-foreground); font-size: 0.76rem; line-height: 1.45; }
+	.factory-mark { display: grid; place-items: center; width: 2rem; height: 2rem; border: 1px solid color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); border-radius: 0.45rem; color: var(--color-accent); background: var(--color-canvas); }
+	h2 { color: var(--color-foreground); font-size: 0.78rem; font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; }
+	header p { margin-top: 0.2rem; max-width: 46rem; color: var(--color-muted-foreground); font-size: 0.76rem; line-height: 1.45; }
 	.mode-row { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 1rem; }
-	.mode-row button { display: inline-flex; align-items: center; gap: 0.35rem; border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.45rem 0.65rem; color: var(--muted-foreground); background: var(--background); font-size: 0.7rem; font-weight: 650; }
-	.mode-row button.active { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--background)); }
+	.mode-row button { display: inline-flex; align-items: center; gap: 0.35rem; border: 1px solid var(--color-border); border-radius: 0.4rem; padding: 0.45rem 0.65rem; color: var(--color-muted-foreground); background: var(--color-canvas); font-size: 0.7rem; font-weight: 650; }
+	.mode-row button.active { border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-border)); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 8%, var(--color-canvas)); }
 	.candidates { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.55rem; margin-top: 0.75rem; }
-	.candidates > button { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.7rem; text-align: left; background: var(--background); }
-	.candidates > button.selected { border-color: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); }
+	.candidates > button { border: 1px solid var(--color-border); border-radius: 0.5rem; padding: 0.7rem; text-align: left; background: var(--color-canvas); }
+	.candidates > button.selected { border-color: var(--color-accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent); }
 	.candidate-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 	.candidate-head strong { font-size: 0.78rem; }
-	.candidate-head span { border-radius: 999px; padding: 0.1rem 0.35rem; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: 0.55rem; text-transform: uppercase; }
-	.candidate-head em { margin-left: auto; color: var(--muted-foreground); font-size: 0.62rem; font-style: normal; }
-	.candidates code { display: block; margin-top: 0.3rem; color: var(--muted-foreground); font-size: 0.65rem; }
-	.candidates p { margin-top: 0.35rem; color: var(--muted-foreground); font-size: 0.68rem; line-height: 1.35; }
+	.candidate-head span { border-radius: 999px; padding: 0.1rem 0.35rem; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 10%, transparent); font-size: 0.55rem; text-transform: uppercase; }
+	.candidate-head em { margin-left: auto; color: var(--color-muted-foreground); font-size: 0.62rem; font-style: normal; }
+	.candidates code { display: block; margin-top: 0.3rem; color: var(--color-muted-foreground); font-size: 0.65rem; }
+	.candidates p { margin-top: 0.35rem; color: var(--color-muted-foreground); font-size: 0.68rem; line-height: 1.35; }
 	.new-project-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; margin-top: 0.75rem; }
 	.new-project-grid .wide { grid-column: 1 / -1; }
-	label { display: flex; flex-direction: column; gap: 0.25rem; color: var(--muted-foreground); font-size: 0.68rem; font-weight: 600; }
-	input, select, textarea { width: 100%; border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.5rem 0.6rem; color: var(--foreground); background: var(--background); font-size: 0.75rem; outline: none; }
-	input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+	label { display: flex; flex-direction: column; gap: 0.25rem; color: var(--color-muted-foreground); font-size: 0.68rem; font-weight: 600; }
+	input, select, textarea { width: 100%; border: 1px solid var(--color-border); border-radius: 0.4rem; padding: 0.5rem 0.6rem; color: var(--color-foreground); background: var(--color-canvas); font-size: 0.75rem; outline: none; }
+	input:focus, select:focus, textarea:focus { border-color: var(--color-accent); }
 	select:disabled { cursor: not-allowed; opacity: 0.55; }
 	textarea { min-height: 4.5rem; resize: vertical; }
 	.scope-field { grid-column: 1 / -1; min-width: 0; }
-	.scope-field legend { color: var(--muted-foreground); font-size: 0.68rem; font-weight: 600; }
+	.scope-field legend { color: var(--color-muted-foreground); font-size: 0.68rem; font-weight: 600; }
 	.scope-grid { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
-	.scope-grid label { position: relative; display: inline-flex; flex-direction: row; align-items: center; border: 1px solid var(--border); border-radius: 999px; padding: 0.3rem 0.55rem; color: var(--muted-foreground); background: var(--background); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.62rem; cursor: pointer; }
-	.scope-grid label.checked { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--background)); }
+	.scope-grid label { position: relative; display: inline-flex; flex-direction: row; align-items: center; border: 1px solid var(--color-border); border-radius: 999px; padding: 0.3rem 0.55rem; color: var(--color-muted-foreground); background: var(--color-canvas); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.62rem; cursor: pointer; }
+	.scope-grid label.checked { border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-border)); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 8%, var(--color-canvas)); }
 	.scope-grid input { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; pointer-events: none; }
 	.note { margin-top: 0.75rem; }
 	.actions { display: flex; align-items: center; gap: 0.65rem; margin-top: 0.75rem; }
-	.submit { border-radius: 0.4rem; padding: 0.5rem 0.75rem; color: var(--background); background: var(--accent); font-size: 0.72rem; font-weight: 750; }
+	.submit { border-radius: 0.4rem; padding: 0.5rem 0.75rem; color: var(--color-canvas); background: var(--color-accent); font-size: 0.72rem; font-weight: 750; }
 	.submit:disabled { cursor: not-allowed; opacity: 0.45; }
-	.actions span { color: var(--muted-foreground); font-size: 0.65rem; }
-	.error { margin-top: 0.5rem; color: var(--destructive); font-size: 0.7rem; }
+	.actions span { color: var(--color-muted-foreground); font-size: 0.65rem; }
+	.error { margin-top: 0.5rem; color: var(--color-destructive); font-size: 0.7rem; }
 	@media (max-width: 640px) { .new-project-grid { grid-template-columns: 1fr; } .new-project-grid .wide { grid-column: auto; } }
 </style>

@@ -708,16 +708,16 @@
     background: var(--color-card);
   }
   :global(.pos-appointments-surface .slot-on) {
-    background: var(--accent);
+    background: var(--color-accent);
     color: var(--color-on-accent);
-    border-color: var(--accent);
+    border-color: var(--color-accent);
   }
   .search-wrap {
     position: relative;
   }
   .linked {
     font-size: var(--font-size-caption, 12px);
-    color: var(--accent);
+    color: var(--color-accent);
   }
   .results {
     position: absolute;
@@ -773,7 +773,7 @@
     border-right: 1px solid var(--hairline);
   }
   :global(.pos-appointments-surface .range-on) {
-    background: var(--accent);
+    background: var(--color-accent);
     color: var(--color-on-accent);
   }
   .override-box {

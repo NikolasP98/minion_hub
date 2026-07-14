@@ -209,7 +209,7 @@
 	.create-row { display: flex; gap: 0.5rem; align-items: center; }
 	.in { height: 2rem; font-size: 0.86rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.55rem; flex: 1; color: var(--color-foreground); }
 	.in.date { flex: 0 0 9rem; }
-	.btn { display: inline-flex; align-items: center; gap: 0.35rem; height: 2rem; padding: 0 0.7rem; border-radius: var(--radius-md); border: 1px solid var(--hairline); background: var(--color-primary); color: var(--color-primary-foreground); font-size: 0.84rem; cursor: pointer; }
+	.btn { display: inline-flex; align-items: center; gap: 0.35rem; height: 2rem; padding: 0 0.7rem; border-radius: var(--radius-md); border: 1px solid var(--hairline); background: var(--color-accent); color: var(--color-on-accent); font-size: 0.84rem; cursor: pointer; }
 	.btn.ghost { background: var(--color-bg3); color: var(--color-foreground); }
 	.btn.sm { height: 1.7rem; font-size: 0.78rem; padding: 0 0.55rem; }
 	.btn:disabled { opacity: 0.5; cursor: default; }
@@ -229,8 +229,8 @@
 	.wf-registry-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0 0.15rem; color: var(--color-muted-foreground); }
 	.wf-registry-head > span:first-child { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--color-foreground); }
 	.wf-repository { overflow: hidden; }
-	.wf-repository-head { display: flex; align-items: center; gap: 0.45rem; min-height: 2.4rem; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--hairline); background: linear-gradient(90deg, color-mix(in oklab, var(--color-primary) 8%, var(--color-bg3)), var(--color-card) 55%); }
-	.wf-repository-icon { display: inline-flex; color: var(--color-primary); }
+	.wf-repository-head { display: flex; align-items: center; gap: 0.45rem; min-height: 2.4rem; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--hairline); background: linear-gradient(90deg, color-mix(in oklab, var(--color-accent) 8%, var(--color-bg3)), var(--color-card) 55%); }
+	.wf-repository-icon { display: inline-flex; color: var(--color-accent); }
 	.wf-repository-head strong { font-family: monospace; font-size: 0.82rem; letter-spacing: 0.015em; }
 	.wf-kind { color: var(--color-muted-foreground); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; }
 	.wf-concern + .wf-concern { border-top: 1px solid var(--hairline); }

@@ -392,7 +392,7 @@
                       ></span>
                       <span
                         role="tooltip"
-                        class="pointer-events-none absolute left-1/2 top-full z-[var(--layer-tooltip,60)] mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-left text-xs leading-tight text-popover-foreground shadow-lg group-hover/dot:block"
+                        class="pointer-events-none absolute left-1/2 top-full z-[var(--layer-popover)] mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-left text-xs leading-tight text-popover-foreground shadow-lg group-hover/dot:block"
                       >
                         <span class="flex items-center gap-1.5 font-medium">
                           <span class="size-1.5 rounded-full {statusDotClass(entry)}"></span>

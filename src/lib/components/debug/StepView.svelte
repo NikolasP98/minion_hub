@@ -64,10 +64,10 @@
 
 <style>
   .step-view {
-    border: 1px solid var(--bd, #2a2a2a);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 1rem;
-    background: var(--bg-card, #141414);
+    background: var(--color-surface-2);
   }
 
   h3 {
@@ -75,7 +75,7 @@
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--fg-muted, #888);
+    color: var(--color-text-tertiary);
   }
 
   ul {
@@ -102,24 +102,24 @@
     border: 1px solid transparent;
     border-radius: 4px;
     padding: 0.4rem 0.6rem;
-    color: var(--fg-muted, #888);
+    color: var(--color-text-tertiary);
     cursor: pointer;
     text-align: left;
     font: inherit;
   }
 
   .gate-btn:hover {
-    background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+    background: var(--color-surface-3);
   }
 
   .row.fired .gate-btn {
-    color: var(--fg, #ddd);
+    color: var(--color-text-primary);
   }
 
   .row.paused .gate-btn {
-    color: var(--accent, #ffb84d);
-    background: var(--accent-bg, rgba(255, 184, 77, 0.1));
-    border-color: var(--accent, #ffb84d);
+    color: var(--color-warning-fg);
+    background: var(--color-warning-surface);
+    border-color: var(--color-warning-border);
   }
 
   .icon {
@@ -136,12 +136,12 @@
   .ts {
     margin-left: auto;
     font-size: 0.75rem;
-    color: var(--fg-faint, #555);
+    color: var(--color-text-disabled);
   }
 
   .continue-btn {
-    background: var(--accent, #ffb84d);
-    color: #000;
+    background: var(--color-accent);
+    color: var(--color-on-accent);
     border: none;
     border-radius: 4px;
     padding: 0.35rem 0.75rem;

@@ -17,7 +17,7 @@
 	let {
 		weekStart,
 		bookings,
-		color = 'var(--accent)',
+		color = 'var(--color-accent)',
 	}: { weekStart: string; bookings: StripBooking[]; color?: string } = $props();
 
 	const days = $derived.by(() => {
@@ -73,12 +73,12 @@
 		min-width: 0;
 		border-radius: var(--radius-md, 8px);
 		padding: 0.3rem;
-		background: var(--bg2, var(--color-card));
+		background: var(--color-bg2, var(--color-card));
 		border: 1px solid var(--hairline);
 	}
 	.day.today {
-		border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-		background: color-mix(in srgb, var(--accent) 8%, transparent);
+		border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+		background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 	}
 	.dh {
 		display: flex;

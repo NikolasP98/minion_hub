@@ -87,7 +87,7 @@
     }
 
     .confirm-btn.delete {
-        background: var(--color-error, #ef4444);
+        background: var(--color-danger-fg);
         color: white;
     }
 

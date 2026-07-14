@@ -195,8 +195,8 @@
     :global(.loading-spinner) { color: var(--color-muted); animation: spin 1s linear infinite; }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-    .validation-btn.error { color: var(--color-error, #ef4444); border-color: color-mix(in srgb, var(--color-error, #ef4444) 30%, var(--color-border)); background: color-mix(in srgb, var(--color-error, #ef4444) 8%, transparent); }
-    .validation-btn.error:hover { background: color-mix(in srgb, var(--color-error, #ef4444) 15%, transparent); }
+    .validation-btn.error { color: var(--color-danger-fg); border-color: var(--color-danger-border); background: var(--color-danger-surface); }
+    .validation-btn.error:hover { background: var(--color-danger-surface); }
     .validation-btn.warning { color: var(--color-warning, #f59e0b); border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 30%, var(--color-border)); background: color-mix(in srgb, var(--color-warning, #f59e0b) 8%, transparent); }
     .validation-btn.warning:hover { background: color-mix(in srgb, var(--color-warning, #f59e0b) 15%, transparent); }
     .validation-btn.ok { color: var(--color-success, #22c55e); border-color: color-mix(in srgb, var(--color-success, #22c55e) 30%, var(--color-border)); background: color-mix(in srgb, var(--color-success, #22c55e) 8%, transparent); }

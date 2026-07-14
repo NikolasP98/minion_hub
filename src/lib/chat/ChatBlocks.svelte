@@ -507,8 +507,8 @@
 		color: var(--color-success, #22c55e);
 	}
 	.artifact-btn.danger {
-		border-color: color-mix(in srgb, var(--color-error, #ef4444) 40%, transparent);
-		color: var(--color-error, #ef4444);
+		border-color: var(--color-danger-border);
+		color: var(--color-danger-fg);
 	}
 	.artifact-error {
 		font-size: 11px;

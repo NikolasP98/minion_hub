@@ -103,6 +103,6 @@
     }
 
     .handle-wrap.no .handle-label {
-        color: var(--color-error, #ef4444);
+        color: var(--color-danger-fg);
     }
 </style>

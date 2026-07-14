@@ -88,10 +88,10 @@
     .condition-helper { font-size: 0.6875rem; color: var(--color-muted); }
     .condition-input { background: var(--color-bg2); border: 1px solid var(--color-border); border-radius: 0.375rem; color: var(--color-foreground); font-family: inherit; font-size: 0.8125rem; padding: 0.5rem 0.625rem; outline: none; transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard); }
     .condition-input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent); }
-    .condition-input.invalid { border-color: var(--color-error, #ef4444); }
-    .condition-input.invalid:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-error, #ef4444) 20%, transparent); }
+    .condition-input.invalid { border-color: var(--color-danger-border); }
+    .condition-input.invalid:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-danger-fg) 20%, transparent); }
     .condition-input.valid-input { border-color: var(--color-success, #22c55e); }
-    .condition-error { display: flex; align-items: center; gap: 0.25rem; font-size: 0.6875rem; color: var(--color-error, #ef4444); }
+    .condition-error { display: flex; align-items: center; gap: 0.25rem; font-size: 0.6875rem; color: var(--color-danger-fg); }
     .condition-valid { display: flex; align-items: center; gap: 0.25rem; font-size: 0.6875rem; color: var(--color-success, #22c55e); }
     .condition-modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1.25rem; border-top: 1px solid var(--color-border); }
 

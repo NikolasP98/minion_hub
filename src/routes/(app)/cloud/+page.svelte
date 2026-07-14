@@ -208,7 +208,7 @@
     color: var(--color-text-primary);
     font-size: var(--font-size-display);
     line-height: var(--line-height-display);
-    letter-spacing: var(--letter-spacing-tight);
+    letter-spacing: var(--letter-spacing-display);
   }
 
   .hero p {

@@ -1193,7 +1193,7 @@ html[data-theme='crt'][data-crt-flicker='true'] body {
 }
 
 .mention {
-  color: var(--accent);
+  color: var(--color-accent);
   font-weight: 600;
   cursor: default;
 }

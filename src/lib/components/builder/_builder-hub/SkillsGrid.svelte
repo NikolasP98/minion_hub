@@ -153,7 +153,7 @@
     }
 
     .item-delete:hover {
-        color: var(--color-error, #ef4444);
-        background: color-mix(in srgb, var(--color-error, #ef4444) 12%, transparent);
+        color: var(--color-danger-fg);
+        background: var(--color-danger-surface);
     }
 </style>

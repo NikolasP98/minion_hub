@@ -286,9 +286,9 @@
     }
 
     .chip.perm.denied {
-        color: var(--color-error, #ef4444);
-        border-color: color-mix(in srgb, var(--color-error, #ef4444) 30%, transparent);
-        background: color-mix(in srgb, var(--color-error, #ef4444) 10%, transparent);
+        color: var(--color-danger-fg);
+        border-color: var(--color-danger-border);
+        background: var(--color-danger-surface);
     }
 
     .item-delete {
@@ -314,7 +314,7 @@
     }
 
     .item-delete:hover {
-        color: var(--color-error, #ef4444);
-        background: color-mix(in srgb, var(--color-error, #ef4444) 12%, transparent);
+        color: var(--color-danger-fg);
+        background: var(--color-danger-surface);
     }
 </style>

@@ -603,7 +603,7 @@
          at this z — must beat the DataTable sticky header and the sticky
          charge bar, or they paint over the open panel. */
       z-index: var(--layer-popover, 30);
-      background: var(--color-background);
+      background: var(--color-canvas);
       padding: var(--space-4, 16px) 0 var(--space-2, 8px);
       margin-top: calc(-1 * var(--space-4, 16px));
     }

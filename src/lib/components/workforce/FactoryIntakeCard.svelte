@@ -85,36 +85,36 @@
 		position: relative;
 		margin: 0.5rem 0.75rem;
 		overflow: hidden;
-		border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+		border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
 		border-radius: 0.65rem;
 		background:
-			repeating-linear-gradient(135deg, transparent 0 10px, color-mix(in srgb, var(--accent) 3%, transparent) 10px 11px),
-			var(--bg);
-		box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 70%, #f59e0b);
+			repeating-linear-gradient(135deg, transparent 0 10px, color-mix(in srgb, var(--color-accent) 3%, transparent) 10px 11px),
+			var(--color-canvas);
+		box-shadow: inset 3px 0 0 color-mix(in srgb, var(--color-accent) 70%, #f59e0b);
 	}
-	header { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.65rem; border-bottom: 1px solid var(--border); }
-	.mark { display: grid; place-items: center; width: 1.7rem; height: 1.7rem; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 0.35rem; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+	header { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.65rem; border-bottom: 1px solid var(--color-border); }
+	.mark { display: grid; place-items: center; width: 1.7rem; height: 1.7rem; border: 1px solid color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); border-radius: 0.35rem; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 9%, transparent); }
 	.identity { display: flex; min-width: 0; flex: 1; flex-direction: column; line-height: 1.05; }
-	.identity strong { overflow: hidden; color: var(--foreground); font-family: ui-monospace, monospace; font-size: 0.68rem; text-overflow: ellipsis; }
-	.eyebrow { color: var(--muted-foreground); font-size: 0.5rem; font-weight: 750; letter-spacing: 0.14em; text-transform: uppercase; }
-	.signal { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--muted-foreground); font-family: ui-monospace, monospace; font-size: 0.55rem; text-transform: uppercase; }
+	.identity strong { overflow: hidden; color: var(--color-foreground); font-family: ui-monospace, monospace; font-size: 0.68rem; text-overflow: ellipsis; }
+	.eyebrow { color: var(--color-muted-foreground); font-size: 0.5rem; font-weight: 750; letter-spacing: 0.14em; text-transform: uppercase; }
+	.signal { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--color-muted-foreground); font-family: ui-monospace, monospace; font-size: 0.55rem; text-transform: uppercase; }
 	.signal span { width: 0.35rem; height: 0.35rem; border-radius: 999px; background: #22c55e; box-shadow: 0 0 0.45rem #22c55e; animation: signal-pulse 1.6s ease-in-out infinite; }
 	.signal.warning span { background: #f59e0b; box-shadow: 0 0 0.45rem #f59e0b; }
-	.signal.error { color: var(--destructive); }
-	.signal.error span { background: var(--destructive); box-shadow: 0 0 0.45rem color-mix(in srgb, var(--destructive) 70%, transparent); }
+	.signal.error { color: var(--color-destructive); }
+	.signal.error span { background: var(--color-destructive); box-shadow: 0 0 0.45rem color-mix(in srgb, var(--color-destructive) 70%, transparent); }
 	.track { display: grid; grid-template-columns: auto 1fr auto 1fr auto; align-items: center; gap: 0.35rem; padding: 0.55rem 0.65rem 0.35rem; }
-	.station { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; color: var(--muted-foreground); font-size: 0.5rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.45; }
-	.station.active { color: var(--foreground); opacity: 1; }
-	.track i { height: 1px; background: var(--border); }
-	.track i.lit { background: color-mix(in srgb, var(--accent) 68%, #f59e0b); box-shadow: 0 0 0.35rem color-mix(in srgb, var(--accent) 30%, transparent); }
+	.station { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; color: var(--color-muted-foreground); font-size: 0.5rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.45; }
+	.station.active { color: var(--color-foreground); opacity: 1; }
+	.track i { height: 1px; background: var(--color-border); }
+	.track i.lit { background: color-mix(in srgb, var(--color-accent) 68%, #f59e0b); box-shadow: 0 0 0.35rem color-mix(in srgb, var(--color-accent) 30%, transparent); }
 	.ticket { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.35rem 0.65rem 0.5rem; }
-	.ticket strong { color: var(--foreground); font-size: 0.7rem; line-height: 1.25; }
-	.ticket span { color: var(--muted-foreground); font-size: 0.59rem; }
+	.ticket strong { color: var(--color-foreground); font-size: 0.7rem; line-height: 1.25; }
+	.ticket span { color: var(--color-muted-foreground); font-size: 0.59rem; }
 	nav { display: flex; gap: 0.35rem; padding: 0 0.65rem 0.65rem; }
-	nav a { display: inline-flex; align-items: center; gap: 0.2rem; border: 1px solid var(--border); border-radius: 0.32rem; padding: 0.3rem 0.45rem; color: var(--muted-foreground); background: var(--bg2); font-size: 0.6rem; font-weight: 650; text-decoration: none; }
-	nav a:hover, nav a:focus-visible { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--foreground); outline: none; }
-	nav a.primary { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }
-	.fault { display: flex; align-items: flex-start; gap: 0.4rem; padding: 0.7rem; color: var(--destructive); font-size: 0.65rem; }
+	nav a { display: inline-flex; align-items: center; gap: 0.2rem; border: 1px solid var(--color-border); border-radius: 0.32rem; padding: 0.3rem 0.45rem; color: var(--color-muted-foreground); background: var(--color-bg2); font-size: 0.6rem; font-weight: 650; text-decoration: none; }
+	nav a:hover, nav a:focus-visible { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)); color: var(--color-foreground); outline: none; }
+	nav a.primary { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); color: var(--color-accent); }
+	.fault { display: flex; align-items: flex-start; gap: 0.4rem; padding: 0.7rem; color: var(--color-destructive); font-size: 0.65rem; }
 	@keyframes signal-pulse { 50% { opacity: 0.45; } }
 	@media (prefers-reduced-motion: reduce) { .signal span { animation: none; } }
 </style>

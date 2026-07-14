@@ -60,7 +60,7 @@
 	}
 	.rev-bar {
 		height: 100%;
-		background: var(--accent);
+		background: var(--color-accent);
 		border-radius: 5px;
 		min-width: 2px;
 	}

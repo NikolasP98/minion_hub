@@ -467,11 +467,11 @@
     }
 
     .gw-toggle-btn.disable {
-        color: var(--color-error, #ef4444);
-        background: color-mix(in srgb, var(--color-error, #ef4444) 8%, transparent);
+        color: var(--color-danger-fg);
+        background: var(--color-danger-surface);
     }
 
     .gw-toggle-btn.disable:hover {
-        background: color-mix(in srgb, var(--color-error, #ef4444) 15%, transparent);
+        background: var(--color-danger-surface);
     }
 </style>

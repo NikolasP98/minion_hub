@@ -29,7 +29,7 @@
     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-0
     {state === 'off'
       ? 'border-border bg-bg2 hover:border-fg/40 hover:bg-bg3'
-      : 'border-accent bg-accent text-bg shadow-[0_0_0_1px_rgb(var(--accent-rgb,250_204_21)/0.25)]'}"
+      : 'border-accent bg-accent text-bg shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-accent)_25%,transparent)]'}"
   style="width: {size}px; height: {size}px;"
 >
   {#if state === "on"}

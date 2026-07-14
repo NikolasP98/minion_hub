@@ -25,7 +25,7 @@
 		if (d.availableMin <= 0) return 'background:var(--hairline);opacity:0.4';
 		const r = Math.min(1, d.bookedMin / d.availableMin);
 		// Low ratio → faint, high → strong accent.
-		return `background:var(--accent);opacity:${(0.12 + r * 0.85).toFixed(2)}`;
+		return `background:var(--color-accent);opacity:${(0.12 + r * 0.85).toFixed(2)}`;
 	}
 	const pct = (u: number) => Math.round(u * 100);
 	const dayLabel = (date: string) => date.slice(5); // MM-DD

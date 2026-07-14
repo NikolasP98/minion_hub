@@ -1232,7 +1232,7 @@
 		{/snippet}
 	</PageHeader>
 	<!-- Tab bar + filter bar (tabs first, filters below — order: severity, category, mode) -->
-	<div class="shrink-0 relative z-[var(--layer-tooltip,60)] border-b border-border bg-bg2/80 backdrop-blur-sm">
+	<div class="shrink-0 relative z-[var(--layer-popover)] border-b border-border bg-bg2/80 backdrop-blur-sm">
 		<Tabs
 			id="reliability-tabs"
 			tabs={tabItems}
@@ -1437,7 +1437,7 @@
 	{#if hoveredKpi && kpiTipPos}
 		<div
 			bind:this={tipEl}
-			class="fixed z-[var(--layer-tooltip,60)] pointer-events-none rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay,var(--shadow-xl))] px-3 py-2.5"
+			class="fixed z-[var(--layer-popover)] pointer-events-none rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay,var(--shadow-xl))] px-3 py-2.5"
 			style="left:{kpiTipPos.left}px; top:{kpiTipPos.top}px; width:clamp(256px, 22vw, 320px)"
 		>
 			<div class="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">{hoveredKpi.label}</div>

@@ -263,10 +263,10 @@
   .master {
     display: flex;
     align-items: center;
-    gap: var(--space-5, 20px);
+    gap: var(--space-section);
     border: 1px solid var(--color-success-border, var(--color-success));
     border-radius: var(--radius-xl);
-    padding: var(--space-5, 20px) var(--space-6, 24px);
+    padding: var(--space-section) var(--space-6, 24px);
     background: var(--color-surface-2, var(--elevation-2-bg));
     box-shadow: var(--shadow-sm);
   }
@@ -311,7 +311,7 @@
   @media (min-width: 1024px) {
     .gallery {
       grid-template-columns: repeat(3, 1fr);
-      gap: var(--space-5, 20px);
+      gap: var(--space-section);
     }
   }
   @media (min-width: 1280px) {
@@ -330,7 +330,7 @@
     border-radius: var(--radius-xl);
     border: 1px solid var(--color-border-default, var(--color-border));
     background: var(--color-surface-2, var(--elevation-2-bg));
-    padding: var(--space-6, 24px) var(--space-4, 16px) var(--space-5, 20px);
+    padding: var(--space-6, 24px) var(--space-4, 16px) var(--space-section);
     text-align: center;
   }
   .tile.inert {

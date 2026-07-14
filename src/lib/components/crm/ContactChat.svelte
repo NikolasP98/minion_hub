@@ -198,8 +198,8 @@
 		font-weight: 600;
 		padding: 0.28rem 0.7rem;
 		border-radius: 999px;
-		background: var(--color-primary, var(--color-emerald, var(--color-success)));
-		color: var(--color-primary-foreground, #fff);
+		background: var(--color-accent, var(--color-emerald, var(--color-success)));
+		color: var(--color-on-accent, #fff);
 		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
 		z-index: 2;
 	}
@@ -219,7 +219,7 @@
 		padding: 0.45rem 0.6rem;
 		border-radius: var(--radius-md);
 		border: 1px solid var(--hairline);
-		background: var(--color-background);
+		background: var(--color-canvas);
 		color: var(--color-foreground);
 		font-size: 0.84rem;
 		line-height: 1.3;
@@ -227,7 +227,7 @@
 	}
 	.c-input:focus {
 		outline: none;
-		border-color: var(--color-primary, var(--color-emerald, var(--color-success)));
+		border-color: var(--color-accent, var(--color-emerald, var(--color-success)));
 	}
 	.c-send {
 		display: grid;
@@ -236,8 +236,8 @@
 		height: 2.2rem;
 		flex-shrink: 0;
 		border-radius: var(--radius-md);
-		background: var(--color-primary, var(--color-emerald, var(--color-success)));
-		color: var(--color-primary-foreground, #fff);
+		background: var(--color-accent, var(--color-emerald, var(--color-success)));
+		color: var(--color-on-accent, #fff);
 	}
 	.c-send:disabled {
 		opacity: 0.45;

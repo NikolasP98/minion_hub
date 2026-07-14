@@ -90,7 +90,7 @@
 	.create-row { display: flex; gap: 0.5rem; align-items: center; }
 	.in { font-size: 0.86rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.55rem; flex: 1; color: var(--color-foreground); height: 2rem; }
 	.in.ta { height: auto; padding: 0.45rem 0.55rem; resize: vertical; font-family: inherit; }
-	.btn { display: inline-flex; align-items: center; gap: 0.35rem; height: 2rem; padding: 0 0.7rem; border-radius: var(--radius-md); border: 1px solid var(--hairline); background: var(--color-primary); color: var(--color-primary-foreground); font-size: 0.84rem; cursor: pointer; }
+	.btn { display: inline-flex; align-items: center; gap: 0.35rem; height: 2rem; padding: 0 0.7rem; border-radius: var(--radius-md); border: 1px solid var(--hairline); background: var(--color-accent); color: var(--color-on-accent); font-size: 0.84rem; cursor: pointer; }
 	.btn:disabled { opacity: 0.5; cursor: default; }
 	.grid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 0.75rem; }
 	.pcard { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.85rem 1rem; text-decoration: none; color: var(--color-foreground); }
