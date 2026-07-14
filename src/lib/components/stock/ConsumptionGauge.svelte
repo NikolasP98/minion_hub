@@ -21,7 +21,15 @@
     step?: number;
     class?: string;
   }
-  let { max, value = $bindable(0), unit = '', shape = null, readonly = false, step = 0.5, class: cls = '' }: Props = $props();
+  let {
+    max,
+    value = $bindable(0),
+    unit = '',
+    shape = null,
+    readonly = false,
+    step = 0.5,
+    class: cls = '',
+  }: Props = $props();
 
   const uid = $props.id();
   const { w: W, h: H } = VESSEL_VIEWBOX;
@@ -109,13 +117,21 @@
       <rect x="0" y={vessel.fillTop} width={W} height={fillH} class="fill" />
     </g>
     {#each [0.25, 0.5, 0.75] as t (t)}
-      <line x1="6" x2="12" y1={vessel.fillTop + t * fillSpan} y2={vessel.fillTop + t * fillSpan} class="tick" />
+      <line
+        x1="6"
+        x2="12"
+        y1={vessel.fillTop + t * fillSpan}
+        y2={vessel.fillTop + t * fillSpan}
+        class="tick"
+      />
     {/each}
     <line x1="4" x2={W - 4} y1={lineY} y2={lineY} class="drag-line" />
   </svg>
   <div class="caption">
     {#if overflowing}
-      <span class="overflow">{m.stock_gauge_overflow({ count: bottles + 1, remainder: fmt(remainder), unit })}</span>
+      <span class="overflow"
+        >{m.stock_gauge_overflow({ count: bottles + 1, remainder: fmt(remainder), unit })}</span
+      >
     {:else}
       <span>{fmt(value)} {unit}</span>
     {/if}
@@ -123,18 +139,66 @@
 </div>
 
 <style>
-  .gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; }
-  .gauge { width: 2.75rem; height: 6rem; touch-action: none; cursor: ns-resize; outline: none; }
-  .gauge-wrap.compact .gauge { width: 1.75rem; height: 3.75rem; }
-  .gauge-wrap.compact .caption { font-size: 0.62rem; }
-  .gauge:focus-visible .vessel { stroke: var(--color-accent); stroke-width: 2; }
-  .gauge.inert { cursor: default; }
-  .vessel { fill: var(--color-bg3); stroke: var(--hairline); stroke-width: 1.5; }
-  .extra { fill: none; stroke: var(--hairline); stroke-width: 1.5; }
-  .fill { fill: color-mix(in srgb, var(--color-accent) 55%, transparent); }
-  .tick { stroke: var(--color-muted-foreground); stroke-width: 1; opacity: 0.6; }
-  .drag-line { stroke: var(--color-accent); stroke-width: 2.5; }
-  .gauge.inert .drag-line { stroke: var(--color-muted-foreground); }
-  .caption { font-size: 0.7rem; color: var(--color-muted-foreground); text-align: center; white-space: nowrap; }
-  .caption .overflow { color: var(--color-accent); font-weight: 600; }
+  .gauge-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .gauge {
+    width: 2.75rem;
+    height: 6rem;
+    touch-action: none;
+    cursor: ns-resize;
+    outline: none;
+  }
+  .gauge-wrap.compact .gauge {
+    width: 1.75rem;
+    height: 3.75rem;
+  }
+  .gauge-wrap.compact .caption {
+    font-size: var(--font-size-telemetry);
+  }
+  .gauge:focus-visible .vessel {
+    stroke: var(--color-accent);
+    stroke-width: 2;
+  }
+  .gauge.inert {
+    cursor: default;
+  }
+  .vessel {
+    fill: var(--color-bg3);
+    stroke: var(--hairline);
+    stroke-width: 1.5;
+  }
+  .extra {
+    fill: none;
+    stroke: var(--hairline);
+    stroke-width: 1.5;
+  }
+  .fill {
+    fill: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  }
+  .tick {
+    stroke: var(--color-muted-foreground);
+    stroke-width: 1;
+    opacity: 0.6;
+  }
+  .drag-line {
+    stroke: var(--color-accent);
+    stroke-width: 2.5;
+  }
+  .gauge.inert .drag-line {
+    stroke: var(--color-muted-foreground);
+  }
+  .caption {
+    font-size: var(--font-size-caption);
+    color: var(--color-muted-foreground);
+    text-align: center;
+    white-space: nowrap;
+  }
+  .caption .overflow {
+    color: var(--color-accent);
+    font-weight: 600;
+  }
 </style>

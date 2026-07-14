@@ -30,6 +30,8 @@
 </script>
 
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
+
   import { Trash2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { EmptyState } from '$lib/components/ui';
@@ -72,7 +74,9 @@
         <div class="line" class:warn={priceless(l)}>
           <div class="line-top">
             <span class="name">{l.sellable.name}</span>
-            <button class="rm" title={m.common_remove()} onclick={() => remove(i)}><Trash2 size={13} /></button>
+            <Button class="rm" title={m.common_remove()} onclick={() => remove(i)}
+              ><Trash2 size={13} /></Button
+            >
           </div>
           <div class="line-row">
             <label class="fld">
@@ -123,21 +127,21 @@
   .cart {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3);
     min-height: 0;
   }
   .lines {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
   .line {
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
-    padding: 0.5rem 0.6rem;
+    padding: var(--space-2) var(--space-2);
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: var(--space-1);
   }
   .line.warn {
     border-color: color-mix(in srgb, var(--color-destructive) 50%, transparent);
@@ -147,47 +151,47 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
   .name {
-    font-size: 0.86rem;
+    font-size: var(--font-size-body);
     font-weight: 500;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .rm {
+  .cart :global(.rm) {
     background: none;
     border: none;
     color: var(--color-muted-foreground);
     cursor: pointer;
     flex-shrink: 0;
   }
-  .rm:hover {
+  .cart :global(.rm):hover {
     color: var(--color-destructive);
   }
   .line-row {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
   .fld {
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
+    gap: var(--space-0-5);
     flex: 1;
     min-width: 0;
   }
   .lbl {
-    font-size: 0.65rem;
+    font-size: var(--font-size-caption);
     text-transform: uppercase;
     letter-spacing: 0.03em;
     color: var(--color-muted-foreground);
   }
   .inp {
     min-height: 1.8rem;
-    padding: 0.25rem 0.4rem;
-    font-size: 0.8rem;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--font-size-body);
     border-radius: var(--radius-sm);
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
@@ -205,7 +209,7 @@
     text-align: right;
   }
   .req {
-    font-size: 0.7rem;
+    font-size: var(--font-size-caption);
     color: var(--color-destructive);
   }
 </style>

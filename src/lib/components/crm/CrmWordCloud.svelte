@@ -7,7 +7,15 @@
 
   const W = 600;
   const H = 320;
-  type Placed = { text: string; size: number; count: number; t: number; x: number; y: number; rotate: number };
+  type Placed = {
+    text: string;
+    size: number;
+    count: number;
+    t: number;
+    x: number;
+    y: number;
+    rotate: number;
+  };
   let placed = $state<Placed[]>([]);
   let gEl = $state<SVGGElement | undefined>(undefined);
   let viewBox = $state(`${-W / 2} ${-H / 2} ${W} ${H}`);
@@ -74,12 +82,12 @@
 
   // Heatmap ramp (cool → hot) keyed by relative frequency. A perceptual-ish
   // indigo→sky→green→amber→red gradient so the busiest words read as "hottest".
-  const STOPS: [number, [number, number, number]][] = [
-    [0.0, [129, 140, 248]], // indigo-400
-    [0.35, [56, 189, 248]], // sky-400
-    [0.6, [52, 211, 153]], // emerald-400
-    [0.8, [251, 191, 36]], // amber-400
-    [1.0, [248, 113, 113]], // red-400
+  const STOPS: [number, string][] = [
+    [0.0, 'var(--color-purple)'],
+    [0.35, 'var(--color-info)'],
+    [0.6, 'var(--color-success)'],
+    [0.8, 'var(--color-warning)'],
+    [1.0, 'var(--color-destructive)'],
   ];
   function heat(t: number): string {
     const v = Math.min(1, Math.max(0, t));
@@ -94,8 +102,7 @@
     }
     const span = b[0] - a[0] || 1;
     const f = (v - a[0]) / span;
-    const ch = (i: number) => Math.round(a[1][i] + (b[1][i] - a[1][i]) * f);
-    return `rgb(${ch(0)}, ${ch(1)}, ${ch(2)})`;
+    return `color-mix(in srgb, ${a[1]} ${Math.round((1 - f) * 100)}%, ${b[1]})`;
   }
 
   function onMove(e: MouseEvent, i: number) {
@@ -125,44 +132,62 @@
             aria-label={`${w.text}: ${w.count}`}
             onmouseenter={(e) => onMove(e, i)}
             onmousemove={(e) => onMove(e, i)}
-            onmouseleave={() => (hovered = null)}>{w.text}</text>
+            onmouseleave={() => (hovered = null)}>{w.text}</text
+          >
         {/each}
       </g>
     </svg>
     {#if hovered !== null && placed[hovered]}
       <div class="wc-tip" style:left={`${tip.x}px`} style:top={`${tip.y}px`}>
         <span class="wc-tip-word">{placed[hovered].text}</span>
-        <span class="wc-tip-count">{m.crm_insights_word_occurrences({ count: placed[hovered].count })}</span>
+        <span class="wc-tip-count"
+          >{m.crm_insights_word_occurrences({ count: placed[hovered].count })}</span
+        >
       </div>
     {/if}
   </div>
 {/if}
 
 <style>
-  .wc-wrap { position: relative; }
+  .wc-wrap {
+    position: relative;
+  }
   .wc-word {
     cursor: default;
     transition:
       opacity var(--duration-fast) var(--ease-standard),
       filter var(--duration-fast) var(--ease-standard);
   }
-  .wc-word.dim { opacity: 0.22; }
-  .wc-word.hot { filter: brightness(1.25) drop-shadow(0 1px 6px rgba(0, 0, 0, 0.5)); }
+  .wc-word.dim {
+    opacity: 0.22;
+  }
+  .wc-word.hot {
+    filter: brightness(1.25)
+      drop-shadow(0 1px 6px color-mix(in srgb, var(--color-bg) 50%, transparent));
+  }
   .wc-tip {
     position: fixed;
     transform: translate(-50%, calc(-100% - 10px));
-    z-index: 50;
+    z-index: var(--layer-modal);
     pointer-events: none;
     display: flex;
     flex-direction: column;
-    gap: 0.05rem;
-    padding: 0.3rem 0.5rem;
+    gap: var(--space-0);
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-md);
     background: var(--color-card);
     border: 1px solid var(--hairline);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-elevation-2);
     white-space: nowrap;
   }
-  .wc-tip-word { font-size: 0.82rem; font-weight: 700; text-transform: capitalize; }
-  .wc-tip-count { font-size: 0.72rem; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
+  .wc-tip-word {
+    font-size: var(--font-size-body);
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+  .wc-tip-count {
+    font-size: var(--font-size-caption);
+    color: var(--color-muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
 </style>
