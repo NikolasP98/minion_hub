@@ -19,6 +19,11 @@ RBAC; route metadata references the existing guards in `permissions.ts` and
 `route-design-manifest.ts` owns the archetype, scroll owner, responsive
 transformation, access-policy reference, breadcrumb rule, applicable capture
 states/personas, fixture, and Figma page/frame prefix for every endpoint.
+It also owns the Phase 5 migration wave. The executable totals are A: 30, B: 67,
+C: 16, D: 19, and E: 10 endpoints, including redirect ownership. This closes
+the prose-spec gaps for Account/organization and auxiliary platform routes
+(Wave A), Memberships (Wave B), installed-plugin detail (Wave D), and the legacy
+Workshop proxy (Wave D).
 
 The `immersive-workspaces` family maps to Figma page `50 Immersive workspaces`
 and contains Home, Autonomous Agents, every Workshop screen, and Terminal.

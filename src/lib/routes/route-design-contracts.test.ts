@@ -51,6 +51,23 @@ describe('route design contracts', () => {
     );
   });
 
+  it('assigns every endpoint to one complete Phase 5 migration wave', () => {
+    const counts = ROUTE_DESIGN_MANIFEST.reduce<Record<string, number>>((output, route) => {
+      output[route.migrationWave] = (output[route.migrationWave] ?? 0) + 1;
+      return output;
+    }, {});
+    expect(counts).toEqual({ A: 30, B: 67, C: 16, D: 19, E: 10 });
+    expect(
+      ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
+    ).toBe('B');
+    expect(
+      ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/workshop/[...path]')?.migrationWave,
+    ).toBe('D');
+    expect(
+      ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/plugins/[id]')?.migrationWave,
+    ).toBe('D');
+  });
+
   it('keeps redirect status, target and preservation behavior aligned with source', () => {
     const sources = discoverRedirectSources(projectRoot, REDIRECT_DESIGN_MANIFEST);
     expect(sources).toHaveLength(ROUTE_CONTRACT_EXPECTATIONS.redirects);

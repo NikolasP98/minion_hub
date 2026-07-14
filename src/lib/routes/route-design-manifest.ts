@@ -25,6 +25,8 @@ export type RouteFamily =
   | 'workforce'
   | 'public-auth';
 
+export type MigrationWave = 'A' | 'B' | 'C' | 'D' | 'E';
+
 export type CaptureViewport = 'compact' | 'medium' | 'wide';
 export type CapturePersonaId =
   'anonymous' | 'owner-admin' | 'manager-editor' | 'member-viewer' | 'restricted-no-module';
@@ -67,6 +69,7 @@ export interface RouteBaseMeta {
   id: string;
   pattern: string;
   family: RouteFamily;
+  migrationWave: MigrationWave;
   title: () => string;
   accessPolicyId: RouteAccessPolicyId;
   nav: 'primary' | 'section' | 'contextual' | 'hidden';
@@ -244,6 +247,30 @@ export const FIGMA_PAGE_BY_FAMILY: Readonly<Record<RouteFamily, string>> = {
   'public-auth': '60 Public and auth',
 };
 
+/**
+ * Phase 5 ownership is route-contract data, not a planning-document guess.
+ * Organization/platform surfaces that were not named separately in the prose
+ * remain in Wave A; Memberships follows business operations, and the legacy
+ * Workshop proxy follows the immersive Wave D target.
+ */
+export function migrationWaveForRoute(pattern: string, family: RouteFamily): MigrationWave {
+  if (family === 'public-auth') return 'E';
+  if (pattern === '/memberships') return 'B';
+  if (pattern.startsWith('/workshop')) return 'D';
+  if (
+    family === 'business-operations' ||
+    family === 'scheduling-pos' ||
+    family === 'socials' ||
+    family === 'stock' ||
+    family === 'workforce'
+  ) {
+    return 'B';
+  }
+  if (family === 'agents-builders') return 'C';
+  if (family === 'immersive-workspaces' || family === 'marketplace') return 'D';
+  return 'A';
+}
+
 function framePrefix(pattern: string): string {
   return pattern
     .replace(/^\//, '')
@@ -303,6 +330,7 @@ function screen(
     id: `screen:${pattern}`,
     pattern,
     family,
+    migrationWave: migrationWaveForRoute(pattern, family),
     title: () => title,
     accessPolicyId,
     nav: options.nav ?? defaultNav(pattern),
@@ -335,6 +363,7 @@ function redirectRoute(
     id: `redirect:${pattern}`,
     pattern,
     family,
+    migrationWave: migrationWaveForRoute(pattern, family),
     title: () => title,
     accessPolicyId: routeAccessPolicyIdForPattern(pattern),
     nav: 'hidden',
