@@ -43,6 +43,11 @@ const RULES = {
     test: (file) => file.endsWith('.svelte'),
     re: /\brounded-\[(?!var\()[^\]]+\]|\bborder-radius\s*:(?!\s*(?:0(?:\s|;|$)|var\(|calc\(var\())[^;}{]+/g,
   },
+  'raw-spacing': {
+    desc: 'arbitrary spacing in .svelte — use the spacing scale or semantic layout aliases',
+    test: (file) => file.endsWith('.svelte'),
+    re: /\b(?:p[trblxy]?|m[trblxy]?|gap(?:-[xy])?|space-[xy])-\[(?!(?:var|calc\(var|max\(var|min\(var|clamp\(var)\()[^\]]+\]|\b(?:padding|margin|gap|row-gap|column-gap)(?:-[a-z]+)?\s*:(?!\s*(?:0(?:\s|;|$)|-?1px(?:\s|;|$)|auto(?:\s|;|$)|var\(|(?:calc|max|min|clamp)\([^;}{]*var\(|env\())[^;}{]+/g,
+  },
   'raw-shadow': {
     desc: 'arbitrary shadow in .svelte — use an elevation/focus/status recipe',
     test: (file) => file.endsWith('.svelte'),
@@ -52,6 +57,11 @@ const RULES = {
     desc: 'literal UI duration in .svelte — use duration/easing or motion recipes',
     test: (file) => file.endsWith('.svelte'),
     re: /\bduration-(?:\d+|\[(?!var\()[^\]]+\])\b|\b(?:transition(?:-duration)?|animation-duration)\s*:(?![^;}{]*var\()[^;}{]*(?:\d+(?:\.\d+)?ms|\d*\.\d+s)/g,
+  },
+  'raw-easing': {
+    desc: 'literal easing in .svelte — use the standard enter/exit/spring recipes',
+    test: (file) => file.endsWith('.svelte'),
+    re: /\bease-\[(?!var\()[^\]]+\]|\b(?:transition-timing-function|animation-timing-function)\s*:(?!\s*var\()[^;}{]+/g,
   },
   'raw-layer': {
     desc: 'numeric z-index in .svelte — use a named layer token',
