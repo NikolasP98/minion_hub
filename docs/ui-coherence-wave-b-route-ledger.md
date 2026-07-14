@@ -53,13 +53,13 @@ work and must not be marked migrated merely by inheriting the section shell.
 
 ### Scheduling
 
-- [ ] `/scheduling`
-- [ ] `/scheduling/bookings`
-- [ ] `/scheduling/calendar`
-- [ ] `/scheduling/event-types`
-- [ ] `/scheduling/links`
-- [ ] `/scheduling/reminders`
-- [ ] `/scheduling/resources`
+- [x] `/scheduling`
+- [x] `/scheduling/bookings`
+- [x] `/scheduling/calendar`
+- [x] `/scheduling/event-types`
+- [x] `/scheduling/links`
+- [x] `/scheduling/reminders`
+- [x] `/scheduling/resources`
 - [x] `/scheduling/settings`
 
 ### Socials
