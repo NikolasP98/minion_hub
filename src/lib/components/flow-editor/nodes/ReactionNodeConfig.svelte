@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
+  import { Button } from '$lib/components/ui';
+import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
   import type { ReactionNodeData } from '$lib/state/features/flow-editor.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -32,25 +33,25 @@
 
 <div class="px-3 py-3 flex flex-col gap-3">
   <div class="flex flex-col gap-1.5">
-    <span class="text-[11px] font-medium text-foreground">Status emoji</span>
-    <p class="text-[10px] text-muted/80 -mt-0.5">
+    <span class="text-[length:var(--font-size-caption)] font-medium text-foreground">Status emoji</span>
+    <p class="text-[length:var(--font-size-telemetry)] text-muted/80 -mt-0.5">
       {m.flowcfg_setReactionDesc()}
     </p>
     <div class="flex flex-wrap gap-1">
       {#each PRESETS as p (p.emoji)}
-        <button
+        <Button variant="ghost"
           type="button"
           title={p.label}
           aria-label={p.label}
           class="flex items-center gap-1 px-1.5 py-1 rounded border text-xs transition-colors
             {current === p.emoji
-              ? 'border-pink-400 bg-pink-500/15 text-foreground'
+              ? 'border-[color-mix(in_srgb,var(--color-pink)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-pink)_15%,transparent)] text-foreground'
               : 'border-border bg-bg3 text-muted hover:border-border/80'}"
           onclick={() => setEmoji(p.emoji)}
         >
           <span class="text-sm leading-none">{p.emoji}</span>
-          <span class="text-[9px]">{p.label}</span>
-        </button>
+          <span class="text-[length:var(--font-size-telemetry)]">{p.label}</span>
+        </Button>
       {/each}
     </div>
     <input
@@ -62,7 +63,7 @@
   </div>
 
   <label class="flex flex-col gap-1">
-    <span class="text-[11px] font-medium text-foreground">Label</span>
+    <span class="text-[length:var(--font-size-caption)] font-medium text-foreground">Label</span>
     <input
       class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
       placeholder={m.flowcfg_setReaction()}

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { Button } from '$lib/components/ui';
+import { goto } from '$app/navigation';
   import { GitBranch, Plus, Trash2, Clock, Puzzle, Lock, Pencil, ChevronDown, ChevronRight } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import NewFromTemplateMenu from './NewFromTemplateMenu.svelte';
@@ -44,25 +45,25 @@
 
 <section class="mb-6 {disabled ? 'opacity-50' : ''}">
   <header class="flex items-center justify-between mb-2">
-    <button type="button" class="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground" onclick={() => (collapsed = !collapsed)}>
+    <Button variant="ghost" type="button" class="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground" onclick={() => (collapsed = !collapsed)}>
       {#if collapsed}<ChevronRight size={12} />{:else}<ChevronDown size={12} />{/if}
       {#if kind === 'plugin'}<Puzzle size={12} class="text-accent" />{/if}
       <span class="text-foreground">{title}</span>
       {#if kind === 'plugin'}<Lock size={11} class="text-muted/50" />{/if}
-      {#if disabled}<span class="px-1.5 py-0.5 rounded-full bg-bg3 text-muted text-[9px]">disabled</span>{/if}
+      {#if disabled}<span class="px-1.5 py-0.5 rounded-full bg-bg3 text-muted text-[length:var(--font-size-telemetry)]">disabled</span>{/if}
       <span class="text-muted/50">({flows.length})</span>
-    </button>
+    </Button>
     <div class="flex items-center gap-1">
       {#if kind === 'plugin' && groupId}
         <NewFromTemplateMenu pluginId={pluginId ?? ''} groupId={groupId ?? ''} {templates} {disabled} onCreated={onChanged} />
       {:else if onNewBlank}
-        <button type="button" onclick={onNewBlank} class="flex items-center gap-1 h-7 px-2.5 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors">
+        <Button variant="ghost" type="button" onclick={onNewBlank} class="flex items-center gap-1 h-7 px-2.5 text-[length:var(--font-size-telemetry)] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors">
           <Plus size={12} /> {m.flow_newFlow()}
-        </button>
+        </Button>
       {/if}
       {#if kind === 'user'}
-        <button type="button" onclick={onRenameGroup} class="p-1.5 rounded text-muted hover:text-foreground hover:bg-bg3" title="Rename group" aria-label="Rename group"><Pencil size={13} /></button>
-        <button type="button" onclick={onDeleteGroup} class="p-1.5 rounded text-muted hover:text-red-400 hover:bg-bg3" title="Delete group" aria-label="Delete group"><Trash2 size={13} /></button>
+        <Button variant="ghost" type="button" onclick={onRenameGroup} class="p-1.5 rounded text-muted hover:text-foreground hover:bg-bg3" title="Rename group" aria-label="Rename group"><Pencil size={13} /></Button>
+        <Button variant="ghost" type="button" onclick={onDeleteGroup} class="p-1.5 rounded text-muted hover:text-[var(--color-danger-fg)] hover:bg-bg3" title="Delete group" aria-label="Delete group"><Trash2 size={13} /></Button>
       {/if}
     </div>
   </header>
@@ -82,22 +83,22 @@
             <div class="aspect-video bg-bg3/50 flex items-center justify-center relative {flow.pluginId ? 'bg-gradient-to-br from-accent/[0.06] to-transparent' : ''}">
               <GitBranch size={32} class="text-muted/20 group-hover:text-muted/30 transition-colors" />
               {#if flow.pluginId}
-                <div class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-[9px] font-mono uppercase tracking-wider ring-1 ring-accent/20" title={m.flow_pluginManaged({ plugin: flow.pluginId })}>
+                <div class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-[length:var(--font-size-telemetry)] font-mono uppercase tracking-wider ring-1 ring-accent/20" title={m.flow_pluginManaged({ plugin: flow.pluginId })}>
                   <Puzzle size={9} /> {flow.pluginId}
                 </div>
               {/if}
-              <div class="absolute bottom-2 right-2 text-[10px] font-mono text-muted/50">
+              <div class="absolute bottom-2 right-2 text-[length:var(--font-size-telemetry)] font-mono text-muted/50">
                 {flow.nodeCount === 1 ? m.flow_nodeCount({ count: flow.nodeCount }) : m.flow_nodeCountPlural({ count: flow.nodeCount })}
               </div>
             </div>
             <div class="px-4 py-3 flex items-center justify-between">
               <div class="min-w-0">
                 <div class="text-sm font-semibold text-foreground truncate">{flow.name}</div>
-                <div class="flex items-center gap-1 text-[10px] text-muted mt-0.5"><Clock size={10} /> {formatDate(flow.updatedAt)}</div>
+                <div class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-muted mt-0.5"><Clock size={10} /> {formatDate(flow.updatedAt)}</div>
               </div>
-              <button onclick={(e) => { e.stopPropagation(); onDeleteFlow?.(flow); }} class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-muted hover:text-red-400 hover:bg-bg3" title={m.flow_deleteFlow()} aria-label={m.flow_deleteFlow()}>
+              <Button variant="ghost" onclick={(e) => { e.stopPropagation(); onDeleteFlow?.(flow); }} class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-muted hover:text-[var(--color-danger-fg)] hover:bg-bg3" title={m.flow_deleteFlow()} aria-label={m.flow_deleteFlow()}>
                 <Trash2 size={14} />
-              </button>
+              </Button>
             </div>
           </div>
         {/each}

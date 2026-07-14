@@ -1,5 +1,6 @@
 <script lang="ts">
-    import AgentRow from "./AgentRow.svelte";
+  import { Button } from '$lib/components/ui';
+import AgentRow from "./AgentRow.svelte";
     import AgentGroupHeader from "./AgentGroupHeader.svelte";
     import HudBorder from "$lib/components/decorations/HudBorder.svelte";
     import { gw, visibleAgents } from "$lib/state/gateway/gateway-data.svelte";
@@ -79,14 +80,14 @@
     };
 
     const ACCENT_COLORS = [
-        "#3b82f6",
-        "#22c55e",
-        "#a855f7",
-        "#ec4899",
-        "#06b6d4",
-        "#f59e0b",
-        "#10b981",
-        "#ef4444",
+        "var(--color-accent)",
+        "var(--color-success-fg)",
+        "var(--color-purple)",
+        "var(--color-pink)",
+        "var(--color-cyan)",
+        "var(--color-warning-fg)",
+        "var(--color-emerald)",
+        "var(--color-danger-fg)",
     ];
 
 
@@ -204,8 +205,8 @@
             <Bot size={16} class="text-brand-pink" />
             <div
                 class="w-2 h-2 rounded-full {conn.connected
-                    ? 'bg-success shadow-[0_0_6px_var(--color-success)]'
-                    : 'bg-destructive shadow-[0_0_6px_var(--color-destructive)]'}"
+                    ? 'bg-success shadow-[var(--shadow-status-glow)]'
+                    : 'bg-destructive shadow-[var(--shadow-status-glow)]'}"
             ></div>
         </div>
     {:else}
@@ -219,8 +220,8 @@
                     >
                 </div>
                 <div class="flex items-center gap-1">
-                    <button
-                        class="flex items-center justify-center w-6 h-6 rounded-md transition-all duration-150 {agentGroupsState.viewMode === 'list'
+                    <Button variant="ghost"
+                        class="flex items-center justify-center w-6 h-6 rounded-md transition-all duration-[var(--duration-fast)] {agentGroupsState.viewMode === 'list'
                             ? 'bg-accent/10 text-accent'
                             : 'text-muted-foreground hover:text-foreground'}"
                         onclick={toggleAgentViewMode}
@@ -231,20 +232,20 @@
                         {:else}
                             <LayoutGrid size={13} />
                         {/if}
-                    </button>
-                    <button
-                        class="flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-accent transition-all duration-150"
+                    </Button>
+                    <Button variant="ghost"
+                        class="flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-accent transition-all duration-[var(--duration-fast)]"
                         onclick={startCreatingGroup}
                         title={m.agentGroup_newGroup()}
                     >
                         <FolderPlus size={13} />
-                    </button>
+                    </Button>
                 </div>
             </div>
 
             <!-- Stats row removed — promoted to topbar in command-center redesign -->
             {#if conn.connected && agentCount > 0}
-                <div class="flex items-center gap-3 text-[10px] text-muted-strong tabular-nums">
+                <div class="flex items-center gap-3 text-[length:var(--font-size-telemetry)] text-muted-strong tabular-nums">
                     <span>{activeAgentCount} active</span>
                     <span class="opacity-50">·</span>
                     <span>{agentCount} total</span>
@@ -293,19 +294,19 @@
                             </div>
                             {#if !conn.connecting}
                                 {#if hostsState.activeHostId}
-                                    <button
-                                        class="text-[10px] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+                                    <Button variant="ghost"
+                                        class="text-[length:var(--font-size-telemetry)] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
                                         onclick={() => wsConnect()}
                                     >
                                         {m.sidebar_reconnect()}
-                                    </button>
+                                    </Button>
                                 {:else}
-                                    <button
-                                        class="text-[10px] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+                                    <Button variant="ghost"
+                                        class="text-[length:var(--font-size-telemetry)] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
                                         onclick={() => (ui.overlayOpen = true)}
                                     >
                                         {m.sidebar_connectToHost()}
-                                    </button>
+                                    </Button>
                                 {/if}
                             {/if}
                         </div>
@@ -341,7 +342,7 @@
                         <input
                             bind:this={newGroupInput}
                             bind:value={newGroupName}
-                            class="w-full text-[11px] font-semibold uppercase tracking-wider bg-transparent border-b border-accent/50 text-foreground outline-none px-0 py-0.5"
+                            class="w-full text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider bg-transparent border-b border-accent/50 text-foreground outline-none px-0 py-0.5"
                             placeholder={m.agentGroup_newGroup()}
                             onblur={handleNewGroupSubmit}
                             onkeydown={(e) => {
@@ -390,7 +391,7 @@
                         {#if groups.length > 0 && !collapsed}
                             <!-- svelte-ignore a11y_no_static_element_interactions -->
                             <div
-                                class="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer select-none border-b border-border/50 transition-colors {ungroupedDragOver ? 'bg-accent/10 border-accent/30' : 'hover:bg-white/3'}"
+                                class="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer select-none border-b border-border/50 transition-colors {ungroupedDragOver ? 'bg-accent/10 border-accent/30' : 'hover:bg-[var(--color-text-primary)]/3'}"
                                 onclick={toggleUngroupedCollapsed}
                                 ondragover={(e) => { handleGroupDragOver(e); ungroupedDragOver = true; }}
                                 ondragleave={() => { ungroupedDragOver = false; }}
@@ -406,10 +407,10 @@
                                         <ChevronDown size={12} />
                                     {/if}
                                 </span>
-                                <span class="flex-1 text-[11px] font-semibold uppercase tracking-wider text-muted-strong truncate">
+                                <span class="flex-1 text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider text-muted-strong truncate">
                                     {m.agentGroup_ungrouped()}
                                 </span>
-                                <span class="text-[9px] text-muted-strong tabular-nums shrink-0">
+                                <span class="text-[length:var(--font-size-telemetry)] text-muted-strong tabular-nums shrink-0">
                                     {ungroupedAgents.length}
                                 </span>
                             </div>
@@ -431,7 +432,7 @@
                     <!-- GALLERY VIEW -->
                     {#each groups as group (group.id)}
                         <div class="px-2.5 pt-2 pb-1">
-                            <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-strong mb-1.5">
+                            <div class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mb-1.5">
                                 {group.name}
                             </div>
                             <div
@@ -443,8 +444,8 @@
                                 {#each group.memberAgentIds as agentId (agentId)}
                                     {@const agent = findAgent(agentId)}
                                     {#if agent}
-                                        <button
-                                            class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 cursor-pointer border {isSelected(agent)
+                                        <Button variant="ghost"
+                                            class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-[var(--duration-fast)] cursor-pointer border {isSelected(agent)
                                                 ? 'bg-bg3 border-accent/50'
                                                 : 'bg-bg2 border-border hover:border-muted hover:bg-bg3'}"
                                             draggable="true"
@@ -460,7 +461,7 @@
                                             {:else}
                                                 <img src={agentAvatarUrl(agent.id)} alt="" class="w-6 h-6 rounded-full" />
                                             {/if}
-                                        </button>
+                                        </Button>
                                     {/if}
                                 {/each}
                             </div>
@@ -470,7 +471,7 @@
                     {#if ungroupedAgents.length > 0}
                         {#if groups.length > 0}
                             <div class="px-2.5 pt-2 pb-1">
-                                <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-strong mb-1.5">
+                                <div class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mb-1.5">
                                     {m.agentGroup_ungrouped()}
                                 </div>
                             </div>
@@ -482,8 +483,8 @@
                             role="group"
                         >
                             {#each ungroupedAgents as agent (agent.id)}
-                                <button
-                                    class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 cursor-pointer border {isSelected(agent)
+                                <Button variant="ghost"
+                                    class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-[var(--duration-fast)] cursor-pointer border {isSelected(agent)
                                         ? 'bg-bg3 border-accent/50'
                                         : 'bg-bg2 border-border hover:border-muted hover:bg-bg3'}"
                                     draggable="true"
@@ -499,7 +500,7 @@
                                     {:else}
                                         <img src={agentAvatarUrl(agent.id)} alt="" class="w-6 h-6 rounded-full" />
                                     {/if}
-                                </button>
+                                </Button>
                             {/each}
                         </div>
                     {/if}

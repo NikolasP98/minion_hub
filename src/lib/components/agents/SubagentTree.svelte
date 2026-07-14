@@ -43,12 +43,12 @@
 		{@const meta = getOrchMeta(orchId)}
 		<!-- Orchestration header -->
 		<div class="flex items-center gap-1.5 px-2 py-1.5 bg-bg2/50 border-b border-border/30">
-			<span class="w-1.5 h-1.5 rounded-full shrink-0 {orchStatusColor[meta?.status ?? ''] ?? 'bg-zinc-500'}"></span>
-			<span class="text-[10px] font-mono text-muted-strong truncate">{orchId.slice(0, 8)}</span>
+			<span class="w-1.5 h-1.5 rounded-full shrink-0 {orchStatusColor[meta?.status ?? ''] ?? 'bg-[var(--color-surface-2)]'}"></span>
+			<span class="text-[length:var(--font-size-telemetry)] font-mono text-muted-strong truncate">{orchId.slice(0, 8)}</span>
 			{#if meta?.mode}
-				<span class="text-[8px] px-1 py-0.5 rounded bg-accent/10 text-accent/60">{meta.mode}</span>
+				<span class="text-[length:var(--font-size-telemetry)] px-1 py-0.5 rounded bg-accent/10 text-accent/60">{meta.mode}</span>
 			{/if}
-			<span class="text-[9px] text-muted-strong ml-auto shrink-0">{nodes.length} tasks</span>
+			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong ml-auto shrink-0">{nodes.length} tasks</span>
 		</div>
 		<!-- Grouped subagent nodes (rendered at depth 0 since they are under a header) -->
 		{#each nodes as node (node.session.key)}

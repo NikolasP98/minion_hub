@@ -28,9 +28,9 @@
   {markerStart}
   style="stroke: {selected ? 'var(--color-accent)' : 'var(--color-border)'};
          stroke-width: {selected ? 2 : 1.5};
-         transition: stroke 0.15s;"
+         transition: stroke var(--duration-fast) var(--ease-standard);"
   {label}
   labelX={labelX}
   labelY={labelY}
-  labelStyle="font-size: 10px; fill: var(--color-muted);"
+  labelStyle="font-size: var(--font-size-telemetry); fill: var(--color-muted);"
 />

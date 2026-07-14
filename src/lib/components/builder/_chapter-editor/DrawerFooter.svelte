@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Check } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { Check } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -12,11 +13,11 @@
 </script>
 
 <div class="drawer-footer">
-    <button class="btn btn--ghost" onclick={onClose}>{m.common_cancel()}</button>
-    <button class="btn btn--primary" onclick={onSave} disabled={totalConflicts > 0}>
+    <Button variant="ghost" class="btn btn--ghost" onclick={onClose}>{m.common_cancel()}</Button>
+    <Button variant="ghost" class="btn btn--primary" onclick={onSave} disabled={totalConflicts > 0}>
         <Check size={14} />
         {m.common_save()}
-    </button>
+    </Button>
 </div>
 
 <style>
@@ -24,8 +25,8 @@
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        gap: 8px;
-        padding: 10px 16px;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-4);
         border-top: 1px solid var(--color-border);
         background: var(--color-bg2);
         flex-shrink: 0;
@@ -34,12 +35,12 @@
     .btn {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-1);
         font-family: inherit;
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         font-weight: 600;
-        padding: 6px 14px;
-        border-radius: 6px;
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-md);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
         border: none;

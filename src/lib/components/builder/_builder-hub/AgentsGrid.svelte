@@ -1,5 +1,6 @@
 <script lang="ts">
-    import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
+import * as m from '$lib/paraglide/messages';
     import { Trash2 } from "lucide-svelte";
     import { goto } from "$app/navigation";
     import { builderState } from "$lib/state/builder";
@@ -19,9 +20,9 @@
                 <div class="item-card-header">
                     <span class="item-emoji">{agent.emoji || '🤖'}</span>
                     <span class="item-name">{agent.name}</span>
-                    <button type="button" class="item-delete" onclick={(e) => { e.stopPropagation(); onDelete(agent.id, agent.name); }} title={m.common_delete()}>
+                    <Button variant="ghost" type="button" class="item-delete" onclick={(e) => { e.stopPropagation(); onDelete(agent.id, agent.name); }} title={m.common_delete()}>
                         <Trash2 size={12} />
-                    </button>
+                    </Button>
                 </div>
                 {#if agent.description}
                     <span class="item-desc">{agent.description}</span>
@@ -44,7 +45,7 @@
         align-items: stretch;
         min-height: 7rem;
         border: 1px solid var(--color-border);
-        border-radius: 0.75rem;
+        border-radius: var(--radius-lg);
         background: var(--color-bg2);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
@@ -64,23 +65,23 @@
         display: flex;
         flex-direction: column;
         width: 100%;
-        padding: 1rem 1.25rem;
-        gap: 0.5rem;
+        padding: var(--space-4) var(--space-6);
+        gap: var(--space-2);
     }
 
     .item-card-header {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
 
     .item-emoji {
-        font-size: 1.125rem;
+        font-size: var(--font-size-page-title);
         line-height: 1;
     }
 
     .item-name {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         font-weight: 600;
         color: var(--color-foreground);
         overflow: hidden;
@@ -92,9 +93,9 @@
         display: inline-flex;
         align-items: center;
         width: fit-content;
-        padding: 0.125rem 0.5rem;
-        border-radius: 9999px;
-        font-size: 0.625rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -111,7 +112,7 @@
     }
 
     .item-desc {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         line-height: 1.4;
         overflow: hidden;
@@ -124,22 +125,22 @@
     .item-footer {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         margin-top: auto;
     }
 
     .item-time {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
     }
 
     .item-model {
-        font-size: 0.5625rem;
+        font-size: var(--font-size-telemetry);
         font-family: var(--font-mono, monospace);
         color: var(--color-muted);
         background: var(--color-bg3);
-        padding: 0.0625rem 0.375rem;
-        border-radius: 0.25rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-sm);
     }
 
     .item-delete {
@@ -148,7 +149,7 @@
         justify-content: center;
         width: 1.25rem;
         height: 1.25rem;
-        border-radius: 0.25rem;
+        border-radius: var(--radius-sm);
         color: var(--color-muted);
         background: none;
         border: none;

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Handle, Position } from '@xyflow/svelte';
+  import { Button } from '$lib/components/ui';
+import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { TriggerNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig, triggerSources } from '$lib/state/features/flow-editor.svelte';
@@ -23,7 +24,7 @@
   type="source"
   position={Position.Right}
   id="out"
-  class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900"
+  class="!w-3 !h-3 !border-2 !border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)]"
 />
 
 <div
@@ -33,31 +34,31 @@
   role="presentation"
 >
   <div class="flex items-center gap-2 mb-1.5">
-    <div class="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0">
-      <Zap size={12} class="text-amber-400" />
+    <div class="w-6 h-6 rounded-md bg-[var(--color-warning-surface)] flex items-center justify-center shrink-0">
+      <Zap size={12} class="text-[var(--color-warning-fg)]" />
     </div>
     <span class="text-xs font-semibold text-foreground truncate flex-1">{m.flownode_channelTrigger()}</span>
-    <button
+    <Button variant="ghost"
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
       title={m.flownode_configureTrigger()}
       aria-label={m.flownode_configureTrigger()}
       onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
     >
       <Settings2 size={12} />
-    </button>
+    </Button>
   </div>
 
-  <div class="text-[10px] text-muted mb-1">{eventLabel}</div>
+  <div class="text-[length:var(--font-size-telemetry)] text-muted mb-1">{eventLabel}</div>
 
   {#if channelScoped}
     <div class="flex flex-wrap items-center gap-1">
       {#if selectedChannels.length === 0}
-        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">
+        <span class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]">
           {m.flownode_allChannels()}
         </span>
       {:else}
         {#each selectedChannels as ch (ch)}
-          <span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 capitalize">
+          <span class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] capitalize">
             {ch}
           </span>
         {/each}
@@ -66,8 +67,8 @@
   {/if}
 
   {#if data.deliverResponse}
-    <div class="flex items-center gap-1 mt-1.5 text-[10px] text-muted">
-      <Reply size={10} class="text-amber-400/80" /> {m.flownode_repliesToChannel()}
+    <div class="flex items-center gap-1 mt-1.5 text-[length:var(--font-size-telemetry)] text-muted">
+      <Reply size={10} class="text-[var(--color-warning-fg)]/80" /> {m.flownode_repliesToChannel()}
     </div>
   {/if}
 </div>

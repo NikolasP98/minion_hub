@@ -46,17 +46,17 @@
   // Tailwind class literals are spelled out (not interpolated) so the scanner keeps them.
   type Accent = { ring: string; iconBg: string; iconText: string; handle: string };
   const ACCENT: Record<string, Accent> = {
-    amber: { ring: 'border-amber-500/40', iconBg: 'bg-amber-500/20', iconText: 'text-amber-400', handle: '!border-amber-400 !bg-amber-900' },
-    slate: { ring: 'border-slate-500/40', iconBg: 'bg-slate-500/20', iconText: 'text-slate-300', handle: '!border-slate-400 !bg-slate-900' },
-    violet: { ring: 'border-violet-500/40', iconBg: 'bg-violet-500/20', iconText: 'text-violet-400', handle: '!border-violet-400 !bg-violet-900' },
-    pink: { ring: 'border-pink-500/40', iconBg: 'bg-pink-500/20', iconText: 'text-pink-400', handle: '!border-pink-400 !bg-pink-900' },
-    teal: { ring: 'border-teal-500/40', iconBg: 'bg-teal-500/20', iconText: 'text-teal-300', handle: '!border-teal-400 !bg-teal-900' },
-    indigo: { ring: 'border-indigo-500/40', iconBg: 'bg-indigo-500/20', iconText: 'text-indigo-400', handle: '!border-indigo-400 !bg-indigo-900' },
-    emerald: { ring: 'border-emerald-500/40', iconBg: 'bg-emerald-500/20', iconText: 'text-emerald-400', handle: '!border-emerald-400 !bg-emerald-900' },
-    sky: { ring: 'border-sky-500/40', iconBg: 'bg-sky-500/20', iconText: 'text-sky-400', handle: '!border-sky-400 !bg-sky-900' },
-    cyan: { ring: 'border-cyan-500/40', iconBg: 'bg-cyan-500/20', iconText: 'text-cyan-400', handle: '!border-cyan-400 !bg-cyan-900' },
-    rose: { ring: 'border-rose-500/40', iconBg: 'bg-rose-500/20', iconText: 'text-rose-400', handle: '!border-rose-400 !bg-rose-900' },
-    fuchsia: { ring: 'border-fuchsia-500/40', iconBg: 'bg-fuchsia-500/20', iconText: 'text-fuchsia-400', handle: '!border-fuchsia-400 !bg-fuchsia-900' },
+    amber: { ring: 'border-[var(--color-warning-border)]', iconBg: 'bg-[var(--color-warning-surface)]', iconText: 'text-[var(--color-warning-fg)]', handle: '!border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)]' },
+    slate: { ring: 'border-[var(--color-border-default)]', iconBg: 'bg-[var(--color-surface-2)]', iconText: 'text-[var(--color-text-tertiary)]', handle: '!border-[var(--color-border-default)] !bg-[var(--color-surface-2)]' },
+    violet: { ring: 'border-[color-mix(in_srgb,var(--color-purple)_40%,transparent)]', iconBg: 'bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]', iconText: 'text-[var(--color-purple)]', handle: '!border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]' },
+    pink: { ring: 'border-[color-mix(in_srgb,var(--color-pink)_40%,transparent)]', iconBg: 'bg-[color-mix(in_srgb,var(--color-pink)_20%,transparent)]', iconText: 'text-[var(--color-pink)]', handle: '!border-[color-mix(in_srgb,var(--color-pink)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-pink)_20%,transparent)]' },
+    teal: { ring: 'border-[color-mix(in_srgb,var(--color-cyan)_40%,transparent)]', iconBg: 'bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]', iconText: 'text-[var(--color-cyan)]', handle: '!border-[color-mix(in_srgb,var(--color-cyan)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]' },
+    indigo: { ring: 'border-[color-mix(in_srgb,var(--color-purple)_40%,transparent)]', iconBg: 'bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]', iconText: 'text-[var(--color-purple)]', handle: '!border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]' },
+    emerald: { ring: 'border-[var(--color-success-border)]', iconBg: 'bg-[var(--color-success-fg)]/20', iconText: 'text-[var(--color-success-fg)]', handle: '!border-[var(--color-success-border)] !bg-[var(--color-success-surface)]' },
+    sky: { ring: 'border-[color-mix(in_srgb,var(--color-cyan)_40%,transparent)]', iconBg: 'bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]', iconText: 'text-[var(--color-cyan)]', handle: '!border-[color-mix(in_srgb,var(--color-cyan)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]' },
+    cyan: { ring: 'border-[color-mix(in_srgb,var(--color-cyan)_40%,transparent)]', iconBg: 'bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]', iconText: 'text-[var(--color-cyan)]', handle: '!border-[color-mix(in_srgb,var(--color-cyan)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]' },
+    rose: { ring: 'border-[var(--color-danger-border)]', iconBg: 'bg-[var(--color-danger-surface)]', iconText: 'text-[var(--color-danger-fg)]', handle: '!border-[var(--color-danger-border)] !bg-[var(--color-danger-surface)]' },
+    fuchsia: { ring: 'border-[color-mix(in_srgb,var(--color-pink)_40%,transparent)]', iconBg: 'bg-[color-mix(in_srgb,var(--color-pink)_20%,transparent)]', iconText: 'text-[var(--color-pink)]', handle: '!border-[color-mix(in_srgb,var(--color-pink)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-pink)_20%,transparent)]' },
   };
 
   const KIND: Record<MasterNodeKind, { icon: IconComponent; accent: keyof typeof ACCENT }> = {
@@ -119,13 +119,13 @@
     <span class="text-xs font-semibold text-foreground leading-tight flex-1">{data.title}</span>
   </div>
   {#if data.subtitle}
-    <p class="text-[10px] text-muted leading-snug">{data.subtitle}</p>
+    <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">{data.subtitle}</p>
   {/if}
 
   {#if branches.length > 0}
     <div class="mt-2 pt-1.5 border-t border-border/50 flex flex-col gap-1.5">
       {#each branches as b (b.id)}
-        <div class="relative text-[10px] text-muted text-right pr-1">
+        <div class="relative text-[length:var(--font-size-telemetry)] text-muted text-right pr-1">
           {b.label}
           <Handle
             type="source"

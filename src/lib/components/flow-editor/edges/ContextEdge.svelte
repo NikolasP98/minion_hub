@@ -26,12 +26,12 @@
   path={edgePath}
   {markerEnd}
   {markerStart}
-  style="stroke: {selected ? '#f59e0b' : '#f59e0b80'};
+  style="stroke: {selected ? 'var(--color-warning-fg)' : 'var(--color-warning-fg)80'};
          stroke-width: {selected ? 2 : 1.5};
          stroke-dasharray: 6 3;
-         transition: stroke 0.15s;"
+         transition: stroke var(--duration-fast) var(--ease-standard);"
   {label}
   labelX={labelX}
   labelY={labelY}
-  labelStyle="font-size: 10px; fill: #f59e0b;"
+  labelStyle="font-size: var(--font-size-telemetry); fill: var(--color-warning-fg);"
 />

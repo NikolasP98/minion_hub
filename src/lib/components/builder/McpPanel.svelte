@@ -73,7 +73,7 @@
                 </div>
                 <p class="text-xs text-muted mt-1">{m.capabilities_mcp_gatewayDesc()}</p>
                 <code class="endpoint">{endpoint}</code>
-                <div class="text-[0.6875rem] text-muted mt-2">
+                <div class="text-[length:var(--font-size-caption)] text-muted mt-2">
                     {m.capabilities_mcp_toolsExposed({ count: exported.length })}
                 </div>
                 {#if exported.length > 0}
@@ -100,65 +100,65 @@
 <style>
     .mcp-card {
         border: 1px solid var(--hairline);
-        border-radius: var(--radius-lg, 0.75rem);
-        padding: 1rem;
-        background: var(--color-bg2, rgba(255, 255, 255, 0.02));
+        border-radius: var(--radius-lg, var(--radius-xs);
+        padding: var(--space-4);
+        background: var(--color-bg2, color-mix(in srgb, var(--color-text-primary) 2%, transparent));
     }
     .endpoint {
         display: inline-block;
-        margin-top: 0.625rem;
-        font-size: 0.6875rem;
+        margin-top: var(--space-2);
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
-        background: rgba(255, 255, 255, 0.04);
+        background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
         border: 1px solid var(--hairline);
-        border-radius: var(--radius-sm, 0.375rem);
-        padding: 0.1875rem 0.5rem;
+        border-radius: var(--radius-sm, var(--radius-xs);
+        padding: var(--space-1) var(--space-2);
     }
     .tag {
-        font-size: 0.5rem;
+        font-size: var(--font-size-telemetry);
         font-weight: 700;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        padding: 0.0625rem 0.25rem;
-        border-radius: var(--radius-xs, 0.25rem);
+        padding: var(--space-0-5) var(--space-1);
+        border-radius: var(--radius-xs, var(--radius-xs);
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 14%, transparent);
     }
     .tool-chip {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
-        background: rgba(255, 255, 255, 0.04);
+        background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
         border: 1px solid var(--hairline);
-        border-radius: var(--radius-sm, 0.375rem);
-        padding: 0.0625rem 0.375rem;
+        border-radius: var(--radius-sm, var(--radius-xs);
+        padding: var(--space-0-5) var(--space-2);
     }
     .empty-card {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 0.5rem;
-        padding: 2.5rem 0;
+        gap: var(--space-2);
+        padding: var(--space-8) 0;
         border: 1px dashed var(--hairline);
-        border-radius: var(--radius-lg, 0.75rem);
+        border-radius: var(--radius-lg, var(--radius-xs);
     }
     .empty-note {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         color: var(--color-muted);
     }
     .loading-container {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.5rem;
-        padding: 3rem 0;
+        gap: var(--space-2);
+        padding: var(--space-12) 0;
     }
     :global(.loading-spinner) {
         color: var(--color-muted);
         animation: spin 1s linear infinite;
     }
     .loading-text {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         color: var(--color-muted);
     }
     @keyframes spin {
@@ -166,9 +166,9 @@
         to { transform: rotate(360deg); }
     }
     .error-banner {
-        padding: 0.75rem 1rem;
-        border-radius: 0.5rem;
-        font-size: 0.75rem;
+        padding: var(--space-3) var(--space-4);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-caption);
         color: var(--color-danger-fg);
         background: var(--color-danger-surface);
         border: 1px solid var(--color-danger-border);

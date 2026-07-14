@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { Button } from '$lib/components/ui';
+import { goto } from '$app/navigation';
   import { Plus, ChevronDown } from 'lucide-svelte';
 
   type Template = { id: string; name: string; nodes: unknown[]; edges: unknown[] };
@@ -49,24 +50,24 @@
 </script>
 
 <div class="relative">
-  <button
+  <Button variant="ghost"
     type="button"
     {disabled}
     onclick={(e) => { e.stopPropagation(); open = !open; }}
-    class="flex items-center gap-1 h-7 px-2.5 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+    class="flex items-center gap-1 h-7 px-2.5 text-[length:var(--font-size-telemetry)] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
   >
     <Plus size={12} /> New from template <ChevronDown size={11} />
-  </button>
+  </Button>
   {#if open && !disabled}
-    <div class="absolute right-0 top-8 z-30 min-w-52 rounded-lg border border-border bg-bg2 shadow-lg py-1">
+    <div class="absolute right-0 top-8 z-[var(--layer-dropdown)] min-w-52 rounded-lg border border-border bg-bg2 shadow-lg py-1">
       {#each templates as t (t.id)}
-        <button
+        <Button variant="ghost"
           type="button"
           onclick={(e) => { e.stopPropagation(); instantiate(t); }}
           class="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-bg3 transition-colors"
         >
           {t.name}
-        </button>
+        </Button>
       {:else}
         <div class="px-3 py-1.5 text-xs text-muted italic">No templates</div>
       {/each}

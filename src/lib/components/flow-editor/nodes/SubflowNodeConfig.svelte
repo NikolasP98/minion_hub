@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
+  import { Select } from '$lib/components/ui';
+import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
   import type { SubflowNodeData } from '$lib/state/features/flow-editor.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -45,12 +46,12 @@
 
 <div class="px-3 py-3 flex flex-col gap-3">
   <div class="flex flex-col gap-1">
-    <label for="sf-flow" class="text-[11px] font-medium text-foreground">Flow to run</label>
-    <select
+    <label for="sf-flow" class="text-[length:var(--font-size-caption)] font-medium text-foreground">Flow to run</label>
+    <Select size="sm"
       id="sf-flow"
       class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
       value={data.flowId ?? ''}
-      onchange={(e) => setFlow((e.target as HTMLSelectElement).value)}
+      onchange={(next) => setFlow(String(next))}
     >
       <option value="">{m.flowcfg_selectFlow()}</option>
       {#each flows as f (f.id)}
@@ -60,20 +61,20 @@
         <!-- Keep a stale/self reference visible rather than silently blanking it. -->
         <option value={data.flowId}>{data.flowName || data.flowId}</option>
       {/if}
-    </select>
+    </Select>
     {#if loadError}
-      <p class="text-[10px] text-amber-400/80 leading-snug">{m.flowcfg_couldntLoadFlows()}</p>
+      <p class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 leading-snug">{m.flowcfg_couldntLoadFlows()}</p>
     {:else if loaded && flows.length === 0}
-      <p class="text-[10px] text-muted leading-snug">{m.flowcfg_noOtherFlows()}</p>
+      <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">{m.flowcfg_noOtherFlows()}</p>
     {:else}
-      <p class="text-[10px] text-muted leading-snug">
+      <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">
         {m.flowcfg_subflowRunsDesc()}
       </p>
     {/if}
   </div>
 
   <div class="flex flex-col gap-1">
-    <label for="sf-label" class="text-[11px] font-medium text-foreground">Label</label>
+    <label for="sf-label" class="text-[length:var(--font-size-caption)] font-medium text-foreground">Label</label>
     <input
       id="sf-label"
       type="text"

@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Sparkles } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { Sparkles } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
     import type { FieldKey, FieldConflict } from './types';
 
@@ -18,8 +19,8 @@
         <span>{m.builder_aiSuggestedDifferent()}</span>
     </div>
     <div class="conflict-options">
-        <button class="conflict-opt mine" onclick={() => onResolve(field, 'user')}>{m.builder_keepYours()}</button>
-        <button class="conflict-opt ai" onclick={() => onResolve(field, 'ai')}>{m.builder_useAi()}</button>
+        <Button variant="ghost" class="conflict-opt mine" onclick={() => onResolve(field, 'user')}>{m.builder_keepYours()}</Button>
+        <Button variant="ghost" class="conflict-opt ai" onclick={() => onResolve(field, 'ai')}>{m.builder_useAi()}</Button>
     </div>
     <div class="conflict-preview">{conflict.aiValue.slice(0, 120)}{conflict.aiValue.length > 120 ? '...' : ''}</div>
 </div>
@@ -27,32 +28,32 @@
 <style>
     .conflict-box {
         border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
-        border-radius: 6px;
-        padding: 8px 10px;
+        border-radius: var(--radius-md);
+        padding: var(--space-2) var(--space-2);
         background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg));
-        margin-top: 4px;
+        margin-top: var(--space-1);
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--space-2);
     }
 
     .conflict-header {
         display: flex;
         align-items: center;
-        gap: 6px;
-        font-size: 11px;
+        gap: var(--space-2);
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-accent);
     }
 
-    .conflict-options { display: flex; gap: 6px; }
+    .conflict-options { display: flex; gap: var(--space-2); }
 
     .conflict-opt {
         font-family: inherit;
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         font-weight: 600;
-        padding: 4px 10px;
-        border-radius: 4px;
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-sm);
         cursor: pointer;
         border: 1px solid var(--color-border);
         background: var(--color-bg2);
@@ -68,7 +69,7 @@
     .conflict-opt.ai:hover { filter: brightness(1.15); }
 
     .conflict-preview {
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         font-style: italic;
         line-height: 1.3;

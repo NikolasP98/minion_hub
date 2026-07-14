@@ -9,7 +9,7 @@
     import type { Agent } from "@minion-stack/shared";
     import { agentDisplayName, agentAvatarUrl } from "$lib/utils/agent-display";
     import * as m from "$lib/paraglide/messages";
-    import { Tooltip } from "$lib/components/ui";
+    import { Tooltip, Button } from '$lib/components/ui';
 
     let {
         agent,
@@ -123,9 +123,9 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div draggable="true" ondragstart={handleDragStart} ondragend={handleDragEnd} role="listitem">
     <Tooltip id={`tip-${agent.id}`} placement="right" openDelay={0}>
-    <button
+    <Button variant="ghost"
         type="button"
-        class="w-full flex flex-col items-center justify-center py-2 px-1 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-120 hover:bg-white/3 bg-transparent text-inherit {selected
+        class="w-full flex flex-col items-center justify-center py-2 px-1 border-l-3 border-b border-b-[color-mix(in srgb, var(--color-surface-3) 50%, transparent)] cursor-pointer transition-[background] duration-[var(--duration-fast)] hover:bg-[var(--color-text-primary)]/3 bg-transparent text-inherit {selected
             ? 'bg-bg3'
             : 'border-l-transparent'}"
         style:border-left-color={selected ? accentColor : undefined}
@@ -143,7 +143,7 @@
             <div class="mt-1">
                 {#if hasActive}
                     <span
-                        class="text-[9px] leading-none inline-block"
+                        class="text-[length:var(--font-size-telemetry)] leading-none inline-block"
                         style:transform="scale({hammerScale.current}) rotate({$rot}deg)"
                         style:transform-origin="bottom right">🔨</span
                     >
@@ -151,12 +151,12 @@
                     <StatusDot status="idle" size="sm" />
                 {/if}
             </div>
-        </button>
+        </Button>
         {#snippet content()}
             <div class="text-xs font-semibold text-foreground">
                 {agentDisplayName(agent)}
             </div>
-            <div class="text-[10px] text-muted mt-0.5">{statusText}</div>
+            <div class="text-[length:var(--font-size-telemetry)] text-muted mt-0.5">{statusText}</div>
         {/snippet}
     </Tooltip>
     </div>
@@ -164,9 +164,9 @@
     <!-- Compact full row: single line — status dot + avatar + name + sparkline -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div draggable="true" ondragstart={handleDragStart} ondragend={handleDragEnd} role="listitem">
-    <button
+    <Button variant="ghost"
         type="button"
-        class="group w-full h-8 flex items-center gap-2 px-2.5 border-l-2 cursor-pointer transition-[background] duration-120 hover:bg-white/3 bg-transparent text-inherit {selected
+        class="group w-full h-8 flex items-center gap-2 px-2.5 border-l-2 cursor-pointer transition-[background] duration-[var(--duration-fast)] hover:bg-[var(--color-text-primary)]/3 bg-transparent text-inherit {selected
             ? 'bg-bg3'
             : 'border-l-transparent'}"
         style:border-left-color={selected ? accentColor : undefined}
@@ -177,13 +177,13 @@
         <span class="shrink-0 flex items-center justify-center w-3">
             {#if hasActive}
                 <span
-                    class="text-[11px] leading-none inline-block"
+                    class="text-[length:var(--font-size-caption)] leading-none inline-block"
                     style:transform="scale({hammerScale.current}) rotate({$rot}deg)"
                     style:transform-origin="bottom right">🔨</span
                 >
             {:else}
                 <span
-                    class="w-1.5 h-1.5 rounded-full transition-colors duration-200"
+                    class="w-1.5 h-1.5 rounded-full transition-colors duration-[var(--duration-normal)]"
                     style:background-color={chat?.loading
                         ? "var(--color-accent)"
                         : "var(--color-border)"}
@@ -193,7 +193,7 @@
 
         <!-- Avatar -->
         {#if agent.emoji}
-            <span class="leading-none shrink-0 text-[13px]">{agent.emoji}</span>
+            <span class="leading-none shrink-0 text-[length:var(--font-size-body)]">{agent.emoji}</span>
         {:else}
             <img
                 src={agentAvatarUrl(agent.id)}
@@ -203,7 +203,7 @@
         {/if}
 
         <!-- Name -->
-        <span class="text-[13px] font-medium text-foreground truncate flex-1 text-left">{agentDisplayName(agent)}</span>
+        <span class="text-[length:var(--font-size-body)] font-medium text-foreground truncate flex-1 text-left">{agentDisplayName(agent)}</span>
 
         <!-- Sparkline: only takes layout space when active or hovered, so the
              agent name renders in full width otherwise. Toggling `display`
@@ -223,10 +223,10 @@
 
         <!-- Active session badge -->
         {#if activeSessions.length > 0}
-            <span class="text-[9px] tabular-nums text-success font-semibold shrink-0">
+            <span class="text-[length:var(--font-size-telemetry)] tabular-nums text-success font-semibold shrink-0">
                 {activeSessions.length}
             </span>
         {/if}
-    </button>
+    </Button>
     </div>
 {/if}

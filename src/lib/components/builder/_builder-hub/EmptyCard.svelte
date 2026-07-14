@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { type Icon as IconType } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { type Icon as IconType } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -14,7 +15,7 @@
 </script>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-    <button
+    <Button variant="ghost"
         type="button"
         class="empty-card"
         disabled={locked}
@@ -28,7 +29,7 @@
                 <span class="empty-cta">+ {m.builder_create()}</span>
             {/if}
         </div>
-    </button>
+    </Button>
 </div>
 
 <style>
@@ -37,7 +38,7 @@
         align-items: stretch;
         min-height: 10rem;
         border: 2px dashed var(--color-border);
-        border-radius: 0.75rem;
+        border-radius: var(--radius-lg);
         background: transparent;
         cursor: pointer;
         transition: all var(--duration-normal) var(--ease-standard);
@@ -63,25 +64,25 @@
         align-items: center;
         justify-content: center;
         width: 100%;
-        padding: 1.5rem;
-        gap: 0.5rem;
+        padding: var(--space-6);
+        gap: var(--space-2);
     }
 
     :global(.empty-icon) {
         color: var(--color-muted);
         opacity: 0.5;
-        margin-bottom: 0.25rem;
+        margin-bottom: var(--space-1);
     }
 
     .empty-title {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         font-weight: 600;
         color: var(--color-foreground);
         margin: 0;
     }
 
     .empty-desc {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         text-align: center;
         line-height: 1.4;
@@ -92,9 +93,9 @@
     .empty-cta {
         display: inline-flex;
         align-items: center;
-        gap: 0.25rem;
-        margin-top: 0.5rem;
-        font-size: 0.6875rem;
+        gap: var(--space-1);
+        margin-top: var(--space-2);
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-accent);
         text-transform: uppercase;

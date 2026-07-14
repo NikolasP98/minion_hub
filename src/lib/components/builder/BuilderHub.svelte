@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { BookOpen, Bot, Wrench, Loader2 } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { BookOpen, Bot, Wrench, Loader2 } from "lucide-svelte";
     import { goto } from "$app/navigation";
     import { onMount } from "svelte";
     import { builderState, loadBuiltSkills, loadBuiltAgents, loadBuiltTools } from "$lib/state/builder";
@@ -264,9 +265,9 @@
                     {currentTab.label}
                 </h2>
                 {#if activeTab === 'tools' ? isAdmin : !currentTab.locked}
-                    <button type="button" class="new-button" onclick={handleNewClick}>
+                    <Button variant="ghost" type="button" class="new-button" onclick={handleNewClick}>
                         <span>+ {currentTab.newLabel}</span>
-                    </button>
+                    </Button>
                 {/if}
             </div>
 
@@ -365,16 +366,16 @@
     .tools-section-head {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 0.75rem;
+        gap: var(--space-2);
+        margin-bottom: var(--space-3);
     }
 
     .tools-section-head.mt {
-        margin-top: 2rem;
+        margin-top: var(--space-8);
     }
 
     .tools-section-title {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.06em;
@@ -382,23 +383,23 @@
     }
 
     .tools-section-count {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         color: var(--color-muted);
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
-        border-radius: 9999px;
-        padding: 0.0625rem 0.4375rem;
+        border-radius: var(--radius-full);
+        padding: var(--space-0-5) var(--space-2);
     }
 
     /* ── New Button ──────────────────────────────────────────────────── */
     .new-button {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.375rem 0.75rem;
-        border-radius: 0.5rem;
-        font-size: 0.75rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: white;
         background: var(--color-accent);
@@ -417,8 +418,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.5rem;
-        padding: 3rem 0;
+        gap: var(--space-2);
+        padding: var(--space-12) 0;
     }
 
     :global(.loading-spinner) {
@@ -427,7 +428,7 @@
     }
 
     .loading-text {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         color: var(--color-muted);
     }
 
@@ -438,9 +439,9 @@
 
     /* ── Error Banner ──────────────────────────────────────────────── */
     .error-banner {
-        padding: 0.75rem 1rem;
-        border-radius: 0.5rem;
-        font-size: 0.75rem;
+        padding: var(--space-3) var(--space-4);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-caption);
         color: var(--color-danger-fg);
         background: var(--color-danger-surface);
         border: 1px solid var(--color-danger-border);

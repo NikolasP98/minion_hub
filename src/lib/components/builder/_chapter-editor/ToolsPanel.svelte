@@ -40,51 +40,51 @@
     .field {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: var(--space-1);
     }
 
     .field-label {
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-foreground);
     }
 
     .tool-count {
-        font-size: 10px;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
         background: var(--color-bg3);
-        padding: 1px 6px;
-        border-radius: 9999px;
-        margin-left: 4px;
+        padding: 1px var(--space-2);
+        border-radius: var(--radius-full);
+        margin-left: var(--space-1);
         font-weight: 500;
     }
 
     .tools-empty {
-        padding: 12px;
+        padding: var(--space-3);
         text-align: center;
         color: var(--color-muted);
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         background: var(--color-bg2);
         border: 1px dashed var(--color-border);
-        border-radius: 6px;
+        border-radius: var(--radius-md);
     }
 
     .tools-grid {
         display: flex;
         flex-wrap: wrap;
-        gap: 4px;
+        gap: var(--space-1);
     }
 
     .tool-chip {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
-        padding: 4px 8px;
+        gap: var(--space-1);
+        padding: var(--space-1) var(--space-2);
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         cursor: pointer;
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         transition: all var(--duration-fast) var(--ease-standard);
     }
     .tool-chip:hover { border-color: var(--color-accent); }
@@ -94,7 +94,7 @@
     }
     .tool-chip input[type="checkbox"] { display: none; }
 
-    .tool-icon { font-size: 14px; }
+    .tool-icon { font-size: var(--font-size-body); }
     .tool-name {
         color: var(--color-foreground);
         font-weight: 500;

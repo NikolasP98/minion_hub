@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { autosize } from '$lib/actions/autosize';
+  import { Button } from '$lib/components/ui';
+import { autosize } from '$lib/actions/autosize';
     import { Sparkles, Loader2, ChevronDown, ChevronRight } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
     import AiWandButton from './_chapter-editor/AiWandButton.svelte';
@@ -298,7 +299,7 @@
         <!-- AI Generate -->
         {#if canAiFill}
             <div class="ai-section">
-                <button class="ai-btn" onclick={requestAiSuggestion} disabled={aiLoading}>
+                <Button variant="ghost" class="ai-btn" onclick={requestAiSuggestion} disabled={aiLoading}>
                     {#if aiLoading}
                         <Loader2 size={14} class="spin" />
                         {m.builder_generating()}
@@ -306,7 +307,7 @@
                         <Sparkles size={14} />
                         {m.builder_aiFillAll()}
                     {/if}
-                </button>
+                </Button>
                 {#if aiError}
                     <span class="ai-error">{aiError}</span>
                 {/if}
@@ -322,7 +323,7 @@
         />
 
         <!-- Advanced fields (progressive disclosure) -->
-        <button class="advanced-toggle" onclick={() => (showAdvanced = !showAdvanced)}>
+        <Button variant="ghost" class="advanced-toggle" onclick={() => (showAdvanced = !showAdvanced)}>
             {#if showAdvanced}
                 <ChevronDown size={14} />
             {:else}
@@ -332,7 +333,7 @@
             {#if !showAdvanced && (guide.trim() || context.trim() || outputDef.trim())}
                 <span class="advanced-filled-dot"></span>
             {/if}
-        </button>
+        </Button>
 
         {#if showAdvanced}
             <AdvancedFields
@@ -377,21 +378,21 @@
     .drawer-body {
         flex: 1;
         overflow-y: auto;
-        padding: 16px;
+        padding: var(--space-4);
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        gap: var(--space-3);
     }
 
     /* ── Form fields ─────────────────────────────────────────────────────── */
     .field {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: var(--space-1);
     }
 
     .field-label {
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-foreground);
     }
@@ -401,35 +402,35 @@
     .field-input {
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         color: var(--color-foreground);
         font-family: inherit;
-        font-size: 13px;
-        padding: 8px 10px;
+        font-size: var(--font-size-body);
+        padding: var(--space-2) var(--space-2);
         outline: none;
-        transition: border-color 0.15s, box-shadow 0.15s;
+        transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
     }
     .field-input:focus {
         border-color: var(--color-accent);
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+        box-shadow: var(--shadow-elevation-1);
     }
     .field-input::placeholder { color: var(--color-muted); }
 
     .field-textarea {
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         color: var(--color-foreground);
         font-family: inherit;
-        font-size: 13px;
-        padding: 8px 10px;
+        font-size: var(--font-size-body);
+        padding: var(--space-2) var(--space-2);
         outline: none;
         resize: vertical;
-        transition: border-color 0.15s, box-shadow 0.15s;
+        transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
     }
     .field-textarea:focus {
         border-color: var(--color-accent);
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+        box-shadow: var(--shadow-elevation-1);
     }
     .field-textarea::placeholder { color: var(--color-muted); }
 
@@ -438,7 +439,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 4px;
+        gap: var(--space-1);
     }
 
     /* AI wand button — :global because <AiWandButton> is a child component
@@ -452,7 +453,7 @@
         padding: 0;
         background: transparent;
         border: 1px solid transparent;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         color: var(--color-accent);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
@@ -477,29 +478,29 @@
     .ai-section {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--space-2);
     }
 
     .ai-btn {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         background: var(--color-accent);
         color: white;
         font-family: inherit;
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         font-weight: 600;
-        padding: 7px 14px;
+        padding: var(--space-2) var(--space-3);
         border: none;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         cursor: pointer;
-        transition: filter 0.15s, opacity 0.15s;
+        transition: filter var(--duration-fast), opacity var(--duration-fast);
         align-self: flex-start;
     }
     .ai-btn:hover:not(:disabled) { filter: brightness(1.15); }
     .ai-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .ai-error { font-size: 11px; color: #ef4444; }
+    .ai-error { font-size: var(--font-size-caption); color: var(--color-danger-fg); }
 
     :global(.suggested-sparkle) { color: var(--color-accent); opacity: 0.7; }
 
@@ -507,24 +508,24 @@
     .advanced-toggle {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         background: transparent;
         border: none;
         border-top: 1px solid var(--color-border);
         color: var(--color-muted);
         font-family: inherit;
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         font-weight: 600;
-        padding: 10px 0 0;
+        padding: var(--space-2) 0 0;
         cursor: pointer;
-        transition: color 0.15s;
+        transition: color var(--duration-fast);
     }
     .advanced-toggle:hover { color: var(--color-foreground); }
 
     .advanced-filled-dot {
         width: 6px;
         height: 6px;
-        border-radius: 50%;
+        border-radius: var(--radius-full);
         background: var(--color-accent);
     }
 

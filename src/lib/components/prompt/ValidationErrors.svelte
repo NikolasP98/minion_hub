@@ -25,7 +25,7 @@
       <div class="border rounded px-3 py-2 text-xs {severityClass(v.severity)}">
         <div class="flex items-center gap-2 mb-1">
           <span
-            class="inline-block px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide font-semibold {severityClass(
+            class="inline-block px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] uppercase tracking-wide font-semibold {severityClass(
               v.severity,
             )}"
           >

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
+  import { Button } from '$lib/components/ui';
+import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
   import type { DatabaseNodeData, DatabaseAction } from '$lib/state/features/flow-editor.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -24,22 +25,22 @@
 
 <div class="px-3 py-3 flex flex-col gap-3">
   <div class="flex flex-col gap-1">
-    <span class="text-[11px] font-medium text-foreground">{m.flowcfg_dbAction()}</span>
+    <span class="text-[length:var(--font-size-caption)] font-medium text-foreground">{m.flowcfg_dbAction()}</span>
     <div class="grid grid-cols-4 gap-1">
       {#each (['read', 'create', 'update', 'delete'] as const) as a (a)}
-        <button
+        <Button variant="ghost"
           type="button"
-          class="px-1.5 py-1 rounded border text-[10px] capitalize transition-colors
+          class="px-1.5 py-1 rounded border text-[length:var(--font-size-telemetry)] capitalize transition-colors
             {action === a
-              ? 'border-teal-400 bg-teal-500/15 text-foreground'
+              ? 'border-[color-mix(in_srgb,var(--color-cyan)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-cyan)_15%,transparent)] text-foreground'
               : 'border-border bg-bg3 text-muted hover:border-border/80'}"
           onclick={() => set({ action: a })}
         >
           {a}
-        </button>
+        </Button>
       {/each}
     </div>
-    <p class="text-[10px] text-muted leading-snug">
+    <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">
       {isRead
         ? m.flowcfg_readActionDesc()
         : m.flowcfg_writeActionDesc()}
@@ -47,7 +48,7 @@
   </div>
 
   <div class="flex flex-col gap-1">
-    <label for="db-sql" class="text-[11px] font-medium text-foreground">{m.flowcfg_sql()}</label>
+    <label for="db-sql" class="text-[length:var(--font-size-caption)] font-medium text-foreground">{m.flowcfg_sql()}</label>
     <textarea
       id="db-sql"
       class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground resize-y min-h-20 font-mono"
@@ -55,32 +56,32 @@
       value={data.sql ?? ''}
       oninput={(e) => set({ sql: (e.target as HTMLTextAreaElement).value })}
     ></textarea>
-    <p class="text-[10px] text-muted leading-snug">
+    <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">
       <code>{'{input}'}</code> {m.flowcfg_inputExpands()}.
       {#if isRead}{m.flowcfg_readEnforceSelect()}{/if}
     </p>
   </div>
 
   <label class="flex flex-col gap-1">
-    <span class="text-[11px] font-medium text-foreground">{m.flowcfg_dbPathLabel()}</span>
+    <span class="text-[length:var(--font-size-caption)] font-medium text-foreground">{m.flowcfg_dbPathLabel()}</span>
     <input
       class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground font-mono"
       placeholder={m.flowcfg_dbPathPlaceholder()}
       value={data.dbPath ?? ''}
       oninput={(e) => set({ dbPath: (e.target as HTMLInputElement).value || undefined })}
     />
-    <p class="text-[10px] text-muted leading-snug">{m.flowcfg_dbPathConfined()}</p>
+    <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">{m.flowcfg_dbPathConfined()}</p>
   </label>
 
   {#if isRead}
-    <details class="text-[11px]">
+    <details class="text-[length:var(--font-size-caption)]">
       <summary class="cursor-pointer text-muted hover:text-foreground">{m.flowcfg_consumeMarkerOptional()}</summary>
-      <p class="text-[10px] text-muted leading-snug mt-1.5 mb-2">
+      <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug mt-1.5 mb-2">
         {m.flowcfg_consumeMarkerDesc()}
       </p>
       <div class="flex flex-col gap-2">
         <label class="flex flex-col gap-1">
-          <span class="text-[10px] font-medium text-foreground">{m.flowcfg_markerColumnLabel()}</span>
+          <span class="text-[length:var(--font-size-telemetry)] font-medium text-foreground">{m.flowcfg_markerColumnLabel()}</span>
           <input
             class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
             placeholder={m.flowcfg_markerColumnPlaceholder()}
@@ -89,7 +90,7 @@
           />
         </label>
         <label class="flex flex-col gap-1">
-          <span class="text-[10px] font-medium text-foreground">{m.flowcfg_tableLabel()}</span>
+          <span class="text-[length:var(--font-size-telemetry)] font-medium text-foreground">{m.flowcfg_tableLabel()}</span>
           <input
             class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
             placeholder={m.flowcfg_tableNamePlaceholder()}
@@ -98,7 +99,7 @@
           />
         </label>
         <label class="flex flex-col gap-1">
-          <span class="text-[10px] font-medium text-foreground">{m.flowcfg_idColumnLabel()}</span>
+          <span class="text-[length:var(--font-size-telemetry)] font-medium text-foreground">{m.flowcfg_idColumnLabel()}</span>
           <input
             class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
             placeholder={m.flowcfg_idColumnPlaceholder()}
@@ -111,7 +112,7 @@
   {/if}
 
   <label class="flex flex-col gap-1">
-    <span class="text-[11px] font-medium text-foreground">Label</span>
+    <span class="text-[length:var(--font-size-caption)] font-medium text-foreground">Label</span>
     <input
       class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
       placeholder={m.flowcfg_database()}

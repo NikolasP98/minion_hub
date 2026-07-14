@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { agentSkillsState, loadAgentSkills, setAgentSkills } from '$lib/state/agents/agent-skills.svelte';
+  import { Button } from '$lib/components/ui';
+import { agentSkillsState, loadAgentSkills, setAgentSkills } from '$lib/state/agents/agent-skills.svelte';
   import type { SkillStatusEntry } from '$lib/types/skills';
   import ToggleSwitch from '../config/ToggleSwitch.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -66,21 +67,21 @@
   <div class="flex items-center justify-between mb-2">
     <div class="flex items-center gap-2">
       <h2 class="text-sm font-semibold text-foreground">{m.skills_title()}</h2>
-      <span class="text-[10px] text-muted-foreground">
+      <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground">
         {m.skills_enabledCount({ enabled: enabledSkills.length, total: agentSkillsState.skills.length })}
       </span>
     </div>
-    <button
-      class="text-[10px] px-2.5 py-1 rounded border border-border bg-bg3 text-muted-foreground
+    <Button variant="ghost"
+      class="text-[length:var(--font-size-telemetry)] px-2.5 py-1 rounded border border-border bg-bg3 text-muted-foreground
         hover:border-accent/50 hover:text-foreground transition-colors"
       disabled={agentSkillsState.loading}
       onclick={() => loadAgentSkills(agentId)}
     >
       {agentSkillsState.loading ? m.skills_loading() : m.skills_refresh()}
-    </button>
+    </Button>
   </div>
 
-  <p class="text-[10px] text-muted-foreground mb-3">{m.skills_description()}</p>
+  <p class="text-[length:var(--font-size-telemetry)] text-muted-foreground mb-3">{m.skills_description()}</p>
 
   <!-- Search + filter -->
   <div class="flex items-center gap-2 mb-3">
@@ -88,7 +89,7 @@
       type="text"
       bind:value={searchQuery}
       placeholder={m.skills_searchPlaceholder()}
-      class="flex-1 bg-bg3 border border-border rounded-md text-[11px] text-foreground
+      class="flex-1 bg-bg3 border border-border rounded-md text-[length:var(--font-size-caption)] text-foreground
         px-2.5 py-1.5 outline-none placeholder:text-muted-strong
         focus:border-accent/50 transition-colors"
     />
@@ -98,17 +99,17 @@
         { key: 'enabled', label: m.skills_filterEnabled(), count: enabledSkills.length },
         { key: 'disabled', label: m.skills_filterDisabled(), count: disabledSkills.length },
       ] as tab (tab.key)}
-        <button
+        <Button variant="ghost"
           type="button"
-          class="text-[10px] px-2 py-1 border-none cursor-pointer transition-colors
+          class="text-[length:var(--font-size-telemetry)] px-2 py-1 border-none cursor-pointer transition-colors
             {filter === tab.key
               ? 'bg-accent/15 text-accent font-medium'
               : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-bg3'}"
           onclick={() => (filter = tab.key as typeof filter)}
         >
           {tab.label}
-          <span class="text-[9px] opacity-60 ml-0.5">{tab.count}</span>
-        </button>
+          <span class="text-[length:var(--font-size-telemetry)] opacity-60 ml-0.5">{tab.count}</span>
+        </Button>
       {/each}
     </div>
   </div>
@@ -116,22 +117,22 @@
   <!-- Missing deps banner -->
   {#if skillsWithMissing.length > 0}
     <div class="mb-3 rounded-md border border-warning/20 bg-warning/5 px-3 py-2">
-      <button
+      <Button variant="ghost"
         type="button"
         class="w-full text-left flex items-center gap-2 bg-transparent border-none cursor-pointer p-0"
         onclick={() => (missingBannerExpanded = !missingBannerExpanded)}
       >
-        <span class="text-[10px] text-warning">
+        <span class="text-[length:var(--font-size-telemetry)] text-warning">
           {m.skills_unmetDeps({ count: skillsWithMissing.length })}
         </span>
-        <span class="text-[9px] text-warning/60 ml-auto">
+        <span class="text-[length:var(--font-size-telemetry)] text-warning/60 ml-auto">
           {missingBannerExpanded ? '▾' : '▸'}
         </span>
-      </button>
+      </Button>
       {#if missingBannerExpanded}
         <div class="mt-2 space-y-1">
           {#each skillsWithMissing as skill (skill.skillKey)}
-            <div class="text-[9px] text-muted-foreground flex items-center gap-1.5">
+            <div class="text-[length:var(--font-size-telemetry)] text-muted-foreground flex items-center gap-1.5">
               <span class="text-foreground/70">{skill.name}:</span>
               <span class="text-warning/70">
                 {[...(skill.missing?.bins ?? []), ...(skill.missing?.env ?? [])].join(', ')}
@@ -146,14 +147,14 @@
   {#if agentSkillsState.loading && agentSkillsState.skills.length === 0}
     <div class="flex items-center justify-center py-8">
       <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-      <span class="ml-2 text-[11px] text-muted-foreground">{m.skills_loading()}</span>
+      <span class="ml-2 text-[length:var(--font-size-caption)] text-muted-foreground">{m.skills_loading()}</span>
     </div>
   {:else if agentSkillsState.error}
-    <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-2 text-[11px] text-destructive">
+    <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-2 text-[length:var(--font-size-caption)] text-destructive">
       {agentSkillsState.error}
     </div>
   {:else if agentSkillsState.skills.length === 0}
-    <div class="text-[11px] text-muted-foreground py-4">{m.skills_noSkills()}</div>
+    <div class="text-[length:var(--font-size-caption)] text-muted-foreground py-4">{m.skills_noSkills()}</div>
   {:else}
     <!-- Skills toggle list -->
     <div class="flex-1 overflow-y-auto -mx-1">
@@ -162,7 +163,7 @@
         {@const hasMissing = (skill.missing?.bins?.length ?? 0) > 0 || (skill.missing?.env?.length ?? 0) > 0}
         <div
           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md transition-colors group
-            hover:bg-white/[0.03]"
+            hover:bg-[var(--color-text-primary)]/[0.03]"
           title={skill.description ?? ''}
         >
           <!-- Toggle -->
@@ -186,24 +187,24 @@
           <!-- Name + badges -->
           <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
             <span
-              class="text-[11px] font-medium truncate
+              class="text-[length:var(--font-size-caption)] font-medium truncate
                 {isEnabled ? 'text-foreground' : 'text-muted-foreground'}"
             >
               {skill.name}
             </span>
             {#if skill.bundled}
-              <span class="shrink-0 bg-accent/15 border border-accent/25 rounded-full px-1.5 text-[8px] text-accent leading-relaxed">
+              <span class="shrink-0 bg-accent/15 border border-accent/25 rounded-full px-1.5 text-[length:var(--font-size-telemetry)] text-accent leading-relaxed">
                 {m.skills_badgeBundled()}
               </span>
             {/if}
             {#if skill.always}
-              <span class="shrink-0 bg-yellow-500/15 border border-yellow-500/25 rounded-full px-1.5 text-[8px] text-yellow-400 leading-relaxed">
+              <span class="shrink-0 bg-[var(--color-warning-surface)] border border-[var(--color-warning-border)] rounded-full px-1.5 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)] leading-relaxed">
                 {m.skills_badgeAlways()}
               </span>
             {/if}
             {#if hasMissing}
               <span
-                class="shrink-0 text-[10px] text-warning/70"
+                class="shrink-0 text-[length:var(--font-size-telemetry)] text-warning/70"
                 title="Missing: {[...(skill.missing?.bins ?? []), ...(skill.missing?.env ?? [])].join(', ')}"
               >!</span>
             {/if}
@@ -212,7 +213,7 @@
       {/each}
 
       {#if visibleSkills.length === 0 && searchQuery.trim()}
-        <div class="text-[11px] text-muted-strong text-center py-6">
+        <div class="text-[length:var(--font-size-caption)] text-muted-strong text-center py-6">
           {m.skills_noMatching({ query: searchQuery })}
         </div>
       {/if}

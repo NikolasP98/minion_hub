@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/agent-tools.svelte';
+  import { Button } from '$lib/components/ui';
+import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/agent-tools.svelte';
   import type { ToolStatusEntry } from '$lib/types/tools';
   import * as m from '$lib/paraglide/messages';
 
@@ -61,9 +62,9 @@
       <h2 class="text-sm font-semibold text-foreground">{m.tools_title()}</h2>
       <!-- Tooltip trigger -->
       <div class="relative">
-        <button
+        <Button variant="ghost"
           type="button"
-          class="w-4 h-4 rounded-full border border-border text-[9px] text-muted-foreground
+          class="w-4 h-4 rounded-full border border-border text-[length:var(--font-size-telemetry)] text-muted-foreground
             hover:border-accent/50 hover:text-foreground transition-colors cursor-help
             flex items-center justify-center"
           onclick={() => (tooltipOpen = !tooltipOpen)}
@@ -71,11 +72,11 @@
           onmouseleave={() => (tooltipOpen = false)}
         >
           ?
-        </button>
+        </Button>
         {#if tooltipOpen}
           <div
-            class="absolute left-6 top-0 z-50 w-64 rounded-lg border border-border bg-bg2
-              shadow-lg px-3 py-2.5 text-[10px] text-muted-foreground leading-relaxed whitespace-pre-line"
+            class="absolute left-6 top-0 z-[var(--layer-modal)] w-64 rounded-lg border border-border bg-bg2
+              shadow-lg px-3 py-2.5 text-[length:var(--font-size-telemetry)] text-muted-foreground leading-relaxed whitespace-pre-line"
           >
             {m.tools_tooltip()}
           </div>
@@ -84,35 +85,35 @@
     </div>
     <div class="flex items-center gap-2">
       {#if agentToolsState.tools.length > 0}
-        <span class="text-[10px] text-muted-foreground">
+        <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground">
           {m.tools_enabledCount({ enabled: enabledTools.length, total: agentToolsState.tools.length, profile: agentToolsState.profile })}
         </span>
       {/if}
-      <button
-        class="text-[10px] px-2.5 py-1 rounded border border-border bg-bg3 text-muted-foreground
+      <Button variant="ghost"
+        class="text-[length:var(--font-size-telemetry)] px-2.5 py-1 rounded border border-border bg-bg3 text-muted-foreground
           hover:border-accent/50 hover:text-foreground transition-colors"
         disabled={agentToolsState.loading}
         onclick={() => loadAgentTools(agentId)}
       >
         {agentToolsState.loading ? m.tools_loading() : m.tools_refresh()}
-      </button>
+      </Button>
     </div>
   </div>
 
   <!-- Description -->
-  <p class="text-[10px] text-muted-foreground -mt-1">{m.tools_description()}</p>
+  <p class="text-[length:var(--font-size-telemetry)] text-muted-foreground -mt-1">{m.tools_description()}</p>
 
   {#if agentToolsState.loading && agentToolsState.tools.length === 0}
     <div class="flex items-center justify-center py-8">
       <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-      <span class="ml-2 text-[11px] text-muted-foreground">{m.tools_loading()}</span>
+      <span class="ml-2 text-[length:var(--font-size-caption)] text-muted-foreground">{m.tools_loading()}</span>
     </div>
   {:else if agentToolsState.error}
-    <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-2 text-[11px] text-destructive">
+    <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-2 text-[length:var(--font-size-caption)] text-destructive">
       {agentToolsState.error}
     </div>
   {:else if agentToolsState.tools.length === 0}
-    <div class="text-[11px] text-muted-foreground py-4">{m.tools_noTools()}</div>
+    <div class="text-[length:var(--font-size-caption)] text-muted-foreground py-4">{m.tools_noTools()}</div>
   {:else}
     <!-- Two-column layout -->
     <div class="grid grid-cols-2 gap-3">
@@ -128,17 +129,17 @@
         ondrop={(e) => onDrop(e, true)}
       >
         <div class="px-3 py-2 border-b border-success/20 flex items-center justify-between">
-          <span class="text-[11px] font-semibold text-success uppercase tracking-wider">
+          <span class="text-[length:var(--font-size-caption)] font-semibold text-success uppercase tracking-wider">
             {m.tools_enabled()}
           </span>
-          <span class="text-[10px] text-success/70">{enabledTools.length}</span>
+          <span class="text-[length:var(--font-size-telemetry)] text-success/70">{enabledTools.length}</span>
         </div>
         <div class="max-h-[500px] overflow-y-auto p-1">
           {#each enabledTools as tool (tool.id)}
             {@render toolItem(tool)}
           {/each}
           {#if enabledTools.length === 0}
-            <div class="text-[10px] text-muted-strong text-center py-4">
+            <div class="text-[length:var(--font-size-telemetry)] text-muted-strong text-center py-4">
               {m.tools_dropToEnable()}
             </div>
           {/if}
@@ -157,17 +158,17 @@
         ondrop={(e) => onDrop(e, false)}
       >
         <div class="px-3 py-2 border-b border-border flex items-center justify-between">
-          <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+          <span class="text-[length:var(--font-size-caption)] font-semibold text-muted-foreground uppercase tracking-wider">
             {m.tools_disabled()}
           </span>
-          <span class="text-[10px] text-muted-strong">{disabledTools.length}</span>
+          <span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{disabledTools.length}</span>
         </div>
         <div class="max-h-[500px] overflow-y-auto p-1 opacity-60">
           {#each disabledTools as tool (tool.id)}
             {@render toolItem(tool)}
           {/each}
           {#if disabledTools.length === 0}
-            <div class="text-[10px] text-muted-strong text-center py-4">
+            <div class="text-[length:var(--font-size-telemetry)] text-muted-strong text-center py-4">
               {m.tools_dropToDisable()}
             </div>
           {/if}
@@ -183,31 +184,31 @@
     ondragstart={(e) => onDragStart(e, tool)}
     ondragend={onDragEnd}
     class="flex items-start gap-1.5 px-2 py-1.5 rounded-md cursor-grab active:cursor-grabbing
-      hover:bg-white/5 transition-colors group
+      hover:bg-[var(--color-text-primary)]/5 transition-colors group
       {draggedToolId === tool.id ? 'opacity-30' : ''}"
     role="listitem"
   >
     <!-- Drag handle -->
-    <span class="text-[10px] text-muted-strong group-hover:text-muted-foreground mt-0.5 shrink-0 select-none">
+    <span class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-muted-foreground mt-0.5 shrink-0 select-none">
       ⠿
     </span>
 
     <!-- Content -->
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-1 flex-wrap">
-        <span class="text-[10px] text-foreground font-mono font-medium truncate">{tool.id}</span>
+        <span class="text-[length:var(--font-size-telemetry)] text-foreground font-mono font-medium truncate">{tool.id}</span>
         {#if tool.mcpExport}
-          <span class="shrink-0 bg-accent/20 border border-accent/30 rounded-full px-1 text-[8px] text-accent leading-relaxed">
+          <span class="shrink-0 bg-accent/20 border border-accent/30 rounded-full px-1 text-[length:var(--font-size-telemetry)] text-accent leading-relaxed">
             {m.tools_badgeMcp()}
           </span>
         {/if}
         {#if tool.multi}
-          <span class="shrink-0 bg-bg3 border border-border rounded-full px-1 text-[8px] text-muted-foreground leading-relaxed">
+          <span class="shrink-0 bg-bg3 border border-border rounded-full px-1 text-[length:var(--font-size-telemetry)] text-muted-foreground leading-relaxed">
             {m.tools_badgeMulti()}
           </span>
         {/if}
         {#if tool.optional}
-          <span class="shrink-0 bg-bg3 border border-border rounded-full px-1 text-[8px] text-muted-foreground leading-relaxed">
+          <span class="shrink-0 bg-bg3 border border-border rounded-full px-1 text-[length:var(--font-size-telemetry)] text-muted-foreground leading-relaxed">
             {m.tools_badgeOpt()}
           </span>
         {/if}
@@ -215,7 +216,7 @@
       {#if tool.groups.length > 0}
         <div class="flex gap-0.5 flex-wrap mt-0.5">
           {#each tool.groups as g (g)}
-            <span class="bg-bg3 border border-border rounded-full px-1 text-[8px] text-muted-foreground leading-relaxed">
+            <span class="bg-bg3 border border-border rounded-full px-1 text-[length:var(--font-size-telemetry)] text-muted-foreground leading-relaxed">
               {groupLabel(g)}
             </span>
           {/each}

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/features/flow-editor.svelte';
+  import { Button, Select } from '$lib/components/ui';
+import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/features/flow-editor.svelte';
   import type { TriggerNodeData, ChannelTriggerSource } from '$lib/state/features/flow-editor.svelte';
   import { conn } from '$lib/state/gateway';
   import {
@@ -57,36 +58,36 @@
 <div class="px-3 py-3 flex flex-col gap-3">
   <!-- Event -->
   <div class="flex flex-col gap-1">
-    <label for="tr-event" class="text-[11px] font-medium text-foreground">Event</label>
-    <select
+    <label for="tr-event" class="text-[length:var(--font-size-caption)] font-medium text-foreground">Event</label>
+    <Select size="sm"
       id="tr-event"
       class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
       value={data.event}
-      onchange={(e) => setEvent((e.target as HTMLSelectElement).value as TriggerNodeData['event'])}
+      onchange={(next) => setEvent(String(next) as TriggerNodeData['event'])}
     >
       {#each EVENTS as e (e.value)}
         <option value={e.value}>{e.label}</option>
       {/each}
-    </select>
-    <p class="text-[10px] text-muted leading-snug">
+    </Select>
+    <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">
       {eventHint} {m.flowcfg_eventAppliesToSources()}
     </p>
   </div>
 
   <!-- Sources -->
   <div class="flex items-center justify-between pt-1">
-    <span class="text-[11px] font-semibold text-foreground">Sources</span>
-    <button
-      class="flex items-center gap-1 text-[10px] text-amber-300 hover:text-amber-200 transition-colors"
+    <span class="text-[length:var(--font-size-caption)] font-semibold text-foreground">Sources</span>
+    <Button variant="ghost"
+      class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)] hover:text-[var(--color-warning-fg)] transition-colors"
       onclick={addSource}
       title={m.flowcfg_listenOnAnotherChannel()}
     >
       <Plus size={12} /> {m.common_add()}
-    </button>
+    </Button>
   </div>
 
   {#if sources.length === 0}
-    <p class="text-[10px] text-muted leading-snug">
+    <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">
       {m.flowcfg_noSourcesDesc()}
     </p>
   {/if}
@@ -97,10 +98,10 @@
       <div class="border border-border rounded-lg p-2 flex flex-col gap-1.5 bg-bg3/40">
         <div class="flex items-center gap-1.5">
           <!-- Channel -->
-          <select
+          <Select size="sm"
             class="flex-1 text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
             value={s.channel}
-            onchange={(e) => patchSource(i, { channel: (e.target as HTMLSelectElement).value, accountId: undefined })}
+            onchange={(next) => patchSource(i, { channel: String(next), accountId: undefined })}
           >
             <option value="" disabled>{m.flowcfg_selectChannel()}</option>
             {#each channels as c (c.id)}
@@ -109,31 +110,31 @@
             {#if s.channel && !channels.some((c) => c.id === s.channel)}
               <option value={s.channel}>{s.channel}</option>
             {/if}
-          </select>
-          <button
-            class="shrink-0 text-muted/60 hover:text-red-400 transition-colors"
+          </Select>
+          <Button variant="ghost"
+            class="shrink-0 text-muted/60 hover:text-[var(--color-danger-fg)] transition-colors"
             onclick={() => removeSource(i)}
             title={m.flowcfg_removeSource()}
             aria-label={m.flowcfg_removeSource()}
           >
             <Trash2 size={12} />
-          </button>
+          </Button>
         </div>
 
         <!-- Account (linked) -->
         {#if s.channel}
-          <select
-            class="w-full text-[11px] bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+          <Select size="sm"
+            class="w-full text-[length:var(--font-size-caption)] bg-bg3 border border-border rounded px-2 py-1 text-foreground"
             value={s.accountId ?? ''}
-            onchange={(e) => patchSource(i, { accountId: (e.target as HTMLSelectElement).value || undefined })}
+            onchange={(next) => patchSource(i, { accountId: String(next) || undefined })}
           >
             <option value="">{m.flowcfg_anyLinkedAccount()}</option>
             {#each accounts as a (a.accountId)}
               <option value={a.accountId}>{a.label}{a.phone && a.phone !== a.label ? ` · ${a.phone}` : ''}{a.connected ? '' : ' — offline'}</option>
             {/each}
-          </select>
+          </Select>
           {#if accounts.length === 0}
-            <p class="text-[10px] text-amber-400/80 leading-snug">
+            <p class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 leading-snug">
               No linked account found for {s.channel} — link one in Settings, or leave as “any”.
             </p>
           {/if}
@@ -152,13 +153,13 @@
     />
     <span class="text-xs font-medium text-foreground">{m.flowcfg_replyToChannel()}</span>
   </label>
-  <p class="text-[10px] text-muted leading-snug -mt-1.5">
+  <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug -mt-1.5">
     {m.flowcfg_sendOutputBack()}
   </p>
 
   <!-- Optional agent filter -->
   <div class="flex flex-col gap-1 pt-1">
-    <label for="tr-agent" class="text-[11px] font-medium text-foreground">
+    <label for="tr-agent" class="text-[length:var(--font-size-caption)] font-medium text-foreground">
       Agent filter <span class="text-muted font-normal">(optional)</span>
     </label>
     <input

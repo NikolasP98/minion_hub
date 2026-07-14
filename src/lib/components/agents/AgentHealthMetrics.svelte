@@ -21,16 +21,16 @@
 </script>
 
 <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-  <div class="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5">
-    <p class="mb-1 text-[10px] font-medium uppercase tracking-wide text-white/40">
+  <div class="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-text-primary)]/[0.02] px-3 py-2.5">
+    <p class="mb-1 text-[length:var(--font-size-telemetry)] font-medium uppercase tracking-wide text-[var(--color-text-primary)]/40">
       {m.agent_health_status()}
     </p>
     <StatusDot state={health.state} label={stateLabel} expanded />
   </div>
   {#each [[m.agent_health_last_run(), lastRun], [m.agent_health_runs_30d(), runs], [m.agent_health_success(), success]] as [label, value] (label)}
-    <div class="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5">
-      <p class="mb-1 text-[10px] font-medium uppercase tracking-wide text-white/40">{label}</p>
-      <p class="text-base font-semibold text-white">{value}</p>
+    <div class="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-text-primary)]/[0.02] px-3 py-2.5">
+      <p class="mb-1 text-[length:var(--font-size-telemetry)] font-medium uppercase tracking-wide text-[var(--color-text-primary)]/40">{label}</p>
+      <p class="text-base font-semibold text-[var(--color-text-primary)]">{value}</p>
     </div>
   {/each}
 </div>

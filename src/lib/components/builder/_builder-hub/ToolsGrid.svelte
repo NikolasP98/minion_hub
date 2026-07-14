@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Trash2 } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { Trash2 } from "lucide-svelte";
     import { goto } from "$app/navigation";
     import * as m from '$lib/paraglide/messages';
     import { formatRelativeTime, toolEmoji, type UnifiedTool } from "./utils";
@@ -72,9 +73,9 @@
                         ></span>
                     {:else}
                         {#if isAdmin}
-                            <button type="button" class="item-delete" onclick={(e) => { e.stopPropagation(); onDeleteCustom(tool.id, tool.name); }} title="Delete tool">
+                            <Button variant="ghost" type="button" class="item-delete" onclick={(e) => { e.stopPropagation(); onDeleteCustom(tool.id, tool.name); }} title="Delete tool">
                                 <Trash2 size={12} />
-                            </button>
+                            </Button>
                         {/if}
                         <span class="status-badge {tool.status}">{tool.status}</span>
                     {/if}
@@ -114,7 +115,7 @@
         display: flex;
         align-items: stretch;
         border: 1px solid var(--color-border);
-        border-radius: 0.75rem;
+        border-radius: var(--radius-lg);
         background: var(--color-bg2);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
@@ -149,15 +150,15 @@
         display: flex;
         flex-direction: column;
         width: 100%;
-        padding: 0.875rem 1rem;
-        gap: 0.5rem;
+        padding: var(--space-3) var(--space-4);
+        gap: var(--space-2);
         min-width: 0;
     }
 
     .item-card-header {
         display: flex;
         align-items: center;
-        gap: 0.625rem;
+        gap: var(--space-2);
         min-width: 0;
     }
 
@@ -167,10 +168,10 @@
         justify-content: center;
         width: 2rem;
         height: 2rem;
-        border-radius: 0.5rem;
+        border-radius: var(--radius-md);
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
-        font-size: 1rem;
+        font-size: var(--font-size-page-title);
         line-height: 1;
         flex-shrink: 0;
     }
@@ -178,13 +179,13 @@
     .item-title-stack {
         display: flex;
         flex-direction: column;
-        gap: 0.125rem;
+        gap: var(--space-0-5);
         min-width: 0;
         flex: 1;
     }
 
     .item-name {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         font-weight: 600;
         color: var(--color-foreground);
         overflow: hidden;
@@ -193,7 +194,7 @@
     }
 
     .item-meta {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
         overflow: hidden;
         text-overflow: ellipsis;
@@ -207,15 +208,15 @@
     .status-dot {
         width: 0.5rem;
         height: 0.5rem;
-        border-radius: 50%;
+        border-radius: var(--radius-full);
         flex-shrink: 0;
         align-self: flex-start;
-        margin-top: 0.25rem;
+        margin-top: var(--space-1);
     }
 
     .status-dot.on {
-        background: var(--color-success, #22c55e);
-        box-shadow: 0 0 6px color-mix(in srgb, var(--color-success, #22c55e) 50%, transparent);
+        background: var(--color-success, var(--color-success-fg));
+        box-shadow: var(--shadow-status-glow);
     }
 
     .status-dot.off {
@@ -227,9 +228,9 @@
         align-items: center;
         flex-shrink: 0;
         align-self: flex-start;
-        padding: 0.125rem 0.5rem;
-        border-radius: 9999px;
-        font-size: 0.5625rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-telemetry);
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -241,12 +242,12 @@
     }
 
     .status-badge.published {
-        background: color-mix(in srgb, var(--color-success, #22c55e) 14%, transparent);
-        color: var(--color-success, #22c55e);
+        background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 14%, transparent);
+        color: var(--color-success, var(--color-success-fg));
     }
 
     .item-desc {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         line-height: 1.4;
         overflow: hidden;
@@ -259,17 +260,17 @@
     .chips-row {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.25rem;
+        gap: var(--space-1);
         margin-top: auto;
     }
 
     .chip {
-        font-size: 0.5625rem;
+        font-size: var(--font-size-telemetry);
         font-family: var(--font-mono, monospace);
         color: var(--color-muted);
         background: var(--color-bg3);
-        padding: 0.0625rem 0.375rem;
-        border-radius: 0.25rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-sm);
         border: 1px solid var(--color-border);
     }
 
@@ -280,9 +281,9 @@
     }
 
     .chip.perm.allowed {
-        color: var(--color-success, #22c55e);
-        border-color: color-mix(in srgb, var(--color-success, #22c55e) 30%, transparent);
-        background: color-mix(in srgb, var(--color-success, #22c55e) 10%, transparent);
+        color: var(--color-success, var(--color-success-fg));
+        border-color: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 30%, transparent);
+        background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 10%, transparent);
     }
 
     .chip.perm.denied {
@@ -297,7 +298,7 @@
         justify-content: center;
         width: 1.25rem;
         height: 1.25rem;
-        border-radius: 0.25rem;
+        border-radius: var(--radius-sm);
         color: var(--color-muted);
         background: none;
         border: none;

@@ -38,7 +38,7 @@
 <style>
     .cursor-tooltip {
         position: fixed;
-        z-index: 9999;
+        z-index: var(--layer-debug);
         transform: translate(12px, -50%);
         pointer-events: none;
         animation: tooltip-in 0.2s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
@@ -60,31 +60,31 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 3px;
+        gap: var(--space-1);
         background: var(--color-bg);
         border: 1px solid var(--color-border);
-        border-radius: 8px;
-        padding: 8px 12px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        border-radius: var(--radius-md);
+        padding: var(--space-2) var(--space-3);
+        box-shadow: var(--shadow-overlay);
         backdrop-filter: blur(12px);
         max-width: 220px;
         text-align: center;
     }
 
     .tooltip-emoji {
-        font-size: 18px;
+        font-size: var(--font-size-page-title);
         line-height: 1;
     }
 
     .tooltip-name {
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         font-weight: 700;
         color: var(--color-foreground);
         line-height: 1.2;
     }
 
     .tooltip-desc {
-        font-size: 10px;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
         line-height: 1.3;
         display: -webkit-box;
@@ -95,12 +95,12 @@
     }
 
     .tooltip-badge {
-        font-size: 9px;
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-        border-radius: 3px;
-        padding: 1px 5px;
+        border-radius: var(--radius-xs);
+        padding: 1px var(--space-1);
         margin-top: 1px;
     }
 </style>

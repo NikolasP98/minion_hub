@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
+  import { Button } from '$lib/components/ui';
+import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
 	import { sendRequest } from '$lib/services/gateway.svelte';
 	import * as m from '$lib/paraglide/messages';
 
@@ -63,35 +64,35 @@
 <div class="flex flex-col gap-0.5">
 	{#each piAgentState.templates as tmpl (tmpl.name)}
 		<!-- Collapsed row -->
-		<button
+		<Button variant="ghost"
 			type="button"
-			class="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-white/[0.03] transition-colors cursor-pointer text-left border-0 bg-transparent border-b border-border/30"
+			class="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-[var(--color-text-primary)]/[0.03] transition-colors cursor-pointer text-left border-0 bg-transparent border-b border-border/30"
 			onclick={() => toggleExpand(tmpl.name)}
 		>
 			<!-- Template name -->
-			<span class="text-[11px] font-semibold text-foreground truncate">{tmpl.name}</span>
+			<span class="text-[length:var(--font-size-caption)] font-semibold text-foreground truncate">{tmpl.name}</span>
 
 			<!-- Model badge -->
 			{#if tmpl.model}
-				<span class="text-[9px] text-muted-strong truncate max-w-20">{tmpl.model}</span>
+				<span class="text-[length:var(--font-size-telemetry)] text-muted-strong truncate max-w-20">{tmpl.model}</span>
 			{/if}
 
 			<!-- Spacer -->
 			<span class="flex-1"></span>
 
 			<!-- Usage count -->
-			<span class="text-[9px] text-muted-strong">{m.pi_tmplUses({ count: tmpl.spawnCount })}</span>
+			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{m.pi_tmplUses({ count: tmpl.spawnCount })}</span>
 
 			<!-- Last used -->
-			<span class="text-[9px] text-muted-strong">{formatRelativeTime(tmpl.lastUsedAt)}</span>
+			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{formatRelativeTime(tmpl.lastUsedAt)}</span>
 
 			<!-- Expand indicator -->
-			<span class="text-[9px] text-muted-strong">{expandedName === tmpl.name ? '\u25B2' : '\u25BC'}</span>
-		</button>
+			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{expandedName === tmpl.name ? '\u25B2' : '\u25BC'}</span>
+		</Button>
 
 		<!-- Expanded detail -->
 		{#if expandedName === tmpl.name}
-			<div class="px-3 py-2 bg-bg2/50 border-b border-border/30 text-[10px]">
+			<div class="px-3 py-2 bg-bg2/50 border-b border-border/30 text-[length:var(--font-size-telemetry)]">
 				{#if detailLoading && !templateDetails.has(tmpl.name)}
 					<p class="text-muted">{m.pi_orchLoadingDetails()}</p>
 				{:else}
@@ -105,7 +106,7 @@
 						{#if tmpl.tags.length > 0}
 							<div class="flex flex-wrap gap-1">
 								{#each tmpl.tags as tag}
-									<span class="text-[8px] px-1.5 py-0.5 rounded bg-accent/10 text-accent/60">{tag}</span>
+									<span class="text-[length:var(--font-size-telemetry)] px-1.5 py-0.5 rounded bg-accent/10 text-accent/60">{tag}</span>
 								{/each}
 							</div>
 						{/if}
@@ -143,15 +144,15 @@
 							{#if getSystemPromptLines(getDetail(tmpl.name)!).length > 0}
 								<div class="mt-1">
 									<div class="text-muted mb-0.5">{m.pi_tmplSystemPrompt()}:</div>
-									<pre class="text-[9px] text-foreground/70 bg-bg3 rounded p-2 overflow-x-auto whitespace-pre-wrap break-words max-h-40 overflow-y-auto">{#if showFullPrompt === tmpl.name}{getSystemPromptLines(getDetail(tmpl.name)!).join('\n')}{:else}{getSystemPromptLines(getDetail(tmpl.name)!).slice(0, 5).join('\n')}{/if}</pre>
+									<pre class="text-[length:var(--font-size-telemetry)] text-foreground/70 bg-bg3 rounded p-2 overflow-x-auto whitespace-pre-wrap break-words max-h-40 overflow-y-auto">{#if showFullPrompt === tmpl.name}{getSystemPromptLines(getDetail(tmpl.name)!).join('\n')}{:else}{getSystemPromptLines(getDetail(tmpl.name)!).slice(0, 5).join('\n')}{/if}</pre>
 									{#if getSystemPromptLines(getDetail(tmpl.name)!).length > 5}
-										<button
+										<Button variant="ghost"
 											type="button"
-											class="text-[9px] text-accent hover:text-accent/80 mt-0.5 bg-transparent border-0 cursor-pointer p-0"
+											class="text-[length:var(--font-size-telemetry)] text-accent hover:text-accent/80 mt-0.5 bg-transparent border-0 cursor-pointer p-0"
 											onclick={(e: MouseEvent) => { e.stopPropagation(); showFullPrompt = showFullPrompt === tmpl.name ? null : tmpl.name; }}
 										>
 											{showFullPrompt === tmpl.name ? m.pi_tmplShowLess() : m.pi_tmplShowFull({ lines: getSystemPromptLines(getDetail(tmpl.name)!).length })}
-										</button>
+										</Button>
 									{/if}
 								</div>
 							{/if}
@@ -162,6 +163,6 @@
 		{/if}
 	{/each}
 	{#if piAgentState.templates.length === 0}
-		<p class="text-[11px] text-muted px-2 py-3">{m.pi_tmplNone()}</p>
+		<p class="text-[length:var(--font-size-caption)] text-muted px-2 py-3">{m.pi_tmplNone()}</p>
 	{/if}
 </div>

@@ -74,15 +74,15 @@
     .field {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        margin-bottom: 16px;
+        gap: var(--space-1);
+        margin-bottom: var(--space-4);
     }
     .field:last-child {
         margin-bottom: 0;
     }
 
     .field-label {
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-foreground);
     }
@@ -92,27 +92,25 @@
     }
 
     .field-error {
-        font-size: 11px;
-        color: var(--color-destructive, #ef4444);
+        font-size: var(--font-size-caption);
+        color: var(--color-destructive, var(--color-danger-fg));
     }
 
     .field-input {
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         color: var(--color-foreground);
         font-family: inherit;
-        font-size: 13px;
-        padding: 8px 10px;
+        font-size: var(--font-size-body);
+        padding: var(--space-2) var(--space-2);
         outline: none;
-        transition:
-            border-color 0.15s,
-            box-shadow 0.15s;
+        transition: border-color var(--duration-fast),
+            box-shadow var(--duration-fast);
     }
     .field-input:focus {
         border-color: var(--color-accent);
-        box-shadow: 0 0 0 2px
-            color-mix(in srgb, var(--color-accent) 20%, transparent);
+        box-shadow: var(--shadow-elevation-1);
     }
     .field-input::placeholder {
         color: var(--color-muted);
@@ -121,7 +119,7 @@
     .name-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-2);
     }
 
     .name-field {
@@ -142,17 +140,17 @@
     }
 
     .model-badge {
-        font-size: 10px;
+        font-size: var(--font-size-telemetry);
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-        border-radius: 3px;
-        padding: 1px 5px;
+        border-radius: var(--radius-xs);
+        padding: 1px var(--space-1);
         flex-shrink: 0;
     }
 
     .model-item-id {
         color: var(--color-muted);
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         font-family: "JetBrains Mono", "Fira Code", monospace;
         flex-shrink: 0;
     }

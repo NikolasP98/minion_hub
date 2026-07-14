@@ -1,5 +1,6 @@
 <script lang="ts">
-  import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte';
+  import { Button } from '$lib/components/ui';
+import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import { fetchSessionPromptReport, fetchPromptPreview } from '$lib/services/gateway.svelte';
   import {
@@ -37,11 +38,11 @@
   } = $props();
 
   const LAYER_META = $derived<Record<string, { label: string; color: string; description: string }>>({
-    platform: { label: m.prompt_layerPlatform(), color: '#6b7280', description: m.prompt_layerPlatformDesc() },
-    'agent-type': { label: m.prompt_layerAgentType(), color: '#8b5cf6', description: m.prompt_layerAgentTypeDesc() },
-    identity: { label: m.prompt_layerIdentity(), color: '#06b6d4', description: m.prompt_layerIdentityDesc() },
-    user: { label: m.prompt_layerUser(), color: '#f59e0b', description: m.prompt_layerUserDesc() },
-    session: { label: m.prompt_layerSession(), color: '#10b981', description: m.prompt_layerSessionDesc() },
+    platform: { label: m.prompt_layerPlatform(), color: 'var(--color-text-tertiary)', description: m.prompt_layerPlatformDesc() },
+    'agent-type': { label: m.prompt_layerAgentType(), color: 'var(--color-purple)', description: m.prompt_layerAgentTypeDesc() },
+    identity: { label: m.prompt_layerIdentity(), color: 'var(--color-cyan)', description: m.prompt_layerIdentityDesc() },
+    user: { label: m.prompt_layerUser(), color: 'var(--color-warning-fg)', description: m.prompt_layerUserDesc() },
+    session: { label: m.prompt_layerSession(), color: 'var(--color-emerald)', description: m.prompt_layerSessionDesc() },
   });
 
   // Concrete PromptMode values. The shared PromptMode is the *assembly* mode
@@ -436,10 +437,10 @@
     const systemTotal = report.systemPrompt?.chars ?? 0;
     const coreChars = Math.max(0, systemTotal - bootstrapChars - skillsChars - toolsChars);
     const segs: BarSegment[] = [];
-    if (coreChars > 0) segs.push({ label: 'Core', chars: coreChars, color: '#6b7280' });
-    if (bootstrapChars > 0) segs.push({ label: 'Bootstrap', chars: bootstrapChars, color: '#06b6d4' });
-    if (skillsChars > 0) segs.push({ label: 'Skills', chars: skillsChars, color: '#8b5cf6' });
-    if (toolsChars > 0) segs.push({ label: 'Tools', chars: toolsChars, color: '#f59e0b' });
+    if (coreChars > 0) segs.push({ label: 'Core', chars: coreChars, color: 'var(--color-text-tertiary)' });
+    if (bootstrapChars > 0) segs.push({ label: 'Bootstrap', chars: bootstrapChars, color: 'var(--color-cyan)' });
+    if (skillsChars > 0) segs.push({ label: 'Skills', chars: skillsChars, color: 'var(--color-purple)' });
+    if (toolsChars > 0) segs.push({ label: 'Tools', chars: toolsChars, color: 'var(--color-warning-fg)' });
     return segs;
   });
 
@@ -448,32 +449,32 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="flex flex-col h-full overflow-hidden text-[12px]">
+<div class="flex flex-col h-full overflow-hidden text-[length:var(--font-size-caption)]">
   <!-- Topbar: Inspect / Simulate + budget bar -->
   <div class="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border bg-bg2">
     <div class="flex rounded border border-border overflow-hidden">
-      <button
+      <Button variant="ghost"
         type="button"
-        class="text-[10px] px-2.5 py-1 transition-colors cursor-pointer
+        class="text-[length:var(--font-size-telemetry)] px-2.5 py-1 transition-colors cursor-pointer
           {viewContext === 'inspect' ? 'bg-accent/15 text-accent font-semibold' : 'text-muted hover:text-foreground'}"
         onclick={() => setViewContext('inspect')}
       >
         Inspect
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
-        class="text-[10px] px-2.5 py-1 transition-colors cursor-pointer flex items-center gap-1
+        class="text-[length:var(--font-size-telemetry)] px-2.5 py-1 transition-colors cursor-pointer flex items-center gap-1
           {viewContext === 'simulate' ? 'bg-accent/15 text-accent font-semibold' : 'text-muted hover:text-foreground'}"
         onclick={() => setViewContext('simulate')}
       >
         Simulate
         {#if testDirty}
-          <span class="w-1.5 h-1.5 rounded-full bg-amber-400" title="Unsaved test input"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--color-warning-surface)]" title="Unsaved test input"></span>
         {/if}
-      </button>
+      </Button>
     </div>
     {#if previewTotalTokens > 0}
-      <span class="text-[9px] font-mono text-foreground/40 tabular-nums">{previewTotalTokens.toLocaleString()} tok</span>
+      <span class="text-[length:var(--font-size-telemetry)] font-mono text-foreground/40 tabular-nums">{previewTotalTokens.toLocaleString()} tok</span>
     {/if}
   </div>
 
@@ -518,13 +519,13 @@
 
     <!-- Mobile drawer -->
     {#if railOpenMobile}
-      <button
+      <Button variant="ghost"
         type="button"
-        class="lg:hidden absolute inset-0 z-20 bg-black/40"
+        class="lg:hidden absolute inset-0 z-[var(--layer-navigation)] bg-[color-mix(in_srgb,var(--color-canvas)_40%,transparent)]"
         aria-label="Close sections"
         onclick={() => (railOpenMobile = false)}
-      ></button>
-      <div class="lg:hidden absolute left-0 top-0 bottom-0 z-30 w-[280px] shadow-xl">
+      ></Button>
+      <div class="lg:hidden absolute left-0 top-0 bottom-0 z-[var(--layer-dropdown)] w-[280px] shadow-xl">
         <PipelineSidebar
           bind:groupMode
           bind:sortMode
@@ -564,19 +565,19 @@
       {:else if error}
         <div class="flex flex-col items-center justify-center h-full gap-3">
           <span class="text-destructive text-xs">{m.prompt_couldNotLoad()}</span>
-          <span class="text-muted text-[11px]">{error}</span>
-          <button
+          <span class="text-muted text-[length:var(--font-size-caption)]">{error}</span>
+          <Button variant="ghost"
             type="button"
-            class="text-[11px] font-semibold px-3 py-1.5 rounded border border-border text-muted hover:text-foreground transition-colors cursor-pointer"
+            class="text-[length:var(--font-size-caption)] font-semibold px-3 py-1.5 rounded border border-border text-muted hover:text-foreground transition-colors cursor-pointer"
             onclick={() => loadAll(sessionKey)}
           >
             {m.common_retry()}
-          </button>
+          </Button>
         </div>
       {:else if !report}
         <div class="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
           <span class="text-muted text-xs">{m.prompt_noReport()}</span>
-          <span class="text-muted text-[11px]">{m.prompt_noReportHint()}</span>
+          <span class="text-muted text-[length:var(--font-size-caption)]">{m.prompt_noReportHint()}</span>
         </div>
       {:else if groupMode === 'pipeline'}
         <ClassicDetail {activeStep} {report} {totalChars} />
@@ -588,19 +589,19 @@
             <div class="flex items-center gap-2">
               <div class="flex-1 h-0.5 rounded-full bg-border/60 overflow-hidden">
                 <div
-                  class="h-full bg-accent transition-[width] duration-150 ease-out"
+                  class="h-full bg-accent transition-[width] duration-[var(--duration-fast)] ease-out"
                   style:width="{streamTotal > 0 ? Math.round((streamReceived / streamTotal) * 100) : 5}%"
                 ></div>
               </div>
-              <span class="text-[9px] font-mono text-accent/80 tabular-nums shrink-0">
+              <span class="text-[length:var(--font-size-telemetry)] font-mono text-accent/80 tabular-nums shrink-0">
                 Building {streamReceived}{streamTotal > 0 ? `/${streamTotal}` : ''}
               </span>
             </div>
           {/if}
           <div class="flex items-center justify-between">
-            <h2 class="text-[10px] font-bold uppercase tracking-widest text-muted">Assembled prompt</h2>
+            <h2 class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-muted">Assembled prompt</h2>
             {#if previewTotalTokens > 0}
-              <span class="text-[10px] font-mono text-foreground/40 tabular-nums">{previewTotalTokens.toLocaleString()} tokens · {previewTotalBytes.toLocaleString()} bytes</span>
+              <span class="text-[length:var(--font-size-telemetry)] font-mono text-foreground/40 tabular-nums">{previewTotalTokens.toLocaleString()} tokens · {previewTotalBytes.toLocaleString()} bytes</span>
             {/if}
           </div>
           {#if assembled}
@@ -613,9 +614,9 @@
               {#each orderedSections as section (section.id)}
                 {#if firstCacheableId === section.id}
                   <div class="flex items-center gap-2 py-1" role="separator">
-                    <span class="flex-1 border-t border-dashed border-amber-500/40"></span>
-                    <span class="text-[9px] uppercase tracking-widest text-amber-400/70 font-mono">⚡ cacheable boundary</span>
-                    <span class="flex-1 border-t border-dashed border-amber-500/40"></span>
+                    <span class="flex-1 border-t border-dashed border-[var(--color-warning-border)]"></span>
+                    <span class="text-[length:var(--font-size-telemetry)] uppercase tracking-widest text-[var(--color-warning-fg)]/70 font-mono">⚡ cacheable boundary</span>
+                    <span class="flex-1 border-t border-dashed border-[var(--color-warning-border)]"></span>
                   </div>
                 {/if}
                 <div
@@ -625,16 +626,16 @@
                     {section.disabled ? 'opacity-40' : ''}"
                 >
                   <div class="flex items-center gap-2 mb-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full shrink-0" style:background-color={LAYER_META[section.layer]?.color ?? '#6b7280'}></span>
-                    <span class="text-[10px] font-bold uppercase tracking-wide text-muted flex-1">{section.label}</span>
-                    {#if section.cacheable}<span class="text-[10px] text-amber-400" title="Cacheable">⚡</span>{/if}
+                    <span class="w-1.5 h-1.5 rounded-full shrink-0" style:background-color={LAYER_META[section.layer]?.color ?? 'var(--color-text-tertiary)'}></span>
+                    <span class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wide text-muted flex-1">{section.label}</span>
+                    {#if section.cacheable}<span class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]" title="Cacheable">⚡</span>{/if}
                   </div>
                   {#if section.content}
-                    <div class="prompt-md text-[11px]">
+                    <div class="prompt-md text-[length:var(--font-size-caption)]">
                       <MarkdownMessage value={section.content} tone="assistant" />
                     </div>
                   {:else}
-                    <p class="text-[11px] text-muted italic">— no rendered content available</p>
+                    <p class="text-[length:var(--font-size-caption)] text-muted italic">— no rendered content available</p>
                   {/if}
                 </div>
               {/each}
@@ -645,25 +646,25 @@
 
       <!-- Inspector slide-over -->
       {#if report && (selectedSection || (selectedSectionId === '__stage__' && groupMode === 'pipeline'))}
-        <button
+        <Button variant="ghost"
           type="button"
-          class="absolute inset-0 z-10 bg-transparent cursor-default"
+          class="absolute inset-0 z-[var(--layer-sticky)] bg-transparent cursor-default"
           aria-label="Close inspector"
           onclick={closeInspector}
-        ></button>
+        ></Button>
         <aside
-          class="absolute right-0 top-0 bottom-0 z-20 w-[320px] max-w-[85%] bg-bg2 border-l border-border shadow-2xl overflow-y-auto prompt-slideover"
+          class="absolute right-0 top-0 bottom-0 z-[var(--layer-navigation)] w-[320px] max-w-[85%] bg-bg2 border-l border-border shadow-2xl overflow-y-auto prompt-slideover"
         >
-          <div class="sticky top-0 z-10 flex items-center justify-between px-3 py-2 border-b border-border bg-bg2">
-            <span class="text-[10px] font-bold uppercase tracking-widest text-muted">Inspector</span>
-            <button
+          <div class="sticky top-0 z-[var(--layer-sticky)] flex items-center justify-between px-3 py-2 border-b border-border bg-bg2">
+            <span class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-muted">Inspector</span>
+            <Button variant="ghost"
               type="button"
               class="text-muted hover:text-foreground transition-colors cursor-pointer text-sm leading-none px-1"
               onclick={closeInspector}
               aria-label="Close"
             >
               ✕
-            </button>
+            </Button>
           </div>
           {#if selectedSectionId === '__stage__' && groupMode === 'pipeline'}
             <ClassicDetail {activeStep} {report} {totalChars} />

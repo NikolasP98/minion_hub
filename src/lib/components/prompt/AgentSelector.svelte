@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { ChevronDown } from "lucide-svelte";
+  import { Select } from '$lib/components/ui';
+import { ChevronDown } from "lucide-svelte";
     import { visibleAgents } from "$lib/state/gateway/gateway-data.svelte";
     import {
         promptSections,
@@ -13,10 +14,8 @@
             : null
     );
 
-    function handleChange(event: Event) {
-        const select = event.currentTarget as HTMLSelectElement;
-        const value = select.value || null;
-        resetPromptSectionsForAgent(value);
+    function handleChange(value: string | number) {
+        resetPromptSectionsForAgent(String(value) || null);
     }
 </script>
 
@@ -27,7 +26,7 @@
             ? 'active-accent'
             : ''}"
     >
-        <select
+        <Select size="sm"
             value={promptSections.agentId ?? ''}
             onchange={handleChange}
             disabled={agents.length === 0}
@@ -43,7 +42,7 @@
                     </option>
                 {/each}
             {/if}
-        </select>
+        </Select>
         <ChevronDown
             size={12}
             class="absolute right-1.5 pointer-events-none opacity-60"
@@ -55,10 +54,10 @@
     .agent-selector .nav-pill {
         display: inline-flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.25rem 0.5rem;
-        border-radius: 0.5rem;
-        font-size: 0.75rem;
+        gap: var(--space-2);
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-caption);
         font-weight: 500;
         color: var(--color-muted);
         background: var(--color-bg2);

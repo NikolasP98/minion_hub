@@ -1,5 +1,6 @@
 <script lang="ts">
-    import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
+import * as m from '$lib/paraglide/messages';
     import { submitOnEnter } from '$lib/hotkeys';
     import { autosize } from '$lib/actions/autosize';
     import { X, Play, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, BarChart3, Sparkles } from 'lucide-svelte';
@@ -44,7 +45,7 @@
 
     function statusColor(status: DryRunChapterResult['status']) {
         switch (status) {
-            case 'done': return 'var(--color-success, #22c55e)';
+            case 'done': return 'var(--color-success, var(--color-success-fg))';
             case 'error': return 'var(--color-danger-fg)';
             case 'running': return 'var(--color-accent)';
             default: return 'var(--color-muted)';
@@ -60,9 +61,9 @@
     <!-- Header -->
     <div class="panel-header">
         <span class="panel-title">{m.builder_testRun()}</span>
-        <button class="close-btn" onclick={clearDryRun} aria-label={m.common_close()}>
+        <Button variant="ghost" class="close-btn" onclick={clearDryRun} aria-label={m.common_close()}>
             <X size={14} />
-        </button>
+        </Button>
     </div>
 
     <!-- Prompt input -->
@@ -86,19 +87,19 @@
         {:else if dryRunSuggestions.prompts.length > 0 && !promptInput.trim()}
             <div class="suggestions-row">
                 {#each dryRunSuggestions.prompts as suggestion (suggestion.label)}
-                    <button
+                    <Button variant="ghost"
                         class="suggestion-pill"
                         onclick={() => usePrompt(suggestion.text)}
                         title={suggestion.text}
                     >
                         <Sparkles size={10} />
                         {suggestion.label}
-                    </button>
+                    </Button>
                 {/each}
             </div>
         {/if}
 
-        <button
+        <Button variant="ghost"
             class="run-btn"
             onclick={handleRun}
             disabled={!promptInput.trim() || !hasChapters || dryRun?.running}
@@ -110,7 +111,7 @@
                 <Play size={14} />
                 {m.builder_runTest()}
             {/if}
-        </button>
+        </Button>
         {#if !hasChapters}
             <span class="prompt-hint">{m.builder_addChaptersFirst()}</span>
         {/if}
@@ -139,7 +140,7 @@
                 {#each dryRun.results as result (result.chapterId)}
                     {@const Icon = statusIcon(result.status)}
                     <div class="result-card" class:expanded={expandedChapter === result.chapterId}>
-                        <button class="result-header" onclick={() => toggleExpand(result.chapterId)}>
+                        <Button variant="ghost" class="result-header" onclick={() => toggleExpand(result.chapterId)}>
                             <span class="result-status" style="color: {statusColor(result.status)}">
                                 <Icon size={14} class={result.status === 'running' ? 'spin' : ''} />
                             </span>
@@ -147,7 +148,7 @@
                             {#if result.status === 'done'}
                                 <span class="result-meta">{result.durationMs}ms · {result.promptTokens + result.completionTokens} tok</span>
                             {/if}
-                        </button>
+                        </Button>
 
                         {#if expandedChapter === result.chapterId}
                             <div class="result-body">
@@ -230,14 +231,14 @@
         align-items: center;
         justify-content: space-between;
         height: 2.75rem;
-        padding: 0 16px;
+        padding: 0 var(--space-4);
         background: var(--color-bg2);
         border-bottom: 1px solid var(--color-border);
         flex-shrink: 0;
     }
 
     .panel-title {
-        font-size: 0.875rem;
+        font-size: var(--font-size-body);
         font-weight: 600;
         color: var(--color-foreground);
     }
@@ -247,25 +248,25 @@
         border: none;
         color: var(--color-muted);
         cursor: pointer;
-        padding: 0.25rem;
-        border-radius: 0.25rem;
+        padding: var(--space-1);
+        border-radius: var(--radius-sm);
         display: flex;
         align-items: center;
-        transition: color 0.15s;
+        transition: color var(--duration-fast);
     }
     .close-btn:hover { color: var(--color-foreground); }
 
     /* Prompt */
     .prompt-section {
-        padding: 12px 16px;
+        padding: var(--space-3) var(--space-4);
         border-bottom: 1px solid var(--color-border);
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: var(--space-2);
     }
 
     .prompt-label {
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-muted);
         text-transform: uppercase;
@@ -275,36 +276,36 @@
     .prompt-input {
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         color: var(--color-foreground);
         font-family: inherit;
-        font-size: 13px;
-        padding: 8px 10px;
+        font-size: var(--font-size-body);
+        padding: var(--space-2) var(--space-2);
         outline: none;
         resize: vertical;
         max-height: 200px;
         overflow-y: auto;
-        transition: border-color 0.15s;
+        transition: border-color var(--duration-fast);
     }
     .prompt-input:focus { border-color: var(--color-accent); }
     .prompt-input::placeholder { color: var(--color-muted); }
 
     /* Suggested prompts */
     .suggestions-loading {
-        display: flex; align-items: center; gap: 6px;
-        font-size: 11px; color: var(--color-muted); opacity: 0.6;
+        display: flex; align-items: center; gap: var(--space-2);
+        font-size: var(--font-size-caption); color: var(--color-muted); opacity: 0.6;
     }
     .suggestions-row {
-        display: flex; flex-wrap: wrap; gap: 4px;
+        display: flex; flex-wrap: wrap; gap: var(--space-1);
     }
     .suggestion-pill {
-        display: inline-flex; align-items: center; gap: 4px;
-        padding: 4px 10px;
-        font-size: 11px; font-weight: 500; font-family: inherit;
+        display: inline-flex; align-items: center; gap: var(--space-1);
+        padding: var(--space-1) var(--space-2);
+        font-size: var(--font-size-caption); font-weight: 500; font-family: inherit;
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 6%, transparent);
         border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
-        border-radius: 9999px;
+        border-radius: var(--radius-full);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
     }
@@ -317,23 +318,23 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        padding: 7px 14px;
-        font-size: 12px;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-caption);
         font-weight: 600;
         font-family: inherit;
         color: white;
         background: var(--color-accent);
         border: none;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         cursor: pointer;
-        transition: filter 0.15s;
+        transition: filter var(--duration-fast);
     }
     .run-btn:hover:not(:disabled) { filter: brightness(1.15); }
     .run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .prompt-hint {
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         opacity: 0.7;
     }
@@ -349,8 +350,8 @@
     .metrics-row {
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 10px 16px;
+        gap: var(--space-3);
+        padding: var(--space-2) var(--space-4);
         background: var(--color-bg2);
         border-bottom: 1px solid var(--color-border);
     }
@@ -358,62 +359,62 @@
     .metric {
         display: flex;
         align-items: center;
-        gap: 4px;
-        font-size: 11px;
+        gap: var(--space-1);
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
     }
 
     .metric-label {
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         margin-left: auto;
     }
 
     .chapter-results {
-        padding: 4px;
+        padding: var(--space-1);
     }
 
     .result-card {
-        border-radius: 6px;
-        margin-bottom: 2px;
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-0-5);
         overflow: hidden;
     }
 
     .result-header {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-2);
         width: 100%;
-        padding: 8px 12px;
+        padding: var(--space-2) var(--space-3);
         background: transparent;
         border: none;
         cursor: pointer;
         font-family: inherit;
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         text-align: left;
         color: var(--color-foreground);
-        border-radius: 6px;
-        transition: background 0.15s;
+        border-radius: var(--radius-md);
+        transition: background var(--duration-fast);
     }
     .result-header:hover { background: var(--color-bg3); }
 
     .result-status { display: flex; flex-shrink: 0; }
     .result-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-    .result-meta { font-size: 10px; color: var(--color-muted); flex-shrink: 0; }
+    .result-meta { font-size: var(--font-size-telemetry); color: var(--color-muted); flex-shrink: 0; }
 
     .result-body {
-        padding: 0 12px 10px;
+        padding: 0 var(--space-3) var(--space-2);
     }
 
     .result-output {
         font-family: 'JetBrains Mono', 'Fira Code', monospace;
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         line-height: 1.5;
         color: var(--color-foreground);
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 6px;
-        padding: 10px;
+        border-radius: var(--radius-md);
+        padding: var(--space-2);
         margin: 0;
         white-space: pre-wrap;
         word-break: break-word;
@@ -422,29 +423,29 @@
     }
 
     .result-error {
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         color: var(--color-danger-fg);
         background: var(--color-danger-surface);
-        border-radius: 6px;
-        padding: 8px 10px;
+        border-radius: var(--radius-md);
+        padding: var(--space-2) var(--space-2);
     }
 
     .result-running {
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         color: var(--color-accent);
         font-style: italic;
     }
 
     .result-pending {
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         opacity: 0.6;
     }
 
     /* Analysis */
     .analysis-loading {
-        display: flex; align-items: center; gap: 8px;
-        padding: 12px 16px; font-size: 12px; color: var(--color-accent);
+        display: flex; align-items: center; gap: var(--space-2);
+        padding: var(--space-3) var(--space-4); font-size: var(--font-size-caption); color: var(--color-accent);
     }
 
     .analysis-section {
@@ -452,9 +453,9 @@
     }
 
     .analysis-header {
-        display: flex; align-items: center; gap: 6px;
-        padding: 10px 16px;
-        font-size: 12px; font-weight: 600;
+        display: flex; align-items: center; gap: var(--space-2);
+        padding: var(--space-2) var(--space-4);
+        font-size: var(--font-size-caption); font-weight: 600;
         color: var(--color-foreground);
         background: var(--color-bg2);
         border-bottom: 1px solid var(--color-border);
@@ -462,59 +463,59 @@
 
     .overall-score {
         margin-left: auto;
-        font-size: 16px; font-weight: 700;
+        font-size: var(--font-size-page-title); font-weight: 700;
         font-family: var(--font-mono, monospace);
     }
-    .overall-score.good { color: var(--color-success, #22c55e); }
-    .overall-score.warn { color: var(--color-warning, #f59e0b); }
+    .overall-score.good { color: var(--color-success, var(--color-success-fg)); }
+    .overall-score.warn { color: var(--color-warning, var(--color-warning-fg)); }
     .overall-score.bad { color: var(--color-danger-fg); }
 
-    .dimensions { padding: 4px 12px; }
+    .dimensions { padding: var(--space-1) var(--space-3); }
 
     .dimension-row {
-        padding: 6px 0;
+        padding: var(--space-2) 0;
         border-bottom: 1px solid color-mix(in srgb, var(--color-border) 40%, transparent);
     }
     .dimension-row:last-child { border-bottom: none; }
 
     .dim-header {
-        display: flex; align-items: center; gap: 6px;
-        font-size: 12px;
+        display: flex; align-items: center; gap: var(--space-2);
+        font-size: var(--font-size-caption);
     }
     .dim-verdict { display: flex; }
-    .dim-verdict.pass { color: var(--color-success, #22c55e); }
-    .dim-verdict.warn { color: var(--color-warning, #f59e0b); }
+    .dim-verdict.pass { color: var(--color-success, var(--color-success-fg)); }
+    .dim-verdict.warn { color: var(--color-warning, var(--color-warning-fg)); }
     .dim-verdict.fail { color: var(--color-danger-fg); }
 
     .dim-name { flex: 1; font-weight: 500; color: var(--color-foreground); }
     .dim-score {
-        font-family: var(--font-mono, monospace); font-size: 11px; font-weight: 600;
+        font-family: var(--font-mono, monospace); font-size: var(--font-size-caption); font-weight: 600;
         color: var(--color-muted);
     }
 
     .dim-details {
-        font-size: 11px; color: var(--color-muted); line-height: 1.4;
-        margin: 2px 0 0 22px;
+        font-size: var(--font-size-caption); color: var(--color-muted); line-height: 1.4;
+        margin: var(--space-0-5) 0 0 var(--space-6);
     }
 
     .recommendations {
-        padding: 8px 12px;
+        padding: var(--space-2) var(--space-3);
         border-top: 1px solid var(--color-border);
     }
     .rec-label {
-        font-size: 11px; font-weight: 600; text-transform: uppercase;
+        font-size: var(--font-size-caption); font-weight: 600; text-transform: uppercase;
         letter-spacing: 0.04em; color: var(--color-muted); display: block;
-        margin-bottom: 6px;
+        margin-bottom: var(--space-2);
     }
     .rec-item {
-        display: flex; align-items: flex-start; gap: 8px;
-        padding: 4px 0; font-size: 12px; color: var(--color-foreground);
+        display: flex; align-items: flex-start; gap: var(--space-2);
+        padding: var(--space-1) 0; font-size: var(--font-size-caption); color: var(--color-foreground);
         line-height: 1.4;
     }
     .rec-number {
-        width: 18px; height: 18px; border-radius: 50%;
+        width: 18px; height: 18px; border-radius: var(--radius-full);
         background: var(--color-bg3); color: var(--color-muted);
-        font-size: 10px; font-weight: 600;
+        font-size: var(--font-size-telemetry); font-weight: 600;
         display: flex; align-items: center; justify-content: center;
         flex-shrink: 0; margin-top: 1px;
     }

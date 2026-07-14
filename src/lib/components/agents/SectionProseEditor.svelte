@@ -1,5 +1,6 @@
 <script lang="ts">
-  /**
+  import { Button } from '$lib/components/ui';
+/**
    * Phase D-0f-1.5 — editor modal for externalized section prose.
    *
    * - Probes known variant suffixes (none, full, minimal) and shows existing
@@ -267,7 +268,7 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-canvas)_60%,transparent)] backdrop-blur-sm"
     role="presentation"
     onclick={close}
     onkeydown={(e) => {
@@ -289,16 +290,16 @@
           <h2 id="prose-editor-title" class="text-sm font-semibold text-foreground">
             {mode === 'fileInspector' ? m.prose_workspaceFiles() : m.prose_editProse()} — {sectionLabel}
           </h2>
-          <p class="text-[10px] text-muted mt-0.5 font-mono truncate">
+          <p class="text-[length:var(--font-size-telemetry)] text-muted mt-0.5 font-mono truncate">
             {mode === 'fileInspector' ? m.prose_readOnly() : scope} · {layer}/{sectionId}
           </p>
         </div>
         <!-- Scope toggle (prose mode only) -->
         {#if mode === 'prose'}
           <div class="flex items-center gap-0.5 bg-bg2 rounded p-0.5 shrink-0">
-            <button
+            <Button variant="ghost"
               type="button"
-              class="text-[10px] px-2 py-1 rounded transition-colors"
+              class="text-[length:var(--font-size-telemetry)] px-2 py-1 rounded transition-colors"
               class:bg-bg1={scope === 'global'}
               class:text-foreground={scope === 'global'}
               class:text-muted={scope !== 'global'}
@@ -306,10 +307,10 @@
               disabled={saving}
             >
               {m.prose_global()}
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost"
               type="button"
-              class="text-[10px] px-2 py-1 rounded transition-colors"
+              class="text-[length:var(--font-size-telemetry)] px-2 py-1 rounded transition-colors"
               class:bg-bg1={scope === 'agent'}
               class:text-foreground={scope === 'agent'}
               class:text-muted={scope !== 'agent'}
@@ -318,26 +319,26 @@
               title={m.prose_agentOverrideTitle()}
             >
               {m.prose_agent()}
-            </button>
+            </Button>
           </div>
         {/if}
-        <button
+        <Button variant="ghost"
           type="button"
           class="text-muted hover:text-foreground transition-colors shrink-0"
           onclick={close}
           aria-label={m.common_close()}
         >
           ✕
-        </button>
+        </Button>
       </div>
 
       <!-- Variant tabs (only if >1, prose mode only) -->
       {#if mode === 'prose' && slots.length > 1}
         <div class="px-4 pt-2 flex gap-1 border-b border-border/30">
           {#each slots as slot, i}
-            <button
+            <Button variant="ghost"
               type="button"
-              class="text-[11px] px-2 py-1 rounded-t border-b-2 transition-colors"
+              class="text-[length:var(--font-size-caption)] px-2 py-1 rounded-t border-b-2 transition-colors"
               class:border-accent={activeIdx === i}
               class:text-foreground={activeIdx === i}
               class:border-transparent={activeIdx !== i}
@@ -351,7 +352,7 @@
               {#if slot.dirty !== null}
                 <span class="text-accent">•</span>
               {/if}
-            </button>
+            </Button>
           {/each}
         </div>
       {/if}
@@ -362,17 +363,17 @@
           {#if inspectorLoading}
             <p class="text-muted text-xs">{m.prose_loadingWorkspaceFiles()}</p>
           {:else if inspectorError}
-            <p class="text-red-400 text-xs font-mono">{inspectorError}</p>
+            <p class="text-[var(--color-danger-fg)] text-xs font-mono">{inspectorError}</p>
           {:else if inspectorFiles.length === 0}
             <p class="text-muted text-xs">{m.prose_noWorkspaceFiles()}</p>
           {:else}
-            <p class="text-[10px] text-muted mb-3">
+            <p class="text-[length:var(--font-size-telemetry)] text-muted mb-3">
               {m.prose_workspaceFilesInfo()}
             </p>
             <!-- File list -->
             <div class="space-y-1 mb-3">
               {#each inspectorFiles as file, i}
-                <button
+                <Button variant="ghost"
                   type="button"
                   class="w-full text-left px-2 py-1.5 rounded border transition-colors flex items-center justify-between gap-2"
                   class:border-accent={activeFileIdx === i}
@@ -381,30 +382,30 @@
                   class:hover:bg-bg2={activeFileIdx !== i}
                   onclick={() => (activeFileIdx = i)}
                 >
-                  <span class="text-[11px] font-mono text-foreground truncate flex-1">
+                  <span class="text-[length:var(--font-size-caption)] font-mono text-foreground truncate flex-1">
                     {file.path}
                   </span>
-                  <span class="text-[9px] text-muted font-mono shrink-0">
+                  <span class="text-[length:var(--font-size-telemetry)] text-muted font-mono shrink-0">
                     {file.chars.toLocaleString()} chars
                   </span>
                   {#if !file.exists && !file.synthetic}
-                    <span class="text-[9px] text-red-400 font-mono shrink-0" title={m.prose_fileNotFound()}>{m.prose_missing()}</span>
+                    <span class="text-[length:var(--font-size-telemetry)] text-[var(--color-danger-fg)] font-mono shrink-0" title={m.prose_fileNotFound()}>{m.prose_missing()}</span>
                   {/if}
                   {#if file.synthetic}
-                    <span class="text-[9px] text-amber-400 font-mono shrink-0" title={m.prose_syntheticEntry()}>{m.prose_synthetic()}</span>
+                    <span class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)] font-mono shrink-0" title={m.prose_syntheticEntry()}>{m.prose_synthetic()}</span>
                   {/if}
-                </button>
+                </Button>
               {/each}
             </div>
             <!-- Preview pane -->
             {@const active = inspectorFiles[activeFileIdx]}
             {#if active}
               <div class="border border-border/50 rounded">
-                <div class="px-3 py-1.5 border-b border-border/30 text-[9px] font-mono text-muted">
+                <div class="px-3 py-1.5 border-b border-border/30 text-[length:var(--font-size-telemetry)] font-mono text-muted">
                   {m.prose_preview()} · {active.path}
                 </div>
                 <pre
-                  class="px-3 py-2 text-[11px] font-mono text-foreground whitespace-pre-wrap break-words max-h-[40vh] overflow-auto"
+                  class="px-3 py-2 text-[length:var(--font-size-caption)] font-mono text-foreground whitespace-pre-wrap break-words max-h-[40vh] overflow-auto"
                 >{active.truncatedPreview}</pre>
               </div>
             {/if}
@@ -412,39 +413,39 @@
         {:else if loading}
           <p class="text-muted text-xs">{m.common_loading()}…</p>
         {:else if error}
-          <p class="text-red-400 text-xs font-mono">{error}</p>
+          <p class="text-[var(--color-danger-fg)] text-xs font-mono">{error}</p>
         {:else if conflict}
           <!-- D-0g-2: write conflict resolution UI -->
           <div class="space-y-3">
-            <div class="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2">
-              <p class="text-amber-300 text-xs font-semibold">{m.prose_fileChangedTitle()}</p>
-              <p class="text-amber-200/80 text-[11px] mt-1">
+            <div class="rounded border border-[var(--color-warning-border)] bg-[var(--color-warning-surface)] px-3 py-2">
+              <p class="text-[var(--color-warning-fg)] text-xs font-semibold">{m.prose_fileChangedTitle()}</p>
+              <p class="text-[var(--color-warning-fg)] text-[length:var(--font-size-caption)] mt-1">
                 {m.prose_fileChangedDesc()}
               </p>
             </div>
             <div>
-              <p class="text-[10px] font-bold uppercase tracking-wide text-muted mb-1">
+              <p class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wide text-muted mb-1">
                 {m.prose_currentServerContent()}
               </p>
               <pre
-                class="px-3 py-2 text-[11px] font-mono text-foreground whitespace-pre-wrap break-words max-h-[25vh] overflow-auto bg-bg2 border border-border/50 rounded"
+                class="px-3 py-2 text-[length:var(--font-size-caption)] font-mono text-foreground whitespace-pre-wrap break-words max-h-[25vh] overflow-auto bg-bg2 border border-border/50 rounded"
               >{conflict.actualContent}</pre>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
-              <button
+              <Button variant="ghost"
                 type="button"
-                class="text-[11px] px-2.5 py-1 rounded border border-border text-muted hover:text-foreground transition-colors"
+                class="text-[length:var(--font-size-caption)] px-2.5 py-1 rounded border border-border text-muted hover:text-foreground transition-colors"
                 onclick={resolveConflictDiscardMine}
               >
                 {m.prose_discardMyChanges()}
-              </button>
-              <button
+              </Button>
+              <Button variant="ghost"
                 type="button"
-                class="text-[11px] px-2.5 py-1 rounded border border-amber-500/50 text-amber-300 hover:bg-amber-500/10 transition-colors"
+                class="text-[length:var(--font-size-caption)] px-2.5 py-1 rounded border border-[var(--color-warning-border)] text-[var(--color-warning-fg)] hover:bg-[var(--color-warning-surface)] transition-colors"
                 onclick={resolveConflictOverwrite}
               >
                 {m.prose_keepMyChanges()}
-              </button>
+              </Button>
             </div>
           </div>
         {:else if slots.length === 0}
@@ -452,25 +453,25 @@
             <p class="text-muted text-xs">
               {m.prose_notMigrated()}
             </p>
-            <p class="text-muted-strong text-[10px]">
+            <p class="text-muted-strong text-[length:var(--font-size-telemetry)]">
               {m.prose_migrationNote()}
             </p>
           </div>
         {:else}
           {@const slot = slots[activeIdx]}
-          <p class="text-[10px] text-muted mb-2 font-mono break-all">{slot.path}</p>
+          <p class="text-[length:var(--font-size-telemetry)] text-muted mb-2 font-mono break-all">{slot.path}</p>
           <!-- D-0g-3: prompt-cache warning. Only render when there are unsaved
                changes — otherwise it's just noise. -->
           {#if slot.cacheable && slot.dirty !== null}
             <div
-              class="mb-3 rounded border border-amber-500/40 bg-amber-500/5 px-3 py-2 flex items-start gap-2"
+              class="mb-3 rounded border border-[var(--color-warning-border)] bg-[var(--color-warning-surface)] px-3 py-2 flex items-start gap-2"
             >
-              <span class="text-amber-400 text-[14px] leading-none mt-0.5">⚠</span>
+              <span class="text-[var(--color-warning-fg)] text-[length:var(--font-size-body)] leading-none mt-0.5">⚠</span>
               <div class="flex-1 min-w-0">
-                <p class="text-amber-300 text-[11px] font-semibold">
+                <p class="text-[var(--color-warning-fg)] text-[length:var(--font-size-caption)] font-semibold">
                   Cacheable section
                 </p>
-                <p class="text-amber-200/70 text-[10px] mt-0.5">
+                <p class="text-[var(--color-warning-fg)] text-[length:var(--font-size-telemetry)] mt-0.5">
                   Editing this section invalidates the Anthropic prompt-cache prefix on
                   the agent's next call. Small but real cost on long contexts.
                 </p>
@@ -485,13 +486,13 @@
                   : m.prose_noDefaultTemplate()}
               </p>
               {#if slot.templateDefault}
-                <button
+                <Button variant="ghost"
                   type="button"
-                  class="text-[11px] px-2.5 py-1 rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors"
+                  class="text-[length:var(--font-size-caption)] px-2.5 py-1 rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors"
                   onclick={initFromDefault}
                 >
                   {m.prose_initializeButton()}
-                </button>
+                </Button>
               {/if}
             </div>
           {/if}
@@ -506,16 +507,16 @@
 
       <!-- Footer -->
       <div class="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
-        <button
+        <Button variant="ghost"
           type="button"
           class="text-xs px-3 py-1.5 rounded border border-border text-muted hover:text-foreground transition-colors"
           onclick={close}
           disabled={saving}
         >
           {mode === 'fileInspector' ? m.common_close() : m.common_cancel()}
-        </button>
+        </Button>
         {#if mode === 'prose'}
-          <button
+          <Button variant="ghost"
             type="button"
             class="text-xs px-3 py-1.5 rounded bg-accent text-accent-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
             onclick={save}
@@ -527,7 +528,7 @@
             }
           >
             {saving ? m.prose_saving() : m.common_save()}
-          </button>
+          </Button>
         {/if}
       </div>
     </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { autosize } from '$lib/actions/autosize';
+  import { Button } from '$lib/components/ui';
+import { autosize } from '$lib/actions/autosize';
     import { X, Loader2, BookOpen } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
     import EmojiPicker from "./EmojiPicker.svelte";
@@ -60,9 +61,9 @@
                 <BookOpen size={16} class="text-accent" />
                 <span class="modal-title">{m.builder_newSkill()}</span>
             </div>
-            <button class="close-btn" onclick={onClose} aria-label={m.common_close()}>
+            <Button variant="ghost" class="close-btn" onclick={onClose} aria-label={m.common_close()}>
                 <X size={16} />
-            </button>
+            </Button>
         </div>
 
         <div class="modal-body">
@@ -91,15 +92,15 @@
         </div>
 
         <div class="modal-footer">
-            <button class="btn cancel" onclick={onClose}>{m.common_cancel()}</button>
-            <button class="btn create" onclick={handleCreate} disabled={!canCreate || creating}>
+            <Button variant="ghost" class="btn cancel" onclick={onClose}>{m.common_cancel()}</Button>
+            <Button variant="ghost" class="btn create" onclick={handleCreate} disabled={!canCreate || creating}>
                 {#if creating}
                     <Loader2 size={14} class="spin" />
                     {m.builder_creating()}
                 {:else}
                     {m.builder_createSkill()}
                 {/if}
-            </button>
+            </Button>
         </div>
     </div>
 </div>
@@ -108,8 +109,8 @@
     .overlay {
         position: fixed;
         inset: 0;
-        z-index: 1000;
-        background: rgba(0, 0, 0, 0.6);
+        z-index: var(--layer-debug);
+        background: color-mix(in srgb, var(--color-canvas) 60%, transparent);
         backdrop-filter: blur(4px);
         display: flex;
         align-items: center;
@@ -119,28 +120,28 @@
     .modal {
         background: var(--color-bg);
         border: 1px solid var(--color-border);
-        border-radius: 12px;
+        border-radius: var(--radius-lg);
         width: 100%;
         max-width: 420px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+        box-shadow: var(--shadow-elevation-1);
     }
 
     .modal-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 14px 18px;
+        padding: var(--space-3) var(--space-4);
         border-bottom: 1px solid var(--color-border);
     }
 
     .header-left {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-2);
     }
 
     .modal-title {
-        font-size: 14px;
+        font-size: var(--font-size-body);
         font-weight: 700;
         color: var(--color-foreground);
     }
@@ -150,40 +151,40 @@
         border: none;
         color: var(--color-muted);
         cursor: pointer;
-        padding: 4px;
-        border-radius: 4px;
+        padding: var(--space-1);
+        border-radius: var(--radius-sm);
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: color 0.15s;
+        transition: color var(--duration-fast);
     }
     .close-btn:hover { color: var(--color-foreground); }
 
     .modal-body {
-        padding: 18px;
+        padding: var(--space-4);
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: var(--space-3);
     }
 
     .name-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-2);
     }
 
     .name-input {
         flex: 1;
-        font-size: 16px;
+        font-size: var(--font-size-page-title);
         font-weight: 600;
         color: var(--color-foreground);
         background: transparent;
         border: none;
         border-bottom: 2px solid var(--color-border);
-        padding: 6px 0;
+        padding: var(--space-2) 0;
         outline: none;
         font-family: inherit;
-        transition: border-color 0.15s;
+        transition: border-color var(--duration-fast);
     }
     .name-input:focus { border-bottom-color: var(--color-accent); }
     .name-input::placeholder { color: var(--color-muted); }
@@ -191,20 +192,20 @@
     .desc-input {
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         color: var(--color-foreground);
         font-family: inherit;
-        font-size: 13px;
-        padding: 8px 10px;
+        font-size: var(--font-size-body);
+        padding: var(--space-2) var(--space-2);
         outline: none;
         resize: vertical;
-        transition: border-color 0.15s;
+        transition: border-color var(--duration-fast);
     }
     .desc-input:focus { border-color: var(--color-accent); }
     .desc-input::placeholder { color: var(--color-muted); }
 
     .error-text {
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         color: var(--color-danger-fg);
         margin: 0;
     }
@@ -212,20 +213,20 @@
     .modal-footer {
         display: flex;
         justify-content: flex-end;
-        gap: 8px;
-        padding: 12px 18px;
+        gap: var(--space-2);
+        padding: var(--space-3) var(--space-4);
         border-top: 1px solid var(--color-border);
     }
 
     .btn {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         font-family: inherit;
-        font-size: 13px;
+        font-size: var(--font-size-body);
         font-weight: 600;
-        padding: 7px 16px;
-        border-radius: 6px;
+        padding: var(--space-2) var(--space-4);
+        border-radius: var(--radius-md);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
         border: none;

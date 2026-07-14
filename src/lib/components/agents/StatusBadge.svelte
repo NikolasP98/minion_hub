@@ -15,10 +15,10 @@
     };
 
     const glows: Record<string, string> = {
-        running: 'shadow-[0_0_6px_var(--color-status-running)]',
-        thinking: 'shadow-[0_0_6px_var(--color-status-thinking)]',
+        running: 'shadow-[var(--shadow-status-glow)]',
+        thinking: 'shadow-[var(--shadow-status-glow)]',
         idle: '',
-        error: 'shadow-[0_0_6px_var(--color-destructive)]',
+        error: 'shadow-[var(--shadow-status-glow)]',
         paused: '',
     };
 

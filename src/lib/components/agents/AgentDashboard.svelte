@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Activity, FileText, Wrench, ArrowRight } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
+import { Activity, FileText, Wrench, ArrowRight } from 'lucide-svelte';
     import EChartsSparkline from '$lib/components/charts/EChartsSparkline.svelte';
     import { sparklineStyle } from '$lib/state/ui/sparkline-style.svelte';
     import { agentActivity, agentChat, SPARK_BIN_COUNT, SPARK_BIN_MS } from '$lib/state/chat/chat.svelte';
@@ -117,13 +118,13 @@
                 {errorCount} error{errorCount === 1 ? '' : 's'} today
             </p>
         </div>
-        <button
+        <Button variant="ghost"
             type="button"
             onclick={() => go('chat')}
-            class="text-[11px] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+            class="text-[length:var(--font-size-caption)] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
         >
             Open chat →
-        </button>
+        </Button>
     </div>
 
     <!-- 3-card grid -->
@@ -141,7 +142,7 @@
                     <Activity size={13} />
                     Activity
                 </div>
-                <span class="text-[10px] text-muted-strong group-hover:text-accent transition-colors">
+                <span class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-accent transition-colors">
                     Monitor <ArrowRight size={10} class="inline" />
                 </span>
             </div>
@@ -150,7 +151,7 @@
                 <EChartsSparkline bins={rotatedBins} color="var(--color-accent)" glow={activeCount > 0} chartStyle={sparklineStyle.current} />
             </div>
 
-            <div class="text-[11px] text-muted-foreground mb-2 tabular-nums">
+            <div class="text-[length:var(--font-size-caption)] text-muted-foreground mb-2 tabular-nums">
                 <span class="text-foreground font-semibold">{activeCount}</span> active ·
                 <span class="text-foreground font-semibold">{sessionsToday}</span> today ·
                 <span class={errorCount > 0 ? 'text-destructive font-semibold' : 'text-foreground font-semibold'}>{errorCount}</span> errors
@@ -158,10 +159,10 @@
 
             <div class="border-t border-border/60 pt-2 mt-2 space-y-1">
                 {#if recentSessions.length === 0}
-                    <div class="text-[11px] text-muted-strong italic">No sessions yet</div>
+                    <div class="text-[length:var(--font-size-caption)] text-muted-strong italic">No sessions yet</div>
                 {:else}
                     {#each recentSessions as s}
-                        <div class="flex items-center justify-between gap-2 text-[11px]">
+                        <div class="flex items-center justify-between gap-2 text-[length:var(--font-size-caption)]">
                             <span class="truncate text-foreground/80">{s.label || s.sessionKey?.split(':').pop() || 'session'}</span>
                             <span class="text-muted-strong tabular-nums shrink-0">{fmtAgo(s.updatedAt ?? s.createdAt)}</span>
                         </div>
@@ -183,7 +184,7 @@
                     <FileText size={13} />
                     Knowledge
                 </div>
-                <span class="text-[10px] text-muted-strong group-hover:text-accent transition-colors">
+                <span class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-accent transition-colors">
                     Files <ArrowRight size={10} class="inline" />
                 </span>
             </div>
@@ -194,30 +195,30 @@
                     <div class="text-lg font-semibold text-foreground tabular-nums">
                         {fileError ? '—' : (fileCount ?? '·')}
                     </div>
-                    <div class="text-[10px] uppercase tracking-wider text-muted-foreground">Files</div>
+                    <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground">Files</div>
                 </div>
                 <div>
                     <div class="text-lg font-semibold text-foreground tabular-nums">{chatMsgCount}</div>
-                    <div class="text-[10px] uppercase tracking-wider text-muted-foreground">Messages</div>
+                    <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground">Messages</div>
                 </div>
             </div>
 
             <!-- Sub-links to memory + prompt -->
             <div class="border-t border-border/60 pt-2 mt-2 flex gap-3">
-                <button
+                <Button variant="ghost"
                     type="button"
                     onclick={(e) => { e.stopPropagation(); go('memory'); }}
-                    class="text-[11px] text-muted-foreground hover:text-accent transition-colors"
+                    class="text-[length:var(--font-size-caption)] text-muted-foreground hover:text-accent transition-colors"
                 >
                     Memory →
-                </button>
-                <button
+                </Button>
+                <Button variant="ghost"
                     type="button"
                     onclick={(e) => { e.stopPropagation(); go('prompt'); }}
-                    class="text-[11px] text-muted-foreground hover:text-accent transition-colors"
+                    class="text-[length:var(--font-size-caption)] text-muted-foreground hover:text-accent transition-colors"
                 >
                     Prompt →
-                </button>
+                </Button>
             </div>
         </div>
 
@@ -234,7 +235,7 @@
                     <Wrench size={13} />
                     Capabilities
                 </div>
-                <span class="text-[10px] text-muted-strong group-hover:text-accent transition-colors">
+                <span class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-accent transition-colors">
                     Tools <ArrowRight size={10} class="inline" />
                 </span>
             </div>
@@ -244,34 +245,34 @@
                     <div class="text-lg font-semibold text-foreground tabular-nums">
                         {agentToolsState.loading && toolsTotal === 0 ? '·' : `${toolsEnabled}/${toolsTotal}`}
                     </div>
-                    <div class="text-[10px] uppercase tracking-wider text-muted-foreground">Tools</div>
+                    <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground">Tools</div>
                 </div>
                 <div>
                     <div class="text-lg font-semibold text-foreground tabular-nums">
                         {agentSkillsState.loading && skillsTotal === 0 ? '·' : `${skillsEnabled}/${skillsTotal}`}
                     </div>
-                    <div class="text-[10px] uppercase tracking-wider text-muted-foreground">Skills</div>
+                    <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground">Skills</div>
                 </div>
             </div>
 
             <!-- Pi-Agent status row -->
             <div class="border-t border-border/60 pt-2 mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <button
+                <Button variant="ghost"
                     type="button"
                     onclick={(e) => { e.stopPropagation(); go('capabilities'); }}
-                    class="text-[11px] text-muted-foreground hover:text-accent transition-colors whitespace-nowrap"
+                    class="text-[length:var(--font-size-caption)] text-muted-foreground hover:text-accent transition-colors whitespace-nowrap"
                 >
                     Capabilities →
-                </button>
+                </Button>
                 <span class="text-muted-strong">·</span>
-                <button
+                <Button variant="ghost"
                     type="button"
                     onclick={(e) => { e.stopPropagation(); go('orchestration'); }}
-                    class="text-[11px] text-muted-foreground hover:text-accent transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                    class="text-[length:var(--font-size-caption)] text-muted-foreground hover:text-accent transition-colors flex items-center gap-1.5 whitespace-nowrap"
                 >
                     <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground/50"></span>
                     Orchestration →
-                </button>
+                </Button>
             </div>
         </div>
     </div>

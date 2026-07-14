@@ -1,5 +1,6 @@
 <script lang="ts">
-	import {
+  import { Button } from '$lib/components/ui';
+import {
 		getSortedSubagents,
 		resolveStatus,
 		selectSubagent,
@@ -13,17 +14,17 @@
 	);
 
 	const statusColor: Record<string, string> = {
-		running: 'bg-yellow-400',
-		completed: 'bg-emerald-400',
-		failed: 'bg-red-400',
-		unknown: 'bg-zinc-500'
+		running: 'bg-[var(--color-warning-surface)]',
+		completed: 'bg-[var(--color-success-surface)]',
+		failed: 'bg-[var(--color-danger-surface)]',
+		unknown: 'bg-[var(--color-surface-2)]'
 	};
 
 	const statusRing: Record<string, string> = {
-		running: 'ring-yellow-400/30',
-		completed: 'ring-emerald-400/30',
-		failed: 'ring-red-400/30',
-		unknown: 'ring-zinc-500/30'
+		running: 'ring-[var(--color-warning-border)]',
+		completed: 'ring-[var(--color-success-border)]',
+		failed: 'ring-[var(--color-danger-border)]',
+		unknown: 'ring-[var(--color-border-default)]'
 	};
 
 	function formatTime(ts: number | null): string {
@@ -63,48 +64,48 @@
 <div class="flex flex-col">
 	{#each grouped as group}
 		<!-- Date header -->
-		<div class="px-3 py-1.5 text-[9px] font-semibold text-muted-strong uppercase tracking-wider sticky top-0 bg-bg z-10">
+		<div class="px-3 py-1.5 text-[length:var(--font-size-telemetry)] font-semibold text-muted-strong uppercase tracking-wider sticky top-0 bg-bg z-[var(--layer-sticky)]">
 			{group.date}
 		</div>
 
 		{#each group.sessions as session (session.key)}
 			{@const status = resolveStatus(session)}
-			<button
+			<Button variant="ghost"
 				type="button"
-				class="flex items-center gap-3 w-full py-2 px-3 text-left transition-colors duration-100
-					hover:bg-white/[0.03] cursor-pointer border-0 bg-transparent text-foreground
+				class="flex items-center gap-3 w-full py-2 px-3 text-left transition-colors duration-[var(--duration-fast)]
+					hover:bg-[var(--color-text-primary)]/[0.03] cursor-pointer border-0 bg-transparent text-foreground
 					{subagentState.selectedKey === session.key ? '!bg-bg3' : ''}"
 				onclick={() => selectSubagent(session.key)}
 			>
 				<!-- Timeline connector -->
 				<div class="flex flex-col items-center shrink-0 self-stretch">
-					<div class="w-px flex-1 bg-white/[0.06]"></div>
+					<div class="w-px flex-1 bg-[var(--color-text-primary)]/[0.06]"></div>
 					<span class="w-3 h-3 rounded-full shrink-0 ring-2 {statusColor[status]} {statusRing[status]}"></span>
-					<div class="w-px flex-1 bg-white/[0.06]"></div>
+					<div class="w-px flex-1 bg-[var(--color-text-primary)]/[0.06]"></div>
 				</div>
 
 				<!-- Time -->
-				<span class="text-[10px] text-muted-strong font-mono w-16 shrink-0">
+				<span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono w-16 shrink-0">
 					{formatTime(session.updatedAt)}
 				</span>
 
 				<!-- Info -->
 				<div class="flex flex-col gap-0.5 flex-1 min-w-0">
-					<span class="text-[11px] font-medium truncate">
+					<span class="text-[length:var(--font-size-caption)] font-medium truncate">
 						{session.label || session.displayName || session.key.split(':').pop() || m.subagent_unnamed()}
 					</span>
-					<div class="flex items-center gap-2 text-[9px] text-muted-strong">
+					<div class="flex items-center gap-2 text-[length:var(--font-size-telemetry)] text-muted-strong">
 						<span>{session.model ?? m.subagent_unknown()}</span>
 						{#if session.spawnDepth != null}
 							<span class="opacity-60">&middot;</span>
 							<span>{m.subagent_depth({ depth: session.spawnDepth })}</span>
 						{/if}
 						{#if status === 'running'}
-							<span class="text-yellow-400 animate-pulse">{m.subagent_running()}</span>
+							<span class="text-[var(--color-warning-fg)] animate-pulse">{m.subagent_running()}</span>
 						{/if}
 					</div>
 				</div>
-			</button>
+			</Button>
 		{/each}
 	{/each}
 </div>
