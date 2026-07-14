@@ -404,6 +404,14 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
 		expect(apiWriteCapability('/api/modules', 'PUT')).toEqual({ module: 'settings', action: 'manage' });
 		expect(apiWriteCapability('/api/plugins/whatsapp/toggle', 'POST')).toEqual({ module: 'settings', action: 'manage' });
 	});
+	test('builder writes map agents/skills and tools to their owning modules', () => {
+		expect(apiWriteCapability('/api/builder/agents', 'POST')).toEqual({ module: 'agents', action: 'create' });
+		expect(apiWriteCapability('/api/builder/skills', 'POST')).toEqual({ module: 'agents', action: 'create' });
+		expect(apiWriteCapability('/api/builder/skills/s1', 'DELETE')).toEqual({ module: 'agents', action: 'delete' });
+		expect(apiWriteCapability('/api/builder/agent-skills', 'POST')).toEqual({ module: 'agents', action: 'edit' });
+		expect(apiWriteCapability('/api/builder/tools', 'POST')).toEqual({ module: 'tools', action: 'create' });
+		expect(apiWriteCapability('/api/builder/tools/t1', 'PUT')).toEqual({ module: 'tools', action: 'edit' });
+	});
 	test('anonymous public booking is excluded', () => {
 		expect(apiWriteCapability('/api/scheduling/public/my-slug/book', 'POST')).toBeNull();
 	});

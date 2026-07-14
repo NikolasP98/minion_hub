@@ -18,11 +18,17 @@ import {
   validateSkillForPublish,
 } from '$server/services/builder.service';
 import { requireCoreCtx } from '$server/auth/core-ctx';
+import {
+  requireBuilderCapability,
+  requireBuilderOwnership,
+  requireBuilderSkillChild,
+} from '$server/services/builder-access';
 
 /** GET /api/builder/skills/:id — full skill with tools, chapters, edges */
 export const GET: RequestHandler = async ({ locals, params }) => {
+  await requireBuilderCapability(locals, 'view');
   const ctx = await requireCoreCtx(locals);
-  if (!ctx) throw error(401);
+  await requireBuilderOwnership(locals, ctx, 'skill', params.id!);
 
   const skill = await getBuiltSkill(ctx, params.id!);
   if (!skill) throw error(404, 'Skill not found');
@@ -38,8 +44,9 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 
 /** PUT /api/builder/skills/:id — update skill metadata */
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  await requireBuilderCapability(locals, 'edit');
   const ctx = await requireCoreCtx(locals);
-  if (!ctx) throw error(401);
+  await requireBuilderOwnership(locals, ctx, 'skill', params.id!);
 
   const body = await request.json();
   const { action } = body;
@@ -70,16 +77,22 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
 
   if (action === 'update-chapter') {
+    await requireBuilderSkillChild(ctx, params.id!, 'chapter', body.chapterId);
     await updateChapter(ctx, body.chapterId, body.data);
     return json({ ok: true });
   }
 
   if (action === 'delete-chapter') {
+    await requireBuilderSkillChild(ctx, params.id!, 'chapter', body.chapterId);
     await deleteChapter(ctx, body.chapterId);
     return json({ ok: true });
   }
 
   if (action === 'add-edge') {
+    await Promise.all([
+      requireBuilderSkillChild(ctx, params.id!, 'chapter', body.sourceChapterId),
+      requireBuilderSkillChild(ctx, params.id!, 'chapter', body.targetChapterId),
+    ]);
     const { id } = await createChapterEdge(
       ctx,
       params.id!,
@@ -91,6 +104,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
 
   if (action === 'delete-edge') {
+    await requireBuilderSkillChild(ctx, params.id!, 'edge', body.edgeId);
     await deleteChapterEdge(ctx, body.edgeId);
     return json({ ok: true });
   }
@@ -102,8 +116,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
 /** DELETE /api/builder/skills/:id */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
+  await requireBuilderCapability(locals, 'delete');
   const ctx = await requireCoreCtx(locals);
-  if (!ctx) throw error(401);
+  await requireBuilderOwnership(locals, ctx, 'skill', params.id!);
   await deleteBuiltSkill(ctx, params.id!);
   return json({ ok: true });
 };

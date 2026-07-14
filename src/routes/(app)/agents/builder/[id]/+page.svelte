@@ -9,6 +9,7 @@
     import ModelPromptSection from "./_components/ModelPromptSection.svelte";
     import SkillsSection from "./_components/SkillsSection.svelte";
     import BehaviorSection from "./_components/BehaviorSection.svelte";
+    import { fetchJson } from '$lib/api/fetch-json';
 
     const agentId = $derived(page.params.id);
 
@@ -27,11 +28,25 @@
     let saving = $state(false);
     let dirty = $state(false);
     let publishing = $state(false);
+    let errorMessage = $state('');
     const autoSave = createDebouncer(() => saveAgent(), { wait: 2000 });
 
     // ── Skill slots ─────────────────────────────────────────────────────
     interface SkillSlot { skillId: string; position: number; }
     interface SkillInfo { id: string; name: string; emoji: string; status: string; description: string; }
+    interface AgentPayload {
+        name: string;
+        emoji: string | null;
+        description: string | null;
+        model: string | null;
+        systemPrompt: string | null;
+        temperature: number | null;
+        maxTokens: number | null;
+        fallbackAgentId: string | null;
+        retryPolicy: string | { count?: number } | null;
+        runtimeAgentId: string | null;
+        status: 'draft' | 'published';
+    }
     let skillSlots = $state<SkillSlot[]>([]);
     let availableSkills = $state<SkillInfo[]>([]);
     let showSkillPicker = $state(false);
@@ -56,9 +71,7 @@
     async function loadAgent() {
         loading = true;
         try {
-            const res = await fetch(`/api/builder/agents/${agentId}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+            const data = await fetchJson<{ agent: AgentPayload; skillSlots: Array<{ skillId: string; position: number }> }>(`/api/builder/agents/${agentId}`);
             const a = data.agent;
             name = a.name;
             emoji = a.emoji ?? "\u{1F916}";
@@ -84,6 +97,7 @@
             }));
         } catch (e) {
             console.error('[agent-editor] Failed to load:', e);
+            errorMessage = e instanceof Error ? e.message : m.common_error();
         } finally {
             loading = false;
         }
@@ -92,9 +106,7 @@
     // ── Load available skills ───────────────────────────────────────────
     async function loadAvailableSkills() {
         try {
-            const res = await fetch('/api/builder/skills');
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+            const data = await fetchJson<{ skills: SkillInfo[] }>('/api/builder/skills');
             availableSkills = data.skills;
         } catch (e) {
             console.error('[agent-editor] Failed to load skills:', e);
@@ -107,10 +119,11 @@
         autoSave.run();
     }
 
-    async function saveAgent() {
+    async function saveAgent(): Promise<boolean> {
         saving = true;
+        errorMessage = '';
         try {
-            await fetch(`/api/builder/agents/${agentId}`, {
+            await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -126,8 +139,11 @@
                 }),
             });
             dirty = false;
+            return true;
         } catch (e) {
             console.error('[agent-editor] Save failed:', e);
+            errorMessage = e instanceof Error ? e.message : m.common_error();
+            return false;
         } finally {
             saving = false;
         }
@@ -135,10 +151,11 @@
 
     // ── Publish ─────────────────────────────────────────────────────────
     async function publishAgent() {
-        if (dirty) await saveAgent();
+        if (dirty && !(await saveAgent())) return;
         publishing = true;
+        errorMessage = '';
         try {
-            await fetch(`/api/builder/agents/${agentId}`, {
+            await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'publish' }),
@@ -146,6 +163,7 @@
             status = 'published';
         } catch (e) {
             console.error('[agent-editor] Publish failed:', e);
+            errorMessage = e instanceof Error ? e.message : m.builder_publishFailed();
         } finally {
             publishing = false;
         }
@@ -159,7 +177,7 @@
         showSkillPicker = false;
         saving = true;
         try {
-            await fetch(`/api/builder/agents/${agentId}`, {
+            await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'add-skill', skillId }),
@@ -167,6 +185,7 @@
         } catch (e) {
             console.error('[agent-editor] Add skill failed:', e);
             skillSlots = skillSlots.filter(s => s.skillId !== skillId);
+            errorMessage = e instanceof Error ? e.message : m.common_error();
         } finally {
             saving = false;
         }
@@ -177,7 +196,7 @@
         skillSlots = skillSlots.filter(s => s.skillId !== skillId);
         saving = true;
         try {
-            await fetch(`/api/builder/agents/${agentId}`, {
+            await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'remove-skill', skillId }),
@@ -185,6 +204,7 @@
         } catch (e) {
             console.error('[agent-editor] Remove skill failed:', e);
             skillSlots = prev;
+            errorMessage = e instanceof Error ? e.message : m.common_error();
         } finally {
             saving = false;
         }
@@ -209,6 +229,7 @@
         e.preventDefault();
         dragOverIdx = null;
         if (dragIdx === null || dragIdx === targetIdx) { dragIdx = null; return; }
+        const previous = skillSlots;
         const reordered = [...skillSlots];
         const [moved] = reordered.splice(dragIdx, 1);
         reordered.splice(targetIdx, 0, moved);
@@ -217,13 +238,15 @@
 
         // Persist reorder
         try {
-            await fetch(`/api/builder/agents/${agentId}`, {
+            await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'reorder-skills', skillIds: skillSlots.map(s => s.skillId) }),
             });
         } catch (e) {
             console.error('[agent-editor] Reorder failed:', e);
+            skillSlots = previous;
+            errorMessage = e instanceof Error ? e.message : m.common_error();
         }
     }
 
@@ -256,6 +279,12 @@
     {publishing}
     onPublish={publishAgent}
 />
+
+{#if errorMessage}
+    <div class="mx-3 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
+        {errorMessage}
+    </div>
+{/if}
 
 <!-- Main Content -->
 <div class="flex-1 min-h-0 overflow-y-auto">

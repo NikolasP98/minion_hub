@@ -1,8 +1,6 @@
 <script lang="ts">
-    import { Loader2, Check, Wrench } from "lucide-svelte";
+    import { Loader2, Check } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
-    import type { SkillStatusEntry } from "$lib/types/skills";
-    import type { ToolStatusEntry } from "$lib/types/tools";
     import CursorTooltip from "./CursorTooltip.svelte";
 
     interface BuiltSkill {
@@ -20,21 +18,13 @@
         badge: string | null;
     }
 
-    type HoverType = 'skill' | 'built-skill' | 'tool';
+    type HoverType = 'built-skill';
 
     interface Props {
         contentProps: Record<string, any>;
         skillsLoading: boolean;
-        toolsLoading: boolean;
         publishedSkills: BuiltSkill[];
-        gatewaySkills: SkillStatusEntry[];
-        gatewayTools: ToolStatusEntry[];
-        ineligibleSkills: SkillStatusEntry[];
-        skillsBySource: Map<string, SkillStatusEntry[]>;
-        toolsByGroup: Map<string, ToolStatusEntry[]>;
         selectedBuiltSkillIds: string[];
-        selectedGatewaySkillIds: string[];
-        selectedToolIds: string[];
         totalSelected: number;
         emoji: string;
         name: string;
@@ -46,8 +36,6 @@
         popoverData: PopoverData | null;
         // callbacks
         toggleBuiltSkill: (id: string) => void;
-        toggleGatewaySkill: (id: string) => void;
-        toggleTool: (id: string) => void;
         showPopover: (type: HoverType, id: string, e: MouseEvent) => void;
         trackCursor: (e: MouseEvent) => void;
         hidePopover: () => void;
@@ -56,16 +44,8 @@
     let {
         contentProps,
         skillsLoading,
-        toolsLoading,
         publishedSkills,
-        gatewaySkills,
-        gatewayTools,
-        ineligibleSkills,
-        skillsBySource,
-        toolsByGroup,
         selectedBuiltSkillIds,
-        selectedGatewaySkillIds,
-        selectedToolIds,
         totalSelected,
         emoji,
         name,
@@ -75,8 +55,6 @@
         tooltipVisible,
         popoverData,
         toggleBuiltSkill,
-        toggleGatewaySkill,
-        toggleTool,
         showPopover,
         trackCursor,
         hidePopover,
@@ -88,7 +66,7 @@
         {m.builder_selectSkillsTools({ count: totalSelected })}
     </span>
 
-    {#if skillsLoading || toolsLoading}
+    {#if skillsLoading}
         <div class="cap-loading">
             <Loader2 size={18} class="spin" />
             <span>{m.builder_loadingCapabilities()}</span>
@@ -119,87 +97,7 @@
             </div>
         {/if}
 
-        <!-- Gateway Skills grouped by source -->
-        {#each [...skillsBySource.entries()] as [source, skills] (source)}
-            <div class="cap-group">
-                <span class="cap-group-label">
-                    {source === 'bundled' ? m.builder_builtInSkills() : source}
-                </span>
-                <div class="icon-grid">
-                    {#each skills as skill (skill.skillKey)}
-                        {@const selected = selectedGatewaySkillIds.includes(skill.skillKey)}
-                        <button
-                            type="button"
-                            class="icon-btn"
-                            class:selected
-                            class:icon-disabled={skill.disabled}
-                            onclick={() => toggleGatewaySkill(skill.skillKey)}
-                            onmouseenter={(e) => showPopover('skill', skill.skillKey, e)}
-                            onmousemove={trackCursor}
-                            onmouseleave={hidePopover}
-                            aria-label={skill.name}
-                        >
-                            <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
-                            {#if selected}<span class="icon-check"><Check size={10} /></span>{/if}
-                        </button>
-                    {/each}
-                </div>
-            </div>
-        {/each}
-
-        <!-- Ineligible skills -->
-        {#if ineligibleSkills.length > 0}
-            <div class="cap-group">
-                <span class="cap-group-label cap-group-label--dim">{m.builder_unavailable({ count: ineligibleSkills.length })}</span>
-                <div class="icon-grid">
-                    {#each ineligibleSkills as skill (skill.skillKey)}
-                        <button
-                            type="button"
-                            class="icon-btn icon-ineligible"
-                            disabled
-                            onmouseenter={(e) => showPopover('skill', skill.skillKey, e)}
-                            onmousemove={trackCursor}
-                            onmouseleave={hidePopover}
-                            aria-label="{skill.name} ({m.builder_unavailableLabel()})"
-                        >
-                            <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
-                        </button>
-                    {/each}
-                </div>
-            </div>
-        {/if}
-
-        <!-- Tools grouped by group tag -->
-        {#if gatewayTools.length > 0}
-            {#each [...toolsByGroup.entries()] as [group, tools] (group)}
-                <div class="cap-group">
-                    <span class="cap-group-label">
-                        <Wrench size={10} class="cap-group-icon" />
-                        {group}
-                    </span>
-                    <div class="icon-grid">
-                        {#each tools as tool (tool.id)}
-                            {@const selected = selectedToolIds.includes(tool.id)}
-                            <button
-                                type="button"
-                                class="icon-btn icon-btn--tool"
-                                class:selected
-                                onclick={() => toggleTool(tool.id)}
-                                onmouseenter={(e) => showPopover('tool', tool.id, e)}
-                                onmousemove={trackCursor}
-                                onmouseleave={hidePopover}
-                                aria-label={tool.id}
-                            >
-                                <span class="icon-tool-label">{tool.id.slice(0, 2)}</span>
-                                {#if selected}<span class="icon-check"><Check size={10} /></span>{/if}
-                            </button>
-                        {/each}
-                    </div>
-                </div>
-            {/each}
-        {/if}
-
-        {#if gatewaySkills.length === 0 && publishedSkills.length === 0 && gatewayTools.length === 0}
+        {#if publishedSkills.length === 0}
             <div class="cap-empty">
                 {m.builder_noCapabilities()}
             </div>
@@ -342,9 +240,6 @@
         color: var(--color-muted);
         text-transform: lowercase;
         line-height: 1;
-    }
-    .icon-btn.selected .icon-tool-label {
-        color: var(--color-accent);
     }
 
     .icon-check {

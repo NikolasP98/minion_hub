@@ -941,6 +941,10 @@ export async function hasOrgCapability(
  * write holes. `/api/scheduling/public/*` (anonymous booking) is excluded.
  */
 const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
+	['/api/builder/agent-skills', 'agents'],
+	['/api/builder/agents', 'agents'],
+	['/api/builder/skills', 'agents'],
+	['/api/builder/tools', 'tools'],
 	['/api/crm', 'crm'],
 	['/api/finances', 'finance'],
 	['/api/sales', 'sales'],
@@ -961,6 +965,11 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
 	['/api/plugins', 'settings'],
 ];
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const CREATE_COLLECTION_ENDPOINTS = new Set([
+	'/api/builder/agents',
+	'/api/builder/skills',
+	'/api/builder/tools',
+]);
 
 export function apiWriteCapability(
 	pathname: string,
@@ -980,7 +989,13 @@ export function apiWriteCapability(
 	}
 	if (!best) return null;
 	const module = best[1];
-	const action: PermAction = module === 'settings' ? 'manage' : method === 'DELETE' ? 'delete' : 'edit';
+	const action: PermAction = module === 'settings'
+		? 'manage'
+		: method === 'DELETE'
+			? 'delete'
+			: method === 'POST' && CREATE_COLLECTION_ENDPOINTS.has(pathname)
+				? 'create'
+				: 'edit';
 	return { module, action };
 }
 
