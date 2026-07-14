@@ -79,7 +79,7 @@ describe('composition foundations', () => {
     const body = render(SectionNavBusinessFixture).body;
     expect(body).toContain('aria-label="Operations"');
     expect(body).toMatch(/class="[^"]*nested[^"]*"/);
-    expect(body).toContain('href="/operations/insights"');
+    expect(body).toContain('href="/crm/insights"');
     expect(body).toMatch(/class="nav-footer[^"]*"/);
     expect(body).toContain('Open shift');
   });

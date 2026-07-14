@@ -2,8 +2,8 @@
   import SectionNav from './SectionNav.svelte';
 
   const items = [
-    { id: 'dashboard', label: 'Dashboard', href: '/operations' },
-    { id: 'insights', label: 'Insights', href: '/operations/insights', indent: 1 },
+    { id: 'dashboard', label: 'Dashboard', href: '/crm' },
+    { id: 'insights', label: 'Insights', href: '/crm/insights', indent: 1 },
   ];
 </script>
 
