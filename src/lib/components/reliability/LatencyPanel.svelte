@@ -90,36 +90,36 @@
 	</PanelHeader>
 
 	{#if !latest}
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[length:var(--font-size-body)]">
 			{m.reliability_noPerfData()}
 		</div>
 	{:else}
 		<!-- KPI stats -->
 		<div class="grid grid-cols-3 sm:grid-cols-6 gap-px bg-border border-b border-border">
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">p50</span>
+				<span class="text-[length:var(--font-size-label)] text-muted-foreground uppercase tracking-wider font-medium">p50</span>
 				<span class="text-lg font-bold text-foreground tabular-nums">{fmtMs(latest.latencyMs?.p50)}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">p95</span>
+				<span class="text-[length:var(--font-size-label)] text-muted-foreground uppercase tracking-wider font-medium">p95</span>
 				<span class="text-lg font-bold text-warning tabular-nums">{fmtMs(latest.latencyMs?.p95)}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">p99</span>
+				<span class="text-[length:var(--font-size-label)] text-muted-foreground uppercase tracking-wider font-medium">p99</span>
 				<span class="text-lg font-bold text-destructive tabular-nums">{fmtMs(latest.latencyMs?.p99)}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_throughput()}</span>
+				<span class="text-[length:var(--font-size-label)] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_throughput()}</span>
 				<span class="text-lg font-bold text-foreground tabular-nums">{latest.throughputPerSec?.toFixed(1) ?? '-'}/s</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_errorRate()}</span>
+				<span class="text-[length:var(--font-size-label)] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_errorRate()}</span>
 				<span class="text-lg font-bold tabular-nums" class:text-destructive={(latest.errorRate ?? 0) > 0.05} class:text-foreground={(latest.errorRate ?? 0) <= 0.05}>
 					{((latest.errorRate ?? 0) * 100).toFixed(1)}%
 				</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_eventLoop()}</span>
+				<span class="text-[length:var(--font-size-label)] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_eventLoop()}</span>
 				<span class="text-lg font-bold text-foreground tabular-nums">{fmtMs(latest.eventLoopDelayMs?.p99)}</span>
 			</div>
 		</div>
@@ -127,7 +127,7 @@
 		<!-- Trend chart -->
 		{#if snapshots.length >= 2}
 			<div class="px-4 pt-3 pb-1">
-				<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground block mb-1">
+				<span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground block mb-1">
 					{m.reliability_latencyTrend()}
 				</span>
 				<Chart options={chartOptions} height="200px" />
@@ -137,12 +137,12 @@
 		<!-- Slowest methods -->
 		{#if latest.slowestMethods && latest.slowestMethods.length > 0}
 			<div class="px-4 py-3 border-t border-border">
-				<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground block mb-2">
+				<span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground block mb-2">
 					{m.reliability_slowestMethods()}
 				</span>
 				<div class="flex flex-col gap-1">
 					{#each latest.slowestMethods as mth (mth.method)}
-						<div class="flex items-center gap-2 text-[12px]">
+						<div class="flex items-center gap-2 text-[length:var(--font-size-label)]">
 							<span class="font-mono text-foreground/80 flex-1 truncate">{mth.method}</span>
 							<span class="text-muted-foreground tabular-nums w-16 text-right">{mth.count}×</span>
 							<span class="text-warning tabular-nums w-16 text-right">{fmtMs(mth.p95)}</span>

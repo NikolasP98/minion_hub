@@ -12,7 +12,7 @@
   import { isUpdateRestartExpected } from '$lib/state/gateway/update-state.svelte';
   import { restartState } from '$lib/state/config/config.svelte';
   import { fmtTimeAgo, fmtUptime } from '$lib/utils/format';
-  import { Spinner } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
   import { AlertTriangle, RotateCw, Settings2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -63,9 +63,9 @@
     connected ? 'connected' : reconnecting || expectedRestart ? 'connecting' : 'error',
   );
   const DOT_CLASS: Record<DotState, string> = {
-    connected: 'bg-success shadow-[0_0_4px_var(--color-success)]',
-    connecting: 'bg-warning shadow-[0_0_4px_var(--color-warning)] animate-pulse',
-    error: 'bg-destructive shadow-[0_0_4px_var(--color-destructive)] animate-pulse',
+    connected: 'bg-success text-success shadow-[var(--shadow-status-glow)]',
+    connecting: 'bg-warning text-warning shadow-[var(--shadow-status-glow)] animate-pulse',
+    error: 'bg-destructive text-destructive shadow-[var(--shadow-status-glow)] animate-pulse',
   };
   const STATUS_LABEL: Record<DotState, () => string> = {
     connected: () => 'Connected',
@@ -115,7 +115,7 @@
   onmouseleave={hide}
   role="presentation"
 >
-  <button
+  <Button variant="ghost" size="xs"
     type="button"
     class="flex items-center justify-center w-4 h-4 -m-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
     aria-label={ariaLabel}
@@ -124,7 +124,7 @@
     onblur={hide}
   >
     <span class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors {DOT_CLASS[dotState]}"></span>
-  </button>
+  </Button>
 
   {#if open}
     <!-- Anchored to the dot, right-aligned so it grows to the LEFT of the chip
@@ -142,16 +142,16 @@
         <span class="w-1.5 h-1.5 rounded-full shrink-0 {DOT_CLASS[dotState]}"></span>
         <span class="font-medium truncate">{activeHost?.name ?? 'No server connected'}</span>
         <span
-          class="ml-auto text-[10px] font-semibold uppercase tracking-wide {STATUS_TEXT_CLASS[dotState]}"
+          class="ml-auto text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wide {STATUS_TEXT_CLASS[dotState]}"
         >
           {STATUS_LABEL[dotState]()}
         </span>
       </div>
 
       {#if connected && uptimeMs != null}
-        <div class="text-[11px] text-muted-foreground">up {fmtUptime(uptimeMs)}</div>
+        <div class="text-[length:var(--font-size-label)] text-muted-foreground">up {fmtUptime(uptimeMs)}</div>
       {:else if !connected && activeHost?.lastConnectedAt}
-        <div class="text-[11px] text-muted-foreground">
+        <div class="text-[length:var(--font-size-label)] text-muted-foreground">
           last seen {fmtTimeAgo(activeHost.lastConnectedAt)}
         </div>
       {/if}
@@ -184,29 +184,29 @@
             <span class="font-medium leading-snug">{conn.connectError ?? m.connectionBanner_disconnected()}</span>
           </div>
           {#if conn.connectErrorHint}
-            <p class="text-destructive/80 leading-relaxed pl-[1.35rem]">{conn.connectErrorHint}</p>
+            <p class="text-destructive/80 leading-relaxed pl-[var(--space-6)]">{conn.connectErrorHint}</p>
           {/if}
           {#if conn.connectErrorRaw}
-            <p class="font-mono text-[10px] text-destructive/60 pl-[1.35rem] break-all">
+            <p class="font-mono text-[length:var(--font-size-telemetry)] text-destructive/60 pl-[var(--space-6)] break-all">
               {conn.connectErrorRaw}
             </p>
           {/if}
-          <div class="flex items-center gap-1.5 pl-[1.35rem] pt-0.5">
-            <button
+          <div class="flex items-center gap-1.5 pl-[var(--space-6)] pt-0.5">
+            <Button variant="ghost" size="xs"
               type="button"
               onclick={retry}
               class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
             >
               <RotateCw size={11} /> {m.common_retry()}
-            </button>
+            </Button>
             {#if conn.connectErrorCta === 'hosts-edit'}
-              <button
+              <Button variant="ghost" size="xs"
                 type="button"
                 onclick={manageHosts}
                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <Settings2 size={11} /> {m.connectionBanner_manageHosts()}
-              </button>
+              </Button>
             {/if}
           </div>
         </div>

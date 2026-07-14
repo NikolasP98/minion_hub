@@ -302,7 +302,7 @@
           type="text"
           bind:value={backupHost}
           placeholder="backup.example.com"
-          class="mt-1 w-full bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </label>
       <label class="block">
@@ -310,7 +310,7 @@
         <input
           type="text"
           bind:value={backupUser}
-          class="mt-1 w-full bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </label>
       <label class="block">
@@ -318,7 +318,7 @@
         <input
           type="number"
           bind:value={backupPort}
-          class="mt-1 w-full bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </label>
       <label class="block">
@@ -326,7 +326,7 @@
         <input
           type="text"
           bind:value={backupBasePath}
-          class="mt-1 w-full bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </label>
     </div>
@@ -339,7 +339,7 @@
           type="text"
           bind:value={schedule}
           placeholder="0 3 * * *"
-          class="mt-1 w-full bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </label>
       <label class="block">
@@ -348,7 +348,7 @@
           type="number"
           bind:value={retentionCount}
           min="1"
-          class="mt-1 w-full bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </label>
       <label class="flex items-center gap-2 self-end pb-1">
@@ -374,7 +374,7 @@
         {testing ? m.backup_testing() : m.backup_testConnection()}
       </Button>
       {#if testResult}
-        <span class="text-xs {testResult.ok ? 'text-green-400' : 'text-destructive'}">
+        <span class="text-xs {testResult.ok ? 'text-success' : 'text-destructive'}">
           {testResult.message}
         </span>
       {/if}
@@ -429,10 +429,10 @@
                   <td class="py-2 px-2 text-foreground">{formatDate(snapshot.timestamp)}</td>
                   <td class="py-2 px-2 text-muted-foreground">{formatBytes(snapshot.sizeBytes)}</td>
                   <td class="py-2 px-2">
-                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium
-                      {snapshot.status === 'complete' ? 'bg-green-500/10 text-green-400' :
-                       snapshot.status === 'failed' ? 'bg-red-500/10 text-red-400' :
-                       'bg-yellow-500/10 text-yellow-400'}">
+                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[length:var(--font-size-telemetry)] font-medium
+                      {snapshot.status === 'complete' ? 'bg-success/15 text-success' :
+                       snapshot.status === 'failed' ? 'bg-destructive/10 text-destructive' :
+                       'bg-warning/10 text-warning'}">
                       {snapshot.status}
                     </span>
                   </td>
@@ -481,7 +481,7 @@
         </h2>
         <div
           bind:this={logContainer}
-          class="bg-bg font-mono text-[11px] text-muted-foreground p-3 rounded border border-border max-h-64 overflow-y-auto"
+          class="bg-bg font-mono text-[length:var(--font-size-label)] text-muted-foreground p-3 rounded border border-border max-h-64 overflow-y-auto"
         >
           {#each logLines as line, i (i)}
             <div class="whitespace-pre-wrap">{line}</div>
@@ -492,7 +492,7 @@
 
     <!-- Confirm restore dialog -->
     {#if confirmRestore}
-      <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div class="fixed inset-0 bg-[var(--color-overlay)] flex items-center justify-center z-[var(--layer-modal)]">
         <div class="surface-2 rounded-lg p-6 max-w-sm mx-4">
           <h3 class="text-sm font-semibold text-foreground mb-2">{m.backup_confirmRestoreTitle()}</h3>
           <p class="text-xs text-muted-foreground mb-4">

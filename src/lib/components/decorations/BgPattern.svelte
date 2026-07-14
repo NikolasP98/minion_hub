@@ -1,8 +1,8 @@
 <script lang="ts">
   import { bgPattern } from '$lib/state/ui/bg-pattern.svelte';
 
-  // canvas mode: absolute inset-0 -z-10 (use inside a relative z-0 container)
-  // fixed mode (default): fixed inset-0 z-0 (global overlay)
+  // canvas mode: absolute inset-0 -z-[var(--layer-sticky)] (use inside a relative z-[var(--layer-base)] container)
+  // fixed mode (default): fixed inset-0 z-[var(--layer-base)] (global overlay)
   let { mode = 'fixed' }: { mode?: 'fixed' | 'canvas' } = $props();
 
   const color = 'var(--color-accent)';
@@ -10,8 +10,8 @@
   // Unique pattern ID per render to avoid SVG ID collisions
   const pid = $derived(`bg-pat-${bgPattern.pattern}-${bgPattern.size}-${mode}`);
   const cls = $derived(mode === 'canvas'
-    ? 'absolute inset-0 w-full h-full pointer-events-none -z-10'
-    : 'fixed inset-0 w-full h-full pointer-events-none z-0');
+    ? 'absolute inset-0 w-full h-full pointer-events-none -z-[var(--layer-sticky)]'
+    : 'fixed inset-0 w-full h-full pointer-events-none z-[var(--layer-base)]');
 </script>
 
 {#if bgPattern.pattern !== 'none'}

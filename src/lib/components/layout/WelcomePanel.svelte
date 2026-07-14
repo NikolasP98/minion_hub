@@ -5,6 +5,7 @@
     import MinionLogo from "./MinionLogo.svelte";
     import { Plus, Zap, Plug, Server } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
+    import { Button } from '$lib/components/ui';
 </script>
 
 <div
@@ -20,7 +21,7 @@
         ></div>
     </div>
 
-    <div class="relative z-10 max-w-2xl w-full text-center space-y-8">
+    <div class="relative z-[var(--layer-sticky)] max-w-2xl w-full text-center space-y-8">
         <!-- Logo and welcome -->
         <div class="space-y-4">
             <div class="flex justify-center">
@@ -70,26 +71,26 @@
                     </div>
                 </div>
                 {#if !conn.connected}
-                    <button
+                    <Button variant="ghost" size="xs"
                         class="ml-auto flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
                         onclick={() => (ui.overlayOpen = true)}
                     >
                         <Plug size={12} />
                         {m.hosts_connect()}
-                    </button>
+                    </Button>
                 {/if}
             </div>
         </div>
 
         <!-- Primary action: add an agent -->
         <div class="flex justify-center">
-            <button
+            <Button variant="ghost" size="xs"
                 onclick={() => (ui.agentAddOpen = true)}
-                class="group flex flex-col items-center gap-2 p-4 w-40 rounded-xl border transition-all duration-200 bg-accent/10 border-accent/30 text-accent hover:bg-accent/20"
+                class="group flex flex-col items-center gap-2 p-4 w-40 rounded-xl border transition-all duration-[var(--duration-normal)] bg-accent/10 border-accent/30 text-accent hover:bg-accent/20"
             >
                 <Plus size={20} class="text-accent" />
                 <span class="text-xs font-medium">{m.agent_add()}</span>
-            </button>
+            </Button>
         </div>
 
         <!-- Tip -->

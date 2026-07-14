@@ -108,8 +108,8 @@
   >
     {#each visibleChords as c (c.key)}
       <span class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-bg3 border border-border">
-        <kbd class="font-mono text-[11px] font-semibold text-foreground">{c.key}</kbd>
-        <span class="text-[11px] text-muted-foreground whitespace-nowrap">{c.label()}</span>
+        <kbd class="font-mono text-[length:var(--font-size-label)] font-semibold text-foreground">{c.key}</kbd>
+        <span class="text-[length:var(--font-size-label)] text-muted-foreground whitespace-nowrap">{c.label()}</span>
       </span>
     {/each}
   </div>

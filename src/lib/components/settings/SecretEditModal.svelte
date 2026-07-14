@@ -57,7 +57,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    class="fixed inset-0 z-[var(--layer-modal)] flex items-center justify-center bg-[var(--color-overlay)] backdrop-blur-sm"
     onclick={onClose}
     onkeydown={handleKeydown}
   >
@@ -69,7 +69,7 @@
       onkeydown={(e) => e.stopPropagation()}
     >
       <h2 class="text-sm font-semibold text-foreground mb-1">{secretLabel}</h2>
-      <p class="text-[11px] text-muted-foreground mb-4 font-mono">{secretKey}</p>
+      <p class="text-[length:var(--font-size-label)] text-muted-foreground mb-4 font-mono">{secretKey}</p>
 
       <label class="block">
         <span class="text-xs text-muted-foreground mb-1.5 block">{m.secretEditModal_value()}</span>
@@ -81,7 +81,7 @@
           spellcheck="false"
           disabled={saving}
           placeholder={m.secretEditModal_placeholder()}
-          class="w-full bg-background border border-border rounded-[5px] px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:border-accent disabled:opacity-50"
+          class="w-full bg-background border border-border rounded-[var(--radius-sm)] px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:border-accent disabled:opacity-50"
         />
       </label>
 
@@ -95,7 +95,7 @@
       {/if}
 
       {#if error}
-        <p class="mt-3 text-xs text-rose-300">{error}</p>
+        <p class="mt-3 text-xs text-destructive">{error}</p>
       {/if}
 
       <div class="flex gap-2 justify-end mt-5">

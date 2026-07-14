@@ -168,5 +168,5 @@
 <canvas
   bind:this={canvas}
   class="fixed inset-0 w-full h-full pointer-events-none"
-  style="z-index: -3; mix-blend-mode: screen;"
+  style="z-index: var(--layer-base); mix-blend-mode: screen;"
 ></canvas>

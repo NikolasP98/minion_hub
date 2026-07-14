@@ -301,15 +301,15 @@
 		{/snippet}
 		{#snippet actions()}
 			{#if usingActivity}
-				<span class="text-[10px] text-muted-strong">{m.reliability_fleetWideFullCoverage()}</span>
+				<span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{m.reliability_fleetWideFullCoverage()}</span>
 			{/if}
 		{/snippet}
 	</PanelHeader>
 
 	{#if !hasAny}
 		<div class="flex flex-col items-center justify-center gap-1 py-8 px-4 text-center">
-			<span class="text-muted-foreground text-[13px]">{m.reliability_noActivitySignals()}</span>
-			<span class="text-muted-strong text-[11px] max-w-md">
+			<span class="text-muted-foreground text-[length:var(--font-size-body)]">{m.reliability_noActivitySignals()}</span>
+			<span class="text-muted-strong text-[length:var(--font-size-label)] max-w-md">
 				{#if usingActivity}
 					{m.reliability_noActivityYetHint()}
 				{:else}
@@ -320,13 +320,13 @@
 	{:else}
 		<!-- KPI strip -->
 		<div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-border border-b border-border">
-			<MetricCard label={m.reliability_memoriesSaved()} value={fmt(memory.created)} valueClass="text-violet-400 tabular-nums" />
+			<MetricCard label={m.reliability_memoriesSaved()} value={fmt(memory.created)} valueClass="text-[var(--color-purple)] tabular-nums" />
 			<MetricCard
 				label={m.reliability_heartbeatHealth()}
 				value={heartbeat.total > 0 ? pct(heartbeat.successRate) : '—'}
 				valueClass="{heartbeat.failed > 0 ? 'text-warning' : 'text-success'} tabular-nums"
 			/>
-			<MetricCard label={m.reliability_proactiveRuns()} value={pct(proactivity.ratio)} valueClass="text-rose-400 tabular-nums" />
+			<MetricCard label={m.reliability_proactiveRuns()} value={pct(proactivity.ratio)} valueClass="text-[var(--color-brand)] tabular-nums" />
 			<MetricCard
 				label={m.reliability_toolErrorRate()}
 				value={tools.total > 0 ? pct(tools.errorRate) : '—'}
@@ -338,31 +338,31 @@
 			<!-- Memory / KG detail -->
 			<div class="bg-bg2 p-3">
 				<div class="flex items-center gap-1.5 pb-2">
-					<Brain size={12} class="text-violet-400" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_memoryKnowledgeGraph()}</span>
+					<Brain size={12} class="text-[var(--color-purple)]" />
+					<span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_memoryKnowledgeGraph()}</span>
 				</div>
 				<div class="grid grid-cols-4 gap-2 text-center">
 					<div class="rounded bg-bg3/40 py-2">
 						<div class="text-base font-bold text-success tabular-nums">{fmt(memory.created)}</div>
-						<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_created()}</div>
+						<div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wide text-muted-strong">{m.reliability_created()}</div>
 					</div>
 					<div class="rounded bg-bg3/40 py-2">
 						<div class="text-base font-bold text-accent tabular-nums">{fmt(memory.updated)}</div>
-						<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_updated()}</div>
+						<div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wide text-muted-strong">{m.reliability_updated()}</div>
 					</div>
 					<div class="rounded bg-bg3/40 py-2">
 						<div class="text-base font-bold text-muted-foreground tabular-nums">{fmt(memory.deleted)}</div>
-						<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_deleted()}</div>
+						<div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wide text-muted-strong">{m.reliability_deleted()}</div>
 					</div>
 					<div class="rounded bg-bg3/40 py-2">
-						<div class="text-base font-bold text-cyan-400 tabular-nums">{fmt(memory.reads ?? 0)}</div>
-						<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_reads()}</div>
+						<div class="text-base font-bold text-[var(--color-cyan)] tabular-nums">{fmt(memory.reads ?? 0)}</div>
+						<div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wide text-muted-strong">{m.reliability_reads()}</div>
 					</div>
 				</div>
 				{#if memory.byType.length > 0}
 					<div class="flex flex-wrap gap-1.5 mt-2.5">
 						{#each memory.byType as t (t.key)}
-							<span class="inline-flex items-center gap-1 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 px-2 py-0.5 text-[10px]">
+							<span class="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--color-purple)_15%,transparent)] text-[var(--color-purple)] border border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] px-2 py-0.5 text-[length:var(--font-size-telemetry)]">
 								<span class="opacity-70">{t.key}</span>
 								<span class="font-semibold tabular-nums">{fmt(t.value)}</span>
 							</span>
@@ -370,45 +370,45 @@
 					</div>
 				{/if}
 				{#if memory.total > 0}
-					<p class="text-[10px] text-muted-strong mt-2">
+					<p class="text-[length:var(--font-size-telemetry)] text-muted-strong mt-2">
 						{m.reliability_lastActivity({ time: relTime(memory.lastTs), reads: (memory.reads ?? 0) > 0 ? ` · ${fmt(memory.reads ?? 0)} ${m.reliability_readCount()}` : '' })}
 					</p>
 				{:else if (memory.reads ?? 0) > 0}
-					<p class="text-[10px] text-muted-strong mt-2">
+					<p class="text-[length:var(--font-size-telemetry)] text-muted-strong mt-2">
 						{m.reliability_readsNoWrites({ count: fmt(memory.reads ?? 0) })}
 					</p>
 				{:else}
-					<p class="text-[10px] text-warning mt-2">{m.reliability_noMemoryActivity()}</p>
+					<p class="text-[length:var(--font-size-telemetry)] text-warning mt-2">{m.reliability_noMemoryActivity()}</p>
 				{/if}
 			</div>
 
 			<!-- Heartbeat detail -->
 			<div class="bg-bg2 p-3">
 				<div class="flex items-center gap-1.5 pb-2">
-					<HeartPulse size={12} class="text-rose-400" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_heartbeatsLiveness()}</span>
+					<HeartPulse size={12} class="text-[var(--color-brand)]" />
+					<span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_heartbeatsLiveness()}</span>
 				</div>
 				{#if heartbeat.total > 0}
 					<div class="grid grid-cols-3 gap-2 text-center">
 						<div class="rounded bg-bg3/40 py-2">
 							<div class="text-base font-bold text-success tabular-nums">{fmt(heartbeat.ok)}</div>
-							<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_ok()}</div>
+							<div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wide text-muted-strong">{m.reliability_ok()}</div>
 						</div>
 						<div class="rounded bg-bg3/40 py-2">
 							<div class="text-base font-bold {heartbeat.failed > 0 ? 'text-destructive' : 'text-muted-foreground'} tabular-nums">{fmt(heartbeat.failed)}</div>
-							<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_failed()}</div>
+							<div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wide text-muted-strong">{m.reliability_failed()}</div>
 						</div>
 						<div class="rounded bg-bg3/40 py-2">
 							<div class="text-base font-bold text-muted-foreground tabular-nums">{fmt(heartbeat.skipped)}</div>
-							<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_skipped()}</div>
+							<div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wide text-muted-strong">{m.reliability_skipped()}</div>
 						</div>
 					</div>
-					<p class="text-[10px] text-muted-strong mt-2">
+					<p class="text-[length:var(--font-size-telemetry)] text-muted-strong mt-2">
 						{m.reliability_lastBeat({ time: relTime(heartbeat.lastTs), status: heartbeat.lastStatus ? ` · ${heartbeat.lastStatus}` : '' })}
 					</p>
 				{:else}
 					<div class="flex items-center justify-center h-[96px] text-center">
-						<span class="text-[11px] text-warning">{m.reliability_noHeartbeats()}</span>
+						<span class="text-[length:var(--font-size-label)] text-warning">{m.reliability_noHeartbeats()}</span>
 					</div>
 				{/if}
 			</div>
@@ -416,26 +416,26 @@
 			<!-- Proactivity donut -->
 			<div class="bg-bg2 p-1">
 				<div class="flex items-center gap-1.5 px-2 pt-2 pb-1">
-					<Sparkles size={12} class="text-rose-400" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_proactiveVsReactiveRuns()}</span>
+					<Sparkles size={12} class="text-[var(--color-brand)]" />
+					<span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_proactiveVsReactiveRuns()}</span>
 				</div>
 				{#if proactivity.total > 0}
 					<Chart options={proactivityChart} height="180px" />
 				{:else}
-					<div class="flex items-center justify-center h-[180px] text-muted-strong text-[11px]">{m.reliability_noRunData()}</div>
+					<div class="flex items-center justify-center h-[180px] text-muted-strong text-[length:var(--font-size-label)]">{m.reliability_noRunData()}</div>
 				{/if}
 			</div>
 
 			<!-- Tools -->
 			<div class="bg-bg2 p-1">
 				<div class="flex items-center gap-1.5 px-2 pt-2 pb-1">
-					<Wrench size={12} class="text-purple" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_toolUsage({ count: fmt(tools.total) })}</span>
+					<Wrench size={12} class="text-[var(--color-purple)]" />
+					<span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_toolUsage({ count: fmt(tools.total) })}</span>
 				</div>
 				{#if tools.top.length > 0}
 					<Chart options={toolChart} height="180px" />
 				{:else}
-					<div class="flex items-center justify-center h-[180px] text-muted-strong text-[11px]">{m.reliability_noToolCalls()}</div>
+					<div class="flex items-center justify-center h-[180px] text-muted-strong text-[length:var(--font-size-label)]">{m.reliability_noToolCalls()}</div>
 				{/if}
 			</div>
 		</div>
@@ -444,19 +444,19 @@
 		{#if toolOutcomes.total > 0}
 			<div class="bg-bg2 p-3 border-t border-border">
 				<div class="flex items-center gap-1.5 pb-2">
-					<Wrench size={12} class="text-purple" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_toolOutcomes()}</span>
-					<span class="ml-auto flex items-center gap-2 text-[10px] tabular-nums">
+					<Wrench size={12} class="text-[var(--color-purple)]" />
+					<span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_toolOutcomes()}</span>
+					<span class="ml-auto flex items-center gap-2 text-[length:var(--font-size-telemetry)] tabular-nums">
 						<span class="text-success">{fmt(toolOutcomes.ok)} {m.reliability_ok()}</span>
 						{#if toolOutcomes.error > 0}<span class="text-warning">{fmt(toolOutcomes.error)} {m.reliability_outcomeError()}</span>{/if}
-						{#if toolOutcomes.timeout > 0}<span class="text-amber-400">{fmt(toolOutcomes.timeout)} {m.reliability_outcomeTimeout()}</span>{/if}
+						{#if toolOutcomes.timeout > 0}<span class="text-warning">{fmt(toolOutcomes.timeout)} {m.reliability_outcomeTimeout()}</span>{/if}
 						{#if toolOutcomes.authError > 0}<span class="text-destructive">{fmt(toolOutcomes.authError)} {m.reliability_outcomeAuth()}</span>{/if}
 					</span>
 				</div>
 				<div class="overflow-x-auto">
-					<table class="w-full min-w-[360px] text-[11px]">
+					<table class="w-full min-w-[360px] text-[length:var(--font-size-label)]">
 						<thead>
-							<tr class="text-[9px] uppercase tracking-wide text-muted-strong">
+							<tr class="text-[length:var(--font-size-telemetry)] uppercase tracking-wide text-muted-strong">
 								<th class="text-left font-medium pb-1">{m.reliability_tool()}</th>
 								<th class="text-right font-medium pb-1 px-2 text-success">{m.reliability_ok()}</th>
 								<th class="text-right font-medium pb-1 px-2">{m.reliability_outcomeError()}</th>
@@ -470,7 +470,7 @@
 									<td class="text-left py-1 pr-2 truncate max-w-[160px] text-foreground">{t.tool}</td>
 									<td class="text-right py-1 px-2 tabular-nums text-success">{fmt(t.ok)}</td>
 									<td class="text-right py-1 px-2 tabular-nums {t.error > 0 ? 'text-warning' : 'text-muted-strong'}">{fmt(t.error)}</td>
-									<td class="text-right py-1 px-2 tabular-nums {t.timeout > 0 ? 'text-amber-400' : 'text-muted-strong'}">{fmt(t.timeout)}</td>
+									<td class="text-right py-1 px-2 tabular-nums {t.timeout > 0 ? 'text-warning' : 'text-muted-strong'}">{fmt(t.timeout)}</td>
 									<td class="text-right py-1 px-2 tabular-nums {t.authError > 0 ? 'text-destructive' : 'text-muted-strong'}">{fmt(t.authError)}</td>
 								</tr>
 							{/each}

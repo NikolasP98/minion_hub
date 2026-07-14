@@ -13,10 +13,10 @@
     SecretsProbeStatus,
     { bg: string; fg: string; dot: string; text: string }
   > = {
-    ok: { bg: 'bg-emerald-500/10', fg: 'text-emerald-300', dot: 'bg-emerald-400', text: 'Configured' },
-    invalid: { bg: 'bg-rose-500/10', fg: 'text-rose-300', dot: 'bg-rose-400', text: 'Invalid' },
-    missing: { bg: 'bg-zinc-500/10', fg: 'text-zinc-300', dot: 'bg-zinc-400', text: 'Missing' },
-    unknown: { bg: 'bg-amber-500/10', fg: 'text-amber-300', dot: 'bg-amber-400', text: 'Unchecked' },
+    ok: { bg: 'bg-success/10', fg: 'text-success', dot: 'bg-success', text: 'Configured' },
+    invalid: { bg: 'bg-destructive/10', fg: 'text-destructive', dot: 'bg-destructive', text: 'Invalid' },
+    missing: { bg: 'bg-muted/10', fg: 'text-muted-foreground', dot: 'bg-muted-foreground', text: 'Missing' },
+    unknown: { bg: 'bg-warning/10', fg: 'text-warning', dot: 'bg-warning', text: 'Unchecked' },
   };
 
   const p = $derived(palette[status]);

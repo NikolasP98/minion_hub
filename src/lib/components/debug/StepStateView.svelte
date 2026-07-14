@@ -36,17 +36,17 @@
 <style>
   .state-view {
     border: 1px solid var(--color-border);
-    border-radius: 8px;
-    padding: 1rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
     background: var(--color-surface-2);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   h3 {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: var(--font-size-body);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-text-tertiary);
@@ -55,24 +55,24 @@
   .meta {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.85rem;
+    gap: var(--space-1);
+    font-size: var(--font-size-body);
     color: var(--color-text-tertiary);
   }
 
   code {
     font-family: var(--font-mono, monospace);
-    font-size: 0.8rem;
+    font-size: var(--font-size-body);
     color: var(--color-text-primary);
   }
 
   pre {
     margin: 0;
-    padding: 0.75rem;
+    padding: var(--space-3);
     background: var(--color-canvas);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono, monospace);
-    font-size: 0.8rem;
+    font-size: var(--font-size-body);
     color: var(--color-text-primary);
     overflow-x: auto;
     max-height: 400px;

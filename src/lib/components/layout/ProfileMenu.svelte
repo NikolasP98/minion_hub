@@ -32,7 +32,7 @@
 <Dropdown {items} {onSelect} placement="bottom" class="w-56 right-0">
   {#snippet trigger()}
     <span
-      class="flex items-center justify-center rounded-full hover:opacity-90 transition-opacity duration-150 leading-none"
+      class="flex items-center justify-center rounded-full hover:opacity-90 transition-opacity duration-[var(--duration-fast)] leading-none"
       aria-label="Profile menu"
     >
       <UserAvatar name={displayName} {email} src={avatarUrl} size={28} />
@@ -44,11 +44,11 @@
       <span class="flex items-center justify-between gap-2 w-full">
         <span class="min-w-0">
           <span class="block text-sm font-semibold text-foreground truncate">{displayName}</span>
-          <span class="block text-[11px] text-muted truncate">{email}</span>
+          <span class="block text-[length:var(--font-size-label)] text-muted truncate">{email}</span>
         </span>
         {#if role}
           <span
-            class="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent/15 text-accent border border-accent/20 uppercase tracking-wide"
+            class="shrink-0 text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded bg-accent/15 text-accent border border-accent/20 uppercase tracking-wide"
           >
             {role}
           </span>
@@ -58,7 +58,7 @@
       {@const Icon = it.icon}
       <Icon size={14} class="text-muted-foreground" />
       <span class="flex-1">{it.label}</span>
-      <span class="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-bg3 border border-border">
+      <span class="text-[length:var(--font-size-telemetry)] font-mono font-medium px-1.5 py-0.5 rounded bg-bg3 border border-border">
         {locale.current.toUpperCase()}
       </span>
     {:else}

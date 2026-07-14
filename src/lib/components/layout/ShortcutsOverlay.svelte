@@ -87,7 +87,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-        class="fixed inset-0 z-[var(--layer-command,70)] bg-[color-mix(in_srgb,var(--color-canvas,var(--color-bg))_60%,transparent)] backdrop-blur-sm flex items-start justify-center pt-[10dvh] px-[var(--space-page-gutter,16px)]"
+        class="fixed inset-0 z-[var(--layer-command,70)] bg-[color-mix(in_srgb,var(--color-canvas,var(--color-bg))_60%,transparent)] backdrop-blur-sm flex items-start justify-center pt-[clamp(var(--space-12),10dvh,8rem)] px-[var(--space-page-gutter,16px)]"
         data-backdrop
         onclick={handleBackdropClick}
     >
@@ -97,7 +97,7 @@
         >
             <div class="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
                 <span class="text-sm font-semibold text-foreground">{m.shortcuts_title()}</span>
-                <kbd class="px-1.5 py-0.5 rounded bg-bg3 border border-border font-mono text-[10px] text-muted">
+                <kbd class="px-1.5 py-0.5 rounded bg-bg3 border border-border font-mono text-[length:var(--font-size-telemetry)] text-muted">
                     {formatForDisplay('Escape')}
                 </kbd>
             </div>
@@ -107,24 +107,24 @@
                         <div class="min-w-0">
                             <p class="text-sm text-foreground truncate">{row.name}</p>
                             {#if row.description}
-                                <p class="text-[11px] text-muted-foreground truncate">{row.description}</p>
+                                <p class="text-[length:var(--font-size-label)] text-muted-foreground truncate">{row.description}</p>
                             {/if}
                         </div>
-                        <kbd class="shrink-0 px-1.5 py-0.5 rounded bg-bg3 border border-border font-mono text-[11px] text-muted-foreground">
+                        <kbd class="shrink-0 px-1.5 py-0.5 rounded bg-bg3 border border-border font-mono text-[length:var(--font-size-label)] text-muted-foreground">
                             {row.combo}
                         </kbd>
                     </div>
                 {/each}
 
                 <div class="px-4 pt-3 pb-1">
-                    <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-strong">
+                    <span class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong">
                         {m.shortcuts_gridSectionTitle()}
                     </span>
                 </div>
                 {#each gridRows as row (row.id)}
                     <div class="flex items-center justify-between gap-3 px-4 py-1.5">
                         <p class="text-sm text-foreground truncate">{row.name}</p>
-                        <kbd class="shrink-0 px-1.5 py-0.5 rounded bg-bg3 border border-border font-mono text-[11px] text-muted-foreground">
+                        <kbd class="shrink-0 px-1.5 py-0.5 rounded bg-bg3 border border-border font-mono text-[length:var(--font-size-label)] text-muted-foreground">
                             {row.combo}
                         </kbd>
                     </div>

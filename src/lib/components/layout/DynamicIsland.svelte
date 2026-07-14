@@ -10,6 +10,7 @@
   import { ui } from '$lib/state/ui/ui.svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
 
   let notificationsOpen = $state(false);
 
@@ -22,10 +23,10 @@
 
 {#snippet bell()}
   <div class="relative">
-    <button
+    <Button variant="ghost" size="xs"
       type="button"
       onclick={() => (notificationsOpen = !notificationsOpen)}
-      class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors duration-[150ms] relative"
+      class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors duration-[150ms] relative"
       aria-label="{notifications.badgeCount} notifications"
       title="Notifications"
       aria-expanded={notificationsOpen}
@@ -33,12 +34,12 @@
       <Bell size={14} />
       {#if notifications.hasPending}
         <span
-          class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-red-500 text-[9px] font-bold text-white leading-none"
+          class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-destructive text-[length:var(--font-size-telemetry)] font-bold text-accent-foreground leading-none"
         >
           {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
         </span>
       {/if}
-    </button>
+    </Button>
     <NotificationsPopup bind:open={notificationsOpen} />
   </div>
 {/snippet}
@@ -49,7 +50,7 @@
 <div
   class="island group hidden md:flex fixed top-[env(safe-area-inset-top,0px)] right-[env(safe-area-inset-right,0px)] z-[var(--layer-navigation,20)] items-center gap-0.5 h-9 pl-2 pr-2 rounded-bl-[var(--radius-xl)]
          bg-bg2/85 backdrop-blur-xl border-b border-l border-[var(--elevation-3-border)] shadow-sm
-         transition-[box-shadow,border-color] duration-[200ms] ease-[cubic-bezier(0.2,0,0,1)]"
+         transition-[box-shadow,border-color] duration-[var(--duration-normal)] ease-[var(--ease-standard)]"
   aria-label="Quick actions"
 >
   <!-- Connection status dot — always visible at the far left. Hovering it opens
@@ -71,15 +72,15 @@
 
       <div class="w-px h-4 bg-[var(--hairline)] mx-0.5"></div>
 
-      <button
+      <Button variant="ghost" size="xs"
         onclick={() => captureSnapshot()}
         disabled={bugReporter.phase === 'capturing'}
-        class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors duration-[150ms] disabled:opacity-50 disabled:cursor-wait"
+        class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors duration-[150ms] disabled:opacity-50 disabled:cursor-wait"
         aria-label={m.bug_reportButton()}
         title={m.bug_reportButton()}
       >
         <Bug size={15} />
-      </button>
+      </Button>
 
       {#if !notifications.hasPending}{@render bell()}{/if}
     </div>
@@ -88,15 +89,15 @@
   <!-- Pending notification stays visible at rest. -->
   {#if notifications.hasPending}{@render bell()}{/if}
 
-  <button
+  <Button variant="ghost" size="xs"
     type="button"
     onclick={() => togglePalette()}
-    class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors duration-[150ms]"
+    class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors duration-[150ms]"
     aria-label="Open command palette (⌘K)"
     title="Search · ⌘K"
   >
     <Search size={14} />
-  </button>
+  </Button>
 
   <div class="w-px h-4 bg-[var(--hairline)] mx-0.5"></div>
 
@@ -112,8 +113,8 @@
     grid-template-columns: 0fr;
     opacity: 0;
     transition:
-      grid-template-columns 220ms cubic-bezier(0.2, 0, 0, 1),
-      opacity 160ms ease;
+      grid-template-columns var(--duration-normal) var(--ease-standard),
+      opacity var(--duration-fast) var(--ease-standard);
   }
   .island:hover .ci,
   .island:focus-within .ci {
