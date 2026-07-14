@@ -1,4 +1,11 @@
 <script lang="ts">
+  import { Button, PageHeader } from '$lib/components/ui';
+  import {
+    AsyncBoundary,
+    PageBody,
+    PageShell,
+    type AsyncBoundaryState,
+  } from '$lib/components/ui/foundations';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { configState, loadConfig, isDirty, groups } from '$lib/state/config/config.svelte';
   import { hasConfiguredValues, countConfiguredKeys } from '$lib/utils/config-schema';
@@ -81,37 +88,36 @@
     const val = configState.current[g.fields[0]?.key];
     return countConfiguredKeys(val);
   }
+
+  const pageState = $derived.by<AsyncBoundaryState>(() => {
+    if (!conn.connected) {
+      return {
+        kind: 'unavailable',
+        title: m.config_noServer(),
+      };
+    }
+    if (configState.loading && !configState.loaded) {
+      return { kind: 'loading', label: m.config_loading() };
+    }
+    if (configState.loadError) {
+      return {
+        kind: 'error',
+        title: m.config_error(),
+        description: configState.loadError,
+        retry: () => void loadConfig(),
+      };
+    }
+    return { kind: 'ready' };
+  });
 </script>
 
-<!-- Body -->
-{#if !conn.connected}
-    <div class="flex-1 flex items-center justify-center">
-      <div class="text-center">
-        <p class="text-muted-foreground text-sm mb-3">{m.config_noServer()}</p>
-        <a href="/" class="text-xs text-accent no-underline hover:underline">{m.config_goToDashboard()}</a>
-      </div>
-    </div>
-  {:else if configState.loading && !configState.loaded}
-    <div class="flex-1 flex items-center justify-center">
-      <div class="text-center">
-        <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-        <p class="text-muted-foreground text-xs">{m.config_loading()}</p>
-      </div>
-    </div>
-  {:else if configState.loadError}
-    <div class="flex-1 flex items-center justify-center">
-      <div class="text-center max-w-sm">
-        <p class="text-destructive text-sm mb-2">{m.config_error()}</p>
-        <p class="text-muted-foreground text-xs mb-4">{configState.loadError}</p>
-        <button
-          class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-[6px] px-4"
-          onclick={() => loadConfig()}
-        >
-          {m.common_retry()}
-        </button>
-      </div>
-    </div>
-  {:else}
+<PageShell archetype="workspace" scroll="none" labelledBy="config-title">
+  <PageHeader titleId="config-title" title={m.config_fullTitle()} sticky={false} />
+  <PageBody padding="none" scroll="none">
+    <AsyncBoundary state={pageState} class="h-full">
+      {#snippet unavailableAction()}
+        <Button variant="outline" size="sm" href="/">{m.config_goToDashboard()}</Button>
+      {/snippet}
     <Splitter
         storageKey="sidebar-config"
         defaultSize={17}
@@ -125,7 +131,7 @@
           <div bind:this={contentEl} class="flex-1 overflow-y-auto px-6 py-5">
             <div class="max-w-3xl mx-auto space-y-2.5">
               {#if configState.version}
-                <p class="text-[10px] text-muted-foreground mb-2">
+                <p class="text-xs text-muted-foreground mb-2">
                   Gateway v{configState.version} &middot; {configState.configPath}
                 </p>
               {/if}
@@ -151,4 +157,6 @@
           {/if}
         </div>
     </Splitter>
-{/if}
+    </AsyncBoundary>
+  </PageBody>
+</PageShell>

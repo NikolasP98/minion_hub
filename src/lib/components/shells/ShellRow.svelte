@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import type { ShellSummary } from '$lib/services/shells-rpc';
 
   let { shell, onSelect }: { shell: ShellSummary; onSelect: (shellId: string) => void } = $props();
@@ -23,7 +24,7 @@
   );
 </script>
 
-<button class="row" onclick={() => onSelect(shell.shellId)}>
+<Button variant="secondary" class="row" onclick={() => onSelect(shell.shellId)}>
   <span class="status-dot {statusColor}" title={shell.status}></span>
   <span class="name">{shell.displayName}</span>
   <span class="harness">{shell.harness}</span>
@@ -31,31 +32,24 @@
   <span class="resources">{shell.diskGB}GB · {shell.memoryMB}MB</span>
   <span class="invoke">{relTime(shell.lastInvokeAt)}</span>
   <span class="status-text {statusColor}">{shell.status}</span>
-</button>
+</Button>
 
 <style>
   .row {
     display: grid;
     grid-template-columns: auto 1fr 120px 80px 130px 110px 100px;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3, 12px);
     width: 100%;
-    padding: 12px 16px;
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid var(--color-border-default, var(--color-border));
+    padding: var(--space-3, 12px) var(--space-4, 16px);
     cursor: pointer;
     text-align: left;
-    font-size: 13px;
-    color: inherit;
-  }
-  .row:hover {
-    background: var(--color-surface-1, var(--color-bg2));
+    font-size: var(--font-size-body, 13px);
   }
   .status-dot {
     width: 8px;
     height: 8px;
-    border-radius: 50%;
+    border-radius: var(--radius-full, 999px);
   }
   .green { background: var(--color-success-fg, var(--color-success)); }
   .amber { background: var(--color-warning-fg, var(--color-warning)); }
@@ -75,7 +69,7 @@
     text-align: right;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    font-size: 11px;
+    font-size: var(--font-size-label, 11px);
     font-weight: 600;
   }
   .status-text.green { color: var(--color-success-fg, var(--color-success)); background: transparent; }
@@ -93,9 +87,6 @@
       min-height: var(--control-height-touch, 44px);
       margin-bottom: var(--space-2, 8px);
       padding: var(--space-3, 12px);
-      border: 1px solid var(--color-border-default, var(--color-border));
-      border-radius: var(--radius-lg);
-      background: var(--color-surface-2, var(--color-bg2));
     }
     .status-dot { grid-area: dot; }
     .name { grid-area: name; }

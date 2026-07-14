@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import * as slider from '@zag-js/slider';
   import * as m from '$lib/paraglide/messages';
   import { normalizeProps, useMachine } from '@zag-js/svelte';
@@ -39,17 +40,16 @@
   <!-- Pattern type selector -->
   <div class="flex gap-2">
     {#each PATTERN_OPTIONS as opt (opt.id)}
-      <button
+      <Button
+        variant={bgPattern.pattern === opt.id ? 'outline' : 'secondary'}
         type="button"
-        class="flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-lg border transition-all cursor-pointer min-w-[60px]
-          {bgPattern.pattern === opt.id
-            ? 'border-accent bg-accent/8 text-accent'
-            : 'border-border bg-card text-muted-foreground hover:border-muted hover:text-foreground'}"
+        aria-pressed={bgPattern.pattern === opt.id}
+        class="!h-auto min-w-[60px] flex-col gap-1.5 !px-3 !py-2.5"
         onclick={() => bgPattern.setPattern(opt.id)}
       >
         <span class="text-lg font-mono leading-none">{opt.icon}</span>
-        <span class="text-[10px] font-medium tracking-wide">{opt.label}</span>
-      </button>
+        <span class="text-xs font-medium tracking-wide">{opt.label}</span>
+      </Button>
     {/each}
   </div>
 
@@ -66,11 +66,11 @@
         <div {...opApi.getRootProps()} class="relative group">
           <div {...opApi.getControlProps()} class="relative flex items-center h-10 cursor-pointer">
             <div {...opApi.getTrackProps()} class="relative w-full h-1 bg-bg3 rounded-full overflow-hidden">
-              <div {...opApi.getRangeProps()} class="absolute h-full bg-accent rounded-full transition-[width] duration-75"></div>
+              <div {...opApi.getRangeProps()} class="absolute h-full bg-accent rounded-full transition-[width] duration-[var(--duration-fast)]"></div>
             </div>
             {#each opApi.value as _, index}
               <div {...opApi.getThumbProps({ index })} class="absolute w-5 h-5 -translate-x-1/2 -translate-y-1/2 top-1/2">
-                <div class="w-5 h-5 rounded-full bg-bg border-2 border-accent shadow-[0_0_8px_var(--color-accent)] transition-shadow group-hover:shadow-[0_0_14px_var(--color-accent)] flex items-center justify-center">
+                <div class="w-5 h-5 rounded-full bg-bg border-2 border-accent shadow-[var(--shadow-glow-accent,var(--shadow-md))] transition-shadow group-hover:shadow-[var(--shadow-glow-accent-strong,var(--shadow-lg))] flex items-center justify-center">
                   <div class="w-1.5 h-1.5 rounded-full bg-accent"></div>
                 </div>
                 <input {...opApi.getHiddenInputProps({ index })} />
@@ -78,7 +78,7 @@
             {/each}
           </div>
           <!-- Tick marks -->
-          <div class="flex justify-between px-[10px] -mt-1">
+          <div class="flex justify-between px-2.5 -mt-1">
             {#each [0, 10, 20, 30, 40] as tick}
               <div class="w-px h-1.5 bg-border {bgPattern.opacity >= tick ? 'bg-accent/40' : ''}"></div>
             {/each}
@@ -95,11 +95,11 @@
         <div {...szApi.getRootProps()} class="relative group">
           <div {...szApi.getControlProps()} class="relative flex items-center h-10 cursor-pointer">
             <div {...szApi.getTrackProps()} class="relative w-full h-1 bg-bg3 rounded-full overflow-hidden">
-              <div {...szApi.getRangeProps()} class="absolute h-full bg-accent rounded-full transition-[width] duration-75"></div>
+              <div {...szApi.getRangeProps()} class="absolute h-full bg-accent rounded-full transition-[width] duration-[var(--duration-fast)]"></div>
             </div>
             {#each szApi.value as _, index}
               <div {...szApi.getThumbProps({ index })} class="absolute w-5 h-5 -translate-x-1/2 -translate-y-1/2 top-1/2">
-                <div class="w-5 h-5 rounded-full bg-bg border-2 border-accent shadow-[0_0_8px_var(--color-accent)] transition-shadow group-hover:shadow-[0_0_14px_var(--color-accent)] flex items-center justify-center">
+                <div class="w-5 h-5 rounded-full bg-bg border-2 border-accent shadow-[var(--shadow-glow-accent,var(--shadow-md))] transition-shadow group-hover:shadow-[var(--shadow-glow-accent-strong,var(--shadow-lg))] flex items-center justify-center">
                   <div class="w-1.5 h-1.5 rounded-full bg-accent"></div>
                 </div>
                 <input {...szApi.getHiddenInputProps({ index })} />
@@ -107,7 +107,7 @@
             {/each}
           </div>
           <!-- Tick marks -->
-          <div class="flex justify-between px-[10px] -mt-1">
+          <div class="flex justify-between px-2.5 -mt-1">
             {#each [6, 16, 27, 37, 48] as tick}
               <div class="w-px h-1.5 bg-border {bgPattern.size >= tick ? 'bg-accent/40' : ''}"></div>
             {/each}
@@ -158,7 +158,7 @@
         </defs>
         <rect width="100%" height="100%" fill="url(#preview-pat)" />
       </svg>
-      <span class="absolute inset-0 flex items-center justify-center text-[10px] text-muted-strong uppercase tracking-widest font-medium">{m.settings_preview()}</span>
+      <span class="absolute inset-0 flex items-center justify-center text-xs text-muted-strong uppercase tracking-widest font-medium">{m.settings_preview()}</span>
     </div>
   {/if}
 </section>

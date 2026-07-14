@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui';
+  import { Button } from '$lib/components/ui';
 	import { untrack } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
 	import {
@@ -109,40 +111,40 @@
 
 	// Severity = ordinal alarm ramp; aligned with the page palette (council 2026-05-29).
 	const severityClasses: Record<string, string> = {
-		critical: 'bg-destructive text-white',
-		high: 'bg-warning text-black',
-		medium: 'bg-purple text-white',
-		low: 'bg-muted-foreground text-white',
-		info: 'bg-accent/80 text-white',
-		ok: 'bg-success text-white',
+		critical: 'bg-destructive text-primary-foreground',
+		high: 'bg-warning text-[var(--color-warning-contrast,var(--color-canvas))]',
+		medium: 'bg-info text-primary-foreground',
+		low: 'bg-muted-foreground text-primary-foreground',
+		info: 'bg-accent/80 text-primary-foreground',
+		ok: 'bg-success text-primary-foreground',
 	};
 
 	const severityRowBorder: Record<string, string> = {
 		critical: 'border-l-2 border-l-destructive',
 		high: 'border-l-2 border-l-warning',
-		medium: 'border-l-2 border-l-purple',
+		medium: 'border-l-2 border-l-info',
 		low: 'border-l-2 border-l-muted-foreground/30',
 		info: 'border-l-2 border-l-accent/40',
 		ok: 'border-l-2 border-l-success',
 	};
 
 	const categoryClasses: Record<string, string> = {
-		gateway: 'bg-emerald/15 text-emerald border border-emerald/30',
-		agent: 'bg-pink/15 text-pink border border-pink/30',
-		tool: 'bg-purple/15 text-purple border border-purple/30',
-		message: 'bg-cyan/15 text-cyan border border-cyan/30',
+		gateway: 'bg-success/15 text-success border border-success/30',
+		agent: 'bg-accent/15 text-accent border border-accent/30',
+		tool: 'bg-info/15 text-info border border-info/30',
+		message: 'bg-info/15 text-info border border-info/30',
 		channel: 'bg-warning/15 text-warning border border-warning/30',
-		orchestration: 'bg-pink/15 text-pink border border-pink/30',
-		skill: 'bg-cyan/15 text-cyan border border-cyan/30',
+		orchestration: 'bg-accent/15 text-accent border border-accent/30',
+		skill: 'bg-info/15 text-info border border-info/30',
 		crash: 'bg-destructive/15 text-destructive border border-destructive/30',
-		connection: 'bg-teal-500/15 text-teal-400 border border-teal-500/30',
+		connection: 'bg-info/15 text-info border border-info/30',
 		auth: 'bg-success/15 text-success border border-success/30',
 		cron: 'bg-accent/15 text-accent border border-accent/30',
 		browser: 'bg-warning/15 text-warning border border-warning/30',
-		timezone: 'bg-purple/15 text-purple border border-purple/30',
+		timezone: 'bg-accent/15 text-accent border border-accent/30',
 		general: 'bg-muted-foreground/20 text-muted-foreground border border-muted-foreground/30',
-		memory: 'bg-violet-500/15 text-violet-400 border border-violet-500/30',
-		heartbeat: 'bg-rose-500/15 text-rose-400 border border-rose-500/30',
+		memory: 'bg-accent/15 text-accent border border-accent/30',
+		heartbeat: 'bg-destructive/15 text-destructive border border-destructive/30',
 	};
 
 	const HeaderIcon = $derived(icon ?? Activity);
@@ -310,7 +312,7 @@
 					if (!ev) return '';
 					const d = new Date(ev.timestamp);
 					const t = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-					return `<div style="font-size:11px"><div style="margin-bottom:4px;color:var(--color-muted-foreground)">${t}</div><div><strong>${ev.event}</strong></div><div style="color:var(--color-muted-foreground)">${ev.message}</div><div style="margin-top:2px;font-size:10px;color:var(--color-muted-foreground)">${ev.category} / ${ev.severity}</div></div>`;
+					return `<div style="font-size: var(--font-size-label, 11px)"><div style="margin-bottom:var(--space-1,4px);color:var(--color-muted-foreground)">${t}</div><div><strong>${ev.event}</strong></div><div style="color:var(--color-muted-foreground)">${ev.message}</div><div style="margin-top:var(--space-0.5,2px);font-size: var(--font-size-caption, 10px);color:var(--color-muted-foreground)">${ev.category} / ${ev.severity}</div></div>`;
 				},
 			},
 			legend: { top: 0, right: 8, textStyle: { fontSize: 10 } },
@@ -438,7 +440,7 @@
 			<HeaderIcon size={11} class="text-accent shrink-0" />
 		{/snippet}
 		{#snippet actions()}
-			<span class="text-[10px] text-muted-foreground tabular-nums shrink-0">
+			<span class="text-xs text-muted-foreground tabular-nums shrink-0">
 				{formatNumber(totalCount)}
 				{m.reliability_events()}
 			</span>
@@ -454,7 +456,7 @@
 						type="text"
 						bind:value={searchQuery}
 						placeholder={m.reliability_incidentSearch()}
-						class="h-6 w-40 pl-6 pr-2 text-[11px] bg-bg3/60 border border-border rounded text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50"
+						class="h-6 w-40 pl-6 pr-2 text-xs bg-bg3/60 border border-border rounded text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50"
 					/>
 				</div>
 			{/if}
@@ -462,27 +464,27 @@
 			<div class="flex-1"></div>
 
 			{#if filteredData.length > 0}
-				<select
+				<Select
 					bind:value={pagination.pageSize}
 					onchange={() => (pagination = { ...pagination, pageIndex: 0 })}
-					class="h-6 px-1.5 text-[11px] bg-bg3/60 border border-border rounded text-foreground cursor-pointer focus:outline-none focus:border-accent/50"
+					class="h-6 px-1.5 text-xs bg-bg3/60 border border-border rounded text-foreground cursor-pointer focus:outline-none focus:border-accent/50"
 				>
 					{#each PAGE_SIZE_OPTIONS as size (size)}
 						<option value={size}>{size}</option>
 					{/each}
-				</select>
+				</Select>
 
-				<button
+				<Button variant="secondary" size="icon"
 					type="button"
-					class="flex items-center justify-center w-6 h-6 rounded border border-border text-muted-foreground transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default hover:not-disabled:text-foreground hover:not-disabled:bg-border"
+					class="!h-6 !w-6"
 					disabled={!canPrev}
 					aria-label={m.a11y_previous_page()}
 					onclick={() => table.previousPage()}
 				>
 					<ChevronLeft size={12} />
-				</button>
+				</Button>
 
-				<span class="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
+				<span class="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
 					{#if totalRows > 0}
 						{pageStart}–{pageEnd} of {totalRows}
 					{:else}
@@ -490,15 +492,15 @@
 					{/if}
 				</span>
 
-				<button
+				<Button variant="secondary" size="icon"
 					type="button"
-					class="flex items-center justify-center w-6 h-6 rounded border border-border text-muted-foreground transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default hover:not-disabled:text-foreground hover:not-disabled:bg-border"
+					class="!h-6 !w-6"
 					disabled={!canNext}
 					aria-label={m.a11y_next_page()}
 					onclick={() => table.nextPage()}
 				>
 					<ChevronRight size={12} />
-				</button>
+				</Button>
 			{/if}
 		{/snippet}
 	</PanelHeader>
@@ -508,30 +510,30 @@
 		<div class="flex items-center gap-1 px-3 py-2 border-b border-border overflow-x-auto scrollbar-hide">
 			{#each categories as cat (cat)}
 				{@const count = tabCount(cat)}
-				<button
+				<Button
 					type="button"
-					class="shrink-0 px-2 py-0.5 rounded text-[10px] font-medium transition-colors {selectedCategory ===
-					cat
-						? 'bg-accent/20 text-accent'
-						: 'text-muted-foreground hover:text-foreground hover:bg-card'}"
+					variant={selectedCategory === cat ? 'primary' : 'secondary'}
+					size="sm"
+					class="shrink-0"
+					aria-pressed={selectedCategory === cat}
 					onclick={() => selectCategory(cat)}
 				>
 					{cat}
 					{#if count > 0}
-						<span class="ml-0.5 text-[9px] opacity-70">({formatNumber(count)})</span>
+						<span class="ml-0.5 text-xs opacity-70">({formatNumber(count)})</span>
 					{/if}
-				</button>
+				</Button>
 			{/each}
 		</div>
 	{/if}
 
 	{#if events.length === 0}
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-sm">
 			{emptyMessage ?? m.reliability_noEvents()}
 		</div>
 	{:else}
 		{#if truncated}
-			<p class="px-3 pt-1.5 text-[10px] text-muted-strong tabular-nums">
+			<p class="px-3 pt-1.5 text-xs text-muted-strong tabular-nums">
 				{m.reliability_showingOfTotal({
 					shown: formatNumber(loadedCount),
 					total: formatNumber(totalCount),
@@ -549,7 +551,7 @@
 
 		{#if filteredData.length === 0}
 			<div
-				class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px] border-t border-border"
+				class="flex items-center justify-center py-12 px-4 text-muted-foreground text-sm border-t border-border"
 			>
 				{m.reliability_incidentNoMatch({ query: searchQuery })}
 			</div>
@@ -570,7 +572,7 @@
 									onclick={header.column.getToggleSortingHandler()}
 								>
 									<span
-										class="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap"
+										class="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap"
 									>
 										{header.column.columnDef.header}
 										<SortIcon size={10} class="shrink-0 {sorted ? 'text-accent' : 'opacity-40'}" />
@@ -586,7 +588,7 @@
 							{@const isExpanded = expandedId === rowId}
 							{@const expandable = hasMetadata(evt)}
 							<tr
-								class="border-b border-border/40 hover:bg-white/[0.025] focus-visible:outline-none focus-visible:bg-white/[0.04] {severityRowBorder[
+								class="border-b border-border/40 hover:bg-foreground/[0.025] focus-visible:outline-none focus-visible:bg-foreground/[0.04] {severityRowBorder[
 									evt.severity
 								] ?? ''} {expandable ? 'cursor-pointer' : ''}"
 								tabindex={expandable ? 0 : undefined}
@@ -604,7 +606,7 @@
 								<td class="w-6 py-0.5 px-0.5 align-middle text-center">
 									{#if expandable}
 										<span
-											class="inline-flex items-center justify-center transition-transform duration-150 {isExpanded
+											class="inline-flex items-center justify-center transition-transform duration-[var(--duration-fast)] {isExpanded
 												? 'rotate-90'
 												: ''}"
 										>
@@ -613,35 +615,35 @@
 									{/if}
 								</td>
 								<td
-									class="py-0.5 px-2 text-[11px] text-muted-foreground tabular-nums cursor-default align-middle font-mono"
+									class="py-0.5 px-2 text-xs text-muted-foreground tabular-nums cursor-default align-middle font-mono"
 									style="width:{columns[0].size}px"
 									title={formatFullDate(evt.timestamp)}
 								>
 									{formatRelativeTime(evt.timestamp)}
 								</td>
-								<td class="py-0.5 px-2 text-[11px] align-middle" style="width:{columns[1].size}px">
+								<td class="py-0.5 px-2 text-xs align-middle" style="width:{columns[1].size}px">
 									<span
-										class="inline-block text-[9px] font-semibold py-px px-1.5 rounded leading-snug whitespace-nowrap {severityClasses[
+										class="inline-block text-xs font-semibold py-px px-1.5 rounded leading-snug whitespace-nowrap {severityClasses[
 											evt.severity
 										] ?? ''}">{evt.severity}</span
 									>
 								</td>
-								<td class="py-0.5 px-2 text-[11px] align-middle" style="width:{columns[2].size}px">
+								<td class="py-0.5 px-2 text-xs align-middle" style="width:{columns[2].size}px">
 									<span
-										class="inline-block text-[9px] font-semibold py-px px-1.5 rounded leading-snug whitespace-nowrap {categoryClasses[
+										class="inline-block text-xs font-semibold py-px px-1.5 rounded leading-snug whitespace-nowrap {categoryClasses[
 											evt.category
 										] ?? 'bg-muted-foreground/20 text-muted-foreground'}">{evt.category}</span
 									>
 								</td>
 								<td
-									class="py-0.5 px-2 text-[11px] text-foreground align-middle font-mono max-w-0 truncate"
+									class="py-0.5 px-2 text-xs text-foreground align-middle font-mono max-w-0 truncate"
 									style="width:{columns[3].size}px"
 									title={evt.event}
 								>
 									{evt.event}
 								</td>
 								<td
-									class="py-0.5 px-2 text-[11px] text-muted-foreground align-middle max-w-0 truncate"
+									class="py-0.5 px-2 text-xs text-muted-foreground align-middle max-w-0 truncate"
 									title={evt.message}
 								>
 									{evt.message}
@@ -650,18 +652,18 @@
 							{#if isExpanded}
 								<tr class="bg-bg3/30">
 									<td colspan="6" class="py-1.5 px-3">
-										<div class="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[11px]">
+										<div class="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
 											{#if evt.agentId}
 												<div class="flex items-center gap-2">
 													<span class="text-muted-foreground font-medium">agentId:</span>
-													<span class="text-foreground font-mono text-[11px]">{evt.agentId}</span>
+													<span class="text-foreground font-mono text-xs">{evt.agentId}</span>
 												</div>
 											{/if}
 											{#if evt.correlationId}
 												<div class="flex items-center gap-2">
 													<span class="text-muted-foreground font-medium">correlationId:</span>
 													<span
-														class="text-foreground/60 font-mono text-[11px] truncate max-w-[220px]"
+														class="text-foreground/60 font-mono text-xs truncate max-w-[220px]"
 														title={evt.correlationId}>{evt.correlationId}</span
 													>
 												</div>
@@ -676,8 +678,8 @@
 																	<span
 																		class="inline-flex items-center gap-1 bg-bg3/60 rounded px-1.5 py-0.5"
 																	>
-																		<span class="text-muted-strong text-[10px]">{subKey}</span>
-																		<span class="text-foreground font-mono tabular-nums text-[11px]">
+																		<span class="text-muted-strong text-xs">{subKey}</span>
+																		<span class="text-foreground font-mono tabular-nums text-xs">
 																			{typeof subVal === 'number'
 																				? formatNumber(subVal)
 																				: String(subVal)}
@@ -697,7 +699,7 @@
 															<span class="text-muted-foreground font-medium">{key}:</span>
 															{#if formatted.style === 'pill'}
 																<span
-																	class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-md bg-accent/15 text-accent border border-accent/30"
+																	class="inline-block text-xs font-semibold py-0.5 px-2 rounded-md bg-accent/15 text-accent border border-accent/30"
 																	>{formatted.text}</span
 																>
 															{:else if formatted.style === 'status-ok'}
@@ -711,12 +713,12 @@
 																>
 															{:else if formatted.style === 'code'}
 																<code
-																	class="bg-bg3/60 text-foreground/80 px-1.5 py-0.5 rounded text-[11px] font-mono break-all"
+																	class="bg-bg3/60 text-foreground/80 px-1.5 py-0.5 rounded text-xs font-mono break-all"
 																	>{formatted.text}</code
 																>
 															{:else if formatted.style === 'id'}
 																<span
-																	class="text-foreground/60 font-mono text-[11px] truncate max-w-[220px]"
+																	class="text-foreground/60 font-mono text-xs truncate max-w-[220px]"
 																	title={formatted.text}>{formatted.text}</span
 																>
 															{:else if formatted.style === 'number'}

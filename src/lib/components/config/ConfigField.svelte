@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { Button, Select, Tooltip, type SelectValue } from "$lib/components/ui";
     import type { JsonSchemaNode, ConfigUiHint } from "$lib/types/config";
     import { REDACTED_SENTINEL } from "$lib/types/config";
     import { resolveFieldType } from "$lib/utils/config-schema";
@@ -10,9 +11,7 @@
     } from "$lib/state/config/config.svelte";
     import ConfigJsonEditor from "./ConfigJsonEditor.svelte";
     import ConfigField from "./ConfigField.svelte";
-    import { Tooltip } from "$lib/components/ui";
     import ToggleSwitch from "./ToggleSwitch.svelte";
-    import { Button } from "$lib/components/ui";
     import * as m from "$lib/paraglide/messages";
 
     let {
@@ -99,13 +98,13 @@
         setField(path, checked);
     }
 
-    function onEnumSelect(e: Event) {
-        const val = (e.target as HTMLSelectElement).value;
+    function onEnumSelect(value: SelectValue) {
+        const val = String(value);
         setField(path, val === "__NONE__" ? undefined : val);
     }
 
-    function onSelectChange(e: Event) {
-        const raw = (e.target as HTMLSelectElement).value;
+    function onSelectChange(value: SelectValue) {
+        const raw = String(value);
         if (raw === "__NONE__") {
             setField(path, undefined);
             return;
@@ -226,8 +225,8 @@
     }
 
     const inputClass =
-        "bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] font-[inherit] text-xs outline-none transition-colors focus:border-accent w-full";
-    const labelClass = "text-[11px] text-muted-foreground";
+        "bg-bg3 border border-border rounded-md text-foreground py-1 px-2 font-[inherit] text-xs outline-none transition-colors focus:border-accent w-full";
+    const labelClass = "text-xs text-muted-foreground";
 </script>
 
 {#snippet fieldLabel(text: string, tip: string)}
@@ -236,7 +235,7 @@
         {#if tip}
             <Tooltip label={tip} openDelay={300}>
                 <span
-                    class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-border text-[9px] text-muted-foreground cursor-help leading-none hover:text-foreground hover:border-muted transition-colors"
+                    class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-border text-xs text-muted-foreground cursor-help leading-none hover:text-foreground hover:border-muted transition-colors"
                     >?</span
                 >
             </Tooltip>
@@ -259,34 +258,37 @@
     {#if depth > 0}
         <!-- Sub-group collapsible -->
         <div class="pl-3 border-l border-border">
-            <button
+            <Button
+                variant="ghost"
                 type="button"
-                class="w-full flex items-center gap-2 py-1.5 bg-transparent border-none cursor-pointer text-left group"
+                class="!h-auto !w-full !justify-start !px-0 !py-1.5 text-left group"
                 onclick={() => (subGroupOpen = !subGroupExpanded)}
+                aria-expanded={subGroupExpanded}
+                aria-controls={`config-subgroup-${path}`}
             >
                 <span
-                    class="text-muted-foreground text-[9px] transition-transform {subGroupExpanded
+                    class="text-muted-foreground text-xs transition-transform {subGroupExpanded
                         ? 'rotate-90'
-                        : ''}">&#9654;</span
+                        : ''}">▸</span
                 >
-                <span class="text-[11px] font-semibold text-foreground"
+                <span class="text-xs font-semibold text-foreground"
                     >{label}</span
                 >
-                <span class="text-[10px] text-muted-foreground"
+                <span class="text-xs text-muted-foreground"
                     >{countProperties(schema) === 1 ? m.config_fieldCount({ count: countProperties(schema) }) : m.config_fieldCountPlural({ count: countProperties(schema) })}</span
                 >
                 {#if tooltipContent}
                     <Tooltip label={tooltipContent} openDelay={300}>
                         <span
-                            class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-border text-[9px] text-muted-foreground cursor-help leading-none hover:text-foreground hover:border-muted transition-colors"
+                            class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-border text-xs text-muted-foreground cursor-help leading-none hover:text-foreground hover:border-muted transition-colors"
                             >?</span
                         >
                     </Tooltip>
                 {/if}
-            </button>
+            </Button>
 
             {#if subGroupExpanded}
-                <div class="space-y-3 pt-1.5">
+                <div id={`config-subgroup-${path}`} class="space-y-3 pt-1.5">
                     {#if schema.properties}
                         {#if hasEnabledToggle}
                             {@const enabledPath = `${path}.enabled`}
@@ -421,7 +423,7 @@
 {:else if fieldType === "enum"}
     <div class="flex flex-col gap-1.5 py-1">
         {@render fieldLabel(label, tooltipContent)}
-        <select
+        <Select
             class={inputClass}
             value={value ?? "__NONE__"}
             onchange={onEnumSelect}
@@ -430,12 +432,12 @@
             {#each schema.enum ?? [] as option}
                 <option value={String(option)}>{String(option)}</option>
             {/each}
-        </select>
+        </Select>
     </div>
 {:else if fieldType === "select"}
     <div class="flex flex-col gap-1.5 py-1">
         {@render fieldLabel(label, tooltipContent)}
-        <select
+        <Select
             class={inputClass}
             value={value !== undefined ? JSON.stringify(value) : "__NONE__"}
             onchange={onSelectChange}
@@ -444,7 +446,7 @@
             {#each getSelectOptions(schema) as opt}
                 <option value={opt.value}>{opt.label}</option>
             {/each}
-        </select>
+        </Select>
     </div>
 {:else if fieldType === "number"}
     <div class="flex flex-col gap-1.5 py-1">
@@ -479,10 +481,13 @@
                     class="inline-flex items-center gap-1 bg-bg3 border border-border rounded-full py-0.5 pl-2.5 pr-1 text-xs text-foreground"
                 >
                     {item}
-                    <button
+                    <Button
+                        variant="danger"
+                        size="icon"
                         type="button"
-                        class="bg-transparent border-none text-muted-foreground cursor-pointer text-[10px] p-0 leading-none hover:text-destructive"
-                        onclick={() => removeArrayItem(i)}>&times;</button
+                        class="!h-6 !w-6"
+                        aria-label={`${m.common_remove()} ${item}`}
+                        onclick={() => removeArrayItem(i)}>&times;</Button
                     >
                 </span>
             {/each}
@@ -557,10 +562,13 @@
                                 oninput={(e) => onRecordValueInput(key, e)}
                             />
                         {/if}
-                        <button
+                        <Button
+                            variant="danger"
+                            size="icon"
                             type="button"
-                            class="bg-transparent border-none text-muted-foreground cursor-pointer text-xs p-1 hover:text-destructive shrink-0"
-                            onclick={() => removeRecordEntry(key)}>&times;</button
+                            class="!h-7 !w-7 shrink-0"
+                            aria-label={`${m.common_remove()} ${key}`}
+                            onclick={() => removeRecordEntry(key)}>&times;</Button
                         >
                     </div>
                     {#if val != null && typeof val === 'object' && !Array.isArray(val)}
@@ -611,11 +619,11 @@
         {#each Array.isArray(value) ? (value as unknown[]) : [] as item, i}
             <div class="border border-border rounded-lg p-3 space-y-3 relative">
                 <div class="flex items-center justify-between mb-1">
-                    <span class="text-[10px] text-muted-foreground font-mono"
+                    <span class="text-xs text-muted-foreground font-mono"
                         >#{i}</span
                     >
                     <Button
-                        variant="ghost"
+                        variant="danger"
                         size="sm"
                         onclick={() => removeArrayObject(i)}>{m.common_remove()}</Button
                     >
@@ -645,10 +653,12 @@
                 {/if}
             </div>
         {/each}
-        <button
+        <Button
+            variant="outline"
+            size="sm"
             type="button"
-            class="bg-transparent border border-dashed border-border rounded-[5px] text-muted-foreground cursor-pointer text-xs py-1.5 px-3 transition-colors hover:border-accent hover:text-foreground w-full"
-            onclick={addArrayObject}>{m.config_addItemBtn()}</button
+            class="w-full border-dashed"
+            onclick={addArrayObject}>{m.config_addItemBtn()}</Button
         >
     </div>
 {:else}

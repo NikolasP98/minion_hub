@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { groups, configState, dirtyPaths } from '$lib/state/config/config.svelte';
   import { hasConfiguredValues, META_GROUPS, getMetaGroupId } from '$lib/utils/config-schema';
   import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
@@ -73,43 +74,40 @@
       {#each visibleMeta as meta (meta.id)}
         {@const Icon = META_ICONS[meta.id] ?? SlidersHorizontal}
         {@const firstGroup = meta.items[0]}
-        <button
+        <Button
+          variant={meta.items.some((group) => group.id === activeGroupId) ? 'primary' : 'ghost'}
+          size="icon"
           type="button"
-          class="w-8 h-8 flex items-center justify-center rounded-md transition-colors cursor-pointer border-none bg-transparent
-            {meta.items.some(g => g.id === activeGroupId)
-            ? 'text-accent bg-accent/10'
-            : 'text-muted-foreground hover:text-foreground hover:bg-bg3'}"
           onclick={() => firstGroup && onselect(firstGroup.id)}
           title={meta.label}
           aria-label={meta.label}
+          aria-pressed={meta.items.some((group) => group.id === activeGroupId)}
         >
           <Icon size={15} />
-        </button>
+        </Button>
       {/each}
     </div>
   {:else}
     {#each visibleMeta as meta (meta.id)}
-      <div class="px-3 pt-3 pb-1 text-[9.5px] font-semibold uppercase tracking-widest text-muted-strong select-none">
+      <div class="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-widest text-muted-strong select-none">
         {meta.label}
       </div>
       {#each meta.items as group (group.id)}
         {@const dirtyCount = dirtyCountForGroup(group.id)}
         {@const configured = isGroupConfigured(group.id)}
-        <button
+        <Button
+          variant={activeGroupId === group.id ? 'primary' : 'ghost'}
+          size="sm"
           type="button"
-          class="w-full text-left pl-4 pr-2.5 py-[6px] rounded-md text-xs transition-colors flex items-center gap-2 cursor-pointer border-none mx-1 my-px
-            {activeGroupId === group.id
-              ? 'bg-accent/10 text-accent font-medium'
-              : configured
-                ? 'bg-transparent text-muted-foreground hover:bg-bg3 hover:text-foreground'
-                : 'bg-transparent text-muted-strong hover:bg-bg3 hover:text-muted-foreground'}"
+          class="!w-full !justify-start my-px {configured || activeGroupId === group.id ? '' : 'opacity-70'}"
           onclick={() => onselect(group.id)}
+          aria-current={activeGroupId === group.id ? 'true' : undefined}
         >
           <span class="flex-1 truncate">{group.label}</span>
           {#if dirtyCount > 0}
             <span class="w-1.5 h-1.5 rounded-full bg-accent shrink-0"></span>
           {/if}
-        </button>
+        </Button>
       {/each}
     {/each}
   {/if}

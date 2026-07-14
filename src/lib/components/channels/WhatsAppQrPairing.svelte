@@ -136,11 +136,11 @@
             {m.channel_scanQrInstruction()}
         </p>
     {:else if pairingStatus === 'waiting' && qrData}
-        <div class="flex flex-col items-center gap-3 p-4 bg-white rounded-lg w-fit mx-auto" {...api.getRootProps()}>
+        <div class="flex flex-col items-center gap-3 p-4 bg-[var(--color-qr-canvas,white)] rounded-lg w-fit mx-auto" {...api.getRootProps()}>
             <svg class="h-48 w-48" {...api.getFrameProps()}>
                 <path {...api.getPatternProps()} />
             </svg>
-            <p class="text-xs text-gray-600">{m.channel_scanWithWhatsApp()}</p>
+            <p class="text-xs text-[var(--color-qr-ink-muted,var(--color-canvas))]">{m.channel_scanWithWhatsApp()}</p>
         </div>
     {:else if pairingStatus === 'waiting'}
         <div class="flex items-center gap-2 text-sm text-muted-foreground">
@@ -156,12 +156,13 @@
         <div class="text-sm text-destructive">
             {errorMsg ?? m.channel_pairingFailed()}
         </div>
-        <button
+        <Button
+            variant="outline"
+            size="sm"
             type="button"
-            class="text-xs text-accent hover:underline"
             onclick={startPairing}
         >
             {m.common_retry()}
-        </button>
+        </Button>
     {/if}
 </div>

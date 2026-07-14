@@ -2,7 +2,7 @@
     import type { ChannelAssignment } from '$lib/types/channels';
     import { fetchChannelAssignments, assignChannel, unassignChannel } from '$lib/state/channels';
     import { X, UserPlus } from 'lucide-svelte';
-    import { Button, Select } from '$lib/components/ui';
+    import { Button, Input, Select } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -74,18 +74,20 @@
         <div class="space-y-1">
             {#each assignments as a (a.id)}
                 <div class="flex items-center gap-2 bg-bg3 rounded-md px-3 py-1.5 text-sm">
-                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted-foreground/15 text-muted-foreground uppercase">
+                    <span class="text-xs px-1.5 py-0.5 rounded bg-muted-foreground/15 text-muted-foreground uppercase">
                         {a.targetType}
                     </span>
                     <span class="text-foreground flex-1 truncate">{a.targetLabel ?? a.targetId}</span>
-                    <button
+                    <Button
+                        variant="danger"
+                        size="icon"
                         type="button"
-                        class="text-muted-foreground hover:text-destructive transition-colors"
                         onclick={() => handleRemove(a.id)}
                         title={m.common_remove()}
+                        aria-label={m.common_remove()}
                     >
                         <X size={14} />
-                    </button>
+                    </Button>
                 </div>
             {/each}
         </div>
@@ -97,9 +99,10 @@
             <option value="user">{m.channel_assignmentUser()}</option>
             <option value="session">{m.channel_assignmentSession()}</option>
         </Select>
-        <input
+        <Input
             type="text"
-            class="flex-1 bg-bg border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+            size="sm"
+            class="flex-1"
             placeholder="{targetType === 'user' ? m.channel_assignmentUser() : m.channel_assignmentSession()} ID"
             bind:value={targetId}
         />

@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { Badge, Button } from '$lib/components/ui';
   import { invalidate, goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { Building2, RefreshCw, Check, Plus } from 'lucide-svelte';
   import { PageHeader } from '$lib/components/ui';
+  import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { supabaseBrowser } from '$lib/supabase/client';
@@ -45,15 +47,18 @@
   // Health pill per row. `health.ok && hasGmail` is the only green state —
   // a valid token WITHOUT the Gmail scope is precisely the silent failure this
   // page exists to surface (account linked before Gmail scopes were requested).
-  function healthPill(a: GmailAccountRow): { label: string; tone: 'ok' | 'warn' | 'err' | 'muted' } {
-    if (!a.health) return { label: m.gmailch_healthUnknown(), tone: 'muted' };
+  function healthPill(a: GmailAccountRow): {
+    label: string;
+    value: 'success' | 'warning' | 'error' | 'info';
+  } {
+    if (!a.health) return { label: m.gmailch_healthUnknown(), value: 'info' };
     if (!a.health.ok) {
       return a.health.reason === 'revoked'
-        ? { label: m.gmailch_healthRevoked(), tone: 'err' }
-        : { label: m.gmailch_healthUnreachable(), tone: 'muted' };
+        ? { label: m.gmailch_healthRevoked(), value: 'error' }
+        : { label: m.gmailch_healthUnreachable(), value: 'info' };
     }
-    if (!a.health.hasGmail) return { label: m.gmailch_healthNoGmail(), tone: 'warn' };
-    return { label: m.gmailch_healthOk(), tone: 'ok' };
+    if (!a.health.hasGmail) return { label: m.gmailch_healthNoGmail(), value: 'warning' };
+    return { label: m.gmailch_healthOk(), value: 'success' };
   }
   const needsReconnect = (a: GmailAccountRow) =>
     a.health !== null && (!a.health.ok ? a.health.reason === 'revoked' : !a.health.hasGmail);
@@ -108,23 +113,24 @@
   });
 </script>
 
-<div class="flex h-full min-h-0 flex-col">
-  <PageHeader title="Gmail" subtitle={m.gmailch_subtitle()}>
+<PageShell archetype="collection" scroll="page" labelledBy="gmail-channel-title">
+  <PageHeader titleId="gmail-channel-title" title="Gmail" subtitle={m.gmailch_subtitle()}>
     {#snippet leading()}
       <ChannelBrandIcon channel="gmail" size={16} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 
-  <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-    {#if accounts.length === 0}
-      <div class="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
-        <ChannelBrandIcon channel="gmail" size={32} class="opacity-40" />
-        <p class="text-sm">{m.gmailch_empty()}</p>
-        <button type="button" class="action-btn" onclick={reconnectGoogle}>
+  <PageBody width="content">
+    <AsyncBoundary
+      state={accounts.length === 0
+        ? { kind: 'empty', title: m.gmailch_empty() }
+        : { kind: 'ready' }}
+    >
+      {#snippet emptyAction()}
+        <Button variant="primary" size="sm" onclick={reconnectGoogle}>
           <Plus size={14} />{m.gmailch_connect()}
-        </button>
-      </div>
-    {:else}
+        </Button>
+      {/snippet}
       <div class="account-list">
         {#each accounts as a (a.kind + a.email)}
           {@const pill = healthPill(a)}
@@ -138,11 +144,13 @@
                   {a.displayName ?? a.ownerName ?? a.email}
                 </span>
                 {#if a.kind === 'shared'}
-                  <span class="badge"><Building2 size={10} />{m.gmailch_sharedBadge()}</span>
+                  <Badge variant="semantic" value="accent" size="sm">
+                    <Building2 size={10} />{m.gmailch_sharedBadge()}
+                  </Badge>
                 {:else}
-                  <span class="badge muted">{m.gmailch_ownBadge()}</span>
+                  <Badge variant="neutral" size="sm">{m.gmailch_ownBadge()}</Badge>
                 {/if}
-                <span class="status-pill {pill.tone}">{pill.label}</span>
+                <Badge variant="semantic" value={pill.value} size="sm">{pill.label}</Badge>
               </div>
               {#if (a.displayName ?? a.ownerName) !== null}
                 <p class="text-xs text-muted-foreground mt-0.5 truncate">{a.email}</p>
@@ -159,9 +167,9 @@
             </div>
             <div class="flex items-center gap-2 self-center shrink-0">
               {#if a.kind === 'shared'}
-                <button
-                  type="button"
-                  class="action-btn"
+                <Button
+                  variant={a.subscribed ? 'secondary' : 'outline'}
+                  size="sm"
                   class:active={a.subscribed}
                   disabled={busy === a.identityId}
                   onclick={() => toggleFeed(a)}
@@ -169,18 +177,18 @@
                   {#if a.subscribed}<Check size={14} />{m.gmailch_inFeed()}{:else}<Plus
                       size={14}
                     />{m.gmailch_addToFeed()}{/if}
-                </button>
+                </Button>
               {:else}
-                <button type="button" class="action-btn" onclick={reconnectGoogle}>
+                <Button variant="outline" size="sm" onclick={reconnectGoogle}>
                   <RefreshCw size={14} />{m.gmailch_reconnect()}
-                </button>
+                </Button>
               {/if}
             </div>
           </div>
         {/each}
       </div>
       <p class="text-xs text-muted-foreground mt-4 max-w-xl">{m.gmailch_footnote()}</p>
-    {/if}
+    </AsyncBoundary>
 
     <!-- Processed-email ledger: summaries + tags + metadata, never contents. -->
     <section class="ledger">
@@ -199,14 +207,14 @@
             bind:value={retention}
             class="retention-input"
           />
-          <button
-            type="button"
-            class="action-btn"
+          <Button
+            variant="primary"
+            size="sm"
             onclick={saveRetention}
             disabled={savingRetention}
           >
             {m.gmailch_save()}
-          </button>
+          </Button>
         </div>
       </div>
       <p class="retention-hint">{m.gmailch_retentionHint()}</p>
@@ -232,24 +240,24 @@
         </ul>
       {/if}
     </section>
-  </div>
-</div>
+  </PageBody>
+</PageShell>
 
 <style>
   .account-list {
     display: flex;
     flex-direction: column;
-    gap: 0.625rem;
+    gap: var(--space-2.5, 0.625rem);
     max-width: 46rem;
   }
   .account-row {
     display: flex;
     align-items: flex-start;
-    gap: 0.875rem;
-    padding: 1rem;
-    border-radius: var(--radius-lg, 0.75rem);
-    border: 1px solid var(--hairline);
-    background: var(--color-bg2, rgba(255, 255, 255, 0.02));
+    gap: var(--space-3.5, 0.875rem);
+    padding: var(--space-4, 1rem);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border-subtle);
+    background: var(--color-surface-2);
   }
   .icon-wrap {
     display: flex;
@@ -261,158 +269,87 @@
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
     flex-shrink: 0;
   }
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.625rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    padding: 0.0625rem 0.375rem;
-    border-radius: 9999px;
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-    white-space: nowrap;
-  }
-  .badge.muted {
-    color: var(--color-muted);
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .status-pill {
-    font-size: 0.625rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    padding: 0.0625rem 0.375rem;
-    border-radius: 9999px;
-    white-space: nowrap;
-  }
-  .status-pill.ok {
-    color: var(--color-success, #34d399);
-    background: color-mix(in srgb, var(--color-success, #34d399) 14%, transparent);
-  }
-  .status-pill.err {
-    color: var(--color-destructive, #f87171);
-    background: color-mix(in srgb, var(--color-destructive, #f87171) 14%, transparent);
-  }
-  .status-pill.warn {
-    color: var(--color-warning, #fbbf24);
-    background: color-mix(in srgb, var(--color-warning, #fbbf24) 14%, transparent);
-  }
-  .status-pill.muted {
-    color: var(--color-muted);
-    background: rgba(255, 255, 255, 0.06);
-  }
   .warn-note {
-    color: var(--color-warning, #fbbf24);
-  }
-  .action-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0.375rem 0.75rem;
-    border-radius: var(--radius-md, 0.5rem);
-    border: 1px solid var(--hairline);
-    color: var(--color-foreground);
-    background: transparent;
-    cursor: pointer;
-    white-space: nowrap;
-    transition:
-      border-color var(--duration-fast) var(--ease-standard),
-      background-color var(--duration-fast) var(--ease-standard);
-  }
-  .action-btn:hover:not(:disabled) {
-    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
-    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
-  }
-  .action-btn.active {
-    color: var(--color-success, #34d399);
-    border-color: color-mix(in srgb, var(--color-success, #34d399) 40%, transparent);
-    background: color-mix(in srgb, var(--color-success, #34d399) 10%, transparent);
-  }
-  .action-btn:disabled {
-    opacity: 0.5;
-    cursor: default;
+    color: var(--color-warning-fg);
   }
 
   /* ── Processed-email ledger ─────────────────────────────────────────── */
   .ledger {
     max-width: 46rem;
-    margin-top: 2rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--hairline);
+    margin-top: var(--space-8, 2rem);
+    padding-top: var(--space-6, 1.5rem);
+    border-top: 1px solid var(--color-border-subtle);
   }
   .ledger-head {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--space-4, 1rem);
     flex-wrap: wrap;
   }
   .ledger-title {
-    font-size: 0.9375rem;
+    font-size: var(--font-size-section-title, 0.9375rem);
     font-weight: 600;
     color: var(--color-foreground);
   }
   .ledger-sub {
-    font-size: 0.75rem;
+    font-size: var(--font-size-caption, 0.75rem);
     color: var(--color-muted-foreground, var(--color-muted));
-    margin-top: 0.125rem;
+    margin-top: var(--space-0.5, 0.125rem);
   }
   .retention {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.75rem;
+    gap: var(--space-2, 0.5rem);
+    font-size: var(--font-size-caption, 0.75rem);
     color: var(--color-muted-foreground, var(--color-muted));
     flex-shrink: 0;
   }
   .retention-input {
     width: 4.5rem;
-    padding: 0.3125rem 0.5rem;
-    border-radius: var(--radius-md, 0.5rem);
-    border: 1px solid var(--hairline);
-    background: var(--color-bg2, rgba(255, 255, 255, 0.02));
+    padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-2);
     color: var(--color-foreground);
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body, 0.8125rem);
     font-variant-numeric: tabular-nums;
   }
   .retention-hint {
-    font-size: 0.6875rem;
+    font-size: var(--font-size-label, 0.6875rem);
     color: var(--color-muted-foreground, var(--color-muted));
-    margin-top: 0.5rem;
+    margin-top: var(--space-2, 0.5rem);
     max-width: 34rem;
   }
   .ledger-empty {
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body, 0.8125rem);
     color: var(--color-muted-foreground, var(--color-muted));
-    margin-top: 1.25rem;
-    padding: 1.25rem;
+    margin-top: var(--space-5, 1.25rem);
+    padding: var(--space-5, 1.25rem);
     text-align: center;
-    border: 1px dashed var(--hairline);
-    border-radius: var(--radius-lg, 0.75rem);
+    border: 1px dashed var(--color-border-default);
+    border-radius: var(--radius-lg);
   }
   .ledger-list {
     display: flex;
     flex-direction: column;
-    gap: 0.375rem;
-    margin-top: 1rem;
+    gap: var(--space-1.5, 0.375rem);
+    margin-top: var(--space-4, 1rem);
   }
   .ledger-row {
-    padding: 0.625rem 0.75rem;
-    border-radius: var(--radius-md, 0.5rem);
-    border: 1px solid var(--hairline);
-    background: var(--color-bg2, rgba(255, 255, 255, 0.02));
+    padding: var(--space-2.5, 0.625rem) var(--space-3, 0.75rem);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-subtle);
+    background: var(--color-surface-2);
   }
   .ledger-row-top {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2, 0.5rem);
     flex-wrap: wrap;
   }
   .ledger-subject {
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body, 0.8125rem);
     font-weight: 500;
     color: var(--color-foreground);
     overflow: hidden;
@@ -421,23 +358,23 @@
     min-width: 0;
   }
   .ledger-summary {
-    font-size: 0.75rem;
+    font-size: var(--font-size-caption, 0.75rem);
     color: color-mix(in srgb, var(--color-foreground) 62%, transparent);
-    margin-top: 0.1875rem;
+    margin-top: var(--space-0.5, 0.125rem);
   }
   .ledger-meta {
-    font-size: 0.6875rem;
+    font-size: var(--font-size-label, 0.6875rem);
     color: var(--color-muted-foreground, var(--color-muted));
-    margin-top: 0.25rem;
+    margin-top: var(--space-1, 0.25rem);
     font-variant-numeric: tabular-nums;
   }
   .tag {
     flex-shrink: 0;
-    font-size: 9px;
+    font-size: var(--font-size-caption, 10px);
     font-weight: 600;
     letter-spacing: 0.02em;
     padding: 1px 6px;
-    border-radius: 5px;
+    border-radius: var(--radius-md, 6px);
     color: color-mix(in srgb, var(--color-foreground) 62%, transparent);
     background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);

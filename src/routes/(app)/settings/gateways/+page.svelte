@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button, Input } from '$lib/components/ui';
   import { invalidateAll, goto } from '$app/navigation';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
   import GatewayUpdateCard from '$lib/components/settings/GatewayUpdateCard.svelte';
@@ -138,19 +139,15 @@
       <div class="relative px-4 py-3 border-b border-border bg-bg/60 flex items-center gap-2">
         <ScanLine speed={10} opacity={0.02} />
         <Plug size={12} class="text-muted-strong" />
-        <span class="text-[10px] font-mono text-muted uppercase tracking-widest">{m.hosts_newServer()}</span>
+        <span class="text-xs font-mono text-muted uppercase tracking-widest">{m.hosts_newServer()}</span>
       </div>
       <div class="p-4 space-y-3">
-        <input bind:value={name} placeholder={m.hosts_namePlaceholder()}
-          class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60" />
-        <input bind:value={url} placeholder={m.hosts_urlPlaceholder()}
-          class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60" />
-        <input bind:value={token} type="password" placeholder={m.hosts_tokenPlaceholder()}
-          class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60" />
-        <button onclick={addGateway} disabled={adding || !name || !url || !token}
-          class="flex items-center gap-1.5 px-4 py-2 rounded border text-sm font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50">
-          {#if adding}{m.hosts_adding()}{:else}<Plus size={13} /> {m.hosts_addServer()}{/if}
-        </button>
+        <Input bind:value={name} placeholder={m.hosts_namePlaceholder()} class="w-full font-mono" />
+        <Input bind:value={url} type="url" placeholder={m.hosts_urlPlaceholder()} class="w-full font-mono" />
+        <Input bind:value={token} type="password" placeholder={m.hosts_tokenPlaceholder()} class="w-full font-mono" />
+        <Button variant="primary" onclick={addGateway} loading={adding} disabled={!name || !url || !token} class="font-mono">
+          {#if !adding}<Plus size={13} />{/if} {m.hosts_addServer()}
+        </Button>
       </div>
     </div>
 
@@ -167,13 +164,12 @@
           <li class="border border-border rounded-lg overflow-hidden bg-card {isConnected ? 'border-accent/40' : ''}">
             {#if editingId === host.id}
               <div class="p-3 space-y-2">
-                <input bind:value={editName} placeholder={m.hosts_namePlaceholder()} class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground focus:outline-none focus:border-accent/60" />
-                <input bind:value={editUrl} placeholder={m.hosts_urlPlaceholder()} class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground focus:outline-none focus:border-accent/60" />
-                <input bind:value={editToken} type="password" placeholder={m.hosts_tokenPlaceholder()}
-                  class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60" />
+                <Input bind:value={editName} size="sm" placeholder={m.hosts_namePlaceholder()} class="w-full font-mono" />
+                <Input bind:value={editUrl} type="url" size="sm" placeholder={m.hosts_urlPlaceholder()} class="w-full font-mono" />
+                <Input bind:value={editToken} type="password" size="sm" placeholder={m.hosts_tokenPlaceholder()} class="w-full font-mono" />
                 <div class="flex gap-2 justify-end">
-                  <button onclick={cancelEdit} class="flex items-center gap-1 px-3 py-1 rounded border text-xs font-mono bg-bg border-border text-muted hover:text-foreground"><X size={12} /> {m.hosts_cancel()}</button>
-                  <button onclick={saveEdit} class="flex items-center gap-1 px-3 py-1 rounded border text-xs font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30"><Check size={12} /> {m.hosts_save()}</button>
+                  <Button variant="ghost" size="sm" onclick={cancelEdit} class="font-mono"><X size={12} /> {m.hosts_cancel()}</Button>
+                  <Button variant="primary" size="sm" onclick={saveEdit} class="font-mono"><Check size={12} /> {m.hosts_save()}</Button>
                 </div>
               </div>
             {:else}
@@ -182,40 +178,36 @@
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-medium text-foreground truncate">{host.name}</span>
                     {#if isConnected}
-                      <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400 text-[10px] font-medium">
+                      <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-success/10 text-success text-xs font-medium">
                         <Wifi size={10} /> {m.hosts_connect()}
                       </span>
                     {:else}
-                      <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium">
+                      <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
                         <WifiOff size={10} /> {m.hosts_offline()}
                       </span>
                     {/if}
                   </div>
                   <div class="flex items-center gap-2 mt-0.5">
                     <span class="text-xs text-muted-foreground font-mono truncate">{host.url}</span>
-                    <span class="text-[10px] text-muted-strong">&middot;</span>
-                    <span class="text-[10px] text-muted-strong">{m.hosts_lastConnected({ time: formatTime(host.lastConnectedAt) })}</span>
+                    <span class="text-xs text-muted-strong">&middot;</span>
+                    <span class="text-xs text-muted-strong">{m.hosts_lastConnected({ time: formatTime(host.lastConnectedAt) })}</span>
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
                   {#if !isConnected}
-                    <button onclick={() => connect(host)} title={m.hosts_connect()}
-                      class="px-2 py-1 rounded border text-xs font-mono text-accent border-accent/30 hover:bg-accent/10">
+                    <Button variant="outline" size="sm" onclick={() => connect(host)} class="font-mono">
                       {m.hosts_connect()}
-                    </button>
+                    </Button>
                   {/if}
-                  <button onclick={() => goto(`/settings/provision?server=${host.id}`)} title={m.hosts_provision()}
-                    class="p-1.5 rounded text-muted-foreground hover:text-accent hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none">
+                  <Button variant="ghost" size="icon" onclick={() => goto(`/settings/provision?server=${host.id}`)} title={m.hosts_provision()} aria-label={m.hosts_provision()}>
                     <Wrench size={14} />
-                  </button>
-                  <button onclick={() => startEdit(host)} title={m.common_edit()}
-                    class="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none">
+                  </Button>
+                  <Button variant="ghost" size="icon" onclick={() => startEdit(host)} title={m.common_edit()} aria-label={m.common_edit()}>
                     <Pencil size={14} />
-                  </button>
-                  <button onclick={() => removeTursoHost(host.id, host.name)} title={m.hosts_delete()}
-                    class="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none">
+                  </Button>
+                  <Button variant="danger" size="icon" onclick={() => removeTursoHost(host.id, host.name)} title={m.hosts_delete()} aria-label={m.hosts_delete()}>
                     <Trash2 size={14} />
-                  </button>
+                  </Button>
                 </div>
               </div>
             {/if}
@@ -226,13 +218,12 @@
         {#each pgOnly as g (g.id)}
           <li class="border border-border/50 border-dashed rounded-lg px-4 py-3 flex items-center justify-between opacity-70">
             <div class="min-w-0">
-              <div class="text-sm text-foreground truncate">{g.name} <span class="text-[10px] text-muted font-mono ml-1">pg only</span></div>
+              <div class="text-sm text-foreground truncate">{g.name} <span class="text-xs text-muted font-mono ml-1">pg only</span></div>
               <div class="text-xs text-muted font-mono truncate">{g.url}</div>
             </div>
-            <button onclick={() => removePgGateway(g.id)} title={m.hosts_delete()}
-              class="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none shrink-0">
+            <Button variant="danger" size="icon" onclick={() => removePgGateway(g.id)} title={m.hosts_delete()} aria-label={m.hosts_delete()} class="shrink-0">
               <Trash2 size={14} />
-            </button>
+            </Button>
           </li>
         {/each}
       </ul>

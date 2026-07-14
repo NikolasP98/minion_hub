@@ -216,24 +216,26 @@
       Connect to a gateway to manage secrets.
     </div>
   {:else if vaultUnavailable}
-    <div class="bg-amber-500/10 border border-amber-500/30 rounded-lg px-5 py-4 text-xs text-amber-200">
+    <div class="bg-warning/10 border border-warning/30 rounded-lg px-5 py-4 text-xs text-warning">
       <p class="font-semibold mb-1">Secrets vault not available</p>
       <p>
-        Configure <code class="font-mono bg-black/30 px-1 py-0.5 rounded">MINION_SECRETS_KEY</code>
+        Configure <code class="font-mono bg-canvas/30 px-1 py-0.5 rounded">MINION_SECRETS_KEY</code>
         on the gateway and restart it to enable encrypted secret storage.
       </p>
     </div>
   {:else if loadError}
-    <div class="bg-rose-500/10 border border-rose-500/30 rounded-lg px-5 py-4 text-xs text-rose-200">
+    <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-5 py-4 text-xs text-destructive">
       <p class="font-semibold mb-1">Failed to load secrets</p>
       <p>{loadError}</p>
-      <button
+      <Button
+        variant="outline"
+        size="sm"
         type="button"
-        class="mt-2 text-[11px] text-rose-100 hover:underline"
+        class="mt-2"
         onclick={refresh}
       >
         Retry
-      </button>
+      </Button>
     </div>
   {:else if !loaded}
     <div class="surface-2 rounded-lg px-5 py-4 text-xs text-muted-foreground">
@@ -248,7 +250,7 @@
       <div class="surface-2 rounded-lg overflow-hidden">
         <header class="px-5 py-3 border-b border-border">
           <h3 class="text-sm font-semibold text-foreground">Static credentials</h3>
-          <p class="text-[11px] text-muted-foreground mt-0.5">
+          <p class="text-xs text-muted-foreground mt-0.5">
             One value per secret, shared across the gateway.
           </p>
         </header>
@@ -257,13 +259,13 @@
             <li class="px-5 py-3 flex items-center gap-3">
               <div class="flex-1 min-w-0">
                 <p class="text-xs font-semibold text-foreground truncate">{s.label}</p>
-                <p class="text-[11px] text-muted-foreground font-mono mt-0.5">
+                <p class="text-xs text-muted-foreground font-mono mt-0.5">
                   {s.groupKey}
                 </p>
                 {#if s.description}
-                  <p class="text-[11px] text-muted-foreground mt-0.5">{s.description}</p>
+                  <p class="text-xs text-muted-foreground mt-0.5">{s.description}</p>
                 {/if}
-                <p class="text-[10px] text-muted-foreground mt-1 opacity-70">
+                <p class="text-xs text-muted-foreground mt-1 opacity-70">
                   Owner: {s.ownerPlugin} · Last checked: {fmtTime(s.lastProbeAt)}
                 </p>
               </div>
