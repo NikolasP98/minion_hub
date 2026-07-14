@@ -5,7 +5,7 @@ import path from 'node:path';
 export default defineConfig({
   plugins: [svelte({ compilerOptions: { hmr: false } })],
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
     setupFiles: ['src/server/test-utils/setup.ts'],
     alias: {
       $lib: path.resolve('src/lib'),
