@@ -14,6 +14,7 @@
  *   node scripts/design-lint.mjs --ci --zero-changed --base-ref <wave-base>
  *   node scripts/design-lint.mjs --update-baseline   # decreases only
  *   node scripts/design-lint.mjs --ci --strict-global
+ *   node scripts/design-lint.mjs --ci --strict-global --zero-global
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -215,6 +216,10 @@ function textAtRef(ref, file) {
 const args = process.argv.slice(2);
 const current = scan();
 const baseline = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')).totals : null;
+const globalGovernedDebt = Object.values(current.governedTotals).reduce(
+  (total, count) => total + count,
+  0,
+);
 
 if (args.includes('--update-baseline')) {
   if (baseline) {
@@ -301,15 +306,21 @@ if (baseRef && refExists(baseRef)) {
 }
 
 console.log('');
+if (args.includes('--zero-global')) {
+  console.log(`  global governed debt  ${globalGovernedDebt}`);
+  if (globalGovernedDebt === 0) console.log('  global migration      complete');
+  console.log('');
+}
 if (
   args.includes('--ci') &&
   (fileRegressions.length > 0 ||
     changedFileDebt.length > 0 ||
     !refExists(baseRef) ||
-    (args.includes('--strict-global') && globalRegression))
+    (args.includes('--strict-global') && globalRegression) ||
+    (args.includes('--zero-global') && globalGovernedDebt > 0))
 ) {
   console.error(
-    'design-lint: debt gate failed — changed files may not increase governed debt, and migrated files must reach zero when --zero-changed is set.\n',
+    'design-lint: debt gate failed — changed files may not increase governed debt; migrated files and the global program must reach zero when their zero gates are set.\n',
   );
   process.exit(1);
 }
