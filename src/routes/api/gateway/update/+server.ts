@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { requireAdmin } from '$server/auth/authorize';
 import { gatewayCall } from '$lib/server/gateway-rpc';
+import { getFleetUpdateAvailability } from '$server/services/fleet-update.service';
 
 // Gateway self-update is a platform-level operation (not org-scoped), so it
 // gates on the `admin` role directly — same pattern as the other
@@ -15,15 +16,20 @@ export const config = { maxDuration: 300 };
 
 export const GET: RequestHandler = async ({ locals }) => {
   requireAdmin(locals);
+  const fleet = await getFleetUpdateAvailability();
+  if (fleet) return json(fleet);
   const status = await gatewayCall('update.status', {});
-  return json(status);
+  return json({ ...(status as Record<string, unknown>), updateSource: 'package', targetSource: 'package' });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   requireAdmin(locals);
   const body = (await request.json().catch(() => ({}))) as { action?: string };
   if (body.action === 'check') {
-    return json(await gatewayCall('update.check', {}));
+    const fleet = await getFleetUpdateAvailability(true);
+    if (fleet) return json(fleet);
+    const status = await gatewayCall('update.check', {});
+    return json({ ...(status as Record<string, unknown>), updateSource: 'package', targetSource: 'package' });
   }
   if (body.action === 'run') {
     // The gateway answers update.run only after the npm install completes,

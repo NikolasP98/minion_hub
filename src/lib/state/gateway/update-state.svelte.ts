@@ -9,8 +9,9 @@ export type PendingUpdate = {
   version: string;
   sha?: string;
   notes?: string;
-  source: 'webhook' | 'check';
+  source: 'webhook' | 'check' | 'external-image';
   detectedAt: string;
+  artifact?: { image?: string; digest?: string; version?: string };
 };
 
 export type UpdateApplyResult = {
@@ -42,6 +43,9 @@ export const updateState = $state({
   current: null as string | null,
   pending: null as PendingUpdate | null,
   lastResult: null as UpdateApplyResult | null,
+  updateSource: 'package' as 'package' | 'external-image' | 'mixed',
+  targetArtifact: null as { image?: string; digest?: string; version?: string } | null,
+  targetSource: 'package' as 'package' | 'external-image' | 'mixed',
   installing: false,
   /** Event truth — the max progress signal actually received (ratchet). */
   progress: null as UpdateProgress | null,
@@ -132,8 +136,14 @@ export function applyUpdateStatus(status: {
   current?: string | null;
   pending?: PendingUpdate | null;
   lastResult?: UpdateApplyResult | null;
+  updateSource?: 'package' | 'external-image' | 'mixed';
+  targetArtifact?: { image?: string; digest?: string; version?: string } | null;
+  targetSource?: 'package' | 'external-image' | 'mixed';
 }): void {
   if (status.current !== undefined) updateState.current = status.current;
   if (status.pending !== undefined) updateState.pending = status.pending;
   if (status.lastResult !== undefined) updateState.lastResult = status.lastResult;
+  if (status.updateSource !== undefined) updateState.updateSource = status.updateSource;
+  if (status.targetArtifact !== undefined) updateState.targetArtifact = status.targetArtifact;
+  if (status.targetSource !== undefined) updateState.targetSource = status.targetSource;
 }
