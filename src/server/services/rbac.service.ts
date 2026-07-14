@@ -768,16 +768,14 @@ export async function createCustomRole(
     );
   }
 
-  await admin
-    .from('org_roles')
-    .insert({
-      org_id: orgId,
-      key,
-      name,
-      rank,
-      source_role_key: params.sourceRoleKey,
-      created_by: createdBy,
-    });
+  await admin.from('org_roles').insert({
+    org_id: orgId,
+    key,
+    name,
+    rank,
+    source_role_key: params.sourceRoleKey,
+    created_by: createdBy,
+  });
 
   return { key, name, rank, description: null, isCustom: true };
 }
