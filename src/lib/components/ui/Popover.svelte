@@ -62,12 +62,14 @@
 <!-- The positioner's stacking level comes from the CONTENT's z-index: Zag
      imperatively sets the positioner's `--z-index` to
      getComputedStyle(contentEl).zIndex while positioning (get-placement.mjs),
-     overwriting anything set on the positioner itself — so z-50 lives on the
+     overwriting anything set on the positioner itself — so z-[var(--layer-modal)] lives on the
      content div below, NOT here. -->
 <div {...api.getPositionerProps()}>
   <div
     {...api.getContentProps()}
-    class="outline-none z-50 {bare ? '' : 'surface-3 rounded-[var(--radius-md)] p-1'} {cls}"
+    class="outline-none z-[var(--layer-modal)] {bare
+      ? ''
+      : 'surface-3 rounded-[var(--radius-md)] p-1'} {cls}"
   >
     {@render children()}
   </div>

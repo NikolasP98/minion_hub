@@ -89,15 +89,15 @@
     }
   }
 
-  // Base above the app chrome (sidebar/topbar/assistant ~z-50, command palette
-  // z-100) so portaled windows sit on top; `z` (store seq) orders windows among
-  // themselves. Stays below the always-on-top bug-reporter (z-9999+).
-  const Z_BASE = 1000;
+  // Start at the modal layer so portaled windows sit above app chrome; `z`
+  // (store sequence) orders windows among themselves.
   const frameStyle = $derived(
     fullscreen
-      ? `position:fixed;inset:0;z-index:${Z_BASE + z};`
-      : `position:fixed;left:${x}px;top:${y}px;z-index:${Z_BASE + z};width:${width};height:${height};` +
-          (resizable ? `resize:both;overflow:hidden;min-width:420px;min-height:320px;max-width:96vw;max-height:92vh;` : ''),
+      ? `position:fixed;inset:0;z-index:calc(var(--layer-modal) + ${z});`
+      : `position:fixed;left:${x}px;top:${y}px;z-index:calc(var(--layer-modal) + ${z});width:${width};height:${height};` +
+          (resizable
+            ? `resize:both;overflow:hidden;min-width:420px;min-height:320px;max-width:96vw;max-height:92vh;`
+            : ''),
   );
 </script>
 
@@ -128,13 +128,18 @@
         ? ''
         : 'cursor-move'} select-none"
     >
-      <h2 {...api.getTitleProps()} class="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{title}</h2>
+      <h2
+        {...api.getTitleProps()}
+        class="min-w-0 flex-1 truncate text-xs font-semibold text-foreground"
+      >
+        {title}
+      </h2>
       <button
         type="button"
         onpointerdown={(e) => e.stopPropagation()}
         onclick={() => ontogglefullscreen()}
         aria-label={fullscreen ? m.window_restore() : m.window_fullscreen()}
-        class="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-muted-foreground transition-colors duration-[150ms] hover:bg-white/[0.06] hover:text-foreground"
+        class="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:bg-foreground/[0.06] hover:text-foreground"
       >
         {#if fullscreen}<Minimize2 size={14} />{:else}<Maximize2 size={14} />{/if}
       </button>
@@ -143,7 +148,7 @@
         {...api.getCloseTriggerProps()}
         onpointerdown={(e) => e.stopPropagation()}
         aria-label={m.window_close()}
-        class="-mr-1 flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-muted-foreground transition-colors duration-[150ms] hover:bg-white/[0.06] hover:text-foreground"
+        class="-mr-1 flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:bg-foreground/[0.06] hover:text-foreground"
       >
         <X size={16} />
       </button>

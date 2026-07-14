@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Spinner from '$lib/components/ui/Spinner.svelte';
@@ -54,9 +55,10 @@
         let msg: string;
         try {
           const body = await res.json();
-          msg = (body as { message?: string; error?: string }).message
-            ?? (body as { message?: string; error?: string }).error
-            ?? `Error ${res.status}`;
+          msg =
+            (body as { message?: string; error?: string }).message ??
+            (body as { message?: string; error?: string }).error ??
+            `Error ${res.status}`;
         } catch {
           msg = `Error ${res.status}`;
         }
@@ -96,30 +98,39 @@
         <Spinner size="md" />
       </div>
     {:else if errorMsg}
-      <p class="text-xs text-red-400">{errorMsg}</p>
+      <p class="text-xs text-[var(--color-danger-fg)]">{errorMsg}</p>
     {:else if rows.length === 0}
-      <p class="py-6 text-center text-sm text-white/40">{m.artifact_history_empty()}</p>
+      <p class="py-6 text-center text-sm text-foreground/40">{m.artifact_history_empty()}</p>
     {:else}
       {#each rows as r (r.id)}
-        <div class="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+        <div
+          class="flex items-center gap-3 rounded-lg border border-border bg-foreground/[0.03] px-3 py-2"
+        >
           <div class="min-w-0 flex-1">
-            <p class="text-xs font-semibold text-white/80">{m.artifact_version({ n: r.version })}</p>
+            <p class="text-xs font-semibold text-foreground/80">
+              {m.artifact_version({ n: r.version })}
+            </p>
             {#if r.prompt}
-              <p class="mt-0.5 truncate text-[11px] text-white/50">{r.prompt}</p>
+              <p class="mt-0.5 truncate text-[length:var(--font-size-caption)] text-foreground/50">
+                {r.prompt}
+              </p>
             {/if}
-            <p class="mt-0.5 text-[10px] text-white/35">{relativeTime(r.createdAt)}</p>
+            <p class="mt-0.5 text-[length:var(--font-size-telemetry)] text-foreground/35">
+              {relativeTime(r.createdAt)}
+            </p>
           </div>
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onclick={() => handleRevert(r.id)}
             disabled={!!revertingId}
-            class="flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            class="flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-foreground/5 px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
             {#if revertingId === r.id}
               <Spinner size="xs" />
             {/if}
             {m.artifact_revert()}
-          </button>
+          </Button>
         </div>
       {/each}
     {/if}

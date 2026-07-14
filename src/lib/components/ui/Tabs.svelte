@@ -92,9 +92,11 @@
       class={`relative inline-flex items-center justify-center gap-1.5 -mb-px border-b-2 font-medium whitespace-nowrap
         transition-colors duration-[var(--duration-fast)] ease-[var(--ease-standard)]
         disabled:opacity-40 disabled:cursor-not-allowed ${padCls} ${fitted ? 'flex-1' : ''}
-        ${active
-          ? 'border-accent text-foreground'
-          : 'border-transparent text-muted hover:text-foreground hover:border-white/15'}`}
+        ${
+          active
+            ? 'border-accent text-foreground'
+            : 'border-transparent text-muted hover:text-foreground hover:border-[var(--color-border-strong)]'
+        }`}
     >
       {#if Icon}
         {@const IconComp = Icon as typeof import('lucide-svelte').Activity}
@@ -103,8 +105,9 @@
       {tab.label}
       {#if tab.count !== undefined}
         <span
-          class={`ml-0.5 rounded-full px-1.5 text-[10px] leading-[1.4] ${active ? 'bg-accent/15 text-accent' : 'bg-bg3 text-muted-foreground'}`}
-        >{tab.count}</span>
+          class={`ml-0.5 rounded-full px-1.5 text-[length:var(--font-size-telemetry)] leading-[1.4] ${active ? 'bg-accent/15 text-accent' : 'bg-bg3 text-muted-foreground'}`}
+          >{tab.count}</span
+        >
       {/if}
     </button>
   {/each}

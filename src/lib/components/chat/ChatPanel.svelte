@@ -1,144 +1,129 @@
 <script lang="ts">
-    import ChatMessage from "./ChatMessage.svelte";
-    import Skeleton from "$lib/components/ui/Skeleton.svelte";
-    import { agentChat } from "$lib/state/chat/chat.svelte";
-    import { sendChatMsg } from "$lib/services/gateway.svelte";
-    import { conn } from "$lib/state/gateway/connection.svelte";
-    import { submitOnEnter } from "$lib/hotkeys";
-    import { tick, untrack } from "svelte";
-    import * as m from "$lib/paraglide/messages";
+  import { Button } from '$lib/components/ui';
+  import ChatMessage from './ChatMessage.svelte';
+  import Skeleton from '$lib/components/ui/Skeleton.svelte';
+  import { agentChat } from '$lib/state/chat/chat.svelte';
+  import { sendChatMsg } from '$lib/services/gateway.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
+  import { submitOnEnter } from '$lib/hotkeys';
+  import { tick, untrack } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
 
-    let { agentId, readonly = false }: { agentId: string; readonly?: boolean } =
-        $props();
+  let { agentId, readonly = false }: { agentId: string; readonly?: boolean } = $props();
 
-    const chat = $derived(agentChat[agentId]);
-    let messagesEl = $state<HTMLDivElement | null>(null);
-    let atBottom = $state(true);
+  const chat = $derived(agentChat[agentId]);
+  let messagesEl = $state<HTMLDivElement | null>(null);
+  let atBottom = $state(true);
 
-    function handleScroll() {
-        if (!messagesEl) return;
-        const { scrollTop, scrollHeight, clientHeight } = messagesEl;
-        atBottom = scrollHeight - scrollTop - clientHeight < 40;
+  function handleScroll() {
+    if (!messagesEl) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesEl;
+    atBottom = scrollHeight - scrollTop - clientHeight < 40;
+  }
+
+  $effect(() => {
+    if (!chat) return;
+    // Touch stream/messages to subscribe
+    void chat.messages.length;
+    void chat.stream;
+    if (untrack(() => atBottom)) {
+      tick().then(() => {
+        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
     }
-
-    $effect(() => {
-        if (!chat) return;
-        // Touch stream/messages to subscribe
-        void chat.messages.length;
-        void chat.stream;
-        if (untrack(() => atBottom)) {
-            tick().then(() => {
-                if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
-            });
-        }
-    });
-
+  });
 </script>
 
-<div
-    class="{readonly
-        ? 'shrink-0'
-        : 'flex-1 min-h-0'} flex flex-col overflow-hidden"
->
-    {#if !readonly}
-        <div
-            class="flex-1 min-h-0 overflow-y-auto px-4 py-2.5 flex flex-col gap-1.5 [scrollbar-width:thin] [scrollbar-color:var(--color-border)_transparent]"
-            bind:this={messagesEl}
-            onscroll={handleScroll}
-        >
-            {#if !chat || (chat.messages.length === 0 && !chat.stream && !chat.loading)}
-                <div class="text-muted-foreground text-[11px] text-center p-5">
-                    {m.chat_noMessages()}
-                </div>
-            {:else if chat.loading}
-                <!-- Skeleton chat bubbles -->
-                <div class="flex flex-col gap-3 py-2">
-                    <div class="self-start max-w-[70%] flex flex-col gap-1.5">
-                        <Skeleton width="180px" height="14px" rounded="rounded" />
-                        <Skeleton width="220px" height="14px" rounded="rounded" />
-                        <Skeleton width="140px" height="14px" rounded="rounded" />
-                    </div>
-                    <div class="self-end max-w-[60%] flex flex-col gap-1.5 items-end">
-                        <Skeleton width="120px" height="14px" rounded="rounded" />
-                        <Skeleton width="160px" height="14px" rounded="rounded" />
-                    </div>
-                    <div class="self-start max-w-[70%] flex flex-col gap-1.5">
-                        <Skeleton width="200px" height="14px" rounded="rounded" />
-                        <Skeleton width="100px" height="14px" rounded="rounded" />
-                    </div>
-                </div>
-            {:else}
-                {#each chat.messages as msg, i (`${(msg as {timestamp?: number}).timestamp ?? ''}_${i}`)}
-                    <ChatMessage message={msg} />
-                {/each}
-
-                {#if chat.stream !== null}
-                    {#if chat.stream === ""}
-                        <div
-                            class="flex gap-1 px-2 py-1 items-center self-start"
-                        >
-                            <span
-                                class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce"
-                            ></span>
-                            <span
-                                class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce [animation-delay:0.15s]"
-                            ></span>
-                            <span
-                                class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce [animation-delay:0.3s]"
-                            ></span>
-                        </div>
-                    {:else}
-                        <ChatMessage
-                            message={{
-                                role: "assistant",
-                                content: chat.stream,
-                            }}
-                            streaming={true}
-                        />
-                    {/if}
-                {/if}
-
-                {#if chat.lastError}
-                    <ChatMessage
-                        message={{
-                            role: "assistant",
-                            content: `Error: ${chat.lastError}`,
-                        }}
-                        error={true}
-                    />
-                {/if}
-            {/if}
-        </div>
-    {/if}
-
+<div class="{readonly ? 'shrink-0' : 'flex-1 min-h-0'} flex flex-col overflow-hidden">
+  {#if !readonly}
     <div
-        class="shrink-0 flex gap-2 px-4 py-2.5 border-t border-border {readonly
-            ? 'opacity-60'
-            : ''}"
+      class="flex-1 min-h-0 overflow-y-auto px-4 py-2.5 flex flex-col gap-1.5 [scrollbar-width:thin] [scrollbar-color:var(--color-border)_transparent]"
+      bind:this={messagesEl}
+      onscroll={handleScroll}
     >
-        <textarea
-            class="flex-1 bg-bg3 border border-border rounded-md text-foreground px-3 py-1.75 font-mono text-xs outline-none resize-none min-h-8 max-h-20 field-sizing-content focus:border-accent"
-            placeholder={readonly
-                ? m.chat_viewingSession()
-                : conn.connected
-                  ? m.chat_placeholderGeneric()
-                  : m.conn_notConnected()}
-            disabled={readonly || !conn.connected || (chat?.sending ?? false)}
-            value={chat?.inputText ?? ""}
-            oninput={(e) => {
-                if (chat)
-                    chat.inputText = (e.target as HTMLTextAreaElement).value;
+      {#if !chat || (chat.messages.length === 0 && !chat.stream && !chat.loading)}
+        <div class="text-muted-foreground text-[length:var(--font-size-caption)] text-center p-5">
+          {m.chat_noMessages()}
+        </div>
+      {:else if chat.loading}
+        <!-- Skeleton chat bubbles -->
+        <div class="flex flex-col gap-3 py-2">
+          <div class="self-start max-w-[70%] flex flex-col gap-1.5">
+            <Skeleton width="180px" height="14px" rounded="rounded" />
+            <Skeleton width="220px" height="14px" rounded="rounded" />
+            <Skeleton width="140px" height="14px" rounded="rounded" />
+          </div>
+          <div class="self-end max-w-[60%] flex flex-col gap-1.5 items-end">
+            <Skeleton width="120px" height="14px" rounded="rounded" />
+            <Skeleton width="160px" height="14px" rounded="rounded" />
+          </div>
+          <div class="self-start max-w-[70%] flex flex-col gap-1.5">
+            <Skeleton width="200px" height="14px" rounded="rounded" />
+            <Skeleton width="100px" height="14px" rounded="rounded" />
+          </div>
+        </div>
+      {:else}
+        {#each chat.messages as msg, i (`${(msg as { timestamp?: number }).timestamp ?? ''}_${i}`)}
+          <ChatMessage message={msg} />
+        {/each}
+
+        {#if chat.stream !== null}
+          {#if chat.stream === ''}
+            <div class="flex gap-1 px-2 py-1 items-center self-start">
+              <span class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce"></span>
+              <span
+                class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce [animation-delay:0.15s]"
+              ></span>
+              <span
+                class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce [animation-delay:0.3s]"
+              ></span>
+            </div>
+          {:else}
+            <ChatMessage
+              message={{
+                role: 'assistant',
+                content: chat.stream,
+              }}
+              streaming={true}
+            />
+          {/if}
+        {/if}
+
+        {#if chat.lastError}
+          <ChatMessage
+            message={{
+              role: 'assistant',
+              content: `Error: ${chat.lastError}`,
             }}
-            {@attach submitOnEnter(() => sendChatMsg(agentId))}
-            rows="1"
-        ></textarea>
-        <button
-            class="bg-accent text-white border-0 rounded-md px-3.5 text-xs font-semibold cursor-pointer transition-all duration-200 shrink-0 hover:brightness-[1.15] disabled:opacity-40 disabled:cursor-default"
-            disabled={readonly ||
-                !conn.connected ||
-                (chat?.sending ?? false) ||
-                !chat?.inputText?.trim()}
-            onclick={() => sendChatMsg(agentId)}>{m.chat_send()}</button
-        >
+            error={true}
+          />
+        {/if}
+      {/if}
     </div>
+  {/if}
+
+  <div
+    class="shrink-0 flex gap-2 px-4 py-2.5 border-t border-border {readonly ? 'opacity-60' : ''}"
+  >
+    <textarea
+      class="flex-1 bg-bg3 border border-border rounded-md text-foreground px-3 py-1.75 font-mono text-xs outline-none resize-none min-h-8 max-h-20 field-sizing-content focus:border-accent"
+      placeholder={readonly
+        ? m.chat_viewingSession()
+        : conn.connected
+          ? m.chat_placeholderGeneric()
+          : m.conn_notConnected()}
+      disabled={readonly || !conn.connected || (chat?.sending ?? false)}
+      value={chat?.inputText ?? ''}
+      oninput={(e) => {
+        if (chat) chat.inputText = (e.target as HTMLTextAreaElement).value;
+      }}
+      {@attach submitOnEnter(() => sendChatMsg(agentId))}
+      rows="1"></textarea>
+    <Button
+      variant="ghost"
+      class="bg-accent text-[var(--color-on-accent)] border-0 rounded-md px-3.5 text-xs font-semibold cursor-pointer transition-all duration-[var(--duration-normal)] shrink-0 hover:brightness-[1.15] disabled:opacity-40 disabled:cursor-default"
+      disabled={readonly || !conn.connected || (chat?.sending ?? false) || !chat?.inputText?.trim()}
+      onclick={() => sendChatMsg(agentId)}>{m.chat_send()}</Button
+    >
+  </div>
 </div>

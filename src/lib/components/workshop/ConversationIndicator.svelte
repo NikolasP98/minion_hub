@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
 
   let {
@@ -14,9 +15,12 @@
   } = $props();
 </script>
 
-<button
-  class="conversation-indicator absolute z-30 pointer-events-auto flex items-center justify-center w-7 h-7 rounded-full border cursor-pointer transition-all duration-150
-    {type === 'task' ? 'border-accent bg-accent/15 hover:border-accent hover:bg-accent/25' : 'border-border bg-bg3/70 hover:border-muted-strong hover:bg-bg3'}"
+<Button
+  variant="ghost"
+  class="conversation-indicator absolute z-[var(--layer-dropdown)] pointer-events-auto flex items-center justify-center w-7 h-7 rounded-full border cursor-pointer transition-all duration-[var(--duration-fast)]
+    {type === 'task'
+    ? 'border-accent bg-accent/15 hover:border-accent hover:bg-accent/25'
+    : 'border-border bg-bg3/70 hover:border-muted-strong hover:bg-bg3'}"
   style="left: {x}px; top: {y}px; transform: translate(-50%, -50%);"
   {onclick}
   aria-label={m.workshop_openConversation({ type })}
@@ -32,15 +36,17 @@
   >
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
-  <span class="pulse-dot absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-500"></span>
-</button>
+  <span
+    class="pulse-dot absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--color-success-surface)]"
+  ></span>
+</Button>
 
 <style>
-  .conversation-indicator {
-    animation: scale-in 200ms ease-out;
+  :global(.conversation-indicator) {
+    animation: scale-in var(--duration-normal) var(--ease-exit);
   }
 
-  .conversation-indicator:hover {
+  :global(.conversation-indicator:hover) {
     transform: translate(-50%, -50%) scale(1.12);
   }
 
@@ -60,13 +66,14 @@
   }
 
   @keyframes pulse-glow {
-    0%, 100% {
+    0%,
+    100% {
       opacity: 1;
-      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+      box-shadow: var(--shadow-elevation-1);
     }
     50% {
       opacity: 0.7;
-      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0);
+      box-shadow: var(--shadow-elevation-1);
     }
   }
 </style>

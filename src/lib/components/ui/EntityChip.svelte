@@ -23,7 +23,11 @@
   const Icon = $derived(resolveIcon(ref));
   const color = $derived(ref.color ?? 'var(--color-muted-foreground)');
   const px = $derived(size === 'sm' ? 12 : 14);
-  const sizeCls = $derived(size === 'sm' ? 'text-[11px] px-1.5 py-0.5 gap-1' : 'text-xs px-2 py-0.5 gap-1.5');
+  const sizeCls = $derived(
+    size === 'sm'
+      ? 'text-[length:var(--font-size-caption)] px-1.5 py-0.5 gap-1'
+      : 'text-xs px-2 py-0.5 gap-1.5',
+  );
   const tint = $derived(
     `background-color: color-mix(in srgb, ${color} 14%, transparent); color: ${color}; border-color: color-mix(in srgb, ${color} 32%, transparent);`,
   );

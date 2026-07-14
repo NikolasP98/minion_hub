@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Plus, Trash2, RefreshCw, History } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Popover } from '$lib/components/ui';
+  import { Popover, Button } from '$lib/components/ui';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
   import { iconComp } from '$lib/components/my-agent/note-icons';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
@@ -29,8 +29,12 @@
   } = $props();
 </script>
 
-<div class="border-t border-white/10 pt-3">
-  <p class="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-white/35">{m.artifacts_label()}</p>
+<div class="border-t border-border pt-3">
+  <p
+    class="mb-1.5 text-[length:var(--font-size-telemetry)] font-medium uppercase tracking-wide text-[var(--color-text-disabled)]"
+  >
+    {m.artifacts_label()}
+  </p>
   <div class="flex flex-wrap items-center gap-2">
     {#each artifacts as a (a.id)}
       {@const lucide = a.icon?.startsWith('lucide:') ? iconComp(a.icon.slice(7)) : null}
@@ -38,59 +42,69 @@
       {@const Icon = lucide ?? (isEmoji ? null : resolvePluginIcon(a.icon))}
       <Popover placement="top">
         {#snippet trigger()}
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onclick={() => onopen(a)}
             aria-label={a.title}
-            class="grid size-11 place-items-center rounded-lg border border-white/10 bg-white/[0.03] text-white/70 transition-colors hover:border-white/25 hover:bg-white/10 hover:text-white"
+            class="grid size-11 place-items-center rounded-lg border border-border bg-foreground/[0.03] text-muted transition-colors hover:border-[var(--color-border-strong)] hover:bg-foreground/10 hover:text-foreground"
           >
-            {#if isEmoji}<span class="text-lg leading-none">{a.icon}</span>{:else if Icon && typeof Icon !== 'string'}<Icon size={18} />{/if}
-          </button>
+            {#if isEmoji}<span class="text-lg leading-none">{a.icon}</span
+              >{:else if Icon && typeof Icon !== 'string'}<Icon size={18} />{/if}
+          </Button>
         {/snippet}
-          <div class="max-w-56 p-1">
-            <p class="text-xs font-semibold text-white">{a.title}</p>
-            <p class="mt-0.5 text-[11px] leading-snug text-white/60">{a.description}</p>
-            {#if a.deletable && canAdd}
-              <div class="mt-1.5 flex flex-col gap-0.5">
-                <button
-                  type="button"
-                  onclick={() => onregenerate?.(a)}
-                  class="flex items-center gap-1 text-[11px] text-white/60 hover:text-white transition-colors"
-                >
-                  <RefreshCw size={11} />
-                  {m.artifact_regenerate()}
-                </button>
-                <button
-                  type="button"
-                  onclick={() => onhistory?.(a)}
-                  class="flex items-center gap-1 text-[11px] text-white/60 hover:text-white transition-colors"
-                >
-                  <History size={11} />
-                  {m.artifact_history()}
-                </button>
-                <button
-                  type="button"
-                  onclick={() => ondelete?.(a)}
-                  class="flex items-center gap-1 text-[11px] text-red-400 hover:text-red-300 transition-colors"
-                >
-                  <Trash2 size={11} />
-                  {m.artifact_delete()}
-                </button>
-              </div>
-            {/if}
-          </div>
+        <div class="max-w-56 p-1">
+          <p class="text-xs font-semibold text-foreground">{a.title}</p>
+          <p
+            class="mt-0.5 text-[length:var(--font-size-caption)] leading-snug text-muted-foreground"
+          >
+            {a.description}
+          </p>
+          {#if a.deletable && canAdd}
+            <div class="mt-1.5 flex flex-col gap-0.5">
+              <Button
+                variant="ghost"
+                type="button"
+                onclick={() => onregenerate?.(a)}
+                class="flex items-center gap-1 text-[length:var(--font-size-caption)] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <RefreshCw size={11} />
+                {m.artifact_regenerate()}
+              </Button>
+              <Button
+                variant="ghost"
+                type="button"
+                onclick={() => onhistory?.(a)}
+                class="flex items-center gap-1 text-[length:var(--font-size-caption)] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <History size={11} />
+                {m.artifact_history()}
+              </Button>
+              <Button
+                variant="ghost"
+                type="button"
+                onclick={() => ondelete?.(a)}
+                class="flex items-center gap-1 text-[length:var(--font-size-caption)] text-[var(--color-danger-fg)] hover:text-[var(--color-danger-fg)] transition-colors"
+              >
+                <Trash2 size={11} />
+                {m.artifact_delete()}
+              </Button>
+            </div>
+          {/if}
+        </div>
       </Popover>
     {/each}
 
     {#if canAdd}
-      <button
+      <Button
+        variant="ghost"
         type="button"
         aria-label={m.artifact_add()}
         onclick={() => oncreate?.()}
-        class="grid size-11 place-items-center rounded-lg border border-dashed border-white/20 text-white/40 transition-colors hover:border-white/40 hover:text-white/70"
+        class="grid size-11 place-items-center rounded-lg border border-dashed border-[var(--color-border-strong)] text-foreground/40 transition-colors hover:border-foreground/40 hover:text-muted"
       >
         <Plus size={18} />
-      </button>
+      </Button>
     {/if}
   </div>
 </div>

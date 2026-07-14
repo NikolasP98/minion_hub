@@ -6,10 +6,14 @@
   }: { state: 'active' | 'attention' | 'disabled'; label: string; expanded?: boolean } = $props();
 
   const dot = $derived(
-    state === 'active' ? 'bg-emerald-400' : state === 'attention' ? 'bg-amber-400' : 'bg-white/30',
+    state === 'active' ? 'bg-success' : state === 'attention' ? 'bg-warning' : 'bg-foreground/30',
   );
   const text = $derived(
-    state === 'active' ? 'text-emerald-300' : state === 'attention' ? 'text-amber-300' : 'text-white/50',
+    state === 'active'
+      ? 'text-[var(--color-success-fg)]'
+      : state === 'attention'
+        ? 'text-[var(--color-warning-fg)]'
+        : 'text-foreground/50',
   );
   // expanded → label always visible. Otherwise the label reveals when an
   // ancestor marked `group/card` is hovered (i.e. hovering the whole card),
@@ -25,13 +29,13 @@
 <!-- Non-interactive status chip. The label rides aria-label so AT always gets it;
      visually it expands on card hover (or is always shown when `expanded`). -->
 <span
-  class="inline-flex items-center rounded-full bg-white/[0.04] p-1 ring-1 ring-white/10"
+  class="inline-flex items-center rounded-full bg-foreground/[0.04] p-1 ring-1 ring-border"
   role="img"
   aria-label={label}
 >
   <span class="size-2 shrink-0 rounded-full {dot}"></span>
   <span
-    class="sd-label overflow-hidden whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-200 {reveal} {text}"
+    class="sd-label overflow-hidden whitespace-nowrap text-[length:var(--font-size-caption)] font-medium leading-none transition-all duration-[var(--duration-normal)] {reveal} {text}"
     >{label}</span
   >
 </span>

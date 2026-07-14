@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Spinner from '$lib/components/ui/Spinner.svelte';
@@ -48,9 +49,10 @@
         let msg: string;
         try {
           const body = await res.json();
-          msg = (body as { message?: string; error?: string }).message
-            ?? (body as { message?: string; error?: string }).error
-            ?? `Error ${res.status}`;
+          msg =
+            (body as { message?: string; error?: string }).message ??
+            (body as { message?: string; error?: string }).error ??
+            `Error ${res.status}`;
         } catch {
           msg = `Error ${res.status}`;
         }
@@ -73,7 +75,7 @@
 <Modal bind:open title={m.artifact_regenerate()} onclose={reset}>
   <div class="flex flex-col gap-4">
     <div class="flex flex-col gap-1.5">
-      <label class="text-xs font-medium text-white/70" for="arm-refinement">
+      <label class="text-xs font-medium text-muted" for="arm-refinement">
         {m.artifact_regenerate_prompt()}
       </label>
       <textarea
@@ -81,22 +83,22 @@
         bind:value={refinement}
         rows={4}
         disabled={generating}
-        class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0 resize-y disabled:opacity-50"
-        placeholder={m.artifact_regenerate_prompt()}
-      ></textarea>
+        class="w-full rounded-lg border border-border bg-foreground/[0.04] px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 focus:ring-0 resize-y disabled:opacity-50"
+        placeholder={m.artifact_regenerate_prompt()}></textarea>
     </div>
 
     {#if errorMsg}
-      <p class="text-xs text-red-400">{errorMsg}</p>
+      <p class="text-xs text-[var(--color-danger-fg)]">{errorMsg}</p>
     {/if}
   </div>
 
   {#snippet footer()}
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onclick={handleSubmit}
       disabled={!canSubmit || generating}
-      class="flex items-center gap-2 rounded-lg bg-white/10 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+      class="flex items-center gap-2 rounded-lg bg-foreground/10 px-4 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/20 disabled:cursor-not-allowed disabled:opacity-40"
     >
       {#if generating}
         <Spinner size="xs" />
@@ -104,6 +106,6 @@
       {:else}
         {m.artifact_regenerate()}
       {/if}
-    </button>
+    </Button>
   {/snippet}
 </Modal>
