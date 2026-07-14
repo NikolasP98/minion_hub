@@ -2,7 +2,9 @@
   import { goto } from '$app/navigation';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
-  import ScanLine from '$lib/components/decorations/ScanLine.svelte';
+  import { Button, Input } from '$lib/components/ui';
+  import { PublicTaskShell } from '$lib/components/ui/foundations';
+  import { CircleCheck, KeyRound, ShieldAlert } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -27,98 +29,105 @@
     }
 
     saving = true;
-    const res = await fetch('/api/auth/reset-password', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ tokenHash: data.tokenHash, newPassword }),
-    });
-    saving = false;
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      error = payload.error === 'invalid_token' ? m.reset_invalidToken() : m.account_security_saveFailed();
-      return;
-    }
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tokenHash: data.tokenHash, newPassword }),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { error?: string };
+        error =
+          payload.error === 'invalid_token'
+            ? m.reset_invalidToken()
+            : m.account_security_saveFailed();
+        return;
+      }
 
-    done = true;
-    setTimeout(() => goto('/', { replaceState: true }), 1500);
+      done = true;
+      setTimeout(() => goto('/', { replaceState: true }), 1500);
+    } catch {
+      error = m.account_security_saveFailed();
+    } finally {
+      saving = false;
+    }
   }
 </script>
 
-<div class="relative z-10 flex items-center justify-center min-h-screen">
-  <div class="w-full max-w-sm mx-4">
-    <div class="bg-bg2 border border-border rounded-lg overflow-hidden shadow-2xl">
-      <div class="relative px-5 py-3.5 border-b border-border bg-bg/60 flex items-center justify-between">
-        <ScanLine speed={10} opacity={0.025} />
-        <span class="text-[10px] font-mono text-muted uppercase tracking-widest">{m.reset_title()}</span>
-        <div class="flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-red-500/60"></span>
-          <span class="w-2 h-2 rounded-full bg-yellow-500/60"></span>
-          <span class="w-2 h-2 rounded-full bg-green-500/60"></span>
-        </div>
-      </div>
+<svelte:head><title>{m.reset_title()} — Minion Hub</title></svelte:head>
 
-      <div class="px-5 pt-6 pb-4 text-center">
-        <div class="inline-flex items-center select-none leading-none mb-2">
-          <span class="bg-brand-pink text-black font-black text-[13px] tracking-wide px-2 py-0.5 rounded-l-md uppercase">MINION</span>
-          <span class="text-foreground font-bold text-[13px] px-1.5 py-0.5">hub</span>
-        </div>
-        <p class="text-[11px] text-muted font-mono">{m.reset_subtitle()}</p>
-      </div>
+{#snippet taskIcon()}
+  {#if !data.ok}<ShieldAlert size={20} />{:else if done}<CircleCheck size={20} />{:else}<KeyRound
+      size={20}
+    />{/if}
+{/snippet}
+{#snippet footer()}<span>{m.login_footer()}</span>{/snippet}
 
-      {#if !data.ok}
-        <div class="px-5 pb-6 space-y-3">
-          <div class="text-[11px] font-mono text-red-400 bg-red-400/8 border border-red-400/20 rounded px-3 py-2">
-            {m.reset_invalidToken()}
-          </div>
-          <a href="/login/forgot" class="block text-center text-[11px] font-mono text-accent hover:text-accent/80 transition-colors">
-            {m.reset_requestNew()}
-          </a>
-        </div>
-      {:else if done}
-        <div class="px-5 pb-6">
-          <div class="text-[11px] font-mono text-accent bg-accent/8 border border-accent/20 rounded px-3 py-2">
-            {m.reset_success()}
-          </div>
-        </div>
-      {:else}
-        <form onsubmit={handleSubmit} class="px-5 pb-6 space-y-3">
-          <div class="space-y-1.5">
-            <label class="block text-[10px] font-mono text-muted uppercase tracking-wider" for="reset-password">
-              {m.reset_newPasswordLabel()}
-            </label>
-            <input
-              id="reset-password" type="password" autocomplete="new-password" required
-              bind:value={newPassword} placeholder="••••••••"
-              class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
-            />
-          </div>
-
-          <div class="space-y-1.5">
-            <label class="block text-[10px] font-mono text-muted uppercase tracking-wider" for="reset-confirm">
-              {m.reset_confirmPasswordLabel()}
-            </label>
-            <input
-              id="reset-confirm" type="password" autocomplete="new-password" required
-              bind:value={confirmPassword} placeholder="••••••••"
-              class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
-            />
-          </div>
-
-          {#if error}
-            <div class="text-[11px] font-mono text-red-400 bg-red-400/8 border border-red-400/20 rounded px-3 py-2">{error}</div>
-          {/if}
-
-          <button
-            type="submit" disabled={saving}
-            class="w-full mt-1 px-4 py-2 rounded border text-sm font-mono transition-all duration-150
-                   {saving ? 'bg-accent/10 border-accent/20 text-accent/60 cursor-not-allowed'
-                           : 'bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 hover:border-accent/50'}"
-          >
-            {saving ? m.reset_submitting() : m.reset_submit()}
-          </button>
-        </form>
-      {/if}
+<PublicTaskShell
+  eyebrow={m.reset_title()}
+  title={!data.ok ? 'Reset link unavailable' : done ? 'Password updated' : m.reset_title()}
+  description={!data.ok ? m.reset_invalidToken() : done ? m.reset_success() : m.reset_subtitle()}
+  tone={!data.ok ? 'danger' : done ? 'success' : 'default'}
+  icon={taskIcon}
+  {footer}
+>
+  {#if !data.ok}
+    <div class="flex flex-col gap-3">
+      <p
+        class="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-destructive)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-destructive)_10%,transparent)] px-3 py-2 text-sm text-destructive"
+        role="alert"
+      >
+        {m.reset_invalidToken()}
+      </p>
+      <Button href="/login/forgot" variant="primary" size="touch" class="w-full">
+        {m.reset_requestNew()}
+      </Button>
     </div>
-    <p class="text-center text-[10px] text-muted-strong font-mono mt-4">{m.login_footer()}</p>
-  </div>
-</div>
+  {:else if done}
+    <p
+      class="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-success)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-success)_10%,transparent)] px-3 py-2 text-sm text-success"
+      aria-live="polite"
+    >
+      {m.reset_success()}
+    </p>
+  {:else}
+    <form onsubmit={handleSubmit} class="flex flex-col gap-3">
+      <Input
+        id="reset-password"
+        type="password"
+        autocomplete="new-password"
+        label={m.reset_newPasswordLabel()}
+        bind:value={newPassword}
+        placeholder="••••••••"
+        helper="Use at least eight characters."
+        error={error && newPassword.length < 8 ? error : undefined}
+        size="touch"
+        required
+      />
+      <Input
+        id="reset-confirm"
+        type="password"
+        autocomplete="new-password"
+        label={m.reset_confirmPasswordLabel()}
+        bind:value={confirmPassword}
+        placeholder="••••••••"
+        error={error && newPassword !== confirmPassword ? error : undefined}
+        size="touch"
+        required
+      />
+
+      {#if error && newPassword.length >= 8 && newPassword === confirmPassword}
+        <p
+          class="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-destructive)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-destructive)_10%,transparent)] px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          {error}
+        </p>
+      {/if}
+
+      <Button type="submit" variant="primary" size="touch" loading={saving} class="w-full">
+        {m.reset_submit()}
+      </Button>
+    </form>
+  {/if}
+</PublicTaskShell>

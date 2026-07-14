@@ -10,6 +10,7 @@ export { default as Layer } from './Layer.svelte';
 export { default as PageBody } from './PageBody.svelte';
 export { default as PageShell } from './PageShell.svelte';
 export { default as Portal } from './Portal.svelte';
+export { default as PublicTaskShell } from './PublicTaskShell.svelte';
 export { default as SectionNav } from './SectionNav.svelte';
 export { default as SectionShell } from './SectionShell.svelte';
 export { default as Sheet } from './Sheet.svelte';
@@ -29,6 +30,7 @@ export type { FormControlProps, FormFieldOrientation } from './FormField.svelte'
 export type { LayerTier, PortalOptions, PortalTarget } from './layer';
 export type { PageBodyPadding, PageBodyWidth } from './PageBody.svelte';
 export type { PageScrollMode, RouteArchetype } from './PageShell.svelte';
+export type { PublicTaskShellSize, PublicTaskShellTone } from './PublicTaskShell.svelte';
 export type { SectionNavGroup, SectionNavIcon, SectionNavItem } from './SectionNav.svelte';
 export type { SectionShellMode } from './SectionShell.svelte';
 export type { WindowRect } from './draggable-window';

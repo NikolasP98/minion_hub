@@ -1,603 +1,490 @@
 <script lang="ts">
-	import type { PageData } from './$types';
-	import { CalendarClock, Check, ArrowLeft, ArrowRight } from 'lucide-svelte';
-	import * as m from '$lib/paraglide/messages';
+  import { onMount } from 'svelte';
+  import { ArrowLeft, ArrowRight, CalendarClock, Check } from 'lucide-svelte';
+  import type { PageData } from './$types';
+  import * as m from '$lib/paraglide/messages';
+  import { Button, Input, Spinner } from '$lib/components/ui';
+  import { PublicTaskShell } from '$lib/components/ui/foundations';
 
-	let { data }: { data: PageData } = $props();
+  let { data }: { data: PageData } = $props();
 
-	type Step = 'service' | 'time' | 'details' | 'done';
-	// svelte-ignore state_referenced_locally
-	let step = $state<Step>(data.eventTypes.length === 1 ? 'time' : 'service');
-	// svelte-ignore state_referenced_locally
-	let eventTypeId = $state(data.eventTypes.length === 1 ? data.eventTypes[0].id : '');
-	let windowSlots = $state<Array<{ start: string; end: string }>>([]);
-	let selectedDay = $state('');
-	let customDate = $state('');
-	let dateEl = $state<HTMLInputElement>();
-	let slot = $state('');
-	let loading = $state(false);
-	let name = $state('');
-	let email = $state('');
-	let phone = $state('');
-	let err = $state<string | null>(null);
-	let doneStatus = $state<string>('accepted');
+  type Step = 'service' | 'time' | 'details' | 'done';
+  type Slot = { start: string; end: string };
 
-	const chosenService = $derived(data.eventTypes.find((e) => e.id === eventTypeId));
+  // svelte-ignore state_referenced_locally
+  let step = $state<Step>(data.eventTypes.length === 1 ? 'time' : 'service');
+  // svelte-ignore state_referenced_locally
+  let eventTypeId = $state(data.eventTypes.length === 1 ? data.eventTypes[0].id : '');
+  let windowSlots = $state<Slot[]>([]);
+  let selectedDay = $state('');
+  let customDate = $state('');
+  let slot = $state('');
+  let loading = $state(false);
+  let name = $state('');
+  let email = $state('');
+  let phone = $state('');
+  let err = $state<string | null>(null);
+  let doneStatus = $state('accepted');
 
-	// Group fetched slots by local day → drives the quick-day buttons and time grid.
-	const byDay = $derived.by(() => {
-		const map = new Map<string, Array<{ start: string; end: string }>>();
-		for (const s of windowSlots) {
-			const k = dayKey(s.start);
-			(map.get(k) ?? map.set(k, []).get(k)!).push(s);
-		}
-		return map;
-	});
-	const availableDays = $derived([...byDay.keys()].sort());
-	const quickDays = $derived(availableDays.slice(0, 5));
-	const daySlots = $derived(byDay.get(selectedDay) ?? []);
+  const chosenService = $derived(data.eventTypes.find((eventType) => eventType.id === eventTypeId));
 
-	const steps = $derived(
-		(data.eventTypes.length > 1
-			? [
-					{ k: 'service', label: m.sched_book_step_service() },
-					{ k: 'time', label: m.sched_book_step_time() },
-					{ k: 'details', label: m.sched_book_step_details() },
-					{ k: 'done', label: m.sched_book_step_done() },
-				]
-			: [
-					{ k: 'time', label: m.sched_book_step_time() },
-					{ k: 'details', label: m.sched_book_step_details() },
-					{ k: 'done', label: m.sched_book_step_done() },
-				]) as Array<{ k: Step; label: string }>,
-	);
-	const currentIdx = $derived(steps.findIndex((s) => s.k === step));
+  const byDay = $derived.by(() => {
+    const map = new Map<string, Slot[]>();
+    for (const availableSlot of windowSlots) {
+      const key = dayKey(availableSlot.start);
+      const slots = map.get(key) ?? [];
+      slots.push(availableSlot);
+      map.set(key, slots);
+    }
+    return map;
+  });
+  const availableDays = $derived([...byDay.keys()].sort());
+  const quickDays = $derived(availableDays.slice(0, 5));
+  const daySlots = $derived(byDay.get(selectedDay) ?? []);
 
-	function dayKey(iso: string): string {
-		const d = new Date(iso);
-		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-	}
-	function fmtDayShort(key: string): { weekday: string; day: string } {
-		const d = new Date(`${key}T00:00:00`);
-		return {
-			weekday: d.toLocaleDateString(undefined, { weekday: 'short' }),
-			day: d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
-		};
-	}
-	function hhmm(iso: string): string {
-		return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-	}
-	function fmtDateTime(iso: string): string {
-		return new Date(iso).toLocaleString(undefined, {
-			weekday: 'long',
-			day: 'numeric',
-			month: 'long',
-			hour: '2-digit',
-			minute: '2-digit',
-		});
-	}
+  const steps = $derived(
+    (data.eventTypes.length > 1
+      ? [
+          { key: 'service', label: m.sched_book_step_service() },
+          { key: 'time', label: m.sched_book_step_time() },
+          { key: 'details', label: m.sched_book_step_details() },
+          { key: 'done', label: m.sched_book_step_done() },
+        ]
+      : [
+          { key: 'time', label: m.sched_book_step_time() },
+          { key: 'details', label: m.sched_book_step_details() },
+          { key: 'done', label: m.sched_book_step_done() },
+        ]) as Array<{ key: Step; label: string }>,
+  );
+  const currentStepIndex = $derived(steps.findIndex((candidate) => candidate.key === step));
 
-	function pickService(id: string) {
-		eventTypeId = id;
-		step = 'time';
-		void loadWindow();
-	}
+  function dayKey(iso: string): string {
+    const date = new Date(iso);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
 
-	/** One fetch covering the next 30 days; days with slots become quick buttons. */
-	async function loadWindow() {
-		if (!eventTypeId) return;
-		loading = true;
-		err = null;
-		slot = '';
-		const from = new Date();
-		const to = new Date(from.getTime() + 30 * 86_400_000);
-		try {
-			const res = await fetch(
-				`/api/scheduling/public/${data.slug}/slots?eventTypeId=${eventTypeId}&from=${from.toISOString()}&to=${to.toISOString()}`,
-			);
-			windowSlots = res.ok ? ((await res.json()).slots ?? []) : [];
-		} catch {
-			windowSlots = [];
-		} finally {
-			loading = false;
-		}
-		if (!selectedDay && availableDays.length) selectedDay = availableDays[0];
-	}
+  function formatDay(key: string): { weekday: string; day: string } {
+    const date = new Date(`${key}T00:00:00`);
+    return {
+      weekday: date.toLocaleDateString(undefined, { weekday: 'short' }),
+      day: date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+    };
+  }
 
-	/** Fetch a single custom day outside the window and merge it in. */
-	async function loadCustomDay() {
-		if (!customDate || !eventTypeId) return;
-		slot = '';
-		if (byDay.has(customDate)) {
-			selectedDay = customDate;
-			return;
-		}
-		loading = true;
-		const from = new Date(`${customDate}T00:00:00`);
-		const to = new Date(from.getTime() + 86_400_000);
-		try {
-			const res = await fetch(
-				`/api/scheduling/public/${data.slug}/slots?eventTypeId=${eventTypeId}&from=${from.toISOString()}&to=${to.toISOString()}`,
-			);
-			const fresh: Array<{ start: string; end: string }> = res.ok ? ((await res.json()).slots ?? []) : [];
-			const seen = new Set(windowSlots.map((s) => s.start));
-			windowSlots = [...windowSlots, ...fresh.filter((s) => !seen.has(s.start))];
-		} catch {
-			/* keep existing */
-		} finally {
-			loading = false;
-		}
-		selectedDay = customDate;
-	}
+  function formatTime(iso: string): string {
+    return new Date(iso).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
 
-	async function confirm() {
-		if (!slot || !name.trim()) {
-			err = 'name and time required';
-			return;
-		}
-		loading = true;
-		err = null;
-		try {
-			const res = await fetch(`/api/scheduling/public/${data.slug}/book`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ eventTypeId, start: slot, name, email: email || null, phone: phone || null }),
-			});
-			if (res.status === 409) {
-				err = m.sched_book_unavailable();
-				step = 'time';
-				await loadWindow();
-				return;
-			}
-			if (!res.ok) throw new Error(String(res.status));
-			const j = await res.json();
-			doneStatus = j.status ?? 'accepted';
-			step = 'done';
-		} catch (e) {
-			err = e instanceof Error ? e.message : 'error';
-		} finally {
-			loading = false;
-		}
-	}
+  function formatDateTime(iso: string): string {
+    return new Date(iso).toLocaleString(undefined, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  function selectService(id: string) {
+    eventTypeId = id;
+    step = 'time';
+    void loadWindow();
+  }
+
+  async function loadWindow() {
+    if (!eventTypeId) return;
+    loading = true;
+    err = null;
+    slot = '';
+    const from = new Date();
+    const to = new Date(from.getTime() + 30 * 86_400_000);
+    try {
+      const response = await fetch(
+        `/api/scheduling/public/${data.slug}/slots?eventTypeId=${eventTypeId}&from=${from.toISOString()}&to=${to.toISOString()}`,
+      );
+      if (!response.ok) throw new Error(`Availability request failed (${response.status})`);
+      windowSlots = ((await response.json()).slots ?? []) as Slot[];
+      const days = [
+        ...new Set(windowSlots.map((availableSlot) => dayKey(availableSlot.start))),
+      ].sort();
+      if (!days.includes(selectedDay)) selectedDay = days[0] ?? '';
+    } catch {
+      windowSlots = [];
+      selectedDay = '';
+      err = 'We could not load availability. Please try again.';
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function loadCustomDay() {
+    if (!customDate || !eventTypeId) return;
+    slot = '';
+    selectedDay = customDate;
+    if (byDay.has(customDate)) return;
+
+    loading = true;
+    err = null;
+    const from = new Date(`${customDate}T00:00:00`);
+    const to = new Date(from.getTime() + 86_400_000);
+    try {
+      const response = await fetch(
+        `/api/scheduling/public/${data.slug}/slots?eventTypeId=${eventTypeId}&from=${from.toISOString()}&to=${to.toISOString()}`,
+      );
+      if (!response.ok) throw new Error(`Availability request failed (${response.status})`);
+      const fresh = ((await response.json()).slots ?? []) as Slot[];
+      const seen = new Set(windowSlots.map((availableSlot) => availableSlot.start));
+      windowSlots = [
+        ...windowSlots,
+        ...fresh.filter((availableSlot) => !seen.has(availableSlot.start)),
+      ];
+    } catch {
+      err = 'We could not load that date. Please try another day.';
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function confirm() {
+    if (!slot || !name.trim()) {
+      err = 'Choose a time and enter your name.';
+      return;
+    }
+    loading = true;
+    err = null;
+    try {
+      const response = await fetch(`/api/scheduling/public/${data.slug}/book`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          eventTypeId,
+          start: slot,
+          name,
+          email: email || null,
+          phone: phone || null,
+        }),
+      });
+      if (response.status === 409) {
+        step = 'time';
+        await loadWindow();
+        err = m.sched_book_unavailable();
+        return;
+      }
+      if (!response.ok) throw new Error(`Booking request failed (${response.status})`);
+      const result = (await response.json()) as { status?: string };
+      doneStatus = result.status ?? 'accepted';
+      step = 'done';
+    } catch (error) {
+      err = error instanceof Error ? error.message : 'We could not complete this booking.';
+    } finally {
+      loading = false;
+    }
+  }
+
+  onMount(() => {
+    if (eventTypeId) void loadWindow();
+  });
 </script>
 
 <svelte:head><title>{data.title}</title></svelte:head>
 
-<div class="wrap">
-	<div class="head">
-		<span class="head-icon"><CalendarClock size={22} /></span>
-		<div>
-			<h1 class="title">{data.title}</h1>
-			{#if data.description}<p class="t-caption">{data.description}</p>{/if}
-		</div>
-	</div>
+{#snippet taskIcon()}<CalendarClock size={20} />{/snippet}
 
-	{#if data.eventTypes.length > 0}
-		<!-- Process stepper -->
-		<ol class="stepper" aria-label="progress">
-			{#each steps as s, i (s.k)}
-				<li class="stp {i === currentIdx ? 'stp-now' : ''} {i < currentIdx ? 'stp-done' : ''}">
-					<span class="stp-dot">{#if i < currentIdx}<Check size={13} />{:else}{i + 1}{/if}</span>
-					<span class="stp-label">{s.label}</span>
-				</li>
-			{/each}
-		</ol>
-	{/if}
+<PublicTaskShell
+  eyebrow={data.eventTypes.length > 0
+    ? `${currentStepIndex + 1} / ${steps.length} · ${steps[currentStepIndex]?.label ?? ''}`
+    : 'Public booking'}
+  title={data.title}
+  description={data.description ?? 'Choose a service and reserve an available time.'}
+  tone={step === 'done' ? 'success' : 'default'}
+  icon={taskIcon}
+  size="medium"
+>
+  {#if data.eventTypes.length > 0}
+    <ol class="mb-5 flex items-center" aria-label="Booking progress">
+      {#each steps as progressStep, index (progressStep.key)}
+        <li
+          class="flex min-w-0 flex-1 items-center"
+          aria-current={index === currentStepIndex ? 'step' : undefined}
+        >
+          <span
+            class="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-full)] border text-xs font-semibold
+              {index <= currentStepIndex
+              ? 'border-accent bg-[color-mix(in_srgb,var(--color-accent)_16%,transparent)] text-accent'
+              : 'border-border bg-bg3 text-muted-foreground'}"
+          >
+            {#if index < currentStepIndex}<Check size={13} />{:else}{index + 1}{/if}
+          </span>
+          <span
+            class="ml-2 hidden truncate text-xs sm:inline {index === currentStepIndex
+              ? 'font-semibold text-foreground'
+              : 'text-muted-foreground'}">{progressStep.label}</span
+          >
+          {#if index < steps.length - 1}
+            <span
+              class="mx-2 h-px min-w-3 flex-1 {index < currentStepIndex
+                ? 'bg-accent'
+                : 'bg-border'}"
+              aria-hidden="true"
+            ></span>
+          {/if}
+        </li>
+      {/each}
+    </ol>
+  {/if}
 
-	{#if step === 'done'}
-		<div class="card done">
-			<span class="done-badge"><Check size={28} /></span>
-			<h2 class="done-title">{doneStatus === 'pending' ? m.sched_book_success_pending() : m.sched_book_done_title()}</h2>
-			<p class="t-caption done-note">
-				{doneStatus === 'pending' ? m.sched_book_done_note_pending() : m.sched_book_done_note()}
-			</p>
-			<dl class="summary">
-				<div><dt>{m.sched_book_step_service()}</dt><dd>{chosenService?.title} · {chosenService?.length} min</dd></div>
-				<div><dt>{m.sched_book_when()}</dt><dd>{fmtDateTime(slot)}</dd></div>
-				<div><dt>{m.sched_book_name()}</dt><dd>{name}</dd></div>
-			</dl>
-		</div>
-	{:else if data.eventTypes.length === 0}
-		<div class="card"><p class="t-caption">{m.sched_book_no_slots()}</p></div>
-	{:else}
-		<div class="card">
-			<!-- Step: choose service -->
-			{#if step === 'service'}
-				<h2 class="step-h">{m.sched_book_choose_service()}</h2>
-				<div class="flex flex-col gap-2">
-					{#each data.eventTypes as e (e.id)}
-						<button class="svc" onclick={() => pickService(e.id)}>
-							<span class="font-medium">{e.title}</span>
-							<span class="t-caption">{e.length} min</span>
-						</button>
-					{/each}
-				</div>
-			{/if}
+  {#if step === 'done'}
+    <div class="flex flex-col items-center gap-4 text-center" aria-live="polite">
+      <span
+        class="flex size-14 items-center justify-center rounded-[var(--radius-full)] border border-[color-mix(in_srgb,var(--color-success)_36%,transparent)] bg-[color-mix(in_srgb,var(--color-success)_12%,transparent)] text-success"
+        aria-hidden="true"
+      >
+        <Check size={26} />
+      </span>
+      <div>
+        <h2 class="text-base font-semibold text-foreground">
+          {doneStatus === 'pending' ? m.sched_book_success_pending() : m.sched_book_done_title()}
+        </h2>
+        <p class="mt-1 text-sm leading-relaxed text-muted-foreground">
+          {doneStatus === 'pending' ? m.sched_book_done_note_pending() : m.sched_book_done_note()}
+        </p>
+      </div>
+      <dl
+        class="w-full divide-y divide-border rounded-[var(--radius-lg)] border border-border bg-bg/50 px-4"
+      >
+        <div class="flex justify-between gap-4 py-3 text-left text-sm">
+          <dt class="text-muted-foreground">{m.sched_book_step_service()}</dt>
+          <dd class="text-right font-medium text-foreground">
+            {chosenService?.title} · {chosenService?.length} min
+          </dd>
+        </div>
+        <div class="flex justify-between gap-4 py-3 text-left text-sm">
+          <dt class="text-muted-foreground">{m.sched_book_when()}</dt>
+          <dd class="text-right font-medium text-foreground">{formatDateTime(slot)}</dd>
+        </div>
+        <div class="flex justify-between gap-4 py-3 text-left text-sm">
+          <dt class="text-muted-foreground">{m.sched_book_name()}</dt>
+          <dd class="text-right font-medium text-foreground">{name}</dd>
+        </div>
+      </dl>
+    </div>
+  {:else if data.eventTypes.length === 0}
+    <div
+      class="rounded-[var(--radius-md)] border border-border bg-bg/50 px-4 py-4 text-sm text-muted"
+      role="status"
+    >
+      {m.sched_book_no_slots()}
+    </div>
+  {:else if step === 'service'}
+    <div class="flex flex-col gap-3">
+      <div>
+        <h2 class="text-base font-semibold text-foreground">{m.sched_book_choose_service()}</h2>
+        <p class="mt-1 text-sm text-muted-foreground">
+          Select the appointment you want to reserve.
+        </p>
+      </div>
+      <div class="flex flex-col gap-2">
+        {#each data.eventTypes as eventType (eventType.id)}
+          <Button
+            type="button"
+            variant="secondary"
+            size="touch"
+            class="h-auto min-h-[var(--control-height-touch)] w-full whitespace-normal py-3"
+            onclick={() => selectService(eventType.id)}
+          >
+            <span class="flex w-full min-w-0 items-center justify-between gap-3 text-left">
+              <span class="truncate font-medium text-foreground">{eventType.title}</span>
+              <span class="shrink-0 text-xs text-muted-foreground">{eventType.length} min</span>
+            </span>
+          </Button>
+        {/each}
+      </div>
+    </div>
+  {:else if step === 'time'}
+    <div class="flex flex-col gap-4">
+      <div>
+        <h2 class="text-base font-semibold text-foreground">{m.sched_book_pick_time()}</h2>
+        {#if chosenService}
+          <p class="mt-1 text-sm text-muted-foreground">
+            {chosenService.title} · {chosenService.length} min
+          </p>
+        {/if}
+      </div>
 
-			<!-- Step: pick time -->
-			{#if step === 'time'}
-				<h2 class="step-h">{m.sched_book_pick_time()}</h2>
-				{#if chosenService}<p class="t-caption mb-3">{chosenService.title} · {chosenService.length} min</p>{/if}
+      {#if loading && windowSlots.length === 0}
+        <div class="flex min-h-28 items-center justify-center gap-2" role="status">
+          <Spinner size="md" />
+          <span class="text-sm text-muted-foreground">{m.sched_book_loading()}</span>
+        </div>
+      {:else}
+        {#if quickDays.length > 0}
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {#each quickDays as key (key)}
+              {@const day = formatDay(key)}
+              <Button
+                type="button"
+                variant={selectedDay === key ? 'outline' : 'secondary'}
+                size="touch"
+                class="h-auto min-h-[var(--control-height-touch)] w-full whitespace-normal py-2"
+                aria-pressed={selectedDay === key}
+                onclick={() => {
+                  selectedDay = key;
+                  customDate = '';
+                  slot = '';
+                  err = null;
+                }}
+              >
+                <span class="flex flex-col items-center gap-1">
+                  <span class="text-xs uppercase tracking-wider text-muted-foreground"
+                    >{day.weekday}</span
+                  >
+                  <span class="text-sm font-semibold text-foreground">{day.day}</span>
+                </span>
+              </Button>
+            {/each}
+          </div>
+        {/if}
 
-				{#if loading && windowSlots.length === 0}
-					<div class="loading"><span class="spinner"></span><span class="t-caption">{m.sched_book_loading()}</span></div>
-				{:else}
-					<!-- Quick day picker: next 5 days with availability + custom date -->
-					<div class="days">
-						{#each quickDays as key (key)}
-							{@const d = fmtDayShort(key)}
-							<button
-								class="day {selectedDay === key && selectedDay !== customDate ? 'day-on' : ''}"
-								onclick={() => {
-									selectedDay = key;
-									slot = '';
-								}}
-							>
-								<span class="day-wd">{d.weekday}</span>
-								<span class="day-num">{d.day}</span>
-							</button>
-						{/each}
-						<!-- "Other date" opens the native picker directly (no extra field). -->
-						<div class="day day-custom {customDate && selectedDay === customDate ? 'day-on' : ''}">
-							<span class="day-wd"><CalendarClock size={16} /></span>
-							<span class="day-num">{customDate ? fmtDayShort(customDate).day : m.sched_book_other_date()}</span>
-							<input
-								class="day-date-overlay"
-								type="date"
-								aria-label={m.sched_book_other_date()}
-								bind:this={dateEl}
-								bind:value={customDate}
-								onclick={() => dateEl?.showPicker?.()}
-								onchange={loadCustomDay}
-							/>
-						</div>
-					</div>
+        <div class="flex flex-col gap-2">
+          <label for="booking-custom-date" class="text-xs font-medium text-muted">
+            {m.sched_book_other_date()}
+          </label>
+          <input
+            id="booking-custom-date"
+            type="date"
+            bind:value={customDate}
+            onchange={loadCustomDay}
+            class="h-[var(--control-height-touch)] w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-[var(--duration-fast)] focus-visible:border-accent focus-visible:shadow-[var(--shadow-focus)]"
+          />
+        </div>
 
-					{#if loading}
-						<div class="loading mt-3"><span class="spinner"></span></div>
-					{:else if daySlots.length === 0}
-						<p class="t-caption mt-3">{m.sched_book_no_slots()}</p>
-					{:else}
-						<div class="slot-grid mt-3">
-							{#each daySlots as s (s.start)}
-								<button class="slot {slot === s.start ? 'slot-on' : ''}" onclick={() => (slot = s.start)}>
-									{hhmm(s.start)}
-								</button>
-							{/each}
-						</div>
-					{/if}
-				{/if}
+        {#if loading}
+          <div class="flex items-center gap-2 py-3" role="status">
+            <Spinner size="sm" />
+            <span class="text-xs text-muted-foreground">{m.sched_book_loading()}</span>
+          </div>
+        {:else if daySlots.length === 0}
+          <p
+            class="rounded-[var(--radius-md)] border border-border bg-bg/50 px-3 py-3 text-sm text-muted-foreground"
+            role="status"
+          >
+            {m.sched_book_no_slots()}
+          </p>
+        {:else}
+          <div class="grid max-h-60 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
+            {#each daySlots as availableSlot (availableSlot.start)}
+              <Button
+                type="button"
+                variant={slot === availableSlot.start ? 'primary' : 'secondary'}
+                size="touch"
+                aria-pressed={slot === availableSlot.start}
+                onclick={() => {
+                  slot = availableSlot.start;
+                  err = null;
+                }}
+              >
+                {formatTime(availableSlot.start)}
+              </Button>
+            {/each}
+          </div>
+        {/if}
+      {/if}
 
-				<div class="nav">
-					{#if data.eventTypes.length > 1}
-						<button class="btn-ghost" onclick={() => (step = 'service')}>
-							<ArrowLeft size={16} />{m.sched_book_back()}
-						</button>
-					{/if}
-					<button class="btn" disabled={!slot} onclick={() => (step = 'details')}>
-						{m.sched_book_continue()}<ArrowRight size={16} />
-					</button>
-				</div>
-			{/if}
+      {#if err}
+        <div
+          class="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-destructive)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-destructive)_10%,transparent)] px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          <p>{err}</p>
+          {#if windowSlots.length === 0}
+            <Button type="button" variant="ghost" size="sm" onclick={loadWindow} class="mt-2">
+              Retry availability
+            </Button>
+          {/if}
+        </div>
+      {/if}
 
-			<!-- Step: details -->
-			{#if step === 'details'}
-				<h2 class="step-h">{m.sched_book_your_details()}</h2>
-				<p class="t-caption mb-3">{chosenService?.title} · {fmtDateTime(slot)}</p>
-				<label class="field"><span class="t-caption">{m.sched_book_name()}</span><input class="txt" bind:value={name} /></label>
-				<label class="field"><span class="t-caption">{m.sched_book_email()}</span><input class="txt" type="email" bind:value={email} /></label>
-				<label class="field"><span class="t-caption">{m.sched_book_phone()}</span><input class="txt" type="tel" bind:value={phone} /></label>
-				{#if err}<p class="t-caption mt-1" style="color:var(--color-destructive)">{err}</p>{/if}
-				<div class="nav">
-					<button class="btn-ghost" onclick={() => (step = 'time')}>
-						<ArrowLeft size={16} />{m.sched_book_back()}
-					</button>
-					<button class="btn" disabled={loading || !name.trim()} onclick={confirm}>
-						{#if loading}<span class="spinner spinner-sm"></span>{:else}<Check size={16} />{/if}{m.sched_book_confirm()}
-					</button>
-				</div>
-			{/if}
-		</div>
-	{/if}
-</div>
+      <div class="flex flex-col-reverse gap-2 sm:flex-row">
+        {#if data.eventTypes.length > 1}
+          <Button type="button" variant="secondary" size="touch" onclick={() => (step = 'service')}>
+            <ArrowLeft size={16} />{m.sched_book_back()}
+          </Button>
+        {/if}
+        <Button
+          type="button"
+          variant="primary"
+          size="touch"
+          disabled={!slot}
+          onclick={() => (step = 'details')}
+          class="flex-1"
+        >
+          {m.sched_book_continue()}<ArrowRight size={16} />
+        </Button>
+      </div>
+    </div>
+  {:else if step === 'details'}
+    <form
+      class="flex flex-col gap-4"
+      onsubmit={(event) => {
+        event.preventDefault();
+        void confirm();
+      }}
+    >
+      <div>
+        <h2 class="text-base font-semibold text-foreground">{m.sched_book_your_details()}</h2>
+        <p class="mt-1 text-sm text-muted-foreground">
+          {chosenService?.title} · {formatDateTime(slot)}
+        </p>
+      </div>
+      <Input
+        label={m.sched_book_name()}
+        bind:value={name}
+        autocomplete="name"
+        size="touch"
+        required
+      />
+      <Input
+        label={m.sched_book_email()}
+        bind:value={email}
+        type="email"
+        autocomplete="email"
+        size="touch"
+      />
+      <Input
+        label={m.sched_book_phone()}
+        bind:value={phone}
+        type="tel"
+        autocomplete="tel"
+        size="touch"
+      />
 
-<style>
-	.wrap {
-		max-width: 520px;
-		margin: 0 auto;
-		padding: 2.5rem 1rem;
-		min-height: 100vh;
-	}
-	.head {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 1.25rem;
-	}
-	.head-icon {
-		color: var(--accent);
-		display: inline-flex;
-	}
-	.title {
-		font-size: 1.4rem;
-		font-weight: 600;
-	}
-	/* Stepper */
-	.stepper {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 1.25rem;
-		list-style: none;
-		padding: 0;
-	}
-	.stp {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		flex: 1;
-		min-width: 0;
-	}
-	.stp:not(:last-child)::after {
-		content: '';
-		flex: 1;
-		height: 1px;
-		background: var(--hairline);
-	}
-	.stp-dot {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 1.5rem;
-		height: 1.5rem;
-		border-radius: 999px;
-		border: 1px solid var(--hairline);
-		font-size: 0.75rem;
-		font-weight: 600;
-		color: var(--color-muted-foreground, #888);
-		flex-shrink: 0;
-	}
-	.stp-label {
-		font-size: 0.8rem;
-		color: var(--color-muted-foreground, #888);
-		white-space: nowrap;
-	}
-	.stp-now .stp-dot {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: var(--color-accent-foreground, #fff);
-	}
-	.stp-now .stp-label {
-		color: var(--color-foreground, #fff);
-		font-weight: 600;
-	}
-	.stp-done .stp-dot {
-		background: color-mix(in srgb, var(--accent) 20%, transparent);
-		border-color: var(--accent);
-		color: var(--accent);
-	}
-	.card {
-		border: 1px solid var(--hairline);
-		border-radius: var(--radius-lg, 12px);
-		background: var(--color-card);
-		padding: 1.25rem;
-	}
-	.done {
-		text-align: center;
-		padding: 2rem 1.25rem;
-	}
-	.done-badge {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 3.25rem;
-		height: 3.25rem;
-		border-radius: 999px;
-		background: color-mix(in srgb, var(--accent) 18%, transparent);
-		color: var(--accent);
-		margin-bottom: 0.75rem;
-	}
-	.done-title {
-		font-size: 1.15rem;
-		font-weight: 600;
-	}
-	.done-note {
-		margin-top: 0.25rem;
-	}
-	.summary {
-		text-align: left;
-		margin: 1.25rem auto 0;
-		max-width: 320px;
-		display: flex;
-		flex-direction: column;
-		gap: 0.6rem;
-		border-top: 1px solid var(--hairline);
-		padding-top: 1rem;
-	}
-	.summary div {
-		display: flex;
-		justify-content: space-between;
-		gap: 1rem;
-	}
-	.summary dt {
-		color: var(--color-muted-foreground, #888);
-		font-size: 0.85rem;
-	}
-	.summary dd {
-		font-size: 0.85rem;
-		font-weight: 500;
-		text-align: right;
-	}
-	.step-h {
-		font-size: 1rem;
-		font-weight: 600;
-		margin-bottom: 0.75rem;
-	}
-	.svc {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		border: 1px solid var(--hairline);
-		border-radius: 8px;
-		padding: 0.7rem 0.9rem;
-		background: var(--color-card);
-		text-align: left;
-	}
-	.svc:hover {
-		border-color: var(--accent);
-	}
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 0.2rem;
-		margin-bottom: 0.6rem;
-	}
-	.txt {
-		border: 1px solid var(--hairline);
-		border-radius: 8px;
-		padding: 0.5rem 0.6rem;
-		background: var(--color-card);
-		color: inherit;
-		font-size: 0.9rem;
-		width: 100%;
-		/* Make the native date picker (and its calendar indicator) follow the
-		   card's theme instead of rendering a black icon on a dark surface. */
-		color-scheme: dark;
-	}
-	/* Quick-day picker */
-	.days {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 0.5rem;
-	}
-	.day {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.15rem;
-		border: 1px solid var(--hairline);
-		border-radius: 8px;
-		padding: 0.55rem 0.4rem;
-		background: var(--color-card);
-		min-height: 3.4rem;
-		justify-content: center;
-	}
-	.day:hover {
-		border-color: var(--accent);
-	}
-	.day-wd {
-		font-size: 0.7rem;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--color-muted-foreground, #888);
-		display: inline-flex;
-	}
-	.day-num {
-		font-size: 0.85rem;
-		font-weight: 600;
-	}
-	.day-custom {
-		position: relative;
-	}
-	/* Transparent date input fills the tile: one click opens the native picker. */
-	.day-date-overlay {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		margin: 0;
-		padding: 0;
-		border: 0;
-		opacity: 0;
-		cursor: pointer;
-		color-scheme: dark;
-	}
-	.day-on {
-		background: var(--accent);
-		border-color: var(--accent);
-	}
-	.day-on .day-wd,
-	.day-on .day-num {
-		color: var(--color-accent-foreground, #fff);
-	}
-	.slot-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-		gap: 0.5rem;
-		max-height: 240px;
-		overflow: auto;
-	}
-	.slot {
-		border: 1px solid var(--hairline);
-		border-radius: 8px;
-		padding: 0.5rem;
-		font-size: 0.85rem;
-		background: var(--color-card);
-	}
-	.slot:hover {
-		border-color: var(--accent);
-	}
-	.slot-on {
-		background: var(--accent);
-		color: var(--color-accent-foreground, #fff);
-		border-color: var(--accent);
-	}
-	/* Button row */
-	.nav {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-top: 1.25rem;
-	}
-	.btn,
-	.btn-ghost {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		border-radius: 8px;
-		padding: 0.55rem 1rem;
-		font-size: 0.9rem;
-		font-weight: 500;
-	}
-	.btn {
-		background: var(--accent);
-		color: var(--color-accent-foreground, #fff);
-		margin-left: auto;
-	}
-	.btn:disabled {
-		opacity: 0.5;
-	}
-	.btn-ghost {
-		border: 1px solid var(--hairline);
-		background: var(--color-card);
-		color: inherit;
-	}
-	.btn-ghost:hover {
-		border-color: var(--accent);
-	}
-	/* Spinner */
-	.loading {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-	.spinner {
-		width: 1.1rem;
-		height: 1.1rem;
-		border: 2px solid var(--hairline);
-		border-top-color: var(--accent);
-		border-radius: 999px;
-		animation: spin 0.7s linear infinite;
-		display: inline-block;
-	}
-	.spinner-sm {
-		width: 0.9rem;
-		height: 0.9rem;
-		border-top-color: var(--color-accent-foreground, #fff);
-	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-</style>
+      {#if err}
+        <p
+          class="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-destructive)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-destructive)_10%,transparent)] px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          {err}
+        </p>
+      {/if}
+
+      <div class="flex flex-col-reverse gap-2 sm:flex-row">
+        <Button type="button" variant="secondary" size="touch" onclick={() => (step = 'time')}>
+          <ArrowLeft size={16} />{m.sched_book_back()}
+        </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          size="touch"
+          {loading}
+          disabled={!name.trim()}
+          class="flex-1"
+        >
+          <Check size={16} />{m.sched_book_confirm()}
+        </Button>
+      </div>
+    </form>
+  {/if}
+</PublicTaskShell>

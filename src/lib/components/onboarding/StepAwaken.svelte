@@ -1,7 +1,14 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { Button, Input } from '$lib/components/ui';
 
-  interface Props { agentName: string; personality: string; next: () => void; }
+  type Personality = 'professional' | 'casual' | 'creative' | 'technical';
+
+  interface Props {
+    agentName: string;
+    personality: Personality;
+    next: () => void;
+  }
   let { agentName = $bindable(''), personality = $bindable('casual'), next }: Props = $props();
 
   const vibes = [
@@ -13,85 +20,67 @@
   let nameError = $state('');
 
   function handleNext() {
-    if (!agentName.trim()) { nameError = m.awaken_nameError(); return; }
-    nameError = ''; next();
+    if (!agentName.trim()) {
+      nameError = m.awaken_nameError();
+      return;
+    }
+    nameError = '';
+    next();
   }
-  function handleKeydown(e: KeyboardEvent) { if (e.key === 'Enter') handleNext(); }
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') handleNext();
+  }
 </script>
 
-<div class="step">
-  <h2>{m.awaken_nameTitle()}</h2>
-  <p class="subtitle">{m.awaken_nameSubtitle()}</p>
-
-  <div class="field">
-    <input type="text" bind:value={agentName} placeholder={m.awaken_namePlaceholder()} maxlength={32} onkeydown={handleKeydown} class="name-input" />
-    {#if nameError}<span class="error">{nameError}</span>{/if}
+<div class="flex flex-col gap-6">
+  <div class="flex flex-col gap-3">
+    <div>
+      <h2 class="text-base font-semibold text-foreground">{m.awaken_nameTitle()}</h2>
+      <p class="mt-1 text-sm leading-relaxed text-muted-foreground">{m.awaken_nameSubtitle()}</p>
+    </div>
+    <Input
+      type="text"
+      label={m.awaken_nameTitle()}
+      bind:value={agentName}
+      placeholder={m.awaken_namePlaceholder()}
+      maxlength={32}
+      onkeydown={handleKeydown}
+      error={nameError || undefined}
+      size="touch"
+    />
   </div>
 
-  <h2>{m.awaken_natureTitle()}</h2>
-  <p class="subtitle">{m.awaken_natureSubtitle()}</p>
+  <div class="flex flex-col gap-3">
+    <div>
+      <h2 class="text-base font-semibold text-foreground">{m.awaken_natureTitle()}</h2>
+      <p class="mt-1 text-sm leading-relaxed text-muted-foreground">{m.awaken_natureSubtitle()}</p>
+    </div>
 
-  <div class="vibes">
-    {#each vibes as vibe}
-      <button class="vibe-card" class:selected={personality === vibe.id} onclick={() => personality = vibe.id}>
-        <span class="vibe-icon">{vibe.icon}</span>
-        <span class="vibe-label">{vibe.label}</span>
-        <span class="vibe-desc">{vibe.desc}</span>
-      </button>
-    {/each}
+    <div
+      class="grid grid-cols-1 gap-2 sm:grid-cols-2"
+      role="group"
+      aria-label={m.awaken_natureTitle()}
+    >
+      {#each vibes as vibe}
+        <Button
+          type="button"
+          variant={personality === vibe.id ? 'outline' : 'secondary'}
+          size="touch"
+          class="h-auto min-h-[var(--control-height-touch)] w-full whitespace-normal py-3"
+          aria-pressed={personality === vibe.id}
+          onclick={() => (personality = vibe.id as Personality)}
+        >
+          <span class="flex min-w-0 flex-col items-center gap-1 text-center">
+            <span class="text-lg" aria-hidden="true">{vibe.icon}</span>
+            <span class="text-sm font-semibold text-foreground">{vibe.label}</span>
+            <span class="text-xs leading-relaxed text-muted-foreground">{vibe.desc}</span>
+          </span>
+        </Button>
+      {/each}
+    </div>
   </div>
 
-  <button class="btn-primary" onclick={handleNext}>{m.awaken_continue()}</button>
+  <Button type="button" variant="primary" size="touch" onclick={handleNext} class="w-full">
+    {m.awaken_continue()}
+  </Button>
 </div>
-
-<style>
-  .step { display: flex; flex-direction: column; gap: 1rem; }
-  h2 { font-size: 1.1rem; font-weight: 600; color: var(--color-foreground); margin: 0; }
-  .subtitle { font-size: 0.8rem; color: var(--color-muted-foreground); margin: 0; line-height: 1.4; }
-  .field { display: flex; flex-direction: column; gap: 0.3rem; }
-
-  .name-input {
-    background: var(--color-bg3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    padding: 0.85rem 1rem;
-    color: var(--color-foreground);
-    font-size: 1.1rem; font-family: inherit; outline: none;
-    transition: border-color var(--duration-fast) var(--ease-standard);
-  }
-  .name-input:focus { border-color: var(--color-accent); }
-  .name-input::placeholder { color: var(--color-muted-foreground); }
-  .error { font-size: 0.75rem; color: var(--color-destructive); }
-
-  .vibes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-  .vibe-card {
-    display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
-    padding: 0.8rem 0.5rem;
-    background: var(--color-bg3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    cursor: pointer;
-    transition: all var(--duration-fast) var(--ease-standard);
-    color: inherit; font-family: inherit;
-  }
-  .vibe-card:hover { background: var(--color-bg3); border-color: color-mix(in srgb, var(--color-accent) 40%, transparent); }
-  .vibe-card.selected {
-    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-    border-color: var(--color-accent);
-    box-shadow: 0 0 16px color-mix(in srgb, var(--color-accent) 15%, transparent);
-  }
-  .vibe-icon { font-size: 1.4rem; }
-  .vibe-label { font-size: 0.85rem; font-weight: 600; color: var(--color-foreground); }
-  .vibe-desc { font-size: 0.65rem; color: var(--color-muted-foreground); text-align: center; }
-
-  .btn-primary {
-    background: var(--color-accent);
-    color: var(--color-accent-foreground);
-    border: none; border-radius: var(--radius-lg);
-    padding: 0.85rem; font-size: 0.95rem; font-weight: 600;
-    cursor: pointer;
-    transition: opacity var(--duration-fast), transform var(--duration-fast);
-    margin-top: 0.5rem;
-  }
-  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
-</style>

@@ -8,9 +8,9 @@
   import StepRemember from '$lib/components/onboarding/StepRemember.svelte';
   import StepConnect from '$lib/components/onboarding/StepConnect.svelte';
   import StepIndicator from '$lib/components/onboarding/StepIndicator.svelte';
+  import { PublicTaskShell } from '$lib/components/ui/foundations';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
-
 
   let { data }: { data: PageData } = $props();
 
@@ -28,14 +28,21 @@
   let createError = $state('');
 
   let orbPhase = $derived(
-    step === 1 ? ('awakening' as const) :
-    step === 2 ? ('forming' as const) :
-    step === 3 ? ('connecting' as const) :
-    ('dormant' as const)
+    step === 1
+      ? ('awakening' as const)
+      : step === 2
+        ? ('forming' as const)
+        : step === 3
+          ? ('connecting' as const)
+          : ('dormant' as const),
   );
 
-  function next() { if (step < totalSteps) step++; }
-  function prev() { if (step > 1 && !creating) step--; }
+  function next() {
+    if (step < totalSteps) step++;
+  }
+  function prev() {
+    if (step > 1 && !creating) step--;
+  }
 
   // Bare arrows are input-safe by lib default — won't fire while typing in
   // this page's text fields (name, timezone, etc.).
@@ -98,7 +105,9 @@
             throw new Error(d.error ?? `Provisioning failed (${res.status})`);
           }
           await invalidate('app:personalAgent');
-          goto(`/onboarding/complete?name=${encodeURIComponent(name)}&vibe=${encodeURIComponent(personality)}`);
+          goto(
+            `/onboarding/complete?name=${encodeURIComponent(name)}&vibe=${encodeURIComponent(personality)}`,
+          );
         })(),
         {
           loading: 'Creating your personal agent…',
@@ -119,48 +128,33 @@
   <title>Awaken Your Agent — Minion Hub</title>
 </svelte:head>
 
-<div class="wizard">
-  <OrbAnimation phase={orbPhase} agentName={agentName} />
-
-  <div class="card">
-    <StepIndicator {step} {totalSteps} />
-
-    {#if step === 1}
-      <StepAwaken bind:agentName bind:personality {next} />
-    {:else if step === 2}
-      <StepRemember bind:userName bind:timezone bind:language bind:userContext {next} {prev} />
-    {:else if step === 3}
-      <StepConnect
-        userId={data.user.id}
-        identities={data.identities}
-        onfinish={createPersonalAgent}
-        {prev}
-        busy={creating}
-        error={createError}
-      />
-    {/if}
+{#snippet hero()}
+  <div class="-mb-8" aria-hidden="true">
+    <OrbAnimation phase={orbPhase} {agentName} />
   </div>
-</div>
+{/snippet}
 
-<style>
-  .wizard {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2rem;
-    width: 100%;
-    max-width: 640px;
-    padding: 2rem 1rem;
-    z-index: 1;
-  }
+<PublicTaskShell
+  eyebrow={`Personal agent · Step ${step} of ${totalSteps}`}
+  title="Awaken your agent"
+  description="Shape the identity, context, and live connections behind your personal Minion."
+  size="wide"
+  {hero}
+>
+  <StepIndicator {step} {totalSteps} />
 
-  .card {
-    background: var(--elevation-2-bg);
-    border: 1px solid var(--elevation-2-border);
-    border-radius: var(--radius-xl);
-    padding: 2rem;
-    width: 100%;
-    backdrop-filter: blur(20px);
-    box-shadow: var(--shadow-lg);
-  }
-</style>
+  {#if step === 1}
+    <StepAwaken bind:agentName bind:personality {next} />
+  {:else if step === 2}
+    <StepRemember bind:userName bind:timezone bind:language bind:userContext {next} {prev} />
+  {:else if step === 3}
+    <StepConnect
+      userId={data.user.id}
+      identities={data.identities}
+      onfinish={createPersonalAgent}
+      {prev}
+      busy={creating}
+      error={createError}
+    />
+  {/if}
+</PublicTaskShell>

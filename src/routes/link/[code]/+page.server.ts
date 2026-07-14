@@ -32,7 +32,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!user) {
     // Not logged in — redirect to login with return URL
     const returnUrl = encodeURIComponent(`/link/${params.code}`);
-    throw redirect(302, `/login?redirect=${returnUrl}`);
+    throw redirect(302, `/login?redirectTo=${returnUrl}`);
   }
 
   return {
