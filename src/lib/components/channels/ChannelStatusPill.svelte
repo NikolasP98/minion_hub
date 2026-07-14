@@ -1,8 +1,8 @@
 <script lang="ts">
+    import { Badge, Tooltip } from '$lib/components/ui';
     import type { Channel } from '$lib/types/channels';
     import { deriveChannelDisplayState, type ChannelDisplayState } from '$lib/utils/channel-display-state';
     import { CircleCheck, CircleX, AlertTriangle, Loader, Smartphone, PowerOff, Link2Off, UserX } from 'lucide-svelte';
-    import { Tooltip } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props { channel: Channel; size?: 'sm' | 'md'; }
@@ -21,7 +21,17 @@
         error:           { bg: 'bg-destructive/15',      text: 'text-destructive',        dot: 'bg-destructive',       label: m.channelState_error,         pulse: false, Icon: CircleX },
     };
     const s = $derived(styles[state]);
-    const padding = $derived(size === 'sm' ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs');
+    const semanticValue = $derived(
+        state === 'live'
+            ? 'success'
+            : state === 'error'
+              ? 'error'
+              : state === 'starting'
+                ? 'accent'
+                : state === 'pending-config' || state === 'identity-mismatch' || state === 'pairing' || state === 'degraded'
+                  ? 'warning'
+                  : undefined,
+    );
     const iconSize = $derived(size === 'sm' ? 10 : 12);
 
     type RowState = 'on' | 'off' | 'unknown';
@@ -48,21 +58,22 @@
 </script>
 
 <Tooltip id={`chpill-${channel.id}`} placement="top" openDelay={150} closeDelay={80}>
-    <button
-        type="button"
-        class="inline-flex items-center gap-1 rounded-full font-medium {s.bg} {s.text} {padding} cursor-default focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-        aria-label={s.label()}
+    <Badge
+        variant={semanticValue ? 'semantic' : 'neutral'}
+        value={semanticValue}
+        {size}
+        class="rounded-full"
     >
         <s.Icon size={iconSize} class={s.pulse ? 'animate-pulse' : ''} />
         {s.label()}
-    </button>
+    </Badge>
     {#snippet content()}
         <div class="min-w-[200px]">
             <div class="flex items-center gap-1.5 mb-2 pb-2 border-b border-border/60">
                 <span class="w-1.5 h-1.5 rounded-full {s.dot} {s.pulse ? 'animate-pulse' : ''}"></span>
                 <span class="text-xs font-semibold text-foreground">{s.label()}</span>
             </div>
-            <dl class="space-y-1 text-[11px]">
+            <dl class="space-y-1 text-xs">
                 {#each rows as row (row.label)}
                     <div class="flex items-center justify-between gap-3">
                         <dt class="text-muted-foreground">{row.label}</dt>
@@ -82,7 +93,7 @@
                 {/if}
             </dl>
             {#if state === 'identity-mismatch'}
-                <div class="mt-2 pt-2 border-t border-border/60 text-[10px] text-warning break-words max-w-[260px]">
+                <div class="mt-2 pt-2 border-t border-border/60 text-xs text-warning break-words max-w-[260px]">
                     <div>Linked: <span class="font-medium tabular-nums">{linkedNumber ?? 'unknown'}</span></div>
                     {#if expectedNumber}
                         <div>Expected: <span class="font-medium tabular-nums">{expectedNumber}</span></div>
@@ -90,11 +101,11 @@
                     <div class="mt-1 text-muted-foreground">Re-link this account with the correct phone.</div>
                 </div>
             {:else if state === 'not-linked'}
-                <p class="mt-2 pt-2 border-t border-border/60 text-[10px] text-muted-foreground break-words max-w-[260px]">
+                <p class="mt-2 pt-2 border-t border-border/60 text-xs text-muted-foreground break-words max-w-[260px]">
                     No device linked. Connect and scan the QR to pair a phone.
                 </p>
             {:else if channel.gwLastError}
-                <p class="mt-2 pt-2 border-t border-border/60 text-[10px] text-destructive break-words max-w-[260px]">
+                <p class="mt-2 pt-2 border-t border-border/60 text-xs text-destructive break-words max-w-[260px]">
                     {channel.gwLastError}
                 </p>
             {/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button, Toggle } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { invalidateAll } from '$app/navigation';
   import { page } from '$app/state';
@@ -11,9 +12,7 @@
     PlugZap,
     ArrowUpRight,
     ServerCrash,
-    Power,
     Loader2,
-    RotateCw,
   } from 'lucide-svelte';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
@@ -289,10 +288,12 @@
                     class="overflow-x-auto rounded-md border border-border bg-bg p-3 text-xs"><code
                       >{allowedOriginsSnippet}</code
                     ></pre>
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     type="button"
                     onclick={copySnippet}
-                    class="absolute right-2 top-2 inline-flex items-center gap-1 rounded border border-border bg-card px-2 py-1 text-xs hover:bg-muted"
+                    class="absolute right-2 top-2"
                     aria-label={m.a11y0_copySnippet()}
                   >
                     {#if copied}
@@ -300,7 +301,7 @@
                     {:else}
                       <Copy size={12} /> {m.pluginsPage_copy()}
                     {/if}
-                  </button>
+                  </Button>
                 </div>
                 <p class="text-xs text-muted-foreground">
                   {m.pluginsPage_restartMessage()}
@@ -309,15 +310,15 @@
             {/if}
 
             <div class="flex items-center gap-2">
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 type="button"
                 onclick={refresh}
-                disabled={refreshing}
-                class="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                loading={refreshing}
               >
-                <RefreshCw size={12} class={refreshing ? 'animate-spin' : ''} />
                 {refreshing ? m.pluginsPage_retrying() : m.common_retry()}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -337,12 +338,14 @@
             {m.pluginsPage_emptyDescription()}
           </p>
         </div>
-        <a
+        <Button
+          variant="outline"
+          size="sm"
           href="/marketplace/plugins"
-          class="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted"
+          class="mt-1"
         >
           {m.pluginsPage_browseMarketplace()} <ArrowUpRight size={12} />
-        </a>
+        </Button>
       </div>
     {/if}
 
@@ -357,18 +360,12 @@
               {#each data.entries as entry, i (entry.pluginId + ':' + entry.entrypoint)}
                 {@const active = selected === i}
                 <li>
-                  <button
+                  <Button
+                    variant={active ? 'primary' : 'ghost'}
                     type="button"
                     onclick={() => (selected = i)}
                     aria-current={active ? 'page' : undefined}
-                    class="group relative flex w-full items-start gap-2.5 border-l-2 px-4 py-3 text-left text-sm transition-colors"
-                    class:border-l-transparent={!active}
-                    class:hover:bg-muted={!active}
-                    class:hover:border-l-border={!active}
-                    class:border-l-accent={active}
-                    class:bg-accent={active}
-                    class:text-accent-foreground={active}
-                    class:shadow-inner={active}
+                    class="group relative !h-auto !w-full !justify-start !rounded-none !px-4 !py-3 text-left"
                   >
                     <span
                       class="mt-0.5 inline-flex items-center justify-center text-base leading-none"
@@ -395,13 +392,13 @@
                       ></span>
                       <span
                         role="tooltip"
-                        class="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-left text-[11px] leading-tight text-popover-foreground shadow-lg group-hover/dot:block"
+                        class="pointer-events-none absolute left-1/2 top-full z-[var(--layer-tooltip,60)] mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-left text-xs leading-tight text-popover-foreground shadow-lg group-hover/dot:block"
                       >
                         <span class="flex items-center gap-1.5 font-medium">
                           <span class="size-1.5 rounded-full {statusDotClass(entry)}"></span>
                           {statusLabel(entry)}
                         </span>
-                        <span class="mt-1 block font-mono text-[10px] text-muted-foreground"
+                        <span class="mt-1 block font-mono text-xs text-muted-foreground"
                           >{entry.pluginId}{entry.pluginVersion
                             ? ` · v${entry.pluginVersion}`
                             : ''}</span
@@ -430,7 +427,7 @@
                         </span>
                       {/if}
                       <span
-                        class="mt-1 block truncate font-mono text-[10px]"
+                        class="mt-1 block truncate font-mono text-xs"
                         class:text-muted-foreground={!active}
                         class:text-accent-foreground={active}
                         class:opacity-60={active}
@@ -438,7 +435,7 @@
                         {entry.pluginId}
                       </span>
                     </span>
-                  </button>
+                  </Button>
                 </li>
               {/each}
             </ul>
@@ -485,42 +482,24 @@
                   </span>
                 {/if}
                 {#if saveDirty || saveSaving}
-                  <button
+                  <Button
+                    variant="primary"
+                    size="sm"
                     type="button"
                     onclick={() => triggerSaveFn?.()}
-                    disabled={saveSaving || !saveDirty}
-                    class="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                    loading={saveSaving}
+                    disabled={!saveDirty}
                   >
-                    {#if saveSaving}
-                      <RotateCw size={12} class="animate-spin" />
-                    {/if}
                     {saveSaving ? m.pluginsPage_saving() : m.pluginsPage_saveButton()}
-                  </button>
+                  </Button>
                 {/if}
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={on}
+                <Toggle
+                  checked={on}
+                  ariaLabel={`${on ? m.pluginsPage_disable() : m.pluginsPage_enable()} ${current.title}`}
                   disabled={busy}
-                  onclick={() => toggleEnabled(current)}
-                  title={on ? m.pluginsPage_disablePlugin() : m.pluginsPage_enablePlugin()}
-                  class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-border transition-colors disabled:cursor-wait disabled:opacity-60"
-                  class:bg-success={on}
-                  class:bg-muted={!on}
-                >
-                  <span class="sr-only">{on ? m.pluginsPage_disable() : m.pluginsPage_enable()} {current.title}</span>
-                  <span
-                    class="inline-flex size-5 items-center justify-center rounded-full bg-card shadow-sm transition-transform"
-                    class:translate-x-5={on}
-                    class:translate-x-0.5={!on}
-                  >
-                    {#if busy}
-                      <RefreshCw size={10} class="animate-spin text-muted-foreground" />
-                    {:else}
-                      <Power size={10} class={on ? 'text-success' : 'text-muted-foreground'} />
-                    {/if}
-                  </span>
-                </button>
+                  onchange={() => toggleEnabled(current)}
+                  size="sm"
+                />
               </div>
               {#if toggleError}
                 <div

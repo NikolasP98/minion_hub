@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { Button, Toggle } from '$lib/components/ui';
     import type { Channel, ChannelType } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS, CHANNEL_FIELDS } from '$lib/types/channels';
     import { Trash2, ChevronDown, Pencil, Power, RefreshCw } from 'lucide-svelte';
@@ -347,15 +348,16 @@
         {expanded ? 'border-accent ring-1 ring-accent/30' : 'border-border hover:border-muted-foreground'}"
 >
     <!-- Header row (always visible) -->
-    <div
-        class="flex items-center gap-3 px-4 py-3 cursor-pointer group"
-        onclick={() => onclick?.()}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onclick?.(); }}
-        role="button"
-        tabindex="0"
-    >
-        <div class="flex-1 min-w-0">
-            <div class="flex items-baseline gap-2">
+    <div class="flex items-center gap-3 px-4 py-3 group">
+        <Button
+            variant="ghost"
+            class="!h-auto min-w-0 flex-1 !justify-start !px-0 !py-0 text-left"
+            onclick={() => onclick?.()}
+            aria-expanded={expanded}
+            aria-controls={`channel-details-${channel.id}`}
+        >
+          <span class="flex min-w-0 flex-1 flex-col items-start">
+            <span class="flex items-baseline gap-2">
                 <span class="text-sm font-medium text-foreground truncate">{channel.label}</span>
                 {#if channel.credentialsMeta?.username}
                     <span class="text-xs text-muted-strong truncate">@{channel.credentialsMeta.username}</span>
@@ -368,40 +370,45 @@
                         {channel.gwIdentityMismatch ? '⚠ ' : ''}{channel.credentialsMeta.phone}
                     </span>
                 {/if}
-            </div>
-        </div>
-        {#if channel.replies}
+            </span>
+          </span>
+          {#if channel.replies}
             <span
-                class="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full {channel.replies === 'bound'
+                class="shrink-0 text-xs font-medium px-1.5 py-0.5 rounded-full {channel.replies === 'bound'
                     ? 'bg-accent/10 text-accent'
                     : 'bg-muted text-muted-foreground'}"
                 title={channel.replies === 'bound' ? m.channel_modeBoundHint() : m.channel_modeReceiveOnlyHint()}
             >
                 {channel.replies === 'bound' ? m.channel_modeBound() : m.channel_modeReceiveOnly()}
             </span>
-        {/if}
+          {/if}
+          <span
+              class="transition-transform duration-[var(--duration-fast)] text-muted-foreground"
+              class:rotate-180={expanded}
+          >
+              <ChevronDown size={16} />
+          </span>
+        </Button>
         <ChannelStatusPill {channel} size="sm" />
         {#if !isGateway}
-            <button
+            <Button
+                variant="danger"
+                size="icon"
                 type="button"
-                class="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                 onclick={(e) => { e.stopPropagation(); ondelete?.(); }}
                 title={m.common_delete()}
+                aria-label={m.common_delete()}
             >
                 <Trash2 size={14} />
-            </button>
+            </Button>
         {/if}
-        <div
-            class="transition-transform duration-200 text-muted-foreground"
-            class:rotate-180={expanded}
-        >
-            <ChevronDown size={16} />
-        </div>
     </div>
 
     <!-- Expanded accordion content -->
     <div
-        class="grid transition-[grid-template-rows] duration-200 ease-out"
+        id={`channel-details-${channel.id}`}
+        class="grid transition-[grid-template-rows] duration-[var(--duration-fast)] ease-out"
         style="grid-template-rows: {expanded ? '1fr' : '0fr'}"
     >
         <div class="overflow-hidden">
@@ -428,7 +435,7 @@
                 <!-- Credentials Meta -->
                 {#if metaEntries.length > 0}
                     <div>
-                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_credentials()}</h4>
+                        <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_credentials()}</h4>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
                             {#each metaEntries as [key, value]}
                                 <div class="flex items-center gap-1.5 min-w-0">
@@ -446,31 +453,37 @@
                 <!-- Behavior: how the agent interacts on this linked channel (DB-driven via the mirror) -->
                 {#if isGateway}
                     <div>
-                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_behaviorTitle()}</h4>
+                        <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_behaviorTitle()}</h4>
                         <div class="flex flex-wrap gap-1.5">
-                            <button
+                            <Button
+                                variant={behaviorMode === 'receive' ? 'primary' : 'secondary'}
+                                size="sm"
                                 type="button"
                                 disabled={behaviorSaving}
+                                aria-pressed={behaviorMode === 'receive'}
                                 onclick={(e) => { e.stopPropagation(); handleSelectMode('receive'); }}
-                                class="text-xs px-2.5 py-1 rounded-md border transition-colors disabled:opacity-50 {behaviorMode === 'receive' ? 'bg-primary text-primary-foreground border-primary' : 'bg-bg2 border-border hover:bg-bg3'}"
-                            >{m.channel_behaviorReceiveOnly()}</button>
-                            <button
+                            >{m.channel_behaviorReceiveOnly()}</Button>
+                            <Button
+                                variant={behaviorMode === 'allowlist' ? 'primary' : 'secondary'}
+                                size="sm"
                                 type="button"
                                 disabled={behaviorSaving}
+                                aria-pressed={behaviorMode === 'allowlist'}
                                 onclick={(e) => { e.stopPropagation(); handleSelectMode('allowlist'); }}
-                                class="text-xs px-2.5 py-1 rounded-md border transition-colors disabled:opacity-50 {behaviorMode === 'allowlist' ? 'bg-primary text-primary-foreground border-primary' : 'bg-bg2 border-border hover:bg-bg3'}"
-                            >{m.channel_behaviorAllowlist()}</button>
-                            <button
+                            >{m.channel_behaviorAllowlist()}</Button>
+                            <Button
+                                variant={behaviorMode === 'open' ? 'primary' : 'secondary'}
+                                size="sm"
                                 type="button"
                                 disabled={behaviorSaving}
+                                aria-pressed={behaviorMode === 'open'}
                                 onclick={(e) => { e.stopPropagation(); handleSelectMode('open'); }}
-                                class="text-xs px-2.5 py-1 rounded-md border transition-colors disabled:opacity-50 {behaviorMode === 'open' ? 'bg-primary text-primary-foreground border-primary' : 'bg-bg2 border-border hover:bg-bg3'}"
-                            >{m.channel_behaviorOpen()}</button>
+                            >{m.channel_behaviorOpen()}</Button>
                         </div>
-                        <p class="text-[10px] text-muted-foreground mt-1.5">{m.channel_behaviorHint()}</p>
+                        <p class="text-xs text-muted-foreground mt-1.5">{m.channel_behaviorHint()}</p>
                         {#if behaviorMode === 'allowlist'}
                             <div class="mt-2 space-y-1.5">
-                                <label class="text-[10px] text-muted-foreground" for={`allowlist-${channel.id}`}>{m.channel_behaviorAllowlistLabel()}</label>
+                                <label class="text-xs text-muted-foreground" for={`allowlist-${channel.id}`}>{m.channel_behaviorAllowlistLabel()}</label>
                                 <textarea
                                     id={`allowlist-${channel.id}`}
                                     bind:value={allowlistText}
@@ -479,12 +492,13 @@
                                     placeholder="+51999999999"
                                     class="w-full text-xs bg-bg2 border border-border rounded-md p-2 font-mono resize-y"
                                 ></textarea>
-                                <button
+                                <Button
+                                    variant="primary"
+                                    size="sm"
                                     type="button"
-                                    disabled={behaviorSaving}
+                                    loading={behaviorSaving}
                                     onclick={(e) => { e.stopPropagation(); handleSaveAllowlist(); }}
-                                    class="text-xs px-3 py-1 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                                >{m.channel_behaviorSave()}</button>
+                                >{m.channel_behaviorSave()}</Button>
                             </div>
                         {/if}
                     </div>
@@ -493,43 +507,39 @@
                 <!-- WhatsApp markOnline: transport-level knob, source of truth = gateway.json -->
                 {#if isGateway && channel.type === 'whatsapp' && gwAccountId}
                     <div>
-                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_markOnlineTitle()}</h4>
-                        <label class="inline-flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-                            <input
-                                type="checkbox"
-                                class="accent-accent"
-                                checked={markOnlineValue}
-                                disabled={markOnlineSaving}
-                                onclick={(e) => e.stopPropagation()}
-                                onchange={() => handleToggleMarkOnline()}
-                            />
-                            {m.channel_markOnlineLabel()}
-                        </label>
-                        <p class="text-[10px] text-muted-foreground mt-1.5">{m.channel_markOnlineHint()}</p>
+                        <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_markOnlineTitle()}</h4>
+                        <Toggle
+                            checked={markOnlineValue}
+                            label={m.channel_markOnlineLabel()}
+                            disabled={markOnlineSaving}
+                            onchange={() => handleToggleMarkOnline()}
+                            size="sm"
+                        />
+                        <p class="text-xs text-muted-foreground mt-1.5">{m.channel_markOnlineHint()}</p>
                     </div>
                 {/if}
 
                 <!-- Routing: which agent(s) this account dispatches to (read-only; edit at Settings → Agents) -->
                 {#if isGateway && gwChannelType && gwAccountId}
                     <div>
-                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_routingTitle()}</h4>
+                        <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_routingTitle()}</h4>
                         {#if directBindings.length === 0}
                             <p class="text-xs text-warning">{m.channel_routingNone()}</p>
                         {:else}
                             <div class="flex flex-wrap items-center gap-1.5">
                                 {#each directBindings as b, i (i)}
-                                    <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/10 text-accent">
+                                    <span class="text-xs font-medium px-1.5 py-0.5 rounded-full bg-accent/10 text-accent">
                                         {b.agentId ?? m.channel_routingNoAgent()}{b.match.accountId === '*' ? ` (${m.channel_routingCatchAll()})` : ''}
                                     </span>
                                 {/each}
                             </div>
                         {/if}
                         {#if peerBindingCount > 0}
-                            <p class="text-[10px] text-muted-foreground mt-1">{m.channel_routingPeerRules({ count: peerBindingCount })}</p>
+                            <p class="text-xs text-muted-foreground mt-1">{m.channel_routingPeerRules({ count: peerBindingCount })}</p>
                         {/if}
                         <a
                             href="/settings?s=agents"
-                            class="text-[10px] text-accent hover:underline mt-1 inline-block"
+                            class="text-xs text-accent hover:underline mt-1 inline-block"
                             onclick={(e) => e.stopPropagation()}
                         >{m.channel_routingEdit()}</a>
                     </div>
@@ -558,16 +568,17 @@
                     {:else if reauthing}
                         <div class="bg-bg2 border border-border rounded-md p-3 space-y-2">
                             <div class="flex items-center justify-between">
-                                <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                                <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                                     Re-authenticate
                                 </h4>
-                                <button
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
                                     type="button"
-                                    class="text-xs text-muted-foreground hover:text-foreground"
                                     onclick={(e) => { e.stopPropagation(); reauthing = false; }}
                                 >
                                     {m.channelWizard_close()}
-                                </button>
+                                </Button>
                             </div>
                             <WhatsAppQrPairing
                                 channelId={channel.id}
@@ -578,70 +589,67 @@
                         </div>
                     {:else}
                         <div class="flex items-center gap-3 flex-wrap">
-                            <button
+                            <Button
+                                variant="outline"
+                                size="sm"
                                 type="button"
-                                class="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 transition-colors"
                                 onclick={(e) => { e.stopPropagation(); showEditForm = true; }}
                             >
                                 <Pencil size={12} />
                                 {m.common_edit()}
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                                variant="secondary"
+                                size="sm"
                                 type="button"
-                                class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                                 onclick={(e) => { e.stopPropagation(); handleReauthenticate(); }}
                             >
                                 <RefreshCw size={12} />
                                 Re-authenticate
-                            </button>
+                            </Button>
                             {#if isGateway && gwChannelType && gwAccountId}
-                                <button
+                                <Button
+                                    variant={channel.gwEnabled === false ? 'primary' : 'danger'}
+                                    size="sm"
                                     type="button"
-                                    class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-colors {channel.gwEnabled === false
-                                        ? 'bg-success/10 text-success hover:bg-success/20'
-                                        : 'bg-destructive/10 text-destructive hover:bg-destructive/20'}"
                                     onclick={(e) => { e.stopPropagation(); handleToggleEnabled(); }}
-                                    disabled={toggling || transportEnabled === false}
+                                    loading={toggling}
+                                    disabled={transportEnabled === false}
                                     title={transportEnabled === false ? m.channel_transportOffTooltip() : ''}
                                 >
-                                    {#if toggling}
-                                        <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                                    {:else}
+                                    {#if !toggling}
                                         <Power size={12} />
-                                        {channel.gwEnabled === false ? m.channel_enable() : m.channel_disable()}
                                     {/if}
-                                </button>
+                                    {channel.gwEnabled === false ? m.channel_enable() : m.channel_disable()}
+                                </Button>
                                 {#if confirmRemove}
-                                    <button
+                                    <Button
+                                        variant="danger"
+                                        size="sm"
                                         type="button"
-                                        class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
                                         onclick={(e) => { e.stopPropagation(); handleRemoveAccount(); }}
-                                        disabled={removing}
+                                        loading={removing}
                                     >
-                                        {#if removing}
-                                            <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                                        {:else}
+                                        {#if !removing}
                                             <Trash2 size={12} />
                                         {/if}
                                         {m.common_confirm()}
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button variant="ghost" size="sm"
                                         type="button"
-                                        class="text-xs text-muted-foreground hover:text-foreground transition-colors"
                                         onclick={(e) => { e.stopPropagation(); confirmRemove = false; }}
                                         disabled={removing}
                                     >
                                         {m.common_cancel()}
-                                    </button>
+                                    </Button>
                                 {:else}
-                                    <button
+                                    <Button variant="danger" size="sm"
                                         type="button"
-                                        class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
                                         onclick={(e) => { e.stopPropagation(); confirmRemove = true; }}
                                     >
                                         <Trash2 size={12} />
                                         {m.common_remove()}
-                                    </button>
+                                    </Button>
                                 {/if}
                             {/if}
                         </div>

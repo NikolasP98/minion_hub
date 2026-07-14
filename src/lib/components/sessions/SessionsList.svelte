@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button, Select } from '$lib/components/ui';
   import { SvelteMap } from 'svelte/reactivity';
   import * as m from '$lib/paraglide/messages';
   import { createHotkey } from '$lib/hotkeys';
@@ -142,12 +143,12 @@
       bind:value={search}
     />
     {#if uniqueAgents.length > 1}
-      <select class="w-full box-border bg-bg2 border border-border rounded-md text-foreground px-2 py-[5px] font-inherit text-[11px] outline-none cursor-pointer focus:border-accent" bind:value={agentFilter}>
+      <Select class="w-full" size="sm" bind:value={agentFilter}>
         <option value="">{m.sessions_allAgents()}</option>
         {#each uniqueAgents as aid (aid)}
           <option value={aid}>{aid}</option>
         {/each}
-      </select>
+      </Select>
     {/if}
   </div>
 
@@ -165,35 +166,37 @@
             style="transform: translateY({item.start}px)"
           >
             {#if row.kind === 'header'}
-              <div class="text-[10px] font-bold tracking-[0.08em] uppercase text-muted py-2 px-3 pb-1 border-b border-border bg-bg2">{row.agentId}</div>
+              <div class="text-xs font-bold tracking-[0.08em] uppercase text-muted py-2 px-3 pb-1 border-b border-border bg-bg2">{row.agentId}</div>
             {:else}
               {@const s = row.s}
               {@const color = statusColor(s.status)}
-              <button
-                class="flex flex-col gap-[3px] w-full py-[9px] px-3 bg-transparent border-0 border-b border-b-white/[0.04] border-l-3 border-l-transparent text-foreground cursor-pointer text-left transition-colors duration-100 hover:bg-white/[0.03] {selectedKey === s.sessionKey ? '!bg-bg3 !border-l-accent' : ''}"
+              <Button
+                variant={selectedKey === s.sessionKey ? 'primary' : 'ghost'}
+                class="!h-auto !w-full !items-stretch !justify-start !rounded-none !px-3 !py-2 flex-col gap-1 text-left"
                 onclick={() => onSelect(s.sessionKey)}
+                aria-pressed={selectedKey === s.sessionKey}
               >
-                <div class="flex items-center justify-between gap-1.5">
+                <span class="flex items-center justify-between gap-1.5">
                   <span class="text-xs font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{getDisplayName(s)}</span>
                   <span
                     class="shrink-0 w-2 h-2 rounded-full
-                      {color === 'green' ? 'bg-success shadow-[0_0_5px_var(--color-success)]' : ''}
+                      {color === 'green' ? 'bg-success shadow-[var(--shadow-glow-success,var(--shadow-sm))]' : ''}
                       {color === 'amber' ? 'bg-warning' : ''}
-                      {color === 'grey'  ? 'bg-[#475569]' : ''}"
+                      {color === 'grey'  ? 'bg-muted' : ''}"
                   ></span>
-                </div>
+                </span>
                 {#if multiAgent}
-                  <div class="flex items-center justify-between gap-1.5">
-                    <span class="font-mono text-[10px] text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{s.sessionKey}</span>
-                    <span class="text-[10px] text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
-                  </div>
+                  <span class="flex items-center justify-between gap-1.5">
+                    <span class="font-mono text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{s.sessionKey}</span>
+                    <span class="text-xs text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
+                  </span>
                 {:else}
-                  <div class="flex items-center justify-between gap-1.5">
-                    <span class="text-[10px] font-semibold text-accent bg-accent/12 rounded-[10px] px-[7px] py-[1px] whitespace-nowrap shrink-0">{s.agentId}</span>
-                    <span class="text-[10px] text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
-                  </div>
+                  <span class="flex items-center justify-between gap-1.5">
+                    <span class="text-xs font-semibold text-accent bg-accent/12 rounded-lg px-2 py-0.5 whitespace-nowrap shrink-0">{s.agentId}</span>
+                    <span class="text-xs text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
+                  </span>
                 {/if}
-              </button>
+              </Button>
             {/if}
           </div>
         {/each}

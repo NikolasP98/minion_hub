@@ -7,7 +7,7 @@
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
     import { CircleCheck, CircleX, Eye, EyeOff } from 'lucide-svelte';
-    import { Button, Select } from '$lib/components/ui';
+    import { Button, Input, Select } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -181,7 +181,7 @@
                 {step === s ? 'text-foreground font-semibold' : 'text-muted-foreground'}"
             >
                 <span
-                    class="w-5 h-5 rounded-full flex items-center justify-center text-[10px]
+                    class="w-5 h-5 rounded-full flex items-center justify-center text-xs
                     {step === s ? 'bg-accent text-accent-foreground' : 'bg-bg3'}">{i + 1}</span
                 >
                 {#if s === 'connect'}{m.channelWizard_stepConnect()}{/if}
@@ -218,14 +218,16 @@
                         if (e.key === 'Enter' && token && !verifying) startVerify();
                     }}
                 />
-                <button
+                <Button
+                    variant="ghost"
+                    size="icon"
                     type="button"
-                    class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    class="absolute right-0.5 top-1/2 -translate-y-1/2"
                     onclick={() => (revealToken = !revealToken)}
                     aria-label={revealToken ? 'Hide token' : 'Show token'}
                 >
                     {#if revealToken}<EyeOff size={14} />{:else}<Eye size={14} />{/if}
-                </button>
+                </Button>
             </div>
             {#if verifyError}
                 <div class="flex items-start gap-2 text-xs text-destructive">
@@ -261,15 +263,16 @@
                         </p>
                     {/if}
                 </div>
-                <button
-                    class="text-xs text-muted-foreground hover:text-foreground"
+                <Button
+                    variant="outline"
+                    size="sm"
                     onclick={() => {
                         verified = null;
                         verifyError = null;
                     }}
                 >
                     {m.channelWizard_retry()}
-                </button>
+                </Button>
             </div>
             <div class="flex gap-2">
                 <Button type="button" variant="primary" onclick={() => (step = 'name')}>
@@ -284,18 +287,7 @@
         <!-- Step 2: Name -->
     {:else if step === 'name'}
         <div class="space-y-3">
-            <div>
-                <label
-                    for="wizard-label"
-                    class="text-xs font-medium text-muted-foreground block mb-1">Label</label
-                >
-                <input
-                    id="wizard-label"
-                    type="text"
-                    bind:value={label}
-                    class="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                />
-            </div>
+            <Input id="wizard-label" type="text" label="Label" bind:value={label} />
             <div>
                 <label for="wizard-dm" class="text-xs font-medium text-muted-foreground block mb-1"
                     >DM policy</label

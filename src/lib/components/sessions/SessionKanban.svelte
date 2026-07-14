@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import KanbanCol from '$lib/components/tasks/KanbanCol.svelte';
   import type { KanbanTask } from '$lib/components/tasks/TaskCard.svelte';
   import { sessionTasksState, loadSessionTasks } from '$lib/state/features/session-tasks.svelte';
@@ -78,17 +79,20 @@
 
 <div class="shrink-0 border-b border-border bg-bg2">
   <!-- Collapsed header row -->
-  <button
-    class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-bg2 transition-colors"
+  <Button
+    variant="ghost"
+    class="!h-auto !w-full !justify-start gap-2 !px-2.5 !py-1.5 text-left"
     onclick={toggleCollapsed}
+    aria-expanded={!collapsed}
+    aria-controls="session-kanban-panel"
   >
     <!-- Chevron -->
     <span
-      class="text-muted-foreground text-[10px] transition-transform {collapsed ? '' : 'rotate-90'}"
-      >&#9654;</span
+      class="text-muted-foreground text-xs transition-transform {collapsed ? '' : 'rotate-90'}"
+      >▸</span
     >
 
-    <span class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+    <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
       >{m.session_kanbanTasks()}</span
     >
 
@@ -96,25 +100,26 @@
       <!-- Mini progress bar -->
       <div class="flex-1 h-[3px] bg-border rounded-full overflow-hidden mx-1">
         <div
-          class="h-full bg-status-running rounded-full transition-[width] duration-300"
+          class="h-full bg-status-running rounded-full transition-[width] duration-[var(--duration-standard)]"
           style:width="{pct}%"
         ></div>
       </div>
 
       <!-- Column counts -->
-      <div class="flex gap-1.5 text-[10px] text-muted-foreground tabular-nums">
+      <div class="flex gap-1.5 text-xs text-muted-foreground tabular-nums">
         {#each colCounts as cc (cc.short)}
           <span>{cc.short}({cc.count})</span>
         {/each}
       </div>
     {:else}
-      <span class="text-[10px] text-muted-strong ml-1">{m.session_kanbanNoTasks()}</span>
+      <span class="text-xs text-muted-strong ml-1">{m.session_kanbanNoTasks()}</span>
       <span class="flex-1"></span>
     {/if}
-  </button>
+  </Button>
 
   <!-- Expanded body -->
   {#if !collapsed}
+    <div id="session-kanban-panel">
     {#if total > 0}
       <div class="grid grid-cols-4">
         {#each cols as col (col.key)}
@@ -127,9 +132,10 @@
         {/each}
       </div>
     {:else}
-      <div class="px-3 py-3 text-[11px] text-muted-strong text-center">
+      <div class="px-3 py-3 text-xs text-muted-strong text-center">
         {m.session_kanbanNoTasksForSession()}
       </div>
     {/if}
+    </div>
   {/if}
 </div>

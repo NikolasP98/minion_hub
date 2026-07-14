@@ -3,9 +3,9 @@
     import { onMount } from 'svelte';
     import type { Channel, ChannelType } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
-    import { ArrowUpRight, Plus, Power, Settings2 } from 'lucide-svelte';
+    import { ArrowUpRight, Plus, Settings2 } from 'lucide-svelte';
     import ChannelBrandIcon from './ChannelBrandIcon.svelte';
-    import { Button } from '$lib/components/ui';
+    import { Button, Toggle } from '$lib/components/ui';
     import { hydratePluginNav, pluginNavState } from '$lib/state/plugin-nav.svelte';
     import { sendRequest } from '$lib/services/gateway.svelte';
     import { configState, loadConfig, beginRestart } from '$lib/state/config/config.svelte';
@@ -96,27 +96,18 @@
         <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
                 <h3 class="text-sm font-semibold text-foreground">{CHANNEL_TYPE_LABELS[type]}</h3>
-                <span class="text-[10px] text-muted-foreground">
+                <span class="text-xs text-muted-foreground">
                     {m.channel_summary({ live: String(summary.live), paused: String(summary.paused), error: String(summary.error) })}
                 </span>
             </div>
         </div>
-        <button
-            type="button"
-            class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-colors {transportEnabled === false
-                ? 'bg-muted-foreground/10 text-muted-foreground hover:bg-muted-foreground/20'
-                : 'bg-success/10 text-success hover:bg-success/20'}"
-            onclick={toggleTransport}
+        <Toggle
+            checked={transportEnabled !== false}
+            label={transportEnabled === false ? 'Channel off' : 'Channel on'}
+            onchange={() => toggleTransport()}
             disabled={toggling}
-            title={transportEnabled === false ? 'Channel off' : 'Channel on'}
-        >
-            {#if toggling}
-                <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-            {:else}
-                <Power size={12} />
-                {transportEnabled === false ? 'Channel off' : 'Channel on'}
-            {/if}
-        </button>
+            size="sm"
+        />
         <Button type="button" variant="primary" size="sm" onclick={onaddclick}>
             {#snippet icon()}<Plus size={12} />{/snippet}
             {m.channel_addAccount()}
@@ -126,14 +117,15 @@
         {@render children()}
     </div>
     {#if pluginSettingsEntry}
-        <a
+        <Button
+            variant="ghost"
             href="/settings/plugins?plugin={encodeURIComponent(pluginSettingsEntry.pluginId)}"
-            class="flex items-center gap-2 border-t border-border/60 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-bg2/40 transition-colors"
+            class="!h-auto !w-full !justify-start !rounded-none !px-4 !py-2.5"
         >
             <Settings2 size={12} />
             <span class="font-medium">Plugin settings</span>
             <span class="text-muted-strong">— {pluginSettingsEntry.description}</span>
             <ArrowUpRight size={12} class="ml-auto" />
-        </a>
+        </Button>
     {/if}
 </section>

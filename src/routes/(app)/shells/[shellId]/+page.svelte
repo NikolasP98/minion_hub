@@ -11,7 +11,13 @@
     type ShellSummary,
   } from '$lib/services/shells-rpc';
   import { Badge, Button, PageHeader } from '$lib/components/ui';
-  import { ConfirmDialog } from '$lib/components/ui/foundations';
+  import {
+    AsyncBoundary,
+    ConfirmDialog,
+    PageBody,
+    PageShell,
+    type AsyncBoundaryState,
+  } from '$lib/components/ui/foundations';
   import { ArrowLeft } from 'lucide-svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
 
@@ -79,10 +85,22 @@
       actionRunning = null;
     }
   }
+
+  const pageState = $derived.by<AsyncBoundaryState>(() => {
+    if (loading) return { kind: 'loading', label: m.common_loading() };
+    if (error && !shell) {
+      return { kind: 'error', description: error, retry: () => void refresh() };
+    }
+    if (!shell) {
+      return { kind: 'unavailable', title: m.common_error(), retry: () => void refresh() };
+    }
+    return { kind: 'ready' };
+  });
 </script>
 
-<div class="flex h-full min-h-0 flex-col overflow-hidden">
+<PageShell archetype="record-detail" scroll="none" labelledBy="shell-detail-title">
   <PageHeader
+    titleId="shell-detail-title"
     title={shell?.displayName ?? 'Shell'}
     subtitle={shell ? `${shell.harness} · ${shell.vmName} · ${shell.region}` : undefined}
   >
@@ -123,15 +141,14 @@
     {/if}
   {/snippet}
   </PageHeader>
-  <main class="flex-1 min-h-0 overflow-y-auto">
-    <div class="page">
+  <PageBody width="content" scroll="region">
+    <AsyncBoundary state={pageState}>
+      <div class="page">
     {#if error}
-      <div class="error">{error}</div>
+      <div class="alert" role="alert">{error}</div>
     {/if}
 
-  {#if loading}
-    <div class="empty">{m.common_loading()}</div>
-  {:else if shell}
+  {#if shell}
     {#if shell.errorMessage}
       <div class="alert">
         <strong>{shell.errorReason}</strong>: {shell.errorMessage}
@@ -185,9 +202,10 @@
     </div>
 
   {/if}
-    </div>
-  </main>
-</div>
+      </div>
+    </AsyncBoundary>
+  </PageBody>
+</PageShell>
 
 {#if shell}
   <ConfirmDialog
@@ -203,18 +221,18 @@
 
 <style>
   .page {
-    padding: 24px;
+    padding: var(--space-6, 24px);
     max-width: 800px;
     margin: 0 auto;
   }
   .alert {
-    padding: 12px 16px;
+    padding: var(--space-3, 12px) var(--space-4, 16px);
     border-radius: var(--radius-md);
     background: var(--color-danger-surface, transparent);
     border: 1px solid var(--color-danger-border, var(--color-destructive));
     color: var(--color-danger-fg, var(--color-destructive));
-    font-size: 13px;
-    margin-bottom: 16px;
+    font-size: var(--font-size-body, 13px);
+    margin-bottom: var(--space-4, 16px);
   }
   .grid {
     display: grid;
@@ -227,32 +245,24 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 12px 16px;
+    gap: var(--space-1, 4px);
+    padding: var(--space-3, 12px) var(--space-4, 16px);
     border-right: 1px solid var(--color-border-default, var(--color-border));
     border-bottom: 1px solid var(--color-border-default, var(--color-border));
   }
   .field:nth-child(2n) { border-right: none; }
   .key {
-    font-size: 11px;
+    font-size: var(--font-size-label, 11px);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-weight: 600;
   }
-  .val { font-size: 14px; }
+  .val { font-size: var(--font-size-section-title, 14px); }
   .val.mono { font-family: var(--font-family-mono, var(--font-mono)); font-size: var(--font-size-mono, 12px); }
   .bytes {
     color: var(--color-text-tertiary, var(--color-muted-foreground));
-    font-size: 12px;
-  }
-  .empty, .error {
-    padding: 48px 24px;
-    text-align: center;
-    color: var(--color-text-tertiary, var(--color-muted-foreground));
-  }
-  .error {
-    color: var(--color-danger-fg, var(--color-destructive));
+    font-size: var(--font-size-caption, 12px);
   }
   @media (max-width: 767.98px) {
     .page {

@@ -1,6 +1,12 @@
 <script lang="ts">
 	import Chart from '$lib/components/charts/Chart.svelte';
-	import { PageHeader, Tabs, MultiSelectFilter, MathFormula } from '$lib/components/ui';
+	import { Button, PageHeader, Tabs, MultiSelectFilter, MathFormula } from '$lib/components/ui';
+	import {
+		AsyncBoundary,
+		PageBody,
+		PageShell,
+		type AsyncBoundaryState,
+	} from '$lib/components/ui/foundations';
 	import type { MultiSelectOption } from '$lib/components/ui';
 	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
@@ -34,7 +40,6 @@
 		BarChart2,
 		PieChart,
 		RefreshCw,
-		Server,
 		Bot,
 		Wrench,
 		Puzzle,
@@ -112,7 +117,7 @@
 	// Activity Log tabs), so chips and the Event Timeline cover EVERY category —
 	// previously `channel` (~5.8k events) was invisible because it wasn't curated.
 	// Council 2026-05-29 (taxonomy-unification). crash kept off the critical-red
-	// ramp (#fb7185 rose) so category never reads as severity.
+	// rose ramp so category never reads as severity.
 	const CATEGORY_COLORS: Record<string, string> = {
 		gateway:       '#4ade80',
 		agent:         '#f472b6',
@@ -132,7 +137,7 @@
 
 	// Severity = ordinal alarm ramp. info (blue) + low (slate) are the non-alarm
 	// cool/neutral steps; medium→critical is the warm danger ramp. low was lime
-	// (#a3e635) but collided with high (#f59e0b amber) under deuteranopia and
+	// The previous lime collided with high amber under deuteranopia and
 	// wasn't perceptually monotonic — slate restores a colourblind-safe ramp while
 	// staying distinct from info. `ok` is a separate resolved state. Council 2026-05-29.
 	const SEVERITY_COLORS: Record<string, string> = {
@@ -751,6 +756,12 @@
 		]);
 	}
 
+	const pageState = $derived.by<AsyncBoundaryState>(() => {
+		if (!serverId) return { kind: 'unavailable', title: m.reliability_connectToView() };
+		if (loading && !summary) return { kind: 'loading', label: m.common_loading() };
+		return { kind: 'ready' };
+	});
+
 	// Summary, timeline AND events all reload WITH the active filters. Summary +
 	// timeline are server-aggregated over the FULL filtered population, so the KPI
 	// numbers and the timeline are exact under any severity/category/mode combo —
@@ -916,8 +927,8 @@
 					const d = new Date(ps[0].value[0]);
 					const timeStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 					const total = nonZero.reduce((s, p) => s + p.value[1], 0);
-					const rows = nonZero.map(p => `<tr><td style="padding-right:12px">${p.marker}${p.seriesName}</td><td style="text-align:right;font-weight:600">${p.value[1]}</td></tr>`).join('');
-					return `<div style="font-size:11px"><div style="margin-bottom:4px;color:var(--color-muted-foreground)">${timeStr}</div><table>${rows}<tr><td style="padding-right:12px;border-top:1px solid var(--color-border);padding-top:3px">total</td><td style="text-align:right;font-weight:600;border-top:1px solid var(--color-border);padding-top:3px">${total}</td></tr></table></div>`;
+					const rows = nonZero.map(p => `<tr><td style="padding-right:var(--space-3,12px)">${p.marker}${p.seriesName}</td><td style="text-align:right;font-weight:600">${p.value[1]}</td></tr>`).join('');
+					return `<div style="font-size: var(--font-size-label, 11px)"><div style="margin-bottom:var(--space-1,4px);color:var(--color-muted-foreground)">${timeStr}</div><table>${rows}<tr><td style="padding-right:var(--space-3,12px);border-top:1px solid var(--color-border);padding-top:var(--space-1,4px)">total</td><td style="text-align:right;font-weight:600;border-top:1px solid var(--color-border);padding-top:var(--space-1,4px)">${total}</td></tr></table></div>`;
 				}
 			},
 			legend: {
@@ -980,10 +991,10 @@
 					const { type, failureMode } = parseEventName(full);
 					const color = CATEGORY_COLORS[type] ?? TOP_EVENT_FALLBACK_COLOR;
 					const count = params.value as number;
-					return `<div style="font-size:11px">
+					return `<div style="font-size: var(--font-size-label, 11px)">
 						<div style="font-weight:600">${failureMode}</div>
-						<div style="display:flex;align-items:center;gap:5px;margin:2px 0;color:var(--color-muted-foreground);font-size:10px">
-							<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color}"></span>${type}
+						<div style="display:flex;align-items:center;gap:var(--space-1.5,6px);margin:var(--space-0.5,2px) 0;color:var(--color-muted-foreground);font-size: var(--font-size-caption, 10px)">
+							<span style="display:inline-block;width:8px;height:8px;border-radius:var(--radius-xs,2px);background:${color}"></span>${type}
 						</div>
 						<div style="font-weight:600">${count} ${count === 1 ? m.reliability_llmCall() : m.reliability_llmCallsPlural()}</div>
 					</div>`;
@@ -1167,9 +1178,9 @@
 					if (p.dataType === 'edge') {
 						const s = String(p.data.source).slice(2);
 						const t = String(p.data.target).slice(2);
-						return `<div style="font-size:11px"><span style="color:var(--color-muted-foreground)">${s}</span> → <span style="font-weight:600">${t}</span><div style="font-weight:600;margin-top:2px">${p.data.value}</div></div>`;
+						return `<div style="font-size: var(--font-size-label, 11px)"><span style="color:var(--color-muted-foreground)">${s}</span> → <span style="font-weight:600">${t}</span><div style="font-weight:600;margin-top:var(--space-0.5,2px)">${p.data.value}</div></div>`;
 					}
-					return `<div style="font-size:11px;font-weight:600">${String(p.name).slice(2)}</div>`;
+					return `<div style="font-size: var(--font-size-label, 11px);font-weight:600">${String(p.name).slice(2)}</div>`;
 				},
 			},
 			series: [{
@@ -1197,9 +1208,9 @@
 <!-- Height-constrained flex column so the toolbar + filter bar stay pinned while
      only <main> scrolls (the (app) shell scrolls an ancestor otherwise, carrying
      the filters off-screen). -->
-<div class="flex flex-col h-full min-h-0">
+<PageShell archetype="dashboard" scroll="none" labelledBy="reliability-title">
 <!-- Toolbar -->
-	<PageHeader title={m.reliability_title()}>
+	<PageHeader titleId="reliability-title" title={m.reliability_title()}>
 		{#snippet leading()}
 			<ShieldCheck size={16} class="text-accent shrink-0" />
 		{/snippet}
@@ -1209,18 +1220,19 @@
 				to={reliability.dateRange.to}
 				onchange={handleDateChange}
 			/>
-			<button
-				type="button"
-				class="flex items-center justify-center w-7 h-7 rounded border border-border bg-bg3 text-muted-foreground hover:text-foreground hover:bg-border cursor-pointer transition-colors"
+			<Button
+				variant="secondary"
+				size="icon"
 				onclick={loadData}
 				title={m.reliability_refreshData()}
+				aria-label={m.reliability_refreshData()}
 			>
 				<RefreshCw size={12} class={loading ? 'animate-spin' : ''} />
-			</button>
+			</Button>
 		{/snippet}
 	</PageHeader>
 	<!-- Tab bar + filter bar (tabs first, filters below — order: severity, category, mode) -->
-	<div class="shrink-0 relative z-30 border-b border-border bg-bg2/80 backdrop-blur-sm">
+	<div class="shrink-0 relative z-[var(--layer-tooltip,60)] border-b border-border bg-bg2/80 backdrop-blur-sm">
 		<Tabs
 			id="reliability-tabs"
 			tabs={tabItems}
@@ -1263,39 +1275,27 @@
 					/>
 				{/if}
 				{#if hasActiveFilters}
-					<button
-						type="button"
-						class="text-[10px] py-0.5 px-2 rounded-md cursor-pointer text-muted-foreground hover:text-foreground transition-colors shrink-0"
+					<Button
+						variant="ghost"
+						size="sm"
+						class="shrink-0 text-xs"
 						onclick={clearAllFilters}
 					>
 						{m.marketplace_agentsListClearFilters()}
-					</button>
+					</Button>
 				{/if}
 			</div>
 		{/if}
 	</div>
 
+	<PageBody padding="none" scroll="none">
 	<div
 		id={`reliability-tabs-panel-${activeTab}`}
 		role="tabpanel"
 		aria-labelledby={`reliability-tabs-tab-${activeTab}`}
 		class="flex-1 min-h-0 overflow-y-auto p-4"
 	>
-		{#if !serverId}
-			<div class="h-full flex items-center justify-center">
-				<div class="text-center">
-					<Server size={32} class="text-muted-strong mx-auto mb-3" />
-					<p class="text-muted-foreground text-sm">{m.reliability_connectToView()}</p>
-				</div>
-			</div>
-		{:else if loading && !summary}
-			<div class="h-full flex items-center justify-center">
-				<div class="flex flex-col items-center gap-3">
-					<div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-					<p class="text-muted-foreground text-xs">{m.common_loading()}</p>
-				</div>
-			</div>
-		{:else}
+		<AsyncBoundary state={pageState} class="h-full">
 		<div class="flex flex-col gap-3">
 			{#if activeTab === 'overview'}
 			<!-- ── Overview Stats Widget ───────────────────────────────────────── -->
@@ -1317,17 +1317,17 @@
 							<div class="absolute top-0 left-0 right-0 h-[2px]" style:background={item.color}></div>
 							<div class="flex items-center gap-1.5 mt-0.5">
 								<span style:color={item.color} class="shrink-0 flex"><Icon size={10} /></span>
-								<span class="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest truncate">{item.label}</span>
+								<span class="text-xs font-semibold text-muted-foreground uppercase tracking-widest truncate">{item.label}</span>
 							</div>
 							<div class="flex items-baseline gap-0.5">
-								<span class="text-[2rem] font-bold font-mono tabular-nums leading-none tracking-tight" style:color={item.color}>
+								<span class="text-3xl font-bold font-mono tabular-nums leading-none tracking-tight" style:color={item.color}>
 									{item.value}
 								</span>
 								{#if item.unit}
 									<span class="text-sm font-semibold text-muted-foreground leading-none">{item.unit}</span>
 								{/if}
 							</div>
-							<span class="text-[9px] text-muted-strong tabular-nums truncate min-h-[12px]">{item.subtext}</span>
+							<span class="text-xs text-muted-strong tabular-nums truncate min-h-[12px]">{item.subtext}</span>
 						</div>
 					{/each}
 				</div>
@@ -1337,9 +1337,9 @@
 			<div class="bg-card border border-border rounded-lg overflow-hidden">
 				<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 					<GitMerge size={11} class="text-accent shrink-0" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_eventFlow()}</span>
+					<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_eventFlow()}</span>
 					<!-- Column legend: the three stages the ribbon funnels through -->
-					<div class="ml-auto flex items-center gap-3 text-[9px] font-medium text-muted-strong">
+					<div class="ml-auto flex items-center gap-3 text-xs font-medium text-muted-strong">
 						<span>{m.reliability_flowMode()}</span>
 						<span class="text-muted-foreground">→</span>
 						<span>{m.reliability_flowCategory()}</span>
@@ -1358,19 +1358,21 @@
 				<div class="bg-card border border-border rounded-lg overflow-hidden">
 					<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 						<BarChart2 size={11} class="text-accent shrink-0" />
-						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_topEvents()}</span>
+						<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_topEvents()}</span>
 						<!-- Type legend: bar colours decode to event types -->
 						<div class="ml-auto flex items-center gap-2 flex-wrap justify-end">
 							{#each topEventTypes as t (t.type)}
-								<button
-									type="button"
-									class="flex items-center gap-1 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+								<Button
+									variant={selectedCategories.has(t.type) ? 'primary' : 'ghost'}
+									size="sm"
+									aria-pressed={selectedCategories.has(t.type)}
+									class="!h-6 !px-1.5"
 									title={m.reliability_filterCategoryTitle({ category: t.type })}
 									onclick={() => toggleCategory(t.type)}
 								>
 									<span class="w-2 h-2 rounded-sm shrink-0" style:background={t.color}></span>
-									<span class="text-[9px] font-medium {selectedCategories.has(t.type) ? 'text-foreground' : ''}">{t.type}</span>
-								</button>
+									<span class="text-xs font-medium {selectedCategories.has(t.type) ? 'text-foreground' : ''}">{t.type}</span>
+								</Button>
 							{/each}
 						</div>
 					</div>
@@ -1383,7 +1385,7 @@
 				<div class="bg-card border border-border rounded-lg overflow-hidden">
 					<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 						<PieChart size={11} class="text-accent shrink-0" />
-						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_severityDistribution()}</span>
+						<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_severityDistribution()}</span>
 					</div>
 					<div class="relative overflow-hidden">
 						<ScanLine speed={8} opacity={0.018} />
@@ -1423,8 +1425,9 @@
 			<PluginHealthPanel {serverId} from={reliability.dateRange.from} to={reliability.dateRange.to} />
 			{/if}
 		</div>
-		{/if}
+		</AsyncBoundary>
 	</div>
+	</PageBody>
 
 	<!-- ── KPI hover breakdown tooltip (fixed → escapes card overflow clipping) ──
 	     Width is standardised with clamp() so every KPI's tooltip is the same
@@ -1432,30 +1435,30 @@
 	{#if hoveredKpi && kpiTipPos}
 		<div
 			bind:this={tipEl}
-			class="fixed z-[100] pointer-events-none rounded-lg border border-border bg-bg2 shadow-[0_8px_28px_rgba(0,0,0,0.55)] px-3 py-2.5"
+			class="fixed z-[var(--layer-tooltip,60)] pointer-events-none rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay,var(--shadow-xl))] px-3 py-2.5"
 			style="left:{kpiTipPos.left}px; top:{kpiTipPos.top}px; width:clamp(256px, 22vw, 320px)"
 		>
-			<div class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">{hoveredKpi.label}</div>
-			<div class="text-[10px] text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipFormula()}</div>
-			<div class="text-foreground text-[13px] mb-2 overflow-hidden"><MathFormula tex={hoveredKpi.texFormula} /></div>
-			<div class="text-[10px] text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipResult()}</div>
-			<div class="text-foreground text-[13px] overflow-hidden"><MathFormula tex={hoveredKpi.texValues} /></div>
+			<div class="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">{hoveredKpi.label}</div>
+			<div class="text-xs text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipFormula()}</div>
+			<div class="text-foreground text-sm mb-2 overflow-hidden"><MathFormula tex={hoveredKpi.texFormula} /></div>
+			<div class="text-xs text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipResult()}</div>
+			<div class="text-foreground text-sm overflow-hidden"><MathFormula tex={hoveredKpi.texValues} /></div>
 
 			{#if hoveredKpi.spark}
 				{@const s = hoveredKpi.spark}
 				<div class="mt-2.5 pt-2 border-t border-border/60">
 					<div class="flex items-center justify-between mb-1">
-						<span class="text-[10px] text-muted-strong uppercase tracking-wide">{m.reliability_tipTrend()}</span>
-						<span class="text-[9px] font-semibold uppercase tracking-wide" style:color={s.statusColor}>{s.statusLabel}</span>
+						<span class="text-xs text-muted-strong uppercase tracking-wide">{m.reliability_tipTrend()}</span>
+						<span class="text-xs font-semibold uppercase tracking-wide" style:color={s.statusColor}>{s.statusLabel}</span>
 					</div>
 					<KpiSparkline series={s.series} rollAvg={s.rollAvg} mean={s.mean} sigma={s.sigma} color={s.color} />
 					<!-- legend: raw line · rolling-avg line · μ±3σ band -->
-					<div class="flex items-center gap-3 mt-1 text-[8px] text-muted-strong">
+					<div class="flex items-center gap-3 mt-1 text-xs text-muted-strong">
 						<span class="flex items-center gap-1"><span class="inline-block w-3 h-[2px] opacity-40" style:background={s.color}></span>{m.reliability_tipRaw()}</span>
 						<span class="flex items-center gap-1"><span class="inline-block w-3 h-[2px]" style:background={s.color}></span>{m.reliability_tipRollingShort()}</span>
 						<span class="flex items-center gap-1"><span class="inline-block w-3 border-t border-dashed opacity-60" style:border-color={s.color}></span>μ±3σ</span>
 					</div>
-					<div class="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1.5 text-[9px] tabular-nums">
+					<div class="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1.5 text-xs tabular-nums">
 						<div class="flex justify-between gap-2"><span class="text-muted-strong">{m.reliability_tipRolling()}</span><span>{s.rollAvgVal.toFixed(0)}%</span></div>
 						<div class="flex justify-between gap-2"><span class="text-muted-strong">{m.reliability_tipVsAvg()}</span><span class="font-semibold" style:color={s.vsRollGood ? C.success : C.warning}>{s.current - s.rollAvgVal >= 0 ? '+' : ''}{(s.current - s.rollAvgVal).toFixed(1)} · {s.trendLabel}</span></div>
 						<div class="flex justify-between gap-2"><span class="text-muted-strong">μ±3σ</span><span>{s.lcl.toFixed(0)}–{s.ucl.toFixed(0)}%</span></div>
@@ -1465,8 +1468,8 @@
 			{/if}
 
 			{#if hoveredKpi.note}
-				<div class="mt-2 pt-1.5 border-t border-border/60 text-[9px] text-muted-strong leading-snug whitespace-normal">{hoveredKpi.note}</div>
+				<div class="mt-2 pt-1.5 border-t border-border/60 text-xs text-muted-strong leading-snug whitespace-normal">{hoveredKpi.note}</div>
 			{/if}
 		</div>
 	{/if}
-</div>
+</PageShell>

@@ -6,22 +6,31 @@
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import type { SessionRow } from '$lib/components/sessions/SessionsList.svelte';
   import { Button, PageHeader } from '$lib/components/ui';
+  import {
+    AsyncBoundary,
+    PageBody,
+    PageShell,
+    type AsyncBoundaryState,
+  } from '$lib/components/ui/foundations';
+  import { ApiError, fetchJson } from '$lib/api/fetch-json';
   import { ArrowLeft } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
   let hubSessions = $state<SessionRow[]>([]);
   let selectedKey = $state<string | null>(null);
   let loadingSessions = $state(false);
+  let sessionsError = $state<ApiError | Error | null>(null);
 
   async function loadSessions(serverId: string) {
     loadingSessions = true;
+    sessionsError = null;
     try {
-      const res = await fetch(`/api/servers/${serverId}/sessions`);
-      if (!res.ok) return;
-      const data = await res.json() as { sessions: SessionRow[] };
+      const data = await fetchJson<{ sessions: SessionRow[] }>(
+        `/api/servers/${serverId}/sessions`,
+      );
       hubSessions = Array.isArray(data.sessions) ? data.sessions : [];
-    } catch {
-      // non-critical
+    } catch (error) {
+      sessionsError = error instanceof Error ? error : new Error(String(error));
     } finally {
       loadingSessions = false;
     }
@@ -68,12 +77,53 @@
   const selectedSession = $derived(
     allSessions.find((s) => s.sessionKey === selectedKey) ?? null
   );
+
+  const listState = $derived.by<AsyncBoundaryState>(() => {
+    if (loadingSessions && allSessions.length === 0) {
+      return { kind: 'loading', label: m.common_loading() };
+    }
+    if (sessionsError && allSessions.length === 0) {
+      if (sessionsError instanceof ApiError && sessionsError.kind === 'forbidden') {
+        return { kind: 'forbidden', description: sessionsError.message };
+      }
+      if (
+        sessionsError instanceof ApiError &&
+        (sessionsError.kind === 'network' || sessionsError.kind === 'unavailable')
+      ) {
+        return {
+          kind: 'unavailable',
+          title: m.common_error(),
+          description: sessionsError.message,
+          retry: () => {
+            if (hostsState.activeHostId) void loadSessions(hostsState.activeHostId);
+          },
+        };
+      }
+      return {
+        kind: 'error',
+        description: sessionsError.message,
+        retry: () => {
+          if (hostsState.activeHostId) void loadSessions(hostsState.activeHostId);
+        },
+      };
+    }
+    if (allSessions.length === 0) {
+      return { kind: 'empty', title: m.sessions_noSessions() };
+    }
+    return { kind: 'ready' };
+  });
 </script>
 
 <!-- This route is an explicit fixed-height master/detail workspace. The shell
      provides the definite block size; list and transcript own their scrolling. -->
-<div class="flex h-full min-h-0 flex-col overflow-hidden">
-  <PageHeader title={m.breadcrumb_sessions()} subtitle={m.sessions_selectToView()} sticky={false} />
+<PageShell archetype="master-detail" scroll="none" labelledBy="sessions-title">
+  <PageHeader
+    titleId="sessions-title"
+    title={m.breadcrumb_sessions()}
+    subtitle={m.sessions_selectToView()}
+    sticky={false}
+  />
+  <PageBody padding="none" scroll="none">
   <div
     data-component="sessions-master-detail"
     data-has-selection={selectedKey ? 'true' : 'false'}
@@ -86,11 +136,13 @@
           <div class="h-full w-[40%] bg-accent rounded-sm animate-loading-slide"></div>
         </div>
       {/if}
-      <SessionsList
-        sessions={allSessions}
-        {selectedKey}
-        onSelect={(k) => (selectedKey = k)}
-      />
+      <AsyncBoundary state={listState} compact class="h-full">
+        <SessionsList
+          sessions={allSessions}
+          {selectedKey}
+          onSelect={(k) => (selectedKey = k)}
+        />
+      </AsyncBoundary>
     </div>
 
     <!-- Right panel: session viewer -->
@@ -107,7 +159,8 @@
       />
     </div>
   </div>
-</div>
+  </PageBody>
+</PageShell>
 
 <style>
   .sessions-layout {

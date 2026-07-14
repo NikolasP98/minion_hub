@@ -1,6 +1,7 @@
 <script lang="ts">
   import { MessagesSquare, ArrowRight } from 'lucide-svelte';
-  import { PageHeader } from '$lib/components/ui';
+  import { Badge, PageHeader } from '$lib/components/ui';
+  import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
   import * as m from '$lib/paraglide/messages';
@@ -10,36 +11,46 @@
   const channels = $derived(data.channels);
 
   // Map the manifest status to a label + tone for the card's status pill.
-  function status(s: string | undefined): { label: string; tone: string } {
+  function status(s: string | undefined): {
+    label: string;
+    value: 'success' | 'error' | 'warning' | 'info';
+  } {
     switch (s) {
       case 'loaded':
-        return { label: 'Connected', tone: 'ok' };
+        return { label: 'Connected', value: 'success' };
       case 'error':
-        return { label: 'Error', tone: 'err' };
+        return { label: 'Error', value: 'error' };
       case 'incompatible':
-        return { label: 'Update needed', tone: 'warn' };
+        return { label: 'Update needed', value: 'warning' };
       case 'disabled':
-        return { label: 'Disabled', tone: 'muted' };
+        return { label: 'Disabled', value: 'info' };
       default:
-        return { label: 'Available', tone: 'muted' };
+        return { label: 'Available', value: 'info' };
     }
   }
 </script>
 
-<div class="flex h-full min-h-0 flex-col">
-  <PageHeader title={m.nav_channels()} subtitle="Messaging channels connected to this organization">
+<PageShell archetype="collection" scroll="page" labelledBy="channels-title">
+  <PageHeader
+    titleId="channels-title"
+    title={m.nav_channels()}
+    subtitle="Messaging channels connected to this organization"
+  >
     {#snippet leading()}
       <MessagesSquare size={16} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 
-  <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-    {#if channels.length === 0}
-      <div class="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
-        <MessagesSquare size={32} class="opacity-40" />
-        <p class="text-sm">No channels enabled for this organization.</p>
-      </div>
-    {:else}
+  <PageBody width="content">
+    <AsyncBoundary
+      state={channels.length === 0
+        ? {
+            kind: 'empty',
+            title: 'No channels enabled',
+            description: 'Enable a messaging channel to connect it to this organization.',
+          }
+        : { kind: 'ready' }}
+    >
       <div class="channel-grid">
         {#each channels as e (e.pluginId)}
           {@const st = status(e.status)}
@@ -50,7 +61,7 @@
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <span class="font-semibold text-sm text-foreground truncate">{e.title}</span>
-                <span class="status-pill {st.tone}">{st.label}</span>
+                <Badge variant="semantic" value={st.value} size="sm">{st.label}</Badge>
               </div>
               {#if e.description}
                 <p class="text-xs text-muted-foreground mt-0.5 line-clamp-2">{e.description}</p>
@@ -63,24 +74,24 @@
           </a>
         {/each}
       </div>
-    {/if}
-  </div>
-</div>
+    </AsyncBoundary>
+  </PageBody>
+</PageShell>
 
 <style>
   .channel-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-    gap: 0.75rem;
+    gap: var(--space-3, 0.75rem);
   }
   .channel-card {
     display: flex;
     align-items: flex-start;
-    gap: 0.875rem;
-    padding: 1rem;
-    border-radius: var(--radius-lg, 0.75rem);
-    border: 1px solid var(--hairline);
-    background: var(--color-bg2, rgba(255, 255, 255, 0.02));
+    gap: var(--space-3.5, 0.875rem);
+    padding: var(--space-4, 1rem);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border-subtle);
+    background: var(--color-surface-2);
     text-decoration: none;
     transition:
       border-color var(--duration-fast) var(--ease-standard),
@@ -99,29 +110,5 @@
     border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
     flex-shrink: 0;
-  }
-  .status-pill {
-    font-size: 0.625rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    padding: 0.0625rem 0.375rem;
-    border-radius: 9999px;
-    white-space: nowrap;
-  }
-  .status-pill.ok {
-    color: var(--color-success, #34d399);
-    background: color-mix(in srgb, var(--color-success, #34d399) 14%, transparent);
-  }
-  .status-pill.err {
-    color: var(--color-destructive, #f87171);
-    background: color-mix(in srgb, var(--color-destructive, #f87171) 14%, transparent);
-  }
-  .status-pill.warn {
-    color: var(--color-warning, #fbbf24);
-    background: color-mix(in srgb, var(--color-warning, #fbbf24) 14%, transparent);
-  }
-  .status-pill.muted {
-    color: var(--color-muted);
-    background: rgba(255, 255, 255, 0.06);
   }
 </style>

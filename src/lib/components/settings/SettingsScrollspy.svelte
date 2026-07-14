@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { onDestroy } from 'svelte';
   import type { ConfigGroup } from '$lib/types/config';
@@ -87,17 +88,16 @@
     {#each groups as group (group.id)}
       {@const isActive = activeGroupId === group.id}
       {@const isDirty = dirtyGroupIds.has(group.id)}
-      <button
+      <Button variant="ghost" size="icon"
         type="button"
-        class="scrollspy-dot"
-        class:active={isActive}
-        class:dirty={isDirty}
+        class="scrollspy-trigger"
         onclick={() => scrollToGroup(group.id)}
         aria-label={group.label}
         aria-current={isActive ? 'true' : undefined}
       >
+        <span class="scrollspy-dot" class:active={isActive} class:dirty={isDirty}></span>
         <span class="scrollspy-tooltip">{group.label}</span>
-      </button>
+      </Button>
     {/each}
   </nav>
 {/if}
@@ -110,8 +110,8 @@
     transform: translateY(-50%);
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    z-index: 30;
+    gap: var(--space-2, 8px);
+    z-index: var(--layer-sticky, 30);
     opacity: 0.5;
     transition: opacity var(--duration-fast) var(--ease-standard);
   }
@@ -119,19 +119,19 @@
     opacity: 1;
   }
 
-  .scrollspy-dot {
+  .scrollspy-trigger {
     position: relative;
+  }
+  .scrollspy-dot {
+    display: block;
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: var(--radius-full, 999px);
     background: var(--muted-foreground);
     opacity: 0.3;
-    border: none;
-    padding: 0;
-    cursor: pointer;
     transition: all var(--duration-fast) var(--ease-standard);
   }
-  .scrollspy-dot:hover {
+  .scrollspy-trigger:hover .scrollspy-dot {
     opacity: 0.8;
     transform: scale(1.3);
   }
@@ -142,7 +142,7 @@
     opacity: 1;
   }
   .scrollspy-dot.dirty:not(.active) {
-    box-shadow: 0 0 0 2px var(--accent);
+    box-shadow: var(--shadow-focus, 0 0 0 2px var(--accent));
     opacity: 0.5;
   }
 
@@ -152,17 +152,17 @@
     top: 50%;
     transform: translateY(-50%);
     white-space: nowrap;
-    font-size: 10px;
+    font-size: var(--font-size-caption, 10px);
     color: var(--foreground);
     background: var(--bg2);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 2px 6px;
+    border-radius: var(--radius-sm, 4px);
+    padding: var(--space-0.5, 2px) var(--space-1.5, 6px);
     pointer-events: none;
     opacity: 0;
     transition: opacity var(--duration-fast) var(--ease-standard);
   }
-  .scrollspy-dot:hover .scrollspy-tooltip {
+  .scrollspy-trigger:hover .scrollspy-tooltip {
     opacity: 1;
   }
 </style>

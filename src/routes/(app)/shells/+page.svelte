@@ -13,6 +13,12 @@
   import ShellRow from '$lib/components/shells/ShellRow.svelte';
   import ProvisionForm from '$lib/components/shells/ProvisionForm.svelte';
   import { Button, PageHeader } from '$lib/components/ui';
+  import {
+    AsyncBoundary,
+    PageBody,
+    PageShell,
+    type AsyncBoundaryState,
+  } from '$lib/components/ui/foundations';
   import { Terminal } from 'lucide-svelte';
 
   let shells = $state<ShellSummary[]>([]);
@@ -45,10 +51,26 @@
     // Could navigate to the new shell's detail page once it's online.
     void goto(`/shells/${res.shellId}`);
   }
+
+  const pageState = $derived.by<AsyncBoundaryState>(() => {
+    if (error) {
+      return { kind: 'error', description: error, retry: () => void refresh() };
+    }
+    if (loading) return { kind: 'loading', label: m.common_loading() };
+    if (shells.length === 0 && !showProvision) {
+      return {
+        kind: 'empty',
+        title: m.shellsPage_empty(),
+        description: m.shellsPage_emptyDescription(),
+      };
+    }
+    return { kind: 'ready' };
+  });
 </script>
 
-<div class="h-full flex flex-col min-h-0">
+<PageShell archetype="collection" scroll="none" labelledBy="shells-title">
 <PageHeader
+  titleId="shells-title"
   title={m.shellsPage_title()}
   subtitle={m.shellsPage_subtitle()}
 >
@@ -61,25 +83,22 @@
     </Button>
   {/snippet}
 </PageHeader>
-<main class="flex-1 min-h-0 overflow-y-auto">
+<PageBody padding="none" scroll="region">
   <QuotaStrip {quota} />
 
-  {#if showProvision}
-    <div class="panel">
-      <ProvisionForm {onProvisioned} />
-    </div>
-  {/if}
+  <AsyncBoundary state={pageState}>
+    {#snippet emptyAction()}
+      <Button variant="primary" size="sm" onclick={() => (showProvision = true)}>
+        {m.shellsPage_spinupButton()}
+      </Button>
+    {/snippet}
+    {#if showProvision}
+      <div class="panel">
+        <ProvisionForm {onProvisioned} />
+      </div>
+    {/if}
 
-  {#if error}
-    <div class="error">{error}</div>
-  {:else if loading}
-    <div class="empty">{m.common_loading()}</div>
-  {:else if shells.length === 0}
-    <div class="empty">
-      <h2>{m.shellsPage_empty()}</h2>
-      <p>{m.shellsPage_emptyDescription()}</p>
-    </div>
-  {:else}
+    {#if shells.length > 0}
     <div class="list" data-component="shells-list">
       <div class="list-header">
         <span></span>
@@ -94,9 +113,10 @@
         <ShellRow {shell} onSelect={(id) => goto(`/shells/${id}`)} />
       {/each}
     </div>
-  {/if}
-</main>
-</div>
+    {/if}
+  </AsyncBoundary>
+</PageBody>
+</PageShell>
 
 <style>
   .panel {
@@ -106,8 +126,8 @@
   .list-header {
     display: grid;
     grid-template-columns: auto 1fr 120px 80px 130px 110px 100px;
-    gap: 12px;
-    padding: 10px 16px;
+    gap: var(--space-3, 12px);
+    padding: var(--space-2.5, 10px) var(--space-4, 16px);
     border-bottom: 1px solid var(--color-border-default, var(--color-border));
     font-size: var(--font-size-label, 12px);
     text-transform: uppercase;
@@ -115,19 +135,6 @@
     color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-weight: 600;
     background: var(--color-surface-1, var(--color-bg2));
-  }
-  .empty, .error {
-    padding: 48px 24px;
-    text-align: center;
-    color: var(--color-text-tertiary, var(--color-muted-foreground));
-  }
-  .empty h2 {
-    margin: 0 0 8px;
-    font-size: 16px;
-    color: inherit;
-  }
-  .error {
-    color: var(--color-danger-fg, var(--color-destructive));
   }
   @media (max-width: 767.98px) {
     .list-header {
