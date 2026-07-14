@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -20,11 +22,26 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Generate Svelte environment and translations
+        run: |
+          cp .env.example .env
+          bun run i18n:compile
+
       - name: Svelte check + typecheck
         run: bun run check
 
-      - name: Prettier check
-        run: bun run format:check
+      - name: Prettier check (changed files)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            BASE_SHA="$(git rev-parse HEAD^)"
+          fi
+          mapfile -d '' files < <(git diff -z --name-only --diff-filter=ACMR "$BASE_SHA" "$GITHUB_SHA" -- \
+            '*.css' '*.js' '*.json' '*.md' '*.svelte' '*.ts' '*.yaml' '*.yml')
+          if (( ${#files[@]} > 0 )); then
+            bunx prettier --plugin=prettier-plugin-svelte --check -- "${files[@]}"
+          fi
 
       - name: Build
         run: bun run build

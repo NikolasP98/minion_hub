@@ -762,6 +762,7 @@
   "gateway_update_checkNow": "Check now",
   "gateway_update_checking": "Checking...",
   "gateway_update_installAndRestart": "Install",
+  "gateway_update_rolloutImage": "Roll out image",
   "gateway_update_installing": "Installing...",
   "gateway_update_confirmInstall": "Install v{version} and restart the gateway now?",
   "gateway_update_available_title": "Update available",

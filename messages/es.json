@@ -713,6 +713,7 @@
   "gateway_update_checkNow": "Buscar ahora",
   "gateway_update_checking": "Buscando...",
   "gateway_update_installAndRestart": "Instalar",
+  "gateway_update_rolloutImage": "Desplegar imagen",
   "gateway_update_installing": "Instalando...",
   "gateway_update_confirmInstall": "¿Instalar la v{version} y reiniciar el gateway ahora?",
   "gateway_update_available_title": "Actualización disponible",
