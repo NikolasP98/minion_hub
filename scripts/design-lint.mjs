@@ -17,10 +17,12 @@
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = join(fileURLToPath(import.meta.url), '..', '..');
+const root = process.env.DESIGN_LINT_ROOT
+  ? resolve(process.env.DESIGN_LINT_ROOT)
+  : join(fileURLToPath(import.meta.url), '..', '..');
 const SRC = join(root, 'src');
 const BASELINE = join(root, 'scripts', '.design-lint-baseline.json');
 const EXCEPTIONS = join(root, 'scripts', 'design-lint-exceptions.json');
