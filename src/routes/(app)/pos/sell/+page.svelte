@@ -721,16 +721,18 @@
     gap: var(--space-2, 8px);
   }
   :global(.pos-sell-surface .card) {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-1, 4px);
     padding: var(--space-2, 8px);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-lg);
     background: var(--color-card);
     text-align: left;
     cursor: pointer;
+  }
+  :global(.pos-sell-surface .card > span) {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1, 4px);
   }
   :global(.pos-sell-surface .card:hover) {
     border-color: var(--color-accent);

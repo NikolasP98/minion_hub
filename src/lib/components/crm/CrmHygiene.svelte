@@ -659,9 +659,6 @@
   }
   /* Collapsible section header: chevron + icon + title, whole cluster toggles. */
   .card :global(.sec-toggle) {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
     background: none;
     border: none;
     padding: 0;
@@ -671,6 +668,11 @@
     color: inherit;
     cursor: pointer;
     min-width: 0;
+  }
+  .card :global(.sec-toggle > span) {
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-2);
   }
   .chev {
     display: inline-grid;
@@ -754,10 +756,6 @@
   }
 
   .card :global(.asis) {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
     min-width: 0;
     background: none;
     border: none;
@@ -768,6 +766,12 @@
     text-align: left;
     cursor: default;
     user-select: none;
+  }
+  .card :global(.asis > span) {
+    width: 100%;
+    min-width: 0;
+    justify-content: space-between;
+    gap: var(--space-2);
   }
   .rows.batch :global(.asis) {
     cursor: pointer;

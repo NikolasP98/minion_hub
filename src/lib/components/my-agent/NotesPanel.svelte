@@ -471,9 +471,6 @@
     border-top: 1px solid var(--color-border);
   }
   :global(.collapse-row) {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
     width: 100%;
     height: 2.25rem;
     padding: 0 0.625rem;
@@ -489,6 +486,9 @@
       color var(--duration-fast) ease,
       background var(--duration-fast) ease;
   }
+  :global(.collapse-row > span) {
+    gap: var(--space-3);
+  }
   :global(.collapse-row):hover {
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
@@ -499,10 +499,6 @@
     flex: 1;
     min-height: 0;
     width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-3);
     padding: var(--space-12) 0 var(--space-4);
     cursor: pointer;
     background: transparent;
@@ -511,6 +507,11 @@
     transition:
       color var(--duration-fast) ease,
       background var(--duration-fast) ease;
+  }
+  :global(.rail > span) {
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
   }
   :global(.rail):hover {
     color: var(--color-foreground);
@@ -859,9 +860,6 @@
   }
 
   :global(.easel-card) {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
     width: 100%;
     padding: var(--space-2);
     border-radius: var(--radius-xl);
@@ -885,6 +883,12 @@
       border-color var(--duration-fast) ease,
       color var(--duration-fast) ease;
     font-family: inherit;
+  }
+  :global(.easel-card > span) {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
   }
   :global(.easel-card):hover {
     color: var(--color-foreground);

@@ -169,10 +169,13 @@
     padding: var(--space-2) var(--space-2);
     border-radius: var(--radius-sm, 4px);
     cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-0);
     color: var(--color-foreground);
+  }
+  .menu li :global([data-part='button'] > span) {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-0);
   }
   .menu li :global([data-part='button']):hover {
     background: var(--color-bg3);
