@@ -12,7 +12,7 @@
     import { togglePalette } from "$lib/state/ui/command-palette.svelte";
     import { page } from "$app/state";
     import * as m from "$lib/paraglide/messages";
-    import { Activity, Settings, Menu, X, Search, Bell, LogOut, User } from "lucide-svelte";
+    import { Activity, Cloud, Settings, Menu, X, Search, Bell, LogOut, User } from "lucide-svelte";
     import NavIcon from "./NavIcon.svelte";
     import { notifications, refreshNotifications } from "$lib/state/features/notifications.svelte";
     import { onMount } from "svelte";
@@ -26,6 +26,7 @@
         return item.activeWhen ? item.activeWhen(page.url) : item.matcher(page.url.pathname);
     }
     const isReliability = $derived(page.url.pathname.startsWith("/reliability"));
+    const isCloud = $derived(page.url.pathname.startsWith("/cloud"));
     const isSettings = $derived(page.url.pathname.startsWith("/settings"));
     const isWorkforce = $derived(page.url.pathname.startsWith("/workforce"));
 
@@ -160,6 +161,12 @@
 
                 <!-- Standalone items (reliability, notifications) -->
                 <div class="sm:hidden mt-1 pt-1 border-t border-[var(--hairline)]">
+                    {#if canClient('workspace.view')}
+                        <a href="/cloud" class="mobile-nav-link {isCloud ? 'active' : ''}" onclick={closeMobileMenu}>
+                            <Cloud size={16} />
+                            <span>{m.nav_cloud()}</span>
+                        </a>
+                    {/if}
                     {#if canClient('reliability.monitor')}
                         <a href="/reliability" class="mobile-nav-link {isReliability ? 'active' : ''}" onclick={closeMobileMenu}>
                             <Activity size={16} />
@@ -171,6 +178,16 @@
 
             <!-- Pinned footer -->
             <div class="mobile-menu-footer shrink-0 border-t border-[var(--hairline)] px-2 py-2 flex flex-col gap-1 bg-bg2">
+                {#if canClient('workspace.view')}
+                    <a
+                        href="/cloud"
+                        class="mobile-nav-link text-xs hidden sm:flex {isCloud ? 'active' : ''}"
+                        onclick={closeMobileMenu}
+                    >
+                        <Cloud size={15} />
+                        <span>{m.nav_cloud()}</span>
+                    </a>
+                {/if}
                 <!-- Reliability (sm+) -->
                 {#if canClient('reliability.monitor')}
                     <a

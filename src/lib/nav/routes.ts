@@ -29,6 +29,7 @@ import {
     Building2,
     UsersRound,
     BrainCircuit,
+    Cloud,
 } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
 import * as m from "$lib/paraglide/messages";
@@ -201,6 +202,17 @@ export const ROUTES: RouteMeta[] = [
         inPalette: true,
         keywords: "plugins tools browse install marketplace",
         paletteIcon: "store",
+    },
+    {
+        path: "/cloud",
+        title: () => m.nav_cloud(),
+        icon: Cloud,
+        matcher: startsWith("/cloud"),
+        requires: "workspace.view",
+        inNav: false,
+        inPalette: true,
+        keywords: "cloud workstation vm desktop terminal ssh exe.dev",
+        paletteIcon: "cloud",
     },
 
     // ── Workforce (the "Kanban" plugin) — palette + titles only ──────────────

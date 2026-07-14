@@ -6,9 +6,10 @@ const admin = { role: 'admin' as const };
 
 describe('can()', () => {
   test('super-view cap (minRole): admin allowed, user denied', () => {
-    // terminal.shell stays a platform-admin super-view after the RBAC migration.
-    expect(can('terminal.shell', user)).toBe(false);
-    expect(can('terminal.shell', admin)).toBe(true);
+    // Cloud workspaces are org-RBAC-driven rather than a platform-admin super-view.
+    expect(can('workspace.view', user, new Set())).toBe(false);
+    expect(can('workspace.view', user, new Set(['workspace:view']))).toBe(true);
+    expect(can('workspace.view', admin, new Set(['workspace:view']))).toBe(true);
   });
   test('users.manage migrated to RBAC permission (not minRole)', () => {
     // Pure can() is permission-driven now; platform admins pass in practice via

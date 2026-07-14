@@ -4,7 +4,6 @@ export const SUPER_VIEWS = [
   // the matrix) — see policy.ts BASE_ACCESS + permissions.ts ROUTE_VIEW_PERMS.
   { key: 'orgs.all', route: '/orgs', navLabel: 'All Orgs' },
   { key: 'config.editor', route: '/config', navLabel: 'Config' },
-  { key: 'terminal.shell', route: '/terminal', navLabel: 'Terminal' },
   { key: 'killswitches.view', route: '/killswitches', navLabel: 'Kill Switches' },
 ] as const;
 

@@ -5,7 +5,7 @@
   import {
     Activity,
     Store,
-    SquareTerminal,
+    Cloud,
     Power,
     Settings,
     PanelLeftClose,
@@ -41,7 +41,7 @@
   const navSections = $derived<Section[]>([...staticSections, ...pluginsSections]);
 
   const showReliability = $derived(canClient('reliability.monitor'));
-  const showTerminal = $derived(canClient('terminal.shell'));
+  const showCloud = $derived(canClient('workspace.view'));
   const isSettings = $derived(page.url.pathname.startsWith('/settings'));
 
   // Top utility row: icon-only pills that expand inline to icon+label when the
@@ -51,7 +51,7 @@
     [
       { href: '/reliability', label: m.nav_reliability(), icon: Activity, show: showReliability },
       { href: '/marketplace', label: m.nav_marketplace(), icon: Store, show: canClient('marketplace.view') },
-      { href: '/terminal', label: m.nav_terminal(), icon: SquareTerminal, show: showTerminal },
+      { href: '/cloud', label: m.nav_cloud(), icon: Cloud, show: showCloud },
       { href: '/killswitches', label: m.nav_killSwitches(), icon: Power, show: canClient('killswitches.view') },
     ].filter((t) => t.show),
   );

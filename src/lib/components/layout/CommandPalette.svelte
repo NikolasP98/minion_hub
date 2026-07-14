@@ -30,6 +30,7 @@
         Wand2,
         Paintbrush,
         Bell,
+        Cloud,
     } from 'lucide-svelte';
     import * as m from '$lib/paraglide/messages';
 
@@ -63,6 +64,7 @@
         wand: Wand2,
         paintbrush: Paintbrush,
         bell: Bell,
+        cloud: Cloud,
     };
 
     // Global: open/close the palette (fires anywhere, including inside inputs).

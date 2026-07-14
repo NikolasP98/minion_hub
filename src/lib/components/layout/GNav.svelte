@@ -22,6 +22,7 @@
         { key: 'A', path: '/agents' },
         { key: 'B', path: '/brains' },
         { key: 'C', path: '/crm' },
+        { key: 'D', path: '/cloud' },
         { key: 'F', path: '/finances' },
         { key: 'K', path: '/stock' },
         { key: 'P', path: '/pos' },
