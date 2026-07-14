@@ -2,12 +2,12 @@
   import { LayoutDashboard, Target, Image, Settings } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { SideNav, type SideNavItem } from '$lib/components/ui';
+  import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
   import { canViewPath } from '$lib/access/can.svelte';
 
   // Hide subpage links the role can't view (sub-resource view caps) — same
   // behaviour as the main sidebar hiding module links.
-  const items = $derived<SideNavItem[]>(
+  const items = $derived<SectionNavItem[]>(
     [
       { id: 'dashboard', label: m.nav_ads(), icon: LayoutDashboard, href: '/socials' },
       { id: 'campaigns', label: m.ads_nav_campaigns(), icon: Target, href: '/socials/campaigns' },
@@ -27,4 +27,4 @@
   const activeId = $derived(items.find((i) => isActive(i.id, i.href ?? ''))?.id);
 </script>
 
-<SideNav {items} {activeId} ariaLabel={m.nav_ads()} header={m.nav_ads()} />
+<SectionNav {items} {activeId} ariaLabel={m.nav_ads()} />

@@ -5,6 +5,7 @@
   import * as m from '$lib/paraglide/messages';
   import { Sparkles, RefreshCw, Trophy } from 'lucide-svelte';
   import { PageHeader, Button } from '$lib/components/ui';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import CrmWordCloud from '$lib/components/crm/CrmWordCloud.svelte';
   import CrmSentimentTrend from '$lib/components/crm/CrmSentimentTrend.svelte';
 
@@ -60,13 +61,17 @@
 
 <svelte:head><title>{m.crm_insights_title()} — {m.crm_title()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
-  <PageHeader title={m.crm_insights_title()} subtitle={m.crm_subtitle()}>
+<PageShell archetype="collection" scroll="region" labelledBy="crm-insights-title">
+  <PageHeader
+    titleId="crm-insights-title"
+    title={m.crm_insights_title()}
+    subtitle={m.crm_subtitle()}
+  >
     {#snippet leading()}<Sparkles size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <!-- Full-width scroller so the scrollbar hugs the screen edge; content centered. -->
-  <div class="flex-1 min-h-0 overflow-auto p-4">
+  <PageBody padding="compact" scroll="region">
     <div class="flex flex-col gap-4 max-w-5xl mx-auto w-full">
       <!-- C3 — learning from winning conversations -->
       <section class="card">
@@ -92,7 +97,9 @@
                 {#each data.winAnalysis.wins as w (w.point)}
                   <li>
                     <span class="wa-point">{w.point}</span>
-                    {#if w.repeat}<span class="wa-repeat">{m.crm_wins_analysis_repeat()} {w.repeat}</span>{/if}
+                    {#if w.repeat}<span class="wa-repeat"
+                        >{m.crm_wins_analysis_repeat()} {w.repeat}</span
+                      >{/if}
                   </li>
                 {/each}
               </ul>
@@ -136,50 +143,127 @@
           <span>{m.crm_insights_words_title()}</span>
           <span class="seg" role="group">
             {#each RANGES as r (r.id)}
-              <button class="seg-btn" class:active={data.range === r.id} onclick={() => setRange(r.id)}>{r.label()}</button>
+              <Button
+                variant={data.range === r.id ? 'secondary' : 'ghost'}
+                size="sm"
+                aria-pressed={data.range === r.id}
+                onclick={() => setRange(r.id)}>{r.label()}</Button
+              >
             {/each}
           </span>
         </header>
         <CrmWordCloud words={data.words} />
       </section>
     </div>
-  </div>
-</div>
+  </PageBody>
+</PageShell>
 
 <style>
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.85rem 1rem; }
-  .card-h { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.78rem; font-weight: 600; color: var(--color-muted-foreground); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.8rem; }
-  .seg { display: inline-flex; gap: 0.15rem; padding: 0.2rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--color-card); }
-  .seg-btn { padding: 0.2rem 0.55rem; border-radius: var(--radius-sm, 6px); font-size: 0.74rem; font-weight: 500; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
-  .seg-btn:hover { color: var(--color-foreground); }
-  .seg-btn.active { color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 14%, transparent); font-weight: 600; }
-  :global(.trend-head) { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.4rem; }
-  :global(.trend-cur) { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    background: var(--color-card);
+    padding: var(--space-4, 16px) var(--space-4, 16px);
+  }
+  .card-h {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2, 8px);
+    font-size: var(--font-size-body, 14px);
+    font-weight: 600;
+    color: var(--color-muted-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: var(--space-3, 12px);
+  }
+  .seg {
+    display: inline-flex;
+    gap: var(--space-0-5, 2px);
+    padding: var(--space-0-5, 2px);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    background: var(--color-card);
+  }
+  :global(.trend-head) {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2, 8px);
+    margin-bottom: var(--space-2, 8px);
+  }
+  :global(.trend-cur) {
+    font-size: var(--font-size-display, 28px);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
 
   /* AI win analysis */
-  .wa { margin-top: 0.9rem; display: flex; flex-direction: column; gap: 0.4rem; }
-  .wa-h {
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-    margin-top: 0.5rem;
+  .wa {
+    margin-top: var(--space-4, 16px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
   }
-  .wa-h-win { color: var(--color-success); }
-  .wa-h-improve { color: var(--color-warning); }
-  .wa-list { display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.2rem; }
+  .wa-h {
+    font-size: var(--font-size-caption, 12px);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: var(--space-2, 8px);
+  }
+  .wa-h-win {
+    color: var(--color-success);
+  }
+  .wa-h-improve {
+    color: var(--color-warning);
+  }
+  .wa-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+    padding-left: var(--space-0-5, 2px);
+  }
   .wa-list > li {
-    position: relative; padding-left: 1rem; font-size: 0.85rem; line-height: 1.4;
+    position: relative;
+    padding-left: var(--space-4, 16px);
+    font-size: var(--font-size-body, 14px);
+    line-height: 1.4;
   }
   .wa-list > li::before {
-    content: ''; position: absolute; left: 0.15rem; top: 0.5rem;
-    width: 0.32rem; height: 0.32rem; border-radius: 999px; background: var(--color-accent);
+    content: '';
+    position: absolute;
+    left: 0.15rem;
+    top: 0.5rem;
+    width: 0.32rem;
+    height: 0.32rem;
+    border-radius: var(--radius-full);
+    background: var(--color-accent);
   }
-  .wa-point { color: var(--color-foreground); font-weight: 500; }
+  .wa-point {
+    color: var(--color-foreground);
+    font-weight: 500;
+  }
   .wa-repeat {
-    display: block; margin-top: 0.15rem; font-size: 0.8rem; color: var(--color-muted-foreground);
+    display: block;
+    margin-top: var(--space-0-5, 2px);
+    font-size: var(--font-size-body, 14px);
+    color: var(--color-muted-foreground);
   }
-  .wa-repeat::before { content: '↻ '; color: var(--color-success); }
+  .wa-repeat::before {
+    content: '↻ ';
+    color: var(--color-success);
+  }
   .wa-sublist {
-    margin-top: 0.25rem; display: flex; flex-direction: column; gap: 0.2rem;
-    padding-left: 0.9rem; list-style: disc; color: var(--color-muted-foreground); font-size: 0.8rem;
+    margin-top: var(--space-1, 4px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5, 2px);
+    padding-left: var(--space-4, 16px);
+    list-style: disc;
+    color: var(--color-muted-foreground);
+    font-size: var(--font-size-body, 14px);
   }
-  .wa-sublist > li { list-style: disc; }
+  .wa-sublist > li {
+    list-style: disc;
+  }
 </style>

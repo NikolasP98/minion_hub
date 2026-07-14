@@ -3,7 +3,8 @@
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
   import { LayoutGrid } from 'lucide-svelte';
-  import { PageHeader, Badge, Toggle } from '$lib/components/ui';
+  import { PageHeader, Badge, Button, Toggle } from '$lib/components/ui';
+  import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
   import { canAct } from '$lib/access/can.svelte';
@@ -16,7 +17,9 @@
   const stockEnabled = $derived(data.stockEnabled);
   type Row = (typeof sellables)[number];
 
-  const categories = $derived(Array.from(new Set(sellables.map((s) => s.category).filter((c): c is string => !!c))).sort());
+  const categories = $derived(
+    Array.from(new Set(sellables.map((s) => s.category).filter((c): c is string => !!c))).sort(),
+  );
 
   // Only the two `editable: true` columns (category, unitPrice) — DataTable's
   // draft only ever contains editable-column keys, so this never round-trips
@@ -51,20 +54,59 @@
 
   const columns = $derived<DataColumn<Row>[]>([
     { key: 'name', label: m.stock_col_name(), custom: true, accessor: (s) => s.name },
-    { key: 'code', label: m.stock_col_code(), accessor: (s) => s.code, cellClass: 'font-mono text-xs' },
-    { key: 'category', label: m.fin_col_category(), accessor: (s) => s.category ?? '', editable: true },
     {
-      key: 'unitPrice', label: m.pos_sell_price(), align: 'right', editable: true, editType: 'number', custom: true,
-      accessor: (s) => s.unitPrice, exportValue: (s) => s.unitPrice ?? '',
+      key: 'code',
+      label: m.stock_col_code(),
+      accessor: (s) => s.code,
+      cellClass: 'font-mono text-xs',
+    },
+    {
+      key: 'category',
+      label: m.fin_col_category(),
+      accessor: (s) => s.category ?? '',
+      editable: true,
+    },
+    {
+      key: 'unitPrice',
+      label: m.pos_sell_price(),
+      align: 'right',
+      editable: true,
+      editType: 'number',
+      custom: true,
+      accessor: (s) => s.unitPrice,
+      exportValue: (s) => s.unitPrice ?? '',
     },
     { key: 'kind', label: m.pos_catalog_col_kind(), custom: true, accessor: (s) => s.kind },
     ...(stockEnabled
-      ? [{ key: 'stockQty', label: m.pos_catalog_col_stock(), align: 'right' as const, custom: true, accessor: (s: Row) => s.stockQty ?? '' }]
+      ? [
+          {
+            key: 'stockQty',
+            label: m.pos_catalog_col_stock(),
+            align: 'right' as const,
+            custom: true,
+            accessor: (s: Row) => s.stockQty ?? '',
+          },
+        ]
       : []),
     ...(stockEnabled
-      ? [{ key: 'hasMapping', label: m.pos_catalog_col_mapped(), align: 'center' as const, custom: true, accessor: (s: Row) => s.hasMapping }]
+      ? [
+          {
+            key: 'hasMapping',
+            label: m.pos_catalog_col_mapped(),
+            align: 'center' as const,
+            custom: true,
+            accessor: (s: Row) => s.hasMapping,
+          },
+        ]
       : []),
-    { key: 'active', label: m.fin_col_active(), align: 'center', custom: true, accessor: (s) => s.active, exportValue: (s) => (s.active ? 1 : 0) },
+    {
+      key: 'active',
+      label: m.fin_col_active(),
+      align: 'center',
+      custom: true,
+      accessor: (s) => s.active,
+      exportValue: (s) => (s.active ? 1 : 0),
+    },
   ]);
 
   // ── Wizard (create + edit) ───────────────────────────────────────────────
@@ -90,8 +132,12 @@
 
 <svelte:head><title>{m.pos_catalog_title()} — {m.pos_nav_catalog()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
-  <PageHeader title={m.pos_catalog_title()} subtitle={m.pos_catalog_subtitle()}>
+<PageShell archetype="collection" scroll="region" labelledBy="pos-catalog-title">
+  <PageHeader
+    titleId="pos-catalog-title"
+    title={m.pos_catalog_title()}
+    subtitle={m.pos_catalog_subtitle()}
+  >
     {#snippet leading()}<LayoutGrid size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
@@ -115,7 +161,9 @@
     {#snippet cell(s: Row, col: DataColumn<Row>)}
       {#if col.key === 'name'}
         {#if canWrite}
-          <button type="button" class="name-link" onclick={() => openEdit(s)}>{s.name}</button>
+          <Button variant="ghost" size="sm" class="name-link" onclick={() => openEdit(s)}
+            >{s.name}</Button
+          >
         {:else}
           <span class="truncate block max-w-[16rem]">{s.name}</span>
         {/if}
@@ -126,17 +174,26 @@
           {s.kind === 'product' ? m.pos_catalog_kind_product() : m.pos_catalog_kind_service()}
         </Badge>
       {:else if col.key === 'stockQty'}
-        <span class="tabular-nums">{s.kind === 'product' && s.stockQty != null ? s.stockQty : '—'}</span>
+        <span class="tabular-nums"
+          >{s.kind === 'product' && s.stockQty != null ? s.stockQty : '—'}</span
+        >
       {:else if col.key === 'hasMapping'}
-        <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}></span>
+        <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}
+        ></span>
       {:else if col.key === 'active'}
         {#key `${s.productId}-${toggleNonce}`}
-          <Toggle checked={s.active} size="sm" ariaLabel={m.fin_col_active()} disabled={!canWrite} onchange={(checked) => toggleActive(s, checked)} />
+          <Toggle
+            checked={s.active}
+            size="sm"
+            ariaLabel={m.fin_col_active()}
+            disabled={!canWrite}
+            onchange={(checked) => toggleActive(s, checked)}
+          />
         {/key}
       {/if}
     {/snippet}
   </DataTable>
-</div>
+</PageShell>
 
 <SellableWizard
   bind:open={wizardOpen}
@@ -149,8 +206,23 @@
 />
 
 <style>
-  .name-link { text-align: left; background: transparent; border: none; padding: 0; cursor: pointer; color: var(--color-foreground); text-decoration: none; }
-  .name-link:hover { text-decoration: underline; color: var(--color-accent); }
-  .mapping-dot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-border, var(--hairline)); }
-  .mapping-dot.on { background: var(--color-success, var(--color-emerald)); }
+  :global(.name-link) {
+    justify-content: flex-start;
+    color: var(--color-foreground);
+    text-decoration: none;
+  }
+  :global(.name-link:hover) {
+    text-decoration: underline;
+    color: var(--color-accent);
+  }
+  .mapping-dot {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--radius-full);
+    background: var(--color-border, var(--hairline));
+  }
+  .mapping-dot.on {
+    background: var(--color-success, var(--color-emerald));
+  }
 </style>

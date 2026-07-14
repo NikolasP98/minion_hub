@@ -4,6 +4,7 @@ import AsyncBoundary from './AsyncBoundary.svelte';
 import Dialog from './Dialog.svelte';
 import FoundationHarness from './foundation-test-harness.svelte';
 import SectionNav from './SectionNav.svelte';
+import SectionNavBusinessFixture from './section-nav-business-fixture.svelte';
 import { assertDialogLabel } from './dialog';
 import { clampWindowRect, moveWindowBy, resizeWindowBy } from './draggable-window';
 
@@ -72,6 +73,15 @@ describe('composition foundations', () => {
     expect(body).toContain('type="search"');
     expect(body).toContain('aria-label="Search settings"');
     expect(body).toContain('href="/settings/appearance"');
+  });
+
+  it('keeps nested destinations and persistent operational context in the responsive section nav', () => {
+    const body = render(SectionNavBusinessFixture).body;
+    expect(body).toContain('aria-label="Operations"');
+    expect(body).toMatch(/class="[^"]*nested[^"]*"/);
+    expect(body).toContain('href="/operations/insights"');
+    expect(body).toMatch(/class="nav-footer[^"]*"/);
+    expect(body).toContain('Open shift');
   });
 
   it('keeps the legacy PageHeader action contract while adding priority hooks', () => {

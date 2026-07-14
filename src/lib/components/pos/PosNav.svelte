@@ -2,7 +2,7 @@
   import { ShoppingCart, CalendarDays, LayoutGrid, PackagePlus } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { SideNav, type SideNavItem } from '$lib/components/ui';
+  import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
   import { canViewPath } from '$lib/access/can.svelte';
   import ShiftBanner from '$lib/components/pos/ShiftBanner.svelte';
 
@@ -12,11 +12,18 @@
     return pathname === `/pos/${id}` || pathname.startsWith(`/pos/${id}/`);
   }
 
-  const items = $derived<SideNavItem[]>(
+  const items = $derived<SectionNavItem[]>(
     [
       { id: 'sell', label: m.pos_nav_sell(), icon: ShoppingCart, href: '/pos/sell' },
       ...(page.data.schedulingEnabled
-        ? [{ id: 'appointments', label: m.pos_nav_appointments(), icon: CalendarDays, href: '/pos/appointments' }]
+        ? [
+            {
+              id: 'appointments',
+              label: m.pos_nav_appointments(),
+              icon: CalendarDays,
+              href: '/pos/appointments',
+            },
+          ]
         : []),
       { id: 'catalog', label: m.pos_nav_catalog(), icon: LayoutGrid, href: '/pos/catalog' },
       ...(page.data.stockEnabled
@@ -28,8 +35,8 @@
   const activeId = $derived(items.find((i) => isActive(i.id))?.id);
 </script>
 
-<SideNav {items} {activeId} ariaLabel="POS" header={m.nav_pos()}>
+<SectionNav {items} {activeId} ariaLabel={m.nav_pos()}>
   {#snippet footer()}
     <ShiftBanner />
   {/snippet}
-</SideNav>
+</SectionNav>

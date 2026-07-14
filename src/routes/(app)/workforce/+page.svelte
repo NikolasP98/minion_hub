@@ -1,355 +1,386 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import type { PageData } from './$types';
-	import * as m from '$lib/paraglide/messages';
-	import { startPolling } from '$lib/utils/live-polling';
-	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
-	import Sparkline from '$lib/components/Sparkline.svelte';
-	import JsonView from '$lib/components/workforce/JsonView.svelte';
-	import { PageHeader } from '$lib/components/ui';
-	import {
-		ListTodo,
-		ClipboardCheck,
-		Activity as ActivityIcon,
-		Network,
-		Target,
-		Gauge,
-		Inbox,
-		Receipt,
-		Settings,
-		FolderKanban,
-		LayoutDashboard,
-	} from 'lucide-svelte';
+  import { onMount } from 'svelte';
+  import type { PageData } from './$types';
+  import * as m from '$lib/paraglide/messages';
+  import { startPolling } from '$lib/utils/live-polling';
+  import LiveIndicator from '$lib/components/LiveIndicator.svelte';
+  import Sparkline from '$lib/components/Sparkline.svelte';
+  import JsonView from '$lib/components/workforce/JsonView.svelte';
+  import { PageHeader } from '$lib/components/ui';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import {
+    ListTodo,
+    ClipboardCheck,
+    Activity as ActivityIcon,
+    Network,
+    Target,
+    Gauge,
+    Inbox,
+    Receipt,
+    Settings,
+    FolderKanban,
+    LayoutDashboard,
+  } from 'lucide-svelte';
 
-	let { data }: { data: PageData } = $props();
+  let { data }: { data: PageData } = $props();
 
-	const { summary, badges, activity, costTrend } = $derived(data);
-	const trendValues = $derived(costTrend.map((p) => p.cents));
+  const { summary, badges, activity, costTrend } = $derived(data);
+  const trendValues = $derived(costTrend.map((p) => p.cents));
 
-	type WorkforceTile = {
-		label: string;
-		href: string;
-		icon: typeof ListTodo;
-		description: string;
-		badge?: { text: string; tone: 'primary' | 'amber' | 'destructive' | 'muted' };
-	};
+  type WorkforceTile = {
+    label: string;
+    href: string;
+    icon: typeof ListTodo;
+    description: string;
+    badge?: { text: string; tone: 'primary' | 'amber' | 'destructive' | 'muted' };
+  };
 
-	const tiles = $derived<WorkforceTile[]>([
-		{
-			label: m.workforce_issues(),
-			href: '/workforce/issues',
-			icon: ListTodo,
-			description: `${summary.tasks.open + summary.tasks.inProgress} ${m.workforce_open()}`,
-		},
-		{
-			label: m.workforce_approvals(),
-			href: '/workforce/approvals',
-			icon: ClipboardCheck,
-			description: m.workforce_pendingDecisions(),
-			badge: badges.approvals > 0 ? { text: String(badges.approvals), tone: 'amber' } : undefined,
-		},
-		{
-			label: m.workforce_activity(),
-			href: '/workforce/activity',
-			icon: ActivityIcon,
-			description: m.workforce_recentEvents(),
-		},
-		{
-			label: m.workforce_org(),
-			href: '/workforce/org',
-			icon: Network,
-			description: m.workforce_reportingTree(),
-		},
-		{
-			label: m.workforce_goals(),
-			href: '/workforce/goals',
-			icon: Target,
-			description: m.workforce_companyToAgent(),
-		},
-		{
-			label: m.workforce_projects(),
-			href: '/workforce/projects',
-			icon: FolderKanban,
-			description: m.workforce_workspacesAndScope(),
-		},
-		{
-			label: m.workforce_reliability(),
-			href: '/workforce/reliability',
-			icon: Gauge,
-			description: m.workforce_activityHeatmap(),
-			badge: badges.failedRuns > 0 ? { text: String(badges.failedRuns), tone: 'destructive' } : undefined,
-		},
-		{
-			label: m.workforce_inbox(),
-			href: '/workforce/inbox',
-			icon: Inbox,
-			description: m.workforce_notifications(),
-			badge: badges.inbox > 0 ? { text: String(badges.inbox), tone: 'primary' } : undefined,
-		},
-		{
-			label: m.workforce_costs(),
-			href: '/workforce/costs',
-			icon: Receipt,
-			description: `${summary.costs.monthUtilizationPercent.toFixed(0)}% ${m.workforce_ofBudget()}`,
-		},
-		{
-			label: m.workforce_settings(),
-			href: '/workforce/settings',
-			icon: Settings,
-			description: m.workforce_companyAndAgents(),
-		},
-	]);
+  const tiles = $derived<WorkforceTile[]>([
+    {
+      label: m.workforce_issues(),
+      href: '/workforce/issues',
+      icon: ListTodo,
+      description: `${summary.tasks.open + summary.tasks.inProgress} ${m.workforce_open()}`,
+    },
+    {
+      label: m.workforce_approvals(),
+      href: '/workforce/approvals',
+      icon: ClipboardCheck,
+      description: m.workforce_pendingDecisions(),
+      badge: badges.approvals > 0 ? { text: String(badges.approvals), tone: 'amber' } : undefined,
+    },
+    {
+      label: m.workforce_activity(),
+      href: '/workforce/activity',
+      icon: ActivityIcon,
+      description: m.workforce_recentEvents(),
+    },
+    {
+      label: m.workforce_org(),
+      href: '/workforce/org',
+      icon: Network,
+      description: m.workforce_reportingTree(),
+    },
+    {
+      label: m.workforce_goals(),
+      href: '/workforce/goals',
+      icon: Target,
+      description: m.workforce_companyToAgent(),
+    },
+    {
+      label: m.workforce_projects(),
+      href: '/workforce/projects',
+      icon: FolderKanban,
+      description: m.workforce_workspacesAndScope(),
+    },
+    {
+      label: m.workforce_reliability(),
+      href: '/workforce/reliability',
+      icon: Gauge,
+      description: m.workforce_activityHeatmap(),
+      badge:
+        badges.failedRuns > 0
+          ? { text: String(badges.failedRuns), tone: 'destructive' }
+          : undefined,
+    },
+    {
+      label: m.workforce_inbox(),
+      href: '/workforce/inbox',
+      icon: Inbox,
+      description: m.workforce_notifications(),
+      badge: badges.inbox > 0 ? { text: String(badges.inbox), tone: 'primary' } : undefined,
+    },
+    {
+      label: m.workforce_costs(),
+      href: '/workforce/costs',
+      icon: Receipt,
+      description: `${summary.costs.monthUtilizationPercent.toFixed(0)}% ${m.workforce_ofBudget()}`,
+    },
+    {
+      label: m.workforce_settings(),
+      href: '/workforce/settings',
+      icon: Settings,
+      description: m.workforce_companyAndAgents(),
+    },
+  ]);
 
-	const BADGE_TINT: Record<NonNullable<WorkforceTile['badge']>['tone'], string> = {
-		primary: 'bg-primary/10 text-primary',
-		amber: 'bg-warning/10 text-warning',
-		destructive: 'bg-destructive/10 text-destructive',
-		muted: 'bg-muted text-muted-foreground',
-	};
+  const BADGE_TINT: Record<NonNullable<WorkforceTile['badge']>['tone'], string> = {
+    primary: 'bg-primary/10 text-primary',
+    amber: 'bg-warning/10 text-warning',
+    destructive: 'bg-destructive/10 text-destructive',
+    muted: 'bg-muted text-muted-foreground',
+  };
 
-	function formatCents(cents: number): string {
-		return `$${(cents / 100).toFixed(2)}`;
-	}
+  function formatCents(cents: number): string {
+    return `$${(cents / 100).toFixed(2)}`;
+  }
 
-	onMount(() => startPolling('app:dashboard', 5000));
+  onMount(() => startPolling('app:dashboard', 5000));
 </script>
 
-<PageHeader title={m.workforce_dashboard()}>
-	{#snippet leading()}
-		<LayoutDashboard size={16} class="text-accent shrink-0" />
-	{/snippet}
-	{#snippet actions()}
-		<LiveIndicator intervalMs={5000} />
-		{#if badges.approvals > 0 || badges.inbox > 0 || badges.failedRuns > 0 || badges.joinRequests > 0}
-			<div class="hidden sm:flex gap-2 text-xs">
-				{#if badges.inbox > 0}
-					<span class="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
-						{badges.inbox} inbox
-					</span>
-				{/if}
-				{#if badges.approvals > 0}
-					<span class="rounded-full bg-warning/10 px-2 py-0.5 font-medium text-warning">
-						{badges.approvals} approvals
-					</span>
-				{/if}
-				{#if badges.failedRuns > 0}
-					<span class="rounded-full bg-destructive/10 px-2 py-0.5 font-medium text-destructive">
-						{badges.failedRuns} failed
-					</span>
-				{/if}
-				{#if badges.joinRequests > 0}
-					<span class="rounded-full bg-muted px-2 py-0.5 font-medium text-muted-foreground">
-						{badges.joinRequests} join requests
-					</span>
-				{/if}
-			</div>
-		{/if}
-	{/snippet}
-</PageHeader>
-<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
-	<!-- Summary cards -->
-	<section aria-label={m.a11y0_summary()} class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-		<!-- Agents -->
-		<div class="surface-2 rounded-lg p-4 space-y-2">
-			<h2 class="text-sm font-medium text-muted-foreground">{m.workforce_agents()}</h2>
-			<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-				<span class="text-muted-foreground">{m.workforce_active()}</span>
-				<span class="font-medium tabular-nums">{summary.agents.active}</span>
-				<span class="text-muted-foreground">{m.workforce_running()}</span>
-				<span class="font-medium tabular-nums">{summary.agents.running}</span>
-				<span class="text-muted-foreground">{m.workforce_paused()}</span>
-				<span class="font-medium tabular-nums">{summary.agents.paused}</span>
-				<span class="text-muted-foreground">{m.workforce_error()}</span>
-				<span class="font-medium tabular-nums text-destructive">{summary.agents.error}</span>
-			</div>
-		</div>
+<PageShell archetype="dashboard" scroll="region" labelledBy="workforce-title">
+  <PageHeader titleId="workforce-title" title={m.workforce_dashboard()}>
+    {#snippet leading()}
+      <LayoutDashboard size={16} class="text-accent shrink-0" />
+    {/snippet}
+    {#snippet actions()}
+      <LiveIndicator intervalMs={5000} />
+      {#if badges.approvals > 0 || badges.inbox > 0 || badges.failedRuns > 0 || badges.joinRequests > 0}
+        <div class="hidden sm:flex gap-2 text-xs">
+          {#if badges.inbox > 0}
+            <span class="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+              {badges.inbox} inbox
+            </span>
+          {/if}
+          {#if badges.approvals > 0}
+            <span class="rounded-full bg-warning/10 px-2 py-0.5 font-medium text-warning">
+              {badges.approvals} approvals
+            </span>
+          {/if}
+          {#if badges.failedRuns > 0}
+            <span class="rounded-full bg-destructive/10 px-2 py-0.5 font-medium text-destructive">
+              {badges.failedRuns} failed
+            </span>
+          {/if}
+          {#if badges.joinRequests > 0}
+            <span class="rounded-full bg-muted px-2 py-0.5 font-medium text-muted-foreground">
+              {badges.joinRequests} join requests
+            </span>
+          {/if}
+        </div>
+      {/if}
+    {/snippet}
+  </PageHeader>
+  <PageBody padding="default" scroll="region" class="space-y-6">
+    <!-- Summary cards -->
+    <section aria-label={m.a11y0_summary()} class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <!-- Agents -->
+      <div class="surface-2 rounded-lg p-4 space-y-2">
+        <h2 class="text-sm font-medium text-muted-foreground">{m.workforce_agents()}</h2>
+        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <span class="text-muted-foreground">{m.workforce_active()}</span>
+          <span class="font-medium tabular-nums">{summary.agents.active}</span>
+          <span class="text-muted-foreground">{m.workforce_running()}</span>
+          <span class="font-medium tabular-nums">{summary.agents.running}</span>
+          <span class="text-muted-foreground">{m.workforce_paused()}</span>
+          <span class="font-medium tabular-nums">{summary.agents.paused}</span>
+          <span class="text-muted-foreground">{m.workforce_error()}</span>
+          <span class="font-medium tabular-nums text-destructive">{summary.agents.error}</span>
+        </div>
+      </div>
 
-		<!-- Tasks (clickable, drills into filtered issues) -->
-		<div class="surface-2 rounded-lg p-4 space-y-2">
-			<h2 class="text-sm font-medium text-muted-foreground">{m.workforce_tasks()}</h2>
-			<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-				<a
-					href="/workforce/issues?status=todo"
-					class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
-				>
-					{m.workforce_open()}
-				</a>
-				<a
-					href="/workforce/issues?status=todo"
-					class="font-medium tabular-nums hover:underline underline-offset-2"
-				>
-					{summary.tasks.open}
-				</a>
-				<a
-					href="/workforce/issues?status=in_progress"
-					class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
-				>
-					{m.workforce_inProgress()}
-				</a>
-				<a
-					href="/workforce/issues?status=in_progress"
-					class="font-medium tabular-nums hover:underline underline-offset-2"
-				>
-					{summary.tasks.inProgress}
-				</a>
-				<a
-					href="/workforce/issues?status=blocked"
-					class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
-				>
-					{m.workforce_blocked()}
-				</a>
-				<a
-					href="/workforce/issues?status=blocked"
-					class="font-medium tabular-nums text-warning hover:underline underline-offset-2"
-				>
-					{summary.tasks.blocked}
-				</a>
-				<a
-					href="/workforce/issues?status=done"
-					class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
-				>
-					{m.workforce_done()}
-				</a>
-				<a
-					href="/workforce/issues?status=done"
-					class="font-medium tabular-nums text-success hover:underline underline-offset-2"
-				>
-					{summary.tasks.done}
-				</a>
-			</div>
-		</div>
+      <!-- Tasks (clickable, drills into filtered issues) -->
+      <div class="surface-2 rounded-lg p-4 space-y-2">
+        <h2 class="text-sm font-medium text-muted-foreground">{m.workforce_tasks()}</h2>
+        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <a
+            href="/workforce/issues?status=todo"
+            class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
+          >
+            {m.workforce_open()}
+          </a>
+          <a
+            href="/workforce/issues?status=todo"
+            class="font-medium tabular-nums hover:underline underline-offset-2"
+          >
+            {summary.tasks.open}
+          </a>
+          <a
+            href="/workforce/issues?status=in_progress"
+            class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
+          >
+            {m.workforce_inProgress()}
+          </a>
+          <a
+            href="/workforce/issues?status=in_progress"
+            class="font-medium tabular-nums hover:underline underline-offset-2"
+          >
+            {summary.tasks.inProgress}
+          </a>
+          <a
+            href="/workforce/issues?status=blocked"
+            class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
+          >
+            {m.workforce_blocked()}
+          </a>
+          <a
+            href="/workforce/issues?status=blocked"
+            class="font-medium tabular-nums text-warning hover:underline underline-offset-2"
+          >
+            {summary.tasks.blocked}
+          </a>
+          <a
+            href="/workforce/issues?status=done"
+            class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
+          >
+            {m.workforce_done()}
+          </a>
+          <a
+            href="/workforce/issues?status=done"
+            class="font-medium tabular-nums text-success hover:underline underline-offset-2"
+          >
+            {summary.tasks.done}
+          </a>
+        </div>
+      </div>
 
-		<!-- Costs -->
-		<div class="surface-2 rounded-lg p-4 space-y-2">
-			<div class="flex items-start justify-between gap-2">
-				<div class="space-y-1">
-					<h2 class="text-sm font-medium text-muted-foreground">{m.workforce_monthlySpend()}</h2>
-					<div class="text-2xl font-semibold tabular-nums">{formatCents(summary.costs.monthSpendCents)}</div>
-				</div>
-				{#if trendValues.length > 1}
-					<div class="text-primary shrink-0 mt-1" title={m.a11y0_dailySpendTrend()}>
-						<Sparkline values={trendValues} width={120} height={32} />
-					</div>
-				{/if}
-			</div>
-			<div class="text-xs text-muted-foreground">
-				{m.workforce_ofBudgetWithPercent({ budget: formatCents(summary.costs.monthBudgetCents), percent: summary.costs.monthUtilizationPercent.toFixed(1) })}
-			</div>
-			{#if summary.costs.monthUtilizationPercent > 0}
-				<div class="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-					<div
-						class="h-full rounded-full bg-primary transition-all"
-						style="width: {Math.min(summary.costs.monthUtilizationPercent, 100)}%"
-					></div>
-				</div>
-			{/if}
-		</div>
-	</section>
+      <!-- Costs -->
+      <div class="surface-2 rounded-lg p-4 space-y-2">
+        <div class="flex items-start justify-between gap-2">
+          <div class="space-y-1">
+            <h2 class="text-sm font-medium text-muted-foreground">{m.workforce_monthlySpend()}</h2>
+            <div class="text-2xl font-semibold tabular-nums">
+              {formatCents(summary.costs.monthSpendCents)}
+            </div>
+          </div>
+          {#if trendValues.length > 1}
+            <div class="text-primary shrink-0 mt-1" title={m.a11y0_dailySpendTrend()}>
+              <Sparkline values={trendValues} width={120} height={32} />
+            </div>
+          {/if}
+        </div>
+        <div class="text-xs text-muted-foreground">
+          {m.workforce_ofBudgetWithPercent({
+            budget: formatCents(summary.costs.monthBudgetCents),
+            percent: summary.costs.monthUtilizationPercent.toFixed(1),
+          })}
+        </div>
+        {#if summary.costs.monthUtilizationPercent > 0}
+          <div class="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              class="h-full rounded-full bg-primary transition-all"
+              style="width: {Math.min(summary.costs.monthUtilizationPercent, 100)}%"
+            ></div>
+          </div>
+        {/if}
+      </div>
+    </section>
 
-	<!-- Budget / incidents row -->
-	{#if summary.budgets.activeIncidents > 0 || summary.pendingApprovals > 0}
-		<section aria-label={m.a11y0_alerts()} class="flex flex-wrap gap-3">
-			{#if summary.budgets.activeIncidents > 0}
-				<div class="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm">
-					<span class="font-medium text-destructive">{summary.budgets.activeIncidents}</span>
-					<span class="text-muted-foreground ml-1">active budget incident{summary.budgets.activeIncidents !== 1 ? 's' : ''}</span>
-				</div>
-			{/if}
-			{#if summary.pendingApprovals > 0}
-				<a
-					href="/workforce/approvals"
-					class="rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm hover:bg-warning/10 transition-colors"
-				>
-					<span class="font-medium text-warning">{summary.pendingApprovals}</span>
-					<span class="text-muted-foreground ml-1">pending approval{summary.pendingApprovals !== 1 ? 's' : ''}</span>
-				</a>
-			{/if}
-			{#if summary.budgets.pausedAgents > 0}
-				<div class="rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm">
-					<span class="font-medium">{summary.budgets.pausedAgents}</span>
-					<span class="text-muted-foreground ml-1">agent{summary.budgets.pausedAgents !== 1 ? 's' : ''} paused</span>
-				</div>
-			{/if}
-			{#if summary.budgets.pausedProjects > 0}
-				<div class="rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm">
-					<span class="font-medium">{summary.budgets.pausedProjects}</span>
-					<span class="text-muted-foreground ml-1">project{summary.budgets.pausedProjects !== 1 ? 's' : ''} paused</span>
-				</div>
-			{/if}
-		</section>
-	{/if}
+    <!-- Budget / incidents row -->
+    {#if summary.budgets.activeIncidents > 0 || summary.pendingApprovals > 0}
+      <section aria-label={m.a11y0_alerts()} class="flex flex-wrap gap-3">
+        {#if summary.budgets.activeIncidents > 0}
+          <div class="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm">
+            <span class="font-medium text-destructive">{summary.budgets.activeIncidents}</span>
+            <span class="text-muted-foreground ml-1"
+              >active budget incident{summary.budgets.activeIncidents !== 1 ? 's' : ''}</span
+            >
+          </div>
+        {/if}
+        {#if summary.pendingApprovals > 0}
+          <a
+            href="/workforce/approvals"
+            class="rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm hover:bg-warning/10 transition-colors"
+          >
+            <span class="font-medium text-warning">{summary.pendingApprovals}</span>
+            <span class="text-muted-foreground ml-1"
+              >pending approval{summary.pendingApprovals !== 1 ? 's' : ''}</span
+            >
+          </a>
+        {/if}
+        {#if summary.budgets.pausedAgents > 0}
+          <div class="rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm">
+            <span class="font-medium">{summary.budgets.pausedAgents}</span>
+            <span class="text-muted-foreground ml-1"
+              >agent{summary.budgets.pausedAgents !== 1 ? 's' : ''} paused</span
+            >
+          </div>
+        {/if}
+        {#if summary.budgets.pausedProjects > 0}
+          <div class="rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm">
+            <span class="font-medium">{summary.budgets.pausedProjects}</span>
+            <span class="text-muted-foreground ml-1"
+              >project{summary.budgets.pausedProjects !== 1 ? 's' : ''} paused</span
+            >
+          </div>
+        {/if}
+      </section>
+    {/if}
 
-	<!-- Workforce nav tiles (bento grid) -->
-	<section aria-label={m.a11y0_workforceNavigation()}>
-		<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-			{m.workforce_exploreWorkforce()}
-		</h2>
-		<ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-			{#each tiles as tile (tile.href)}
-				{@const Icon = tile.icon}
-				<li>
-					<a
-						href={tile.href}
-						class="group relative flex flex-col gap-2 surface-2 rounded-lg p-4 transition-colors hover:bg-bg3 hover:border-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-						aria-label="{tile.label} — {tile.description}"
-					>
-						<div class="flex items-center justify-between gap-2">
-							<span class="inline-flex h-9 w-9 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground transition-colors">
-								<Icon size={18} aria-hidden="true" />
-							</span>
-							{#if tile.badge}
-								<span
-									class="rounded-full px-2 py-0.5 text-xs font-medium tabular-nums {BADGE_TINT[tile.badge.tone]}"
-								>
-									{tile.badge.text}
-								</span>
-							{/if}
-						</div>
-						<div class="space-y-0.5 min-w-0">
-							<div class="text-sm font-medium text-foreground truncate">{tile.label}</div>
-							<div class="text-xs text-muted-foreground truncate">{tile.description}</div>
-						</div>
-					</a>
-				</li>
-			{/each}
-		</ul>
-	</section>
+    <!-- Workforce nav tiles (bento grid) -->
+    <section aria-label={m.a11y0_workforceNavigation()}>
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+        {m.workforce_exploreWorkforce()}
+      </h2>
+      <ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        {#each tiles as tile (tile.href)}
+          {@const Icon = tile.icon}
+          <li>
+            <a
+              href={tile.href}
+              class="group relative flex flex-col gap-2 surface-2 rounded-lg p-4 transition-colors hover:bg-bg3 hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              aria-label="{tile.label} — {tile.description}"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span
+                  class="inline-flex h-9 w-9 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground transition-colors"
+                >
+                  <Icon size={18} aria-hidden="true" />
+                </span>
+                {#if tile.badge}
+                  <span
+                    class="rounded-full px-2 py-0.5 text-xs font-medium tabular-nums {BADGE_TINT[
+                      tile.badge.tone
+                    ]}"
+                  >
+                    {tile.badge.text}
+                  </span>
+                {/if}
+              </div>
+              <div class="space-y-0.5 min-w-0">
+                <div class="text-sm font-medium text-foreground truncate">{tile.label}</div>
+                <div class="text-xs text-muted-foreground truncate">{tile.description}</div>
+              </div>
+            </a>
+          </li>
+        {/each}
+      </ul>
+    </section>
 
-	<!-- Activity feed -->
-	<section aria-label={m.a11y0_recentActivity()}>
-		<div class="flex items-center justify-between mb-2">
-			<h2 class="text-lg font-semibold">{m.workforce_recentActivity()}</h2>
-			<a href="/workforce/activity" class="text-xs text-muted-foreground hover:text-foreground hover:underline">
-				{m.workforce_viewAll()}
-			</a>
-		</div>
-		{#if activity.length === 0}
-			<p class="text-muted-foreground text-sm">{m.workforce_noRecentActivity()}</p>
-		{:else}
-			<ul class="surface-2 divide-hairline rounded-lg overflow-hidden">
-				{#each activity.slice(0, 8) as item (item.id)}
-					<li class="px-4 py-2 text-sm flex items-start gap-3">
-						<span class="shrink-0 mt-0.5 rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground uppercase tracking-wide">
-							{item.actorType}
-						</span>
-						<div class="min-w-0 flex-1">
-							<span class="font-medium">{item.action}</span>
-							{#if item.entityType}
-								<span class="text-muted-foreground"> on {item.entityType}</span>
-							{/if}
-							{#if item.details !== null}
-								<div class="mt-1"><JsonView value={item.details} /></div>
-							{/if}
-						</div>
-						<time
-							class="shrink-0 text-xs text-muted-foreground"
-							datetime={new Date(item.createdAt).toISOString()}
-						>
-							{new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-						</time>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</section>
-</main>
+    <!-- Activity feed -->
+    <section aria-label={m.a11y0_recentActivity()}>
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-lg font-semibold">{m.workforce_recentActivity()}</h2>
+        <a
+          href="/workforce/activity"
+          class="text-xs text-muted-foreground hover:text-foreground hover:underline"
+        >
+          {m.workforce_viewAll()}
+        </a>
+      </div>
+      {#if activity.length === 0}
+        <p class="text-muted-foreground text-sm">{m.workforce_noRecentActivity()}</p>
+      {:else}
+        <ul class="surface-2 divide-hairline rounded-lg overflow-hidden">
+          {#each activity.slice(0, 8) as item (item.id)}
+            <li class="px-4 py-2 text-sm flex items-start gap-3">
+              <span
+                class="shrink-0 mt-0.5 rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground uppercase tracking-wide"
+              >
+                {item.actorType}
+              </span>
+              <div class="min-w-0 flex-1">
+                <span class="font-medium">{item.action}</span>
+                {#if item.entityType}
+                  <span class="text-muted-foreground"> on {item.entityType}</span>
+                {/if}
+                {#if item.details !== null}
+                  <div class="mt-1"><JsonView value={item.details} /></div>
+                {/if}
+              </div>
+              <time
+                class="shrink-0 text-xs text-muted-foreground"
+                datetime={new Date(item.createdAt).toISOString()}
+              >
+                {new Date(item.createdAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </time>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+  </PageBody>
+</PageShell>

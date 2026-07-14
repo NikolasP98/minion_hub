@@ -4,6 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
   import { PageHeader, Button, Modal } from '$lib/components/ui';
+  import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
   import { canAct } from '$lib/access/can.svelte';
@@ -28,12 +29,43 @@
   }
 
   const columns: DataColumn<Row>[] = [
-    { key: 'code', label: m.stock_col_code(), custom: true, accessor: (it) => it.code, cellClass: 'font-mono text-xs' },
-    { key: 'name', label: m.stock_col_name(), accessor: (it) => it.name, editable: true, custom: true },
-    { key: 'itemGroup', label: m.stock_col_group(), accessor: (it) => it.itemGroup ?? '', editable: true },
+    {
+      key: 'code',
+      label: m.stock_col_code(),
+      custom: true,
+      accessor: (it) => it.code,
+      cellClass: 'font-mono text-xs',
+    },
+    {
+      key: 'name',
+      label: m.stock_col_name(),
+      accessor: (it) => it.name,
+      editable: true,
+      custom: true,
+    },
+    {
+      key: 'itemGroup',
+      label: m.stock_col_group(),
+      accessor: (it) => it.itemGroup ?? '',
+      editable: true,
+    },
     { key: 'uom', label: m.stock_col_uom(), accessor: (it) => it.uom },
-    { key: 'reorderLevel', label: m.stock_col_reorder_level(), align: 'right', editable: true, editType: 'number', accessor: (it) => it.reorderLevel },
-    { key: 'reorderQty', label: m.stock_col_reorder_qty(), align: 'right', editable: true, editType: 'number', accessor: (it) => it.reorderQty },
+    {
+      key: 'reorderLevel',
+      label: m.stock_col_reorder_level(),
+      align: 'right',
+      editable: true,
+      editType: 'number',
+      accessor: (it) => it.reorderLevel,
+    },
+    {
+      key: 'reorderQty',
+      label: m.stock_col_reorder_qty(),
+      align: 'right',
+      editable: true,
+      editType: 'number',
+      accessor: (it) => it.reorderQty,
+    },
   ];
 
   // ── Create ───────────────────────────────────────────────────────────────
@@ -72,8 +104,12 @@
 
 <svelte:head><title>{m.stock_items_title()} — {m.nav_stock()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
-  <PageHeader title={m.stock_items_title()} subtitle={m.stock_items_subtitle()}>
+<PageShell archetype="collection" scroll="region" labelledBy="stock-items-title">
+  <PageHeader
+    titleId="stock-items-title"
+    title={m.stock_items_title()}
+    subtitle={m.stock_items_subtitle()}
+  >
     {#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
@@ -102,7 +138,7 @@
       {/if}
     {/snippet}
   </DataTable>
-</div>
+</PageShell>
 
 <Modal bind:open={createOpen} title={m.stock_create_item_title()}>
   <div class="flex flex-col gap-3">
@@ -121,15 +157,39 @@
     {#if createErr}<p class="err-msg text-xs">{createErr}</p>{/if}
   </div>
   {#snippet footer()}
-    <Button variant="outline" size="sm" onclick={() => (createOpen = false)}>{m.common_cancel()}</Button>
-    <Button variant="primary" size="sm" onclick={createItem} disabled={createBusy || !newCode.trim() || !newName.trim()}>
+    <Button variant="outline" size="sm" onclick={() => (createOpen = false)}
+      >{m.common_cancel()}</Button
+    >
+    <Button
+      variant="primary"
+      size="sm"
+      onclick={createItem}
+      disabled={createBusy || !newCode.trim() || !newName.trim()}
+    >
       {m.stock_create()}
     </Button>
   {/snippet}
 </Modal>
 
 <style>
-  .inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
-  .fld { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--color-muted-foreground); }
-  .err-msg { font-size: 0.8rem; color: var(--color-destructive); }
+  .inp {
+    height: 1.75rem;
+    padding: 0 var(--space-2, 8px);
+    font-size: var(--font-size-body, 14px);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg3);
+    border: 1px solid var(--hairline);
+    color: var(--color-foreground);
+  }
+  .fld {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 4px);
+    font-size: var(--font-size-body, 14px);
+    color: var(--color-muted-foreground);
+  }
+  .err-msg {
+    font-size: var(--font-size-body, 14px);
+    color: var(--color-destructive);
+  }
 </style>
