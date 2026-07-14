@@ -124,6 +124,7 @@
                         type="button"
                         class="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
                         onclick={clearSearch}
+                        aria-label={m.builder_clear()}
                     >
                         <X size={11} />
                     </button>
@@ -146,6 +147,7 @@
                     type="button"
                     onclick={() => (viewMode = "grid")}
                     aria-label={m.marketplace_agentsListGridView()}
+                    aria-pressed={viewMode === 'grid'}
                     class="w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors
                         {viewMode === 'grid'
                             ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] text-[var(--color-brand-pink)]'
@@ -157,6 +159,7 @@
                     type="button"
                     onclick={() => (viewMode = "list")}
                     aria-label={m.marketplace_agentsListListView()}
+                    aria-pressed={viewMode === 'list'}
                     class="w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors
                         {viewMode === 'list'
                             ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] text-[var(--color-brand-pink)]'

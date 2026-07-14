@@ -12,7 +12,13 @@
   import QuotaStrip from '$lib/components/shells/QuotaStrip.svelte';
   import ShellRow from '$lib/components/shells/ShellRow.svelte';
   import ProvisionForm from '$lib/components/shells/ProvisionForm.svelte';
-  import { PageHeader } from '$lib/components/ui';
+  import { Button, PageHeader } from '$lib/components/ui';
+  import {
+    AsyncBoundary,
+    PageBody,
+    PageShell,
+    type AsyncBoundaryState,
+  } from '$lib/components/ui/foundations';
   import { Terminal } from 'lucide-svelte';
 
   let shells = $state<ShellSummary[]>([]);
@@ -45,42 +51,55 @@
     // Could navigate to the new shell's detail page once it's online.
     void goto(`/shells/${res.shellId}`);
   }
+
+  const pageState = $derived.by<AsyncBoundaryState>(() => {
+    if (error) {
+      return { kind: 'error', description: error, retry: () => void refresh() };
+    }
+    if (loading) return { kind: 'loading', label: m.common_loading() };
+    if (shells.length === 0 && !showProvision) {
+      return {
+        kind: 'empty',
+        title: m.shellsPage_empty(),
+        description: m.shellsPage_emptyDescription(),
+      };
+    }
+    return { kind: 'ready' };
+  });
 </script>
 
-<div class="h-full flex flex-col min-h-0">
+<PageShell archetype="collection" scroll="none" labelledBy="shells-title">
 <PageHeader
+  titleId="shells-title"
   title={m.shellsPage_title()}
   subtitle={m.shellsPage_subtitle()}
 >
   {#snippet leading()}
     <Terminal size={16} class="text-accent shrink-0" />
   {/snippet}
-  {#snippet actions()}
-    <button class="primary" onclick={() => (showProvision = !showProvision)}>
+  {#snippet primaryActions()}
+    <Button variant="primary" size="sm" onclick={() => (showProvision = !showProvision)}>
       {showProvision ? m.common_cancel() : m.shellsPage_spinupButton()}
-    </button>
+    </Button>
   {/snippet}
 </PageHeader>
-<main class="flex-1 min-h-0 overflow-y-auto">
+<PageBody padding="none" scroll="region">
   <QuotaStrip {quota} />
 
-  {#if showProvision}
-    <div class="panel">
-      <ProvisionForm {onProvisioned} />
-    </div>
-  {/if}
+  <AsyncBoundary state={pageState}>
+    {#snippet emptyAction()}
+      <Button variant="primary" size="sm" onclick={() => (showProvision = true)}>
+        {m.shellsPage_spinupButton()}
+      </Button>
+    {/snippet}
+    {#if showProvision}
+      <div class="panel">
+        <ProvisionForm {onProvisioned} />
+      </div>
+    {/if}
 
-  {#if error}
-    <div class="error">{error}</div>
-  {:else if loading}
-    <div class="empty">{m.common_loading()}</div>
-  {:else if shells.length === 0}
-    <div class="empty">
-      <h2>{m.shellsPage_empty()}</h2>
-      <p>{m.shellsPage_emptyDescription()}</p>
-    </div>
-  {:else}
-    <div class="list">
+    {#if shells.length > 0}
+    <div class="list" data-component="shells-list">
       <div class="list-header">
         <span></span>
         <span>{m.shellsPage_name()}</span>
@@ -94,48 +113,35 @@
         <ShellRow {shell} onSelect={(id) => goto(`/shells/${id}`)} />
       {/each}
     </div>
-  {/if}
-</main>
-</div>
+    {/if}
+  </AsyncBoundary>
+</PageBody>
+</PageShell>
 
 <style>
-  .primary {
-    padding: 8px 14px;
-    background: rgb(15, 23, 42);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-weight: 500;
-    cursor: pointer;
-  }
   .panel {
-    border-bottom: 1px solid var(--color-border, #e5e7eb);
-    background: var(--color-surface-soft, #fafafa);
+    border-bottom: 1px solid var(--color-border-default, var(--color-border));
+    background: var(--color-surface-1, var(--color-bg2));
   }
   .list-header {
     display: grid;
     grid-template-columns: auto 1fr 120px 80px 130px 110px 100px;
-    gap: 12px;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--color-border, #e5e7eb);
-    font-size: 11px;
+    gap: var(--space-3, 12px);
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    border-bottom: 1px solid var(--color-border-default, var(--color-border));
+    font-size: var(--font-size-label, 12px);
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--color-text-muted, #6b7280);
+    color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-weight: 600;
-    background: var(--color-surface-soft, #fafafa);
+    background: var(--color-surface-1, var(--color-bg2));
   }
-  .empty, .error {
-    padding: 48px 24px;
-    text-align: center;
-    color: var(--color-text-muted, #6b7280);
-  }
-  .empty h2 {
-    margin: 0 0 8px;
-    font-size: 16px;
-    color: inherit;
-  }
-  .error {
-    color: rgb(185, 28, 28);
+  @media (max-width: 767.98px) {
+    .list-header {
+      display: none;
+    }
+    .list {
+      padding: var(--space-2, 8px) var(--space-page-gutter, 16px);
+    }
   }
 </style>

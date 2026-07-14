@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import type { Session } from '@minion-stack/shared';
@@ -59,11 +60,11 @@
   function statusColor(sk: string): string {
     const s = ui.sessionStatus[sk];
     switch (s) {
-      case 'running': return 'bg-green-400';
-      case 'thinking': return 'bg-yellow-400';
-      case 'idle': return 'bg-zinc-500';
-      case 'aborted': return 'bg-red-400';
-      default: return 'bg-zinc-600';
+      case 'running': return 'bg-status-running';
+      case 'thinking': return 'bg-status-thinking';
+      case 'idle': return 'bg-status-idle';
+      case 'aborted': return 'bg-status-aborted';
+      default: return 'bg-muted';
     }
   }
 
@@ -199,22 +200,24 @@
   <div {...api.getRootProps()}>
     <div class="flex items-center gap-2">
       <label
-        class="text-[10px] font-bold uppercase tracking-[0.6px] text-muted-foreground shrink-0"
+        class="text-xs font-bold uppercase tracking-[0.6px] text-muted-foreground shrink-0"
         {...api.getLabelProps()}
       >{m.session_label()}</label>
 
       <div
-        class="flex flex-1 min-w-0 items-center bg-bg3 border border-border rounded-[4px] transition-all focus-within:border-accent"
+        class="flex flex-1 min-w-0 items-center bg-bg3 border border-border rounded-sm transition-all focus-within:border-accent"
         {...api.getControlProps()}
       >
         <input
-          class="flex-1 min-w-0 bg-transparent border-none outline-none text-foreground text-[11px] font-mono px-1.5 py-[3px] placeholder:text-muted-foreground"
+          class="flex-1 min-w-0 bg-transparent border-none outline-none text-foreground text-xs font-mono px-1.5 py-1 placeholder:text-muted-foreground"
           {...api.getInputProps()}
         />
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           type="button"
           id="combobox:session-combobox:toggle-btn"
-          class="bg-transparent border-none text-muted-foreground cursor-pointer text-[10px] px-1.5 self-stretch flex items-center shrink-0 transition-colors hover:text-foreground"
+          class="!h-auto !w-7 self-stretch shrink-0"
           tabindex={-1}
           aria-label={m.session_toggleList()}
           aria-haspopup="listbox"
@@ -222,21 +225,23 @@
           data-state={api.open ? 'open' : 'closed'}
           onclick={handleChevronClick}
           onpointerdown={handleChevronPointerDown}
-        >&#9662;</button>
+        >▾</Button>
       </div>
 
-      <span class="text-[10px] text-muted-foreground opacity-65 shrink-0">{agentSessions.length}</span>
+      <span class="text-xs text-muted-foreground opacity-65 shrink-0">{agentSessions.length}</span>
 
       {#if !isMainSession}
-        <button
-          class="shrink-0 text-[10px] font-semibold text-accent bg-accent/12 rounded-full px-2 py-[2px] transition-colors hover:bg-accent/20"
+        <Button
+          variant="outline"
+          size="sm"
+          class="shrink-0 text-xs"
           onclick={backToMain}
-        >{m.session_backToMain()}</button>
+        >{m.session_backToMain()}</Button>
       {/if}
     </div>
 
     <!-- Dropdown positioner (always in DOM, hidden via data-state) -->
-    <div class="z-2000 data-[state=closed]:hidden" {...api.getPositionerProps()}>
+    <div class="z-[var(--layer-popover,40)] data-[state=closed]:hidden" {...api.getPositionerProps()}>
       <div
         class="bg-bg2 border border-border rounded-md shadow-md overflow-hidden min-w-[200px]"
         {...api.getContentProps()}
@@ -244,19 +249,19 @@
         <ul class="list-none m-0 p-1 max-h-[220px] overflow-y-auto" {...api.getListProps()}>
           {#each filteredItems as item (item.sessionKey)}
             <li
-              class="group flex items-center gap-[6px] py-[5px] px-2 rounded-sm text-xs cursor-pointer transition-colors data-[highlighted]:bg-bg3 {item.status === 'running' ? 'bg-green-400/8 border-l-2 border-l-green-400' : item.status === 'thinking' ? 'bg-yellow-400/8 border-l-2 border-l-yellow-400' : ''}"
+              class="group flex items-center gap-1.5 py-1 px-2 rounded-sm text-xs cursor-pointer transition-colors data-[highlighted]:bg-bg3 {item.status === 'running' ? 'bg-[color-mix(in_srgb,var(--color-status-running)_8%,transparent)] border-l-2 border-l-status-running' : item.status === 'thinking' ? 'bg-[color-mix(in_srgb,var(--color-status-thinking)_8%,transparent)] border-l-2 border-l-status-thinking' : ''}"
               {...api.getItemProps({ item })}
             >
               <!-- Status dot -->
               <span class="shrink-0 w-[6px] h-[6px] rounded-full {item.statusColor}"></span>
               <!-- Display name -->
               <span
-                class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] group-data-[selected]:text-accent group-data-[selected]:font-semibold"
+                class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs group-data-[selected]:text-accent group-data-[selected]:font-semibold"
                 {...api.getItemTextProps({ item })}
               >{item.displayName}</span>
               <!-- Relative time -->
               {#if item.relTime}
-                <span class="text-[10px] text-muted-foreground shrink-0">{item.relTime}</span>
+                <span class="text-xs text-muted-foreground shrink-0">{item.relTime}</span>
               {/if}
             </li>
           {/each}

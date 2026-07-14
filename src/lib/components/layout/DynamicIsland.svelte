@@ -47,7 +47,7 @@
      pending). Hover / keyboard focus reveals the rest, left→right:
      host · bug · notif · search · avatar. -->
 <div
-  class="island group hidden md:flex fixed top-0 right-0 z-50 items-center gap-0.5 h-9 pl-2 pr-2 rounded-bl-[14px]
+  class="island group hidden md:flex fixed top-[env(safe-area-inset-top,0px)] right-[env(safe-area-inset-right,0px)] z-[var(--layer-navigation,20)] items-center gap-0.5 h-9 pl-2 pr-2 rounded-bl-[var(--radius-xl)]
          bg-bg2/85 backdrop-blur-xl border-b border-l border-[var(--elevation-3-border)] shadow-sm
          transition-[box-shadow,border-color] duration-[200ms] ease-[cubic-bezier(0.2,0,0,1)]"
   aria-label="Quick actions"

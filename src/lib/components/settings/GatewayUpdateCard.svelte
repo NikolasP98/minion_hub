@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
@@ -324,7 +325,7 @@
   <div class="relative px-4 py-3 border-b border-border bg-bg/60 flex items-center gap-2">
     <ScanLine speed={10} opacity={0.02} />
     <PackageCheck size={12} class="text-muted-strong" />
-    <span class="text-[10px] font-mono text-muted uppercase tracking-widest"
+    <span class="text-xs font-mono text-muted uppercase tracking-widest"
       >{m.gateway_update_title()}</span
     >
   </div>
@@ -345,19 +346,22 @@
           </div>
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onclick={checkNow}
-            disabled={checking}
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-mono bg-bg border-border text-muted hover:text-foreground disabled:opacity-50"
+            loading={checking}
+            class="font-mono"
           >
-            <RotateCw size={12} class={checking ? 'animate-spin' : ''} />
             {checking ? m.gateway_update_checking() : m.gateway_update_checkNow()}
-          </button>
+          </Button>
           {#if updateState.pending && !job?.active && job?.status !== 'failed'}
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onclick={installNow}
-              disabled={installBusy}
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50"
+              loading={installBusy}
+              class="font-mono"
             >
               <Download size={12} />
               {installBusy
@@ -366,7 +370,7 @@
                     updateState.targetSource === 'mixed'
                   ? m.gateway_update_rolloutImage()
                   : m.gateway_update_installAndRestart()}
-            </button>
+            </Button>
           {/if}
         </div>
       </div>
@@ -392,17 +396,19 @@
       {#if job && (job.active || job.status === 'failed')}
         <div class="pt-2 border-t border-border/60 space-y-2">
           <div class="flex items-center justify-between gap-3">
-            <span class="text-[10px] font-mono text-muted uppercase tracking-widest">
+            <span class="text-xs font-mono text-muted uppercase tracking-widest">
               {m.fleet_update_progress({ done: doneCount, total: job.instances.length })}
             </span>
             {#if job.active}
-              <button
+              <Button
+                variant="danger"
+                size="sm"
                 onclick={abortFleet}
-                class="flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-mono bg-bg border-border text-muted hover:text-destructive"
+                class="font-mono text-xs"
               >
                 <Square size={10} />
                 {m.fleet_update_abort()}
-              </button>
+              </Button>
             {/if}
           </div>
 
@@ -424,7 +430,7 @@
                     >
                   </span>
                   <span
-                    class="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium {STATE_CLASS[
+                    class="shrink-0 px-1.5 py-0.5 rounded-full text-xs font-medium {STATE_CLASS[
                       inst.state
                     ]}"
                   >
@@ -452,7 +458,7 @@
                     ? progressLabel
                     : (PROGRESS_LABELS[active.phase]?.() ?? STATE_LABELS[inst.state]())}
                   <div class="space-y-1">
-                    <div class="flex items-center justify-between text-[10px] font-mono text-muted">
+                    <div class="flex items-center justify-between text-xs font-mono text-muted">
                       <span class="uppercase tracking-widest">{label}</span>
                       <span>{pct}%</span>
                     </div>
@@ -465,7 +471,7 @@
                       aria-label={label}
                     >
                       <div
-                        class="h-full rounded-full transition-[width] duration-500 ease-out {pct >=
+                        class="h-full rounded-full transition-[width] duration-[var(--duration-standard)] ease-out {pct >=
                         100
                           ? 'bg-success'
                           : 'bg-accent'}"
@@ -473,13 +479,13 @@
                       ></div>
                     </div>
                     {#if shownProgress?.detail}
-                      <p class="text-[10px] font-mono text-muted-strong">{shownProgress.detail}</p>
+                      <p class="text-xs font-mono text-muted-strong">{shownProgress.detail}</p>
                     {/if}
                   </div>
                 {/if}
 
                 {#if inst.state === 'failed' && inst.error}
-                  <p class="text-[10px] text-destructive">{inst.error}</p>
+                  <p class="text-xs text-destructive">{inst.error}</p>
                 {/if}
               </li>
             {/each}
@@ -488,14 +494,15 @@
           {#if job.status === 'failed'}
             <div class="flex items-center justify-between gap-2">
               {#if job.error}<p class="text-xs text-destructive truncate">{job.error}</p>{/if}
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onclick={retryFleet}
-                disabled={starting}
-                class="shrink-0 flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50"
+                loading={starting}
+                class="shrink-0 font-mono text-xs"
               >
-                <RotateCw size={10} class={starting ? 'animate-spin' : ''} />
                 {m.fleet_update_retry()}
-              </button>
+              </Button>
             </div>
           {/if}
         </div>
@@ -524,7 +531,7 @@
       {/if}
 
       <div class="pt-2 border-t border-border/60">
-        <div class="text-[10px] font-mono text-muted uppercase tracking-widest mb-1">
+        <div class="text-xs font-mono text-muted uppercase tracking-widest mb-1">
           {m.gateway_update_notifyTargets()}
         </div>
         {#if notifyTargets.length === 0}
@@ -536,7 +543,7 @@
             {/each}
           </ul>
         {/if}
-        <a href="/config" class="text-[10px] text-accent hover:underline"
+        <a href="/config" class="text-xs text-accent hover:underline"
           >{m.gateway_update_notifyEditHint()}</a
         >
       </div>

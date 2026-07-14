@@ -18,7 +18,9 @@
     setEdges,
   } from '$lib/state/features/flow-editor.svelte';
   import { diffFlow } from '$lib/flows/flow-diff';
+  import { coordinateFlowActivation } from '$lib/flows/flow-activation';
   import type { WorkingFlow } from '$lib/flows/flow-ops';
+  import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
   import { isAdmin } from '$lib/state/features/user.svelte';
   import type { TriggerNodeData, ScheduleNodeData } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
@@ -29,6 +31,7 @@
   const back = createBackNav('/flow-editor', m.flow_backToFlows);
   const flowId = $derived(page.params.id);
   let loadError = $state<string | null>(null);
+  let operationError = $state<string | null>(null);
   let isActivating = $state(false);
   const hasTrigger = $derived(
     flowEditorState.nodes.some(
@@ -39,49 +42,65 @@
   async function handleActivate() {
     if (isActivating || !flowEditorState.flowId) return;
     isActivating = true;
+    operationError = null;
     try {
+      const previousActive = flowEditorState.flowActive;
       const newActive = !flowEditorState.flowActive;
-      await fetch(`/api/flows/${flowEditorState.flowId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: newActive }),
-      });
-      flowEditorState.flowActive = newActive;
-
-      // A schedule-entry flow registers with the gateway's interval scheduler
-      // instead of the event-driven trigger-manager.
       const scheduleNode = flowEditorState.nodes.find((n) => n.type === 'schedule');
-      if (scheduleNode) {
-        const sd = scheduleNode.data as ScheduleNodeData;
-        if (newActive) {
-          await sendRequest('flows.schedule.register', {
-            flowId: flowEditorState.flowId,
-            every: sd.every,
-            unit: sd.unit,
-            atTime: sd.atTime,
-          });
-        } else {
-          await sendRequest('flows.schedule.unregister', { flowId: flowEditorState.flowId });
-        }
-        return;
-      }
-
       const triggerNode = flowEditorState.nodes.find(
         (n) => n.type === 'trigger' || n.type === 'pluginTrigger',
       );
-      if (!triggerNode) return;
-      const td = triggerNode.data as TriggerNodeData;
-      if (newActive) {
-        await sendRequest('flows.trigger.register', {
-          flowId: flowEditorState.flowId,
-          event: td.event,
-          deliverResponse: td.deliverResponse,
-          ...triggerChannelFilter(td),
-          filterAgentId: td.filterAgentId,
-        });
-      } else {
-        await sendRequest('flows.trigger.unregister', { flowId: flowEditorState.flowId });
-      }
+
+      await coordinateFlowActivation({
+        previousActive,
+        nextActive: newActive,
+        syncGateway: async (active) => {
+          // A schedule-entry flow registers with the gateway's interval
+          // scheduler instead of the event-driven trigger-manager.
+          if (scheduleNode) {
+            const sd = scheduleNode.data as ScheduleNodeData;
+            if (active) {
+              await sendRequest('flows.schedule.register', {
+                flowId: flowEditorState.flowId,
+                every: sd.every,
+                unit: sd.unit,
+                atTime: sd.atTime,
+              });
+            } else {
+              await sendRequest('flows.schedule.unregister', { flowId: flowEditorState.flowId });
+            }
+            return;
+          }
+
+          if (!triggerNode) return;
+          const td = triggerNode.data as TriggerNodeData;
+          if (active) {
+            await sendRequest('flows.trigger.register', {
+              flowId: flowEditorState.flowId,
+              event: td.event,
+              deliverResponse: td.deliverResponse,
+              ...triggerChannelFilter(td),
+              filterAgentId: td.filterAgentId,
+            });
+          } else {
+            await sendRequest('flows.trigger.unregister', { flowId: flowEditorState.flowId });
+          }
+        },
+        persist: async (active) => {
+          await jsonMutation<{ ok: boolean }>({
+            input: `/api/flows/${flowEditorState.flowId}`,
+            init: {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ active }),
+            },
+          });
+        },
+      });
+      // Local UI commits only after both systems agree.
+      flowEditorState.flowActive = newActive;
+    } catch (error) {
+      operationError = mutationErrorMessage(error, m.common_error());
     } finally {
       isActivating = false;
     }
@@ -131,15 +150,26 @@
   }
 
   async function onApply(proposed: WorkingFlow) {
-    setNodes(proposed.nodes);
-    setEdges(proposed.edges);
-    flowEditorState.previewDiff = null;
-    backup = null;
-    await fetch(`/api/flows/${flowEditorState.flowId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nodes: proposed.nodes, edges: proposed.edges }),
-    });
+    operationError = null;
+    try {
+      await jsonMutation<{ ok: boolean }>({
+        input: `/api/flows/${flowEditorState.flowId}`,
+        init: {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nodes: proposed.nodes, edges: proposed.edges }),
+        },
+        onSuccess: () => {
+          setNodes(proposed.nodes);
+          setEdges(proposed.edges);
+          flowEditorState.previewDiff = null;
+          backup = null;
+        },
+      });
+    } catch (error) {
+      // Keep the proposal preview and backup intact so the user can retry or reject it.
+      operationError = mutationErrorMessage(error, m.common_error());
+    }
   }
 
   function onReject() {
@@ -234,6 +264,12 @@
         </button>
       {/if}
     </div>
+
+    {#if operationError}
+      <div class="shrink-0 border-b border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-destructive" role="alert">
+        {operationError}
+      </div>
+    {/if}
 
     <!-- Editor body -->
     <div class="flex flex-1 min-h-0 overflow-hidden flex-col">

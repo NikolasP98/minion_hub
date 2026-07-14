@@ -5,6 +5,8 @@
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import { Button } from '$lib/components/ui';
+  import { fetchJson } from '$lib/api/fetch-json';
+  import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
   import {
     DatabaseBackup,
     Play,
@@ -46,11 +48,10 @@
   let retentionCount = $state(initialConfig?.retentionCount ?? 7);
   // svelte-ignore state_referenced_locally
   let enabled = $state(!!initialConfig?.enabled);
-  // svelte-ignore state_referenced_locally
-  let configLoaded = $state(hasServerData);
   let saving = $state(false);
   let testing = $state(false);
   let testResult = $state<{ ok: boolean; message: string } | null>(null);
+  let configError = $state<string | null>(null);
 
   // ─── Snapshots state ──────────────────────────────────────────
   interface Snapshot {
@@ -65,6 +66,7 @@
   }
   let snapshots = $state<Snapshot[]>([]);
   let loadingSnapshots = $state(false);
+  let snapshotError = $state<string | null>(null);
 
   // ─── Streaming state ──────────────────────────────────────────
   let running = $state(false);
@@ -77,9 +79,9 @@
 
   // ─── Load backup config ───────────────────────────────────────
   async function loadConfig() {
+    configError = null;
     try {
-      const res = await fetch('/api/backup-config');
-      const data = await res.json();
+      const data = await fetchJson<{ config?: BackupConfigShape | null }>('/api/backup-config');
       if (data.config) {
         backupHost = data.config.backupHost ?? '';
         backupUser = data.config.backupUser ?? 'root';
@@ -89,32 +91,35 @@
         retentionCount = data.config.retentionCount ?? 7;
         enabled = !!data.config.enabled;
       }
-      configLoaded = true;
     } catch (e) {
-      console.error('Failed to load backup config:', e);
+      configError = mutationErrorMessage(e, m.backup_requestFailed());
     }
   }
 
   // ─── Save backup config ───────────────────────────────────────
   async function saveConfig() {
     saving = true;
+    configError = null;
     try {
-      await fetch('/api/backup-config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          backupHost,
-          backupUser,
-          backupPort,
-          backupBasePath,
-          schedule: schedule || null,
-          retentionCount,
-          enabled: enabled ? 1 : 0,
-        }),
+      await jsonMutation({
+        input: '/api/backup-config',
+        init: {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            backupHost,
+            backupUser,
+            backupPort,
+            backupBasePath,
+            schedule: schedule || null,
+            retentionCount,
+            enabled: enabled ? 1 : 0,
+          }),
+        },
+        onSuccess: () => invalidate('settings:backups'),
       });
-      void invalidate('settings:backups');
     } catch (e) {
-      console.error('Failed to save backup config:', e);
+      configError = mutationErrorMessage(e, m.backup_requestFailed());
     } finally {
       saving = false;
     }
@@ -125,14 +130,13 @@
     testing = true;
     testResult = null;
     try {
-      const res = await fetch('/api/backup-config/test', {
+      testResult = await fetchJson<{ ok: boolean; message: string }>('/api/backup-config/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ backupHost, backupUser, backupPort, backupBasePath }),
       });
-      testResult = await res.json();
-    } catch {
-      testResult = { ok: false, message: m.backup_requestFailed() };
+    } catch (error) {
+      testResult = { ok: false, message: mutationErrorMessage(error, m.backup_requestFailed()) };
     } finally {
       testing = false;
     }
@@ -142,12 +146,12 @@
   async function loadSnapshots() {
     if (!hostsState.activeHostId) return;
     loadingSnapshots = true;
+    snapshotError = null;
     try {
-      const res = await fetch(`/api/servers/${hostsState.activeHostId}/backups`);
-      const data = await res.json();
+      const data = await fetchJson<{ snapshots?: Snapshot[] }>(`/api/servers/${hostsState.activeHostId}/backups`);
       snapshots = data.snapshots ?? [];
     } catch (e) {
-      console.error('Failed to load snapshots:', e);
+      snapshotError = mutationErrorMessage(e, m.backup_requestFailed());
     } finally {
       loadingSnapshots = false;
     }
@@ -161,6 +165,7 @@
     logLines = [];
 
     try {
+      // INTENTIONAL RAW FETCH: successful response is an SSE stream consumed by readSSE.
       const res = await fetch(`/api/servers/${hostsState.activeHostId}/backups/run`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json();
@@ -182,12 +187,12 @@
   // ─── Run restore (SSE) ───────────────────────────────────────
   async function startRestore(snapshot: Snapshot) {
     if (!hostsState.activeHostId || running) return;
-    confirmRestore = null;
     running = true;
     runningAction = 'restore';
     logLines = [];
 
     try {
+      // INTENTIONAL RAW FETCH: successful response is an SSE stream consumed by readSSE.
       const res = await fetch(`/api/servers/${hostsState.activeHostId}/backups/restore`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -200,6 +205,7 @@
         runningAction = null;
         return;
       }
+      confirmRestore = null;
       await readSSE(res);
     } catch (e) {
       logLines = [...logLines, `Error: ${e}`];
@@ -212,11 +218,17 @@
   // ─── Delete snapshot ──────────────────────────────────────────
   async function deleteSnapshot(snapshot: Snapshot) {
     if (!hostsState.activeHostId) return;
+    snapshotError = null;
     try {
-      await fetch(`/api/servers/${hostsState.activeHostId}/backups/${snapshot.id}`, { method: 'DELETE' });
-      snapshots = snapshots.filter((s) => s.id !== snapshot.id);
+      await jsonMutation({
+        input: `/api/servers/${hostsState.activeHostId}/backups/${snapshot.id}`,
+        init: { method: 'DELETE' },
+        onSuccess: () => {
+          snapshots = snapshots.filter((s) => s.id !== snapshot.id);
+        },
+      });
     } catch (e) {
-      console.error('Failed to delete snapshot:', e);
+      snapshotError = mutationErrorMessage(e, m.backup_requestFailed());
     }
   }
 
@@ -367,6 +379,9 @@
         </span>
       {/if}
     </div>
+    {#if configError}
+      <p class="mt-3 text-xs text-destructive" role="alert">{configError}</p>
+    {/if}
   </div>
 
   <!-- Per-Server Backups -->
@@ -391,6 +406,10 @@
           {running && runningAction === 'backup' ? m.backup_backingUp() : m.backup_backupNow()}
         </Button>
       </div>
+
+      {#if snapshotError}
+        <p class="mb-3 text-xs text-destructive" role="alert">{snapshotError}</p>
+      {/if}
 
       <!-- Snapshot table -->
       {#if snapshots.length > 0}

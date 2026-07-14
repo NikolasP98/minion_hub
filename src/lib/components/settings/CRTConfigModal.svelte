@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { Button, Toggle } from '$lib/components/ui';
+  import { Dialog } from '$lib/components/ui/foundations';
   import { crtConfig, type CRTConfig } from '$lib/state/ui/crt-config.svelte';
-  import { X, Settings } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
   let { open = $bindable(false) }: { open: boolean } = $props();
@@ -41,7 +42,6 @@
 
   function close() { open = false; }
   function save() { crtConfig.set(local); crtConfig.apply(); close(); }
-  function handleKeydown(e: KeyboardEvent) { if (e.key === 'Escape') close(); }
 
   // Preview computed styles
   const scanlineStyle = $derived.by(() => {
@@ -76,158 +76,103 @@
   const scanValues: CRTConfig['scan'][] = ['off', 'subtle', 'default', 'heavy', 'cinematic'];
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-{#if open}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    onclick={close}
-    onkeydown={handleKeydown}
-  >
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="relative w-[780px] max-w-[96vw] max-h-[90vh] bg-bg2 border border-border rounded-none flex flex-col overflow-hidden shadow-2xl"
-      style="box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
-    >
-      <!-- Header -->
-      <div class="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
-        <Settings size={18} style="color: var(--crt-hot, #ffbe40);" />
-        <div class="flex-1">
-          <div class="text-sm font-semibold tracking-widest uppercase" style="color: var(--crt-hot, #ffbe40); font-family: 'Courier New', monospace;">
-            {m.crt_title()}
-          </div>
-          <div class="text-xs text-muted-foreground mt-0.5">{m.crt_subtitle()}</div>
-        </div>
-        <button
-          type="button"
-          onclick={close}
-          class="w-7 h-7 flex items-center justify-center border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all"
-          style="border-radius: 0;"
-          aria-label={m.common_close()}
-        >
-          <X size={14} />
-        </button>
-      </div>
-
-      <!-- Body: controls + preview -->
-      <div class="flex flex-1 min-h-0 overflow-hidden">
+<Dialog bind:open title={m.crt_title()} description={m.crt_subtitle()} size="xl" variant="crt">
+  <!-- Body: controls + preview -->
+  <div class="flex min-h-0 overflow-hidden max-md:flex-col">
 
         <!-- Controls -->
         <div class="flex-1 overflow-y-auto p-5 flex flex-col gap-5 border-r border-border min-w-0">
 
           <!-- Phosphor Bloom -->
           <div class="flex flex-col gap-2">
-            <div class="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground pb-1.5 border-b border-border">
+            <div class="t-label pb-1.5 border-b border-border">
               {m.crt_phosphorBloom()}
             </div>
             <div class="flex gap-0.5 bg-bg border border-border p-0.5">
               {#each bloomValues as val (val)}
-                <button
+                <Button
                   type="button"
                   onclick={() => local = { ...local, bloom: val }}
-                  class="flex-1 py-1.5 text-[11px] font-medium tracking-wider uppercase transition-all"
-                  style={local.bloom === val
-                    ? 'background: var(--color-bg2); color: var(--crt-hot, #ffbe40); border: 1px solid rgba(200,120,32,0.4); box-shadow: 0 0 6px rgba(200,120,32,0.15); font-family: Courier New, monospace;'
-                    : 'color: var(--color-muted-foreground); background: transparent; border: 1px solid transparent;'}
+                  variant={local.bloom === val ? 'primary' : 'secondary'}
+                  size="sm"
+                  class="flex-1 uppercase"
+                  aria-pressed={local.bloom === val}
                 >
                   {val === 'halation' ? 'Halo' : val.charAt(0).toUpperCase() + val.slice(1)}
-                </button>
+                </Button>
               {/each}
             </div>
-            <div class="text-[11px] text-muted-foreground">
+            <div class="t-caption">
               {local.bloom === 'none' ? m.crt_bloomNone() : local.bloom === 'subtle' ? m.crt_bloomSubtle() : local.bloom === 'deep' ? m.crt_bloomDeep() : m.crt_bloomHalation()}
             </div>
           </div>
 
           <!-- Scanlines -->
           <div class="flex flex-col gap-2">
-            <div class="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground pb-1.5 border-b border-border">
+            <div class="t-label pb-1.5 border-b border-border">
               {m.crt_scanlines()}
             </div>
             <div class="flex gap-0.5 bg-bg border border-border p-0.5">
               {#each scanValues as val (val)}
-                <button
+                <Button
                   type="button"
                   onclick={() => local = { ...local, scan: val }}
-                  class="flex-1 py-1.5 text-[11px] font-medium tracking-wider uppercase transition-all"
-                  style={local.scan === val
-                    ? 'background: var(--color-bg2); color: var(--crt-hot, #ffbe40); border: 1px solid rgba(200,120,32,0.4); box-shadow: 0 0 6px rgba(200,120,32,0.15); font-family: Courier New, monospace;'
-                    : 'color: var(--color-muted-foreground); background: transparent; border: 1px solid transparent;'}
+                  variant={local.scan === val ? 'primary' : 'secondary'}
+                  size="sm"
+                  class="flex-1 uppercase"
+                  aria-pressed={local.scan === val}
                 >
                   {val === 'cinematic' ? 'Film' : val === 'default' ? 'Std' : val.charAt(0).toUpperCase() + val.slice(1)}
-                </button>
+                </Button>
               {/each}
             </div>
           </div>
 
           <!-- Pixel Structure -->
           <div class="flex flex-col gap-0">
-            <div class="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground pb-1.5 border-b border-border mb-1">
+            <div class="t-label pb-1.5 border-b border-border mb-1">
               {m.crt_pixelStructure()}
             </div>
             {#each pixelRows as row, i (row.key)}
-              <button
-                type="button"
-                onclick={() => local = { ...local, [row.key]: !local[row.key as keyof CRTConfig] }}
-                class="flex items-center gap-3 py-2 px-0 w-full text-left transition-colors {i > 0 ? 'border-t border-border' : ''}"
-              >
+              <div class="flex items-center gap-3 py-2 w-full {i > 0 ? 'border-t border-border' : ''}">
                 <div class="flex-1">
                   <div class="text-sm text-foreground">{row.label}</div>
-                  <div class="text-[11px] text-muted-foreground">{row.desc}</div>
+                  <div class="t-caption">{row.desc}</div>
                 </div>
-                <!-- Toggle -->
-                <div
-                  class="w-9 h-5 shrink-0 relative transition-all duration-150"
-                  style="border-radius: 10px; background: {local[row.key as keyof CRTConfig] ? 'var(--crt-base, #c87820)' : 'var(--color-border)'}; box-shadow: {local[row.key as keyof CRTConfig] ? '0 0 8px rgba(200,120,32,0.4)' : 'none'};"
-                >
-                  <div
-                    class="absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all duration-150"
-                    style="left: {local[row.key as keyof CRTConfig] ? '18px' : '2px'};"
-                  ></div>
-                </div>
-              </button>
+                <Toggle
+                  checked={Boolean(local[row.key as keyof CRTConfig])}
+                  ariaLabel={row.label}
+                  onchange={(checked) => local = { ...local, [row.key]: checked }}
+                />
+              </div>
             {/each}
           </div>
 
           <!-- Atmosphere -->
           <div class="flex flex-col gap-0">
-            <div class="text-[10px] font-semibold tracking-widests uppercase text-muted-foreground pb-1.5 border-b border-border mb-1">
+            <div class="t-label pb-1.5 border-b border-border mb-1">
               {m.crt_atmosphere()}
             </div>
             {#each atmosphereRows as row, i (row.key)}
-              <button
-                type="button"
-                onclick={() => local = { ...local, [row.key]: !local[row.key as keyof CRTConfig] }}
-                class="flex items-center gap-3 py-2 px-0 w-full text-left transition-colors {i > 0 ? 'border-t border-border' : ''}"
-              >
+              <div class="flex items-center gap-3 py-2 w-full {i > 0 ? 'border-t border-border' : ''}">
                 <div class="flex-1">
                   <div class="text-sm text-foreground">{row.label}</div>
-                  <div class="text-[11px] text-muted-foreground">{row.desc}</div>
+                  <div class="t-caption">{row.desc}</div>
                 </div>
-                <div
-                  class="w-9 h-5 shrink-0 relative transition-all duration-150"
-                  style="border-radius: 10px; background: {local[row.key as keyof CRTConfig] ? 'var(--crt-base, #c87820)' : 'var(--color-border)'}; box-shadow: {local[row.key as keyof CRTConfig] ? '0 0 8px rgba(200,120,32,0.4)' : 'none'};"
-                >
-                  <div
-                    class="absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all duration-150"
-                    style="left: {local[row.key as keyof CRTConfig] ? '18px' : '2px'};"
-                  ></div>
-                </div>
-              </button>
+                <Toggle
+                  checked={Boolean(local[row.key as keyof CRTConfig])}
+                  ariaLabel={row.label}
+                  onchange={(checked) => local = { ...local, [row.key]: checked }}
+                />
+              </div>
             {/each}
           </div>
 
         </div>
 
         <!-- Live Preview -->
-        <div class="w-[280px] shrink-0 flex flex-col bg-bg">
-          <div class="px-3.5 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-muted-foreground border-b border-border shrink-0">
+        <div class="w-72 shrink-0 flex flex-col bg-bg max-md:w-full">
+          <div class="px-3.5 py-2.5 t-label border-b border-border shrink-0">
             {m.crt_livePreview()}
           </div>
           <div class="flex-1 p-4 flex items-start">
@@ -301,35 +246,25 @@
 
       </div>
 
-      <!-- Footer -->
-      <div class="flex items-center gap-2.5 px-5 py-3 border-t border-border shrink-0">
-        <div class="flex-1 text-[11px] text-muted-foreground">{m.crt_changesApplyOnSave()}</div>
-        <button
+  {#snippet footer()}
+        <div class="mr-auto t-caption">{m.crt_changesApplyOnSave()}</div>
+        <Button variant="outline" size="sm"
           type="button"
           onclick={() => { local = { bloom: 'subtle', scan: 'default', matrix: false, subpixel: true, phosphorDots: false, rgbFringe: false, warmAmbient: true, vignette: false, glass: false, flicker: true }; }}
-          class="px-3 py-1.5 text-[11px] text-muted-foreground border border-border hover:text-foreground hover:border-muted-foreground transition-all"
-          style="border-radius: 0;"
         >
           {m.common_reset()}
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost" size="sm"
           type="button"
           onclick={close}
-          class="px-3 py-1.5 text-[11px] text-muted-foreground border border-border hover:text-foreground hover:border-muted-foreground transition-all"
-          style="border-radius: 0;"
         >
           {m.common_cancel()}
-        </button>
-        <button
+        </Button>
+        <Button variant="primary" size="sm"
           type="button"
           onclick={save}
-          class="px-4 py-1.5 text-[11px] font-medium uppercase tracking-widest transition-all"
-          style="background: var(--crt-base, #c87820); color: #000; font-family: 'Courier New', monospace; border: none; box-shadow: 0 0 8px rgba(200,120,32,0.4); border-radius: 0;"
         >
           {m.crt_apply()}
-        </button>
-      </div>
-
-    </div>
-  </div>
-{/if}
+        </Button>
+  {/snippet}
+</Dialog>

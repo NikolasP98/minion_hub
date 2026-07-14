@@ -116,7 +116,7 @@
   }
 </script>
 
-<Modal bind:open>
+<Modal bind:open title={m.artifact_create_title()}>
   {#snippet header()}
     <div class="flex items-center gap-2.5">
       <NoteIconButton {icon} onpick={(v) => (icon = v || DEFAULT_ICON)} size={20} />

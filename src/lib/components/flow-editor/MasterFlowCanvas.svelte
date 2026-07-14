@@ -19,7 +19,7 @@
   let { flow }: { flow: MasterFlow } = $props();
 
   const nodeTypes: NodeTypes = { master: MasterNode };
-  const colorMode: ColorMode = $derived(theme.preset.id === 'light' ? 'light' : 'dark');
+  const colorMode: ColorMode = $derived(theme.mode);
 
   // Read-only: master flows are curated docs, never edited or persisted. We map
   // the static definition into xyflow nodes/edges fresh each time `flow` changes.

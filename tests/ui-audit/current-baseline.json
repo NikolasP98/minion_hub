@@ -1,0 +1,2244 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "857a94b7b6d4af5479c1a5481d1675f6519963fb",
+  "sourceRef": "857a94b7b6d4af5479c1a5481d1675f6519963fb",
+  "sourceCommit": "857a94b7b6d4af5479c1a5481d1675f6519963fb",
+  "sourceTreeSha": "b29f91eb6fb50cac73f22e7e82e771fe9cd7e94b",
+  "workingTreeFingerprint": "git:857a94b7b6d4af5479c1a5481d1675f6519963fb:b29f91eb6fb50cac73f22e7e82e771fe9cd7e94b",
+  "summary": {
+    "endpoints": 142,
+    "screens": 135,
+    "redirects": 7,
+    "dynamicScreens": 28,
+    "appScreens": 125,
+    "publicScreens": 10
+  },
+  "knownBaselineFailures": [
+    {
+      "id": "UI-001",
+      "observation": "Agent wizard created a gateway ID then opened the Hub draft editor with it."
+    },
+    {
+      "id": "UI-002",
+      "observation": "Builder agents and skills lacked complete capability and ownership enforcement."
+    },
+    {
+      "id": "UI-003",
+      "observation": "Global search queried record types without effective view/owner policy."
+    },
+    {
+      "id": "UI-007",
+      "observation": "Command visibility used optional route metadata instead of the executable route guard."
+    }
+  ],
+  "routes": [
+    {
+      "id": "account",
+      "pattern": "/account",
+      "source": "src/routes/(app)/account/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "account.connections",
+      "pattern": "/account/connections",
+      "source": "src/routes/(app)/account/connections/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "account.security",
+      "pattern": "/account/security",
+      "source": "src/routes/(app)/account/security/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "ads",
+      "pattern": "/ads",
+      "source": "src/routes/(app)/ads/+page.server.ts",
+      "family": "app",
+      "kind": "redirect",
+      "dynamic": false,
+      "redirectContract": {
+        "probePath": "/ads?utm_source=ui-audit",
+        "statuses": [
+          301
+        ],
+        "location": "/socials?utm_source=ui-audit",
+        "outcomes": [
+          "preserves-query"
+        ]
+      },
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "ads.path",
+      "pattern": "/ads/[...path]",
+      "source": "src/routes/(app)/ads/[...path]/+page.server.ts",
+      "family": "app",
+      "kind": "redirect",
+      "dynamic": true,
+      "redirectContract": {
+        "probePath": "/ads/campaigns/ui-audit?utm_source=ui-audit",
+        "statuses": [
+          301
+        ],
+        "location": "/socials/campaigns/ui-audit?utm_source=ui-audit",
+        "outcomes": [
+          "preserves-path",
+          "preserves-query"
+        ]
+      },
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "agents",
+      "pattern": "/agents",
+      "source": "src/routes/(app)/agents/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "agents.autonomous",
+      "pattern": "/agents/autonomous",
+      "source": "src/routes/(app)/agents/autonomous/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "agents.autonomous.id",
+      "pattern": "/agents/autonomous/[id]",
+      "source": "src/routes/(app)/agents/autonomous/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "agents.builder",
+      "pattern": "/agents/builder",
+      "source": "src/routes/(app)/agents/builder/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "agents.builder.id",
+      "pattern": "/agents/builder/[id]",
+      "source": "src/routes/(app)/agents/builder/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 7
+      }
+    },
+    {
+      "id": "agents.workshop",
+      "pattern": "/agents/workshop",
+      "source": "src/routes/(app)/agents/workshop/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "agents.workshop.id",
+      "pattern": "/agents/workshop/[id]",
+      "source": "src/routes/(app)/agents/workshop/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "agents.workshop.compare",
+      "pattern": "/agents/workshop/compare",
+      "source": "src/routes/(app)/agents/workshop/compare/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "agents.workshop.groupchat",
+      "pattern": "/agents/workshop/groupchat",
+      "source": "src/routes/(app)/agents/workshop/groupchat/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "agents.workshop.leaderboard",
+      "pattern": "/agents/workshop/leaderboard",
+      "source": "src/routes/(app)/agents/workshop/leaderboard/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "brains",
+      "pattern": "/brains",
+      "source": "src/routes/(app)/brains/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "brains.id",
+      "pattern": "/brains/[id]",
+      "source": "src/routes/(app)/brains/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "brains.agents",
+      "pattern": "/brains/agents",
+      "source": "src/routes/(app)/brains/agents/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "brains.template",
+      "pattern": "/brains/template",
+      "source": "src/routes/(app)/brains/template/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "builder",
+      "pattern": "/builder",
+      "source": "src/routes/(app)/builder/+page.svelte",
+      "family": "app",
+      "kind": "redirect",
+      "dynamic": false,
+      "redirectContract": {
+        "probePath": "/builder",
+        "statuses": [
+          308
+        ],
+        "location": "/agents/builder",
+        "outcomes": [
+          "legacy-route"
+        ]
+      },
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "capabilities",
+      "pattern": "/capabilities",
+      "source": "src/routes/(app)/capabilities/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "channels",
+      "pattern": "/channels",
+      "source": "src/routes/(app)/channels/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "channels.id",
+      "pattern": "/channels/[id]",
+      "source": "src/routes/(app)/channels/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "channels.gmail",
+      "pattern": "/channels/gmail",
+      "source": "src/routes/(app)/channels/gmail/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 4,
+        "nativeInputs": 1,
+        "fetchSites": 4
+      }
+    },
+    {
+      "id": "config",
+      "pattern": "/config",
+      "source": "src/routes/(app)/config/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "crm",
+      "pattern": "/crm",
+      "source": "src/routes/(app)/crm/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "crm.contactId",
+      "pattern": "/crm/[contactId]",
+      "source": "src/routes/(app)/crm/[contactId]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 9,
+        "nativeInputs": 6,
+        "fetchSites": 6
+      }
+    },
+    {
+      "id": "crm.cleanup",
+      "pattern": "/crm/cleanup",
+      "source": "src/routes/(app)/crm/cleanup/+page.server.ts",
+      "family": "app",
+      "kind": "redirect",
+      "dynamic": false,
+      "redirectContract": {
+        "probePath": "/crm/cleanup",
+        "statuses": [
+          308
+        ],
+        "location": "/crm/settings?tab=hygiene",
+        "outcomes": [
+          "preserves-tab-target"
+        ]
+      },
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "crm.customers",
+      "pattern": "/crm/customers",
+      "source": "src/routes/(app)/crm/customers/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 4,
+        "nativeInputs": 0,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "crm.insights",
+      "pattern": "/crm/insights",
+      "source": "src/routes/(app)/crm/insights/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "crm.settings",
+      "pattern": "/crm/settings",
+      "source": "src/routes/(app)/crm/settings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 11,
+        "nativeInputs": 3,
+        "fetchSites": 6
+      }
+    },
+    {
+      "id": "finances",
+      "pattern": "/finances",
+      "source": "src/routes/(app)/finances/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 9,
+        "nativeInputs": 2,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "finances.invoices",
+      "pattern": "/finances/invoices",
+      "source": "src/routes/(app)/finances/invoices/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 3,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "finances.invoices.id",
+      "pattern": "/finances/invoices/[id]",
+      "source": "src/routes/(app)/finances/invoices/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 2,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "finances.products",
+      "pattern": "/finances/products",
+      "source": "src/routes/(app)/finances/products/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "finances.settings",
+      "pattern": "/finances/settings",
+      "source": "src/routes/(app)/finances/settings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 5,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "flow.editor",
+      "pattern": "/flow-editor",
+      "source": "src/routes/(app)/flow-editor/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 8
+      }
+    },
+    {
+      "id": "flow.editor.id",
+      "pattern": "/flow-editor/[id]",
+      "source": "src/routes/(app)/flow-editor/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 6,
+        "nativeInputs": 1,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "flow.editor.master.id",
+      "pattern": "/flow-editor/master/[id]",
+      "source": "src/routes/(app)/flow-editor/master/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "flow.editor.skills.id",
+      "pattern": "/flow-editor/skills/[id]",
+      "source": "src/routes/(app)/flow-editor/skills/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "home",
+      "pattern": "/home",
+      "source": "src/routes/(app)/home/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 9,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "home.settings",
+      "pattern": "/home/settings",
+      "source": "src/routes/(app)/home/settings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 4,
+        "nativeInputs": 2,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "killswitches",
+      "pattern": "/killswitches",
+      "source": "src/routes/(app)/killswitches/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "marketplace",
+      "pattern": "/marketplace",
+      "source": "src/routes/(app)/marketplace/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "marketplace.agents",
+      "pattern": "/marketplace/agents",
+      "source": "src/routes/(app)/marketplace/agents/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 6,
+        "nativeInputs": 1,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "marketplace.agents.slug",
+      "pattern": "/marketplace/agents/[slug]",
+      "source": "src/routes/(app)/marketplace/agents/[slug]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 3,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "marketplace.hooks",
+      "pattern": "/marketplace/hooks",
+      "source": "src/routes/(app)/marketplace/hooks/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "marketplace.mcp.servers",
+      "pattern": "/marketplace/mcp-servers",
+      "source": "src/routes/(app)/marketplace/mcp-servers/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "marketplace.plugins",
+      "pattern": "/marketplace/plugins",
+      "source": "src/routes/(app)/marketplace/plugins/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 8,
+        "nativeInputs": 1,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "marketplace.tools",
+      "pattern": "/marketplace/tools",
+      "source": "src/routes/(app)/marketplace/tools/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "memberships",
+      "pattern": "/memberships",
+      "source": "src/routes/(app)/memberships/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 5,
+        "fetchSites": 4
+      }
+    },
+    {
+      "id": "notifications",
+      "pattern": "/notifications",
+      "source": "src/routes/(app)/notifications/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "orgs",
+      "pattern": "/orgs",
+      "source": "src/routes/(app)/orgs/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "overview",
+      "pattern": "/overview",
+      "source": "src/routes/(app)/overview/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 6,
+        "nativeInputs": 3,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "plugins.id",
+      "pattern": "/plugins/[id]",
+      "source": "src/routes/(app)/plugins/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "pos",
+      "pattern": "/pos",
+      "source": "src/routes/(app)/pos/+page.server.ts",
+      "family": "app",
+      "kind": "redirect",
+      "dynamic": false,
+      "redirectContract": {
+        "probePath": "/pos",
+        "statuses": [
+          302,
+          403
+        ],
+        "locations": [
+          "/pos/sell",
+          "/pos/appointments",
+          "/pos/catalog",
+          "/pos/refills"
+        ],
+        "outcomes": [
+          "first-permitted-child",
+          "permission-denied"
+        ]
+      },
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "pos.appointments",
+      "pattern": "/pos/appointments",
+      "source": "src/routes/(app)/pos/appointments/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 8,
+        "nativeInputs": 8,
+        "fetchSites": 8
+      }
+    },
+    {
+      "id": "pos.catalog",
+      "pattern": "/pos/catalog",
+      "source": "src/routes/(app)/pos/catalog/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "pos.refills",
+      "pattern": "/pos/refills",
+      "source": "src/routes/(app)/pos/refills/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 2,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "pos.sell",
+      "pattern": "/pos/sell",
+      "source": "src/routes/(app)/pos/sell/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 6,
+        "nativeInputs": 1,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "prompt",
+      "pattern": "/prompt",
+      "source": "src/routes/(app)/prompt/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "reliability",
+      "pattern": "/reliability",
+      "source": "src/routes/(app)/reliability/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 3,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "sales",
+      "pattern": "/sales",
+      "source": "src/routes/(app)/sales/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "sales.id",
+      "pattern": "/sales/[id]",
+      "source": "src/routes/(app)/sales/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "scheduling",
+      "pattern": "/scheduling",
+      "source": "src/routes/(app)/scheduling/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "scheduling.bookings",
+      "pattern": "/scheduling/bookings",
+      "source": "src/routes/(app)/scheduling/bookings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 7,
+        "nativeInputs": 6,
+        "fetchSites": 9
+      }
+    },
+    {
+      "id": "scheduling.calendar",
+      "pattern": "/scheduling/calendar",
+      "source": "src/routes/(app)/scheduling/calendar/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "scheduling.event.types",
+      "pattern": "/scheduling/event-types",
+      "source": "src/routes/(app)/scheduling/event-types/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "scheduling.links",
+      "pattern": "/scheduling/links",
+      "source": "src/routes/(app)/scheduling/links/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 3,
+        "nativeInputs": 1,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "scheduling.reminders",
+      "pattern": "/scheduling/reminders",
+      "source": "src/routes/(app)/scheduling/reminders/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 4,
+        "nativeInputs": 2,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "scheduling.resources",
+      "pattern": "/scheduling/resources",
+      "source": "src/routes/(app)/scheduling/resources/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 3,
+        "nativeInputs": 0,
+        "fetchSites": 4
+      }
+    },
+    {
+      "id": "scheduling.settings",
+      "pattern": "/scheduling/settings",
+      "source": "src/routes/(app)/scheduling/settings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "sessions",
+      "pattern": "/sessions",
+      "source": "src/routes/(app)/sessions/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "sessions.sessionKey.debug",
+      "pattern": "/sessions/[sessionKey]/debug",
+      "source": "src/routes/(app)/sessions/[sessionKey]/debug/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 1,
+        "nativeInputs": 1,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "settings",
+      "pattern": "/settings",
+      "source": "src/routes/(app)/settings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "settings.appearance",
+      "pattern": "/settings/appearance",
+      "source": "src/routes/(app)/settings/appearance/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 5,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "settings.backups",
+      "pattern": "/settings/backups",
+      "source": "src/routes/(app)/settings/backups/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "settings.gateways",
+      "pattern": "/settings/gateways",
+      "source": "src/routes/(app)/settings/gateways/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 8,
+        "nativeInputs": 6,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "settings.modules",
+      "pattern": "/settings/modules",
+      "source": "src/routes/(app)/settings/modules/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "settings.notifications",
+      "pattern": "/settings/notifications",
+      "source": "src/routes/(app)/settings/notifications/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 4,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "settings.plugins",
+      "pattern": "/settings/plugins",
+      "source": "src/routes/(app)/settings/plugins/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 5,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "settings.provision",
+      "pattern": "/settings/provision",
+      "source": "src/routes/(app)/settings/provision/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 5,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "settings.roles",
+      "pattern": "/settings/roles",
+      "source": "src/routes/(app)/settings/roles/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "settings.team",
+      "pattern": "/settings/team",
+      "source": "src/routes/(app)/settings/team/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "settings.workflows",
+      "pattern": "/settings/workflows",
+      "source": "src/routes/(app)/settings/workflows/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 3,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "shells",
+      "pattern": "/shells",
+      "source": "src/routes/(app)/shells/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "shells.shellId",
+      "pattern": "/shells/[shellId]",
+      "source": "src/routes/(app)/shells/[shellId]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 4,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "socials",
+      "pattern": "/socials",
+      "source": "src/routes/(app)/socials/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 2,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "socials.campaigns",
+      "pattern": "/socials/campaigns",
+      "source": "src/routes/(app)/socials/campaigns/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 2,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "socials.campaigns.campaignId",
+      "pattern": "/socials/campaigns/[campaignId]",
+      "source": "src/routes/(app)/socials/campaigns/[campaignId]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "socials.posts",
+      "pattern": "/socials/posts",
+      "source": "src/routes/(app)/socials/posts/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "socials.posts.postId",
+      "pattern": "/socials/posts/[postId]",
+      "source": "src/routes/(app)/socials/posts/[postId]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 2,
+        "nativeInputs": 0,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "socials.settings",
+      "pattern": "/socials/settings",
+      "source": "src/routes/(app)/socials/settings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "stock",
+      "pattern": "/stock",
+      "source": "src/routes/(app)/stock/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "stock.commitments",
+      "pattern": "/stock/commitments",
+      "source": "src/routes/(app)/stock/commitments/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "stock.consume",
+      "pattern": "/stock/consume",
+      "source": "src/routes/(app)/stock/consume/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 2,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "stock.consumption",
+      "pattern": "/stock/consumption",
+      "source": "src/routes/(app)/stock/consumption/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 5,
+        "nativeInputs": 5,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "stock.entries",
+      "pattern": "/stock/entries",
+      "source": "src/routes/(app)/stock/entries/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "stock.entries.id",
+      "pattern": "/stock/entries/[id]",
+      "source": "src/routes/(app)/stock/entries/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "stock.entries.new",
+      "pattern": "/stock/entries/new",
+      "source": "src/routes/(app)/stock/entries/new/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 2,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "stock.items",
+      "pattern": "/stock/items",
+      "source": "src/routes/(app)/stock/items/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 3,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "stock.items.id",
+      "pattern": "/stock/items/[id]",
+      "source": "src/routes/(app)/stock/items/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 7,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "stock.warehouses",
+      "pattern": "/stock/warehouses",
+      "source": "src/routes/(app)/stock/warehouses/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 1,
+        "fetchSites": 2
+      }
+    },
+    {
+      "id": "support",
+      "pattern": "/support",
+      "source": "src/routes/(app)/support/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 1,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "support.id",
+      "pattern": "/support/[id]",
+      "source": "src/routes/(app)/support/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "team",
+      "pattern": "/team",
+      "source": "src/routes/(app)/team/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "terminal",
+      "pattern": "/terminal",
+      "source": "src/routes/(app)/terminal/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "tools",
+      "pattern": "/tools",
+      "source": "src/routes/(app)/tools/+page.svelte",
+      "family": "app",
+      "kind": "redirect",
+      "dynamic": false,
+      "redirectContract": {
+        "probePath": "/tools",
+        "statuses": [
+          307
+        ],
+        "location": "/capabilities?tab=tools",
+        "outcomes": [
+          "preserves-tab-target"
+        ]
+      },
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "tools.id",
+      "pattern": "/tools/[id]",
+      "source": "src/routes/(app)/tools/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 5
+      }
+    },
+    {
+      "id": "users",
+      "pattern": "/users",
+      "source": "src/routes/(app)/users/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "users.join.requests",
+      "pattern": "/users/join-requests",
+      "source": "src/routes/(app)/users/join-requests/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 4,
+        "nativeInputs": 0,
+        "fetchSites": 4
+      }
+    },
+    {
+      "id": "work",
+      "pattern": "/work",
+      "source": "src/routes/(app)/work/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 1,
+        "fetchSites": 4
+      }
+    },
+    {
+      "id": "workforce",
+      "pattern": "/workforce",
+      "source": "src/routes/(app)/workforce/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.activity",
+      "pattern": "/workforce/activity",
+      "source": "src/routes/(app)/workforce/activity/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.agents.id",
+      "pattern": "/workforce/agents/[id]",
+      "source": "src/routes/(app)/workforce/agents/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.approvals",
+      "pattern": "/workforce/approvals",
+      "source": "src/routes/(app)/workforce/approvals/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.costs",
+      "pattern": "/workforce/costs",
+      "source": "src/routes/(app)/workforce/costs/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.goals",
+      "pattern": "/workforce/goals",
+      "source": "src/routes/(app)/workforce/goals/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.inbox",
+      "pattern": "/workforce/inbox",
+      "source": "src/routes/(app)/workforce/inbox/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.issues",
+      "pattern": "/workforce/issues",
+      "source": "src/routes/(app)/workforce/issues/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.issues.id",
+      "pattern": "/workforce/issues/[id]",
+      "source": "src/routes/(app)/workforce/issues/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.org",
+      "pattern": "/workforce/org",
+      "source": "src/routes/(app)/workforce/org/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.portfolios",
+      "pattern": "/workforce/portfolios",
+      "source": "src/routes/(app)/workforce/portfolios/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 1,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "workforce.portfolios.id",
+      "pattern": "/workforce/portfolios/[id]",
+      "source": "src/routes/(app)/workforce/portfolios/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.projects",
+      "pattern": "/workforce/projects",
+      "source": "src/routes/(app)/workforce/projects/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 3,
+        "nativeInputs": 2,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "workforce.projects.id",
+      "pattern": "/workforce/projects/[id]",
+      "source": "src/routes/(app)/workforce/projects/[id]/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 5,
+        "nativeInputs": 4,
+        "fetchSites": 5
+      }
+    },
+    {
+      "id": "workforce.projects.id.pipelines",
+      "pattern": "/workforce/projects/[id]/pipelines",
+      "source": "src/routes/(app)/workforce/projects/[id]/pipelines/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 10,
+        "nativeInputs": 8,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "workforce.reliability",
+      "pattern": "/workforce/reliability",
+      "source": "src/routes/(app)/workforce/reliability/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.settings",
+      "pattern": "/workforce/settings",
+      "source": "src/routes/(app)/workforce/settings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.settings.agents",
+      "pattern": "/workforce/settings/agents",
+      "source": "src/routes/(app)/workforce/settings/agents/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workforce.welcome",
+      "pattern": "/workforce/welcome",
+      "source": "src/routes/(app)/workforce/welcome/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "workshop.path",
+      "pattern": "/workshop/[...path]",
+      "source": "src/routes/(app)/workshop/[...path]/+page.svelte",
+      "family": "app",
+      "kind": "redirect",
+      "dynamic": true,
+      "redirectContract": {
+        "probePath": "/workshop/ui-audit",
+        "statuses": [
+          308
+        ],
+        "location": "/agents/workshop/ui-audit",
+        "outcomes": [
+          "preserves-path"
+        ]
+      },
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "auth.reset",
+      "pattern": "/auth/reset",
+      "source": "src/routes/auth/reset/+page.svelte",
+      "family": "public",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 2,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "book.slug",
+      "pattern": "/book/[slug]",
+      "source": "src/routes/book/[slug]/+page.svelte",
+      "family": "public",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 7,
+        "nativeInputs": 4,
+        "fetchSites": 3
+      }
+    },
+    {
+      "id": "invite.accept",
+      "pattern": "/invite/accept",
+      "source": "src/routes/invite/accept/+page.svelte",
+      "family": "public",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "join",
+      "pattern": "/join",
+      "source": "src/routes/join/+page.svelte",
+      "family": "public",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 2,
+        "nativeInputs": 1,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "join.sent",
+      "pattern": "/join/sent",
+      "source": "src/routes/join/sent/+page.svelte",
+      "family": "public",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "link.code",
+      "pattern": "/link/[code]",
+      "source": "src/routes/link/[code]/+page.svelte",
+      "family": "public",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "login",
+      "pattern": "/login",
+      "source": "src/routes/login/+page.svelte",
+      "family": "public",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 3,
+        "nativeInputs": 4,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "login.forgot",
+      "pattern": "/login/forgot",
+      "source": "src/routes/login/forgot/+page.svelte",
+      "family": "public",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 1,
+        "nativeInputs": 1,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "onboarding",
+      "pattern": "/onboarding",
+      "source": "src/routes/onboarding/+page.svelte",
+      "family": "public",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 1
+      }
+    },
+    {
+      "id": "onboarding.complete",
+      "pattern": "/onboarding/complete",
+      "source": "src/routes/onboarding/complete/+page.svelte",
+      "family": "public",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    }
+  ]
+}

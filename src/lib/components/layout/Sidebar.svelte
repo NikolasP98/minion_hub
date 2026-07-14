@@ -251,7 +251,7 @@
 </script>
 
 <aside
-  class="surface-1 hidden md:flex flex-col shrink-0 {widthCls} h-full border-r border-[var(--hairline)] transition-[width] duration-200 ease-[cubic-bezier(0.2,0,0,1)] z-40"
+  class="surface-1 hidden md:flex flex-col shrink-0 {widthCls} h-full border-r border-[var(--hairline)] transition-[width] duration-[var(--duration-normal)] ease-[var(--ease-standard)] z-[var(--layer-navigation,20)]"
   aria-label="Primary"
 >
   <!-- Brand + active gateway (relocated from the topbar) -->

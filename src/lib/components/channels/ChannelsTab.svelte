@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { Button } from '$lib/components/ui';
+    import { Dialog } from '$lib/components/ui/foundations';
     import type { Channel, ChannelType } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
     import { channelOrgVisible } from '$lib/utils/channel-display-state';
@@ -284,33 +286,30 @@
     }
 </script>
 
-<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && wizardType) closeWizard(); }} />
-
 <div class="space-y-4">
     <!-- Header -->
     <div class="flex items-start justify-between gap-3">
         <div>
             <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.channel_accounts()}</h2>
-            <p class="text-[10px] text-muted-foreground mt-0.5">
+            <p class="text-xs text-muted-foreground mt-0.5">
                 {m.channel_accountsSubtitle()}
             </p>
         </div>
         {#if serverId}
-            <button
+            <Button
+                variant="outline"
+                size="sm"
                 type="button"
-                class="shrink-0 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors disabled:opacity-50"
                 onclick={handleImport}
-                disabled={importing}
+                loading={importing}
+                class="shrink-0"
                 title={m.channel_accountsSubtitle()}
             >
-                {#if importing}
-                    <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                    {m.channel_importing()}
-                {:else}
+                {#if !importing}
                     <Download size={12} />
-                    {m.channel_import()}
                 {/if}
-            </button>
+                {importing ? m.channel_importing() : m.channel_import()}
+            </Button>
         {/if}
     </div>
 
@@ -324,28 +323,20 @@
         <div class="text-sm text-destructive text-center py-8">{channelState.error}</div>
     {:else}
         <!-- New-account setup wizard, presented as a modal dialog. -->
-        {#if wizardType}
-            <div
-                class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-                role="presentation"
-                onclick={closeWizard}
-            >
-                <div
-                    class="w-full max-w-md max-h-[90vh] overflow-y-auto"
-                    role="dialog"
-                    aria-modal="true"
-                    tabindex="-1"
-                    onclick={(e) => e.stopPropagation()}
-                    onkeydown={(e) => e.stopPropagation()}
-                >
+        <Dialog
+            open={wizardType !== null}
+            title={m.channel_addAccount()}
+            size="md"
+            onclose={closeWizard}
+        >
+            {#if wizardType}
                     <ChannelSetupWizard
                         {serverId}
                         channelType={wizardType}
                         onclose={closeWizard}
                     />
-                </div>
-            </div>
-        {/if}
+            {/if}
+        </Dialog>
 
         <!-- One section per type, always rendered -->
         {#each ['telegram', 'whatsapp', 'discord'] as t (t)}

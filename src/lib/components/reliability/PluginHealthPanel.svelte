@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
 	import { onMount, untrack } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
 	import {
@@ -148,9 +149,9 @@
 			case 'bundled':
 				return 'bg-accent/10 text-accent';
 			case 'workspace':
-				return 'bg-purple/15 text-purple';
+				return 'bg-accent/15 text-accent';
 			case 'global':
-				return 'bg-cyan/15 text-cyan';
+				return 'bg-info/15 text-info';
 			default:
 				return 'bg-bg3 text-muted-foreground';
 		}
@@ -222,29 +223,30 @@
 	<div class="surface-2 rounded-lg px-4 py-3 flex items-center gap-4 flex-wrap">
 		<div class="flex items-center gap-2">
 			<Puzzle size={14} class="text-accent shrink-0" />
-			<span class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground"
+			<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
 				>{m.reliability_pluginTitle()}</span
 			>
 		</div>
 		{#if snap}
-			<span class="text-[11px] text-muted-foreground tabular-nums">
+			<span class="text-xs text-muted-foreground tabular-nums">
 				{m.reliability_pluginsOverview({ loaded: summary.loaded, total: summary.total })}
 			</span>
 			{#if summary.errored > 0}
-				<span class="text-[11px] text-destructive font-semibold tabular-nums"
+				<span class="text-xs text-destructive font-semibold tabular-nums"
 					>{m.reliability_pluginFailed({ count: summary.errored })}</span
 				>
 			{/if}
 			<span class="flex-1"></span>
-			<span class="text-[10px] text-muted-strong tabular-nums">
+			<span class="text-xs text-muted-strong tabular-nums">
 				{formatNumber(summary.events)}
 				{m.reliability_events()} · {formatNumber(summary.errors)}
 				{m.reliability_capErrors().toLowerCase()}
 			</span>
 			{#if disabledCount > 0}
-				<button
+				<Button variant="outline" size="sm"
 					type="button"
-					class="flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border bg-bg3/60 text-[10px] font-medium text-muted-foreground hover:text-foreground hover:border-white/15 cursor-pointer transition-colors shrink-0"
+					class="shrink-0"
+					aria-expanded={showDisabled}
 					onclick={() => (showDisabled = !showDisabled)}
 				>
 					{#if showDisabled}
@@ -254,21 +256,21 @@
 						<Eye size={11} class="shrink-0" />
 						{m.reliability_pluginShowDisabled({ count: disabledCount })}
 					{/if}
-				</button>
+				</Button>
 			{/if}
 		{/if}
 	</div>
 
 	{#if health.loading && !snap}
-		<div class="surface-2 rounded-lg flex items-center justify-center py-12 text-muted-foreground text-[13px]">
+		<div class="surface-2 rounded-lg flex items-center justify-center py-12 text-muted-foreground text-sm">
 			{m.common_loading()}
 		</div>
 	{:else if health.error}
-		<div class="surface-2 rounded-lg flex items-center justify-center py-12 text-destructive text-[13px]">
+		<div class="surface-2 rounded-lg flex items-center justify-center py-12 text-destructive text-sm">
 			{health.error}
 		</div>
 	{:else if !snap || visiblePlugins.length === 0}
-		<div class="surface-2 rounded-lg flex items-center justify-center py-12 text-muted-foreground text-[13px]">
+		<div class="surface-2 rounded-lg flex items-center justify-center py-12 text-muted-foreground text-sm">
 			{m.reliability_noPlugins()}
 		</div>
 	{:else}
@@ -283,27 +285,27 @@
 				<!-- Header -->
 				<div class="flex items-center gap-2 flex-wrap px-4 py-2.5 border-b border-border">
 					<span class="w-2 h-2 rounded-full shrink-0" style:background={statusColor(plugin.status)}></span>
-					<span class="text-[13px] font-semibold text-foreground">{plugin.name}</span>
+					<span class="text-sm font-semibold text-foreground">{plugin.name}</span>
 					{#if plugin.name !== plugin.pluginId}
-						<span class="text-[10px] text-muted-strong font-mono">{plugin.pluginId}</span>
+						<span class="text-xs text-muted-strong font-mono">{plugin.pluginId}</span>
 					{/if}
 					{#if plugin.version}
-						<span class="text-[10px] text-muted-strong tabular-nums">v{plugin.version}</span>
+						<span class="text-xs text-muted-strong tabular-nums">v{plugin.version}</span>
 					{/if}
-					<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-sm uppercase tracking-wide {originBadgeClass(plugin.origin)}">
+					<span class="text-xs font-semibold px-1.5 py-0.5 rounded-sm uppercase tracking-wide {originBadgeClass(plugin.origin)}">
 						{plugin.origin}
 					</span>
-					<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-sm uppercase tracking-wide {statusBadgeClass(plugin.status)}">
+					<span class="text-xs font-semibold px-1.5 py-0.5 rounded-sm uppercase tracking-wide {statusBadgeClass(plugin.status)}">
 						{plugin.status}
 					</span>
 					{#if !plugin.configEnabled}
-						<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-sm uppercase tracking-wide bg-bg3 text-muted-foreground">
+						<span class="text-xs font-semibold px-1.5 py-0.5 rounded-sm uppercase tracking-wide bg-bg3 text-muted-foreground">
 							{m.reliability_pluginDisabled()}
 						</span>
 					{/if}
 					<!-- Live activity indicator -->
 					{#if active}
-						<span class="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wide text-success">
+						<span class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-success">
 							<span class="relative flex h-2 w-2">
 								<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
 								<span class="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
@@ -312,7 +314,7 @@
 						</span>
 					{/if}
 					<span class="flex-1"></span>
-					<span class="flex items-center gap-1 text-[10px] tabular-nums {active ? 'text-success' : 'text-muted-strong'}" title={m.reliability_pluginLastActivity()}>
+					<span class="flex items-center gap-1 text-xs tabular-nums {active ? 'text-success' : 'text-muted-strong'}" title={m.reliability_pluginLastActivity()}>
 						<Clock size={10} class="shrink-0" />
 						{active ? m.reliability_pluginNow() : relTime(plugin.telemetry.lastActivityAt)}
 					</span>
@@ -326,7 +328,7 @@
 						<div class="px-3 py-2.5 flex flex-col gap-1">
 							<div class="flex items-center gap-1">
 								<span style:color={kpi.danger ? 'var(--color-destructive)' : kpi.color} class="shrink-0 flex"><Icon size={9} /></span>
-								<span class="text-[8.5px] font-semibold text-muted-foreground uppercase tracking-widest truncate">{kpi.label}</span>
+								<span class="text-xs font-semibold text-muted-foreground uppercase tracking-widest truncate">{kpi.label}</span>
 							</div>
 							<span
 								class="text-2xl font-bold font-mono tabular-nums leading-none transition-colors {flashing ? 'text-success' : ''}"
@@ -342,14 +344,14 @@
 				{#if plugin.status === 'error' && plugin.error}
 					<div class="flex items-start gap-2 px-4 py-2 border-t border-border bg-destructive/5">
 						<CircleAlert size={12} class="text-destructive shrink-0 mt-0.5" />
-						<span class="text-[11px] text-destructive break-words">{plugin.error}</span>
+						<span class="text-xs text-destructive break-words">{plugin.error}</span>
 					</div>
 				{:else if plugin.telemetry.lastError}
 					<div class="flex items-start gap-2 px-4 py-2 border-t border-border">
 						<CircleAlert size={12} class="text-warning shrink-0 mt-0.5" />
 						<div class="min-w-0">
-							<span class="text-[10px] font-mono text-warning">{plugin.telemetry.lastError.event}</span>
-							<span class="text-[11px] text-muted-foreground break-words">— {plugin.telemetry.lastError.message}</span>
+							<span class="text-xs font-mono text-warning">{plugin.telemetry.lastError.event}</span>
+							<span class="text-xs text-muted-foreground break-words">— {plugin.telemetry.lastError.message}</span>
 						</div>
 					</div>
 				{/if}
@@ -359,9 +361,9 @@
 					<div class="flex items-center gap-x-4 gap-y-1.5 flex-wrap px-4 py-2 border-t border-border">
 						{#if plugin.telemetry.topFailureModes.length > 0}
 							<div class="flex items-center gap-1.5 flex-wrap">
-								<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-strong">{m.reliability_pluginTopModes()}</span>
+								<span class="text-xs font-semibold uppercase tracking-widest text-muted-strong">{m.reliability_pluginTopModes()}</span>
 								{#each plugin.telemetry.topFailureModes as mode (mode.event)}
-									<span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-bg3 border border-border">
+									<span class="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md bg-bg3 border border-border">
 										<span class="font-mono text-foreground">{mode.failureMode}</span>
 										<span class="text-muted-strong tabular-nums">{formatNumber(mode.count)}</span>
 									</span>
@@ -372,7 +374,7 @@
 							<div class="flex items-center gap-1.5 flex-wrap">
 								<Radio size={10} class="text-warning shrink-0" />
 								{#each plugin.channelIds as ch (ch)}
-									<span class="text-[10px] px-1.5 py-0.5 rounded-md bg-warning/10 text-warning">{ch}</span>
+									<span class="text-xs px-1.5 py-0.5 rounded-md bg-warning/10 text-warning">{ch}</span>
 								{/each}
 							</div>
 						{/if}
@@ -380,7 +382,7 @@
 							<div class="flex items-center gap-1.5 flex-wrap">
 								<Cpu size={10} class="text-success shrink-0" />
 								{#each plugin.providerIds as pr (pr)}
-									<span class="text-[10px] px-1.5 py-0.5 rounded-md bg-success/10 text-success">{pr}</span>
+									<span class="text-xs px-1.5 py-0.5 rounded-md bg-success/10 text-success">{pr}</span>
 								{/each}
 							</div>
 						{/if}

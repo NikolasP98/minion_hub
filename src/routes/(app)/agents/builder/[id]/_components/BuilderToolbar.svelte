@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onDestroy } from "svelte";
-    import { ArrowLeft, Bot, Eye, Loader2, Check, Upload, Circle } from "lucide-svelte";
+    import { ArrowLeft, Bot, Loader2, Check, Upload, Circle } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
     import { createBackNav } from '$lib/nav/back-nav.svelte';
 
@@ -90,10 +90,6 @@
 
         <div class="h-4 w-px bg-border/60"></div>
 
-        <button type="button" class="toolbar-btn secondary" title={m.builder_preview()}>
-            <Eye size={14} />
-            <span class="hidden sm:inline">{m.builder_preview()}</span>
-        </button>
         <button
             type="button"
             class="toolbar-btn {status === 'published' ? 'published' : 'primary'}"

@@ -25,6 +25,7 @@ export interface CreateSkillInput {
   emoji?: string;
   serverId?: string;
   maxCycles?: number;
+  createdBy?: string;
 }
 
 export async function createBuiltSkill(ctx: CoreCtx, input: CreateSkillInput) {
@@ -39,7 +40,7 @@ export async function createBuiltSkill(ctx: CoreCtx, input: CreateSkillInput) {
       status: 'draft',
       gatewayId,
       tenantId: ctx.tenantId,
-      createdBy: null,
+      createdBy: input.createdBy ?? null,
     }),
   );
   return { id };
@@ -47,10 +48,11 @@ export async function createBuiltSkill(ctx: CoreCtx, input: CreateSkillInput) {
 
 export async function listBuiltSkills(
   ctx: CoreCtx,
-  opts?: { status?: 'draft' | 'published' },
+  opts?: { status?: 'draft' | 'published'; createdBy?: string },
 ) {
   const conditions = [eq(builtSkills.tenantId, ctx.tenantId)];
   if (opts?.status) conditions.push(eq(builtSkills.status, opts.status));
+  if (opts?.createdBy) conditions.push(eq(builtSkills.createdBy, opts.createdBy));
   return withOrgCore(ctx, (tx) =>
     tx
       .select()
@@ -300,12 +302,16 @@ export async function setChapterTools(ctx: CoreCtx, chapterId: string, toolIds: 
 
 // ── Built Agents ─────────────────────────────────────────────────────
 
-export async function listBuiltAgents(ctx: CoreCtx) {
+export async function listBuiltAgents(ctx: CoreCtx, createdBy?: string) {
   return withOrgCore(ctx, (tx) =>
     tx
       .select()
       .from(builtAgents)
-      .where(eq(builtAgents.tenantId, ctx.tenantId))
+      .where(
+        createdBy
+          ? and(eq(builtAgents.tenantId, ctx.tenantId), eq(builtAgents.createdBy, createdBy))
+          : eq(builtAgents.tenantId, ctx.tenantId),
+      )
       .orderBy(desc(builtAgents.updatedAt)),
   );
 }
@@ -319,6 +325,7 @@ export async function createBuiltAgent(
     model?: string;
     systemPrompt?: string;
     serverId?: string;
+    createdBy?: string;
   },
 ) {
   const id = newId();
@@ -334,9 +341,52 @@ export async function createBuiltAgent(
       status: 'draft',
       gatewayId,
       tenantId: ctx.tenantId,
+      createdBy: input.createdBy ?? null,
     }),
   );
   return { id };
+}
+
+export async function finalizeBuiltAgentPublish(
+  ctx: CoreCtx,
+  draftId: string,
+  runtimeAgentId: string,
+  gatewayId: string,
+) {
+  await withOrgCore(ctx, async (tx) => {
+    const slots = await tx
+      .select({ skillId: builtAgentSkills.skillId, position: builtAgentSkills.position })
+      .from(builtAgentSkills)
+      .where(eq(builtAgentSkills.agentId, draftId))
+      .orderBy(builtAgentSkills.position);
+    const now = new Date();
+    await tx
+      .update(builtAgents)
+      .set({ runtimeAgentId, status: 'published', publishedAt: now, updatedAt: now })
+      .where(and(eq(builtAgents.id, draftId), eq(builtAgents.tenantId, ctx.tenantId)));
+    await tx
+      .delete(agentBuiltSkills)
+      .where(
+        and(
+          eq(agentBuiltSkills.gatewayAgentId, runtimeAgentId),
+          eq(agentBuiltSkills.gatewayId, gatewayId),
+          eq(agentBuiltSkills.tenantId, ctx.tenantId),
+        ),
+      );
+    if (slots.length > 0) {
+      await tx.insert(agentBuiltSkills).values(
+        slots.map((slot) => ({
+          id: newId(),
+          gatewayAgentId: runtimeAgentId,
+          gatewayId,
+          tenantId: ctx.tenantId,
+          skillId: slot.skillId,
+          position: slot.position,
+        })),
+      );
+    }
+  });
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'builder'));
 }
 
 // ── Built Tools ──────────────────────────────────────────────────────

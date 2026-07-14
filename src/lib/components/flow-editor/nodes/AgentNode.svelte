@@ -177,7 +177,6 @@
     <option value="" disabled>Select type…</option>
     <option value="custom">Custom agent</option>
     <option value="personal">Personal agent</option>
-    <option value="drone">Drone task</option>
   </select>
 
   <!-- Instance picker (disabled until a type is chosen) -->
@@ -197,8 +196,8 @@
     {/if}
   </select>
 
-  {#if data.agentKind === 'drone' && data.agentId}
-    <p class="mt-1 text-[9px] text-amber-400/80">Drone execution coming soon</p>
+  {#if data.agentKind === 'drone'}
+    <p class="mt-1 text-[9px] text-amber-400/80">Legacy drone node — choose a supported agent type</p>
   {/if}
 
   <!-- Session mode toggle -->

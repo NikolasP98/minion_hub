@@ -169,7 +169,7 @@
   }
 </script>
 
-<Modal bind:open onclose={reset} size={step === 'note' ? 'lg' : 'md'}>
+<Modal bind:open title={m.brains_source_dialog_title()} onclose={reset} size={step === 'note' ? 'lg' : 'md'}>
   {#snippet header()}
     <div class="flex items-center gap-2">
       {#if step !== 'pick'}

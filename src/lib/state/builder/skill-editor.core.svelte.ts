@@ -6,6 +6,7 @@ import type { ToolStatusEntry, ToolsStatusReport } from '$lib/types/tools';
 import { validateSkill } from '$lib/utils/skill-validation';
 import posthog from 'posthog-js';
 import * as m from '$lib/paraglide/messages';
+import { fetchJson } from '$lib/api/fetch-json';
 import type { ChapterEntry, StagedChapter, StagedEdge, StagedProposal } from './skill-editor.types';
 
 // ── State ────────────────────────────────────────────────────────────
@@ -220,7 +221,7 @@ export function scheduleSave() {
 export async function saveSkill() {
   skillEditorState.saving = true;
   try {
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -233,6 +234,7 @@ export async function saveSkill() {
     skillEditorState.dirty = false;
   } catch (e) {
     console.error('[skill-editor] Save failed:', e);
+    toastError(m.common_error(), e instanceof Error ? e.message : m.common_retry());
   } finally {
     skillEditorState.saving = false;
   }
@@ -258,19 +260,10 @@ export async function publishSkill() {
   skillEditorState.publishing = true;
   try {
     await toastAsync(
-      fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+      fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'publish' }),
-      }).then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json();
-          if (data.errors?.length) {
-            throw new Error(data.errors.join('; '));
-          }
-          throw new Error(`HTTP ${res.status}`);
-        }
-        return res.json();
       }),
       {
         loading: m.builder_publishing(),
@@ -457,7 +450,7 @@ export async function generateGhostChapter(chapterName: string) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    const createRes = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -468,10 +461,7 @@ export async function generateGhostChapter(chapterName: string) {
         positionY: skillEditorState.chapters.length * 180,
       }),
     });
-    if (!createRes.ok) throw new Error('Failed to create chapter');
-    const { id } = await createRes.json();
-
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -488,7 +478,7 @@ export async function generateGhostChapter(chapterName: string) {
 
     const toolIds = (data.suggestedToolIds ?? []).filter((t: string) => _allToolIds.includes(t));
     if (toolIds.length > 0) {
-      await fetch(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${id}`, {
+      await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ toolIds }),
@@ -544,7 +534,7 @@ export async function addCondition() {
 export async function saveCondition() {
   if (!_conditionValidation.valid) return;
   try {
-    const res = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -557,28 +547,26 @@ export async function saveCondition() {
       }),
     });
 
-    if (res.ok) {
-      const { id } = await res.json();
-      skillEditorState.chapters = [
-        ...skillEditorState.chapters,
-        {
-          id,
-          type: 'condition',
-          name: skillEditorState.conditionName || 'Condition',
-          description: '',
-          guide: '',
-          context: '',
-          outputDef: '',
-          conditionText: skillEditorState.conditionText,
-          positionX: 300,
-          positionY: 100 + (skillEditorState.chapters.length - 1) * 180,
-        },
-      ];
-      skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [id]: [] };
-    }
+    skillEditorState.chapters = [
+      ...skillEditorState.chapters,
+      {
+        id,
+        type: 'condition',
+        name: skillEditorState.conditionName || 'Condition',
+        description: '',
+        guide: '',
+        context: '',
+        outputDef: '',
+        conditionText: skillEditorState.conditionText,
+        positionX: 300,
+        positionY: 100 + (skillEditorState.chapters.length - 1) * 180,
+      },
+    ];
+    skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [id]: [] };
     skillEditorState.editingCondition = null;
   } catch (e) {
     console.error('[skill-editor] saveCondition failed:', e);
+    toastError(m.common_error(), e instanceof Error ? e.message : m.common_retry());
   }
 }
 
@@ -600,7 +588,7 @@ export async function updateCondition() {
   )
     return;
   try {
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -625,6 +613,7 @@ export async function updateCondition() {
     skillEditorState.editingCondition = null;
   } catch (e) {
     console.error('[skill-editor] updateCondition failed:', e);
+    toastError(m.common_error(), e instanceof Error ? e.message : m.common_retry());
   }
 }
 
@@ -632,7 +621,7 @@ export async function addChapter() {
   dismissGhostSuggestions();
   try {
     const chapterName = `Chapter ${skillEditorState.chapters.length + 1}`;
-    const res = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -642,31 +631,29 @@ export async function addChapter() {
         positionY: 100,
       }),
     });
-    if (res.ok) {
-      const { id } = await res.json();
-      skillEditorState.chapters = [
-        ...skillEditorState.chapters,
-        {
-          id,
-          name: chapterName,
-          description: '',
-          guide: '',
-          context: '',
-          outputDef: '',
-          positionX: 100 + (skillEditorState.chapters.length - 1) * 200,
-          positionY: 100,
-        },
-      ];
-      skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [id]: [] };
-    }
+    skillEditorState.chapters = [
+      ...skillEditorState.chapters,
+      {
+        id,
+        name: chapterName,
+        description: '',
+        guide: '',
+        context: '',
+        outputDef: '',
+        positionX: 100 + (skillEditorState.chapters.length - 1) * 200,
+        positionY: 100,
+      },
+    ];
+    skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [id]: [] };
   } catch (e) {
     console.error('[skill-editor] addChapter failed:', e);
+    toastError(m.common_error(), e instanceof Error ? e.message : m.common_retry());
   }
 }
 
 export async function removeChapter(chapterId: string) {
   try {
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete-chapter', chapterId }),
@@ -679,15 +666,17 @@ export async function removeChapter(chapterId: string) {
     skillEditorState.chapterToolMap = restToolMap;
   } catch (e) {
     console.error('[skill-editor] removeChapter failed:', e);
+    toastError(m.common_error(), e instanceof Error ? e.message : m.common_retry());
   }
 }
 
 export async function updateChapterPosition(chapterId: string, x: number, y: number) {
+  const previous = skillEditorState.chapters;
   try {
     skillEditorState.chapters = skillEditorState.chapters.map((c) =>
       c.id === chapterId ? { ...c, positionX: x, positionY: y } : c,
     );
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -697,13 +686,14 @@ export async function updateChapterPosition(chapterId: string, x: number, y: num
       }),
     });
   } catch (e) {
+    skillEditorState.chapters = previous;
     console.error('[skill-editor] updateChapterPosition failed:', e);
   }
 }
 
 export async function connectChapters(sourceId: string, targetId: string, label?: string) {
   try {
-    const res = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -713,26 +703,24 @@ export async function connectChapters(sourceId: string, targetId: string, label?
         label: label ?? null,
       }),
     });
-    if (res.ok) {
-      const { id } = await res.json();
-      skillEditorState.chapterEdges = [
-        ...skillEditorState.chapterEdges,
-        {
-          id,
-          sourceChapterId: sourceId,
-          targetChapterId: targetId,
-          label: label ?? null,
-        },
-      ];
-    }
+    skillEditorState.chapterEdges = [
+      ...skillEditorState.chapterEdges,
+      {
+        id,
+        sourceChapterId: sourceId,
+        targetChapterId: targetId,
+        label: label ?? null,
+      },
+    ];
   } catch (e) {
     console.error('[skill-editor] connectChapters failed:', e);
+    toastError(m.common_error(), e instanceof Error ? e.message : m.common_retry());
   }
 }
 
 export async function deleteEdge(edgeId: string) {
   try {
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete-edge', edgeId }),
@@ -740,6 +728,7 @@ export async function deleteEdge(edgeId: string) {
     skillEditorState.chapterEdges = skillEditorState.chapterEdges.filter((e) => e.id !== edgeId);
   } catch (e) {
     console.error('[skill-editor] deleteEdge failed:', e);
+    toastError(m.common_error(), e instanceof Error ? e.message : m.common_retry());
   }
 }
 
@@ -772,7 +761,7 @@ export async function saveChapterEdits(data: {
   skillEditorState.saving = true;
   try {
     // Save chapter metadata
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -789,7 +778,7 @@ export async function saveChapterEdits(data: {
     });
 
     // Save chapter tools
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${chapterId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${chapterId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ toolIds: data.toolIds }),
@@ -812,11 +801,12 @@ export async function saveChapterEdits(data: {
       ...skillEditorState.chapterToolMap,
       [chapterId]: data.toolIds,
     };
+    skillEditorState.editingChapter = null;
   } catch (e) {
     console.error('[skill-editor] Save chapter failed:', e);
+    toastError(m.common_error(), e instanceof Error ? e.message : m.common_retry());
   } finally {
     skillEditorState.saving = false;
-    skillEditorState.editingChapter = null;
   }
 }
 

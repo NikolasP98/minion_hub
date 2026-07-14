@@ -5,15 +5,12 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  interface Props {
+  interface CommonProps {
     /** Bindable on/off state. */
     checked?: boolean;
     size?: ToggleSize;
     disabled?: boolean;
     /** Accessible label when no visible label snippet is provided. */
-    label?: string;
-    /** Accessible name without rendering visible text (when a sibling already labels it). */
-    ariaLabel?: string;
     /** Optional secondary line under the label. */
     description?: string;
     class?: string;
@@ -21,6 +18,12 @@
     /** Visible label content (rendered to the right of the switch). */
     children?: Snippet;
   }
+
+  type Props = CommonProps &
+    (
+      | { label: string; ariaLabel?: string }
+      | { label?: string; ariaLabel: string }
+    );
 
   let {
     checked = $bindable(false),

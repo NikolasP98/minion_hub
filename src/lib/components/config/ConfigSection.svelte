@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import type { ConfigGroup } from '$lib/types/config';
   import { configState, dirtyPaths } from '$lib/state/config/config.svelte';
   import ConfigField from './ConfigField.svelte';
@@ -31,16 +32,19 @@
 
 <section id="group-{group.id}" data-group-id={group.id} class="scroll-mt-4">
   <!-- Clickable card header (sticky within scroll container) -->
-  <button
+  <Button
+    variant="outline"
     type="button"
-    class="w-full flex items-center gap-2.5 px-4 py-3.5 bg-card border border-border cursor-pointer transition-colors hover:bg-bg3 sticky top-0 z-10
-      {expanded ? 'rounded-t-lg border-b-0' : 'rounded-lg'}"
+    class="!h-auto !w-full !justify-start !px-4 !py-3.5 sticky top-0 z-[var(--layer-sticky,10)]
+      {expanded ? 'rounded-t-lg !border-b-0' : 'rounded-lg'}"
     onclick={() => ontoggle?.()}
+    aria-expanded={expanded}
+    aria-controls={`config-group-panel-${group.id}`}
   >
     <!-- Chevron -->
     <ChevronRight
       size={13}
-      class="text-muted-foreground transition-transform duration-150 shrink-0 {expanded ? 'rotate-90' : ''}"
+      class="text-muted-foreground transition-transform duration-[var(--duration-fast)] shrink-0 {expanded ? 'rotate-90' : ''}"
     />
 
     <!-- Label + description -->
@@ -48,13 +52,13 @@
       <span class="flex items-center gap-2">
         <span class="text-xs font-semibold text-foreground uppercase tracking-wider">{group.label}</span>
         {#if configuredCount > 0}
-          <span class="px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-[9px] font-medium leading-none">
+          <span class="px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-xs font-medium leading-none">
             {configuredCount}
           </span>
         {/if}
       </span>
       {#if groupDescription}
-        <span class="text-[10px] text-muted-foreground leading-tight truncate max-w-full">{groupDescription}</span>
+        <span class="text-xs text-muted-foreground leading-tight truncate max-w-full">{groupDescription}</span>
       {/if}
     </span>
 
@@ -65,11 +69,11 @@
     {#if hasDirty}
       <span class="w-1.5 h-1.5 rounded-full bg-accent shrink-0"></span>
     {/if}
-  </button>
+  </Button>
 
   <!-- Expandable body -->
   {#if expanded}
-    <div class="bg-card border border-border border-t-0 rounded-b-lg p-4 space-y-4">
+    <div id={`config-group-panel-${group.id}`} class="bg-card border border-border border-t-0 rounded-b-lg p-4 space-y-4">
       {#each basicFields as field (field.path)}
         <ConfigField
           path={field.path}
@@ -80,10 +84,14 @@
       {/each}
 
       {#if advancedFields.length > 0}
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
-          class="flex items-center gap-1.5 bg-transparent border-none text-[11px] text-muted-foreground cursor-pointer p-0 transition-colors hover:text-foreground"
+          class="!px-0 text-xs"
           onclick={() => showAdvanced = !showAdvanced}
+          aria-expanded={showAdvanced}
+          aria-controls={`config-advanced-${group.id}`}
         >
           {#if showAdvanced}
             <ChevronsUp size={11} class="shrink-0" />
@@ -92,10 +100,10 @@
             <ChevronsDown size={11} class="shrink-0" />
             {advancedFields.length === 1 ? m.config_showAdvancedField({ count: advancedFields.length }) : m.config_showAdvancedFields({ count: advancedFields.length })}
           {/if}
-        </button>
+        </Button>
 
         {#if showAdvanced}
-          <div class="border-t border-border pt-4 space-y-4">
+          <div id={`config-advanced-${group.id}`} class="border-t border-border pt-4 space-y-4">
             {#each advancedFields as field (field.path)}
               <ConfigField
                 path={field.path}

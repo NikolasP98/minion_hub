@@ -105,7 +105,7 @@
 
 {#if armed}
   <div
-    class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bg2 border border-border shadow-xl"
+    class="fixed bottom-[max(var(--space-4,16px),env(safe-area-inset-bottom,0px))] left-1/2 -translate-x-1/2 z-[var(--layer-command,70)] flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bg2 border border-border shadow-[var(--shadow-elevation-4,var(--shadow-lg))] max-w-[calc(100vw-var(--space-page-gutter,16px)-var(--space-page-gutter,16px))] overflow-x-auto"
     style="animation: gnav-in 100ms ease-out"
   >
     {#each visibleChords as c (c.key)}

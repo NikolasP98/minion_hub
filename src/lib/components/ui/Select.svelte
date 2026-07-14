@@ -8,8 +8,7 @@
   import { ChevronDown } from 'lucide-svelte';
   import type { Snippet } from 'svelte';
 
-  let nextId = 0;
-  const generatedId = `select-${nextId++}`;
+  const generatedId = $props.id();
 
   interface Props {
     /** Bindable selected value. `bind:value` preserves the option's native
@@ -49,7 +48,7 @@
     ...rest
   }: Props = $props();
 
-  const fieldId = $derived(id ?? generatedId);
+  const fieldId = $derived(id ?? `select-${generatedId}`);
   const describedBy = $derived(error ? `${fieldId}-err` : helper ? `${fieldId}-help` : undefined);
 
   const sizeCls = $derived(

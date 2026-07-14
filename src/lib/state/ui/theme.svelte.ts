@@ -1,4 +1,5 @@
 import { PRESETS, ACCENT_OPTIONS, DEFAULT_STYLE, type ThemePreset } from '$lib/themes/presets';
+import { onAccentFor, readableMutedFor, statusForegrounds } from '$lib/themes/contrast';
 import { syncPreferenceToServer } from './preference-sync.svelte';
 
 const STORAGE_KEY = 'minion-hub-theme';
@@ -41,6 +42,9 @@ export const theme = {
   },
   get accent() {
     return accent;
+  },
+  get mode(): 'light' | 'dark' {
+    return preset.mode ?? 'dark';
   },
   get presets() {
     return PRESETS;
@@ -87,10 +91,21 @@ export function applyTheme(p: ThemePreset, accentValue: string) {
   root.style.setProperty('--color-border', p.colors.border);
   root.style.setProperty('--color-foreground', p.colors.foreground);
   root.style.setProperty('--color-muted', p.colors.muted);
-  root.style.setProperty('--color-muted-foreground', p.colors.mutedForeground);
+  root.style.setProperty('--color-muted-foreground', readableMutedFor(p));
   root.style.setProperty('--color-accent', accentValue);
-  root.style.setProperty('--color-accent-foreground', p.colors.accentForeground);
+  root.style.setProperty('--color-accent-foreground', onAccentFor(accentValue));
   root.style.setProperty('--color-brand-pink', p.colors.brandPink);
+
+  // Status foregrounds must remain readable when the surface family changes.
+  const status = statusForegrounds(p.mode ?? 'dark');
+  root.style.setProperty('--color-success', status.success);
+  root.style.setProperty('--color-warning', status.warning);
+  root.style.setProperty('--color-destructive', status.destructive);
+  root.style.setProperty('--color-info', status.info);
+  root.style.setProperty('--color-status-running', status.running);
+  root.style.setProperty('--color-status-thinking', status.thinking);
+  root.style.setProperty('--color-status-idle', status.idle);
+  root.style.setProperty('--color-status-aborted', status.aborted);
 
   // Style overrides (typography, spacing)
   const s = { ...DEFAULT_STYLE, ...p.style };

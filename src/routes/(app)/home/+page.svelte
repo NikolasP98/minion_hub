@@ -908,9 +908,6 @@
 										{title}
 										{subtitle}
 										onreply={() => handleSubmit(`About: ${title}`, 'ask')}
-										onsnooze={() => {}}
-										ondismiss={() => {}}
-										onopen={() => {}}
 									/>
 								{/each}
 							</FeedSection>

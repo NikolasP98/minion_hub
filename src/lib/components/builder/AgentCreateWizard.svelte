@@ -12,8 +12,8 @@
     import { sendRequest } from "$lib/services/gateway.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { hostsState } from "$lib/state/features/hosts.svelte";
-    import type { SkillStatusEntry, SkillStatusReport } from "$lib/types/skills";
-    import type { ToolStatusEntry, ToolsStatusReport } from "$lib/types/tools";
+    import { fetchJson } from '$lib/api/fetch-json';
+    import { toastError } from '$lib/state/ui/toast.svelte';
     import * as m from '$lib/paraglide/messages';
     import { createHotkey } from '$lib/hotkeys';
     import Step0Identity from "./_agent-create-wizard/Step0Identity.svelte";
@@ -39,26 +39,19 @@
     let name = $state('');
     let emoji = $state('\u{1F916}');
     let model = $state('');
-    let configDir = $state('.minion');
-    let selectedGatewaySkillIds = $state<string[]>([]);
     let selectedBuiltSkillIds = $state<string[]>([]);
-    let selectedToolIds = $state<string[]>([]);
     let creating = $state(false);
-    let gatewaySkills = $state<SkillStatusEntry[]>([]);
     let publishedSkills = $state<BuiltSkill[]>([]);
-    let gatewayTools = $state<ToolStatusEntry[]>([]);
-    let toolGroups = $state<Record<string, string[]>>({});
     let skillsLoading = $state(false);
-    let toolsLoading = $state(false);
 
     // ── Tooltip state (cursor-following) ────────────────────────────────────
-    let hoveredItem = $state<{ type: 'skill' | 'built-skill' | 'tool'; id: string } | null>(null);
+    let hoveredItem = $state<{ type: 'built-skill'; id: string } | null>(null);
     let tooltipPos = $state({ x: 0, y: 0 });
     let tooltipVisible = $state(false);
     let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
     let showTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    function showPopover(type: 'skill' | 'built-skill' | 'tool', id: string, e: MouseEvent) {
+    function showPopover(type: 'built-skill', id: string, e: MouseEvent) {
         if (hoverTimeout) clearTimeout(hoverTimeout);
         hoveredItem = { type, id };
         tooltipPos = { x: e.clientX, y: e.clientY };
@@ -101,43 +94,27 @@
     const canAdvanceStep0 = $derived(name.trim().length >= 3);
 
     // ── Derived groups ──────────────────────────────────────────────────────
-    const eligibleSkills = $derived(gatewaySkills.filter((s) => s.eligible));
-    const ineligibleSkills = $derived(gatewaySkills.filter((s) => !s.eligible));
-    const totalSelected = $derived(
-        selectedGatewaySkillIds.length + selectedBuiltSkillIds.length + selectedToolIds.length
-    );
-
-    // Group skills by source
-    const skillsBySource = $derived.by(() => {
-        const groups = new Map<string, SkillStatusEntry[]>();
-        for (const s of eligibleSkills) {
-            const key = s.source || 'other';
-            const arr = groups.get(key);
-            if (arr) arr.push(s);
-            else groups.set(key, [s]);
-        }
-        return groups;
-    });
-
-    // Group tools by their first group tag
-    const toolsByGroup = $derived.by(() => {
-        const groups = new Map<string, ToolStatusEntry[]>();
-        for (const t of gatewayTools) {
-            const groupTag = t.groups[0]?.replace(/^group:/, '') || 'other';
-            const arr = groups.get(groupTag);
-            if (arr) arr.push(t);
-            else groups.set(groupTag, [t]);
-        }
-        return groups;
-    });
+    const totalSelected = $derived(selectedBuiltSkillIds.length);
 
     // ── Fetch models + skills + tools when gateway connects ────────────────
     let modelsLoaded = $state(false);
-    let skillsLoaded = $state(false);
-    let toolsLoaded = $state(false);
     let builtSkillsLoaded = $state(false);
 
     $effect(() => {
+        if (!builtSkillsLoaded) {
+            // Mark the request as started synchronously so reactive reruns do not
+            // launch duplicate list requests while the first one is in flight.
+            builtSkillsLoaded = true;
+            skillsLoading = true;
+            fetchJson<{ skills: BuiltSkill[] }>('/api/builder/skills?status=published')
+                .then((data) => {
+                    publishedSkills = data.skills ?? [];
+                })
+                .catch(() => {})
+                .finally(() => {
+                    skillsLoading = false;
+                });
+        }
         if (!conn.connected) return;
         // Fetch models
         if (!modelsLoaded) {
@@ -158,62 +135,9 @@
                 modelsLoaded = true;
             });
         }
-        // Fetch gateway skills
-        if (!skillsLoaded) {
-            skillsLoading = true;
-            sendRequest('skills.status', {}).then((raw) => {
-                const report = raw as SkillStatusReport;
-                if (report?.skills) {
-                    gatewaySkills = report.skills;
-                }
-                skillsLoaded = true;
-                skillsLoading = false;
-            }).catch(() => {
-                skillsLoaded = true;
-                skillsLoading = false;
-            });
-        }
-        // Fetch gateway tools
-        if (!toolsLoaded) {
-            toolsLoading = true;
-            sendRequest('tools.status', {}).then((raw) => {
-                const report = raw as ToolsStatusReport;
-                if (report?.tools) {
-                    gatewayTools = report.tools;
-                }
-                if (report?.groups) {
-                    toolGroups = report.groups;
-                }
-                toolsLoaded = true;
-                toolsLoading = false;
-            }).catch(() => {
-                toolsLoaded = true;
-                toolsLoading = false;
-            });
-        }
-        // Fetch published built skills
-        if (!builtSkillsLoaded) {
-            fetch('/api/builder/skills?status=published')
-                .then((r) => r.json())
-                .then((data) => {
-                    publishedSkills = data.skills ?? [];
-                    builtSkillsLoaded = true;
-                })
-                .catch(() => {
-                    builtSkillsLoaded = true;
-                });
-        }
     });
 
     // ── Toggles ─────────────────────────────────────────────────────────────
-    function toggleGatewaySkill(skillKey: string) {
-        if (selectedGatewaySkillIds.includes(skillKey)) {
-            selectedGatewaySkillIds = selectedGatewaySkillIds.filter((k) => k !== skillKey);
-        } else {
-            selectedGatewaySkillIds = [...selectedGatewaySkillIds, skillKey];
-        }
-    }
-
     function toggleBuiltSkill(skillId: string) {
         if (selectedBuiltSkillIds.includes(skillId)) {
             selectedBuiltSkillIds = selectedBuiltSkillIds.filter((k) => k !== skillId);
@@ -222,40 +146,13 @@
         }
     }
 
-    function toggleTool(toolId: string) {
-        if (selectedToolIds.includes(toolId)) {
-            selectedToolIds = selectedToolIds.filter((k) => k !== toolId);
-        } else {
-            selectedToolIds = [...selectedToolIds, toolId];
-        }
-    }
-
     // ── Popover data helpers ────────────────────────────────────────────────
     function getPopoverData() {
         if (!hoveredItem) return null;
-        if (hoveredItem.type === 'skill') {
-            const s = gatewaySkills.find((sk) => sk.skillKey === hoveredItem!.id);
-            if (!s) return null;
-            return { emoji: s.emoji || '\u{1F4D6}', name: s.name, desc: s.description, badge: s.source };
-        }
         if (hoveredItem.type === 'built-skill') {
             const s = publishedSkills.find((sk) => sk.id === hoveredItem!.id);
             if (!s) return null;
             return { emoji: s.emoji || '\u{1F4D6}', name: s.name, desc: s.description, badge: 'custom' };
-        }
-        if (hoveredItem.type === 'tool') {
-            const t = gatewayTools.find((tk) => tk.id === hoveredItem!.id);
-            if (!t) return null;
-            const tags: string[] = [];
-            if (t.mcpExport) tags.push('MCP');
-            if (t.multi) tags.push('multi');
-            if (t.optional) tags.push('opt');
-            return {
-                emoji: null,
-                name: t.id,
-                desc: t.groups.map((g) => g.replace(/^group:/, '')).join(', ') || 'tool',
-                badge: tags.join(' ') || null,
-            };
         }
         return null;
     }
@@ -273,59 +170,42 @@
 
     async function handleCreate() {
         creating = true;
+        let createdDraftId: string | null = null;
         try {
-            // 1. Create the agent via gateway protocol
-            const workspace = `~/${configDir}/workspaces/${name.trim()}`;
-            const params: Record<string, unknown> = {
-                name: name.trim(),
-                workspace,
-            };
-            if (model.trim()) params.model = model.trim();
-            if (emoji.trim()) params.emoji = emoji.trim();
+            // Draft-first: authoring state is persisted before any gateway mutation.
+            const { id: agentId } = await fetchJson<{ id: string }>('/api/builder/agents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name.trim(),
+                    emoji: emoji.trim(),
+                    model: model.trim() || undefined,
+                    serverId: hostsState.activeHostId || undefined,
+                }),
+            });
+            createdDraftId = agentId;
 
-            const res = (await sendRequest('agents.create', params)) as {
-                agentId?: string;
-            } | null;
-
-            const agentId = res?.agentId;
-            if (!agentId) {
-                throw new Error('Agent creation failed: no agent ID returned');
-            }
-
-            // 2. Set selected gateway skills on the agent
-            if (selectedGatewaySkillIds.length > 0) {
-                await sendRequest('agents.skills.set', {
-                    agentId,
-                    skills: selectedGatewaySkillIds,
-                });
-            }
-
-            // 3. Enable selected tools on the agent
-            for (const toolId of selectedToolIds) {
-                await sendRequest('tools.update', {
-                    agentId,
-                    toolId,
-                    enabled: true,
-                });
-            }
-
-            // 4. Persist built skill selections via hub API
-            if (selectedBuiltSkillIds.length > 0 && hostsState.activeHostId) {
-                await fetch('/api/builder/agent-skills', {
-                    method: 'POST',
+            for (const skillId of selectedBuiltSkillIds) {
+                await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
+                    method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        gatewayAgentId: agentId,
-                        serverId: hostsState.activeHostId,
-                        skillIds: selectedBuiltSkillIds,
-                    }),
+                    body: JSON.stringify({ action: 'add-skill', skillId }),
                 });
             }
-
-            // 5. Notify parent
             onComplete(agentId);
         } catch (err) {
+            // Skill attachment is part of the create operation. If it fails,
+            // remove the incomplete authoring draft so retrying cannot create
+            // duplicate drafts. No runtime agent exists at this point.
+            if (createdDraftId) {
+                try {
+                    await fetchJson(`/api/builder/agents/${createdDraftId}`, { method: 'DELETE' });
+                } catch (cleanupError) {
+                    console.error('Incomplete agent draft cleanup failed:', cleanupError);
+                }
+            }
             console.error('Agent creation failed:', err);
+            toastError(m.common_error(), err instanceof Error ? err.message : m.common_retry());
         } finally {
             creating = false;
         }
@@ -420,16 +300,8 @@
                 <Step1SkillsTools
                     contentProps={api.getContentProps({ index: 1 })}
                     {skillsLoading}
-                    {toolsLoading}
                     {publishedSkills}
-                    {gatewaySkills}
-                    {gatewayTools}
-                    {ineligibleSkills}
-                    {skillsBySource}
-                    {toolsByGroup}
                     {selectedBuiltSkillIds}
-                    {selectedGatewaySkillIds}
-                    {selectedToolIds}
                     {totalSelected}
                     {emoji}
                     {name}
@@ -439,8 +311,6 @@
                     {tooltipVisible}
                     {popoverData}
                     {toggleBuiltSkill}
-                    {toggleGatewaySkill}
-                    {toggleTool}
                     {showPopover}
                     {trackCursor}
                     {hidePopover}

@@ -1,0 +1,65 @@
+# Deterministic UI audit harness
+
+The capture suite inventories every SvelteKit page endpoint, verifies the eight redirect contracts, and captures every renderable screen against four fixed personas and three viewport classes.
+
+Provision a disposable local Supabase stack with all Hub migrations applied, then run:
+
+```bash
+bun run audit:ui:seed
+set -a; source .env.ui-audit.local; set +a
+bun run audit:ui:capture
+```
+
+Use `bun run audit:ui:seed --reset` to delete/recreate only the four `ui-audit-*@minion.test` identities before reseeding. The command refuses non-local Supabase hosts and never stores production IDs, cookies, service keys, or passwords in Git. `.env.ui-audit.local` is mode `0600` and covered by `.gitignore`.
+
+The seed performs a bounded relation-and-column preflight before it creates or resets any identity. If it reports missing base schema, stop and reconcile the disposable stack's shared and Hub-owned migration history; do not point the seed at a hosted/production project and do not mark migrations applied merely to bypass the check. During the 2026-07-13 verification run, the existing local stack had schema/history drift (including missing Hub domain tables), so no deterministic persona/viewport capture was certified from that stack.
+
+The seed owns the audit organization, persona role assignments, and Hub-native database fixtures. Gateway/Paperclip-backed detail routes use stable simulator contract IDs (`ui-audit-session`, `ui-audit-shell`, and `ui-audit-workforce-*`); configure local gateway/Paperclip simulators with those IDs when the capture must exercise populated external states. Without the simulators, the same URLs still produce deterministic unavailable/empty states and are recorded as such in the machine-readable run.
+
+Capture each persona, certification viewport, and motion mode explicitly:
+
+```bash
+for persona in owner manager member restricted; do
+  for viewport in compact-360 compact-390 medium-portrait medium-landscape wide-1280 wide-1440; do
+    for motion in full reduced; do
+      E2E_UI_AUDIT_PERSONA=$persona E2E_UI_AUDIT_VIEWPORT=$viewport E2E_UI_AUDIT_MOTION=$motion bun run audit:ui:capture
+    done
+  done
+done
+```
+
+The six viewport IDs are the exact 360×800, 390×844, 768×1024, 1024×768,
+1280×800, and 1440×900 certification dimensions. The older `compact`,
+`medium`, and `wide` inputs remain deterministic aliases for 390, 768 portrait,
+and 1440 respectively; unknown values fail instead of silently taking a default.
+
+The full route matrix uses each audit account's default theme. Representative
+theme review must not multiply all 138 screens by four. Use the route filter to
+capture a bounded shell, collection, form, detail, canvas, and terminal sample:
+
+```bash
+representative='/home,/agents,/settings/appearance,/crm/[contactId],/agents/workshop/[id],/terminal'
+for theme in dark light crt voxelized; do
+  E2E_UI_AUDIT_THEME=$theme E2E_UI_AUDIT_ROUTES=$representative E2E_UI_AUDIT_VIEWPORT=compact-390 bun run audit:ui:capture
+  E2E_UI_AUDIT_THEME=$theme E2E_UI_AUDIT_ROUTES=$representative E2E_UI_AUDIT_VIEWPORT=wide-1440 bun run audit:ui:capture
+done
+```
+
+Theme preparation snapshots the disposable persona's existing server preference,
+sets the requested canonical preset/accent, reloads, and restores the prior value
+after capture. Unknown theme IDs and route filters containing non-screen patterns
+fail rather than silently reducing coverage.
+
+Outputs are written under `test-results/ui-audit/`. `tests/ui-audit/current-baseline.json` is the immutable pre-program endpoint ledger; regenerate only when the route surface intentionally changes.
+
+Each route result records console errors, uncaught page errors, failed requests,
+failed same-origin GET responses, document overflow, duplicate IDs, accessible
+names for controls/dialogs, form-button types, invalid local links, visible route
+titles, and sub-24px interactive targets. The capture fails immediately for the
+critical deterministic invariants: unexplained document overflow, duplicate IDs,
+unnamed controls/dialogs, implicit form buttons, or empty/hash-only local links.
+Console errors, uncaught page errors, and same-origin GET responses at 400 or
+higher also fail the route; an expected 403/404 document remains a captured
+permission/not-found state, but nested API/resource failures do not pass.
+Small target findings remain recorded for route review because authored canvas,
+terminal, and dense-data controls need context rather than a global exception.

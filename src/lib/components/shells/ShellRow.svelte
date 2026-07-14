@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import type { ShellSummary } from '$lib/services/shells-rpc';
 
   let { shell, onSelect }: { shell: ShellSummary; onSelect: (shellId: string) => void } = $props();
@@ -23,7 +24,7 @@
   );
 </script>
 
-<button class="row" onclick={() => onSelect(shell.shellId)}>
+<Button variant="secondary" class="row" onclick={() => onSelect(shell.shellId)}>
   <span class="status-dot {statusColor}" title={shell.status}></span>
   <span class="name">{shell.displayName}</span>
   <span class="harness">{shell.harness}</span>
@@ -31,36 +32,29 @@
   <span class="resources">{shell.diskGB}GB · {shell.memoryMB}MB</span>
   <span class="invoke">{relTime(shell.lastInvokeAt)}</span>
   <span class="status-text {statusColor}">{shell.status}</span>
-</button>
+</Button>
 
 <style>
   .row {
     display: grid;
     grid-template-columns: auto 1fr 120px 80px 130px 110px 100px;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3, 12px);
     width: 100%;
-    padding: 12px 16px;
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid var(--color-border, #e5e7eb);
+    padding: var(--space-3, 12px) var(--space-4, 16px);
     cursor: pointer;
     text-align: left;
-    font-size: 13px;
-    color: inherit;
-  }
-  .row:hover {
-    background: var(--color-surface-soft, #fafafa);
+    font-size: var(--font-size-body, 13px);
   }
   .status-dot {
     width: 8px;
     height: 8px;
-    border-radius: 50%;
+    border-radius: var(--radius-full, 999px);
   }
-  .green { background: rgb(34, 197, 94); }
-  .amber { background: rgb(245, 158, 11); }
-  .gray { background: rgb(156, 163, 175); }
-  .red { background: rgb(239, 68, 68); }
+  .green { background: var(--color-success-fg, var(--color-success)); }
+  .amber { background: var(--color-warning-fg, var(--color-warning)); }
+  .gray { background: var(--color-text-disabled, var(--color-muted)); }
+  .red { background: var(--color-danger-fg, var(--color-destructive)); }
   .name {
     font-weight: 500;
     overflow: hidden;
@@ -68,18 +62,38 @@
     white-space: nowrap;
   }
   .harness, .region, .resources, .invoke {
-    color: var(--color-text-muted, #6b7280);
+    color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-variant-numeric: tabular-nums;
   }
   .status-text {
     text-align: right;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    font-size: 11px;
+    font-size: var(--font-size-label, 11px);
     font-weight: 600;
   }
-  .status-text.green { color: rgb(22, 163, 74); background: transparent; }
-  .status-text.amber { color: rgb(180, 83, 9); background: transparent; }
-  .status-text.gray { color: rgb(75, 85, 99); background: transparent; }
-  .status-text.red { color: rgb(185, 28, 28); background: transparent; }
+  .status-text.green { color: var(--color-success-fg, var(--color-success)); background: transparent; }
+  .status-text.amber { color: var(--color-warning-fg, var(--color-warning)); background: transparent; }
+  .status-text.gray { color: var(--color-text-tertiary, var(--color-muted)); background: transparent; }
+  .status-text.red { color: var(--color-danger-fg, var(--color-destructive)); background: transparent; }
+  @media (max-width: 767.98px) {
+    .row {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        'dot name status'
+        'dot harness status'
+        'dot resources invoke';
+      gap: var(--space-1, 4px) var(--space-2, 8px);
+      min-height: var(--control-height-touch, 44px);
+      margin-bottom: var(--space-2, 8px);
+      padding: var(--space-3, 12px);
+    }
+    .status-dot { grid-area: dot; }
+    .name { grid-area: name; }
+    .harness { grid-area: harness; }
+    .resources { grid-area: resources; }
+    .invoke { grid-area: invoke; justify-self: end; }
+    .status-text { grid-area: status; align-self: start; }
+    .region { display: none; }
+  }
 </style>

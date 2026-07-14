@@ -150,7 +150,7 @@
 					<div class="font-medium">{m.sched_rem_enabled()}</div>
 					<div class="t-caption">{m.sched_rem_enabled_desc()}</div>
 				</div>
-				<Toggle bind:checked={enabled} size="md" />
+				<Toggle bind:checked={enabled} size="md" ariaLabel={m.sched_rem_enabled()} />
 			</div>
 			{#if enabled && channels.length === 0}
 				<p class="t-caption mt-2" style="color:var(--color-destructive)">{m.sched_rem_needs_account()}</p>
@@ -186,7 +186,7 @@
 			<div class="flex flex-col gap-2">
 				{#each stages as s, i (s.key)}
 					<div class="stage {s.enabled ? '' : 'stage-off'}">
-						<Toggle bind:checked={s.enabled} size="sm" />
+						<Toggle bind:checked={s.enabled} size="sm" ariaLabel={stageLabel(s.key)} />
 						<div class="stage-main">
 							<div class="font-medium text-sm">{stageLabel(s.key)}</div>
 							{#if s.minutesBefore != null}
@@ -223,7 +223,7 @@
 					<div class="font-medium text-sm flex items-center gap-1"><Sparkles size={14} class="text-accent" /> {m.sched_rem_infer()}</div>
 					<div class="t-caption">{inferConfirmation ? m.sched_rem_infer_on() : m.sched_rem_infer_off()}</div>
 				</div>
-				<Toggle bind:checked={inferConfirmation} size="sm" />
+				<Toggle bind:checked={inferConfirmation} size="sm" ariaLabel={m.sched_rem_infer()} />
 			</div>
 		</Card>
 
@@ -239,7 +239,7 @@
 					<div class="font-medium text-sm flex items-center gap-1"><Sparkles size={14} class="text-accent" /> {m.sched_rem_personalize()}</div>
 					<div class="t-caption">{m.sched_rem_personalize_desc()}</div>
 				</div>
-				<Toggle bind:checked={personalize} size="sm" />
+				<Toggle bind:checked={personalize} size="sm" ariaLabel={m.sched_rem_personalize()} />
 			</div>
 			{#if personalize}
 				<div class="preview mt-3">

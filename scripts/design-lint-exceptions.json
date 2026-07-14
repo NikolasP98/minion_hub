@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "file": "src/lib/components/layout/MinionLogo.svelte",
+      "rule": "raw-color",
+      "allowance": 35,
+      "category": "illustration",
+      "reason": "Brand illustration palette is not semantic interface color."
+    },
+    {
+      "file": "src/lib/components/settings/CRTConfigModal.svelte",
+      "rule": "raw-color",
+      "allowance": 46,
+      "category": "theme-preview",
+      "reason": "The editor previews authored CRT palette values as data."
+    },
+    {
+      "file": "src/lib/components/settings/CRTConfigModal.svelte",
+      "rule": "raw-spacing",
+      "allowance": 6,
+      "category": "theme-preview",
+      "reason": "The miniature CRT preview preserves authored pixel-grid spacing at display scale."
+    },
+    {
+      "file": "src/lib/components/settings/CRTConfigModal.svelte",
+      "rule": "raw-shadow",
+      "allowance": 3,
+      "category": "theme-preview",
+      "reason": "The miniature CRT preview demonstrates authored phosphor and pixel shadows."
+    },
+    {
+      "file": "src/lib/components/settings/CRTConfigModal.svelte",
+      "rule": "raw-layer",
+      "allowance": 4,
+      "category": "theme-preview",
+      "reason": "The miniature CRT preview composes authored scanline and phosphor overlay layers."
+    },
+    {
+      "file": "src/lib/components/settings/CRTConfigModal.svelte",
+      "rule": "raw-type-size",
+      "allowance": 7,
+      "category": "theme-preview",
+      "reason": "The miniature CRT preview preserves authored pixel typography at display scale."
+    },
+    {
+      "file": "src/lib/components/sessions/SessionViewer.svelte",
+      "rule": "raw-spacing",
+      "allowance": 1,
+      "category": "third-party-render-surface",
+      "reason": "TanStack Virtual requires a numeric pixel gap in its renderer configuration."
+    },
+    {
+      "file": "src/routes/(app)/tools/[id]/_components/CodeEditorPane.svelte",
+      "rule": "raw-color",
+      "allowance": 2,
+      "category": "syntax",
+      "reason": "Code-editor syntax colors belong to the named syntax palette."
+    },
+    {
+      "file": "src/lib/components/charts/Chart.svelte",
+      "rule": "raw-color",
+      "allowance": 12,
+      "category": "third-party-render-surface",
+      "reason": "ECharts receives serialized canvas renderer colors rather than CSS roles."
+    },
+    {
+      "file": "src/routes/(app)/reliability/+page.svelte",
+      "rule": "raw-color",
+      "allowance": 30,
+      "category": "data-visualization",
+      "reason": "Reliability chart taxonomies require stable serialized category and severity colors."
+    },
+    {
+      "file": "src/lib/components/sessions/SessionMonitor.svelte",
+      "rule": "raw-color",
+      "allowance": 7,
+      "category": "data-visualization",
+      "reason": "Tool waterfall colors encode stable tool families in a timeline visualization."
+    }
+  ]
+}

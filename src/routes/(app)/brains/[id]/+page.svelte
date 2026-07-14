@@ -13,6 +13,7 @@
   import BrainSearchPanel from '$lib/components/brains/BrainSearchPanel.svelte';
   import BrainAccessPanel from '$lib/components/brains/BrainAccessPanel.svelte';
   import BrainAgentPanel from '$lib/components/brains/BrainAgentPanel.svelte';
+  import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
 
   let { data }: { data: PageData } = $props();
 
@@ -37,24 +38,34 @@
   ]);
 
   let deleting = $state(false);
+  let deleteError = $state<string | null>(null);
   async function deleteBrain() {
     if (!confirm(m.brains_delete_confirm())) return;
     deleting = true;
+    deleteError = null;
     try {
-      await fetch(`/api/brains/${encodeURIComponent(brain.id)}`, { method: 'DELETE' });
-      await goto('/brains');
+      await jsonMutation<{ ok: boolean }>({
+        input: `/api/brains/${encodeURIComponent(brain.id)}`,
+        init: { method: 'DELETE' },
+        onSuccess: () => goto('/brains'),
+      });
+    } catch (error) {
+      deleteError = mutationErrorMessage(error, m.common_error());
     } finally {
       deleting = false;
     }
   }
 
   async function postComment(body: string) {
-    const res = await fetch('/api/activity/comments', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ refType: 'brain', refId: brain.id, body }),
+    await jsonMutation({
+      input: '/api/activity/comments',
+      init: {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refType: 'brain', refId: brain.id, body }),
+      },
+      onSuccess: () => invalidate('brains:detail'),
     });
-    if (res.ok) await invalidate('brains:detail');
   }
 </script>
 
@@ -84,8 +95,12 @@
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-y-auto p-6">
-    <Tabs {tabs} bind:value={tab} class="mb-4" />
+    {#if deleteError}
+      <p class="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">{deleteError}</p>
+    {/if}
+    <Tabs id="brain-tabs" aria-label={m.a11y_tabs_brains()} {tabs} bind:value={tab} class="mb-4" />
 
+    <div id={`brain-tabs-panel-${tab}`} role="tabpanel" aria-labelledby={`brain-tabs-tab-${tab}`}>
     {#if tab === 'documents'}
       <BrainDocumentsTable brainId={brain.id} documents={data.documents} {canEdit} />
     {:else if tab === 'search'}
@@ -97,5 +112,6 @@
     {:else if tab === 'activity'}
       <DocTimeline items={data.timeline} onComment={postComment} />
     {/if}
+    </div>
   </div>
 </div>

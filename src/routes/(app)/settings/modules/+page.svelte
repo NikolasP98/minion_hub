@@ -89,6 +89,7 @@
 					</div>
 					<Toggle
 						bind:checked={finEnabled}
+						ariaLabel={m.fin_module_finances()}
 						disabled={moduleBusy === 'finances'}
 						onchange={(v) => setModule('finances', v)}
 						size="md"
@@ -102,6 +103,7 @@
 					</div>
 					<Toggle
 						bind:checked={crmEnabled}
+						ariaLabel={m.fin_module_crm()}
 						disabled={moduleBusy === 'crm'}
 						onchange={(v) => setModule('crm', v)}
 						size="md"
@@ -115,6 +117,7 @@
 					</div>
 					<Toggle
 						bind:checked={schedEnabled}
+						ariaLabel={m.sched_module_scheduling()}
 						disabled={moduleBusy === 'scheduling'}
 						onchange={(v) => setModule('scheduling', v)}
 						size="md"
@@ -128,6 +131,7 @@
 					</div>
 					<Toggle
 						bind:checked={supportEnabled}
+						ariaLabel="Support"
 						disabled={moduleBusy === 'support'}
 						onchange={(v) => setModule('support', v)}
 						size="md"
@@ -141,6 +145,7 @@
 					</div>
 					<Toggle
 						bind:checked={salesEnabled}
+						ariaLabel="Sales Orders"
 						disabled={moduleBusy === 'sales'}
 						onchange={(v) => setModule('sales', v)}
 						size="md"

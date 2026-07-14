@@ -2,6 +2,8 @@
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
 	import { PageHeader, Button, Select } from '$lib/components/ui';
+	import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 
@@ -48,21 +50,33 @@
 		const states = statesText.split(',').map((s) => s.trim()).filter(Boolean);
 		busy = true;
 		try {
-			const res = await fetch('/api/workflow/defs', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ docType, name, enabled, states, transitions }),
+			await jsonMutation({
+				input: '/api/workflow/defs',
+				init: {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ docType, name, enabled, states, transitions }),
+				},
+				onSuccess: () => invalidate('settings:workflows'),
 			});
-			if (res.ok) await invalidate('settings:workflows');
-			else err = (await res.json().catch(() => ({}))).message ?? `Save failed (${res.status})`;
+		} catch (error) {
+			err = mutationErrorMessage(error, m.common_error());
 		} finally {
 			busy = false;
 		}
 	}
 
 	async function remove(id: string) {
-		await fetch(`/api/workflow/defs/${id}`, { method: 'DELETE' });
-		await invalidate('settings:workflows');
+		err = '';
+		try {
+			await jsonMutation({
+				input: `/api/workflow/defs/${id}`,
+				init: { method: 'DELETE' },
+				onSuccess: () => invalidate('settings:workflows'),
+			});
+		} catch (error) {
+			err = mutationErrorMessage(error, m.common_error());
+		}
 	}
 </script>
 
@@ -104,7 +118,7 @@
 </div>
 
 <style>
-	.wrap { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 1rem; max-width: 720px; }
+	.wrap { display: flex; flex-direction: column; gap: 0.6rem; padding: 1rem var(--space-page-gutter, 16px); max-width: calc(720px + var(--space-page-gutter, 16px) + var(--space-page-gutter, 16px)); }
 	.card { padding: 0.9rem 1rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--color-bg2); }
 	.card h3 { margin: 0 0 0.6rem; font-size: 0.95rem; }
 	.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.6rem; }
@@ -119,4 +133,10 @@
 	.small { font-size: 0.8rem; margin-top: 0.3rem; }
 	.err { color: var(--color-danger, #ef4444); font-size: 0.82rem; }
 	.hint { font-size: 0.78rem; opacity: 0.65; margin: 0.5rem 0 0; }
+	@media (max-width: 767.98px) {
+		.grid { grid-template-columns: minmax(0, 1fr); }
+		.def-head { align-items: stretch; flex-wrap: wrap; }
+		.def-head .spacer { display: none; }
+		.def-head strong { width: 100%; }
+	}
 </style>

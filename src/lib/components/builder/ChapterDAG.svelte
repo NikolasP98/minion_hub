@@ -93,7 +93,7 @@
     } as unknown as NodeTypes;
 
     const colorMode: ColorMode = $derived(
-        theme.preset.id === 'light' ? 'light' : 'dark',
+        theme.mode,
     );
 
     // ── Convert chapters → xyflow nodes ──────────────────────────────────────

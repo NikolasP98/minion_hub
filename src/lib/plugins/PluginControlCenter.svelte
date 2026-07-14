@@ -4,9 +4,11 @@
   import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
   import { hostsState, fetchHostToken } from '$lib/state/features/hosts.svelte';
   import { PageHeader } from '$lib/components/ui';
+  import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
   import { Puzzle } from 'lucide-svelte';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { entry, gatewayBaseUrl }: { entry: PluginUiManifestOccupant; gatewayBaseUrl: string } =
     $props();
@@ -73,8 +75,13 @@
   });
 </script>
 
-<div class="flex h-full min-h-0 flex-col">
-  <PageHeader title={entry.title} subtitle={entry.description ?? undefined}>
+<PageShell archetype="workspace" scroll="none" labelledBy="plugin-control-title">
+  <PageHeader
+    titleId="plugin-control-title"
+    title={entry.title}
+    subtitle={entry.description ?? undefined}
+    sticky={false}
+  >
     {#snippet leading()}
       {#if entry.icon && BRAND_ICON_SET.has(entry.icon)}
         <ChannelBrandIcon channel={entry.icon} size={16} class="text-accent shrink-0" />
@@ -86,16 +93,21 @@
       {/if}
     {/snippet}
   </PageHeader>
-  <div class="min-h-0 flex-1 overflow-y-auto">
-    {#if tokenLoading}
-      <div class="px-6 py-6 text-sm text-muted-foreground">Authenticating…</div>
-    {:else if tokenError}
-      <div class="px-6 py-6 text-sm text-destructive">Auth: {tokenError}</div>
-    {:else if !authToken}
-      <div class="px-6 py-6 text-sm text-muted-foreground">
-        No active host. Pick one in the host switcher to load this plugin.
-      </div>
-    {:else}
+  <PageBody padding="none" scroll="none">
+    <AsyncBoundary
+      class="h-full"
+      state={tokenLoading
+        ? { kind: 'loading', label: m.common_loading() }
+        : tokenError
+          ? { kind: 'error', description: tokenError }
+          : !authToken
+            ? {
+                kind: 'unavailable',
+                title: m.config_noServer(),
+                description: m.config_connectHint(),
+              }
+            : { kind: 'ready' }}
+    >
       {#key entry.pluginId + ':' + entry.entrypoint}
         <PluginIframe
           pluginId={entry.pluginId}
@@ -109,6 +121,6 @@
           fillContainer
         />
       {/key}
-    {/if}
-  </div>
-</div>
+    </AsyncBoundary>
+  </PageBody>
+</PageShell>

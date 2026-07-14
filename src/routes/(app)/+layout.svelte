@@ -15,6 +15,7 @@
 	import { fadeIn } from '$lib/animations';
 	import { QueryClientProvider } from '@tanstack/svelte-query';
 	import { queryClient } from '$lib/query/client';
+	import { AppViewport } from '$lib/components/ui/foundations';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -42,22 +43,24 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-	<div class="relative z-10 flex h-screen overflow-hidden text-foreground">
-		{#if !immersive}
-			<Sidebar />
-		{/if}
-		<div class="shell-main flex flex-col flex-1 min-w-0 overflow-hidden">
-			<Topbar />
-			<div class="flex-1 min-h-0 overflow-y-auto">
-				{#key moduleKey}
-					<div in:fadeIn={{ duration: 200 }} class="h-full">
-						{@render children()}
-					</div>
-				{/key}
+	<AppViewport density="compact" class="hub-shell-viewport">
+		<div data-part="primary-shell" class="relative flex flex-1 min-w-0 min-h-0 overflow-hidden text-foreground">
+			{#if !immersive}
+				<Sidebar />
+			{/if}
+			<div class="shell-main flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+				<Topbar />
+				<div data-part="route-viewport" class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+					{#key moduleKey}
+						<div in:fadeIn={{ duration: 200 }} class="h-full min-h-0">
+							{@render children()}
+						</div>
+					{/key}
+				</div>
 			</div>
+			<DynamicIsland />
 		</div>
-		<DynamicIsland />
-	</div>
+	</AppViewport>
 
 	<CommandPalette />
 	<LiveRunWidget />

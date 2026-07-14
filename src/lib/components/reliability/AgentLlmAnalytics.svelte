@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
 	import { Cpu, DollarSign, X, Radio, Zap } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 	import PanelHeader from './PanelHeader.svelte';
@@ -461,27 +462,28 @@
 			{#snippet actions()}
 				<!-- Cost ⟷ Tokens toggle -->
 				<div class="flex items-center rounded-md border border-border overflow-hidden h-6">
-					<button
+					<Button
 						type="button"
 						onclick={() => (metric = 'cost')}
-						class="px-2 h-full text-[10px] font-semibold transition-colors cursor-pointer {metric === 'cost'
-							? 'bg-accent/20 text-accent'
-							: 'text-muted-foreground hover:text-foreground'}"
+						variant={metric === 'cost' ? 'primary' : 'secondary'}
+						size="sm"
+						class="!h-full"
+						aria-pressed={metric === 'cost'}
 					>
 						Cost
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						onclick={() => (metric = 'tokens')}
-						class="px-2 h-full text-[10px] font-semibold transition-colors cursor-pointer border-l border-border {metric ===
-						'tokens'
-							? 'bg-accent/20 text-accent'
-							: 'text-muted-foreground hover:text-foreground'}"
+						variant={metric === 'tokens' ? 'primary' : 'secondary'}
+						size="sm"
+						class="!h-full"
+						aria-pressed={metric === 'tokens'}
 					>
 						Tokens
-					</button>
+					</Button>
 				</div>
-				<span class="text-[10px] text-muted-strong tabular-nums ml-2">
+				<span class="text-xs text-muted-strong tabular-nums ml-2">
 					{summary.callCount}
 					{summary.callCount !== 1 ? m.reliability_llmCallsPlural() : m.reliability_llmCall()}
 				</span>
@@ -489,31 +491,32 @@
 		</PanelHeader>
 
 		{#if rows.length === 0}
-			<div class="flex items-center justify-center py-8 text-muted-foreground text-[13px]">
+			<div class="flex items-center justify-center py-8 text-muted-foreground text-sm">
 				{m.reliability_noLlmData()}
 			</div>
 		{:else}
 			{#if activeFilters.length > 0}
 				<div class="flex items-center gap-1.5 flex-wrap px-4 py-2 border-b border-border bg-bg3/20">
-					<span class="text-[10px] uppercase tracking-widest text-muted-strong">Filtered</span>
+					<span class="text-xs uppercase tracking-widest text-muted-strong">Filtered</span>
 					{#each activeFilters as [dim, val] (dim)}
-						<button
+						<Button variant="outline" size="sm"
 							type="button"
 							onclick={() => clearFilter(dim)}
-							class="inline-flex items-center gap-1 h-5 pl-2 pr-1 rounded-full text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25 transition-colors cursor-pointer"
+							class="rounded-full"
+							aria-label={`Clear ${dim} filter ${val}`}
 						>
 							<span class="opacity-70">{dim}:</span>
 							<span class="font-semibold">{val}</span>
 							<X size={10} class="opacity-70" />
-						</button>
+						</Button>
 					{/each}
-					<button
+					<Button variant="ghost" size="sm"
 						type="button"
 						onclick={clearAll}
-						class="text-[10px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline cursor-pointer ml-1"
+						class="underline-offset-2 hover:underline ml-1"
 					>
 						Clear all
-					</button>
+					</Button>
 				</div>
 			{/if}
 
@@ -526,7 +529,7 @@
 				<MetricCard label="Avg cost / call (USD)" value={formatUsd(summary.avgCost)} valueClass="text-foreground tabular-nums" />
 			</div>
 
-			<p class="px-4 pt-1.5 text-[10px] text-muted-strong">
+			<p class="px-4 pt-1.5 text-xs text-muted-strong">
 				{#if usingAggregate}
 					Full coverage · {fmt(aggregate?.eventCount ?? 0)} usage events aggregated server-side · costs in USD.
 				{:else}
@@ -535,7 +538,7 @@
 			</p>
 
 			{#if summary.unpriced > 0}
-				<p class="px-4 pt-1 text-[10px] text-muted-strong">
+				<p class="px-4 pt-1 text-xs text-muted-strong">
 					{summary.unpriced} call{summary.unpriced !== 1 ? 's' : ''} on unpriced/local models — excluded from cost (tokens still counted).
 				</p>
 			{/if}
@@ -545,72 +548,72 @@
 				<div class="bg-bg2 p-1">
 					<div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
 						<DollarSign size={11} class="text-accent" />
-						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{metric === 'cost' ? 'Cost' : 'Tokens'} by model</span>
+						<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{metric === 'cost' ? 'Cost' : 'Tokens'} by model</span>
 					</div>
 					{#if byModel.length > 0}
 						<Chart options={modelChart} height="200px" onItemClick={onBarClick('model')} />
 					{:else}
-						<div class="flex items-center justify-center h-[200px] text-muted-strong text-[11px]">No data</div>
+						<div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">No data</div>
 					{/if}
 				</div>
 
 				<div class="bg-bg2 p-1">
 					<div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
-						<Radio size={11} class="text-cyan" />
-						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{metric === 'cost' ? 'Cost' : 'Tokens'} by channel / origin</span>
+						<Radio size={11} class="text-[var(--color-cyan)]" />
+						<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{metric === 'cost' ? 'Cost' : 'Tokens'} by channel / origin</span>
 					</div>
 					{#if byChannel.length > 0}
 						<Chart options={channelChart} height="200px" onItemClick={onBarClick('channel')} />
 					{:else}
-						<div class="flex items-center justify-center h-[200px] text-muted-strong text-[11px]">No data</div>
+						<div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">No data</div>
 					{/if}
 				</div>
 
 				<div class="bg-bg2 p-1">
 					<div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
 						<Cpu size={11} class="text-accent" />
-						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Tokens by provider</span>
+						<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Tokens by provider</span>
 					</div>
 					{#if byProvider.length > 0}
 						<Chart options={providerTokenChart} height="200px" onItemClick={onBarClick('provider')} />
 					{:else}
-						<div class="flex items-center justify-center h-[200px] text-muted-strong text-[11px]">No data</div>
+						<div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">No data</div>
 					{/if}
 				</div>
 
 				<div class="bg-bg2 p-1">
 					<div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
-						<Zap size={11} class="text-rose-400" />
-						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{metric === 'cost' ? 'Cost' : 'Tokens'} by trigger (proactive vs reactive)</span>
+						<Zap size={11} class="text-destructive" />
+						<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{metric === 'cost' ? 'Cost' : 'Tokens'} by trigger (proactive vs reactive)</span>
 					</div>
 					{#if bySource.length > 0}
 						<Chart options={sourceChart} height="200px" onItemClick={onBarClick('source')} />
 					{:else}
-						<div class="flex items-center justify-center h-[200px] text-muted-strong text-[11px]">No data</div>
+						<div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">No data</div>
 					{/if}
 				</div>
 
 				<div class="bg-bg2 p-1">
 					<div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
-						<DollarSign size={11} class="text-pink" />
-						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{metric === 'cost' ? 'Cost' : 'Tokens'} by agent</span>
+						<DollarSign size={11} class="text-[var(--color-pink)]" />
+						<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{metric === 'cost' ? 'Cost' : 'Tokens'} by agent</span>
 					</div>
 					{#if byAgent.length > 0}
 						<Chart options={agentChart} height="200px" onItemClick={onBarClick('agent')} />
 					{:else}
-						<div class="flex items-center justify-center h-[200px] text-muted-strong text-[11px]">No data</div>
+						<div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">No data</div>
 					{/if}
 				</div>
 
 				<div class="bg-bg2 p-1">
 					<div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
 						<DollarSign size={11} class="text-accent" />
-						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{metric === 'cost' ? 'Cost' : 'Tokens'} over time</span>
+						<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{metric === 'cost' ? 'Cost' : 'Tokens'} over time</span>
 					</div>
 					{#if overTime.points.length > 0}
 						<Chart options={overTimeChart} height="200px" />
 					{:else}
-						<div class="flex items-center justify-center h-[200px] text-muted-strong text-[11px]">No data</div>
+						<div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">No data</div>
 					{/if}
 				</div>
 			</div>

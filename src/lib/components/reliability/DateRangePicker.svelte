@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
 	import { ChevronDown } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 
@@ -71,20 +72,20 @@
 <div class="hidden sm:flex flex-row items-end gap-2">
 	<div class="flex flex-row items-center gap-1.5">
 		{#each presets as preset (preset.label)}
-			<button
-				class="text-xs py-1 px-3 rounded-full border cursor-pointer whitespace-nowrap leading-snug font-[inherit] transition-colors duration-150
-					{activePreset === preset.label
-						? 'bg-accent text-white border-accent'
-						: 'bg-bg3 text-muted border-border hover:bg-border hover:text-foreground'}"
+			<Button
+				variant={activePreset === preset.label ? 'primary' : 'outline'}
+				size="sm"
+				class="rounded-full"
+				aria-pressed={activePreset === preset.label}
 				onclick={() => applyPreset(preset.ms, preset.label)}
 			>
 				{preset.label}
-			</button>
+			</Button>
 		{/each}
 	</div>
 
 	<div class="flex flex-col gap-0.5">
-		<label for="date-from" class="text-[11px] text-muted-foreground leading-none">{m.dateRange_from()}</label>
+		<label for="date-from" class="text-xs text-muted-foreground leading-none">{m.dateRange_from()}</label>
 		<input
 			id="date-from"
 			type="date"
@@ -95,7 +96,7 @@
 	</div>
 
 	<div class="flex flex-col gap-0.5">
-		<label for="date-to" class="text-[11px] text-muted-foreground leading-none">{m.dateRange_to()}</label>
+		<label for="date-to" class="text-xs text-muted-foreground leading-none">{m.dateRange_to()}</label>
 		<input
 			id="date-to"
 			type="date"
@@ -108,46 +109,47 @@
 
 <!-- Mobile: dropdown trigger + panel (<640px) -->
 <div class="relative sm:hidden">
-	<button
+	<Button
 		type="button"
-		class="flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-full border cursor-pointer whitespace-nowrap leading-snug font-[inherit] transition-colors duration-150
-			{activePreset
-				? 'bg-accent text-white border-accent'
-				: 'bg-bg3 text-muted border-border hover:bg-border hover:text-foreground'}"
+		variant={activePreset ? 'primary' : 'outline'}
+		size="sm"
+		class="rounded-full"
+		aria-expanded={open}
+		aria-controls="mobile-date-range-panel"
 		onclick={() => (open = !open)}
 	>
 		{triggerLabel}
-		<ChevronDown size={12} class="transition-transform duration-150 {open ? 'rotate-180' : ''}" />
-	</button>
+		<ChevronDown size={12} class="transition-transform duration-[var(--duration-fast)] {open ? 'rotate-180' : ''}" />
+	</Button>
 
 	{#if open}
 		<!-- Backdrop -->
-		<button
+		<Button variant="ghost" size="icon"
 			type="button"
-			class="fixed inset-0 z-40"
+			class="!fixed !inset-0 !z-[var(--layer-modal-backdrop,40)] !h-auto !w-auto !rounded-none"
 			onclick={() => (open = false)}
 			aria-label={m.dateRange_closePicker()}
-		></button>
+		></Button>
 
 		<!-- Dropdown panel -->
-		<div class="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg p-3 min-w-[220px]">
+		<div id="mobile-date-range-panel" class="absolute right-0 top-full mt-1 z-[var(--layer-overlay,50)] bg-card border border-border rounded-lg shadow-lg p-3 min-w-[220px]">
 			<div class="flex flex-row items-center gap-1.5 mb-3">
 				{#each presets as preset (preset.label)}
-					<button
-						class="text-xs py-1 px-3 rounded-full border cursor-pointer whitespace-nowrap leading-snug font-[inherit] transition-colors duration-150
-							{activePreset === preset.label
-								? 'bg-accent text-white border-accent'
-								: 'bg-bg3 text-muted border-border hover:bg-border hover:text-foreground'}"
+					<Button
+						variant={activePreset === preset.label ? 'primary' : 'outline'}
+						size="sm"
+						class="rounded-full"
+						aria-pressed={activePreset === preset.label}
 						onclick={() => applyPreset(preset.ms, preset.label)}
 					>
 						{preset.label}
-					</button>
+					</Button>
 				{/each}
 			</div>
 
 			<div class="flex flex-col gap-2">
 				<div class="flex flex-col gap-0.5">
-					<label for="date-from-mobile" class="text-[11px] text-muted-foreground leading-none">{m.dateRange_from()}</label>
+					<label for="date-from-mobile" class="text-xs text-muted-foreground leading-none">{m.dateRange_from()}</label>
 					<input
 						id="date-from-mobile"
 						type="date"
@@ -157,7 +159,7 @@
 					/>
 				</div>
 				<div class="flex flex-col gap-0.5">
-					<label for="date-to-mobile" class="text-[11px] text-muted-foreground leading-none">{m.dateRange_to()}</label>
+					<label for="date-to-mobile" class="text-xs text-muted-foreground leading-none">{m.dateRange_to()}</label>
 					<input
 						id="date-to-mobile"
 						type="date"

@@ -24,6 +24,7 @@
         Loader2,
     } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
+    import { Button, PageHeader } from '$lib/components/ui';
 
     const serverId = $derived(page.url.searchParams.get("server") ?? "");
 
@@ -60,29 +61,21 @@
     }
 </script>
 
-<!-- Sub-header -->
-    <div class="shrink-0 border-b border-border bg-bg/80 backdrop-blur-sm px-4 py-2.5 flex items-center gap-3">
-        <button
-            type="button"
-            class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer bg-transparent border-none font-[inherit]"
-            onclick={() => goto('/settings/gateways')}
-        >
+    <PageHeader
+        title={server?.name ?? m.provision_unknownServer()}
+        subtitle={server?.url}
+        sticky={false}
+    >
+        {#snippet leading()}
+          <Button variant="ghost" size="sm" onclick={() => goto('/settings/gateways')}>
             <ArrowLeft size={14} />
             {m.provision_backToHosts()}
-        </button>
-        <div class="w-px h-4 bg-border"></div>
-        <span class="text-sm font-medium text-foreground">
-            {server?.name ?? m.provision_unknownServer()}
-        </span>
-        {#if server?.url}
-            <span class="text-xs text-muted-foreground font-mono">{server.url}</span>
-        {/if}
-
-        <!-- Action buttons -->
-        <div class="ml-auto flex items-center gap-2">
-            <button
-                type="button"
-                class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border text-foreground bg-transparent cursor-pointer hover:bg-bg2 transition-colors disabled:opacity-50"
+          </Button>
+        {/snippet}
+        {#snippet secondaryActions()}
+            <Button
+                variant="secondary"
+                size="sm"
                 disabled={provisionState.checking || provisionState.running || !provisionState.config.sshHost}
                 onclick={() => checkStatus(serverId)}
             >
@@ -93,30 +86,27 @@
                     <RefreshCw size={13} />
                     {m.provision_checkStatus()}
                 {/if}
-            </button>
-
+            </Button>
+        {/snippet}
+        {#snippet primaryActions()}
             {#if provisionState.running}
-                <button
-                    type="button"
-                    class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-destructive text-white border-none cursor-pointer hover:opacity-90"
+                <Button variant="danger" size="sm"
                     onclick={stopProvision}
                 >
                     <Square size={13} />
                     {m.provision_stop()}
-                </button>
+                </Button>
             {:else}
-                <button
-                    type="button"
-                    class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
+                <Button variant="primary" size="sm"
                     disabled={!provisionState.config.sshHost}
                     onclick={handleRun}
                 >
                     <Play size={13} />
                     {m.provision_run()}
-                </button>
+                </Button>
             {/if}
-        </div>
-    </div>
+        {/snippet}
+    </PageHeader>
 
     <!-- Error banner -->
     {#if provisionState.error}
@@ -132,13 +122,14 @@
                 {#if !serverId}
                     <div class="text-center py-12">
                         <p class="text-sm text-muted-foreground">{m.provision_noServer()}</p>
-                        <button
-                            type="button"
-                            class="mt-2 text-xs text-accent hover:underline cursor-pointer bg-transparent border-none"
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            class="mt-2"
                             onclick={() => goto('/settings/gateways')}
                         >
                             {m.provision_goToHosts()}
-                        </button>
+                        </Button>
                     </div>
                 {:else if !provisionState.configLoaded}
                     <SettingsSkeleton />

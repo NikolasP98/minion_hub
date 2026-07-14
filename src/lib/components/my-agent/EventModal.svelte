@@ -77,7 +77,7 @@
 	}
 </script>
 
-<Modal bind:open size="md" {onclose}>
+<Modal bind:open {title} size="md" {onclose}>
 	{#snippet header()}
 		<div class="hdr">
 			<h2 class="hdr-title" title={title}>{title}</h2>

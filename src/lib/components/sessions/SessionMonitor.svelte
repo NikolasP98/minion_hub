@@ -1,5 +1,7 @@
 <!-- src/lib/components/SessionMonitor.svelte -->
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
+  import { AsyncBoundary, type AsyncBoundaryState } from '$lib/components/ui/foundations';
   import { agentChat } from '$lib/state/chat/chat.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { parseToolCallRuns, type Run, type ToolCall } from '$lib/utils/tool-calls';
@@ -126,42 +128,38 @@
     if (tc.durationMs === null || span <= 0) return 0.5;
     return Math.max((tc.durationMs / span) * 100, 0.5);
   }
+
+  const monitorState = $derived.by<AsyncBoundaryState>(() => {
+    if (!sessionKey) return { kind: 'empty', title: m.session_selectToMonitor() };
+    if (loading) return { kind: 'loading', label: m.common_loading() };
+    if (error) {
+      return {
+        kind: 'error',
+        description: error,
+        retry: () => void loadMessages(sessionKey, serverId),
+      };
+    }
+    if (runs.length === 0) return { kind: 'empty', title: m.session_noToolCalls() };
+    return { kind: 'ready' };
+  });
 </script>
 
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden bg-bg">
-  {#if !sessionKey}
-    <div class="flex-1 flex items-center justify-center text-muted text-xs">
-      {m.session_selectToMonitor()}
-    </div>
-  {:else if loading}
-    <div class="flex-1 flex items-center justify-center gap-2 text-muted text-xs">
-      <div class="w-4 h-4 border-2 border-border border-t-accent rounded-full animate-spin"></div>
-      {m.common_loading()}
-    </div>
-  {:else if error}
-    <div class="flex-1 flex items-center justify-center text-destructive text-xs">
-      {m.common_error()}: {error}
-    </div>
-  {:else if runs.length === 0}
-    <div class="flex-1 flex flex-col items-center justify-center gap-2 text-muted text-xs">
-      <span class="text-2xl opacity-30">📭</span>
-      <span>{m.session_noToolCalls()}</span>
-    </div>
-  {:else}
+  <AsyncBoundary state={monitorState} compact class="h-full">
     <!-- Run tabs -->
     <div
       class="shrink-0 flex items-center gap-1 px-3 py-2 border-b border-border bg-bg2 overflow-x-auto"
     >
       {#each displayedRuns as run, i (run.idx)}
-        <button
-          class="text-[10px] font-semibold px-2 py-1 rounded-md border transition-colors shrink-0 cursor-pointer
-            {selectedRunIdx === i
-            ? 'bg-accent/15 border-accent/30 text-accent'
-            : 'border-border bg-bg3 text-muted hover:text-foreground'}"
+        <Button
+          variant={selectedRunIdx === i ? 'primary' : 'secondary'}
+          size="sm"
+          class="shrink-0 text-xs"
           onclick={() => selectRun(i)}
+          aria-pressed={selectedRunIdx === i}
         >
           {m.session_run({ idx: run.idx })}
-        </button>
+        </Button>
       {/each}
     </div>
 
@@ -173,17 +171,17 @@
         <span class="text-xs font-semibold text-foreground truncate flex-1 min-w-0">
           {selectedRun.userPrompt || m.session_run({ idx: selectedRun.idx })}
         </span>
-        <span class="text-[10px] text-muted shrink-0"
+        <span class="text-xs text-muted shrink-0"
           >{selectedRun.toolCalls.length === 1 ? m.session_callSingular({ count: selectedRun.toolCalls.length }) : m.session_callPlural({ count: selectedRun.toolCalls.length })}</span
         >
-        <span class="text-[10px] text-muted shrink-0"
+        <span class="text-xs text-muted shrink-0"
           >{fmtDuration(selectedRun.endTs - selectedRun.startTs)}</span
         >
       </div>
 
       <!-- Column headers -->
       <div
-        class="shrink-0 flex items-center px-3 py-1.5 bg-bg border-b border-border text-[9px] font-bold uppercase tracking-widest text-muted"
+        class="shrink-0 flex items-center px-3 py-1.5 bg-bg border-b border-border text-xs font-bold uppercase tracking-widest text-muted"
       >
         <span class="w-[160px] shrink-0">{m.session_colTool()}</span>
         <span class="flex-1 min-w-0 ml-2">{m.session_colTimeline()}</span>
@@ -194,20 +192,20 @@
       <div class="flex-1 min-h-0 overflow-y-auto">
         {#each selectedRun.toolCalls as tc (tc.id)}
           <div
-            class="flex items-center px-3 py-1.5 border-b border-border/50 hover:bg-white/[0.02] group"
+            class="flex items-center px-3 py-1.5 border-b border-border/50 hover:bg-foreground/[0.02] group"
           >
             <!-- Tool name -->
             <span
               class="w-[160px] shrink-0 flex items-center gap-1.5 font-mono overflow-hidden"
             >
-              <span class="text-[11px] shrink-0">{toolEmoji(tc.name)}</span>
-              <span class="text-[11px] text-foreground truncate">{tc.name}</span>
+              <span class="text-xs shrink-0">{toolEmoji(tc.name)}</span>
+              <span class="text-xs text-foreground truncate">{tc.name}</span>
             </span>
 
             <!-- Timeline bar -->
             <div class="relative flex-1 min-w-0 h-5 mx-2 overflow-hidden">
               <div
-                class="absolute top-1/2 -translate-y-1/2 h-3 rounded-[2px] opacity-75 group-hover:opacity-100 transition-opacity"
+                class="absolute top-1/2 -translate-y-1/2 h-3 rounded-sm opacity-75 group-hover:opacity-100 transition-opacity"
                 style:left="{leftPct(tc, selectedRun)}%"
                 style:width="{widthPct(tc, selectedRun)}%"
                 style:background-color={toolColor(tc.name)}
@@ -215,12 +213,12 @@
             </div>
 
             <!-- Duration -->
-            <span class="w-[60px] text-right text-[10px] font-mono text-muted shrink-0">
+            <span class="w-[60px] text-right text-xs font-mono text-muted shrink-0">
               {fmtDuration(tc.durationMs)}
             </span>
           </div>
         {/each}
       </div>
     {/if}
-  {/if}
+  </AsyncBoundary>
 </div>

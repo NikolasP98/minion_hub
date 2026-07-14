@@ -1,25 +1,43 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { financeSync } from './finance-sync.svelte';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-beforeEach(() => { vi.restoreAllMocks(); financeSync.stop(); });
-afterEach(() => financeSync.stop());
-
-function statusResponse(body: unknown) {
-  return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
-}
-
-describe('financeSync.refresh', () => {
-  it('reads an active job into state', async () => {
-    vi.spyOn(globalThis, 'fetch').mockReturnValue(statusResponse({ active: true, status: 'running', total: 200, processed: 50 }) as never);
-    await financeSync.refresh('susii');
-    expect(financeSync.active).toBe(true);
-    expect(financeSync.processed).toBe(50);
-    expect(financeSync.percent).toBe(25);
+describe('financeSync HTTP failure behavior', () => {
+  beforeEach(() => {
+    vi.resetModules();
   });
 
-  it('percent is 0 when total is unknown', async () => {
-    vi.spyOn(globalThis, 'fetch').mockReturnValue(statusResponse({ active: true, status: 'running', total: null, processed: 7 }) as never);
-    await financeSync.refresh('susii');
-    expect(financeSync.percent).toBe(0);
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test('does not enter the running state when start is rejected', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(Response.json({ error: 'Sync denied' }, { status: 403 })),
+    );
+    const { financeSync } = await import('./finance-sync.svelte');
+
+    await financeSync.start('susii');
+
+    expect(financeSync.active).toBe(false);
+    expect(financeSync.status).toBe('error');
+    expect(financeSync.error).toBe('Sync denied');
+  });
+
+  test('only enters the running state after a successful start response', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ ok: true }))
+      .mockResolvedValueOnce(
+        Response.json({ active: true, status: 'running', total: 2, processed: 0 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const { financeSync } = await import('./finance-sync.svelte');
+
+    await financeSync.start('susii');
+
+    expect(financeSync.active).toBe(true);
+    expect(financeSync.status).toBe('running');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    financeSync.stop();
   });
 });

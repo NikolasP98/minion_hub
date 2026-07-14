@@ -1029,12 +1029,17 @@ export async function hasOrgCapability(
  * requires, or `null` if the path isn't a gated business/config write. Single
  * source of truth for the central hooks guard.
  *
- * Method→action: DELETE→delete, other mutations→edit; the org-config surfaces
+ * Method→action: DELETE→delete, POST collection creation→create, other
+ * mutations→edit; the org-config surfaces
  * (modules + per-org plugin toggles) require `settings:manage`. Reads (GET/HEAD)
  * are NOT gated here — pages gate their own view access; this tranche closes the
  * write holes. `/api/scheduling/public/*` (anonymous booking) is excluded.
  */
 const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
+  ['/api/builder/agent-skills', 'agents'],
+  ['/api/builder/agents', 'agents'],
+  ['/api/builder/skills', 'agents'],
+  ['/api/builder/tools', 'tools'],
   ['/api/crm', 'crm'],
   ['/api/finances', 'finance'],
   ['/api/sales', 'sales'],
@@ -1055,6 +1060,11 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/plugins', 'settings'],
 ];
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const CREATE_COLLECTION_ENDPOINTS = new Set([
+  '/api/builder/agents',
+  '/api/builder/skills',
+  '/api/builder/tools',
+]);
 
 export function apiWriteCapability(
   pathname: string,
@@ -1075,7 +1085,13 @@ export function apiWriteCapability(
   if (!best) return null;
   const module = best[1];
   const action: PermAction =
-    module === 'settings' ? 'manage' : method === 'DELETE' ? 'delete' : 'edit';
+    module === 'settings'
+      ? 'manage'
+      : method === 'DELETE'
+        ? 'delete'
+        : method === 'POST' && CREATE_COLLECTION_ENDPOINTS.has(pathname)
+          ? 'create'
+          : 'edit';
   return { module, action };
 }
 

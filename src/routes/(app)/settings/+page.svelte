@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
     import { page } from "$app/state";
     import { goto, beforeNavigate } from "$app/navigation";
     import { onMount } from "svelte";
@@ -176,8 +177,8 @@
         >
             <!-- Disconnect + dirty banner -->
             {#if !conn.connected && isDirty.value}
-                <div class="mx-6 mt-4 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center gap-3 shrink-0">
-                    <span class="text-amber-400 text-xs font-medium">{m.config_disconnected()}</span>
+                <div class="mx-6 mt-4 px-4 py-3 rounded-lg border border-warning/30 bg-warning/10 flex items-center gap-3 shrink-0">
+                    <span class="text-warning text-xs font-medium">{m.config_disconnected()}</span>
                     <span class="text-muted-foreground text-xs flex-1">
                         {m.config_disconnectedAutoSave()}
                     </span>
@@ -206,12 +207,13 @@
                         <p class="text-muted-foreground text-xs mb-4">
                             {configState.loadError}
                         </p>
-                        <button
-                            class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-[6px] px-4"
+                        <Button
+                            variant="primary"
+                            size="sm"
                             onclick={() => loadConfig()}
                         >
                             {m.common_retry()}
-                        </button>
+                        </Button>
                     </div>
                 </div>
             {:else}
@@ -219,7 +221,7 @@
                     <div class="px-6 py-5">
                         <div class="max-w-3xl mx-auto space-y-2.5">
                             {#if configState.version && tab.id === 'system'}
-                                <p class="text-[10px] text-muted-foreground mb-2">
+                                <p class="text-xs text-muted-foreground mb-2">
                                     Gateway v{configState.version} &middot;
                                     {configState.configPath}
                                 </p>
@@ -294,4 +296,3 @@
     ondiscard={handleGuardDiscard}
     oncancel={handleGuardCancel}
 />
-

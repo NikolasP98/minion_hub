@@ -22,6 +22,8 @@
     import RegistryAgentSheet from "./_builder-hub/RegistryAgentSheet.svelte";
     import DeleteConfirmModal from "./_builder-hub/DeleteConfirmModal.svelte";
     import { toolDescription, type UnifiedTool } from "./_builder-hub/utils";
+    import { fetchJson } from '$lib/api/fetch-json';
+    import { toastError } from '$lib/state/ui/toast.svelte';
 
     type TabId = "skills" | "agents" | "tools";
 
@@ -89,7 +91,12 @@
         if (!deleteTarget) return;
         const { type, id, name } = deleteTarget;
         const path = type === 'skill' ? 'skills' : type === 'agent' ? 'agents' : 'tools';
-        await fetch(`/api/builder/${path}/${id}`, { method: 'DELETE' });
+        try {
+            await fetchJson<{ ok: boolean }>(`/api/builder/${path}/${id}`, { method: 'DELETE' });
+        } catch (error) {
+            toastError(m.common_error(), error instanceof Error ? error.message : m.common_retry());
+            return;
+        }
         posthog.capture('builder_item_deleted', { item_type: type, item_id: id, item_name: name });
         // Splice locally instead of re-fetching the entire list — only the
         // deleted card leaves the DOM; sibling cards keep their identity.

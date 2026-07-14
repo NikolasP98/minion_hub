@@ -18,7 +18,18 @@ export interface SearchHit {
   icon: string; // command-palette iconMap key
 }
 
-export async function searchRecords(ctx: CoreCtx, query: string, perType = 5): Promise<SearchHit[]> {
+export interface SearchAccess {
+  crm: { allowed: boolean; ownerId?: string };
+  support: { allowed: boolean; ownerId?: string };
+  sales: { allowed: boolean; ownerId?: string };
+}
+
+export async function searchRecords(
+  ctx: CoreCtx,
+  query: string,
+  access: SearchAccess,
+  perType = 5,
+): Promise<SearchHit[]> {
   const q = query.trim();
   if (q.length < 2) return [];
   const like = `%${q}%`;
@@ -26,30 +37,38 @@ export async function searchRecords(ctx: CoreCtx, query: string, perType = 5): P
 
   return withOrgCore(ctx, async (tx) => {
     const hits: SearchHit[] = [];
+    const crmOwner = access.crm.ownerId ? sql`and owner_id = ${access.crm.ownerId}` : sql``;
+    const supportOwner = access.support.ownerId
+      ? sql`and owner_id = ${access.support.ownerId}`
+      : sql``;
+    const salesOwner = access.sales.ownerId ? sql`and owner_id = ${access.sales.ownerId}` : sql``;
 
-    // Contacts (CRM is always on for the palette context).
-    const contacts = (await tx.execute(sql`
-      select id, display_name, human_id
-      from crm_contacts
-      where org_id = current_setting('app.current_org_id', true) and deleted_at is null
-        and (display_name ilike ${like} or human_id ilike ${like})
-      order by updated_at desc limit ${perType}
-    `)) as unknown as Array<{ id: string; display_name: string | null; human_id: string | null }>;
-    for (const c of contacts)
-      hits.push({
-        type: 'contact',
-        id: c.id,
-        label: c.display_name || 'Unnamed contact',
-        sublabel: c.human_id,
-        href: `/crm/${c.id}`,
-        icon: 'user',
-      });
+    if (access.crm.allowed && modules.crm !== false) {
+      const contacts = (await tx.execute(sql`
+        select id, display_name, human_id
+        from crm_contacts
+        where org_id = current_setting('app.current_org_id', true) and deleted_at is null
+          ${crmOwner}
+          and (display_name ilike ${like} or human_id ilike ${like})
+        order by updated_at desc limit ${perType}
+      `)) as unknown as Array<{ id: string; display_name: string | null; human_id: string | null }>;
+      for (const c of contacts)
+        hits.push({
+          type: 'contact',
+          id: c.id,
+          label: c.display_name || 'Unnamed contact',
+          sublabel: c.human_id,
+          href: `/crm/${c.id}`,
+          icon: 'user',
+        });
+    }
 
-    if (modules.support !== false) {
+    if (access.support.allowed && modules.support !== false) {
       const tickets = (await tx.execute(sql`
         select id, subject, human_id, status
         from support_issues
         where org_id = current_setting('app.current_org_id', true)
+          ${supportOwner}
           and (subject ilike ${like} or human_id ilike ${like})
         order by created_at desc limit ${perType}
       `)) as unknown as Array<{ id: string; subject: string; human_id: string | null; status: string }>;
@@ -64,11 +83,12 @@ export async function searchRecords(ctx: CoreCtx, query: string, perType = 5): P
         });
     }
 
-    if (modules.sales !== false) {
+    if (access.sales.allowed && modules.sales !== false) {
       const orders = (await tx.execute(sql`
         select id, description, human_id, customer_name
         from sales_orders
         where org_id = current_setting('app.current_org_id', true)
+          ${salesOwner}
           and (description ilike ${like} or human_id ilike ${like} or customer_name ilike ${like})
         order by created_at desc limit ${perType}
       `)) as unknown as Array<{ id: string; description: string | null; human_id: string | null; customer_name: string | null }>;
@@ -78,7 +98,7 @@ export async function searchRecords(ctx: CoreCtx, query: string, perType = 5): P
           id: o.id,
           label: o.description || o.human_id || 'Order',
           sublabel: [o.human_id, o.customer_name].filter(Boolean).join(' · ') || null,
-          href: `/sales`, // no per-order detail page yet; land on the list
+          href: `/sales/${o.id}`,
           icon: 'folder',
         });
     }

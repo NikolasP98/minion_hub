@@ -7,6 +7,8 @@
   import { relativeTime } from '$lib/components/crm/crm-format';
   import type { BrainDocumentDTO } from '$lib/types/brains';
   import AddSourceDialog from './AddSourceDialog.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
+  import { toastError } from '$lib/state/ui/toast.svelte';
 
   let { brainId, documents, canEdit }: { brainId: string; documents: BrainDocumentDTO[]; canEdit: boolean } = $props();
 
@@ -38,10 +40,12 @@
   async function reingest(docId: string) {
     busyId = docId;
     try {
-      await fetch(`/api/brains/${encodeURIComponent(brainId)}/documents/${encodeURIComponent(docId)}/reingest`, {
+      await fetchJson<{ ok: boolean }>(`/api/brains/${encodeURIComponent(brainId)}/documents/${encodeURIComponent(docId)}/reingest`, {
         method: 'POST',
       });
       await invalidate('brains:detail');
+    } catch (error) {
+      toastError(m.common_error(), error instanceof Error ? error.message : m.common_retry());
     } finally {
       busyId = null;
     }
@@ -51,10 +55,12 @@
     if (!confirm(m.brains_delete_confirm())) return;
     busyId = docId;
     try {
-      await fetch(`/api/brains/${encodeURIComponent(brainId)}/documents/${encodeURIComponent(docId)}`, {
+      await fetchJson<{ ok: boolean }>(`/api/brains/${encodeURIComponent(brainId)}/documents/${encodeURIComponent(docId)}`, {
         method: 'DELETE',
       });
       await invalidate('brains:detail');
+    } catch (error) {
+      toastError(m.common_error(), error instanceof Error ? error.message : m.common_retry());
     } finally {
       busyId = null;
     }

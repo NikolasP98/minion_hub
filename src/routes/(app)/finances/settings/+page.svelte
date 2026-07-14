@@ -8,6 +8,7 @@
 	import { useMachine, normalizeProps } from '@zag-js/svelte';
 	import { onMount } from 'svelte';
 	import { canAct } from '$lib/access/can.svelte';
+	import { fetchJson } from '$lib/api/fetch-json';
 
 	let { data }: { data: PageData } = $props();
 
@@ -107,15 +108,10 @@
 		fxBusy = true;
 		settingsMsg = null;
 		try {
-			const res = await fetch('/api/finances/settings', { method: 'POST' });
-			if (res.ok) {
-				const { settings } = await res.json();
-				fxAutoRate = settings.fxAutoRate;
-				fxUpdatedAt = settings.fxUpdatedAt;
-				settingsMsg = { ok: true, text: m.fin_fx_refreshed() };
-			} else {
-				settingsMsg = { ok: false, text: m.fin_fx_error() };
-			}
+			const { settings } = await fetchJson<{ settings: { fxAutoRate: number | null; fxUpdatedAt: string | null } }>('/api/finances/settings', { method: 'POST' });
+			fxAutoRate = settings.fxAutoRate;
+			fxUpdatedAt = settings.fxUpdatedAt;
+			settingsMsg = { ok: true, text: m.fin_fx_refreshed() };
 		} catch {
 			settingsMsg = { ok: false, text: m.fin_fx_error() };
 		} finally {

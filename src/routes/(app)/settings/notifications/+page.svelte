@@ -5,6 +5,8 @@
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
 	import { PageHeader, Button, Select } from '$lib/components/ui';
+	import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 
@@ -70,20 +72,39 @@
 		};
 		busy = true;
 		try {
-			const res = editId
-				? await fetch(`/api/notifications/rules/${editId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-				: await fetch('/api/notifications/rules', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
-			if (res.ok) { reset(); await invalidate('settings:notifications'); }
-			else err = (await res.json().catch(() => ({}))).message ?? `Save failed (${res.status})`;
+			await jsonMutation({
+				input: editId ? `/api/notifications/rules/${editId}` : '/api/notifications/rules',
+				init: {
+					method: editId ? 'PATCH' : 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(payload),
+				},
+				onSuccess: async () => {
+					reset();
+					await invalidate('settings:notifications');
+				},
+			});
+		} catch (error) {
+			err = mutationErrorMessage(error, m.common_error());
 		} finally {
 			busy = false;
 		}
 	}
 
 	async function remove(id: string) {
-		await fetch(`/api/notifications/rules/${id}`, { method: 'DELETE' });
-		if (editId === id) reset();
-		await invalidate('settings:notifications');
+		err = '';
+		try {
+			await jsonMutation({
+				input: `/api/notifications/rules/${id}`,
+				init: { method: 'DELETE' },
+				onSuccess: async () => {
+					if (editId === id) reset();
+					await invalidate('settings:notifications');
+				},
+			});
+		} catch (error) {
+			err = mutationErrorMessage(error, m.common_error());
+		}
 	}
 </script>
 
@@ -152,7 +173,7 @@
 </div>
 
 <style>
-	.wrap { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 1rem; max-width: 720px; }
+	.wrap { display: flex; flex-direction: column; gap: 0.6rem; padding: 1rem var(--space-page-gutter, 16px); max-width: calc(720px + var(--space-page-gutter, 16px) + var(--space-page-gutter, 16px)); }
 	.card { padding: 0.9rem 1rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--color-bg2); }
 	.card h3 { margin: 0 0 0.6rem; font-size: 0.95rem; }
 	.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.6rem; }
@@ -168,4 +189,10 @@
 	.small { font-size: 0.8rem; margin-top: 0.3rem; }
 	.err { color: var(--color-danger, #ef4444); font-size: 0.82rem; }
 	code { font-size: 0.75rem; opacity: 0.8; }
+	@media (max-width: 767.98px) {
+		.grid { grid-template-columns: minmax(0, 1fr); }
+		.actions, .def-head { align-items: stretch; flex-wrap: wrap; }
+		.def-head .spacer { display: none; }
+		.def-head strong { width: 100%; }
+	}
 </style>

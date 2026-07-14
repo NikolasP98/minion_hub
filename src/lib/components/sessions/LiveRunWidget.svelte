@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
     import { gw, visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
     import { conn } from '$lib/state/gateway/connection.svelte';
     import { ui } from '$lib/state/ui/ui.svelte';
@@ -57,30 +58,33 @@
 </script>
 
 {#if hasActiveRuns}
-    <div class="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-bg2/95 backdrop-blur-md transition-all duration-200">
+    <div class="fixed bottom-0 left-0 right-0 z-[var(--layer-overlay,50)] border-t border-border bg-bg2/95 backdrop-blur-md transition-all duration-[var(--duration-fast)]">
         <!-- Header bar (always visible) -->
-        <button
-            class="w-full flex items-center justify-between px-4 py-2 hover:bg-bg3/50 transition-colors"
+        <Button
+            variant="ghost"
+            class="!h-auto !w-full !justify-between !px-4 !py-2"
             onclick={() => { collapsed = !collapsed; }}
+            aria-expanded={!collapsed}
+            aria-controls="live-runs-panel"
         >
-            <div class="flex items-center gap-2">
+            <span class="flex items-center gap-2">
                 <Zap size={14} class="text-accent animate-pulse" />
                 <span class="text-xs font-semibold text-foreground">
                     {activeRuns.length === 1 ? m.session_activeRunSingular({ count: activeRuns.length }) : m.session_activeRunPlural({ count: activeRuns.length })}
                 </span>
-            </div>
-            <div class="flex items-center gap-2 text-muted">
+            </span>
+            <span class="flex items-center gap-2 text-muted">
                 {#if collapsed}
                     <ChevronUp size={14} />
                 {:else}
                     <ChevronDown size={14} />
                 {/if}
-            </div>
-        </button>
+            </span>
+        </Button>
 
         <!-- Expanded content -->
         {#if !collapsed}
-            <div class="px-4 pb-3 flex flex-wrap gap-3">
+            <div id="live-runs-panel" class="px-4 pb-3 flex flex-wrap gap-3">
                 {#each activeRuns as run (run.agentId)}
                     <div class="surface-2 flex items-center gap-3 rounded-lg px-3 py-2 min-w-56">
                         <StatusBadge status={run.status} size="sm" />
@@ -88,7 +92,7 @@
                             <div class="text-xs font-medium text-foreground truncate">
                                 {run.agentName}
                             </div>
-                            <div class="text-[10px] text-muted-foreground font-mono mt-0.5">
+                            <div class="text-xs text-muted-foreground font-mono mt-0.5">
                                 {run.status === 'thinking' ? m.session_statusThinking() : m.session_statusProcessing()}
                             </div>
                         </div>

@@ -88,4 +88,26 @@
 	.status-sel { height: 1.8rem; font-size: 0.8rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.4rem; }
 	.when { justify-self: end; }
 	.empty { padding: 1.25rem 1rem; }
+	@media (max-width: 767.98px) {
+		.kpis { grid-template-columns: minmax(0, 1fr); }
+		.list { gap: var(--space-2, 8px); padding: 0; background: transparent; border: 0; }
+		.row {
+			grid-template-columns: minmax(0, 1fr) auto;
+			grid-template-areas:
+				'desc total'
+				'cust status'
+				'when when';
+			gap: var(--space-1, 4px) var(--space-2, 8px);
+			padding: var(--space-3, 12px);
+			border: 1px solid var(--color-border-default, var(--hairline));
+			border-radius: var(--radius-lg);
+			background: var(--color-surface-2, var(--color-card));
+		}
+		.row + .row { border-top: 1px solid var(--color-border-default, var(--hairline)); }
+		.desc { grid-area: desc; }
+		.cust { grid-area: cust; }
+		.total { grid-area: total; }
+		.status-sel { grid-area: status; min-height: var(--control-height-touch, 44px); }
+		.when { grid-area: when; justify-self: start; }
+	}
 </style>

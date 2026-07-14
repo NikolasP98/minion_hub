@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Button, Toggle } from '$lib/components/ui';
+  import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import StepView from '$lib/components/debug/StepView.svelte';
@@ -83,7 +85,12 @@
   <title>Debug · {sessionKey} · Minion Hub</title>
 </svelte:head>
 
-<PageHeader title={m.debug_steppedBuildTitle()} subtitle={sessionKey || undefined}>
+<PageShell archetype="workspace" scroll="page" labelledBy="session-debug-title">
+<PageHeader
+  titleId="session-debug-title"
+  title={m.debug_steppedBuildTitle()}
+  subtitle={sessionKey || undefined}
+>
   {#snippet leading()}
     <Bug size={16} class="text-accent shrink-0" />
   {/snippet}
@@ -96,29 +103,30 @@
     </div>
   {/snippet}
 </PageHeader>
-<main class="flex-1 min-h-0 overflow-y-auto">
+<PageBody width="content">
+<AsyncBoundary
+  state={!sessionKey
+    ? { kind: 'error', description: m.debug_noSessionKeyInUrl() }
+    : { kind: 'ready' }}
+>
 <div class="page">
-  {#if !sessionKey}
-    <p class="error">{m.debug_noSessionKeyInUrl()}</p>
-  {:else}
     <section class="controls">
-      <label class="toggle">
-        <input
-          type="checkbox"
-          checked={session?.steppedBuildEnabled ?? false}
-          disabled={busy || !conn.connected}
-          onchange={(e) => handleToggle((e.currentTarget as HTMLInputElement).checked)}
-        />
-        <span>{m.debug_steppedBuild()} {session?.steppedBuildEnabled ? m.debug_statusOn() : m.debug_statusOff()}</span>
-      </label>
-      <button
-        type="button"
-        class="skip-btn"
+      <Toggle
+        checked={session?.steppedBuildEnabled ?? false}
+        ariaLabel={m.debug_steppedBuild()}
+        disabled={busy || !conn.connected}
+        onchange={handleToggle}
+        size="md"
+      />
+      <span>{m.debug_steppedBuild()} {session?.steppedBuildEnabled ? m.debug_statusOn() : m.debug_statusOff()}</span>
+      <Button
+        variant="outline"
+        size="sm"
         onclick={handleSkipAll}
         disabled={!session?.pausedStep}
       >
         ⏭ {m.debug_skipAllGates()}
-      </button>
+      </Button>
       {#if session && session.timeoutCount > 0}
         <span class="timeout-badge">⚠ {m.debug_autoResumes({ count: session.timeoutCount })}</span>
       {/if}
@@ -137,83 +145,51 @@
       />
       <StepStateView event={selectedEvent} />
     </div>
-  {/if}
 </div>
-</main>
+</AsyncBoundary>
+</PageBody>
+</PageShell>
 
 <style>
   .page {
-    padding: 1.5rem;
+    padding: var(--space-6, 1.5rem);
     max-width: 1400px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-4, 1rem);
   }
 
   .status {
-    color: var(--fg-muted, #888);
-    font-size: 0.9rem;
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-section-title, 0.9rem);
   }
 
   .status .on {
-    color: #4ade80;
+    color: var(--color-success-fg);
   }
 
   .controls {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0.75rem 1rem;
-    background: var(--bg-card, #141414);
-    border: 1px solid var(--bd, #2a2a2a);
-    border-radius: 8px;
+    gap: var(--space-4, 1rem);
+    padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg);
     flex-wrap: wrap;
-  }
-
-  .toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .toggle input {
-    width: 1.1rem;
-    height: 1.1rem;
-    cursor: pointer;
-  }
-
-  .skip-btn {
-    background: transparent;
-    border: 1px solid var(--bd, #2a2a2a);
-    border-radius: 4px;
-    padding: 0.4rem 0.85rem;
-    color: var(--fg, #ddd);
-    cursor: pointer;
-    font: inherit;
-  }
-
-  .skip-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .skip-btn:not(:disabled):hover {
-    background: var(--bg-hover, rgba(255, 255, 255, 0.04));
   }
 
   .timeout-badge {
     margin-left: auto;
-    font-size: 0.8rem;
-    color: var(--warn, #ffb84d);
+    font-size: var(--font-size-body, 0.8rem);
+    color: var(--color-warning-fg);
   }
 
   .grid {
     display: grid;
     grid-template-columns: minmax(300px, 1fr) minmax(400px, 2fr);
-    gap: 1rem;
+    gap: var(--space-4, 1rem);
   }
 
   @media (max-width: 720px) {
@@ -223,11 +199,11 @@
   }
 
   .error {
-    color: #f87171;
+    color: var(--color-danger-fg);
     margin: 0;
-    padding: 0.75rem;
-    background: rgba(248, 113, 113, 0.1);
-    border: 1px solid rgba(248, 113, 113, 0.3);
-    border-radius: 4px;
+    padding: var(--space-3, 0.75rem);
+    background: var(--color-danger-surface);
+    border: 1px solid var(--color-danger-border);
+    border-radius: var(--radius-md);
   }
 </style>

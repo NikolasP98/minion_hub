@@ -217,34 +217,34 @@
 
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden bg-bg">
   {#if !sessionKey}
-    <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-[13px]">
-      <span class="text-[28px] opacity-40">{'\u2B05'}</span>
+    <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-sm">
+      <span class="text-3xl opacity-40">{'\u2B05'}</span>
       <span>{m.sessions_selectToView()}</span>
     </div>
   {:else}
     <!-- Session header -->
-    <div class="shrink-0 px-4 py-2.5 border-b border-border bg-bg2 flex flex-col gap-[5px]">
+    <div class="shrink-0 px-4 py-2.5 border-b border-border bg-bg2 flex flex-col gap-1.5">
       <div class="flex items-center gap-2">
         <span class="text-sm font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{displayName}</span>
         <span
-          class="text-[10px] font-bold uppercase tracking-[0.06em] px-2 py-[2px] rounded-[10px] shrink-0
+          class="text-xs font-bold uppercase tracking-[0.06em] px-2 py-0.5 rounded-lg shrink-0
             {statusColor(session?.status) === 'green' ? 'bg-success/15 text-success' : ''}
             {statusColor(session?.status) === 'amber' ? 'bg-warning/15 text-warning' : ''}
-            {statusColor(session?.status) === 'grey'  ? 'bg-[rgba(71,85,105,0.2)] text-[#94a3b8]' : ''}"
+            {statusColor(session?.status) === 'grey'  ? 'bg-muted/20 text-muted-foreground' : ''}"
         >
           {statusLabel(session?.status)}
         </span>
       </div>
       <div class="flex items-center gap-2 flex-wrap">
         {#if session?.agentId}
-          <span class="text-[10px] font-semibold text-accent bg-accent/12 rounded-[10px] px-[7px] py-[1px] whitespace-nowrap">{session.agentId}</span>
+          <span class="text-xs font-semibold text-accent bg-accent/12 rounded-lg px-2 py-0.5 whitespace-nowrap">{session.agentId}</span>
         {/if}
-        <span class="font-mono text-[10px] text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{sessionKey}</span>
+        <span class="font-mono text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{sessionKey}</span>
         {#if session?.updatedAt}
-          <span class="text-[10px] text-muted whitespace-nowrap">{relTime(session.updatedAt)}</span>
+          <span class="text-xs text-muted whitespace-nowrap">{relTime(session.updatedAt)}</span>
         {/if}
         {#if totalTokens !== null}
-          <span class="text-[10px] text-muted whitespace-nowrap px-1.5 py-[1px] bg-bg3 rounded-lg border border-border">{totalTokens.toLocaleString()} {m.sessions_tokensUnit()}</span>
+          <span class="text-xs text-muted whitespace-nowrap px-1.5 py-0.5 bg-bg3 rounded-lg border border-border">{totalTokens.toLocaleString()} {m.sessions_tokensUnit()}</span>
         {/if}
       </div>
     </div>
@@ -275,7 +275,7 @@
               style="transform: translateY({item.start}px)"
             >
               {#if msg.role === 'user'}
-                <div class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words bg-brand-pink text-white rounded-br-[3px] font-mono whitespace-pre-wrap">
+                <div class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words bg-brand-pink text-primary-foreground rounded-br-[3px] font-mono whitespace-pre-wrap">
                   {userText(msg.content)}
                 </div>
               {:else}

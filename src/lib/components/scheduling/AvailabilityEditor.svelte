@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui';
 	import WeekHoursEditor from './WeekHoursEditor.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
 
 	interface Rule {
 		days: number[];
@@ -56,17 +57,21 @@
 			.filter((d) => d.enabled)
 			.map((d) => ({ days: [d.day], startTime: d.start, endTime: d.end, date: null }));
 		try {
-			const res = await fetch(`/api/scheduling/resources/${resourceId}/availability`, {
-				method: 'PUT',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ timezone: schedule?.timezone, rules }),
+			await jsonMutation({
+				input: `/api/scheduling/resources/${resourceId}/availability`,
+				init: {
+					method: 'PUT',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ timezone: schedule?.timezone, rules }),
+				},
+				onSuccess: async () => {
+					saved = true;
+					baseline = serialize(week); // committed → clean again, hide Save
+					await invalidate('scheduling:data');
+				},
 			});
-			if (!res.ok) throw new Error(String(res.status));
-			saved = true;
-			baseline = serialize(week); // committed → clean again, hide Save
-			await invalidate('scheduling:data');
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'error';
+			err = mutationErrorMessage(e, m.common_error());
 		} finally {
 			saving = false;
 		}
