@@ -1,19 +1,36 @@
 export const RESOURCE_PERMISSIONS = [
-  'agents:view', 'agents:edit', 'agents:delete',
-  'sessions:view', 'sessions:terminate',
-  'channels:view', 'channels:configure',
-  'skills:view', 'skills:install',
-  'settings:view', 'settings:manage',
-  'users:view', 'users:invite', 'users:edit', 'users:remove', 'users:manage',
-  'roles:view', 'roles:manage',
-  'billing:view', 'billing:manage',
-  'hosts:view', 'hosts:manage',
-  'workshop:view', 'workshop:edit',
+  'agents:view',
+  'agents:edit',
+  'agents:delete',
+  'sessions:view',
+  'sessions:terminate',
+  'channels:view',
+  'channels:configure',
+  'skills:view',
+  'skills:install',
+  'settings:view',
+  'settings:manage',
+  'users:view',
+  'users:invite',
+  'users:edit',
+  'users:remove',
+  'users:manage',
+  'roles:view',
+  'roles:manage',
+  'billing:view',
+  'billing:manage',
+  'hosts:view',
+  'hosts:manage',
+  'workshop:view',
+  'workshop:edit',
 ] as const;
 
 export type ModuleKey = 'operations' | 'workspace' | 'admin';
 
-export const MODULES: Record<ModuleKey, { label: string; description: string; resources: string[] }> = {
+export const MODULES: Record<
+  ModuleKey,
+  { label: string; description: string; resources: string[] }
+> = {
   operations: {
     label: 'Operations',
     description: 'Day-to-day monitoring of running agents and conversations.',
@@ -62,7 +79,20 @@ export const BUSINESS_PERMISSIONS = [
  * (agents/channels/settings/users live there). Emitted from caps so the agents
  * surface, Agent Builder, and Marketplace nav + routes gate off the matrix.
  */
-export const PLATFORM_VIEW_PERMISSIONS = ['flows:view', 'marketplace:view', 'reliability:view'] as const;
+export const PLATFORM_VIEW_PERMISSIONS = [
+  'flows:view',
+  'marketplace:view',
+  'reliability:view',
+  'workspace:view',
+] as const;
+
+/** Interactive cloud sessions and destructive lifecycle controls are stronger
+ * than module visibility, so they keep action-level permissions. */
+export const WORKSPACE_ACTION_PERMISSIONS = [
+  'workspace:edit',
+  'workspace:delete',
+  'workspace:manage',
+] as const;
 
 /**
  * Section sub-resources: gateable subpages nested under a parent module in the
@@ -102,6 +132,11 @@ export const MODULE_SUBRESOURCES: Record<string, SubResource[]> = {
     { key: 'pos.appointments', label: 'Appointments', route: '/pos/appointments' },
     { key: 'pos.items', label: 'Catalog', route: '/pos/catalog' },
     { key: 'pos.refills', label: 'Refills', route: '/pos/refills' },
+  ],
+  workspace: [
+    { key: 'workspace.gui', label: 'Remote Desktop', route: '/cloud/gui' },
+    { key: 'workspace.terminal', label: 'Terminal', route: '/cloud/terminal' },
+    { key: 'workspace.settings', label: 'Settings', route: '/cloud/settings' },
   ],
 };
 
@@ -154,6 +189,7 @@ export const PERMISSIONS = [
   ...RESOURCE_PERMISSIONS,
   ...BUSINESS_PERMISSIONS,
   ...PLATFORM_VIEW_PERMISSIONS,
+  ...WORKSPACE_ACTION_PERMISSIONS,
   ...SUBRESOURCE_VIEW_PERMISSIONS,
   ...MODULE_PERMISSIONS,
   ...BUSINESS_ACTION_PERMISSIONS,
@@ -168,7 +204,7 @@ export const PERMISSIONS = [
  * Deliberately NOT gated here: `/settings` (holds personal preferences everyone
  * needs; its org-config subroutes + write APIs gate themselves), `/team` + `/users`
  * (own RBAC guards via requireOrgCapability), `/home` + `/overview` (universal).
- * `/terminal`, `/config`, `/orgs` stay platform-admin super-views.
+ * `/config` and `/orgs` stay platform-admin super-views.
  */
 const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
   // business modules
@@ -193,6 +229,7 @@ const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
   ['/channels', 'channels:view'],
   ['/marketplace', 'marketplace:view'],
   ['/reliability', 'reliability:view'],
+  ['/cloud', 'workspace:view'],
   // section sub-resources (longest-prefix wins, so these override the parent
   // module entry for their subpath — e.g. /crm/insights -> crm.insights:view)
   ...ALL_SUBRESOURCES.map((s) => [s.route, `${s.key}:view`] as const),
@@ -202,7 +239,10 @@ export function requiredViewPermForPath(pathname: string): string | null {
   let best: readonly [string, string] | null = null;
   for (const entry of ROUTE_VIEW_PERMS) {
     const prefix = entry[0];
-    if ((pathname === prefix || pathname.startsWith(`${prefix}/`)) && (!best || prefix.length > best[0].length)) {
+    if (
+      (pathname === prefix || pathname.startsWith(`${prefix}/`)) &&
+      (!best || prefix.length > best[0].length)
+    ) {
       best = entry;
     }
   }

@@ -2,5 +2,5 @@ import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ url }) => {
-  throw redirect(307, `/cloud/terminal${url.search}`);
+  throw redirect(307, `/cloud${url.search}`);
 };

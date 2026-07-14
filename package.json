@@ -125,7 +125,7 @@
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
     "dev": "NODE_OPTIONS=--disable-warning=DEP0205 vite dev",
     "build": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && vite build",
-    "vercel-build": "bun scripts/db-migrate.ts && bun run build",
+    "vercel-build": "([ -f .env ] || cp .env.example .env) && bun scripts/db-migrate.ts && bun run build",
     "db:migrate": "bun scripts/db-migrate.ts",
     "db:status": "bun scripts/db-status.ts",
     "preview": "vite preview",

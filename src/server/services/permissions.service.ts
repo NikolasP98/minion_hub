@@ -54,6 +54,10 @@ export function capsToLegacyPermissions(caps: Capabilities): string[] {
   add('hosts:manage', caps.can('settings', 'manage'));
   add('workshop:view', caps.can('agents', 'view'));
   add('workshop:edit', caps.can('agents', 'edit'));
+  add('workspace:view', caps.can('workspace', 'view'));
+  add('workspace:edit', caps.can('workspace', 'edit'));
+  add('workspace:delete', caps.can('workspace', 'delete'));
+  add('workspace:manage', caps.can('workspace', 'manage'));
   // business-module view gates (drive nav visibility + the central route guard)
   add('flows:view', caps.can('flows', 'view'));
   add('marketplace:view', caps.can('marketplace', 'view'));
@@ -83,7 +87,7 @@ export function capsToLegacyPermissions(caps: Capabilities): string[] {
   }
   // nav module groups
   add('module:operations', caps.can('agents', 'view') || caps.can('channels', 'view'));
-  add('module:workspace', caps.can('agents', 'view'));
+  add('module:workspace', caps.can('agents', 'view') || caps.can('workspace', 'view'));
   add('module:admin', caps.can('settings', 'view') || caps.can('users', 'view'));
   return out;
 }
