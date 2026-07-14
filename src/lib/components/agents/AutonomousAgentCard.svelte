@@ -47,19 +47,19 @@
 </script>
 
 <article
-  class="group/card flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4 transition-colors hover:border-white/20"
+  class="group/card flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-accent/40"
 >
   <header class="flex items-start gap-3">
     <img
       src={agent.avatarUrl}
       alt=""
-      class="size-11 shrink-0 rounded-lg bg-white/5 ring-1 ring-white/10"
+      class="size-11 shrink-0 rounded-lg bg-bg3 ring-1 ring-border"
       loading="lazy"
     />
     <div class="min-w-0 flex-1">
       <a
         href={detailHref}
-        class="group/name inline-flex max-w-full items-center gap-1 text-sm font-semibold text-white hover:underline"
+        class="group/name inline-flex max-w-full items-center gap-1 text-sm font-semibold text-foreground hover:underline"
       >
         <span class="truncate">{agent.name}</span>
         <ArrowUpRight
@@ -68,7 +68,7 @@
         />
       </a>
       {#if agent.role}
-        <p class="truncate text-xs text-white/50">{agent.role}</p>
+        <p class="truncate text-xs text-muted-foreground">{agent.role}</p>
       {/if}
     </div>
     <div class="flex shrink-0 items-center gap-1">
@@ -76,7 +76,7 @@
       <Dropdown items={menuItems} onSelect={onMenu} placement="bottom">
         {#snippet trigger()}
           <span
-            class="grid size-7 place-items-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white"
+            class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-bg3 hover:text-foreground"
             aria-label={m.autonomous_manage()}
           >
             <MoreVertical size={15} />
@@ -87,18 +87,18 @@
   </header>
 
   {#if agent.description}
-    <p class="line-clamp-2 text-xs leading-relaxed text-white/60">{agent.description}</p>
+    <p class="line-clamp-2 text-xs leading-relaxed text-muted">{agent.description}</p>
   {/if}
 
   {#if agent.trigger}
-    <div class="flex items-center gap-1.5 text-[11px] text-white/45">
+    <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
       <Zap size={12} />
       <span class="truncate">{agent.trigger}</span>
     </div>
   {/if}
 
   {#if agent.status.detail || stats}
-    <footer class="mt-auto pt-1 text-[11px] text-white/40">
+    <footer class="mt-auto pt-1 text-xs text-muted-strong">
       {#if agent.status.detail}
         {agent.status.detail}
       {:else if stats}
@@ -130,10 +130,15 @@
   <ArtifactRegenerateModal
     bind:open={
       () => !!regenFor,
-      (v) => { if (!v) regenFor = null; }
+      (v) => {
+        if (!v) regenFor = null;
+      }
     }
     artifactId={_artifactId}
-    ondone={async () => { regenFor = null; await invalidateAll(); }}
+    ondone={async () => {
+      regenFor = null;
+      await invalidateAll();
+    }}
   />
 {/if}
 
@@ -142,9 +147,13 @@
   <ArtifactHistory
     bind:open={
       () => !!historyFor,
-      (v) => { if (!v) historyFor = null; }
+      (v) => {
+        if (!v) historyFor = null;
+      }
     }
     artifactId={_historyArtifactId}
-    onreverted={async () => { await invalidateAll(); }}
+    onreverted={async () => {
+      await invalidateAll();
+    }}
   />
 {/if}

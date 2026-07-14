@@ -22,12 +22,12 @@
   <Trophy size={14} class="text-accent/70 shrink-0" />
   <div class="flex-1 min-w-0 flex items-center gap-3 overflow-x-auto">
     {#if query.isPending}
-      <span class="text-[10px] font-mono text-muted-strong">…</span>
+      <span class="text-xs font-mono text-muted-strong">…</span>
     {:else if top.length === 0}
-      <span class="text-[10px] font-mono text-muted-strong">{m.workshop_exp_strip_empty()}</span>
+      <span class="text-xs font-mono text-muted-strong">{m.workshop_exp_strip_empty()}</span>
     {:else}
       {#each top as r, i (r.modelId)}
-        <span class="text-[11px] font-mono whitespace-nowrap">
+        <span class="text-xs font-mono whitespace-nowrap">
           <span class="text-muted-strong">{i + 1}.</span>
           <span class="text-foreground">{r.modelId}</span>
           <span class="text-accent">{(r.winRate * 100).toFixed(0)}%</span>
@@ -37,8 +37,9 @@
   </div>
   <a
     href="/agents/workshop/leaderboard"
-    class="shrink-0 inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-muted hover:text-foreground transition-colors"
+    class="shrink-0 inline-flex items-center gap-1 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground transition-colors"
   >
-    {m.workshop_exp_leaderboard()} <ArrowRight size={12} />
+    {m.workshop_exp_leaderboard()}
+    <ArrowRight size={12} />
   </a>
 </div>

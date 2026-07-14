@@ -3,6 +3,8 @@
   import { SquareTerminal } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { getActiveHost, fetchHostToken, loadHosts } from '$lib/state/features/hosts.svelte';
+  import { PageHeader } from '$lib/components/ui';
+  import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
 
   // Fixed grid — must match the gateway PTY (no resize frame in raw WS mode).
   // See minion/src/gateway/pty-ws.ts (PTY_COLS / PTY_ROWS).
@@ -42,7 +44,12 @@
         // @ts-expect-error CSS side-effect import has no type declaration
         await import('@wterm/dom/css');
 
-        const term = new WTerm(host!, { cols: COLS, rows: ROWS, autoResize: false, cursorBlink: true });
+        const term = new WTerm(host!, {
+          cols: COLS,
+          rows: ROWS,
+          autoResize: false,
+          cursorBlink: true,
+        });
         await term.init();
 
         // Pass token as WS subprotocol — stays in Sec-WebSocket-Protocol header,
@@ -64,7 +71,11 @@
         socket.addEventListener('error', () => (status = 'Connection error'));
 
         destroy = () => {
-          try { socket.close(); } catch { /* ignore */ }
+          try {
+            socket.close();
+          } catch {
+            /* ignore */
+          }
           term.destroy();
         };
       } catch (e) {
@@ -77,53 +88,36 @@
 
 <svelte:head><title>Terminal · Minion hub</title></svelte:head>
 
-<div class="page">
-  <header class="head">
-    <SquareTerminal size={18} class="shrink-0 opacity-80" />
-    <h1>{m.nav_terminal()}</h1>
-    {#if !err}<span class="status">{status}</span>{/if}
-  </header>
-  {#if err}
-    <p class="err">{err}</p>
-  {/if}
-  <div class="term" bind:this={host}></div>
-</div>
+<PageShell archetype="terminal" scroll="none" variant="terminal" labelledBy="terminal-page-title">
+  <PageHeader
+    title={m.nav_terminal()}
+    subtitle={!err ? status : undefined}
+    titleId="terminal-page-title"
+    sticky={false}
+  >
+    {#snippet leading()}<SquareTerminal size={18} class="shrink-0 opacity-80" />{/snippet}
+  </PageHeader>
+  <PageBody padding="compact" scroll="none" class="terminal-body">
+    {#if err}
+      <AsyncBoundary state={{ kind: 'unavailable', title: err }} />
+    {:else}
+      <div class="term" bind:this={host} aria-label={m.nav_terminal()}></div>
+    {/if}
+  </PageBody>
+</PageShell>
 
 <style>
-  .page {
+  :global(.terminal-body) {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    height: 100%;
-    min-height: 0;
-    padding: 1rem;
-  }
-  .head {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .head h1 {
-    font-size: 0.95rem;
-    font-weight: 600;
-    margin: 0;
-  }
-  .status {
-    margin-left: auto;
-    font-size: 0.75rem;
-    color: var(--color-muted);
-  }
-  .err {
-    color: var(--color-danger, #f87171);
-    font-size: 0.8125rem;
   }
   .term {
     flex: 1;
     min-height: 0;
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
-    background: #0a0a0c;
-    padding: 0.5rem;
+    background: var(--color-canvas, var(--color-bg));
+    padding: var(--space-2, 0.5rem);
     overflow: auto;
   }
 </style>

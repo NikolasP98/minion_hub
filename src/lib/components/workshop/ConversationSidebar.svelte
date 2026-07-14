@@ -1,7 +1,10 @@
 <script lang="ts">
   import { workshopState } from '$lib/state/workshop/workshop.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
-  import { conversationMessages, conversationLoading } from '$lib/state/workshop/workshop-conversations.svelte';
+  import {
+    conversationMessages,
+    conversationLoading,
+  } from '$lib/state/workshop/workshop-conversations.svelte';
   import { loadConversationHistory } from '$lib/workshop/gateway-bridge';
   import { slide } from 'svelte/transition';
   import { conn } from '$lib/state/gateway/connection.svelte';
@@ -11,6 +14,7 @@
   import DOMPurify from 'dompurify';
   import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
   import { agentDisplayName } from '$lib/utils/agent-display';
+  import { Button } from '$lib/components/ui';
 
   const carta = new Carta({ sanitizer: (html) => DOMPurify.sanitize(html) });
 
@@ -28,41 +32,27 @@
 
   // Sort conversations newest first
   let sortedConversations = $derived(
-    Object.values(workshopState.conversations).sort(
-      (a, b) => b.startedAt - a.startedAt,
-    ),
+    Object.values(workshopState.conversations).sort((a, b) => b.startedAt - a.startedAt),
   );
 
   // Split live-or-recent from stale, so "90d ago" never sits next to "just now".
   const DAY_MS = 86_400_000;
   function isLive(c: (typeof sortedConversations)[0]): boolean {
-    return (
-      c.status === 'active' ||
-      c.status === 'queued' ||
-      Date.now() - c.startedAt < DAY_MS
-    );
+    return c.status === 'active' || c.status === 'queued' || Date.now() - c.startedAt < DAY_MS;
   }
   let liveConversations = $derived(sortedConversations.filter(isLive));
-  let archivedConversations = $derived(
-    sortedConversations.filter((c) => !isLive(c)),
-  );
+  let archivedConversations = $derived(sortedConversations.filter((c) => !isLive(c)));
 
   let selectedConversation = $derived(
-    selectedConversationId
-      ? workshopState.conversations[selectedConversationId]
-      : undefined,
+    selectedConversationId ? workshopState.conversations[selectedConversationId] : undefined,
   );
 
   let messages = $derived(
-    selectedConversation
-      ? (conversationMessages[selectedConversation.sessionKey] ?? [])
-      : [],
+    selectedConversation ? (conversationMessages[selectedConversation.sessionKey] ?? []) : [],
   );
 
   let isLoading = $derived(
-    selectedConversation
-      ? (conversationLoading[selectedConversation.sessionKey] ?? false)
-      : false,
+    selectedConversation ? (conversationLoading[selectedConversation.sessionKey] ?? false) : false,
   );
 
   // Auto-load history when a completed conversation is selected and has no messages
@@ -93,9 +83,7 @@
   }
 
   function getParticipantNames(conv: (typeof sortedConversations)[0]): string {
-    return conv.participantAgentIds
-      .map((id) => resolveAgent(id).name)
-      .join(', ');
+    return conv.participantAgentIds.map((id) => resolveAgent(id).name).join(', ');
   }
 
   function getParticipantEmojis(conv: (typeof sortedConversations)[0]): string {
@@ -124,11 +112,12 @@
 </script>
 
 <div
-  class="conversation-sidebar absolute right-0 top-0 h-full w-[420px] z-50 flex bg-bg2/95 backdrop-blur border-l border-border"
+  class="conversation-sidebar absolute right-0 top-0 h-full w-[420px] z-[var(--layer-modal)] flex bg-bg2/95 backdrop-blur border-l border-border"
   transition:slide={{ axis: 'x', duration: 200 }}
 >
   {#snippet convRow(conv: (typeof sortedConversations)[0])}
-    <button
+    <Button
+      variant="ghost"
       class="w-full text-left px-2 py-1.5 border-b border-border/50 hover:bg-accent/5 transition-colors
         {selectedConversationId === conv.id ? 'bg-accent/10' : ''}
         {conv.status === 'completed' ? 'opacity-60' : ''}"
@@ -136,39 +125,44 @@
     >
       <div class="flex items-center gap-1">
         {#if conv.status === 'active'}
-          <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0"></span>
         {:else if conv.status === 'queued'}
-          <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-warning shrink-0"></span>
         {:else}
           <span class="w-1.5 h-1.5 rounded-full bg-muted/40 shrink-0"></span>
         {/if}
-        <span class="text-[9px] font-mono uppercase px-1 py-0.5 rounded
-          {conv.type === 'task' ? 'bg-accent/10 text-accent' : 'bg-bg3 text-muted-strong'}">
+        <span
+          class="text-xs font-mono uppercase px-1 py-0.5 rounded
+          {conv.type === 'task' ? 'bg-accent/10 text-accent' : 'bg-bg3 text-muted-strong'}"
+        >
           {conv.type}
         </span>
       </div>
-      <div class="mt-0.5 text-[10px] text-foreground truncate leading-tight">
-        {getParticipantEmojis(conv)} {getParticipantNames(conv)}
+      <div class="mt-0.5 text-xs text-foreground truncate leading-tight">
+        {getParticipantEmojis(conv)}
+        {getParticipantNames(conv)}
       </div>
-      <div class="text-[9px] text-muted-strong mt-0.5">
+      <div class="text-xs text-muted-strong mt-0.5">
         {formatRelativeTime(conv.startedAt)}
       </div>
-    </button>
+    </Button>
   {/snippet}
 
   <!-- Conversation list (left section) -->
   <div class="w-[140px] shrink-0 flex flex-col border-r border-border">
     <div class="px-2 py-2 border-b border-border flex items-center justify-between">
-      <span class="text-[9px] font-mono uppercase text-muted tracking-wider">{m.workshop_conversations()}</span>
+      <span class="text-xs font-mono uppercase text-muted tracking-wider"
+        >{m.workshop_conversations()}</span
+      >
     </div>
     <div class="flex-1 overflow-y-auto">
       {#if sortedConversations.length === 0}
         <div class="px-2 py-4 text-center">
-          <span class="text-[9px] text-muted">{m.workshop_noConversations()}</span>
+          <span class="text-xs text-muted">{m.workshop_noConversations()}</span>
         </div>
       {:else}
         {#if liveConversations.length > 0}
-          <div class="px-2 pt-2 pb-1 text-[8px] font-mono uppercase tracking-widest text-muted-strong">
+          <div class="px-2 pt-2 pb-1 text-xs font-mono uppercase tracking-widest text-muted-strong">
             {m.workshop_convActiveNow()} ({liveConversations.length})
           </div>
           {#each liveConversations as conv (conv.id)}
@@ -177,7 +171,9 @@
         {/if}
         {#if archivedConversations.length > 0}
           <details class="group">
-            <summary class="px-2 pt-2 pb-1 text-[8px] font-mono uppercase tracking-widest text-muted-strong cursor-pointer select-none hover:text-foreground list-none flex items-center gap-1">
+            <summary
+              class="px-2 pt-2 pb-1 text-xs font-mono uppercase tracking-widest text-muted-strong cursor-pointer select-none hover:text-foreground list-none flex items-center gap-1"
+            >
               <span class="transition-transform group-open:rotate-90">›</span>
               {m.workshop_convArchive()} ({archivedConversations.length})
             </summary>
@@ -196,56 +192,74 @@
     <div class="px-3 py-2 border-b border-border flex items-center justify-between gap-2 shrink-0">
       <div class="flex items-center gap-2 min-w-0">
         {#if selectedConversation}
-          <span class="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded shrink-0
-            {selectedConversation.type === 'task' ? 'bg-accent/10 text-accent' : 'bg-bg3 text-muted-strong'}">
+          <span
+            class="text-xs font-mono uppercase px-1.5 py-0.5 rounded shrink-0
+            {selectedConversation.type === 'task'
+              ? 'bg-accent/10 text-accent'
+              : 'bg-bg3 text-muted-strong'}"
+          >
             {selectedConversation.type}
           </span>
-          <span class="text-[11px] text-foreground truncate">
+          <span class="text-xs text-foreground truncate">
             {getParticipantNames(selectedConversation)}
           </span>
           {#if selectedConversation.status === 'active'}
-            <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0"></span>
           {/if}
         {:else}
-          <span class="text-[11px] text-muted">{m.workshop_selectConversation()}</span>
+          <span class="text-xs text-muted">{m.workshop_selectConversation()}</span>
         {/if}
       </div>
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         class="text-muted hover:text-foreground transition-colors shrink-0 p-0.5"
         onclick={onClose}
         aria-label={m.workshop_closeConversationSidebar()}
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
-      </button>
+      </Button>
     </div>
 
     <!-- Messages area -->
     <div class="flex-1 px-3 py-2 space-y-3 overflow-y-auto">
       {#if !selectedConversation}
         <div class="flex flex-col items-center justify-center h-full gap-2">
-          <span class="text-[11px] text-muted">{m.workshop_pickConversation()}</span>
+          <span class="text-xs text-muted">{m.workshop_pickConversation()}</span>
         </div>
       {:else if isLoading}
         <div class="flex flex-col items-center justify-center h-full gap-2">
-          <span class="text-[11px] text-muted animate-pulse">{m.workshop_loadingMessages()}</span>
+          <span class="text-xs text-muted animate-pulse">{m.workshop_loadingMessages()}</span>
         </div>
       {:else if messages.length === 0}
         <div class="flex flex-col items-center justify-center h-full gap-2">
           {#if selectedConversation.status === 'active'}
-            <span class="text-[11px] text-muted animate-pulse">{m.workshop_waitingForResponse()}</span>
+            <span class="text-xs text-muted animate-pulse">{m.workshop_waitingForResponse()}</span>
           {:else if (selectedConversation.status === 'completed' || selectedConversation.status === 'interrupted') && conn.connected}
-            <span class="text-[11px] text-muted mb-2">{m.workshop_noCachedMessages()}</span>
-            <button
-              class="text-[10px] font-mono px-2 py-1 rounded bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+            <span class="text-xs text-muted mb-2">{m.workshop_noCachedMessages()}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              class="text-xs font-mono px-2 py-1 rounded bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
               onclick={handleLoadHistory}
             >
               {m.workshop_loadHistory()}
-            </button>
+            </Button>
           {:else}
-            <span class="text-[11px] text-muted">{m.workshop_noMessages()}</span>
+            <span class="text-xs text-muted">{m.workshop_noMessages()}</span>
           {/if}
         </div>
       {:else}
@@ -257,10 +271,14 @@
             </span>
             <div class="min-w-0 flex-1">
               <div class="flex items-baseline gap-1.5 mb-1">
-                <span class="text-[11px] font-medium text-foreground/90 truncate">{agent.name}</span>
-                <span class="text-[9px] text-muted-strong shrink-0">{formatRelativeTime(msg.timestamp)}</span>
+                <span class="text-xs font-medium text-foreground/90 truncate">{agent.name}</span>
+                <span class="text-xs text-muted-strong shrink-0"
+                  >{formatRelativeTime(msg.timestamp)}</span
+                >
               </div>
-              <div class="ws-message-md text-[13px] text-foreground leading-relaxed rounded-lg rounded-tl-sm bg-bg3 px-2.5 py-1.5 max-w-[34ch]">
+              <div
+                class="ws-message-md text-sm text-foreground leading-relaxed rounded-lg rounded-tl-sm bg-bg3 px-2.5 py-1.5 max-w-[34ch]"
+              >
                 <Markdown {carta} value={msg.content} />
               </div>
               <div class="mt-1">
@@ -280,34 +298,54 @@
     /* Inline code */
     :global(code) {
       font-family: 'JetBrains Mono NF', monospace;
-      font-size: 0.9em;
-      background: var(--color-bg1, #1a1a1a);
-      border-radius: 3px;
-      padding: 0.1em 0.3em;
+      font-size: var(--font-size-body, 1em);
+      background: var(--color-bg);
+      border-radius: var(--radius-xs);
+      padding: var(--space-0-5) var(--space-1);
     }
     /* Code blocks */
     :global(pre) {
-      background: var(--color-bg1, #1a1a1a);
-      border-radius: 4px;
-      padding: 0.5em 0.75em;
+      background: var(--color-bg);
+      border-radius: var(--radius-sm);
+      padding: var(--space-2) var(--space-3);
       overflow-x: auto;
-      font-size: 0.85em;
+      font-size: var(--font-size-body, 1em);
     }
     /* Headings scale down */
-    :global(h1) { font-size: 1.1em; font-weight: 600; margin: 0.3em 0; }
-    :global(h2) { font-size: 1.05em; font-weight: 600; margin: 0.3em 0; }
-    :global(h3) { font-size: 1em; font-weight: 600; margin: 0.2em 0; }
+    :global(h1) {
+      font-size: var(--font-size-body, 1em);
+      font-weight: 600;
+      margin: var(--space-1) 0;
+    }
+    :global(h2) {
+      font-size: var(--font-size-body, 1em);
+      font-weight: 600;
+      margin: var(--space-1) 0;
+    }
+    :global(h3) {
+      font-size: var(--font-size-body, 1em);
+      font-weight: 600;
+      margin: var(--space-0-5) 0;
+    }
     /* Lists */
-    :global(ul), :global(ol) { padding-left: 1.2em; margin: 0.2em 0; }
-    :global(li) { margin: 0.1em 0; }
+    :global(ul),
+    :global(ol) {
+      padding-left: var(--space-4);
+      margin: var(--space-0-5) 0;
+    }
+    :global(li) {
+      margin: var(--space-0-5) 0;
+    }
     /* Paragraphs */
-    :global(p) { margin: 0.2em 0; }
+    :global(p) {
+      margin: var(--space-0-5) 0;
+    }
     /* Blockquote */
     :global(blockquote) {
-      border-left: 2px solid var(--color-border, #333);
-      margin: 0.2em 0 0.2em 0.2em;
-      padding-left: 0.5em;
-      color: var(--color-muted, #888);
+      border-left: 2px solid var(--color-border);
+      margin: var(--space-0-5) 0 var(--space-0-5) var(--space-0-5);
+      padding-left: var(--space-2);
+      color: var(--color-muted);
     }
   }
 </style>

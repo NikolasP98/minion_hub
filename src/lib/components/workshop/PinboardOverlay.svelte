@@ -8,6 +8,7 @@
   } from '$lib/state/workshop/workshop.svelte';
   import { submitOnEnter } from '$lib/hotkeys';
   import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
 
   let {
     elementId,
@@ -29,7 +30,7 @@
       const na = a.upvotes.length - a.downvotes.length;
       const nb = b.upvotes.length - b.downvotes.length;
       return nb - na;
-    })
+    }),
   );
 
   function handleAdd() {
@@ -69,9 +70,9 @@
   }
 
   function getScoreColor(net: number): string {
-    if (net > 0) return 'text-green-400';
-    if (net < -1) return 'text-red-400';
-    if (net < 0) return 'text-yellow-500';
+    if (net > 0) return 'text-success';
+    if (net < -1) return 'text-destructive';
+    if (net < 0) return 'text-warning';
     return 'text-muted';
   }
 
@@ -81,7 +82,7 @@
 </script>
 
 <div
-  class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40"
+  class="fixed inset-0 z-[var(--layer-modal)] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-bg)_40%,transparent)]"
   role="button"
   tabindex="-1"
   aria-label={m.common_close()}
@@ -91,16 +92,23 @@
   <div class="w-full max-w-lg rounded-lg border border-border bg-bg2 shadow-xl">
     <!-- Header -->
     <div class="flex items-center justify-between border-b border-border px-4 py-2">
-      <span class="text-[10px] font-mono text-foreground font-semibold">
+      <span class="text-xs font-mono text-foreground font-semibold">
         {m.pinboard_title({ label: element?.label ?? '' })}
-        <span class="text-muted font-normal ml-1">({pins.length === 1 ? m.pinboard_pinCount({ count: pins.length }) : m.pinboard_pinCountPlural({ count: pins.length })})</span>
+        <span class="text-muted font-normal ml-1"
+          >({pins.length === 1
+            ? m.pinboard_pinCount({ count: pins.length })
+            : m.pinboard_pinCountPlural({ count: pins.length })})</span
+        >
       </span>
-      <button
-        class="text-[10px] font-mono text-muted hover:text-foreground"
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={m.common_close()}
+        class="text-xs font-mono text-muted hover:text-foreground"
         onclick={onClose}
       >
         x
-      </button>
+      </Button>
     </div>
 
     <!-- Pin list -->
@@ -112,50 +120,68 @@
           <div class="flex items-start gap-2">
             <!-- Vote buttons -->
             <div class="flex flex-col items-center gap-0.5 shrink-0">
-              <button
-                class="text-[10px] font-mono text-muted hover:text-green-400 leading-none"
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-4 w-4 text-xs font-mono text-muted hover:text-success leading-none"
                 onclick={() => votePinboardItem(elementId, pin.id, 'user', 'up')}
-                title={m.pinboard_upvote()}
-              >▲</button>
-              <span class="text-[9px] font-mono {getScoreColor(net)} leading-none">{net > 0 ? '+' : ''}{net}</span>
-              <button
-                class="text-[10px] font-mono text-muted hover:text-red-400 leading-none"
+                title={m.pinboard_upvote()}>▲</Button
+              >
+              <span class="text-xs font-mono {getScoreColor(net)} leading-none"
+                >{net > 0 ? '+' : ''}{net}</span
+              >
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-4 w-4 text-xs font-mono text-muted hover:text-destructive leading-none"
                 onclick={() => votePinboardItem(elementId, pin.id, 'user', 'down')}
-                title={m.pinboard_downvote()}
-              >▼</button>
+                title={m.pinboard_downvote()}>▼</Button
+              >
             </div>
 
             <!-- Content -->
             <div class="flex-1 min-w-0">
               <div class="flex items-start gap-1">
-                <div class="flex-1 text-[10px] font-mono text-foreground break-words">{pin.content}</div>
+                <div class="flex-1 text-xs font-mono text-foreground break-words">
+                  {pin.content}
+                </div>
                 {#if isWarning}
-                  <span class="shrink-0 text-[9px]" title={m.pinboard_lowScore()}>⚠️</span>
+                  <span class="shrink-0 text-xs" title={m.pinboard_lowScore()}>⚠️</span>
                 {/if}
-                <button
-                  class="shrink-0 text-[10px] font-mono text-muted hover:text-foreground ml-1"
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-5 w-5 shrink-0 text-xs font-mono text-muted hover:text-foreground ml-1"
+                  aria-label={m.pinboard_removePin()}
                   onclick={() => removePinboardItem(elementId, pin.id)}
-                  title={m.pinboard_removePin()}
-                >x</button>
+                  title={m.pinboard_removePin()}>x</Button
+                >
               </div>
 
-              <div class="mt-0.5 flex items-center gap-2 text-[9px] font-mono text-muted">
+              <div class="mt-0.5 flex items-center gap-2 text-xs font-mono text-muted">
                 <span>by {pin.pinnedBy} · {formatRelativeTime(pin.pinnedAt)}</span>
                 <span>▲{pin.upvotes.length} ▼{pin.downvotes.length}</span>
                 {#if pin.comments.length > 0}
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     class="hover:text-foreground"
-                    onclick={() => expandedComments[pin.id] = !expandedComments[pin.id]}
+                    onclick={() => (expandedComments[pin.id] = !expandedComments[pin.id])}
                   >
-                    {expandedComments[pin.id] ? '▾' : '▸'} {pin.comments.length === 1 ? m.pinboard_commentCount({ count: pin.comments.length }) : m.pinboard_commentCountPlural({ count: pin.comments.length })}
-                  </button>
+                    {expandedComments[pin.id] ? '▾' : '▸'}
+                    {pin.comments.length === 1
+                      ? m.pinboard_commentCount({ count: pin.comments.length })
+                      : m.pinboard_commentCountPlural({ count: pin.comments.length })}
+                  </Button>
                 {:else}
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     class="hover:text-foreground"
-                    onclick={() => expandedComments[pin.id] = !expandedComments[pin.id]}
+                    onclick={() => (expandedComments[pin.id] = !expandedComments[pin.id])}
                   >
                     {expandedComments[pin.id] ? m.pinboard_hideComments() : m.pinboard_addComment()}
-                  </button>
+                  </Button>
                 {/if}
               </div>
 
@@ -163,7 +189,7 @@
               {#if expandedComments[pin.id]}
                 <div class="mt-1.5 space-y-1 pl-2 border-l border-border">
                   {#each pin.comments as comment (comment.at)}
-                    <div class="text-[9px] font-mono">
+                    <div class="text-xs font-mono">
                       <span class="text-accent">{comment.authorId}</span>
                       <span class="text-muted ml-1">{formatRelativeTime(comment.at)}</span>
                       <div class="text-foreground/80 mt-0.5">{comment.text}</div>
@@ -172,18 +198,20 @@
                   <div class="flex items-center gap-1 mt-1">
                     <input
                       type="text"
-                      class="flex-1 rounded border border-border bg-bg px-1.5 py-0.5 text-[9px] font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
+                      class="flex-1 rounded border border-border bg-bg px-1.5 py-0.5 text-xs font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
                       placeholder={m.pinboard_commentPlaceholder()}
                       bind:value={newCommentText[pin.id]}
                       {@attach submitOnEnter(() => submitComment(pin.id))}
                     />
-                    <button
-                      class="shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-mono text-accent hover:bg-accent/20 disabled:opacity-40"
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-xs font-mono text-accent hover:bg-accent/20 disabled:opacity-40"
                       onclick={() => submitComment(pin.id)}
                       disabled={!(newCommentText[pin.id] ?? '').trim()}
                     >
                       {m.pinboard_post()}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               {/if}
@@ -191,7 +219,7 @@
           </div>
         </div>
       {:else}
-        <div class="text-center text-[10px] font-mono text-muted py-4">{m.pinboard_noPins()}</div>
+        <div class="text-center text-xs font-mono text-muted py-4">{m.pinboard_noPins()}</div>
       {/each}
     </div>
 
@@ -199,18 +227,20 @@
     <div class="flex items-center gap-2 border-t border-border px-3 py-2">
       <input
         type="text"
-        class="flex-1 rounded border border-border bg-bg3 px-2 py-1 text-[10px] font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
+        class="flex-1 rounded border border-border bg-bg3 px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
         placeholder={m.pinboard_addPlaceholder()}
         bind:value={newPinContent}
         {@attach submitOnEnter(() => handleAdd())}
       />
-      <button
-        class="shrink-0 rounded bg-accent/10 px-2 py-1 text-[10px] font-mono text-accent hover:bg-accent/20 disabled:opacity-40"
+      <Button
+        variant="primary"
+        size="sm"
+        class="shrink-0 rounded bg-accent/10 px-2 py-1 text-xs font-mono text-accent hover:bg-accent/20 disabled:opacity-40"
         onclick={handleAdd}
         disabled={!newPinContent.trim()}
       >
         {m.pinboard_pin()}
-      </button>
+      </Button>
     </div>
   </div>
 </div>

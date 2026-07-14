@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import { page } from '$app/state';
   import WorkshopNav from '$lib/components/workshop/WorkshopNav.svelte';
+  import { SectionShell } from '$lib/components/ui/foundations';
 
   let { children }: { children: Snippet } = $props();
 
@@ -19,10 +20,10 @@
 </script>
 
 {#if showNav}
-  <div class="h-full flex">
-    <WorkshopNav />
-    <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">{@render children()}</div>
-  </div>
+  <SectionShell mode="responsive" variant="canvas">
+    {#snippet navigation()}<WorkshopNav />{/snippet}
+    {@render children()}
+  </SectionShell>
 {:else}
   {@render children()}
 {/if}

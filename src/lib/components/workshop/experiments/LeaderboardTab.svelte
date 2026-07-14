@@ -12,16 +12,25 @@
 </script>
 
 <div class="flex-1 overflow-y-auto p-6 space-y-4">
-  <a href="/agents/workshop/compare" class="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-muted hover:text-foreground">
-    <ArrowLeft size={12} /> {m.workshop_exp_compare()}
+  <a
+    href="/agents/workshop/compare"
+    class="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground"
+  >
+    <ArrowLeft size={12} />
+    {m.workshop_exp_compare()}
   </a>
-  <h2 class="font-mono text-sm uppercase tracking-widest text-muted">{m.workshop_exp_leaderboard_title()}</h2>
-  <p class="text-[11px] font-mono text-muted-strong">
+  <h2 class="font-mono text-sm uppercase tracking-widest text-muted">
+    {m.workshop_exp_leaderboard_title()}
+  </h2>
+  <p class="text-xs font-mono text-muted-strong">
     {m.workshop_exp_leaderboard_desc()}
   </p>
 
   {#if loading}
-    <p class="text-xs font-mono text-muted inline-flex items-center gap-1.5"><Loader2 size={13} class="animate-spin" /> {m.workshop_exp_loading()}</p>
+    <p class="text-xs font-mono text-muted inline-flex items-center gap-1.5">
+      <Loader2 size={13} class="animate-spin" />
+      {m.workshop_exp_loading()}
+    </p>
   {:else if err}
     <p class="text-xs font-mono text-destructive">{err}</p>
   {:else if rows.length === 0}
@@ -47,10 +56,16 @@
             <td class="py-2 px-3 text-right text-accent">{(r.winRate * 100).toFixed(0)}%</td>
             <td class="py-2 px-3 text-right text-muted">{r.wins}</td>
             <td class="py-2 px-3 text-right text-muted">{r.rankings}</td>
-            <td class="py-2 px-3 text-right text-muted">{r.avgRank !== null ? r.avgRank.toFixed(2) : '—'}</td>
+            <td class="py-2 px-3 text-right text-muted"
+              >{r.avgRank !== null ? r.avgRank.toFixed(2) : '—'}</td
+            >
             <td class="py-2 px-3 text-right text-muted">{r.runs}</td>
-            <td class="py-2 px-3 text-right text-muted">{r.avgLatencyMs !== null ? r.avgLatencyMs + 'ms' : '—'}</td>
-            <td class="py-2 pl-3 text-right text-muted">{r.totalCostUsd > 0 ? '$' + r.totalCostUsd.toFixed(4) : '—'}</td>
+            <td class="py-2 px-3 text-right text-muted"
+              >{r.avgLatencyMs !== null ? r.avgLatencyMs + 'ms' : '—'}</td
+            >
+            <td class="py-2 pl-3 text-right text-muted"
+              >{r.totalCostUsd > 0 ? '$' + r.totalCostUsd.toFixed(4) : '—'}</td
+            >
           </tr>
         {/each}
       </tbody>

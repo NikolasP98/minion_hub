@@ -7,7 +7,8 @@
   import { agentDisplayName } from '$lib/utils/agent-display';
 
   /** Parent provides a view-mode-aware world→screen converter */
-  let { worldToScreenFn }: { worldToScreenFn: (x: number, y: number) => { x: number; y: number } } = $props();
+  let { worldToScreenFn }: { worldToScreenFn: (x: number, y: number) => { x: number; y: number } } =
+    $props();
 
   function resolveAgentName(agentId: string): string {
     const agent = gw.agents.find((a: { id: string }) => a.id === agentId);
@@ -15,14 +16,14 @@
   }
 
   const FSM_COLORS: Record<string, string> = {
-    idle:       'text-muted',
-    wandering:  'text-blue-400',
-    patrolling: 'text-purple-400',
-    conversing: 'text-green-400',
-    cooldown:   'text-orange-400',
-    dragged:    'text-yellow-400',
-    heartbeat:  'text-cyan-400',
-    reading:    'text-amber-400',
+    idle: 'text-muted',
+    wandering: 'text-info',
+    patrolling: 'text-[var(--color-purple)]',
+    conversing: 'text-success',
+    cooldown: 'text-warning',
+    dragged: 'text-warning',
+    heartbeat: 'text-[var(--color-cyan)]',
+    reading: 'text-warning',
   };
 
   function actionLabel(a: ReturnType<typeof getQueue_readonly>[0]): string {
@@ -39,7 +40,7 @@
   }
 </script>
 
-<div class="absolute inset-0 pointer-events-none overflow-hidden z-[45]">
+<div class="absolute inset-0 pointer-events-none overflow-hidden z-[var(--layer-debug)]">
   {#each Object.values(workshopState.agents) as agent (agent.instanceId)}
     {@const pos = worldToScreenFn(agent.position.x, agent.position.y)}
     {@const state = getAgentState(agent.instanceId) ?? 'idle'}
@@ -51,33 +52,37 @@
         class="absolute pointer-events-none"
         style="left: {pos.x + 36}px; top: {pos.y - 50}px; min-width: 130px; max-width: 180px;"
       >
-        <div class="bg-bg2/90 border border-border/60 rounded text-[8px] font-mono p-1 space-y-0.5 backdrop-blur">
+        <div
+          class="bg-bg2/90 border border-border/60 rounded text-xs font-mono p-1 space-y-0.5 backdrop-blur"
+        >
           <div class="flex items-center gap-1">
             <span class="text-muted/80 truncate">{resolveAgentName(agent.agentId)}</span>
-            <span class="shrink-0 {FSM_COLORS[state] ?? 'text-foreground'} font-semibold">·{state}</span>
+            <span class="shrink-0 {FSM_COLORS[state] ?? 'text-foreground'} font-semibold"
+              >·{state}</span
+            >
           </div>
 
           {#if queue.length > 0}
             <div class="border-t border-border/40 pt-0.5">
               <span class="text-muted-strong">queue:</span>
               {#each queue as action, i (i)}
-                <div class="pl-1 text-[7px] {i === 0 ? 'text-accent' : 'text-muted-strong'} truncate">
+                <div class="pl-1 text-xs {i === 0 ? 'text-accent' : 'text-muted-strong'} truncate">
                   {i + 1}. {actionLabel(action)}
                 </div>
               {/each}
             </div>
           {:else}
-            <div class="text-[7px] text-muted-strong">queue: empty</div>
+            <div class="text-xs text-muted-strong">queue: empty</div>
           {/if}
 
           {#if mem?.contextSummary}
             <div class="border-t border-border/40 pt-0.5">
               <span class="text-muted-strong">mem:</span>
-              <span class="text-muted-strong text-[7px]">{mem.contextSummary.slice(0, 60)}…</span>
+              <span class="text-muted-strong text-xs">{mem.contextSummary.slice(0, 60)}…</span>
             </div>
           {/if}
           {#if mem?.workspaceNotes?.length}
-            <div class="text-[7px] text-muted-strong">{mem.workspaceNotes.length} note(s)</div>
+            <div class="text-xs text-muted-strong">{mem.workspaceNotes.length} note(s)</div>
           {/if}
         </div>
       </div>
