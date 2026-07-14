@@ -10,7 +10,13 @@
   import { refreshCloud, setCloudOrg } from '$lib/state/features/cloud.svelte';
   import type { ShellsProvisionResponse } from '$lib/services/shells-rpc';
 
-  let { data, children }: { data: { canConnect: boolean; canManage: boolean; cloudOrgId: string | null }; children: Snippet } = $props();
+  let {
+    data,
+    children,
+  }: {
+    data: { canConnect: boolean; canManage: boolean; cloudOrgId: string | null };
+    children: Snippet;
+  } = $props();
   let provisionOpen = $state(false);
 
   $effect(() => {
@@ -51,5 +57,8 @@
 </div>
 
 {#if provisionOpen}
-  <ProvisionWorkspaceDialog onClose={() => (provisionOpen = false)} onProvisioned={(result) => void provisioned(result)} />
+  <ProvisionWorkspaceDialog
+    onClose={() => (provisionOpen = false)}
+    onProvisioned={(result) => void provisioned(result)}
+  />
 {/if}

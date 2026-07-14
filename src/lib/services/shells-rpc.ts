@@ -15,21 +15,10 @@ import { sendRequest } from './gateway-rpc';
 // ---------------------------------------------------------------------------
 
 export type ShellHarness =
-  | 'hermes'
-  | 'claude-code'
-  | 'opencode'
-  | 'minion-drone'
-  | 'pi'
-  | (string & {});
+  'hermes' | 'claude-code' | 'opencode' | 'minion-drone' | 'pi' | (string & {});
 
 export type CloudRuntime =
-  | 'hermes'
-  | 'obsidian-cli'
-  | 'chromium'
-  | 'claude-code'
-  | 'opencode'
-  | 'minion-drone'
-  | 'pi';
+  'hermes' | 'obsidian-cli' | 'chromium' | 'claude-code' | 'opencode' | 'minion-drone' | 'pi';
 
 export type ShellProvider = 'exedev' | (string & {});
 

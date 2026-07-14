@@ -11,7 +11,9 @@
     <p>{m.cloud_empty_description()}</p>
   </div>
   {#if canManage && onProvision}
-    <button type="button" onclick={onProvision}><Plus size={15} /> {m.cloud_create_default()}</button>
+    <button type="button" onclick={onProvision}
+      ><Plus size={15} /> {m.cloud_create_default()}</button
+    >
   {/if}
 </div>
 
@@ -39,14 +41,33 @@
     border-radius: 50%;
     color: var(--color-accent);
     background: var(--elevation-2-bg);
-    box-shadow: 0 0 0 .75rem color-mix(in srgb, var(--color-accent) 4%, transparent), 0 0 2.5rem color-mix(in srgb, var(--color-accent) 12%, transparent);
+    box-shadow:
+      0 0 0 0.75rem color-mix(in srgb, var(--color-accent) 4%, transparent),
+      0 0 2.5rem color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
-  h2 { margin: 0; font-size: 1rem; }
-  p { max-width: 30rem; margin: .4rem auto 0; color: var(--color-muted); font-size: .8125rem; line-height: 1.55; }
+  h2 {
+    margin: 0;
+    font-size: 1rem;
+  }
+  p {
+    max-width: 30rem;
+    margin: 0.4rem auto 0;
+    color: var(--color-muted);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+  }
   button {
-    display: inline-flex; align-items: center; gap: .4rem; height: 2.25rem; padding: 0 .85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 2.25rem;
+    padding: 0 0.85rem;
     border: 1px solid color-mix(in srgb, var(--color-accent) 38%, transparent);
-    border-radius: var(--radius-md); color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent); cursor: pointer; font-size: .75rem; font-weight: 600;
+    border-radius: var(--radius-md);
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
   }
 </style>

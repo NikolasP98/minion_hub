@@ -17,7 +17,12 @@
   } from 'lucide-svelte';
   import NavIcon from './NavIcon.svelte';
   import { Tooltip } from '$lib/components/ui';
-  import { getSections, getDynamicPluginsSections, type Section, type SectionItem } from './sections';
+  import {
+    getSections,
+    getDynamicPluginsSections,
+    type Section,
+    type SectionItem,
+  } from './sections';
   import MinionLogo from './MinionLogo.svelte';
   import OrgPicker from './OrgPicker.svelte';
   import { pluginNavState } from '$lib/state/plugin-nav.svelte';
@@ -50,9 +55,19 @@
   const topItems = $derived<TopItem[]>(
     [
       { href: '/reliability', label: m.nav_reliability(), icon: Activity, show: showReliability },
-      { href: '/marketplace', label: m.nav_marketplace(), icon: Store, show: canClient('marketplace.view') },
+      {
+        href: '/marketplace',
+        label: m.nav_marketplace(),
+        icon: Store,
+        show: canClient('marketplace.view'),
+      },
       { href: '/cloud', label: m.nav_cloud(), icon: Cloud, show: showCloud },
-      { href: '/killswitches', label: m.nav_killSwitches(), icon: Power, show: canClient('killswitches.view') },
+      {
+        href: '/killswitches',
+        label: m.nav_killSwitches(),
+        icon: Power,
+        show: canClient('killswitches.view'),
+      },
     ].filter((t) => t.show),
   );
 
@@ -203,7 +218,10 @@
     if (drag?.type !== 'item' || drag.sectionId !== sectionId) return; // same group only
     e.preventDefault();
     if (targetHref === drag.href) return;
-    itemOrder = { ...itemOrder, [sectionId]: move(itemOrder[sectionId] ?? [], drag.href, targetHref, isAfter(e)) };
+    itemOrder = {
+      ...itemOrder,
+      [sectionId]: move(itemOrder[sectionId] ?? [], drag.href, targetHref, isAfter(e)),
+    };
   }
   function startSectionDrag(e: DragEvent, sectionId: string) {
     drag = { type: 'section', sectionId };
@@ -240,17 +258,28 @@
   <div class="shrink-0 px-2 pt-3 pb-2 flex flex-col gap-2">
     <a
       href="/"
-      class="flex items-center {collapsed ? 'justify-center' : 'justify-center md:justify-start'} gap-2 h-9 px-1.5 rounded-[var(--radius-md)] hover:bg-white/[0.05] transition-colors duration-[150ms] group"
+      class="flex items-center {collapsed
+        ? 'justify-center'
+        : 'justify-center md:justify-start'} gap-2 h-9 px-1.5 rounded-[var(--radius-md)] hover:bg-white/[0.05] transition-colors duration-[150ms] group"
       aria-label="Minion Hub"
     >
       {#if collapsed}
         <MinionLogo size="sm" />
       {:else}
         <span class="hidden md:flex items-baseline leading-none">
-          <span class="font-black text-sm tracking-wide uppercase text-brand-pink group-hover:text-brand-pink/90 transition-colors">MINION</span>
-          <span class="font-semibold text-sm text-foreground/80 ml-1 group-hover:text-foreground transition-colors">hub</span>
+          <span
+            class="font-black text-sm tracking-wide uppercase text-brand-pink group-hover:text-brand-pink/90 transition-colors"
+            >MINION</span
+          >
+          <span
+            class="font-semibold text-sm text-foreground/80 ml-1 group-hover:text-foreground transition-colors"
+            >hub</span
+          >
           {#if serverVersion}
-            <span class="ml-1.5 text-[10px] font-mono text-muted-foreground/70 whitespace-nowrap" title={serverVersion}>{serverVersion}</span>
+            <span
+              class="ml-1.5 text-[10px] font-mono text-muted-foreground/70 whitespace-nowrap"
+              title={serverVersion}>{serverVersion}</span
+            >
           {/if}
         </span>
         <span class="md:hidden"><MinionLogo size="sm" /></span>
@@ -268,7 +297,14 @@
       {#each topItems as t (t.href)}
         {@const active = page.url.pathname.startsWith(t.href)}
         {@const showLabel = !collapsed && isMd && active}
-        <Tooltip label={t.label} id={`nav-tip-top-${t.href}`} placement="bottom" disabled={showLabel} openDelay={150} asChild>
+        <Tooltip
+          label={t.label}
+          id={`nav-tip-top-${t.href}`}
+          placement="bottom"
+          disabled={showLabel}
+          openDelay={150}
+          asChild
+        >
           {#snippet children(trigger)}
             {@const Icon = t.icon}
             <a
@@ -289,27 +325,45 @@
     <div class="h-px bg-[var(--hairline)] my-1.5 mx-2"></div>
   {/if}
 
-  <nav use:persistScroll={'main-sidebar'} class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5">
+  <nav
+    use:persistScroll={'main-sidebar'}
+    class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5"
+  >
     {#each orderedSections as section (section.id)}
       {@const items = orderedItems(section).filter((it) => !it.requires || canClient(it.requires))}
       {@const hasSubs = (section.subsections?.length ?? 0) > 0}
       {#if items.length || hasSubs}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
-          class="nav-group-head t-label {headCls} {reorderable ? 'grab' : ''} {drag?.type === 'section' && drag.sectionId === String(section.id) ? 'dragging' : ''}"
+          class="nav-group-head t-label {headCls} {reorderable ? 'grab' : ''} {drag?.type ===
+            'section' && drag.sectionId === String(section.id)
+            ? 'dragging'
+            : ''}"
           draggable={reorderable}
           ondragstart={(e) => startSectionDrag(e, String(section.id))}
           ondragover={(e) => onSectionDragOver(e, String(section.id))}
           ondragend={endDrag}
-        >{section.label}</div>
+        >
+          {section.label}
+        </div>
         {#each items as item (item.href)}
           {@const active = isActive(item)}
-          <Tooltip label={item.label} id={`nav-tip-${item.href}`} placement="right" disabled={!showTooltips} openDelay={150} asChild>
+          <Tooltip
+            label={item.label}
+            id={`nav-tip-${item.href}`}
+            placement="right"
+            disabled={!showTooltips}
+            openDelay={150}
+            asChild
+          >
             {#snippet children(trigger)}
               <a
                 href={item.href}
                 {...trigger}
-                class="nav-row {rowJustify} {reorderable ? 'grab' : ''} {drag?.type === 'item' && drag.href === item.href ? 'dragging' : ''} {active
+                class="nav-row {rowJustify} {reorderable ? 'grab' : ''} {drag?.type === 'item' &&
+                drag.href === item.href
+                  ? 'dragging'
+                  : ''} {active
                   ? section.tone === 'brand'
                     ? 'nav-active brand'
                     : 'nav-active accent'
@@ -317,7 +371,13 @@
                 aria-label={item.label}
                 aria-current={active ? 'page' : undefined}
                 draggable={reorderable}
-                ondragstart={(e) => startItemDrag(e, section, item.href, items.map((i) => i.href))}
+                ondragstart={(e) =>
+                  startItemDrag(
+                    e,
+                    section,
+                    item.href,
+                    items.map((i) => i.href),
+                  )}
                 ondragover={(e) => onItemDragOver(e, String(section.id), item.href)}
                 ondragend={endDrag}
                 oncontextmenu={(e) => openCtx(e, item.href, item.label)}
@@ -358,7 +418,14 @@
             {#if open || collapsed}
               {#each subItems as item (item.href)}
                 {@const active = isActive(item)}
-                <Tooltip label={item.label} id={`nav-tip-${item.href}`} placement="right" disabled={!showTooltips} openDelay={150} asChild>
+                <Tooltip
+                  label={item.label}
+                  id={`nav-tip-${item.href}`}
+                  placement="right"
+                  disabled={!showTooltips}
+                  openDelay={150}
+                  asChild
+                >
                   {#snippet children(trigger)}
                     <a
                       href={item.href}
@@ -388,7 +455,14 @@
 
   <!-- Pinned footer: Settings + collapse toggle -->
   <div class="shrink-0 px-2 py-2 border-t border-[var(--hairline)] flex flex-col gap-0.5">
-    <Tooltip label={m.nav_settings()} id="nav-tip-settings" placement="right" disabled={!showTooltips} openDelay={150} asChild>
+    <Tooltip
+      label={m.nav_settings()}
+      id="nav-tip-settings"
+      placement="right"
+      disabled={!showTooltips}
+      openDelay={150}
+      asChild
+    >
       {#snippet children(trigger)}
         <a
           href="/settings"
@@ -431,19 +505,19 @@
 </aside>
 
 {#if ctxMenu}
-  <div
-    class="ctx-menu"
-    style="left:{ctxMenu.x}px; top:{ctxMenu.y}px"
-    role="menu"
-    tabindex="-1"
-  >
+  <div class="ctx-menu" style="left:{ctxMenu.x}px; top:{ctxMenu.y}px" role="menu" tabindex="-1">
     {#if currentHome === ctxMenu.href}
       <div class="ctx-item is-current" role="menuitem">
         <Check size={14} class="shrink-0" />
         <span>{m.nav_isHome()}</span>
       </div>
     {:else}
-      <button type="button" class="ctx-item" role="menuitem" onclick={() => setAsHome(ctxMenu!.href)}>
+      <button
+        type="button"
+        class="ctx-item"
+        role="menuitem"
+        onclick={() => setAsHome(ctxMenu!.href)}
+      >
         <Star size={14} class="shrink-0" />
         <span>{m.nav_setAsHome()}</span>
       </button>

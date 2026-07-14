@@ -71,7 +71,9 @@
       disabled={cloudState.refreshing}
       onclick={() => void refreshCloud()}
     >
-      {#if cloudState.refreshing}<Loader2 size={15} class="animate-spin" />{:else}<RefreshCw size={15} />{/if}
+      {#if cloudState.refreshing}<Loader2 size={15} class="animate-spin" />{:else}<RefreshCw
+          size={15}
+        />{/if}
     </button>
     {#if canManage}
       <button type="button" class="provision-button" onclick={onProvision}>
@@ -102,9 +104,19 @@
     background: color-mix(in srgb, var(--color-accent) 9%, transparent);
     box-shadow: inset 0 0 18px color-mix(in srgb, var(--color-accent) 8%, transparent);
   }
-  h1 { margin: 0; font-size: 0.9rem; font-weight: 650; letter-spacing: -0.01em; }
-  p { margin: 0.15rem 0 0; font-size: 0.6875rem; color: var(--color-muted); }
-  .server-picker, .single-server {
+  h1 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  p {
+    margin: 0.15rem 0 0;
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+  }
+  .server-picker,
+  .single-server {
     height: 2rem;
     display: flex;
     align-items: center;
@@ -114,7 +126,8 @@
     border-radius: var(--radius-md);
     background: var(--elevation-2-bg);
   }
-  .server-picker > span, .single-server > span {
+  .server-picker > span,
+  .single-server > span {
     font-size: 0.5625rem;
     text-transform: uppercase;
     letter-spacing: 0.09em;
@@ -129,8 +142,14 @@
     color: var(--color-foreground);
     font: 600 0.75rem/1 var(--font-mono, monospace);
   }
-  .single-server strong { max-width: 11rem; overflow: hidden; text-overflow: ellipsis; font-size: 0.75rem; }
-  .icon-button, .provision-button {
+  .single-server strong {
+    max-width: 11rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.75rem;
+  }
+  .icon-button,
+  .provision-button {
     height: 2rem;
     display: inline-flex;
     align-items: center;
@@ -146,17 +165,33 @@
     background: transparent;
     color: var(--color-muted);
   }
-  .icon-button:hover { color: var(--color-foreground); background: rgba(255,255,255,.04); }
-  .icon-button:disabled { opacity: .45; cursor: wait; }
+  .icon-button:hover {
+    color: var(--color-foreground);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .icon-button:disabled {
+    opacity: 0.45;
+    cursor: wait;
+  }
   .provision-button {
     padding: 0 0.75rem;
     border: 1px solid color-mix(in srgb, var(--color-accent) 38%, transparent);
     color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
-  .provision-button:hover { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+  .provision-button:hover {
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
   @media (max-width: 52rem) {
-    .cloud-head p, .server-picker > span, .single-server > span, .provision-button span { display: none; }
-    .server-picker select { min-width: 7rem; max-width: 9rem; }
+    .cloud-head p,
+    .server-picker > span,
+    .single-server > span,
+    .provision-button span {
+      display: none;
+    }
+    .server-picker select {
+      min-width: 7rem;
+      max-width: 9rem;
+    }
   }
 </style>

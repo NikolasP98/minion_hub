@@ -26,7 +26,10 @@ export const MINION_ORG_SLUG = 'minion';
 // Derived from the slug's first hyphen-separated segment so the default slug
 // ('faces-sculptors') reproduces the original hardcoded /faces/i behavior
 // (bare "faces" substring, case-insensitive) in agent name/id.
-const FACES_RE = new RegExp(FACES_ORG_SLUG.split('-')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+const FACES_RE = new RegExp(
+  FACES_ORG_SLUG.split('-')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+  'i',
+);
 
 /** A minimal org shape — the subset of `page.data.organizations` we need. */
 export interface OrgRef {
@@ -80,8 +83,7 @@ export function filterAgentsByOrg<T extends AgentLike>(
   // Only scope when the active org is one of the two we map onto.
   if (activeOrgId !== facesOrgId && activeOrgId !== minionOrgId) return list;
 
-  const activeOrgAgentIds =
-    orgAgentIds instanceof Set ? orgAgentIds : new Set(orgAgentIds ?? []);
+  const activeOrgAgentIds = orgAgentIds instanceof Set ? orgAgentIds : new Set(orgAgentIds ?? []);
 
   return list.filter((a) => {
     if (activeOrgAgentIds.has(a.id)) return true;
