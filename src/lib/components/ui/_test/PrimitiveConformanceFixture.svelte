@@ -1,6 +1,8 @@
 <script lang="ts">
   import Modal from '../Modal.svelte';
   import Select from '../Select.svelte';
+  import Skeleton from '../Skeleton.svelte';
+  import Spinner from '../Spinner.svelte';
   import Tabs from '../Tabs.svelte';
   import Toggle from '../Toggle.svelte';
 
@@ -11,8 +13,10 @@
 </script>
 
 <Select label="First select" bind:value={selected} options={[{ value: 'one', label: 'One' }]} />
-<Select label="Second select" value="two" options={[{ value: 'two', label: 'Two' }]} />
-<Toggle bind:checked={enabled} ariaLabel="Enable audit" />
+<Select label="Second select" value={2} size="xs" options={[{ value: 2, label: 'Two' }]} />
+<Toggle bind:checked={enabled} ariaLabel="Enable audit" description="Audits every change" />
+<Spinner label="Loading fixture" />
+<Skeleton width="12rem" height="1rem" rounded="rounded-full" />
 <Tabs
   id="fixture-tabs"
   aria-label="Fixture sections"

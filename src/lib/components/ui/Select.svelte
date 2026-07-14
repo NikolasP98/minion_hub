@@ -1,20 +1,23 @@
 <script lang="ts" module>
+  import type { Snippet } from 'svelte';
+
   export type SelectSize = 'xs' | 'sm' | 'md';
   export type SelectValue = string | number;
   export type SelectOption = { value: SelectValue; label: string; disabled?: boolean };
-</script>
 
-<script lang="ts">
-  import { ChevronDown } from 'lucide-svelte';
-  import type { Snippet } from 'svelte';
+  export function selectValueFromChange(event: Event): SelectValue {
+    const select = event.currentTarget as HTMLSelectElement;
+    const option = select.selectedOptions.item(0) as
+      (HTMLOptionElement & { __value?: SelectValue }) | null;
+    return option?.__value ?? select.value;
+  }
 
-  const generatedId = $props.id();
-
-  interface Props {
-    /** Bindable selected value. `bind:value` preserves the option's native
-     *  type, so binding a number ($state number + <option value={2}>) works. */
+  /**
+   * Compatibility contract for historical Hub call sites. New product surfaces
+   * should import Select and its string-valued contract from `@minion-stack/ui`.
+   */
+  export interface SelectProps {
     value?: SelectValue;
-    /** Convenience: render options from an array. Use `children` for custom <option>s. */
     options?: SelectOption[];
     size?: SelectSize;
     label?: string;
@@ -26,10 +29,17 @@
     name?: string;
     class?: string;
     onchange?: (value: SelectValue) => void;
-    /** Custom <option>/<optgroup> markup (overrides `options`). */
     children?: Snippet;
     [key: string]: unknown;
   }
+</script>
+
+<script lang="ts">
+  import {
+    Select as SharedSelect,
+    type SelectOption as SharedSelectOption,
+    type SelectSize as SharedSelectSize,
+  } from '@minion-stack/ui';
 
   let {
     value = $bindable(''),
@@ -46,66 +56,46 @@
     onchange,
     children,
     ...rest
-  }: Props = $props();
+  }: SelectProps = $props();
 
-  const fieldId = $derived(id ?? `select-${generatedId}`);
-  const describedBy = $derived(error ? `${fieldId}-err` : helper ? `${fieldId}-help` : undefined);
-
-  const sizeCls = $derived(
+  // The shared primitive deliberately has no `xs` public variant. Keep the
+  // historical Hub density through its canonical xs height token while the
+  // shared primitive continues to own every interaction and semantic style.
+  const sharedSize = $derived<SharedSelectSize>(size === 'xs' ? 'sm' : size);
+  const selectClass = $derived(
     size === 'xs'
-      ? 'h-7 text-[11px] pl-2 pr-7'
-      : size === 'sm'
-        ? 'h-8 text-xs pl-2.5 pr-8'
-        : 'h-9 text-sm pl-3 pr-9'
+      ? '!h-[var(--control-height-xs)] !px-[var(--space-2)] !text-[length:var(--font-size-caption)]'
+      : '',
   );
 
-  // bind:value already wrote the option's native-typed value; just notify.
-  function handleChange() {
-    onchange?.(value);
+  // Runtime values stay untouched. The cast only bridges the package's narrow
+  // string declaration so legacy numeric options keep Svelte's native __value.
+  const sharedValue = $derived(value as string);
+  const sharedOptions = $derived(
+    children ? [] : ((options ?? []) as unknown as readonly SharedSelectOption[]),
+  );
+
+  function handleChange(event: Event) {
+    const next = selectValueFromChange(event);
+    value = next;
+    onchange?.(next);
   }
 </script>
 
-<div class={`flex flex-col gap-1 ${cls}`}>
-  {#if label}
-    <label for={fieldId} class="t-label normal-case tracking-normal text-[0.75rem] text-muted">
-      {label}{#if required}<span class="text-destructive ml-0.5">*</span>{/if}
-    </label>
-  {/if}
-  <div class="relative">
-    <select
-      {...rest}
-      id={fieldId}
-      {name}
-      {disabled}
-      {required}
-      aria-invalid={error ? 'true' : undefined}
-      aria-describedby={describedBy}
-      bind:value
-      onchange={handleChange}
-      class={`w-full appearance-none rounded-[var(--radius-md)] bg-[var(--elevation-2-bg)]
-        border border-[var(--hairline)] text-foreground outline-none cursor-pointer
-        transition-[border-color,box-shadow] duration-[var(--duration-fast)] ease-[var(--ease-standard)]
-        hover:border-white/15
-        focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--color-accent)_25%,transparent)]
-        disabled:opacity-50 disabled:cursor-not-allowed
-        ${error ? 'border-destructive' : ''} ${sizeCls}`}
-    >
-      {#if children}
-        {@render children()}
-      {:else if options}
-        {#each options as opt (opt.value)}
-          <option value={opt.value} disabled={opt.disabled}>{opt.label}</option>
-        {/each}
-      {/if}
-    </select>
-    <ChevronDown
-      size={size === 'md' ? 15 : size === 'sm' ? 13 : 12}
-      class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-    />
-  </div>
-  {#if error}
-    <p id="{fieldId}-err" class="t-caption text-destructive">{error}</p>
-  {:else if helper}
-    <p id="{fieldId}-help" class="t-caption">{helper}</p>
-  {/if}
-</div>
+<SharedSelect
+  {...rest}
+  value={sharedValue}
+  options={sharedOptions}
+  size={sharedSize}
+  {label}
+  {helper}
+  {error}
+  {disabled}
+  {required}
+  {id}
+  {name}
+  class={cls}
+  {selectClass}
+  {children}
+  onchange={handleChange}
+/>

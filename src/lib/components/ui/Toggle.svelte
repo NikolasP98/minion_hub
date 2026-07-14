@@ -1,29 +1,26 @@
 <script lang="ts" module>
-  export type ToggleSize = 'sm' | 'md';
-</script>
-
-<script lang="ts">
   import type { Snippet } from 'svelte';
 
-  interface CommonProps {
-    /** Bindable on/off state. */
+  export type ToggleSize = 'sm' | 'md';
+
+  interface ToggleCommonProps {
     checked?: boolean;
     size?: ToggleSize;
     disabled?: boolean;
-    /** Accessible label when no visible label snippet is provided. */
-    /** Optional secondary line under the label. */
     description?: string;
     class?: string;
     onchange?: (checked: boolean) => void;
-    /** Visible label content (rendered to the right of the switch). */
     children?: Snippet;
+    [key: string]: unknown;
   }
 
-  type Props = CommonProps &
-    (
-      | { label: string; ariaLabel?: string }
-      | { label?: string; ariaLabel: string }
-    );
+  /** Legacy Hub prop names retained by the shared Toggle compatibility adapter. */
+  export type ToggleProps = ToggleCommonProps &
+    ({ label: string; ariaLabel?: string } | { label?: string; ariaLabel: string });
+</script>
+
+<script lang="ts">
+  import { Toggle as SharedToggle } from '@minion-stack/ui';
 
   let {
     checked = $bindable(false),
@@ -35,47 +32,39 @@
     class: cls = '',
     onchange,
     children,
-  }: Props = $props();
+    ...rest
+  }: ToggleProps = $props();
 
-  const track = $derived(size === 'sm' ? 'w-7 h-4' : 'w-9 h-5');
-  const knob = $derived(size === 'sm' ? 'w-3 h-3' : 'w-4 h-4');
-  const shift = $derived(size === 'sm' ? 'translate-x-3' : 'translate-x-4');
+  const accessibleLabel = $derived(label ?? ariaLabel ?? '');
 
-  function toggle() {
-    if (disabled) return;
-    checked = !checked;
-    onchange?.(checked);
+  function handleChange(next: boolean) {
+    checked = next;
+    onchange?.(next);
   }
 </script>
 
-<div class={`inline-flex items-center gap-2.5 ${disabled ? 'opacity-50' : ''} ${cls}`}>
-  <button
-    type="button"
-    role="switch"
-    aria-checked={checked}
-    aria-label={label ?? ariaLabel}
+<span
+  class={`inline-flex items-center gap-[var(--space-2)] ${disabled ? 'opacity-50' : ''} ${cls}`}
+  data-component="toggle-compat"
+>
+  <SharedToggle
+    {...rest}
+    pressed={checked}
+    label={accessibleLabel}
+    {size}
     {disabled}
-    onclick={toggle}
-    class={`relative shrink-0 inline-flex items-center rounded-full p-0.5
-      transition-colors duration-[var(--duration-fast)] ease-[var(--ease-standard)]
-      ${track} ${checked ? 'bg-accent' : 'bg-[var(--elevation-3-bg)] border border-[var(--hairline)]'}`}
-  >
-    <span
-      class={`inline-block rounded-full bg-white shadow-sm
-        transition-transform duration-[var(--duration-fast)] ease-[var(--ease-spring)]
-        ${knob} ${checked ? shift : 'translate-x-0'}`}
-    ></span>
-  </button>
+    onchange={handleChange}
+  />
   {#if children || label || description}
-    <div class="min-w-0 leading-tight">
+    <span class="min-w-0 leading-tight">
       {#if children}
         <span class="text-sm text-foreground">{@render children()}</span>
       {:else if label}
         <span class="text-sm text-foreground">{label}</span>
       {/if}
       {#if description}
-        <p class="t-caption">{description}</p>
+        <span class="t-caption block">{description}</span>
       {/if}
-    </div>
+    </span>
   {/if}
-</div>
+</span>
