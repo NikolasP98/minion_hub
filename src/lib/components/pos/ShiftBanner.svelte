@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
+
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
   import { AlertTriangle, Clock } from 'lucide-svelte';
@@ -19,7 +21,9 @@
   });
 
   const settings = $derived(page.data.posSettings as { methods: string[] });
-  const openShift = $derived(page.data.openShift as { shift: PosShiftLike; summary: ShiftSummaryLike } | null);
+  const openShift = $derived(
+    page.data.openShift as { shift: PosShiftLike; summary: ShiftSummaryLike } | null,
+  );
   const openerName = $derived((page.data.openerName as string | null) ?? null);
 
   // Narrow local shapes (mirrors server types) — avoids importing $server/* runtime
@@ -100,7 +104,10 @@
     // Fresh read so the expected totals reflect any sale that landed after the
     // page's own load (another register tab, a delayed POST, etc).
     const res = await fetch('/api/pos/shifts/current');
-    const data = (await res.json().catch(() => ({}))) as { shift?: PosShiftLike; summary?: ShiftSummaryLike };
+    const data = (await res.json().catch(() => ({}))) as {
+      shift?: PosShiftLike;
+      summary?: ShiftSummaryLike;
+    };
     if (!data.shift || !data.summary) {
       // Shift already closed elsewhere between opening this menu and now.
       closeModal = false;
@@ -158,10 +165,10 @@
     </div>
     <!-- central apiWriteCapability maps POS writes to pos:edit — gate must match -->
     {#if canAct('pos', 'edit')}
-      <button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</button>
+      <Button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</Button>
     {/if}
   </div>
-  <button
+  <Button
     type="button"
     class="mini mini-open"
     title={m.pos_shift_open_cta()}
@@ -169,7 +176,7 @@
     onclick={startOpen}
   >
     <AlertTriangle size={16} />
-  </button>
+  </Button>
 {:else}
   <div class="box box-live hidden xl:flex">
     <div class="status">
@@ -177,7 +184,9 @@
       <span class="msg">{m.pos_sell_shift_status_open()}</span>
       <span class="tickets">{openShift.summary.ticketCount}</span>
     </div>
-    <span class="since">{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span>
+    <span class="since"
+      >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
+    >
     <div class="totals">
       {#each Object.entries(openShift.summary.byMethod) as [mth, amt] (mth)}
         <span class="pill">{mth}: {formatMoney(amt)}</span>
@@ -187,18 +196,20 @@
       <span class="stale"><Clock size={12} class="shrink-0" />{m.pos_shift_stale()}</span>
     {/if}
     {#if canAct('pos', 'manage')}
-      <button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</button>
+      <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
     {/if}
   </div>
-  <button
+  <Button
     type="button"
     class="mini"
-    title={isStale ? m.pos_shift_stale() : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}
+    title={isStale
+      ? m.pos_shift_stale()
+      : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}
     disabled={!canAct('pos', 'manage')}
     onclick={startClose}
   >
     <span class="dot" class:stale-dot={isStale}></span>
-  </button>
+  </Button>
 {/if}
 
 <Modal bind:open={openModal} title={m.pos_shift_open_cta()} size="sm">
@@ -211,7 +222,7 @@
     {/each}
   </div>
   {#snippet footer()}
-    <button type="button" class="act primary" onclick={submitOpen}>{m.pos_shift_open_cta()}</button>
+    <Button type="button" class="act primary" onclick={submitOpen}>{m.pos_shift_open_cta()}</Button>
   {/snippet}
 </Modal>
 
@@ -236,7 +247,9 @@
     </label>
   </div>
   {#snippet footer()}
-    <button type="button" class="act primary" onclick={submitClose}>{m.pos_shift_close_cta()}</button>
+    <Button type="button" class="act primary" onclick={submitClose}
+      >{m.pos_shift_close_cta()}</Button
+    >
   {/snippet}
 </Modal>
 
@@ -244,13 +257,13 @@
   /* ── Sidebar footer widget ── */
   .box {
     flex-direction: column;
-    gap: 6px;
-    padding: 10px;
-    font-size: 12px;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    font-size: var(--font-size-caption);
   }
   .box-open {
-    background: color-mix(in srgb, #f59e0b 10%, transparent);
-    color: #f59e0b;
+    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+    color: var(--color-warning);
   }
   .box-live {
     color: var(--color-muted-foreground);
@@ -258,7 +271,7 @@
   .status {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1);
     font-weight: 600;
   }
   .box-live .status {
@@ -271,123 +284,123 @@
   .dot {
     width: 8px;
     height: 8px;
-    border-radius: 999px;
-    background: var(--color-success, #4ade80);
+    border-radius: var(--radius-full);
+    background: var(--color-success);
     flex-shrink: 0;
   }
   .dot.stale-dot {
-    background: #f87171;
+    background: var(--color-brand);
   }
   .tickets {
     color: var(--color-accent);
     font-variant-numeric: tabular-nums;
   }
   .since {
-    font-size: 11px;
+    font-size: var(--font-size-caption);
     line-height: 1.35;
     color: var(--color-muted-foreground);
   }
   .totals {
     display: flex;
-    gap: 4px;
+    gap: var(--space-1);
     flex-wrap: wrap;
   }
   .pill {
     padding: 1px 7px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
     font-variant-numeric: tabular-nums;
-    font-size: 11px;
+    font-size: var(--font-size-caption);
   }
   .stale {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: color-mix(in srgb, #f87171 15%, transparent);
-    color: #f87171;
-    font-size: 11px;
+    gap: var(--space-1);
+    padding: var(--space-0-5) var(--space-2);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--color-brand) 15%, transparent);
+    color: var(--color-brand);
+    font-size: var(--font-size-caption);
   }
-  .act {
-    padding: 5px 12px;
+  .box :global(.act) {
+    padding: var(--space-1) var(--space-3);
     border-radius: var(--radius-md, 6px);
     border: 1px solid currentColor;
     background: transparent;
     color: inherit;
-    font-size: 12px;
+    font-size: var(--font-size-caption);
     cursor: pointer;
   }
-  .box-live .act {
+  .box-live :global(.act) {
     color: var(--color-muted-foreground);
   }
   /* Collapsed rail (< xl) only: a single icon button carrying the status color.
      Display is controlled here, NOT via Tailwind xl:hidden — the scoped hash
      class outranks the utility and re-shows it on desktop. */
-  .mini {
+  .box :global(.mini) {
     display: none;
     align-items: center;
     justify-content: center;
     width: 100%;
-    padding: 10px 0;
+    padding: var(--space-2) 0;
     background: transparent;
     border: none;
     cursor: pointer;
     color: var(--color-muted-foreground);
   }
   @media (max-width: 1279.98px) {
-    .mini {
+    .box :global(.mini) {
       display: flex;
     }
   }
-  .mini-open {
-    color: #f59e0b;
+  .box :global(.mini-open) {
+    color: var(--color-warning);
   }
-  .mini:disabled {
+  .box :global(.mini):disabled {
     cursor: default;
     opacity: 0.7;
   }
-  .mini:not(:disabled):hover {
+  .box :global(.mini):not(:disabled):hover {
     background: color-mix(in srgb, currentColor 10%, transparent);
   }
-  .act.primary {
+  .box :global(.act.primary) {
     border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
     color: var(--color-accent);
   }
-  .act:hover {
+  .box :global(.act):hover {
     background: color-mix(in srgb, currentColor 12%, transparent);
   }
 
   .form {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-2);
   }
   .field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .lbl {
-    font-size: 11px;
+    font-size: var(--font-size-caption);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-muted-foreground);
   }
   input[type='number'],
   textarea {
-    padding: 6px 10px;
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-md, 6px);
     border: 1px solid var(--color-border);
     background: var(--color-canvas);
     color: var(--color-foreground);
-    font-size: 13px;
+    font-size: var(--font-size-body);
   }
   .close-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 6px 0;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
     border-bottom: 1px solid var(--color-border);
   }
   .close-row .lbl {
@@ -397,7 +410,7 @@
   .expected {
     width: 110px;
     flex-shrink: 0;
-    font-size: 12px;
+    font-size: var(--font-size-caption);
     color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
   }
@@ -408,13 +421,13 @@
     width: 110px;
     flex-shrink: 0;
     text-align: right;
-    font-size: 12px;
+    font-size: var(--font-size-caption);
     font-variant-numeric: tabular-nums;
   }
   .diff.neg {
-    color: #f87171;
+    color: var(--color-brand);
   }
   .diff.pos {
-    color: #4ade80;
+    color: var(--color-success);
   }
 </style>

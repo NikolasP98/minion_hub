@@ -7,6 +7,8 @@
 </script>
 
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
+
   import { X } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
@@ -30,9 +32,15 @@
 
   // Over-allocation clamp: this row's amount can never push Σ past total.
   function setAmount(i: number, raw: number) {
-    const othersCents = payments.reduce((s, p, idx) => (idx === i ? s : s + Math.round(p.amount * 100)), 0);
+    const othersCents = payments.reduce(
+      (s, p, idx) => (idx === i ? s : s + Math.round(p.amount * 100)),
+      0,
+    );
     const maxCents = Math.max(0, totalCents - othersCents);
-    const cents = Math.min(Math.max(0, Math.round((Number.isFinite(raw) ? raw : 0) * 100)), maxCents);
+    const cents = Math.min(
+      Math.max(0, Math.round((Number.isFinite(raw) ? raw : 0) * 100)),
+      maxCents,
+    );
     payments[i].amount = cents / 100;
     if (payments[i].method === 'cash' && Math.round((payments[i].tendered ?? 0) * 100) < cents) {
       payments[i].tendered = payments[i].amount;
@@ -53,14 +61,18 @@
   }
 
   function tenderInvalid(p: PaymentRow): boolean {
-    return p.method === 'cash' && p.tendered != null && Math.round(p.tendered * 100) < Math.round(p.amount * 100);
+    return (
+      p.method === 'cash' &&
+      p.tendered != null &&
+      Math.round(p.tendered * 100) < Math.round(p.amount * 100)
+    );
   }
 </script>
 
 <div class="panel">
   <div class="methods">
     {#each methods as mth (mth)}
-      <button type="button" class="mbtn" onclick={() => addMethod(mth)}>{mth}</button>
+      <Button type="button" class="mbtn" onclick={() => addMethod(mth)}>{mth}</Button>
     {/each}
   </div>
 
@@ -95,7 +107,9 @@
             </label>
             <span class="change">{m.pos_sell_change()}: {formatMoney(change(p))}</span>
           {/if}
-          <button class="rm" title={m.common_remove()} onclick={() => removeRow(i)}><X size={13} /></button>
+          <Button class="rm" title={m.common_remove()} onclick={() => removeRow(i)}
+            ><X size={13} /></Button
+          >
         </div>
       {/each}
     </div>
@@ -106,30 +120,30 @@
   .panel {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
   .methods {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
+    gap: var(--space-2);
   }
-  .mbtn {
-    padding: 0.3rem 0.7rem;
+  .panel :global(.mbtn) {
+    padding: var(--space-1) var(--space-3);
     border-radius: var(--radius-md);
     border: 1px solid var(--hairline);
     background: var(--color-bg3);
     color: var(--color-foreground);
-    font-size: 0.78rem;
+    font-size: var(--font-size-caption);
     text-transform: capitalize;
     cursor: pointer;
   }
-  .mbtn:hover {
+  .panel :global(.mbtn):hover {
     border-color: var(--color-accent);
   }
   .rows {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: var(--space-2);
     /* Lives in the pinned charge section — cap so many rows scroll instead of
        squeezing the cart above out of view. */
     max-height: 11rem;
@@ -139,8 +153,8 @@
     display: flex;
     align-items: flex-end;
     flex-wrap: wrap; /* cash rows (price + tendered + change) exceed the panel width */
-    gap: 0.5rem;
-    padding: 0.35rem;
+    gap: var(--space-2);
+    padding: var(--space-1);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
   }
@@ -148,18 +162,18 @@
     border-color: color-mix(in srgb, var(--color-destructive) 55%, transparent);
   }
   .mname {
-    font-size: 0.78rem;
+    font-size: var(--font-size-caption);
     text-transform: capitalize;
     min-width: 3.5rem;
-    padding-bottom: 0.35rem;
+    padding-bottom: var(--space-1);
   }
   .fld {
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
+    gap: var(--space-0-5);
   }
   .lbl {
-    font-size: 0.62rem;
+    font-size: var(--font-size-telemetry);
     text-transform: uppercase;
     letter-spacing: 0.03em;
     color: var(--color-muted-foreground);
@@ -167,8 +181,8 @@
   .inp {
     width: 5.5rem;
     min-height: 1.8rem;
-    padding: 0.25rem 0.4rem;
-    font-size: 0.8rem;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--font-size-body);
     border-radius: var(--radius-sm);
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
@@ -177,19 +191,19 @@
     font-variant-numeric: tabular-nums;
   }
   .change {
-    font-size: 0.75rem;
+    font-size: var(--font-size-caption);
     color: var(--color-muted-foreground);
-    padding-bottom: 0.35rem;
+    padding-bottom: var(--space-1);
     white-space: nowrap;
   }
-  .rm {
+  .panel :global(.rm) {
     background: none;
     border: none;
     color: var(--color-muted-foreground);
     cursor: pointer;
-    margin-bottom: 0.35rem;
+    margin-bottom: var(--space-1);
   }
-  .rm:hover {
+  .panel :global(.rm):hover {
     color: var(--color-destructive);
   }
 </style>

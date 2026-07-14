@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Select } from '$lib/components/ui';
+
   import * as m from '$lib/paraglide/messages';
   import { Plus, Trash2 } from 'lucide-svelte';
   import { Modal, Button, Toggle } from '$lib/components/ui';
@@ -44,7 +46,15 @@
     onSaved: () => void;
   }
 
-  let { open = $bindable(false), stockEnabled, stockItems, categories, consumption, editing = null, onSaved }: Props = $props();
+  let {
+    open = $bindable(false),
+    stockEnabled,
+    stockItems,
+    categories,
+    consumption,
+    editing = null,
+    onSaved,
+  }: Props = $props();
 
   // ── Server's slugifyCode (pos.service.ts) mirrored client-side — that
   // module is $server/*-only and can't be imported into a client component. ──
@@ -84,7 +94,9 @@
     trackStock = e?.itemId != null;
     uom = (e?.itemId ? stockItems.find((i) => i.id === e.itemId)?.uom : undefined) ?? 'unit';
     rows = e
-      ? consumption.filter((c) => c.finProductId === e.productId).map((c) => ({ itemId: c.itemId, qtyPerUnit: String(c.qtyPerUnit) }))
+      ? consumption
+          .filter((c) => c.finProductId === e.productId)
+          .map((c) => ({ itemId: c.itemId, qtyPerUnit: String(c.qtyPerUnit) }))
       : [];
   });
 
@@ -131,7 +143,9 @@
       }
     }
     if (kind === 'service' && stockEnabled) {
-      payload.consumption = rows.filter((r) => r.itemId && Number(r.qtyPerUnit) > 0).map((r) => ({ itemId: r.itemId, qtyPerUnit: Number(r.qtyPerUnit) }));
+      payload.consumption = rows
+        .filter((r) => r.itemId && Number(r.qtyPerUnit) > 0)
+        .map((r) => ({ itemId: r.itemId, qtyPerUnit: Number(r.qtyPerUnit) }));
     }
 
     const url = editing ? `/api/pos/sellables/${editing.productId}` : '/api/pos/sellables';
@@ -140,16 +154,27 @@
     try {
       await toastAsync(
         (async () => {
-          const res = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+          const res = await fetch(url, {
+            method,
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
           if (!res.ok) {
             const d = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
-            throw new Error(d.code === 'code_taken' ? m.pos_catalog_code_taken() : (d.error ?? `Failed (${res.status})`));
+            throw new Error(
+              d.code === 'code_taken'
+                ? m.pos_catalog_code_taken()
+                : (d.error ?? `Failed (${res.status})`),
+            );
           }
         })(),
         {
           loading: `${m.common_save()}…`,
           getOutcome: () => ({ type: 'success', title: m.common_save() }),
-          onError: (err) => ({ title: m.data_table_save_failed(), description: err instanceof Error ? err.message : String(err) }),
+          onError: (err) => ({
+            title: m.data_table_save_failed(),
+            description: err instanceof Error ? err.message : String(err),
+          }),
         },
       );
       open = false;
@@ -192,8 +217,16 @@
       <div class="fld">
         <span>{m.pos_catalog_kind_product()} / {m.pos_catalog_kind_service()}</span>
         <div class="kind-toggle">
-          <button type="button" class="kind-btn" class:active={kind === 'service'} onclick={() => (kind = 'service')}>{m.pos_catalog_kind_service()}</button>
-          <button type="button" class="kind-btn" class:active={kind === 'product'} onclick={() => (kind = 'product')}>{m.pos_catalog_kind_product()}</button>
+          <Button
+            type="button"
+            class="kind-btn {kind === 'service' ? 'active' : ''}"
+            onclick={() => (kind = 'service')}>{m.pos_catalog_kind_service()}</Button
+          >
+          <Button
+            type="button"
+            class="kind-btn {kind === 'product' ? 'active' : ''}"
+            onclick={() => (kind = 'product')}>{m.pos_catalog_kind_product()}</Button
+          >
         </div>
       </div>
 
@@ -214,17 +247,35 @@
         <div class="consumption-rows">
           {#each rows as row, idx (idx)}
             <div class="consumption-row">
-              <select class="inp flex-1" bind:value={row.itemId}>
+              <Select class="inp flex-1" bind:value={row.itemId}>
                 {#each optionsFor(idx) as item (item.id)}
                   <option value={item.id}>{item.code} — {item.name}</option>
                 {/each}
-              </select>
-              <input class="inp w-24" type="number" min="0" step="0.01" placeholder={m.pos_catalog_qty_per_unit()} bind:value={row.qtyPerUnit} />
-              <button type="button" class="act-btn" onclick={() => removeRow(idx)} aria-label={m.common_remove()}><Trash2 size={12} /></button>
+              </Select>
+              <input
+                class="inp w-24"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder={m.pos_catalog_qty_per_unit()}
+                bind:value={row.qtyPerUnit}
+              />
+              <Button
+                type="button"
+                class="act-btn"
+                onclick={() => removeRow(idx)}
+                aria-label={m.common_remove()}><Trash2 size={12} /></Button
+              >
             </div>
           {/each}
-          <Button variant="outline" size="sm" onclick={addRow} disabled={rows.length >= stockItems.length}>
-            <Plus size={13} /> {m.common_add()}
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={addRow}
+            disabled={rows.length >= stockItems.length}
+          >
+            <Plus size={13} />
+            {m.common_add()}
           </Button>
         </div>
       </div>
@@ -233,18 +284,73 @@
 
   {#snippet footer()}
     <Button variant="outline" size="sm" onclick={() => (open = false)}>{m.common_cancel()}</Button>
-    <Button variant="primary" size="sm" onclick={submit} disabled={!canSubmit}>{m.common_save()}</Button>
+    <Button variant="primary" size="sm" onclick={submit} disabled={!canSubmit}
+      >{m.common_save()}</Button
+    >
   {/snippet}
 </Modal>
 
 <style>
-  .inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
-  .fld { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--color-muted-foreground); }
-  .kind-toggle { display: flex; gap: 0.4rem; }
-  .kind-btn { flex: 1; padding: 0.35rem 0.6rem; font-size: 0.8rem; border-radius: var(--radius-sm); border: 1px solid var(--hairline); background: var(--color-bg3); color: var(--color-muted-foreground); cursor: pointer; }
-  .kind-btn.active { background: color-mix(in srgb, var(--color-accent) 15%, transparent); border-color: var(--color-accent); color: var(--color-foreground); }
-  .consumption-rows { display: flex; flex-direction: column; gap: 0.4rem; }
-  .consumption-row { display: flex; gap: 0.4rem; align-items: center; }
-  .act-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-muted-foreground); }
-  .act-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--color-foreground); }
+  .inp {
+    height: 1.75rem;
+    padding: 0 0.5rem;
+    font-size: var(--font-size-body);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg3);
+    border: 1px solid var(--hairline);
+    color: var(--color-foreground);
+    font-family: inherit;
+  }
+  .fld {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--font-size-caption);
+    color: var(--color-muted-foreground);
+  }
+  .kind-toggle {
+    display: flex;
+    gap: var(--space-2);
+  }
+  .kind-toggle :global(.kind-btn) {
+    flex: 1;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--font-size-body);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--hairline);
+    background: var(--color-bg3);
+    color: var(--color-muted-foreground);
+    cursor: pointer;
+  }
+  .kind-toggle :global(.kind-btn.active) {
+    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+    border-color: var(--color-accent);
+    color: var(--color-foreground);
+  }
+  .consumption-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .consumption-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+  }
+  .consumption-row :global(.act-btn) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--hairline);
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-muted-foreground);
+  }
+  .consumption-row :global(.act-btn):hover {
+    background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
+    color: var(--color-foreground);
+  }
 </style>

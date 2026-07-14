@@ -14,7 +14,11 @@
 
   const fmtScore = (v: number) => (v > 0 ? '+' : '') + v.toFixed(2);
   const fmtDay = (iso: string) =>
-    new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    });
 
   const byDay = $derived(new Map(points.map((p) => [p.day, p])));
   const c = $derived(chartColors());
@@ -33,7 +37,7 @@
         const color = score >= 0 ? 'var(--color-success)' : 'var(--color-destructive)';
         return `<div style="font-weight:600">${fmtDay(day)}</div>
           <div style="color:${color};font-weight:700;font-variant-numeric:tabular-nums">${fmtScore(score)}</div>
-          <div style="opacity:0.7;font-size:0.72rem">${m.crm_insights_sentiment_n({ count: rec?.n ?? 0 })}</div>`;
+          <div style="opacity:0.7;font-size: var(--font-size-body){m.crm_insights_sentiment_n({ count: rec?.n ?? 0 })}</div>`;
       },
     },
     xAxis: {
@@ -74,7 +78,10 @@
 
 <header class="trend-head">
   {#if current}
-    <span class="trend-cur" style:color={current.avg >= 0 ? 'var(--color-success)' : 'var(--color-destructive)'}>
+    <span
+      class="trend-cur"
+      style:color={current.avg >= 0 ? 'var(--color-success)' : 'var(--color-destructive)'}
+    >
       {fmtScore(current.avg)}
     </span>
     <span class="t-caption">{m.crm_insights_sentiment_n({ count: current.n })}</span>

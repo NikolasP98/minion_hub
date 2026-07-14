@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
+
   import { onDestroy } from 'svelte';
   import { X, UserPlus } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -15,7 +17,11 @@
     required?: boolean;
   }
 
-  let { crmContactId = $bindable(null), customerName = $bindable(null), required = false }: Props = $props();
+  let {
+    crmContactId = $bindable(null),
+    customerName = $bindable(null),
+    required = false,
+  }: Props = $props();
 
   let q = $state('');
   let phone = $state<string | null>(null);
@@ -38,10 +44,12 @@
       const res = await fetch(`/api/crm/contacts?search=${encodeURIComponent(term)}&limit=8`);
       if (seq !== searchSeq) return;
       const j = res.ok ? await res.json() : { contacts: [] };
-      results = (j.contacts ?? []).map((c: { contact_id: string; display_name: string | null }) => ({
-        id: c.contact_id,
-        name: c.display_name || '—',
-      }));
+      results = (j.contacts ?? []).map(
+        (c: { contact_id: string; display_name: string | null }) => ({
+          id: c.contact_id,
+          name: c.display_name || '—',
+        }),
+      );
       open = true;
     },
     { wait: 200 },
@@ -98,35 +106,46 @@
 </script>
 
 <div class="picker">
-  <span class="lbl">{m.pos_sell_customer()}{#if required}<span class="req">*</span>{/if}</span>
+  <span class="lbl"
+    >{m.pos_sell_customer()}{#if required}<span class="req">*</span>{/if}</span
+  >
 
   {#if customerName}
     <div class="chip">
       <span class="cname">{customerName}</span>
       {#if phone}<span class="cphone">{phone}</span>{/if}
-      <button type="button" class="clr" title={m.common_remove()} onclick={clear}><X size={13} /></button>
+      <Button type="button" class="clr" title={m.common_remove()} onclick={clear}
+        ><X size={13} /></Button
+      >
     </div>
   {:else}
     <div class="field">
-      <input class="inp" placeholder={m.pos_sell_customer_ph()} value={q} oninput={onInput} onfocus={() => q && search.run(q)} />
+      <input
+        class="inp"
+        placeholder={m.pos_sell_customer_ph()}
+        value={q}
+        oninput={onInput}
+        onfocus={() => q && search.run(q)}
+      />
       {#if open && results.length}
         <ul class="menu">
           {#each results as c (c.id)}
-            <li><button type="button" onclick={() => pick(c)}>{c.name}</button></li>
+            <li><Button type="button" onclick={() => pick(c)}>{c.name}</Button></li>
           {/each}
         </ul>
       {/if}
     </div>
 
     {#if !quickAdd}
-      <button type="button" class="quick-toggle" onclick={() => (quickAdd = true)}>
-        <UserPlus size={13} /> {m.pos_sell_customer_quick_add()}
-      </button>
+      <Button type="button" class="quick-toggle" onclick={() => (quickAdd = true)}>
+        <UserPlus size={13} />
+        {m.pos_sell_customer_quick_add()}
+      </Button>
     {:else}
       <div class="quick-row">
         <input class="inp" placeholder={m.pos_sell_customer_name_ph()} bind:value={quickName} />
         <input class="inp" placeholder={m.pos_sell_customer_phone_ph()} bind:value={quickPhone} />
-        <button type="button" class="quick-toggle" onclick={applyQuick}>{m.common_add()}</button>
+        <Button type="button" class="quick-toggle" onclick={applyQuick}>{m.common_add()}</Button>
       </div>
     {/if}
 
@@ -140,15 +159,15 @@
   .picker {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: var(--space-1);
   }
   .lbl {
-    font-size: 0.72rem;
+    font-size: var(--font-size-caption);
     color: var(--color-muted-foreground);
   }
   .req {
     color: var(--color-destructive);
-    margin-left: 0.15rem;
+    margin-left: var(--space-0-5);
   }
   .field {
     position: relative;
@@ -156,8 +175,8 @@
   .inp {
     width: 100%;
     min-height: 2rem;
-    padding: 0.4rem 0.5rem;
-    font-size: 0.82rem;
+    padding: var(--space-2) var(--space-2);
+    font-size: var(--font-size-body);
     border-radius: var(--radius-sm);
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
@@ -165,80 +184,80 @@
   }
   .menu {
     position: absolute;
-    z-index: 20;
+    z-index: var(--layer-navigation);
     top: calc(100% + 2px);
     left: 0;
     right: 0;
     max-height: 12rem;
     overflow: auto;
     margin: 0;
-    padding: 0.25rem;
+    padding: var(--space-1);
     list-style: none;
     background: var(--color-card);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    box-shadow: var(--shadow-overlay);
   }
-  .menu li button {
+  .menu li :global([data-part='button']) {
     width: 100%;
     text-align: left;
     background: none;
     border: none;
-    padding: 0.4rem 0.5rem;
+    padding: var(--space-2) var(--space-2);
     border-radius: var(--radius-sm, 4px);
     cursor: pointer;
-    font-size: 0.82rem;
+    font-size: var(--font-size-body);
     color: var(--color-foreground);
   }
-  .menu li button:hover {
+  .menu li :global([data-part='button']):hover {
     background: var(--color-bg3);
   }
   .chip {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 0.5rem;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-2);
     border-radius: var(--radius-md);
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
   }
   .cname {
-    font-size: 0.85rem;
+    font-size: var(--font-size-body);
     font-weight: 500;
   }
   .cphone {
-    font-size: 0.72rem;
+    font-size: var(--font-size-caption);
     color: var(--color-muted-foreground);
   }
-  .clr {
+  .picker :global(.clr) {
     margin-left: auto;
     background: none;
     border: none;
     color: var(--color-muted-foreground);
     cursor: pointer;
   }
-  .clr:hover {
+  .picker :global(.clr):hover {
     color: var(--color-destructive);
   }
-  .quick-toggle {
+  .picker :global(.quick-toggle) {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: var(--space-1);
     align-self: flex-start;
     background: none;
     border: none;
     color: var(--color-accent);
-    font-size: 0.75rem;
+    font-size: var(--font-size-caption);
     cursor: pointer;
-    padding: 0.2rem 0;
+    padding: var(--space-1) 0;
   }
   .quick-row {
     display: flex;
-    gap: 0.4rem;
+    gap: var(--space-2);
     align-items: center;
   }
   .hint {
-    font-size: 0.7rem;
+    font-size: var(--font-size-caption);
     color: var(--color-destructive);
   }
 </style>
