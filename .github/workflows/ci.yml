@@ -2,13 +2,17 @@ name: CI
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [dev, master]
   push:
-    branches: [dev, main]
+    branches: [dev, master]
 
 jobs:
   check-and-build:
     runs-on: ubuntu-latest
+    env:
+      PUBLIC_DEFAULT_ORG_SLUG: ci
+      PUBLIC_POSTHOG_HOST: https://posthog.invalid
+      PUBLIC_POSTHOG_KEY: ci
     steps:
       - uses: actions/checkout@v4
         with:
