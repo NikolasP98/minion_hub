@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
 
   let {
     label,
@@ -33,19 +34,23 @@
   class="element-context-menu fixed z-[900] min-w-[120px] rounded border border-border bg-bg2 py-1 shadow-lg"
   style="left: {x}px; top: {y}px;"
 >
-  <div class="border-b border-border px-3 py-1 text-[10px] font-mono text-muted truncate max-w-[180px]">
+  <div class="border-b border-border px-3 py-1 text-xs font-mono text-muted truncate max-w-[180px]">
     {label}
   </div>
-  <button
-    class="w-full px-3 py-1 text-left text-[10px] font-mono text-foreground hover:bg-accent/10"
+  <Button
+    variant="ghost"
+    size="sm"
+    class="w-full px-3 py-1 text-left text-xs font-mono text-foreground hover:bg-accent/10"
     onclick={() => onAction('open')}
   >
     {m.workshop_open()}
-  </button>
-  <button
-    class="w-full px-3 py-1 text-left text-[10px] font-mono text-foreground hover:bg-accent/10"
+  </Button>
+  <Button
+    variant="ghost"
+    size="sm"
+    class="w-full px-3 py-1 text-left text-xs font-mono text-foreground hover:bg-accent/10"
     onclick={() => onAction('remove')}
   >
     {m.workshop_removeFromCanvas()}
-  </button>
+  </Button>
 </div>

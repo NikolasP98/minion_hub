@@ -38,10 +38,11 @@ describe('high-risk mutation integration contracts', () => {
     const home = source('routes/(app)/home/+page.svelte');
     const card = source('lib/components/my-agent/FeedCard.svelte');
     expect(home).not.toMatch(/on(?:snooze|dismiss|open)=\{\(\) => \{\}\}/);
-    expect(card).toContain("role={onopen ? 'button' : undefined}");
-    expect(card).toContain('tabindex={onopen ? 0 : undefined}');
-    expect(card).toContain('.card.interactive:hover');
-    expect(card).not.toMatch(/\.card:hover,\s*\.card:focus-visible/);
+    expect(card).toContain('{#if onopen}');
+    expect(card).toContain('<Button');
+    expect(card).toContain('onclick={onopen}');
+    expect(card).toContain('<div class="body">');
+    expect(card).not.toContain('role={onopen');
   });
 
   it('flow apply clears its proposal preview only inside the confirmed-success callback', () => {

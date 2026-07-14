@@ -13,6 +13,7 @@
     type CompareOutput,
     type ModelItem,
   } from '$lib/state/workshop/experiments.svelte';
+  import { Button } from '$lib/components/ui';
 
   let lbRefresh = $state(0);
 
@@ -197,8 +198,10 @@
 
 <div class="flex-1 overflow-y-auto p-6 space-y-5">
   <header class="flex items-center justify-between">
-    <h2 class="font-mono text-sm uppercase tracking-widest text-muted">{m.workshop_exp_compare_title()}</h2>
-    <label class="flex items-center gap-2 text-[11px] font-mono text-muted cursor-pointer select-none">
+    <h2 class="font-mono text-sm uppercase tracking-widest text-muted">
+      {m.workshop_exp_compare_title()}
+    </h2>
+    <label class="flex items-center gap-2 text-xs font-mono text-muted cursor-pointer select-none">
       <input type="checkbox" bind:checked={blind} class="accent-accent" />
       {#if blind}<EyeOff size={13} />{:else}<Eye size={13} />{/if}
       {m.workshop_exp_blind_mode()}
@@ -208,38 +211,61 @@
   <LeaderboardStrip refresh={lbRefresh} />
 
   {#if modelsError}
-    <p class="text-xs font-mono text-destructive">{m.workshop_exp_models_load_error({ error: modelsError })}</p>
+    <p class="text-xs font-mono text-destructive">
+      {m.workshop_exp_models_load_error({ error: modelsError })}
+    </p>
   {/if}
 
   <!-- Model picker -->
   <section class="space-y-2">
     <div class="flex items-center justify-between">
-      <p class="text-[10px] font-mono uppercase tracking-wider text-muted-strong">
-        {m.workshop_exp_models_label()} {#if role === 'admin'}<span class="text-accent/70">{m.workshop_exp_models_admin()}</span>{/if}
+      <p class="text-xs font-mono uppercase tracking-wider text-muted-strong">
+        {m.workshop_exp_models_label()}
+        {#if role === 'admin'}<span class="text-accent/70">{m.workshop_exp_models_admin()}</span
+          >{/if}
       </p>
       {#if role === 'admin'}
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onclick={() => (manageOpen ? (manageOpen = false) : openManage())}
-          class="text-[10px] font-mono text-muted hover:text-foreground inline-flex items-center gap-1"
+          class="text-xs font-mono text-muted hover:text-foreground inline-flex items-center gap-1"
         >
-          <Settings2 size={11} /> {m.workshop_exp_manage_models()}
-        </button>
+          <Settings2 size={11} />
+          {m.workshop_exp_manage_models()}
+        </Button>
       {/if}
     </div>
 
     {#if role === 'admin' && manageOpen}
       <div class="rounded border border-border bg-bg2 p-3 space-y-2">
         <div class="flex items-center justify-between">
-          <p class="text-[10px] font-mono uppercase tracking-wider text-muted-strong">{m.workshop_exp_manage_models_title()}</p>
+          <p class="text-xs font-mono uppercase tracking-wider text-muted-strong">
+            {m.workshop_exp_manage_models_title()}
+          </p>
           <div class="flex items-center gap-2">
-            <button type="button" onclick={manageEnableAll} class="text-[10px] font-mono text-muted hover:text-foreground">{m.workshop_exp_manage_enable_all()}</button>
-            <button type="button" onclick={manageDisableAll} class="text-[10px] font-mono text-muted hover:text-foreground">{m.workshop_exp_manage_disable_all()}</button>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onclick={manageEnableAll}
+              class="font-mono text-muted">{m.workshop_exp_manage_enable_all()}</Button
+            >
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onclick={manageDisableAll}
+              class="font-mono text-muted">{m.workshop_exp_manage_disable_all()}</Button
+            >
           </div>
         </div>
         <div class="flex flex-wrap gap-1.5">
           {#each models as mo (mo.id)}
-            <label class="px-2 h-7 rounded border border-border text-[11px] font-mono text-foreground inline-flex items-center gap-1.5 cursor-pointer select-none">
+            <label
+              class="px-2 h-7 rounded border border-border text-xs font-mono text-foreground inline-flex items-center gap-1.5 cursor-pointer select-none"
+            >
               <input
                 type="checkbox"
                 checked={manageEnabled.has(mo.id)}
@@ -251,35 +277,47 @@
           {/each}
         </div>
         {#if manageEnabled.size === 0}
-          <p class="text-[10px] font-mono text-destructive">{m.workshop_exp_manage_empty_warning()}</p>
+          <p class="text-xs font-mono text-destructive">{m.workshop_exp_manage_empty_warning()}</p>
         {/if}
         {#if manageSaveError}
-          <p class="text-[10px] font-mono text-destructive">{m.workshop_exp_manage_save_error({ error: manageSaveError })}</p>
+          <p class="text-xs font-mono text-destructive">
+            {m.workshop_exp_manage_save_error({ error: manageSaveError })}
+          </p>
         {/if}
         <div class="flex items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onclick={saveManagedModels}
             disabled={savingModels}
-            class="h-7 px-3 rounded bg-accent/15 border border-accent/40 text-accent text-[11px] font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
+            class="h-7 px-3 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
           >
             {#if savingModels}<Loader2 size={11} class="animate-spin" />{/if}
             {manageSaved ? m.workshop_exp_manage_saved() : m.workshop_exp_manage_save()}
-          </button>
-          <button type="button" onclick={() => (manageOpen = false)} class="text-[10px] font-mono text-muted hover:text-foreground">{m.workshop_exp_manage_close()}</button>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            onclick={() => (manageOpen = false)}
+            class="font-mono text-muted">{m.workshop_exp_manage_close()}</Button
+          >
         </div>
       </div>
     {/if}
 
     <div class="flex flex-wrap gap-1.5">
       {#each models as mo (mo.id)}
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onclick={() => toggle(mo.id)}
-          class={`px-2.5 h-7 rounded border text-[11px] font-mono transition-colors ${
+          class={`px-2.5 h-7 rounded border text-xs font-mono transition-colors ${
             selected.has(mo.id)
               ? 'border-accent bg-accent/10 text-foreground'
-              : 'border-border text-muted hover:text-foreground hover:border-white/20'
+              : 'border-border text-muted hover:text-foreground hover:border-accent/30'
           }`}
           title={`${mo.provider} · ${mo.id}`}
         >
@@ -287,7 +325,7 @@
           {#if role === 'admin' && mo.enabled === false}
             <span class="ml-1 text-muted-strong">·{m.workshop_exp_off()}</span>
           {/if}
-        </button>
+        </Button>
       {/each}
       {#if models.length === 0 && !modelsError}
         <p class="text-xs font-mono text-muted italic">{m.workshop_exp_no_models()}</p>
@@ -313,40 +351,64 @@
           class="w-full rounded border border-border bg-bg2 p-2 text-xs text-foreground font-mono resize-y outline-none"
         ></textarea>
         <div class="flex gap-4">
-          <label class="flex items-center gap-2">{m.workshop_exp_temp()}
-            <input type="number" min="0" max="2" step="0.1" bind:value={temperature} class="w-16 rounded border border-border bg-bg2 px-1.5 py-0.5" />
+          <label class="flex items-center gap-2"
+            >{m.workshop_exp_temp()}
+            <input
+              type="number"
+              min="0"
+              max="2"
+              step="0.1"
+              bind:value={temperature}
+              class="w-16 rounded border border-border bg-bg2 px-1.5 py-0.5"
+            />
           </label>
-          <label class="flex items-center gap-2">{m.workshop_exp_max_tokens()}
-            <input type="number" min="1" step="1" bind:value={maxTokens} class="w-20 rounded border border-border bg-bg2 px-1.5 py-0.5" />
+          <label class="flex items-center gap-2"
+            >{m.workshop_exp_max_tokens()}
+            <input
+              type="number"
+              min="1"
+              step="1"
+              bind:value={maxTokens}
+              class="w-20 rounded border border-border bg-bg2 px-1.5 py-0.5"
+            />
           </label>
         </div>
       </div>
     </details>
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="sm"
       onclick={run}
       disabled={running || selectedModels.length === 0 || !prompt.trim()}
       class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
     >
       {#if running}<Loader2 size={13} class="animate-spin" />{/if}
       {m.workshop_exp_run({ count: selectedModels.length })}
-    </button>
+    </Button>
   </section>
 
   <!-- Results -->
   {#if outputs.length > 0}
-    <section class="grid gap-3" style={`grid-template-columns: repeat(${Math.min(outputs.length, 3)}, minmax(0, 1fr));`}>
+    <section
+      class="grid gap-3"
+      style={`grid-template-columns: repeat(${Math.min(outputs.length, 3)}, minmax(0, 1fr));`}
+    >
       {#each outputs as o, i (o.modelId)}
         <div class="rounded border border-border bg-bg2 flex flex-col min-h-[160px]">
           <div class="flex items-center justify-between px-3 h-9 border-b border-border">
-            <span class="text-[11px] font-mono text-foreground truncate">{labelFor(o, i)}</span>
-            <span class="text-[9px] font-mono text-muted-strong shrink-0">
+            <span class="text-xs font-mono text-foreground truncate">{labelFor(o, i)}</span>
+            <span class="text-xs font-mono text-muted-strong shrink-0">
               {#if o.status === 'pending'}…{:else if o.latencyMs}{o.latencyMs}ms{/if}
             </span>
           </div>
-          <div class="p-3 text-xs font-mono whitespace-pre-wrap text-foreground/90 flex-1 overflow-y-auto max-h-[420px]">
+          <div
+            class="p-3 text-xs font-mono whitespace-pre-wrap text-foreground/90 flex-1 overflow-y-auto max-h-[420px]"
+          >
             {#if o.status === 'pending'}
-              <span class="text-muted inline-flex items-center gap-1"><Loader2 size={12} class="animate-spin" /> {m.workshop_exp_thinking()}</span>
+              <span class="text-muted inline-flex items-center gap-1"
+                ><Loader2 size={12} class="animate-spin" /> {m.workshop_exp_thinking()}</span
+              >
             {:else if o.status === 'error'}
               <span class="text-destructive">{o.error}</span>
             {:else}
@@ -354,7 +416,9 @@
             {/if}
           </div>
           {#if o.status === 'done' && !blindHidden}
-            <div class="px-3 py-1.5 border-t border-border text-[9px] font-mono text-muted-strong flex gap-3">
+            <div
+              class="px-3 py-1.5 border-t border-border text-xs font-mono text-muted-strong flex gap-3"
+            >
               {#if o.outputTokens}<span>{m.workshop_exp_tok({ count: o.outputTokens })}</span>{/if}
               {#if o.costUsd}<span>${o.costUsd.toFixed(4)}</span>{/if}
             </div>
@@ -367,52 +431,78 @@
     {#if !running}
       <section class="rounded border border-border bg-bg2 p-4 space-y-3">
         <div class="flex items-center justify-between">
-          <p class="text-[11px] font-mono uppercase tracking-wider text-muted inline-flex items-center gap-1.5">
-            <Trophy size={13} /> {m.workshop_exp_rank_hint()}
+          <p
+            class="text-xs font-mono uppercase tracking-wider text-muted inline-flex items-center gap-1.5"
+          >
+            <Trophy size={13} />
+            {m.workshop_exp_rank_hint()}
           </p>
           {#if ranking.length > 0}
-            <button type="button" onclick={resetRank} class="text-[10px] font-mono text-muted hover:text-foreground">{m.workshop_exp_reset()}</button>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onclick={resetRank}
+              class="font-mono text-muted">{m.workshop_exp_reset()}</Button
+            >
           {/if}
         </div>
         <div class="flex flex-wrap gap-1.5">
           {#each outputs as o, i (o.modelId)}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onclick={() => rankClick(o.modelId)}
               disabled={ranking.includes(o.modelId)}
-              class={`px-2.5 h-7 rounded border text-[11px] font-mono transition-colors inline-flex items-center gap-1.5 ${
+              class={`px-2.5 h-7 rounded border text-xs font-mono transition-colors inline-flex items-center gap-1.5 ${
                 ranking.includes(o.modelId)
                   ? 'border-accent bg-accent/10 text-foreground'
-                  : 'border-border text-muted hover:text-foreground hover:border-white/20'
+                  : 'border-border text-muted hover:text-foreground hover:border-accent/30'
               }`}
             >
-              {#if rankPos(o.modelId) > 0}<span class="text-accent font-bold">#{rankPos(o.modelId)}</span>{/if}
+              {#if rankPos(o.modelId) > 0}<span class="text-accent font-bold"
+                  >#{rankPos(o.modelId)}</span
+                >{/if}
               {labelFor(o, i)}
-            </button>
+            </Button>
           {/each}
         </div>
 
         <!-- Categories -->
         <div class="space-y-1.5">
-          <p class="text-[10px] font-mono uppercase tracking-wider text-muted-strong">{m.workshop_exp_category_tags()}</p>
+          <p class="text-xs font-mono uppercase tracking-wider text-muted-strong">
+            {m.workshop_exp_category_tags()}
+          </p>
           <div class="flex flex-wrap items-center gap-1.5">
             {#each categories as c (c)}
-              <span class="px-2 h-6 rounded-full border border-border text-[10px] font-mono text-muted inline-flex items-center gap-1">
+              <span
+                class="px-2 h-6 rounded-full border border-border text-xs font-mono text-muted inline-flex items-center gap-1"
+              >
                 {c}
-                <button type="button" onclick={() => removeCategory(c)} class="hover:text-destructive">×</button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-5 w-5 hover:text-destructive"
+                  type="button"
+                  aria-label={m.common_remove()}
+                  onclick={() => removeCategory(c)}>×</Button
+                >
               </span>
             {/each}
             <input
               bind:value={categoryInput}
               onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())}
               placeholder={m.workshop_exp_add_tag()}
-              class="h-6 w-24 rounded border border-border bg-bg3 px-2 text-[10px] font-mono outline-none"
+              class="h-6 w-24 rounded border border-border bg-bg3 px-2 text-xs font-mono outline-none"
             />
           </div>
         </div>
 
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onclick={submitRank}
           disabled={!canSubmitRank || savingRank}
           class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -422,9 +512,9 @@
             : blind
               ? m.workshop_exp_save_ranking_reveal()
               : m.workshop_exp_save_ranking()}
-        </button>
+        </Button>
         {#if !runId}
-          <p class="text-[10px] font-mono text-muted-strong">{m.workshop_exp_run_not_persisted()}</p>
+          <p class="text-xs font-mono text-muted-strong">{m.workshop_exp_run_not_persisted()}</p>
         {/if}
       </section>
     {/if}

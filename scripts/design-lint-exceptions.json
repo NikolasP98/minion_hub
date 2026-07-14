@@ -77,6 +77,244 @@
       "allowance": 7,
       "category": "data-visualization",
       "reason": "Tool waterfall colors encode stable tool families in a timeline visualization."
+    },
+    {
+      "file": "src/lib/components/marketplace/AgentCard.svelte",
+      "rule": "raw-color",
+      "allowance": 14,
+      "category": "illustration",
+      "reason": "The holographic identity-card palette is authored illustration data, not semantic interface color."
+    },
+    {
+      "file": "src/lib/components/marketplace/AgentCard.svelte",
+      "rule": "raw-radius",
+      "allowance": 5,
+      "category": "illustration",
+      "reason": "Identity-card corner geometry is part of the authored physical-object illustration."
+    },
+    {
+      "file": "src/lib/components/marketplace/AgentCard.svelte",
+      "rule": "raw-spacing",
+      "allowance": 4,
+      "category": "illustration",
+      "reason": "Identity-card print geometry uses fixed internal measurements at display scale."
+    },
+    {
+      "file": "src/lib/components/marketplace/AgentCard.svelte",
+      "rule": "raw-shadow",
+      "allowance": 1,
+      "category": "illustration",
+      "reason": "The card shadow models the illustrated physical object rather than interface elevation."
+    },
+    {
+      "file": "src/lib/components/marketplace/AgentCard.svelte",
+      "rule": "raw-motion",
+      "allowance": 3,
+      "category": "illustration",
+      "reason": "Fixed timings synchronize the identity-card flip and holographic light treatment."
+    },
+    {
+      "file": "src/lib/components/marketplace/AgentCard.svelte",
+      "rule": "raw-layer",
+      "allowance": 5,
+      "category": "illustration",
+      "reason": "Internal layers compose the holographic identity-card artwork."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/CardBack.svelte",
+      "rule": "raw-color",
+      "allowance": 25,
+      "category": "illustration",
+      "reason": "The identity-card reverse palette is authored illustration data."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/CardBack.svelte",
+      "rule": "raw-radius",
+      "allowance": 5,
+      "category": "illustration",
+      "reason": "Identity-card reverse corner geometry belongs to the physical-object illustration."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/CardBack.svelte",
+      "rule": "raw-spacing",
+      "allowance": 12,
+      "category": "illustration",
+      "reason": "Identity-card reverse print geometry uses fixed authored measurements."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/CardBack.svelte",
+      "rule": "raw-shadow",
+      "allowance": 1,
+      "category": "illustration",
+      "reason": "The reverse-face shadow models the illustrated card rather than interface elevation."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdFooter.svelte",
+      "rule": "raw-color",
+      "allowance": 5,
+      "category": "illustration",
+      "reason": "Identity-card footer inks are authored print colors."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdFooter.svelte",
+      "rule": "raw-spacing",
+      "allowance": 1,
+      "category": "illustration",
+      "reason": "Identity-card footer print geometry uses one fixed authored measurement."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdFooter.svelte",
+      "rule": "raw-layer",
+      "allowance": 1,
+      "category": "illustration",
+      "reason": "The footer layer composes the physical identity-card illustration."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdHeader.svelte",
+      "rule": "raw-color",
+      "allowance": 5,
+      "category": "illustration",
+      "reason": "Identity-card header inks are authored print colors."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdHeader.svelte",
+      "rule": "raw-radius",
+      "allowance": 1,
+      "category": "illustration",
+      "reason": "Identity-card header corner geometry belongs to the physical-object illustration."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdHeader.svelte",
+      "rule": "raw-spacing",
+      "allowance": 1,
+      "category": "illustration",
+      "reason": "Identity-card header print geometry uses one fixed authored measurement."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdHeader.svelte",
+      "rule": "raw-shadow",
+      "allowance": 1,
+      "category": "illustration",
+      "reason": "The header inset models the illustrated badge hardware."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdHeader.svelte",
+      "rule": "raw-layer",
+      "allowance": 2,
+      "category": "illustration",
+      "reason": "Header layers compose the physical identity-card illustration."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdInfo.svelte",
+      "rule": "raw-color",
+      "allowance": 3,
+      "category": "illustration",
+      "reason": "Identity-card information inks are authored print colors."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdInfo.svelte",
+      "rule": "raw-spacing",
+      "allowance": 2,
+      "category": "illustration",
+      "reason": "Identity-card information print geometry uses fixed authored measurements."
+    },
+    {
+      "file": "src/lib/components/marketplace/_agent-card/IdInfo.svelte",
+      "rule": "raw-layer",
+      "allowance": 1,
+      "category": "illustration",
+      "reason": "The information layer composes the physical identity-card illustration."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/[slug]/_components/IdBadgeCard.svelte",
+      "rule": "raw-color",
+      "allowance": 38,
+      "category": "illustration",
+      "reason": "The detailed identity-badge palette is authored illustration data."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/[slug]/_components/IdBadgeCard.svelte",
+      "rule": "raw-radius",
+      "allowance": 7,
+      "category": "illustration",
+      "reason": "Detailed badge corner geometry belongs to the physical-object illustration."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/[slug]/_components/IdBadgeCard.svelte",
+      "rule": "raw-spacing",
+      "allowance": 12,
+      "category": "illustration",
+      "reason": "Detailed badge print geometry uses fixed authored measurements."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/[slug]/_components/IdBadgeCard.svelte",
+      "rule": "raw-shadow",
+      "allowance": 4,
+      "category": "illustration",
+      "reason": "Badge shadows model the illustrated physical object rather than interface elevation."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/[slug]/_components/IdBadgeCard.svelte",
+      "rule": "raw-layer",
+      "allowance": 2,
+      "category": "illustration",
+      "reason": "Badge layers compose the illustrated hardware, laminate and print faces."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/+page.svelte",
+      "rule": "raw-color",
+      "allowance": 21,
+      "category": "illustration",
+      "reason": "The collection embeds the authored identity-card palette as its signature visual render."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/+page.svelte",
+      "rule": "raw-radius",
+      "allowance": 10,
+      "category": "illustration",
+      "reason": "Embedded identity-card corner geometry belongs to the physical-object render."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/+page.svelte",
+      "rule": "raw-spacing",
+      "allowance": 22,
+      "category": "illustration",
+      "reason": "Embedded identity-card print geometry uses fixed authored measurements at display scale."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/+page.svelte",
+      "rule": "raw-shadow",
+      "allowance": 2,
+      "category": "illustration",
+      "reason": "Embedded card shadows model the illustrated objects rather than interface elevation."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/+page.svelte",
+      "rule": "raw-motion",
+      "allowance": 2,
+      "category": "illustration",
+      "reason": "Fixed timings synchronize embedded card flips and holographic light treatments."
+    },
+    {
+      "file": "src/routes/(app)/marketplace/agents/+page.svelte",
+      "rule": "raw-layer",
+      "allowance": 5,
+      "category": "illustration",
+      "reason": "Internal layers compose the embedded holographic identity-card artwork."
+    },
+    {
+      "file": "src/lib/components/workshop/WorkshopCanvas.svelte",
+      "rule": "raw-color",
+      "allowance": 1,
+      "category": "third-party-render-surface",
+      "reason": "The Pixi canvas fallback must match the renderer clear color before WebGL initializes."
+    },
+    {
+      "file": "src/lib/components/workshop/WorkshopCanvas.svelte",
+      "rule": "raw-layer",
+      "allowance": 5,
+      "category": "third-party-render-surface",
+      "reason": "Canvas overlay layers align DOM controls with the Pixi and Rapier render surfaces."
     }
   ]
 }

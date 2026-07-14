@@ -1,6 +1,7 @@
 <script lang="ts">
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import * as m from '$lib/paraglide/messages';
+  import { Button, Select } from '$lib/components/ui';
 
   interface GeneratedAgent {
     soulMd: string;
@@ -62,7 +63,9 @@
   };
 
   const avatarUrl = $derived(
-    generated ? diceBearAvatarUrl(generated.agentJson.avatarSeed, generated.agentJson.archetype) : ''
+    generated
+      ? diceBearAvatarUrl(generated.agentJson.avatarSeed, generated.agentJson.archetype)
+      : '',
   );
 
   async function generate() {
@@ -143,7 +146,7 @@
 
 <!-- Modal backdrop -->
 <div
-  class="fixed inset-0 z-200 bg-black/70 flex items-center justify-center p-4"
+  class="fixed inset-0 z-[var(--layer-modal)] bg-[color-mix(in_srgb,var(--color-bg)_70%,transparent)] flex items-center justify-center p-4"
   role="dialog"
   aria-modal="true"
   aria-label="Create Marketplace Agent"
@@ -153,36 +156,47 @@
     <div class="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
       <div>
         <h2 class="text-sm font-bold text-foreground">{m.marketplace_wizardTitle()}</h2>
-        <p class="text-[10px] text-muted mt-0.5">{m.marketplace_wizardStepOf({ step: step, total: 5 })}</p>
+        <p class="text-xs text-muted mt-0.5">
+          {m.marketplace_wizardStepOf({ step: step, total: 5 })}
+        </p>
       </div>
       <!-- Progress dots -->
       <div class="flex items-center gap-1.5 mx-auto">
         {#each [1, 2, 3, 4, 5] as s (s)}
-          <div class="w-1.5 h-1.5 rounded-full transition-colors {step >= s ? 'bg-brand-pink' : 'bg-border'}"></div>
+          <div
+            class="w-1.5 h-1.5 rounded-full transition-colors {step >= s
+              ? 'bg-brand-pink'
+              : 'bg-border'}"
+          ></div>
         {/each}
       </div>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
         onclick={onClose}
         class="text-muted hover:text-foreground transition-colors text-lg leading-none"
         aria-label={m.common_close()}
       >
         ×
-      </button>
+      </Button>
     </div>
 
     <!-- Body -->
     <div class="flex-1 overflow-y-auto px-5 py-5">
-
       <!-- Step 1: Role & Category -->
       {#if step === 1}
         <div class="flex flex-col gap-4">
           <div>
-            <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_wizardStep1Heading()}</h3>
+            <h3 class="text-sm font-semibold text-foreground mb-1">
+              {m.marketplace_wizardStep1Heading()}
+            </h3>
             <p class="text-xs text-muted">{m.marketplace_wizardStep1Subtitle()}</p>
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-muted" for="role-input">{m.marketplace_wizardStep1RoleLabel()}</label>
+            <label class="text-xs text-muted" for="role-input"
+              >{m.marketplace_wizardStep1RoleLabel()}</label
+            >
             <input
               id="role-input"
               type="text"
@@ -192,8 +206,10 @@
             />
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-muted" for="category-select">{m.marketplace_wizardStep1CategoryLabel()}</label>
-            <select
+            <label class="text-xs text-muted" for="category-select"
+              >{m.marketplace_wizardStep1CategoryLabel()}</label
+            >
+            <Select
               id="category-select"
               bind:value={category}
               class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground focus:outline-none focus:border-brand-pink/40 transition-colors capitalize"
@@ -201,37 +217,43 @@
               {#each categories as cat (cat)}
                 <option value={cat}>{categoryLabels[cat]?.() ?? cat}</option>
               {/each}
-            </select>
+            </Select>
           </div>
           <div class="flex flex-col gap-1.5">
             <!-- ponytail: archetype labels hardcoded; i18n keys a follow-up -->
             <span class="text-xs text-muted">Type</span>
             <div class="grid grid-cols-2 gap-2">
               {#each [{ id: 'copilot', label: 'Copilot', desc: 'Works side-by-side with the user' }, { id: 'autonomous', label: 'Autonomous', desc: 'Runs on a trigger or schedule' }] as opt (opt.id)}
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onclick={() => (archetype = opt.id as 'autonomous' | 'copilot')}
-                  class="flex flex-col gap-0.5 px-3 py-2 rounded-lg border text-left transition-colors {archetype === opt.id
+                  class="flex flex-col gap-0.5 px-3 py-2 rounded-lg border text-left transition-colors {archetype ===
+                  opt.id
                     ? 'border-brand-pink/60 bg-brand-pink/5'
                     : 'border-border bg-bg3 hover:border-brand-pink/30'}"
                 >
                   <span class="text-sm text-foreground">{opt.label}</span>
-                  <span class="text-[10px] text-muted">{opt.desc}</span>
-                </button>
+                  <span class="text-xs text-muted">{opt.desc}</span>
+                </Button>
               {/each}
             </div>
           </div>
         </div>
 
-      <!-- Step 2: Personality -->
+        <!-- Step 2: Personality -->
       {:else if step === 2}
         <div class="flex flex-col gap-4">
           <div>
-            <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_wizardStep2Heading()}</h3>
+            <h3 class="text-sm font-semibold text-foreground mb-1">
+              {m.marketplace_wizardStep2Heading()}
+            </h3>
             <p class="text-xs text-muted">{m.marketplace_wizardStep2Subtitle()}</p>
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-muted" for="name-input">{m.marketplace_wizardStep2NameLabel()}</label>
+            <label class="text-xs text-muted" for="name-input"
+              >{m.marketplace_wizardStep2NameLabel()}</label
+            >
             <input
               id="name-input"
               type="text"
@@ -241,7 +263,9 @@
             />
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-muted" for="catchphrase-input">{m.marketplace_wizardStep2CatchphraseLabel()}</label>
+            <label class="text-xs text-muted" for="catchphrase-input"
+              >{m.marketplace_wizardStep2CatchphraseLabel()}</label
+            >
             <input
               id="catchphrase-input"
               type="text"
@@ -252,15 +276,11 @@
           </div>
 
           <!-- Sliders -->
-          {#each [
-            { label: m.marketplace_wizardStep2ToneLabel(), low: m.marketplace_wizardStep2ToneFormal(), high: m.marketplace_wizardStep2ToneCasual(), bind: 'formalCasual' },
-            { label: m.marketplace_wizardStep2RiskLabel(), low: m.marketplace_wizardStep2RiskCautious(), high: m.marketplace_wizardStep2RiskBold(), bind: 'cautiousBold' },
-            { label: m.marketplace_wizardStep2ThinkingLabel(), low: m.marketplace_wizardStep2ThinkingTechnical(), high: m.marketplace_wizardStep2ThinkingStrategic(), bind: 'technicalStrategic' },
-          ] as slider (slider.bind)}
+          {#each [{ label: m.marketplace_wizardStep2ToneLabel(), low: m.marketplace_wizardStep2ToneFormal(), high: m.marketplace_wizardStep2ToneCasual(), bind: 'formalCasual' }, { label: m.marketplace_wizardStep2RiskLabel(), low: m.marketplace_wizardStep2RiskCautious(), high: m.marketplace_wizardStep2RiskBold(), bind: 'cautiousBold' }, { label: m.marketplace_wizardStep2ThinkingLabel(), low: m.marketplace_wizardStep2ThinkingTechnical(), high: m.marketplace_wizardStep2ThinkingStrategic(), bind: 'technicalStrategic' }] as slider (slider.bind)}
             <div class="flex flex-col gap-1.5">
               <div class="flex items-center justify-between">
                 <span class="text-xs text-muted">{slider.label}</span>
-                <span class="text-[10px] text-brand-pink">
+                <span class="text-xs text-brand-pink">
                   {#if slider.bind === 'formalCasual'}
                     {sliderLabel(formalCasual, slider.low, slider.high)}
                   {:else if slider.bind === 'cautiousBold'}
@@ -271,48 +291,92 @@
                 </span>
               </div>
               <div class="flex items-center gap-2">
-                <span class="text-[10px] text-muted w-14 text-right">{slider.low}</span>
+                <span class="text-xs text-muted w-14 text-right">{slider.low}</span>
                 {#if slider.bind === 'formalCasual'}
-                  <input type="range" min="0" max="100" bind:value={formalCasual} class="flex-1 accent-brand-pink" />
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    bind:value={formalCasual}
+                    class="flex-1 accent-brand-pink"
+                  />
                 {:else if slider.bind === 'cautiousBold'}
-                  <input type="range" min="0" max="100" bind:value={cautiousBold} class="flex-1 accent-brand-pink" />
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    bind:value={cautiousBold}
+                    class="flex-1 accent-brand-pink"
+                  />
                 {:else}
-                  <input type="range" min="0" max="100" bind:value={technicalStrategic} class="flex-1 accent-brand-pink" />
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    bind:value={technicalStrategic}
+                    class="flex-1 accent-brand-pink"
+                  />
                 {/if}
-                <span class="text-[10px] text-muted w-14">{slider.high}</span>
+                <span class="text-xs text-muted w-14">{slider.high}</span>
               </div>
             </div>
           {/each}
         </div>
 
-      <!-- Step 3: Generate -->
+        <!-- Step 3: Generate -->
       {:else if step === 3}
         <div class="flex flex-col items-center gap-5 py-4 text-center">
-          <div class="w-16 h-16 rounded-full bg-brand-pink/10 border border-brand-pink/20 flex items-center justify-center text-2xl">
+          <div
+            class="w-16 h-16 rounded-full bg-brand-pink/10 border border-brand-pink/20 flex items-center justify-center text-2xl"
+          >
             ✨
           </div>
           <div>
-            <h3 class="text-sm font-semibold text-foreground">{m.marketplace_wizardStep3Heading()}</h3>
+            <h3 class="text-sm font-semibold text-foreground">
+              {m.marketplace_wizardStep3Heading()}
+            </h3>
             <p class="text-xs text-muted mt-1">
               {m.marketplace_wizardStep3Body({ name: agentName })}
             </p>
           </div>
           <div class="w-full surface-2 rounded-lg p-3 text-left text-xs text-muted space-y-1">
-            <div><span class="text-foreground font-medium">{m.marketplace_wizardStep3NameLabel()}</span> {agentName}</div>
-            <div><span class="text-foreground font-medium">{m.marketplace_wizardStep3RoleLabel()}</span> {role}</div>
-            <div><span class="text-foreground font-medium">{m.marketplace_wizardStep3CategoryLabel()}</span> {category}</div>
-            {#if catchphrase}<div><span class="text-foreground font-medium">{m.marketplace_wizardStep3CatchphraseLabel()}</span> "{catchphrase}"</div>{/if}
+            <div>
+              <span class="text-foreground font-medium">{m.marketplace_wizardStep3NameLabel()}</span
+              >
+              {agentName}
+            </div>
+            <div>
+              <span class="text-foreground font-medium">{m.marketplace_wizardStep3RoleLabel()}</span
+              >
+              {role}
+            </div>
+            <div>
+              <span class="text-foreground font-medium"
+                >{m.marketplace_wizardStep3CategoryLabel()}</span
+              >
+              {category}
+            </div>
+            {#if catchphrase}<div>
+                <span class="text-foreground font-medium"
+                  >{m.marketplace_wizardStep3CatchphraseLabel()}</span
+                >
+                "{catchphrase}"
+              </div>{/if}
           </div>
           {#if generateError}
-            <div class="w-full rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-400 text-left">
+            <div
+              class="w-full rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs text-destructive text-left"
+            >
               {generateError}
             </div>
           {/if}
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="lg"
             onclick={generate}
             disabled={generating}
-            class="w-full py-2.5 rounded-lg bg-brand-pink text-black text-sm font-semibold hover:bg-brand-pink/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            class="w-full py-2.5 rounded-lg bg-brand-pink text-bg text-sm font-semibold hover:bg-brand-pink/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {#if generating}
               <span class="animate-spin">↻</span>
@@ -320,22 +384,30 @@
             {:else}
               {m.marketplace_wizardStep3Generate()}
             {/if}
-          </button>
+          </Button>
         </div>
 
-      <!-- Step 4: Preview -->
+        <!-- Step 4: Preview -->
       {:else if step === 4 && generated}
         <div class="flex flex-col gap-4">
           <!-- Avatar + name -->
           <div class="flex items-center gap-3">
-            <div class="w-14 h-14 rounded-full bg-bg3 border border-border overflow-hidden shrink-0">
-              <img src={avatarUrl} alt={generated.agentJson.name} class="w-full h-full object-cover" />
+            <div
+              class="w-14 h-14 rounded-full bg-bg3 border border-border overflow-hidden shrink-0"
+            >
+              <img
+                src={avatarUrl}
+                alt={generated.agentJson.name}
+                class="w-full h-full object-cover"
+              />
             </div>
             <div>
               <p class="text-sm font-bold text-foreground">{generated.agentJson.name}</p>
               <p class="text-xs text-muted">{generated.agentJson.role}</p>
               {#if generated.agentJson.catchphrase}
-                <p class="text-xs italic text-brand-pink mt-0.5">"{generated.agentJson.catchphrase}"</p>
+                <p class="text-xs italic text-brand-pink mt-0.5">
+                  "{generated.agentJson.catchphrase}"
+                </p>
               {/if}
             </div>
           </div>
@@ -343,13 +415,20 @@
           <!-- Doc tabs -->
           <div class="flex gap-1 bg-bg3 border border-border rounded-lg p-1">
             {#each docTabs as dt (dt.id)}
-              <button
+              <Button
                 type="button"
-                onclick={() => { activeDocPreview = dt.id; }}
-                class="flex-1 py-1 text-[10px] font-mono font-medium rounded transition-colors {activeDocPreview === dt.id ? 'bg-brand-pink/10 text-brand-pink' : 'text-muted hover:text-foreground'}"
+                variant="ghost"
+                size="sm"
+                onclick={() => {
+                  activeDocPreview = dt.id;
+                }}
+                class="flex-1 py-1 text-xs font-mono font-medium rounded transition-colors {activeDocPreview ===
+                dt.id
+                  ? 'bg-brand-pink/10 text-brand-pink'
+                  : 'text-muted hover:text-foreground'}"
               >
                 {dt.label}
-              </button>
+              </Button>
             {/each}
           </div>
 
@@ -357,7 +436,10 @@
           <div class="surface-2 rounded-lg p-3 max-h-40 overflow-y-auto">
             {#each docTabs as dt (dt.id)}
               {#if activeDocPreview === dt.id}
-                <pre class="text-[10px] text-foreground/70 whitespace-pre-wrap font-mono leading-relaxed">{generated[dt.key]}</pre>
+                <pre
+                  class="text-xs text-foreground/70 whitespace-pre-wrap font-mono leading-relaxed">{generated[
+                    dt.key
+                  ]}</pre>
               {/if}
             {/each}
           </div>
@@ -367,21 +449,25 @@
           </p>
         </div>
 
-      <!-- Step 5: Export -->
+        <!-- Step 5: Export -->
       {:else if step === 5 && generated}
         <div class="flex flex-col gap-4">
           <div>
-            <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_wizardStep5Heading()}</h3>
+            <h3 class="text-sm font-semibold text-foreground mb-1">
+              {m.marketplace_wizardStep5Heading()}
+            </h3>
             <p class="text-xs text-muted">{m.marketplace_wizardStep5Subtitle()}</p>
           </div>
 
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="lg"
             onclick={downloadFiles}
             class="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-brand-pink/10 border border-brand-pink/30 text-brand-pink text-sm font-medium hover:bg-brand-pink/20 transition-colors"
           >
             {m.marketplace_wizardStep5DownloadBtn()}
-          </button>
+          </Button>
 
           <div class="surface-2 rounded-lg p-3 text-xs text-muted font-mono leading-relaxed">
             <p class="text-foreground font-semibold mb-2"># Push to GitHub</p>
@@ -394,7 +480,9 @@
           </div>
 
           <div class="surface-2 rounded-lg p-3 text-xs text-muted leading-relaxed">
-            <p class="text-foreground font-semibold mb-1">{m.marketplace_wizardStep5SyncHeading()}</p>
+            <p class="text-foreground font-semibold mb-1">
+              {m.marketplace_wizardStep5SyncHeading()}
+            </p>
             <p>{m.marketplace_wizardStep5SyncHint()}</p>
           </div>
         </div>
@@ -403,43 +491,57 @@
 
     <!-- Footer nav -->
     <div class="flex items-center justify-between px-5 py-4 border-t border-border shrink-0">
-      <button
+      <Button
         type="button"
-        onclick={() => { if (step > 1) step = (step - 1) as Step; }}
+        variant="ghost"
+        size="sm"
+        onclick={() => {
+          if (step > 1) step = (step - 1) as Step;
+        }}
         disabled={step === 1}
         class="text-xs text-muted hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
       >
         {m.marketplace_wizardBack()}
-      </button>
+      </Button>
 
       {#if step < 3}
-        <button
+        <Button
           type="button"
-          onclick={() => { step = (step + 1) as Step; }}
+          variant="primary"
+          size="sm"
+          onclick={() => {
+            step = (step + 1) as Step;
+          }}
           disabled={(step === 1 && !role) || (step === 2 && !agentName)}
-          class="px-4 py-1.5 rounded-lg bg-brand-pink text-black text-xs font-semibold hover:bg-brand-pink/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="px-4 py-1.5 rounded-lg bg-brand-pink text-bg text-xs font-semibold hover:bg-brand-pink/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {m.marketplace_wizardNext()}
-        </button>
+        </Button>
       {:else if step === 3}
         <!-- Generate button already in body -->
         <span></span>
       {:else if step === 4}
-        <button
+        <Button
           type="button"
-          onclick={() => { step = 5; }}
-          class="px-4 py-1.5 rounded-lg bg-brand-pink text-black text-xs font-semibold hover:bg-brand-pink/90 transition-colors"
+          variant="primary"
+          size="sm"
+          onclick={() => {
+            step = 5;
+          }}
+          class="px-4 py-1.5 rounded-lg bg-brand-pink text-bg text-xs font-semibold hover:bg-brand-pink/90 transition-colors"
         >
           {m.marketplace_wizardExport()}
-        </button>
+        </Button>
       {:else}
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onclick={onClose}
-          class="px-4 py-1.5 rounded-lg bg-brand-pink text-black text-xs font-semibold hover:bg-brand-pink/90 transition-colors"
+          class="px-4 py-1.5 rounded-lg bg-brand-pink text-bg text-xs font-semibold hover:bg-brand-pink/90 transition-colors"
         >
           {m.marketplace_wizardDone()}
-        </button>
+        </Button>
       {/if}
     </div>
   </div>

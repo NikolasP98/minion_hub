@@ -1,182 +1,150 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages';
-	import { Reply, Clock, X } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
+  import { Reply, Clock, X } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
 
-	interface Props {
-		title: string;
-		subtitle?: string;
-		icon?: string;
-		onreply?: () => void;
-		onsnooze?: () => void;
-		ondismiss?: () => void;
-		onopen?: () => void;
-	}
+  interface Props {
+    title: string;
+    subtitle?: string;
+    icon?: string;
+    onreply?: () => void;
+    onsnooze?: () => void;
+    ondismiss?: () => void;
+    onopen?: () => void;
+  }
 
-	const { title, subtitle, icon, onreply, onsnooze, ondismiss, onopen }: Props = $props();
-
-	function handleKey(e: KeyboardEvent) {
-		if (!onopen) return;
-		if (e.key === 'Enter' || e.key === ' ') {
-			e.preventDefault();
-			onopen?.();
-		}
-	}
+  const { title, subtitle, icon, onreply, onsnooze, ondismiss, onopen }: Props = $props();
 </script>
 
-<div
-	class="card"
-	class:interactive={!!onopen}
-	role={onopen ? 'button' : undefined}
-	tabindex={onopen ? 0 : undefined}
-	onclick={onopen}
-	onkeydown={handleKey}
->
-	<div class="body">
-		{#if icon}
-			<span class="icon" aria-hidden="true">{icon}</span>
-		{/if}
-		<div class="text">
-			<div class="title">{title}</div>
-			{#if subtitle}
-				<div class="subtitle">{subtitle}</div>
-			{/if}
-		</div>
-	</div>
-	{#if onreply || onsnooze || ondismiss}
-		<div class="actions" aria-label={m.feed_itemActions()}>
-			{#if onreply}
-				<button
-					type="button"
-					class="action"
-					aria-label={m.feed_reply()}
-					onclick={(e) => {
-						e.stopPropagation();
-						onreply?.();
-					}}
-				>
-					<Reply size={14} />
-				</button>
-			{/if}
-			{#if onsnooze}
-				<button
-					type="button"
-					class="action"
-					aria-label={m.feed_snooze24h()}
-					onclick={(e) => {
-						e.stopPropagation();
-						onsnooze?.();
-					}}
-				>
-					<Clock size={14} />
-				</button>
-			{/if}
-			{#if ondismiss}
-				<button
-					type="button"
-					class="action"
-					aria-label={m.feed_dismiss()}
-					onclick={(e) => {
-						e.stopPropagation();
-						ondismiss?.();
-					}}
-				>
-					<X size={14} />
-				</button>
-			{/if}
-		</div>
-	{/if}
-</div>
+{#snippet cardBody()}
+  {#if icon}
+    <span class="icon" aria-hidden="true">{icon}</span>
+  {/if}
+  <div class="text">
+    <div class="title">{title}</div>
+    {#if subtitle}
+      <div class="subtitle">{subtitle}</div>
+    {/if}
+  </div>
+{/snippet}
+
+<article class="card">
+  {#if onopen}
+    <Button
+      variant="ghost"
+      class="body !h-auto !justify-start !px-0 !py-0 text-left"
+      onclick={onopen}
+    >
+      {@render cardBody()}
+    </Button>
+  {:else}
+    <div class="body">{@render cardBody()}</div>
+  {/if}
+  {#if onreply || onsnooze || ondismiss}
+    <div class="actions" role="group" aria-label={m.feed_itemActions()}>
+      {#if onreply}
+        <Button
+          variant="ghost"
+          size="icon"
+          type="button"
+          aria-label={m.feed_reply()}
+          onclick={(e) => {
+            e.stopPropagation();
+            onreply?.();
+          }}
+        >
+          <Reply size={14} />
+        </Button>
+      {/if}
+      {#if onsnooze}
+        <Button
+          variant="ghost"
+          size="icon"
+          type="button"
+          aria-label={m.feed_snooze24h()}
+          onclick={(e) => {
+            e.stopPropagation();
+            onsnooze?.();
+          }}
+        >
+          <Clock size={14} />
+        </Button>
+      {/if}
+      {#if ondismiss}
+        <Button
+          variant="ghost"
+          size="icon"
+          type="button"
+          aria-label={m.feed_dismiss()}
+          onclick={(e) => {
+            e.stopPropagation();
+            ondismiss?.();
+          }}
+        >
+          <X size={14} />
+        </Button>
+      {/if}
+    </div>
+  {/if}
+</article>
 
 <style>
-	.card {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		min-height: 56px;
-		padding: 12px 16px;
-		border-radius: 8px;
-		background: transparent;
-		border: 1px solid transparent;
-		transition: background 120ms ease, border-color 120ms ease;
-	}
+  .card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--control-height-touch, 56px);
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    border-radius: var(--radius-lg);
+    background: transparent;
+    border: 1px solid transparent;
+    transition:
+      background var(--duration-fast) var(--ease-standard),
+      border-color var(--duration-fast) var(--ease-standard);
+  }
 
-	.card.interactive {
-		cursor: pointer;
-	}
+  .body {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
+    min-width: 0;
+    flex: 1;
+  }
 
-	.card.interactive:hover,
-	.card.interactive:focus-visible {
-		background: color-mix(in srgb, var(--color-foreground) 2.5%, transparent);
-		border-color: color-mix(in srgb, var(--color-foreground) 6%, transparent);
-		outline: none;
-	}
+  .icon {
+    font-size: var(--font-size-section-title, 16px);
+    opacity: 0.7;
+  }
 
-	.body {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		min-width: 0;
-		flex: 1;
-	}
+  .text {
+    min-width: 0;
+    flex: 1;
+  }
 
-	.icon {
-		font-size: 16px;
-		opacity: 0.7;
-	}
+  .title {
+    font-size: var(--font-size-body, 14px);
+    color: color-mix(in srgb, var(--color-foreground) 92%, transparent);
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-	.text {
-		min-width: 0;
-		flex: 1;
-	}
+  .subtitle {
+    font-size: var(--font-size-caption, 12px);
+    color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
+    margin-top: var(--space-0.5, 2px);
+  }
 
-	.title {
-		font-size: 14px;
-		color: color-mix(in srgb, var(--color-foreground) 92%, transparent);
-		line-height: 1.4;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
+  .actions {
+    display: flex;
+    gap: var(--space-1, 4px);
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
 
-	.subtitle {
-		font-size: 12px;
-		color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
-		margin-top: 2px;
-	}
-
-	.actions {
-		display: flex;
-		gap: 4px;
-		opacity: 0;
-		transition: opacity 120ms ease;
-	}
-
-	.card:hover .actions,
-	.card:focus-within .actions {
-		opacity: 1;
-	}
-
-	.action {
-		width: 28px;
-		height: 28px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 6px;
-		background: transparent;
-		border: none;
-		color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
-		cursor: pointer;
-		transition: background 100ms ease, color 100ms ease;
-	}
-
-	.action:hover {
-		background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
-		color: color-mix(in srgb, var(--color-foreground) 92%, transparent);
-	}
-
-	.action:focus-visible {
-		outline: 2px solid var(--color-accent);
-		outline-offset: 1px;
-	}
+  .card:hover .actions,
+  .card:focus-within .actions {
+    opacity: 1;
+  }
 </style>

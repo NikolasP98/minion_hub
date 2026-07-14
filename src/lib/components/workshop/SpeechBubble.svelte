@@ -1,5 +1,11 @@
 <script lang="ts">
-  let { message, agentName, screenX, screenY, onFaded }: {
+  let {
+    message,
+    agentName,
+    screenX,
+    screenY,
+    onFaded,
+  }: {
     message: string;
     agentName: string;
     screenX: number;
@@ -13,8 +19,8 @@
   style="left: {screenX}px; top: {screenY - 80}px; transform: translateX(-50%);"
   onanimationend={onFaded}
 >
-  <div class="text-muted text-[9px] leading-tight">{agentName}</div>
-  <div class="text-foreground text-[11px] leading-snug truncate">{message}</div>
+  <div class="text-muted text-xs leading-tight">{agentName}</div>
+  <div class="text-foreground text-xs leading-snug truncate">{message}</div>
   <div class="triangle"></div>
 </div>
 
@@ -37,8 +43,17 @@
   }
 
   @keyframes bubble-fade {
-    0% { opacity: 1; transform: translateX(-50%) translateY(0); }
-    80% { opacity: 1; transform: translateX(-50%) translateY(0); }
-    100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+    0% {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    80% {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    100% {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-10px);
+    }
   }
 </style>
