@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { goto } from '$app/navigation';
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
@@ -39,7 +40,9 @@
 </script>
 
 <div
-  class="absolute top-[calc(100%+4px)] {align === 'right' ? 'right-0' : 'left-0'} z-50 surface-3 rounded-[var(--radius-md)] min-w-[200px] max-w-[320px] overflow-hidden p-1"
+  class="absolute top-[calc(100%+4px)] {align === 'right'
+    ? 'right-0'
+    : 'left-0'} z-[var(--layer-modal)] surface-3 rounded-[var(--radius-md)] min-w-[200px] max-w-[320px] overflow-hidden p-1"
   role="menu"
   tabindex="0"
   onclick={(e) => e.stopPropagation()}
@@ -49,32 +52,37 @@
     {#if it.divider}
       <div class="my-1 h-px bg-[var(--hairline)]" role="separator"></div>
     {:else if it.value === '__manage'}
-      <button
+      <Button
+        variant="ghost"
         type="button"
-        class="flex w-full items-center px-2.5 py-1.5 rounded-[var(--radius-sm)] text-xs text-muted-foreground bg-transparent border-none cursor-pointer text-left transition-colors hover:bg-white/[0.06] hover:text-muted"
+        class="flex w-full items-center px-2.5 py-1.5 rounded-[var(--radius-sm)] text-xs text-muted-foreground bg-transparent border-none cursor-pointer text-left transition-colors hover:bg-foreground/[0.06] hover:text-muted"
         role="menuitem"
         onclick={() => onSelect(it.value)}
-        onkeydown={(e) => e.key === 'Enter' && onSelect(it.value)}
+        onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && onSelect(it.value)}
       >
         {it.label}
-      </button>
+      </Button>
     {:else}
       {@const host = hostsState.hosts.find((h) => h.id === it.value)!}
-      <button
+      <Button
+        variant="ghost"
         type="button"
-        class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-[13px] text-foreground bg-transparent border-none cursor-pointer text-left transition-colors hover:bg-white/[0.06]"
+        class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-[length:var(--font-size-body)] text-foreground bg-transparent border-none cursor-pointer text-left transition-colors hover:bg-foreground/[0.06]"
         role="menuitem"
         onclick={() => onSelect(it.value)}
-        onkeydown={(e) => e.key === 'Enter' && onSelect(it.value)}
+        onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && onSelect(it.value)}
       >
         <span
-          class="w-[7px] h-[7px] rounded-full shrink-0 {host.id === hostsState.activeHostId && conn.connected
-            ? 'bg-success shadow-[0_0_5px_var(--color-success)]'
+          class="w-[7px] h-[7px] rounded-full shrink-0 {host.id === hostsState.activeHostId &&
+          conn.connected
+            ? 'bg-success shadow-[var(--shadow-status-glow)]'
             : 'bg-muted-foreground'}"
         ></span>
         <span class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{host.name}</span>
-        <span class="text-[10px] text-muted-foreground shrink-0">{fmtTimeAgo(host.lastConnectedAt)}</span>
-      </button>
+        <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground shrink-0"
+          >{fmtTimeAgo(host.lastConnectedAt)}</span
+        >
+      </Button>
     {/if}
   {/each}
 </div>

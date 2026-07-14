@@ -7,13 +7,19 @@
   import { ensureAliases, getAliases } from '$lib/state/features/aliases.svelte';
   import { renderMention } from '$lib/utils/mention';
 
-  let { message, streaming = false, error = false }: {
+  let {
+    message,
+    streaming = false,
+    error = false,
+  }: {
     message: unknown;
     streaming?: boolean;
     error?: boolean;
   } = $props();
 
-  const m = $derived(message as { role?: string; content?: unknown; provenance?: { disclosure?: string } });
+  const m = $derived(
+    message as { role?: string; content?: unknown; provenance?: { disclosure?: string } },
+  );
   const text = $derived(extractText(message) ?? '');
   const role = $derived(m.role === 'user' ? 'user' : 'assistant');
   const timestamp = $derived(extractMessageTimestamp(message));
@@ -29,33 +35,41 @@
 </script>
 
 {#if error}
-<div class="max-w-[85%] px-[11px] py-[7px] rounded-lg text-xs leading-relaxed break-words self-center bg-destructive/15 text-destructive text-[11px] rounded-md !max-w-[95%] font-mono whitespace-pre-wrap">
-  <span>{@html renderedText}</span>
-  {#if timestamp}
-    <span class="block text-[9px] opacity-70 mt-0.5 text-right">{timestamp}</span>
-  {/if}
-</div>
+  <div
+    class="max-w-[85%] px-[var(--space-3)] py-[var(--space-2)] rounded-lg text-xs leading-relaxed break-words self-center bg-destructive/15 text-destructive text-[length:var(--font-size-caption)] rounded-md !max-w-[95%] font-mono whitespace-pre-wrap"
+  >
+    <span>{@html renderedText}</span>
+    {#if timestamp}
+      <span class="block text-[length:var(--font-size-telemetry)] opacity-70 mt-0.5 text-right"
+        >{timestamp}</span
+      >
+    {/if}
+  </div>
 {:else if !skip && role === 'user' && text}
-<div
-  class="max-w-[85%] px-[11px] py-[7px] rounded-lg text-xs leading-relaxed break-words
-    self-end bg-accent text-white rounded-br-[3px] font-mono whitespace-pre-wrap
+  <div
+    class="max-w-[85%] px-[var(--space-3)] py-[var(--space-2)] rounded-lg text-xs leading-relaxed break-words
+    self-end bg-accent text-[var(--color-on-accent)] rounded-br-[3px] font-mono whitespace-pre-wrap
     {streaming ? 'opacity-80 border border-dashed border-border' : ''}"
->
-  <span>{@html renderedText}</span>
-  {#if timestamp}
-    <span class="block text-[9px] opacity-70 mt-0.5 text-right">{timestamp}</span>
-  {/if}
-</div>
+  >
+    <span>{@html renderedText}</span>
+    {#if timestamp}
+      <span class="block text-[length:var(--font-size-telemetry)] opacity-70 mt-0.5 text-right"
+        >{timestamp}</span
+      >
+    {/if}
+  </div>
 {:else if !skip && role === 'assistant' && assistantHasContent(message)}
-<!-- ChatBlocks owns the answer bubble itself (meta rows outside, reply inside) —
+  <!-- ChatBlocks owns the answer bubble itself (meta rows outside, reply inside) —
      no extra chrome wrapper here, same as ChatTurn's usage on /home. -->
-<div class="max-w-[85%] flex flex-col items-start gap-0.5">
-  <ChatBlocks message={m} {streaming} compact />
-  {#if timestamp}
-    <span class="block text-[9px] opacity-70 text-right px-1">{timestamp}</span>
-  {/if}
-  <span class="block text-right px-1">
-    <AIDisclosureBadge disclosure={disclosure} />
-  </span>
-</div>
+  <div class="max-w-[85%] flex flex-col items-start gap-0.5">
+    <ChatBlocks message={m} {streaming} compact />
+    {#if timestamp}
+      <span class="block text-[length:var(--font-size-telemetry)] opacity-70 text-right px-1"
+        >{timestamp}</span
+      >
+    {/if}
+    <span class="block text-right px-1">
+      <AIDisclosureBadge {disclosure} />
+    </span>
+  </div>
 {/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { Cloud, Plus } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   let { canManage, onProvision }: { canManage: boolean; onProvision?: () => void } = $props();
@@ -11,8 +12,8 @@
     <p>{m.cloud_empty_description()}</p>
   </div>
   {#if canManage && onProvision}
-    <button type="button" onclick={onProvision}
-      ><Plus size={15} /> {m.cloud_create_default()}</button
+    <Button class="cloud-provision" variant="ghost" type="button" onclick={onProvision}
+      ><Plus size={15} /> {m.cloud_create_default()}</Button
     >
   {/if}
 </div>
@@ -23,9 +24,9 @@
     display: grid;
     place-items: center;
     align-content: center;
-    gap: 1rem;
+    gap: var(--space-4);
     text-align: center;
-    padding: 2rem;
+    padding: var(--space-8);
     background-image:
       linear-gradient(var(--hairline) 1px, transparent 1px),
       linear-gradient(90deg, var(--hairline) 1px, transparent 1px);
@@ -38,36 +39,34 @@
     display: grid;
     place-items: center;
     border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--hairline));
-    border-radius: 50%;
+    border-radius: var(--radius-full);
     color: var(--color-accent);
     background: var(--elevation-2-bg);
-    box-shadow:
-      0 0 0 0.75rem color-mix(in srgb, var(--color-accent) 4%, transparent),
-      0 0 2.5rem color-mix(in srgb, var(--color-accent) 12%, transparent);
+    box-shadow: var(--shadow-elevation-1);
   }
   h2 {
     margin: 0;
-    font-size: 1rem;
+    font-size: var(--font-size-page-title);
   }
   p {
     max-width: 30rem;
-    margin: 0.4rem auto 0;
+    margin: var(--space-2) auto 0;
     color: var(--color-muted);
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body);
     line-height: 1.55;
   }
-  button {
+  :global(.cloud-provision) {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-2);
     height: 2.25rem;
-    padding: 0 0.85rem;
+    padding: 0 var(--space-3);
     border: 1px solid color-mix(in srgb, var(--color-accent) 38%, transparent);
     border-radius: var(--radius-md);
     color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: var(--font-size-caption);
     font-weight: 600;
   }
 </style>

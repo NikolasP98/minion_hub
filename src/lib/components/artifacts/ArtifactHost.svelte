@@ -8,7 +8,8 @@
   // `chrome` = render the framed card + title header around the iframe (the detail
   // page). In a DraggableDialog window the dialog already supplies frame + header,
   // so the host renders bare (just the iframe) to avoid a duplicate header / shell.
-  let { descriptor, chrome = true }: { descriptor: ArtifactDescriptor; chrome?: boolean } = $props();
+  let { descriptor, chrome = true }: { descriptor: ArtifactDescriptor; chrome?: boolean } =
+    $props();
 
   let iframeEl = $state<HTMLIFrameElement | null>(null);
   let mounted: MountedHostBridge | null = null;
@@ -30,7 +31,11 @@
     }
     for (const sheet of Array.from(document.styleSheets)) {
       let rules: CSSRuleList;
-      try { rules = sheet.cssRules; } catch { continue; }
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
       for (const rule of Array.from(rules)) {
         if (rule instanceof CSSStyleRule && rule.selectorText === ':root') {
           for (let i = 0; i < rule.style.length; i++) {
@@ -40,12 +45,16 @@
         }
       }
     }
-    return { theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light', tokens };
+    return {
+      theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+      tokens,
+    };
   }
 
   // Artifact data: answer hub.artifact.context.get from the hub API; reject anything else.
   async function forwardRpc(method: string): Promise<unknown> {
-    if (method !== 'hub.artifact.context.get') throw new Error(`artifact rpc not allowed: ${method}`);
+    if (method !== 'hub.artifact.context.get')
+      throw new Error(`artifact rpc not allowed: ${method}`);
     const res = await fetch(
       `/api/artifacts/${descriptor.id}/context?agentId=${encodeURIComponent(descriptor.agentId)}`,
       { credentials: 'same-origin' },
@@ -88,15 +97,21 @@
     <div class="absolute inset-0 grid place-items-center bg-bg2/90 backdrop-blur-sm">
       <div class="flex flex-col items-center gap-2.5">
         <Spinner size="lg" />
-        <span class="text-xs font-medium tracking-wide text-muted-foreground">{m.artifact_loading()}</span>
+        <span class="text-xs font-medium tracking-wide text-muted-foreground"
+          >{m.artifact_loading()}</span
+        >
       </div>
     </div>
   {/if}
 {/snippet}
 
 {#if chrome}
-  <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
-    <div class="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs font-medium text-white/70">
+  <div
+    class="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-foreground/[0.02]"
+  >
+    <div
+      class="flex items-center gap-2 border-b border-border px-3 py-2 text-xs font-medium text-muted"
+    >
       {descriptor.title}
     </div>
     <div class="relative min-h-0 w-full flex-1">

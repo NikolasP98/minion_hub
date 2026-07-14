@@ -1,21 +1,22 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
-  import { onDestroy } from "svelte";
-  import { Loader2, Check, AlertTriangle, RotateCw } from "lucide-svelte";
-  import { mountHostBridge, type MountedHostBridge } from "./bridge-host";
-  import type { Theme, Locale } from "./bridge-protocol";
-  import { checkPluginCompat, type CompatVerdict } from "./compat";
-  import type { PluginCompat } from "./plugin-types";
+  import { onDestroy } from 'svelte';
+  import { Loader2, Check, AlertTriangle, RotateCw } from 'lucide-svelte';
+  import { mountHostBridge, type MountedHostBridge } from './bridge-host';
+  import type { Theme, Locale } from './bridge-protocol';
+  import { checkPluginCompat, type CompatVerdict } from './compat';
+  import type { PluginCompat } from './plugin-types';
   // Read the live UI language straight from the paraglide runtime (already in
   // the module graph via the messages import) rather than the locale store,
   // which transitively pulls SvelteKit-only modules and breaks test rendering.
-  import { languageTag } from "$lib/paraglide/runtime";
+  import { languageTag } from '$lib/paraglide/runtime';
   // Plugin UI asset origin override (Phase 2 decoupling seam). When set, plugin
   // iframe assets load from this base (e.g. a public Cloudflare-fronted host)
   // instead of the gateway. Aliased to a vitest stub in test, so importing it
   // here keeps the component test-renderable. See
   // specs/2026-06-14-plugin-ui-cdn-caching-design.md.
-  import { env as publicEnv } from "$env/dynamic/public";
+  import { env as publicEnv } from '$env/dynamic/public';
 
   // Lazy import to keep this component test-renderable without pulling
   // SvelteKit-only modules (gateway service transitively imports $app/state).
@@ -23,16 +24,21 @@
     // Hub-served RPCs: methods whose data lives in the hub DB (users,
     // identities, workspace state) are answered locally instead of forwarded
     // to the gateway, which has no concept of hub-side users/@aliases.
-    if (method === "plugins.users.list") {
+    if (method === 'plugins.users.list') {
       const [usersRes, idsRes] = await Promise.all([
-        fetch("/api/users", { credentials: "same-origin" }),
-        fetch("/api/gateway/channel-identities", { credentials: "same-origin" }),
+        fetch('/api/users', { credentials: 'same-origin' }),
+        fetch('/api/gateway/channel-identities', { credentials: 'same-origin' }),
       ]);
       if (!usersRes.ok) throw new Error(`plugins.users.list: /api/users ${usersRes.status}`);
       if (!idsRes.ok)
         throw new Error(`plugins.users.list: /api/gateway/channel-identities ${idsRes.status}`);
       const { users } = (await usersRes.json()) as {
-        users: Array<{ id: string; email: string; displayName: string | null; alias: string | null }>;
+        users: Array<{
+          id: string;
+          email: string;
+          displayName: string | null;
+          alias: string | null;
+        }>;
       };
       const { identities } = (await idsRes.json()) as {
         identities: Array<{
@@ -61,7 +67,7 @@
         })),
       };
     }
-    const mod = await import("$lib/services/gateway.svelte");
+    const mod = await import('$lib/services/gateway.svelte');
     // Generation-class RPCs (e.g. studio.generate / studio.edit → an image
     // model) legitimately run far longer than the 15s default; give them a
     // generous ceiling so the hub doesn't time out a request the gateway is
@@ -106,7 +112,7 @@
      */
     compat?: PluginCompat;
     /** Load-level status from plugins.ui.list; "incompatible" blocks the mount. */
-    pluginStatus?: "loaded" | "disabled" | "error" | "incompatible";
+    pluginStatus?: 'loaded' | 'disabled' | 'error' | 'incompatible';
   }
 
   let {
@@ -141,7 +147,7 @@
   $effect(() => {
     if (capsLoaded) return;
     let cancelled = false;
-    void import("$lib/state/gateway/gateway-data.svelte").then((mod) => {
+    void import('$lib/state/gateway/gateway-data.svelte').then((mod) => {
       if (cancelled) return;
       gatewayMethods = mod.gw.hello?.features?.methods ?? [];
       gatewayVersion = mod.gw.hello?.server?.version ?? null;
@@ -155,8 +161,8 @@
   const compatVerdict = $derived.by((): CompatVerdict => {
     // The gateway already refused to load this plugin (e.g. minGatewayVersion
     // gate) — surface that verbatim without waiting on a capabilities read.
-    if (pluginStatus === "incompatible") {
-      return { ok: false, reasons: ["This plugin is incompatible with the connected gateway."] };
+    if (pluginStatus === 'incompatible') {
+      return { ok: false, reasons: ['This plugin is incompatible with the connected gateway.'] };
     }
     // Nothing to check, or capabilities not read yet → permissive (avoids a
     // flash from iframe → warning → iframe while caps load).
@@ -220,19 +226,19 @@
   // Gateway serves /plugins/<id>/ui/<subpath> resolving against ui/dist/.
   // Some manifests list entrypoint as "ui/dist/index.html" (disk path); strip
   // that prefix so the URL is just /plugins/<id>/ui/index.html.
-  const subpath = $derived(entrypoint.replace(/^ui\/dist\//, "").replace(/^\/+/, ""));
+  const subpath = $derived(entrypoint.replace(/^ui\/dist\//, '').replace(/^\/+/, ''));
   // Pass the host origin via URL hash so the plugin can validate inbound
   // postMessage events without depending on document.referrer (which is
   // stripped under strict Referrer-Policy for cross-origin iframes — that
   // failure mode silently bricks the plugin's bridge handshake).
-  const hostOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  const hostOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   // Asset origin: PUBLIC_PLUGIN_UI_BASE_URL overrides only the iframe asset base
   // and the postMessage target origin (pluginOrigin) — NOT wsGatewayUrl, which
   // must stay on the real gateway. Defaults to gatewayUrl so behavior is
   // identical when unset. The CDN origin must serve the same
   // /plugins/<id>/ui/<subpath> paths and set its own CSP frame-ancestors.
   const uiBaseUrl = $derived(
-    (publicEnv.PUBLIC_PLUGIN_UI_BASE_URL || gatewayUrl).replace(/\/+$/, ""),
+    (publicEnv.PUBLIC_PLUGIN_UI_BASE_URL || gatewayUrl).replace(/\/+$/, ''),
   );
   const srcBase = $derived(`${uiBaseUrl}/plugins/${pluginId}/ui/${subpath}`);
   const src = $derived(
@@ -245,7 +251,7 @@
   // surfaces gatewayUrl as HTTP(S) because it's also used to derive the
   // pluginOrigin for postMessage targeting; the plugin needs the ws(s):
   // equivalent. Convert here so plugins don't have to think about it.
-  const wsGatewayUrl = $derived(gatewayUrl.replace(/^http/, "ws"));
+  const wsGatewayUrl = $derived(gatewayUrl.replace(/^http/, 'ws'));
 
   // Mount the host bridge as soon as iframeEl is bound — NOT in the iframe's
   // onload handler. The plugin's `notifyReady()` fires synchronously when its
@@ -263,7 +269,13 @@
       self: window,
       target: iframeEl.contentWindow,
       pluginOrigin,
-      hello: { theme, tokens, gatewayUrl: wsGatewayUrl, authToken, locale: languageTag() as Locale },
+      hello: {
+        theme,
+        tokens,
+        gatewayUrl: wsGatewayUrl,
+        authToken,
+        locale: languageTag() as Locale,
+      },
       onResize: (h) => {
         if (!fillContainer) height = h;
       },
@@ -296,7 +308,7 @@
             saveOkTimer = null;
           }, 2500);
         } else {
-          saveError = error ?? "Save failed";
+          saveError = error ?? 'Save failed';
         }
       },
       // Plugin RPC forwarded through the hub's existing privileged gateway WS.
@@ -309,7 +321,7 @@
     if (timeoutHandle === null && !pluginReady) {
       timeoutHandle = setTimeout(() => {
         if (!pluginReady) {
-          console.warn("[PluginIframe] handshake timed out", {
+          console.warn('[PluginIframe] handshake timed out', {
             pluginId,
             src,
             pluginOrigin,
@@ -329,7 +341,7 @@
             .then((r) => (r.ok ? r.json() : null))
             .then((info: { status?: number; csp?: string | null } | null) => {
               if (!info) return;
-              if (typeof info.status === "number") diagnosticHttpStatus = info.status;
+              if (typeof info.status === 'number') diagnosticHttpStatus = info.status;
               const csp = info.csp;
               if (!csp) return;
               diagnosticCsp = csp;
@@ -340,7 +352,7 @@
                 diagnosticCspBlocks = true;
                 return;
               }
-              if (ancestors.includes("*")) return;
+              if (ancestors.includes('*')) return;
               if (hostOrigin && !ancestors.includes(hostOrigin)) {
                 diagnosticCspBlocks = true;
               }
@@ -379,7 +391,7 @@
 >
   {#if !externalSaveBar && (dirty || saving || saveError || saveOk)}
     <div
-      class="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-card/95 px-4 py-2.5 backdrop-blur"
+      class="sticky top-0 z-[var(--layer-navigation)] flex items-center justify-between gap-3 border-b border-border bg-card/95 px-4 py-2.5 backdrop-blur"
     >
       <div class="flex items-center gap-2 text-sm">
         {#if saving}
@@ -389,7 +401,7 @@
           <AlertTriangle size={14} class="text-destructive" />
           <span class="text-destructive">{saveError}</span>
         {:else if saveOk}
-          <Check size={14} class="text-emerald-500" />
+          <Check size={14} class="text-[var(--color-success-fg)]" />
           <span class="text-foreground">
             {restartRequired ? m.pluginIframe_savedRestartRequired() : m.pluginIframe_saved()}.
           </span>
@@ -398,7 +410,8 @@
           <span class="text-muted-foreground">{m.pluginIframe_unsavedChanges()}</span>
         {/if}
       </div>
-      <button
+      <Button
+        variant="ghost"
         type="button"
         onclick={triggerSave}
         disabled={saving || !dirty}
@@ -408,15 +421,15 @@
           <RotateCw size={12} class="animate-spin" />
         {/if}
         {saving ? m.pluginIframe_saving() : m.pluginIframe_saveChanges()}
-      </button>
+      </Button>
     </div>
   {/if}
   {#if !compatVerdict.ok}
     <div class="p-6">
       <div
-        class="flex max-w-prose items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm"
+        class="flex max-w-prose items-start gap-3 rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-surface)] p-4 text-sm"
       >
-        <AlertTriangle size={18} class="mt-0.5 shrink-0 text-amber-500" />
+        <AlertTriangle size={18} class="mt-0.5 shrink-0 text-[var(--color-warning-fg)]" />
         <div class="space-y-1">
           <p class="font-medium text-foreground">This plugin needs a newer gateway</p>
           <p class="text-muted-foreground">
@@ -435,7 +448,7 @@
     <div class="relative flex-1 min-h-0">
       <iframe
         bind:this={iframeEl}
-        title={m.pluginIframe_pluginTitle({id: pluginId})}
+        title={m.pluginIframe_pluginTitle({ id: pluginId })}
         {src}
         referrerpolicy="strict-origin"
         onload={() => {
@@ -447,7 +460,7 @@
   {:else}
     <iframe
       bind:this={iframeEl}
-      title={m.pluginIframe_pluginTitle({id: pluginId})}
+      title={m.pluginIframe_pluginTitle({ id: pluginId })}
       {src}
       referrerpolicy="strict-origin"
       onload={() => {
@@ -459,7 +472,7 @@
   {/if}
   {#if handshakeTimedOut && !pluginReady}
     <div
-      class="bg-background/95 absolute inset-0 z-10 flex items-start justify-center overflow-auto p-6 backdrop-blur"
+      class="bg-background/95 absolute inset-0 z-[var(--layer-sticky)] flex items-start justify-center overflow-auto p-6 backdrop-blur"
     >
       <div class="max-w-xl space-y-3 rounded-md border border-destructive/50 bg-card p-4 text-sm">
         <header class="font-semibold text-destructive">
@@ -468,20 +481,19 @@
         {#if diagnosticHttpStatus !== null && diagnosticHttpStatus >= 400}
           <p class="text-foreground">
             <strong>The gateway returned HTTP {diagnosticHttpStatus} for this plugin's UI.</strong>
-            The plugin is not being served by this gateway — its UI assets are missing or the
-            plugin isn't enabled/registered here. The iframe loaded the gateway's error page (no
-            plugin JS), so <code>plugin:ready</code> was never sent. This is a deployment gap, not a
-            bridge bug.
+            The plugin is not being served by this gateway — its UI assets are missing or the plugin isn't
+            enabled/registered here. The iframe loaded the gateway's error page (no plugin JS), so
+            <code>plugin:ready</code> was never sent. This is a deployment gap, not a bridge bug.
           </p>
           <p class="text-muted-foreground">
             Fix on the gateway: ensure the <code>{pluginId}</code> plugin is enabled in
             <code>gateway.json</code> and its <code>ui/dist</code> assets are deployed, then restart
-            the gateway. Verify with <code>curl -I {src.split("#")[0]}</code> (expect 200).
+            the gateway. Verify with <code>curl -I {src.split('#')[0]}</code> (expect 200).
           </p>
         {:else if diagnosticCspBlocks}
           <p class="text-foreground">
-            <strong>Server CSP blocks this hub from embedding the plugin.</strong> The plugin
-            served a <code>frame-ancestors</code> directive that excludes
+            <strong>Server CSP blocks this hub from embedding the plugin.</strong> The plugin served
+            a <code>frame-ancestors</code> directive that excludes
             <code>{hostOrigin}</code>. The iframe request succeeded, but Chrome refuses to render —
             so the plugin's JS never runs and <code>plugin:ready</code> is never sent.
           </p>
@@ -489,19 +501,17 @@
             Fix on the gateway side: set <code>gateway.pluginUi.allowedFrameAncestors</code> in
             <code>gateway.json</code> to include this hub's origin (or <code>"*"</code>), then
             restart the gateway. Recent gateway builds default to <code>*</code> when this key is
-            absent — older deployments that hardcoded <code>'none'</code> need a config change or
-            a redeploy.
+            absent — older deployments that hardcoded <code>'none'</code> need a config change or a redeploy.
           </p>
           {#if diagnosticCsp}
-            <pre
-              class="overflow-x-auto rounded bg-muted p-2 text-xs">{diagnosticCsp}</pre>
+            <pre class="overflow-x-auto rounded bg-muted p-2 text-xs">{diagnosticCsp}</pre>
           {/if}
         {:else}
           <p class="text-muted-foreground">
             The plugin loaded its assets but did not send <code>plugin:ready</code> in time, or its
             <code>host:hello</code> reply was rejected. Common causes: cross-origin Referrer-Policy
-            stripped the host origin, the plugin throws before <code>bridge.notifyReady()</code>,
-            or the plugin's gateway WebSocket fails immediately.
+            stripped the host origin, the plugin throws before <code>bridge.notifyReady()</code>, or
+            the plugin's gateway WebSocket fails immediately.
           </p>
         {/if}
         <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
@@ -512,11 +522,11 @@
           <dt class="text-muted-foreground">plugin origin</dt>
           <dd>{pluginOrigin}</dd>
           <dt class="text-muted-foreground">host origin</dt>
-          <dd>{hostOrigin || "(unknown — SSR?)"}</dd>
+          <dd>{hostOrigin || '(unknown — SSR?)'}</dd>
           <dt class="text-muted-foreground">iframe loaded</dt>
-          <dd>{iframeLoaded ? "yes" : "no"}</dd>
+          <dd>{iframeLoaded ? 'yes' : 'no'}</dd>
           <dt class="text-muted-foreground">plugin:ready</dt>
-          <dd>{pluginReady ? "yes" : "no"}</dd>
+          <dd>{pluginReady ? 'yes' : 'no'}</dd>
           {#if diagnosticHttpStatus !== null}
             <dt class="text-muted-foreground">UI http status</dt>
             <dd>{diagnosticHttpStatus}</dd>

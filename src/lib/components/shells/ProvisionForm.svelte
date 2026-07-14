@@ -49,7 +49,7 @@
     'rounded-[var(--radius-md)] bg-[var(--elevation-2-bg)] border border-[var(--hairline)] ' +
     'px-3 text-sm text-foreground placeholder:text-muted-strong outline-none ' +
     'transition-[border-color,box-shadow] duration-[var(--duration-fast)] ease-[var(--ease-standard)] ' +
-    'hover:border-white/15 focus-visible:border-accent ' +
+    'hover:border-[var(--color-border-strong)] focus-visible:border-accent ' +
     'focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--color-accent)_25%,transparent)]';
 </script>
 
@@ -65,7 +65,7 @@
     </div>
   {/if}
 
-  <label class="flex flex-col gap-1.5 text-[0.75rem] text-muted">
+  <label class="flex flex-col gap-1.5 text-[length:var(--font-size-caption)] text-muted">
     {m.provisionForm_displayName()}
     <input
       bind:value={displayName}
@@ -117,14 +117,13 @@
     </Select>
   </div>
 
-  <label class="flex flex-col gap-1.5 text-[0.75rem] text-muted">
+  <label class="flex flex-col gap-1.5 text-[length:var(--font-size-caption)] text-muted">
     {m.provisionForm_initialPrompt()}
     <textarea
       bind:value={initialPrompt}
       rows="3"
       placeholder={m.provisionForm_initialPromptPlaceholder()}
-      class="resize-y py-2 {fieldCls}"
-    ></textarea>
+      class="resize-y py-2 {fieldCls}"></textarea>
   </label>
 
   <Button type="submit" variant="primary" size="lg" loading={submitting} class="self-start"

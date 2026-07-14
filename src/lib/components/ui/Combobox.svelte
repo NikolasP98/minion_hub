@@ -185,10 +185,10 @@
   /* ── Label ────────────────────────────────────────────────────────────── */
   .cb-label {
     display: block;
-    font-size: 12px;
+    font-size: var(--font-size-caption);
     font-weight: 600;
     color: var(--color-foreground);
-    margin-bottom: 4px;
+    margin-bottom: var(--space-1);
   }
 
   /* ── Control (input + chevron) ────────────────────────────────────────── */
@@ -197,12 +197,14 @@
     align-items: center;
     background: var(--color-bg2);
     border: 1px solid var(--color-border);
-    border-radius: 6px;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    border-radius: var(--radius-md);
+    transition:
+      border-color var(--duration-fast),
+      box-shadow var(--duration-fast);
   }
   .cb-control:focus-within {
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+    box-shadow: var(--shadow-status-glow);
   }
 
   .cb-input {
@@ -213,8 +215,8 @@
     outline: none;
     color: var(--color-foreground);
     font-family: inherit;
-    font-size: 13px;
-    padding: 8px 10px;
+    font-size: var(--font-size-body);
+    padding: var(--space-2) var(--space-2);
   }
   .cb-input::placeholder {
     color: var(--color-muted);
@@ -228,10 +230,10 @@
     border: none;
     color: var(--color-muted);
     cursor: pointer;
-    padding: 0 8px;
+    padding: 0 var(--space-2);
     align-self: stretch;
     flex-shrink: 0;
-    transition: color 0.15s;
+    transition: color var(--duration-fast);
   }
   .cb-chevron:hover {
     color: var(--color-foreground);
@@ -240,12 +242,12 @@
     transform: rotate(180deg);
   }
   .cb-chevron svg {
-    transition: transform 0.15s;
+    transition: transform var(--duration-fast);
   }
 
   /* ── Dropdown ─────────────────────────────────────────────────────────── */
   .cb-positioner {
-    z-index: 2000;
+    z-index: var(--layer-debug);
   }
   .cb-positioner[data-state='closed'] {
     display: none;
@@ -254,15 +256,15 @@
   .cb-content {
     background: var(--color-bg2, var(--color-bg));
     border: 1px solid var(--color-border);
-    border-radius: 6px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-overlay);
     overflow: hidden;
   }
 
   .cb-list {
     list-style: none;
     margin: 0;
-    padding: 4px;
+    padding: var(--space-1);
     max-height: 220px;
     overflow-y: auto;
   }
@@ -271,12 +273,12 @@
   .cb-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    border-radius: 4px;
-    font-size: 12px;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-caption);
     cursor: pointer;
-    transition: background 0.1s;
+    transition: background var(--duration-fast);
   }
   .cb-item[data-highlighted] {
     background: var(--color-bg3, var(--color-bg));
@@ -297,9 +299,9 @@
   }
 
   .cb-empty {
-    padding: 8px;
+    padding: var(--space-2);
     color: var(--color-muted);
-    font-size: 12px;
+    font-size: var(--font-size-caption);
     font-style: italic;
   }
 </style>

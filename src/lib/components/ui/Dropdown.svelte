@@ -76,9 +76,9 @@
   {@render trigger()}
 </button>
 
-<!-- z-index via style: directive, NOT a `z-50` utility: Tailwind emits no
-     `.z-50` rule here, so the class computed to z-index:auto and the app root
-     (`.relative.z-10`) painted its chat turns over the portaled menu. -->
+<!-- z-index via style: directive, NOT a `z-[var(--layer-modal)]` utility: Tailwind emits no
+     `.z-[var(--layer-modal)]` rule here, so the class computed to z-index:auto and the app root
+     (`.relative.z-[var(--layer-sticky)]`) painted its chat turns over the portaled menu. -->
 <div use:portal {...api.getPositionerProps()} style:z-index="50">
   <div
     {...api.getContentProps()}
@@ -97,7 +97,7 @@
             closeOnSelect: it.closeOnSelect,
           })}
           class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-sm text-left no-underline bg-transparent border-none cursor-pointer outline-none transition-colors
-            data-[highlighted]:bg-white/[0.06]
+            data-[highlighted]:bg-foreground/[0.06]
             data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed
             {it.danger ? 'text-destructive' : 'text-foreground'}"
         >

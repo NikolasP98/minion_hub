@@ -9,6 +9,7 @@
   canvas including the corners.
 -->
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { onMount } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import type { OrgArea } from '$server/services/org-areas.service';
@@ -17,7 +18,11 @@
   import { createSimulation, type Simulation, type SimNode } from './graph/simulation';
   import { createRenderer, type Renderer } from './graph/renderer';
 
-  interface AgentLike { id: string; name?: string | null; archetype?: string | null }
+  interface AgentLike {
+    id: string;
+    name?: string | null;
+    archetype?: string | null;
+  }
   interface MemberLike {
     id: string;
     displayName?: string | null;
@@ -46,9 +51,10 @@
     return {
       area: areas.length,
       skill: new Set(areas.flatMap((a) => a.skillKeys)).size,
-      integration: new Set(areas.flatMap((a) => a.integrationKeys).filter((k) => INTEGRATIONS[k])).size,
+      integration: new Set(areas.flatMap((a) => a.integrationKeys).filter((k) => INTEGRATIONS[k]))
+        .size,
       agent: agents.length + virtual,
-      user: persons.length
+      user: persons.length,
     };
   });
   // Active legend level for highlight
@@ -183,7 +189,7 @@
       const ids = new SvelteSet(
         Array.from(metaById.values())
           .filter((n) => n.kind === kind)
-          .map((n) => n.id)
+          .map((n) => n.id),
       );
       _renderer.setFocus(ids.size > 0 ? ids : null);
     }
@@ -382,11 +388,11 @@
 
   // Legend rows: label → kind mapping
   const LEGEND_ROWS: Array<{ label: string; glyph: string; kind: NodeKind }> = [
-    { label: 'Areas',        glyph: '●', kind: 'area' },
-    { label: 'Skills',       glyph: '◦', kind: 'skill' },
+    { label: 'Areas', glyph: '●', kind: 'area' },
+    { label: 'Skills', glyph: '◦', kind: 'skill' },
     { label: 'Integrations', glyph: '◆', kind: 'integration' },
-    { label: 'Agents',       glyph: '◉', kind: 'agent' },
-    { label: 'Users',        glyph: '◎', kind: 'user' },
+    { label: 'Agents', glyph: '◉', kind: 'agent' },
+    { label: 'Users', glyph: '◎', kind: 'user' },
   ];
 </script>
 
@@ -394,7 +400,9 @@
   <canvas bind:this={canvasEl} class="w-full h-full block touch-none"></canvas>
 
   {#if nodeCount <= 1}
-    <div class="absolute inset-0 flex items-center justify-center text-center px-8 pointer-events-none">
+    <div
+      class="absolute inset-0 flex items-center justify-center text-center px-8 pointer-events-none"
+    >
       <div class="text-muted text-sm">
         No areas yet — create org areas and assign agents to see the map.
       </div>
@@ -402,13 +410,18 @@
   {/if}
 
   <!-- Ring legend (clickable) -->
-  <div class="absolute bottom-3 left-3 z-10 flex flex-col gap-0.5 text-[10px] text-muted bg-bg2/80 backdrop-blur-sm border border-border rounded-lg px-2 py-1.5">
+  <div
+    class="absolute bottom-3 left-3 z-[var(--layer-sticky)] flex flex-col gap-0.5 text-[length:var(--font-size-telemetry)] text-muted bg-bg2/80 backdrop-blur-sm border border-border rounded-lg px-2 py-1.5"
+  >
     {#each LEGEND_ROWS as row (row.kind)}
       {@const count = legendCounts[row.kind] ?? 0}
       {@const active = activeLegendKind === row.kind}
-      <button
+      <Button
+        variant="ghost"
         type="button"
-        class="flex items-center gap-1.5 px-1 py-0.5 rounded transition-colors cursor-pointer text-left w-full {active ? 'bg-accent/20 text-accent' : 'hover:text-foreground'}"
+        class="flex items-center gap-1.5 px-1 py-0.5 rounded transition-colors cursor-pointer text-left w-full {active
+          ? 'bg-accent/20 text-accent'
+          : 'hover:text-foreground'}"
         onclick={() => toggleLegendKind(row.kind)}
         aria-pressed={active}
       >
@@ -417,36 +430,53 @@
         {#if count > 0}
           <span class="ml-auto opacity-60 tabular-nums">{count}</span>
         {/if}
-      </button>
+      </Button>
     {/each}
   </div>
 
   {#if selected}
-    <div class="absolute bottom-3 right-3 z-10 w-[260px] bg-bg2/95 backdrop-blur-sm border border-border rounded-lg shadow-lg text-[11px] overflow-hidden">
+    <div
+      class="absolute bottom-3 right-3 z-[var(--layer-sticky)] w-[260px] bg-bg2/95 backdrop-blur-sm border border-border rounded-lg shadow-lg text-[length:var(--font-size-caption)] overflow-hidden"
+    >
       <div class="flex items-center justify-between px-3 py-2 border-b border-border">
         <div class="flex items-center gap-2 min-w-0">
-          <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: {selected.color}"></span>
+          <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: {selected.color}"
+          ></span>
           <span class="text-foreground font-medium truncate">{selected.label}</span>
         </div>
-        <button type="button" class="text-muted hover:text-foreground cursor-pointer shrink-0 ml-2" onclick={() => (selected = null)}>&times;</button>
+        <Button
+          variant="ghost"
+          type="button"
+          class="text-muted hover:text-foreground cursor-pointer shrink-0 ml-2"
+          onclick={() => (selected = null)}>&times;</Button
+        >
       </div>
       <div class="px-3 py-2 flex flex-col gap-1.5">
         <div class="flex items-center gap-1.5">
-          <span class="px-1.5 py-0.5 rounded text-[9px] font-medium text-white capitalize" style="background-color: {selected.color}">{selected.kind}</span>
+          <span
+            class="px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] font-medium text-foreground capitalize"
+            style="background-color: {selected.color}">{selected.kind}</span
+          >
           {#if selected.areaName}<span class="text-muted">{selected.areaName}</span>{/if}
         </div>
         {#if selected.role}<div class="text-muted">{selected.role}</div>{/if}
         {#if selected.skills?.length}
           <div class="flex flex-wrap gap-1">
             {#each selected.skills as sk (sk)}
-              <span class="px-1.5 py-0.5 rounded bg-bg1 border border-border text-[9px] text-foreground">{sk}</span>
+              <span
+                class="px-1.5 py-0.5 rounded bg-bg1 border border-border text-[length:var(--font-size-telemetry)] text-foreground"
+                >{sk}</span
+              >
             {/each}
           </div>
         {/if}
         {#if selected.integrations?.length}
           <div class="flex flex-wrap gap-1">
             {#each selected.integrations as ik (ik)}
-              <span class="px-1.5 py-0.5 rounded bg-bg1 border border-border text-[9px] text-muted">{ik}</span>
+              <span
+                class="px-1.5 py-0.5 rounded bg-bg1 border border-border text-[length:var(--font-size-telemetry)] text-muted"
+                >{ik}</span
+              >
             {/each}
           </div>
         {/if}
@@ -458,7 +488,15 @@
 <style>
   .overview-stage {
     background:
-      radial-gradient(ellipse 70% 60% at 50% 45%, rgba(99, 102, 241, 0.05), transparent 70%),
-      radial-gradient(ellipse 100% 100% at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.35));
+      radial-gradient(
+        ellipse 70% 60% at 50% 45%,
+        color-mix(in srgb, var(--color-accent) 5%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 100% 100% at 50% 50%,
+        transparent 60%,
+        color-mix(in srgb, var(--color-canvas) 35%, transparent)
+      );
   }
 </style>

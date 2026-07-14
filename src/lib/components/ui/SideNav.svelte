@@ -84,16 +84,13 @@
   function matches(it: SideNavItem): boolean {
     if (!ql) return true;
     return (
-      it.label.toLowerCase().includes(ql) ||
-      (it.keywords?.toLowerCase().includes(ql) ?? false)
+      it.label.toLowerCase().includes(ql) || (it.keywords?.toLowerCase().includes(ql) ?? false)
     );
   }
 
   // Apply the search filter, then drop groups left empty.
   const visibleGroups = $derived.by<SideNavGroup[]>(() =>
-    groups
-      .map((g) => ({ ...g, items: g.items.filter(matches) }))
-      .filter((g) => g.items.length > 0),
+    groups.map((g) => ({ ...g, items: g.items.filter(matches) })).filter((g) => g.items.length > 0),
   );
 
   // Preserve this nav's scroll position across navigation (each nav keyed distinctly).
@@ -107,7 +104,10 @@
   {#if search?.enabled}
     <div class="shrink-0 p-2 hidden xl:block">
       <div class="relative">
-        <Search size={13} class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+        <Search
+          size={13}
+          class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+        />
         <input
           type="text"
           bind:value={searchQuery}
@@ -119,7 +119,11 @@
     </div>
   {/if}
 
-  <nav use:persistScroll={scrollKey} class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-3 flex flex-col gap-0.5" class:no-search-pad={search?.enabled}>
+  <nav
+    use:persistScroll={scrollKey}
+    class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-3 flex flex-col gap-0.5"
+    class:no-search-pad={search?.enabled}
+  >
     {#if header}
       <div class="set-head t-label hidden xl:block">{header}</div>
     {/if}
@@ -153,8 +157,10 @@
             {#if Icon}<NavIcon icon={Icon} size={16} class="set-icon shrink-0" />{/if}
             <span class="hidden xl:inline flex-1 truncate">{item.label}</span>
             {#if item.adminOnly}<span class="admin-badge hidden xl:inline-flex">admin</span>{/if}
-            {#if item.badge != null}<span class="set-badge hidden xl:inline">{item.badge}</span>{/if}
-            {#if item.dot && !active}<span class="set-dot shrink-0" aria-label="unsaved changes"></span>{/if}
+            {#if item.badge != null}<span class="set-badge hidden xl:inline">{item.badge}</span
+              >{/if}
+            {#if item.dot && !active}<span class="set-dot shrink-0" aria-label="unsaved changes"
+              ></span>{/if}
           </a>
         {:else}
           <button
@@ -172,8 +178,10 @@
             {#if Icon}<NavIcon icon={Icon} size={16} class="set-icon shrink-0" />{/if}
             <span class="hidden xl:inline flex-1 truncate">{item.label}</span>
             {#if item.adminOnly}<span class="admin-badge hidden xl:inline-flex">admin</span>{/if}
-            {#if item.badge != null}<span class="set-badge hidden xl:inline">{item.badge}</span>{/if}
-            {#if item.dot && !active}<span class="set-dot shrink-0" aria-label="unsaved changes"></span>{/if}
+            {#if item.badge != null}<span class="set-badge hidden xl:inline">{item.badge}</span
+              >{/if}
+            {#if item.dot && !active}<span class="set-dot shrink-0" aria-label="unsaved changes"
+              ></span>{/if}
           </button>
         {/if}
       {/each}
@@ -195,11 +203,11 @@
   .set-row {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
+    gap: var(--space-2);
     min-height: 2rem;
-    padding: 0.375rem 0.625rem;
+    padding: var(--space-2) var(--space-2);
     border-radius: var(--radius-md);
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body);
     font-weight: 500;
     color: var(--color-muted);
     text-decoration: none;
@@ -223,7 +231,7 @@
   }
   .set-row:hover {
     color: var(--color-foreground);
-    background: rgba(255, 255, 255, 0.05);
+    background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
   }
   .set-row:hover :global(.set-icon) {
     opacity: 1;
@@ -248,8 +256,12 @@
   /* Icon-only (collapsed, < xl): drop the indent + elbow so the child icon stays
      aligned with its siblings — both only make sense beside a visible label. */
   @media (max-width: 1279.98px) {
-    .set-child { padding-left: 0.625rem; }
-    .set-child::before { content: none; }
+    .set-child {
+      padding-left: var(--space-2);
+    }
+    .set-child::before {
+      content: none;
+    }
   }
   /* Background-tint active (CRM / Finance / Settings). */
   .set-active {
@@ -274,16 +286,16 @@
     color: var(--color-accent);
   }
   .set-head {
-    padding: 0.5rem 0.625rem 0.25rem;
+    padding: var(--space-2) var(--space-2) var(--space-1);
   }
   .set-divider {
     height: 1px;
     background: var(--hairline);
-    margin: 0.375rem 0.375rem;
+    margin: var(--space-2) var(--space-2);
   }
   .set-badge {
     margin-left: auto;
-    font-size: 0.5625rem;
+    font-size: var(--font-size-telemetry);
     color: var(--color-muted);
     font-weight: 500;
   }
@@ -291,15 +303,15 @@
     margin-left: auto;
     width: 0.375rem;
     height: 0.375rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--color-accent);
   }
   .admin-badge {
-    font-size: 0.5rem;
+    font-size: var(--font-size-telemetry);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    padding: 0.0625rem 0.25rem;
+    padding: var(--space-0-5) var(--space-1);
     border-radius: var(--radius-xs);
     color: var(--color-warning);
     background: color-mix(in srgb, var(--color-warning) 14%, transparent);

@@ -3,13 +3,20 @@
 
   let { quota }: { quota: ShellsQuota | null } = $props();
 
-  function tone(used: number, limit: number, amber: number, red: number): 'green' | 'amber' | 'red' {
+  function tone(
+    used: number,
+    limit: number,
+    amber: number,
+    red: number,
+  ): 'green' | 'amber' | 'red' {
     if (used >= red) return 'red';
     if (used >= amber) return 'amber';
     return 'green';
   }
 
-  const shellsTone = $derived(quota ? tone(quota.shells.used, quota.shells.limit, 40, 50) : 'green');
+  const shellsTone = $derived(
+    quota ? tone(quota.shells.used, quota.shells.limit, 40, 50) : 'green',
+  );
   const diskTone = $derived(quota ? tone(quota.diskGB.used, quota.diskGB.limit, 20, 22) : 'green');
   const shelleyTone = $derived(
     quota ? tone(quota.shelleyUSD.used, quota.shelleyUSD.limit, 16, 19) : 'green',
@@ -38,8 +45,8 @@
 <style>
   .strip {
     display: flex;
-    gap: 8px;
-    padding: 12px 16px;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--color-border-default, var(--color-border));
     background: var(--color-surface-1, var(--color-bg2));
     overflow-x: auto;
@@ -48,17 +55,17 @@
   .pill {
     display: flex;
     align-items: baseline;
-    gap: 8px;
-    padding: 6px 12px;
-    border-radius: 999px;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-full);
     border: 1px solid;
-    font-size: 13px;
+    font-size: var(--font-size-body);
   }
   .label {
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    font-size: 11px;
+    font-size: var(--font-size-caption);
     opacity: 0.7;
   }
   .value {

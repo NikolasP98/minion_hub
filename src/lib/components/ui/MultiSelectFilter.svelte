@@ -30,8 +30,15 @@
     class?: string;
   }
 
-  let { label, options, selected, onToggle, onClear, allLabel = 'All', class: cls = '' }: Props =
-    $props();
+  let {
+    label,
+    options,
+    selected,
+    onToggle,
+    onClear,
+    allLabel = 'All',
+    class: cls = '',
+  }: Props = $props();
 
   let open = $state(false);
 
@@ -46,18 +53,21 @@
       <span
         aria-haspopup="listbox"
         aria-expanded={open}
-        class="flex items-center gap-1.5 h-7 pl-2.5 pr-1.5 rounded-md border text-[11px] font-medium cursor-pointer transition-colors
+        class="flex items-center gap-1.5 h-7 pl-2.5 pr-1.5 rounded-md border text-[length:var(--font-size-caption)] font-medium cursor-pointer transition-colors
           {count > 0
           ? 'border-accent/40 bg-accent/10 text-foreground'
-          : 'border-border bg-bg3/60 text-muted-foreground hover:text-foreground hover:border-white/15'}"
+          : 'border-border bg-bg3/60 text-muted-foreground hover:text-foreground hover:border-[var(--color-border-strong)]'}"
       >
-        <span class="uppercase tracking-wide text-[9px] font-semibold">{label}</span>
+        <span class="uppercase tracking-wide text-[length:var(--font-size-telemetry)] font-semibold"
+          >{label}</span
+        >
         {#if count > 0}
-          <span class="rounded-full bg-accent/20 text-accent px-1.5 text-[9px] tabular-nums leading-[1.4]"
+          <span
+            class="rounded-full bg-accent/20 text-accent px-1.5 text-[length:var(--font-size-telemetry)] tabular-nums leading-[1.4]"
             >{count}</span
           >
         {:else}
-          <span class="text-muted-strong text-[10px]">{allLabel}</span>
+          <span class="text-muted-strong text-[length:var(--font-size-telemetry)]">{allLabel}</span>
         {/if}
         <ChevronDown size={12} class="shrink-0 transition-transform {open ? 'rotate-180' : ''}" />
       </span>
@@ -67,7 +77,7 @@
       role="listbox"
       aria-multiselectable="true"
       class="min-w-[180px] max-h-[280px] overflow-y-auto
-        rounded-lg border border-border bg-bg2 shadow-[0_8px_24px_rgba(0,0,0,0.5)] p-1"
+        rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay)] p-1"
     >
       <!-- "All" = the empty-selection state (everything shown). Mutually exclusive
            with individual picks: choosing it clears specific selections, and
@@ -76,12 +86,15 @@
         type="button"
         role="option"
         aria-selected={count === 0}
-        class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[11px] cursor-pointer transition-colors
-          {count === 0 ? 'text-foreground bg-bg3/60' : 'text-muted-foreground hover:text-foreground hover:bg-bg3'}"
+        class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[length:var(--font-size-caption)] cursor-pointer transition-colors
+          {count === 0
+          ? 'text-foreground bg-bg3/60'
+          : 'text-muted-foreground hover:text-foreground hover:bg-bg3'}"
         onclick={onClear}
       >
         <span
-          class="flex items-center justify-center w-3.5 h-3.5 rounded-sm border shrink-0 {count === 0
+          class="flex items-center justify-center w-3.5 h-3.5 rounded-sm border shrink-0 {count ===
+          0
             ? 'bg-accent border-accent'
             : 'border-border'}"
         >
@@ -96,8 +109,10 @@
           type="button"
           role="option"
           aria-selected={isSel}
-          class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[11px] cursor-pointer transition-colors
-            {isSel ? 'text-foreground bg-bg3/60' : 'text-muted-foreground hover:text-foreground hover:bg-bg3'}"
+          class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[length:var(--font-size-caption)] cursor-pointer transition-colors
+            {isSel
+            ? 'text-foreground bg-bg3/60'
+            : 'text-muted-foreground hover:text-foreground hover:bg-bg3'}"
           onclick={() => onToggle(opt.value)}
         >
           <span
@@ -112,7 +127,10 @@
           {/if}
           <span class="flex-1 text-left truncate">{opt.label}</span>
           {#if opt.count !== undefined}
-            <span class="text-[9px] text-muted-strong tabular-nums shrink-0">{opt.count}</span>
+            <span
+              class="text-[length:var(--font-size-telemetry)] text-muted-strong tabular-nums shrink-0"
+              >{opt.count}</span
+            >
           {/if}
         </button>
       {/each}
@@ -122,7 +140,7 @@
   <!-- Applied pills -->
   {#each selectedOptions as opt (opt.value)}
     <span
-      class="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md text-[10px] font-semibold border"
+      class="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md text-[length:var(--font-size-telemetry)] font-semibold border"
       style={opt.color
         ? `background:${opt.color}1f;color:${opt.color};border-color:${opt.color}55`
         : 'background:var(--color-bg3);border-color:var(--color-border)'}
@@ -131,7 +149,7 @@
       <button
         type="button"
         aria-label={`Remove ${opt.label}`}
-        class="flex items-center justify-center w-3.5 h-3.5 rounded-sm hover:bg-white/15 cursor-pointer transition-colors"
+        class="flex items-center justify-center w-3.5 h-3.5 rounded-sm hover:bg-foreground/15 cursor-pointer transition-colors"
         onclick={() => onToggle(opt.value)}
       >
         <X size={10} />
