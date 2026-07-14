@@ -94,7 +94,7 @@
 
 <svelte:head><title>{m.ads_post_detail_title()} · {m.nav_ads()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
+<div class="social-post-page flex flex-col h-full min-h-0">
 	<PageHeader title={m.ads_post_detail_title()} subtitle={fmtDate(post.postedAt)}>
 		{#snippet leading()}
 			<PlatformIcon platform={post.platform} size={16} class="text-accent shrink-0" />
@@ -240,7 +240,7 @@
 		color: var(--color-muted-foreground);
 	}
 	.media-glyph[data-platform='ig'] {
-		color: var(--color-pink, var(--color-pink));
+		color: var(--color-pink);
 	}
 	.media-glyph[data-platform='fb'] {
 		color: var(--color-info, var(--color-accent));
@@ -296,8 +296,8 @@
 		color: var(--color-muted-foreground);
 	}
 	.post-platform[data-platform='ig'] {
-		background: color-mix(in srgb, var(--color-pink, var(--color-pink)) 15%, transparent);
-		color: var(--color-pink, var(--color-pink));
+		background: color-mix(in srgb, var(--color-pink) 15%, transparent);
+		color: var(--color-pink);
 	}
 	.post-platform[data-platform='fb'] {
 		background: color-mix(in srgb, var(--color-info, var(--color-accent)) 15%, transparent);
@@ -383,7 +383,7 @@
 		font-weight: 600;
 		color: var(--color-foreground);
 	}
-	.close-btn {
+	.comments-panel :global(.close-btn) {
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -391,7 +391,7 @@
 		padding: var(--space-1);
 	}
 	@media (min-width: 1024px) {
-		.close-btn {
+		.comments-panel :global(.close-btn) {
 			display: none;
 		}
 	}
@@ -452,7 +452,7 @@
 	}
 
 	/* Mobile floating toggle */
-	.comments-fab {
+	.social-post-page :global(.comments-fab) {
 		position: fixed;
 		bottom: 1.25rem;
 		right: 1.25rem;

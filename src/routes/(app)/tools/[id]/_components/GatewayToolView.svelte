@@ -442,7 +442,7 @@ import { onMount } from "svelte";
         border: 1px solid var(--color-border);
     }
 
-    .gw-toggle-btn {
+    .gw-source-pane :global(.gw-toggle-btn) {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -458,21 +458,21 @@ import { onMount } from "svelte";
         border: none;
     }
 
-    .gw-toggle-btn.enable {
+    .gw-source-pane :global(.gw-toggle-btn.enable) {
         color: var(--color-success, var(--color-success-fg));
         background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 12%, transparent);
     }
 
-    .gw-toggle-btn.enable:hover {
+    .gw-source-pane :global(.gw-toggle-btn.enable):hover {
         background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 20%, transparent);
     }
 
-    .gw-toggle-btn.disable {
+    .gw-source-pane :global(.gw-toggle-btn.disable) {
         color: var(--color-danger-fg);
         background: var(--color-danger-surface);
     }
 
-    .gw-toggle-btn.disable:hover {
+    .gw-source-pane :global(.gw-toggle-btn.disable):hover {
         background: var(--color-danger-surface);
     }
 </style>

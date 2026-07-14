@@ -839,7 +839,7 @@
     gap: var(--space-2, 8px);
     width: 100%;
     padding: var(--space-2, 8px) var(--space-2, 8px);
-    border-radius: var(--radius-sm, var(--radius-md);
+    border-radius: var(--radius-sm);
     text-align: left;
   }
   :global(.crm-settings-surface .add-item:hover) {
@@ -858,7 +858,7 @@
     gap: var(--space-2, 8px);
     width: 100%;
     padding: var(--space-2, 8px) var(--space-2, 8px);
-    border-radius: var(--radius-sm, var(--radius-md);
+    border-radius: var(--radius-sm);
     font-size: var(--font-size-body, 14px);
     text-align: left;
     color: var(--color-foreground);

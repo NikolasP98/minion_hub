@@ -404,7 +404,7 @@
 	.ring span { width: calc(var(--size) - 16px); height: calc(var(--size) - 16px); border-radius: var(--radius-full); background: var(--color-card); display: grid; place-items: center; font-weight: 700; font-size: var(--font-size-page-title); font-variant-numeric: tabular-nums; }
 	.summary-meta { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-body); }
 	.summary-meta .line { color: var(--color-muted-foreground); }
-	.summary-meta select { background: var(--color-bg3); border: 1px solid var(--hairline); border-radius: var(--radius-md); height: 1.7rem; margin-left: var(--space-1); }
+	.summary-meta :global([data-part='select']) { background: var(--color-bg3); border: 1px solid var(--hairline); border-radius: var(--radius-md); height: 1.7rem; margin-left: var(--space-1); }
 	.card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); }
 	.ms { padding: var(--space-2) var(--space-4); }
 	.ms-head, .ts-head { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-body); color: var(--color-muted-foreground); margin-bottom: var(--space-2); }
@@ -429,7 +429,7 @@
 	.tt { font-size: var(--font-size-body); }
 	.tmeta { display: flex; align-items: center; gap: var(--space-2); }
 	.hid { font-size: var(--font-size-caption); color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
-	.mini { height: 1.6rem; font-size: var(--font-size-caption); border-radius: var(--radius-sm, var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 var(--space-1); max-width: 100%; flex: 1; }
+	.mini { height: 1.6rem; font-size: var(--font-size-caption); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 var(--space-1); max-width: 100%; flex: 1; }
 	.mini.status { width: 100%; }
 	.exec { padding: var(--space-2) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
 	.exec.offline { opacity: 0.65; background: var(--color-bg3); }

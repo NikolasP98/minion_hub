@@ -70,12 +70,12 @@ import { GitBranch, XCircle, CheckCircle2 } from "lucide-svelte";
         align-items: center;
         justify-content: center;
     }
-    .confirm-btn { font-family: inherit; font-size: var(--font-size-caption); font-weight: 600; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); cursor: pointer; transition: all var(--duration-fast) var(--ease-standard); border: none; }
-    .confirm-btn.cancel { background: var(--color-bg2); color: var(--color-muted); border: 1px solid var(--color-border); }
-    .confirm-btn.cancel:hover { color: var(--color-foreground); border-color: var(--color-foreground); }
-    .confirm-btn.primary { background: var(--color-accent); color: white; }
-    .confirm-btn.primary:hover:not(:disabled) { filter: brightness(1.1); }
-    .confirm-btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .condition-modal-footer :global(.confirm-btn) { font-family: inherit; font-size: var(--font-size-caption); font-weight: 600; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); cursor: pointer; transition: all var(--duration-fast) var(--ease-standard); border: none; }
+    .condition-modal-footer :global(.confirm-btn.cancel) { background: var(--color-bg2); color: var(--color-muted); border: 1px solid var(--color-border); }
+    .condition-modal-footer :global(.confirm-btn.cancel):hover { color: var(--color-foreground); border-color: var(--color-foreground); }
+    .condition-modal-footer :global(.confirm-btn.primary) { background: var(--color-accent); color: white; }
+    .condition-modal-footer :global(.confirm-btn.primary):hover:not(:disabled) { filter: brightness(1.1); }
+    .condition-modal-footer :global(.confirm-btn.primary):disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* Condition modal */
     .condition-modal { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); max-width: 440px; width: 100%; box-shadow: var(--shadow-overlay); display: flex; flex-direction: column; }
@@ -96,7 +96,7 @@ import { GitBranch, XCircle, CheckCircle2 } from "lucide-svelte";
     .condition-valid { display: flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-caption); color: var(--color-success, var(--color-success-fg)); }
     .condition-modal-footer { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-6); border-top: 1px solid var(--color-border); }
 
-    .close-btn {
+    .condition-modal-header :global(.close-btn) {
         background: transparent;
         border: none;
         color: var(--color-muted);
@@ -110,5 +110,5 @@ import { GitBranch, XCircle, CheckCircle2 } from "lucide-svelte";
         line-height: 1;
         transition: color var(--duration-fast);
     }
-    .close-btn:hover { color: var(--color-foreground); }
+    .condition-modal-header :global(.close-btn):hover { color: var(--color-foreground); }
 </style>

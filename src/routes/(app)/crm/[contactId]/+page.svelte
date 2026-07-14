@@ -822,7 +822,7 @@
     gap: var(--space-2, 8px);
     width: 100%;
     padding: var(--space-2, 8px) var(--space-2, 8px);
-    border-radius: var(--radius-sm, var(--radius-md);
+    border-radius: var(--radius-sm);
     font-size: var(--font-size-body, 14px);
     text-align: left;
     color: var(--color-foreground);
@@ -1037,12 +1037,12 @@
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
   .jms[data-type='purchase'] .jms-ic {
-    color: var(--color-success, var(--color-success));
-    background: color-mix(in srgb, var(--color-success, var(--color-success)) 14%, transparent);
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 14%, transparent);
   }
   .jms[data-type='booking'] .jms-ic {
-    color: var(--color-warning, var(--color-warning));
-    background: color-mix(in srgb, var(--color-warning, var(--color-warning)) 14%, transparent);
+    color: var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
   }
   .jms[data-type='ai'] .jms-ic {
     color: var(--color-accent);
@@ -1301,20 +1301,20 @@
     color: var(--color-muted-foreground);
   }
   .fin-status[data-status='paid'] {
-    background: color-mix(in srgb, var(--color-success, var(--color-success)) 16%, transparent);
-    color: var(--color-success, var(--color-success));
+    background: color-mix(in srgb, var(--color-success) 16%, transparent);
+    color: var(--color-success);
   }
   .fin-status[data-status='partial'],
   .fin-status[data-status='pending'] {
-    background: color-mix(in srgb, var(--color-warning, var(--color-warning)) 16%, transparent);
-    color: var(--color-warning, var(--color-warning));
+    background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    color: var(--color-warning);
   }
   .fin-status[data-status='void'] {
     background: color-mix(
       in srgb,
-      var(--color-destructive, var(--color-destructive)) 14%,
+      var(--color-destructive) 14%,
       transparent
     );
-    color: var(--color-destructive, var(--color-destructive));
+    color: var(--color-destructive);
   }
 </style>

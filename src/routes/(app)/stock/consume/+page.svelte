@@ -254,8 +254,8 @@
   .line-qty { display: flex; align-items: center; gap: var(--space-2); }
   .qty-inp { width: 6rem; text-align: right; font-variant-numeric: tabular-nums; }
   .qty-uom { font-size: var(--font-size-body); color: var(--color-muted-foreground); }
-  .rm-btn { background: none; border: none; color: var(--color-muted-foreground); cursor: pointer; }
-  .rm-btn:hover { color: var(--color-destructive); }
+  .line :global(.rm-btn) { background: none; border: none; color: var(--color-muted-foreground); cursor: pointer; }
+  .line :global(.rm-btn):hover { color: var(--color-destructive); }
   .gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
   .gauge-cap { font-size: var(--font-size-caption); color: var(--color-muted-foreground); text-align: center; }
   .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }

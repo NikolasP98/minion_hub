@@ -161,8 +161,7 @@ import {
                     {#each langOptions as lang (lang.id)}
                         <Button variant="ghost"
                             type="button"
-                            class="lang-pill"
-                            class:active={scriptLang === lang.id}
+                            class="lang-pill {scriptLang === lang.id ? 'active' : ''}"
                             onclick={() => onSwitchLanguage(lang.id)}
                         >
                             {lang.label}

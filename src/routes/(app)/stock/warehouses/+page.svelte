@@ -136,9 +136,9 @@
   .tree { display: flex; flex-direction: column; gap: var(--space-1); max-width: 36rem; }
   .row { display: flex; align-items: center; gap: var(--space-2); padding-top: var(--space-2); padding-bottom: var(--space-2); padding-left: calc(var(--tree-depth, 0) * var(--space-6)); border-bottom: 1px solid var(--hairline); }
   .name { flex: 1; font-size: var(--font-size-page-title); }
-  .add-child { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-caption); color: var(--color-muted-foreground); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); cursor: pointer; }
-  .add-child:hover { color: var(--color-foreground); background: color-mix(in srgb, var(--color-text-primary) 5%, transparent); }
-  .add-child:disabled { opacity: 0.5; cursor: not-allowed; }
+  .tree :global(.add-child) { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-caption); color: var(--color-muted-foreground); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); cursor: pointer; }
+  .tree :global(.add-child):hover { color: var(--color-foreground); background: color-mix(in srgb, var(--color-text-primary) 5%, transparent); }
+  .tree :global(.add-child):disabled { opacity: 0.5; cursor: not-allowed; }
   .default-badge { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-caption); color: var(--color-warning, var(--color-warning-fg)); }
   .fld { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-body); color: var(--color-muted-foreground); }
   .inp { height: 1.75rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }

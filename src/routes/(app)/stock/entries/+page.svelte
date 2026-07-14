@@ -56,7 +56,7 @@
 
 <svelte:head><title>{m.stock_entries_title()} — {m.nav_stock()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
+<div class="stock-entries-page flex flex-col h-full min-h-0">
   <PageHeader title={m.stock_entries_title()} subtitle={m.stock_entries_subtitle()}>
     {#snippet leading()}<ArrowLeftRight size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
@@ -120,7 +120,7 @@
 </div>
 
 <style>
-  .chip { display: inline-flex; align-items: center; gap: var(--space-1); height: 1.8rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-full); border: 1px solid var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); cursor: pointer; }
+  .stock-entries-page :global(.chip) { display: inline-flex; align-items: center; gap: var(--space-1); height: 1.8rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-full); border: 1px solid var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); cursor: pointer; }
   .lines { padding: var(--space-2) var(--space-4) var(--space-2) var(--space-12); }
   .lines-msg { font-size: var(--font-size-body); color: var(--color-muted-foreground); padding: var(--space-2) 0; }
   .lines-tbl { width: 100%; max-width: 40rem; border-collapse: collapse; }

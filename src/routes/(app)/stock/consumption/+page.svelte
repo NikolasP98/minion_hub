@@ -169,7 +169,11 @@
         <ul class="product-list">
           {#each filteredProducts as p (p.id)}
             <li>
-              <Button variant="ghost" class="product-btn" class:active={p.id === selectedProductId} onclick={() => selectProduct(p.id)}>
+              <Button
+                variant="ghost"
+                class="product-btn {p.id === selectedProductId ? 'active' : ''}"
+                onclick={() => selectProduct(p.id)}
+              >
                 <span class="product-name">{p.name}</span>
                 <span class="product-code">{p.code}</span>
               </Button>
@@ -305,13 +309,13 @@
   .search-fld :global(.search-ico) { color: var(--color-muted-foreground); flex-shrink: 0; }
   .search-inp { flex: 1; min-width: 0; background: transparent; border: none; outline: none; font-size: var(--font-size-body); color: var(--color-foreground); }
   .product-list { overflow-y: auto; flex: 1; min-height: 0; }
-  .product-btn {
+  .product-list :global(.product-btn) {
     display: flex; flex-direction: column; gap: var(--space-0-5); width: 100%; text-align: left;
     padding: var(--space-2) var(--space-3); border: none; border-bottom: 1px solid var(--hairline);
     background: transparent; cursor: pointer; color: var(--color-foreground);
   }
-  .product-btn:hover { background: color-mix(in srgb, var(--color-text-primary) 3%, transparent); }
-  .product-btn.active { background: color-mix(in srgb, var(--color-accent) 10%, transparent); border-left: 2px solid var(--color-accent); }
+  .product-list :global(.product-btn):hover { background: color-mix(in srgb, var(--color-text-primary) 3%, transparent); }
+  .product-list :global(.product-btn.active) { background: color-mix(in srgb, var(--color-accent) 10%, transparent); border-left: 2px solid var(--color-accent); }
   .product-name { font-size: var(--font-size-body); font-weight: 500; }
   .product-code { font-size: var(--font-size-caption); color: var(--color-muted-foreground); font-family: var(--font-mono, monospace); }
 
@@ -324,11 +328,11 @@
   .edit-qty-cell { display: flex; align-items: center; gap: var(--space-2); justify-content: flex-end; }
   .inp { height: 1.75rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
 
-  .act-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--radius-sm); font-size: var(--font-size-body); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-muted-foreground); }
-  .act-btn:hover { background: color-mix(in srgb, var(--color-text-primary) 6%, transparent); color: var(--color-foreground); }
-  .act-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .act-save { color: var(--color-accent); }
-  .act-cancel { color: var(--color-muted-foreground); }
-  .act-edit { opacity: 0.6; }
+  .right-pane :global(.act-btn) { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--radius-sm); font-size: var(--font-size-body); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-muted-foreground); }
+  .right-pane :global(.act-btn):hover { background: color-mix(in srgb, var(--color-text-primary) 6%, transparent); color: var(--color-foreground); }
+  .right-pane :global(.act-btn):disabled { opacity: 0.5; cursor: not-allowed; }
+  .right-pane :global(.act-save) { color: var(--color-accent); }
+  .right-pane :global(.act-cancel) { color: var(--color-muted-foreground); }
+  .right-pane :global(.act-edit) { opacity: 0.6; }
   .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }
 </style>

@@ -105,7 +105,7 @@ import { BookOpen, Check, Sparkles, X } from "lucide-svelte";
         margin: 0;
     }
     .first-visit-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
-    .first-visit-btn {
+    .first-visit-actions :global(.first-visit-btn) {
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -118,14 +118,14 @@ import { BookOpen, Check, Sparkles, X } from "lucide-svelte";
         font-family: inherit;
         border: none;
     }
-    .first-visit-btn.primary { background: var(--color-accent); color: white; }
-    .first-visit-btn.primary:hover { filter: brightness(1.15); }
-    .first-visit-btn.ghost {
+    .first-visit-actions :global(.first-visit-btn.primary) { background: var(--color-accent); color: white; }
+    .first-visit-actions :global(.first-visit-btn.primary):hover { filter: brightness(1.15); }
+    .first-visit-actions :global(.first-visit-btn.ghost) {
         background: transparent;
         color: var(--color-muted);
         border: 1px solid var(--color-border);
     }
-    .first-visit-btn.ghost:hover { color: var(--color-foreground); border-color: var(--color-foreground); }
+    .first-visit-actions :global(.first-visit-btn.ghost):hover { color: var(--color-foreground); border-color: var(--color-foreground); }
 
     /* Proposal batch actions */
     .proposal-batch-actions {
@@ -136,7 +136,7 @@ import { BookOpen, Check, Sparkles, X } from "lucide-svelte";
         display: flex;
         gap: var(--space-2);
     }
-    .batch-btn {
+    .proposal-batch-actions :global(.batch-btn) {
         display: flex; align-items: center; gap: var(--space-2);
         padding: var(--space-2) var(--space-3);
         font-size: var(--font-size-caption); font-weight: 600;
@@ -144,12 +144,12 @@ import { BookOpen, Check, Sparkles, X } from "lucide-svelte";
         cursor: pointer; transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
-    .batch-btn.accept { color: white; background: var(--color-success, var(--color-success-fg)); }
-    .batch-btn.accept:hover { filter: brightness(1.1); }
-    .batch-btn.reject {
+    .proposal-batch-actions :global(.batch-btn.accept) { color: white; background: var(--color-success, var(--color-success-fg)); }
+    .proposal-batch-actions :global(.batch-btn.accept):hover { filter: brightness(1.1); }
+    .proposal-batch-actions :global(.batch-btn.reject) {
         color: var(--color-danger-fg);
         background: var(--color-danger-surface);
         border: 1px solid var(--color-danger-border);
     }
-    .batch-btn.reject:hover { background: var(--color-danger-surface); }
+    .proposal-batch-actions :global(.batch-btn.reject):hover { background: var(--color-danger-surface); }
 </style>

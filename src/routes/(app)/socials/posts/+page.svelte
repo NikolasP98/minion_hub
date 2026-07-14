@@ -123,8 +123,8 @@
 		color: var(--color-muted-foreground);
 	}
 	.post-platform[data-platform='ig'] {
-		background: color-mix(in srgb, var(--color-pink, var(--color-pink)) 15%, transparent);
-		color: var(--color-pink, var(--color-pink));
+		background: color-mix(in srgb, var(--color-pink) 15%, transparent);
+		color: var(--color-pink);
 	}
 	.post-platform[data-platform='fb'] {
 		background: color-mix(in srgb, var(--color-info, var(--color-accent)) 15%, transparent);
@@ -163,8 +163,8 @@
 		color: var(--color-muted-foreground);
 	}
 	.post-thumb-placeholder[data-platform='ig'] {
-		background: color-mix(in srgb, var(--color-pink, var(--color-pink)) 15%, transparent);
-		color: var(--color-pink, var(--color-pink));
+		background: color-mix(in srgb, var(--color-pink) 15%, transparent);
+		color: var(--color-pink);
 	}
 	.post-thumb-placeholder[data-platform='fb'] {
 		background: color-mix(in srgb, var(--color-info, var(--color-accent)) 15%, transparent);
