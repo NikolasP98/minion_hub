@@ -712,6 +712,7 @@
 
 					<div class="flex flex-wrap items-center justify-between gap-2">
 						<Tabs
+							id="permission-group-tabs"
 							size="sm"
 							bind:value={activeTab}
 							aria-label="Permission groups"
@@ -731,7 +732,9 @@
 						{/if}
 					</div>
 
-					{@render moduleList(visibleMods)}
+					<div id={`permission-group-tabs-panel-${activeTab}`} role="tabpanel" aria-labelledby={`permission-group-tabs-tab-${activeTab}`}>
+						{@render moduleList(visibleMods)}
+					</div>
 				</div>
 			{:else}
 				<div class="p-10 text-center text-[12px] text-muted">No roles found.</div>

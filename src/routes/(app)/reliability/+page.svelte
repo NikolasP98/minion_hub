@@ -1222,6 +1222,7 @@
 	<!-- Tab bar + filter bar (tabs first, filters below — order: severity, category, mode) -->
 	<div class="shrink-0 relative z-30 border-b border-border bg-bg2/80 backdrop-blur-sm">
 		<Tabs
+			id="reliability-tabs"
 			tabs={tabItems}
 			value={activeTab}
 			size="sm"
@@ -1274,7 +1275,12 @@
 		{/if}
 	</div>
 
-	<main class="flex-1 min-h-0 overflow-y-auto p-4">
+	<div
+		id={`reliability-tabs-panel-${activeTab}`}
+		role="tabpanel"
+		aria-labelledby={`reliability-tabs-tab-${activeTab}`}
+		class="flex-1 min-h-0 overflow-y-auto p-4"
+	>
 		{#if !serverId}
 			<div class="h-full flex items-center justify-center">
 				<div class="text-center">
@@ -1418,7 +1424,7 @@
 			{/if}
 		</div>
 		{/if}
-	</main>
+	</div>
 
 	<!-- ── KPI hover breakdown tooltip (fixed → escapes card overflow clipping) ──
 	     Width is standardised with clamp() so every KPI's tooltip is the same

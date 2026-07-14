@@ -17,7 +17,8 @@
   interface Props {
     /** Bindable open state. */
     open?: boolean;
-    title?: string;
+    /** Accessible dialog name. Also rendered when no custom header is provided. */
+    title: string;
     size?: ModalSize;
     /** Allow closing by clicking the backdrop / pressing Esc. */
     dismissible?: boolean;

@@ -115,7 +115,7 @@
                     class="text-[11px] pl-7 pr-6 py-1 h-7 w-44 bg-bg3 text-foreground border border-border rounded-md placeholder:text-muted-foreground focus:outline-none focus:border-[var(--color-brand-pink)] [color-scheme:dark] transition-colors"
                 />
                 {#if searchInput}
-                    <button type="button" class="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer transition-colors" onclick={clearSearch}>
+                    <button type="button" class="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer transition-colors" onclick={clearSearch} aria-label={m.builder_clear()}>
                         <X size={11} />
                     </button>
                 {/if}
@@ -133,10 +133,10 @@
 
             <!-- View toggle -->
             <div class="flex gap-0.5 p-0.5 bg-bg3 border border-border rounded-md">
-                <button type="button" onclick={() => (viewMode = 'grid')} class="w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors {viewMode === 'grid' ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] text-[var(--color-brand-pink)]' : 'text-muted-foreground hover:text-foreground'}">
+                <button type="button" onclick={() => (viewMode = 'grid')} aria-label={m.marketplace_agentsListGridView()} aria-pressed={viewMode === 'grid'} class="w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors {viewMode === 'grid' ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] text-[var(--color-brand-pink)]' : 'text-muted-foreground hover:text-foreground'}">
                     <Grid3X3 size={12} />
                 </button>
-                <button type="button" onclick={() => (viewMode = 'list')} class="w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors {viewMode === 'list' ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] text-[var(--color-brand-pink)]' : 'text-muted-foreground hover:text-foreground'}">
+                <button type="button" onclick={() => (viewMode = 'list')} aria-label={m.marketplace_agentsListListView()} aria-pressed={viewMode === 'list'} class="w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors {viewMode === 'list' ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] text-[var(--color-brand-pink)]' : 'text-muted-foreground hover:text-foreground'}">
                     <List size={12} />
                 </button>
             </div>

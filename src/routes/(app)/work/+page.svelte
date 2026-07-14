@@ -7,6 +7,7 @@
 	import { onMount } from 'svelte';
 	import { startPolling } from '$lib/utils/live-polling';
 	import type { WorkforceWorkItem } from '$lib/workforce/work-queue';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 
@@ -90,8 +91,9 @@
 
 <PageHeader title="Work" subtitle="One queue for operational work and human factory gates" />
 
-<Tabs {tabs} bind:value={tab} />
+<Tabs id="work-tabs" aria-label={m.a11y_tabs_work()} {tabs} bind:value={tab} />
 
+<div id={`work-tabs-panel-${tab}`} role="tabpanel" aria-labelledby={`work-tabs-tab-${tab}`}>
 {#if tab === 'queue'}
 	{#if data.items.length === 0}
 		<EmptyState icon={Inbox} title="Nothing on your plate" description="Assigned records and production-line decisions will show up here." />
@@ -175,6 +177,7 @@
 		{/each}
 	</div>
 {/if}
+</div>
 
 <style>
 	.queue,

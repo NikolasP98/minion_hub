@@ -130,6 +130,7 @@
         type="button"
         onclick={send}
         disabled={busy || !input.trim()}
+        aria-label={m.chat_send()}
         class="grid size-9 shrink-0 place-items-center rounded-lg bg-white/10 text-white hover:bg-white/20 disabled:opacity-40"
       >
         <Send size={15} />

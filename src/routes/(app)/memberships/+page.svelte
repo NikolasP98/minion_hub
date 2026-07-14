@@ -4,6 +4,7 @@
 	import { PageHeader, Button, Badge, Select, Tabs, EmptyState } from '$lib/components/ui';
 	import type { TabItem } from '$lib/components/ui';
 	import { RefreshCw } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 
@@ -96,8 +97,14 @@
 
 <PageHeader title="Memberships" subtitle="Recurring plans — each cycle spawns a draft sales order for billing" />
 
-<Tabs {tabs} bind:value={tab} />
+<Tabs id="memberships-tabs" aria-label={m.a11y_tabs_memberships()} {tabs} bind:value={tab} />
 
+
+<div
+	id={`memberships-tabs-panel-${tab}`}
+	role="tabpanel"
+	aria-labelledby={`memberships-tabs-tab-${tab}`}
+>
 {#if tab === 'members'}
 	<div class="stack">
 		{#if data.plans.length}
@@ -165,6 +172,7 @@
 		{/each}
 	</div>
 {/if}
+</div>
 
 <style>
 	.stack { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }

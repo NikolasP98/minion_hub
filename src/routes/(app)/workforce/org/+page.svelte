@@ -107,7 +107,7 @@
 	}
 
 	const nodeTypes: NodeTypes = { org: OrgChartNode };
-	const colorMode: ColorMode = $derived(theme.preset.id === 'light' ? 'light' : 'dark');
+	const colorMode: ColorMode = $derived(theme.mode);
 
 	let nodes = $state.raw<Node[]>([]);
 	let edges = $state.raw<Edge[]>([]);

@@ -220,7 +220,7 @@
                 {/each}
               </select>
               <input class="inp w-24" type="number" min="0" step="0.01" placeholder={m.pos_catalog_qty_per_unit()} bind:value={row.qtyPerUnit} />
-              <button type="button" class="act-btn" onclick={() => removeRow(idx)}><Trash2 size={12} /></button>
+              <button type="button" class="act-btn" onclick={() => removeRow(idx)} aria-label={m.common_remove()}><Trash2 size={12} /></button>
             </div>
           {/each}
           <Button variant="outline" size="sm" onclick={addRow} disabled={rows.length >= stockItems.length}>

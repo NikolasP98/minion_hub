@@ -1,3 +1,5 @@
+import { fetchJson } from '$lib/api/fetch-json';
+
 type SyncState = {
   active: boolean;
   status: string | null;
@@ -60,21 +62,33 @@ export const financeSync = {
 
   /** Trigger a sync and begin polling. */
   async start(provider = 'susii') {
-    await fetch('/api/finances/sync', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ provider }),
-    });
-    s.active = true; s.status = 'running';
-    if (!polling) { polling = true; schedule(provider); }
-    await fetchStatus(provider);
+    s.error = null;
+    try {
+      await fetchJson<{ ok?: boolean }>('/api/finances/sync', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider }),
+      });
+      s.active = true; s.status = 'running';
+      if (!polling) { polling = true; schedule(provider); }
+      await fetchStatus(provider);
+    } catch (cause) {
+      stop();
+      s.active = false;
+      s.status = 'error';
+      s.error = cause instanceof Error ? cause.message : 'Unable to start finance sync';
+    }
   },
 
   async cancel(provider = 'susii') {
-    await fetch('/api/finances/sync/cancel', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ provider }),
-    });
-    await fetchStatus(provider);
+    try {
+      await fetchJson<{ ok?: boolean }>('/api/finances/sync/cancel', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider }),
+      });
+      await fetchStatus(provider);
+    } catch (cause) {
+      s.error = cause instanceof Error ? cause.message : 'Unable to cancel finance sync';
+    }
   },
 
   stop,

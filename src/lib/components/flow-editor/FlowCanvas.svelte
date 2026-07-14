@@ -92,7 +92,7 @@
     context: ContextEdgeComponent,
   };
 
-  const colorMode: ColorMode = $derived(theme.preset.id === 'light' ? 'light' : 'dark');
+  const colorMode: ColorMode = $derived(theme.mode);
 
   // Decorate nodes with a run-status class so the status-colored outline (the
   // style rules below) tracks live nodeRuns without touching each node component.

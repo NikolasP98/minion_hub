@@ -289,7 +289,7 @@
       title: 'AI',
       nodes: [
         { type: 'llm', label: 'LLM', desc: 'Direct model call', icon: Cpu, color: 'text-violet-400', bg: 'bg-violet-500/20', add: addLLMNode },
-        { type: 'agent', label: 'Agent', desc: 'Custom / personal / drone', icon: Bot, color: 'text-indigo-400', bg: 'bg-indigo-500/20', add: addAgentNode },
+        { type: 'agent', label: 'Agent', desc: 'Custom or personal agent', icon: Bot, color: 'text-indigo-400', bg: 'bg-indigo-500/20', add: addAgentNode },
         { type: 'toolAgent', label: 'Tool Agent', desc: 'LLM with tool calls', icon: Wrench, color: 'text-emerald-400', bg: 'bg-emerald-500/20', add: addToolAgent },
       ],
     },

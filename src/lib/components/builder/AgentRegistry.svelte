@@ -169,7 +169,7 @@
                         class="search-input"
                     />
                     {#if searchInput}
-                        <button type="button" class="search-clear" onclick={clearSearch}>
+                        <button type="button" class="search-clear" onclick={clearSearch} aria-label={m.builder_clear()}>
                             <X size={11} />
                         </button>
                     {/if}

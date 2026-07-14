@@ -191,7 +191,7 @@
 	}
 </script>
 
-<Modal bind:open size="lg" {onclose}>
+<Modal bind:open title={subject || m.email_unknownSender()} size="lg" {onclose}>
 	{#snippet header()}
 		<div class="hdr">
 			<h2 class="hdr-title" title={subject}>{subject}</h2>

@@ -476,6 +476,7 @@
 					type="button"
 					class="flex items-center justify-center w-6 h-6 rounded border border-border text-muted-foreground transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default hover:not-disabled:text-foreground hover:not-disabled:bg-border"
 					disabled={!canPrev}
+					aria-label={m.a11y_previous_page()}
 					onclick={() => table.previousPage()}
 				>
 					<ChevronLeft size={12} />
@@ -493,6 +494,7 @@
 					type="button"
 					class="flex items-center justify-center w-6 h-6 rounded border border-border text-muted-foreground transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default hover:not-disabled:text-foreground hover:not-disabled:bg-border"
 					disabled={!canNext}
+					aria-label={m.a11y_next_page()}
 					onclick={() => table.nextPage()}
 				>
 					<ChevronRight size={12} />

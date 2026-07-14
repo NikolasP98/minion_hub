@@ -1,5 +1,6 @@
 <script lang="ts">
     import { RefreshCw } from "lucide-svelte";
+    import * as m from '$lib/paraglide/messages';
 
     interface Props {
         onFlip: (e: MouseEvent) => void;
@@ -12,6 +13,7 @@
     <button
         type="button"
         class="role-desc-btn"
+        aria-label={m.a11y_view_details()}
         onclick={(e) => { e.stopPropagation(); onFlip(e); }}
     >
         <RefreshCw size={16} />

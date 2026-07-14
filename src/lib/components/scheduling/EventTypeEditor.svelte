@@ -185,17 +185,17 @@
 
 	<div class="flex items-center gap-4 mt-3">
 		<label class="t-caption flex items-center gap-2">
-			<Toggle bind:checked={f.public} size="sm" /> {m.sched_et_public()}
+			<Toggle bind:checked={f.public} size="sm" ariaLabel={m.sched_et_public()} /> {m.sched_et_public()}
 		</label>
 		<label class="t-caption flex items-center gap-2">
-			<Toggle bind:checked={f.requiresConfirmation} size="sm" /> {m.sched_et_requiresConfirmation()}
+			<Toggle bind:checked={f.requiresConfirmation} size="sm" ariaLabel={m.sched_et_requiresConfirmation()} /> {m.sched_et_requiresConfirmation()}
 		</label>
 	</div>
 
 	<!-- Per-service schedule -->
 	<div class="mt-3 pt-3 border-t border-[var(--hairline)]">
 		<label class="t-caption flex items-center gap-2">
-			<Toggle bind:checked={f.useCustomSchedule} size="sm" /> {m.sched_et_customSchedule()}
+			<Toggle bind:checked={f.useCustomSchedule} size="sm" ariaLabel={m.sched_et_customSchedule()} /> {m.sched_et_customSchedule()}
 		</label>
 		<p class="t-caption mt-1 opacity-70">{m.sched_et_customSchedule_help()}</p>
 		{#if f.useCustomSchedule}

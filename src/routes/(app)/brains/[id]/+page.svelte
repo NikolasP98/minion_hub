@@ -84,8 +84,9 @@
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-y-auto p-6">
-    <Tabs {tabs} bind:value={tab} class="mb-4" />
+    <Tabs id="brain-tabs" aria-label={m.a11y_tabs_brains()} {tabs} bind:value={tab} class="mb-4" />
 
+    <div id={`brain-tabs-panel-${tab}`} role="tabpanel" aria-labelledby={`brain-tabs-tab-${tab}`}>
     {#if tab === 'documents'}
       <BrainDocumentsTable brainId={brain.id} documents={data.documents} {canEdit} />
     {:else if tab === 'search'}
@@ -97,5 +98,6 @@
     {:else if tab === 'activity'}
       <DocTimeline items={data.timeline} onComment={postComment} />
     {/if}
+    </div>
   </div>
 </div>

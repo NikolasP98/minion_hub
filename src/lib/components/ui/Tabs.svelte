@@ -20,7 +20,9 @@
     /** Stretch tabs to fill the row. */
     fitted?: boolean;
     class?: string;
-    'aria-label'?: string;
+    /** Stable base ID used by the matching `tabpanel` elements. */
+    id: string;
+    'aria-label': string;
     onValueChange?: (value: string) => void;
   }
 
@@ -30,9 +32,12 @@
     size = 'md',
     fitted = false,
     class: cls = '',
+    id,
     'aria-label': ariaLabel,
     onValueChange,
   }: Props = $props();
+
+  const tabsetId = $derived(id);
 
   let tablistEl: HTMLDivElement | undefined = $state();
 
@@ -77,6 +82,8 @@
     <button
       type="button"
       role="tab"
+      id={`${tabsetId}-tab-${tab.value}`}
+      aria-controls={`${tabsetId}-panel-${tab.value}`}
       data-tab={tab.value}
       aria-selected={active}
       tabindex={active ? 0 : -1}
