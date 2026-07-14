@@ -105,11 +105,6 @@ const definitions = [
     description: 'Gateway debug session with events, paused step and timeout state.',
   },
   {
-    id: 'shell-detail',
-    params: { shellId: 'audit-shell' },
-    description: 'Shell RPC record covering online, archived and error states.',
-  },
-  {
     id: 'social-campaign-detail',
     params: { campaignId: 'audit-campaign' },
     description: 'Campaign with reporting rows, thumbnail and stable date range.',

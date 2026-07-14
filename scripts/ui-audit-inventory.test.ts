@@ -71,4 +71,19 @@ describe('UI audit route inventory', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('classifies the rendered legacy terminal shim by its unconditional server redirect', async () => {
+    const inventory = await buildRouteInventory();
+    const terminal = inventory.routes.find((route) => route.pattern === '/terminal');
+
+    expect(inventory.summary).toMatchObject({ endpoints: 146, screens: 136, redirects: 10 });
+    expect(terminal).toMatchObject({
+      kind: 'redirect',
+      source: 'src/routes/(app)/terminal/+page.svelte',
+      redirectContract: {
+        location: '/cloud/terminal?server=ui-audit-shell',
+        outcomes: ['preserves-query', 'legacy-route'],
+      },
+    });
+  });
 });

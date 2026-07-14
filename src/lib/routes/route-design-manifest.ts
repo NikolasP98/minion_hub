@@ -563,12 +563,6 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
       fixtureId: 'session-debug',
     },
   ),
-  screen('/shells', 'Shells', 'platform-reliability', 'collection'),
-  screen('/shells/[shellId]', 'Shell', 'platform-reliability', 'record-detail', {
-    fixtureId: 'shell-detail',
-    states: DESTRUCTIVE_DETAIL_STATES,
-  }),
-
   // Workforce (19)
   screen('/workforce', 'Workforce', 'workforce', 'dashboard'),
   screen('/workforce/activity', 'Workforce activity', 'workforce', 'collection'),
@@ -671,7 +665,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     states: ['complete'],
   }),
 
-  // Redirect/proxy compatibility routes (8; intentionally no capture/Figma metadata)
+  // Redirect/proxy compatibility routes (10; intentionally no capture/Figma metadata)
   redirectRoute('/ads', 'Legacy Ads', 'socials', '/socials', 301, {
     preserveQuery: true,
   }),
@@ -696,6 +690,19 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     preserveQuery: false,
     alternates: ['/pos/appointments', '/pos/catalog', '/pos/refills'],
   }),
+  redirectRoute('/shells', 'Legacy shells', 'platform-reliability', '/cloud', 307, {
+    preserveQuery: true,
+  }),
+  redirectRoute(
+    '/shells/[shellId]',
+    'Legacy shell detail',
+    'platform-reliability',
+    '/cloud?server=',
+    307,
+    {
+      preserveQuery: false,
+    },
+  ),
   redirectRoute('/tools', 'Tools', 'agents-builders', '/capabilities?tab=tools', 307, {
     preserveQuery: false,
   }),

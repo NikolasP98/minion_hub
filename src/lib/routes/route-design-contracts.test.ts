@@ -140,7 +140,6 @@ describe('route design contracts', () => {
     expect(destructive.sort()).toEqual([
       '/brains/[id]',
       '/crm/[contactId]',
-      '/shells/[shellId]',
       '/stock/entries/[id]',
     ]);
   });

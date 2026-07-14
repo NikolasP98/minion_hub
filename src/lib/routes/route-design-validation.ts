@@ -13,9 +13,9 @@ import {
 
 export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   endpoints: 146,
-  screens: 138,
-  redirects: 8,
-  fixtures: 28,
+  screens: 136,
+  redirects: 10,
+  fixtures: 27,
   viewports: ['compact', 'medium', 'wide'] as const,
 });
 

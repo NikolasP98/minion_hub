@@ -37,6 +37,18 @@ const REDIRECT_CONTRACTS = {
     locations: ['/pos/sell', '/pos/appointments', '/pos/catalog', '/pos/refills'],
     outcomes: ['first-permitted-child', 'permission-denied'],
   },
+  '/shells': {
+    probePath: '/shells?source=ui-audit',
+    statuses: [307],
+    location: '/cloud?source=ui-audit',
+    outcomes: ['preserves-query', 'legacy-route'],
+  },
+  '/shells/[shellId]': {
+    probePath: '/shells/ui-audit-shell',
+    statuses: [307],
+    location: '/cloud?server=ui-audit-shell',
+    outcomes: ['preserves-parameter', 'legacy-route'],
+  },
   '/tools': {
     probePath: '/tools',
     statuses: [307],
@@ -76,6 +88,12 @@ function routePath(relative) {
 
 function git(root, ...args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+}
+
+function isUnconditionalServerRedirect(source) {
+  const loadBody = source.match(/\bexport\s+const\s+load\b[\s\S]*?=>\s*\{([\s\S]*?)\n\};?/);
+  if (!loadBody) return false;
+  return /^\s*throw\s+redirect\s*\(/.test(loadBody[1]);
 }
 
 async function recordedBaselineRef(root) {
@@ -141,13 +159,21 @@ export async function buildRouteInventory({
         .filter((entry) => /^\+page\.[jt]s$/.test(entry))
         .map((entry) => readSource(path.posix.join(directory, entry))),
     );
+    const serverLoadSource = await Promise.all(
+      entries
+        .filter((entry) => /^\+page\.server\.[jt]s$/.test(entry))
+        .map((entry) => readSource(path.posix.join(directory, entry))),
+    );
     const pattern = routePath(relative);
     // A page with renderable markup remains a screen even if its server load
     // conditionally redirects unauthenticated or unconfigured users. Redirect
-    // endpoints are server-only routes plus the legacy shim pages whose
-    // universal load always redirects.
+    // endpoints are server-only routes plus legacy shim pages whose universal
+    // load, or first server-load statement, always redirects. Conditional
+    // server redirects do not hide otherwise renderable page markup.
     const kind =
-      !pageFile || universalLoadSource.some((entry) => /\bredirect\s*\(/.test(entry))
+      !pageFile ||
+      universalLoadSource.some((entry) => /\bredirect\s*\(/.test(entry)) ||
+      serverLoadSource.some(isUnconditionalServerRedirect)
         ? 'redirect'
         : 'screen';
     routes.push({

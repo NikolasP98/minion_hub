@@ -463,7 +463,6 @@ function dynamicFixtures() {
     one('plugin-detail', '/plugins/[id]', 'id', 'memory-core'),
     one('sales-order-detail', '/sales/[id]', 'id', UUID.order),
     one('session-debug', '/sessions/[sessionKey]/debug', 'sessionKey', 'ui-audit-session'),
-    one('shell-detail', '/shells/[shellId]', 'shellId', 'ui-audit-shell'),
     one(
       'social-campaign-detail',
       '/socials/campaigns/[campaignId]',
