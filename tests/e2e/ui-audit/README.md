@@ -34,5 +34,8 @@ names for controls/dialogs, form-button types, invalid local links, visible rout
 titles, and sub-24px interactive targets. The capture fails immediately for the
 critical deterministic invariants: unexplained document overflow, duplicate IDs,
 unnamed controls/dialogs, implicit form buttons, or empty/hash-only local links.
+Console errors, uncaught page errors, and same-origin GET responses at 400 or
+higher also fail the route; an expected 403/404 document remains a captured
+permission/not-found state, but nested API/resource failures do not pass.
 Small target findings remain recorded for route review because authored canvas,
 terminal, and dense-data controls need context rather than a global exception.

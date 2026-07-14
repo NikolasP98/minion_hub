@@ -86,13 +86,17 @@ test('authenticated route inventory produces a machine-readable audit run', asyn
     const onResponse = (response: {
       url(): string;
       status(): number;
-      request(): { method(): string };
+      request(): { method(): string; resourceType(): string };
     }) => {
       const url = new URL(response.url());
+      const expectedStateDocument =
+        response.request().resourceType() === 'document' &&
+        (response.status() === 403 || response.status() === 404);
       if (
         url.origin === new URL(page.url()).origin &&
         response.request().method() === 'GET' &&
-        response.status() >= 400
+        response.status() >= 400 &&
+        !expectedStateDocument
       ) {
         failedSameOriginGets.push(`${response.status()} ${url.pathname}${url.search}`);
       }
@@ -126,6 +130,9 @@ test('authenticated route inventory produces a machine-readable audit run', asyn
     page.off('requestfailed', onRequestFailed);
     page.off('response', onResponse);
     assertCriticalRuntimeDiagnostics(diagnostics, route.id);
+    expect(consoleErrors, `${route.id} emitted console errors`).toEqual([]);
+    expect(pageErrors, `${route.id} emitted uncaught page errors`).toEqual([]);
+    expect(failedSameOriginGets, `${route.id} loaded failing same-origin GETs`).toEqual([]);
   }
 
   for (const route of inventory.routes.filter((candidate) => candidate.kind === 'redirect')) {
