@@ -62,7 +62,7 @@ export function buildBuilderPrompt(args: {
     '',
     'CONTRACT (follow exactly):',
     "- Reuse the reference's <script> bridge client VERBATIM — the plugin:ready / host:hello / hub.artifact.context.get handshake and origin checks MUST be byte-identical. Only change the render() body + the markup/styles.",
-    '- Theme with the CSS custom properties applied from host:hello (use var(--color-…) etc.); no hard-coded hex except as var() fallbacks.',
+    '- Theme with the semantic --color-* custom properties applied from host:hello; no hard-coded hex except as var() fallbacks.',
     '- Get data by calling the bridge for "hub.artifact.context.get". The context shape is:',
     '  { agentName, agentRole, agentDescription, status, trigger, vars: { <key>: value } }',
     '  where vars holds the agent variables listed below (bind to vars["the.key"]).',

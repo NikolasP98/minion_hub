@@ -254,7 +254,7 @@
         <EmptyState title={m.sched_team_no_members()} />
       {:else}
         {#each roster as { member, resource } (member.id)}
-          {@const color = resource?.color ?? 'var(--accent)'}
+          {@const color = resource?.color ?? 'var(--color-accent)'}
           <Card padding="md">
             <div class="flex items-center gap-3">
               {#if resource}
@@ -357,7 +357,7 @@
       <section class="flex flex-col gap-2">
         <div class="t-label">{m.sched_team_other_resources()}</div>
         {#each otherResources as r (r.id)}
-          {@const color = r.color ?? 'var(--accent)'}
+          {@const color = r.color ?? 'var(--color-accent)'}
           <Card padding="md">
             <div class="flex items-center gap-3">
               <Button

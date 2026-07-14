@@ -127,7 +127,7 @@
     width: 6px;
     height: 6px;
     border-radius: var(--radius-full, 999px);
-    background: var(--muted-foreground);
+    background: var(--color-muted-foreground);
     opacity: 0.3;
     transition: all var(--duration-fast) var(--ease-standard);
   }
@@ -138,11 +138,11 @@
   .scrollspy-dot.active {
     width: 8px;
     height: 8px;
-    background: var(--accent);
+    background: var(--color-accent);
     opacity: 1;
   }
   .scrollspy-dot.dirty:not(.active) {
-    box-shadow: var(--shadow-focus, 0 0 0 2px var(--accent));
+    box-shadow: var(--shadow-focus, 0 0 0 2px var(--color-accent));
     opacity: 0.5;
   }
 
@@ -153,9 +153,9 @@
     transform: translateY(-50%);
     white-space: nowrap;
     font-size: var(--font-size-caption, 10px);
-    color: var(--foreground);
-    background: var(--bg2);
-    border: 1px solid var(--border);
+    color: var(--color-foreground);
+    background: var(--color-bg2);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-sm, 4px);
     padding: var(--space-0-5, 2px) var(--space-2, 8px);
     pointer-events: none;

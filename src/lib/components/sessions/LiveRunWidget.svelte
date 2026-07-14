@@ -58,7 +58,7 @@
 </script>
 
 {#if hasActiveRuns}
-    <div class="fixed bottom-0 left-0 right-0 z-[var(--layer-overlay,50)] border-t border-border bg-bg2/95 backdrop-blur-md transition-all duration-[var(--duration-fast)]">
+    <div class="fixed bottom-0 left-0 right-0 z-[var(--layer-modal)] border-t border-border bg-bg2/95 backdrop-blur-md transition-all duration-[var(--duration-fast)]">
         <!-- Header bar (always visible) -->
         <Button
             variant="ghost"

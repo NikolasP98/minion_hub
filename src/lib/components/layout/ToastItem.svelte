@@ -33,7 +33,7 @@
   {...api.getRootProps() as Record<string, unknown>}
   class="toast-item"
   data-type={api.type}
-  style:--accent={accentColor}
+  style:--toast-accent={accentColor}
 >
   <div {...api.getGhostBeforeProps() as Record<string, unknown>}></div>
   <div class="toast-accent"></div>
@@ -98,21 +98,21 @@
   /* Severity emphasis — error/warning read louder than info/success */
   .toast-item[data-type='error'],
   .toast-item[data-type='warning'] {
-    border-color: color-mix(in srgb, var(--accent) 38%, var(--elevation-4-border));
-    background: color-mix(in srgb, var(--accent) 8%, var(--elevation-4-bg));
+    border-color: color-mix(in srgb, var(--toast-accent) 38%, var(--elevation-4-border));
+    background: color-mix(in srgb, var(--toast-accent) 8%, var(--elevation-4-bg));
   }
 
   .toast-accent {
     width: 3px;
     flex-shrink: 0;
-    background: var(--accent);
+    background: var(--toast-accent);
   }
 
   .toast-icon {
     display: flex;
     align-items: center;
     padding: 10px 0 10px 10px;
-    color: var(--accent);
+    color: var(--toast-accent);
     flex-shrink: 0;
   }
 

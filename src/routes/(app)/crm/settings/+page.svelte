@@ -794,7 +794,7 @@
   :global(.crm-settings-surface .backdrop) {
     position: fixed;
     inset: 0;
-    z-index: var(--layer-overlay, 40);
+    z-index: var(--layer-modal);
     background: transparent;
   }
   .menu,

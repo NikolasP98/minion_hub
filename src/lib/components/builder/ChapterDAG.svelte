@@ -132,7 +132,7 @@
             style: e.label === 'Yes'
                 ? 'stroke: var(--color-success, #22c55e); stroke-width: 2;'
                 : e.label === 'No'
-                ? 'stroke: var(--color-error, #ef4444); stroke-width: 2;'
+                ? 'stroke: var(--color-danger-fg); stroke-width: 2;'
                 : 'stroke: var(--color-accent); stroke-width: 2;',
         })),
     );
@@ -508,8 +508,8 @@
     }
     .staged-accept { color: var(--color-success, #22c55e); }
     .staged-accept:hover { background: color-mix(in srgb, var(--color-success, #22c55e) 15%, transparent); }
-    .staged-reject { color: var(--color-error, #ef4444); }
-    .staged-reject:hover { background: color-mix(in srgb, var(--color-error, #ef4444) 15%, transparent); }
+    .staged-reject { color: var(--color-danger-fg); }
+    .staged-reject:hover { background: var(--color-danger-surface); }
 
     /* Validation indicator on nodes */
     .chapter-dag-container :global(.svelte-flow__node.validation-warning) {
@@ -518,8 +518,8 @@
     }
 
     .chapter-dag-container :global(.svelte-flow__node.validation-error) {
-        border-color: var(--color-error, #ef4444);
-        box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-error, #ef4444) 30%, transparent);
+        border-color: var(--color-danger-border);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-danger-fg) 30%, transparent);
     }
 
     /* ── Context Menu ─────────────────────────────────────────────────── */
@@ -558,11 +558,11 @@
     }
 
     .ctx-item.danger {
-        color: var(--color-error, #ef4444);
+        color: var(--color-danger-fg);
     }
 
     .ctx-item.danger:hover {
-        background: color-mix(in srgb, var(--color-error, #ef4444) 12%, transparent);
+        background: var(--color-danger-surface);
     }
 
     /* Edge labels */

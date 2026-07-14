@@ -117,7 +117,7 @@
           {#each data.resources as r (r.id)}
             <div class="col">
               <div class="col-head" title={r.name}>
-                <span class="dot" style="background:{r.color ?? 'var(--accent)'}"></span>
+                <span class="dot" style="background:{r.color ?? 'var(--color-accent)'}"></span>
                 <span class="truncate">{r.name}</span>
               </div>
               <div class="track" style="height:{HOURS.length * PX_PER_HOUR}px">
@@ -129,7 +129,7 @@
                   <div
                     class="evt {b.status}"
                     style="top:{pos.top}px;height:{pos.height}px;border-color:{r.color ??
-                      'var(--accent)'}"
+                      'var(--color-accent)'}"
                     title="{hhmm(b.start)} {eventTitle(b.eventTypeId)} · {b.attendeeName ?? ''}"
                   >
                     <div class="evt-t">{hhmm(b.start)}</div>
@@ -203,9 +203,9 @@
     left: 3px;
     right: 3px;
     background: var(--color-card);
-    border-left: 3px solid var(--accent);
+    border-left: 3px solid var(--color-accent);
     border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-raised);
+    box-shadow: var(--shadow-elevation-2);
     padding: var(--space-0-5, 2px) var(--space-2, 8px);
     overflow: hidden;
     font-size: var(--font-size-caption, 12px);
@@ -257,6 +257,6 @@
   }
   .nav-btn:hover {
     background: var(--hairline);
-    border-color: var(--accent);
+    border-color: var(--color-accent);
   }
 </style>

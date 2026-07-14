@@ -379,7 +379,7 @@
     padding: 6px 10px;
     border-radius: var(--radius-md, 6px);
     border: 1px solid var(--color-border);
-    background: var(--color-background);
+    background: var(--color-canvas);
     color: var(--color-foreground);
     font-size: 13px;
   }

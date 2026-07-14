@@ -118,7 +118,7 @@
     }
 
     .console-line.stderr {
-        color: var(--color-error, #ef4444);
+        color: var(--color-danger-fg);
     }
 
     .console-line.system {

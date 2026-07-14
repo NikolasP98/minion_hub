@@ -65,7 +65,7 @@
 		{ tag: [t.typeName, t.className, t.tagName], color: 'var(--color-accent)' },
 		{ tag: [t.operator, t.punctuation, t.separator], color: 'var(--color-muted)' },
 		{ tag: [t.variableName, t.propertyName, t.name], color: 'var(--color-foreground)' },
-		{ tag: t.invalid, color: 'var(--color-error, #ef4444)' },
+		{ tag: t.invalid, color: 'var(--color-danger-fg)' },
 	]);
 
 	const theme = EditorView.theme({

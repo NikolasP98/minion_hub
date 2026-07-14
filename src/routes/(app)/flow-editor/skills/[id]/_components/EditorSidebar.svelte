@@ -232,7 +232,7 @@
     }
     .ai-assist-btn:hover:not(:disabled) { filter: brightness(1.15); }
     .ai-assist-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .ai-assist-error { font-size: 0.6875rem; color: var(--color-error, #ef4444); }
+    .ai-assist-error { font-size: 0.6875rem; color: var(--color-danger-fg); }
 
     /* Tool Pool */
     .tool-pool-section {

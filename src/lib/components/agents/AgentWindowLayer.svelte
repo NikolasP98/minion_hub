@@ -79,7 +79,7 @@
           <div class="relative min-h-0 flex-1">
             <MasterFlowCanvas {flow} />
             {#if showExports[w.id] && specs.length > 0}
-              <div class="absolute right-0 top-0 z-10 h-full overflow-y-auto border-l border-white/10 bg-[var(--color-surface,#111)]">
+              <div class="absolute right-0 top-0 z-10 h-full overflow-y-auto border-l border-white/10 bg-[var(--color-surface-1,#111)]">
                 <FlowExports
                   flowId={w.flowId}
                   {specs}

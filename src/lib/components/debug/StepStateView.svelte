@@ -35,10 +35,10 @@
 
 <style>
   .state-view {
-    border: 1px solid var(--bd, #2a2a2a);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 1rem;
-    background: var(--bg-card, #141414);
+    background: var(--color-surface-2);
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -49,7 +49,7 @@
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--fg-muted, #888);
+    color: var(--color-text-tertiary);
   }
 
   .meta {
@@ -57,30 +57,30 @@
     flex-direction: column;
     gap: 0.25rem;
     font-size: 0.85rem;
-    color: var(--fg-muted, #aaa);
+    color: var(--color-text-tertiary);
   }
 
   code {
     font-family: var(--font-mono, monospace);
     font-size: 0.8rem;
-    color: var(--fg, #ddd);
+    color: var(--color-text-primary);
   }
 
   pre {
     margin: 0;
     padding: 0.75rem;
-    background: var(--bg-deep, #0a0a0a);
+    background: var(--color-canvas);
     border-radius: 4px;
     font-family: var(--font-mono, monospace);
     font-size: 0.8rem;
-    color: var(--fg, #ddd);
+    color: var(--color-text-primary);
     overflow-x: auto;
     max-height: 400px;
     overflow-y: auto;
   }
 
   .empty {
-    color: var(--fg-faint, #666);
+    color: var(--color-text-disabled);
     font-style: italic;
     margin: 0;
   }

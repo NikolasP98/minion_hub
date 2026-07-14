@@ -135,6 +135,8 @@
     "format:check": "prettier --check .",
     "lint:design": "node scripts/design-lint.mjs",
     "lint:design:ci": "node scripts/design-lint.mjs --ci",
+    "lint:tokens": "node scripts/token-integrity.mjs",
+    "lint:tokens:ci": "node scripts/token-integrity.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

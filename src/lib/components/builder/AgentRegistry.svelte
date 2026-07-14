@@ -447,9 +447,9 @@
         padding: 0.75rem 1rem;
         border-radius: 0.5rem;
         font-size: 0.75rem;
-        color: var(--color-error, #ef4444);
-        background: color-mix(in srgb, var(--color-error, #ef4444) 8%, transparent);
-        border: 1px solid color-mix(in srgb, var(--color-error, #ef4444) 25%, transparent);
+        color: var(--color-danger-fg);
+        background: var(--color-danger-surface);
+        border: 1px solid var(--color-danger-border);
     }
 
     .empty-state {

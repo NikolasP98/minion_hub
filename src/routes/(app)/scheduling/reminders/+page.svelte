@@ -407,7 +407,7 @@
     border: 1px dashed var(--hairline);
     border-radius: var(--radius-lg);
     padding: var(--space-2, 8px) var(--space-3, 12px);
-    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 6%, transparent);
   }
   .preview-text {
     font-size: var(--font-size-body, 14px);

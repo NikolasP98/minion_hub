@@ -77,7 +77,7 @@
       {#if flow}
         <section
           class={flowFullscreen
-            ? 'surface-4 fixed inset-0 z-[var(--layer-overlay,50)] flex flex-col'
+            ? 'surface-4 fixed inset-0 z-[var(--layer-modal)] flex flex-col'
             : 'surface-2 flex flex-col rounded-xl'}
         >
           <div class="flex items-center justify-between border-b border-border px-4 py-2.5">

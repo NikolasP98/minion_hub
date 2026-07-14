@@ -448,7 +448,7 @@
 
   .agent-files :global(.carta-theme__dark .carta-icon:hover),
   .agent-files :global(.carta-theme__dark .carta-icon-full:hover) {
-    background: var(--color-bg1);
+    background: var(--color-surface-1);
   }
 
   .agent-files :global(.carta-theme__dark .carta-wrapper) {
@@ -478,7 +478,7 @@
   .agent-files :global(.carta-theme__dark .carta-input) {
     caret-color: var(--color-foreground);
     color: var(--color-foreground);
-    background: var(--color-bg1);
+    background: var(--color-surface-1);
   }
 
   .agent-files :global(.carta-theme__dark .carta-input textarea) {
@@ -500,7 +500,7 @@
   }
 
   .agent-files :global(.carta-theme__dark .carta-renderer) {
-    background: var(--color-bg1);
+    background: var(--color-surface-1);
     color: var(--color-foreground);
   }
 

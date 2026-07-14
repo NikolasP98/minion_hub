@@ -233,8 +233,8 @@
 		background: var(--color-card);
 	}
 	.chip-on {
-		background: var(--accent);
+		background: var(--color-accent);
 		color: var(--color-accent-foreground, #fff);
-		border-color: var(--accent);
+		border-color: var(--color-accent);
 	}
 </style>

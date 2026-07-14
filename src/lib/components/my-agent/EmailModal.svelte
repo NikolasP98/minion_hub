@@ -573,7 +573,7 @@
 		padding: 10px 12px;
 		border-radius: var(--radius-md, 6px);
 		border: 1px solid var(--color-border);
-		background: var(--color-background, transparent);
+		background: var(--color-canvas, transparent);
 		color: var(--color-foreground);
 	}
 	.draft:focus {

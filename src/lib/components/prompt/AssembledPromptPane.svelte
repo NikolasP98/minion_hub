@@ -93,7 +93,7 @@
           data-pulse={isSelected ? pulseTick : 0}
           class={`scroll-mt-4 rounded transition-all duration-200 border ${
             isSelected
-              ? "border-accent/60 bg-accent/5 shadow-[0_0_0_1px_rgb(var(--accent-rgb,99_102_241)/0.25)] highlight-pulse"
+              ? "border-accent/60 bg-accent/5 shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-accent)_25%,transparent)] highlight-pulse"
               : "border-transparent"
           }`}
         >
@@ -126,7 +126,7 @@
     animation: pulse-fade 1.4s ease-out;
   }
   @keyframes pulse-fade {
-    0% { background-color: rgb(var(--accent-rgb, 99 102 241) / 0.22); }
-    100% { background-color: rgb(var(--accent-rgb, 99 102 241) / 0.05); }
+    0% { background-color: color-mix(in srgb, var(--color-accent) 22%, transparent); }
+    100% { background-color: color-mix(in srgb, var(--color-accent) 5%, transparent); }
   }
 </style>

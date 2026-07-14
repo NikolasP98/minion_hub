@@ -807,7 +807,7 @@
         gap: 0.25rem;
         min-height: 2rem;
         padding: 0.35rem 0.55rem;
-        border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+        border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
     }
     .composer-modes button {
         display: inline-flex;
@@ -816,24 +816,24 @@
         border: 1px solid transparent;
         border-radius: 0.35rem;
         padding: 0.25rem 0.4rem;
-        color: var(--muted-foreground);
+        color: var(--color-muted-foreground);
         font-size: 0.58rem;
         font-weight: 700;
         letter-spacing: 0.06em;
         text-transform: uppercase;
     }
     .composer-modes button:hover,
-    .composer-modes button:focus-visible { color: var(--foreground); outline: none; }
+    .composer-modes button:focus-visible { color: var(--color-foreground); outline: none; }
     .composer-modes button.active {
-        border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-        color: var(--accent);
-        background: color-mix(in srgb, var(--accent) 8%, transparent);
+        border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
+        color: var(--color-accent);
+        background: color-mix(in srgb, var(--color-accent) 8%, transparent);
     }
     .composer-modes span {
         min-width: 0;
         flex: 1;
         overflow: hidden;
-        color: var(--muted-foreground);
+        color: var(--color-muted-foreground);
         font-size: 0.52rem;
         text-align: right;
         text-overflow: ellipsis;
@@ -845,14 +845,14 @@
         width: 3rem;
         height: 3rem;
         margin-bottom: 0.65rem;
-        border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+        border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
         border-radius: 0.65rem;
-        color: var(--accent);
-        background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, transparent) 0 5px, transparent 5px 10px);
-        box-shadow: 0 0 1.5rem color-mix(in srgb, var(--accent) 10%, transparent);
+        color: var(--color-accent);
+        background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 9%, transparent) 0 5px, transparent 5px 10px);
+        box-shadow: 0 0 1.5rem color-mix(in srgb, var(--color-accent) 10%, transparent);
     }
-    .factory-welcome-status { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--muted-foreground); font-family: ui-monospace, monospace; font-size: 0.52rem; letter-spacing: 0.12em; text-transform: uppercase; }
+    .factory-welcome-status { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--color-muted-foreground); font-family: ui-monospace, monospace; font-size: 0.52rem; letter-spacing: 0.12em; text-transform: uppercase; }
     .factory-welcome-status i { width: 0.35rem; height: 0.35rem; border-radius: 999px; background: #22c55e; box-shadow: 0 0 0.4rem #22c55e; }
-    .factory-welcome h3 { margin-top: 0.45rem; color: var(--foreground); font-size: 0.82rem; font-weight: 700; }
-    .factory-welcome p { margin-top: 0.3rem; max-width: 17rem; color: var(--muted-foreground); font-size: 0.65rem; line-height: 1.5; }
+    .factory-welcome h3 { margin-top: 0.45rem; color: var(--color-foreground); font-size: 0.82rem; font-weight: 700; }
+    .factory-welcome p { margin-top: 0.3rem; max-width: 17rem; color: var(--color-muted-foreground); font-size: 0.65rem; line-height: 1.5; }
 </style>

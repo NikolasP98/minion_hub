@@ -45,7 +45,7 @@
     function statusColor(status: DryRunChapterResult['status']) {
         switch (status) {
             case 'done': return 'var(--color-success, #22c55e)';
-            case 'error': return 'var(--color-error, #ef4444)';
+            case 'error': return 'var(--color-danger-fg)';
             case 'running': return 'var(--color-accent)';
             default: return 'var(--color-muted)';
         }
@@ -423,8 +423,8 @@
 
     .result-error {
         font-size: 12px;
-        color: var(--color-error, #ef4444);
-        background: color-mix(in srgb, var(--color-error, #ef4444) 8%, transparent);
+        color: var(--color-danger-fg);
+        background: var(--color-danger-surface);
         border-radius: 6px;
         padding: 8px 10px;
     }
@@ -467,7 +467,7 @@
     }
     .overall-score.good { color: var(--color-success, #22c55e); }
     .overall-score.warn { color: var(--color-warning, #f59e0b); }
-    .overall-score.bad { color: var(--color-error, #ef4444); }
+    .overall-score.bad { color: var(--color-danger-fg); }
 
     .dimensions { padding: 4px 12px; }
 
@@ -484,7 +484,7 @@
     .dim-verdict { display: flex; }
     .dim-verdict.pass { color: var(--color-success, #22c55e); }
     .dim-verdict.warn { color: var(--color-warning, #f59e0b); }
-    .dim-verdict.fail { color: var(--color-error, #ef4444); }
+    .dim-verdict.fail { color: var(--color-danger-fg); }
 
     .dim-name { flex: 1; font-weight: 500; color: var(--color-foreground); }
     .dim-score {

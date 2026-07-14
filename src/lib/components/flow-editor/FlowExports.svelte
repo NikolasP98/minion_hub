@@ -90,13 +90,13 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--color-text-muted, rgba(255 255 255 / 0.4));
+    color: var(--color-text-tertiary, rgba(255 255 255 / 0.4));
     margin: 0 0 0.25rem;
   }
 
   .flow-exports__empty {
     font-size: 12px;
-    color: var(--color-text-muted, rgba(255 255 255 / 0.35));
+    color: var(--color-text-tertiary, rgba(255 255 255 / 0.35));
     margin: 0;
   }
 
@@ -118,7 +118,7 @@
 
   .flow-exports__var-label {
     font-size: 12px;
-    color: var(--color-text, rgba(255 255 255 / 0.85));
+    color: var(--color-text-primary, rgba(255 255 255 / 0.85));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -127,14 +127,14 @@
   .flow-exports__var-key {
     font-size: 10px;
     font-family: var(--font-mono, monospace);
-    color: var(--color-text-muted, rgba(255 255 255 / 0.4));
+    color: var(--color-text-tertiary, rgba(255 255 255 / 0.4));
   }
 
   .flow-exports__type-chip {
     font-size: 9px;
     font-family: var(--font-mono, monospace);
     background: var(--color-surface-2, rgba(255 255 255 / 0.08));
-    color: var(--color-accent, hsl(var(--accent)));
+    color: var(--color-accent);
     border-radius: 3px;
     padding: 1px 4px;
     white-space: nowrap;
@@ -155,7 +155,7 @@
   }
 
   .flow-exports__toggle--on {
-    background: var(--color-accent, hsl(var(--accent)));
+    background: var(--color-accent);
   }
 
   .flow-exports__toggle:disabled {

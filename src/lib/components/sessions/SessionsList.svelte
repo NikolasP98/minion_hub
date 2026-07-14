@@ -180,7 +180,7 @@
                   <span class="text-xs font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{getDisplayName(s)}</span>
                   <span
                     class="shrink-0 w-2 h-2 rounded-full
-                      {color === 'green' ? 'bg-success shadow-[var(--shadow-glow-success,var(--shadow-sm))]' : ''}
+                      {color === 'green' ? 'bg-success shadow-[var(--shadow-status-glow)]' : ''}
                       {color === 'amber' ? 'bg-warning' : ''}
                       {color === 'grey'  ? 'bg-muted' : ''}"
                   ></span>

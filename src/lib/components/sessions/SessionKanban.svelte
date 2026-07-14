@@ -100,7 +100,7 @@
       <!-- Mini progress bar -->
       <div class="flex-1 h-[3px] bg-border rounded-full overflow-hidden mx-1">
         <div
-          class="h-full bg-status-running rounded-full transition-[width] duration-[var(--duration-standard)]"
+          class="h-full bg-status-running rounded-full transition-[width] duration-[var(--duration-normal)]"
           style:width="{pct}%"
         ></div>
       </div>

@@ -146,9 +146,9 @@
     .batch-btn.accept { color: white; background: var(--color-success, #22c55e); }
     .batch-btn.accept:hover { filter: brightness(1.1); }
     .batch-btn.reject {
-        color: var(--color-error, #ef4444);
-        background: color-mix(in srgb, var(--color-error, #ef4444) 10%, transparent);
-        border: 1px solid color-mix(in srgb, var(--color-error, #ef4444) 25%, transparent);
+        color: var(--color-danger-fg);
+        background: var(--color-danger-surface);
+        border: 1px solid var(--color-danger-border);
     }
-    .batch-btn.reject:hover { background: color-mix(in srgb, var(--color-error, #ef4444) 18%, transparent); }
+    .batch-btn.reject:hover { background: var(--color-danger-surface); }
 </style>

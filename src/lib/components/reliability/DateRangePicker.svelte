@@ -126,13 +126,13 @@
 		<!-- Backdrop -->
 		<Button variant="ghost" size="icon"
 			type="button"
-			class="!fixed !inset-0 !z-[var(--layer-modal-backdrop,40)] !h-auto !w-auto !rounded-none"
+			class="!fixed !inset-0 !z-[var(--layer-modal)] !h-auto !w-auto !rounded-none"
 			onclick={() => (open = false)}
 			aria-label={m.dateRange_closePicker()}
 		></Button>
 
 		<!-- Dropdown panel -->
-		<div id="mobile-date-range-panel" class="absolute right-0 top-full mt-1 z-[var(--layer-overlay,50)] bg-card border border-border rounded-lg shadow-lg p-3 min-w-[220px]">
+		<div id="mobile-date-range-panel" class="absolute right-0 top-full mt-1 z-[var(--layer-modal)] bg-card border border-border rounded-lg shadow-lg p-3 min-w-[220px]">
 			<div class="flex flex-row items-center gap-1.5 mb-3">
 				{#each presets as preset (preset.label)}
 					<Button

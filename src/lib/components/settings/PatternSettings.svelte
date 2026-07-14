@@ -70,7 +70,7 @@
             </div>
             {#each opApi.value as _, index}
               <div {...opApi.getThumbProps({ index })} class="absolute w-5 h-5 -translate-x-1/2 -translate-y-1/2 top-1/2">
-                <div class="w-5 h-5 rounded-full bg-bg border-2 border-accent shadow-[var(--shadow-glow-accent,var(--shadow-md))] transition-shadow group-hover:shadow-[var(--shadow-glow-accent-strong,var(--shadow-lg))] flex items-center justify-center">
+                <div class="w-5 h-5 rounded-full bg-bg border-2 border-accent shadow-[var(--shadow-focus)] transition-shadow group-hover:shadow-[var(--shadow-elevation-3)] flex items-center justify-center">
                   <div class="w-1.5 h-1.5 rounded-full bg-accent"></div>
                 </div>
                 <input {...opApi.getHiddenInputProps({ index })} />
@@ -99,7 +99,7 @@
             </div>
             {#each szApi.value as _, index}
               <div {...szApi.getThumbProps({ index })} class="absolute w-5 h-5 -translate-x-1/2 -translate-y-1/2 top-1/2">
-                <div class="w-5 h-5 rounded-full bg-bg border-2 border-accent shadow-[var(--shadow-glow-accent,var(--shadow-md))] transition-shadow group-hover:shadow-[var(--shadow-glow-accent-strong,var(--shadow-lg))] flex items-center justify-center">
+                <div class="w-5 h-5 rounded-full bg-bg border-2 border-accent shadow-[var(--shadow-focus)] transition-shadow group-hover:shadow-[var(--shadow-elevation-3)] flex items-center justify-center">
                   <div class="w-1.5 h-1.5 rounded-full bg-accent"></div>
                 </div>
                 <input {...szApi.getHiddenInputProps({ index })} />

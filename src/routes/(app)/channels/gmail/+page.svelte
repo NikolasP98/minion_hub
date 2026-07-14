@@ -324,8 +324,8 @@
   .ledger-empty {
     font-size: var(--font-size-body, 0.8125rem);
     color: var(--color-muted-foreground, var(--color-muted));
-    margin-top: var(--space-5, 1.25rem);
-    padding: var(--space-5, 1.25rem);
+    margin-top: var(--space-card);
+    padding: var(--space-card);
     text-align: center;
     border: 1px dashed var(--color-border-default);
     border-radius: var(--radius-lg);

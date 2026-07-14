@@ -131,7 +131,7 @@
 	.spacer { flex: 1; }
 	.muted { opacity: 0.7; }
 	.small { font-size: 0.8rem; margin-top: 0.3rem; }
-	.err { color: var(--color-danger, #ef4444); font-size: 0.82rem; }
+	.err { color: var(--color-danger-fg); font-size: 0.82rem; }
 	.hint { font-size: 0.78rem; opacity: 0.65; margin: 0.5rem 0 0; }
 	@media (max-width: 767.98px) {
 		.grid { grid-template-columns: minmax(0, 1fr); }

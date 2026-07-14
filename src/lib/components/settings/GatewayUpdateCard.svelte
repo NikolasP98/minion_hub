@@ -471,7 +471,7 @@
                       aria-label={label}
                     >
                       <div
-                        class="h-full rounded-full transition-[width] duration-[var(--duration-standard)] ease-out {pct >=
+                        class="h-full rounded-full transition-[width] duration-[var(--duration-normal)] ease-out {pct >=
                         100
                           ? 'bg-success'
                           : 'bg-accent'}"

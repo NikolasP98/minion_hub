@@ -44,6 +44,6 @@
     .confirm-btn { font-family: inherit; font-size: 0.75rem; font-weight: 600; padding: 0.375rem 0.875rem; border-radius: 0.375rem; cursor: pointer; transition: all var(--duration-fast) var(--ease-standard); border: none; }
     .confirm-btn.cancel { background: var(--color-bg2); color: var(--color-muted); border: 1px solid var(--color-border); }
     .confirm-btn.cancel:hover { color: var(--color-foreground); border-color: var(--color-foreground); }
-    .confirm-btn.delete { background: var(--color-error, #ef4444); color: white; }
+    .confirm-btn.delete { background: var(--color-danger-fg); color: white; }
     .confirm-btn.delete:hover { filter: brightness(1.1); }
 </style>
