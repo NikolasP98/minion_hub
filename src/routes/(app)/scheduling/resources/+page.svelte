@@ -455,6 +455,6 @@
     border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
   }
   .avatar.room {
-    border-radius: var(--radius-md, 8px);
+    border-radius: var(--radius-md, var(--radius-md);
   }
 </style>

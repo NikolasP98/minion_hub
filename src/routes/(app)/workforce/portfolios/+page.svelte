@@ -86,20 +86,20 @@
 
 <style>
 	.card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); }
-	.creator { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-	.create-row { display: flex; gap: 0.5rem; align-items: center; }
-	.in { font-size: 0.86rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.55rem; flex: 1; color: var(--color-foreground); height: 2rem; }
-	.in.ta { height: auto; padding: 0.45rem 0.55rem; resize: vertical; font-family: inherit; }
-	.btn { display: inline-flex; align-items: center; gap: 0.35rem; height: 2rem; padding: 0 0.7rem; border-radius: var(--radius-md); border: 1px solid var(--hairline); background: var(--color-accent); color: var(--color-on-accent); font-size: 0.84rem; cursor: pointer; }
+	.creator { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+	.create-row { display: flex; gap: var(--space-2); align-items: center; }
+	.in { font-size: var(--font-size-body); border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 var(--space-2); flex: 1; color: var(--color-foreground); height: 2rem; }
+	.in.ta { height: auto; padding: var(--space-2) var(--space-2); resize: vertical; font-family: inherit; }
+	.btn { display: inline-flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--hairline); background: var(--color-accent); color: var(--color-on-accent); font-size: var(--font-size-body); cursor: pointer; }
 	.btn:disabled { opacity: 0.5; cursor: default; }
-	.grid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 0.75rem; }
-	.pcard { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.85rem 1rem; text-decoration: none; color: var(--color-foreground); }
+	.grid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: var(--space-3); }
+	.pcard { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); text-decoration: none; color: var(--color-foreground); }
 	.pcard:hover { background: var(--color-bg3); }
-	.head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-	.name { display: flex; align-items: center; gap: 0.4rem; font-size: 0.92rem; font-weight: 600; min-width: 0; }
-	.status { font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--hairline); color: var(--color-muted-foreground); flex: 0 0 auto; }
-	.s-active { color: var(--color-success, #16a34a); }
-	.objective { font-size: 0.82rem; color: var(--color-muted-foreground); margin: 0; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-	.lead { display: inline-flex; align-items: center; gap: 0.35rem; }
-	.empty { padding: 1rem; }
+	.head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+	.name { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-page-title); font-weight: 600; min-width: 0; }
+	.status { font-size: var(--font-size-caption); padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-full); border: 1px solid var(--hairline); color: var(--color-muted-foreground); flex: 0 0 auto; }
+	.s-active { color: var(--color-success, var(--color-success-border)); }
+	.objective { font-size: var(--font-size-body); color: var(--color-muted-foreground); margin: 0; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.lead { display: inline-flex; align-items: center; gap: var(--space-2); }
+	.empty { padding: var(--space-4); }
 </style>

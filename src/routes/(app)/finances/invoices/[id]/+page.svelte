@@ -890,7 +890,7 @@
   .doc-foot {
     font-size: var(--font-size-caption, 12px);
     color: var(--color-muted-foreground);
-    padding: 0 0.25rem;
+    padding: 0 var(--space-1);
     margin-top: var(--space-2, 8px);
   }
 
@@ -960,7 +960,7 @@
   }
   .inp {
     height: 1.75rem;
-    padding: 0 0.5rem;
+    padding: 0 var(--space-2);
     font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-sm);
     background: var(--color-bg3);

@@ -172,7 +172,7 @@
     align-items: center;
     gap: var(--space-1, 4px);
     height: 1.6rem;
-    padding: 0 0.5rem;
+    padding: 0 var(--space-2);
     font-size: var(--font-size-caption, 12px);
     cursor: pointer;
     border-radius: var(--radius-full);
@@ -194,7 +194,7 @@
     color: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: var(--radius-sm, 6px);
+    border-radius: var(--radius-sm, var(--radius-md);
   }
   :global(.invoice-link-cell:hover) {
     color: var(--color-accent);

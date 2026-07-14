@@ -137,11 +137,11 @@
 	});
 
 	const STATUS_DOT: Record<string, string> = {
-		active: '#10b981',
-		running: '#3b82f6',
-		paused: '#f59e0b',
-		error: '#ef4444',
-		idle: '#6b7280',
+		active: 'var(--color-emerald)',
+		running: 'var(--color-accent)',
+		paused: 'var(--color-warning-fg)',
+		error: 'var(--color-danger-fg)',
+		idle: 'var(--color-text-tertiary)',
 	};
 	function statusLabel(status: string): string {
 		switch (status) {
@@ -220,9 +220,8 @@
 <style>
 	/* Graceful animation when nodes reposition (e.g. orientation flip). */
 	:global(.svelte-flow__node) {
-		transition:
-			transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-			box-shadow 0.15s ease,
-			border-color 0.15s ease;
+		transition: transform var(--duration-slow) var(--ease-standard),
+			box-shadow var(--duration-fast) var(--ease-standard),
+			border-color var(--duration-fast) var(--ease-standard);
 	}
 </style>

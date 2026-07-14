@@ -244,12 +244,12 @@
         justify-content: space-between;
         flex-wrap: wrap;
         min-height: 2.75rem;
-        padding: 0.25rem 0.75rem;
-        row-gap: 0.25rem;
+        padding: var(--space-1) var(--space-3);
+        row-gap: var(--space-1);
         background: var(--color-bg2);
         border-bottom: 1px solid var(--color-border);
         flex-shrink: 0;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
 
     /* Reserve the top-right notch so the right-side actions (Run / Publish /
@@ -263,14 +263,14 @@
     .toolbar-left {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         min-width: 0;
     }
 
     .toolbar-right {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         flex-shrink: 0;
     }
 
@@ -288,7 +288,7 @@
         justify-content: center;
         width: 2rem;
         height: 2rem;
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         color: var(--color-muted);
         transition: all var(--duration-fast) var(--ease-standard);
         flex-shrink: 0;
@@ -305,7 +305,7 @@
     .toolbar-identity {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         min-width: 0;
     }
 
@@ -315,13 +315,13 @@
     }
 
     .name-inline {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         font-weight: 600;
         color: var(--color-foreground);
         background: transparent;
         border: none;
         border-bottom: 1px solid transparent;
-        padding: 0.125rem 0;
+        padding: var(--space-0-5) 0;
         outline: none;
         font-family: inherit;
         min-width: 6rem;
@@ -338,10 +338,10 @@
     }
 
     .name-inline-ro {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         font-weight: 600;
         color: var(--color-foreground);
-        padding: 0.125rem 0;
+        padding: var(--space-0-5) 0;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -351,9 +351,9 @@
     .status-badge {
         display: inline-flex;
         align-items: center;
-        padding: 0.125rem 0.5rem;
-        border-radius: 9999px;
-        font-size: 0.625rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -376,9 +376,9 @@
     .lang-selector {
         display: flex;
         align-items: center;
-        gap: 0.125rem;
-        padding: 0.125rem;
-        border-radius: 0.375rem;
+        gap: var(--space-0-5);
+        padding: var(--space-0-5);
+        border-radius: var(--radius-md);
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
     }
@@ -386,9 +386,9 @@
     .lang-pill {
         display: flex;
         align-items: center;
-        padding: 0.1875rem 0.5rem;
-        border-radius: 0.25rem;
-        font-size: 0.6875rem;
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-sm);
+        font-size: var(--font-size-caption);
         font-weight: 500;
         color: var(--color-muted);
         background: transparent;
@@ -406,17 +406,17 @@
     .lang-pill.active {
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
+        box-shadow: var(--shadow-elevation-1);
     }
 
     /* ── Toolbar Buttons ─────────────────────────────────────────────── */
     .toolbar-btn {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.375rem 0.625rem;
-        border-radius: 0.375rem;
-        font-size: 0.75rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-2);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-caption);
         font-weight: 500;
         border: none;
         cursor: pointer;
@@ -461,12 +461,12 @@
     .save-indicator {
         display: flex;
         align-items: center;
-        gap: 0.3125rem;
-        font-size: 0.6875rem;
+        gap: var(--space-1);
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         white-space: nowrap;
-        padding: 0.25rem 0.5rem;
-        border-radius: 0.375rem;
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-md);
         user-select: none;
     }
 
@@ -476,12 +476,12 @@
     }
 
     :global(.dirty-dot) {
-        color: var(--color-warning, #f59e0b);
-        fill: var(--color-warning, #f59e0b);
+        color: var(--color-warning, var(--color-warning-fg));
+        fill: var(--color-warning, var(--color-warning-fg));
     }
 
     :global(.saved-check) {
-        color: var(--color-success, #22c55e);
+        color: var(--color-success, var(--color-success-fg));
     }
 
     @keyframes spin {
@@ -506,14 +506,14 @@
 
     /* ── Toolbar Source Label ──────────────────────────────────────── */
     .toolbar-source {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: var(--color-muted);
         background: var(--color-bg3);
-        padding: 0.1875rem 0.5rem;
-        border-radius: 0.25rem;
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-sm);
         border: 1px solid var(--color-border);
         font-family: var(--font-mono, monospace);
     }
@@ -522,18 +522,18 @@
     .perm-picker {
         display: flex;
         align-items: center;
-        gap: 0.25rem;
+        gap: var(--space-1);
     }
 
     .perm-select {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         font-weight: 500;
         text-transform: capitalize;
         color: var(--color-foreground);
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
-        border-radius: 0.25rem;
-        padding: 0.1875rem 0.375rem;
+        border-radius: var(--radius-sm);
+        padding: var(--space-1) var(--space-2);
         font-family: inherit;
         cursor: pointer;
     }

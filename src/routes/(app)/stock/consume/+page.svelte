@@ -241,22 +241,22 @@
 </div>
 
 <style>
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 1rem; }
-  .card-h { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); }
-  .fld { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--color-muted-foreground); }
-  .inp { min-height: 2rem; padding: 0.4rem 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
-  .lines { display: flex; flex-direction: column; gap: 0.75rem; }
-  .line { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; padding: 0.6rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); }
-  .line-main { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
+  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-4); }
+  .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); }
+  .fld { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-body); color: var(--color-muted-foreground); }
+  .inp { min-height: 2rem; padding: var(--space-2) var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
+  .lines { display: flex; flex-direction: column; gap: var(--space-3); }
+  .line { display: flex; gap: var(--space-4); align-items: flex-start; justify-content: space-between; padding: var(--space-2); border: 1px solid var(--hairline); border-radius: var(--radius-md); }
+  .line-main { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); }
   .line-id { display: flex; flex-direction: column; }
-  .line-name { font-size: 0.9rem; color: var(--color-foreground); }
-  .line-code { font-size: 0.72rem; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
-  .line-qty { display: flex; align-items: center; gap: 0.4rem; }
+  .line-name { font-size: var(--font-size-page-title); color: var(--color-foreground); }
+  .line-code { font-size: var(--font-size-caption); color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
+  .line-qty { display: flex; align-items: center; gap: var(--space-2); }
   .qty-inp { width: 6rem; text-align: right; font-variant-numeric: tabular-nums; }
-  .qty-uom { font-size: 0.78rem; color: var(--color-muted-foreground); }
+  .qty-uom { font-size: var(--font-size-body); color: var(--color-muted-foreground); }
   .rm-btn { background: none; border: none; color: var(--color-muted-foreground); cursor: pointer; }
   .rm-btn:hover { color: var(--color-destructive); }
-  .gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
-  .gauge-cap { font-size: 0.7rem; color: var(--color-muted-foreground); text-align: center; }
-  .err-msg { font-size: 0.8rem; color: var(--color-destructive); }
+  .gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+  .gauge-cap { font-size: var(--font-size-caption); color: var(--color-muted-foreground); text-align: center; }
+  .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }
 </style>

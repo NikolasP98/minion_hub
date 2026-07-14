@@ -233,9 +233,9 @@
     .gw-source-head {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.5rem 0.875rem;
-        font-size: 0.6875rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-caption);
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.06em;
@@ -245,8 +245,8 @@
     }
 
     .gw-source-head.stub {
-        color: var(--color-warning, #d97706);
-        background: color-mix(in srgb, var(--color-warning, #d97706) 6%, transparent);
+        color: var(--color-warning, var(--color-warning-border));
+        background: color-mix(in srgb, var(--color-warning, var(--color-warning-border)) 6%, transparent);
     }
 
     .gw-source-editor {
@@ -260,8 +260,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.5rem;
-        font-size: 0.8125rem;
+        gap: var(--space-2);
+        font-size: var(--font-size-body);
         color: var(--color-muted);
     }
 
@@ -271,45 +271,45 @@
         flex-shrink: 0;
         min-height: 0;
         overflow-y: auto;
-        padding: 1.25rem;
+        padding: var(--space-6);
     }
 
     .gateway-detail-inner {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: var(--space-4);
     }
 
     .gw-section {
-        padding: 1rem 1.25rem;
+        padding: var(--space-4) var(--space-6);
         border: 1px solid var(--color-border);
-        border-radius: 0.625rem;
+        border-radius: var(--radius-lg);
         background: var(--color-bg2);
     }
 
     .gw-section-title {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.06em;
         color: var(--color-muted);
-        margin: 0 0 0.75rem;
+        margin: 0 0 var(--space-3);
     }
 
     .gw-field-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 1rem;
+        gap: var(--space-4);
     }
 
     .gw-field {
         display: flex;
         flex-direction: column;
-        gap: 0.25rem;
+        gap: var(--space-1);
     }
 
     .gw-label {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.04em;
@@ -317,11 +317,11 @@
     }
 
     .gw-value {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         color: var(--color-foreground);
         display: flex;
         align-items: center;
-        gap: 0.375rem;
+        gap: var(--space-2);
     }
 
     .gw-value.mono, .mono {
@@ -331,13 +331,13 @@
     .gw-status-dot {
         width: 0.5rem;
         height: 0.5rem;
-        border-radius: 50%;
+        border-radius: var(--radius-full);
         flex-shrink: 0;
     }
 
     .gw-status-dot.enabled {
-        background: var(--color-success, #22c55e);
-        box-shadow: 0 0 6px color-mix(in srgb, var(--color-success, #22c55e) 50%, transparent);
+        background: var(--color-success, var(--color-success-fg));
+        box-shadow: var(--shadow-status-glow);
     }
 
     .gw-status-dot.disabled {
@@ -347,13 +347,13 @@
     .gw-tags {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.375rem;
+        gap: var(--space-2);
     }
 
     .gw-tag {
-        font-size: 0.6875rem;
-        padding: 0.1875rem 0.5rem;
-        border-radius: 0.375rem;
+        font-size: var(--font-size-caption);
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-md);
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
         color: var(--color-foreground);
@@ -366,16 +366,16 @@
     .gw-flags {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
 
     .gw-flag {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 0.25rem;
-        padding: 0.625rem;
-        border-radius: 0.5rem;
+        gap: var(--space-1);
+        padding: var(--space-2);
+        border-radius: var(--radius-md);
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
         opacity: 0.5;
@@ -388,7 +388,7 @@
     }
 
     .gw-flag-label {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.04em;
@@ -396,7 +396,7 @@
     }
 
     .gw-flag-value {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         font-weight: 500;
         color: var(--color-foreground);
     }
@@ -404,39 +404,39 @@
     .gw-install-list {
         display: flex;
         flex-direction: column;
-        gap: 0.375rem;
+        gap: var(--space-2);
     }
 
     .gw-install-item {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 0.75rem;
-        border-radius: 0.375rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-md);
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
     }
 
     .gw-install-kind {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-muted);
         min-width: 4rem;
     }
 
     .gw-install-cmd {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         font-family: var(--font-mono, monospace);
         color: var(--color-accent);
     }
 
     .gw-condition {
         display: block;
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         font-family: var(--font-mono, monospace);
         color: var(--color-foreground);
-        padding: 0.5rem 0.75rem;
-        border-radius: 0.375rem;
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-md);
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
     }
@@ -445,11 +445,11 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         width: 100%;
-        padding: 0.625rem;
-        border-radius: 0.5rem;
-        font-size: 0.8125rem;
+        padding: var(--space-2);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-body);
         font-weight: 600;
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
@@ -458,12 +458,12 @@
     }
 
     .gw-toggle-btn.enable {
-        color: var(--color-success, #22c55e);
-        background: color-mix(in srgb, var(--color-success, #22c55e) 12%, transparent);
+        color: var(--color-success, var(--color-success-fg));
+        background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 12%, transparent);
     }
 
     .gw-toggle-btn.enable:hover {
-        background: color-mix(in srgb, var(--color-success, #22c55e) 20%, transparent);
+        background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 20%, transparent);
     }
 
     .gw-toggle-btn.disable {

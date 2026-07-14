@@ -613,7 +613,7 @@
   }
   .inp {
     height: 2rem;
-    padding: 0 0.6rem;
+    padding: 0 var(--space-2);
     font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-md);
     background: var(--color-bg3);
@@ -754,7 +754,7 @@
     height: 1.8rem;
     flex: 1;
     max-width: 16rem;
-    padding: 0 0.5rem;
+    padding: 0 var(--space-2);
     font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-md);
     background: var(--color-bg);
@@ -839,7 +839,7 @@
     gap: var(--space-2, 8px);
     width: 100%;
     padding: var(--space-2, 8px) var(--space-2, 8px);
-    border-radius: var(--radius-sm, 6px);
+    border-radius: var(--radius-sm, var(--radius-md);
     text-align: left;
   }
   :global(.crm-settings-surface .add-item:hover) {
@@ -858,7 +858,7 @@
     gap: var(--space-2, 8px);
     width: 100%;
     padding: var(--space-2, 8px) var(--space-2, 8px);
-    border-radius: var(--radius-sm, 6px);
+    border-radius: var(--radius-sm, var(--radius-md);
     font-size: var(--font-size-body, 14px);
     text-align: left;
     color: var(--color-foreground);

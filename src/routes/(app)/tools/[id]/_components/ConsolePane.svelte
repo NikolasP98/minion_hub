@@ -60,7 +60,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.5rem 0.75rem;
+        padding: var(--space-2) var(--space-3);
         border-bottom: 1px solid var(--color-border);
         background: var(--color-bg2);
         flex-shrink: 0;
@@ -69,8 +69,8 @@
     .console-title {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        font-size: 0.6875rem;
+        gap: var(--space-2);
+        font-size: var(--font-size-caption);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -80,10 +80,10 @@
     .console-clear {
         display: flex;
         align-items: center;
-        gap: 0.25rem;
-        padding: 0.1875rem 0.5rem;
-        border-radius: 0.25rem;
-        font-size: 0.625rem;
+        gap: var(--space-1);
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-sm);
+        font-size: var(--font-size-telemetry);
         font-weight: 500;
         color: var(--color-muted);
         background: none;
@@ -101,10 +101,10 @@
     .console-output {
         flex: 1;
         overflow-y: auto;
-        padding: 0.75rem;
+        padding: var(--space-3);
         background: color-mix(in srgb, var(--color-bg) 75%, black);
         font-family: "SF Mono", "Fira Code", "Cascadia Code", "JetBrains Mono", monospace;
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         line-height: 1.6;
     }
 
@@ -114,7 +114,7 @@
     }
 
     .console-line.stdout {
-        color: var(--color-success, #22c55e);
+        color: var(--color-success, var(--color-success-fg));
     }
 
     .console-line.stderr {

@@ -822,7 +822,7 @@
     gap: var(--space-2, 8px);
     width: 100%;
     padding: var(--space-2, 8px) var(--space-2, 8px);
-    border-radius: var(--radius-sm, 6px);
+    border-radius: var(--radius-sm, var(--radius-md);
     font-size: var(--font-size-body, 14px);
     text-align: left;
     color: var(--color-foreground);
@@ -956,7 +956,7 @@
     border-radius: var(--radius-full);
     background: var(--color-bg3);
     border: 1px dashed var(--hairline);
-    padding: 0 0.4rem;
+    padding: 0 var(--space-2);
   }
   .ids {
     display: flex;
@@ -1227,7 +1227,7 @@
   .meta-key,
   .meta-val {
     height: 1.8rem;
-    padding: 0 0.5rem;
+    padding: 0 var(--space-2);
     font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-md);
     background: var(--color-bg3);

@@ -160,12 +160,12 @@
 </div>
 
 <style>
-	.date-label { display: flex; flex-direction: row; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--color-muted-foreground); white-space: nowrap; }
-	.date-label input { padding: 0.2rem 0.4rem; border: 1px solid var(--hairline); border-radius: 6px; background: var(--color-card); color: var(--color-foreground); font-size: 0.78rem; color-scheme: dark; }
-	.preset { padding: 0.25rem 0.6rem; font-size: 0.72rem; background: transparent; border: 1px solid var(--hairline); border-radius: 6px; cursor: pointer; color: var(--color-muted-foreground); transition: background 0.15s, color 0.15s; }
+	.date-label { display: flex; flex-direction: row; align-items: center; gap: var(--space-2); font-size: var(--font-size-caption); color: var(--color-muted-foreground); white-space: nowrap; }
+	.date-label input { padding: var(--space-1) var(--space-2); border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--color-card); color: var(--color-foreground); font-size: var(--font-size-body); color-scheme: dark; }
+	.preset { padding: var(--space-1) var(--space-2); font-size: var(--font-size-caption); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-md); cursor: pointer; color: var(--color-muted-foreground); transition: background var(--duration-fast), color var(--duration-fast); }
 	.preset:hover { background: var(--color-card); color: inherit; }
 	.row-thumb {
-		width: 40px; height: 40px; border-radius: 8px; object-fit: cover;
+		width: 40px; height: 40px; border-radius: var(--radius-md); object-fit: cover;
 		display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 	}
 	.row-thumb-placeholder {

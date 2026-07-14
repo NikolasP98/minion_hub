@@ -20,14 +20,14 @@
 
 	// Type → icon glyph + accent color
 	const TYPE_META: Record<InboxItem['type'], { icon: string; tint: string; label: string }> = {
-		comment: { icon: '💬', tint: 'bg-blue-500/10 text-blue-600 border-blue-500/30', label: m.inbox_comment() },
-		mention: { icon: '@', tint: 'bg-purple-500/10 text-purple-600 border-purple-500/30', label: m.inbox_mention() },
-		approval: { icon: '✓', tint: 'bg-amber-500/10 text-amber-600 border-amber-500/30', label: m.inbox_approval() },
+		comment: { icon: '💬', tint: 'bg-[var(--color-info-surface)] text-[var(--color-info-fg)] border-[var(--color-info-border)]', label: m.inbox_comment() },
+		mention: { icon: '@', tint: 'bg-[color-mix(in_srgb,var(--color-purple)_10%,transparent)] text-[var(--color-purple)] border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)]', label: m.inbox_mention() },
+		approval: { icon: '✓', tint: 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border-[var(--color-warning-border)]', label: m.inbox_approval() },
 		run_failed: { icon: '!', tint: 'bg-destructive/10 text-destructive border-destructive/30', label: m.inbox_runFailed() },
-		join_request: { icon: '+', tint: 'bg-blue-500/10 text-blue-600 border-blue-500/30', label: m.inbox_joinRequest() },
-		goal_achieved: { icon: '★', tint: 'bg-green-500/10 text-green-600 border-green-500/30', label: m.inbox_goalAchieved() },
+		join_request: { icon: '+', tint: 'bg-[var(--color-info-surface)] text-[var(--color-info-fg)] border-[var(--color-info-border)]', label: m.inbox_joinRequest() },
+		goal_achieved: { icon: '★', tint: 'bg-[var(--color-success-surface)] text-[var(--color-success-fg)] border-[var(--color-success-border)]', label: m.inbox_goalAchieved() },
 		paused: { icon: '⏸', tint: 'bg-muted text-muted-foreground border-border', label: m.inbox_paused() },
-		pipeline_hitl: { icon: '◇', tint: 'bg-violet-500/10 text-violet-600 border-violet-500/30', label: m.inbox_pipelineHitl() },
+		pipeline_hitl: { icon: '◇', tint: 'bg-[color-mix(in_srgb,var(--color-purple)_10%,transparent)] text-[var(--color-purple)] border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)]', label: m.inbox_pipelineHitl() },
 	};
 
 	const TASK_STATUS_LABEL: Record<PipelineHitlInboxItem['taskStatus'], string> = {
@@ -122,9 +122,9 @@
 	</header>
 
 	{#if !data.liveInboxAvailable}
-		<div class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3" role="status">
-			<p class="text-sm font-medium text-amber-800 dark:text-amber-200">{m.inbox_liveUnavailableTitle()}</p>
-			<p class="mt-0.5 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+		<div class="rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-surface)] px-4 py-3" role="status">
+			<p class="text-sm font-medium text-[var(--color-warning-fg)] dark:text-[var(--color-warning-fg)]">{m.inbox_liveUnavailableTitle()}</p>
+			<p class="mt-0.5 text-xs leading-relaxed text-[var(--color-warning-fg)] dark:text-[var(--color-warning-fg)]">
 				{m.inbox_liveUnavailableDescription()}
 			</p>
 		</div>

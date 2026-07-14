@@ -178,7 +178,7 @@
     gap: var(--space-2, 8px);
     font-size: var(--font-size-body, 14px);
     font-weight: 500;
-    padding: 0 0.4rem;
+    padding: 0 var(--space-2);
     border-bottom: 1px solid var(--hairline);
   }
   .dot {

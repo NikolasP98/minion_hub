@@ -119,16 +119,16 @@
 </div>
 
 <style>
-  .kpi { display: flex; flex-direction: column; justify-content: center; padding: 0.85rem 1rem; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); height: 100%; }
-  .kpi-link { text-decoration: none; color: inherit; transition: border-color 0.12s, background 0.12s; cursor: pointer; }
+  .kpi { display: flex; flex-direction: column; justify-content: center; padding: var(--space-3) var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); height: 100%; }
+  .kpi-link { text-decoration: none; color: inherit; transition: border-color var(--duration-fast), background var(--duration-fast); cursor: pointer; }
   .kpi-link:hover { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, var(--color-card)); }
-  .kpi-val { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .kpi-label { font-size: 0.72rem; color: var(--color-muted-foreground); margin-top: 0.15rem; }
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.85rem 1rem; height: 100%; overflow: auto; }
-  .card-h { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: 0.7rem; }
-  .mini-table { width: 100%; font-size: 0.8rem; border-collapse: collapse; }
-  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: 0.25rem 0.4rem; border-bottom: 1px solid var(--hairline); }
-  .mini-table td { padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--hairline); }
+  .kpi-val { font-size: var(--font-size-display); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi-label { font-size: var(--font-size-caption); color: var(--color-muted-foreground); margin-top: var(--space-1); }
+  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-3) var(--space-4); height: 100%; overflow: auto; }
+  .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: var(--space-3); }
+  .mini-table { width: 100%; font-size: var(--font-size-body); border-collapse: collapse; }
+  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
+  .mini-table td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
   .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
   .mini-table .warn { color: var(--color-warning); font-weight: 600; }
   .mini-table .in { color: var(--color-success, var(--color-emerald)); }

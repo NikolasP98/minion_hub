@@ -32,18 +32,18 @@
 
 	function cellTextColor(cell: number): string {
 		if (cell === 0) return 'text-muted-strong';
-		if (intensity(cell) > 0.55) return 'text-white';
+		if (intensity(cell) > 0.55) return 'text-[var(--color-text-primary)]';
 		return 'text-foreground/80';
 	}
 
 	const STATUS_DOT: Record<string, string> = {
-		active: '#10b981',
-		running: '#3b82f6',
-		paused: '#f59e0b',
-		error: '#ef4444',
-		idle: '#6b7280',
-		pending_approval: '#a855f7',
-		terminated: '#525252',
+		active: 'var(--color-emerald)',
+		running: 'var(--color-accent)',
+		paused: 'var(--color-warning-fg)',
+		error: 'var(--color-danger-fg)',
+		idle: 'var(--color-text-tertiary)',
+		pending_approval: 'var(--color-purple)',
+		terminated: 'var(--color-text-disabled)',
 	};
 
 	const RUN_STATUS_BADGE: Record<string, string> = {
@@ -136,7 +136,7 @@
 								<a href="/workforce/agents/{agent.id}" class="inline-flex items-center gap-1.5 hover:underline">
 									<span
 										class="h-2 w-2 rounded-full shrink-0"
-										style="background:{STATUS_DOT[agent.status] ?? '#6b7280'}"
+										style="background:{STATUS_DOT[agent.status] ?? 'var(--color-text-tertiary)'}"
 									></span>
 									<span class="font-medium">{agent.name}</span>
 								</a>

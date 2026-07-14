@@ -48,8 +48,8 @@
 
 	const STATUS_BADGE: Record<GoalStatus, string> = {
 		planned: 'bg-muted text-muted-foreground',
-		active: 'bg-blue-500/10 text-blue-600',
-		achieved: 'bg-green-500/10 text-green-600',
+		active: 'bg-[var(--color-info-surface)] text-[var(--color-info-fg)]',
+		achieved: 'bg-[var(--color-success-surface)] text-[var(--color-success-fg)]',
 		cancelled: 'bg-muted text-muted-strong',
 	};
 

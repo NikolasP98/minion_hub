@@ -86,32 +86,32 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 0.75rem;
-        padding: 2rem;
+        gap: var(--space-3);
+        padding: var(--space-8);
         text-align: center;
     }
     .first-visit-title {
-        font-size: 0.9375rem;
+        font-size: var(--font-size-page-title);
         font-weight: 600;
         color: var(--color-foreground);
         margin: 0;
     }
     .first-visit-desc {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         max-width: 24rem;
         line-height: 1.5;
         margin: 0;
     }
-    .first-visit-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .first-visit-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
     .first-visit-btn {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.5rem 0.875rem;
-        font-size: 0.75rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-caption);
         font-weight: 600;
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
@@ -131,19 +131,19 @@
         position: absolute;
         top: 0.5rem;
         right: 0.5rem;
-        z-index: 6;
+        z-index: var(--layer-sticky);
         display: flex;
-        gap: 0.375rem;
+        gap: var(--space-2);
     }
     .batch-btn {
-        display: flex; align-items: center; gap: 0.375rem;
-        padding: 0.375rem 0.75rem;
-        font-size: 0.7rem; font-weight: 600;
-        border: none; border-radius: 0.375rem;
+        display: flex; align-items: center; gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-caption); font-weight: 600;
+        border: none; border-radius: var(--radius-md);
         cursor: pointer; transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
-    .batch-btn.accept { color: white; background: var(--color-success, #22c55e); }
+    .batch-btn.accept { color: white; background: var(--color-success, var(--color-success-fg)); }
     .batch-btn.accept:hover { filter: brightness(1.1); }
     .batch-btn.reject {
         color: var(--color-danger-fg);

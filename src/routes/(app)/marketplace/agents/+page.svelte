@@ -320,24 +320,24 @@
   .agent-container {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 20px;
+    gap: var(--space-6);
   }
 
   /* Agent Container - List View */
   .agent-container.list {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--space-4);
   }
 
   /* List Item */
   .list-item {
     display: flex;
-    gap: 20px;
-    padding: 16px;
+    gap: var(--space-6);
+    padding: var(--space-4);
     background: var(--color-bg2);
     border: 1px solid var(--color-border);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     transition: border-color var(--duration-fast) var(--ease-standard);
   }
 
@@ -357,13 +357,13 @@
   .list-card {
     width: 140px;
     background: linear-gradient(145deg, rgba(250, 250, 250, 0.98), rgba(240, 240, 242, 0.95));
-    border-radius: 10px;
-    padding: 12px;
-    padding-top: 16px;
+    border-radius: var(--radius-lg);
+    padding: var(--space-3);
+    padding-top: var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    gap: var(--space-2);
+    box-shadow: var(--shadow-elevation-2);
     position: relative;
     overflow: hidden;
   }
@@ -372,8 +372,8 @@
        so the clip's bottom half overlaps the card top edge */
   .list-badge-clip {
     position: relative;
-    z-index: 10;
-    margin-bottom: -11px; /* half of clip height (21px) → 50/50 straddle */
+    z-index: var(--layer-sticky);
+    margin-bottom: calc(-1 * var(--space-3)); /* half of clip height (21px) → 50/50 straddle */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -382,55 +382,53 @@
   .list-badge-clip .clip-base {
     width: 28px;
     height: 16px;
-    background: linear-gradient(145deg, #3a3a3c, #1c1c1e);
-    border-radius: 3px 3px 0 0;
-    border: 1px solid #48484a;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.1),
-      0 2px 4px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(145deg, var(--color-overlay), var(--color-surface-1));
+    border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+    border: 1px solid var(--color-border-strong);
+    box-shadow: var(--shadow-elevation-1);
   }
 
   .list-badge-clip .clip-ring {
     width: 16px;
     height: 6px;
-    background: linear-gradient(145deg, #48484a, #2c2c2e);
-    border-radius: 0 0 8px 8px;
-    border: 1px solid #5a5a5c;
+    background: linear-gradient(145deg, var(--color-border-strong), var(--color-surface-3));
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    border: 1px solid var(--color-text-disabled);
     margin-top: -1px;
   }
 
   .list-card-header {
-    background: linear-gradient(90deg, #1c1c1e, #2c2c2e);
-    border-radius: 6px;
-    padding: 6px 10px;
+    background: linear-gradient(90deg, var(--color-surface-1), var(--color-surface-3));
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-2);
   }
 
   .list-initials {
     font-family: 'JetBrains Mono NF', monospace;
     font-weight: 700;
     font-size: var(--font-size-caption, 12px);
-    color: #fafafa;
+    color: var(--color-text-primary);
     letter-spacing: 0.1em;
   }
 
   .list-photo {
     width: 100%;
     aspect-ratio: 1;
-    background: #ffffff;
-    border-radius: 8px;
-    padding: 4px;
+    background: var(--color-text-primary);
+    border-radius: var(--radius-md);
+    padding: var(--space-1);
   }
 
   .list-photo img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
 
   .list-card-footer {
     margin-top: auto;
-    padding-top: 8px;
+    padding-top: var(--space-2);
     border-top: 1px dashed rgba(0, 0, 0, 0.15);
   }
 
@@ -440,7 +438,7 @@
     font-weight: 800;
     font-size: var(--font-size-caption, 12px);
     letter-spacing: 0.05em;
-    color: #18181b;
+    color: var(--color-surface-2);
     display: inline-block;
     position: relative;
   }
@@ -461,14 +459,14 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
     min-width: 0;
   }
 
   .list-main {
     display: flex;
     justify-content: space-between;
-    gap: 16px;
+    gap: var(--space-4);
   }
 
   .list-info {
@@ -480,13 +478,13 @@
     font-size: var(--font-size-section-title, 16px);
     font-weight: 700;
     color: var(--color-foreground);
-    margin: 0 0 4px;
+    margin: 0 0 var(--space-1);
   }
 
   .list-role {
     font-size: var(--font-size-body, 14px);
     color: var(--color-muted);
-    margin: 0 0 8px;
+    margin: 0 0 var(--space-2);
     font-weight: 500;
   }
 
@@ -494,20 +492,20 @@
     font-size: var(--font-size-caption, 12px);
     color: var(--color-brand-pink);
     font-style: italic;
-    margin: 0 0 12px;
+    margin: 0 0 var(--space-3);
   }
 
   .list-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   .list-category {
-    padding: 3px 10px;
+    padding: var(--space-1) var(--space-2);
     background: color-mix(in srgb, var(--color-brand-pink) 15%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-brand-pink) 25%, transparent);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     color: var(--color-brand-pink);
     font-size: var(--font-size-caption, 12px);
     font-weight: 600;
@@ -515,10 +513,10 @@
   }
 
   .list-tag {
-    padding: 3px 10px;
+    padding: var(--space-1) var(--space-2);
     background: var(--color-bg3);
     border: 1px solid var(--color-border);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     color: var(--color-muted);
     font-size: var(--font-size-caption, 12px);
   }
@@ -526,7 +524,7 @@
   .list-stats {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
     text-align: right;
   }
 
@@ -534,7 +532,7 @@
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 2px;
+    gap: var(--space-0-5);
   }
 
   .stat-number {
@@ -568,7 +566,7 @@
 
   .list-actions {
     display: flex;
-    gap: 10px;
+    gap: var(--space-2);
     margin-top: auto;
   }
 
@@ -580,7 +578,7 @@
 
     .list-item {
       flex-direction: column;
-      gap: 16px;
+      gap: var(--space-4);
     }
 
     .list-card-wrap {
@@ -591,7 +589,7 @@
       width: 100%;
       flex-direction: row;
       align-items: center;
-      padding: 12px 16px;
+      padding: var(--space-3) var(--space-4);
     }
 
     .list-photo {
@@ -609,7 +607,7 @@
 
     .list-main {
       flex-direction: column;
-      gap: 12px;
+      gap: var(--space-3);
     }
 
     .list-stats {
@@ -639,15 +637,13 @@
 
   /* Graceful snap-back on leave (slow) */
   .list-item {
-    transition:
-      --mx 0.45s ease-out,
-      --my 0.45s ease-out;
+    transition: --mx var(--duration-slow) var(--ease-standard),
+      --my var(--duration-slow) var(--ease-standard);
   }
   /* Responsive tracking on hover (fast) */
   :global(.list-item.holo-active) {
-    transition:
-      --mx 0.1s ease-out,
-      --my 0.1s ease-out;
+    transition: --mx var(--duration-fast) var(--ease-standard),
+      --my var(--duration-fast) var(--ease-standard);
   }
 
   /* Transform on the wrapper so clip and card rotate together */
@@ -681,15 +677,15 @@
     transform-origin: center;
     word-break: break-all;
     pointer-events: none;
-    z-index: 2;
+    z-index: var(--layer-base);
   }
 
   .lc-glare {
     position: absolute;
     inset: 0;
-    border-radius: inherit;
+    border-radius: var(--radius-md);
     pointer-events: none;
-    z-index: 2;
+    z-index: var(--layer-base);
     background: radial-gradient(
       ellipse 60% 50% at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
       rgba(255, 255, 255, 0.35),
@@ -707,9 +703,9 @@
   .lc-sheen {
     position: absolute;
     inset: 0;
-    border-radius: inherit;
+    border-radius: var(--radius-md);
     pointer-events: none;
-    z-index: 15;
+    z-index: var(--layer-navigation);
     background: linear-gradient(
       calc(115deg + var(--my, 0.5) * 20deg),
       transparent,
@@ -735,6 +731,6 @@
   .list-photo,
   .list-card-footer {
     position: relative;
-    z-index: 3;
+    z-index: var(--layer-base);
   }
 </style>

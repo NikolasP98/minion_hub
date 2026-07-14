@@ -331,27 +331,27 @@
 </div>
 
 <style>
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.85rem 1rem; }
-  .card-h { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: 0.7rem; }
-  .meta-grid { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1rem; font-size: 0.86rem; }
+  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-3) var(--space-4); }
+  .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: var(--space-3); }
+  .meta-grid { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4); font-size: var(--font-size-body); }
   .meta-grid dt { color: var(--color-muted-foreground); }
-  .fld { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--color-muted-foreground); }
-  .inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
-  .err-msg { font-size: 0.8rem; color: var(--color-destructive); }
-  .uom-section { display: flex; flex-direction: column; gap: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--hairline); }
-  .uom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-  .uom-caption { font-size: 0.78rem; color: var(--color-accent); font-style: italic; }
-  .pack-row { display: flex; align-items: flex-end; gap: 1.5rem; flex-wrap: wrap; }
-  .pack-block { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
-  .pack-caption { font-size: 0.7rem; color: var(--color-muted-foreground); text-align: center; }
-  .pack-sums { display: flex; flex-direction: column; gap: 0.35rem; align-self: center; }
-  .pack-chip { font-size: 0.8rem; padding: 0.2rem 0.55rem; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--color-bg3); width: fit-content; font-variant-numeric: tabular-nums; }
-  .mini-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
-  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
-  .mini-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
+  .fld { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-body); color: var(--color-muted-foreground); }
+  .inp { height: 1.75rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
+  .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }
+  .uom-section { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--hairline); }
+  .uom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  .uom-caption { font-size: var(--font-size-body); color: var(--color-accent); font-style: italic; }
+  .pack-row { display: flex; align-items: flex-end; gap: var(--space-6); flex-wrap: wrap; }
+  .pack-block { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
+  .pack-caption { font-size: var(--font-size-caption); color: var(--color-muted-foreground); text-align: center; }
+  .pack-sums { display: flex; flex-direction: column; gap: var(--space-2); align-self: center; }
+  .pack-chip { font-size: var(--font-size-body); padding: var(--space-1) var(--space-2); border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--color-bg3); width: fit-content; font-variant-numeric: tabular-nums; }
+  .mini-table { width: 100%; font-size: var(--font-size-body); border-collapse: collapse; }
+  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
+  .mini-table td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
   .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
   .mini-table .in { color: var(--color-success, var(--color-emerald)); }
   .mini-table .out { color: var(--color-destructive); }
-  .consumed-link { display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.6rem; font-size: 0.78rem; color: var(--color-accent); }
+  .consumed-link { display: inline-flex; align-items: center; gap: var(--space-1); margin-top: var(--space-2); font-size: var(--font-size-body); color: var(--color-accent); }
   .consumed-link:hover { text-decoration: underline; }
 </style>

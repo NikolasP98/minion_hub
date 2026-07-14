@@ -116,24 +116,24 @@
 
 <style>
 	.post-platform {
-		font-size: 0.7rem;
-		padding: 0.1rem 0.45rem;
-		border-radius: 999px;
+		font-size: var(--font-size-caption);
+		padding: var(--space-0-5) var(--space-2);
+		border-radius: var(--radius-full);
 		background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
 		color: var(--color-muted-foreground);
 	}
 	.post-platform[data-platform='ig'] {
-		background: color-mix(in srgb, var(--color-pink, #ec4899) 15%, transparent);
-		color: var(--color-pink, #ec4899);
+		background: color-mix(in srgb, var(--color-pink, var(--color-pink)) 15%, transparent);
+		color: var(--color-pink, var(--color-pink));
 	}
 	.post-platform[data-platform='fb'] {
-		background: color-mix(in srgb, var(--color-info, #3b82f6) 15%, transparent);
-		color: var(--color-info, #3b82f6);
+		background: color-mix(in srgb, var(--color-info, var(--color-accent)) 15%, transparent);
+		color: var(--color-info, var(--color-accent));
 	}
 	.post-type {
-		font-size: 0.7rem;
-		padding: 0.1rem 0.45rem;
-		border-radius: 999px;
+		font-size: var(--font-size-caption);
+		padding: var(--space-0-5) var(--space-2);
+		border-radius: var(--radius-full);
 		background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
 		color: var(--color-muted-foreground);
 	}
@@ -151,7 +151,7 @@
 	.post-thumb {
 		width: 40px;
 		height: 40px;
-		border-radius: 8px;
+		border-radius: var(--radius-md);
 		object-fit: cover;
 		display: flex;
 		align-items: center;
@@ -163,11 +163,11 @@
 		color: var(--color-muted-foreground);
 	}
 	.post-thumb-placeholder[data-platform='ig'] {
-		background: color-mix(in srgb, var(--color-pink, #ec4899) 15%, transparent);
-		color: var(--color-pink, #ec4899);
+		background: color-mix(in srgb, var(--color-pink, var(--color-pink)) 15%, transparent);
+		color: var(--color-pink, var(--color-pink));
 	}
 	.post-thumb-placeholder[data-platform='fb'] {
-		background: color-mix(in srgb, var(--color-info, #3b82f6) 15%, transparent);
-		color: var(--color-info, #3b82f6);
+		background: color-mix(in srgb, var(--color-info, var(--color-accent)) 15%, transparent);
+		color: var(--color-info, var(--color-accent));
 	}
 </style>

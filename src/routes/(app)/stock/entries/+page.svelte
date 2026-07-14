@@ -120,11 +120,11 @@
 </div>
 
 <style>
-  .chip { display: inline-flex; align-items: center; gap: 0.3rem; height: 1.8rem; padding: 0 0.6rem; font-size: 0.76rem; border-radius: 999px; border: 1px solid var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); cursor: pointer; }
-  .lines { padding: 0.35rem 1rem 0.6rem 3.2rem; }
-  .lines-msg { font-size: 0.76rem; color: var(--color-muted-foreground); padding: 0.35rem 0; }
+  .chip { display: inline-flex; align-items: center; gap: var(--space-1); height: 1.8rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-full); border: 1px solid var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); cursor: pointer; }
+  .lines { padding: var(--space-2) var(--space-4) var(--space-2) var(--space-12); }
+  .lines-msg { font-size: var(--font-size-body); color: var(--color-muted-foreground); padding: var(--space-2) 0; }
   .lines-tbl { width: 100%; max-width: 40rem; border-collapse: collapse; }
-  .lines-tbl td { padding: 0.28rem 0.5rem; font-size: 0.78rem; border-bottom: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent); }
+  .lines-tbl td { padding: var(--space-1) var(--space-2); font-size: var(--font-size-body); border-bottom: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent); }
   .lines-tbl tr:last-child td { border-bottom: none; }
   .li-item { color: var(--color-foreground); }
   .li-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); white-space: nowrap; width: 8rem; }

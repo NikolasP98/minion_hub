@@ -24,17 +24,17 @@
 	const maxProviderCents = $derived(Math.max(1, ...byProvider.map((r) => r.cents)));
 
 	const PROVIDER_TINT: Record<string, string> = {
-		anthropic: 'bg-orange-500',
-		openai: 'bg-emerald-500',
-		google: 'bg-blue-500',
+		anthropic: 'bg-[var(--color-warning-fg)]',
+		openai: 'bg-[var(--color-success-fg)]',
+		google: 'bg-[var(--color-accent)]',
 	};
 
 	const STATUS_DOT: Record<string, string> = {
-		active: '#10b981',
-		running: '#3b82f6',
-		paused: '#f59e0b',
-		error: '#ef4444',
-		idle: '#6b7280',
+		active: 'var(--color-emerald)',
+		running: 'var(--color-accent)',
+		paused: 'var(--color-warning-fg)',
+		error: 'var(--color-danger-fg)',
+		idle: 'var(--color-text-tertiary)',
 	};
 
 	function formatCents(cents: number): string {
@@ -161,7 +161,7 @@
 						<div class="flex items-center gap-2 mb-1.5">
 							<span
 								class="h-2 w-2 rounded-full shrink-0"
-								style="background:{STATUS_DOT[row.status] ?? '#6b7280'}"
+								style="background:{STATUS_DOT[row.status] ?? 'var(--color-text-tertiary)'}"
 							></span>
 							<span class="font-medium truncate flex-1 min-w-0">{row.agentName}</span>
 							<span class="font-mono text-xs text-muted-foreground tabular-nums">{formatCents(row.cents)}</span>

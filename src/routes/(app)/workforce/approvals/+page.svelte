@@ -11,10 +11,10 @@
 	const { items } = $derived(data);
 
 	const STATUS_BADGE: Record<ApprovalStatus, string> = {
-		pending: 'bg-amber-500/10 text-amber-600',
-		revision_requested: 'bg-orange-500/10 text-orange-600',
-		resubmitted: 'bg-blue-500/10 text-blue-600',
-		approved: 'bg-green-500/10 text-green-600',
+		pending: 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]',
+		revision_requested: 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]',
+		resubmitted: 'bg-[var(--color-info-surface)] text-[var(--color-info-fg)]',
+		approved: 'bg-[var(--color-success-surface)] text-[var(--color-success-fg)]',
 		rejected: 'bg-destructive/10 text-destructive',
 		cancelled: 'bg-muted text-muted-strong',
 	};
@@ -59,7 +59,7 @@
 	{/snippet}
 	{#snippet actions()}
 		{#if pendingCount > 0}
-			<span class="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-600">
+			<span class="rounded-full bg-[var(--color-warning-surface)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-warning-fg)]">
 				{pendingCount} {m.approvals_pending()}
 			</span>
 		{/if}

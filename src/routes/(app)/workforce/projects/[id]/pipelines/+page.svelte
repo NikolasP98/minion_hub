@@ -202,7 +202,7 @@
 						{#each ORIGIN_KINDS as k (k)}
 							<button
 								class="rounded-full border px-2.5 py-0.5 text-xs {draft.originKinds.includes(k)
-									? 'border-blue-500/50 bg-blue-500/10 text-blue-600'
+									? 'border-[var(--color-info-border)] bg-[var(--color-info-surface)] text-[var(--color-info-fg)]'
 									: 'border-border text-muted-foreground'}"
 								onclick={() => (draft.originKinds = toggleChip(draft.originKinds, k))}
 							>{k}</button>
@@ -223,7 +223,7 @@
 						{#each PRIORITIES as k (k)}
 							<button
 								class="rounded-full border px-2.5 py-0.5 text-xs {draft.priorities.includes(k)
-									? 'border-blue-500/50 bg-blue-500/10 text-blue-600'
+									? 'border-[var(--color-info-border)] bg-[var(--color-info-surface)] text-[var(--color-info-fg)]'
 									: 'border-border text-muted-foreground'}"
 								onclick={() => (draft.priorities = toggleChip(draft.priorities, k))}
 							>{k}</button>
@@ -284,7 +284,7 @@
 										onclick={() => (draft.steps = moveStep(draft.steps, i, 1))}
 									>↓</button>
 									<button
-										class="rounded border border-border px-1.5 py-0.5 text-xs text-red-500 disabled:opacity-40"
+										class="rounded border border-border px-1.5 py-0.5 text-xs text-[var(--color-danger-fg)] disabled:opacity-40"
 										disabled={i === 0}
 										aria-label={m.workforce_pipelines_remove()}
 										title={m.workforce_pipelines_remove()}
@@ -344,7 +344,7 @@
 					disabled={!canSave}
 					onclick={save}
 				>{m.workforce_pipelines_save()}</button>
-				{#if saveError}<span class="text-xs text-red-500 break-all">{saveError}</span>{/if}
+				{#if saveError}<span class="text-xs text-[var(--color-danger-fg)] break-all">{saveError}</span>{/if}
 			</div>
 		</section>
 	</div>

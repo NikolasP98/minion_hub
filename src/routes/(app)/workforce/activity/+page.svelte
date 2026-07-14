@@ -16,7 +16,7 @@
 
 	const ACTOR_COLORS: Record<string, string> = {
 		agent: 'bg-primary/10 text-primary',
-		user: 'bg-blue-500/10 text-blue-600',
+		user: 'bg-[var(--color-info-surface)] text-[var(--color-info-fg)]',
 		system: 'bg-muted text-muted-foreground',
 	};
 

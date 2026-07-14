@@ -113,7 +113,7 @@
         align-items: center;
         justify-content: space-between;
         height: 2.75rem;
-        padding: 0 0.75rem;
+        padding: 0 var(--space-3);
         background: var(--color-bg2);
         border-bottom: 1px solid var(--color-border);
         flex-shrink: 0;
@@ -125,7 +125,7 @@
         justify-content: center;
         width: 2rem;
         height: 2rem;
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         color: var(--color-muted);
         transition: all var(--duration-fast) var(--ease-standard);
         background: none;
@@ -141,9 +141,9 @@
     .status-badge {
         display: inline-flex;
         align-items: center;
-        padding: 0.125rem 0.5rem;
-        border-radius: 9999px;
-        font-size: 0.625rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -165,10 +165,10 @@
     .toolbar-btn {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.375rem 0.625rem;
-        border-radius: 0.375rem;
-        font-size: 0.75rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-2);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-caption);
         font-weight: 500;
         border: none;
         cursor: pointer;
@@ -197,24 +197,24 @@
     }
 
     .toolbar-btn.published {
-        color: var(--color-success, #22c55e);
-        background: color-mix(in srgb, var(--color-success, #22c55e) 12%, transparent);
-        border: 1px solid color-mix(in srgb, var(--color-success, #22c55e) 25%, transparent);
+        color: var(--color-success, var(--color-success-fg));
+        background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-success, var(--color-success-fg)) 25%, transparent);
     }
 
     .toolbar-btn.published:hover {
-        background: color-mix(in srgb, var(--color-success, #22c55e) 20%, transparent);
+        background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 20%, transparent);
     }
 
     .save-indicator {
         display: flex;
         align-items: center;
-        gap: 0.3125rem;
-        font-size: 0.6875rem;
+        gap: var(--space-1);
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         white-space: nowrap;
-        padding: 0.25rem 0.5rem;
-        border-radius: 0.375rem;
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-md);
         user-select: none;
     }
 
@@ -224,12 +224,12 @@
     }
 
     :global(.dirty-dot) {
-        color: var(--color-warning, #f59e0b);
-        fill: var(--color-warning, #f59e0b);
+        color: var(--color-warning, var(--color-warning-fg));
+        fill: var(--color-warning, var(--color-warning-fg));
     }
 
     :global(.saved-check) {
-        color: var(--color-success, #22c55e);
+        color: var(--color-success, var(--color-success-fg));
     }
 
     @keyframes spin {
