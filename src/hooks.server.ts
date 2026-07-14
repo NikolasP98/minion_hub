@@ -120,7 +120,7 @@ const cloudPasskeyHandle: Handle = async ({ event, resolve }) => {
   if (event.url.pathname === '/cloud' || event.url.pathname.startsWith('/cloud/')) {
     response.headers.set(
       'Permissions-Policy',
-      'publickey-credentials-get=(self "https://*.exe.xyz")',
+      'publickey-credentials-get=(self "https://exe.dev" "https://*.exe.xyz")',
     );
   }
   return response;
