@@ -110,7 +110,7 @@
                     </div>
                     <div class="flex items-center gap-1.5 min-w-0 px-0.5">
                         <span class="text-xs font-medium text-card-foreground truncate">{preset.name}</span>
-                        {#if preset.style}
+                        {#if preset.typographyStyle !== 'standard'}
                             <span
                                 class="shrink-0 text-xs font-bold leading-none text-muted-foreground border border-border rounded px-1 py-0.5"
                                 title={m.settings_customTypography()}

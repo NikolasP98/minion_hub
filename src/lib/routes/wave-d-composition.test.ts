@@ -54,6 +54,18 @@ describe('Wave D route composition contract', () => {
     expect(routeSource('marketplace/plugins/+page.svelte')).toContain('scroll="region"');
   });
 
+  it('docks Notes and Todos on the trailing edge of the Home workspace', () => {
+    const home = routeSource('home/+page.svelte');
+    expect(home).toContain('<div class="notes-dock" class:collapsed={!notesState.open}>');
+    expect(home).toContain('direction="row"');
+    expect(home).toMatch(/\.column\s*\{[\s\S]*?order:\s*1;/);
+    expect(home).toMatch(/\.notes-dock\s*\{[\s\S]*?order:\s*2;/);
+    expect(home).toMatch(
+      /@media \(max-width:\s*768px\)[\s\S]*?\.notes-dock\s*\{[\s\S]*?position:\s*absolute;/,
+    );
+    expect(home).toMatch(/\.notes-dock\.collapsed\s*\{[\s\S]*?width:\s*46px;/);
+  });
+
   it('keeps the implementation archetypes aligned with route metadata', () => {
     expect(SCREEN_DESIGN_MANIFEST.find((route) => route.pattern === '/home')?.archetype).toBe(
       'dashboard',

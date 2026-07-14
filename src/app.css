@@ -93,6 +93,9 @@
    surface follows the palette — dark OR light. Placed after the token import so
    it wins on source order. */
 :root {
+  /* Temporary compatibility alias for the two remaining legacy modals. Its
+     value is derived from the semantic radius scale, never a second preset. */
+  --theme-radius: var(--radius-md);
   --elevation-1-bg: color-mix(in srgb, var(--color-bg), var(--color-bg2) 55%);
   --elevation-2-bg: var(--color-bg2);
   --elevation-3-bg: color-mix(in srgb, var(--color-bg2), var(--color-bg3) 60%);
