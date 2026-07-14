@@ -12,13 +12,22 @@ export interface RuntimeUiDiagnostics {
   undersizedInteractiveElements: string[];
 }
 
+export interface RuntimeUiDiagnosticOptions {
+  minimumInteractiveTargetPx?: number;
+  enforceInteractiveTargetSize?: boolean;
+  requireSingleVisibleTitle?: boolean;
+}
+
 /**
  * Runtime invariants that static route/API contracts cannot prove. Selectors are
  * returned instead of element handles so the machine-readable capture explains
  * exactly which rendered control failed.
  */
-export async function collectRuntimeUiDiagnostics(page: Page): Promise<RuntimeUiDiagnostics> {
-  return page.evaluate(() => {
+export async function collectRuntimeUiDiagnostics(
+  page: Page,
+  options: RuntimeUiDiagnosticOptions = {},
+): Promise<RuntimeUiDiagnostics> {
+  return page.evaluate((diagnosticOptions) => {
     const visible = (element: Element): element is HTMLElement => {
       if (!(element instanceof HTMLElement)) return false;
       const style = getComputedStyle(element);
@@ -130,7 +139,8 @@ export async function collectRuntimeUiDiagnostics(page: Page): Promise<RuntimeUi
     const undersizedInteractiveElements = interactive
       .filter((element) => {
         const rect = element.getBoundingClientRect();
-        return rect.width < 24 || rect.height < 24;
+        const minimum = diagnosticOptions.minimumInteractiveTargetPx ?? 24;
+        return rect.width < minimum || rect.height < minimum;
       })
       .map(selectorFor);
 
@@ -146,12 +156,13 @@ export async function collectRuntimeUiDiagnostics(page: Page): Promise<RuntimeUi
       visibleRouteTitles,
       undersizedInteractiveElements,
     };
-  });
+  }, options);
 }
 
 export function assertCriticalRuntimeDiagnostics(
   diagnostics: RuntimeUiDiagnostics,
   routeId: string,
+  options: RuntimeUiDiagnosticOptions = {},
 ): void {
   const failures: string[] = [];
   if (diagnostics.documentOverflowPx > 1 && !diagnostics.documentOverflowAllowed) {
@@ -171,6 +182,19 @@ export function assertCriticalRuntimeDiagnostics(
   }
   if (diagnostics.invalidLocalLinks.length > 0) {
     failures.push(`invalid local links: ${diagnostics.invalidLocalLinks.join(', ')}`);
+  }
+  if (options.requireSingleVisibleTitle && diagnostics.visibleRouteTitles.length !== 1) {
+    failures.push(
+      `expected one visible route title, found ${diagnostics.visibleRouteTitles.length}: ${diagnostics.visibleRouteTitles.join(' | ') || '(none)'}`,
+    );
+  }
+  if (
+    options.enforceInteractiveTargetSize &&
+    diagnostics.undersizedInteractiveElements.length > 0
+  ) {
+    failures.push(
+      `interactive targets below ${options.minimumInteractiveTargetPx ?? 24}px: ${diagnostics.undersizedInteractiveElements.join(', ')}`,
+    );
   }
   if (failures.length > 0) throw new Error(`${routeId}: ${failures.join('; ')}`);
 }

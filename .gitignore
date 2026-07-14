@@ -33,6 +33,8 @@ desktop-build/
 
 # Reports
 posthog-setup-report.md
+playwright-report/
+test-results/
 
 .infisical.json
 infisical-dev.sh

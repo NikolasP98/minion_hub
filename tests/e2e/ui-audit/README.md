@@ -1,8 +1,13 @@
-# Deterministic UI audit harness
+# Deterministic UI capture and certification
 
-The capture suite inventories every SvelteKit page endpoint, verifies the eight redirect contracts, and captures every renderable screen against four fixed personas and three viewport classes.
+The Playwright runner consumes `SCREEN_DESIGN_MANIFEST` directly. It expands the selected
+routes through `resolveCaptureMatrix`, prepares every declared route/persona/viewport/state
+entry through `prepareCapturePlanEntry`, and always runs the matching state and fixture reset
+hooks. A state is never captured under a different label just because its fixture is missing.
 
-Provision a disposable local Supabase stack with all Hub migrations applied, then run:
+## Safe prerequisites
+
+Provision a **disposable local** Supabase stack with all Hub migrations applied, then run:
 
 ```bash
 bun run audit:ui:seed
@@ -10,56 +15,95 @@ set -a; source .env.ui-audit.local; set +a
 bun run audit:ui:capture
 ```
 
-Use `bun run audit:ui:seed --reset` to delete/recreate only the four `ui-audit-*@minion.test` identities before reseeding. The command refuses non-local Supabase hosts and never stores production IDs, cookies, service keys, or passwords in Git. `.env.ui-audit.local` is mode `0600` and covered by `.gitignore`.
+The seed refuses non-local hosts and performs a relation-and-column preflight before it creates
+or updates identities. If the local stack reports schema drift, reconcile the disposable stack;
+never point the seed at a hosted/production project and never reset an existing user database.
+`--reset` is reserved for a disposable audit stack and only recreates the four
+`ui-audit-*@minion.test` identities.
 
-The seed performs a bounded relation-and-column preflight before it creates or resets any identity. If it reports missing base schema, stop and reconcile the disposable stack's shared and Hub-owned migration history; do not point the seed at a hosted/production project and do not mark migrations applied merely to bypass the check. During the 2026-07-13 verification run, the existing local stack had schema/history drift (including missing Hub domain tables), so no deterministic persona/viewport capture was certified from that stack.
+Manifest state variants beyond deterministic read-only/default/access-policy states require a
+local scenario provider. Set `E2E_UI_AUDIT_SCENARIO_ENDPOINT` to a loopback URL that accepts:
 
-The seed owns the audit organization, persona role assignments, and Hub-native database fixtures. Gateway/Paperclip-backed detail routes use stable simulator contract IDs (`ui-audit-session`, `ui-audit-shell`, and `ui-audit-workforce-*`); configure local gateway/Paperclip simulators with those IDs when the capture must exercise populated external states. Without the simulators, the same URLs still produce deterministic unavailable/empty states and are recorded as such in the machine-readable run.
+- `POST` with a `ResolvedCaptureRoute` to prepare a disposable DB/gateway state.
+- `DELETE` with the same entry to reset it.
 
-Capture each persona, certification viewport, and motion mode explicitly:
+The runner refuses non-loopback scenario providers. Without the provider, loading, empty,
+mutation, offline, unavailable, destructive-confirmation, and similar variants are emitted as
+machine-readable `blocked-state` results. Missing auth/schema and fixture prerequisites become
+`blocked-auth` or `blocked-fixture`; they are not unexplained login redirects or fake captures.
+`E2E_UI_AUDIT_ALLOW_BLOCKED=1` is useful for reconnaissance, but it does not constitute final
+certification.
 
-```bash
-for persona in owner manager member restricted; do
-  for viewport in compact-360 compact-390 medium-portrait medium-landscape wide-1280 wide-1440; do
-    for motion in full reduced; do
-      E2E_UI_AUDIT_PERSONA=$persona E2E_UI_AUDIT_VIEWPORT=$viewport E2E_UI_AUDIT_MOTION=$motion bun run audit:ui:capture
-    done
-  done
-done
+## Matrix selection
+
+Persona IDs match the route manifest:
+
+```text
+anonymous
+owner-admin
+manager-editor
+member-viewer
+restricted-no-module
 ```
 
-The six viewport IDs are the exact 360×800, 390×844, 768×1024, 1024×768,
-1280×800, and 1440×900 certification dimensions. The older `compact`,
-`medium`, and `wide` inputs remain deterministic aliases for 390, 768 portrait,
-and 1440 respectively; unknown values fail instead of silently taking a default.
-
-The full route matrix uses each audit account's default theme. Representative
-theme review must not multiply all 138 screens by four. Use the route filter to
-capture a bounded shell, collection, form, detail, canvas, and terminal sample:
+The legacy owner/manager/member/restricted aliases remain accepted. `anonymous` clears cookies,
+does not require credentials, and only resolves routes that explicitly declare that persona.
+Select one, a comma-separated list, or `all`:
 
 ```bash
-representative='/home,/agents,/settings/appearance,/crm/[contactId],/agents/workshop/[id],/terminal'
+E2E_UI_AUDIT_PERSONA=anonymous E2E_UI_AUDIT_ROUTES=/login,/login/forgot bun run audit:ui:capture
+E2E_UI_AUDIT_PERSONAS=owner-admin,restricted-no-module bun run audit:ui:capture
+```
+
+Every selected route executes all states declared for the selected persona and viewport class.
+The exact viewport IDs are:
+
+```text
+compact-360       360x800
+compact-390       390x844
+medium-portrait   768x1024
+medium-landscape  1024x768
+wide-1280         1280x800
+wide-1440         1440x900
+```
+
+`compact`, `medium`, and `wide` remain aliases for 390x844, 768x1024, and 1440x900.
+
+## Final certification modes
+
+`bun run audit:ui:certify` adds these executable checks to every prepared scenario:
+
+- keyboard-only Tab traversal of all visible tabbable controls;
+- exact 200% reflow using half-sized effective CSS viewport dimensions;
+- long-content/translation stress with restored text after measurement;
+- one visible route title for standard page archetypes;
+- behavioral reduced-motion activation with no running long/infinite animations.
+
+Coarse-pointer CSS media behavior must be created when the browser context starts. Run the same
+certification with touch enabled; interactive targets below the 44px contract then fail:
+
+```bash
+E2E_UI_AUDIT_POINTER=coarse bun run audit:ui:certify
+```
+
+Representative dark/light/CRT/Voxelized review remains bounded rather than multiplying all
+routes by all themes:
+
+```bash
+representative='/home,/agents,/settings/appearance,/crm/[contactId],/agents/workshop/[id],/cloud/terminal'
 for theme in dark light crt voxelized; do
-  E2E_UI_AUDIT_THEME=$theme E2E_UI_AUDIT_ROUTES=$representative E2E_UI_AUDIT_VIEWPORT=compact-390 bun run audit:ui:capture
-  E2E_UI_AUDIT_THEME=$theme E2E_UI_AUDIT_ROUTES=$representative E2E_UI_AUDIT_VIEWPORT=wide-1440 bun run audit:ui:capture
+  E2E_UI_AUDIT_THEME=$theme E2E_UI_AUDIT_ROUTES=$representative E2E_UI_AUDIT_VIEWPORT=compact-390 bun run audit:ui:certify
+  E2E_UI_AUDIT_THEME=$theme E2E_UI_AUDIT_ROUTES=$representative E2E_UI_AUDIT_VIEWPORT=wide-1440 bun run audit:ui:certify
 done
 ```
 
-Theme preparation snapshots the disposable persona's existing server preference,
-sets the requested canonical preset/accent, reloads, and restores the prior value
-after capture. Unknown theme IDs and route filters containing non-screen patterns
-fail rather than silently reducing coverage.
+## Evidence
 
-Outputs are written under `test-results/ui-audit/`. `tests/ui-audit/current-baseline.json` is the immutable pre-program endpoint ledger; regenerate only when the route surface intentionally changes.
+Outputs live under `test-results/ui-audit/`. The schema-v3 JSON run manifest is written
+atomically after every scenario and attached to the Playwright result, so a later failure does
+not erase earlier evidence. It records app commit, fixture version, namespace, exact viewport,
+persona, route/state/scenario key, preparation method or blocker, screenshot, runtime/network
+diagnostics, certification evidence, and captured/blocked/failed totals.
 
-Each route result records console errors, uncaught page errors, failed requests,
-failed same-origin GET responses, document overflow, duplicate IDs, accessible
-names for controls/dialogs, form-button types, invalid local links, visible route
-titles, and sub-24px interactive targets. The capture fails immediately for the
-critical deterministic invariants: unexplained document overflow, duplicate IDs,
-unnamed controls/dialogs, implicit form buttons, or empty/hash-only local links.
-Console errors, uncaught page errors, and same-origin GET responses at 400 or
-higher also fail the route; an expected 403/404 document remains a captured
-permission/not-found state, but nested API/resource failures do not pass.
-Small target findings remain recorded for route review because authored canvas,
-terminal, and dense-data controls need context rather than a global exception.
+`tests/ui-audit/current-baseline.json` is the immutable pre-program endpoint ledger; regenerate
+it only when the route surface intentionally changes.

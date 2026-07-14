@@ -54,4 +54,22 @@ describe('runtime UI diagnostics gate', () => {
       ),
     ).not.toThrow();
   });
+
+  it('enforces one title and 44px targets for certification modes', () => {
+    expect(() =>
+      assertCriticalRuntimeDiagnostics(
+        {
+          ...clean,
+          visibleRouteTitles: ['Settings', 'Duplicate settings'],
+          undersizedInteractiveElements: ['#save'],
+        },
+        'settings',
+        {
+          requireSingleVisibleTitle: true,
+          minimumInteractiveTargetPx: 44,
+          enforceInteractiveTargetSize: true,
+        },
+      ),
+    ).toThrow(/expected one visible route title.*interactive targets below 44px/);
+  });
 });
