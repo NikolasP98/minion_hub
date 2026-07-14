@@ -1,6 +1,5 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import FlowCanvas from '$lib/components/flow-editor/FlowCanvas.svelte';
@@ -25,14 +24,22 @@
   import type { TriggerNodeData, ScheduleNodeData } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
-  import { ArrowLeft, GitBranch, Trash2, Copy, Settings2, Puzzle } from 'lucide-svelte';
+  import { ArrowLeft, Copy, PanelLeft, Sparkles, Trash2 } from 'lucide-svelte';
+  import { Badge, Button, Input, PageHeader } from '$lib/components/ui';
+  import AsyncBoundary from '$lib/components/ui/foundations/AsyncBoundary.svelte';
+  import Layer from '$lib/components/ui/foundations/Layer.svelte';
+  import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
+  import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
   import * as m from '$lib/paraglide/messages';
 
   const back = createBackNav('/flow-editor', m.flow_backToFlows);
   const flowId = $derived(page.params.id);
+  let flowLoading = $state(true);
   let loadError = $state<string | null>(null);
   let operationError = $state<string | null>(null);
   let isActivating = $state(false);
+  let paletteOpen = $state(false);
+  let copilotOpen = $state(false);
   const hasTrigger = $derived(
     flowEditorState.nodes.some(
       (n) => n.type === 'trigger' || n.type === 'pluginTrigger' || n.type === 'schedule',
@@ -106,13 +113,19 @@
     }
   }
 
-  onMount(async () => {
+  async function hydrateFlow() {
+    flowLoading = true;
+    loadError = null;
     try {
       await loadFlow(flowId!);
     } catch (e) {
-      loadError = e instanceof Error ? e.message : 'Failed to load flow';
+      loadError = e instanceof Error ? e.message : m.common_error();
+    } finally {
+      flowLoading = false;
     }
-  });
+  }
+
+  onMount(hydrateFlow);
 
   function handleNameInput(e: Event) {
     flowEditorState.flowName = (e.target as HTMLInputElement).value;
@@ -166,9 +179,11 @@
           backup = null;
         },
       });
+      return true;
     } catch (error) {
       // Keep the proposal preview and backup intact so the user can retry or reject it.
       operationError = mutationErrorMessage(error, m.common_error());
+      return false;
     }
   }
 
@@ -177,171 +192,286 @@
   }
 </script>
 
-<!-- Self-sufficient flex-column shell: Svelte Flow needs a definite-height
-     ancestor, so don't rely on the parent layout being a flex column. -->
-<div class="flex flex-col flex-1 min-h-0 h-full">
-  {#if loadError}
-    <div class="flex-1 flex items-center justify-center">
-      <div class="text-center">
-        <p class="text-red-400 mb-4">{loadError}</p>
-        <button
-          onclick={() => goto('/flow-editor')}
-          class="text-xs text-muted hover:text-foreground transition-colors"
-        >
-          {m.flow_backToFlows()}
-        </button>
-      </div>
-    </div>
-  {:else}
-    <!-- Toolbar -->
-    <div
-      class="shrink-0 h-10 border-b border-border bg-bg2/80 flex items-center px-3 gap-3 md:pr-[var(--notch-clearance)]"
-    >
-      <!-- Back -->
-      <button
-        type="button"
-        onclick={back.go}
-        class="flex items-center justify-center w-7 h-7 rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors"
-        title={m.flow_backToFlows()}
-      >
-        <ArrowLeft size={14} />
-      </button>
-
-      <div class="w-px h-4 bg-border/60"></div>
-
-      <!-- Flow name -->
-      <div class="flex items-center gap-1.5 min-w-0">
-        <GitBranch size={13} class="text-muted shrink-0" />
-        <input
-          type="text"
-          class="bg-transparent text-sm font-semibold text-foreground focus:outline-none w-48 truncate placeholder:text-muted"
-          value={flowEditorState.flowName}
-          oninput={handleNameInput}
-          placeholder={m.flow_untitledFlow()}
-        />
-      </div>
-
-      <!-- Plugin-origin pill -->
+<PageShell archetype="canvas" scroll="none" variant="canvas">
+  <PageHeader title={flowEditorState.flowName || m.flow_untitledFlow()} sticky={false}>
+    {#snippet leading()}
+      <Button variant="ghost" size="sm" shape="icon" onclick={back.go} aria-label={back.label}>
+        {#snippet icon()}<ArrowLeft size={16} aria-hidden="true" />{/snippet}
+      </Button>
+    {/snippet}
+    {#snippet secondaryActions()}
+      <Input
+        aria-label={m.flow_name()}
+        value={flowEditorState.flowName}
+        size="sm"
+        oninput={handleNameInput}
+      />
       {#if flowEditorState.flowPluginId}
-        <div
-          class="flex items-center gap-1 px-2 py-1 rounded-full bg-accent/15 text-accent text-[10px] font-mono uppercase tracking-wider ring-1 ring-accent/25 shrink-0"
-          title={m.flow_pluginManaged({ plugin: flowEditorState.flowPluginId })}
-        >
-          <Puzzle size={11} />
+        <Badge variant="neutral" size="sm">
           {flowEditorState.flowPluginId}
-        </div>
+        </Badge>
       {/if}
-
-      <!-- Mode indicator -->
       {#if flowEditorState.relationshipMode}
-        <div
-          class="flex items-center gap-1.5 px-2 py-1 rounded bg-amber-500/15 border border-amber-500/30"
-        >
-          <div class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
-          <span class="text-[10px] font-mono text-amber-300">{m.flow_relationshipMode()}</span>
-        </div>
+        <Badge variant="semantic" value="warning" size="sm">
+          {m.flow_relationshipMode()}
+        </Badge>
       {:else if flowEditorState.isDirty}
-        <div class="flex items-center gap-1 text-[10px] text-muted font-mono">
-          <div class="w-1.5 h-1.5 rounded-full bg-yellow-500/60"></div>
-          {m.flow_unsaved()}
-        </div>
+        <Badge variant="neutral" size="sm">{m.flow_unsaved()}</Badge>
       {/if}
-
-      <div class="flex-1"></div>
-
-      <!-- Activate / Deactivate button -->
+    {/snippet}
+    {#snippet primaryActions()}
       {#if hasTrigger}
-        <button
+        <Button
+          variant={flowEditorState.flowActive ? 'danger' : 'primary'}
+          size="sm"
+          loading={isActivating}
           onclick={handleActivate}
-          disabled={isActivating}
-          class="flex items-center gap-1.5 h-7 px-3 text-xs rounded border transition-colors
-            {flowEditorState.flowActive
-              ? 'border-red-500/50 text-red-400 hover:bg-red-500/10'
-              : 'border-amber-500/50 text-amber-400 hover:bg-amber-500/10'}
-            disabled:opacity-50 disabled:cursor-default"
         >
-          {flowEditorState.flowActive ? 'Deactivate' : 'Activate'}
-        </button>
+          {flowEditorState.flowActive ? m.flow_deactivate() : m.flow_activate()}
+        </Button>
       {/if}
-    </div>
+    {/snippet}
+  </PageHeader>
 
-    {#if operationError}
-      <div class="shrink-0 border-b border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-destructive" role="alert">
-        {operationError}
-      </div>
+  {#if operationError}
+    <p class="operation-error" role="alert">{operationError}</p>
+  {/if}
+
+  <div class="mobile-editor-controls">
+    <Button variant="secondary" size="sm" onclick={() => (paletteOpen = !paletteOpen)}>
+      {#snippet icon()}<PanelLeft size={14} aria-hidden="true" />{/snippet}
+      {m.flow_palette()}
+    </Button>
+    {#if canCopilot && flowEditorState.flowId}
+      <Button variant="secondary" size="sm" onclick={() => (copilotOpen = !copilotOpen)}>
+        {#snippet icon()}<Sparkles size={14} aria-hidden="true" />{/snippet}
+        {m.flow_copilot_title()}
+      </Button>
     {/if}
+  </div>
 
-    <!-- Editor body -->
-    <div class="flex flex-1 min-h-0 overflow-hidden flex-col">
-      <div class="flex flex-1 min-h-0 overflow-hidden">
-        <FlowSidebar />
-        <FlowCanvas />
+  <PageBody padding="none" scroll="none" class="flow-editor-body">
+    <AsyncBoundary
+      state={flowLoading
+        ? { kind: 'loading' }
+        : loadError
+          ? { kind: 'error', title: m.common_error(), description: loadError, retry: hydrateFlow }
+          : { kind: 'ready' }}
+      class="flow-boundary"
+    >
+      <div class="editor-stage">
+        <div class:mobile-open={paletteOpen} class="palette-pane">
+          <div class="mobile-pane-header">
+            <span>{m.flow_palette()}</span>
+            <Button variant="ghost" size="sm" onclick={() => (paletteOpen = false)}>
+              {m.flow_collapsePalette()}
+            </Button>
+          </div>
+          <FlowSidebar />
+        </div>
+
+        <div class="canvas-stack">
+          <FlowCanvas />
+          {#if flowEditorState.consoleOpen}
+            <ConsolePanel />
+          {/if}
+        </div>
+
         {#if canCopilot && flowEditorState.flowId}
-          <FlowCopilotPanel
-            flowId={flowEditorState.flowId}
-            onpreview={onPreview}
-            onapply={onApply}
-            onreject={onReject}
-          />
+          <div class:mobile-open={copilotOpen} class="copilot-pane">
+            <div class="mobile-pane-header">
+              <span>{m.flow_copilot_title()}</span>
+              <Button variant="ghost" size="sm" onclick={() => (copilotOpen = false)}>
+                {m.common_close()}
+              </Button>
+            </div>
+            <FlowCopilotPanel
+              flowId={flowEditorState.flowId}
+              onpreview={onPreview}
+              onapply={onApply}
+              onreject={onReject}
+            />
+          </div>
         {/if}
       </div>
-      {#if flowEditorState.consoleOpen}
-        <ConsolePanel />
-      {/if}
-    </div>
-  {/if}
-</div>
+    </AsyncBoundary>
+  </PageBody>
+</PageShell>
 
-  <!-- Node context menu — rendered outside the flow canvas to avoid transform clipping -->
-  {#if flowEditorState.contextMenu.open}
-    <!-- Backdrop to close on outside click -->
+{#if flowEditorState.contextMenu.open}
+  <Layer tier="dropdown" portal position="fixed" class="context-backdrop-layer">
     <div
-      class="fixed inset-0 z-40"
+      class="context-backdrop"
       role="presentation"
       onclick={() => (flowEditorState.contextMenu.open = false)}
-      oncontextmenu={(e) => {
-        e.preventDefault();
+      oncontextmenu={(event) => {
+        event.preventDefault();
         flowEditorState.contextMenu.open = false;
       }}
     ></div>
-    <!-- Menu -->
+  </Layer>
+  <Layer tier="popover" portal position="fixed">
     <div
-      style="left: {flowEditorState.contextMenu.x}px; top: {flowEditorState.contextMenu.y}px;"
-      class="fixed z-50 bg-bg2 border border-border rounded-lg shadow-xl py-1 min-w-36"
+      style:left={`${flowEditorState.contextMenu.x}px`}
+      style:top={`${flowEditorState.contextMenu.y}px`}
+      class="context-menu"
+      role="menu"
     >
-      {#if nodeHasConfig(flowEditorState.nodes.find((n) => n.id === flowEditorState.contextMenu.nodeId))}
-        <button
+      {#if nodeHasConfig(flowEditorState.nodes.find((node) => node.id === flowEditorState.contextMenu.nodeId))}
+        <Button
+          variant="ghost"
+          size="sm"
+          class="context-action"
+          role="menuitem"
           onclick={() => {
-            if (flowEditorState.contextMenu.nodeId) openNodeConfig(flowEditorState.contextMenu.nodeId);
+            if (flowEditorState.contextMenu.nodeId)
+              openNodeConfig(flowEditorState.contextMenu.nodeId);
             flowEditorState.contextMenu.open = false;
           }}
-          class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left text-foreground/80 hover:bg-bg3 transition-colors"
         >
-          <Settings2 size={12} class="shrink-0" />
-          Configure
-        </button>
-        <div class="h-px bg-border/50 my-1"></div>
+          {m.common_configure()}
+        </Button>
       {/if}
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
+        class="context-action"
+        role="menuitem"
         onclick={() => {
           if (flowEditorState.contextMenu.nodeId) duplicateNode(flowEditorState.contextMenu.nodeId);
           flowEditorState.contextMenu.open = false;
         }}
-        class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left text-foreground/80 hover:bg-bg3 transition-colors"
       >
-        <Copy size={12} class="shrink-0" />
+        {#snippet icon()}<Copy size={12} aria-hidden="true" />{/snippet}
         {m.flow_duplicate()}
-      </button>
-      <div class="h-px bg-border/50 my-1"></div>
-      <button
+      </Button>
+      <Button
+        variant="danger"
+        size="sm"
+        class="context-action"
+        role="menuitem"
         onclick={() => {
           if (flowEditorState.contextMenu.nodeId) deleteNode(flowEditorState.contextMenu.nodeId);
           flowEditorState.contextMenu.open = false;
         }}
-        class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left text-red-400 hover:bg-red-500/10 transition-colors"
       >
-        <Trash2 size={12} class="shrink-0" />
+        {#snippet icon()}<Trash2 size={12} aria-hidden="true" />{/snippet}
         {m.common_delete()}
-      </button>
+      </Button>
     </div>
-  {/if}
+  </Layer>
+{/if}
+
+<style>
+  .operation-error {
+    padding: var(--space-2) var(--space-page-gutter);
+    border-bottom: 1px solid var(--color-danger-border);
+    color: var(--color-danger-fg);
+    background: var(--color-danger-surface);
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-compact);
+  }
+
+  :global(.flow-editor-body),
+  :global(.flow-boundary),
+  .editor-stage,
+  .canvas-stack,
+  .palette-pane,
+  .copilot-pane {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  :global(.flow-editor-body),
+  :global(.flow-boundary),
+  .canvas-stack {
+    flex: 1;
+  }
+
+  :global(.flow-boundary),
+  .canvas-stack,
+  .palette-pane,
+  .copilot-pane {
+    flex-direction: column;
+  }
+
+  .editor-stage {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .mobile-editor-controls,
+  .mobile-pane-header {
+    display: none;
+  }
+
+  .context-backdrop {
+    position: fixed;
+    inset: 0;
+  }
+
+  .context-menu {
+    position: fixed;
+    display: flex;
+    min-width: 12rem;
+    padding: var(--space-1);
+    flex-direction: column;
+    gap: var(--space-0-5);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-3);
+    box-shadow: var(--shadow-elevation-3);
+  }
+
+  :global(.context-action) {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  @media (max-width: 767.98px) {
+    .mobile-editor-controls {
+      display: flex;
+      padding: var(--space-2) var(--space-page-gutter);
+      gap: var(--space-control-gap);
+      overflow-x: auto;
+      border-bottom: 1px solid var(--color-border-subtle);
+      background: var(--color-surface-1);
+    }
+
+    .palette-pane,
+    .copilot-pane {
+      position: absolute;
+      inset: 0;
+      display: none;
+      z-index: var(--layer-popover);
+      background: var(--color-canvas);
+    }
+
+    .palette-pane.mobile-open,
+    .copilot-pane.mobile-open {
+      display: flex;
+    }
+
+    .mobile-pane-header {
+      display: flex;
+      min-height: var(--control-height-touch);
+      padding-inline: var(--space-page-gutter);
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-control-gap);
+      border-bottom: 1px solid var(--color-border-subtle);
+      color: var(--color-text-primary);
+      background: var(--color-surface-1);
+      font-size: var(--font-size-section-title);
+      font-weight: var(--font-weight-semibold);
+    }
+
+    .palette-pane :global(aside),
+    .copilot-pane :global(aside) {
+      width: 100%;
+      flex: 1;
+    }
+  }
+</style>

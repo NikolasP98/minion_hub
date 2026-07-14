@@ -1,92 +1,128 @@
 <script lang="ts">
-    import { page } from "$app/state";
-    import ValidationPanel from "$lib/components/builder/ValidationPanel.svelte";
-    import DryRunPanel from "$lib/components/builder/DryRunPanel.svelte";
-    import ChapterEditor from "$lib/components/builder/ChapterEditor.svelte";
-    import { conn } from "$lib/state/gateway";
-    import {
-        skillEditorState, skillEditorDerived,
-        initSkillEditor, cleanupSkillEditor, loadGatewayTools, scheduleSave,
-        saveChapterEdits,
-        fetchGhostSuggestions,
-    } from '$lib/state/builder/skill-editor.svelte';
-    import * as m from '$lib/paraglide/messages';
+  import { page } from '$app/state';
+  import ValidationPanel from '$lib/components/builder/ValidationPanel.svelte';
+  import DryRunPanel from '$lib/components/builder/DryRunPanel.svelte';
+  import ChapterEditor from '$lib/components/builder/ChapterEditor.svelte';
+  import { conn } from '$lib/state/gateway';
+  import {
+    skillEditorState,
+    skillEditorDerived,
+    initSkillEditor,
+    cleanupSkillEditor,
+    loadGatewayTools,
+    scheduleSave,
+    saveChapterEdits,
+    fetchGhostSuggestions,
+  } from '$lib/state/builder/skill-editor.svelte';
+  import EditorToolbar from './_components/EditorToolbar.svelte';
+  import EditorSidebar from './_components/EditorSidebar.svelte';
+  import DagCanvas from './_components/DagCanvas.svelte';
+  import DeleteChapterModal from './_components/DeleteChapterModal.svelte';
+  import ConditionModal from './_components/ConditionModal.svelte';
+  import AsyncBoundary from '$lib/components/ui/foundations/AsyncBoundary.svelte';
+  import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
+  import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
 
-    import EditorToolbar from './_components/EditorToolbar.svelte';
-    import EditorSidebar from './_components/EditorSidebar.svelte';
-    import DagCanvas from './_components/DagCanvas.svelte';
-    import DeleteChapterModal from './_components/DeleteChapterModal.svelte';
-    import ConditionModal from './_components/ConditionModal.svelte';
+  let showDryRun = $state(false);
+  let sidebarOpen = $state(true);
 
-    let showDryRun = $state(false);
-    let sidebarOpen = $state(true);
+  const skillId = $derived(page.params.id);
 
-    const skillId = $derived(page.params.id);
+  $effect(() => {
+    const id = skillId ?? '';
+    initSkillEditor(id);
+    return () => cleanupSkillEditor();
+  });
 
-    $effect(() => {
-        const id = skillId ?? '';
-        initSkillEditor(id);
-        return () => cleanupSkillEditor();
-    });
+  // Reload tools when gateway reconnects
+  $effect(() => {
+    if (conn.connected) loadGatewayTools();
+  });
 
-    // Reload tools when gateway reconnects
-    $effect(() => {
-        if (conn.connected) loadGatewayTools();
-    });
+  // Auto-save on field changes
+  $effect(() => {
+    void skillEditorState.name;
+    void skillEditorState.description;
+    void skillEditorState.emoji;
+    if (!skillEditorState.loading) scheduleSave();
+  });
 
-    // Auto-save on field changes
-    $effect(() => {
-        void skillEditorState.name;
-        void skillEditorState.description;
-        void skillEditorState.emoji;
-        if (!skillEditorState.loading) scheduleSave();
-    });
-
-    // Trigger ghost suggestions when description changes (AI-02)
-    $effect(() => {
-        void skillEditorState.description;
-        if (!skillEditorState.loading) fetchGhostSuggestions();
-    });
+  // Trigger ghost suggestions when description changes (AI-02)
+  $effect(() => {
+    void skillEditorState.description;
+    if (!skillEditorState.loading) fetchGhostSuggestions();
+  });
 </script>
 
-<EditorToolbar bind:showDryRun />
+<PageShell archetype="workspace" scroll="none" variant="canvas">
+  <EditorToolbar bind:showDryRun />
 
-<!-- Main layout: sidebar + canvas + optional panels -->
-<div class="flex-1 min-h-0 flex">
-    {#if skillEditorState.loading}
-        <div class="flex-1 flex items-center justify-center">
-            <span class="text-muted text-sm">{m.common_loading()}</span>
-        </div>
-    {:else}
+  <PageBody padding="none" scroll="none" class="skill-editor-body">
+    <AsyncBoundary
+      state={skillEditorState.loading ? { kind: 'loading' } : { kind: 'ready' }}
+      class="skill-editor-boundary"
+    >
+      <div class="skill-stage">
         <EditorSidebar bind:sidebarOpen />
 
         <DagCanvas bind:sidebarOpen />
 
-        <!-- Right: Chapter editor drawer (conditional) -->
         {#if skillEditorState.editingChapter}
-            <ChapterEditor
-                chapter={skillEditorState.editingChapter}
-                availableToolIds={skillEditorDerived.allToolIds}
-                chapterToolIds={skillEditorState.editingChapterToolIds}
-                suggestedToolIds={skillEditorState.suggestedToolMap[skillEditorState.editingChapter.id] ?? []}
-                skillName={skillEditorState.name}
-                skillDescription={skillEditorState.description}
-                onSave={saveChapterEdits}
-                onClose={() => { skillEditorState.editingChapter = null; }}
-            />
+          <ChapterEditor
+            chapter={skillEditorState.editingChapter}
+            availableToolIds={skillEditorDerived.allToolIds}
+            chapterToolIds={skillEditorState.editingChapterToolIds}
+            suggestedToolIds={skillEditorState.suggestedToolMap[
+              skillEditorState.editingChapter.id
+            ] ?? []}
+            skillName={skillEditorState.name}
+            skillDescription={skillEditorState.description}
+            onSave={saveChapterEdits}
+            onClose={() => {
+              skillEditorState.editingChapter = null;
+            }}
+          />
         {/if}
 
-        <!-- Right: Validation panel (conditional) -->
         {#if skillEditorState.showValidation && !skillEditorState.editingChapter && !showDryRun}
-            <ValidationPanel />
+          <ValidationPanel />
         {/if}
 
-        <!-- Right: Dry run panel (conditional) -->
         {#if showDryRun && !skillEditorState.editingChapter}
-            <DryRunPanel />
+          <DryRunPanel />
         {/if}
-    {/if}
-</div>
+      </div>
+    </AsyncBoundary>
+  </PageBody>
 
-<DeleteChapterModal />
-<ConditionModal />
+  <DeleteChapterModal />
+  <ConditionModal />
+</PageShell>
+
+<style>
+  :global(.skill-editor-body),
+  :global(.skill-editor-boundary),
+  .skill-stage {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+  }
+
+  .skill-stage {
+    position: relative;
+    overflow: hidden;
+  }
+
+  @media (max-width: 767.98px) {
+    .skill-stage :global(.editor-sidebar),
+    .skill-stage :global(.chapter-drawer),
+    .skill-stage :global(.validation-panel),
+    .skill-stage :global(.dry-run-panel) {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      z-index: var(--layer-popover);
+    }
+  }
+</style>

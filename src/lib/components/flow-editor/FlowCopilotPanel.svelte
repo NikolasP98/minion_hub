@@ -1,10 +1,11 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { submitOnEnter } from '$lib/hotkeys';
   import { Sparkles, Send, Check, X } from 'lucide-svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
   import Spinner from '$lib/components/ui/Spinner.svelte';
   import type { WorkingFlow } from '$lib/flows/flow-ops';
+  import { Button, Textarea } from '@minion-stack/ui';
+  import { fetchJson } from '$lib/api/fetch-json';
 
   let {
     flowId,
@@ -14,7 +15,7 @@
   }: {
     flowId: string;
     onpreview: (proposed: WorkingFlow | null) => void;
-    onapply: (proposed: WorkingFlow) => void;
+    onapply: (proposed: WorkingFlow) => boolean | Promise<boolean>;
     onreject: () => void;
   } = $props();
 
@@ -34,37 +35,41 @@
     busy = true;
     errorMsg = '';
     try {
-      const res = await fetch(`/api/flows/${flowId}/copilot`, {
+      const data = await fetchJson<{
+        message: string;
+        proposedFlow: WorkingFlow;
+        validation: { ok: boolean; issues: string[] };
+      }>(`/api/flows/${flowId}/copilot`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages }),
       });
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}));
-        errorMsg = (b as { message?: string }).message ?? `Error ${res.status}`;
-        return;
-      }
-      const data = (await res.json()) as {
-        message: string;
-        proposedFlow: WorkingFlow;
-        validation: { ok: boolean; issues: string[] };
-      };
       messages = [...messages, { role: 'assistant', content: data.message }];
       proposal = data.proposedFlow;
       validation = data.validation;
       onpreview(data.proposedFlow);
     } catch (e) {
-      errorMsg = e instanceof Error ? e.message : 'Unknown error';
+      errorMsg = e instanceof Error ? e.message : m.common_error();
     } finally {
       busy = false;
     }
   }
 
-  function apply() {
-    if (proposal) onapply(proposal);
-    proposal = null;
-    validation = null;
-    onpreview(null);
+  async function apply() {
+    if (!proposal || busy) return;
+    busy = true;
+    errorMsg = '';
+    try {
+      const applied = await onapply(proposal);
+      if (!applied) return;
+      proposal = null;
+      validation = null;
+      onpreview(null);
+    } catch (error) {
+      errorMsg = error instanceof Error ? error.message : m.common_error();
+    } finally {
+      busy = false;
+    }
   }
   function reject() {
     proposal = null;
@@ -72,69 +77,167 @@
     onpreview(null);
     onreject();
   }
+
+  function handleInputKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    void send();
+  }
 </script>
 
-<aside class="flex h-full w-80 shrink-0 flex-col border-l border-white/10 bg-white/[0.02]">
-  <header class="flex items-center gap-2 border-b border-white/10 px-4 py-3 text-sm font-semibold text-white">
-    <Sparkles size={15} />
+<aside class="copilot-panel" aria-label={m.flow_copilot_title()}>
+  <header>
+    <Sparkles size={15} aria-hidden="true" />
     {m.flow_copilot_title()}
   </header>
 
-  <div class="flex-1 space-y-3 overflow-y-auto p-3">
+  <div class="copilot-thread" aria-live="polite">
     {#each messages as msg (msg)}
       <ChatMessage message={msg} />
     {/each}
     {#if busy}
-      <div class="flex items-center gap-2 text-xs text-white/50">
-        <Spinner size="xs" /> {m.flow_copilot_thinking()}
+      <div class="copilot-progress" role="status">
+        <Spinner size="xs" />
+        {m.flow_copilot_thinking()}
       </div>
     {/if}
-    {#if errorMsg}<p class="text-xs text-red-400">{errorMsg}</p>{/if}
+    {#if errorMsg}<p class="copilot-error" role="alert">{errorMsg}</p>{/if}
   </div>
 
   {#if proposal}
-    <div class="border-t border-white/10 p-3">
-      <p class="mb-2 text-xs text-white/70">{m.flow_copilot_proposed()}</p>
+    <div class="proposal-panel">
+      <p>{m.flow_copilot_proposed()}</p>
       {#if validation && !validation.ok}
-        <p class="mb-2 text-[11px] text-amber-300">{m.flow_copilot_invalid()}</p>
+        <p class="proposal-warning">{m.flow_copilot_invalid()}</p>
       {/if}
-      <div class="flex gap-2">
-        <button
-          type="button"
-          onclick={apply}
-          class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25"
-        >
-          <Check size={13} /> {m.flow_copilot_confirm()}
-        </button>
-        <button
-          type="button"
-          onclick={reject}
-          class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70 ring-1 ring-white/10 hover:bg-white/10"
-        >
-          <X size={13} /> {m.flow_copilot_reject()}
-        </button>
+      <div class="proposal-actions">
+        <Button variant="primary" size="sm" loading={busy} onclick={apply}>
+          {#snippet icon()}<Check size={13} aria-hidden="true" />{/snippet}
+          {m.flow_copilot_confirm()}
+        </Button>
+        <Button variant="secondary" size="sm" disabled={busy} onclick={reject}>
+          {#snippet icon()}<X size={13} aria-hidden="true" />{/snippet}
+          {m.flow_copilot_reject()}
+        </Button>
       </div>
     </div>
   {/if}
 
-  <div class="border-t border-white/10 p-3">
-    <div class="flex items-end gap-2">
-      <textarea
+  <div class="composer">
+    <div class="composer-row">
+      <Textarea
+        label={m.flow_copilot_placeholder()}
         bind:value={input}
         rows={2}
+        resize="none"
         placeholder={m.flow_copilot_placeholder()}
-        {@attach submitOnEnter(() => send())}
-        class="flex-1 resize-none rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-white/30"
-      ></textarea>
-      <button
-        type="button"
+        onkeydown={handleInputKeydown}
+      />
+      <Button
+        variant="primary"
+        size="touch"
+        shape="icon"
         onclick={send}
         disabled={busy || !input.trim()}
         aria-label={m.chat_send()}
-        class="grid size-9 shrink-0 place-items-center rounded-lg bg-white/10 text-white hover:bg-white/20 disabled:opacity-40"
       >
-        <Send size={15} />
-      </button>
+        {#snippet icon()}<Send size={15} aria-hidden="true" />{/snippet}
+      </Button>
     </div>
   </div>
 </aside>
+
+<style>
+  .copilot-panel {
+    display: flex;
+    width: 20rem;
+    height: 100%;
+    flex-shrink: 0;
+    flex-direction: column;
+    border-left: 1px solid var(--color-border-subtle);
+    background: var(--color-surface-1);
+  }
+
+  header {
+    display: flex;
+    padding: var(--space-3) var(--space-4);
+    align-items: center;
+    gap: var(--space-control-gap);
+    border-bottom: 1px solid var(--color-border-subtle);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-section-title);
+    line-height: var(--line-height-heading);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .copilot-thread {
+    display: flex;
+    min-height: 0;
+    padding: var(--space-3);
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-3);
+    overflow-y: auto;
+  }
+
+  .copilot-progress,
+  .copilot-error,
+  .proposal-panel {
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-compact);
+  }
+
+  .copilot-progress {
+    display: flex;
+    align-items: center;
+    gap: var(--space-control-gap);
+    color: var(--color-text-secondary);
+  }
+
+  .copilot-error {
+    color: var(--color-danger-fg);
+  }
+
+  .proposal-panel,
+  .composer {
+    padding: var(--space-3);
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  .proposal-panel {
+    color: var(--color-text-secondary);
+    background: var(--color-surface-2);
+  }
+
+  .proposal-warning {
+    margin-top: var(--space-2);
+    color: var(--color-warning-fg);
+  }
+
+  .proposal-actions,
+  .composer-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-control-gap);
+  }
+
+  .proposal-actions {
+    margin-top: var(--space-2);
+  }
+
+  .proposal-actions :global([data-part='button']) {
+    flex: 1;
+  }
+
+  .composer-row :global([data-part='form-field']) {
+    min-width: 0;
+    flex: 1;
+  }
+
+  @media (max-width: 767.98px) {
+    .copilot-panel {
+      width: 100%;
+      border-left: 0;
+    }
+  }
+</style>
