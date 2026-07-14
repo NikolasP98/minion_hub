@@ -170,7 +170,8 @@ import { Handle, Position } from '@xyflow/svelte';
 
   <!-- Type picker -->
   <Select size="sm"
-    class="mt-1 w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
+    class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
+    fieldClass="mt-1 w-full"
     value={data.agentKind ?? ''}
     onclick={(e: MouseEvent) => e.stopPropagation()}
     onchange={pickKind}
@@ -182,7 +183,8 @@ import { Handle, Position } from '@xyflow/svelte';
 
   <!-- Instance picker (disabled until a type is chosen) -->
   <Select size="sm"
-    class="mt-1 w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground disabled:opacity-50"
+    class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground disabled:opacity-50"
+    fieldClass="mt-1 w-full"
     value={data.agentId}
     disabled={!data.agentKind}
     onclick={(e: MouseEvent) => e.stopPropagation()}

@@ -134,7 +134,7 @@
 			</div>
 			{#if data.templates.length}
 				<div class="create-row">
-					<Select size="sm" class="in" bind:value={templateId}>
+					<Select size="sm" class="in" fieldClass="min-w-0 flex-1" bind:value={templateId}>
 						<option value="">From template…</option>
 						{#each data.templates as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
 					</Select>

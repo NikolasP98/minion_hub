@@ -61,7 +61,8 @@ import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/feat
     <label for="tr-event" class="text-[length:var(--font-size-caption)] font-medium text-foreground">Event</label>
     <Select size="sm"
       id="tr-event"
-      class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+      class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+      fieldClass="w-full"
       value={data.event}
       onchange={(next) => setEvent(String(next) as TriggerNodeData['event'])}
     >
@@ -99,7 +100,8 @@ import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/feat
         <div class="flex items-center gap-1.5">
           <!-- Channel -->
           <Select size="sm"
-            class="flex-1 text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
+            class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
+            fieldClass="min-w-0 flex-1"
             value={s.channel}
             onchange={(next) => patchSource(i, { channel: String(next), accountId: undefined })}
           >
@@ -124,7 +126,8 @@ import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/feat
         <!-- Account (linked) -->
         {#if s.channel}
           <Select size="sm"
-            class="w-full text-[length:var(--font-size-caption)] bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+            class="text-[length:var(--font-size-caption)] bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+            fieldClass="w-full"
             value={s.accountId ?? ''}
             onchange={(next) => patchSource(i, { accountId: String(next) || undefined })}
           >

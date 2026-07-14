@@ -49,7 +49,8 @@ import { Handle, Position } from '@xyflow/svelte';
     <span class="text-xs font-semibold text-foreground truncate">{data.label || 'Structured'}</span>
   </div>
   <Select size="sm"
-    class="w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground mb-1"
+    class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
+    fieldClass="mb-1 w-full"
     value={data.modelId}
     onclick={(e: MouseEvent) => e.stopPropagation()}
     onchange={(next) => patch({ modelId: String(next) })}

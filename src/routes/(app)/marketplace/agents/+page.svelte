@@ -166,7 +166,7 @@
           {/snippet}
         {/if}
       </Input>
-      <Select bind:value={sortBy} options={sortSelectOptions} size="sm" class="w-36" />
+      <Select bind:value={sortBy} options={sortSelectOptions} size="sm" fieldClass="w-36" />
       <div class="flex gap-1" role="group" aria-label={m.marketplace_agentsListGridView()}>
         <Button
           variant={viewMode === 'grid' ? 'primary' : 'ghost'}
@@ -193,7 +193,7 @@
       onclick={() => (featuredOnly = !featuredOnly)}
       aria-pressed={featuredOnly}><Star size={10} />{m.marketplace_agentsFeatured()}</Button
     >
-    <Select bind:value={modelFilter} options={modelOptions} size="xs" class="w-32" />
+    <Select bind:value={modelFilter} options={modelOptions} size="xs" fieldClass="w-32" />
     <div
       class="ml-auto flex max-w-full gap-1.5 overflow-x-auto [scrollbar-width:none]"
       role="group"

@@ -259,7 +259,7 @@
         </header>
 
         <Select
-          class="field"
+          fieldClass="field"
           label={m.fin_money_currency()}
           bind:value={currency}
           options={[

@@ -345,7 +345,7 @@
       <div class="border-t border-border p-3 space-y-2">
         <div class="flex items-center gap-2">
           <label class="text-xs text-muted shrink-0" for="compose-to">{m.inbox_composeTo()}</label>
-          <Select id="compose-to" class="flex-1" bind:value={composeToId} size="sm">
+          <Select id="compose-to" fieldClass="min-w-0 flex-1" bind:value={composeToId} size="sm">
             <option value="" disabled>{m.inbox_selectAgent()}</option>
             {#each gw.agents as agent (agent.id)}
               <option value={agent.id}>{agentDisplayName(agent)}</option>

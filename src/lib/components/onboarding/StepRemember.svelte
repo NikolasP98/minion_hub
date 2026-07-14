@@ -76,14 +76,14 @@
       label={m.step_timezone()}
       bind:value={timezone}
       options={timezones}
-      class="min-w-0"
+      fieldClass="min-w-0"
     />
     <Select
       id="onboarding-language"
       label={m.step_language()}
       bind:value={language}
       options={languages}
-      class="min-w-0"
+      fieldClass="min-w-0"
     />
   </div>
 

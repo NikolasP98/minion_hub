@@ -148,7 +148,7 @@
           </div>
         {/if}
         <Select
-          class="field"
+          fieldClass="field"
           label="Status"
           value={i.status}
           options={STATUSES.map((status) => ({ value: status, label: statusLabel[status] }))}
@@ -157,7 +157,7 @@
           onchange={(value) => patch({ status: String(value) })}
         />
         <Select
-          class="field"
+          fieldClass="field"
           label="Priority"
           value={i.priority}
           options={PRIORITIES.map((priority) => ({

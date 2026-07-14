@@ -12,7 +12,14 @@
   let tab = 'details';
 </script>
 
-<Select label="First select" bind:value={selected} options={[{ value: 'one', label: 'One' }]} />
+<Select
+  label="First select"
+  bind:value={selected}
+  options={[{ value: 'one', label: 'One' }]}
+  class="fixture-legacy-control"
+  fieldClass="fixture-field"
+  selectClass="fixture-explicit-control"
+/>
 <Select label="Second select" value={2} size="xs" options={[{ value: 2, label: 'Two' }]} />
 <Toggle bind:checked={enabled} ariaLabel="Enable audit" description="Audits every change" />
 <Spinner label="Loading fixture" />

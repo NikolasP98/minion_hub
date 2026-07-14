@@ -114,7 +114,7 @@
           <div class="flex items-center gap-2 rounded-lg border border-border bg-bg3 p-2">
             <Select
               size="sm"
-              class="w-28 shrink-0"
+              fieldClass="w-28 shrink-0"
               bind:value={row.principalType}
               options={[
                 { value: 'role', label: m.brains_access_type_role() },
@@ -123,7 +123,7 @@
               ]}
             />
             {#if row.principalType === 'role'}
-              <Select size="sm" class="min-w-0 flex-1" bind:value={row.principalId}>
+              <Select size="sm" fieldClass="min-w-0 flex-1" bind:value={row.principalId}>
                 <option value="">{m.brains_access_principal_ph()}</option>
                 {#each roles as r (r.key)}<option value={r.key}>{r.name}</option>{/each}
               </Select>
@@ -137,7 +137,7 @@
             {/if}
             <Select
               size="sm"
-              class="w-24 shrink-0"
+              fieldClass="w-24 shrink-0"
               bind:value={row.level}
               options={[
                 { value: 'read', label: m.brains_access_level_read() },

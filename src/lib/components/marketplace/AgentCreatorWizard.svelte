@@ -212,7 +212,8 @@
             <Select
               id="category-select"
               bind:value={category}
-              class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground focus:outline-none focus:border-brand-pink/40 transition-colors capitalize"
+              class="px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground focus:outline-none focus:border-brand-pink/40 transition-colors capitalize"
+              fieldClass="w-full"
             >
               {#each categories as cat (cat)}
                 <option value={cat}>{categoryLabels[cat]?.() ?? cat}</option>

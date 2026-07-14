@@ -31,7 +31,8 @@ import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor
   <div class="flex flex-col gap-1">
     <span class="text-[length:var(--font-size-caption)] font-medium text-foreground">Mode</span>
     <Select size="sm"
-      class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+      class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
+      fieldClass="w-full"
       value={data.mode ?? 'overwrite'}
       onchange={(next) => set({ mode: String(next) as 'overwrite' | 'append' })}
     >

@@ -100,7 +100,8 @@ import type { Snippet } from 'svelte';
 
 {#if value.mode === 'llm' || value.mode === 'hybrid'}
   <Select size="sm"
-    class="w-full text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground mb-2"
+    class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
+    fieldClass="mb-2 w-full"
     value={value.modelId ?? ''}
     onclick={(e: MouseEvent) => e.stopPropagation()}
     onchange={(next) => setModel(String(next))}

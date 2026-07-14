@@ -45,7 +45,7 @@
 
 {#if workspaces.length > 0}
 	<Select
-		class="max-w-36"
+		fieldClass="max-w-36"
 		size="xs"
 		options={workspaceOptions}
 		value={currentCompanyId ?? ''}
