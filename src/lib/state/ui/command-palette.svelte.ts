@@ -1,7 +1,8 @@
 import { goto } from '$app/navigation';
 import { visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
 import { palettePageRoutes } from '$lib/nav/routes';
-import { canClient } from '$lib/access/can.svelte';
+import { canViewPath } from '$lib/access/can.svelte';
+import { fetchJson } from '$lib/api/fetch-json';
 
 export interface Command {
   id: string;
@@ -9,6 +10,8 @@ export interface Command {
   category: 'page' | 'agent' | 'action' | 'record';
   icon?: string;
   keywords?: string;
+  /** Route policy to evaluate before exposing this command. */
+  requiresPath?: string;
   action: () => void;
 }
 
@@ -38,13 +41,14 @@ export function closePalette() {
 // route there and it appears here automatically.
 function pageCommands(): Command[] {
   return palettePageRoutes()
-    .filter((r) => !r.requires || canClient(r.requires))
+    .filter((r) => canViewPath(r.path))
     .map((r) => ({
       id: `page:${r.path}`,
       label: r.title(),
       category: 'page' as const,
       icon: r.paletteIcon,
       keywords: r.keywords,
+      requiresPath: r.path,
       action: () => goto(r.path),
     }));
 }
@@ -56,6 +60,7 @@ const actionCommands: Command[] = [
     category: 'action',
     icon: 'plus',
     keywords: 'create add agent',
+    requiresPath: '/agents/builder',
     action: () => goto('/agents/builder'),
   },
   {
@@ -64,6 +69,7 @@ const actionCommands: Command[] = [
     category: 'action',
     icon: 'settings',
     keywords: 'preferences configuration',
+    requiresPath: '/settings',
     action: () => goto('/settings'),
   },
 ];
@@ -84,21 +90,20 @@ export async function runRecordSearch(q: string): Promise<void> {
   }
   const seq = ++recordSearchSeq;
   try {
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-    if (!res.ok) return;
-    const { hits } = (await res.json()) as {
+    const { hits } = await fetchJson<{
       hits: Array<{ type: string; id: string; label: string; sublabel: string | null; href: string; icon: string }>;
-    };
+    }>(`/api/search?q=${encodeURIComponent(query)}`);
     if (seq !== recordSearchSeq) return; // a newer query superseded this one
     recordResults.items = hits.map((h) => ({
       id: `record:${h.type}:${h.id}`,
       label: h.sublabel ? `${h.label} · ${h.sublabel}` : h.label,
       category: 'record' as const,
       icon: h.icon,
+      requiresPath: h.href,
       action: () => goto(h.href),
     }));
   } catch {
-    /* search is best-effort */
+    if (seq === recordSearchSeq) recordResults.items = [];
   }
 }
 
@@ -123,16 +128,21 @@ function fuzzyMatch(text: string, query: string): boolean {
 
 export function getFilteredCommands(): { category: string; commands: Command[] }[] {
   // Build agent commands dynamically from gateway state
-  const agentCommands: Command[] = visibleAgents.value.map((a) => ({
-    id: `agent:${a.id}`,
-    label: a.name ?? a.id,
-    category: 'agent' as const,
-    icon: a.emoji ?? 'bot',
-    keywords: `agent ${a.name ?? ''} ${a.id}`,
-    action: () => goto('/agents'),
-  }));
+  const agentCommands: Command[] = canViewPath('/agents')
+    ? visibleAgents.value.map((a) => ({
+        id: `agent:${a.id}`,
+        label: a.name ?? a.id,
+        category: 'agent' as const,
+        icon: a.emoji ?? 'bot',
+        keywords: `agent ${a.name ?? ''} ${a.id}`,
+        requiresPath: '/agents',
+        action: () => goto('/agents'),
+      }))
+    : [];
 
-  const all = [...pageCommands(), ...agentCommands, ...actionCommands, ...customCommands];
+  const all = [...pageCommands(), ...agentCommands, ...actionCommands, ...customCommands].filter(
+    (command) => !command.requiresPath || canViewPath(command.requiresPath),
+  );
   const q = palette.query.trim();
 
   const filtered = q
@@ -157,7 +167,10 @@ export function getFilteredCommands(): { category: string; commands: Command[] }
 
   // Live records (server-matched) lead the list when present.
   if (q && recordResults.items.length) {
-    return [{ category: 'Records', commands: recordResults.items }, ...out];
+    const visibleRecords = recordResults.items.filter(
+      (command) => !command.requiresPath || canViewPath(command.requiresPath),
+    );
+    if (visibleRecords.length) return [{ category: 'Records', commands: visibleRecords }, ...out];
   }
   return out;
 }
