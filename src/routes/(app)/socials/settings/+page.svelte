@@ -318,53 +318,53 @@
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-lg);
 		background: var(--color-card);
-		padding: 0.85rem 1rem;
+		padding: var(--space-3) var(--space-4);
 		display: flex;
 		flex-direction: column;
 	}
 	.card-h {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		font-size: 0.78rem;
+		gap: var(--space-2);
+		font-size: var(--font-size-body);
 		font-weight: 600;
 		color: var(--color-muted-foreground);
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
-		margin-bottom: 0.85rem;
+		margin-bottom: var(--space-3);
 	}
 	.meta-row {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 0.4rem;
-		font-size: 0.82rem;
+		gap: var(--space-3);
+		margin-bottom: var(--space-2);
+		font-size: var(--font-size-body);
 	}
 	.meta-row .t-caption {
 		min-width: 9rem;
 	}
 	.mono-val {
-		font-size: 0.82rem;
+		font-size: var(--font-size-body);
 		font-family: var(--font-mono, monospace);
 		color: var(--color-muted-foreground);
 	}
 	.scopes {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.3rem;
+		gap: var(--space-1);
 	}
 	.scope-chip {
-		font-size: 0.7rem;
-		padding: 0.05rem 0.4rem;
-		border-radius: 999px;
+		font-size: var(--font-size-caption);
+		padding: var(--space-0-5) var(--space-2);
+		border-radius: var(--radius-full);
 		background: color-mix(in srgb, var(--color-muted-foreground) 12%, transparent);
 		color: var(--color-muted-foreground);
 	}
 	.status-pill {
 		display: inline-block;
-		padding: 0.1rem 0.5rem;
-		border-radius: 999px;
-		font-size: 0.74rem;
+		padding: var(--space-0-5) var(--space-2);
+		border-radius: var(--radius-full);
+		font-size: var(--font-size-caption);
 		font-weight: 500;
 		text-transform: capitalize;
 		background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
@@ -372,31 +372,31 @@
 	}
 	.status-pill[data-status='active'],
 	.status-pill[data-status='succeeded'] {
-		background: color-mix(in srgb, var(--color-success, #22c55e) 15%, transparent);
-		color: var(--color-success, #22c55e);
+		background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 15%, transparent);
+		color: var(--color-success, var(--color-success-fg));
 	}
 	.status-pill[data-status='expiring'],
 	.status-pill[data-status='running'],
 	.status-pill[data-status='queued'] {
-		background: color-mix(in srgb, var(--color-warning, #f59e0b) 15%, transparent);
-		color: var(--color-warning, #f59e0b);
+		background: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 15%, transparent);
+		color: var(--color-warning, var(--color-warning-fg));
 	}
 	.status-pill[data-status='expired'],
 	.status-pill[data-status='revoked'],
 	.status-pill[data-status='failed'] {
-		background: color-mix(in srgb, var(--color-destructive, #ef4444) 12%, transparent);
-		color: var(--color-destructive, #ef4444);
+		background: color-mix(in srgb, var(--color-destructive, var(--color-danger-fg)) 12%, transparent);
+		color: var(--color-destructive, var(--color-danger-fg));
 	}
 	.reconnect-banner {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-top: 0.6rem;
-		padding: 0.5rem 0.7rem;
+		gap: var(--space-2);
+		margin-top: var(--space-2);
+		padding: var(--space-2) var(--space-3);
 		border-radius: var(--radius-md);
-		background: color-mix(in srgb, var(--color-warning, #f59e0b) 10%, transparent);
-		color: var(--color-warning, #f59e0b);
-		font-size: 0.82rem;
+		background: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 10%, transparent);
+		color: var(--color-warning, var(--color-warning-fg));
+		font-size: var(--font-size-body);
 	}
 	.reconnect-banner span {
 		flex: 1;
@@ -404,13 +404,13 @@
 	.asset-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--space-2);
 	}
 	.asset-row {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		padding: 0.4rem 0;
+		gap: var(--space-2);
+		padding: var(--space-2) 0;
 		border-bottom: 1px solid var(--hairline);
 	}
 	.asset-row:last-child {
@@ -421,22 +421,22 @@
 		width: 5.5rem;
 		text-align: center;
 		box-sizing: border-box;
-		font-size: 0.7rem;
-		padding: 0.1rem 0.45rem;
-		border-radius: 999px;
+		font-size: var(--font-size-caption);
+		padding: var(--space-0-5) var(--space-2);
+		border-radius: var(--radius-full);
 		background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
 		color: var(--color-muted-foreground);
 	}
 	.asset-name {
 		flex: 1;
 		min-width: 0;
-		font-size: 0.85rem;
+		font-size: var(--font-size-body);
 	}
 	.actions {
-		margin-bottom: 0.25rem;
+		margin-bottom: var(--space-1);
 	}
 	.err-text {
-		color: var(--color-destructive, #ef4444);
+		color: var(--color-destructive, var(--color-danger-fg));
 		max-width: 16rem;
 		overflow: hidden;
 		text-overflow: ellipsis;

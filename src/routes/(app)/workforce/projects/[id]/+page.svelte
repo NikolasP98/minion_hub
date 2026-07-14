@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
-	import { PageHeader } from '$lib/components/ui';
+	import { PageHeader, Button, Select } from '$lib/components/ui';
 	import { Flag, Plus, Clock, Boxes, Link2, Unlink, Workflow } from 'lucide-svelte';
 	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
@@ -137,14 +137,14 @@
 				<div class="line">Customer: {partyName(data.project.customerPartyId)}</div>
 				<div class="line">Lead: {partyName(data.project.leadPartyId)}</div>
 				<label class="line">Status:
-					<select
+					<Select size="sm"
 						value={data.project.status}
 						disabled={busy || !canAct('projects', 'edit')}
 						title={canAct('projects', 'edit') ? undefined : m.no_permission()}
-						onchange={(e) => patchProject({ status: (e.currentTarget as HTMLSelectElement).value })}
+						onchange={(value) => patchProject({ status: String(value) })}
 					>
 						{#each projStatuses as s (s)}<option value={s}>{s}</option>{/each}
-					</select>
+					</Select>
 				</label>
 			</div>
 		</section>
@@ -164,18 +164,18 @@
 		<!-- add task -->
 		<div class="add">
 			<input class="in" placeholder="Add a task…" bind:value={newTaskTitle} onkeydown={(e) => e.key === 'Enter' && addTask(false)} />
-			<button
+			<Button variant="ghost"
 				class="btn"
 				disabled={busy || !newTaskTitle.trim() || !canAct('projects', 'edit')}
 				title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 				onclick={() => addTask(false)}
-			><Plus size={15} /> Task</button>
-			<button
+			><Plus size={15} /> Task</Button>
+			<Button variant="ghost"
 				class="btn ghost"
 				disabled={busy || !newTaskTitle.trim() || !canAct('projects', 'edit')}
 				title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 				onclick={() => addTask(true)}
-			><Flag size={14} /> Milestone</button>
+			><Flag size={14} /> Milestone</Button>
 		</div>
 
 		<!-- board -->
@@ -189,29 +189,29 @@
 								<div class="tt">{t.title}</div>
 								<div class="tmeta">
 									{#if t.humanId}<span class="hid">{t.humanId}</span>{/if}
-									<select
+									<Select size="sm"
 										class="mini"
 										value={t.assigneePartyId ?? ''}
 										disabled={busy || !canAct('projects', 'edit')}
 										title={canAct('projects', 'edit') ? undefined : m.no_permission()}
-										onchange={(e) => patchTask(t.id, { assigneePartyId: (e.currentTarget as HTMLSelectElement).value || null }, t.updatedAt)}
+										onchange={(value) => patchTask(t.id, { assigneePartyId: String(value) || null }, t.updatedAt)}
 									>
 										<option value="">Unassigned</option>
 										{#if t.assigneePartyId && !assignOptions.some((o) => o.id === t.assigneePartyId)}
 											<option value={t.assigneePartyId}>{partyName(t.assigneePartyId)}</option>
 										{/if}
 										{#each assignOptions as o (o.id)}<option value={o.id} disabled={!!o.agent && !data.workforceAvailable}>{o.label}{#if o.agent && !data.workforceAvailable} — {m.workforce_projects_agentUnavailable()}{/if}</option>{/each}
-									</select>
+									</Select>
 								</div>
-								<select
+								<Select size="sm"
 									class="mini status"
 									value={t.status}
 									disabled={busy || !canAct('projects', 'edit')}
 									title={canAct('projects', 'edit') ? undefined : m.no_permission()}
-									onchange={(e) => patchTask(t.id, { status: (e.currentTarget as HTMLSelectElement).value }, t.updatedAt)}
+									onchange={(value) => patchTask(t.id, { status: String(value) }, t.updatedAt)}
 								>
 									{#each COLUMNS as s (s)}<option value={s}>{colLabel[s]}</option>{/each}
-								</select>
+								</Select>
 							</div>
 						{/each}
 					</div>
@@ -232,12 +232,12 @@
 						{:else}
 							<span class="btn ghost sm disabled" aria-disabled="true"><Workflow size={13} /> {m.workforce_pipelines_title()}</span>
 						{/if}
-						<button
+						<Button variant="ghost"
 							class="btn ghost sm"
 							disabled={busy || !data.workforceAvailable || !canAct('projects', 'edit')}
 							title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 							onclick={() => patchProject({ workforceProjectId: null })}
-						><Unlink size={13} /> Unlink</button>
+						><Unlink size={13} /> Unlink</Button>
 					</span>
 				{/if}
 			</header>
@@ -279,9 +279,9 @@
 						{#if activePipelines.length > 1}
 							<label class="exec-meta t-caption">
 								{m.workforce_pipelines_title()}
-								<select class="mini" bind:value={pipelineChoice}>
+								<Select size="sm" class="mini" bind:value={pipelineChoice}>
 									{#each activePipelines as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-								</select>
+								</Select>
 							</label>
 						{/if}
 						<div class="board exec-board" style={`grid-template-columns: repeat(${pipelineBoard.length}, minmax(140px, 1fr));`}>
@@ -349,16 +349,16 @@
 				<p class="t-caption broken">Linked workforce project unavailable (backend down or project removed).</p>
 			{:else}
 				<div class="link-row">
-					<select class="in" bind:value={linkChoice}>
+					<Select size="sm" class="in" bind:value={linkChoice}>
 						<option value="">Link a workforce project…</option>
 						{#each data.linkable as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-					</select>
-					<button
+					</Select>
+					<Button variant="ghost"
 						class="btn ghost sm"
 						disabled={busy || !linkChoice || !canAct('projects', 'edit')}
 						title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 						onclick={() => patchProject({ workforceProjectId: linkChoice })}
-					><Link2 size={13} /> Link</button>
+					><Link2 size={13} /> Link</Button>
 				</div>
 				{#if data.linkable.length === 0}
 					<p class="t-caption empty">No workforce projects available to link.</p>
@@ -373,7 +373,7 @@
 				<input class="in date" type="date" bind:value={tsDate} />
 				<input class="in mins" type="number" min="1" bind:value={tsMinutes} title="Minutes" />
 				<input class="in" placeholder="What did you work on?" bind:value={tsDesc} />
-				<button class="btn" disabled={busy || !data.selfPartyId} onclick={logTime}>Log</button>
+				<Button variant="ghost" class="btn" disabled={busy || !data.selfPartyId} onclick={logTime}>Log</Button>
 			</div>
 			<div class="ts-list">
 				{#each data.timesheets as ts (ts.id)}
@@ -399,70 +399,70 @@
 </div>
 
 <style>
-	.summary { display: flex; gap: 1.25rem; align-items: center; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 1rem 1.25rem; }
-	.ring { --size: 76px; width: var(--size); height: var(--size); border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--color-accent) calc(var(--pct) * 1%), var(--color-bg3) 0); flex: 0 0 auto; }
-	.ring span { width: calc(var(--size) - 16px); height: calc(var(--size) - 16px); border-radius: 50%; background: var(--color-card); display: grid; place-items: center; font-weight: 700; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
-	.summary-meta { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.86rem; }
+	.summary { display: flex; gap: var(--space-6); align-items: center; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-4) var(--space-6); }
+	.ring { --size: 76px; width: var(--size); height: var(--size); border-radius: var(--radius-full); display: grid; place-items: center; background: conic-gradient(var(--color-accent) calc(var(--pct) * 1%), var(--color-bg3) 0); flex: 0 0 auto; }
+	.ring span { width: calc(var(--size) - 16px); height: calc(var(--size) - 16px); border-radius: var(--radius-full); background: var(--color-card); display: grid; place-items: center; font-weight: 700; font-size: var(--font-size-page-title); font-variant-numeric: tabular-nums; }
+	.summary-meta { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-body); }
 	.summary-meta .line { color: var(--color-muted-foreground); }
-	.summary-meta select { background: var(--color-bg3); border: 1px solid var(--hairline); border-radius: var(--radius-md); height: 1.7rem; margin-left: 0.3rem; }
+	.summary-meta select { background: var(--color-bg3); border: 1px solid var(--hairline); border-radius: var(--radius-md); height: 1.7rem; margin-left: var(--space-1); }
 	.card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); }
-	.ms { padding: 0.6rem 0.9rem; }
-	.ms-head, .ts-head { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--color-muted-foreground); margin-bottom: 0.5rem; }
-	.ms-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-	.ms-chip { font-size: 0.78rem; padding: 0.15rem 0.55rem; border-radius: 999px; border: 1px solid var(--hairline); background: var(--color-bg3); }
-	.ms-chip.done { color: var(--color-success, #16a34a); }
-	.add { display: flex; gap: 0.5rem; }
-	.in { height: 2rem; font-size: 0.86rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.55rem; flex: 1; color: var(--color-foreground); }
+	.ms { padding: var(--space-2) var(--space-4); }
+	.ms-head, .ts-head { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-body); color: var(--color-muted-foreground); margin-bottom: var(--space-2); }
+	.ms-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+	.ms-chip { font-size: var(--font-size-body); padding: var(--space-1) var(--space-2); border-radius: var(--radius-full); border: 1px solid var(--hairline); background: var(--color-bg3); }
+	.ms-chip.done { color: var(--color-success, var(--color-success-border)); }
+	.add { display: flex; gap: var(--space-2); }
+	.in { height: 2rem; font-size: var(--font-size-body); border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 var(--space-2); flex: 1; color: var(--color-foreground); }
 	.in.date { flex: 0 0 9rem; } .in.mins { flex: 0 0 5rem; }
-	.btn { display: inline-flex; align-items: center; gap: 0.35rem; height: 2rem; padding: 0 0.7rem; border-radius: var(--radius-md); border: 1px solid var(--hairline); background: var(--color-accent); color: var(--color-on-accent); font-size: 0.84rem; cursor: pointer; white-space: nowrap; }
+	.btn { display: inline-flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--hairline); background: var(--color-accent); color: var(--color-on-accent); font-size: var(--font-size-body); cursor: pointer; white-space: nowrap; }
 	.btn.ghost { background: var(--color-bg3); color: var(--color-foreground); }
-	.btn.sm { height: 1.7rem; font-size: 0.78rem; padding: 0 0.55rem; }
+	.btn.sm { height: 1.7rem; font-size: var(--font-size-body); padding: 0 var(--space-2); }
 	.btn:disabled { opacity: 0.5; cursor: default; }
 	.btn.disabled { opacity: 0.5; cursor: default; }
-	.board { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 0.6rem; align-items: start; overflow-x: auto; overscroll-behavior-inline: contain; padding-bottom: var(--space-2, 8px); }
+	.board { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: var(--space-2); align-items: start; overflow-x: auto; overscroll-behavior-inline: contain; padding-bottom: var(--space-2, 8px); }
 	.col { background: var(--color-bg2, var(--color-bg3)); border: 1px solid var(--hairline); border-radius: var(--radius-lg); min-height: 4rem; }
-	.col-head { font-size: 0.76rem; font-weight: 600; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--hairline); display: flex; justify-content: space-between; color: var(--color-muted-foreground); }
+	.col-head { font-size: var(--font-size-body); font-weight: 600; padding: var(--space-2) var(--space-2); border-bottom: 1px solid var(--hairline); display: flex; justify-content: space-between; color: var(--color-muted-foreground); }
 	.cnt { font-variant-numeric: tabular-nums; }
-	.col-body { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.5rem; }
-	.tcard { background: var(--color-card); border: 1px solid var(--hairline); border-left: 3px solid var(--color-muted-foreground); border-radius: var(--radius-md); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem; }
-	.tcard.p-high { border-left-color: #f59e0b; } .tcard.p-urgent { border-left-color: #ef4444; } .tcard.p-low { border-left-color: var(--hairline); }
-	.tt { font-size: 0.83rem; }
-	.tmeta { display: flex; align-items: center; gap: 0.35rem; }
-	.hid { font-size: 0.7rem; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
-	.mini { height: 1.6rem; font-size: 0.74rem; border-radius: var(--radius-sm, 4px); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.25rem; max-width: 100%; flex: 1; }
+	.col-body { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); }
+	.tcard { background: var(--color-card); border: 1px solid var(--hairline); border-left: 3px solid var(--color-muted-foreground); border-radius: var(--radius-md); padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
+	.tcard.p-high { border-left-color: var(--color-warning-fg); } .tcard.p-urgent { border-left-color: var(--color-danger-fg); } .tcard.p-low { border-left-color: var(--hairline); }
+	.tt { font-size: var(--font-size-body); }
+	.tmeta { display: flex; align-items: center; gap: var(--space-2); }
+	.hid { font-size: var(--font-size-caption); color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
+	.mini { height: 1.6rem; font-size: var(--font-size-caption); border-radius: var(--radius-sm, var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 var(--space-1); max-width: 100%; flex: 1; }
 	.mini.status { width: 100%; }
-	.exec { padding: 0.6rem 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
+	.exec { padding: var(--space-2) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
 	.exec.offline { opacity: 0.65; background: var(--color-bg3); }
-	.roster { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.45rem; }
-	.agent-card { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.5rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 0.45rem 0.55rem; color: var(--color-foreground); text-decoration: none; }
+	.roster { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-2); }
+	.agent-card { display: grid; grid-template-columns: 1fr auto; gap: var(--space-1) var(--space-2); border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: var(--space-2) var(--space-2); color: var(--color-foreground); text-decoration: none; }
 	.agent-card:hover { border-color: var(--color-accent); }
 	.agent-card.disabled { pointer-events: none; filter: grayscale(1); }
-	.agent-name { grid-column: 1 / -1; font-size: 0.78rem; font-weight: 600; }
-	.exec-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; color: var(--color-muted-foreground); }
-	.exec-head > span { display: inline-flex; align-items: center; gap: 0.4rem; }
-	.exec-meta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-	.ws-list { display: flex; flex-direction: column; gap: 0.3rem; }
-	.ws { display: flex; flex-direction: column; gap: 0.1rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 0.4rem 0.6rem; }
-	.ws-name { font-size: 0.82rem; display: flex; align-items: center; gap: 0.4rem; }
-	.primary { font-size: 0.66rem; border-radius: 999px; border: 1px solid var(--hairline); padding: 0 0.35rem; color: var(--color-accent); }
+	.agent-name { grid-column: 1 / -1; font-size: var(--font-size-body); font-weight: 600; }
+	.exec-head { display: flex; align-items: center; justify-content: space-between; font-size: var(--font-size-body); color: var(--color-muted-foreground); }
+	.exec-head > span { display: inline-flex; align-items: center; gap: var(--space-2); }
+	.exec-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+	.ws-list { display: flex; flex-direction: column; gap: var(--space-1); }
+	.ws { display: flex; flex-direction: column; gap: var(--space-0-5); border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: var(--space-2) var(--space-2); }
+	.ws-name { font-size: var(--font-size-body); display: flex; align-items: center; gap: var(--space-2); }
+	.primary { font-size: var(--font-size-caption); border-radius: var(--radius-full); border: 1px solid var(--hairline); padding: 0 var(--space-2); color: var(--color-accent); }
 	.ws-src { font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.exec-board { grid-template-columns: repeat(6, minmax(140px, 1fr)); }
 	.iss-card { text-decoration: none; color: var(--color-foreground); }
 	.iss-card:hover { border-color: var(--color-accent); }
-	.step-chip { font-size: 0.68rem; padding: 0.05rem 0.4rem; border-radius: 999px; border: 1px solid var(--hairline); background: var(--color-bg3); color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+	.step-chip { font-size: var(--font-size-caption); padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-full); border: 1px solid var(--hairline); background: var(--color-bg3); color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 	.step-chip.review { color: var(--color-accent); border-color: color-mix(in oklab, var(--color-accent) 40%, transparent); }
-	.step-chip.hitl { color: var(--color-warning, #d97706); border-color: color-mix(in oklab, var(--color-warning, #d97706) 40%, transparent); }
-	.link-row { display: flex; gap: 0.5rem; align-items: center; }
-	.broken { color: var(--color-warning, #d97706); }
-	.ts { padding: 0.6rem 0.9rem; }
-	.ts-add { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
+	.step-chip.hitl { color: var(--color-warning, var(--color-warning-border)); border-color: color-mix(in oklab, var(--color-warning, var(--color-warning-border)) 40%, transparent); }
+	.link-row { display: flex; gap: var(--space-2); align-items: center; }
+	.broken { color: var(--color-warning, var(--color-warning-border)); }
+	.ts { padding: var(--space-2) var(--space-4); }
+	.ts-add { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
 	.ts-list { display: flex; flex-direction: column; }
-	.ts-row { display: grid; grid-template-columns: 6rem 5rem 7rem 1fr auto; gap: 0.6rem; align-items: center; padding: 0.4rem 0; font-size: 0.84rem; }
+	.ts-row { display: grid; grid-template-columns: 6rem 5rem 7rem 1fr auto; gap: var(--space-2); align-items: center; padding: var(--space-2) 0; font-size: var(--font-size-body); }
 	.ts-row + .ts-row { border-top: 1px solid var(--hairline); }
 	.mins-v { font-variant-numeric: tabular-nums; font-weight: 600; }
 	.desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.bill { font-size: 0.7rem; color: var(--color-success, #16a34a); border: 1px solid var(--hairline); border-radius: 999px; padding: 0 0.4rem; }
-	.empty { padding: 0.5rem 0; }
+	.bill { font-size: var(--font-size-caption); color: var(--color-success, var(--color-success-border)); border: 1px solid var(--hairline); border-radius: var(--radius-full); padding: 0 var(--space-2); }
+	.empty { padding: var(--space-2) 0; }
 	@media (max-width: 767.98px) {
 		.summary { align-items: flex-start; padding: var(--space-card, 16px); }
 		.add, .link-row, .ts-add { align-items: stretch; flex-direction: column; }

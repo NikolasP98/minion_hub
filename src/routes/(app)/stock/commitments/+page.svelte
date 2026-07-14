@@ -109,18 +109,18 @@
 </div>
 
 <style>
-  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.75rem; }
-  .kpi { display: flex; flex-direction: column; justify-content: center; padding: 0.85rem 1rem; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); }
-  .kpi-val { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--space-3); }
+  .kpi { display: flex; flex-direction: column; justify-content: center; padding: var(--space-3) var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); }
+  .kpi-val { font-size: var(--font-size-display); font-weight: 700; font-variant-numeric: tabular-nums; }
   .kpi-val.warn { color: var(--color-warning); }
-  .kpi-label { font-size: 0.72rem; color: var(--color-muted-foreground); margin-top: 0.15rem; }
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.85rem 1rem; }
-  .card-h { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: 0.7rem; }
-  .mini-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
-  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
-  .mini-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
+  .kpi-label { font-size: var(--font-size-caption); color: var(--color-muted-foreground); margin-top: var(--space-1); }
+  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-3) var(--space-4); }
+  .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: var(--space-3); }
+  .mini-table { width: 100%; font-size: var(--font-size-body); border-collapse: collapse; }
+  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
+  .mini-table td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
   .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
   .mini-table .num.warn { color: var(--color-warning); font-weight: 600; }
   .item-name { display: block; }
-  .item-code { display: block; font-size: 0.7rem; color: var(--color-muted-foreground); font-family: var(--font-mono, monospace); }
+  .item-code { display: block; font-size: var(--font-size-caption); color: var(--color-muted-foreground); font-family: var(--font-mono, monospace); }
 </style>

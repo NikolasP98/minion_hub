@@ -165,7 +165,7 @@
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-lg);
 		background: var(--color-card);
-		padding: 0.85rem 1rem;
+		padding: var(--space-3) var(--space-4);
 		display: flex;
 		flex-direction: column;
 		gap: 0;
@@ -173,20 +173,20 @@
 	.card-h {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		font-size: 0.78rem;
+		gap: var(--space-2);
+		font-size: var(--font-size-body);
 		font-weight: 600;
 		color: var(--color-muted-foreground);
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
-		margin-bottom: 0.85rem;
+		margin-bottom: var(--space-3);
 	}
 	.mod-row {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 1rem;
-		padding: 0.55rem 0;
+		gap: var(--space-4);
+		padding: var(--space-2) 0;
 		border-bottom: 1px solid var(--hairline);
 	}
 	.mod-row:last-of-type {
@@ -195,15 +195,15 @@
 	.mod-info {
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: var(--space-0-5);
 	}
 	.mod-label {
-		font-size: 0.9rem;
+		font-size: var(--font-size-page-title);
 		font-weight: 500;
 	}
 	.err-msg {
-		font-size: 0.8rem;
+		font-size: var(--font-size-body);
 		color: var(--color-destructive);
-		margin-bottom: 0.4rem;
+		margin-bottom: var(--space-2);
 	}
 </style>

@@ -1411,8 +1411,7 @@
 
   /* Pin messages to the bottom when short, but stay fully scrollable when the
 	   history overflows (justify-content:flex-end on the scroller would make the
-	   top unreachable — margin-top:auto on an inner block does not). */
-  .thread-inner {
+	   top unreachable — margin-top: auto on an inner block does not). */ .thread-inner{
     margin-top: auto;
     display: flex;
     flex-direction: column;

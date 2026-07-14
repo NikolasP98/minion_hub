@@ -157,7 +157,7 @@
   .lanyard-rope {
     display: block;
     flex-shrink: 0;
-    margin-bottom: -4px;
+    margin-bottom: calc(-1 * var(--space-1));
   }
 
   /* ID Badge Card */
@@ -171,7 +171,7 @@
     top: -12px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 10;
+    z-index: var(--layer-sticky);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -180,68 +180,63 @@
   .clip-base {
     width: 40px;
     height: 24px;
-    background: linear-gradient(145deg, #3a3a3c, #1c1c1e);
-    border-radius: 4px 4px 0 0;
-    border: 1px solid #48484a;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.1),
-      0 2px 4px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(145deg, var(--color-overlay), var(--color-surface-1));
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    border: 1px solid var(--color-border-strong);
+    box-shadow: var(--shadow-elevation-1);
   }
 
   .clip-ring {
     width: 24px;
     height: 10px;
-    background: linear-gradient(145deg, #48484a, #2c2c2e);
-    border-radius: 0 0 12px 12px;
-    border: 1px solid #5a5a5c;
+    background: linear-gradient(145deg, var(--color-border-strong), var(--color-surface-3));
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    border: 1px solid var(--color-text-disabled);
     margin-top: -1px;
   }
 
   .badge-content {
     background: linear-gradient(145deg, rgba(250, 250, 250, 0.98), rgba(240, 240, 242, 0.95));
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow:
-      0 4px 6px rgba(0, 0, 0, 0.1),
-      0 10px 20px rgba(0, 0, 0, 0.1),
-      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    border-radius: var(--radius-xl);
+    padding: var(--space-6);
+    box-shadow: var(--shadow-elevation-1);
     border: 1px solid rgba(0, 0, 0, 0.08);
     position: relative;
   }
 
   .badge-header {
-    background: linear-gradient(90deg, #1c1c1e, #2c2c2e, #1c1c1e);
-    border-radius: 10px;
-    padding: 10px 16px;
+    background: linear-gradient(90deg, var(--color-surface-1), var(--color-surface-3), var(--color-surface-1));
+    border-radius: var(--radius-lg);
+    padding: var(--space-2) var(--space-4);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
+    margin-bottom: var(--space-6);
   }
 
   .initials {
     font-family: 'JetBrains Mono NF', monospace;
     font-weight: 700;
     font-size: var(--font-size-body, 14px);
-    color: #fafafa;
+    color: var(--color-text-primary);
     letter-spacing: 0.15em;
   }
 
   .status-badge {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     font-size: var(--font-size-caption, 12px);
-    color: #22c55e;
+    color: var(--color-success-fg);
     font-weight: 600;
   }
 
   .status-dot {
     width: 6px;
     height: 6px;
-    background: #22c55e;
-    border-radius: 50%;
-    box-shadow: 0 0 6px #22c55e;
+    background: var(--color-success-fg);
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-status-glow);
     animation: pulse 2s ease-in-out infinite;
   }
 
@@ -258,24 +253,24 @@
   .badge-photo {
     display: flex;
     justify-content: center;
-    margin-bottom: 20px;
+    margin-bottom: var(--space-6);
     position: relative;
   }
 
   .photo-frame {
     width: 120px;
     height: 120px;
-    border-radius: 16px;
-    background: #ffffff;
-    padding: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: var(--radius-xl);
+    background: var(--color-text-primary);
+    padding: var(--space-2);
+    box-shadow: var(--shadow-elevation-2);
   }
 
   .photo-frame img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
   }
 
   .photo-corners {
@@ -317,26 +312,26 @@
 
   .badge-info {
     text-align: center;
-    margin-bottom: 20px;
+    margin-bottom: var(--space-6);
   }
 
   .agent-name {
     font-size: var(--font-size-section-title, 16px);
     font-weight: 800;
-    color: #18181b;
-    margin: 0 0 4px;
+    color: var(--color-surface-2);
+    margin: 0 0 var(--space-1);
   }
 
   .agent-role {
     font-size: var(--font-size-body, 14px);
-    color: #71717a;
-    margin: 0 0 8px;
+    color: var(--color-text-tertiary);
+    margin: 0 0 var(--space-2);
     font-weight: 500;
   }
 
   .agent-tagline {
     font-size: var(--font-size-caption, 12px);
-    color: #a1a1aa;
+    color: var(--color-text-tertiary);
     font-style: italic;
     margin: 0;
     line-height: 1.4;
@@ -346,30 +341,30 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 16px;
-    padding: 16px 0;
+    gap: var(--space-4);
+    padding: var(--space-4) 0;
     border-top: 1px dashed rgba(0, 0, 0, 0.15);
     border-bottom: 1px dashed rgba(0, 0, 0, 0.15);
-    margin-bottom: 16px;
+    margin-bottom: var(--space-4);
   }
 
   .stat {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: var(--space-0-5);
   }
 
   .stat-value {
     font-size: var(--font-size-body, 14px);
     font-weight: 700;
-    color: #18181b;
+    color: var(--color-surface-2);
     font-family: 'JetBrains Mono NF', monospace;
   }
 
   .stat-label {
     font-size: var(--font-size-caption, 12px);
-    color: #a1a1aa;
+    color: var(--color-text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.1em;
   }
@@ -390,7 +385,7 @@
     font-family: 'JetBrains Mono NF', monospace;
     font-weight: 800;
     font-size: var(--font-size-section-title, 16px);
-    color: #18181b;
+    color: var(--color-surface-2);
     letter-spacing: 0.05em;
     position: relative;
   }
@@ -402,12 +397,12 @@
     left: 0;
     width: 100%;
     height: 2px;
-    background: linear-gradient(90deg, #e8547a, transparent);
+    background: linear-gradient(90deg, var(--color-brand), transparent);
   }
 
   .agent-id {
     font-size: var(--font-size-caption, 12px);
-    color: #a1a1aa;
+    color: var(--color-text-tertiary);
     font-family: 'JetBrains Mono NF', monospace;
   }
 
@@ -420,8 +415,8 @@
       transparent,
       rgba(232, 84, 122, 0.1)
     );
-    border-radius: 20px;
-    z-index: -1;
+    border-radius: var(--radius-xl);
+    z-index: var(--layer-base);
     opacity: 0;
     transition: opacity var(--duration-slow) var(--ease-standard);
   }

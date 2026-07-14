@@ -184,9 +184,9 @@
 		<aside class="comments-panel" class:is-open={mobileCommentsOpen}>
 			<header class="comments-head">
 				<span>{m.ads_post_detail_comments_title({ count: commentCount })}</span>
-				<button type="button" class="close-btn" onclick={() => (mobileCommentsOpen = false)} aria-label={m.common_close()}>
+				<Button variant="ghost" type="button" class="close-btn" onclick={() => (mobileCommentsOpen = false)} aria-label={m.common_close()}>
 					<X size={16} />
-				</button>
+				</Button>
 			</header>
 			<div class="comments-body">
 				{#if commentsLoaded}
@@ -205,10 +205,10 @@
 	</div>
 
 	<!-- Mobile toggle — comments panel becomes an overlay covering the content -->
-	<button type="button" class="comments-fab lg:hidden" onclick={() => (mobileCommentsOpen = true)} aria-label={m.ads_post_detail_comments_open()}>
+	<Button variant="ghost" type="button" class="comments-fab lg:hidden" onclick={() => (mobileCommentsOpen = true)} aria-label={m.ads_post_detail_comments_open()}>
 		<MessageCircle size={18} />
 		{#if commentCount > 0}<span class="fab-count">{commentCount}</span>{/if}
-	</button>
+	</Button>
 </div>
 
 <style>
@@ -240,18 +240,18 @@
 		color: var(--color-muted-foreground);
 	}
 	.media-glyph[data-platform='ig'] {
-		color: var(--color-pink, #ec4899);
+		color: var(--color-pink, var(--color-pink));
 	}
 	.media-glyph[data-platform='fb'] {
-		color: var(--color-info, #3b82f6);
+		color: var(--color-info, var(--color-accent));
 	}
 	.carousel {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--space-2);
 		overflow-x: auto;
 		scroll-snap-type: x mandatory;
 		width: 100%;
-		padding: 0.5rem;
+		padding: var(--space-2);
 	}
 	.carousel-item {
 		scroll-snap-align: center;
@@ -264,44 +264,44 @@
 
 	.doc-sec {
 		border-top: 1px solid var(--hairline);
-		padding: 1rem 1.5rem;
+		padding: var(--space-4) var(--space-6);
 	}
 	.meta-row {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.6rem;
+		gap: var(--space-2);
 	}
 	.panel-h {
-		font-size: 0.78rem;
+		font-size: var(--font-size-body);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 		color: var(--color-muted-foreground);
-		margin-bottom: 0.6rem;
+		margin-bottom: var(--space-2);
 	}
 	.caption-full {
 		white-space: pre-wrap;
-		font-size: 0.9rem;
+		font-size: var(--font-size-page-title);
 		line-height: 1.5;
 		color: var(--color-foreground);
 	}
 
 	.post-platform,
 	.post-type {
-		font-size: 0.7rem;
-		padding: 0.15rem 0.5rem;
-		border-radius: 999px;
+		font-size: var(--font-size-caption);
+		padding: var(--space-1) var(--space-2);
+		border-radius: var(--radius-full);
 		background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
 		color: var(--color-muted-foreground);
 	}
 	.post-platform[data-platform='ig'] {
-		background: color-mix(in srgb, var(--color-pink, #ec4899) 15%, transparent);
-		color: var(--color-pink, #ec4899);
+		background: color-mix(in srgb, var(--color-pink, var(--color-pink)) 15%, transparent);
+		color: var(--color-pink, var(--color-pink));
 	}
 	.post-platform[data-platform='fb'] {
-		background: color-mix(in srgb, var(--color-info, #3b82f6) 15%, transparent);
-		color: var(--color-info, #3b82f6);
+		background: color-mix(in srgb, var(--color-info, var(--color-accent)) 15%, transparent);
+		color: var(--color-info, var(--color-accent));
 	}
 	.post-type.ad {
 		background: color-mix(in srgb, var(--color-accent) 18%, transparent);
@@ -311,8 +311,8 @@
 	.perma-link {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.3rem;
-		font-size: 0.8rem;
+		gap: var(--space-1);
+		font-size: var(--font-size-body);
 		color: var(--color-accent);
 	}
 	.promoted-chip:hover,
@@ -327,21 +327,21 @@
 	.stats-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-		gap: 0.75rem 1.25rem;
+		gap: var(--space-3) var(--space-6);
 	}
 	.stat {
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: var(--space-0-5);
 	}
 	.stat-v {
-		font-size: 1.25rem;
+		font-size: var(--font-size-page-title);
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		color: var(--color-foreground);
 	}
 	.stat-l {
-		font-size: 0.72rem;
+		font-size: var(--font-size-caption);
 		color: var(--color-muted-foreground);
 	}
 
@@ -358,7 +358,7 @@
 		display: flex;
 		position: fixed;
 		inset: 0;
-		z-index: 50;
+		z-index: var(--layer-modal);
 		background: var(--color-bg, var(--color-card));
 	}
 	@media (min-width: 1024px) {
@@ -377,9 +377,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0.85rem 1rem;
+		padding: var(--space-3) var(--space-4);
 		border-bottom: 1px solid var(--hairline);
-		font-size: 0.85rem;
+		font-size: var(--font-size-body);
 		font-weight: 600;
 		color: var(--color-foreground);
 	}
@@ -388,7 +388,7 @@
 		align-items: center;
 		justify-content: center;
 		color: var(--color-muted-foreground);
-		padding: 0.15rem;
+		padding: var(--space-1);
 	}
 	@media (min-width: 1024px) {
 		.close-btn {
@@ -399,56 +399,56 @@
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
-		padding: 0.75rem 1rem;
+		padding: var(--space-3) var(--space-4);
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: var(--space-3);
 	}
 	.comments-msg {
 		color: var(--color-muted-foreground);
-		font-size: 0.85rem;
-		padding: 1rem 0;
+		font-size: var(--font-size-body);
+		padding: var(--space-4) 0;
 		text-align: center;
 	}
 	.comment {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: var(--space-1);
 	}
 	.comment.reply {
-		margin-left: 1.25rem;
-		padding-left: 0.6rem;
+		margin-left: var(--space-6);
+		padding-left: var(--space-2);
 		border-left: 2px solid var(--hairline);
 	}
 	.comment-row {
 		display: flex;
 		align-items: baseline;
-		gap: 0.4rem;
+		gap: var(--space-2);
 	}
 	.comment-user {
 		font-weight: 600;
-		font-size: 0.82rem;
+		font-size: var(--font-size-body);
 		color: var(--color-foreground);
 	}
 	.comment-time {
-		font-size: 0.72rem;
+		font-size: var(--font-size-caption);
 		color: var(--color-muted-foreground);
 	}
 	.comment-text {
 		white-space: pre-wrap;
-		font-size: 0.85rem;
+		font-size: var(--font-size-body);
 		line-height: 1.4;
 		color: var(--color-foreground);
 	}
 	.comment-likes {
-		font-size: 0.72rem;
+		font-size: var(--font-size-caption);
 		color: var(--color-muted-foreground);
 	}
 	.comment-replies {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		margin-top: 0.4rem;
+		gap: var(--space-2);
+		margin-top: var(--space-2);
 	}
 
 	/* Mobile floating toggle */
@@ -458,16 +458,16 @@
 		right: 1.25rem;
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
-		padding: 0.6rem 0.85rem;
-		border-radius: 999px;
+		gap: var(--space-1);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-full);
 		background: var(--color-accent);
-		color: var(--color-accent-foreground, #fff);
-		box-shadow: 0 2px 10px color-mix(in srgb, black 25%, transparent);
-		z-index: 40;
+		color: var(--color-accent-foreground, var(--color-text-primary));
+		box-shadow: var(--shadow-elevation-1);
+		z-index: var(--layer-popover);
 	}
 	.fab-count {
-		font-size: 0.75rem;
+		font-size: var(--font-size-caption);
 		font-weight: 700;
 	}
 </style>

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+  import { Button } from '$lib/components/ui';
+import { onMount } from 'svelte';
 	import { toastWarning, toastInfo } from '$lib/state/ui/toast.svelte';
 	import type { PageData } from './$types';
 
@@ -59,12 +60,12 @@
 	<p class="text-muted-foreground mt-2 leading-relaxed">{copy.body}</p>
 
 	{#if reason && reason !== 'no-org'}
-		<button
+		<Button variant="ghost"
 			class="hover:bg-accent mt-5 rounded border px-3 py-1.5 text-sm transition-colors"
 			onclick={() => location.reload()}
 		>
 			Reload
-		</button>
+		</Button>
 		<p class="text-muted-foreground/50 mt-3 text-xs">Reason code: {reason}</p>
 	{/if}
 </div>

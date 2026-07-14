@@ -89,28 +89,28 @@
     {:else}
       <ul class="tree">
         {#each tree as w (w.id)}
-          <li class="row" style="padding-left: {w.depth * 1.5}rem">
+          <li class="row" style={`--tree-depth:${w.depth}`}>
             <span class="name">{w.name}</span>
             {#if w.isDefault}
               <span class="default-badge"><Star size={12} fill="currentColor" /> {m.stock_wh_default()}</span>
             {:else}
-              <button
+              <Button variant="ghost"
                 class="add-child"
                 onclick={() => setDefault(w.id)}
                 disabled={!canAct('stock', 'edit') || settingDefaultId === w.id}
                 title={canAct('stock', 'edit') ? m.stock_wh_set_default() : m.no_permission()}
               >
                 <Star size={12} /> {m.stock_wh_set_default()}
-              </button>
+              </Button>
             {/if}
-            <button
+            <Button variant="ghost"
               class="add-child"
               onclick={() => openNew(w.id)}
               disabled={!canAct('stock', 'create')}
               title={canAct('stock', 'create') ? m.stock_add_child() : m.no_permission()}
             >
               <Plus size={12} /> {m.stock_add_child()}
-            </button>
+            </Button>
           </li>
         {/each}
       </ul>
@@ -133,14 +133,14 @@
 </Modal>
 
 <style>
-  .tree { display: flex; flex-direction: column; gap: 0.15rem; max-width: 36rem; }
-  .row { display: flex; align-items: center; gap: 0.5rem; padding-top: 0.4rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--hairline); }
-  .name { flex: 1; font-size: 0.9rem; }
-  .add-child { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.72rem; color: var(--color-muted-foreground); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-sm); padding: 0.15rem 0.5rem; cursor: pointer; }
-  .add-child:hover { color: var(--color-foreground); background: rgba(255, 255, 255, 0.05); }
+  .tree { display: flex; flex-direction: column; gap: var(--space-1); max-width: 36rem; }
+  .row { display: flex; align-items: center; gap: var(--space-2); padding-top: var(--space-2); padding-bottom: var(--space-2); padding-left: calc(var(--tree-depth, 0) * var(--space-6)); border-bottom: 1px solid var(--hairline); }
+  .name { flex: 1; font-size: var(--font-size-page-title); }
+  .add-child { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-caption); color: var(--color-muted-foreground); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); cursor: pointer; }
+  .add-child:hover { color: var(--color-foreground); background: color-mix(in srgb, var(--color-text-primary) 5%, transparent); }
   .add-child:disabled { opacity: 0.5; cursor: not-allowed; }
-  .default-badge { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.72rem; color: var(--color-warning, #d4a017); }
-  .fld { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--color-muted-foreground); }
-  .inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
-  .err-msg { font-size: 0.8rem; color: var(--color-destructive); }
+  .default-badge { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-caption); color: var(--color-warning, var(--color-warning-fg)); }
+  .fld { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-body); color: var(--color-muted-foreground); }
+  .inp { height: 1.75rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
+  .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }
 </style>

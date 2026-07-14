@@ -132,13 +132,13 @@
 </Modal>
 
 <style>
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.85rem 1rem; }
-  .card-h { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: 0.7rem; }
-  .meta-grid { display: grid; grid-template-columns: max-content 1fr; gap: 0.45rem 1rem; font-size: 0.86rem; align-items: center; }
+  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-3) var(--space-4); }
+  .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: var(--space-3); }
+  .meta-grid { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4); font-size: var(--font-size-body); align-items: center; }
   .meta-grid dt { color: var(--color-muted-foreground); }
-  .mini-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
-  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
-  .mini-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
+  .mini-table { width: 100%; font-size: var(--font-size-body); border-collapse: collapse; }
+  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
+  .mini-table td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
   .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .err-msg { font-size: 0.8rem; color: var(--color-destructive); }
+  .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }
 </style>

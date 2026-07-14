@@ -119,20 +119,20 @@
 	// Council 2026-05-29 (taxonomy-unification). crash kept off the critical-red
 	// rose ramp so category never reads as severity.
 	const CATEGORY_COLORS: Record<string, string> = {
-		gateway:       '#4ade80',
-		agent:         '#f472b6',
-		channel:       '#f59e0b',
-		message:       '#06b6d4',
-		tool:          '#a855f7',
-		orchestration: '#ec4899',
-		skill:         '#22d3ee',
-		connection:    '#14b8a6',
-		auth:          '#34d399',
-		cron:          '#60a5fa',
-		crash:         '#fb7185',
-		browser:       '#c084fc',
-		timezone:      '#818cf8',
-		general:       '#94a3b8'
+		gateway:       'var(--color-success-fg)',
+		agent:         'var(--color-pink)',
+		channel:       'var(--color-warning-fg)',
+		message:       'var(--color-cyan)',
+		tool:          'var(--color-purple)',
+		orchestration: 'var(--color-pink)',
+		skill:         'var(--color-cyan)',
+		connection:    'var(--color-emerald)',
+		auth:          'var(--color-success-fg)',
+		cron:          'var(--color-info-fg)',
+		crash:         'var(--color-brand)',
+		browser:       'var(--color-purple)',
+		timezone:      'var(--color-purple)',
+		general:       'var(--color-text-tertiary)'
 	};
 
 	// Severity = ordinal alarm ramp. info (blue) + low (slate) are the non-alarm
@@ -141,12 +141,12 @@
 	// wasn't perceptually monotonic — slate restores a colourblind-safe ramp while
 	// staying distinct from info. `ok` is a separate resolved state. Council 2026-05-29.
 	const SEVERITY_COLORS: Record<string, string> = {
-		info:     '#38bdf8',
-		low:      '#64748b',
-		medium:   '#fb923c',
-		high:     '#f59e0b',
-		critical: '#ef4444',
-		ok:       '#22c55e'
+		info:     'var(--color-info-fg)',
+		low:      'var(--color-neutral)',
+		medium:   'var(--color-warning-fg)',
+		high:     'var(--color-warning-fg)',
+		critical: 'var(--color-danger-fg)',
+		ok:       'var(--color-success-fg)'
 	};
 
 	const CATEGORIES = ['gateway', 'agent', 'channel', 'message', 'tool', 'orchestration', 'skill', 'connection', 'auth', 'cron', 'crash', 'browser', 'timezone', 'general'] as const;
@@ -291,7 +291,7 @@
 			.map(([mode, { count, type }]) => ({
 				value: mode,
 				label: mode,
-				color: CATEGORY_COLORS[type] ?? '#3b82f6',
+				color: CATEGORY_COLORS[type] ?? 'var(--color-accent)',
 				count,
 			}));
 	});
@@ -962,7 +962,7 @@
 	// labelled by mode and coloured by their type so the same chart shows BOTH
 	// dimensions. Counting keys on the full event name (unique); the y-axis label
 	// + tooltip surface the type/mode split. Click a bar to filter by that mode.
-	const TOP_EVENT_FALLBACK_COLOR = '#3b82f6';
+	const TOP_EVENT_FALLBACK_COLOR = 'var(--color-accent)';
 
 	let topEvents = $derived.by(() => {
 		const eventCounts = new Map<string, number>();
@@ -1066,8 +1066,8 @@
 			.map(([name, value]) => ({
 				name,
 				value,
-				itemStyle: { color: SEVERITY_COLORS[name] ?? '#64748b' },
-				label: { color: SEVERITY_COLORS[name] ?? '#64748b' }
+				itemStyle: { color: SEVERITY_COLORS[name] ?? 'var(--color-neutral)' },
+				label: { color: SEVERITY_COLORS[name] ?? 'var(--color-neutral)' }
 			}));
 
 		const filteredTotal = data.reduce((sum, d) => sum + d.value, 0);
@@ -1093,7 +1093,7 @@
 					text: String(filteredTotal),
 					fontSize: 20,
 					fontWeight: 'bold',
-					fill: getCSSVar('--color-muted', '#a1a1aa'),
+					fill: getCSSVar('--color-muted', 'var(--color-text-tertiary)'),
 					textAlign: 'center',
 					textVerticalAlign: 'middle'
 				}
@@ -1160,11 +1160,11 @@
 		// Mode labels sit to the LEFT of the first column (clear of the ribbons);
 		// category + severity labels to the right of their bars.
 		for (const mode of modesUsed) {
-			const color = mode === OTHER ? '#52525b' : (CATEGORY_COLORS[modeType.get(mode) ?? ''] ?? '#3b82f6');
+			const color = mode === OTHER ? 'var(--color-text-disabled)' : (CATEGORY_COLORS[modeType.get(mode) ?? ''] ?? 'var(--color-accent)');
 			addNode(`m:${mode}`, color, 'left');
 		}
-		for (const cat of catsUsed) addNode(`c:${cat}`, CATEGORY_COLORS[cat] ?? '#94a3b8', 'right');
-		for (const sevKey of sevsUsed) addNode(`s:${sevKey}`, SEVERITY_COLORS[sevKey] ?? '#64748b', 'right');
+		for (const cat of catsUsed) addNode(`c:${cat}`, CATEGORY_COLORS[cat] ?? 'var(--color-text-tertiary)', 'right');
+		for (const sevKey of sevsUsed) addNode(`s:${sevKey}`, SEVERITY_COLORS[sevKey] ?? 'var(--color-neutral)', 'right');
 
 		const links: Array<{ source: string; target: string; value: number }> = [];
 		for (const [k, v] of mc) { const [mode, cat] = k.split('\0'); links.push({ source: `m:${mode}`, target: `c:${cat}`, value: v }); }
@@ -1196,7 +1196,7 @@
 				links,
 				label: {
 					fontSize: 10,
-					color: getCSSVar('--color-foreground', '#fafafa'),
+					color: getCSSVar('--color-foreground', 'var(--color-text-primary)'),
 					formatter: (p: any) => String(p.name).slice(2),
 				},
 				lineStyle: { color: 'gradient', opacity: 0.32, curveness: 0.5 },

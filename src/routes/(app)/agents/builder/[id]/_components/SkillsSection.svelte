@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Grip, Plus, X, BookOpen } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { Grip, Plus, X, BookOpen } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
 
     interface SkillSlot { skillId: string; position: number; }
@@ -73,14 +74,14 @@
                                 <span class="slot-status {slot.info.status}">{slot.info.status}</span>
                             {/if}
                         </div>
-                        <button
+                        <Button variant="ghost"
                             type="button"
                             class="slot-remove"
                             onclick={() => onRemoveSkill(slot.skillId)}
                             title={m.common_remove()}
                         >
                             <X size={14} />
-                        </button>
+                        </Button>
                     </div>
                 {/each}
             </div>
@@ -88,14 +89,14 @@
 
         <!-- Drop zone / Add skill button -->
         <div class="skill-drop-zone-wrapper">
-            <button
+            <Button variant="ghost"
                 type="button"
                 class="skill-drop-zone"
                 onclick={onTogglePicker}
             >
                 <Plus size={14} />
                 <span>{m.builder_dropSkillHint()}</span>
-            </button>
+            </Button>
 
             {#if showSkillPicker}
                 <div class="skill-picker">
@@ -109,7 +110,7 @@
                         </div>
                     {:else}
                         {#each pickableSkills as skill (skill.id)}
-                            <button
+                            <Button variant="ghost"
                                 type="button"
                                 class="skill-picker-item"
                                 onclick={() => onAddSkill(skill.id)}
@@ -121,7 +122,7 @@
                                         <span class="picker-desc">{skill.description}</span>
                                     {/if}
                                 </div>
-                            </button>
+                            </Button>
                         {/each}
                     {/if}
                 </div>
@@ -151,17 +152,17 @@
     .editor-section {
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 0.75rem;
+        border-radius: var(--radius-lg);
         overflow: hidden;
     }
 
     .section-header {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.75rem 1rem;
+        gap: var(--space-2);
+        padding: var(--space-3) var(--space-4);
         margin: 0;
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -170,35 +171,35 @@
     }
 
     .section-count {
-        font-size: 0.5625rem;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
         background: var(--color-bg3);
-        padding: 0.0625rem 0.375rem;
-        border-radius: 9999px;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-full);
         font-weight: 500;
     }
 
     .section-body {
-        padding: 1rem;
+        padding: var(--space-4);
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: var(--space-3);
     }
 
     .skill-slot-list {
         display: flex;
         flex-direction: column;
-        gap: 0.375rem;
+        gap: var(--space-2);
     }
 
     .skill-slot-card {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 0.625rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-2);
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
-        border-radius: 0.5rem;
+        border-radius: var(--radius-md);
         transition: all var(--duration-fast) var(--ease-standard);
         cursor: grab;
     }
@@ -229,7 +230,7 @@
     }
 
     .slot-emoji {
-        font-size: 1rem;
+        font-size: var(--font-size-page-title);
         line-height: 1;
         flex-shrink: 0;
     }
@@ -239,11 +240,11 @@
         min-width: 0;
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
 
     .slot-name {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         font-weight: 600;
         color: var(--color-foreground);
         overflow: hidden;
@@ -252,12 +253,12 @@
     }
 
     .slot-status {
-        font-size: 0.5625rem;
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        padding: 0.0625rem 0.375rem;
-        border-radius: 9999px;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-full);
         flex-shrink: 0;
     }
 
@@ -277,7 +278,7 @@
         justify-content: center;
         width: 1.5rem;
         height: 1.5rem;
-        border-radius: 0.25rem;
+        border-radius: var(--radius-sm);
         color: var(--color-muted);
         background: none;
         border: none;
@@ -305,14 +306,14 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         width: 100%;
-        padding: 0.75rem;
+        padding: var(--space-3);
         border: 2px dashed var(--color-border);
-        border-radius: 0.5rem;
+        border-radius: var(--radius-md);
         background: transparent;
         color: var(--color-muted);
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         font-family: inherit;
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
@@ -331,19 +332,19 @@
         right: 0;
         background: var(--color-bg);
         border: 1px solid var(--color-border);
-        border-radius: 0.5rem;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-elevation-2);
         max-height: 16rem;
         overflow-y: auto;
-        z-index: 100;
+        z-index: var(--layer-debug);
     }
 
     .skill-picker-header {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.5rem 0.75rem;
-        font-size: 0.625rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -356,8 +357,8 @@
     }
 
     .skill-picker-empty {
-        padding: 1rem 0.75rem;
-        font-size: 0.75rem;
+        padding: var(--space-4) var(--space-3);
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         text-align: center;
     }
@@ -365,9 +366,9 @@
     .skill-picker-item {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         width: 100%;
-        padding: 0.5rem 0.75rem;
+        padding: var(--space-2) var(--space-3);
         background: none;
         border: none;
         cursor: pointer;
@@ -388,7 +389,7 @@
     }
 
     .picker-emoji {
-        font-size: 0.9375rem;
+        font-size: var(--font-size-page-title);
         line-height: 1;
         flex-shrink: 0;
     }
@@ -398,17 +399,17 @@
         min-width: 0;
         display: flex;
         flex-direction: column;
-        gap: 0.125rem;
+        gap: var(--space-0-5);
     }
 
     .picker-name {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-foreground);
     }
 
     .picker-desc {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
         overflow: hidden;
         text-overflow: ellipsis;
@@ -422,7 +423,7 @@
         background: var(--color-bg);
         border: 1px solid var(--color-border);
         border-top: none;
-        border-radius: 0 0 0.5rem 0.5rem;
-        z-index: 100;
+        border-radius: 0 0 var(--radius-md) var(--radius-md);
+        z-index: var(--layer-debug);
     }
 </style>

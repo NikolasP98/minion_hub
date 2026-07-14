@@ -25,25 +25,25 @@
 
 	// Map intensity to background color (transparent to oklch primary)
 	function cellStyle(cell: number): string {
-		if (cell === 0) return 'background-color: rgba(255,255,255,0.02)';
+		if (cell === 0) return 'background-color: color-mix(in srgb, var(--color-text-primary) 2%, transparent)';
 		const op = 0.12 + intensity(cell) * 0.78;
-		return `background-color: rgba(59,130,246,${op.toFixed(3)})`;
+		return `background-color: color-mix(in srgb, var(--color-accent) ${(op * 100).toFixed(1)}%, transparent)`;
 	}
 
 	function cellTextColor(cell: number): string {
 		if (cell === 0) return 'text-muted-strong';
-		if (intensity(cell) > 0.55) return 'text-white';
+		if (intensity(cell) > 0.55) return 'text-[var(--color-text-primary)]';
 		return 'text-foreground/80';
 	}
 
 	const STATUS_DOT: Record<string, string> = {
-		active: '#10b981',
-		running: '#3b82f6',
-		paused: '#f59e0b',
-		error: '#ef4444',
-		idle: '#6b7280',
-		pending_approval: '#a855f7',
-		terminated: '#525252',
+		active: 'var(--color-emerald)',
+		running: 'var(--color-accent)',
+		paused: 'var(--color-warning-fg)',
+		error: 'var(--color-danger-fg)',
+		idle: 'var(--color-text-tertiary)',
+		pending_approval: 'var(--color-purple)',
+		terminated: 'var(--color-text-disabled)',
 	};
 
 	const RUN_STATUS_BADGE: Record<string, string> = {
@@ -136,14 +136,14 @@
 								<a href="/workforce/agents/{agent.id}" class="inline-flex items-center gap-1.5 hover:underline">
 									<span
 										class="h-2 w-2 rounded-full shrink-0"
-										style="background:{STATUS_DOT[agent.status] ?? '#6b7280'}"
+										style="background:{STATUS_DOT[agent.status] ?? 'var(--color-text-tertiary)'}"
 									></span>
 									<span class="font-medium">{agent.name}</span>
 								</a>
 							</td>
 							{#each heatmap.cells[agent.id] as cell, h (h)}
 								<td
-									class="h-7 w-7 rounded text-center align-middle font-mono tabular-nums text-[10px] {cellTextColor(cell)}"
+									class="h-7 w-7 rounded text-center align-middle t-telemetry {cellTextColor(cell)}"
 									style={cellStyle(cell)}
 									title="{agent.name} · {h.toString().padStart(2, '0')}:00 · {cell} event{cell !== 1 ? 's' : ''}"
 								>
@@ -156,7 +156,7 @@
 					<tr>
 						<td class="pr-3 sticky left-0 bg-card text-muted-foreground font-medium">Σ</td>
 						{#each hourTotals as t, h (h)}
-							<td class="text-center text-muted-strong font-mono tabular-nums text-[10px] pt-1">
+							<td class="text-center text-muted-strong t-telemetry pt-1">
 								{t > 0 ? t : ''}
 							</td>
 						{/each}
@@ -173,7 +173,7 @@
 				{#each [0, 0.2, 0.4, 0.6, 0.8, 1] as t (t)}
 					<span
 						class="h-3 w-6 rounded"
-						style="background-color: rgba(59,130,246,{t === 0 ? 0.02 : (0.12 + t * 0.78).toFixed(3)})"
+						style="background-color: color-mix(in srgb, var(--color-accent) {t === 0 ? 2 : ((0.12 + t * 0.78) * 100).toFixed(1)}%, transparent)"
 					></span>
 				{/each}
 			</div>

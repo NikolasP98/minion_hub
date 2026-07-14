@@ -27,19 +27,19 @@
 	};
 
 	const STATUS_BADGE: Record<IssueStatus, string> = {
-		in_progress: 'bg-blue-500/10 text-blue-600',
-		blocked: 'bg-amber-500/10 text-amber-600',
+		in_progress: 'bg-[var(--color-info-surface)] text-[var(--color-info-fg)]',
+		blocked: 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]',
 		todo: 'bg-muted text-muted-foreground',
 		backlog: 'bg-muted text-muted-foreground',
-		in_review: 'bg-purple-500/10 text-purple-600',
-		done: 'bg-green-500/10 text-green-600',
+		in_review: 'bg-[color-mix(in_srgb,var(--color-purple)_10%,transparent)] text-[var(--color-purple)]',
+		done: 'bg-[var(--color-success-surface)] text-[var(--color-success-fg)]',
 		cancelled: 'bg-muted text-muted-strong',
 	};
 
 	const PRIORITY_BADGE: Record<string, string> = {
-		critical: 'text-red-500',
-		high: 'text-orange-500',
-		medium: 'text-yellow-600',
+		critical: 'text-[var(--color-danger-fg)]',
+		high: 'text-[var(--color-warning-fg)]',
+		medium: 'text-[var(--color-warning-fg)]',
 		low: 'text-muted-foreground',
 	};
 

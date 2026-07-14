@@ -25,19 +25,19 @@
 	};
 
 	const STATUS_BADGE: Record<IssueStatus, string> = {
-		in_progress: 'bg-blue-500/10 text-blue-600',
-		blocked: 'bg-amber-500/10 text-amber-600',
+		in_progress: 'bg-[var(--color-info-surface)] text-[var(--color-info-fg)]',
+		blocked: 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]',
 		todo: 'bg-muted text-muted-foreground',
 		backlog: 'bg-muted text-muted-foreground',
-		in_review: 'bg-purple-500/10 text-purple-600',
-		done: 'bg-green-500/10 text-green-600',
+		in_review: 'bg-[color-mix(in_srgb,var(--color-purple)_10%,transparent)] text-[var(--color-purple)]',
+		done: 'bg-[var(--color-success-surface)] text-[var(--color-success-fg)]',
 		cancelled: 'bg-muted text-muted-strong',
 	};
 
 	const PRIORITY_BADGE: Record<string, string> = {
-		critical: 'text-red-500',
-		high: 'text-orange-500',
-		medium: 'text-yellow-600',
+		critical: 'text-[var(--color-danger-fg)]',
+		high: 'text-[var(--color-warning-fg)]',
+		medium: 'text-[var(--color-warning-fg)]',
 		low: 'text-muted-foreground',
 	};
 
@@ -162,14 +162,14 @@
 					{#each decisions as d (d.id)}
 						<li class="flex flex-wrap items-center gap-2 text-xs">
 							<span class="uppercase tracking-wider text-muted-foreground">{d.stageType}</span>
-							<span class="rounded px-1.5 py-0.5 font-medium {d.outcome === 'approved' ? 'bg-green-500/10 text-green-600' : 'bg-amber-500/10 text-amber-600'}">
+							<span class="rounded px-1.5 py-0.5 font-medium {d.outcome === 'approved' ? 'bg-[var(--color-success-surface)] text-[var(--color-success-fg)]' : 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]'}">
 								{d.outcome === 'approved' ? m.workforce_decision_approved() : m.workforce_decision_changesRequested()}
 							</span>
 							{#if d.score != null && !d.actorUserId}
 								<span class="rounded bg-muted px-1.5 py-0.5 font-mono font-medium">{d.score}/{d.maxScore ?? '?'}</span>
 							{/if}
 							{#if d.actorUserId && d.score != null}
-								<span class="rounded bg-blue-500/10 px-1.5 py-0.5 font-mono font-medium text-blue-600">{m.workforce_harness_humanScore()}: {d.score}/{d.maxScore ?? 10}</span>
+								<span class="rounded bg-[var(--color-info-surface)] px-1.5 py-0.5 font-mono font-medium text-[var(--color-info-fg)]">{m.workforce_harness_humanScore()}: {d.score}/{d.maxScore ?? 10}</span>
 							{/if}
 							<time class="text-muted-foreground" datetime={new Date(d.createdAt).toISOString()}>{formatDate(d.createdAt)}</time>
 						</li>
@@ -186,7 +186,7 @@
 			{/if}
 			{#if issue.executionState?.lastDecisionOutcome}
 				<p class="mt-2 text-xs text-muted-foreground">
-					Last gate decision: <span class="font-medium {issue.executionState.lastDecisionOutcome === 'approved' ? 'text-green-600' : 'text-amber-600'}">{issue.executionState.lastDecisionOutcome.replace('_', ' ')}</span>
+					Last gate decision: <span class="font-medium {issue.executionState.lastDecisionOutcome === 'approved' ? 'text-[var(--color-success-fg)]' : 'text-[var(--color-warning-fg)]'}">{issue.executionState.lastDecisionOutcome.replace('_', ' ')}</span>
 				</p>
 			{/if}
 	</section>
@@ -403,7 +403,7 @@
 					{#if githubOrigin}
 						<div>
 							<div class="text-xs uppercase tracking-wider text-muted-foreground mb-0.5">Origin</div>
-							<a class="font-mono text-xs text-blue-600 hover:underline break-all" href={githubOrigin.url} target="_blank" rel="noreferrer">
+							<a class="font-mono text-xs text-[var(--color-info-fg)] hover:underline break-all" href={githubOrigin.url} target="_blank" rel="noreferrer">
 								{githubOrigin.label}
 							</a>
 						</div>

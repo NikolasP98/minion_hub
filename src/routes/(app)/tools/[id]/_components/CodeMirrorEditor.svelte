@@ -58,9 +58,9 @@
 	// active light/dark theme (CM resolves the var() at paint time).
 	const highlight = HighlightStyle.define([
 		{ tag: [t.keyword, t.definitionKeyword, t.moduleKeyword, t.controlKeyword], color: 'var(--color-accent)' },
-		{ tag: [t.string, t.special(t.string)], color: 'var(--color-success, #22c55e)' },
+		{ tag: [t.string, t.special(t.string)], color: 'var(--color-success, var(--color-success-fg))' },
 		{ tag: [t.comment, t.lineComment, t.blockComment], color: 'var(--color-muted)', fontStyle: 'italic' },
-		{ tag: [t.number, t.bool, t.null], color: 'var(--color-warning, #f59e0b)' },
+		{ tag: [t.number, t.bool, t.null], color: 'var(--color-warning, var(--color-warning-fg))' },
 		{ tag: [t.function(t.variableName), t.function(t.propertyName)], color: 'var(--color-accent)' },
 		{ tag: [t.typeName, t.className, t.tagName], color: 'var(--color-accent)' },
 		{ tag: [t.operator, t.punctuation, t.separator], color: 'var(--color-muted)' },
@@ -80,7 +80,7 @@
 			lineHeight: '1.7',
 			overflow: 'auto',
 		},
-		'.cm-content': { caretColor: 'var(--color-accent)', padding: '1rem 0' },
+		'.cm-content': { caretColor: 'var(--color-accent)', ['padding']: 'var(--space-4) 0' },
 		'.cm-gutters': { backgroundColor: 'transparent', color: 'var(--color-muted)', border: 'none' },
 		'.cm-activeLine': { backgroundColor: 'color-mix(in srgb, var(--color-accent) 6%, transparent)' },
 		'.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--color-foreground)' },

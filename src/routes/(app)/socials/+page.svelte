@@ -207,8 +207,8 @@
 									<input type="date" bind:value={toDate} oninput={() => navigate(fromDate, toDate)} />
 								</label>
 							</div>
-							<button class="preset" onclick={preset30d}>{m.ads_preset_30d()}</button>
-							<button class="preset" onclick={presetAll}>{m.ads_preset_all()}</button>
+							<Button variant="ghost" class="preset" onclick={preset30d}>{m.ads_preset_30d()}</Button>
+							<Button variant="ghost" class="preset" onclick={presetAll}>{m.ads_preset_all()}</Button>
 						</div>
 					{/snippet}
 					{#snippet cell(id)}{@render cellBody(id)}{/snippet}
@@ -223,40 +223,40 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--space-3);
 	}
 	.date-range {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-2);
 	}
 	.date-label {
 		display: flex;
 		flex-direction: row;
 		align-items: center;
-		gap: 0.4rem;
-		font-size: 0.72rem;
+		gap: var(--space-2);
+		font-size: var(--font-size-caption);
 		color: var(--color-muted-foreground);
 		white-space: nowrap;
 	}
 	.date-label input {
-		padding: 0.3rem 0.5rem;
+		padding: var(--space-1) var(--space-2);
 		border: 1px solid var(--hairline);
-		border-radius: 6px;
+		border-radius: var(--radius-md);
 		background: var(--color-card);
 		color: var(--color-foreground);
-		font-size: 0.82rem;
+		font-size: var(--font-size-body);
 		color-scheme: dark;
 	}
 	.preset {
-		padding: 0.3rem 0.65rem;
-		font-size: 0.75rem;
+		padding: var(--space-1) var(--space-3);
+		font-size: var(--font-size-caption);
 		background: transparent;
 		border: 1px solid var(--hairline);
-		border-radius: 6px;
+		border-radius: var(--radius-md);
 		cursor: pointer;
 		color: var(--color-muted-foreground);
-		transition: background 0.15s, color 0.15s;
+		transition: background var(--duration-fast), color var(--duration-fast);
 	}
 	.preset:hover {
 		background: var(--color-card);
@@ -266,59 +266,59 @@
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
-		padding: 0.85rem 1rem;
+		padding: var(--space-3) var(--space-4);
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-lg);
 		background: var(--color-card);
 		height: 100%;
 	}
 	.kpi-val {
-		font-size: 1.4rem;
+		font-size: var(--font-size-display);
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 	}
 	.kpi-label {
-		font-size: 0.72rem;
+		font-size: var(--font-size-caption);
 		color: var(--color-muted-foreground);
-		margin-top: 0.15rem;
+		margin-top: var(--space-1);
 	}
 	.kpi-delta {
-		font-size: 0.72rem;
-		margin-top: 0.25rem;
+		font-size: var(--font-size-caption);
+		margin-top: var(--space-1);
 		color: var(--color-muted-foreground);
 	}
 	.kpi-delta.pos {
-		color: var(--color-success, #22c55e);
+		color: var(--color-success, var(--color-success-fg));
 	}
 	.kpi-delta.neg {
-		color: var(--color-destructive, #ef4444);
+		color: var(--color-destructive, var(--color-danger-fg));
 	}
 	.card {
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-lg);
 		background: var(--color-card);
-		padding: 0.85rem 1rem;
+		padding: var(--space-3) var(--space-4);
 		height: 100%;
 		overflow: auto;
 	}
 	.card-h {
-		font-size: 0.78rem;
+		font-size: var(--font-size-body);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 		color: var(--color-muted-foreground);
-		margin-bottom: 0.8rem;
+		margin-bottom: var(--space-3);
 	}
 	.post-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--space-2);
 	}
 	.post-row {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		padding: 0.4rem 0;
+		gap: var(--space-2);
+		padding: var(--space-2) 0;
 		border-bottom: 1px solid var(--hairline);
 	}
 	.post-row:last-child {
@@ -326,28 +326,28 @@
 	}
 	.post-platform {
 		flex-shrink: 0;
-		font-size: 0.7rem;
-		padding: 0.1rem 0.45rem;
-		border-radius: 999px;
+		font-size: var(--font-size-caption);
+		padding: var(--space-0-5) var(--space-2);
+		border-radius: var(--radius-full);
 		background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
 		color: var(--color-muted-foreground);
 	}
 	.post-platform[data-platform='ig'] {
-		background: color-mix(in srgb, var(--color-pink, #ec4899) 15%, transparent);
-		color: var(--color-pink, #ec4899);
+		background: color-mix(in srgb, var(--color-pink, var(--color-pink)) 15%, transparent);
+		color: var(--color-pink, var(--color-pink));
 	}
 	.post-platform[data-platform='fb'] {
-		background: color-mix(in srgb, var(--color-info, #3b82f6) 15%, transparent);
-		color: var(--color-info, #3b82f6);
+		background: color-mix(in srgb, var(--color-info, var(--color-accent)) 15%, transparent);
+		color: var(--color-info, var(--color-accent));
 	}
 	.post-caption {
 		flex: 1;
 		min-width: 0;
-		font-size: 0.85rem;
+		font-size: var(--font-size-body);
 	}
 	.post-metrics {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--space-2);
 		flex-shrink: 0;
 	}
 	.post-link {

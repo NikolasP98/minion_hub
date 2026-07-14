@@ -77,17 +77,17 @@
     .editor-section {
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 0.75rem;
+        border-radius: var(--radius-lg);
         overflow: hidden;
     }
 
     .section-header {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.75rem 1rem;
+        gap: var(--space-2);
+        padding: var(--space-3) var(--space-4);
         margin: 0;
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -96,32 +96,32 @@
     }
 
     .section-body {
-        padding: 1rem;
+        padding: var(--space-4);
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: var(--space-3);
     }
 
     .field-group {
         display: flex;
         flex-direction: column;
-        gap: 0.375rem;
+        gap: var(--space-2);
     }
 
     .field-label {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-foreground);
     }
 
     .field-input {
         width: 100%;
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         color: var(--color-foreground);
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
-        border-radius: 0.5rem;
-        padding: 0.5rem 0.75rem;
+        border-radius: var(--radius-md);
+        padding: var(--space-2) var(--space-3);
         outline: none;
         font-family: inherit;
         transition: border-color var(--duration-fast) var(--ease-standard);
@@ -138,7 +138,7 @@
     .range-row {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-3);
     }
 
     .range-input {
@@ -149,7 +149,7 @@
     }
 
     .range-value {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         font-weight: 600;
         color: var(--color-foreground);
         min-width: 2rem;

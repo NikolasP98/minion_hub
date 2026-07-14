@@ -429,7 +429,7 @@
   }
   .inp {
     height: 2rem;
-    padding: 0 0.6rem;
+    padding: 0 var(--space-2);
     font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-md);
     background: var(--color-bg3);

@@ -597,7 +597,7 @@
     display: inline-flex;
     align-items: center;
     height: 1.5rem;
-    padding: 0 0.55rem;
+    padding: 0 var(--space-2);
     font-size: var(--font-size-caption, 12px);
     font-weight: 600;
     border-radius: var(--radius-full);
@@ -629,7 +629,7 @@
     display: inline-flex;
     align-items: center;
     height: 1.5rem;
-    padding: 0 0.55rem;
+    padding: 0 var(--space-2);
     font-size: var(--font-size-caption, 12px);
     font-weight: 600;
     border-radius: var(--radius-full);
@@ -659,7 +659,7 @@
     align-items: center;
     gap: var(--space-1, 4px);
     height: 1.5rem;
-    padding: 0 0.45rem 0 0.55rem;
+    padding: 0 var(--space-2) 0 var(--space-2);
     font-size: var(--font-size-caption, 12px);
     font-weight: 600;
     border-radius: var(--radius-full);

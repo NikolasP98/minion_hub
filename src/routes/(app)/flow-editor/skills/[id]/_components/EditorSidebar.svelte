@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { autosize } from '$lib/actions/autosize';
+  import { Button } from '$lib/components/ui';
+import { autosize } from '$lib/actions/autosize';
     import { Loader2, Sparkles, ChevronLeft, ChevronRight, Wrench } from "lucide-svelte";
     import { getToolInfo } from "$lib/data/tool-manifest";
     import EmojiPicker from "$lib/components/builder/EmojiPicker.svelte";
@@ -44,7 +45,7 @@
                         </div>
                     {/if}
                     {#each skillEditorState.ghostSuggestions as suggestion (suggestion.name)}
-                        <button
+                        <Button variant="ghost"
                             class="ghost-pill"
                             onclick={() => generateGhostChapter(suggestion.name)}
                             disabled={skillEditorState.aiBuilding}
@@ -52,7 +53,7 @@
                         >
                             <Sparkles size={10} />
                             <span>{suggestion.name}</span>
-                        </button>
+                        </Button>
                     {/each}
                 </div>
             {/if}
@@ -60,7 +61,7 @@
             <!-- AI Build button -->
             {#if skillEditorState.description.trim().length >= 10}
                 <div class="ai-assist-section">
-                    <button
+                    <Button variant="ghost"
                         type="button"
                         class="ai-assist-btn"
                         onclick={buildSkillWithAI}
@@ -73,7 +74,7 @@
                             <Sparkles size={14} />
                             <span>{m.builder_buildWithAi()}</span>
                         {/if}
-                    </button>
+                    </Button>
                     {#if skillEditorState.aiBuildError}
                         <span class="ai-assist-error">{skillEditorState.aiBuildError}</span>
                     {/if}
@@ -105,23 +106,23 @@
         </div>
 
         <!-- Sidebar collapse button -->
-        <button
+        <Button variant="ghost"
             class="sidebar-collapse-btn"
             onclick={() => (sidebarOpen = false)}
             title={m.sidebar_collapse()}
         >
             <ChevronLeft size={14} />
-        </button>
+        </Button>
     </aside>
 {:else}
     <!-- Collapsed sidebar: expand button -->
-    <button
+    <Button variant="ghost"
         class="sidebar-expand-btn"
         onclick={() => (sidebarOpen = true)}
         title={m.sidebar_expand()}
     >
         <ChevronRight size={14} />
-    </button>
+    </Button>
 {/if}
 
 <style>
@@ -138,10 +139,10 @@
     .sidebar-content {
         flex: 1;
         overflow-y: auto;
-        padding: 1.25rem;
+        padding: var(--space-6);
         display: flex;
         flex-direction: column;
-        gap: 0.875rem;
+        gap: var(--space-3);
     }
 
     .sidebar-collapse-btn {
@@ -150,7 +151,7 @@
         right: -12px;
         width: 24px;
         height: 24px;
-        border-radius: 50%;
+        border-radius: var(--radius-full);
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
         color: var(--color-muted);
@@ -158,7 +159,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 5;
+        z-index: var(--layer-sticky);
         transition: all var(--duration-fast) var(--ease-standard);
     }
     .sidebar-collapse-btn:hover { color: var(--color-foreground); border-color: var(--color-accent); }
@@ -178,17 +179,17 @@
     }
     .sidebar-expand-btn:hover { color: var(--color-foreground); background: var(--color-bg2); }
 
-    .name-row { display: flex; align-items: center; gap: 0.75rem; }
+    .name-row { display: flex; align-items: center; gap: var(--space-3); }
     .name-input {
         flex: 1;
         width: 100%;
-        font-size: 1rem;
+        font-size: var(--font-size-page-title);
         font-weight: 700;
         color: var(--color-foreground);
         background: transparent;
         border: none;
         border-bottom: 2px solid transparent;
-        padding: 0.25rem 0;
+        padding: var(--space-1) 0;
         outline: none;
         font-family: inherit;
         transition: border-color var(--duration-fast) var(--ease-standard);
@@ -198,12 +199,12 @@
 
     .desc-input {
         width: 100%;
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         color: var(--color-foreground);
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 0.5rem;
-        padding: 0.625rem 0.75rem;
+        border-radius: var(--radius-md);
+        padding: var(--space-2) var(--space-3);
         outline: none;
         resize: vertical;
         font-family: inherit;
@@ -213,18 +214,18 @@
     .desc-input:focus { border-color: var(--color-accent); }
     .desc-input::placeholder { color: var(--color-muted); }
 
-    .ai-assist-section { display: flex; flex-direction: column; gap: 0.375rem; }
+    .ai-assist-section { display: flex; flex-direction: column; gap: var(--space-2); }
     .ai-assist-btn {
         display: inline-flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.5rem 0.875rem;
-        font-size: 0.75rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: white;
         background: var(--color-accent);
         border: none;
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
@@ -232,17 +233,17 @@
     }
     .ai-assist-btn:hover:not(:disabled) { filter: brightness(1.15); }
     .ai-assist-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .ai-assist-error { font-size: 0.6875rem; color: var(--color-danger-fg); }
+    .ai-assist-error { font-size: var(--font-size-caption); color: var(--color-danger-fg); }
 
     /* Tool Pool */
     .tool-pool-section {
         display: flex;
         flex-direction: column;
-        gap: 0.375rem;
-        margin-top: 0.25rem;
+        gap: var(--space-2);
+        margin-top: var(--space-1);
     }
     .section-label {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -251,16 +252,16 @@
         align-items: center;
     }
     .pool-count {
-        font-size: 0.5625rem;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
         background: var(--color-bg3);
-        padding: 0.0625rem 0.375rem;
-        border-radius: 9999px;
-        margin-left: 0.25rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-full);
+        margin-left: var(--space-1);
         font-weight: 500;
     }
     .pool-empty-text {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         opacity: 0.6;
         margin: 0;
@@ -268,40 +269,40 @@
     .pool-chips {
         display: flex;
         flex-wrap: wrap;
-        gap: 4px;
+        gap: var(--space-1);
     }
     .pool-chip {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
-        padding: 3px 8px;
+        gap: var(--space-1);
+        padding: var(--space-1) var(--space-2);
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 6px;
-        font-size: 11px;
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-caption);
     }
-    .pool-chip-icon { font-size: 12px; }
+    .pool-chip-icon { font-size: var(--font-size-caption); }
     .pool-chip-name { color: var(--color-foreground); font-weight: 500; }
 
     /* Ghost chapter suggestions (AI-02) */
     .ghost-suggestions {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.375rem;
-        padding: 0.25rem 0;
+        gap: var(--space-2);
+        padding: var(--space-1) 0;
     }
     .ghost-loading {
-        display: flex; align-items: center; gap: 0.375rem;
-        font-size: 0.6875rem; color: var(--color-muted); opacity: 0.6; width: 100%;
+        display: flex; align-items: center; gap: var(--space-2);
+        font-size: var(--font-size-caption); color: var(--color-muted); opacity: 0.6; width: 100%;
     }
     .ghost-pill {
-        display: inline-flex; align-items: center; gap: 0.25rem;
-        padding: 0.25rem 0.625rem;
-        font-size: 0.6875rem; font-weight: 500; font-family: inherit;
+        display: inline-flex; align-items: center; gap: var(--space-1);
+        padding: var(--space-1) var(--space-2);
+        font-size: var(--font-size-caption); font-weight: 500; font-family: inherit;
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 4%, transparent);
         border: 1px dashed color-mix(in srgb, var(--color-accent) 25%, transparent);
-        border-radius: 9999px;
+        border-radius: var(--radius-full);
         cursor: pointer; opacity: 0.55;
         transition: all var(--duration-normal) var(--ease-standard);
     }

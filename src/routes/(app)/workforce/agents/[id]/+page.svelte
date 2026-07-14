@@ -13,39 +13,39 @@
 	const totalCostCents = $derived(trendValues.reduce((s, n) => s + n, 0));
 
 	const STATUS_DOT: Record<string, string> = {
-		active: '#10b981',
-		running: '#3b82f6',
-		paused: '#f59e0b',
-		error: '#ef4444',
-		idle: '#6b7280',
-		pending_approval: '#a855f7',
-		terminated: '#525252',
+		active: 'var(--color-emerald)',
+		running: 'var(--color-accent)',
+		paused: 'var(--color-warning-fg)',
+		error: 'var(--color-danger-fg)',
+		idle: 'var(--color-text-tertiary)',
+		pending_approval: 'var(--color-purple)',
+		terminated: 'var(--color-text-disabled)',
 	};
 
 	const STATUS_BADGE: Record<string, string> = {
-		active: 'bg-green-500/10 text-green-600',
-		running: 'bg-blue-500/10 text-blue-600',
-		paused: 'bg-amber-500/10 text-amber-600',
+		active: 'bg-[var(--color-success-surface)] text-[var(--color-success-fg)]',
+		running: 'bg-[var(--color-info-surface)] text-[var(--color-info-fg)]',
+		paused: 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]',
 		error: 'bg-destructive/10 text-destructive',
 		idle: 'bg-muted text-muted-foreground',
-		pending_approval: 'bg-purple-500/10 text-purple-600',
+		pending_approval: 'bg-[color-mix(in_srgb,var(--color-purple)_10%,transparent)] text-[var(--color-purple)]',
 		terminated: 'bg-muted text-muted-strong',
 	};
 
 	const RUN_STATUS_BADGE: Record<string, string> = {
-		succeeded: 'bg-green-500/10 text-green-600',
+		succeeded: 'bg-[var(--color-success-surface)] text-[var(--color-success-fg)]',
 		failed: 'bg-destructive/10 text-destructive',
-		running: 'bg-blue-500/10 text-blue-600',
+		running: 'bg-[var(--color-info-surface)] text-[var(--color-info-fg)]',
 		cancelled: 'bg-muted text-muted-foreground',
 	};
 
 	const ISSUE_STATUS_BADGE: Record<string, string> = {
-		in_progress: 'bg-blue-500/10 text-blue-600',
-		blocked: 'bg-amber-500/10 text-amber-600',
+		in_progress: 'bg-[var(--color-info-surface)] text-[var(--color-info-fg)]',
+		blocked: 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]',
 		todo: 'bg-muted text-muted-foreground',
 		backlog: 'bg-muted text-muted-foreground',
-		in_review: 'bg-purple-500/10 text-purple-600',
-		done: 'bg-green-500/10 text-green-600',
+		in_review: 'bg-[color-mix(in_srgb,var(--color-purple)_10%,transparent)] text-[var(--color-purple)]',
+		done: 'bg-[var(--color-success-surface)] text-[var(--color-success-fg)]',
 		cancelled: 'bg-muted text-muted-strong',
 	};
 
@@ -129,19 +129,19 @@
 		{#if harness}
 			<div class="grid gap-3 md:grid-cols-2">
 				<div class="rounded-md border border-border bg-background p-3 space-y-2">
-					<div class="text-[11px] font-semibold uppercase tracking-wider text-green-600">{m.workforce_harness_active()}</div>
+					<div class="t-label text-[var(--color-success-fg)]">{m.workforce_harness_active()}</div>
 					<div class="text-sm font-medium font-mono">{harness.activePrimary?.model ?? '—'}</div>
 					<div class="text-xs text-muted-foreground">{harness.activePrimary?.provider ?? agent.adapterType} · {harness.runtimeClass ?? '—'} · {harness.roleClass ?? agent.role}</div>
 					{#if harness.activeFallbacks.length}<div class="text-xs text-muted-foreground">{m.workforce_harness_fallbacks()}: {harness.activeFallbacks.map((item) => item.model).join(' → ')}</div>{/if}
 				</div>
 				<div class="rounded-md border border-dashed border-border bg-muted/30 p-3 space-y-2" class:opacity-60={harness.recommendedPrimary?.executable === false}>
-					<div class="text-[11px] font-semibold uppercase tracking-wider text-amber-600">{m.workforce_harness_recommended()}</div>
+					<div class="t-label text-[var(--color-warning-fg)]">{m.workforce_harness_recommended()}</div>
 					<div class="text-sm font-medium font-mono">{harness.recommendedPrimary?.model ?? m.workforce_harness_noRecommendation()}</div>
 					{#if harness.recommendedPrimary}
 						<div class="text-xs text-muted-foreground">{harness.recommendedPrimary.runtimeKind ?? harness.recommendedPrimary.adapterType ?? '—'} · {harness.recommendedPrimary.provider ?? '—'}</div>
 					{/if}
 					{#if harness.recommendedPrimary?.bridgePending}
-						<span class="inline-flex rounded bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700">{m.workforce_harness_bridgePending()}</span>
+						<span class="inline-flex rounded bg-[var(--color-warning-surface)] px-2 py-0.5 text-xs font-medium text-[var(--color-warning-fg)]">{m.workforce_harness_bridgePending()}</span>
 					{/if}
 					{#if harness.recommendedFallbacks.length}<div class="text-xs text-muted-foreground">{m.workforce_harness_fallbacks()}: {harness.recommendedFallbacks.map((item) => item.model).join(' → ')}</div>{/if}
 					<p class="text-xs text-muted-foreground">{m.workforce_harness_recommendationHint()}</p>
@@ -161,7 +161,7 @@
 			{#if harnessSignals.length || harnessProposals.length}
 				<div class="grid gap-3 md:grid-cols-2 text-xs">
 					<div><h3 class="font-medium mb-1">{m.workforce_harness_recentSignals()}</h3>{#each harnessSignals as signal (signal.id)}<p class="text-muted-foreground">{signal.kind} · {signal.summary}</p>{/each}</div>
-					<div><h3 class="font-medium mb-1">{m.workforce_harness_recentProposals()}</h3>{#each harnessProposals as proposal (proposal.id)}<p class="text-muted-foreground"><span class="text-amber-600">{proposal.status}</span> · {proposal.summary}</p>{/each}</div>
+					<div><h3 class="font-medium mb-1">{m.workforce_harness_recentProposals()}</h3>{#each harnessProposals as proposal (proposal.id)}<p class="text-muted-foreground"><span class="text-[var(--color-warning-fg)]">{proposal.status}</span> · {proposal.summary}</p>{/each}</div>
 				</div>
 			{/if}
 		{:else}
@@ -284,8 +284,8 @@
 
 	<!-- Pause reason banner -->
 	{#if agent.pauseReason}
-		<div class="rounded-lg border border-amber-300/30 bg-amber-500/5 px-4 py-3 text-sm">
-			<span class="font-medium text-amber-600">Paused</span>
+		<div class="rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-surface)] px-4 py-3 text-sm">
+			<span class="font-medium text-[var(--color-warning-fg)]">Paused</span>
 			<span class="text-muted-foreground ml-1">— reason: {agent.pauseReason}</span>
 			{#if agent.pausedAt}
 				<span class="text-muted-foreground ml-1">· {relativeTime(agent.pausedAt)}</span>

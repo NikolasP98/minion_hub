@@ -634,7 +634,7 @@
     gap: var(--space-2, 8px);
     height: 100%;
     min-height: 2.2rem;
-    padding: 0 0.8rem;
+    padding: 0 var(--space-3);
     border-radius: var(--radius-md);
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
@@ -812,7 +812,7 @@
     background: var(--color-card);
     border-top: 1px solid var(--hairline);
     padding: var(--space-2, 8px) var(--space-3, 12px) var(--space-3, 12px);
-    margin: 0 -0.85rem -0.85rem;
+    margin: 0 calc(-1 * var(--space-3)) calc(-1 * var(--space-3));
     border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   }
   .total-row {

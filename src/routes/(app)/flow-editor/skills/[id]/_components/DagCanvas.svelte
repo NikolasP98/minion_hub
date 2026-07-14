@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { BookOpen, Check, Sparkles, X } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { BookOpen, Check, Sparkles, X } from "lucide-svelte";
     import ChapterDAG from "$lib/components/builder/ChapterDAG.svelte";
     import {
         skillEditorState, skillEditorDerived,
@@ -23,13 +24,13 @@
             <h3 class="first-visit-title">{m.builder_firstVisitTitle()}</h3>
             <p class="first-visit-desc">{m.builder_firstVisitDesc()}</p>
             <div class="first-visit-actions">
-                <button type="button" class="first-visit-btn primary" onclick={() => { sidebarOpen = true; }}>
+                <Button variant="ghost" type="button" class="first-visit-btn primary" onclick={() => { sidebarOpen = true; }}>
                     <Sparkles size={14} />
                     {m.builder_openSidebarToBegin()}
-                </button>
-                <button type="button" class="first-visit-btn ghost" onclick={addChapter}>
+                </Button>
+                <Button variant="ghost" type="button" class="first-visit-btn ghost" onclick={addChapter}>
                     + {m.builder_addChapterManually()}
-                </button>
+                </Button>
             </div>
         </div>
     {:else}
@@ -50,14 +51,14 @@
         />
         {#if skillEditorState.stagedProposal}
             <div class="proposal-batch-actions">
-                <button class="batch-btn accept" onclick={acceptAllProposed}>
+                <Button variant="ghost" class="batch-btn accept" onclick={acceptAllProposed}>
                     <Check size={14} />
                     {m.builder_acceptAll({ count: skillEditorState.stagedProposal.chapters.length })}
-                </button>
-                <button class="batch-btn reject" onclick={rejectAllProposed}>
+                </Button>
+                <Button variant="ghost" class="batch-btn reject" onclick={rejectAllProposed}>
                     <X size={14} />
                     {m.builder_rejectAll()}
-                </button>
+                </Button>
             </div>
         {/if}
     {/if}
@@ -86,32 +87,32 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 0.75rem;
-        padding: 2rem;
+        gap: var(--space-3);
+        padding: var(--space-8);
         text-align: center;
     }
     .first-visit-title {
-        font-size: 0.9375rem;
+        font-size: var(--font-size-page-title);
         font-weight: 600;
         color: var(--color-foreground);
         margin: 0;
     }
     .first-visit-desc {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         max-width: 24rem;
         line-height: 1.5;
         margin: 0;
     }
-    .first-visit-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .first-visit-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
     .first-visit-btn {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.5rem 0.875rem;
-        font-size: 0.75rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-caption);
         font-weight: 600;
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
@@ -131,19 +132,19 @@
         position: absolute;
         top: 0.5rem;
         right: 0.5rem;
-        z-index: 6;
+        z-index: var(--layer-sticky);
         display: flex;
-        gap: 0.375rem;
+        gap: var(--space-2);
     }
     .batch-btn {
-        display: flex; align-items: center; gap: 0.375rem;
-        padding: 0.375rem 0.75rem;
-        font-size: 0.7rem; font-weight: 600;
-        border: none; border-radius: 0.375rem;
+        display: flex; align-items: center; gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-caption); font-weight: 600;
+        border: none; border-radius: var(--radius-md);
         cursor: pointer; transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
-    .batch-btn.accept { color: white; background: var(--color-success, #22c55e); }
+    .batch-btn.accept { color: white; background: var(--color-success, var(--color-success-fg)); }
     .batch-btn.accept:hover { filter: brightness(1.1); }
     .batch-btn.reject {
         color: var(--color-danger-fg);

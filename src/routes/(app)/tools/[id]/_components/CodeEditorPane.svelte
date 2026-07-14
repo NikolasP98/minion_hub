@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertical } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
+import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertical } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 	import CodeMirrorEditor from './CodeMirrorEditor.svelte';
 	import { varAccessor, querySnippet, sqlTemplate, type Lang } from './tool-editor-snippets';
@@ -88,7 +89,7 @@
 	<!-- Variables Panel: Env / System / Module / Database / Queries tabs -->
 	<div class="env-panel" class:collapsed={!envVarsExpanded}>
 		<div class="env-header">
-			<button
+			<Button variant="ghost"
 				type="button"
 				class="env-toggle"
 				onclick={onToggleExpanded}
@@ -99,24 +100,24 @@
 				{:else}
 					<ChevronRight size={14} />
 				{/if}
-			</button>
+			</Button>
 			<div class="var-tabs">
-				<button type="button" class="var-tab" class:active={activeVarTab === 'env'} onclick={() => (activeVarTab = 'env')}>
+				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'env'} onclick={() => (activeVarTab = 'env')}>
 					<span>{m.tools_editor_envVarsTab()}</span>
 					<span class="env-count">{envVars.length}</span>
-				</button>
-				<button type="button" class="var-tab" class:active={activeVarTab === 'system'} onclick={() => (activeVarTab = 'system')}>
+				</Button>
+				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'system'} onclick={() => (activeVarTab = 'system')}>
 					{m.tools_editor_systemVarsTab()}
-				</button>
-				<button type="button" class="var-tab" class:active={activeVarTab === 'module'} onclick={() => (activeVarTab = 'module')}>
+				</Button>
+				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'module'} onclick={() => (activeVarTab = 'module')}>
 					{m.tools_editor_moduleVarsTab()}
-				</button>
-				<button type="button" class="var-tab" class:active={activeVarTab === 'database'} onclick={() => (activeVarTab = 'database')}>
+				</Button>
+				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'database'} onclick={() => (activeVarTab = 'database')}>
 					{m.tools_editor_databaseVarsTab()}
-				</button>
-				<button type="button" class="var-tab" class:active={activeVarTab === 'queries'} onclick={() => (activeVarTab = 'queries')}>
+				</Button>
+				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'queries'} onclick={() => (activeVarTab = 'queries')}>
 					{m.tools_editor_queriesTab()}
-				</button>
+				</Button>
 			</div>
 		</div>
 
@@ -144,7 +145,7 @@
 								{:else}
 									<input type="password" class="env-value" bind:value={envVar.value} placeholder="value" oninput={onCodeChange} />
 								{/if}
-								<button
+								<Button variant="ghost"
 									type="button"
 									class="env-reveal"
 									onclick={() => onToggleReveal(i)}
@@ -155,17 +156,17 @@
 									{:else}
 										<Eye size={12} />
 									{/if}
-								</button>
+								</Button>
 							</div>
-							<button type="button" class="env-remove" onclick={() => onRemoveEnvVar(i)} title="Remove variable">
+							<Button variant="ghost" type="button" class="env-remove" onclick={() => onRemoveEnvVar(i)} title="Remove variable">
 								<Trash2 size={12} />
-							</button>
+							</Button>
 						</div>
 					{/each}
-					<button type="button" class="env-add" onclick={onAddEnvVar}>
+					<Button variant="ghost" type="button" class="env-add" onclick={onAddEnvVar}>
 						<Plus size={12} />
 						<span>{m.builder_addVariable()}</span>
-					</button>
+					</Button>
 				{:else if activeVarTab === 'system'}
 					{#each variablesData?.system ?? [] as v (v.key)}
 						<div
@@ -178,9 +179,9 @@
 						>
 							<div class="var-row-main">
 								<span class="var-key"><GripVertical size={11} class="grip" />{v.key}</span>
-								<button type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
+								<Button variant="ghost" type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
 									<Copy size={11} />
-								</button>
+								</Button>
 							</div>
 							<span class="var-desc">{v.description}</span>
 						</div>
@@ -199,9 +200,9 @@
 						>
 							<div class="var-row-main">
 								<span class="var-key"><GripVertical size={11} class="grip" />{v.key}</span>
-								<button type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
+								<Button variant="ghost" type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
 									<Copy size={11} />
-								</button>
+								</Button>
 							</div>
 							<span class="var-path">{v.path}</span>
 							<span class="var-desc">{v.description}</span>
@@ -221,9 +222,9 @@
 						>
 							<div class="var-row-main">
 								<span class="var-key"><GripVertical size={11} class="grip" />{v.key}</span>
-								<button type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
+								<Button variant="ghost" type="button" class="var-copy" onclick={() => copyText(varAccessor(scriptLang, v.key))} title={m.tools_editor_copyKey()}>
 									<Copy size={11} />
-								</button>
+								</Button>
 							</div>
 							{#if v.value}<span class="var-path">{v.value}</span>{/if}
 							<span class="var-desc">{v.description}</span>
@@ -249,9 +250,9 @@
 						>
 							<div class="snippet-head">
 								<span class="var-key"><GripVertical size={11} class="grip" />{v.path}</span>
-								<button type="button" class="var-copy" onclick={() => copyText(snippet)} title={m.tools_editor_copySnippet()}>
+								<Button variant="ghost" type="button" class="var-copy" onclick={() => copyText(snippet)} title={m.tools_editor_copySnippet()}>
 									<Copy size={11} />
-								</button>
+								</Button>
 							</div>
 							<pre class="snippet-code">{snippet}</pre>
 						</div>
@@ -272,9 +273,9 @@
 						>
 							<div class="snippet-head">
 								<span class="var-key"><GripVertical size={11} class="grip" />{tbl.name}</span>
-								<button type="button" class="var-copy" onclick={() => copyText(tmpl)} title={m.tools_editor_copySnippet()}>
+								<Button variant="ghost" type="button" class="var-copy" onclick={() => copyText(tmpl)} title={m.tools_editor_copySnippet()}>
 									<Copy size={11} />
-								</button>
+								</Button>
 							</div>
 							<pre class="snippet-code">{tmpl}</pre>
 						</div>
@@ -322,8 +323,8 @@
 	.env-header {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.375rem 0.5rem;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-2);
 		flex-shrink: 0;
 	}
 
@@ -349,22 +350,22 @@
 	.var-tabs {
 		display: flex;
 		align-items: center;
-		gap: 0.125rem;
+		gap: var(--space-0-5);
 		overflow-x: auto;
 	}
 
 	.var-tab {
 		display: flex;
 		align-items: center;
-		gap: 0.3125rem;
-		padding: 0.25rem 0.5rem;
-		border-radius: 0.375rem;
+		gap: var(--space-1);
+		padding: var(--space-1) var(--space-2);
+		border-radius: var(--radius-md);
 		background: none;
 		border: none;
 		cursor: pointer;
 		color: var(--color-muted);
 		font-family: inherit;
-		font-size: 0.6875rem;
+		font-size: var(--font-size-caption);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
@@ -383,31 +384,31 @@
 	}
 
 	.env-count {
-		font-size: 0.5625rem;
+		font-size: var(--font-size-telemetry);
 		color: var(--color-muted);
 		background: var(--color-bg3);
-		padding: 0.0625rem 0.375rem;
-		border-radius: 9999px;
+		padding: var(--space-0-5) var(--space-2);
+		border-radius: var(--radius-full);
 		font-weight: 500;
 	}
 
 	.env-body {
 		flex: 1;
 		overflow-y: auto;
-		padding: 0 0.75rem 0.625rem;
+		padding: 0 var(--space-3) var(--space-2);
 		display: flex;
 		flex-direction: column;
-		gap: 0.375rem;
+		gap: var(--space-2);
 	}
 
 	.env-row {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
-		padding: 0.375rem 0.5rem;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-2);
 		background: var(--color-bg3);
 		border: 1px solid var(--color-border);
-		border-radius: 0.375rem;
+		border-radius: var(--radius-md);
 	}
 
 	.chip-grip {
@@ -431,14 +432,14 @@
 
 	.env-key {
 		width: 8rem;
-		font-size: 0.75rem;
+		font-size: var(--font-size-caption);
 		font-weight: 600;
 		font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 		color: var(--color-foreground);
 		background: transparent;
 		border: none;
 		outline: none;
-		padding: 0.125rem 0;
+		padding: var(--space-0-5) 0;
 		text-transform: uppercase;
 	}
 
@@ -448,7 +449,7 @@
 	}
 
 	.env-eq {
-		font-size: 0.75rem;
+		font-size: var(--font-size-caption);
 		color: var(--color-muted);
 		font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 		flex-shrink: 0;
@@ -458,19 +459,19 @@
 		flex: 1;
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: var(--space-1);
 		min-width: 0;
 	}
 
 	.env-value {
 		flex: 1;
-		font-size: 0.75rem;
+		font-size: var(--font-size-caption);
 		font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 		color: var(--color-foreground);
 		background: transparent;
 		border: none;
 		outline: none;
-		padding: 0.125rem 0;
+		padding: var(--space-0-5) 0;
 		min-width: 0;
 	}
 
@@ -484,7 +485,7 @@
 		justify-content: center;
 		width: 1.25rem;
 		height: 1.25rem;
-		border-radius: 0.25rem;
+		border-radius: var(--radius-sm);
 		color: var(--color-muted);
 		background: none;
 		border: none;
@@ -503,7 +504,7 @@
 		justify-content: center;
 		width: 1.25rem;
 		height: 1.25rem;
-		border-radius: 0.25rem;
+		border-radius: var(--radius-sm);
 		color: var(--color-muted);
 		background: none;
 		border: none;
@@ -525,13 +526,13 @@
 	.env-add {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
-		padding: 0.375rem 0.625rem;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-2);
 		border: 1px dashed var(--color-border);
-		border-radius: 0.375rem;
+		border-radius: var(--radius-md);
 		background: transparent;
 		color: var(--color-muted);
-		font-size: 0.6875rem;
+		font-size: var(--font-size-caption);
 		font-weight: 500;
 		cursor: pointer;
 		transition: all var(--duration-fast) var(--ease-standard);
@@ -548,11 +549,11 @@
 	.var-row {
 		display: flex;
 		flex-direction: column;
-		gap: 0.125rem;
-		padding: 0.375rem 0.5rem;
+		gap: var(--space-0-5);
+		padding: var(--space-2) var(--space-2);
 		background: var(--color-bg3);
 		border: 1px solid var(--color-border);
-		border-radius: 0.375rem;
+		border-radius: var(--radius-md);
 	}
 
 	.var-row.draggable,
@@ -575,14 +576,14 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.5rem;
+		gap: var(--space-2);
 	}
 
 	.var-key {
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
-		font-size: 0.75rem;
+		gap: var(--space-1);
+		font-size: var(--font-size-caption);
 		font-weight: 600;
 		font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 		color: var(--color-foreground);
@@ -601,7 +602,7 @@
 		width: 1.125rem;
 		height: 1.125rem;
 		flex-shrink: 0;
-		border-radius: 0.25rem;
+		border-radius: var(--radius-sm);
 		color: var(--color-muted);
 		background: none;
 		border: none;
@@ -614,54 +615,54 @@
 	}
 
 	.var-path {
-		font-size: 0.6875rem;
+		font-size: var(--font-size-caption);
 		font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 		color: var(--color-accent);
 	}
 
 	.var-desc {
-		font-size: 0.6875rem;
+		font-size: var(--font-size-caption);
 		color: var(--color-muted);
 	}
 
 	.var-empty {
-		font-size: 0.75rem;
+		font-size: var(--font-size-caption);
 		color: var(--color-muted);
 		font-style: italic;
-		padding: 0.5rem;
+		padding: var(--space-2);
 	}
 
 	/* ── Queries tab ─────────────────────────────────────────────────── */
 	.queries-note {
-		font-size: 0.6875rem;
+		font-size: var(--font-size-caption);
 		color: var(--color-muted);
-		margin: 0.125rem 0.25rem 0.25rem;
+		margin: var(--space-0-5) var(--space-1) var(--space-1);
 		line-height: 1.5;
 	}
 
 	.queries-section-label {
-		font-size: 0.625rem;
+		font-size: var(--font-size-telemetry);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--color-muted);
-		margin-top: 0.25rem;
-		padding: 0 0.25rem;
+		margin-top: var(--space-1);
+		padding: 0 var(--space-1);
 	}
 
 	.snippet-card {
 		display: flex;
 		flex-direction: column;
-		gap: 0.375rem;
-		padding: 0.5rem;
+		gap: var(--space-2);
+		padding: var(--space-2);
 		background: var(--color-bg3);
 		border: 1px solid var(--color-border);
-		border-radius: 0.375rem;
+		border-radius: var(--radius-md);
 	}
 
 	.snippet-code {
 		margin: 0;
-		font-size: 0.6875rem;
+		font-size: var(--font-size-caption);
 		font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 		color: var(--color-foreground);
 		white-space: pre-wrap;

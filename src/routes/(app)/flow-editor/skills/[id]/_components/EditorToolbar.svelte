@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, RotateCcw, Wrench, X, FlaskConical } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, RotateCcw, Wrench, X, FlaskConical } from "lucide-svelte";
     import {
         skillEditorState, skillEditorDerived,
         scheduleSave, handlePublishClick, clearDryRun,
@@ -14,9 +15,9 @@
 
 <div class="editor-toolbar">
     <div class="flex items-center gap-3 min-w-0">
-        <button type="button" onclick={back.go} class="back-link" title="Back to Flows">
+        <Button variant="ghost" type="button" onclick={back.go} class="back-link" title="Back to Flows">
             <ArrowLeft size={16} />
-        </button>
+        </Button>
 
         <div class="h-5 w-px bg-border/60 shrink-0"></div>
 
@@ -62,7 +63,7 @@
 
         <div class="h-4 w-px bg-border/60"></div>
 
-        <button
+        <Button variant="ghost"
             type="button"
             class="toolbar-btn {showDryRun ? 'active' : ''}"
             title={m.builder_testRunSkill()}
@@ -70,9 +71,9 @@
         >
             <FlaskConical size={14} />
             <span class="hidden sm:inline">{m.builder_test()}</span>
-        </button>
+        </Button>
 
-        <button
+        <Button variant="ghost"
             type="button"
             class="toolbar-btn validation-btn {skillEditorDerived.worstLevel}"
             title={skillEditorDerived.validationTooltip}
@@ -86,8 +87,8 @@
                 <CheckCircle2 size={14} />
             {/if}
             <span class="hidden sm:inline">{m.builder_validationTitle()}</span>
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
             type="button"
             class="toolbar-btn {skillEditorState.status === 'published' ? 'published' : 'primary'}"
             onclick={handlePublishClick}
@@ -102,7 +103,7 @@
                 <Upload size={14} />
             {/if}
             <span class="hidden sm:inline">{skillEditorState.publishing ? m.builder_publishing() : skillEditorState.status === 'published' ? m.builder_republish() : m.builder_publish()}</span>
-        </button>
+        </Button>
     </div>
 </div>
 
@@ -112,7 +113,7 @@
         align-items: center;
         justify-content: space-between;
         height: 2.75rem;
-        padding: 0 0.75rem;
+        padding: 0 var(--space-3);
         background: var(--color-bg2);
         border-bottom: 1px solid var(--color-border);
         flex-shrink: 0;
@@ -124,7 +125,7 @@
         justify-content: center;
         width: 2rem;
         height: 2rem;
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         color: var(--color-muted);
         transition: all var(--duration-fast) var(--ease-standard);
         background: none;
@@ -136,9 +137,9 @@
     .status-badge {
         display: inline-flex;
         align-items: center;
-        padding: 0.125rem 0.5rem;
-        border-radius: 9999px;
-        font-size: 0.625rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -158,10 +159,10 @@
     .toolbar-btn {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.375rem 0.625rem;
-        border-radius: 0.375rem;
-        font-size: 0.75rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-2);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-caption);
         font-weight: 500;
         border: none;
         cursor: pointer;
@@ -173,38 +174,38 @@
     .toolbar-btn.primary { color: white; background: var(--color-accent); }
     .toolbar-btn.primary:hover { filter: brightness(1.1); }
     .toolbar-btn.published {
-        color: var(--color-success, #22c55e);
-        background: color-mix(in srgb, var(--color-success, #22c55e) 12%, transparent);
-        border: 1px solid color-mix(in srgb, var(--color-success, #22c55e) 25%, transparent);
+        color: var(--color-success, var(--color-success-fg));
+        background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-success, var(--color-success-fg)) 25%, transparent);
     }
-    .toolbar-btn.published:hover { background: color-mix(in srgb, var(--color-success, #22c55e) 20%, transparent); }
+    .toolbar-btn.published:hover { background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 20%, transparent); }
 
     .save-indicator {
         display: flex;
         align-items: center;
-        gap: 0.3125rem;
-        font-size: 0.6875rem;
+        gap: var(--space-1);
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         white-space: nowrap;
-        padding: 0.25rem 0.5rem;
-        border-radius: 0.375rem;
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-md);
         user-select: none;
     }
-    :global(.dirty-dot) { color: var(--color-warning, #f59e0b); fill: var(--color-warning, #f59e0b); }
-    :global(.saved-check) { color: var(--color-success, #22c55e); }
+    :global(.dirty-dot) { color: var(--color-warning, var(--color-warning-fg)); fill: var(--color-warning, var(--color-warning-fg)); }
+    :global(.saved-check) { color: var(--color-success, var(--color-success-fg)); }
     :global(.loading-spinner) { color: var(--color-muted); animation: spin 1s linear infinite; }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
     .validation-btn.error { color: var(--color-danger-fg); border-color: var(--color-danger-border); background: var(--color-danger-surface); }
     .validation-btn.error:hover { background: var(--color-danger-surface); }
-    .validation-btn.warning { color: var(--color-warning, #f59e0b); border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 30%, var(--color-border)); background: color-mix(in srgb, var(--color-warning, #f59e0b) 8%, transparent); }
-    .validation-btn.warning:hover { background: color-mix(in srgb, var(--color-warning, #f59e0b) 15%, transparent); }
-    .validation-btn.ok { color: var(--color-success, #22c55e); border-color: color-mix(in srgb, var(--color-success, #22c55e) 30%, var(--color-border)); background: color-mix(in srgb, var(--color-success, #22c55e) 8%, transparent); }
-    .validation-btn.ok:hover { background: color-mix(in srgb, var(--color-success, #22c55e) 15%, transparent); }
+    .validation-btn.warning { color: var(--color-warning, var(--color-warning-fg)); border-color: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 30%, var(--color-border)); background: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 8%, transparent); }
+    .validation-btn.warning:hover { background: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 15%, transparent); }
+    .validation-btn.ok { color: var(--color-success, var(--color-success-fg)); border-color: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 30%, var(--color-border)); background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 8%, transparent); }
+    .validation-btn.ok:hover { background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 15%, transparent); }
 
-    .max-cycles-control { display: flex; align-items: center; gap: 0.25rem; cursor: default; color: var(--color-muted); font-size: 0.7rem; }
+    .max-cycles-control { display: flex; align-items: center; gap: var(--space-1); cursor: default; color: var(--color-muted); font-size: var(--font-size-caption); }
     .max-cycles-icon { opacity: 0.7; flex-shrink: 0; }
-    .max-cycles-input { width: 2.5rem; padding: 0.2rem 0.3rem; font-size: 0.7rem; font-family: inherit; text-align: center; background: var(--color-bg2); border: 1px solid var(--color-border); border-radius: 0.25rem; color: var(--color-foreground); appearance: textfield; -moz-appearance: textfield; }
+    .max-cycles-input { width: 2.5rem; padding: var(--space-1) var(--space-1); font-size: var(--font-size-caption); font-family: inherit; text-align: center; background: var(--color-bg2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-foreground); appearance: textfield; -moz-appearance: textfield; }
     .max-cycles-input::-webkit-inner-spin-button, .max-cycles-input::-webkit-outer-spin-button { -webkit-appearance: none; }
     .max-cycles-input:focus { outline: none; border-color: var(--color-accent); }
 </style>

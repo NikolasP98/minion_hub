@@ -169,10 +169,10 @@
         <ul class="product-list">
           {#each filteredProducts as p (p.id)}
             <li>
-              <button class="product-btn" class:active={p.id === selectedProductId} onclick={() => selectProduct(p.id)}>
+              <Button variant="ghost" class="product-btn" class:active={p.id === selectedProductId} onclick={() => selectProduct(p.id)}>
                 <span class="product-name">{p.name}</span>
                 <span class="product-code">{p.code}</span>
-              </button>
+              </Button>
             </li>
           {/each}
         </ul>
@@ -264,24 +264,24 @@
             {:else if col.key === 'actions'}
               {#if editingId === c.id}
                 <div class="flex gap-1 justify-end">
-                  <button class="act-btn act-save" onclick={() => saveEdit(c.id)} disabled={editBusy}>✓</button>
-                  <button class="act-btn act-cancel" onclick={cancelEdit}>✗</button>
+                  <Button variant="ghost" class="act-btn act-save" onclick={() => saveEdit(c.id)} disabled={editBusy}>✓</Button>
+                  <Button variant="ghost" class="act-btn act-cancel" onclick={cancelEdit}>✗</Button>
                 </div>
                 {#if editErr}<p class="err-msg text-xs">{editErr}</p>{/if}
               {:else}
                 <div class="flex gap-1 justify-end">
-                  <button
+                  <Button variant="ghost"
                     class="act-btn act-edit"
                     onclick={() => startEdit(c)}
                     disabled={!canAct('stock', 'edit')}
                     title={canAct('stock', 'edit') ? undefined : m.no_permission()}
-                  >✎</button>
-                  <button
+                  >✎</Button>
+                  <Button variant="ghost"
                     class="act-btn act-cancel"
                     onclick={() => removeMapping(c.id)}
                     disabled={!canAct('stock', 'edit')}
                     title={canAct('stock', 'edit') ? undefined : m.no_permission()}
-                  ><Trash2 size={12} /></button>
+                  ><Trash2 size={12} /></Button>
                 </div>
               {/if}
             {/if}
@@ -301,34 +301,34 @@
     border-right: 1px solid var(--hairline);
     overflow: hidden;
   }
-  .search-fld { display: flex; align-items: center; gap: 0.4rem; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--hairline); }
+  .search-fld { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--hairline); }
   .search-fld :global(.search-ico) { color: var(--color-muted-foreground); flex-shrink: 0; }
-  .search-inp { flex: 1; min-width: 0; background: transparent; border: none; outline: none; font-size: 0.82rem; color: var(--color-foreground); }
+  .search-inp { flex: 1; min-width: 0; background: transparent; border: none; outline: none; font-size: var(--font-size-body); color: var(--color-foreground); }
   .product-list { overflow-y: auto; flex: 1; min-height: 0; }
   .product-btn {
-    display: flex; flex-direction: column; gap: 0.05rem; width: 100%; text-align: left;
-    padding: 0.5rem 0.75rem; border: none; border-bottom: 1px solid var(--hairline);
+    display: flex; flex-direction: column; gap: var(--space-0-5); width: 100%; text-align: left;
+    padding: var(--space-2) var(--space-3); border: none; border-bottom: 1px solid var(--hairline);
     background: transparent; cursor: pointer; color: var(--color-foreground);
   }
-  .product-btn:hover { background: rgba(255, 255, 255, 0.03); }
+  .product-btn:hover { background: color-mix(in srgb, var(--color-text-primary) 3%, transparent); }
   .product-btn.active { background: color-mix(in srgb, var(--color-accent) 10%, transparent); border-left: 2px solid var(--color-accent); }
-  .product-name { font-size: 0.84rem; font-weight: 500; }
-  .product-code { font-size: 0.7rem; color: var(--color-muted-foreground); font-family: var(--font-mono, monospace); }
+  .product-name { font-size: var(--font-size-body); font-weight: 500; }
+  .product-code { font-size: var(--font-size-caption); color: var(--color-muted-foreground); font-family: var(--font-mono, monospace); }
 
-  .right-pane { flex: 1; min-width: 0; overflow: hidden; padding: 1rem; display: flex; flex-direction: column; gap: 1rem; }
-  .right-head { display: flex; align-items: baseline; gap: 0.6rem; }
+  .right-pane { flex: 1; min-width: 0; overflow: hidden; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
+  .right-head { display: flex; align-items: baseline; gap: var(--space-2); }
 
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.85rem 1rem; }
-  .line-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.5rem; align-items: end; }
-  .gauge-row { display: flex; justify-content: flex-start; margin-top: 0.6rem; }
-  .edit-qty-cell { display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end; }
-  .inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
+  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-3) var(--space-4); }
+  .line-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-2); align-items: end; }
+  .gauge-row { display: flex; justify-content: flex-start; margin-top: var(--space-2); }
+  .edit-qty-cell { display: flex; align-items: center; gap: var(--space-2); justify-content: flex-end; }
+  .inp { height: 1.75rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
 
-  .act-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--radius-sm); font-size: 0.78rem; border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-muted-foreground); }
-  .act-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--color-foreground); }
+  .act-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--radius-sm); font-size: var(--font-size-body); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-muted-foreground); }
+  .act-btn:hover { background: color-mix(in srgb, var(--color-text-primary) 6%, transparent); color: var(--color-foreground); }
   .act-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .act-save { color: var(--color-accent); }
   .act-cancel { color: var(--color-muted-foreground); }
   .act-edit { opacity: 0.6; }
-  .err-msg { font-size: 0.8rem; color: var(--color-destructive); }
+  .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }
 </style>

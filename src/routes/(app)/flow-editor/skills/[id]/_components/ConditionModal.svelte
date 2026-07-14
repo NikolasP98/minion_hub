@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { GitBranch, XCircle, CheckCircle2 } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { GitBranch, XCircle, CheckCircle2 } from "lucide-svelte";
     import {
         skillEditorState, skillEditorDerived,
         saveCondition, updateCondition,
@@ -13,7 +14,7 @@
             <div class="condition-modal-header">
                 <GitBranch size={16} class="condition-icon" />
                 <span class="condition-modal-title" id="condition-modal-title">{skillEditorState.editingCondition.id ? m.builder_editCondition() : m.builder_newCondition()}</span>
-                <button type="button" class="close-btn" onclick={() => { skillEditorState.editingCondition = null; }} aria-label="Close">&times;</button>
+                <Button variant="ghost" type="button" class="close-btn" onclick={() => { skillEditorState.editingCondition = null; }} aria-label="Close">&times;</Button>
             </div>
             <div class="condition-modal-body">
                 <div class="condition-field">
@@ -46,13 +47,13 @@
                 </div>
             </div>
             <div class="condition-modal-footer">
-                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.editingCondition = null; }}>{m.common_cancel()}</button>
-                <button
+                <Button variant="ghost" type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.editingCondition = null; }}>{m.common_cancel()}</Button>
+                <Button variant="ghost"
                     type="button"
                     class="confirm-btn primary"
                     disabled={!skillEditorDerived.conditionValidation.valid}
                     onclick={skillEditorState.editingCondition.id ? updateCondition : saveCondition}
-                >{skillEditorState.editingCondition.id ? m.builder_update() : m.builder_create()}</button>
+                >{skillEditorState.editingCondition.id ? m.builder_update() : m.builder_create()}</Button>
             </div>
         </div>
     </div>
@@ -62,14 +63,14 @@
     .confirm-overlay {
         position: fixed;
         inset: 0;
-        z-index: 1100;
-        background: rgba(0, 0, 0, 0.5);
+        z-index: var(--layer-debug);
+        background: color-mix(in srgb, var(--color-canvas) 50%, transparent);
         backdrop-filter: blur(2px);
         display: flex;
         align-items: center;
         justify-content: center;
     }
-    .confirm-btn { font-family: inherit; font-size: 0.75rem; font-weight: 600; padding: 0.375rem 0.875rem; border-radius: 0.375rem; cursor: pointer; transition: all var(--duration-fast) var(--ease-standard); border: none; }
+    .confirm-btn { font-family: inherit; font-size: var(--font-size-caption); font-weight: 600; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); cursor: pointer; transition: all var(--duration-fast) var(--ease-standard); border: none; }
     .confirm-btn.cancel { background: var(--color-bg2); color: var(--color-muted); border: 1px solid var(--color-border); }
     .confirm-btn.cancel:hover { color: var(--color-foreground); border-color: var(--color-foreground); }
     .confirm-btn.primary { background: var(--color-accent); color: white; }
@@ -77,37 +78,37 @@
     .confirm-btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* Condition modal */
-    .condition-modal { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 0.75rem; max-width: 440px; width: 100%; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4); display: flex; flex-direction: column; }
-    .condition-modal-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.875rem 1.25rem; border-bottom: 1px solid var(--color-border); }
-    :global(.condition-icon) { color: var(--color-warning, #f59e0b); flex-shrink: 0; }
-    .condition-modal-title { font-size: 0.875rem; font-weight: 700; color: var(--color-foreground); flex: 1; }
-    .condition-modal-body { padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
-    .condition-field { display: flex; flex-direction: column; gap: 0.25rem; }
-    .condition-label { font-size: 0.75rem; font-weight: 600; color: var(--color-foreground); }
+    .condition-modal { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); max-width: 440px; width: 100%; box-shadow: var(--shadow-overlay); display: flex; flex-direction: column; }
+    .condition-modal-header { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-6); border-bottom: 1px solid var(--color-border); }
+    :global(.condition-icon) { color: var(--color-warning, var(--color-warning-fg)); flex-shrink: 0; }
+    .condition-modal-title { font-size: var(--font-size-body); font-weight: 700; color: var(--color-foreground); flex: 1; }
+    .condition-modal-body { padding: var(--space-4) var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+    .condition-field { display: flex; flex-direction: column; gap: var(--space-1); }
+    .condition-label { font-size: var(--font-size-caption); font-weight: 600; color: var(--color-foreground); }
     .required { color: var(--color-accent); }
-    .condition-helper { font-size: 0.6875rem; color: var(--color-muted); }
-    .condition-input { background: var(--color-bg2); border: 1px solid var(--color-border); border-radius: 0.375rem; color: var(--color-foreground); font-family: inherit; font-size: 0.8125rem; padding: 0.5rem 0.625rem; outline: none; transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard); }
-    .condition-input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent); }
+    .condition-helper { font-size: var(--font-size-caption); color: var(--color-muted); }
+    .condition-input { background: var(--color-bg2); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-foreground); font-family: inherit; font-size: var(--font-size-body); padding: var(--space-2) var(--space-2); outline: none; transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard); }
+    .condition-input:focus { border-color: var(--color-accent); box-shadow: var(--shadow-elevation-1); }
     .condition-input.invalid { border-color: var(--color-danger-border); }
-    .condition-input.invalid:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-danger-fg) 20%, transparent); }
-    .condition-input.valid-input { border-color: var(--color-success, #22c55e); }
-    .condition-error { display: flex; align-items: center; gap: 0.25rem; font-size: 0.6875rem; color: var(--color-danger-fg); }
-    .condition-valid { display: flex; align-items: center; gap: 0.25rem; font-size: 0.6875rem; color: var(--color-success, #22c55e); }
-    .condition-modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1.25rem; border-top: 1px solid var(--color-border); }
+    .condition-input.invalid:focus { box-shadow: var(--shadow-elevation-1); }
+    .condition-input.valid-input { border-color: var(--color-success, var(--color-success-fg)); }
+    .condition-error { display: flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-caption); color: var(--color-danger-fg); }
+    .condition-valid { display: flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-caption); color: var(--color-success, var(--color-success-fg)); }
+    .condition-modal-footer { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-6); border-top: 1px solid var(--color-border); }
 
     .close-btn {
         background: transparent;
         border: none;
         color: var(--color-muted);
         cursor: pointer;
-        padding: 4px;
-        border-radius: 4px;
+        padding: var(--space-1);
+        border-radius: var(--radius-sm);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.125rem;
+        font-size: var(--font-size-page-title);
         line-height: 1;
-        transition: color 0.15s;
+        transition: color var(--duration-fast);
     }
     .close-btn:hover { color: var(--color-foreground); }
 </style>
