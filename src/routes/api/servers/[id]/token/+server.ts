@@ -5,7 +5,10 @@ import { userServers } from '@minion-stack/db/schema';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { getServerToken } from '$server/services/server.service';
-import { userHasGatewayAccess, getGatewayTokenByServerId } from '$server/services/gateway.pg.service';
+import {
+  userHasGatewayAccess,
+  getGatewayTokenByServerId,
+} from '$server/services/gateway.pg.service';
 
 /**
  * Returns the decrypted gateway token for a single server.
@@ -18,7 +21,14 @@ import { userHasGatewayAccess, getGatewayTokenByServerId } from '$server/service
  * proxy access logs, and the default HTTP cache.
  */
 export const POST: RequestHandler = async ({ locals, params }) => {
-  console.log('[token-ep] ENTRY user=', locals.user?.email ?? 'NONE', 'role=', locals.user?.role, 'id=', params.id);
+  console.log(
+    '[token-ep] ENTRY user=',
+    locals.user?.email ?? 'NONE',
+    'role=',
+    locals.user?.role,
+    'id=',
+    params.id,
+  );
   const user = requireAuth(locals);
   const ctx = await getTenantCtx(locals);
   if (!ctx) {
@@ -49,9 +59,11 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   // Try Supabase gateway table first (post-cutover source of truth), then fall
   // back to Turso servers table for legacy rows that haven't migrated yet.
   let token: string | null = null;
+  let registryError: unknown = null;
   try {
     token = await getGatewayTokenByServerId(id);
   } catch (err) {
+    registryError = err;
     console.warn('[token-ep] Supabase gateway lookup threw (will try Turso):', err);
   }
   if (!token) {
@@ -59,10 +71,22 @@ export const POST: RequestHandler = async ({ locals, params }) => {
       token = await getServerToken(ctx, id);
     } catch (err) {
       console.error('[token-ep] getServerToken threw:', err);
-      return json({ error: 'decrypt failed', message: err instanceof Error ? err.message : String(err) }, { status: 500 });
+      return json(
+        { error: 'decrypt failed', message: err instanceof Error ? err.message : String(err) },
+        { status: 500 },
+      );
     }
   }
   if (token === null) {
+    // A PG outage is not evidence that the gateway row is absent. Returning a
+    // 404 here made pool exhaustion look like a missing token and prevented the
+    // browser's gateway client from reconnecting after the database recovered.
+    if (registryError) {
+      return json(
+        { error: 'Gateway registry temporarily unavailable' },
+        { status: 503, headers: { 'retry-after': '2' } },
+      );
+    }
     console.log('[token-ep] token not found in Supabase or Turso -> 404');
     return json({ error: 'Not found' }, { status: 404 });
   }
