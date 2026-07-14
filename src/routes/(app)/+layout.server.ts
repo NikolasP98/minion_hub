@@ -2,7 +2,7 @@ import type { LayoutServerLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
-import { requiredViewPermForPath } from '$lib/permissions';
+import { decideRouteAccess } from '$lib/routes/route-access-policies';
 import { loadWorkspacesForUser } from '$server/services/workspaces.service';
 import { loadOrganizationsForUser } from '$server/services/organizations.service';
 import { loadPersonalAgentForUser } from '$server/services/personal-agent.service';
@@ -90,14 +90,22 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
         .catch(() => [] as string[]),
     ]);
 
-  // Central RBAC route guard: business modules (crm/finances/sales/scheduling/
-  // support/memberships/workforce) require the matching `*:view` capability.
-  // Reuses the permission set already resolved above (no extra round-trip);
-  // platform admins get every business `*:view` so they pass. This is the real
-  // server-side enforcement — the nav `requires` keys only hide the links.
-  const requiredPerm = requiredViewPermForPath(url.pathname);
-  if (requiredPerm && !permissions.permissions.includes(requiredPerm)) {
-    throw error(403, 'You do not have access to this module.');
+  // Central route-policy guard. The serializable policy registry also drives
+  // the route design manifest and client navigation visibility. Reuse the
+  // already-resolved RBAC bridge; route-owned page guards remain defense in
+  // depth for direct loads and contextual data operations.
+  const granted = new Set(permissions.permissions);
+  const routeAccess = decideRouteAccess(url.pathname, {
+    authenticated: true,
+    role: user.role,
+    permissions: granted,
+    orgCapabilities: granted,
+  });
+  if (!routeAccess.allowed) {
+    throw error(
+      routeAccess.deniedStatus,
+      routeAccess.deniedStatus === 404 ? 'Not found' : 'You do not have access to this module.',
+    );
   }
 
   // Redirect to onboarding if user hasn't completed it yet

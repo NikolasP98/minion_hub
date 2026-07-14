@@ -523,7 +523,7 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
     modules: MODULES.map((mod) => {
       const o = ovr.get(`${c.key}:${mod}`);
       const parentCaps = o ?? defaultCaps(c.key, mod);
-      const subs: SubResource[] = MODULE_SUBRESOURCES[mod] ?? [];
+      const subs: readonly SubResource[] = MODULE_SUBRESOURCES[mod] ?? [];
       return {
         module: mod,
         label: MODULE_LABELS[mod],

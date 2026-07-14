@@ -27,7 +27,7 @@
   import OrgPicker from './OrgPicker.svelte';
   import { pluginNavState } from '$lib/state/plugin-nav.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
-  import { canClient } from '$lib/access/can.svelte';
+  import { canViewPath } from '$lib/access/can.svelte';
   import { persistScroll } from '$lib/actions/persist-scroll';
   import * as m from '$lib/paraglide/messages';
   import FinanceSyncBadge from '$lib/components/finance/FinanceSyncBadge.svelte';
@@ -45,8 +45,8 @@
   );
   const navSections = $derived<Section[]>([...staticSections, ...pluginsSections]);
 
-  const showReliability = $derived(canClient('reliability.monitor'));
-  const showCloud = $derived(canClient('workspace.view'));
+  const showReliability = $derived(canViewPath('/reliability'));
+  const showCloud = $derived(canViewPath('/cloud'));
   const isSettings = $derived(page.url.pathname.startsWith('/settings'));
 
   // Top utility row: icon-only pills that expand inline to icon+label when the
@@ -59,14 +59,14 @@
         href: '/marketplace',
         label: m.nav_marketplace(),
         icon: Store,
-        show: canClient('marketplace.view'),
+        show: canViewPath('/marketplace'),
       },
       { href: '/cloud', label: m.nav_cloud(), icon: Cloud, show: showCloud },
       {
         href: '/killswitches',
         label: m.nav_killSwitches(),
         icon: Power,
-        show: canClient('killswitches.view'),
+        show: canViewPath('/killswitches'),
       },
     ].filter((t) => t.show),
   );
@@ -330,7 +330,7 @@
     class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5"
   >
     {#each orderedSections as section (section.id)}
-      {@const items = orderedItems(section).filter((it) => !it.requires || canClient(it.requires))}
+      {@const items = orderedItems(section).filter((it) => canViewPath(it.href))}
       {@const hasSubs = (section.subsections?.length ?? 0) > 0}
       {#if items.length || hasSubs}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -397,7 +397,7 @@
 
         <!-- Collapsible subsections (Customer Support → Channels) -->
         {#each section.subsections ?? [] as sub (sub.id)}
-          {@const subItems = sub.items.filter((it) => !it.requires || canClient(it.requires))}
+          {@const subItems = sub.items.filter((it) => canViewPath(it.href))}
           {#if subItems.length}
             {@const open = !collapsedSubs[sub.id]}
             {#if !collapsed}

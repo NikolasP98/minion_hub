@@ -8,7 +8,7 @@
     import CompanySwitcher from "./CompanySwitcher.svelte";
     import { getSections, getDynamicPluginsSections, type Section, type SectionItem } from "./sections";
     import { pluginNavState } from "$lib/state/plugin-nav.svelte";
-    import { canClient } from "$lib/access/can.svelte";
+    import { canViewPath } from "$lib/access/can.svelte";
     import { togglePalette } from "$lib/state/ui/command-palette.svelte";
     import { page } from "$app/state";
     import * as m from "$lib/paraglide/messages";
@@ -31,13 +31,17 @@
     const isWorkforce = $derived(page.url.pathname.startsWith("/workforce"));
 
     let mobileMenuOpen = $state(false);
-    function toggleMobileMenu() { mobileMenuOpen = !mobileMenuOpen; }
-    function closeMobileMenu() { mobileMenuOpen = false; }
+    function toggleMobileMenu() {
+        mobileMenuOpen = !mobileMenuOpen;
+    }
+    function closeMobileMenu() {
+        mobileMenuOpen = false;
+    }
 
     let notificationsOpen = $state(false);
 
-    const displayName = $derived(userState.user?.displayName ?? userState.user?.email ?? '');
-    const email = $derived(userState.user?.email ?? '');
+    const displayName = $derived(userState.user?.displayName ?? userState.user?.email ?? "");
+    const email = $derived(userState.user?.email ?? "");
 
     onMount(() => {
         refreshNotifications();
@@ -46,7 +50,9 @@
     });
 </script>
 
-<header class="md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] h-14">
+<header
+    class="md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] h-14"
+>
     <div class="relative flex items-center h-full px-3 gap-2">
         <button
             type="button"
@@ -96,7 +102,7 @@
                     <span
                         class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-red-500 text-[9px] font-bold text-white leading-none"
                     >
-                        {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
+                        {notifications.badgeCount > 99 ? "99+" : notifications.badgeCount}
                     </span>
                 {/if}
             </button>
@@ -116,21 +122,29 @@
         ></button>
 
         <!-- Menu panel -->
-        <div class="mobile-menu-panel absolute top-full left-0 right-0 z-[var(--layer-navigation,20)] bg-bg2/98 backdrop-blur-xl border-b border-border shadow-[var(--shadow-overlay,var(--shadow-xl,var(--shadow-lg)))]">
+        <div
+            class="mobile-menu-panel absolute top-full left-0 right-0 z-[var(--layer-navigation,20)] bg-bg2/98 backdrop-blur-xl border-b border-border shadow-[var(--shadow-overlay,var(--shadow-xl,var(--shadow-lg)))]"
+        >
             <!-- Scroll body: domains + sections -->
             <nav class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 overflow-y-auto px-2 pt-2 pb-1">
                 <div class="flex-1 min-w-0">
                     {#each allSections as section (section.id)}
-                        {@const items = section.items.filter((i) => !i.requires || canClient(i.requires))}
+                        {@const items = section.items.filter((i) => canViewPath(i.href))}
                         {@const hasSubs = (section.subsections?.length ?? 0) > 0}
                         {#if items.length || hasSubs}
-                            <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-strong mt-1">
+                            <div
+                                class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-strong mt-1"
+                            >
                                 {section.label}
                             </div>
                             {#each items as item (item.href)}
                                 <a
                                     href={item.href}
-                                    class="mobile-nav-link {section.tone === 'brand' ? 'brand' : ''} {isActive(item) ? (section.tone === 'brand' ? 'active-brand' : 'active') : ''}"
+                                    class="mobile-nav-link {section.tone === 'brand' ? 'brand' : ''} {isActive(item)
+                                        ? section.tone === 'brand'
+                                            ? 'active-brand'
+                                            : 'active'
+                                        : ''}"
                                     onclick={closeMobileMenu}
                                 >
                                     <NavIcon icon={item.icon} size={16} />
@@ -138,9 +152,11 @@
                                 </a>
                             {/each}
                             {#each section.subsections ?? [] as sub (sub.id)}
-                                {@const subItems = sub.items.filter((i) => !i.requires || canClient(i.requires))}
+                                {@const subItems = sub.items.filter((i) => canViewPath(i.href))}
                                 {#if subItems.length}
-                                    <div class="px-5 py-1 text-[10px] font-medium uppercase tracking-wider text-muted mt-0.5">
+                                    <div
+                                        class="px-5 py-1 text-[10px] font-medium uppercase tracking-wider text-muted mt-0.5"
+                                    >
                                         {sub.label}
                                     </div>
                                     {#each subItems as item (item.href)}
@@ -161,14 +177,18 @@
 
                 <!-- Standalone items (reliability, notifications) -->
                 <div class="sm:hidden mt-1 pt-1 border-t border-[var(--hairline)]">
-                    {#if canClient('workspace.view')}
+                    {#if canViewPath("/cloud")}
                         <a href="/cloud" class="mobile-nav-link {isCloud ? 'active' : ''}" onclick={closeMobileMenu}>
                             <Cloud size={16} />
                             <span>{m.nav_cloud()}</span>
                         </a>
                     {/if}
-                    {#if canClient('reliability.monitor')}
-                        <a href="/reliability" class="mobile-nav-link {isReliability ? 'active' : ''}" onclick={closeMobileMenu}>
+                    {#if canViewPath("/reliability")}
+                        <a
+                            href="/reliability"
+                            class="mobile-nav-link {isReliability ? 'active' : ''}"
+                            onclick={closeMobileMenu}
+                        >
                             <Activity size={16} />
                             <span>{m.nav_reliability()}</span>
                         </a>
@@ -177,8 +197,10 @@
             </nav>
 
             <!-- Pinned footer -->
-            <div class="mobile-menu-footer shrink-0 border-t border-[var(--hairline)] px-2 py-2 flex flex-col gap-1 bg-bg2">
-                {#if canClient('workspace.view')}
+            <div
+                class="mobile-menu-footer shrink-0 border-t border-[var(--hairline)] px-2 py-2 flex flex-col gap-1 bg-bg2"
+            >
+                {#if canViewPath("/cloud")}
                     <a
                         href="/cloud"
                         class="mobile-nav-link text-xs hidden sm:flex {isCloud ? 'active' : ''}"
@@ -189,7 +211,7 @@
                     </a>
                 {/if}
                 <!-- Reliability (sm+) -->
-                {#if canClient('reliability.monitor')}
+                {#if canViewPath("/reliability")}
                     <a
                         href="/reliability"
                         class="mobile-nav-link text-xs hidden sm:flex {isReliability ? 'active' : ''}"
@@ -211,36 +233,28 @@
                 </a>
 
                 <!-- Notifications link -->
-                <a
-                    href="/notifications"
-                    class="mobile-nav-link text-xs"
-                    onclick={closeMobileMenu}
-                >
-                    <Bell size={15} />
-                    <span>Notifications</span>
-                    {#if notifications.hasPending}
-                        <span class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white leading-none">
-                            {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
-                        </span>
-                    {/if}
-                </a>
+                {#if canViewPath("/notifications")}
+                    <a href="/notifications" class="mobile-nav-link text-xs" onclick={closeMobileMenu}>
+                        <Bell size={15} />
+                        <span>Notifications</span>
+                        {#if notifications.hasPending}
+                            <span
+                                class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white leading-none"
+                            >
+                                {notifications.badgeCount > 99 ? "99+" : notifications.badgeCount}
+                            </span>
+                        {/if}
+                    </a>
+                {/if}
 
                 <!-- User row -->
-                <a
-                    href="/account"
-                    class="mobile-nav-link text-xs mt-1"
-                    onclick={closeMobileMenu}
-                >
+                <a href="/account" class="mobile-nav-link text-xs mt-1" onclick={closeMobileMenu}>
                     <User size={15} />
                     <span class="truncate">{displayName || email}</span>
                 </a>
 
                 <!-- Logout -->
-                <button
-                    type="button"
-                    onclick={logout}
-                    class="mobile-nav-link text-xs text-muted hover:text-red-400"
-                >
+                <button type="button" onclick={logout} class="mobile-nav-link text-xs text-muted hover:text-red-400">
                     <LogOut size={15} />
                     <span>Log out</span>
                 </button>
@@ -267,8 +281,14 @@
         }
     }
     @keyframes menu-slide-in {
-        from { opacity: 0; transform: translateY(-8px); }
-        to { opacity: 1; transform: translateY(0); }
+        from {
+            opacity: 0;
+            transform: translateY(-8px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
     .mobile-nav-link {
@@ -284,13 +304,18 @@
         position: relative;
         transition: all var(--duration-fast) var(--ease-standard);
     }
-    .mobile-nav-link:hover { color: var(--color-foreground); background: var(--color-bg3); }
+    .mobile-nav-link:hover {
+        color: var(--color-foreground);
+        background: var(--color-bg3);
+    }
     .mobile-nav-link.active {
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 12%, transparent);
         font-weight: 600;
     }
-    .mobile-nav-link.brand { color: var(--color-brand-pink); }
+    .mobile-nav-link.brand {
+        color: var(--color-brand-pink);
+    }
     .mobile-nav-link.active-brand {
         color: var(--color-brand-pink);
         background: color-mix(in srgb, var(--color-brand-pink) 15%, transparent);
@@ -299,7 +324,7 @@
     /* Active left indicator bar — matches desktop sidebar */
     .mobile-nav-link.active::before,
     .mobile-nav-link.active-brand::before {
-        content: '';
+        content: "";
         position: absolute;
         left: 0;
         top: 50%;
@@ -311,8 +336,14 @@
         animation: indicator-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
     }
     @keyframes indicator-in {
-        from { transform: translateY(-50%) scaleY(0.3); opacity: 0; }
-        to { transform: translateY(-50%) scaleY(1); opacity: 1; }
+        from {
+            transform: translateY(-50%) scaleY(0.3);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(-50%) scaleY(1);
+            opacity: 1;
+        }
     }
 
     /* Pinned footer: slightly different hover bg for contrast */

@@ -1,11 +1,22 @@
 import type { ComponentType, SvelteComponent } from "svelte";
-import { FolderKanban, Contact, UserRound, Zap, Boxes, Wallet, CalendarClock, LifeBuoy, ClipboardList, Inbox, RefreshCw, MessagesSquare, Warehouse, Megaphone, Store } from "lucide-svelte";
 import {
-    ROUTES,
-    SECTION_META,
-    type SectionId,
-    type SectionTone,
-} from "$lib/nav/routes";
+    FolderKanban,
+    Contact,
+    UserRound,
+    Zap,
+    Boxes,
+    Wallet,
+    CalendarClock,
+    LifeBuoy,
+    ClipboardList,
+    Inbox,
+    RefreshCw,
+    MessagesSquare,
+    Warehouse,
+    Megaphone,
+    Store,
+} from "lucide-svelte";
+import { ROUTES, SECTION_META, type SectionId, type SectionTone } from "$lib/nav/routes";
 import { resolvePluginIcon } from "$lib/plugins/icon-map";
 import type { PluginUiManifestOccupant } from "$lib/plugins/plugin-types";
 import * as m from "$lib/paraglide/messages";
@@ -28,11 +39,6 @@ export type SectionItem = {
     // with a ?archetype= param). When set it overrides `matcher` for active
     // state so e.g. /agents?archetype=brain lights up "AI Brains" only.
     activeWhen?: (url: URL) => boolean;
-    // Optional access-policy key (see $lib/access/policy). When set, the nav
-    // item is only rendered for users who satisfy it. Filtered in the sidebar
-    // via canClient(); routes are also guarded server-side, so hiding here is
-    // UX only.
-    requires?: string;
     // Optional override for the per-org module gate id derived from the
     // href's first path segment (see BUILTIN_PLUGIN_ITEMS below). Only needed
     // when the route segment no longer matches the module id — e.g. /socials
@@ -64,7 +70,6 @@ function routeItems(section: SectionId): SectionItem[] {
         label: r.title(),
         icon: r.icon,
         matcher: r.matcher,
-        requires: r.requires,
     }));
 }
 
@@ -79,7 +84,6 @@ function archetypeItem(archetype: AgentArchetype, label: string, icon: LucideIco
         activeWhen: (url) =>
             (url.pathname === "/agents" || url.pathname.startsWith("/agents/")) &&
             url.searchParams.get("archetype") === archetype,
-        requires: "agents.view",
     };
 }
 
@@ -96,14 +100,12 @@ export function getSections(): Section[] {
             label: m.nav_autonomous(),
             icon: Zap,
             matcher: (p) => p === "/agents/autonomous" || p.startsWith("/agents/autonomous/"),
-            requires: "agents.view",
         },
         {
             href: "/agents/workshop",
             label: m.nav_workshop(),
             icon: Boxes,
             matcher: (p) => p.startsWith("/agents/workshop"),
-            requires: "agents.view",
         },
         ...routeItems("agents"),
     ];
@@ -128,14 +130,7 @@ export function findActiveSection(sections: Section[], pathname: string): Sectio
 }
 
 /** Plugin manifest taxonomy → business-domain nav buckets. */
-type PluginNavCategory =
-    | "marketing"
-    | "operations"
-    | "finance"
-    | "creative"
-    | "customer-support"
-    | "channel"
-    | "tool";
+type PluginNavCategory = "marketing" | "operations" | "finance" | "creative" | "customer-support" | "channel" | "tool";
 
 /**
  * Built-in plugin entries surfaced regardless of which gateway plugins are
@@ -151,7 +146,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             label: "CRM",
             icon: Contact,
             matcher: (p: string) => p.startsWith("/crm"),
-            requires: "crm.view",
         },
     },
     {
@@ -161,7 +155,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             label: m.nav_ads(),
             icon: Megaphone,
             matcher: (p: string) => p.startsWith("/socials"),
-            requires: "ads.view",
             moduleId: "ads",
         },
     },
@@ -181,7 +174,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             label: "Workforce",
             icon: FolderKanban,
             matcher: (p: string) => p.startsWith("/workforce"),
-            requires: "projects.view",
         },
     },
     {
@@ -191,7 +183,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             label: "Scheduling",
             icon: CalendarClock,
             matcher: (p: string) => p.startsWith("/scheduling"),
-            requires: "scheduling.view",
         },
     },
     {
@@ -201,7 +192,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             label: m.nav_stock(),
             icon: Warehouse,
             matcher: (p: string) => p.startsWith("/stock"),
-            requires: "stock.view",
         },
     },
     {
@@ -211,7 +201,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             label: m.nav_pos(),
             icon: Store,
             matcher: (p: string) => p.startsWith("/pos"),
-            requires: "pos.view",
         },
     },
     {
@@ -221,7 +210,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             label: "Finances",
             icon: Wallet,
             matcher: (p: string) => p.startsWith("/finances"),
-            requires: "finance.view",
         },
     },
     {
@@ -231,7 +219,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             label: "Sales Orders",
             icon: ClipboardList,
             matcher: (p: string) => p.startsWith("/sales"),
-            requires: "sales.view",
         },
     },
     {
@@ -241,7 +228,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             label: "Memberships",
             icon: RefreshCw,
             matcher: (p: string) => p.startsWith("/memberships"),
-            requires: "memberships.view",
         },
     },
     {
@@ -251,7 +237,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             label: "Support",
             icon: LifeBuoy,
             matcher: (p: string) => p.startsWith("/support"),
-            requires: "support.view",
         },
     },
 ];
@@ -280,12 +265,12 @@ const PLUGIN_NAV_GROUPS: ReadonlyArray<{ category: PluginNavCategory; label: () 
  * pluginId (a few carry legacy ids — e.g. voice-call also ships as "voicecall").
  */
 const PLUGIN_CATEGORY_OVERRIDES: Record<string, PluginNavCategory> = {
-    'voice-call': 'customer-support',
-    voicecall: 'customer-support',
-    studio: 'creative',
-    crm: 'marketing',
-    paperclip: 'operations',
-    kanban: 'operations',
+    "voice-call": "customer-support",
+    voicecall: "customer-support",
+    studio: "creative",
+    crm: "marketing",
+    paperclip: "operations",
+    kanban: "operations",
 };
 
 /**
@@ -345,8 +330,8 @@ export function getDynamicPluginsSections(
     for (const { category, item } of BUILTIN_PLUGIN_ITEMS) {
         // 'crm' | 'finances' | 'workforce' | ... — falls back to the href's
         // first segment unless the item overrides it (e.g. /socials -> 'ads').
-        const moduleId = item.moduleId ?? item.href.replace(/^\//, '').split('/')[0];
-        if (enabledByPluginId[moduleId] === false) continue;          // per-org module gate
+        const moduleId = item.moduleId ?? item.href.replace(/^\//, "").split("/")[0];
+        if (enabledByPluginId[moduleId] === false) continue; // per-org module gate
         place(category, item);
     }
     for (const e of entries) {
@@ -355,8 +340,7 @@ export function getDynamicPluginsSections(
         // updates pluginNavState.enabledByPluginId, so the link appears/vanishes
         // with no reload.
         if (enabledByPluginId[e.pluginId] === false) continue;
-        const category =
-            PLUGIN_CATEGORY_OVERRIDES[e.pluginId] ?? normalizePluginCategory(e.category);
+        const category = PLUGIN_CATEGORY_OVERRIDES[e.pluginId] ?? normalizePluginCategory(e.category);
         place(category, {
             href: `/plugins/${e.pluginId}`,
             label: e.title,
@@ -374,7 +358,6 @@ export function getDynamicPluginsSections(
             label: m.nav_channels(),
             icon: MessagesSquare,
             matcher: (p: string) => p.startsWith("/channels"),
-            requires: "channels.view",
         });
         byCategory.set("customer-support", cs);
     }
