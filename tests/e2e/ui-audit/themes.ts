@@ -55,6 +55,17 @@ export async function prepareAuditTheme(
   return previousTheme;
 }
 
+export async function prepareAnonymousAuditTheme(
+  page: Page,
+  theme: ReturnType<typeof resolveAuditTheme>,
+): Promise<void> {
+  if (!theme) return;
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
+  await page.evaluate((value) => {
+    localStorage.setItem('minion-hub-theme', JSON.stringify(value));
+  }, theme);
+}
+
 export async function restoreAuditTheme(
   page: Page,
   previous: AuditThemePreference | undefined,

@@ -172,8 +172,15 @@ describe('route design contracts', () => {
     const route = SCREEN_DESIGN_MANIFEST.find((candidate) => candidate.pattern === '/tools/[id]');
     expect(route).toBeDefined();
     if (!route) return;
+    const plan = await resolveCaptureMatrix([route], { namespace: 'route-contract-test' });
     const resetFixture = vi.fn();
-    await resetCapturePlanEntry(route, { namespace: 'route-contract-test', resetFixture });
+    const resetState = vi.fn();
+    await resetCapturePlanEntry(
+      route,
+      { namespace: 'route-contract-test', resetFixture, resetState },
+      plan[0],
+    );
+    expect(resetState).toHaveBeenCalledWith(plan[0]);
     expect(resetFixture).toHaveBeenCalledOnce();
   });
 

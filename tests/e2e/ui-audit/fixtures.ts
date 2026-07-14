@@ -1,5 +1,6 @@
 export interface CaptureFixture {
   id: string;
+  fixtureId?: string;
   pattern: string;
   params: Record<string, string>;
   query?: Record<string, string>;
@@ -17,13 +18,11 @@ export function captureFixtures(): CaptureFixture[] {
   return parsed as CaptureFixture[];
 }
 
-export function resolveFixture(pattern: string, fixtures: CaptureFixture[]): string | null {
-  const fixture = fixtures.find((candidate) => candidate.pattern === pattern);
-  if (!fixture) return null;
-  let route = pattern;
-  for (const [key, value] of Object.entries(fixture.params)) {
-    route = route.replace(`[${key}]`, encodeURIComponent(value));
-  }
-  const query = new URLSearchParams(fixture.query).toString();
-  return query ? `${route}?${query}` : route;
+export function resolveFixtureProvision(
+  fixtureId: string,
+  fixtures: CaptureFixture[],
+): { params?: Record<string, string>; query?: Record<string, string> } | undefined {
+  const fixture = fixtures.find((candidate) => candidate.fixtureId === fixtureId);
+  if (!fixture) return undefined;
+  return { params: fixture.params, query: fixture.query };
 }

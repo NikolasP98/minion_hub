@@ -24,6 +24,8 @@ export interface CaptureExecutionContext extends FixtureContext {
    * otherwise a matrix would only relabel the same default UI many times.
    */
   prepareState(entry: ResolvedCaptureRoute): Promise<void>;
+  /** Undo state-specific mocks, simulator state, or disposable fixture changes. */
+  resetState?(entry: ResolvedCaptureRoute): Promise<void>;
 }
 
 function interpolatePattern(pattern: string, params: Readonly<Record<string, string>>): string {
@@ -115,8 +117,10 @@ export async function prepareCapturePlanEntry(
 
 export async function resetCapturePlanEntry(
   route: ScreenDesignMeta,
-  context: FixtureContext,
+  context: FixtureContext & Pick<CaptureExecutionContext, 'resetState'>,
+  entry?: ResolvedCaptureRoute,
 ): Promise<void> {
+  if (entry) await context.resetState?.(entry);
   if (route.capture.fixtureId !== 'base-tenant') {
     await getCaptureFixture(route.capture.fixtureId).reset(context);
   }
