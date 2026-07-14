@@ -92,7 +92,7 @@
 
 <svelte:head><title>{m.ads_nav_campaigns()} · {m.nav_ads()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
+<div class="social-campaigns-page flex flex-col h-full min-h-0">
 	<PageHeader title={m.ads_nav_campaigns()} subtitle={m.ads_campaigns_subtitle()}>
 		{#snippet leading()}<Target size={16} class="text-accent shrink-0" />{/snippet}
 	</PageHeader>
@@ -162,8 +162,8 @@
 <style>
 	.date-label { display: flex; flex-direction: row; align-items: center; gap: var(--space-2); font-size: var(--font-size-caption); color: var(--color-muted-foreground); white-space: nowrap; }
 	.date-label input { padding: var(--space-1) var(--space-2); border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--color-card); color: var(--color-foreground); font-size: var(--font-size-body); color-scheme: dark; }
-	.preset { padding: var(--space-1) var(--space-2); font-size: var(--font-size-caption); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-md); cursor: pointer; color: var(--color-muted-foreground); transition: background var(--duration-fast), color var(--duration-fast); }
-	.preset:hover { background: var(--color-card); color: inherit; }
+	.social-campaigns-page :global(.preset) { padding: var(--space-1) var(--space-2); font-size: var(--font-size-caption); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-md); cursor: pointer; color: var(--color-muted-foreground); transition: background var(--duration-fast), color var(--duration-fast); }
+	.social-campaigns-page :global(.preset):hover { background: var(--color-card); color: inherit; }
 	.row-thumb {
 		width: 40px; height: 40px; border-radius: var(--radius-md); object-fit: cover;
 		display: flex; align-items: center; justify-content: center; flex-shrink: 0;

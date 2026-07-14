@@ -145,7 +145,7 @@ import { autosize } from '$lib/actions/autosize';
         gap: var(--space-3);
     }
 
-    .sidebar-collapse-btn {
+    .editor-sidebar :global(.sidebar-collapse-btn) {
         position: absolute;
         bottom: 0.75rem;
         right: -12px;
@@ -162,9 +162,9 @@ import { autosize } from '$lib/actions/autosize';
         z-index: var(--layer-sticky);
         transition: all var(--duration-fast) var(--ease-standard);
     }
-    .sidebar-collapse-btn:hover { color: var(--color-foreground); border-color: var(--color-accent); }
+    .editor-sidebar :global(.sidebar-collapse-btn):hover { color: var(--color-foreground); border-color: var(--color-accent); }
 
-    .sidebar-expand-btn {
+    :global(.sidebar-expand-btn) {
         width: 24px;
         flex-shrink: 0;
         background: var(--color-bg);
@@ -177,7 +177,7 @@ import { autosize } from '$lib/actions/autosize';
         justify-content: center;
         transition: all var(--duration-fast) var(--ease-standard);
     }
-    .sidebar-expand-btn:hover { color: var(--color-foreground); background: var(--color-bg2); }
+    :global(.sidebar-expand-btn):hover { color: var(--color-foreground); background: var(--color-bg2); }
 
     .name-row { display: flex; align-items: center; gap: var(--space-3); }
     .name-input {
@@ -215,7 +215,7 @@ import { autosize } from '$lib/actions/autosize';
     .desc-input::placeholder { color: var(--color-muted); }
 
     .ai-assist-section { display: flex; flex-direction: column; gap: var(--space-2); }
-    .ai-assist-btn {
+    .ai-assist-section :global(.ai-assist-btn) {
         display: inline-flex;
         align-items: center;
         gap: var(--space-2);
@@ -231,8 +231,8 @@ import { autosize } from '$lib/actions/autosize';
         font-family: inherit;
         align-self: flex-start;
     }
-    .ai-assist-btn:hover:not(:disabled) { filter: brightness(1.15); }
-    .ai-assist-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .ai-assist-section :global(.ai-assist-btn):hover:not(:disabled) { filter: brightness(1.15); }
+    .ai-assist-section :global(.ai-assist-btn):disabled { opacity: 0.6; cursor: not-allowed; }
     .ai-assist-error { font-size: var(--font-size-caption); color: var(--color-danger-fg); }
 
     /* Tool Pool */
@@ -295,7 +295,7 @@ import { autosize } from '$lib/actions/autosize';
         display: flex; align-items: center; gap: var(--space-2);
         font-size: var(--font-size-caption); color: var(--color-muted); opacity: 0.6; width: 100%;
     }
-    .ghost-pill {
+    .ghost-suggestions :global(.ghost-pill) {
         display: inline-flex; align-items: center; gap: var(--space-1);
         padding: var(--space-1) var(--space-2);
         font-size: var(--font-size-caption); font-weight: 500; font-family: inherit;
@@ -306,10 +306,10 @@ import { autosize } from '$lib/actions/autosize';
         cursor: pointer; opacity: 0.55;
         transition: all var(--duration-normal) var(--ease-standard);
     }
-    .ghost-pill:hover:not(:disabled) {
+    .ghost-suggestions :global(.ghost-pill):hover:not(:disabled) {
         opacity: 0.85;
         background: color-mix(in srgb, var(--color-accent) 10%, transparent);
         border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
     }
-    .ghost-pill:disabled { cursor: not-allowed; opacity: 0.3; }
+    .ghost-suggestions :global(.ghost-pill):disabled { cursor: not-allowed; opacity: 0.3; }
 </style>

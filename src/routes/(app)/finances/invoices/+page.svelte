@@ -194,7 +194,7 @@
     color: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: var(--radius-sm, var(--radius-md);
+    border-radius: var(--radius-sm);
   }
   :global(.invoice-link-cell:hover) {
     color: var(--color-accent);

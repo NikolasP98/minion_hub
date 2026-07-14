@@ -523,7 +523,7 @@
   }
   .dist-bar {
     width: 100%;
-    border-radius: var(--radius-sm, var(--radius-sm) var(--radius-sm, var(--radius-sm) 0 0;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
     transition: height var(--duration-fast) var(--ease-standard);
   }
   .dist-col:hover .dist-bar {
@@ -593,7 +593,7 @@
   }
   :global(.crm-dashboard-surface .seg-btn) {
     padding: var(--space-1, 4px) var(--space-3, 12px);
-    border-radius: var(--radius-sm, var(--radius-md);
+    border-radius: var(--radius-sm);
     font-size: var(--font-size-caption, 12px);
     font-weight: 500;
     color: var(--color-muted-foreground);

@@ -374,7 +374,7 @@
     font-weight: 600;
     letter-spacing: 0.02em;
     padding: 1px var(--space-2);
-    border-radius: var(--radius-md, var(--radius-md);
+    border-radius: var(--radius-md);
     color: color-mix(in srgb, var(--color-foreground) 62%, transparent);
     background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);

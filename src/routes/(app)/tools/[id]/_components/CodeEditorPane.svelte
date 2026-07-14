@@ -102,20 +102,20 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 				{/if}
 			</Button>
 			<div class="var-tabs">
-				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'env'} onclick={() => (activeVarTab = 'env')}>
+				<Button variant="ghost" type="button" class="var-tab {activeVarTab === 'env' ? 'active' : ''}" onclick={() => (activeVarTab = 'env')}>
 					<span>{m.tools_editor_envVarsTab()}</span>
 					<span class="env-count">{envVars.length}</span>
 				</Button>
-				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'system'} onclick={() => (activeVarTab = 'system')}>
+				<Button variant="ghost" type="button" class="var-tab {activeVarTab === 'system' ? 'active' : ''}" onclick={() => (activeVarTab = 'system')}>
 					{m.tools_editor_systemVarsTab()}
 				</Button>
-				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'module'} onclick={() => (activeVarTab = 'module')}>
+				<Button variant="ghost" type="button" class="var-tab {activeVarTab === 'module' ? 'active' : ''}" onclick={() => (activeVarTab = 'module')}>
 					{m.tools_editor_moduleVarsTab()}
 				</Button>
-				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'database'} onclick={() => (activeVarTab = 'database')}>
+				<Button variant="ghost" type="button" class="var-tab {activeVarTab === 'database' ? 'active' : ''}" onclick={() => (activeVarTab = 'database')}>
 					{m.tools_editor_databaseVarsTab()}
 				</Button>
-				<Button variant="ghost" type="button" class="var-tab" class:active={activeVarTab === 'queries'} onclick={() => (activeVarTab = 'queries')}>
+				<Button variant="ghost" type="button" class="var-tab {activeVarTab === 'queries' ? 'active' : ''}" onclick={() => (activeVarTab = 'queries')}>
 					{m.tools_editor_queriesTab()}
 				</Button>
 			</div>
@@ -328,7 +328,7 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 		flex-shrink: 0;
 	}
 
-	.env-toggle {
+	.env-header :global(.env-toggle) {
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -342,7 +342,7 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 		transition: color var(--duration-fast) var(--ease-standard);
 	}
 
-	.env-toggle:hover {
+	.env-header :global(.env-toggle):hover {
 		color: var(--color-foreground);
 	}
 
@@ -354,7 +354,7 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 		overflow-x: auto;
 	}
 
-	.var-tab {
+	.var-tabs :global(.var-tab) {
 		display: flex;
 		align-items: center;
 		gap: var(--space-1);
@@ -373,12 +373,12 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 		transition: all var(--duration-fast) var(--ease-standard);
 	}
 
-	.var-tab:hover {
+	.var-tabs :global(.var-tab):hover {
 		color: var(--color-foreground);
 		background: var(--color-bg3);
 	}
 
-	.var-tab.active {
+	.var-tabs :global(.var-tab.active) {
 		color: var(--color-accent);
 		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 	}
@@ -479,7 +479,7 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 		color: var(--color-muted);
 	}
 
-	.env-reveal {
+	.env-row :global(.env-reveal) {
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -494,11 +494,11 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 		transition: color var(--duration-instant) var(--ease-standard);
 	}
 
-	.env-reveal:hover {
+	.env-row :global(.env-reveal):hover {
 		color: var(--color-foreground);
 	}
 
-	.env-remove {
+	.env-row :global(.env-remove) {
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -514,16 +514,16 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 		opacity: 0.5;
 	}
 
-	.env-row:hover .env-remove {
+	.env-row:hover :global(.env-remove) {
 		opacity: 1;
 	}
 
-	.env-remove:hover {
+	.env-row :global(.env-remove):hover {
 		color: var(--color-danger-fg);
 		background: var(--color-danger-surface);
 	}
 
-	.env-add {
+	.env-body :global(.env-add) {
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
@@ -539,7 +539,7 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 		font-family: inherit;
 	}
 
-	.env-add:hover {
+	.env-body :global(.env-add):hover {
 		border-color: var(--color-accent);
 		color: var(--color-accent);
 		background: color-mix(in srgb, var(--color-accent) 4%, transparent);
@@ -595,7 +595,7 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 		flex-shrink: 0;
 	}
 
-	.var-copy {
+	.var-row :global(.var-copy) {
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -610,7 +610,7 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 		transition: color var(--duration-instant) var(--ease-standard);
 	}
 
-	.var-copy:hover {
+	.var-row :global(.var-copy):hover {
 		color: var(--color-accent);
 	}
 

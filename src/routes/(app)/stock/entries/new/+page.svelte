@@ -184,7 +184,11 @@
           <p class="t-caption">{m.stock_step_type_hint()}</p>
           <div class="type-grid">
             {#each ['receipt', 'issue', 'transfer', 'adjustment'] as t (t)}
-              <Button variant="ghost" class="type-btn" class:active={type === t} onclick={() => (type = t as EntryType)}>
+              <Button
+                variant="ghost"
+                class="type-btn {type === t ? 'active' : ''}"
+                onclick={() => (type = t as EntryType)}
+              >
                 {t === 'receipt' ? m.stock_type_receipt() : t === 'issue' ? m.stock_type_issue() : t === 'transfer' ? m.stock_type_transfer() : m.stock_type_adjustment()}
               </Button>
             {/each}
@@ -320,8 +324,8 @@
   .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-4); }
   .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); }
   .type-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); }
-  .type-btn { padding: var(--space-2); border-radius: var(--radius-md); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-foreground); }
-  .type-btn.active { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
+  .type-grid :global(.type-btn) { padding: var(--space-2); border-radius: var(--radius-md); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-foreground); }
+  .type-grid :global(.type-btn.active) { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
   .fld { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-body); color: var(--color-muted-foreground); }
   .inp { min-height: 2rem; padding: var(--space-2) var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
   .line-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-2); align-items: end; }
@@ -329,8 +333,8 @@
   .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
   .mini-table td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
   .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .rm-btn { background: none; border: none; color: var(--color-muted-foreground); cursor: pointer; }
-  .rm-btn:hover { color: var(--color-destructive); }
+  .mini-table :global(.rm-btn) { background: none; border: none; color: var(--color-muted-foreground); cursor: pointer; }
+  .mini-table :global(.rm-btn):hover { color: var(--color-destructive); }
   .meta-grid { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4); font-size: var(--font-size-body); }
   .meta-grid dt { color: var(--color-muted-foreground); }
   .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }

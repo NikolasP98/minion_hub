@@ -248,7 +248,7 @@
 		font-size: var(--font-size-body);
 		color-scheme: dark;
 	}
-	.preset {
+	.period-controls :global(.preset) {
 		padding: var(--space-1) var(--space-3);
 		font-size: var(--font-size-caption);
 		background: transparent;
@@ -258,7 +258,7 @@
 		color: var(--color-muted-foreground);
 		transition: background var(--duration-fast), color var(--duration-fast);
 	}
-	.preset:hover {
+	.period-controls :global(.preset):hover {
 		background: var(--color-card);
 		color: inherit;
 	}
@@ -333,8 +333,8 @@
 		color: var(--color-muted-foreground);
 	}
 	.post-platform[data-platform='ig'] {
-		background: color-mix(in srgb, var(--color-pink, var(--color-pink)) 15%, transparent);
-		color: var(--color-pink, var(--color-pink));
+		background: color-mix(in srgb, var(--color-pink) 15%, transparent);
+		color: var(--color-pink);
 	}
 	.post-platform[data-platform='fb'] {
 		background: color-mix(in srgb, var(--color-info, var(--color-accent)) 15%, transparent);
