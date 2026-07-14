@@ -1,5 +1,6 @@
 <script lang="ts">
-	import SessionMonitor from '../sessions/SessionMonitor.svelte';
+  import { Button } from '$lib/components/ui';
+import SessionMonitor from '../sessions/SessionMonitor.svelte';
 	import SubagentMeta from './SubagentMeta.svelte';
 	import { getSelectedSubagent, subagentState } from '$lib/state/features/subagent-data.svelte';
 	import { ui } from '$lib/state/ui/ui.svelte';
@@ -14,17 +15,17 @@
 
 <div class="flex flex-col h-full overflow-hidden bg-bg">
 	{#if !selectedSubagent}
-		<div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-[13px]">
-			<span class="text-[28px] opacity-40">&larr;</span>
+		<div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-[length:var(--font-size-body)]">
+			<span class="text-[length:var(--font-size-display)] opacity-40">&larr;</span>
 			<span>{m.subagent_selectToView()}</span>
 		</div>
 	{:else}
 		<!-- Header with session info -->
 		<div class="shrink-0 px-4 py-2 border-b border-border bg-bg2 flex items-center gap-3">
-			<span class="text-[12px] font-medium truncate">
+			<span class="text-[length:var(--font-size-caption)] font-medium truncate">
 				{selectedSubagent.label || selectedSubagent.key.split(':').pop() || m.subagent_fallbackName()}
 			</span>
-			<span class="text-[10px] text-muted font-mono">
+			<span class="text-[length:var(--font-size-telemetry)] text-muted font-mono">
 				{selectedSubagent.model ?? ''}
 			</span>
 		</div>
@@ -32,16 +33,16 @@
 		<!-- Sub-tabs -->
 		<div class="shrink-0 flex items-center border-b border-border bg-bg2">
 			{#each [{ id: 'monitor', label: m.subagent_tabMonitor() }, { id: 'meta', label: m.subagent_tabMeta() }] as tab (tab.id)}
-				<button
+				<Button variant="ghost"
 					type="button"
-					class="px-4 py-1.5 text-[10px] font-semibold border-b-2 transition-colors cursor-pointer
+					class="px-4 py-1.5 text-[length:var(--font-size-telemetry)] font-semibold border-b-2 transition-colors cursor-pointer
 						{activeTab === tab.id
 						? 'border-accent text-accent'
 						: 'border-transparent text-muted hover:text-foreground'}"
 					onclick={() => (activeTab = tab.id as 'monitor' | 'meta')}
 				>
 					{tab.label}
-				</button>
+				</Button>
 			{/each}
 		</div>
 

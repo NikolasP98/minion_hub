@@ -1,5 +1,6 @@
 <script lang="ts">
-	import SubagentTreeNode from './SubagentTreeNode.svelte';
+  import { Button } from '$lib/components/ui';
+import SubagentTreeNode from './SubagentTreeNode.svelte';
 	import {
 		type SubagentTreeNode as TreeNode,
 		resolveStatus,
@@ -49,7 +50,7 @@
 		running: 'bg-warning',
 		completed: 'bg-success',
 		failed: 'bg-destructive',
-		unknown: 'bg-zinc-500'
+		unknown: 'bg-[var(--color-surface-2)]'
 	};
 
 	function handleKill(e: MouseEvent) {
@@ -73,11 +74,11 @@
 <div class="flex flex-col">
 	<!-- Node row -->
 	<div
-		class="group flex items-center gap-1.5 w-full py-1.5 pr-3 transition-colors duration-100
-			hover:bg-white/[0.03] cursor-pointer text-foreground
+		class="group flex items-center gap-1.5 w-full py-1.5 pr-3 transition-colors duration-[var(--duration-fast)]
+			hover:bg-[var(--color-text-primary)]/[0.03] cursor-pointer text-foreground
 			{selected ? '!bg-bg3' : ''}
 			{isCompleted ? 'opacity-60' : ''}"
-		style="padding-left: {depth * 16 + 8}px"
+		style={`--tree-depth:${depth}`}
 		role="button"
 		tabindex="0"
 		onclick={() => selectSubagent(node.session.key)}
@@ -85,14 +86,14 @@
 	>
 		<!-- Expand/collapse toggle -->
 		{#if hasChildren}
-			<button
+			<Button variant="ghost"
 				type="button"
 				class="w-4 h-4 flex items-center justify-center text-muted-strong hover:text-muted
-					bg-transparent border-0 cursor-pointer p-0 shrink-0 text-[10px]"
+					bg-transparent border-0 cursor-pointer p-0 shrink-0 text-[length:var(--font-size-telemetry)]"
 				onclick={(e: MouseEvent) => { e.stopPropagation(); collapsed = !collapsed; }}
 			>
 				{collapsed ? '\u25B6' : '\u25BC'}
-			</button>
+			</Button>
 		{:else}
 			<span class="w-4 shrink-0"></span>
 		{/if}
@@ -101,72 +102,83 @@
 		<span class="w-2 h-2 rounded-full shrink-0 {statusColor[status] ?? statusColor.unknown} {status === 'running' ? 'animate-pulse' : ''}"></span>
 
 		<!-- Label -->
-		<span class="text-[11px] font-medium truncate flex-1">
+		<span class="text-[length:var(--font-size-caption)] font-medium truncate flex-1">
 			{node.session.label || node.session.displayName || node.session.key.split(':').pop() || m.subagent_unnamed()}
 		</span>
 
 		<!-- Template badge -->
 		{#if templateBadge}
-			<span class="text-[8px] px-1 py-0.5 rounded bg-accent/20 text-accent/70 shrink-0">{templateBadge}</span>
+			<span class="text-[length:var(--font-size-telemetry)] px-1 py-0.5 rounded bg-accent/20 text-accent/70 shrink-0">{templateBadge}</span>
 		{/if}
 
 		<!-- Token count -->
 		{#if totalTokens > 0}
-			<span class="text-[9px] text-muted-strong font-mono shrink-0">{formatCompactTokens(totalTokens)}t</span>
+			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono shrink-0">{formatCompactTokens(totalTokens)}t</span>
 		{/if}
 
 		<!-- Model -->
-		<span class="text-[9px] text-muted-strong truncate max-w-20">
+		<span class="text-[length:var(--font-size-telemetry)] text-muted-strong truncate max-w-20">
 			{node.session.model ?? ''}
 		</span>
 
 		<!-- Duration -->
-		<span class="text-[9px] text-muted-strong font-mono shrink-0">
+		<span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono shrink-0">
 			{formatDuration(node.session)}
 		</span>
 
 		<!-- Kill/steer actions (on hover, running only) -->
 		{#if status === 'running'}
 			<div class="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-				<button
+				<Button variant="ghost"
 					type="button"
-					class="text-[9px] text-destructive hover:text-destructive px-1 bg-transparent border-0 cursor-pointer"
+					class="text-[length:var(--font-size-telemetry)] text-destructive hover:text-destructive px-1 bg-transparent border-0 cursor-pointer"
 					onclick={handleKill}
-				>{m.subagent_kill()}</button>
-				<button
+				>{m.subagent_kill()}</Button>
+				<Button variant="ghost"
 					type="button"
-					class="text-[9px] text-accent hover:text-accent px-1 bg-transparent border-0 cursor-pointer"
+					class="text-[length:var(--font-size-telemetry)] text-accent hover:text-accent px-1 bg-transparent border-0 cursor-pointer"
 					onclick={handleSteerToggle}
-				>{m.subagent_steer()}</button>
+				>{m.subagent_steer()}</Button>
 			</div>
 		{/if}
 	</div>
 
 	<!-- Steer inline input -->
 	{#if steerOpen}
-		<div class="flex items-center gap-1 px-2 py-1" style="padding-left: {(depth + 1) * 16 + 8}px">
+		<div class="tree-steer flex items-center gap-1 px-2 py-1" style={`--tree-depth:${depth + 1}`}>
 			<input
 				type="text"
 				bind:value={steerMessage}
 				placeholder={m.subagent_steerPlaceholder()}
-				class="flex-1 bg-bg3 border border-border rounded text-[11px] px-2 py-1 text-foreground"
+				class="flex-1 bg-bg3 border border-border rounded text-[length:var(--font-size-caption)] px-2 py-1 text-foreground"
 				onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && steerMessage.trim()) { handleSteer(); } }}
 			/>
-			<button
+			<Button variant="ghost"
 				type="button"
-				class="text-[9px] px-2 py-1 bg-accent/20 text-accent rounded hover:bg-accent/30 cursor-pointer border-0"
+				class="text-[length:var(--font-size-telemetry)] px-2 py-1 bg-accent/20 text-accent rounded hover:bg-accent/30 cursor-pointer border-0"
 				onclick={handleSteer}
-			>{m.subagent_send()}</button>
+			>{m.subagent_send()}</Button>
 		</div>
 	{/if}
 
 	<!-- Children -->
 	{#if hasChildren && !collapsed}
-		<div class="relative" style="margin-left: {depth * 16 + 16}px">
-			<div class="absolute left-0 top-0 bottom-0 w-px bg-white/[0.06]"></div>
+		<div class="tree-children relative" style={`--tree-depth:${depth + 1}`}>
+			<div class="absolute left-0 top-0 bottom-0 w-px bg-[var(--color-text-primary)]/[0.06]"></div>
 			{#each node.children as child (child.session.key)}
 				<SubagentTreeNode node={child} depth={depth + 1} />
 			{/each}
 		</div>
 	{/if}
 </div>
+
+<style>
+	.group[style*='--tree-depth'],
+	.tree-steer {
+		padding-left: calc(var(--space-2) + var(--tree-depth, 0) * var(--space-4));
+	}
+
+	.tree-children {
+		margin-left: calc(var(--tree-depth, 0) * var(--space-4));
+	}
+</style>

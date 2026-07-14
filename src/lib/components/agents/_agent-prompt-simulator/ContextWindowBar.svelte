@@ -1,5 +1,6 @@
 <script lang="ts">
-  import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
+import * as m from '$lib/paraglide/messages';
   import { fmtChars, type BarSegment } from './types';
 
   let {
@@ -34,12 +35,12 @@
   <!-- Stacked bar -->
   <div
     class="relative h-2.5 rounded-sm overflow-hidden border flex
-      {overBudget ? 'bg-amber-500/10 border-amber-500/40' : 'bg-bg1 border-border/40'}"
+      {overBudget ? 'bg-[var(--color-warning-surface)] border-[var(--color-warning-border)]' : 'bg-bg1 border-border/40'}"
   >
     {#each segments as seg (seg.label)}
       <div
-        class="h-full shrink-0 transition-all duration-300"
-        style:background-color={overBudget ? '#f59e0b' : seg.color}
+        class="h-full shrink-0 transition-all duration-[var(--duration-normal)]"
+        style:background-color={overBudget ? 'var(--color-warning-fg)' : seg.color}
         style:opacity={overBudget ? '0.85' : '1'}
         style:width="{((seg.chars / contextWindowChars) * 100).toFixed(2)}%"
       ></div>
@@ -50,40 +51,40 @@
   <div class="flex items-center justify-between gap-2">
     <div class="flex items-center gap-3 min-w-0 flex-wrap">
       {#if onToggleRail}
-        <button
+        <Button variant="ghost"
           type="button"
-          class="lg:hidden shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-border text-muted hover:text-foreground transition-colors cursor-pointer"
+          class="lg:hidden shrink-0 text-[length:var(--font-size-telemetry)] px-1.5 py-0.5 rounded border border-border text-muted hover:text-foreground transition-colors cursor-pointer"
           onclick={onToggleRail}
           title={m.ctx_toggleSections()}
           aria-label={m.ctx_toggleSectionsRail()}
         >
           ☰ {m.ctx_sections()}
-        </button>
+        </Button>
       {/if}
       {#each segments as seg (seg.label)}
         <span class="flex items-center gap-1">
           <span class="w-2 h-2 rounded-sm shrink-0" style:background-color={seg.color}></span>
-          <span class="text-[10px] text-muted">{seg.label}</span>
-          <span class="text-[10px] text-foreground/50">{fmtChars(seg.chars)}</span>
+          <span class="text-[length:var(--font-size-telemetry)] text-muted">{seg.label}</span>
+          <span class="text-[length:var(--font-size-telemetry)] text-foreground/50">{fmtChars(seg.chars)}</span>
         </span>
       {/each}
     </div>
     <div class="flex items-center gap-3 shrink-0">
       <span
-        class="text-[10px] font-mono whitespace-nowrap"
-        class:text-amber-400={cachedPct > 0}
+        class="text-[length:var(--font-size-telemetry)] font-mono whitespace-nowrap"
+        class:text-[var(--color-warning-fg)]={cachedPct > 0}
         class:text-muted={cachedPct === 0}
         title={m.ctx_cacheableShare()}
       >
         ⚡ {cachedLabel} {m.ctx_cached()}
       </span>
       <span
-        class="text-[10px] font-mono whitespace-nowrap"
-        class:text-amber-400={overBudget}
+        class="text-[length:var(--font-size-telemetry)] font-mono whitespace-nowrap"
+        class:text-[var(--color-warning-fg)]={overBudget}
         class:text-muted={!overBudget}
       >
         {fmtChars(totalUsedChars)} / {fmtChars(contextWindowChars)}
-        <span class:text-amber-400={overBudget} class:text-foreground={!overBudget} class="opacity-70"
+        <span class:text-[var(--color-warning-fg)]={overBudget} class:text-foreground={!overBudget} class="opacity-70"
           >&middot; {fmtContextPct(totalUsedChars)}</span
         >
       </span>

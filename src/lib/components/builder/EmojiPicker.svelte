@@ -1,5 +1,6 @@
 <script lang="ts">
-    import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
+import * as m from '$lib/paraglide/messages';
     interface Props {
         value: string;
         onSelect: (emoji: string) => void;
@@ -23,20 +24,20 @@
 </script>
 
 <div class="picker-wrap">
-    <button type="button" class="picker-trigger {size}" onclick={() => { open = !open; }} title={m.emoji_changeIcon()}>
+    <Button variant="ghost" type="button" class="picker-trigger {size}" onclick={() => { open = !open; }} title={m.emoji_changeIcon()}>
         <span class="picker-current">{value}</span>
-    </button>
+    </Button>
 
     {#if open}
-        <button type="button" class="picker-backdrop" aria-label={m.emoji_closePickerLabel()} onclick={() => { open = false; }}></button>
+        <Button variant="ghost" type="button" class="picker-backdrop" aria-label={m.emoji_closePickerLabel()} onclick={() => { open = false; }}></Button>
         <div class="picker-dropdown">
             {#each emojis as emoji (emoji)}
-                <button
+                <Button variant="ghost"
                     type="button"
                     class="picker-item"
                     class:selected={emoji === value}
                     onclick={() => select(emoji)}
-                >{emoji}</button>
+                >{emoji}</Button>
             {/each}
         </div>
     {/if}
@@ -52,7 +53,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 0.5rem;
+        border-radius: var(--radius-md);
         border: 2px dashed var(--color-border);
         background: var(--color-bg2);
         cursor: pointer;
@@ -67,12 +68,12 @@
     .picker-trigger.sm {
         width: 2.25rem;
         height: 2.25rem;
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         border-width: 1.5px;
     }
 
     .picker-trigger.sm .picker-current {
-        font-size: 1.125rem;
+        font-size: var(--font-size-page-title);
     }
 
     .picker-trigger.md {
@@ -81,17 +82,17 @@
     }
 
     .picker-trigger.md .picker-current {
-        font-size: 1.375rem;
+        font-size: var(--font-size-display);
     }
 
     .picker-trigger.lg {
         width: 3.5rem;
         height: 3.5rem;
-        border-radius: 0.75rem;
+        border-radius: var(--radius-lg);
     }
 
     .picker-trigger.lg .picker-current {
-        font-size: 1.75rem;
+        font-size: var(--font-size-display);
     }
 
     .picker-current {
@@ -101,7 +102,7 @@
     .picker-backdrop {
         position: fixed;
         inset: 0;
-        z-index: 99;
+        z-index: var(--layer-debug);
         border: none;
         padding: 0;
         margin: 0;
@@ -113,15 +114,15 @@
         position: absolute;
         top: calc(100% + 4px);
         left: 0;
-        z-index: 100;
+        z-index: var(--layer-debug);
         display: grid;
         grid-template-columns: repeat(8, 1fr);
-        gap: 2px;
-        padding: 6px;
+        gap: var(--space-0-5);
+        padding: var(--space-2);
         background: var(--color-bg);
         border: 1px solid var(--color-border);
-        border-radius: 8px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-overlay);
     }
 
     .picker-item {
@@ -130,8 +131,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.125rem;
-        border-radius: 6px;
+        font-size: var(--font-size-page-title);
+        border-radius: var(--radius-md);
         border: 1.5px solid transparent;
         background: none;
         cursor: pointer;

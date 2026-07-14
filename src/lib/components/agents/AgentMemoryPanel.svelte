@@ -1,5 +1,6 @@
 <script lang="ts">
-  import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
+import * as m from '$lib/paraglide/messages';
   import { SvelteSet } from 'svelte/reactivity';
   import type { EChartsOption } from 'echarts';
   import { createQuery } from '@tanstack/svelte-query';
@@ -45,17 +46,17 @@
   const KG_EXTRA_TYPES = ['event', 'task', 'belief', 'interaction', 'skill'] as const;
 
   const CATEGORY_COLORS: Record<string, string> = {
-    preference: '#ec4899',
-    fact: '#22c55e',
-    decision: '#f59e0b',
-    entity: '#3b82f6',
-    other: '#a1a1aa',
-    event: '#a855f7',
-    task: '#f59e0b',
-    belief: '#06b6d4',
-    interaction: '#ef4444',
-    skill: '#10b981',
-    client: '#f97316',
+    preference: 'var(--color-pink)',
+    fact: 'var(--color-success-fg)',
+    decision: 'var(--color-warning-fg)',
+    entity: 'var(--color-accent)',
+    other: 'var(--color-text-tertiary)',
+    event: 'var(--color-purple)',
+    task: 'var(--color-warning-fg)',
+    belief: 'var(--color-cyan)',
+    interaction: 'var(--color-danger-fg)',
+    skill: 'var(--color-emerald)',
+    client: 'var(--color-warning-fg)',
   };
   const colorFor = (c: string) => CATEGORY_COLORS[c] ?? CATEGORY_COLORS.other;
 
@@ -227,55 +228,55 @@
         bind:value={query}
         onkeydown={(e) => e.key === 'Enter' && runSearch()}
         placeholder={m.memory_searchPlaceholder()}
-        class="px-2 py-1 text-[12px] rounded bg-card border border-border text-foreground w-56 focus:outline-none focus:border-accent"
+        class="px-2 py-1 text-[length:var(--font-size-caption)] rounded bg-card border border-border text-foreground w-56 focus:outline-none focus:border-accent"
       />
-      <button
+      <Button variant="ghost"
         type="button"
         onclick={runSearch}
         disabled={searching}
-        class="px-2 py-1 text-[11px] font-semibold rounded bg-accent/15 text-accent border border-accent/30 cursor-pointer hover:bg-accent/25 disabled:opacity-50"
+        class="px-2 py-1 text-[length:var(--font-size-caption)] font-semibold rounded bg-accent/15 text-accent border border-accent/30 cursor-pointer hover:bg-accent/25 disabled:opacity-50"
       >
         {searching ? '…' : m.memory_search()}
-      </button>
+      </Button>
       {#if hits !== null}
-        <button type="button" onclick={clearSearch} class="px-2 py-1 text-[11px] text-muted hover:text-foreground cursor-pointer">
+        <Button variant="ghost" type="button" onclick={clearSearch} class="px-2 py-1 text-[length:var(--font-size-caption)] text-muted hover:text-foreground cursor-pointer">
           {m.memory_clear()}
-        </button>
+        </Button>
       {/if}
     </div>
     <div class="flex-1"></div>
     <!-- Category pills: pgvector + KG-extra types unified -->
     <div class="flex flex-wrap items-center gap-1">
       {#each MEMORY_CATEGORIES as c (c)}
-        <button
+        <Button variant="ghost"
           type="button"
           onclick={() => toggleCategory(c)}
-          class="px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors cursor-pointer
+          class="px-2 py-0.5 text-[length:var(--font-size-telemetry)] font-semibold rounded-full border transition-colors cursor-pointer
             {activeCategories.has(c) ? 'text-foreground' : 'text-muted opacity-50'}"
           style="border-color: {colorFor(c)}; background: {activeCategories.has(c) ? colorFor(c) + '22' : 'transparent'}"
         >
           <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style="background:{colorFor(c)}"></span>
           {c} {countFor(c)}
-        </button>
+        </Button>
       {/each}
       <!-- KG-exclusive types (event, task, belief, etc.) — only when data exists -->
       {#each activeKgExtraTypes as t (t)}
-        <button
+        <Button variant="ghost"
           type="button"
           onclick={() => toggleCategory(t)}
-          class="px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors cursor-pointer
+          class="px-2 py-0.5 text-[length:var(--font-size-telemetry)] font-semibold rounded-full border transition-colors cursor-pointer
             {activeCategories.has(t) ? 'text-foreground' : 'text-muted opacity-50'}"
           style="border-color: {colorFor(t)}; background: {activeCategories.has(t) ? colorFor(t) + '22' : 'transparent'}"
         >
           <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style="background:{colorFor(t)}"></span>
           {t} {countFor(t)}
-        </button>
+        </Button>
       {/each}
     </div>
   </div>
 
   {#if searchError}
-    <div class="text-[11px] text-amber-400">{searchError}</div>
+    <div class="text-[length:var(--font-size-caption)] text-[var(--color-warning-fg)]">{searchError}</div>
   {/if}
 
   <!-- Semantic scatter (pgvector only) -->
@@ -283,7 +284,7 @@
     {#if points.length > 1}
       <Chart options={scatterOptions} height="200px" />
     {:else}
-      <div class="absolute inset-0 flex items-center justify-center text-[11px] text-muted">
+      <div class="absolute inset-0 flex items-center justify-center text-[length:var(--font-size-caption)] text-muted">
         {loading ? m.common_loading() : m.memory_notEnough()}
       </div>
     {/if}
@@ -292,15 +293,15 @@
   <!-- Unified list: KG nodes + pgvector memories, sorted most recent first -->
   <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-border">
     {#if (loading || kgLoading) && unifiedRows.length === 0}
-      <div class="p-6 text-center text-[12px] text-muted">{m.common_loading()}</div>
+      <div class="p-6 text-center text-[length:var(--font-size-caption)] text-muted">{m.common_loading()}</div>
     {:else if error}
-      <div class="p-6 text-center text-[12px] text-red-400">{error}</div>
+      <div class="p-6 text-center text-[length:var(--font-size-caption)] text-[var(--color-danger-fg)]">{error}</div>
     {:else if unifiedRows.length === 0}
-      <div class="p-6 text-center text-[12px] text-muted">
+      <div class="p-6 text-center text-[length:var(--font-size-caption)] text-muted">
         {hits !== null ? m.common_noMatches() : totalCount === 0 && kgNodes.length === 0 ? m.memory_noCaptures() : m.memory_noCategories()}
       </div>
     {:else}
-      <table class="w-full text-[12px] border-collapse">
+      <table class="w-full text-[length:var(--font-size-caption)] border-collapse">
         <thead class="sticky top-0 bg-card text-muted">
           <tr class="text-left">
             <th class="px-3 py-2 font-semibold">Memory</th>
@@ -317,7 +318,7 @@
               <tr class="border-t border-border/60 hover:bg-card/60">
                 <td class="px-3 py-2 text-foreground">{truncate(row.content)}</td>
                 <td class="px-3 py-2">
-                  <span class="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style="background:{colorFor(row.category)}22; color:{colorFor(row.category)}">
+                  <span class="px-1.5 py-0.5 rounded-full text-[length:var(--font-size-telemetry)] font-semibold" style="background:{colorFor(row.category)}22; color:{colorFor(row.category)}">
                     {row.category}
                   </span>
                 </td>
@@ -331,11 +332,11 @@
                 <td class="px-3 py-2 text-foreground">
                   <span class="font-medium">{node.label}</span>
                   {#if Object.keys(node.data).length > 0}
-                    <span class="ml-2 text-muted text-[11px]">{truncate(JSON.stringify(node.data), 80)}</span>
+                    <span class="ml-2 text-muted text-[length:var(--font-size-caption)]">{truncate(JSON.stringify(node.data), 80)}</span>
                   {/if}
                 </td>
                 <td class="px-3 py-2">
-                  <span class="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style="background:#7c3aed22; color:#a78bfa">
+                  <span class="px-1.5 py-0.5 rounded-full text-[length:var(--font-size-telemetry)] font-semibold" style="background:var(--color-purple)22; color:var(--color-purple)">
                     {node.type}
                   </span>
                 </td>

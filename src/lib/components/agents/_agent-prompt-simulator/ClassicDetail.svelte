@@ -23,7 +23,7 @@
     <!-- Bootstrap Files -->
     <div>
       <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepBootstrap()}</h2>
-      <p class="text-muted text-[11px] mb-3">
+      <p class="text-muted text-[length:var(--font-size-caption)] mb-3">
         {m.prompt_bootstrapDesc()}
         {#if report.bootstrapMaxChars}
           {m.prompt_bootstrapBudget({ perFile: fmtChars(report.bootstrapMaxChars) })}
@@ -33,29 +33,29 @@
         {/if}
       </p>
       {#if !report.injectedWorkspaceFiles?.length}
-        <p class="text-muted text-[11px]">{m.prompt_noBootstrapFiles()}</p>
+        <p class="text-muted text-[length:var(--font-size-caption)]">{m.prompt_noBootstrapFiles()}</p>
       {:else}
         <div class="space-y-1">
           {#each report.injectedWorkspaceFiles as f (f.name)}
             <div class="flex items-center gap-2 py-1.5 px-2 rounded bg-bg2 border border-border/50">
-              <span class="shrink-0 text-[11px] {f.missing ? 'text-destructive' : 'text-accent'}">
+              <span class="shrink-0 text-[length:var(--font-size-caption)] {f.missing ? 'text-destructive' : 'text-accent'}">
                 {f.missing ? '✗' : '●'}
               </span>
-              <span class="flex-1 min-w-0 text-[11px] font-mono text-foreground truncate">{f.name}</span>
+              <span class="flex-1 min-w-0 text-[length:var(--font-size-caption)] font-mono text-foreground truncate">{f.name}</span>
               {#if f.missing}
-                <span class="shrink-0 text-[10px] text-destructive font-semibold">{m.prompt_fileMissing()}</span>
+                <span class="shrink-0 text-[length:var(--font-size-telemetry)] text-destructive font-semibold">{m.prompt_fileMissing()}</span>
               {:else}
-                <span class="shrink-0 text-[10px] text-muted">{fmtChars(f.injectedChars)}</span>
+                <span class="shrink-0 text-[length:var(--font-size-telemetry)] text-muted">{fmtChars(f.injectedChars)}</span>
                 {#if f.truncated}
-                  <span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-warning/15 text-warning">{m.prompt_fileTruncated()}</span>
+                  <span class="shrink-0 text-[length:var(--font-size-telemetry)] font-semibold px-1 py-0.5 rounded bg-warning/15 text-warning">{m.prompt_fileTruncated()}</span>
                 {:else}
-                  <span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-success/10 text-success">{m.prompt_fileOk()}</span>
+                  <span class="shrink-0 text-[length:var(--font-size-telemetry)] font-semibold px-1 py-0.5 rounded bg-success/10 text-success">{m.prompt_fileOk()}</span>
                 {/if}
               {/if}
             </div>
           {/each}
         </div>
-        <p class="text-muted text-[11px] mt-2">
+        <p class="text-muted text-[length:var(--font-size-caption)] mt-2">
           {m.prompt_filesInjectedCount({ count: report.injectedWorkspaceFiles.filter(f => !f.missing).length, total: fmtChars(report.injectedWorkspaceFiles.reduce((s, f) => s + (f.injectedChars ?? 0), 0)) })}
         </p>
       {/if}
@@ -65,7 +65,7 @@
     <!-- Parameters -->
     <div>
       <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepParameters()}</h2>
-      <p class="text-muted text-[11px] mb-3">{m.prompt_parametersDesc()}</p>
+      <p class="text-muted text-[length:var(--font-size-caption)] mb-3">{m.prompt_parametersDesc()}</p>
       <div class="space-y-2">
         {#each [
           [m.agent_model(), report.model ?? '—'],
@@ -75,8 +75,8 @@
           [m.prompt_paramSource(), report.source ?? '—'],
         ] as [label, value] (label)}
           <div class="flex items-start gap-3 py-1.5 px-2 rounded bg-bg2 border border-border/50">
-            <span class="shrink-0 w-20 text-[10px] font-bold uppercase tracking-wide text-muted">{label}</span>
-            <span class="flex-1 min-w-0 text-[11px] text-foreground font-mono break-all">{value}</span>
+            <span class="shrink-0 w-20 text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wide text-muted">{label}</span>
+            <span class="flex-1 min-w-0 text-[length:var(--font-size-caption)] text-foreground font-mono break-all">{value}</span>
           </div>
         {/each}
       </div>
@@ -86,21 +86,21 @@
     <!-- Skills -->
     <div>
       <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepSkills()}</h2>
-      <p class="text-muted text-[11px] mb-3">
+      <p class="text-muted text-[length:var(--font-size-caption)] mb-3">
         {m.prompt_skillsDesc()}
         {#if report.skills?.promptChars}
           {m.prompt_skillsTotal({ total: fmtChars(report.skills.promptChars) })}.
         {/if}
       </p>
       {#if !report.skills?.entries?.length}
-        <p class="text-muted text-[11px]">{m.prompt_noSkills()}</p>
+        <p class="text-muted text-[length:var(--font-size-caption)]">{m.prompt_noSkills()}</p>
       {:else}
         <div class="space-y-1">
           {#each report.skills.entries as s (s.name)}
             <div class="flex items-center gap-2 py-1.5 px-2 rounded bg-bg2 border border-border/50">
-              <span class="text-accent text-[11px] shrink-0">&#x25cf;</span>
-              <span class="flex-1 min-w-0 text-[11px] text-foreground truncate">{s.name}</span>
-              <span class="shrink-0 text-[10px] text-muted">{fmtChars(s.blockChars)}</span>
+              <span class="text-accent text-[length:var(--font-size-caption)] shrink-0">&#x25cf;</span>
+              <span class="flex-1 min-w-0 text-[length:var(--font-size-caption)] text-foreground truncate">{s.name}</span>
+              <span class="shrink-0 text-[length:var(--font-size-telemetry)] text-muted">{fmtChars(s.blockChars)}</span>
               <div class="shrink-0 w-20 h-1.5 bg-bg1 rounded-full overflow-hidden">
                 <div
                   class="h-full bg-accent rounded-full"
@@ -117,9 +117,9 @@
     <!-- Sandbox -->
     <div>
       <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepSandbox()}</h2>
-      <p class="text-muted text-[11px] mb-3">{m.prompt_sandboxDesc()}</p>
+      <p class="text-muted text-[length:var(--font-size-caption)] mb-3">{m.prompt_sandboxDesc()}</p>
       {#if !report.sandbox}
-        <p class="text-muted text-[11px]">{m.prompt_noSandbox()}</p>
+        <p class="text-muted text-[length:var(--font-size-caption)]">{m.prompt_noSandbox()}</p>
       {:else}
         <div class="space-y-2">
           {#each [
@@ -128,8 +128,8 @@
             [m.prompt_sandboxContainerDir(), report.sandbox.containerDir ?? '—'],
           ] as [label, value] (label)}
             <div class="flex items-start gap-3 py-1.5 px-2 rounded bg-bg2 border border-border/50">
-              <span class="shrink-0 w-28 text-[10px] font-bold uppercase tracking-wide text-muted">{label}</span>
-              <span class="flex-1 min-w-0 text-[11px] text-foreground font-mono">{value}</span>
+              <span class="shrink-0 w-28 text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wide text-muted">{label}</span>
+              <span class="flex-1 min-w-0 text-[length:var(--font-size-caption)] text-foreground font-mono">{value}</span>
             </div>
           {/each}
         </div>
@@ -140,22 +140,22 @@
     <!-- Tools -->
     <div>
       <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepTools()}</h2>
-      <p class="text-muted text-[11px] mb-3">
+      <p class="text-muted text-[length:var(--font-size-caption)] mb-3">
         {m.prompt_toolsDesc()}
         {#if report.tools}
           {m.prompt_toolsSizes({ list: fmtChars(report.tools.listChars), schemas: fmtChars(report.tools.schemaChars) })}.
         {/if}
       </p>
       {#if !report.tools?.entries?.length}
-        <p class="text-muted text-[11px]">{m.prompt_noTools()}</p>
+        <p class="text-muted text-[length:var(--font-size-caption)]">{m.prompt_noTools()}</p>
       {:else}
         <div class="space-y-1">
           {#each report.tools.entries as t (t.name)}
             <div class="flex items-center gap-2 py-1.5 px-2 rounded bg-bg2 border border-border/50">
-              <span class="text-accent text-[11px] shrink-0">&#x25cf;</span>
-              <span class="flex-1 min-w-0 text-[11px] text-foreground truncate font-mono">{t.name}</span>
-              <span class="shrink-0 text-[10px] text-muted">{m.prompt_toolProps({ count: t.propertiesCount })}</span>
-              <span class="shrink-0 text-[10px] text-muted">{fmtChars(t.schemaChars)}</span>
+              <span class="text-accent text-[length:var(--font-size-caption)] shrink-0">&#x25cf;</span>
+              <span class="flex-1 min-w-0 text-[length:var(--font-size-caption)] text-foreground truncate font-mono">{t.name}</span>
+              <span class="shrink-0 text-[length:var(--font-size-telemetry)] text-muted">{m.prompt_toolProps({ count: t.propertiesCount })}</span>
+              <span class="shrink-0 text-[length:var(--font-size-telemetry)] text-muted">{fmtChars(t.schemaChars)}</span>
               <div class="shrink-0 w-20 h-1.5 bg-bg1 rounded-full overflow-hidden">
                 <div
                   class="h-full bg-accent rounded-full"
@@ -172,12 +172,12 @@
     <!-- Memory Context -->
     <div>
       <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepMemory()}</h2>
-      <p class="text-muted text-[11px] mb-3">{m.prompt_memoryDesc()}</p>
+      <p class="text-muted text-[length:var(--font-size-caption)] mb-3">{m.prompt_memoryDesc()}</p>
       <div class="py-3 px-3 rounded bg-bg2 border border-border/50 space-y-2">
-        <p class="text-[11px] text-foreground">
+        <p class="text-[length:var(--font-size-caption)] text-foreground">
           {m.prompt_memoryBody1()}
         </p>
-        <p class="text-[11px] text-muted">
+        <p class="text-[length:var(--font-size-caption)] text-muted">
           {m.prompt_memoryBody2()}
         </p>
       </div>
@@ -187,12 +187,12 @@
     <!-- TTS Hint -->
     <div>
       <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepTts()}</h2>
-      <p class="text-muted text-[11px] mb-3">{m.prompt_ttsDesc()}</p>
+      <p class="text-muted text-[length:var(--font-size-caption)] mb-3">{m.prompt_ttsDesc()}</p>
       <div class="py-3 px-3 rounded bg-bg2 border border-border/50 space-y-2">
-        <p class="text-[11px] text-foreground">
+        <p class="text-[length:var(--font-size-caption)] text-foreground">
           {m.prompt_ttsBody1()}
         </p>
-        <p class="text-[11px] text-muted">
+        <p class="text-[length:var(--font-size-caption)] text-muted">
           {m.prompt_ttsBody2()}
         </p>
       </div>
@@ -202,15 +202,15 @@
     <!-- Prompt Assembly -->
     <div>
       <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepAssembly()}</h2>
-      <p class="text-muted text-[11px] mb-3">{m.prompt_assemblyDesc()}</p>
+      <p class="text-muted text-[length:var(--font-size-caption)] mb-3">{m.prompt_assemblyDesc()}</p>
       {#if !report.systemPrompt}
-        <p class="text-muted text-[11px]">{m.prompt_noAssembly()}</p>
+        <p class="text-muted text-[length:var(--font-size-caption)]">{m.prompt_noAssembly()}</p>
       {:else}
         {@const sp = report.systemPrompt}
         <div class="space-y-3">
           <div class="py-2 px-3 rounded bg-bg2 border border-border/50 flex items-center gap-3">
-            <span class="text-[10px] font-bold uppercase tracking-wide text-muted w-28 shrink-0">{m.prompt_assemblyTotal()}</span>
-            <span class="text-[11px] text-foreground font-semibold">{fmtChars(sp.chars)}</span>
+            <span class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wide text-muted w-28 shrink-0">{m.prompt_assemblyTotal()}</span>
+            <span class="text-[length:var(--font-size-caption)] text-foreground font-semibold">{fmtChars(sp.chars)}</span>
           </div>
 
           <div class="space-y-2">
@@ -220,8 +220,8 @@
             ] as seg (seg.label)}
               <div class="space-y-1">
                 <div class="flex items-center justify-between">
-                  <span class="text-[10px] text-muted">{seg.label}</span>
-                  <span class="text-[10px] text-muted">{fmtChars(seg.chars)}</span>
+                  <span class="text-[length:var(--font-size-telemetry)] text-muted">{seg.label}</span>
+                  <span class="text-[length:var(--font-size-telemetry)] text-muted">{fmtChars(seg.chars)}</span>
                 </div>
                 <div class="h-2 bg-bg2 rounded-full overflow-hidden border border-border/50">
                   <div
@@ -234,7 +234,7 @@
           </div>
 
           <div class="space-y-1 mt-2">
-            <p class="text-[10px] font-bold uppercase tracking-wide text-muted mb-1">{m.prompt_assemblyBreakdown()}</p>
+            <p class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wide text-muted mb-1">{m.prompt_assemblyBreakdown()}</p>
             {#each [
               { label: m.prompt_breakdownBootstrap(), chars: report.injectedWorkspaceFiles?.reduce((s, f) => s + (f.injectedChars ?? 0), 0) ?? 0 },
               { label: m.prompt_stepSkills(), chars: report.skills?.promptChars ?? 0 },
@@ -243,8 +243,8 @@
             ] as row (row.label)}
               {#if row.chars > 0}
                 <div class="flex items-center gap-2 py-1.5 px-2 rounded bg-bg2 border border-border/50">
-                  <span class="flex-1 text-[11px] text-muted">{row.label}</span>
-                  <span class="shrink-0 text-[10px] text-muted">{fmtChars(row.chars)}</span>
+                  <span class="flex-1 text-[length:var(--font-size-caption)] text-muted">{row.label}</span>
+                  <span class="shrink-0 text-[length:var(--font-size-telemetry)] text-muted">{fmtChars(row.chars)}</span>
                   <div class="shrink-0 w-24 h-1.5 bg-bg1 rounded-full overflow-hidden">
                     <div
                       class="h-full bg-accent/60 rounded-full"
@@ -263,12 +263,12 @@
     <!-- Post-Turn Memory -->
     <div>
       <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepPostTurn()}</h2>
-      <p class="text-muted text-[11px] mb-3">{m.prompt_postTurnDesc()}</p>
+      <p class="text-muted text-[length:var(--font-size-caption)] mb-3">{m.prompt_postTurnDesc()}</p>
       <div class="py-3 px-3 rounded bg-bg2 border border-border/50 space-y-2">
-        <p class="text-[11px] text-foreground">
+        <p class="text-[length:var(--font-size-caption)] text-foreground">
           {m.prompt_postTurnBody1()}
         </p>
-        <p class="text-[11px] text-muted">
+        <p class="text-[length:var(--font-size-caption)] text-muted">
           {m.prompt_postTurnBody2()}
         </p>
       </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
+import * as m from '$lib/paraglide/messages';
 
   export type ViewMode = 'list' | 'tree' | 'timeline';
 
@@ -19,19 +20,19 @@
 </script>
 
 <div class="shrink-0 px-3 py-2 border-t border-border">
-  <div class="text-[9px] text-muted-strong uppercase tracking-wider mb-1.5 font-semibold">{m.subagent_view()}</div>
+  <div class="text-[length:var(--font-size-telemetry)] text-muted-strong uppercase tracking-wider mb-1.5 font-semibold">{m.subagent_view()}</div>
   <div class="flex gap-1.5">
     {#each views as view (view.id)}
-      <button
+      <Button variant="ghost"
         type="button"
-        class="text-[10px] px-2 py-1 rounded transition-colors cursor-pointer border-0 bg-transparent
+        class="text-[length:var(--font-size-telemetry)] px-2 py-1 rounded transition-colors cursor-pointer border-0 bg-transparent
           {active === view.id
           ? 'bg-accent/20 text-accent font-medium'
-          : 'text-muted hover:text-foreground hover:bg-white/[0.04]'}"
+          : 'text-muted hover:text-foreground hover:bg-[var(--color-text-primary)]/[0.04]'}"
         onclick={() => onchange?.(view.id)}
       >
         {view.label}
-      </button>
+      </Button>
     {/each}
   </div>
 </div>

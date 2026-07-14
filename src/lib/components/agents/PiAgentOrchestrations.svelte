@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
+  import { Button } from '$lib/components/ui';
+import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
 	import { sendRequest } from '$lib/services/gateway.svelte';
 	import * as m from '$lib/paraglide/messages';
 
@@ -66,41 +67,41 @@
 <div class="flex flex-col gap-0.5">
 	{#each piAgentState.orchestrations as orch (orch.orchestrationId)}
 		<!-- Collapsed row -->
-		<button
+		<Button variant="ghost"
 			type="button"
-			class="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-white/[0.03] transition-colors cursor-pointer text-left border-0 bg-transparent border-b border-border/30"
+			class="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-[var(--color-text-primary)]/[0.03] transition-colors cursor-pointer text-left border-0 bg-transparent border-b border-border/30"
 			onclick={() => toggleExpand(orch.orchestrationId)}
 		>
 			<!-- Status dot -->
-			<span class="w-1.5 h-1.5 rounded-full shrink-0 {orchStatusColor[orch.status] ?? 'bg-zinc-500'}"></span>
+			<span class="w-1.5 h-1.5 rounded-full shrink-0 {orchStatusColor[orch.status] ?? 'bg-[var(--color-surface-2)]'}"></span>
 
 			<!-- Orchestration ID (short) -->
-			<span class="text-[10px] font-mono text-muted-strong">{orch.orchestrationId.slice(0, 8)}</span>
+			<span class="text-[length:var(--font-size-telemetry)] font-mono text-muted-strong">{orch.orchestrationId.slice(0, 8)}</span>
 
 			<!-- Mode badge -->
-			<span class="text-[8px] px-1 py-0.5 rounded bg-accent/10 text-accent/60">{orch.mode}</span>
+			<span class="text-[length:var(--font-size-telemetry)] px-1 py-0.5 rounded bg-accent/10 text-accent/60">{orch.mode}</span>
 
 			<!-- Task count -->
-			<span class="text-[9px] text-muted-strong">{orch.taskCount} tasks</span>
+			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{orch.taskCount} tasks</span>
 
 			<!-- Spacer -->
 			<span class="flex-1"></span>
 
 			<!-- Duration -->
 			{#if orch.completedAt}
-				<span class="text-[9px] text-muted-strong font-mono">{formatDurationMs(orch.completedAt - orch.startedAt)}</span>
+				<span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono">{formatDurationMs(orch.completedAt - orch.startedAt)}</span>
 			{/if}
 
 			<!-- Relative time -->
-			<span class="text-[9px] text-muted-strong">{formatRelativeTime(orch.startedAt)}</span>
+			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{formatRelativeTime(orch.startedAt)}</span>
 
 			<!-- Expand indicator -->
-			<span class="text-[9px] text-muted-strong">{expandedId === orch.orchestrationId ? '\u25B2' : '\u25BC'}</span>
-		</button>
+			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{expandedId === orch.orchestrationId ? '\u25B2' : '\u25BC'}</span>
+		</Button>
 
 		<!-- Expanded detail -->
 		{#if expandedId === orch.orchestrationId}
-			<div class="px-3 py-2 bg-bg2/50 border-b border-border/30 text-[10px]">
+			<div class="px-3 py-2 bg-bg2/50 border-b border-border/30 text-[length:var(--font-size-telemetry)]">
 				{#if detailLoading}
 					<p class="text-muted">{m.pi_orchLoadingDetails()}</p>
 				{:else if expandedDetail}
@@ -117,7 +118,7 @@
 
 						<!-- Task list from detail -->
 						{#if getDetailTasks(expandedDetail).length > 0}
-							<table class="w-full text-[9px] mt-1">
+							<table class="w-full text-[length:var(--font-size-telemetry)] mt-1">
 								<thead>
 									<tr class="text-muted border-b border-border/30">
 										<th class="text-left py-0.5 pr-2">{m.pi_orchColNum()}</th>
@@ -133,7 +134,7 @@
 											<td class="py-0.5 pr-2 text-muted">{i + 1}</td>
 											<td class="py-0.5 pr-2 truncate max-w-32">{task.label ?? task.template ?? '-'}</td>
 											<td class="py-0.5 pr-2">
-												<span class="px-1 py-0.5 rounded {task.status === 'completed' ? 'bg-success/20 text-success' : task.status === 'failed' ? 'bg-destructive/20 text-destructive' : task.status === 'running' ? 'bg-warning/20 text-warning' : 'bg-zinc-500/20 text-zinc-400'}">
+												<span class="px-1 py-0.5 rounded {task.status === 'completed' ? 'bg-success/20 text-success' : task.status === 'failed' ? 'bg-destructive/20 text-destructive' : task.status === 'running' ? 'bg-warning/20 text-warning' : 'bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)]'}">
 													{task.status ?? 'pending'}
 												</span>
 											</td>
@@ -164,6 +165,6 @@
 		{/if}
 	{/each}
 	{#if piAgentState.orchestrations.length === 0}
-		<p class="text-[11px] text-muted px-2 py-3">{m.pi_orchNone()}</p>
+		<p class="text-[length:var(--font-size-caption)] text-muted px-2 py-3">{m.pi_orchNone()}</p>
 	{/if}
 </div>

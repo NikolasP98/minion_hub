@@ -1,5 +1,6 @@
 <script lang="ts">
-    import {
+  import { Button } from '$lib/components/ui';
+import {
         X,
         ChevronLeft,
         ChevronRight,
@@ -249,13 +250,13 @@
                 <Bot size={16} />
                 <span class="modal-title">{m.builder_newAgent()}</span>
             </div>
-            <button
+            <Button variant="ghost"
                 class="close-btn"
                 onclick={onClose}
                 aria-label={m.common_close()}
             >
                 <X size={16} />
-            </button>
+            </Button>
         </div>
 
         <!-- Step indicator -->
@@ -263,7 +264,7 @@
             <div class="steps-list" {...api.getListProps()}>
                 {#each stepsData as stepData, index (index)}
                     <div class="step-item" {...api.getItemProps({ index })}>
-                        <button
+                        <Button variant="ghost"
                             class="step-trigger"
                             {...api.getTriggerProps({ index })}
                         >
@@ -275,7 +276,7 @@
                                 {/if}
                             </span>
                             <span class="step-label">{stepData.title}</span>
-                        </button>
+                        </Button>
                         {#if index < STEP_COUNT - 1}
                             <div
                                 class="step-separator"
@@ -322,13 +323,13 @@
         <div class="modal-footer">
             <div class="footer-left">
                 {#if api.hasPrevStep}
-                    <button
+                    <Button variant="ghost"
                         class="btn btn--ghost"
                         {...api.getPrevTriggerProps()}
                     >
                         <ChevronLeft size={14} />
                         {m.common_back()}
-                    </button>
+                    </Button>
                 {/if}
             </div>
 
@@ -337,7 +338,7 @@
             </span>
 
             <div class="footer-right">
-                <button
+                <Button variant="ghost"
                     class="btn btn--primary"
                     onclick={handleNextOrCreate}
                     disabled={isNextDisabled}
@@ -354,7 +355,7 @@
                         {m.builder_next()}
                         <ChevronRight size={14} />
                     {/if}
-                </button>
+                </Button>
             </div>
         </div>
     </div>
@@ -365,8 +366,8 @@
     .overlay {
         position: fixed;
         inset: 0;
-        z-index: 1000;
-        background: rgba(0, 0, 0, 0.6);
+        z-index: var(--layer-debug);
+        background: color-mix(in srgb, var(--color-canvas) 60%, transparent);
         backdrop-filter: blur(4px);
         display: flex;
         align-items: center;
@@ -378,34 +379,34 @@
         position: relative;
         background: var(--color-bg);
         border: 1px solid var(--color-border);
-        border-radius: 12px;
+        border-radius: var(--radius-lg);
         width: 100%;
         max-width: 480px;
         max-height: 80vh;
         display: flex;
         flex-direction: column;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+        box-shadow: var(--shadow-elevation-1);
     }
 
     .modal-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 16px 20px;
+        padding: var(--space-4) var(--space-6);
         border-bottom: 1px solid var(--color-border);
         flex-shrink: 0;
-        gap: 10px;
+        gap: var(--space-2);
     }
 
     .modal-title-row {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-2);
         color: var(--color-foreground);
     }
 
     .modal-title {
-        font-size: 15px;
+        font-size: var(--font-size-page-title);
         font-weight: 700;
         color: var(--color-foreground);
     }
@@ -415,12 +416,12 @@
         border: none;
         color: var(--color-muted);
         cursor: pointer;
-        padding: 4px;
-        border-radius: 4px;
+        padding: var(--space-1);
+        border-radius: var(--radius-sm);
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: color 0.15s;
+        transition: color var(--duration-fast);
         flex-shrink: 0;
     }
     .close-btn:hover {
@@ -438,7 +439,7 @@
     .steps-list {
         display: flex;
         align-items: center;
-        padding: 14px 20px;
+        padding: var(--space-3) var(--space-6);
         border-bottom: 1px solid var(--color-border);
         flex-shrink: 0;
         gap: 0;
@@ -453,14 +454,14 @@
     .step-trigger {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         background: transparent;
         border: none;
         cursor: pointer;
-        padding: 2px;
-        border-radius: 4px;
+        padding: var(--space-0-5);
+        border-radius: var(--radius-sm);
         white-space: nowrap;
-        transition: opacity 0.15s;
+        transition: opacity var(--duration-fast);
     }
     .step-trigger:hover {
         opacity: 0.8;
@@ -469,17 +470,17 @@
     .step-indicator {
         width: 22px;
         height: 22px;
-        border-radius: 50%;
+        border-radius: var(--radius-full);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         flex-shrink: 0;
         border: 1.5px solid var(--color-border);
         color: var(--color-muted);
         background: var(--color-bg2);
-        transition: all 0.2s;
+        transition: all var(--duration-normal);
     }
 
     .step-trigger[data-current] .step-indicator {
@@ -495,9 +496,9 @@
     }
 
     .step-label {
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
-        transition: color 0.15s;
+        transition: color var(--duration-fast);
     }
 
     .step-trigger[data-current] .step-label {
@@ -513,7 +514,7 @@
         flex: 1;
         height: 1px;
         background: var(--color-border);
-        margin: 0 8px;
+        margin: 0 var(--space-2);
         min-width: 12px;
     }
 
@@ -525,10 +526,10 @@
     .step-content-area {
         flex: 1;
         overflow-y: auto;
-        padding: 20px;
+        padding: var(--space-6);
         min-height: 0;
         position: relative;
-        z-index: 1;
+        z-index: var(--layer-base);
     }
 
     .step-content-area > :global([data-state="closed"]) {
@@ -540,11 +541,11 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 12px 20px;
+        padding: var(--space-3) var(--space-6);
         border-top: 1px solid var(--color-border);
         flex-shrink: 0;
         position: relative;
-        z-index: 0;
+        z-index: var(--layer-base);
     }
 
     .footer-left,
@@ -557,7 +558,7 @@
     }
 
     .step-counter {
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         flex-shrink: 0;
     }
@@ -566,12 +567,12 @@
     .btn {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-1);
         font-family: inherit;
-        font-size: 12px;
+        font-size: var(--font-size-caption);
         font-weight: 600;
-        padding: 6px 14px;
-        border-radius: 6px;
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-md);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
         border: none;

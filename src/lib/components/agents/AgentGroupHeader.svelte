@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { ChevronDown, ChevronRight, Trash2 } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { ChevronDown, ChevronRight, Trash2 } from "lucide-svelte";
     import type { AgentGroup } from "$lib/state/features/agent-groups.svelte";
     import * as m from "$lib/paraglide/messages";
 
@@ -79,7 +80,7 @@
 <div
     class="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer select-none border-b border-border/50 transition-colors group/header {dragOver
         ? 'bg-accent/10 border-accent/30'
-        : 'hover:bg-white/3'}"
+        : 'hover:bg-[var(--color-text-primary)]/3'}"
     onclick={onToggle}
     ondragover={handleDragOver}
     ondragleave={handleDragLeave}
@@ -100,29 +101,29 @@
         <input
             bind:this={inputEl}
             bind:value={editName}
-            class="flex-1 text-[11px] font-semibold uppercase tracking-wider bg-transparent border-b border-accent/50 text-foreground outline-none px-0 py-0"
+            class="flex-1 text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider bg-transparent border-b border-accent/50 text-foreground outline-none px-0 py-0"
             onblur={commitEdit}
             onkeydown={handleKeydown}
         />
     {:else}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <span
-            class="flex-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground truncate"
+            class="flex-1 text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider text-muted-foreground truncate"
             ondblclick={(e) => { e.stopPropagation(); startEdit(); }}
         >
             {group.name}
         </span>
     {/if}
 
-    <span class="text-[9px] text-muted-strong tabular-nums shrink-0">
+    <span class="text-[length:var(--font-size-telemetry)] text-muted-strong tabular-nums shrink-0">
         {group.memberAgentIds.length}
     </span>
 
-    <button
+    <Button variant="ghost"
         class="opacity-0 group-hover/header:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0 p-0.5"
         onclick={handleDeleteClick}
         title={m.agentGroup_delete()}
     >
         <Trash2 size={11} />
-    </button>
+    </Button>
 </div>

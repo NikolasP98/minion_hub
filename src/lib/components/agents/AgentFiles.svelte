@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { sendRequest } from '$lib/services/gateway.svelte';
+  import { Button } from '$lib/components/ui';
+import { sendRequest } from '$lib/services/gateway.svelte';
   import { Carta, Markdown, MarkdownEditor } from 'carta-md';
   import * as m from '$lib/paraglide/messages';
   import 'carta-md/default.css';
@@ -234,7 +235,7 @@
   <!-- Header (only when a file is open) -->
   {#if selectedFile}
     <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border bg-bg2">
-      <button
+      <Button variant="ghost"
         class="text-muted hover:text-foreground transition-colors"
         onclick={backToList}
         aria-label={m.files_backToList()}
@@ -242,30 +243,30 @@
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
         </svg>
-      </button>
+      </Button>
       <span class="text-xs font-semibold text-foreground truncate">{selectedFileName}</span>
       <div class="ml-auto flex items-center gap-1">
         {#if editing}
-          <button
-            class="text-[11px] font-semibold px-2 py-1 rounded bg-accent text-white disabled:opacity-50"
+          <Button variant="ghost"
+            class="text-[length:var(--font-size-caption)] font-semibold px-2 py-1 rounded bg-accent text-[var(--color-text-primary)] disabled:opacity-50"
             onclick={saveFile}
             disabled={saving}
           >
             {saving ? m.files_saving() : m.common_save()}
-          </button>
-          <button
-            class="text-[11px] font-semibold px-2 py-1 rounded bg-bg1 text-muted hover:text-foreground border border-border"
+          </Button>
+          <Button variant="ghost"
+            class="text-[length:var(--font-size-caption)] font-semibold px-2 py-1 rounded bg-bg1 text-muted hover:text-foreground border border-border"
             onclick={cancelEdit}
           >
             {m.common_cancel()}
-          </button>
+          </Button>
         {:else}
-          <button
-            class="text-[11px] font-semibold px-2 py-1 rounded bg-bg1 text-muted hover:text-foreground border border-border"
+          <Button variant="ghost"
+            class="text-[length:var(--font-size-caption)] font-semibold px-2 py-1 rounded bg-bg1 text-muted hover:text-foreground border border-border"
             onclick={startEdit}
           >
             {m.common_edit()}
-          </button>
+          </Button>
         {/if}
       </div>
     </div>
@@ -303,7 +304,7 @@
       {#if treeRootNode.loading}
         <p class="text-muted text-xs text-center mt-8">{m.files_loading()}</p>
       {:else if error}
-        <p class="text-red-400 text-xs text-center mt-8">{error}</p>
+        <p class="text-[var(--color-danger-fg)] text-xs text-center mt-8">{error}</p>
       {:else if (treeRootNode.children?.length ?? 0) === 0}
         <p class="text-muted text-xs text-center mt-8">{m.files_noFiles()}</p>
       {:else}
@@ -323,17 +324,17 @@
                       {...api.getBranchControlProps(nodeProps)}
                     >
                       <!-- Chevron — programmatically rotated to work correctly at any nesting depth -->
-                      <button
+                      <Button variant="ghost"
                         class="shrink-0 text-muted hover:text-foreground transition-colors w-3 h-3 flex items-center justify-center"
                         tabindex="-1"
                         {...api.getBranchTriggerProps(nodeProps)}
                       >
-                        <svg class="w-3 h-3 transition-transform duration-150 {isExpanded ? 'rotate-90' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <svg class="w-3 h-3 transition-transform duration-[var(--duration-fast)] {isExpanded ? 'rotate-90' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M9 18l6-6-6-6" />
                         </svg>
-                      </button>
+                      </Button>
                       <!-- Folder icon -->
-                      <svg class="w-3 h-3 shrink-0 text-yellow-400/80" viewBox="0 0 24 24" fill="currentColor">
+                      <svg class="w-3 h-3 shrink-0 text-[var(--color-warning-fg)]" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
                       </svg>
                       <!-- Name (basename only) -->
@@ -350,7 +351,7 @@
                       {#if node.children && node.children.length > 0}
                         {@render renderNodes(node.children, indexPath, depth + 1)}
                       {:else if node.loaded && node.children?.length === 0}
-                        <div class="text-[11px] text-muted py-1" style:padding-left="{8 + (depth + 1) * 14}px">
+                        <div class="text-[length:var(--font-size-caption)] text-muted py-1" style:padding-left="{8 + (depth + 1) * 14}px">
                           {m.files_emptyDirectory()}
                         </div>
                       {/if}
@@ -372,13 +373,13 @@
                     <span class="text-xs text-foreground truncate flex-1" {...api.getItemTextProps(nodeProps)}>{node.name.split('/').pop()}</span>
                     <!-- Metadata or missing + Add button -->
                     {#if node.missing}
-                      <span class="text-[11px] text-muted shrink-0">{m.files_missing()}</span>
-                      <button
+                      <span class="text-[length:var(--font-size-caption)] text-muted shrink-0">{m.files_missing()}</span>
+                      <Button variant="ghost"
                         onclick={(e) => { e.stopPropagation(); addFile(node.id); }}
-                        class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-accent/20 text-accent hover:bg-accent hover:text-white transition-colors shrink-0"
-                      >{m.common_add()}</button>
+                        class="text-[length:var(--font-size-telemetry)] font-semibold px-1.5 py-0.5 rounded bg-accent/20 text-accent hover:bg-accent hover:text-[var(--color-text-primary)] transition-colors shrink-0"
+                      >{m.common_add()}</Button>
                     {:else}
-                      <span class="text-[11px] text-muted min-w-0 truncate ml-1">
+                      <span class="text-[length:var(--font-size-caption)] text-muted min-w-0 truncate ml-1">
                         {formatSize(node.size ?? 0)} &middot; {formatDate(node.updatedAtMs)}
                       </span>
                     {/if}
@@ -403,7 +404,7 @@
   /* ─── Dark theme for Carta ─────────────────────────────────────────── */
   .agent-files :global(.carta-theme__dark) {
     --border-color: var(--color-border);
-    --selection-color: rgba(139, 180, 240, 0.2);
+    --selection-color: color-mix(in srgb, var(--color-info-fg) 20%, transparent);
     --focus-outline: var(--color-accent);
     --hover-color: var(--color-bg2);
     --caret-color: var(--color-foreground);
@@ -421,16 +422,16 @@
   .agent-files :global(.carta-theme__dark .carta-toolbar) {
     border-bottom: 1px solid var(--color-border);
     background: var(--color-bg2);
-    padding: 0 8px;
+    padding: 0 var(--space-2);
   }
 
   .agent-files :global(.carta-theme__dark .carta-toolbar-left button) {
     color: var(--color-muted);
-    font-size: 11px;
+    font-size: var(--font-size-caption);
     font-weight: 600;
-    padding: 6px 8px 4px;
+    padding: var(--space-2) var(--space-2) var(--space-1);
     border-bottom: 2px solid transparent;
-    margin-right: 8px;
+    margin-right: var(--space-2);
   }
 
   .agent-files :global(.carta-theme__dark .carta-toolbar-left button.carta-active) {
@@ -470,8 +471,8 @@
   .agent-files :global(.carta-theme__dark .carta-renderer) {
     height: 100%;
     overflow-y: auto;
-    padding: 12px;
-    font-size: 13px;
+    padding: var(--space-3);
+    font-size: var(--font-size-body);
     line-height: 1.6;
   }
 
@@ -513,7 +514,7 @@
   .agent-files :global(.markdown-body),
   .markdown-view :global(.markdown-body) {
     color: var(--color-foreground);
-    font-size: 13px;
+    font-size: var(--font-size-body);
     line-height: 1.6;
   }
 
@@ -522,32 +523,32 @@
   .agent-files :global(.markdown-body h3),
   .agent-files :global(.markdown-body h4) {
     color: var(--color-foreground);
-    margin-top: 1.2em;
-    margin-bottom: 0.4em;
+    margin-top: var(--space-6);
+    margin-bottom: var(--space-2);
     font-weight: 600;
   }
 
-  .agent-files :global(.markdown-body h1) { font-size: 1.4em; }
-  .agent-files :global(.markdown-body h2) { font-size: 1.2em; }
-  .agent-files :global(.markdown-body h3) { font-size: 1.05em; }
+  .agent-files :global(.markdown-body h1) { font-size: var(--font-size-telemetry); }
+  .agent-files :global(.markdown-body h2) { font-size: var(--font-size-telemetry); }
+  .agent-files :global(.markdown-body h3) { font-size: var(--font-size-telemetry); }
 
   .agent-files :global(.markdown-body p) {
-    margin: 0.4em 0;
+    margin: var(--space-2) 0;
   }
 
   .agent-files :global(.markdown-body code) {
     background: var(--color-bg2);
-    padding: 2px 5px;
-    border-radius: 3px;
-    font-size: 0.9em;
+    padding: var(--space-0-5) var(--space-1);
+    border-radius: var(--radius-xs);
+    font-size: var(--font-size-telemetry);
   }
 
   .agent-files :global(.markdown-body pre) {
     background: var(--color-bg2);
-    padding: 10px 12px;
-    border-radius: 4px;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
     overflow-x: auto;
-    margin: 0.6em 0;
+    margin: var(--space-3) 0;
   }
 
   .agent-files :global(.markdown-body pre code) {
@@ -557,18 +558,18 @@
 
   .agent-files :global(.markdown-body ul),
   .agent-files :global(.markdown-body ol) {
-    padding-left: 1.5em;
-    margin: 0.4em 0;
+    padding-left: var(--space-6);
+    margin: var(--space-2) 0;
   }
 
   .agent-files :global(.markdown-body li) {
-    margin: 0.15em 0;
+    margin: var(--space-0-5) 0;
   }
 
   .agent-files :global(.markdown-body blockquote) {
     border-left: 3px solid var(--color-border);
-    padding-left: 10px;
-    margin: 0.6em 0;
+    padding-left: var(--space-2);
+    margin: var(--space-3) 0;
     color: var(--color-muted);
   }
 
@@ -579,19 +580,19 @@
   .agent-files :global(.markdown-body hr) {
     border: none;
     border-top: 1px solid var(--color-border);
-    margin: 1em 0;
+    margin: var(--space-4) 0;
   }
 
   .agent-files :global(.markdown-body table) {
     border-collapse: collapse;
     width: 100%;
-    margin: 0.6em 0;
+    margin: var(--space-3) 0;
   }
 
   .agent-files :global(.markdown-body th),
   .agent-files :global(.markdown-body td) {
     border: 1px solid var(--color-border);
-    padding: 4px 8px;
+    padding: var(--space-1) var(--space-2);
     text-align: left;
   }
 
@@ -603,7 +604,7 @@
   /* ─── Font for code ─────────────────────────────────────────────── */
   .agent-files :global(.carta-font-code) {
     font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-    font-size: 13px;
+    font-size: var(--font-size-body);
     line-height: 1.5;
   }
 

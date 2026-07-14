@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { XCircle, AlertTriangle, X } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
+import { XCircle, AlertTriangle, X } from 'lucide-svelte';
     import * as m from '$lib/paraglide/messages';
     import {
         skillEditorState, skillEditorDerived,
@@ -44,13 +45,13 @@
     <!-- HEADER -->
     <div class="panel-header">
         <span class="panel-title">{headerText}</span>
-        <button
+        <Button variant="ghost"
             class="close-btn"
             onclick={() => { skillEditorState.showValidation = false; skillEditorState.publishAnyway = false; }}
             aria-label={m.builder_closeValidation()}
         >
             <X size={14} />
-        </button>
+        </Button>
     </div>
 
     <!-- BODY -->
@@ -79,13 +80,13 @@
             <div class="chapter-group">
                 <div class="chapter-group-header">
                     <span class="chapter-group-name">{group.name}</span>
-                    <button
+                    <Button variant="ghost"
                         class="fix-btn"
                         onclick={() => {
                             const ch = skillEditorState.chapters.find(c => c.id === chapterId);
                             if (ch) openConditionOrChapter(ch);
                         }}
-                    >{m.builder_fix()} &#x2192;</button>
+                    >{m.builder_fix()} &#x2192;</Button>
                 </div>
                 {#each group.findings as finding (finding.message)}
                     <div class="validation-row {finding.level}">
@@ -105,9 +106,9 @@
     <div class="panel-footer">
         <span class="passing-count">{m.builder_chaptersPassing({ count: passingCount })}</span>
         {#if skillEditorState.publishAnyway}
-            <button class="publish-anyway-btn" onclick={() => { publishSkill(); }}>
+            <Button variant="ghost" class="publish-anyway-btn" onclick={() => { publishSkill(); }}>
                 {m.builder_publishAnyway()}
-            </button>
+            </Button>
         {/if}
     </div>
 </aside>
@@ -128,14 +129,14 @@
         align-items: center;
         justify-content: space-between;
         height: 2.75rem;
-        padding: 0 16px;
+        padding: 0 var(--space-4);
         background: var(--color-bg2);
         border-bottom: 1px solid var(--color-border);
         flex-shrink: 0;
     }
 
     .panel-title {
-        font-size: 0.875rem;
+        font-size: var(--font-size-body);
         font-weight: 600;
         color: var(--color-foreground);
     }
@@ -145,8 +146,8 @@
         border: none;
         color: var(--color-muted);
         cursor: pointer;
-        padding: 0.25rem;
-        border-radius: 0.25rem;
+        padding: var(--space-1);
+        border-radius: var(--radius-sm);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -160,11 +161,11 @@
     .panel-body {
         flex: 1;
         overflow-y: auto;
-        padding: 8px 16px;
+        padding: var(--space-2) var(--space-4);
     }
 
     .chapter-group {
-        margin-top: 8px;
+        margin-top: var(--space-2);
     }
 
     .chapter-group:first-child {
@@ -175,17 +176,17 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 8px 0 4px 0;
+        padding: var(--space-2) 0 var(--space-1) 0;
         border-top: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
     }
 
     .chapter-group:first-child .chapter-group-header {
         border-top: none;
-        padding-top: 4px;
+        padding-top: var(--space-1);
     }
 
     .chapter-group-name {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.04em;
@@ -193,13 +194,13 @@
     }
 
     .fix-btn {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
-        padding: 4px 8px;
+        padding: var(--space-1) var(--space-2);
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 10%, transparent);
         border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
-        border-radius: var(--radius-sm, 4px);
+        border-radius: var(--radius-sm, var(--radius-sm);
         cursor: pointer;
         font-family: inherit;
         transition: background var(--duration-fast) var(--ease-standard);
@@ -212,59 +213,59 @@
     .validation-row {
         display: flex;
         align-items: flex-start;
-        gap: 4px;
-        padding: 4px 8px;
-        border-radius: var(--radius-sm, 4px);
-        font-size: 0.75rem;
+        gap: var(--space-1);
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-sm, var(--radius-sm);
+        font-size: var(--font-size-caption);
         line-height: 1.4;
         color: var(--color-foreground);
-        margin-bottom: 2px;
+        margin-bottom: var(--space-0-5);
     }
 
     .validation-row.error {
-        background: color-mix(in srgb, var(--color-destructive, #ef4444) 8%, transparent);
+        background: color-mix(in srgb, var(--color-destructive, var(--color-danger-fg)) 8%, transparent);
     }
 
     .validation-row.warning {
-        background: color-mix(in srgb, var(--color-warning, #f59e0b) 8%, transparent);
+        background: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 8%, transparent);
     }
 
     :global(.finding-icon.error) {
-        color: var(--color-destructive, #ef4444);
+        color: var(--color-destructive, var(--color-danger-fg));
         flex-shrink: 0;
-        margin-top: 2px;
+        margin-top: var(--space-0-5);
     }
 
     :global(.finding-icon.warning) {
-        color: var(--color-warning, #f59e0b);
+        color: var(--color-warning, var(--color-warning-fg));
         flex-shrink: 0;
-        margin-top: 2px;
+        margin-top: var(--space-0-5);
     }
 
     .panel-footer {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 8px 16px;
+        padding: var(--space-2) var(--space-4);
         background: var(--color-bg2);
         border-top: 1px solid var(--color-border);
         flex-shrink: 0;
     }
 
     .passing-count {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         font-weight: 400;
         color: var(--color-muted);
     }
 
     .publish-anyway-btn {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
-        padding: 6px 12px;
+        padding: var(--space-2) var(--space-3);
         color: white;
         background: var(--color-accent);
         border: none;
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         cursor: pointer;
         font-family: inherit;
         transition: filter var(--duration-fast) var(--ease-standard);

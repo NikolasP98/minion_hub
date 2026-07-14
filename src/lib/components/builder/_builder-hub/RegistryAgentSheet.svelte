@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { goto } from "$app/navigation";
+  import { Button } from '$lib/components/ui';
+import { goto } from "$app/navigation";
     import posthog from "posthog-js";
     import * as m from '$lib/paraglide/messages';
     import { categoryIcon, agentIcon, type RegistryAgent } from "$lib/state/builder";
@@ -46,9 +47,9 @@
                     {/if}
                 </div>
             </div>
-            <button type="button" class="detail-close" onclick={onClose}>
+            <Button variant="ghost" type="button" class="detail-close" onclick={onClose}>
                 &times;
-            </button>
+            </Button>
         </div>
         <div class="detail-body">
             <p class="detail-desc">{agent.description}</p>
@@ -70,12 +71,12 @@
             </div>
         </div>
         <div class="detail-actions">
-            <button type="button" class="detail-btn primary" onclick={useAsTemplate}>
+            <Button variant="ghost" type="button" class="detail-btn primary" onclick={useAsTemplate}>
                 {m.builder_useAsTemplate()}
-            </button>
-            <button type="button" class="detail-btn secondary" onclick={onClose}>
+            </Button>
+            <Button variant="ghost" type="button" class="detail-btn secondary" onclick={onClose}>
                 {m.common_close()}
-            </button>
+            </Button>
         </div>
     </div>
 </div>
@@ -84,8 +85,8 @@
     .confirm-overlay {
         position: fixed;
         inset: 0;
-        z-index: 1100;
-        background: rgba(0, 0, 0, 0.5);
+        z-index: var(--layer-debug);
+        background: color-mix(in srgb, var(--color-canvas) 50%, transparent);
         backdrop-filter: blur(2px);
         display: flex;
         align-items: center;
@@ -99,10 +100,10 @@
     .detail-sheet {
         background: var(--color-bg);
         border: 1px solid var(--color-border);
-        border-radius: 0.75rem;
+        border-radius: var(--radius-lg);
         max-width: 480px;
         width: 100%;
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+        box-shadow: var(--shadow-overlay);
         display: flex;
         flex-direction: column;
         max-height: 80vh;
@@ -112,13 +113,13 @@
     .detail-header {
         display: flex;
         align-items: flex-start;
-        gap: 0.75rem;
-        padding: 1.25rem 1.5rem;
+        gap: var(--space-3);
+        padding: var(--space-6) var(--space-6);
         border-bottom: 1px solid var(--color-border);
     }
 
     .detail-emoji {
-        font-size: 1.75rem;
+        font-size: var(--font-size-display);
         line-height: 1;
         flex-shrink: 0;
     }
@@ -129,38 +130,38 @@
     }
 
     .detail-name {
-        font-size: 0.9375rem;
+        font-size: var(--font-size-page-title);
         font-weight: 700;
         color: var(--color-foreground);
-        margin: 0 0 0.25rem;
+        margin: 0 0 var(--space-1);
     }
 
     .detail-meta {
         display: flex;
         align-items: center;
-        gap: 0.25rem;
+        gap: var(--space-1);
         flex-wrap: wrap;
     }
 
     .detail-category {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
         font-family: var(--font-mono, monospace);
     }
 
     .detail-model {
-        font-size: 0.5625rem;
+        font-size: var(--font-size-telemetry);
         font-family: var(--font-mono, monospace);
         color: var(--color-muted);
         background: var(--color-bg3);
-        padding: 0.0625rem 0.375rem;
-        border-radius: 0.25rem;
-        margin-left: 0.25rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-sm);
+        margin-left: var(--space-1);
     }
 
     .detail-close {
         font-family: inherit;
-        font-size: 1.25rem;
+        font-size: var(--font-size-page-title);
         line-height: 1;
         color: var(--color-muted);
         background: none;
@@ -175,30 +176,30 @@
     }
 
     .detail-body {
-        padding: 1.25rem 1.5rem;
+        padding: var(--space-6) var(--space-6);
     }
 
     .detail-desc {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         color: var(--color-foreground);
         line-height: 1.6;
-        margin: 0 0 1rem;
+        margin: 0 0 var(--space-4);
     }
 
     .detail-info-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 0.75rem;
+        gap: var(--space-3);
     }
 
     .detail-info {
         display: flex;
         flex-direction: column;
-        gap: 0.125rem;
+        gap: var(--space-0-5);
     }
 
     .detail-label {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -206,24 +207,24 @@
     }
 
     .detail-value {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         color: var(--color-foreground);
     }
 
     .detail-actions {
         display: flex;
-        gap: 0.5rem;
+        gap: var(--space-2);
         justify-content: flex-end;
-        padding: 1rem 1.5rem;
+        padding: var(--space-4) var(--space-6);
         border-top: 1px solid var(--color-border);
     }
 
     .detail-btn {
         font-family: inherit;
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
-        padding: 0.4375rem 1rem;
-        border-radius: 0.4375rem;
+        padding: var(--space-2) var(--space-4);
+        border-radius: var(--radius-md);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
         border: none;

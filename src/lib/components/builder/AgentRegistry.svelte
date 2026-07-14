@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
+import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
     import {
         registryState, loadRegistry, registryDerived,
         categoryIcon, agentIcon,
@@ -63,7 +64,7 @@
                     getScrollElement: () => scrollContainer ?? null,
                     getItemKey: (i) => rows[i]?.[0]?.id ?? i,
                     estimateSize: () => 170,
-                    gap: 12,
+                    ['gap']: 12,
                     overscan: 4,
                 })
             : null,
@@ -112,13 +113,13 @@
             <div class="filter-bar">
                 <!-- Category pills -->
                 <div class="cat-pills">
-                    <button
+                    <Button variant="ghost"
                         type="button"
                         class="cat-pill {registryState.categoryFilter === null ? 'active' : ''}"
                         onclick={() => setCategory(null)}
-                    >{m.marketplace_agentsListCategoryAll()}</button>
+                    >{m.marketplace_agentsListCategoryAll()}</Button>
                     {#each topCategories as { category, count } (category)}
-                        <button
+                        <Button variant="ghost"
                             type="button"
                             class="cat-pill {registryState.categoryFilter === category ? 'active' : ''}"
                             onclick={() => setCategory(category)}
@@ -126,31 +127,31 @@
                             <span class="cat-pill-icon">{categoryIcon(category)}</span>
                             {category}
                             <span class="pill-count">{count}</span>
-                        </button>
+                        </Button>
                     {/each}
 
                     <!-- Overflow dropdown -->
                     {#if overflowCategories.length > 0}
                         <div class="more-dropdown">
-                            <button
+                            <Button variant="ghost"
                                 type="button"
                                 class="cat-pill more-pill"
                                 onclick={() => { showMoreCategories = !showMoreCategories; }}
                             >
                                 <ChevronDown size={12} />
                                 +{overflowCategories.length} {m.builder_registryMore()}
-                            </button>
+                            </Button>
                             {#if showMoreCategories}
                                 <div class="more-menu" role="presentation" onmousedown={(e) => e.stopPropagation()}>
                                     {#each overflowCategories as { category, count } (category)}
-                                        <button
+                                        <Button variant="ghost"
                                             type="button"
                                             class="more-item {registryState.categoryFilter === category ? 'selected' : ''}"
                                             onclick={() => setCategory(category)}
                                         >
                                             <span>{categoryIcon(category)} {category}</span>
                                             <span class="cat-count">{count}</span>
-                                        </button>
+                                        </Button>
                                     {/each}
                                 </div>
                             {/if}
@@ -169,9 +170,9 @@
                         class="search-input"
                     />
                     {#if searchInput}
-                        <button type="button" class="search-clear" onclick={clearSearch} aria-label={m.builder_clear()}>
+                        <Button variant="ghost" type="button" class="search-clear" onclick={clearSearch} aria-label={m.builder_clear()}>
                             <X size={11} />
-                        </button>
+                        </Button>
                     {/if}
                 </div>
             </div>
@@ -202,7 +203,7 @@
                     style="transform: translateY({item.start}px); grid-template-columns: repeat({columns}, minmax(0, 1fr));"
                 >
                     {#each rowAgents as agent (agent.id)}
-                        <button
+                        <Button variant="ghost"
                             type="button"
                             class="reg-card"
                             onclick={() => onSelectAgent(agent)}
@@ -224,7 +225,7 @@
                                     {/if}
                                 </div>
                             </div>
-                        </button>
+                        </Button>
                     {/each}
                 </div>
             {/each}
@@ -234,30 +235,30 @@
 
 <style>
     .registry-section {
-        margin-top: 2rem;
-        padding-top: 1.5rem;
+        margin-top: var(--space-8);
+        padding-top: var(--space-6);
         border-top: 1px solid var(--color-border);
     }
 
     .registry-header {
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-4);
     }
 
     .registry-title-row {
         display: flex;
         align-items: baseline;
-        gap: 0.5rem;
-        margin-bottom: 0.75rem;
+        gap: var(--space-2);
+        margin-bottom: var(--space-3);
     }
 
     .registry-title {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-body);
         font-weight: 600;
         color: var(--color-foreground);
     }
 
     .registry-count {
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
     }
 
@@ -265,22 +266,22 @@
     .filter-bar {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
 
     .cat-pills {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.25rem;
+        gap: var(--space-1);
         align-items: center;
     }
 
     .cat-pill {
         font-family: inherit;
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         font-weight: 500;
-        padding: 0.25rem 0.5rem;
-        border-radius: 0.375rem;
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-md);
         border: 1px solid var(--color-border);
         background: transparent;
         color: var(--color-muted);
@@ -288,7 +289,7 @@
         transition: all var(--duration-fast) var(--ease-standard);
         display: flex;
         align-items: center;
-        gap: 0.25rem;
+        gap: var(--space-1);
     }
 
     .cat-pill:hover {
@@ -303,12 +304,12 @@
     }
 
     .cat-pill-icon {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         line-height: 1;
     }
 
     .pill-count {
-        font-size: 0.5625rem;
+        font-size: var(--font-size-telemetry);
         opacity: 0.7;
     }
 
@@ -325,25 +326,25 @@
         position: absolute;
         top: 100%;
         left: 0;
-        margin-top: 0.25rem;
+        margin-top: var(--space-1);
         min-width: 14rem;
         max-height: 20rem;
         overflow-y: auto;
         background: var(--color-bg);
         border: 1px solid var(--color-border);
-        border-radius: 0.5rem;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-        z-index: 50;
-        padding: 0.25rem;
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-overlay);
+        z-index: var(--layer-modal);
+        padding: var(--space-1);
     }
 
     .more-item {
         font-family: inherit;
-        font-size: 0.6875rem;
+        font-size: var(--font-size-caption);
         width: 100%;
         text-align: left;
-        padding: 0.375rem 0.5rem;
-        border-radius: 0.25rem;
+        padding: var(--space-2) var(--space-2);
+        border-radius: var(--radius-sm);
         border: none;
         background: none;
         color: var(--color-foreground);
@@ -362,7 +363,7 @@
     }
 
     .cat-count {
-        font-size: 0.5625rem;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
     }
 
@@ -382,12 +383,12 @@
 
     .search-input {
         font-family: inherit;
-        font-size: 0.6875rem;
-        padding: 0.25rem 1.5rem 0.25rem 1.5rem;
+        font-size: var(--font-size-caption);
+        padding: var(--space-1) var(--space-6) var(--space-1) var(--space-6);
         height: 1.625rem;
         width: 100%;
         max-width: 16rem;
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         border: 1px solid var(--color-border);
         background: var(--color-bg3);
         color: var(--color-foreground);
@@ -424,8 +425,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.5rem;
-        padding: 2rem 0;
+        gap: var(--space-2);
+        padding: var(--space-8) 0;
     }
 
     :global(.loading-spinner) {
@@ -434,7 +435,7 @@
     }
 
     .loading-text {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
     }
 
@@ -444,9 +445,9 @@
     }
 
     .error-banner {
-        padding: 0.75rem 1rem;
-        border-radius: 0.5rem;
-        font-size: 0.75rem;
+        padding: var(--space-3) var(--space-4);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-caption);
         color: var(--color-danger-fg);
         background: var(--color-danger-surface);
         border: 1px solid var(--color-danger-border);
@@ -456,8 +457,8 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 0.5rem;
-        padding: 2rem 0;
+        gap: var(--space-2);
+        padding: var(--space-8) 0;
     }
 
     :global(.empty-icon) {
@@ -466,7 +467,7 @@
     }
 
     .empty-text {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
         margin: 0;
     }
@@ -477,7 +478,7 @@
         align-items: stretch;
         min-height: 6rem;
         border: 1px solid var(--color-border);
-        border-radius: 0.625rem;
+        border-radius: var(--radius-lg);
         background: var(--color-bg2);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
@@ -497,24 +498,24 @@
         display: flex;
         flex-direction: column;
         width: 100%;
-        padding: 0.75rem 1rem;
-        gap: 0.375rem;
+        padding: var(--space-3) var(--space-4);
+        gap: var(--space-2);
     }
 
     .reg-card-header {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
+        gap: var(--space-2);
     }
 
     .reg-cat-icon {
-        font-size: 1rem;
+        font-size: var(--font-size-page-title);
         line-height: 1;
         flex-shrink: 0;
     }
 
     .reg-name {
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-foreground);
         overflow: hidden;
@@ -523,7 +524,7 @@
     }
 
     .reg-desc {
-        font-size: 0.625rem;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
         line-height: 1.4;
         overflow: hidden;
@@ -536,26 +537,26 @@
     .reg-footer {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
+        gap: var(--space-2);
         margin-top: auto;
     }
 
     .reg-category {
-        font-size: 0.5625rem;
+        font-size: var(--font-size-telemetry);
         color: var(--color-muted);
         font-family: var(--font-mono, monospace);
         background: var(--color-bg3);
-        padding: 0.0625rem 0.375rem;
-        border-radius: 0.25rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-sm);
     }
 
     .reg-model {
-        font-size: 0.5625rem;
+        font-size: var(--font-size-telemetry);
         font-family: var(--font-mono, monospace);
         color: var(--color-muted);
         background: var(--color-bg3);
-        padding: 0.0625rem 0.375rem;
-        border-radius: 0.25rem;
+        padding: var(--space-0-5) var(--space-2);
+        border-radius: var(--radius-sm);
         border: 1px solid var(--color-border);
     }
 

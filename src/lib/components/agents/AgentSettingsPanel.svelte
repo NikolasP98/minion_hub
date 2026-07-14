@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { ui } from "$lib/state/ui/ui.svelte";
+  import { Button } from '$lib/components/ui';
+import { ui } from "$lib/state/ui/ui.svelte";
     import {
         configState,
         loadConfig,
@@ -235,7 +236,7 @@
 
 <!-- Backdrop -->
 <div
-    class="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] cursor-pointer"
+    class="fixed inset-0 z-[var(--layer-modal)] bg-[color-mix(in_srgb,var(--color-canvas)_40%,transparent)] backdrop-blur-[2px] cursor-pointer"
     role="button"
     tabindex="-1"
     aria-label={m.common_close()}
@@ -263,14 +264,14 @@
                     {m.settings_configureAgent({ name: displayName })}
                 </span>
             </div>
-            <button
+            <Button variant="ghost"
                 type="button"
                 class="bg-transparent border-none text-muted-foreground cursor-pointer text-lg leading-none p-1 transition-colors hover:text-foreground"
                 onclick={close}
                 aria-label={m.common_close()}
             >
                 &times;
-            </button>
+            </Button>
         </div>
 
         <!-- Body -->
@@ -291,16 +292,16 @@
                     <p class="text-destructive text-xs mb-2">
                         {m.config_error()}
                     </p>
-                    <p class="text-muted-foreground text-[11px] mb-3">
+                    <p class="text-muted-foreground text-[length:var(--font-size-caption)] mb-3">
                         {configState.loadError}
                     </p>
-                    <button
+                    <Button variant="ghost"
                         type="button"
-                        class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-1.25 px-3"
+                        class="bg-accent border-none rounded-[var(--radius-sm)] text-[var(--color-text-primary)] cursor-pointer font-[inherit] text-xs font-semibold py-1.25 px-3"
                         onclick={() => loadConfig()}
                     >
                         {m.common_retry()}
-                    </button>
+                    </Button>
                 </div>
             </div>
         {:else if !hasContent}
@@ -314,14 +315,14 @@
             {#if archetypePath}
                 <div class="shrink-0 px-4 py-3 border-b border-border">
                     <div class="flex items-baseline justify-between mb-2">
-                        <span class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{m.settings_archetype()}</span>
-                        <span class="text-[10px] text-muted-foreground/70">{m.settings_archetypeHint()}</span>
+                        <span class="text-[length:var(--font-size-telemetry)] font-semibold text-muted-foreground uppercase tracking-wider">{m.settings_archetype()}</span>
+                        <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground/70">{m.settings_archetypeHint()}</span>
                     </div>
                     <div class="grid grid-cols-3 gap-2">
                         {#each ARCHETYPES as a (a.id)}
                             {@const active = currentArchetype === a.id}
                             {@const Icon = a.icon}
-                            <button
+                            <Button variant="ghost"
                                 type="button"
                                 onclick={() => pickArchetype(a.id)}
                                 aria-pressed={active}
@@ -333,8 +334,8 @@
                                     <Icon size={14} class={active ? 'text-accent' : 'text-muted-foreground'} />
                                     <span class="text-xs font-semibold {active ? 'text-accent' : 'text-foreground'}">{a.label()}</span>
                                 </span>
-                                <span class="text-[10px] text-muted-foreground leading-tight">{a.desc()}</span>
-                            </button>
+                                <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground leading-tight">{a.desc()}</span>
+                            </Button>
                         {/each}
                     </div>
                 </div>
@@ -363,10 +364,10 @@
                     {:else if activeSection === 'bindings'}
                         <!-- Bindings section -->
                         <div class="p-4 space-y-3">
-                            <h3 class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider m-0">
+                            <h3 class="text-[length:var(--font-size-caption)] font-semibold text-muted-foreground uppercase tracking-wider m-0">
                                 {m.config_bindingsSection()}
                             </h3>
-                            <p class="text-[10px] text-muted-foreground -mt-1">
+                            <p class="text-[length:var(--font-size-telemetry)] text-muted-foreground -mt-1">
                                 {m.settings_bindingsDesc()}
                             </p>
                             {#each bindingEntries as [bindKey, bindVal] (bindKey)}
@@ -396,7 +397,7 @@
                                 <div
                                     class="mb-4 px-3 py-2 bg-accent/8 border border-accent/20 rounded-lg"
                                 >
-                                    <p class="text-[11px] text-muted-foreground leading-relaxed m-0">
+                                    <p class="text-[length:var(--font-size-caption)] text-muted-foreground leading-relaxed m-0">
                                         {m.config_inheritsDefaults()}
                                     </p>
                                 </div>
@@ -408,19 +409,19 @@
                                     <h3 class="text-sm font-semibold text-foreground m-0">
                                         {activeGroup.group.label}
                                     </h3>
-                                    <span class="text-[10px] text-muted-foreground">
+                                    <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground">
                                         {activeGroup.fields.length === 1
                                             ? m.config_fieldCount({ count: activeGroup.fields.length })
                                             : m.config_fieldCountPlural({ count: activeGroup.fields.length })}
                                     </span>
                                     {#if countOverrides(activeGroup.fields) > 0}
-                                        <span class="text-[10px] text-accent">
+                                        <span class="text-[length:var(--font-size-telemetry)] text-accent">
                                             {m.config_overridesSet({ count: countOverrides(activeGroup.fields) })}
                                         </span>
                                     {/if}
                                 </div>
                                 {#if activeGroup.group.description}
-                                    <p class="text-[10px] text-muted-foreground m-0">
+                                    <p class="text-[length:var(--font-size-telemetry)] text-muted-foreground m-0">
                                         {activeGroup.group.description}
                                     </p>
                                 {/if}
@@ -429,16 +430,16 @@
                             <!-- Agent ID chip (inside identity section) -->
                             {#if activeSection === 'identity'}
                                 <div class="mb-4 flex items-center gap-2">
-                                    <span class="text-[10px] text-muted-foreground">{m.settings_agentId()}</span>
-                                    <button
+                                    <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground">{m.settings_agentId()}</span>
+                                    <Button variant="ghost"
                                         type="button"
-                                        class="font-mono text-[10px] text-muted-foreground bg-bg3 border border-border rounded px-2 py-0.5
+                                        class="font-mono text-[length:var(--font-size-telemetry)] text-muted-foreground bg-bg3 border border-border rounded px-2 py-0.5
                                             hover:border-accent/40 hover:text-foreground cursor-pointer transition-colors truncate max-w-[300px]"
                                         onclick={copyAgentId}
                                         title={m.settings_clickToCopy()}
                                     >
                                         {idCopied ? m.settings_copied() : agentId}
-                                    </button>
+                                    </Button>
                                 </div>
                             {/if}
 
@@ -458,9 +459,9 @@
                                         />
                                         <!-- Reset button for overridden fields -->
                                         {#if field.isOverridden && field.defaultValue !== undefined}
-                                            <button
+                                            <Button variant="ghost"
                                                 type="button"
-                                                class="absolute top-1 right-0 opacity-0 group-hover/field:opacity-100 bg-transparent border border-border rounded text-[10px] text-muted-foreground py-0.5 px-1.5 cursor-pointer transition-all hover:text-foreground hover:border-muted"
+                                                class="absolute top-1 right-0 opacity-0 group-hover/field:opacity-100 bg-transparent border border-border rounded text-[length:var(--font-size-telemetry)] text-muted-foreground py-0.5 px-1.5 cursor-pointer transition-all hover:text-foreground hover:border-muted"
                                                 onclick={() =>
                                                     resetField(field)}
                                                 title="Reset to default: {JSON.stringify(
@@ -468,13 +469,13 @@
                                                 )}"
                                             >
                                                 {m.common_reset()}
-                                            </button>
+                                            </Button>
                                         {/if}
                                     </div>
                                 {/each}
 
                                 {#if searchFilteredFields.length === 0 && searchQuery.trim()}
-                                    <p class="text-[11px] text-muted-strong text-center py-6">
+                                    <p class="text-[length:var(--font-size-caption)] text-muted-strong text-center py-6">
                                         {m.settings_noFieldsMatching({ query: searchQuery })}
                                     </p>
                                 {/if}
@@ -491,40 +492,40 @@
                 >
                     {#if configState.saveError}
                         <span
-                            class="text-destructive text-[11px] flex-1 truncate"
+                            class="text-destructive text-[length:var(--font-size-caption)] flex-1 truncate"
                         >
                             {configState.saveError}
                         </span>
                     {:else if configState.lastSavedAt && !isDirty.value}
-                        <span class="text-success text-[11px] flex-1"
+                        <span class="text-success text-[length:var(--font-size-caption)] flex-1"
                             >{m.config_saved()}</span
                         >
                     {:else}
                         <span class="flex-1"></span>
                     {/if}
 
-                    <button
+                    <Button variant="ghost"
                         type="button"
-                        class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer font-[inherit] text-xs py-1.25 px-3 transition-colors hover:text-foreground disabled:opacity-40 disabled:cursor-default"
+                        class="bg-transparent border border-border rounded-[var(--radius-sm)] text-muted-foreground cursor-pointer font-[inherit] text-xs py-1.25 px-3 transition-colors hover:text-foreground disabled:opacity-40 disabled:cursor-default"
                         disabled={!isDirty.value || configState.saving}
                         onclick={() => discard()}
                     >
                         {m.saveBar_discard()}
-                    </button>
+                    </Button>
 
-                    <button
+                    <Button variant="ghost"
                         type="button"
-                        class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-1.25 px-3 transition-[filter] hover:brightness-115 disabled:opacity-40 disabled:cursor-default flex items-center gap-2"
+                        class="bg-accent border-none rounded-[var(--radius-sm)] text-[var(--color-text-primary)] cursor-pointer font-[inherit] text-xs font-semibold py-1.25 px-3 transition-[filter] hover:brightness-115 disabled:opacity-40 disabled:cursor-default flex items-center gap-2"
                         disabled={!isDirty.value || configState.saving}
                         onclick={() => save()}
                     >
                         {#if configState.saving}
                             <span
-                                class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"
+                                class="w-3 h-3 border-2 border-[var(--color-border-strong)] border-t-transparent rounded-full animate-spin"
                             ></span>
                         {/if}
                         {m.common_save()}
-                    </button>
+                    </Button>
                 </div>
             {/if}
         {/if}

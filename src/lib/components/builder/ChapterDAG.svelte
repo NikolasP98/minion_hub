@@ -1,5 +1,6 @@
 <script lang="ts">
-    import {
+  import { Button } from '$lib/components/ui';
+import {
         SvelteFlow,
         Background,
         Controls,
@@ -130,7 +131,7 @@
             label: e.label ?? undefined,
             animated: true,
             style: e.label === 'Yes'
-                ? 'stroke: var(--color-success, #22c55e); stroke-width: 2;'
+                ? 'stroke: var(--color-success, var(--color-success-fg)); stroke-width: 2;'
                 : e.label === 'No'
                 ? 'stroke: var(--color-danger-fg); stroke-width: 2;'
                 : 'stroke: var(--color-accent); stroke-width: 2;',
@@ -261,34 +262,34 @@
             <BookOpen size={28} strokeWidth={1.5} />
             <p>{m.builder_dagEmptyHint()}</p>
             <div class="empty-actions">
-                <button type="button" class="add-chapter-btn" onclick={onAddChapter}>
+                <Button variant="ghost" type="button" class="add-chapter-btn" onclick={onAddChapter}>
                     <Plus size={14} />
                     <span>{m.builder_addChapter()}</span>
-                </button>
-                <button type="button" class="add-condition-btn" onclick={onAddCondition}>
+                </Button>
+                <Button variant="ghost" type="button" class="add-condition-btn" onclick={onAddCondition}>
                     <GitBranch size={14} />
                     <span>{m.builder_addCondition()}</span>
-                </button>
+                </Button>
             </div>
         </div>
     {:else}
         <div class="floating-btns">
-            <button
+            <Button variant="ghost"
                 type="button"
                 class="add-chapter-btn"
                 onclick={onAddChapter}
             >
                 <Plus size={12} />
                 <span>{m.builder_chapter()}</span>
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost"
                 type="button"
                 class="add-condition-btn"
                 onclick={onAddCondition}
             >
                 <GitBranch size={12} />
                 <span>{m.builder_condition()}</span>
-            </button>
+            </Button>
         </div>
 
         <SvelteFlow
@@ -310,7 +311,7 @@
                 variant={BackgroundVariant.Dots}
                 gap={16}
                 size={1}
-                patternColor="var(--color-muted, #666)"
+                patternColor="var(--color-muted, var(--color-text-disabled))"
             />
             <Controls position="bottom-right" />
         </SvelteFlow>
@@ -327,12 +328,12 @@
                     <div class="staged-item">
                         <span class="staged-item-name">{ch.name}</span>
                         <div class="staged-item-actions">
-                            <button class="staged-accept" onclick={() => onAcceptProposed?.(ch.tempId)} title={m.builder_accept()}>
+                            <Button variant="ghost" class="staged-accept" onclick={() => onAcceptProposed?.(ch.tempId)} title={m.builder_accept()}>
                                 <Check size={12} />
-                            </button>
-                            <button class="staged-reject" onclick={() => onRejectProposed?.(ch.tempId)} title={m.builder_reject()}>
+                            </Button>
+                            <Button variant="ghost" class="staged-reject" onclick={() => onRejectProposed?.(ch.tempId)} title={m.builder_reject()}>
                                 <X size={12} />
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 {/each}
@@ -348,10 +349,10 @@
             style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
             role="menu"
         >
-            <button type="button" class="ctx-item danger" onclick={handleCtxDelete} role="menuitem">
+            <Button variant="ghost" type="button" class="ctx-item danger" onclick={handleCtxDelete} role="menuitem">
                 <Trash2 size={13} />
                 <span>{contextMenu.type === 'node' ? m.builder_deleteChapter() : m.builder_deleteConnection()}</span>
-            </button>
+            </Button>
         </div>
     {/if}
 </div>
@@ -371,33 +372,33 @@
         align-items: center;
         justify-content: center;
         height: 100%;
-        gap: 0.5rem;
-        color: var(--color-muted, #999);
+        gap: var(--space-2);
+        color: var(--color-muted, var(--color-text-tertiary));
     }
 
     .chapters-empty-state p {
-        font-size: 0.75rem;
-        margin: 0.25rem 0 0.75rem;
+        font-size: var(--font-size-caption);
+        margin: var(--space-1) 0 var(--space-3);
         opacity: 0.7;
     }
 
     .empty-actions {
         display: flex;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
 
     /* ── Add chapter button ───────────────────────────────────────────── */
     .add-chapter-btn {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.375rem 0.75rem;
-        font-size: 0.7rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-caption);
         font-weight: 600;
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 10%, transparent);
         border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
@@ -412,22 +413,22 @@
     .add-condition-btn {
         display: flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.375rem 0.75rem;
-        font-size: 0.7rem;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-caption);
         font-weight: 600;
-        color: var(--color-warning, #f59e0b);
-        background: color-mix(in srgb, var(--color-warning, #f59e0b) 10%, transparent);
-        border: 1px solid color-mix(in srgb, var(--color-warning, #f59e0b) 25%, transparent);
-        border-radius: 0.375rem;
+        color: var(--color-warning, var(--color-warning-fg));
+        background: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 10%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 25%, transparent);
+        border-radius: var(--radius-md);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
 
     .add-condition-btn:hover {
-        background: color-mix(in srgb, var(--color-warning, #f59e0b) 18%, transparent);
-        border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 40%, transparent);
+        background: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 18%, transparent);
+        border-color: color-mix(in srgb, var(--color-warning, var(--color-warning-fg)) 40%, transparent);
     }
 
     /* ── Floating buttons over canvas ─────────────────────────────────── */
@@ -435,26 +436,26 @@
         position: absolute;
         top: 0.5rem;
         right: 0.5rem;
-        z-index: 5;
+        z-index: var(--layer-sticky);
         display: flex;
-        gap: 0.375rem;
+        gap: var(--space-2);
     }
 
     /* ── xyflow theme overrides ───────────────────────────────────────── */
     .chapter-dag-container :global(.svelte-flow) {
         --xy-background-color: var(--color-dag-bg, var(--color-bg));
-        --xy-node-background-color: var(--color-bg2, #1a1a2e);
-        --xy-node-border-color: var(--color-border, #333);
-        --xy-node-color: var(--color-foreground, #e0e0e0);
-        --xy-edge-stroke: var(--color-accent, #6366f1);
-        --xy-handle-background-color: var(--color-accent, #6366f1);
-        --xy-handle-border-color: var(--color-bg, #0f0f1a);
+        --xy-node-background-color: var(--color-bg2, var(--color-surface-2));
+        --xy-node-border-color: var(--color-border, var(--color-surface-3));
+        --xy-node-color: var(--color-foreground, var(--color-text-secondary));
+        --xy-edge-stroke: var(--color-accent, var(--color-purple));
+        --xy-handle-background-color: var(--color-accent, var(--color-purple));
+        --xy-handle-border-color: var(--color-bg, var(--color-surface-1));
     }
 
     /* Accent left border on chapter nodes */
     .chapter-dag-container :global(.svelte-flow__node-default) {
-        border-left: 3px solid var(--color-accent, #6366f1);
-        font-size: 0.75rem;
+        border-left: 3px solid var(--color-accent, var(--color-purple));
+        font-size: var(--font-size-caption);
         font-family: inherit;
     }
 
@@ -467,8 +468,8 @@
     }
 
     @keyframes staged-pulse {
-        0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 20%, transparent); }
-        50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 10%, transparent); }
+        0%, 100% { box-shadow: var(--shadow-elevation-1); }
+        50% { box-shadow: var(--shadow-elevation-1); }
     }
 
     /* Staged controls panel */
@@ -476,81 +477,81 @@
         position: absolute;
         top: 0.5rem;
         left: 0.5rem;
-        z-index: 5;
+        z-index: var(--layer-sticky);
         background: var(--color-bg2);
         border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
-        border-radius: 0.5rem;
+        border-radius: var(--radius-md);
         min-width: 200px;
         max-width: 280px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        box-shadow: var(--shadow-elevation-2);
     }
     .staged-header {
-        display: flex; align-items: center; gap: 6px;
-        padding: 8px 12px;
-        font-size: 12px; font-weight: 600;
+        display: flex; align-items: center; gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-caption); font-weight: 600;
         color: var(--color-accent);
         border-bottom: 1px solid var(--color-border);
     }
-    .staged-list { padding: 4px; }
+    .staged-list { padding: var(--space-1); }
     .staged-item {
         display: flex; align-items: center; justify-content: space-between;
-        padding: 6px 8px; border-radius: 4px; font-size: 12px;
+        padding: var(--space-2) var(--space-2); border-radius: var(--radius-sm); font-size: var(--font-size-caption);
         color: var(--color-foreground);
     }
     .staged-item:hover { background: var(--color-bg3); }
     .staged-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .staged-item-actions { display: flex; gap: 2px; flex-shrink: 0; }
+    .staged-item-actions { display: flex; gap: var(--space-0-5); flex-shrink: 0; }
     .staged-accept, .staged-reject {
         width: 22px; height: 22px;
         display: flex; align-items: center; justify-content: center;
-        border: none; border-radius: 4px;
+        border: none; border-radius: var(--radius-sm);
         cursor: pointer; transition: all var(--duration-fast) var(--ease-standard); background: transparent;
     }
-    .staged-accept { color: var(--color-success, #22c55e); }
-    .staged-accept:hover { background: color-mix(in srgb, var(--color-success, #22c55e) 15%, transparent); }
+    .staged-accept { color: var(--color-success, var(--color-success-fg)); }
+    .staged-accept:hover { background: color-mix(in srgb, var(--color-success, var(--color-success-fg)) 15%, transparent); }
     .staged-reject { color: var(--color-danger-fg); }
     .staged-reject:hover { background: var(--color-danger-surface); }
 
     /* Validation indicator on nodes */
     .chapter-dag-container :global(.svelte-flow__node.validation-warning) {
-        border-color: var(--color-warning, #f59e0b);
-        box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-warning, #f59e0b) 30%, transparent);
+        border-color: var(--color-warning, var(--color-warning-fg));
+        box-shadow: var(--shadow-elevation-1);
     }
 
     .chapter-dag-container :global(.svelte-flow__node.validation-error) {
         border-color: var(--color-danger-border);
-        box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-danger-fg) 30%, transparent);
+        box-shadow: var(--shadow-elevation-1);
     }
 
     /* ── Context Menu ─────────────────────────────────────────────────── */
     .ctx-backdrop {
         position: fixed;
         inset: 0;
-        z-index: 99;
+        z-index: var(--layer-debug);
     }
 
     .ctx-menu {
         position: fixed;
-        z-index: 100;
+        z-index: var(--layer-debug);
         min-width: 9rem;
-        padding: 0.25rem;
-        background: var(--color-bg2, #1a1a2e);
-        border: 1px solid var(--color-border, #333);
-        border-radius: 0.375rem;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        padding: var(--space-1);
+        background: var(--color-bg2, var(--color-surface-2));
+        border: 1px solid var(--color-border, var(--color-surface-3));
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-overlay);
     }
 
     .ctx-item {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         width: 100%;
-        padding: 0.375rem 0.625rem;
-        font-size: 0.75rem;
+        padding: var(--space-2) var(--space-2);
+        font-size: var(--font-size-caption);
         font-family: inherit;
         font-weight: 500;
         border: none;
-        border-radius: 0.25rem;
+        border-radius: var(--radius-sm);
         background: transparent;
         cursor: pointer;
         text-align: left;
@@ -567,12 +568,12 @@
 
     /* Edge labels */
     .chapter-dag-container :global(.svelte-flow__edge-textbg) {
-        fill: var(--color-bg2, #1a1a2e);
+        fill: var(--color-bg2, var(--color-surface-2));
     }
 
     .chapter-dag-container :global(.svelte-flow__edge-text) {
-        fill: var(--color-foreground, #e0e0e0);
-        font-size: 10px;
+        fill: var(--color-foreground, var(--color-text-secondary));
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
     }
 </style>

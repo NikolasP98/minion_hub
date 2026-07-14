@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Loader2, Check } from "lucide-svelte";
+  import { Button } from '$lib/components/ui';
+import { Loader2, Check } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
     import CursorTooltip from "./CursorTooltip.svelte";
 
@@ -79,7 +80,7 @@
                 <div class="icon-grid">
                     {#each publishedSkills as skill (skill.id)}
                         {@const selected = selectedBuiltSkillIds.includes(skill.id)}
-                        <button
+                        <Button variant="ghost"
                             type="button"
                             class="icon-btn"
                             class:selected
@@ -91,7 +92,7 @@
                         >
                             <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
                             {#if selected}<span class="icon-check"><Check size={10} /></span>{/if}
-                        </button>
+                        </Button>
                     {/each}
                 </div>
             </div>
@@ -130,46 +131,46 @@
 
 <style>
     .field-helper {
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
-        margin-bottom: 6px;
+        margin-bottom: var(--space-2);
     }
 
     .cap-loading {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        padding: 24px;
+        gap: var(--space-2);
+        padding: var(--space-6);
         color: var(--color-muted);
-        font-size: 13px;
+        font-size: var(--font-size-body);
     }
 
     .cap-empty {
-        padding: 24px;
+        padding: var(--space-6);
         text-align: center;
         color: var(--color-muted);
-        font-size: 13px;
+        font-size: var(--font-size-body);
         background: var(--color-bg2);
         border: 1px dashed var(--color-border);
-        border-radius: 8px;
-        margin-top: 8px;
+        border-radius: var(--radius-md);
+        margin-top: var(--space-2);
     }
 
     .cap-group {
-        margin-bottom: 14px;
+        margin-bottom: var(--space-3);
     }
 
     .cap-group-label {
         display: flex;
         align-items: center;
-        gap: 4px;
-        font-size: 10px;
+        gap: var(--space-1);
+        font-size: var(--font-size-telemetry);
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: var(--color-muted);
-        margin-bottom: 6px;
+        margin-bottom: var(--space-2);
     }
 
     .cap-group-label--dim {
@@ -183,7 +184,7 @@
     .icon-grid {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: var(--space-2);
         justify-content: flex-start;
     }
 
@@ -196,7 +197,7 @@
         justify-content: center;
         background: var(--color-bg2);
         border: 1.5px solid var(--color-border);
-        border-radius: 8px;
+        border-radius: var(--radius-md);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
@@ -211,7 +212,7 @@
     .icon-btn.selected {
         border-color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg2));
-        box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-accent) 30%, transparent);
+        box-shadow: var(--shadow-elevation-1);
     }
 
     .icon-btn.icon-disabled {
@@ -229,12 +230,12 @@
     }
 
     .icon-emoji {
-        font-size: 16px;
+        font-size: var(--font-size-page-title);
         line-height: 1;
     }
 
     .icon-tool-label {
-        font-size: 10px;
+        font-size: var(--font-size-telemetry);
         font-weight: 700;
         font-family: "JetBrains Mono", "Fira Code", monospace;
         color: var(--color-muted);
@@ -253,49 +254,49 @@
         justify-content: center;
         background: var(--color-accent);
         color: white;
-        border-radius: 50%;
+        border-radius: var(--radius-full);
         line-height: 1;
     }
 
     .summary {
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        border-radius: 8px;
-        padding: 12px 14px;
+        border-radius: var(--radius-md);
+        padding: var(--space-3) var(--space-3);
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        margin-top: 16px;
+        gap: var(--space-1);
+        margin-top: var(--space-4);
     }
 
     .summary-row {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-2);
     }
 
     .summary-emoji {
-        font-size: 18px;
+        font-size: var(--font-size-page-title);
         line-height: 1;
     }
 
     .summary-name {
-        font-size: 13px;
+        font-size: var(--font-size-body);
         font-weight: 700;
         color: var(--color-foreground);
     }
 
     .summary-detail {
-        font-size: 11px;
+        font-size: var(--font-size-caption);
         color: var(--color-muted);
     }
 
     .summary-detail code {
         font-family: "JetBrains Mono", "Fira Code", monospace;
-        font-size: 10px;
+        font-size: var(--font-size-telemetry);
         background: var(--color-bg3, var(--color-bg));
-        padding: 1px 5px;
-        border-radius: 3px;
+        padding: 1px var(--space-1);
+        border-radius: var(--radius-xs);
         color: var(--color-foreground);
     }
 </style>

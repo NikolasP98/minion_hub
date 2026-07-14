@@ -1,5 +1,6 @@
 <script lang="ts">
-  import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
+  import { Button } from '$lib/components/ui';
+import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
   import SessionDropdown from '../sessions/SessionDropdown.svelte';
   import SessionViewer from '../sessions/SessionViewer.svelte';
   import SessionKanban from '../sessions/SessionKanban.svelte';
@@ -48,86 +49,86 @@
 
   <!-- Tab bar -->
   <div class="shrink-0 flex items-center border-b border-border bg-bg2">
-    <button
+    <Button variant="ghost"
       type="button"
-      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+      class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'dashboard'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'dashboard')}
     >
       Overview
-    </button>
-    <button
+    </Button>
+    <Button variant="ghost"
       type="button"
-      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+      class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'chat'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'chat')}
     >
       {m.agent_tabChat()}
-    </button>
-    <button
+    </Button>
+    <Button variant="ghost"
       type="button"
-      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+      class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'monitor'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'monitor')}
     >
       {m.agent_tabMonitor()}
-    </button>
-    <button
+    </Button>
+    <Button variant="ghost"
       type="button"
-      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+      class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'files'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'files')}
     >
       {m.agent_tabFiles()}
-    </button>
-    <button
+    </Button>
+    <Button variant="ghost"
       type="button"
-      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+      class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'prompt'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'prompt')}
     >
       {m.agent_tabPrompt()}
-    </button>
-    <button
+    </Button>
+    <Button variant="ghost"
       type="button"
-      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+      class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'memory'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'memory')}
     >
       {m.agent_tabMemory()}
-    </button>
-    <button
+    </Button>
+    <Button variant="ghost"
       type="button"
-      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+      class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'capabilities'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'capabilities')}
     >
       Capabilities
-    </button>
-    <button
+    </Button>
+    <Button variant="ghost"
       type="button"
-      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+      class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'orchestration'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'orchestration')}
     >
       Orchestration
-    </button>
+    </Button>
   </div>
 
   <!-- Main content: chat or monitor -->

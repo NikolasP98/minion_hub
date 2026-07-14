@@ -26,34 +26,34 @@
 	<div class="flex items-start gap-4">
 		<!-- Left: Context gauge -->
 		<div class="flex-1 min-w-0">
-			<div class="text-[11px] font-semibold text-muted mb-1.5">{m.pi_contextWindow()}</div>
+			<div class="text-[length:var(--font-size-caption)] font-semibold text-muted mb-1.5">{m.pi_contextWindow()}</div>
 			{#if piAgentState.contextUsage}
 				<!-- Progress bar -->
 				<div class="w-full h-2 bg-bg3 rounded-full overflow-hidden">
 					<div
-						class="h-full rounded-full transition-all duration-300 {gaugeColor}"
+						class="h-full rounded-full transition-all duration-[var(--duration-normal)] {gaugeColor}"
 						style="width: {Math.min(gaugePercent, 100)}%"
 					></div>
 				</div>
 				<!-- Token counts -->
-				<div class="mt-1 text-[10px] text-foreground">
+				<div class="mt-1 text-[length:var(--font-size-telemetry)] text-foreground">
 					{#if piAgentState.contextUsage.contextWindow != null}
 						{formatTokensK(piAgentState.contextUsage.tokenCount)} / {formatTokensK(piAgentState.contextUsage.contextWindow)} {m.pi_tokens()}
 					{:else}
 						{formatTokensK(piAgentState.contextUsage.tokenCount)} {m.pi_tokensWindowUnknown()}
 					{/if}
 				</div>
-				<div class="text-[10px] text-muted">
+				<div class="text-[length:var(--font-size-telemetry)] text-muted">
 					{m.pi_messagesCompactions({ messages: piAgentState.contextUsage.messageCount, compactions: piAgentState.contextUsage.compactionCount })}
 				</div>
 			{:else}
-				<div class="text-[10px] text-muted">{m.pi_noActiveSession()}</div>
+				<div class="text-[length:var(--font-size-telemetry)] text-muted">{m.pi_noActiveSession()}</div>
 			{/if}
 		</div>
 
 		<!-- Right: Thinking control -->
 		<div class="shrink-0">
-			<div class="text-[11px] font-semibold text-muted mb-1.5">{m.pi_thinking()}</div>
+			<div class="text-[length:var(--font-size-caption)] font-semibold text-muted mb-1.5">{m.pi_thinking()}</div>
 			{#if piAgentState.thinkingLevels.length > 0}
 				<Select
 					size="xs"
@@ -73,7 +73,7 @@
 	</div>
 
 	<!-- Bottom row: Session stats -->
-	<div class="flex items-center gap-3 text-[10px] text-muted border-t border-border pt-2">
+	<div class="flex items-center gap-3 text-[length:var(--font-size-telemetry)] text-muted border-t border-border pt-2">
 		{#if piAgentState.sessionStats}
 			<span>{m.pi_statIn()}: <span class="text-foreground">{formatTokens(piAgentState.sessionStats.inputTokens)}</span></span>
 			<span class="text-border">|</span>

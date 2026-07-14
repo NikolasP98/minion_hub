@@ -19,10 +19,10 @@
 <div class="flex flex-col h-full overflow-hidden bg-bg">
 	<!-- Header -->
 	<div class="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border">
-		<span class="text-[11px] font-semibold text-muted uppercase tracking-wider">
+		<span class="text-[length:var(--font-size-caption)] font-semibold text-muted uppercase tracking-wider">
 			{m.pi_subagents()}
 		</span>
-		<span class="text-[10px] text-muted-strong font-mono">
+		<span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono">
 			{subagentState.sessions.length}
 		</span>
 	</div>
@@ -30,11 +30,11 @@
 	<!-- Scrollable content -->
 	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-color-border">
 		{#if subagentState.loading}
-			<div class="flex items-center justify-center py-8 text-muted text-[11px]">
+			<div class="flex items-center justify-center py-8 text-muted text-[length:var(--font-size-caption)]">
 				{m.common_loading()}
 			</div>
 		{:else if subagentState.error}
-			<div class="flex items-center justify-center py-8 text-destructive text-[11px]">
+			<div class="flex items-center justify-center py-8 text-destructive text-[length:var(--font-size-caption)]">
 				{subagentState.error}
 			</div>
 		{:else if sorted.length === 0}
