@@ -369,7 +369,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/settings/workflows', 'Workflow settings', 'organization', 'form-settings'),
 
   // Agents, brains, builders, prompts and capabilities (21)
-  screen('/agents', 'Agents', 'agents-builders', 'collection'),
+  screen('/agents', 'Agents', 'agents-builders', 'master-detail'),
   screen('/agents/autonomous', 'Autonomous agents', 'immersive-workspaces', 'collection'),
   screen('/agents/autonomous/[id]', 'Autonomous agent', 'immersive-workspaces', 'record-detail', {
     fixtureId: 'system-agent-detail',
@@ -405,7 +405,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     fixtureId: 'builder-skill-detail',
   }),
   screen('/prompt', 'Prompt builder', 'agents-builders', 'workspace-editor'),
-  screen('/tools/[id]', 'Tool', 'agents-builders', 'record-detail', {
+  screen('/tools/[id]', 'Tool', 'agents-builders', 'workspace-editor', {
     fixtureId: 'tool-detail',
     states: MUTATING_DETAIL_STATES,
   }),

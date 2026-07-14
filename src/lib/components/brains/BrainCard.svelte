@@ -3,6 +3,7 @@
   import * as m from '$lib/paraglide/messages';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import type { BrainDTO } from '$lib/types/brains';
+  import { Card } from '$lib/components/ui';
 
   let { brain }: { brain: BrainDTO } = $props();
 
@@ -10,30 +11,109 @@
   const avatarUrl = $derived(diceBearAvatarUrl(brain.id, 'brain'));
 </script>
 
-<article
-  class="group/card flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4 transition-colors hover:border-white/20"
->
-  <header class="flex items-start gap-3">
-    <img src={avatarUrl} alt="" class="size-11 shrink-0 rounded-lg bg-white/5 ring-1 ring-white/10" loading="lazy" />
-    <div class="min-w-0 flex-1">
-      <a href={detailHref} class="group/name inline-flex max-w-full items-center gap-1 text-sm font-semibold text-white hover:underline">
-        <span class="truncate">{brain.name}</span>
-        <ArrowUpRight size={13} class="shrink-0 opacity-0 transition-opacity group-hover/name:opacity-100" />
-      </a>
-      <p class="mt-0.5 inline-flex items-center gap-1 text-[11px] text-white/45">
-        {#if brain.visibility === 'private'}
-          <Lock size={11} /> {m.brains_visibility_private()}
-        {:else}
-          <Globe size={11} /> {m.brains_visibility_org()}
+<article>
+  <Card interactive>
+    <div class="brain-card">
+      <header>
+        <img src={avatarUrl} alt="" class="brain-avatar" loading="lazy" />
+        <div class="brain-heading">
+          <a href={detailHref}>
+            <span>{brain.name}</span>
+            <ArrowUpRight size={13} aria-hidden="true" />
+          </a>
+          <p class="visibility">
+            {#if brain.visibility === 'private'}
+              <Lock size={12} aria-hidden="true" /> {m.brains_visibility_private()}
+            {:else}
+              <Globe size={12} aria-hidden="true" /> {m.brains_visibility_org()}
+            {/if}
+          </p>
+        </div>
+        {#if brain.icon}
+          <span class="brain-icon" aria-hidden="true">{brain.icon}</span>
         {/if}
-      </p>
-    </div>
-    {#if brain.icon}
-      <span class="shrink-0 text-lg leading-none">{brain.icon}</span>
-    {/if}
-  </header>
+      </header>
 
-  {#if brain.description}
-    <p class="line-clamp-2 text-xs leading-relaxed text-white/60">{brain.description}</p>
-  {/if}
+      {#if brain.description}
+        <p class="description">{brain.description}</p>
+      {/if}
+    </div>
+  </Card>
 </article>
+
+<style>
+  .brain-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  header {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .brain-avatar {
+    width: var(--control-height-touch);
+    height: var(--control-height-touch);
+    flex: none;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-1);
+  }
+
+  .brain-heading {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .brain-heading a {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-section-title);
+    line-height: var(--line-height-heading);
+    font-weight: var(--font-weight-semibold);
+    text-decoration: none;
+  }
+
+  .brain-heading a:hover {
+    text-decoration: underline;
+  }
+
+  .brain-heading a span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .visibility {
+    display: inline-flex;
+    margin-top: var(--space-0-5);
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-compact);
+  }
+
+  .brain-icon {
+    flex: none;
+    font-size: var(--font-size-page-title);
+    line-height: var(--line-height-heading);
+  }
+
+  .description {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-body);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+</style>

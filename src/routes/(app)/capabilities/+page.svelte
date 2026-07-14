@@ -9,7 +9,12 @@
   import { Wrench, BookOpen, Plug } from 'lucide-svelte';
   import BuilderHub from '$lib/components/builder/BuilderHub.svelte';
   import McpPanel from '$lib/components/builder/McpPanel.svelte';
-  import { SideNav, type SideNavItem } from '$lib/components/ui';
+  import { PageHeader } from '$lib/components/ui';
+  import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
+  import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
+  import SectionNav from '$lib/components/ui/foundations/SectionNav.svelte';
+  import SectionShell from '$lib/components/ui/foundations/SectionShell.svelte';
+  import type { SectionNavItem } from '$lib/components/ui/foundations/SectionNav.svelte';
   import * as m from '$lib/paraglide/messages';
 
   type Tab = 'tools' | 'skills' | 'mcps';
@@ -24,26 +29,43 @@
     goto(`/capabilities?tab=${next}`, { keepFocus: true, noScroll: true });
   }
 
-  const items = $derived<SideNavItem[]>([
+  const items = $derived<SectionNavItem[]>([
     { id: 'tools', label: m.nav_tools(), icon: Wrench },
     { id: 'skills', label: m.breadcrumb_skills(), icon: BookOpen },
     { id: 'mcps', label: m.nav_mcps(), icon: Plug },
   ]);
+  const activeItem = $derived(items.find((item) => item.id === tab));
 </script>
 
 <svelte:head>
   <title>Capabilities · Minion</title>
 </svelte:head>
 
-<div class="h-full flex">
-  <SideNav {items} activeId={tab} ariaLabel="Capabilities" header={m.nav_capabilities()} onSelect={setTab} />
-  <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-    {#if tab === 'skills'}
-      <BuilderHub only="skills" />
-    {:else if tab === 'mcps'}
-      <McpPanel />
-    {:else}
-      <BuilderHub only="tools" />
-    {/if}
-  </div>
-</div>
+<SectionShell>
+  {#snippet navigation()}
+    <SectionNav {items} activeId={tab} ariaLabel={m.nav_capabilities()} onSelect={setTab} />
+  {/snippet}
+
+  <PageShell archetype="collection" scroll="none">
+    <PageHeader
+      title={activeItem?.label ?? m.nav_capabilities()}
+      subtitle={m.tools_description()}
+    />
+    <PageBody padding="none" scroll="none" class="capability-body">
+      {#if tab === 'skills'}
+        <BuilderHub only="skills" />
+      {:else if tab === 'mcps'}
+        <McpPanel />
+      {:else}
+        <BuilderHub only="tools" />
+      {/if}
+    </PageBody>
+  </PageShell>
+</SectionShell>
+
+<style>
+  :global(.capability-body) {
+    display: flex;
+    flex-direction: column;
+  }
+</style>

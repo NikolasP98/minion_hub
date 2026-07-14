@@ -3,6 +3,8 @@
   import { goto, invalidate } from '$app/navigation';
   import { ArrowLeft, Lock, Globe, Trash2 } from 'lucide-svelte';
   import { PageHeader, Button, Tabs } from '$lib/components/ui';
+  import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
+  import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
   import type { TabItem } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
@@ -69,22 +71,24 @@
   }
 </script>
 
-<div class="flex h-full flex-col overflow-hidden">
+<PageShell archetype="record-detail" scroll="none">
   <PageHeader title={brain.name} subtitle={brain.description ?? undefined}>
     {#snippet leading()}
-      <button type="button" onclick={back.go} class="grid size-7 place-items-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white" aria-label={back.label}>
-        <ArrowLeft size={15} />
-      </button>
-      <img src={avatarUrl} alt="" class="size-7 shrink-0 rounded-lg bg-white/5 ring-1 ring-white/10" />
+      <Button variant="ghost" size="sm" shape="icon" onclick={back.go} aria-label={back.label}>
+        {#snippet icon()}<ArrowLeft size={15} aria-hidden="true" />{/snippet}
+      </Button>
+      <img src={avatarUrl} alt="" class="brain-avatar" />
     {/snippet}
-    {#snippet actions()}
-      <span class="inline-flex items-center gap-1 text-[11px] text-white/45">
+    {#snippet secondaryActions()}
+      <span class="visibility-chip">
         {#if brain.visibility === 'private'}
-          <Lock size={11} /> {m.brains_visibility_private()}
+          <Lock size={12} aria-hidden="true" /> {m.brains_visibility_private()}
         {:else}
-          <Globe size={11} /> {m.brains_visibility_org()}
+          <Globe size={12} aria-hidden="true" /> {m.brains_visibility_org()}
         {/if}
       </span>
+    {/snippet}
+    {#snippet primaryActions()}
       {#if canDelete}
         <Button variant="danger" size="sm" loading={deleting} onclick={deleteBrain}>
           {#snippet icon()}<Trash2 size={14} />{/snippet}
@@ -94,24 +98,78 @@
     {/snippet}
   </PageHeader>
 
-  <div class="flex-1 min-h-0 overflow-y-auto p-6">
+  <PageBody width="content" scroll="region">
     {#if deleteError}
-      <p class="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">{deleteError}</p>
+      <p class="mutation-error" role="alert">{deleteError}</p>
     {/if}
-    <Tabs id="brain-tabs" aria-label={m.a11y_tabs_brains()} {tabs} bind:value={tab} class="mb-4" />
+    <Tabs id="brain-tabs" aria-label={m.a11y_tabs_brains()} {tabs} bind:value={tab} />
 
-    <div id={`brain-tabs-panel-${tab}`} role="tabpanel" aria-labelledby={`brain-tabs-tab-${tab}`}>
-    {#if tab === 'documents'}
-      <BrainDocumentsTable brainId={brain.id} documents={data.documents} {canEdit} />
-    {:else if tab === 'search'}
-      <BrainSearchPanel brainId={brain.id} />
-    {:else if tab === 'access' && canEdit}
-      <BrainAccessPanel brainId={brain.id} visibility={brain.visibility} access={data.access} roles={data.roles} />
-    {:else if tab === 'agent'}
-      <BrainAgentPanel brainId={brain.id} agentId={brain.agentId} canManage={canAct('brains', 'manage')} />
-    {:else if tab === 'activity'}
-      <DocTimeline items={data.timeline} onComment={postComment} />
-    {/if}
+    <div
+      class="brain-panel"
+      id={`brain-tabs-panel-${tab}`}
+      role="tabpanel"
+      aria-labelledby={`brain-tabs-tab-${tab}`}
+    >
+      {#if tab === 'documents'}
+        <BrainDocumentsTable brainId={brain.id} documents={data.documents} {canEdit} />
+      {:else if tab === 'search'}
+        <BrainSearchPanel brainId={brain.id} />
+      {:else if tab === 'access' && canEdit}
+        <BrainAccessPanel
+          brainId={brain.id}
+          visibility={brain.visibility}
+          access={data.access}
+          roles={data.roles}
+        />
+      {:else if tab === 'agent'}
+        <BrainAgentPanel
+          brainId={brain.id}
+          agentId={brain.agentId}
+          canManage={canAct('brains', 'manage')}
+        />
+      {:else if tab === 'activity'}
+        <DocTimeline items={data.timeline} onComment={postComment} />
+      {/if}
     </div>
-  </div>
-</div>
+  </PageBody>
+</PageShell>
+
+<style>
+  .brain-avatar {
+    width: var(--control-height-sm);
+    height: var(--control-height-sm);
+    flex: none;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-2);
+  }
+
+  .visibility-chip {
+    display: inline-flex;
+    min-height: var(--control-height-sm);
+    padding-inline: var(--space-2);
+    align-items: center;
+    gap: var(--space-1);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-full);
+    color: var(--color-text-secondary);
+    background: var(--color-surface-1);
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-compact);
+  }
+
+  .mutation-error {
+    margin-bottom: var(--space-4);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-danger-border);
+    border-radius: var(--radius-md);
+    color: var(--color-danger-fg);
+    background: var(--color-danger-surface);
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-compact);
+  }
+
+  .brain-panel {
+    margin-top: var(--space-4);
+  }
+</style>

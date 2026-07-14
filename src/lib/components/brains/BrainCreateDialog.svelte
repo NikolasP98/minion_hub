@@ -1,7 +1,8 @@
 <script lang="ts">
   import { invalidate, goto } from '$app/navigation';
-  import Modal from '$lib/components/ui/Modal.svelte';
-  import { Button, Select } from '$lib/components/ui';
+  import { Button, Input, Select } from '$lib/components/ui';
+  import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
   import * as m from '$lib/paraglide/messages';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -28,7 +29,7 @@
     saving = true;
     error = '';
     try {
-      const res = await fetch('/api/brains', {
+      const brain = await fetchJson<{ id: string }>('/api/brains', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -38,62 +39,44 @@
           visibility,
         }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        error = (body as { message?: string }).message ?? `Error ${res.status}`;
-        return;
-      }
-      const brain = (await res.json()) as { id: string };
       await invalidate('brains:list');
       open = false;
       reset();
       await goto(`/brains/${encodeURIComponent(brain.id)}`);
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Unknown error';
+      error = e instanceof Error ? e.message : m.common_error();
     } finally {
       saving = false;
     }
   }
 </script>
 
-<Modal bind:open title={m.brains_create_title()}>
-  <div class="flex flex-col gap-4">
-    <div class="flex flex-col gap-1.5">
-      <label class="text-xs font-medium text-white/70" for="brain-name">{m.brains_create_name()}</label>
-      <input
-        id="brain-name"
-        type="text"
-        bind:value={name}
-        placeholder={m.brains_create_name_ph()}
-        autocomplete="off"
-        class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0"
-      />
-    </div>
+<Dialog bind:open title={m.brains_create_title()} size="md">
+  <div class="brain-form">
+    <Input
+      id="brain-name"
+      label={m.brains_create_name()}
+      bind:value={name}
+      placeholder={m.brains_create_name_ph()}
+      autocomplete="off"
+    />
 
-    <div class="flex gap-3">
-      <div class="flex flex-1 flex-col gap-1.5">
-        <label class="text-xs font-medium text-white/70" for="brain-desc">{m.brains_create_desc()}</label>
-        <input
-          id="brain-desc"
-          type="text"
-          bind:value={description}
-          placeholder={m.brains_create_desc_ph()}
-          autocomplete="off"
-          class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0"
-        />
-      </div>
-      <div class="flex w-20 flex-col gap-1.5">
-        <label class="text-xs font-medium text-white/70" for="brain-icon">{m.brains_create_icon()}</label>
-        <input
-          id="brain-icon"
-          type="text"
-          bind:value={icon}
-          maxlength="8"
-          placeholder={m.brains_create_icon_ph()}
-          autocomplete="off"
-          class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-center text-sm text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0"
-        />
-      </div>
+    <div class="identity-fields">
+      <Input
+        id="brain-desc"
+        label={m.brains_create_desc()}
+        bind:value={description}
+        placeholder={m.brains_create_desc_ph()}
+        autocomplete="off"
+      />
+      <Input
+        id="brain-icon"
+        label={m.brains_create_icon()}
+        bind:value={icon}
+        maxlength="8"
+        placeholder={m.brains_create_icon_ph()}
+        autocomplete="off"
+      />
     </div>
 
     <Select
@@ -106,13 +89,48 @@
     />
 
     {#if error}
-      <p class="text-xs text-red-400">{error}</p>
+      <p class="form-error" role="alert">{error}</p>
     {/if}
   </div>
 
   {#snippet footer()}
-    <Button variant="primary" size="sm" disabled={!canSubmit || saving} loading={saving} onclick={submit}>
+    <Button variant="ghost" size="sm" disabled={saving} onclick={() => (open = false)}>
+      {m.common_cancel()}
+    </Button>
+    <Button
+      variant="primary"
+      size="sm"
+      disabled={!canSubmit || saving}
+      loading={saving}
+      onclick={submit}
+    >
       {m.brains_create_submit()}
     </Button>
   {/snippet}
-</Modal>
+</Dialog>
+
+<style>
+  .brain-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .identity-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(8rem, 0.35fr);
+    gap: var(--space-3);
+  }
+
+  .form-error {
+    color: var(--color-danger-fg);
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-compact);
+  }
+
+  @media (max-width: 767.98px) {
+    .identity-fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>
