@@ -29,7 +29,7 @@ export type { CompactWindowPresentation, DraggableWindowVariant } from './Dragga
 export type { FormControlProps, FormFieldOrientation } from './FormField.svelte';
 export type { LayerTier, PortalOptions, PortalTarget } from './layer';
 export type { PageBodyPadding, PageBodyWidth } from './PageBody.svelte';
-export type { PageScrollMode, RouteArchetype } from './PageShell.svelte';
+export type { PageDirection, PageScrollMode, RouteArchetype } from './PageShell.svelte';
 export type { PublicTaskShellSize, PublicTaskShellTone } from './PublicTaskShell.svelte';
 export type { SectionNavGroup, SectionNavIcon, SectionNavItem } from './SectionNav.svelte';
 export type { SectionShellMode } from './SectionShell.svelte';

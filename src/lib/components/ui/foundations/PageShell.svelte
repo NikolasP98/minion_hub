@@ -10,6 +10,7 @@
     | 'terminal'
     | 'public';
   export type PageScrollMode = 'page' | 'region' | 'none';
+  export type PageDirection = 'column' | 'row';
 </script>
 
 <script lang="ts">
@@ -19,6 +20,7 @@
     children: Snippet;
     archetype: RouteArchetype;
     scroll?: PageScrollMode;
+    direction?: PageDirection;
     variant?: 'default' | 'crt' | 'voxelized' | 'canvas' | 'terminal';
     labelledBy?: string;
     landmark?: boolean;
@@ -29,6 +31,7 @@
     children,
     archetype,
     scroll = 'page',
+    direction = 'column',
     variant = 'default',
     labelledBy,
     landmark = true,
@@ -42,6 +45,7 @@
     data-part="page-shell"
     data-archetype={archetype}
     data-scroll={scroll}
+    data-direction={direction}
     data-variant={variant}
     aria-labelledby={labelledBy}
     class={cls}
@@ -54,6 +58,7 @@
     data-part="page-shell"
     data-archetype={archetype}
     data-scroll={scroll}
+    data-direction={direction}
     data-variant={variant}
     class={cls}
   >
@@ -80,6 +85,9 @@
   [data-scroll='region'],
   [data-scroll='none'] {
     overflow: hidden;
+  }
+  [data-direction='row'] {
+    flex-direction: row;
   }
   [data-archetype='canvas'],
   [data-archetype='terminal'],

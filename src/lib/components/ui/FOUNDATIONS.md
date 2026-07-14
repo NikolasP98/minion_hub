@@ -51,6 +51,8 @@ portable atoms:
   records, and forms.
 - `PageShell scroll="region"` remains fixed while exactly one `PageBody` or domain
   region opts into `scroll="region"`.
+- `PageShell direction="row"` is reserved for split workspaces with a trailing
+  rail or inspector. The default remains the vertical page composition.
 - Canvas, terminal, and editor routes use `scroll="none"`; their named internal
   region owns panning or scrolling.
 - `PageHeader` accepts legacy `actions`, but migrated screens classify actions as

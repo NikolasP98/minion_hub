@@ -728,7 +728,13 @@
   <title>My Agent · Minion</title>
 </svelte:head>
 
-<PageShell archetype="dashboard" scroll="none" labelledBy="my-agent-greeting" class="layout">
+<PageShell
+  archetype="dashboard"
+  scroll="none"
+  direction="row"
+  labelledBy="my-agent-greeting"
+  class="layout home-shell"
+>
   <div class="column">
     <div class="inner">
       <h1 id="my-agent-greeting" class="sr-only">{data.greeting}</h1>
@@ -1113,7 +1119,9 @@
     </div>
   </div>
 
-  <NotesPanel />
+  <div class="notes-dock" class:collapsed={!notesState.open}>
+    <NotesPanel />
+  </div>
 </PageShell>
 
 <EventModal
@@ -1143,11 +1151,55 @@
   }
 
   .column {
+    order: 1;
     flex: 1;
     min-width: 0;
     min-height: 0;
     display: flex;
     justify-content: center;
+  }
+
+  /* Notes are a trailing workspace rail, never a second left navigation. Keep
+     the dock explicit because PageShell's default composition axis is vertical. */
+  .notes-dock {
+    order: 2;
+    height: 100%;
+    min-height: 0;
+    margin-left: auto;
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 768px) {
+    :global(.home-shell) {
+      position: relative;
+    }
+
+    /* On compact screens the trailing inspector becomes a right drawer. It no
+       longer consumes the chat column's width, including when restored open. */
+    .notes-dock {
+      position: absolute;
+      inset: 0 0 0 auto;
+      width: min(320px, calc(100% - var(--space-12)));
+      max-width: 100%;
+      z-index: var(--layer-popover);
+      box-shadow: var(--shadow-overlay);
+    }
+
+    .notes-dock :global(.notes-panel) {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .notes-dock :global(.notes-panel.collapsed) {
+      width: 46px;
+      margin-left: auto;
+    }
+
+    .notes-dock.collapsed {
+      width: 46px;
+      box-shadow: none;
+    }
   }
 
   .inner {
@@ -1411,7 +1463,8 @@
 
   /* Pin messages to the bottom when short, but stay fully scrollable when the
 	   history overflows (justify-content:flex-end on the scroller would make the
-	   top unreachable — margin-top: auto on an inner block does not). */ .thread-inner{
+	   top unreachable — margin-top: auto on an inner block does not). */
+  .thread-inner {
     margin-top: auto;
     display: flex;
     flex-direction: column;
