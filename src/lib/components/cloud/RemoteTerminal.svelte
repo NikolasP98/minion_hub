@@ -1,6 +1,8 @@
 <script lang="ts">
   import { createShellAccess, type ShellSummary } from '$lib/services/shells-rpc';
-  import { ExternalLink, Loader2, RefreshCw, SquareTerminal } from 'lucide-svelte';
+  import { ExternalLink, RefreshCw, SquareTerminal } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
+  import { AsyncBoundary, type AsyncBoundaryState } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
 
   let { shell }: { shell: ShellSummary } = $props();
@@ -13,6 +15,21 @@
   let transport = $state<'websocket' | 'iframe' | null>(null);
   let cleanup: (() => void) | null = null;
   let generation = 0;
+
+  const accessState = $derived.by<AsyncBoundaryState>(() => {
+    if (connecting || (!transport && !error)) {
+      return { kind: 'loading', label: m.cloud_access_connecting() };
+    }
+    if (error) {
+      return {
+        kind: 'error',
+        title: m.cloud_access_unavailable(),
+        description: error,
+        retry: () => void connect(),
+      };
+    }
+    return { kind: 'ready' };
+  });
 
   function safeAccessUrl(raw: string): { url: string; transport: 'websocket' | 'iframe' } {
     const url = new URL(raw);
@@ -44,6 +61,7 @@
         status = m.cloud_access_connected({ name: shell.displayName });
         return;
       }
+
       const [{ WTerm }] = await Promise.all([import('@wterm/dom')]);
       // @ts-expect-error CSS side-effect import has no type declaration
       await import('@wterm/dom/css');
@@ -72,7 +90,7 @@
         try {
           socket.close();
         } catch {
-          /* already closed */
+          // The socket is already closed.
         }
         term.destroy();
       };
@@ -98,133 +116,138 @@
 
 <div class="terminal-shell">
   <div class="terminal-bar">
-    <SquareTerminal size={14} />
-    <span>{status}</span>
+    <SquareTerminal size={14} aria-hidden="true" />
+    <span class="status" aria-live="polite">{status}</span>
     <span class="protocol">{m.cloud_terminal_session_label()}</span>
     {#if accessUrl && transport === 'iframe'}
-      <a
+      <Button
         href={accessUrl}
+        variant="ghost"
+        size="icon"
         target="_blank"
         rel="noreferrer"
         title={m.cloud_open_new_tab()}
         aria-label={m.cloud_open_new_tab()}
       >
-        <ExternalLink size={13} />
-      </a>
+        <ExternalLink size={13} aria-hidden="true" />
+      </Button>
     {/if}
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon"
       onclick={() => void connect()}
-      disabled={connecting}
+      loading={connecting}
       aria-label={m.cloud_retry()}
       title={m.cloud_retry()}
     >
-      {#if connecting}<Loader2 size={13} class="animate-spin" />{:else}<RefreshCw size={13} />{/if}
-    </button>
+      <RefreshCw size={13} aria-hidden="true" />
+    </Button>
   </div>
-  {#if error}
-    <div class="access-error">
-      <strong>{m.cloud_access_unavailable()}</strong>
-      <span>{error}</span>
-      <button type="button" onclick={() => void connect()}>{m.cloud_retry()}</button>
-    </div>
-  {/if}
-  {#if accessUrl && transport === 'iframe' && !error}
-    <iframe src={accessUrl} title={m.cloud_terminal_frame_title({ name: shell.displayName })}
-    ></iframe>
-  {/if}
-  <div class="terminal" class:hidden={!!error || transport !== 'websocket'} bind:this={host}></div>
+
+  <div class="terminal-stage">
+    {#if accessUrl && transport === 'iframe' && !error}
+      <iframe src={accessUrl} title={m.cloud_terminal_frame_title({ name: shell.displayName })}
+      ></iframe>
+    {/if}
+    <div
+      class="terminal"
+      class:hidden={!!error || transport !== 'websocket'}
+      bind:this={host}
+    ></div>
+    {#if accessState.kind !== 'ready'}
+      <div class="terminal-state">
+        <AsyncBoundary state={accessState} compact />
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
-  .terminal-shell {
-    height: 100%;
+  .terminal-shell,
+  .terminal-stage {
+    display: flex;
+    width: 100%;
+    min-width: 0;
     min-height: 0;
-    display: flex;
+    flex: 1;
     flex-direction: column;
-    background: #080a0d;
   }
+
+  .terminal-shell {
+    background: var(--color-canvas);
+  }
+
   .terminal-bar {
-    height: 2.35rem;
-    flex: 0 0 auto;
-    padding: 0 0.7rem;
     display: flex;
+    min-height: var(--control-height-lg);
+    flex: none;
     align-items: center;
-    gap: 0.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    color: #a8b0bd;
-    font: 500 0.65rem/1 var(--font-mono, monospace);
-    letter-spacing: 0.02em;
+    gap: var(--space-2);
+    padding-inline: var(--space-3);
+    border-bottom: 1px solid var(--color-border-subtle);
+    color: var(--color-text-secondary);
+    background: var(--color-surface-1);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-telemetry);
+    line-height: var(--line-height-compact);
+    letter-spacing: var(--letter-spacing-label);
   }
+
   .terminal-bar > :global(svg) {
+    flex: none;
     color: var(--color-accent);
   }
+
+  .status {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .protocol {
     margin-left: auto;
-    color: #606a78;
-    font-size: 0.55rem;
-    letter-spacing: 0.1em;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
   }
-  .terminal-bar button,
-  .terminal-bar a {
-    width: 1.7rem;
-    height: 1.7rem;
-    display: grid;
-    place-items: center;
-    border: 0;
-    border-radius: 0.3rem;
-    background: transparent;
-    color: #768192;
-    cursor: pointer;
+
+  .terminal-stage {
+    position: relative;
   }
-  .terminal-bar button:hover,
-  .terminal-bar a:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: #dce2ea;
-  }
-  .terminal {
-    flex: 1;
+
+  .terminal,
+  iframe {
+    width: 100%;
     min-height: 0;
-    padding: 0.55rem;
+    flex: 1;
+    border: 0;
+    background: var(--color-canvas);
+  }
+
+  .terminal {
+    padding: var(--space-2);
     overflow: hidden;
   }
-  iframe {
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-    border: 0;
-    background: #080a0d;
-  }
+
   .hidden {
     display: none;
   }
-  .access-error {
-    flex: 1;
+
+  .terminal-state {
+    position: absolute;
+    inset: 0;
     display: grid;
     place-items: center;
-    align-content: center;
-    gap: 0.55rem;
-    padding: 2rem;
-    text-align: center;
+    background: var(--color-canvas);
   }
-  .access-error strong {
-    color: #f1f5f9;
-    font-size: 0.82rem;
-  }
-  .access-error span {
-    max-width: 34rem;
-    color: #7c8798;
-    font: 0.65rem/1.5 var(--font-mono, monospace);
-  }
-  .access-error button {
-    margin-top: 0.3rem;
-    height: 2rem;
-    padding: 0 0.75rem;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 0.35rem;
-    background: rgba(255, 255, 255, 0.04);
-    color: #ccd4df;
-    cursor: pointer;
-    font-size: 0.7rem;
+
+  @media (max-width: 599.98px) {
+    .protocol {
+      display: none;
+    }
+
+    .status {
+      margin-right: auto;
+    }
   }
 </style>

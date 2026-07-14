@@ -1,6 +1,8 @@
 <script lang="ts">
   import { createShellAccess, type ShellSummary } from '$lib/services/shells-rpc';
-  import { Expand, ExternalLink, Loader2, Monitor, RefreshCw } from 'lucide-svelte';
+  import { Expand, ExternalLink, Monitor, RefreshCw } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
+  import { AsyncBoundary, type AsyncBoundaryState } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
 
   let { shell }: { shell: ShellSummary } = $props();
@@ -10,14 +12,26 @@
   let loading = $state(false);
   let generation = 0;
 
+  const accessState = $derived.by<AsyncBoundaryState>(() => {
+    if (loading || (!url && !error)) {
+      return { kind: 'loading', label: m.cloud_desktop_starting() };
+    }
+    if (error) {
+      return {
+        kind: 'error',
+        title: m.cloud_access_unavailable(),
+        description: error,
+        retry: () => void connect(),
+      };
+    }
+    return { kind: 'ready' };
+  });
+
   function safeDesktopUrl(raw: string): string {
     const parsed = new URL(raw);
     if (parsed.protocol !== 'https:' && !(import.meta.env.DEV && parsed.protocol === 'http:')) {
       throw new Error(m.cloud_access_invalid_url());
     }
-    // Current gateways return the explicit noVNC URL. Keep older/provider
-    // responses desktop-specific too instead of embedding their generic proxy
-    // landing page.
     if (
       parsed.hostname.endsWith('.exe.xyz') &&
       (parsed.pathname === '/' || parsed.pathname === '')
@@ -61,166 +75,148 @@
 
 <div class="desktop-shell">
   <div class="desktop-bar">
-    <div class="traffic"><span></span><span></span><span></span></div>
-    <Monitor size={13} />
-    <span>{shell.displayName}</span>
+    <div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+    <Monitor size={13} aria-hidden="true" />
+    <strong>{shell.displayName}</strong>
     <span class="session">{m.cloud_desktop_session_label()}</span>
     {#if url}
-      <a
+      <Button
         href={url}
+        variant="ghost"
+        size="icon"
         target="_blank"
         rel="noreferrer"
         title={m.cloud_open_new_tab()}
         aria-label={m.cloud_open_new_tab()}
       >
-        <ExternalLink size={13} />
-      </a>
+        <ExternalLink size={13} aria-hidden="true" />
+      </Button>
     {/if}
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon"
       onclick={() => void connect()}
-      disabled={loading}
+      {loading}
       title={m.cloud_retry()}
       aria-label={m.cloud_retry()}
     >
-      {#if loading}<Loader2 size={13} class="animate-spin" />{:else}<RefreshCw size={13} />{/if}
-    </button>
-    <button
+      <RefreshCw size={13} aria-hidden="true" />
+    </Button>
+    <Button
       type="button"
+      variant="ghost"
+      size="icon"
       onclick={fullscreen}
       disabled={!url}
       title={m.cloud_fullscreen()}
-      aria-label={m.cloud_fullscreen()}><Expand size={13} /></button
+      aria-label={m.cloud_fullscreen()}
     >
+      <Expand size={13} aria-hidden="true" />
+    </Button>
   </div>
 
-  {#if loading}
-    <div class="desktop-state">
-      <Loader2 size={22} class="animate-spin" /><span>{m.cloud_desktop_starting()}</span>
-    </div>
-  {:else if error}
-    <div class="desktop-state error-state">
-      <Monitor size={26} />
-      <strong>{m.cloud_access_unavailable()}</strong>
-      <span>{error}</span>
-      <button type="button" onclick={() => void connect()}>{m.cloud_retry()}</button>
-    </div>
-  {:else if url}
-    <iframe
-      bind:this={frame}
-      src={url}
-      title={m.cloud_gui_frame_title({ name: shell.displayName })}
-      allow="clipboard-read; clipboard-write; fullscreen; publickey-credentials-get *"
-      referrerpolicy="no-referrer"
-    ></iframe>
-  {/if}
+  <AsyncBoundary state={accessState} class="desktop-boundary">
+    {#if url}
+      <iframe
+        bind:this={frame}
+        src={url}
+        title={m.cloud_gui_frame_title({ name: shell.displayName })}
+        allow="clipboard-read; clipboard-write; fullscreen; publickey-credentials-get *"
+        referrerpolicy="no-referrer"
+      ></iframe>
+    {/if}
+  </AsyncBoundary>
 </div>
 
 <style>
   .desktop-shell {
-    height: 100%;
+    display: flex;
+    width: 100%;
+    min-width: 0;
     min-height: 0;
-    display: flex;
+    flex: 1;
     flex-direction: column;
-    background: #090b0f;
+    background: var(--color-canvas);
   }
+
   .desktop-bar {
-    height: 2.35rem;
-    padding: 0 0.65rem;
-    flex: 0 0 auto;
     display: flex;
+    min-height: var(--control-height-lg);
+    flex: none;
     align-items: center;
-    gap: 0.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    color: #a8b0bd;
-    font: 500 0.65rem/1 var(--font-mono, monospace);
+    gap: var(--space-2);
+    padding-inline: var(--space-3);
+    border-bottom: 1px solid var(--color-border-subtle);
+    color: var(--color-text-secondary);
+    background: var(--color-surface-1);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-telemetry);
+    line-height: var(--line-height-compact);
   }
+
+  .desktop-bar strong {
+    overflow: hidden;
+    font-weight: var(--font-weight-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .traffic {
     display: flex;
-    gap: 0.3rem;
-    margin-right: 0.2rem;
+    flex: none;
+    gap: var(--space-1);
   }
+
   .traffic span {
-    width: 0.48rem;
-    height: 0.48rem;
-    border-radius: 50%;
-    background: #38404b;
+    width: var(--space-2);
+    height: var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--color-text-disabled);
   }
+
   .traffic span:first-child {
-    background: #ef6a62;
+    background: var(--color-danger-fg);
   }
+
   .traffic span:nth-child(2) {
-    background: #eab950;
+    background: var(--color-warning-fg, var(--color-warning));
   }
+
   .traffic span:nth-child(3) {
-    background: #57bd70;
+    background: var(--color-success-fg);
   }
+
   .session {
     margin-left: auto;
-    color: #606a78;
-    font-size: 0.55rem;
-    letter-spacing: 0.09em;
+    color: var(--color-text-tertiary);
+    letter-spacing: var(--letter-spacing-label);
+    text-transform: uppercase;
   }
-  .desktop-bar button,
-  .desktop-bar a {
-    width: 1.65rem;
-    height: 1.65rem;
-    display: grid;
-    place-items: center;
-    border: 0;
-    border-radius: 0.3rem;
-    background: transparent;
-    color: #768192;
-    cursor: pointer;
-  }
-  .desktop-bar button:hover:not(:disabled),
-  .desktop-bar a:hover {
-    color: #dce2ea;
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .desktop-bar button:disabled {
-    opacity: 0.35;
-    cursor: default;
-  }
-  iframe {
-    flex: 1;
+
+  :global(.desktop-boundary) {
+    display: flex;
+    min-width: 0;
     min-height: 0;
-    width: 100%;
-    border: 0;
-    background: #11141a;
-  }
-  .desktop-state {
     flex: 1;
-    display: grid;
-    place-items: center;
-    align-content: center;
-    gap: 0.7rem;
-    color: #7c8798;
-    font-size: 0.72rem;
   }
-  .error-state {
-    text-align: center;
-    padding: 2rem;
+
+  iframe {
+    width: 100%;
+    min-height: 0;
+    flex: 1;
+    border: 0;
+    background: var(--color-surface-1);
   }
-  .error-state > :global(svg) {
-    color: #586373;
-  }
-  .error-state strong {
-    color: #eef2f7;
-    font-size: 0.82rem;
-  }
-  .error-state span {
-    max-width: 34rem;
-    font: 0.65rem/1.5 var(--font-mono, monospace);
-  }
-  .error-state button {
-    height: 2rem;
-    padding: 0 0.75rem;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 0.35rem;
-    background: rgba(255, 255, 255, 0.04);
-    color: #ccd4df;
-    cursor: pointer;
-    font-size: 0.7rem;
+
+  @media (max-width: 599.98px) {
+    .traffic,
+    .session {
+      display: none;
+    }
+
+    .desktop-bar strong {
+      margin-right: auto;
+    }
   }
 </style>
