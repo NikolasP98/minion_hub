@@ -162,7 +162,7 @@
   </div>
 
   {#if editing && data.isAdmin && !inspectorAsSheet}
-    <aside class="relative z-[var(--layer-sticky,10)] w-[320px] shrink-0 border-l border-border bg-bg2 overflow-y-auto text-[12px] p-3 flex flex-col gap-3" aria-label={m.overview_editAreas()}>
+    <aside class="t-caption relative z-[var(--layer-sticky,10)] w-[320px] shrink-0 border-l border-border bg-bg2 overflow-y-auto p-3 flex flex-col gap-3" aria-label={m.overview_editAreas()}>
       {@render inspectorContent()}
     </aside>
   {/if}
@@ -170,6 +170,6 @@
 
 {#if data.isAdmin && inspectorAsSheet}
   <Sheet bind:open={editing} title={m.overview_editAreas()} placement="right" size="sm">
-    <div class="flex flex-col gap-3 text-[12px]">{@render inspectorContent()}</div>
+    <div class="t-caption flex flex-col gap-3">{@render inspectorContent()}</div>
   </Sheet>
 {/if}

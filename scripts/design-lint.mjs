@@ -33,6 +33,36 @@ const RULES = {
     test: (file) => file.endsWith('.svelte') && !COLOR_ALLOW.some((re) => re.test(file)),
     re: /#[0-9a-fA-F]{3,8}\b|\brgba?\s*\(/g,
   },
+  'palette-utility': {
+    desc: 'Tailwind palette utility in .svelte — use a semantic color role instead',
+    test: (file) => file.endsWith('.svelte') && !COLOR_ALLOW.some((re) => re.test(file)),
+    re: /\b(?:bg|text|border|ring|outline|divide|fill|stroke|from|via|to)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)(?:-\d{2,3})?(?:\/\d{1,3})?\b/g,
+  },
+  'raw-radius': {
+    desc: 'arbitrary radius in .svelte — use the radius scale or a named variant',
+    test: (file) => file.endsWith('.svelte'),
+    re: /\brounded-\[(?!var\()[^\]]+\]|\bborder-radius\s*:(?!\s*(?:0(?:\s|;|$)|var\(|calc\(var\())[^;}{]+/g,
+  },
+  'raw-shadow': {
+    desc: 'arbitrary shadow in .svelte — use an elevation/focus/status recipe',
+    test: (file) => file.endsWith('.svelte'),
+    re: /\bshadow-\[(?!var\()[^\]]+\]|\bbox-shadow\s*:(?!\s*(?:none(?:\s|;|$)|var\())[^;}{]+/g,
+  },
+  'raw-motion': {
+    desc: 'literal UI duration in .svelte — use duration/easing or motion recipes',
+    test: (file) => file.endsWith('.svelte'),
+    re: /\bduration-(?:\d+|\[(?!var\()[^\]]+\])\b|\b(?:transition(?:-duration)?|animation-duration)\s*:(?![^;}{]*var\()[^;}{]*(?:\d+(?:\.\d+)?ms|\d*\.\d+s)/g,
+  },
+  'raw-layer': {
+    desc: 'numeric z-index in .svelte — use a named layer token',
+    test: (file) => file.endsWith('.svelte'),
+    re: /\bz-(?:\d+|\[(?!var\()[^\]]+\])\b|\bz-index\s*:(?!\s*var\()[^;}{]*-?\d+/g,
+  },
+  'raw-type-size': {
+    desc: 'arbitrary type size in .svelte — use a typography role',
+    test: (file) => file.endsWith('.svelte'),
+    re: /\btext-\[(?:\d+(?:\.\d+)?(?:px|rem))\]|\bfont-size\s*:(?!\s*var\()[^;}{]+/g,
+  },
   'bare-button': {
     desc: 'bare <button> outside ui/ — prefer <Button> from $lib/components/ui',
     test: (file) => file.endsWith('.svelte') && !PRIMITIVE_DIR.test(file),
