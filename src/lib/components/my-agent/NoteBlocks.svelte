@@ -591,9 +591,6 @@
 
   /* Easel block preview card. */
   :global(.easel-card) {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
     width: 100%;
     padding: var(--space-1);
     border-radius: var(--radius-lg);
@@ -603,6 +600,12 @@
     border: none;
     font-family: inherit;
     transition: color var(--duration-fast) ease;
+  }
+  :global(.easel-card > span) {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
   }
   :global(.easel-card):hover {
     color: var(--color-foreground);

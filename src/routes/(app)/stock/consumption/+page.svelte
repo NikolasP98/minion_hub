@@ -310,9 +310,12 @@
   .search-inp { flex: 1; min-width: 0; background: transparent; border: none; outline: none; font-size: var(--font-size-body); color: var(--color-foreground); }
   .product-list { overflow-y: auto; flex: 1; min-height: 0; }
   .product-list :global(.product-btn) {
-    display: flex; flex-direction: column; gap: var(--space-0-5); width: 100%; text-align: left;
+    width: 100%; text-align: left;
     padding: var(--space-2) var(--space-3); border: none; border-bottom: 1px solid var(--hairline);
     background: transparent; cursor: pointer; color: var(--color-foreground);
+  }
+  .product-list :global(.product-btn > span) {
+    width: 100%; flex-direction: column; align-items: flex-start; gap: var(--space-0-5);
   }
   .product-list :global(.product-btn):hover { background: color-mix(in srgb, var(--color-text-primary) 3%, transparent); }
   .product-list :global(.product-btn.active) { background: color-mix(in srgb, var(--color-accent) 10%, transparent); border-left: 2px solid var(--color-accent); }

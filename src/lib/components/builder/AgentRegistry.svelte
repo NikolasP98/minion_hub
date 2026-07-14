@@ -287,8 +287,8 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         color: var(--color-muted);
         cursor: pointer;
         transition: all var(--duration-fast) var(--ease-standard);
-        display: flex;
-        align-items: center;
+    }
+    :global(.cat-pill > span) {
         gap: var(--space-1);
     }
 
@@ -349,7 +349,9 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         background: none;
         color: var(--color-foreground);
         cursor: pointer;
-        display: flex;
+    }
+    :global(.more-item > span) {
+        width: 100%;
         justify-content: space-between;
     }
 
@@ -487,6 +489,11 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         width: 100%;
         color: inherit;
         text-align: left;
+    }
+    :global(.reg-card > span) {
+        width: 100%;
+        align-self: stretch;
+        align-items: stretch;
     }
 
     :global(.reg-card:hover) {

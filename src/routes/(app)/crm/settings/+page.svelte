@@ -307,7 +307,7 @@
 
           <label class="field">
             <span class="t-caption">{m.crm_tag_type()}</span>
-            <Select bind:value={kind} class="inp">
+            <Select bind:value={kind} class="select-field">
               <option value="manual">{m.crm_tag_kind_manual()}</option>
               <option value="auto">{m.crm_tag_kind_auto()}</option>
               <option value="ai">{m.crm_tag_kind_ai()}</option>
@@ -318,10 +318,10 @@
             <div class="rule">
               <span class="t-caption">{m.crm_auto_rule()}</span>
               <div class="rule-row">
-                <Select bind:value={field} class="inp">
+                <Select bind:value={field} class="select-field">
                   {#each FIELDS as f (f.v)}<option value={f.v}>{f.label()}</option>{/each}
                 </Select>
-                <Select bind:value={op} class="inp w-16">
+                <Select bind:value={op} class="select-field w-16">
                   {#each OPS as o (o)}<option value={o}>{o}</option>{/each}
                 </Select>
                 <input bind:value class="inp w-24" placeholder={m.crm_rule_value()} />
@@ -619,6 +619,14 @@
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
   }
+  :global(.crm-settings-surface .select-field [data-part='select']) {
+    height: 2rem;
+    padding: 0 var(--space-2);
+    font-size: var(--font-size-body, 14px);
+    border-radius: var(--radius-md);
+    background: var(--color-bg3);
+    border: 1px solid var(--hairline);
+  }
   .swatches {
     display: flex;
     gap: var(--space-2, 8px);
@@ -833,14 +841,15 @@
     padding: var(--space-2, 8px);
   }
   :global(.crm-settings-surface .add-item) {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2, 8px);
     width: 100%;
     padding: var(--space-2, 8px) var(--space-2, 8px);
     border-radius: var(--radius-sm);
     text-align: left;
+  }
+  :global(.crm-settings-surface .add-item > span) {
+    width: 100%;
+    justify-content: space-between;
+    gap: var(--space-2, 8px);
   }
   :global(.crm-settings-surface .add-item:hover) {
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
@@ -853,15 +862,17 @@
     font-weight: 500;
   }
   :global(.crm-settings-surface .mi) {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2, 8px);
     width: 100%;
     padding: var(--space-2, 8px) var(--space-2, 8px);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body, 14px);
     text-align: left;
     color: var(--color-foreground);
+  }
+  :global(.crm-settings-surface .mi > span) {
+    width: 100%;
+    justify-content: flex-start;
+    gap: var(--space-2, 8px);
   }
   :global(.crm-settings-surface .mi:hover) {
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
@@ -911,9 +922,6 @@
     white-space: nowrap;
   }
   :global(.crm-settings-surface .find) {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1, 4px);
     font-size: var(--font-size-caption, 12px);
     font-weight: 500;
     color: var(--color-accent);
@@ -921,6 +929,9 @@
     border-radius: var(--radius-md);
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  }
+  :global(.crm-settings-surface .find > span) {
+    gap: var(--space-1, 4px);
   }
   :global(.crm-settings-surface .find:hover) {
     background: color-mix(in srgb, var(--color-accent) 16%, transparent);

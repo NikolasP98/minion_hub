@@ -24,7 +24,7 @@
   );
 </script>
 
-<Button variant="secondary" class="row" onclick={() => onSelect(shell.shellId)}>
+<Button variant="secondary" class="shell-row" onclick={() => onSelect(shell.shellId)}>
   <span class="status-dot {statusColor}" title={shell.status}></span>
   <span class="name">{shell.displayName}</span>
   <span class="harness">{shell.harness}</span>
@@ -35,16 +35,19 @@
 </Button>
 
 <style>
-  .row {
-    display: grid;
-    grid-template-columns: auto 1fr 120px 80px 130px 110px 100px;
-    align-items: center;
-    gap: var(--space-3, 12px);
+  :global(.shell-row) {
     width: 100%;
     padding: var(--space-3, 12px) var(--space-4, 16px);
     cursor: pointer;
     text-align: left;
     font-size: var(--font-size-body, 13px);
+  }
+  :global(.shell-row > span) {
+    display: grid;
+    width: 100%;
+    grid-template-columns: auto 1fr 120px 80px 130px 110px 100px;
+    align-items: center;
+    gap: var(--space-3, 12px);
   }
   .status-dot {
     width: 8px;
@@ -100,16 +103,18 @@
     background: transparent;
   }
   @media (max-width: 767.98px) {
-    .row {
+    :global(.shell-row) {
+      min-height: var(--control-height-touch, 44px);
+      margin-bottom: var(--space-2, 8px);
+      padding: var(--space-3, 12px);
+    }
+    :global(.shell-row > span) {
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:
         'dot name status'
         'dot harness status'
         'dot resources invoke';
       gap: var(--space-1, 4px) var(--space-2, 8px);
-      min-height: var(--control-height-touch, 44px);
-      margin-bottom: var(--space-2, 8px);
-      padding: var(--space-3, 12px);
     }
     .status-dot {
       grid-area: dot;

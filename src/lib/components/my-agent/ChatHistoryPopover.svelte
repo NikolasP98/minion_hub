@@ -227,11 +227,7 @@
     font-size: var(--font-size-caption);
   }
   :global(.history-row) {
-    display: grid;
     width: 100%;
-    grid-template-columns: 18px minmax(0, 1fr) auto;
-    gap: var(--space-2);
-    align-items: start;
     padding: var(--space-2);
     border: 0;
     border-radius: var(--radius-xl);
@@ -239,6 +235,13 @@
     color: var(--color-foreground);
     background: transparent;
     cursor: pointer;
+  }
+  :global(.history-row > span) {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    gap: var(--space-2);
+    align-items: start;
   }
   :global(.history-row):hover,
   :global(.history-row):global(.active) {

@@ -200,6 +200,9 @@
     padding: var(--space-0-5) var(--space-2);
     border-radius: var(--radius-md);
   }
+  .card :global(.reanalyze > span) {
+    gap: var(--space-1);
+  }
   .card :global(.reanalyze):hover {
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
@@ -217,14 +220,17 @@
     pointer-events: none;
   }
   .funnel :global(.row) {
-    display: grid;
-    grid-template-columns: 9rem 1fr;
-    align-items: center;
-    gap: var(--space-3);
     width: 100%;
     text-align: left;
     border-radius: var(--radius-md);
     padding: var(--space-0-5) var(--space-1);
+  }
+  .funnel :global(.row > span) {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 9rem 1fr;
+    align-items: center;
+    gap: var(--space-3);
   }
   .funnel :global(.row):hover {
     background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
@@ -326,6 +332,9 @@
     border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-accent) 8%, transparent);
     border: 1px dashed color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+  .card :global(.suggest > span) {
+    gap: var(--space-1);
   }
   .card :global(.suggest):hover {
     background: color-mix(in srgb, var(--color-accent) 14%, transparent);
