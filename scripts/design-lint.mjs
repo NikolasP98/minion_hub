@@ -11,6 +11,7 @@
  *   node scripts/design-lint.mjs
  *   node scripts/design-lint.mjs --ci
  *   node scripts/design-lint.mjs --ci --base-ref origin/dev
+ *   node scripts/design-lint.mjs --ci --zero-changed --base-ref <wave-base>
  *   node scripts/design-lint.mjs --update-baseline   # decreases only
  *   node scripts/design-lint.mjs --ci --strict-global
  */
@@ -256,6 +257,7 @@ for (const [key, rule] of Object.entries(RULES)) {
 
 const baseRef = requestedBaseRef(args);
 let fileRegressions = [];
+let changedFileDebt = [];
 if (baseRef && refExists(baseRef)) {
   for (const file of changedFiles(baseRef)) {
     const absolutePath = join(root, file);
@@ -272,6 +274,9 @@ if (baseRef && refExists(baseRef)) {
           now: now[key].governed,
         });
       }
+      if (args.includes('--zero-changed') && now[key].governed > 0) {
+        changedFileDebt.push({ file, rule: key, now: now[key].governed });
+      }
     }
   }
   console.log(`\n  per-file base  ${baseRef}`);
@@ -279,6 +284,15 @@ if (baseRef && refExists(baseRef)) {
     console.log('  per-file debt  no changed file increased governed debt');
   for (const item of fileRegressions) {
     console.log(`  ▲ ${item.rule.padEnd(13)} ${item.before} → ${item.now}  ${item.file}`);
+  }
+  if (args.includes('--zero-changed')) {
+    console.log('\n  migrated-file debt');
+    if (changedFileDebt.length === 0) {
+      console.log('  zero governed debt in changed files');
+    }
+    for (const item of changedFileDebt) {
+      console.log(`  ✕ ${item.rule.padEnd(13)} ${String(item.now).padStart(4)}  ${item.file}`);
+    }
   }
 } else {
   console.warn(`\n  per-file debt  skipped: git base '${baseRef}' is unavailable`);
@@ -288,9 +302,12 @@ console.log('');
 if (
   args.includes('--ci') &&
   (fileRegressions.length > 0 ||
+    changedFileDebt.length > 0 ||
     !refExists(baseRef) ||
     (args.includes('--strict-global') && globalRegression))
 ) {
-  console.error('design-lint: debt gate failed — changed files may not increase governed debt.\n');
+  console.error(
+    'design-lint: debt gate failed — changed files may not increase governed debt, and migrated files must reach zero when --zero-changed is set.\n',
+  );
   process.exit(1);
 }
