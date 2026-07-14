@@ -1,687 +1,718 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages';
-	import Modal from '$lib/components/ui/Modal.svelte';
-	import {
-		Reply,
-		ReplyAll,
-		Forward,
-		Archive,
-		Trash2,
-		Tag,
-		ExternalLink,
-		Sparkles,
-		Send,
-		RefreshCw,
-		Loader2,
-		X,
-	} from 'lucide-svelte';
-	import type { EmailItem } from '$lib/services/my-agent-rpc';
-	import { renderEmailBody } from '$lib/utils/email-body';
-	import {
-		getEmailBody,
-		getEmailSummary,
-		draftEmailReply as rpcDraftReply,
-	} from '$lib/services/my-agent-rpc';
+  import { Button } from '$lib/components/ui';
 
-	interface Props {
-		item: EmailItem | null;
-		open?: boolean;
-		onclose?: () => void;
-		/**
-		 * Hand a well-formed request to the agent (which holds gws gmail tools).
-		 * Used for the mutating actions (forward / archive / label / trash) and
-		 * for the final "send" of an in-modal composed reply.
-		 */
-		onask?: (prompt: string) => void;
-	}
+  import * as m from '$lib/paraglide/messages';
+  import Modal from '$lib/components/ui/Modal.svelte';
+  import {
+    Reply,
+    ReplyAll,
+    Forward,
+    Archive,
+    Trash2,
+    Tag,
+    ExternalLink,
+    Sparkles,
+    Send,
+    RefreshCw,
+    Loader2,
+    X,
+  } from 'lucide-svelte';
+  import type { EmailItem } from '$lib/services/my-agent-rpc';
+  import { renderEmailBody } from '$lib/utils/email-body';
+  import {
+    getEmailBody,
+    getEmailSummary,
+    draftEmailReply as rpcDraftReply,
+  } from '$lib/services/my-agent-rpc';
 
-	let { item, open = $bindable(false), onclose, onask }: Props = $props();
+  interface Props {
+    item: EmailItem | null;
+    open?: boolean;
+    onclose?: () => void;
+    /**
+     * Hand a well-formed request to the agent (which holds gws gmail tools).
+     * Used for the mutating actions (forward / archive / label / trash) and
+     * for the final "send" of an in-modal composed reply.
+     */
+    onask?: (prompt: string) => void;
+  }
 
-	const sender = $derived(item?.fromName?.trim() || item?.from?.trim() || 'Unknown sender');
-	const subject = $derived(item?.subject?.trim() || '(no subject)');
-	const initial = $derived(sender.charAt(0).toUpperCase() || '?');
+  let { item, open = $bindable(false), onclose, onask }: Props = $props();
 
-	const receivedLabel = $derived.by(() => {
-		if (!item?.receivedAt) return '';
-		const d = new Date(item.receivedAt);
-		if (Number.isNaN(d.getTime())) return '';
-		return d.toLocaleString([], {
-			weekday: 'short',
-			month: 'short',
-			day: 'numeric',
-			hour: 'numeric',
-			minute: '2-digit',
-		});
-	});
+  const sender = $derived(item?.fromName?.trim() || item?.from?.trim() || 'Unknown sender');
+  const subject = $derived(item?.subject?.trim() || '(no subject)');
+  const initial = $derived(sender.charAt(0).toUpperCase() || '?');
 
-	// A quoted reference block so the agent knows exactly which message to act on.
-	const ref = $derived(
-		`Email — from: ${sender}, subject: "${subject}"${receivedLabel ? `, received: ${receivedLabel}` : ''}`,
-	);
+  const receivedLabel = $derived.by(() => {
+    if (!item?.receivedAt) return '';
+    const d = new Date(item.receivedAt);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString([], {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  });
 
-	// ─── Body + summary lifecycle ─────────────────────────────────────────────
-	// Both fire when a message opens. The gateway shares one gws spawn between
-	// body + summary (short-TTL cache) and caches the summary per message, so
-	// re-opening the same email costs nothing.
-	let body = $state('');
-	let bodyLoading = $state(false);
-	let bodyError = $state(false);
-	let summary = $state<string | null>(null);
-	let summaryLoading = $state(false);
+  // A quoted reference block so the agent knows exactly which message to act on.
+  const ref = $derived(
+    `Email — from: ${sender}, subject: "${subject}"${receivedLabel ? `, received: ${receivedLabel}` : ''}`,
+  );
 
-	// Track which message we've loaded so the effect only fires on a real change.
-	let loadedId = $state<string | null>(null);
+  // ─── Body + summary lifecycle ─────────────────────────────────────────────
+  // Both fire when a message opens. The gateway shares one gws spawn between
+  // body + summary (short-TTL cache) and caches the summary per message, so
+  // re-opening the same email costs nothing.
+  let body = $state('');
+  let bodyLoading = $state(false);
+  let bodyError = $state(false);
+  let summary = $state<string | null>(null);
+  let summaryLoading = $state(false);
 
-	$effect(() => {
-		if (!open || !item) {
-			return;
-		}
-		if (item.id === loadedId) {
-			return;
-		}
-		loadedId = item.id;
-		void loadDetail(item.id, item.sourceEmail);
-	});
+  // Track which message we've loaded so the effect only fires on a real change.
+  let loadedId = $state<string | null>(null);
 
-	async function loadDetail(messageId: string, sourceEmail: string) {
-		// Reset composer + panels for the freshly-opened message.
-		resetComposer();
-		body = '';
-		bodyError = false;
-		summary = null;
-		bodyLoading = true;
-		summaryLoading = true;
+  $effect(() => {
+    if (!open || !item) {
+      return;
+    }
+    if (item.id === loadedId) {
+      return;
+    }
+    loadedId = item.id;
+    void loadDetail(item.id, item.sourceEmail);
+  });
 
-		// Fire both in parallel; they de-dupe the gws read on the gateway side.
-		const bodyP = getEmailBody(messageId, sourceEmail)
-			.then((res) => {
-				// Guard against a late response after the user switched messages.
-				if (loadedId !== messageId) return;
-				body = res.body;
-				bodyError = res.body.trim().length === 0;
-			})
-			.catch(() => {
-				if (loadedId !== messageId) return;
-				bodyError = true;
-			})
-			.finally(() => {
-				if (loadedId === messageId) bodyLoading = false;
-			});
+  async function loadDetail(messageId: string, sourceEmail: string) {
+    // Reset composer + panels for the freshly-opened message.
+    resetComposer();
+    body = '';
+    bodyError = false;
+    summary = null;
+    bodyLoading = true;
+    summaryLoading = true;
 
-		const sumP = getEmailSummary(messageId, sourceEmail)
-			.then((s) => {
-				if (loadedId !== messageId) return;
-				summary = s;
-			})
-			.catch(() => {
-				/* summary is best-effort; silent */
-			})
-			.finally(() => {
-				if (loadedId === messageId) summaryLoading = false;
-			});
+    // Fire both in parallel; they de-dupe the gws read on the gateway side.
+    const bodyP = getEmailBody(messageId, sourceEmail)
+      .then((res) => {
+        // Guard against a late response after the user switched messages.
+        if (loadedId !== messageId) return;
+        body = res.body;
+        bodyError = res.body.trim().length === 0;
+      })
+      .catch(() => {
+        if (loadedId !== messageId) return;
+        bodyError = true;
+      })
+      .finally(() => {
+        if (loadedId === messageId) bodyLoading = false;
+      });
 
-		await Promise.allSettled([bodyP, sumP]);
-	}
+    const sumP = getEmailSummary(messageId, sourceEmail)
+      .then((s) => {
+        if (loadedId !== messageId) return;
+        summary = s;
+      })
+      .catch(() => {
+        /* summary is best-effort; silent */
+      })
+      .finally(() => {
+        if (loadedId === messageId) summaryLoading = false;
+      });
 
-	// ─── In-modal reply composer ──────────────────────────────────────────────
-	// "reply" / "replyAll" open a draft right here (no chat round-trip). The draft
-	// is AI-generated and fully editable before the user commits to sending.
-	type ComposeMode = 'reply' | 'replyAll';
-	let composeMode = $state<ComposeMode | null>(null);
-	let draft = $state('');
-	let draftLoading = $state(false);
-	let steer = $state('');
+    await Promise.allSettled([bodyP, sumP]);
+  }
 
-	function resetComposer() {
-		composeMode = null;
-		draft = '';
-		steer = '';
-		draftLoading = false;
-	}
+  // ─── In-modal reply composer ──────────────────────────────────────────────
+  // "reply" / "replyAll" open a draft right here (no chat round-trip). The draft
+  // is AI-generated and fully editable before the user commits to sending.
+  type ComposeMode = 'reply' | 'replyAll';
+  let composeMode = $state<ComposeMode | null>(null);
+  let draft = $state('');
+  let draftLoading = $state(false);
+  let steer = $state('');
 
-	async function startReply(mode: ComposeMode) {
-		if (!item) return;
-		composeMode = mode;
-		draft = '';
-		draftLoading = true;
-		try {
-			const d = await rpcDraftReply(item.id, { sourceEmail: item.sourceEmail });
-			draft = d ?? '';
-		} catch {
-			draft = '';
-		} finally {
-			draftLoading = false;
-		}
-	}
+  function resetComposer() {
+    composeMode = null;
+    draft = '';
+    steer = '';
+    draftLoading = false;
+  }
 
-	async function regenerate() {
-		if (!item) return;
-		draftLoading = true;
-		try {
-			const d = await rpcDraftReply(item.id, {
-				sourceEmail: item.sourceEmail,
-				instructions: steer.trim() || undefined,
-			});
-			if (d) draft = d;
-		} catch {
-			/* keep current draft */
-		} finally {
-			draftLoading = false;
-		}
-	}
+  async function startReply(mode: ComposeMode) {
+    if (!item) return;
+    composeMode = mode;
+    draft = '';
+    draftLoading = true;
+    try {
+      const d = await rpcDraftReply(item.id, { sourceEmail: item.sourceEmail });
+      draft = d ?? '';
+    } catch {
+      draft = '';
+    } finally {
+      draftLoading = false;
+    }
+  }
 
-	function sendDraft() {
-		const text = draft.trim();
-		if (!text) return;
-		const verb = composeMode === 'replyAll' ? 'Reply-all to' : 'Reply to';
-		// The composed/edited text is final — the agent just sends it via gws.
-		ask(
-			`${verb} this ${ref} with exactly this body (do not rewrite it, send as-is):\n\n${text}`,
-		);
-	}
+  async function regenerate() {
+    if (!item) return;
+    draftLoading = true;
+    try {
+      const d = await rpcDraftReply(item.id, {
+        sourceEmail: item.sourceEmail,
+        instructions: steer.trim() || undefined,
+      });
+      if (d) draft = d;
+    } catch {
+      /* keep current draft */
+    } finally {
+      draftLoading = false;
+    }
+  }
 
-	function ask(prompt: string) {
-		onask?.(prompt);
-		open = false;
-		onclose?.();
-	}
+  function sendDraft() {
+    const text = draft.trim();
+    if (!text) return;
+    const verb = composeMode === 'replyAll' ? 'Reply-all to' : 'Reply to';
+    // The composed/edited text is final — the agent just sends it via gws.
+    ask(`${verb} this ${ref} with exactly this body (do not rewrite it, send as-is):\n\n${text}`);
+  }
 
-	function openInGmail() {
-		if (item?.htmlLink) window.open(item.htmlLink, '_blank', 'noopener');
-	}
+  function ask(prompt: string) {
+    onask?.(prompt);
+    open = false;
+    onclose?.();
+  }
+
+  function openInGmail() {
+    if (item?.htmlLink) window.open(item.htmlLink, '_blank', 'noopener');
+  }
 </script>
 
 <Modal bind:open title={subject || m.email_unknownSender()} size="lg" {onclose}>
-	{#snippet header()}
-		<div class="hdr">
-			<h2 class="hdr-title" title={subject}>{subject}</h2>
-			{#if item?.htmlLink}
-				<button
-					type="button"
-					class="hdr-open"
-					onclick={openInGmail}
-					title={m.email_openInGmail()}
-					aria-label={m.email_openInGmail()}
-				>
-					<ExternalLink size={14} />
-				</button>
-			{/if}
-		</div>
-	{/snippet}
+  {#snippet header()}
+    <div class="hdr">
+      <h2 class="hdr-title" title={subject}>{subject}</h2>
+      {#if item?.htmlLink}
+        <Button
+          type="button"
+          class="hdr-open"
+          onclick={openInGmail}
+          title={m.email_openInGmail()}
+          aria-label={m.email_openInGmail()}
+        >
+          <ExternalLink size={14} />
+        </Button>
+      {/if}
+    </div>
+  {/snippet}
 
-	{#if item}
-		<div class="body">
-			<div class="from">
-				<span class="avatar" aria-hidden="true">{initial}</span>
-				<div class="from-text">
-					<span class="name">{sender}</span>
-					{#if item.from && item.from !== sender}<span class="addr">{item.from}</span>{/if}
-				</div>
-				{#if receivedLabel}<span class="when">{receivedLabel}</span>{/if}
-			</div>
+  {#if item}
+    <div class="body">
+      <div class="from">
+        <span class="avatar" aria-hidden="true">{initial}</span>
+        <div class="from-text">
+          <span class="name">{sender}</span>
+          {#if item.from && item.from !== sender}<span class="addr">{item.from}</span>{/if}
+        </div>
+        {#if receivedLabel}<span class="when">{receivedLabel}</span>{/if}
+      </div>
 
-			<!-- AI summary banner — auto-generated on open, cached server-side. -->
-			{#if summaryLoading}
-				<div class="summary loading">
-					<Sparkles size={13} />
-					<span class="shimmer">{m.email_summarizing()}</span>
-				</div>
-			{:else if summary}
-				<div class="summary">
-					<Sparkles size={13} class="sum-ic" />
-					<p>{summary}</p>
-				</div>
-			{/if}
+      <!-- AI summary banner — auto-generated on open, cached server-side. -->
+      {#if summaryLoading}
+        <div class="summary loading">
+          <Sparkles size={13} />
+          <span class="shimmer">{m.email_summarizing()}</span>
+        </div>
+      {:else if summary}
+        <div class="summary">
+          <Sparkles size={13} class="sum-ic" />
+          <p>{summary}</p>
+        </div>
+      {/if}
 
-			<!-- Real decoded message body -->
-			<div class="content">
-				{#if bodyLoading}
-					<div class="loading-body">
-						<Loader2 size={16} class="spin" />
-						<span>{m.email_loadingMessage()}</span>
-					</div>
-				{:else if bodyError || !body}
-					<p class="empty">
-						{m.email_couldntLoadBody()}
-					</p>
-				{:else}
-					<!-- eslint-disable-next-line svelte/no-at-html-tags — renderEmailBody
+      <!-- Real decoded message body -->
+      <div class="content">
+        {#if bodyLoading}
+          <div class="loading-body">
+            <Loader2 size={16} class="spin" />
+            <span>{m.email_loadingMessage()}</span>
+          </div>
+        {:else if bodyError || !body}
+          <p class="empty">
+            {m.email_couldntLoadBody()}
+          </p>
+        {:else}
+          <!-- eslint-disable-next-line svelte/no-at-html-tags — renderEmailBody
 					     HTML-escapes all content and emits only sanitized <a> tags. -->
-					<div class="msg">{@html renderEmailBody(body)}</div>
-				{/if}
-			</div>
+          <div class="msg">{@html renderEmailBody(body)}</div>
+        {/if}
+      </div>
 
-			<!-- In-modal composer: the draft lives + is edited here, never in chat. -->
-			{#if composeMode}
-				<div class="composer">
-					<div class="composer-head">
-						<span class="composer-title">
-							{composeMode === 'replyAll' ? m.email_replyAll() : m.email_reply()} to {sender}
-						</span>
-						<button type="button" class="composer-x" onclick={resetComposer} aria-label={m.email_discardDraft()}>
-							<X size={14} />
-						</button>
-					</div>
-					{#if draftLoading && !draft}
-						<div class="loading-body">
-							<Loader2 size={16} class="spin" />
-							<span>{m.email_draftingReply()}</span>
-						</div>
-					{:else}
-						<textarea
-							class="draft"
-							bind:value={draft}
-							rows="6"
-							placeholder={m.email_yourReply()}
-						></textarea>
-						<div class="composer-tools">
-							<input
-								class="steer"
-								bind:value={steer}
-								placeholder={m.email_steerDraft()}
-								onkeydown={(e) => e.key === 'Enter' && regenerate()}
-							/>
-							<button
-								type="button"
-								class="ghost-btn"
-								onclick={regenerate}
-								disabled={draftLoading}
-								title={m.email_regenerateDraft()}
-							>
-								{#if draftLoading}<Loader2 size={14} class="spin" />{:else}<RefreshCw size={14} />{/if}
-								{m.email_redraft()}
-							</button>
-						</div>
-					{/if}
-				</div>
-			{/if}
-		</div>
-	{/if}
+      <!-- In-modal composer: the draft lives + is edited here, never in chat. -->
+      {#if composeMode}
+        <div class="composer">
+          <div class="composer-head">
+            <span class="composer-title">
+              {composeMode === 'replyAll' ? m.email_replyAll() : m.email_reply()} to {sender}
+            </span>
+            <Button
+              type="button"
+              class="composer-x"
+              onclick={resetComposer}
+              aria-label={m.email_discardDraft()}
+            >
+              <X size={14} />
+            </Button>
+          </div>
+          {#if draftLoading && !draft}
+            <div class="loading-body">
+              <Loader2 size={16} class="spin" />
+              <span>{m.email_draftingReply()}</span>
+            </div>
+          {:else}
+            <textarea class="draft" bind:value={draft} rows="6" placeholder={m.email_yourReply()}
+            ></textarea>
+            <div class="composer-tools">
+              <input
+                class="steer"
+                bind:value={steer}
+                placeholder={m.email_steerDraft()}
+                onkeydown={(e) => e.key === 'Enter' && regenerate()}
+              />
+              <Button
+                type="button"
+                class="ghost-btn"
+                onclick={regenerate}
+                disabled={draftLoading}
+                title={m.email_regenerateDraft()}
+              >
+                {#if draftLoading}<Loader2 size={14} class="spin" />{:else}<RefreshCw
+                    size={14}
+                  />{/if}
+                {m.email_redraft()}
+              </Button>
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
 
-	{#snippet footer()}
-		{#if composeMode}
-			<button type="button" class="act" onclick={resetComposer}>{m.common_cancel()}</button>
-			<button
-				type="button"
-				class="act send"
-				onclick={sendDraft}
-				disabled={!draft.trim() || draftLoading}
-			>
-				<Send size={14} /> {m.common_save()}
-			</button>
-		{:else}
-			<div class="footer-actions">
-				<button type="button" class="icon-act" onclick={() => startReply('reply')} title={m.email_reply()} aria-label={m.email_reply()}>
-					<Reply size={16} />
-				</button>
-				<button type="button" class="icon-act" onclick={() => startReply('replyAll')} title={m.email_replyAll()} aria-label={m.email_replyAll()}>
-					<ReplyAll size={16} />
-				</button>
-				<button
-					type="button"
-					class="icon-act"
-					onclick={() => ask(`Forward this ${ref}. Ask me the recipient.`)}
-					title={m.email_forward()}
-					aria-label={m.email_forward()}
-				>
-					<Forward size={16} />
-				</button>
-				<span class="divider"></span>
-				<button
-					type="button"
-					class="icon-act"
-					onclick={() => ask(`Add a label to this ${ref}. Ask me which label.`)}
-					title={m.email_label()}
-					aria-label={m.email_label()}
-				>
-					<Tag size={16} />
-				</button>
-				<button
-					type="button"
-					class="icon-act"
-					onclick={() => ask(`Archive this ${ref}.`)}
-					title={m.email_archive()}
-					aria-label={m.email_archive()}
-				>
-					<Archive size={16} />
-				</button>
-				<button
-					type="button"
-					class="icon-act danger"
-					onclick={() => ask(`Move this ${ref} to trash. Confirm with me first.`)}
-					title={m.common_delete()}
-					aria-label={m.common_delete()}
-				>
-					<Trash2 size={16} />
-				</button>
-			</div>
-		{/if}
-	{/snippet}
+  {#snippet footer()}
+    {#if composeMode}
+      <Button type="button" class="act" onclick={resetComposer}>{m.common_cancel()}</Button>
+      <Button
+        type="button"
+        class="act send"
+        onclick={sendDraft}
+        disabled={!draft.trim() || draftLoading}
+      >
+        <Send size={14} />
+        {m.common_save()}
+      </Button>
+    {:else}
+      <div class="footer-actions">
+        <Button
+          type="button"
+          class="icon-act"
+          onclick={() => startReply('reply')}
+          title={m.email_reply()}
+          aria-label={m.email_reply()}
+        >
+          <Reply size={16} />
+        </Button>
+        <Button
+          type="button"
+          class="icon-act"
+          onclick={() => startReply('replyAll')}
+          title={m.email_replyAll()}
+          aria-label={m.email_replyAll()}
+        >
+          <ReplyAll size={16} />
+        </Button>
+        <Button
+          type="button"
+          class="icon-act"
+          onclick={() => ask(`Forward this ${ref}. Ask me the recipient.`)}
+          title={m.email_forward()}
+          aria-label={m.email_forward()}
+        >
+          <Forward size={16} />
+        </Button>
+        <span class="divider"></span>
+        <Button
+          type="button"
+          class="icon-act"
+          onclick={() => ask(`Add a label to this ${ref}. Ask me which label.`)}
+          title={m.email_label()}
+          aria-label={m.email_label()}
+        >
+          <Tag size={16} />
+        </Button>
+        <Button
+          type="button"
+          class="icon-act"
+          onclick={() => ask(`Archive this ${ref}.`)}
+          title={m.email_archive()}
+          aria-label={m.email_archive()}
+        >
+          <Archive size={16} />
+        </Button>
+        <Button
+          type="button"
+          class="icon-act danger"
+          onclick={() => ask(`Move this ${ref} to trash. Confirm with me first.`)}
+          title={m.common_delete()}
+          aria-label={m.common_delete()}
+        >
+          <Trash2 size={16} />
+        </Button>
+      </div>
+    {/if}
+  {/snippet}
 </Modal>
 
 <style>
-	/* Header (corner Open icon) */
-	.hdr {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		min-width: 0;
-	}
-	.hdr-title {
-		flex: 1;
-		min-width: 0;
-		font-size: 15px;
-		font-weight: 650;
-		color: var(--color-foreground);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.hdr-open {
-		flex-shrink: 0;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		border-radius: var(--radius-md, 6px);
-		border: none;
-		background: transparent;
-		color: var(--color-muted-foreground);
-		cursor: pointer;
-		opacity: 0.55;
-		transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
-	}
-	.hdr-open:hover {
-		opacity: 1;
-		color: var(--color-accent);
-		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-	}
+  /* Header (corner Open icon) */
+  .hdr {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .hdr-title {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--font-size-body);
+    font-weight: 650;
+    color: var(--color-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  :global(.hdr-open) {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: var(--radius-md, 6px);
+    border: none;
+    background: transparent;
+    color: var(--color-muted-foreground);
+    cursor: pointer;
+    opacity: 0.55;
+    transition:
+      opacity var(--duration-fast) ease,
+      background var(--duration-fast) ease,
+      color var(--duration-fast) ease;
+  }
+  :global(.hdr-open):hover {
+    opacity: 1;
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
 
-	.body {
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-	.from {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
-	.avatar {
-		flex-shrink: 0;
-		width: 36px;
-		height: 36px;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 15px;
-		font-weight: 600;
-		background: color-mix(in srgb, var(--color-accent) 18%, transparent);
-		color: var(--color-accent);
-	}
-	.from-text {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		flex: 1;
-	}
-	.name {
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--color-foreground);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.addr {
-		font-size: 12px;
-		color: var(--color-muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.when {
-		flex-shrink: 0;
-		font-size: 12px;
-		color: var(--color-muted-foreground);
-	}
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .from {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .avatar {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-body);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    color: var(--color-accent);
+  }
+  .from-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+  .name {
+    font-size: var(--font-size-body);
+    font-weight: 600;
+    color: var(--color-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .addr {
+    font-size: var(--font-size-caption);
+    color: var(--color-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .when {
+    flex-shrink: 0;
+    font-size: var(--font-size-caption);
+    color: var(--color-muted-foreground);
+  }
 
-	/* AI summary banner */
-	.summary {
-		display: flex;
-		gap: 8px;
-		align-items: flex-start;
-		padding: 10px 12px;
-		border-radius: var(--radius-md, 8px);
-		background: color-mix(in srgb, var(--color-accent) 7%, transparent);
-		border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
-		color: var(--color-foreground);
-	}
-	.summary :global(.sum-ic) {
-		flex-shrink: 0;
-		margin-top: 2px;
-		color: var(--color-accent);
-	}
-	.summary p {
-		margin: 0;
-		font-size: 13px;
-		line-height: 1.5;
-	}
-	.summary.loading {
-		align-items: center;
-		color: var(--color-accent);
-		font-size: 13px;
-	}
-	.shimmer {
-		opacity: 0.75;
-		animation: pulse 1.4s ease-in-out infinite;
-	}
-	@keyframes pulse {
-		0%, 100% { opacity: 0.4; }
-		50% { opacity: 0.85; }
-	}
+  /* AI summary banner */
+  .summary {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md, 8px);
+    background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
+    color: var(--color-foreground);
+  }
+  .summary :global(.sum-ic) {
+    flex-shrink: 0;
+    margin-top: var(--space-0-5);
+    color: var(--color-accent);
+  }
+  .summary p {
+    margin: 0;
+    font-size: var(--font-size-body);
+    line-height: 1.5;
+  }
+  .summary.loading {
+    align-items: center;
+    color: var(--color-accent);
+    font-size: var(--font-size-body);
+  }
+  .shimmer {
+    opacity: 0.75;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 0.85;
+    }
+  }
 
-	/* Message body */
-	.content {
-		min-height: 40px;
-	}
-	.msg {
-		margin: 0;
-		font-family: inherit;
-		font-size: 14px;
-		line-height: 1.6;
-		color: var(--color-foreground);
-		white-space: pre-wrap;
-		word-break: break-word;
-		max-height: 42vh;
-		overflow-y: auto;
-	}
-	.msg :global(a) {
-		color: var(--color-accent);
-		text-decoration: underline;
-		text-underline-offset: 2px;
-		/* Long tracking URLs must wrap instead of forcing a horizontal scrollbar. */
-		word-break: break-all;
-	}
-	.msg :global(a:hover) {
-		text-decoration-thickness: 2px;
-	}
-	.empty {
-		margin: 0;
-		font-size: 13px;
-		color: var(--color-muted);
-		font-style: italic;
-	}
-	.loading-body {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 13px;
-		color: var(--color-muted-foreground);
-		padding: 6px 0;
-	}
-	:global(.spin) {
-		animation: spin 0.9s linear infinite;
-	}
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
+  /* Message body */
+  .content {
+    min-height: 40px;
+  }
+  .msg {
+    margin: 0;
+    font-family: inherit;
+    font-size: var(--font-size-body);
+    line-height: 1.6;
+    color: var(--color-foreground);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 42vh;
+    overflow-y: auto;
+  }
+  .msg :global(a) {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    /* Long tracking URLs must wrap instead of forcing a horizontal scrollbar. */
+    word-break: break-all;
+  }
+  .msg :global(a:hover) {
+    text-decoration-thickness: 2px;
+  }
+  .empty {
+    margin: 0;
+    font-size: var(--font-size-body);
+    color: var(--color-muted);
+    font-style: italic;
+  }
+  .loading-body {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-body);
+    color: var(--color-muted-foreground);
+    padding: var(--space-1) 0;
+  }
+  :global(.spin) {
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 
-	/* Composer */
-	.composer {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 12px;
-		border-radius: var(--radius-md, 8px);
-		border: 1px solid var(--color-border);
-		background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
-	}
-	.composer-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-	}
-	.composer-title {
-		font-size: 12px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		color: var(--color-muted-foreground);
-	}
-	.composer-x {
-		display: inline-flex;
-		border: none;
-		background: transparent;
-		color: var(--color-muted-foreground);
-		cursor: pointer;
-		padding: 2px;
-		border-radius: 4px;
-	}
-	.composer-x:hover {
-		color: var(--color-foreground);
-		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
-	}
-	.draft {
-		width: 100%;
-		resize: vertical;
-		font-family: inherit;
-		font-size: 14px;
-		line-height: 1.55;
-		padding: 10px 12px;
-		border-radius: var(--radius-md, 6px);
-		border: 1px solid var(--color-border);
-		background: var(--color-canvas, transparent);
-		color: var(--color-foreground);
-	}
-	.draft:focus {
-		outline: none;
-		border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-	}
-	.composer-tools {
-		display: flex;
-		gap: 8px;
-		align-items: center;
-	}
-	.steer {
-		flex: 1;
-		min-width: 0;
-		font-size: 12px;
-		padding: 6px 10px;
-		border-radius: 999px;
-		border: 1px solid var(--color-border);
-		background: transparent;
-		color: var(--color-foreground);
-	}
-	.steer:focus {
-		outline: none;
-		border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
-	}
-	.ghost-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		flex-shrink: 0;
-		font-size: 12px;
-		padding: 6px 10px;
-		border-radius: 999px;
-		border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
-		background: transparent;
-		color: var(--color-accent);
-		cursor: pointer;
-	}
-	.ghost-btn:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-	}
-	.ghost-btn:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
+  /* Composer */
+  .composer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius-md, 8px);
+    border: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
+  }
+  .composer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .composer-title {
+    font-size: var(--font-size-caption);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-muted-foreground);
+  }
+  :global(.composer-x) {
+    display: inline-flex;
+    border: none;
+    background: transparent;
+    color: var(--color-muted-foreground);
+    cursor: pointer;
+    padding: var(--space-0-5);
+    border-radius: var(--radius-sm);
+  }
+  :global(.composer-x):hover {
+    color: var(--color-foreground);
+    background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+  }
+  .draft {
+    width: 100%;
+    resize: vertical;
+    font-family: inherit;
+    font-size: var(--font-size-body);
+    line-height: 1.55;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md, 6px);
+    border: 1px solid var(--color-border);
+    background: var(--color-canvas, transparent);
+    color: var(--color-foreground);
+  }
+  .draft:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  }
+  .composer-tools {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+  }
+  .steer {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--font-size-caption);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-foreground);
+  }
+  .steer:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  }
+  :global(.ghost-btn) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+    font-size: var(--font-size-caption);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+    background: transparent;
+    color: var(--color-accent);
+    cursor: pointer;
+  }
+  :global(.ghost-btn):hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+  :global(.ghost-btn):disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 
-	/* Footer */
-	.footer-actions {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		margin-right: auto; /* left-align icon cluster */
-	}
-	.icon-act {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 34px;
-		height: 34px;
-		border-radius: var(--radius-md, 8px);
-		border: 1px solid transparent;
-		background: transparent;
-		color: var(--color-muted-foreground);
-		cursor: pointer;
-		transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
-	}
-	.icon-act:hover {
-		color: var(--color-foreground);
-		background: color-mix(in srgb, var(--color-foreground) 7%, transparent);
-		border-color: var(--color-border);
-	}
-	.icon-act.danger:hover {
-		color: #f87171;
-		background: color-mix(in srgb, #f87171 12%, transparent);
-		border-color: color-mix(in srgb, #f87171 40%, transparent);
-	}
-	.divider {
-		width: 1px;
-		height: 20px;
-		margin: 0 4px;
-		background: var(--color-border);
-	}
-	.act {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 13px;
-		padding: 7px 14px;
-		border-radius: var(--theme-radius, 6px);
-		border: 1px solid var(--color-border);
-		background: transparent;
-		color: var(--color-foreground);
-		cursor: pointer;
-		transition: background 120ms ease, border-color 120ms ease;
-	}
-	.act:hover {
-		background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
-	}
-	.act.send {
-		border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-		color: var(--color-accent);
-	}
-	.act.send:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--color-accent) 22%, transparent);
-	}
-	.act.send:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
+  /* Footer */
+  .footer-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-right: auto; /* left-align icon cluster */
+  }
+  :global(.icon-act) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md, 8px);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-muted-foreground);
+    cursor: pointer;
+    transition:
+      background var(--duration-fast) ease,
+      color var(--duration-fast) ease,
+      border-color var(--duration-fast) ease;
+  }
+  :global(.icon-act):hover {
+    color: var(--color-foreground);
+    background: color-mix(in srgb, var(--color-foreground) 7%, transparent);
+    border-color: var(--color-border);
+  }
+  :global(.icon-act):global(.danger):hover {
+    color: var(--color-brand);
+    background: color-mix(in srgb, var(--color-brand) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
+  }
+  .divider {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+    background: var(--color-border);
+  }
+  :global(.act) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--font-size-body);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--theme-radius, 6px);
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-foreground);
+    cursor: pointer;
+    transition:
+      background var(--duration-fast) ease,
+      border-color var(--duration-fast) ease;
+  }
+  :global(.act):hover {
+    background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
+  }
+  :global(.act):global(.send) {
+    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    color: var(--color-accent);
+  }
+  :global(.act):global(.send):hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  }
+  :global(.act):global(.send):disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 </style>
