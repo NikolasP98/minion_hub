@@ -37,6 +37,15 @@ jobs:
       - name: Design token integrity
         run: bun run lint:tokens:ci
 
+      - name: Design lint ratchet (changed files)
+        env:
+          DESIGN_LINT_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$DESIGN_LINT_BASE_REF" || "$DESIGN_LINT_BASE_REF" =~ ^0+$ ]]; then
+            export DESIGN_LINT_BASE_REF="$(git rev-parse HEAD^)"
+          fi
+          bun run lint:design:ci
+
       - name: Prettier check (changed files)
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}

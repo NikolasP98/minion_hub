@@ -123,6 +123,24 @@ PixiJS 8 + Rapier2D physics. Agents are rendered as sprites and can be connected
 
 CSS variables for the full colour palette. Theme presets in `src/lib/themes/presets.ts`, applied via `applyTheme()` in `src/lib/state/ui/theme.svelte.ts`.
 
+### UI design governance: a REQUIRED build step (like i18n and RBAC)
+
+**Before touching ANY UI (`.svelte`, styles, components, routes with markup), read
+`.claude/skills/ui-design-governance/SKILL.md`.** The design-token contract is law:
+
+- **Authority chain**: `@minion-stack/design-tokens` `contract.json` (machine truth) →
+  meta-repo spec `specs/2026-07-13-hub-ui-coherence-implementation-spec.md` §D2 (naming law)
+  → `scripts/DESIGN-LINT.md` (enforcement docs).
+- **Semantic tokens only** — `--color-canvas`, `--color-surface-1..3`, `--color-text-*`,
+  status triples, `--space-*`, `--radius-*`, `--layer-*` (never numeric z-index), `.t-*`
+  type roles. Forbidden legacy names (`--accent`, `--color-primary`, `--color-error`, …)
+  hard-fail `lint:tokens`.
+- **Gates after every UI change**: `bun run lint:design && bun run lint:tokens`.
+  Changed-file design debt may only DECREASE (ratchet, enforced in CI). Exceptions go in
+  `scripts/design-lint-exceptions.json` (capped allowance + category + reason, never blanket).
+- **Never hand-edit generated `tokens.css`** — extend `contract.json` in the meta-repo
+  package and regenerate.
+
 ### Components (`src/lib/components/`)
 
 All components are organized into domain subdirectories — no loose `.svelte` files at root:
