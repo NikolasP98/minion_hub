@@ -124,8 +124,8 @@ import { onMount } from 'svelte';
 
 	{#if !data.liveInboxAvailable}
 		<div class="rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-surface)] px-4 py-3" role="status">
-			<p class="text-sm font-medium text-[var(--color-warning-fg)] dark:text-[var(--color-warning-fg)]">{m.inbox_liveUnavailableTitle()}</p>
-			<p class="mt-0.5 text-xs leading-relaxed text-[var(--color-warning-fg)] dark:text-[var(--color-warning-fg)]">
+			<p class="text-sm font-medium text-[var(--color-warning-fg)]">{m.inbox_liveUnavailableTitle()}</p>
+			<p class="mt-0.5 text-xs leading-relaxed text-[var(--color-warning-fg)]">
 				{m.inbox_liveUnavailableDescription()}
 			</p>
 		</div>

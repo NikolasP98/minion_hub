@@ -87,6 +87,16 @@ const RULES = {
     test: (file) => file.endsWith('.svelte') && !PRIMITIVE_DIR.test(file),
     re: /<select[\s>]/g,
   },
+  'raw-icon-size': {
+    desc: 'hardcoded numeric size={N} — use iconSizes from $lib/components/ui (mirrors --icon-size-*)',
+    test: (file) => file.endsWith('.svelte'),
+    re: /\bsize=\{\d+\}/g,
+  },
+  'raw-loading': {
+    desc: 'hand-rolled animate-spin/pulse outside ui/ — use Spinner/Skeleton or the .skeleton utility',
+    test: (file) => file.endsWith('.svelte') && !PRIMITIVE_DIR.test(file),
+    re: /\banimate-(?:spin|pulse)\b/g,
+  },
 };
 
 function git(args, options = {}) {

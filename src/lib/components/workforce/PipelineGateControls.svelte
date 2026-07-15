@@ -146,7 +146,7 @@
       <div>
         <h2
           id="pipeline-gate-title"
-          class="text-xs font-semibold uppercase tracking-[0.16em] text-accent dark:text-accent"
+          class="text-xs font-semibold uppercase tracking-[0.16em] text-accent"
         >
           {m.workforce_gate_title()}
         </h2>
@@ -155,7 +155,7 @@
         </p>
       </div>
       <span
-        class="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-accent dark:text-accent"
+        class="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-accent"
       >
         {gate?.stage.kind === 'eval'
           ? m.workforce_gate_evaluation()
@@ -169,7 +169,7 @@
 
     {#if !workforceAvailable}
       <p
-        class="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning dark:text-warning"
+        class="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
       >
         {m.workforce_gate_backendUnavailable()}
       </p>
@@ -232,7 +232,7 @@
       </Button>
       <Button
         type="button"
-        class="rounded-md border border-warning/50 bg-background px-3 py-1.5 text-xs font-semibold text-warning transition-colors hover:bg-warning/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-warning"
+        class="rounded-md border border-warning/50 bg-background px-3 py-1.5 text-xs font-semibold text-warning transition-colors hover:bg-warning/10 disabled:cursor-not-allowed disabled:opacity-50"
         disabled={busy || !workforceAvailable || !canEdit || !changesResult?.ok}
         title={actionTitle(changesResult)}
         onclick={() => decide('request_changes')}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import StatusDot from '$lib/components/decorations/StatusDot.svelte';
+	import StatusDot from '$lib/components/ui/StatusDot.svelte';
 	import { Server } from 'lucide-svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import * as m from '$lib/paraglide/messages';

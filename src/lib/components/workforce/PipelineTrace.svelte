@@ -9,22 +9,22 @@
   let { trace }: { trace: PipelineTrace } = $props();
 
   const categoryStyles: Record<PipelineTraceCategory, string> = {
-    classifier: 'border-info/35 bg-info/10 text-info dark:text-info',
-    routing: 'border-info/35 bg-info/10 text-info dark:text-info',
-    handoff: 'border-accent/35 bg-accent/10 text-accent dark:text-accent',
-    retry: 'border-warning/35 bg-warning/10 text-warning dark:text-warning',
-    hitl: 'border-accent/35 bg-accent/10 text-accent dark:text-accent',
-    merge: 'border-success/35 bg-success/10 text-success dark:text-success',
+    classifier: 'border-info/35 bg-info/10 text-info',
+    routing: 'border-info/35 bg-info/10 text-info',
+    handoff: 'border-accent/35 bg-accent/10 text-accent',
+    retry: 'border-warning/35 bg-warning/10 text-warning',
+    hitl: 'border-accent/35 bg-accent/10 text-accent',
+    merge: 'border-success/35 bg-success/10 text-success',
     stage: 'border-border bg-muted text-foreground',
     lifecycle: 'border-border bg-background text-muted-foreground',
   };
 
   const statusStyles: Record<PipelineTraceEventStatus, string> = {
     queued: 'text-muted-foreground',
-    in_progress: 'text-info dark:text-info',
-    done: 'text-success dark:text-success',
-    blocked: 'text-warning dark:text-warning',
-    failed: 'text-destructive dark:text-destructive',
+    in_progress: 'text-info',
+    done: 'text-success',
+    blocked: 'text-warning',
+    failed: 'text-destructive',
     cancelled: 'text-muted-foreground line-through',
     event: 'text-muted-foreground',
   };
@@ -206,7 +206,7 @@
       {/each}
       {#each trace.inferredLabels as label, index (`inferred-${index}-${label}`)}
         <span
-          class="rounded border border-info/30 bg-info/10 px-1.5 py-0.5 text-info dark:text-info"
+          class="rounded border border-info/30 bg-info/10 px-1.5 py-0.5 text-info"
           >+ {label}</span
         >
       {/each}
@@ -266,7 +266,7 @@
                 >{/if}
               {#if event.childIssueId}
                 <a
-                  class="text-info hover:underline dark:text-info"
+                  class="text-info hover:underline"
                   href={`/workforce/issues/${event.childIssueId}`}
                 >
                   {m.workforce_trace_childTask()}
@@ -284,8 +284,8 @@
                 {#if event.outcome}
                   <span
                     class="mr-1 font-semibold uppercase tracking-wider {event.outcome === 'passed'
-                      ? 'text-success dark:text-success'
-                      : 'text-warning dark:text-warning'}">{outcomeLabel(event.outcome)}</span
+                      ? 'text-success'
+                      : 'text-warning'}">{outcomeLabel(event.outcome)}</span
                   >
                 {/if}
                 {event.summary}

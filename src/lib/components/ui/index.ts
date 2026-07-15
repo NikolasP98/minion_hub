@@ -21,6 +21,9 @@ export { default as Dropdown } from './Dropdown.svelte';
 export { default as Popover } from './Popover.svelte';
 export { default as DraggableDialog } from './DraggableDialog.svelte';
 export { default as StatusDot } from './StatusDot.svelte';
+export { default as Chip } from './Chip.svelte';
+export { default as Avatar } from './Avatar.svelte';
+export { iconSizes, type IconSize } from './icon-sizes';
 export type {
   ButtonVariant,
   ButtonSize,
@@ -39,3 +42,5 @@ export type { EmptyStateTone } from './EmptyState.svelte';
 export type { SideNavItem, SideNavGroup } from './SideNav.svelte';
 export type { TooltipPlacement } from './Tooltip.svelte';
 export type { DropdownItem } from './Dropdown.svelte';
+export type { ChipStatus } from './Chip.svelte';
+export type { AvatarSize } from './Avatar.svelte';

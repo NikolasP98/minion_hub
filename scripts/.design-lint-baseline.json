@@ -1,8 +1,18 @@
 {
   "totals": {
-    "raw-color": 855,
-    "bare-button": 511,
-    "native-select": 27
+    "raw-color": 170,
+    "palette-utility": 0,
+    "raw-radius": 11,
+    "raw-spacing": 27,
+    "raw-shadow": 6,
+    "raw-motion": 3,
+    "raw-easing": 0,
+    "raw-layer": 18,
+    "raw-type-size": 7,
+    "bare-button": 0,
+    "native-select": 0,
+    "raw-icon-size": 1227,
+    "raw-loading": 89
   },
-  "generatedFor": "drift ratchet"
+  "generatedFor": "decrease-only global ceiling"
 }

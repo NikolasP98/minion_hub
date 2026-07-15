@@ -4573,5 +4573,6 @@
   "cloud_package_openssh": "OpenSSH",
   "cloud_package_git": "Git",
   "cloud_package_node": "Node 22",
-  "cloud_package_python": "Python 3"
+  "cloud_package_python": "Python 3",
+  "chip_remove": "Quitar"
 }
