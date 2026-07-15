@@ -123,7 +123,7 @@
   },
   "scripts": {
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
-    "dev": "NODE_OPTIONS=--disable-warning=DEP0205 VITE_CACHE_DIR=node_modules/.vite-dev vite dev",
+    "dev": "NODE_OPTIONS=--disable-warning=DEP0205 vite dev",
     "build": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && VITE_CACHE_DIR=node_modules/.vite-build vite build",
     "vercel-build": "([ -f .env ] || cp .env.example .env) && bun scripts/db-migrate.ts && bun run build",
     "db:migrate": "bun scripts/db-migrate.ts",
