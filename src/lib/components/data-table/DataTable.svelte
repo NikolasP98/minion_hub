@@ -352,20 +352,37 @@
 		window.addEventListener('pointermove', move);
 		window.addEventListener('pointerup', up);
 	}
-	// Double-click the resize handle → fit the column to its content. Every cell
-	// clips (overflow hidden), so scrollWidth is the true content width; take the
-	// widest cell in the column (header + body) and pin the column to it.
+	// Double-click the resize handle → fit the column to its content. Measuring
+	// the live cells' scrollWidth doesn't work: when a custom cell's INNER
+	// wrapper clips for itself (e.g. a `truncate` div sized by the td), the
+	// td's scrollWidth is capped near its current width, so every dblclick only
+	// crept a few px wider — forever. Instead, clone each mounted cell's content
+	// into an unconstrained shrink-to-fit probe, take the widest natural width,
+	// and pin the column to it (+ the cell's own padding). Idempotent: the probe
+	// is independent of the current column width, so a second dblclick re-measures
+	// to the same value. Only mounted cells are measurable (virtualized rows
+	// off-screen aren't in the DOM) — pre-existing behavior.
 	function autoFitColumn(c: DataColumn<T>, e: MouseEvent) {
 		e.stopPropagation();
 		e.preventDefault();
 		if (!tableEl) return;
-		// Only mounted cells are queryable (virtualized rows off-screen aren't in
-		// the DOM) — pre-existing behavior, unchanged by row virtualization.
+		const cells = tableEl.querySelectorAll<HTMLElement>(`[data-col="${CSS.escape(c.key)}"]`);
+		if (!cells.length) return;
+		const probe = document.createElement('div');
+		probe.style.cssText =
+			'position:absolute;left:-99999px;top:0;visibility:hidden;pointer-events:none;width:max-content;white-space:nowrap;';
+		tableEl.parentElement?.appendChild(probe);
 		let max = 0;
-		for (const el of tableEl.querySelectorAll<HTMLElement>(`[data-col="${CSS.escape(c.key)}"]`))
-			max = Math.max(max, el.scrollWidth);
+		for (const cell of cells) {
+			const cs = getComputedStyle(cell);
+			probe.style.font = cs.font; // clones lose the table's inherited typography
+			probe.replaceChildren(...[...cell.childNodes].map((n) => n.cloneNode(true)));
+			const pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+			max = Math.max(max, probe.getBoundingClientRect().width + pad);
+		}
+		probe.remove();
 		if (max > 0) {
-			widths = { ...widths, [c.key]: Math.min(640, Math.max(64, max + 8)) };
+			widths = { ...widths, [c.key]: Math.min(640, Math.max(64, Math.ceil(max) + 2)) };
 			persist();
 		}
 	}
@@ -1041,6 +1058,9 @@
 <!-- Header context menu -->
 {#if ctxMenu}
 	{@const cc = byKey.get(ctxMenu.key)}
+	<!-- ctx-wrap exists purely as a scoped ancestor so the `backdrop` class
+	     forwarded to Button below is reachable from this component's CSS. -->
+	<div class="ctx-wrap">
 	<Button variant="ghost" size="xs" class="backdrop" aria-label="close" onclick={() => (ctxMenu = null)} oncontextmenu={(e: MouseEvent) => { e.preventDefault(); ctxMenu = null; }}></Button>
 	<div class="ctx-menu" style="left:{ctxMenu.x}px; top:{ctxMenu.y}px">
 		{#if cc}
@@ -1067,6 +1087,7 @@
 			{/if}
 		{/if}
 	</div>
+	</div>
 {/if}
 
 {#if exportable}
@@ -1083,16 +1104,22 @@
 	.dt-search input::placeholder { color: var(--color-muted-foreground); opacity: 0.7; }
 	.dt-search input:hover { background: color-mix(in srgb, var(--color-foreground) 4%, transparent); }
 	.dt-search input:focus { outline: none; background: var(--color-bg3); border-color: color-mix(in srgb, var(--color-accent) 55%, transparent); }
-	.dt-tool { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); color: var(--color-muted-foreground); background: transparent; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
-	.dt-tool:hover { background: color-mix(in srgb, var(--color-foreground) 8%, transparent); color: var(--color-foreground); }
-	.dt-tool.active-col { color: var(--color-accent); }
-	.dt-add { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-on-accent); cursor: pointer; transition: filter var(--duration-fast) var(--ease-standard); }
-	.dt-add:hover { filter: brightness(1.08); }
-	.dt-add:disabled { opacity: 0.5; cursor: not-allowed; }
-	.bulk-item { display: block; width: 100%; text-align: left; padding: var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); color: var(--color-foreground); cursor: pointer; }
-	.bulk-item:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
-	.bulk-item.danger { color: var(--color-destructive); }
-	.bulk-item.danger:hover { background: color-mix(in srgb, var(--color-destructive) 12%, transparent); }
+	/* NOTE: classes like dt-tool/dt-check/sort-h/backdrop are forwarded as PROPS
+	   to the shared Button primitive, so plain scoped selectors never match them
+	   (the scope hash isn't applied across the component boundary). Every rule
+	   below anchors on a scoped ancestor element + :global() — see the
+	   "scoped-ancestor" layout contract in the UI governance skill. */
+	.dt-toolbar :global(.dt-tool) { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; padding: 0; border: none; border-radius: var(--radius-sm); color: var(--color-muted-foreground); background: transparent; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+	.dt-toolbar :global(.dt-tool:hover) { background: color-mix(in srgb, var(--color-foreground) 8%, transparent); color: var(--color-foreground); }
+	.dt-toolbar :global(.dt-tool.active-col) { color: var(--color-accent); }
+	.dt-toolbar :global(.dt-add) { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; padding: 0; border: none; border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-on-accent); cursor: pointer; transition: filter var(--duration-fast) var(--ease-standard); }
+	.dt-toolbar :global(.dt-add:hover) { filter: brightness(1.08); background: var(--color-accent); }
+	.dt-toolbar :global(.dt-add:disabled) { opacity: 0.5; cursor: not-allowed; }
+	.col-menu :global(.bulk-item) { display: flex; width: 100%; height: auto; justify-content: flex-start; text-align: left; padding: var(--space-2); border: none; background: transparent; font-size: var(--font-size-body); font-weight: 400; border-radius: var(--radius-sm); color: var(--color-foreground); cursor: pointer; }
+	.col-menu :global(.bulk-item > span) { width: 100%; justify-content: flex-start; }
+	.col-menu :global(.bulk-item:hover) { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+	.col-menu :global(.bulk-item.danger) { color: var(--color-destructive); }
+	.col-menu :global(.bulk-item.danger:hover) { background: color-mix(in srgb, var(--color-destructive) 12%, transparent); }
 
 	/* ── Table + fixed layout (resize one col → others hold; scroll x) ─────── */
 	.dt-table { --dt-shadow-before: inset 2px 0 0 0 var(--color-accent); --dt-shadow-after: inset -2px 0 0 0 var(--color-accent); table-layout: fixed; border-collapse: collapse; }
@@ -1111,8 +1138,9 @@
 	   read as secondary and don't get confused with the active-sort colour.
 	   Override --dt-agg-color to retune. */
 	.dt-agg { display: inline-flex; align-items: center; gap: var(--space-0-5); font-size: var(--font-size-telemetry); font-weight: 600; color: var(--dt-agg-color, color-mix(in srgb, var(--color-accent) 45%, var(--color-muted-foreground))); font-variant-numeric: tabular-nums; }
-	.sort-h { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; font: inherit; color: inherit; cursor: pointer; }
-	.sort-h.active { color: var(--color-accent); }
+	.dt-table :global(.sort-h) { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; height: auto; padding: 0; border: none; background: transparent; font: inherit; color: inherit; cursor: pointer; }
+	.dt-table :global(.sort-h:hover) { background: transparent; color: var(--color-foreground); }
+	.dt-table :global(.sort-h.active) { color: var(--color-accent); }
 	:global(.sort-h .dim) { opacity: 0.35; flex-shrink: 0; }
 	/* Drag grip pinned to the far LEFT edge of every header, regardless of the
 	   column's text alignment. Decorative — pointer-events off so the drag
@@ -1140,47 +1168,56 @@
 	.dt-scroll:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 
 	/* Expand toggle + custom block row */
-	.dt-exp { display: inline-flex; align-items: center; justify-content: center; width: 1.25rem; height: 1.25rem; border-radius: var(--radius-sm); color: var(--color-muted-foreground); cursor: pointer; transition: transform var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
-	.dt-exp:hover { color: var(--color-foreground); }
-	.dt-exp.open { transform: rotate(90deg); color: var(--color-accent); }
+	.dt-table :global(.dt-exp) { display: inline-flex; align-items: center; justify-content: center; width: 1.25rem; height: 1.25rem; padding: 0; border: none; background: transparent; border-radius: var(--radius-sm); color: var(--color-muted-foreground); cursor: pointer; transition: transform var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+	.dt-table :global(.dt-exp:hover) { color: var(--color-foreground); background: transparent; }
+	.dt-table :global(.dt-exp.open) { transform: rotate(90deg); color: var(--color-accent); }
 	.dt-block-row > .dt-block { padding: 0; background: color-mix(in srgb, var(--color-foreground) 3%, transparent); border-bottom: 1px solid var(--hairline); }
 
-	/* ── Themed checkboxes ───────────────────────────────────────────────── */
-	.dt-check { display: inline-grid; place-items: center; width: 1rem; height: 1rem; border-radius: var(--radius-sm); border: 1px solid; cursor: pointer; flex-shrink: 0; transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
-	.dt-check.is-row { border-color: color-mix(in srgb, var(--color-muted-foreground) 45%, transparent); background: transparent; color: transparent; }
-	.dt-check.is-row:hover { border-color: color-mix(in srgb, var(--color-accent) 60%, transparent); }
-	.dt-check.is-row.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-foreground, var(--color-bg)); }
-	.dt-check.is-master { border-color: color-mix(in srgb, var(--color-muted-foreground) 70%, transparent); background: var(--color-bg3); color: transparent; }
-	.dt-check.is-master.on, .dt-check.is-master.ind { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-foreground, var(--color-bg)); }
+	/* ── Themed checkboxes ───────────────────────────────────────────────────
+	   Fixed 1rem box in BOTH states (border inside via border-box + padding 0,
+	   so the check icon never changes the control's size). Unchecked must read
+	   on the row background: strong border on a raised surface. ────────────── */
+	.dt-table :global(.dt-check) { display: inline-grid; place-items: center; box-sizing: border-box; width: 1rem; height: 1rem; padding: 0; border-radius: var(--radius-sm); border: 1px solid var(--color-border-strong); background: var(--color-surface-2); color: transparent; cursor: pointer; flex-shrink: 0; transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+	.dt-table :global(.dt-check:hover) { border-color: var(--color-accent); background: var(--color-surface-3); }
+	/* Row hover promotes the (unchecked) checkbox so the click target is obvious. */
+	.dt-row:hover :global(.dt-check:not(.on):not(.ind)) { border-color: var(--color-accent); background: var(--color-surface-3); }
+	.dt-table :global(.dt-check.on), .dt-table :global(.dt-check.ind) { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
 
 	.dt-inp { height: 1.75rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
-	.act-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: var(--radius-sm); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-muted-foreground); transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
-	.act-btn:hover { background: var(--color-surface-2); color: var(--color-foreground); }
-	.act-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-	.act-save { color: var(--color-accent); }
-	.act-edit { opacity: 0.6; }
+	.dt-table :global(.act-btn) { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; padding: 0; border-radius: var(--radius-sm); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-muted-foreground); transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+	.dt-table :global(.act-btn:hover) { background: var(--color-surface-2); color: var(--color-foreground); }
+	.dt-table :global(.act-btn:disabled) { opacity: 0.5; cursor: not-allowed; }
+	.dt-table :global(.act-save) { color: var(--color-accent); }
+	.dt-table :global(.act-edit) { opacity: 0.6; }
 	.err-msg { font-size: var(--font-size-label); color: var(--color-destructive); }
 
 	/* ── Column menu ─────────────────────────────────────────────────────── */
 	.col-wrap { position: relative; display: inline-flex; }
-	.backdrop { position: fixed; inset: 0; z-index: var(--layer-dropdown); background: transparent; }
+	.ctx-wrap { display: contents; }
+	.col-wrap :global(.backdrop), .ctx-wrap :global(.backdrop) { position: fixed; inset: 0; width: auto; height: auto; padding: 0; border: none; border-radius: 0; z-index: var(--layer-dropdown); background: transparent; }
+	/* Neutralize Button's active:scale — a shrinking viewport-sized backdrop can
+	   drop the click that is supposed to dismiss the menu. */
+	.col-wrap :global(.backdrop:active), .ctx-wrap :global(.backdrop:active) { transform: none; }
 	.col-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: var(--layer-popover); min-width: 13rem; max-height: 22rem; overflow: auto; background: var(--color-card); border: 1px solid var(--hairline); border-radius: var(--radius-md); box-shadow: var(--shadow-overlay); padding: var(--space-1); }
 	.col-menu-h { font-size: var(--font-size-telemetry); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); }
 	.col-item { display: flex; align-items: center; gap: var(--space-2); border-radius: var(--radius-sm); }
 	.col-item:hover { background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
 	.col-item.dragging { opacity: 0.5; }
 	:global(.col-item .col-grip) { color: var(--color-muted-foreground); cursor: grab; opacity: 0.5; flex-shrink: 0; margin-left: var(--space-0-5); }
-	.col-check-btn { display: flex; align-items: center; gap: var(--space-2); flex: 1; padding: var(--space-2) var(--space-1); text-align: left; cursor: pointer; }
-	.col-check-btn:disabled { cursor: default; }
+	.col-menu :global(.col-check-btn) { display: flex; align-items: center; flex: 1; min-width: 0; height: auto; justify-content: flex-start; padding: var(--space-2) var(--space-1); border: none; background: transparent; text-align: left; cursor: pointer; }
+	.col-menu :global(.col-check-btn > span) { width: 100%; justify-content: flex-start; gap: var(--space-2); }
+	.col-menu :global(.col-check-btn:hover) { background: transparent; }
+	.col-menu :global(.col-check-btn:disabled) { cursor: default; }
 	.col-check { display: grid; place-items: center; width: 1rem; height: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--hairline); flex-shrink: 0; color: var(--color-accent-foreground, var(--color-bg)); }
 	.col-check.on { background: var(--color-accent); border-color: var(--color-accent); }
 	.col-label { font-size: var(--font-size-body); }
 
 	/* ── Header context menu ─────────────────────────────────────────────── */
 	.ctx-menu { position: fixed; z-index: var(--layer-popover); min-width: 12rem; background: var(--color-card); border: 1px solid var(--hairline); border-radius: var(--radius-md); box-shadow: var(--shadow-overlay); padding: var(--space-1); }
-	.ctx-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; padding: var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); color: var(--color-foreground); cursor: pointer; }
-	.ctx-item:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
-	.ctx-item.ctx-sub { padding-left: var(--space-6); }
+	.ctx-menu :global(.ctx-item) { display: flex; align-items: center; width: 100%; height: auto; justify-content: flex-start; text-align: left; padding: var(--space-2); border: none; background: transparent; font-size: var(--font-size-body); font-weight: 400; border-radius: var(--radius-sm); color: var(--color-foreground); cursor: pointer; }
+	.ctx-menu :global(.ctx-item > span) { width: 100%; justify-content: flex-start; gap: var(--space-2); }
+	.ctx-menu :global(.ctx-item:hover) { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+	.ctx-menu :global(.ctx-item.ctx-sub) { padding-left: var(--space-6); }
 	:global(.ctx-item .ctx-check) { margin-left: auto; color: var(--color-accent); }
 	.ctx-h { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-telemetry); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); }
 	.ctx-sep { height: 1px; background: var(--hairline); margin: var(--space-1) 0; }

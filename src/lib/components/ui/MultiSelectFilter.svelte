@@ -93,12 +93,12 @@
         onclick={onClear}
       >
         <span
-          class="flex items-center justify-center w-3.5 h-3.5 rounded-sm border shrink-0 {count ===
+          class="flex items-center justify-center w-4 h-4 box-border rounded-sm border shrink-0 {count ===
           0
             ? 'bg-accent border-accent'
-            : 'border-border'}"
+            : 'border-[var(--color-border-strong)] bg-[var(--color-surface-2)]'}"
         >
-          {#if count === 0}<Check size={10} class="text-bg" />{/if}
+          {#if count === 0}<Check size={11} class="text-[var(--color-on-accent)]" />{/if}
         </span>
         <span class="flex-1 text-left font-medium">{allLabel}</span>
       </button>
@@ -116,11 +116,11 @@
           onclick={() => onToggle(opt.value)}
         >
           <span
-            class="flex items-center justify-center w-3.5 h-3.5 rounded-sm border shrink-0 {isSel
+            class="flex items-center justify-center w-4 h-4 box-border rounded-sm border shrink-0 {isSel
               ? 'bg-accent border-accent'
-              : 'border-border'}"
+              : 'border-[var(--color-border-strong)] bg-[var(--color-surface-2)]'}"
           >
-            {#if isSel}<Check size={10} class="text-bg" />{/if}
+            {#if isSel}<Check size={11} class="text-[var(--color-on-accent)]" />{/if}
           </span>
           {#if opt.color}
             <span class="w-2 h-2 rounded-full shrink-0" style:background={opt.color}></span>
