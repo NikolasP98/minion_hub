@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import type { getCoreDb } from './pg-client';
+import { getOrgTransactionDb, type getCoreDb } from './pg-client';
 
 type CoreDb = ReturnType<typeof getCoreDb>;
 
@@ -40,12 +40,15 @@ export interface OrgScope {
  */
 export function withOrgCore<T>(scope: OrgScope, fn: (tx: CoreTx) => Promise<T>): Promise<T> {
   if (!scope.tenantId) throw new Error('withOrgCore requires a non-empty tenantId');
-  return scope.db.transaction(async (tx) => {
+  const transactionDb = getOrgTransactionDb(scope.db);
+  return transactionDb.transaction(async (tx) => {
     await tx.execute(sql`set local role app_ledger`);
     await tx.execute(sql`select set_config('app.current_org_id', ${scope.tenantId}, true)`);
     // Record-level scoping basis (if-owner). Always set (empty when unknown) so a
     // pooled connection never inherits a previous request's profile id.
-    await tx.execute(sql`select set_config('app.current_profile_id', ${scope.profileId ?? ''}, true)`);
+    await tx.execute(
+      sql`select set_config('app.current_profile_id', ${scope.profileId ?? ''}, true)`,
+    );
     return fn(tx);
   });
 }

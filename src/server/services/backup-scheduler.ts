@@ -163,7 +163,13 @@ async function tick() {
 
 export function startBackupScheduler() {
   if (intervalId) return;
-  intervalId = setInterval(tick, 60_000);
+  intervalId = setInterval(() => {
+    void tick().catch((error: unknown) => {
+      // A transient database/pool reset must fail this scheduler tick, not the
+      // entire Hub process. The next interval obtains the current pool again.
+      console.error('[backup-scheduler] tick failed', error);
+    });
+  }, 60_000);
   console.log('[backup-scheduler] Started');
 }
 
