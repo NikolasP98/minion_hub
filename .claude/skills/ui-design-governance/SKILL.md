@@ -10,7 +10,7 @@ description: Use when creating, editing, reviewing, or styling any UI in this re
 ## Iron rules
 
 1. **Semantic tokens only** in `.svelte`: no literal hex/rgb, no Tailwind palette utilities (`bg-slate-500`), no arbitrary sizes (`text-[16px]`), no raw shadows/durations/easings, no numeric z-index (`--layer-*` instead). Raw colors are legal only in `app.css` + `themes/*.ts`.
-2. **⛔ Forbidden names (hard-fail):** `--accent`, `--accent-bg`, `--accent-rgb`, `--color-background`, `--color-bg1`, `--color-error`, `--color-primary`, `--color-primary-foreground`.
+2. **⛔ Forbidden names (hard-fail):** `--accent`, `--accent-bg`, `--accent-rgb`, `--color-background`, `--color-bg1`, `--color-error`, `--color-primary`, `--color-primary-foreground`. Also: **text tokens never paint surfaces** — `--color-muted`/`--color-foreground` alias to TEXT colors; as backgrounds they go gray-on-gray on light themes. Surfaces = `--color-canvas/surface-1..3/overlay` only.
 3. **Reuse primitives:** `Button` (never bare `<button>`), themed Select (never native `<select>`), `EmptyState`, `Spinner`/`Skeleton`, `Tooltip`, `FormField`, `StatusDot` (ui copy), `DataTable`, `PageHeader`, Zag wrappers. Hand-rolled copies are ratcheted debt.
 4. **Theme = `data-theme` presets only.** Tailwind `dark:` variants are dead code here. Components read tokens; themes swap values.
 5. **Never hand-edit `tokens.css`** — it is generated from `@minion-stack/design-tokens` `contract.json`.
