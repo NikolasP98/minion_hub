@@ -14,7 +14,8 @@ description: Use when creating, editing, reviewing, or styling any UI in this re
 3. **Reuse primitives:** `Button` (never bare `<button>`), themed Select (never native `<select>`), `EmptyState`, `Spinner`/`Skeleton`, `Tooltip`, `FormField`, `StatusDot` (ui copy), `DataTable`, `PageHeader`, Zag wrappers. Hand-rolled copies are ratcheted debt.
 4. **Theme = `data-theme` presets only.** Tailwind `dark:` variants are dead code here. Components read tokens; themes swap values.
 5. **Never hand-edit `tokens.css`** — it is generated from `@minion-stack/design-tokens` `contract.json`.
-6. **Gates after every UI change:**
+6. **Layout contracts** (violations shipped 7 bugs, 2026-07-15): one scroll owner per screen — content pane owns scroll, section nav never scrolls away; the `(app)/+layout.svelte` fade-wrapper must stay `flex flex-col` (shells below rely on `flex:1` for height); page roots inside `SectionShell` need `flex-1 min-w-0` (or use `PageShell`) — bare `h-full` roots shrink to content width and trip EditableGrid into one column; `Button` slots children into an inner `inline-flex` row span consumer classes can't reach — override via scoped ancestor `:global(.x > span)` (POS sell `.card`, appearance `.theme-card`); Svelte scoped rules for component children need a real scoped ANCESTOR anchor — `.a :global(.b)` never matches a sibling (ShiftBanner `.mini-rail`).
+7. **Gates after every UI change:**
    ```bash
    bun run lint:design && bun run lint:tokens
    ```
