@@ -1,5 +1,6 @@
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { paraglide } from '@inlang/paraglide-sveltekit/vite';
+import { svelteKitOutDir } from './scripts/config/sveltekit-outdir.js';
 
 // D-05: dynamic import() selects adapter based on DESKTOP env var.
 // Top-level await works because package.json has "type": "module".
@@ -18,14 +19,14 @@ const adapter = adapterModule.default;
 const paraglidePreprocessor = paraglide({
   project: './project.inlang',
   outdir: './src/lib/paraglide',
-})
-  .find((p) => p.name === '@inlang/paraglide-sveltekit/vite/register-preprocessor')
-  ?.api?.sveltePreprocess;
+}).find((p) => p.name === '@inlang/paraglide-sveltekit/vite/register-preprocessor')?.api
+  ?.sveltePreprocess;
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: [vitePreprocess(), ...(paraglidePreprocessor ? [paraglidePreprocessor] : [])],
   kit: {
+    outDir: svelteKitOutDir(process.env.VITE_CACHE_DIR),
     adapter: process.env.DESKTOP === '1' ? adapter() : adapter({ runtime: 'nodejs22.x' }),
     alias: {
       $server: 'src/server',

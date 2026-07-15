@@ -3,8 +3,20 @@ import tailwindcss from '@tailwindcss/vite';
 import { paraglide } from '@inlang/paraglide-sveltekit/vite';
 import { defineConfig, type Plugin } from 'vite';
 import { readFileSync } from 'node:fs';
+import { serializePluginBuildStart } from './scripts/config/serialize-plugin-build-start';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+
+const paraglidePlugins = (
+  paraglide({
+    project: './project.inlang',
+    outdir: './src/lib/paraglide',
+  }) as Plugin[]
+)
+  .filter((plugin) => plugin.name !== '@inlang/paraglide-sveltekit/vite/register-preprocessor')
+  .map((plugin) =>
+    plugin.name === 'unplugin-paraglide' ? serializePluginBuildStart(plugin) : plugin,
+  );
 
 // @inlang/paraglide-js bundles posthog-node and creates a client at import time.
 // On process exit, posthog-node's shutdown() rejects with a timeout error.
@@ -18,13 +30,18 @@ process.on('unhandledRejection', (reason) => {
 });
 
 export default defineConfig({
+  // Capture/audit servers can opt into an isolated optimizer cache while a
+  // developer-owned Vite process is already running from this checkout.
+  cacheDir: process.env.VITE_CACHE_DIR || 'node_modules/.vite',
   // Allow Tailscale `.ts.net` hostnames only when explicitly opted in
   // (VITE_TS_DEV=1) — a no-op for normal localhost dev servers.
   server: {
-    // Don't watch build output. `.vercel/` (adapter-vercel output, gitignored)
-    // is left behind by `build` and its `*.func` symlinks point at a malformed
-    // target — the dev watcher walking it leaks ~40MB/s and OOMs the dev server.
-    watch: { ignored: ['**/.vercel/**'] },
+    // Don't watch build output or sibling worktrees. `.vercel/` (adapter-vercel
+    // output, gitignored) can leak ~40MB/s through malformed `*.func` symlinks.
+    // `.worktrees/` contains complete SvelteKit checkouts whose generated output
+    // otherwise consumes the host's watcher limit and triggers unrelated HMR and
+    // optimizer churn in this checkout.
+    watch: { ignored: ['**/.vercel/**', '**/.worktrees/**'] },
     ...(process.env.VITE_TS_DEV ? { allowedHosts: ['.ts.net'] } : {}),
   },
   define: {
@@ -35,9 +52,7 @@ export default defineConfig({
     // hook, so paraglide's `register-preprocessor` plugin is now dead weight in the
     // vite pipeline and only emits a (now-stale) "preprocessor not added" warning.
     // Drop it here; the preprocessor is registered manually in svelte.config.js.
-    (paraglide({ project: './project.inlang', outdir: './src/lib/paraglide' }) as Plugin[]).filter(
-      (p) => p.name !== '@inlang/paraglide-sveltekit/vite/register-preprocessor',
-    ),
+    paraglidePlugins,
     tailwindcss(),
     sveltekit(),
   ],
@@ -65,7 +80,12 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
-    include: ['@zag-js/popover', '@zag-js/combobox', '@zag-js/slider', '@inlang/paraglide-sveltekit/internal'],
+    include: [
+      '@zag-js/popover',
+      '@zag-js/combobox',
+      '@zag-js/slider',
+      '@inlang/paraglide-sveltekit/internal',
+    ],
     exclude: ['@dimforge/rapier2d-compat'],
   },
   ssr: {

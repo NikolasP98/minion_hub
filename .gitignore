@@ -1,5 +1,6 @@
 node_modules
 .svelte-kit
+.svelte-kit-*
 build
 .vercel
 *.db
