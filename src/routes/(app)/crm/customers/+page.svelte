@@ -325,6 +325,11 @@
     const keys = new Set<string>();
     for (const r of mergeRows) for (const k of Object.keys(r.custom_fields ?? {})) keys.add(k);
     for (const k of keys) {
+      // Structured values (funnel object, journey event array, …) can't be
+      // resolved through a text field — String() renders "[object Object]" and
+      // a pick would write that string back over the structure. Scalars only;
+      // structured fields keep the survivor's data untouched.
+      if (mergeRows.some((r) => typeof (r.custom_fields?.[k] ?? '') === 'object')) continue;
       const vals = mergeRows
         .map((r) => ({ contactId: r.contact_id, value: String(r.custom_fields?.[k] ?? '').trim() }))
         .filter((v) => v.value);
