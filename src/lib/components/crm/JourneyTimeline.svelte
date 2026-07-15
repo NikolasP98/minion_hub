@@ -115,7 +115,9 @@
     margin-left: auto;
     font-size: var(--font-size-caption);
     color: var(--color-muted-foreground);
-    background: var(--color-muted);
+    /* --color-muted aliases to text-secondary — a TEXT color; as a bg it goes
+       dark-gray on light themes. Surfaces use surface tokens. */
+    background: var(--color-surface-3);
     border-radius: var(--radius-full);
     padding: var(--space-0) var(--space-2);
   }
@@ -141,8 +143,9 @@
     max-width: 80%;
     padding: var(--space-2) var(--space-2) var(--space-1);
     border-radius: var(--radius-xl);
-    background: var(--color-muted);
-    color: var(--color-foreground);
+    background: var(--color-surface-3);
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-primary);
     border-bottom-left-radius: 0.2rem;
   }
   .row.out .bubble {

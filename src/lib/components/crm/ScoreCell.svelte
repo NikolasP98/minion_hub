@@ -102,7 +102,7 @@
   .tip-bar {
     height: 5px;
     border-radius: var(--radius-full);
-    background: var(--color-muted);
+    background: var(--color-surface-3);
     overflow: hidden;
   }
   .tip-fill {

@@ -1086,7 +1086,7 @@
     padding: var(--space-2, 8px) var(--space-2, 8px);
     border-radius: var(--radius-lg);
     border-bottom-left-radius: 0.2rem;
-    background: var(--color-muted);
+    background: var(--color-surface-3);
     border: 1px solid var(--hairline);
   }
   .note-text {

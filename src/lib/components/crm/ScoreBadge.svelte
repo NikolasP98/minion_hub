@@ -63,7 +63,7 @@
   .bar {
     width: 4px;
     height: 100%;
-    background: var(--color-muted);
+    background: var(--color-surface-3);
     border-radius: var(--radius-xs);
     display: flex;
     align-items: flex-end;

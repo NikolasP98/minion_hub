@@ -228,7 +228,9 @@
   .funnel :global(.row > span) {
     display: grid;
     width: 100%;
-    grid-template-columns: 9rem 1fr;
+    /* minmax(0,…) lets the label column shrink — without it the current row's
+       extra "◀ now" marker overflows the card edge (grid min-content floor). */
+    grid-template-columns: 9rem minmax(0, 1fr);
     align-items: center;
     gap: var(--space-3);
   }
@@ -260,10 +262,10 @@
     box-shadow: var(--shadow-elevation-2);
   }
   .label {
-    display: grid;
-    grid-template-columns: 0.9rem auto 1fr;
+    display: flex;
     align-items: center;
     gap: var(--space-2);
+    min-width: 0;
     font-size: var(--font-size-body);
   }
   /* fixed slot so every stage's checkmark aligns vertically, left of the title */
@@ -275,6 +277,10 @@
   .name {
     color: var(--color-muted-foreground);
     font-weight: 500;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .funnel :global(.row.reached .name) {
     color: var(--color-foreground);
@@ -284,6 +290,9 @@
     font-weight: 700;
   }
   .now {
+    flex: none;
+    margin-left: auto;
+    white-space: nowrap;
     font-size: var(--font-size-caption);
     font-weight: 600;
     color: var(--c);
