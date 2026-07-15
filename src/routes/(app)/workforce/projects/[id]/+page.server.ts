@@ -17,9 +17,11 @@ import { workforceRawFetch, workforceServerClient } from '$lib/server/workforce-
 import { harnessAgentIds, normalizeHarnessBatch, type HarnessSummary } from '$lib/workforce/harness';
 import { listEntityTimeline } from '$server/services/activity.service';
 import type { Project, Issue, Pipeline } from '@minion-stack/workforce-client';
+import { uuidParamOr404 } from '$server/utils/uuid-param';
 
 export const load: PageServerLoad = async (event) => {
   const { locals, params, depends } = event;
+  uuidParamOr404(params.id);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('projects:detail');

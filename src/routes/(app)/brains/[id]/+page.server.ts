@@ -10,6 +10,7 @@ import {
 } from '$server/services/brains.service';
 import { listRbacRoles } from '$server/services/rbac.service';
 import { listEntityTimeline } from '$server/services/activity.service';
+import { uuidParamOr404 } from '$server/utils/uuid-param';
 
 /**
  * /brains/:id — 404s when the brain doesn't exist OR isn't accessible
@@ -19,6 +20,7 @@ import { listEntityTimeline } from '$server/services/activity.service';
  * guaranteed-403 round trip for read-only viewers.
  */
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
+  uuidParamOr404(params.id);
   const ctx = await requireCoreCtx(locals);
   depends('brains:detail');
   const principal = await resolvePrincipal(ctx);

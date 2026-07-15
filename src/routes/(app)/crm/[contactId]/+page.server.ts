@@ -13,19 +13,13 @@ import { evaluateTagRule } from '$server/services/crm-scoring';
 import { contactFinanceSummary } from '$server/services/crm-finance.service';
 import { contactConnections } from '$server/services/connections.service';
 import { contactJourney } from '$server/services/crm-journey.service';
-import { z } from 'zod';
-
-const contactIdSchema = z.string().uuid();
+import { uuidParamOr404 } from '$server/utils/uuid-param';
 
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('crm:contact');
-  const id = params.contactId;
-  // Route manifests, stale links, and hand-edited URLs can contain slugs while
-  // crm_contacts.id is a UUID. Reject those as an ordinary miss before Postgres
-  // tries to cast the value and turns a bad URL into a 500.
-  if (!contactIdSchema.safeParse(id).success) throw error(404, 'Contact not found');
+  const id = uuidParamOr404(params.contactId);
 
   // Record-level (if-owner) scope: a scoped caller can only open contacts they
   // own — a non-owned id 404s rather than leaking existence. Field-level scope
