@@ -558,15 +558,13 @@
   .nav-row.sub-item {
     margin-left: var(--space-2);
   }
-  /* Drag-to-reorder affordances */
+  /* Drag-to-reorder affordances: links read as links; grab only once a drag starts */
   .grab {
-    cursor: grab;
-  }
-  .grab:active {
-    cursor: grabbing;
+    cursor: pointer;
   }
   .dragging {
     opacity: 0.4;
+    cursor: grabbing;
   }
   .collapse-toggle {
     display: none;
