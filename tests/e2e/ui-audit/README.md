@@ -5,6 +5,13 @@ routes through `resolveCaptureMatrix`, prepares every declared route/persona/vie
 entry through `prepareCapturePlanEntry`, and always runs the matching state and fixture reset
 hooks. A state is never captured under a different label just because its fixture is missing.
 
+The Hub root is client-rendered (`ssr = false`), so document or body visibility is not a capture
+readiness signal. The runner waits for the authenticated `[data-part="app-viewport"]` shell (or
+the shared public-task title for public/auth routes and redirect diagnosis), then verifies mounted
+route content. A local Vite `504 Outdated Optimize Dep` response gets one bounded retry. Finally,
+the encoded PNG must contain visual colour diversity; a solid canvas-colour image is a failed
+capture, never evidence.
+
 ## Safe prerequisites
 
 Provision a **disposable local** Supabase stack with all Hub migrations applied, then run:

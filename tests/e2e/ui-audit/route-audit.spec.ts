@@ -28,6 +28,12 @@ import {
 } from './run-artifact';
 import { CaptureScenarioBlockedError, CaptureScenarioHooks } from './scenario-hooks';
 import {
+  assertCaptureContentReady,
+  assertScreenshotHasVisualDiversity,
+  isOutdatedOptimizeDepMessage,
+  navigateToCaptureRoute,
+} from './capture-readiness';
+import {
   assertCriticalRuntimeDiagnostics,
   collectRuntimeUiDiagnostics,
   type RuntimeUiDiagnosticOptions,
@@ -141,6 +147,36 @@ function captureEvents(page: Page, appOrigin: string) {
     pageErrors,
     networkFailures,
     failedSameOriginGets,
+    discardRecoveredViteOptimizeDeps(urls: readonly string[]) {
+      if (urls.length === 0) return;
+      const recoveredUrls = urls.flatMap((value) => {
+        const url = new URL(value);
+        return [value, `${url.pathname}${url.search}`];
+      });
+      const recoveredGets = new Set(
+        recoveredUrls.filter((value) => value.startsWith('/')).map((value) => `504 ${value}`),
+      );
+      const removeMatching = (values: string[], predicate: (value: string) => boolean) => {
+        for (let index = values.length - 1; index >= 0; index -= 1) {
+          if (predicate(values[index] ?? '')) values.splice(index, 1);
+        }
+      };
+      const mentionsRecoveredUrl = (value: string) =>
+        recoveredUrls.some((recoveredUrl) => value.includes(recoveredUrl));
+      removeMatching(failedSameOriginGets, (value) => recoveredGets.has(value));
+      removeMatching(
+        pageErrors,
+        (value) => mentionsRecoveredUrl(value) || isOutdatedOptimizeDepMessage(value),
+      );
+      removeMatching(networkFailures, mentionsRecoveredUrl);
+      removeMatching(
+        consoleErrors,
+        (value) =>
+          mentionsRecoveredUrl(value) ||
+          isOutdatedOptimizeDepMessage(value) ||
+          (/failed to load resource/i.test(value) && /\b504\b/.test(value)),
+      );
+    },
     stop() {
       page.off('console', onConsole);
       page.off('pageerror', onPageError);
@@ -291,7 +327,9 @@ test('manifest capture matrix produces a stateful machine-readable certification
         });
         const events = captureEvents(page, appOrigin);
         try {
-          const response = await page.goto(url, { waitUntil: 'networkidle' });
+          const navigation = await navigateToCaptureRoute(page, url, route);
+          const { response } = navigation;
+          events.discardRecoveredViteOptimizeDeps(navigation.recoveredOutdatedOptimizeDepUrls);
           result.finalUrl = page.url();
           result.status = response?.status() ?? null;
           const expectedPath = new URL(url, appOrigin).pathname;
@@ -310,6 +348,7 @@ test('manifest capture matrix produces a stateful machine-readable certification
             };
             result.diagnostics = await collectRuntimeUiDiagnostics(page, diagnosticOptions);
             assertCriticalRuntimeDiagnostics(result.diagnostics, route.id, diagnosticOptions);
+            await assertCaptureContentReady(page, route);
             if (certificationEnabled) {
               result.certification = await runRouteCertification(
                 page,
@@ -326,7 +365,8 @@ test('manifest capture matrix produces a stateful machine-readable certification
               outputDir,
               `${runId}--${safeSegment(entry.scenarioKey)}.png`,
             );
-            await page.screenshot({ path: screenshot, fullPage: true });
+            const screenshotBytes = await page.screenshot({ path: screenshot, fullPage: true });
+            await assertScreenshotHasVisualDiversity(page, screenshotBytes, route.id);
             result.screenshot = path.relative(process.cwd(), screenshot);
             result.outcome = 'captured';
           }
