@@ -157,7 +157,7 @@
   }
   nav {
     display: flex;
-    height: 100%;
+    flex: 1 1 auto;
     min-height: 0;
     padding: var(--space-3, 12px) var(--space-2, 8px);
     flex-direction: column;

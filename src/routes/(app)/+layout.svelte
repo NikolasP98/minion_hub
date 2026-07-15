@@ -52,7 +52,7 @@
 				<Topbar />
 				<div data-part="route-viewport" class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
 					{#key moduleKey}
-						<div in:fadeIn={{ duration: 200 }} class="h-full min-h-0">
+						<div in:fadeIn={{ duration: 200 }} class="h-full min-h-0 flex flex-col">
 							{@render children()}
 						</div>
 					{/key}

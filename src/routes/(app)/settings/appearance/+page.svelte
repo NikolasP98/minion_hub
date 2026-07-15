@@ -76,7 +76,7 @@
         </div>
 
         <!-- Theme Presets -->
-        <div class="bg-card border border-border rounded-lg px-5 py-4">
+        <div class="theme-grids bg-card border border-border rounded-lg px-5 py-4">
             <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4">
                 {m.settings_theme()}
             </h2>
@@ -87,7 +87,7 @@
                     type="button"
                     title={preset.name}
                     aria-pressed={active}
-                    class="group !h-auto flex-col gap-2 !p-2 text-left"
+                    class="theme-card group !h-auto flex-col gap-2 !p-2 text-left"
                     onclick={() => theme.setPreset(preset.id)}
                 >
                     <!-- Live mini-preview: the actual palette composed like a UI —
@@ -198,3 +198,15 @@
 </div>
 
 <CRTConfigModal bind:open={crtModalOpen} />
+
+<style>
+    /* Button slots children into an inner inline-flex ROW span, so the outer
+       flex-col/text-left/truncate never engage (same limitation POS sell works
+       around via `.card > span`). Stack the wrapper so cards keep one uniform
+       width regardless of the optional "Aa" typography badge. */
+    .theme-grids :global(.theme-card > span) {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+</style>

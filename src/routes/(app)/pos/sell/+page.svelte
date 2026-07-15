@@ -721,6 +721,8 @@
     gap: var(--space-2, 8px);
   }
   :global(.pos-sell-surface .card) {
+    height: auto;
+    align-items: stretch;
     padding: var(--space-2, 8px);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-lg);

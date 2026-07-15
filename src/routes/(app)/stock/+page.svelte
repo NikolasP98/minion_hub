@@ -100,7 +100,7 @@
   {/if}
 {/snippet}
 
-<div class="flex flex-col h-full min-h-0">
+<div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.nav_stock()} subtitle={m.stock_overview_subtitle()}>
     {#snippet leading()}<Warehouse size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>

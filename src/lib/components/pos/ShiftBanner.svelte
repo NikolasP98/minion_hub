@@ -168,15 +168,17 @@
       <Button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</Button>
     {/if}
   </div>
-  <Button
-    type="button"
-    class="mini mini-open"
-    title={m.pos_shift_open_cta()}
-    disabled={!canAct('pos', 'edit')}
-    onclick={startOpen}
-  >
-    <AlertTriangle size={16} />
-  </Button>
+  <div class="mini-rail">
+    <Button
+      type="button"
+      class="mini mini-open"
+      title={m.pos_shift_open_cta()}
+      disabled={!canAct('pos', 'edit')}
+      onclick={startOpen}
+    >
+      <AlertTriangle size={16} />
+    </Button>
+  </div>
 {:else}
   <div class="box box-live hidden xl:flex">
     <div class="status">
@@ -199,17 +201,19 @@
       <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
     {/if}
   </div>
-  <Button
-    type="button"
-    class="mini"
-    title={isStale
-      ? m.pos_shift_stale()
-      : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}
-    disabled={!canAct('pos', 'manage')}
-    onclick={startClose}
-  >
-    <span class="dot" class:stale-dot={isStale}></span>
-  </Button>
+  <div class="mini-rail">
+    <Button
+      type="button"
+      class="mini"
+      title={isStale
+        ? m.pos_shift_stale()
+        : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}
+      disabled={!canAct('pos', 'manage')}
+      onclick={startClose}
+    >
+      <span class="dot" class:stale-dot={isStale}></span>
+    </Button>
+  </div>
 {/if}
 
 <Modal bind:open={openModal} title={m.pos_shift_open_cta()} size="sm">
@@ -335,10 +339,19 @@
     color: var(--color-muted-foreground);
   }
   /* Collapsed rail (< xl) only: a single icon button carrying the status color.
-     Display is controlled here, NOT via Tailwind xl:hidden — the scoped hash
-     class outranks the utility and re-shows it on desktop. */
-  .box :global(.mini) {
+     Display is controlled on the scoped .mini-rail wrapper — the Button is a
+     component child, so scoped rules need a real ancestor anchor (a bare
+     `.box :global(.mini)` never matched: .mini is a SIBLING of .box). */
+  .mini-rail {
     display: none;
+  }
+  @media (max-width: 1279.98px) {
+    .mini-rail {
+      display: block;
+    }
+  }
+  .mini-rail :global(.mini) {
+    display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
@@ -348,19 +361,14 @@
     cursor: pointer;
     color: var(--color-muted-foreground);
   }
-  @media (max-width: 1279.98px) {
-    .box :global(.mini) {
-      display: flex;
-    }
-  }
-  .box :global(.mini-open) {
+  .mini-rail :global(.mini-open) {
     color: var(--color-warning);
   }
-  .box :global(.mini):disabled {
+  .mini-rail :global(.mini):disabled {
     cursor: default;
     opacity: 0.7;
   }
-  .box :global(.mini):not(:disabled):hover {
+  .mini-rail :global(.mini):not(:disabled):hover {
     background: color-mix(in srgb, currentColor 10%, transparent);
   }
   .box :global(.act.primary) {
