@@ -12,6 +12,27 @@ import { getDb } from '$server/db/client';
 import { resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listBrainAgentIds } from '$server/services/brain-agents.service';
+import { dev } from '$app/environment';
+import { withCoreDbRecovery, withCriticalCoreDb } from '$server/db/pg-client';
+import { shareInflight } from '$server/utils/inflight-singleflight';
+
+const SLOW_LOAD_WARNING_MS = 3_000;
+
+async function traceLayoutLoad<T>(name: string, promise: Promise<T>): Promise<T> {
+  if (!dev) return promise;
+  const startedAt = Date.now();
+  let warned = false;
+  const timer = setTimeout(() => {
+    warned = true;
+    console.warn(`[app-layout] ${name} still pending after ${SLOW_LOAD_WARNING_MS}ms`);
+  }, SLOW_LOAD_WARNING_MS);
+  try {
+    return await promise;
+  } finally {
+    clearTimeout(timer);
+    if (warned) console.info(`[app-layout] ${name} settled after ${Date.now() - startedAt}ms`);
+  }
+}
 
 /**
  * Authenticated (app)/* layout server load.
@@ -73,22 +94,47 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
     locals.tenantCtx = { db: getDb(), tenantId: orgId };
   }
 
-  const [permissions, workspaces, organizations, personalAgent, hosts, preferences, brainAgentIds] =
-    await Promise.all([
-      loadPermissionsForUser(locals, user.id),
-      loadWorkspacesForUser(locals, user.supabaseId),
-      loadOrganizationsForUser(locals, user.id),
-      loadPersonalAgentForUser(locals, user.id, user.supabaseId),
-      loadHostsForUser(locals, user.id, user.role),
-      loadUserPreferences(locals, user.supabaseId),
-      // Provisioned brain agents (brain-<uuid>) don't have org-shaped names, so
-      // the client-side agent-org partition (agent-org.ts) can't place them by
-      // name alone — feed it the active org's real assignment instead. Fail-soft:
-      // never let a brains-table hiccup break the whole app shell's load.
-      getCoreCtx(locals)
-        .then((ctx) => (ctx ? listBrainAgentIds(ctx) : []))
-        .catch(() => [] as string[]),
-    ]);
+  const coreLoadKey = [
+    'app-layout-core',
+    user.id,
+    user.supabaseId ?? '',
+    user.role ?? '',
+    locals.orgId ?? locals.tenantCtx?.tenantId ?? '',
+  ].join(':');
+
+  const [permissions, organizations, coreBundle] = await Promise.all([
+    traceLayoutLoad('permissions', loadPermissionsForUser(locals, user.id)),
+    traceLayoutLoad('organizations', loadOrganizationsForUser(locals, user.id)),
+    withCriticalCoreDb(() =>
+      withCoreDbRecovery(() =>
+        shareInflight(
+          coreLoadKey,
+          () =>
+            Promise.all([
+              traceLayoutLoad('workspaces', loadWorkspacesForUser(locals, user.supabaseId)),
+              traceLayoutLoad(
+                'personal-agent',
+                loadPersonalAgentForUser(locals, user.id, user.supabaseId),
+              ),
+              traceLayoutLoad('hosts', loadHostsForUser(locals, user.id, user.role)),
+              traceLayoutLoad('preferences', loadUserPreferences(locals, user.supabaseId)),
+              // Provisioned brain agents (brain-<uuid>) don't have org-shaped names, so
+              // the client-side agent-org partition (agent-org.ts) can't place them by
+              // name alone — feed it the active org's real assignment instead. Fail-soft:
+              // never let a brains-table hiccup break the whole app shell's load.
+              traceLayoutLoad(
+                'brain-agent-ids',
+                getCoreCtx(locals)
+                  .then((ctx) => (ctx ? listBrainAgentIds(ctx) : []))
+                  .catch(() => [] as string[]),
+              ),
+            ]),
+          2_000,
+        ),
+      ),
+    ),
+  ]);
+  const [workspaces, personalAgent, hosts, preferences, brainAgentIds] = coreBundle;
 
   // Central route-policy guard. The serializable policy registry also drives
   // the route design manifest and client navigation visibility. Reuse the
