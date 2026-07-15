@@ -19,7 +19,11 @@ declare global {
   var __minionHubPgPoolReset: Promise<void> | undefined;
 }
 
-const DEFAULT_POOL_SIZE = 1;
+// 5 preserves the long-running prod default (master e06e9263). A size-1 pool
+// serializes every query behind one remote connection and times out the app
+// shell against a remote DB; wedged-pipeline stalls are handled by
+// resetAllPgPools rather than by serializing everything.
+const DEFAULT_POOL_SIZE = 5;
 const MAX_POOL_SIZE = 10;
 
 function poolSize(): number {
@@ -39,8 +43,8 @@ function databaseUrl(): string {
  *
  * A short idle timeout and finite connection lifetime keep dev reloads and
  * retired serverless isolates from holding Supabase connections indefinitely.
- * The default is deliberately serialized for the Supabase transaction-pooler
- * endpoint; operators using a direct/session endpoint can opt into concurrency.
+ * Size via SUPABASE_DB_POOL_SIZE: higher for local dev against a remote DB,
+ * small on serverless where each isolate opens its own pool.
  */
 export function getPgClient(): PgClient {
   const url = databaseUrl();
