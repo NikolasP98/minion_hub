@@ -22,6 +22,11 @@ import { getCoreDb } from '$server/db/pg-client';
 import { getUserPreferences } from '$server/services/user-preferences.service';
 import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
 import { apiWriteCapability, hasOrgCapability } from '$server/services/rbac.service';
+import {
+  proxyRequestHeaders,
+  proxyResponseHeaders,
+  safeClientAddress,
+} from '$server/http/proxy-headers';
 
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
@@ -282,17 +287,31 @@ const posthogProxyHandle: Handle = async ({ event, resolve }) => {
     url.hostname = hostname;
     url.port = '443';
     url.pathname = pathname.replace(/^\/ingest/, '');
-    const headers = new Headers(event.request.headers);
-    headers.set('host', hostname);
-    headers.set('accept-encoding', '');
-    const clientIp = event.request.headers.get('x-forwarded-for') || event.getClientAddress();
+    // Browser requests can arrive with transfer framing headers. Forwarding
+    // those through Fetch makes Undici reject the request before it reaches
+    // PostHog. Hub credentials also have no business crossing this boundary.
+    const headers = proxyRequestHeaders(event.request.headers, ['authorization', 'cookie']);
+    // Keep the upstream body uncompressed. Fetch also decompresses responses
+    // transparently, and forwarding the original encoding header would make
+    // Chromium attempt a second decode (ERR_CONTENT_DECODING_FAILED).
+    headers.set('accept-encoding', 'identity');
+    const clientIp = safeClientAddress(
+      event.request.headers.get('x-forwarded-for'),
+      event.getClientAddress,
+    );
     if (clientIp) headers.set('x-forwarded-for', clientIp);
-    return fetch(url.toString(), {
+    const upstream = await fetch(url.toString(), {
       method: event.request.method,
       headers,
       body: event.request.body,
+      signal: AbortSignal.timeout(10_000),
       // @ts-expect-error - duplex is required for streaming request bodies
       duplex: 'half',
+    });
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: proxyResponseHeaders(upstream.headers),
     });
   }
   return resolve(event);
