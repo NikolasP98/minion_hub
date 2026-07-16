@@ -129,7 +129,7 @@
 </svelte:head>
 
 {#snippet hero()}
-  <div class="-mb-8" aria-hidden="true">
+  <div class="-mb-2" aria-hidden="true">
     <OrbAnimation phase={orbPhase} {agentName} />
   </div>
 {/snippet}

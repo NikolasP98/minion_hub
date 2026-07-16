@@ -151,7 +151,7 @@
 
   <!-- One row per channel. Each card shows its own connected state + manage
        controls, so there is no separate "linked channels" list. -->
-  <div class="divide-y divide-border/60">
+  <div class="channel-rows divide-y divide-border/60">
     <WhatsAppClaimCard {userId} {serverId} identity={whatsappIdentity} onDisconnect={disconnect} />
     <TelegramClaimCard {userId} identity={telegramIdentity} onDisconnect={disconnect} />
 
@@ -160,7 +160,7 @@
         {@const isOpen = openPluginId === p.pluginId}
         <div>
           <Button variant="ghost" size="xs"
-            class="w-full flex items-center gap-3 px-3 py-2.5 bg-transparent hover:bg-bg3/30 transition-colors cursor-pointer border-none text-left"
+            class="channel-row w-full px-3 py-2.5 bg-transparent hover:bg-bg3/30 transition-colors cursor-pointer border-none text-left"
             onclick={() => toggle(p.pluginId)}
           >
             <span class="shrink-0">
@@ -247,3 +247,19 @@
     <p class="text-[length:var(--font-size-label)] text-destructive px-3 py-2.5 border-t border-border/60">{loadError}</p>
   {/if}
 </div>
+
+<style>
+  /* Channel header rows carry two lines of content inside a Button whose xs
+     size is a fixed 24px control height — release the height and stretch the
+     Button's inner slot span so the row lays out (governance: Button slot trap). */
+  .channel-rows :global(.channel-row) {
+    height: auto;
+    white-space: normal;
+  }
+  .channel-rows :global(.channel-row > span) {
+    width: 100%;
+    justify-content: flex-start;
+    text-align: left;
+    gap: var(--space-3);
+  }
+</style>

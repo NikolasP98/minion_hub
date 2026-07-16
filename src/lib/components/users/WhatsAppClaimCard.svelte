@@ -140,7 +140,7 @@
 
 <div>
   <Button variant="ghost" size="xs"
-    class="w-full flex items-center gap-3 px-3 py-2.5 bg-transparent border-none cursor-pointer text-left hover:bg-bg3/30 transition-colors"
+    class="channel-row w-full px-3 py-2.5 bg-transparent border-none cursor-pointer text-left hover:bg-bg3/30 transition-colors"
     onclick={() => (open = !open)}
   >
     <ChannelBrandIcon channel="whatsapp" class="h-4 w-4 shrink-0" />
