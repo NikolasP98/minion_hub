@@ -140,7 +140,15 @@ const appHandle: Handle = async ({ event, resolve }) => {
   // /api/metrics bearer path resolve directly, as before).
   const { locals, bypassGate } = await resolveIdentity(event);
   Object.assign(event.locals, locals);
-  return bypassGate ? resolve(event) : finishApp({ event, resolve });
+  if (bypassGate) {
+    // AUTH_DISABLED bypass skips finishApp, so mirror its "/" → landing redirect
+    // here or the root URL 404s in dev (there is no +page at "/").
+    if (event.url.pathname === '/') {
+      return new Response(null, { status: 307, headers: { location: '/home' } });
+    }
+    return resolve(event);
+  }
+  return finishApp({ event, resolve });
 };
 
 /**
@@ -206,7 +214,8 @@ const finishApp: Handle = async ({ event, resolve }) => {
       path === '/api/org-config/tick' ||
       path === '/api/jobs/tick' ||
       path === '/api/meta/sync/tick' ||
-      path === '/api/email-ledger/tick'
+      path === '/api/email-ledger/tick' ||
+      path === '/api/crm/dni-validation/tick'
     ) {
       return resolve(event);
     }

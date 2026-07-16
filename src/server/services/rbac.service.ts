@@ -1064,6 +1064,7 @@ const CREATE_COLLECTION_ENDPOINTS = new Set([
   '/api/builder/agents',
   '/api/builder/skills',
   '/api/builder/tools',
+  '/api/crm/parties',
 ]);
 
 export function apiWriteCapability(

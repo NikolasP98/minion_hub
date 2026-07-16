@@ -19,6 +19,8 @@
     qty: number;
     unitPrice: number | null;
     discount: number;
+    /** Set when the line rings up a completed appointment (POS "Cobrar" handoff). */
+    bookingId?: string | null;
   }
 
   /** Pure so it's usable both here and in the page for totals — integer cents,

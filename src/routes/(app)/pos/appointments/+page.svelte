@@ -1,14 +1,25 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { CalendarDays, Plus, Check, X, UserX } from 'lucide-svelte';
-  import { invalidate } from '$app/navigation';
-  import { PageHeader, Card, Button, Badge, EmptyState, Modal, Select } from '$lib/components/ui';
+  import { CalendarDays, Plus, Check, X, UserX, ShoppingCart } from 'lucide-svelte';
+  import { invalidate, goto } from '$app/navigation';
+  import { page } from '$app/state';
+  import {
+    PageHeader,
+    Card,
+    Button,
+    Badge,
+    EmptyState,
+    Modal,
+    Select,
+    iconSizes,
+  } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
   import { formatMoney } from '$lib/utils/format';
+  import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -158,30 +169,15 @@
   let nbDate = $state(new Date().toISOString().slice(0, 10));
   let nbSlots = $state<Array<{ start: string; end: string }>>([]);
   let nbSlot = $state('');
-  let nbName = $state('');
-  let nbPhone = $state('');
   let nbLoading = $state(false);
   let nbErr = $state<string | null>(null);
 
-  let nbContactId = $state<string | null>(null);
-  let nbSearch = $state('');
-  let nbResults = $state<Array<{ id: string; name: string }>>([]);
-  async function searchContacts() {
-    nbContactId = null; // typing a new query unpicks any prior choice
-    const q = nbSearch.trim();
-    if (q.length < 2) {
-      nbResults = [];
-      return;
-    }
-    const res = await fetch(`/api/crm/contacts?search=${encodeURIComponent(q)}&limit=8`);
-    const j = res.ok ? await res.json() : { contacts: [] };
-    nbResults = (j.contacts ?? []).map(
-      (c: { contact_id: string; display_name: string | null }) => ({
-        id: c.contact_id,
-        name: c.display_name || '—',
-      }),
-    );
-  }
+  // Shared POS CustomerPicker (party search + persisting quick-add) replaces the
+  // hand-rolled contact search this modal used to carry. createBooking resolves/
+  // creates the CRM contact from the phone, so name+phone is all it needs.
+  let nbPartyId = $state<string | null>(null);
+  let nbName = $state<string | null>(null);
+  let nbPhone = $state<string | null>(null);
 
   let nbLines = $state<ConsumptionLine[]>([]);
   let nbHasMapping = $state(false);
@@ -214,24 +210,6 @@
     }
   }
 
-  async function pickContact(c: { id: string; name: string }) {
-    nbContactId = c.id;
-    nbName = c.name;
-    nbSearch = c.name;
-    nbResults = [];
-    // fetch_from: pull the contact's phone/email and fill only what's empty.
-    try {
-      const res = await fetch(`/api/crm/contacts/${c.id}/prefill`);
-      if (res.ok) {
-        const p = await res.json();
-        if (!nbPhone && p.phone) nbPhone = p.phone;
-        if (!nbName && p.name) nbName = p.name;
-      }
-    } catch {
-      /* prefill is best-effort */
-    }
-  }
-
   async function loadSlots() {
     if (!nbEventType || !nbDate) return;
     nbLoading = true;
@@ -259,10 +237,28 @@
   let nbOverrideTime = $state(''); // HH:MM
   const overrideActive = $derived(Boolean(nbForceResourceId) && nbOverrideChecked);
 
+  // ── Booking → charge handoff (Fresha-style checkout) ── writes the completed
+  // booking to a consume-once key and lands on /pos/sell with the cart
+  // pre-filled (service line rides pos_ticket_lines.bookingId).
+  function chargeBooking(b: PageData['bookings'][number]) {
+    const et = data.eventTypes.find((e) => e.id === b.eventTypeId);
+    localStorage.setItem(
+      `pos-charge-${page.data.activeOrgId ?? 'default'}`,
+      JSON.stringify({
+        bookingId: b.id,
+        productId: b.productId ?? et?.productId ?? null,
+        partyId: b.partyId ?? null,
+        customerName: b.attendeeName ?? null,
+        phone: b.attendeePhone ?? null,
+      }),
+    );
+    goto('/pos/sell');
+  }
+
   async function book() {
     // Override path needs a typed time instead of a picked slot; the normal
     // path still needs a picked slot.
-    if (!nbEventType || !nbName.trim() || (overrideActive ? !nbOverrideTime : !nbSlot)) {
+    if (!nbEventType || !nbName?.trim() || (overrideActive ? !nbOverrideTime : !nbSlot)) {
       nbErr = 'service, time and name required';
       return;
     }
@@ -283,7 +279,6 @@
           start,
           attendeeName: nbName,
           attendeePhone: nbPhone || null,
-          crmContactId: nbContactId,
           forceResourceId: nbForceResourceId || undefined,
           // BOTH staff-forced AND the checkbox are required — never send this
           // from just a forced resource pick.
@@ -300,12 +295,10 @@
       }
       if (!res.ok) throw new Error(String(res.status));
       showNew = false;
-      nbName = '';
-      nbPhone = '';
+      nbName = null;
+      nbPhone = null;
+      nbPartyId = null;
       nbSlot = '';
-      nbContactId = null;
-      nbSearch = '';
-      nbResults = [];
       nbLines = [];
       nbHasMapping = false;
       nbForceResourceId = '';
@@ -330,7 +323,7 @@
 >
   <PageHeader titleId="pos-appointments-title" title={m.pos_nav_appointments()}>
     {#snippet leading()}
-      <CalendarDays size={16} class="text-accent shrink-0" />
+      <CalendarDays size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
     {#snippet secondaryActions()}
       <div class="range-toggle">
@@ -359,7 +352,7 @@
         disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
         title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
       >
-        <Plus size={14} />
+        <Plus size={iconSizes.sm} />
         {m.pos_appt_new()}
       </Button>
     {/snippet}
@@ -424,6 +417,17 @@
                     {/if}
                     <!-- PATCH/complete live under /api/scheduling → gated centrally by
 										     scheduling:edit, not pos:edit — gate on that capability here too. -->
+                    {#if b.status === 'completed' && canAct('pos', 'edit')}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title={m.pos_appt_charge()}
+                        onclick={() => chargeBooking(b)}
+                      >
+                        <ShoppingCart size={iconSizes.sm} />
+                        {m.pos_appt_charge()}
+                      </Button>
+                    {/if}
                     {#if b.status === 'accepted' || b.status === 'pending'}
                       <div class="flex gap-1">
                         <Button
@@ -436,7 +440,7 @@
                           disabled={!canAct('scheduling', 'edit')}
                           onclick={() => openComplete(b.id)}
                         >
-                          <Check size={15} />
+                          <Check size={iconSizes.sm} />
                         </Button>
                         <Button
                           variant="ghost"
@@ -448,7 +452,7 @@
                           disabled={!canAct('scheduling', 'edit')}
                           onclick={() => setStatus(b.id, 'no_show')}
                         >
-                          <UserX size={15} />
+                          <UserX size={iconSizes.sm} />
                         </Button>
                         <Button
                           variant="ghost"
@@ -460,7 +464,7 @@
                           disabled={!canAct('scheduling', 'edit')}
                           onclick={() => setStatus(b.id, 'cancelled')}
                         >
-                          <X size={15} />
+                          <X size={iconSizes.sm} />
                         </Button>
                       </div>
                     {/if}
@@ -582,40 +586,9 @@
         </div>
       </div>
     {/if}
-    <div class="field">
-      <span class="t-caption">{m.sched_book_find_client()}</span>
-      <div class="search-wrap">
-        <input
-          class="txt"
-          bind:value={nbSearch}
-          oninput={searchContacts}
-          placeholder={m.sched_book_find_client_ph()}
-        />
-        {#if nbContactId}<span class="linked">✓ {m.sched_book_linked()}</span>{/if}
-        {#if nbResults.length}
-          <div class="results">
-            {#each nbResults as c (c.id)}
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                class="result"
-                onclick={() => pickContact(c)}>{c.name}</Button
-              >
-            {/each}
-          </div>
-        {/if}
-      </div>
-    </div>
-    <label class="field">
-      <span class="t-caption">{m.sched_book_name()}</span>
-      <input class="txt" bind:value={nbName} />
-    </label>
-    {#if !nbContactId}
-      <label class="field">
-        <span class="t-caption">{m.sched_book_phone()}</span>
-        <input class="txt" bind:value={nbPhone} />
-      </label>
+    <CustomerPicker bind:partyId={nbPartyId} bind:customerName={nbName} bind:phone={nbPhone} />
+    {#if !nbName}
+      <p class="t-caption">{m.sched_book_find_client_ph()}</p>
     {/if}
     {#if nbErr}<p class="t-caption" style="color:var(--color-destructive)">{nbErr}</p>{/if}
     <div class="flex gap-2">
@@ -623,7 +596,7 @@
         onclick={book}
         disabled={nbLoading ||
           (overrideActive ? !nbOverrideTime : !nbSlot) ||
-          !nbName.trim() ||
+          !nbName?.trim() ||
           !canAct('scheduling', 'edit')}
         title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
         >{m.sched_book_confirm()}</Button
@@ -711,37 +684,6 @@
     background: var(--color-accent);
     color: var(--color-on-accent);
     border-color: var(--color-accent);
-  }
-  .search-wrap {
-    position: relative;
-  }
-  .linked {
-    font-size: var(--font-size-caption, 12px);
-    color: var(--color-accent);
-  }
-  .results {
-    position: absolute;
-    z-index: var(--layer-sticky, 10);
-    left: 0;
-    right: 0;
-    top: 100%;
-    margin-top: var(--space-0-5, 2px);
-    background: var(--color-card);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-overlay);
-    max-height: 180px;
-    overflow: auto;
-  }
-  :global(.pos-appointments-surface .result) {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: var(--space-2, 8px) var(--space-2, 8px);
-    font-size: var(--font-size-body, 14px);
-  }
-  :global(.pos-appointments-surface .result:hover) {
-    background: var(--hairline);
   }
   :global(.pos-appointments-surface .act) {
     display: inline-flex;

@@ -1,5 +1,7 @@
 <script module lang="ts">
   export interface PaymentRow {
+    /** Stable render key — index keys mis-associate input state on row removal. */
+    id?: string;
     method: string;
     amount: number;
     tendered?: number | null;
@@ -27,7 +29,10 @@
 
   function addMethod(method: string) {
     const amount = Math.max(0, remainingCents) / 100;
-    payments = [...payments, { method, amount, tendered: method === 'cash' ? amount : null }];
+    payments = [
+      ...payments,
+      { id: crypto.randomUUID(), method, amount, tendered: method === 'cash' ? amount : null },
+    ];
   }
 
   // Over-allocation clamp: this row's amount can never push Σ past total.
@@ -79,7 +84,7 @@
   <!-- Remaining is shown in the page's pinned charge bar, next to the Charge button. -->
   {#if payments.length}
     <div class="rows">
-      {#each payments as p, i (i)}
+      {#each payments as p, i (p.id ?? i)}
         <div class="row" class:invalid={tenderInvalid(p)}>
           <span class="mname">{p.method}</span>
           <label class="fld">

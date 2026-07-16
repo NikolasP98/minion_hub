@@ -9,7 +9,7 @@
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { canAct } from '$lib/access/can.svelte';
   import { createHotkey } from '$lib/hotkeys';
-  import { toastAsync } from '$lib/state/ui/toast.svelte';
+  import { toastAsync, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
   import SellCart, { type CartLine, lineCents } from '$lib/components/pos/SellCart.svelte';
   import PaymentPanel, { type PaymentRow } from '$lib/components/pos/PaymentPanel.svelte';
@@ -32,6 +32,7 @@
         qty: number;
         unitPrice: number | null;
         discount: number;
+        bookingId?: string | null;
       }>;
       const byId = new Map(sellables.map((s) => [s.productId, s]));
       // Stale entries (product deleted/deactivated since the cart was saved)
@@ -39,7 +40,15 @@
       return stored.flatMap((entry) => {
         const sellable = byId.get(entry.productId);
         if (!sellable) return [];
-        return [{ sellable, qty: entry.qty, unitPrice: entry.unitPrice, discount: entry.discount }];
+        return [
+          {
+            sellable,
+            qty: entry.qty,
+            unitPrice: entry.unitPrice,
+            discount: entry.discount,
+            bookingId: entry.bookingId ?? null,
+          },
+        ];
       });
     } catch {
       return [];
@@ -58,6 +67,7 @@
           qty: l.qty,
           unitPrice: l.unitPrice,
           discount: l.discount,
+          bookingId: l.bookingId ?? null,
         })),
       ),
     );
@@ -129,9 +139,51 @@
   ]);
 
   // ── Customer + payments ──
-  let crmContactId = $state<string | null>(null);
+  let partyId = $state<string | null>(null);
   let customerName = $state<string | null>(null);
+  let customerPhone = $state<string | null>(null);
   let payments = $state<PaymentRow[]>([]);
+
+  // ── Booking → charge handoff ── the appointments tab writes the completed
+  // booking here and navigates over; consume-once so a reload doesn't re-add.
+  const CHARGE_KEY = `pos-charge-${page.data.activeOrgId ?? 'default'}`;
+  if (browser) {
+    try {
+      const raw = localStorage.getItem(CHARGE_KEY);
+      if (raw) {
+        localStorage.removeItem(CHARGE_KEY);
+        const h = JSON.parse(raw) as {
+          bookingId: string;
+          productId: string | null;
+          partyId?: string | null;
+          customerName?: string | null;
+          phone?: string | null;
+        };
+        // svelte-ignore state_referenced_locally -- consume-once init, same idiom as loadCart above
+        const sellable = h.productId
+          ? data.sellables.find((s) => s.productId === h.productId)
+          : undefined;
+        if (sellable) {
+          // svelte-ignore state_referenced_locally -- init-time read of the just-seeded cart
+          if (!lines.some((l) => l.bookingId === h.bookingId)) {
+            lines = [
+              { sellable, qty: 1, unitPrice: sellable.unitPrice, discount: 0, bookingId: h.bookingId },
+              // svelte-ignore state_referenced_locally -- init-time spread of the just-seeded cart
+              ...lines,
+            ];
+          }
+          toastSuccess(m.pos_booking_loaded());
+        } else {
+          toastWarning(m.pos_booking_product_missing());
+        }
+        partyId = h.partyId ?? null;
+        customerName = h.customerName ?? null;
+        customerPhone = h.phone ?? null;
+      }
+    } catch {
+      /* malformed handoff — ignore */
+    }
+  }
 
   const totalCents = $derived(lines.reduce((s, l) => s + lineCents(l), 0));
   const total = $derived(totalCents / 100);
@@ -146,9 +198,7 @@
         Math.round(p.tendered * 100) >= Math.round(p.amount * 100),
     ),
   );
-  const customerMissing = $derived(
-    data.posSettings.requireCustomer && !crmContactId && !customerName,
-  );
+  const customerMissing = $derived(data.posSettings.requireCustomer && !partyId && !customerName);
   // Server rejects tickets without an open shift (no_open_shift) — mirror that
   // in the UI so the cashier can't even try.
   const shiftOpen = $derived(!!page.data.openShift);
@@ -162,6 +212,19 @@
       !tenderOk ||
       submitting,
   );
+  // First unmet precondition, in fix-order — shown ON the charge button so a
+  // disabled button is never silent (one blocker at a time, not a checklist).
+  const chargeBlocker = $derived.by(() => {
+    if (!shiftOpen) return m.pos_no_open_shift();
+    if (lines.length === 0) return m.pos_charge_blocked_empty();
+    const unpriced = lines.find((l) => l.unitPrice == null || l.unitPrice <= 0);
+    if (unpriced) return m.pos_charge_blocked_price({ name: unpriced.sellable.name });
+    if (customerMissing) return m.pos_customer_required();
+    if (paidCents < totalCents)
+      return m.pos_charge_blocked_remaining({ amount: formatMoney(remainingCents / 100) });
+    if (!tenderOk) return m.pos_charge_blocked_tender();
+    return null;
+  });
 
   // ── Submit ──
   let stockBanner = $state<{ ticketId: string; message: string } | null>(null);
@@ -179,6 +242,7 @@
               lines: lines.map((l) => ({
                 kind: l.sellable.kind,
                 finProductId: l.sellable.productId,
+                bookingId: l.bookingId ?? null,
                 description: l.sellable.name,
                 qty: l.qty,
                 unitPrice: l.unitPrice ?? 0,
@@ -189,7 +253,7 @@
                 amount: p.amount,
                 tendered: p.method === 'cash' ? (p.tendered ?? p.amount) : null,
               })),
-              crmContactId,
+              partyId,
               customerName,
             }),
           });
@@ -231,8 +295,9 @@
         : null;
       lines = [];
       payments = [];
-      crmContactId = null;
+      partyId = null;
       customerName = null;
+      customerPhone = null;
       await invalidate('pos:shift');
       await invalidate('pos:sell');
     } catch {
@@ -530,8 +595,9 @@
           </div>
         {/if}
         <CustomerPicker
-          bind:crmContactId
+          bind:partyId
           bind:customerName
+          bind:phone={customerPhone}
           required={data.posSettings.requireCustomer}
         />
         <div class="cart-scroll">
@@ -549,15 +615,12 @@
           <div class="remaining" class:done={remainingCents === 0}>
             {m.pos_sell_remaining()}: {formatMoney(remainingCents / 100)}
           </div>
-          {#if !shiftOpen}
-            <div class="no-shift">{m.pos_no_open_shift()}</div>
-          {/if}
           <Button
             variant="primary"
             size="lg"
             disabled={chargeDisabled}
             loading={submitting}
-            onclick={charge}>{m.pos_sell_charge()}</Button
+            onclick={charge}>{chargeBlocker ?? m.pos_sell_charge()}</Button
           >
         </div>
       </div>
@@ -837,14 +900,6 @@
   }
   .remaining.done {
     color: var(--color-success);
-  }
-  .no-shift {
-    font-size: var(--font-size-caption, 12px);
-    text-align: center;
-    padding: var(--space-1, 4px) var(--space-2, 8px);
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-warning) 12%, transparent);
-    color: var(--color-warning);
   }
   .banner {
     display: flex;
