@@ -21,6 +21,7 @@
         "@inlang/paraglide-sveltekit": "^0.16.1",
         "@libsql/client": "^0.17.4",
         "@minion-stack/cache": "^0.3",
+        "@minion-stack/crm-sdk": "file:deps/minion-stack-crm-sdk-0.1.0-776d8c49.tgz",
         "@minion-stack/db": "file:deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz",
         "@minion-stack/design-tokens": "file:deps/minion-stack-design-tokens-0.1.0-ui-coherence-61273ea5.tgz",
         "@minion-stack/shared": "^0.9.0",
@@ -361,6 +362,8 @@
     "@marijn/find-cluster-break": ["@marijn/find-cluster-break@1.0.3", "", {}, "sha512-FY+MKLBoTsLNJF/eLWaOsXGdz6uh3Iu1axjPf6TUq92IYumcTcXWHoS747JARLkcdlJ/Waiaxc5wQfFO8jC6NA=="],
 
     "@minion-stack/cache": ["@minion-stack/cache@0.3.0", "", { "dependencies": { "ioredis": "^5.4.1" } }, "sha512-2uSWAj4wk9Urt/eiyWP0h0dzPgxcbTNJ4uYWq5C4BzIyCtC33t7EE7waCbaNE53485ok+Sdgt7weiYsHTW9rZw=="],
+
+    "@minion-stack/crm-sdk": ["@minion-stack/crm-sdk@deps/minion-stack-crm-sdk-0.1.0-776d8c49.tgz", { "peerDependencies": { "postgres": "^3.4.0" } }],
 
     "@minion-stack/db": ["@minion-stack/db@deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }],
 

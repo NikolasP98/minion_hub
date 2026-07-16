@@ -4,8 +4,8 @@
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { Contact, RefreshCw, ArrowUp, ArrowDown, X } from 'lucide-svelte';
-  import { PageHeader, Button, Modal, Select } from '$lib/components/ui';
+  import { Contact, RefreshCw, ArrowUp, ArrowDown, X, CircleCheck, Circle } from 'lucide-svelte';
+  import { PageHeader, Button, Modal, Select, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import ScoreCell from '$lib/components/crm/ScoreCell.svelte';
   import StagePill from '$lib/components/crm/StagePill.svelte';
@@ -64,6 +64,22 @@
   const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'];
   const stageOptions = STAGES.map((s) => ({ value: s, label: stageLabel(s) }));
   const funnelOptions = FUNNEL_ORDER.map((id) => ({ value: id, label: funnelStageLabel(id) }));
+  const verifiedOptions = [
+    { value: '1', label: m.crm_verified_filter_yes() },
+    { value: '0', label: m.crm_verified_filter_no() },
+  ];
+  const sexOptions = [
+    { value: 'M', label: m.crm_sex_m() },
+    { value: 'F', label: m.crm_sex_f() },
+  ];
+  // Canonical M/F from the DNI registry localizes here; fall back to the legacy
+  // Spanish custom_fields.sexo for rows that were never DNI-verified.
+  const sexLabel = (c: Row) =>
+    c.sex === 'M'
+      ? m.crm_sex_m()
+      : c.sex === 'F'
+        ? m.crm_sex_f()
+        : ((c.custom_fields?.sexo as string | undefined) ?? '');
   const channelOptions = $derived.by(() => {
     const s = new Set<string>();
     for (const c of contacts) for (const ch of c.channels ?? []) s.add(ch);
@@ -159,6 +175,25 @@
         },
         filter: { options: () => funnelOptions, match: (c) => funnelOf(c) ?? '' },
       },
+      {
+        key: 'verified',
+        label: m.crm_col_verified(),
+        custom: true,
+        accessor: (c) => (c.dni_verified ? '✓' : ''),
+        exportValue: (c) => (c.dni_verified ? 'yes' : 'no'),
+        sortFn: (a, b) => Number(a.dni_verified) - Number(b.dni_verified),
+        filter: { options: () => verifiedOptions, match: (c) => (c.dni_verified ? '1' : '0') },
+        width: 96,
+      },
+      {
+        key: 'sex',
+        label: m.crm_col_sex(),
+        defaultHidden: true,
+        accessor: (c) => sexLabel(c),
+        exportValue: (c) => sexLabel(c),
+        filter: { options: () => sexOptions, match: (c) => c.sex ?? '' },
+        width: 96,
+      },
     ];
     for (const k of metaKeys)
       cols.push({
@@ -253,6 +288,23 @@
   });
 
   // ── Actions ────────────────────────────────────────────────────────────────
+  // DNI verified checkmark toggle → PATCH the party, then refresh the roster.
+  let verifyBusy = $state<string | null>(null);
+  async function toggleVerified(c: Row) {
+    if (!c.party_id || verifyBusy) return;
+    verifyBusy = c.party_id;
+    try {
+      const res = await fetch(`/api/crm/parties/${c.party_id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dniVerified: !c.dni_verified }),
+      });
+      if (res.ok) await invalidate('crm:contacts');
+    } finally {
+      verifyBusy = null;
+    }
+  }
+
   let syncing = $state(false);
   let creating = $state(false);
   let searchQuery = $state('');
@@ -530,6 +582,24 @@
               >{m.crm_reserved_badge()}</span
             >{/if}
         </div>
+      {:else if col.key === 'verified'}
+        <Button
+          variant="ghost"
+          size="sm"
+          class="verify-toggle"
+          disabled={!c.party_id || !canAct('crm', 'edit') || verifyBusy === c.party_id}
+          title={c.dni_verified ? m.crm_verified_hint() : m.crm_unverified_hint()}
+          onclick={(e: MouseEvent) => {
+            e.stopPropagation();
+            toggleVerified(c);
+          }}
+        >
+          {#if c.dni_verified}
+            <CircleCheck size={iconSizes.md} class="verify-icon-on" />
+          {:else}
+            <Circle size={iconSizes.md} class="verify-icon-off" />
+          {/if}
+        </Button>
       {:else if col.key.startsWith('meta:')}
         {@const v = metaDisplay(col.key.slice(5), c.custom_fields?.[col.key.slice(5)])}
         <span class="meta-cell" title={v}>{v || '—'}</span>
@@ -597,6 +667,16 @@
     font-size: var(--font-size-body, 14px);
     color: var(--color-destructive);
     margin-top: var(--space-2, 8px);
+  }
+  :global(.crm-customers-surface .verify-toggle) {
+    height: var(--control-height-xs);
+    padding-inline: var(--space-1);
+  }
+  :global(.crm-customers-surface .verify-icon-on) {
+    color: var(--color-success-fg);
+  }
+  :global(.crm-customers-surface .verify-icon-off) {
+    color: var(--color-text-tertiary);
   }
   :global(.crm-customers-surface .res-toggle) {
     display: inline-flex;

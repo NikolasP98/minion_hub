@@ -18,6 +18,7 @@
     "@inlang/paraglide-sveltekit": "^0.16.1",
     "@libsql/client": "^0.17.4",
     "@minion-stack/cache": "^0.3",
+    "@minion-stack/crm-sdk": "file:deps/minion-stack-crm-sdk-0.1.0-776d8c49.tgz",
     "@minion-stack/db": "file:deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz",
     "@minion-stack/design-tokens": "file:deps/minion-stack-design-tokens-0.1.0-ui-coherence-61273ea5.tgz",
     "@minion-stack/shared": "^0.9.0",

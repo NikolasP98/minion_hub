@@ -11,13 +11,14 @@
     Pencil,
     Check,
     Sparkles,
+    Search,
     RotateCw,
     ShoppingBag,
     CalendarClock,
     MessageCircle,
     Bookmark,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Select } from '$lib/components/ui';
+  import { PageHeader, Button, Select, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
@@ -153,6 +154,7 @@
     addDraft = additional.map(([k, v]) => [k, metaValue(v) === '—' ? '' : String(v)]);
     newKey = '';
     newVal = '';
+    dniLookup = { state: 'idle' };
     editingDetails = true;
   }
   async function saveDetails() {
@@ -190,6 +192,51 @@
   }
   function removeAddRow(i: number) {
     addDraft = addDraft.filter((_, idx) => idx !== i);
+  }
+
+  // ── DNI registry lookup (offer to fill name/sex/age) ────────────────────────
+  type DniHit = { found: true; name: string | null; sex: 'M' | 'F' | null; age: number | null };
+  type DniLookup =
+    | { state: 'idle' }
+    | { state: 'loading' }
+    | { state: 'hit'; hit: DniHit }
+    | { state: 'miss' }
+    | { state: 'error' };
+  let dniLookup = $state<DniLookup>({ state: 'idle' });
+  const dniValid = $derived(/^\d{8}$/.test((stdDraft.dni ?? '').trim()));
+
+  async function lookupDni() {
+    if (!dniValid) return;
+    dniLookup = { state: 'loading' };
+    try {
+      const res = await fetch('/api/crm/dni-lookup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dni: stdDraft.dni.trim() }),
+      });
+      if (!res.ok) {
+        dniLookup = { state: 'error' };
+        return;
+      }
+      const data = (await res.json()) as { found: boolean; name?: string | null; sex?: 'M' | 'F' | null; age?: number | null };
+      dniLookup = data.found
+        ? { state: 'hit', hit: { found: true, name: data.name ?? null, sex: data.sex ?? null, age: data.age ?? null } }
+        : { state: 'miss' };
+    } catch {
+      dniLookup = { state: 'error' };
+    }
+  }
+
+  function sexLabel(sex: 'M' | 'F' | null): string {
+    return sex === 'M' ? m.crm_sex_m() : sex === 'F' ? m.crm_sex_f() : '';
+  }
+
+  // Apply the registry match into the edit draft — the user reviews before saving.
+  function applyDniHit(hit: DniHit) {
+    if (hit.name) stdDraft.name = hit.name;
+    if (hit.sex) stdDraft.sexo = sexLabel(hit.sex);
+    if (hit.age != null) stdDraft.edad = String(hit.age);
+    dniLookup = { state: 'idle' };
   }
 
   const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'];
@@ -390,13 +437,62 @@
           <div class="std-edit-row">
             <span class="std-ic"><Icon size={14} /></span>
             <label class="std-edit-label" for={`std-${f.id}`}>{f.label()}</label>
-            <input
-              id={`std-${f.id}`}
-              class="meta-val"
-              bind:value={stdDraft[f.id]}
-              placeholder={m.crm_field_empty()}
-            />
+            {#if f.id === 'dni'}
+              <div class="dni-input">
+                <input
+                  id={`std-${f.id}`}
+                  class="meta-val"
+                  bind:value={stdDraft[f.id]}
+                  oninput={() => (dniLookup = { state: 'idle' })}
+                  placeholder={m.crm_field_empty()}
+                  inputmode="numeric"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onclick={lookupDni}
+                  disabled={!dniValid || dniLookup.state === 'loading'}
+                  title={m.crm_dni_lookup_hint()}
+                >
+                  <Search size={iconSizes.sm} />
+                  {dniLookup.state === 'loading' ? m.crm_dni_checking() : m.crm_dni_lookup()}
+                </Button>
+              </div>
+            {:else}
+              <input
+                id={`std-${f.id}`}
+                class="meta-val"
+                bind:value={stdDraft[f.id]}
+                placeholder={m.crm_field_empty()}
+              />
+            {/if}
           </div>
+          {#if f.id === 'dni' && dniLookup.state !== 'idle' && dniLookup.state !== 'loading'}
+            <div class="dni-result">
+              {#if dniLookup.state === 'hit'}
+                {@const hit = dniLookup.hit}
+                <div class="dni-hit-info">
+                  <span class="dni-hit-title">{m.crm_dni_found()}</span>
+                  <span class="dni-hit-fields">
+                    {[
+                      hit.name,
+                      sexLabel(hit.sex),
+                      hit.age != null ? m.crm_dni_age({ n: hit.age }) : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </div>
+                <Button variant="primary" size="sm" onclick={() => applyDniHit(hit)}>
+                  <Check size={iconSizes.sm} /> {m.crm_dni_apply()}
+                </Button>
+              {:else if dniLookup.state === 'miss'}
+                <span class="dni-msg">{m.crm_dni_not_found()}</span>
+              {:else if dniLookup.state === 'error'}
+                <span class="dni-msg dni-msg-err">{m.crm_dni_error()}</span>
+              {/if}
+            </div>
+          {/if}
         {/each}
         <div class="add-sep">{m.crm_details_additional()}</div>
         {#each addDraft as row, i (i)}
@@ -1218,6 +1314,49 @@
   .std-edit-label {
     font-size: var(--font-size-caption, 12px);
     color: var(--color-muted-foreground);
+  }
+  .dni-input {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    min-width: 0;
+  }
+  .dni-input .meta-val {
+    flex: 1;
+    min-width: 0;
+  }
+  .dni-result {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2, 8px);
+    margin-left: calc(1.1rem + var(--space-2, 8px));
+    padding: var(--space-2, 8px);
+    border-radius: var(--radius-md);
+    background: var(--color-bg3);
+    border: 1px solid var(--hairline);
+  }
+  .dni-hit-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5, 2px);
+    min-width: 0;
+  }
+  .dni-hit-title {
+    font-size: var(--font-size-caption, 12px);
+    color: var(--color-success-fg);
+    font-weight: 600;
+  }
+  .dni-hit-fields {
+    font-size: var(--font-size-body, 14px);
+    color: var(--color-foreground);
+  }
+  .dni-msg {
+    font-size: var(--font-size-body, 14px);
+    color: var(--color-muted-foreground);
+  }
+  .dni-msg-err {
+    color: var(--color-danger-fg);
   }
   .meta-row {
     display: flex;

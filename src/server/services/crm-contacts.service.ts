@@ -206,6 +206,17 @@ export interface RankedContact {
   tag_ids: string[];
   /** Custom-field metadata (jsonb) — drives the user-configurable list columns. */
   custom_fields: Record<string, unknown>;
+  /** Party-spine link (null when the contact has no reconciled party). */
+  party_id: string | null;
+  /** parties.dni_verified — identity confirmed against the PERUDEVS DNI registry
+   *  (or manually toggled in the customers table). */
+  dni_verified: boolean;
+  /** Whole-year age derived live from parties.dob; null when dob is unknown.
+   *  Overrides custom_fields.edad for display so age never goes stale. */
+  age: number | null;
+  /** Canonical sex from the DNI registry ('M' | 'F' | null). Stored canonical;
+   *  the UI localizes to Hombre/Mujer. */
+  sex: string | null;
   /** Effective first interaction = earliest of {first message, first purchase}. */
   first_contact_at: string | null;
   /** Effective last interaction = latest of {last message, last purchase}. */
@@ -335,6 +346,10 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       base as (
         select c.id as contact_id, c.display_name, c.owner_id, c.source, c.lifecycle_override,
                c.custom_fields as custom_fields,
+               c.party_id,
+               coalesce(p.dni_verified, false) as dni_verified,
+               (case when p.dob is not null then date_part('year', age(p.dob))::int end) as age,
+               p.metadata->'dni_registry'->>'sex' as sex,
                coalesce(a.total_msgs, 0) as total_msgs,
                coalesce(a.inbound_msgs, 0) as inbound_msgs,
                coalesce(a.channels_used, 0) as channels_used,
@@ -356,6 +371,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                coalesce(extract(epoch from (now() - least(a.first_contact_at, fn.first_purchase_at))) / 86400.0, 1e9) as eff_first_days,
                coalesce(a.inbound_msgs::numeric / nullif(a.total_msgs, 0), 0) as reciprocity
         from crm_contacts c
+        left join parties p on p.id = c.party_id
         left join agg a on a.contact_id = c.id
         left join fin fn on fn.contact_id = c.id
         where ${and(...conds)}
@@ -363,6 +379,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       scored as (
         select contact_id, display_name, owner_id, source, channels, identities, tag_ids,
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
+               party_id, dni_verified, age, sex,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
@@ -391,7 +408,12 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       order by ${orderBy}
       limit ${limit} offset ${offset}
     `);
-    const out = rows as unknown as RankedContact[];
+    let out = rows as unknown as RankedContact[];
+    // Age is DERIVED from parties.dob (set by DNI validation); when known it
+    // overrides the imported custom_fields.edad so the Age column never goes stale.
+    out = out.map((r) =>
+      r.age == null ? r : { ...r, custom_fields: { ...r.custom_fields, edad: r.age } },
+    );
     // Field-level (Phase 4): redact PII in custom_fields (phone/email/dni) — the
     // Customers list renders these as Phone/ID columns.
     if (!f.maskSensitive) return out;

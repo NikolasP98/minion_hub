@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, jsonb, timestamp, index, date, boolean } from 'drizzle-orm/pg-core';
 
 /**
  * Party — the canonical "someone you do business with" (person or company),
@@ -41,6 +41,13 @@ export const parties = pgTable(
     /** RUC/DNI — the finance link key. */
     docType: text('doc_type'),
     docNumber: text('doc_number'),
+    /** Date of birth from the PERUDEVS DNI registry — age is always DERIVED from
+     *  this, never stored. Null until the party's DNI has been validated. */
+    dob: date('dob'),
+    /** Identity confirmed against the PERUDEVS registry (name matches the DNI
+     *  holder), or manually toggled in the CRM table. Validation details live in
+     *  metadata.dni_validation {status, checked_at, api, manual?}. */
+    dniVerified: boolean('dni_verified').notNull().default(false),
     metadata: jsonb('metadata').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

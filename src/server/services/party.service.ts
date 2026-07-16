@@ -1,4 +1,6 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { invalidateTags, tags } from '@minion-stack/cache';
+import { canonicalSex, dniNameMatches, formatRegistryName, lookupDni, parseDob } from '@minion-stack/crm-sdk';
 import { withOrgCore } from '$server/db/with-org-core';
 import { parties, type Party } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
@@ -275,6 +277,7 @@ export type PartySearchRow = {
   type: string;
   email: string | null;
   docNumber: string | null;
+  phone9: string | null;
 };
 
 /**
@@ -299,7 +302,7 @@ export async function searchParties(
       );
     }
     return tx
-      .select({ id: parties.id, name: parties.name, type: parties.type, email: parties.email, docNumber: parties.docNumber })
+      .select({ id: parties.id, name: parties.name, type: parties.type, email: parties.email, docNumber: parties.docNumber, phone9: parties.phone9 })
       .from(parties)
       .where(and(...conds))
       .orderBy(asc(parties.name))
@@ -331,4 +334,193 @@ export async function ensurePartyForContact(
   const party = await ensureParty(ctx, input);
   await linkContactParty(ctx, contactId, party.id);
   return party;
+}
+
+// ── DNI identity validation (PERUDEVS) ────────────────────────────────────────
+
+/**
+ * Manual override for the CRM customers-table verified checkmark.
+ * Records manual:true in metadata.dni_validation so the tick never re-queries
+ * a hand-set row. Returns false when the party doesn't exist in this org.
+ */
+export async function setPartyDniVerified(
+  ctx: CoreCtx,
+  partyId: string,
+  verified: boolean,
+): Promise<boolean> {
+  const updated = await withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .update(parties)
+      .set({
+        dniVerified: verified,
+        metadata: sql`metadata || jsonb_build_object('dni_validation',
+          coalesce(metadata->'dni_validation', '{}'::jsonb) ||
+          jsonb_build_object('status', ${verified ? 'verified' : 'mismatch'}::text, 'manual', true))`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(parties.id, partyId), eq(parties.orgId, ctx.tenantId)))
+      .returning({ id: parties.id });
+    return rows.length > 0;
+  });
+  // The customers roster caches dni_verified — bust so the toggle shows instantly.
+  if (updated) await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'crm')]);
+  return updated;
+}
+
+/**
+ * Validate pending 8-digit DNIs against the PERUDEVS registry (the ongoing
+ * mechanism behind /api/crm/dni-validation/tick; the historical bulk was
+ * backfilled 2026-07-15). verified → dni_verified=true + dob (age derives from
+ * dob); mismatch/not_found/error are recorded in metadata.dni_validation so a
+ * row is attempted once. Only parties whose doc_number is EXACTLY 8 digits are
+ * ever claimed — anything else is not a DNI and would waste an API call.
+ */
+export async function validatePendingDnis(
+  ctx: CoreCtx,
+  apiKey: string,
+  limit = 25,
+): Promise<{ claimed: number; verified: number; mismatch: number; not_found: number; error: number }> {
+  const claimed = (await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`
+      update parties set
+        metadata = metadata || '{"dni_validation":{"status":"processing"}}'::jsonb,
+        updated_at = now()
+      where id in (
+        select id from parties
+        where org_id = ${ctx.tenantId} and type = 'person'
+          and doc_number ~ '^[0-9]{8}$'
+          and dni_verified = false
+          -- unattempted, OR stranded in 'processing' by a worker that died
+          -- mid-batch >5min ago (reclaim so a crash never permanently parks a row)
+          and (metadata->'dni_validation' is null
+               or (metadata->'dni_validation'->>'status' = 'processing'
+                   and updated_at < now() - interval '5 minutes'))
+        limit ${limit}
+        for update skip locked)
+      returning id, name, doc_number`),
+  )) as unknown as { id: string; name: string | null; doc_number: string }[];
+
+  const counts = { verified: 0, mismatch: 0, not_found: 0, error: 0 };
+  for (const row of claimed) {
+    const result = await lookupDni(row.doc_number, apiKey);
+    let status: keyof typeof counts;
+    let dob: string | null = null;
+    if (result.status === 'error') {
+      status = 'error';
+    } else if (result.status === 'not_found') {
+      status = 'not_found';
+    } else if (dniNameMatches(row.name ?? '', result.person)) {
+      status = 'verified';
+      dob = parseDob(result.person.fecha_nacimiento);
+    } else {
+      status = 'mismatch';
+    }
+    counts[status] += 1;
+    await withOrgCore(ctx, (tx) =>
+      tx.execute(sql`
+        update parties set
+          dni_verified = ${status === 'verified'},
+          dob = coalesce(${dob}::date, dob),
+          metadata = metadata || jsonb_build_object('dni_validation',
+            jsonb_build_object('status', ${status}::text, 'checked_at', now(), 'api', 'perudevs')),
+          updated_at = now()
+        where id = ${row.id}`),
+    );
+    // Verified → enrich identity fields from the registry (official full name +
+    // sex), so a newly-validated party carries the same data as the backfill.
+    if (status === 'verified' && result.status === 'found') {
+      await applyRegistryEnrichment(ctx, row.id, result.person);
+    }
+  }
+  if (claimed.length > 0) await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'crm')]);
+  return { claimed: claimed.length, ...counts };
+}
+
+/**
+ * Write registry identity data onto a verified party AND its linked CRM
+ * contact(s): overwrite the canonical name with the registry parts, and stash
+ * the raw payload (incl. genero M/F → sex, verification code) in
+ * metadata.dni_registry — the audit trail + the source the list reads sex from,
+ * and it lets a re-run skip a second API call. Name is coalesced so an empty
+ * registry name never blanks an existing one. Sex stays canonical M/F in the DB;
+ * localization to Hombre/Mujer happens in the UI.
+ */
+export async function applyRegistryEnrichment(
+  ctx: CoreCtx,
+  partyId: string,
+  person: {
+    nombres: string;
+    apellido_paterno: string;
+    apellido_materno: string;
+    nombre_completo: string;
+    genero: string;
+    codigo_verificacion: string;
+  },
+): Promise<void> {
+  const name = formatRegistryName(person);
+  const registry = {
+    nombres: person.nombres,
+    apellido_paterno: person.apellido_paterno,
+    apellido_materno: person.apellido_materno,
+    nombre_completo: person.nombre_completo,
+    sex: canonicalSex(person.genero),
+    codigo_verificacion: person.codigo_verificacion,
+    captured_at: new Date().toISOString(),
+  };
+  const registryJson = JSON.stringify(registry);
+  await withOrgCore(ctx, async (tx) => {
+    await tx.execute(sql`
+      update parties set
+        name = coalesce(${name}, name),
+        metadata = metadata || jsonb_build_object('dni_registry', ${registryJson}::jsonb),
+        updated_at = now()
+      where id = ${partyId} and org_id = ${ctx.tenantId}`);
+    // The CRM customers table renders display_name, so the name overwrite must
+    // land there too, not only on the spine. Sex is read live from the party's
+    // dni_registry (canonical M/F, localized in the UI) — not written to the
+    // legacy Spanish custom_fields.sexo.
+    await tx.execute(sql`
+      update crm_contacts set
+        display_name = coalesce(${name}, display_name),
+        updated_at = now()
+      where party_id = ${partyId} and org_id = ${ctx.tenantId} and deleted_at is null`);
+  });
+}
+
+/**
+ * Re-query the registry for already-verified parties that predate identity
+ * enrichment (metadata.dni_registry absent) and fill in name/sex/payload.
+ * One-shot backfill companion to validatePendingDnis; safe to re-run.
+ */
+export async function reenrichVerifiedDnis(
+  ctx: CoreCtx,
+  apiKey: string,
+  limit = 25,
+): Promise<{ scanned: number; enriched: number; gone: number; error: number }> {
+  const rows = (await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`
+      select id, doc_number from parties
+      where org_id = ${ctx.tenantId} and type = 'person'
+        and dni_verified = true
+        and doc_number ~ '^[0-9]{8}$'
+        and metadata->'dni_registry' is null
+      limit ${limit}`),
+  )) as unknown as { id: string; doc_number: string }[];
+
+  let enriched = 0;
+  let gone = 0;
+  let error = 0;
+  for (const row of rows) {
+    const result = await lookupDni(row.doc_number, apiKey);
+    if (result.status === 'found') {
+      await applyRegistryEnrichment(ctx, row.id, result.person);
+      enriched += 1;
+    } else if (result.status === 'not_found') {
+      gone += 1; // verified earlier but registry no longer returns it — leave as-is
+    } else {
+      error += 1;
+    }
+  }
+  if (enriched > 0) await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'crm')]);
+  return { scanned: rows.length, enriched, gone, error };
 }
