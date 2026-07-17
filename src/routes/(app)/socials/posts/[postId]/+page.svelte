@@ -20,6 +20,12 @@
 	function fmtInt(v: number): string {
 		return Math.round(v).toLocaleString();
 	}
+	// Monogram avatar — the IG API exposes no profile_picture_url for commenters,
+	// so we render the handle's first letter on an accent tint instead.
+	function commentInitial(handle: string): string {
+		const ch = handle.replace(/^@/, '').trim().charAt(0);
+		return ch ? ch.toUpperCase() : '·';
+	}
 	function fmtDecimal(v: number): string {
 		return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 	}
@@ -87,19 +93,22 @@
 
 {#snippet commentNode(c: Comment, isReply: boolean)}
 	<div class="comment" class:reply={isReply}>
-		<div class="comment-row">
-			<span class="comment-user">{c.username || '—'}</span>
-			<span class="comment-time">{relativeTime(c.timestamp)}</span>
-		</div>
-		{#if c.text}<p class="comment-text">{c.text}</p>{/if}
-		{#if c.likeCount > 0}<span class="comment-likes">♥ {c.likeCount}</span>{/if}
-		{#if c.replies.length > 0}
-			<div class="comment-replies">
-				{#each c.replies as r (r.id)}
-					{@render commentNode(r, true)}
-				{/each}
+		<div class="comment-avatar" aria-hidden="true">{commentInitial(c.username)}</div>
+		<div class="comment-main">
+			<div class="comment-row">
+				{#if c.username}<span class="comment-user">@{c.username}</span>{/if}
+				<span class="comment-time">{relativeTime(c.timestamp)}</span>
 			</div>
-		{/if}
+			{#if c.text}<p class="comment-text">{c.text}</p>{/if}
+			{#if c.likeCount > 0}<span class="comment-likes">♥ {c.likeCount}</span>{/if}
+			{#if c.replies.length > 0}
+				<div class="comment-replies">
+					{#each c.replies as r (r.id)}
+						{@render commentNode(r, true)}
+					{/each}
+				</div>
+			{/if}
+		</div>
 	</div>
 {/snippet}
 
@@ -497,6 +506,29 @@
 	}
 	.comment {
 		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
+		gap: var(--space-2);
+	}
+	.comment-avatar {
+		flex-shrink: 0;
+		width: 1.75rem;
+		height: 1.75rem;
+		border-radius: var(--radius-full);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: var(--font-size-caption);
+		font-weight: 700;
+		line-height: 1;
+		background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface-2));
+		color: var(--color-accent);
+		user-select: none;
+	}
+	.comment-main {
+		flex: 1;
+		min-width: 0;
+		display: flex;
 		flex-direction: column;
 		gap: var(--space-1);
 	}
@@ -504,6 +536,10 @@
 		margin-left: var(--space-6);
 		padding-left: var(--space-2);
 		border-left: 2px solid var(--hairline);
+	}
+	.comment.reply .comment-avatar {
+		width: 1.375rem;
+		height: 1.375rem;
 	}
 	.comment-row {
 		display: flex;

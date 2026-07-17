@@ -64,6 +64,11 @@ describe('mapIgComments', () => {
   it('defaults missing fields (no username/text/replies)', () => {
     expect(mapIgComments([{ id: 'c1' }])).toEqual([{ id: 'c1', username: '', text: '', timestamp: null, likeCount: 0, replies: [] }]);
   });
+
+  it('prefers from.username (third-party commenter) over the empty top-level username', () => {
+    const items = mapIgComments([{ id: 'c1', text: 'Info', from: { id: '42', username: 'lau_baldeon' } }]);
+    expect(items[0].username).toBe('lau_baldeon');
+  });
 });
 
 describe('mapFbComments', () => {

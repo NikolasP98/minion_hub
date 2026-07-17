@@ -15,15 +15,18 @@ export type Comment = {
 
 /** IG comment (+ one level of replies) → the panel's Comment shape. Pure — unit-tested directly. */
 export function mapIgComments(comments: IgComment[]): Comment[] {
+  // `from.username` carries third-party commenters' handle; top-level
+  // `username` is only set for the token owner's own comments — prefer from.
+  const handle = (c: IgComment) => c.from?.username ?? c.username ?? '';
   return comments.map((c) => ({
     id: c.id,
-    username: c.username ?? '',
+    username: handle(c),
     text: c.text ?? '',
     timestamp: c.timestamp ?? null,
     likeCount: c.like_count ?? 0,
     replies: (c.replies?.data ?? []).map((r) => ({
       id: r.id,
-      username: r.username ?? '',
+      username: handle(r),
       text: r.text ?? '',
       timestamp: r.timestamp ?? null,
       likeCount: r.like_count ?? 0,

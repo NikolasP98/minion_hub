@@ -759,12 +759,16 @@ export type IgComment = {
   id: string;
   text?: string;
   username?: string;
+  // Third-party commenters' handle only comes through `from{username}` — the
+  // top-level `username` is populated only for the token owner's own comments.
+  from?: { id?: string; username?: string };
   timestamp?: string;
   like_count?: number;
   replies?: { data?: IgComment[] };
 };
 
-const IG_COMMENT_FIELDS = 'id,text,username,timestamp,like_count,replies{id,text,username,timestamp,like_count}';
+const IG_COMMENT_FIELDS =
+  'id,text,username,from{id,username},timestamp,like_count,replies{id,text,username,from{id,username},timestamp,like_count}';
 
 /** IG media comments (one page, ~50) — unversioned host, no appsecret_proof, spec §5.4. */
 export async function igMediaComments(
