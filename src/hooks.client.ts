@@ -29,6 +29,9 @@ export async function init() {
 }
 
 export const handleError: HandleClientError = async ({ error, status, message }) => {
+  // Surface the real cause in the console — PostHog capture alone made prod
+  // failures undiagnosable (error page with zero local signal).
+  console.error('[handleError]', status, message, error);
   // Only capture exceptions if PostHog was initialized (non-desktop)
   if (!import.meta.env.VITE_DESKTOP) {
     const posthog = (await import('posthog-js')).default;
