@@ -7,7 +7,7 @@
 
 	let { data }: { data: PageData } = $props();
 
-	const DOC_LABEL: Record<string, string> = { support_issue: 'Support ticket', sales_order: 'Sales order' };
+	const DOC_LABEL: Record<string, string> = { support_issue: m.wf_doc_supportIssue(), sales_order: m.wf_doc_salesOrder() };
 
 	// New/edit form. One def per doc_type (upsert), so editing = loading its JSON.
 	let docType = $state('support_issue');
@@ -44,7 +44,7 @@
 			transitions = JSON.parse(transitionsText);
 			if (!Array.isArray(transitions)) throw new Error('transitions must be an array');
 		} catch (e) {
-			err = `Invalid transitions JSON: ${e instanceof Error ? e.message : e}`;
+			err = m.wf_errInvalidTransitions({ message: e instanceof Error ? e.message : String(e) });
 			return;
 		}
 		const states = statesText.split(',').map((s) => s.trim()).filter(Boolean);
@@ -80,39 +80,39 @@
 	}
 </script>
 
-<PageHeader title="Workflows" subtitle="Role-gated state machines for tickets and orders" />
+<PageHeader title={m.wf_title()} subtitle={m.wf_subtitle()} />
 
 <div class="wrap">
 	<div class="card">
-		<h3>Edit workflow</h3>
+		<h3>{m.wf_editWorkflow()}</h3>
 		<div class="grid">
-			<label>Doc type
+			<label>{m.wf_docType()}
 				<Select size="sm" bind:value={docType}>
 					{#each data.docTypes as dt (dt)}<option value={dt}>{DOC_LABEL[dt] ?? dt}</option>{/each}
 				</Select>
 			</label>
-			<label>Name<input class="inp" bind:value={name} /></label>
+			<label>{m.wf_name()}<input class="inp" bind:value={name} /></label>
 		</div>
-		<label class="block">States (comma-separated)<input class="inp" bind:value={statesText} /></label>
-		<label class="block">Transitions (JSON)
+		<label class="block">{m.wf_states()}<input class="inp" bind:value={statesText} /></label>
+		<label class="block">{m.wf_transitions()}
 			<textarea class="inp ta" rows="10" bind:value={transitionsText}></textarea>
 		</label>
-		<label class="row"><input type="checkbox" bind:checked={enabled} /> Enabled</label>
+		<label class="row"><input type="checkbox" bind:checked={enabled} /> {m.wf_enabled()}</label>
 		{#if err}<p class="err">{err}</p>{/if}
-		<Button onclick={save} disabled={busy || !name.trim()}>Save workflow</Button>
-		<p class="hint">Transition fields: <code>action</code>, <code>from</code>, <code>to</code>, optional <code>role</code> (e.g. "admin"), optional <code>allowSelfApprove</code> (false = the assignee can't take it).</p>
+		<Button onclick={save} disabled={busy || !name.trim()}>{m.wf_saveWorkflow()}</Button>
+		<p class="hint">{m.wf_hint()}</p>
 	</div>
 
 	{#each data.defs as d (d.id)}
 		<div class="card def">
 			<div class="def-head">
 				<strong>{DOC_LABEL[d.docType] ?? d.docType}</strong> · {d.name}
-				{#if !d.enabled}<span class="muted">(disabled)</span>{/if}
+				{#if !d.enabled}<span class="muted">{m.wf_disabled()}</span>{/if}
 				<div class="spacer"></div>
-				<Button size="sm" variant="ghost" onclick={() => loadDef(d)}>Edit</Button>
-				<Button size="sm" variant="ghost" onclick={() => remove(d.id)}>Delete</Button>
+				<Button size="sm" variant="ghost" onclick={() => loadDef(d)}>{m.common_edit()}</Button>
+				<Button size="sm" variant="ghost" onclick={() => remove(d.id)}>{m.common_delete()}</Button>
 			</div>
-			<div class="muted small">{(d.states as string[]).join(' → ')} · {(d.transitions as unknown[]).length} transitions</div>
+			<div class="muted small">{(d.states as string[]).join(' → ')} · {m.wf_transitionsCount({ count: (d.transitions as unknown[]).length })}</div>
 		</div>
 	{/each}
 </div>

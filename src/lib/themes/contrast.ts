@@ -30,11 +30,13 @@ export function contrastRatio(a: string, b: string): number {
   return (light + 0.05) / (dark + 0.05);
 }
 
-/** Pick the higher-contrast neutral for text/icons painted on the accent. */
+/**
+ * Pick the neutral for text/icons painted on the accent. White is preferred —
+ * black-on-saturated-accent reads muddy even when it scores higher — and black
+ * is used only when white cannot clear WCAG AA (bright accents: amber, cyan, …).
+ */
 export function onAccentFor(accent: string): '#000000' | '#ffffff' {
-  return contrastRatio(accent, '#000000') >= contrastRatio(accent, '#ffffff')
-    ? '#000000'
-    : '#ffffff';
+  return contrastRatio(accent, '#ffffff') >= 4.5 ? '#ffffff' : '#000000';
 }
 
 function toHex(color: Rgb): string {

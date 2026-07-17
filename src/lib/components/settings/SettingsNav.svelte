@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
-  import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow } from "lucide-svelte";
+  import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow, Building2 } from "lucide-svelte";
   import { page } from "$app/state";
   import { isAdmin } from "$lib/state/features/user.svelte";
   import { TABS } from "$lib/utils/config-schema";
@@ -19,27 +19,28 @@
   let { dirtyTabIds = new Set<string>(), onselect }: Props = $props();
 
   const ICON_MAP: Record<string, typeof Brain> = {
-    Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow,
+    Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow, Building2,
   };
 
   type HubTab = { id: string; label: string; icon: string; href: string; adminOnly: boolean };
   // "General" group — own routes under /settings/<id>, available to all users.
   const GENERAL_TABS: HubTab[] = [
-    { id: 'appearance', label: 'Appearance', icon: 'Palette', href: '/settings/appearance', adminOnly: false },
-    { id: 'plugins', label: 'Plugins', icon: 'Puzzle', href: '/settings/plugins', adminOnly: false },
+    { id: 'appearance', label: m.settings_nav_appearance(), icon: 'Palette', href: '/settings/appearance', adminOnly: false },
+    { id: 'plugins', label: m.settings_plugins(), icon: 'Puzzle', href: '/settings/plugins', adminOnly: false },
   ];
   // "Hub" group — admin route tabs.
   const HUB_TABS: HubTab[] = [
-    { id: 'gateways', label: 'Gateways', icon: 'Server', href: '/settings/gateways', adminOnly: true },
-    { id: 'backups', label: 'Backups', icon: 'DatabaseBackup', href: '/settings/backups', adminOnly: true },
-    { id: 'modules', label: 'Modules', icon: 'Blocks', href: '/settings/modules', adminOnly: true },
-    { id: 'notifications', label: 'Notifications', icon: 'Bell', href: '/settings/notifications', adminOnly: true },
-    { id: 'workflows', label: 'Workflows', icon: 'Workflow', href: '/settings/workflows', adminOnly: true },
+    { id: 'organizations', label: m.settings_nav_organizations(), icon: 'Building2', href: '/settings/organizations', adminOnly: true },
+    { id: 'gateways', label: m.settings_nav_gateways(), icon: 'Server', href: '/settings/gateways', adminOnly: true },
+    { id: 'backups', label: m.settings_nav_backups(), icon: 'DatabaseBackup', href: '/settings/backups', adminOnly: true },
+    { id: 'modules', label: m.settings_modules(), icon: 'Blocks', href: '/settings/modules', adminOnly: true },
+    { id: 'notifications', label: m.settings_nav_notifications(), icon: 'Bell', href: '/settings/notifications', adminOnly: true },
+    { id: 'workflows', label: m.settings_nav_workflows(), icon: 'Workflow', href: '/settings/workflows', adminOnly: true },
   ];
   // "Team" group — admin route tabs.
   const TEAM_TABS: HubTab[] = [
-    { id: 'team', label: 'Team', icon: 'Users', href: '/settings/team', adminOnly: true },
-    { id: 'roles', label: 'Roles', icon: 'KeyRound', href: '/settings/roles', adminOnly: true },
+    { id: 'team', label: m.settings_nav_team(), icon: 'Users', href: '/settings/team', adminOnly: true },
+    { id: 'roles', label: m.settings_nav_roles(), icon: 'KeyRound', href: '/settings/roles', adminOnly: true },
   ];
 
   // Gateway config tabs live on /settings?s=<id> (rendered by the config page scrollspy).
@@ -63,23 +64,18 @@
   const visibleHubTabs = $derived(isAdmin.value ? HUB_TABS : HUB_TABS.filter((t) => !t.adminOnly));
   const visibleTeamTabs = $derived(isAdmin.value ? TEAM_TABS : []);
 
-  function hubLabel(id: string, fallback: string): string {
-    if (id === 'plugins') return m.settings_plugins();
-    return fallback;
-  }
-
   function hubItem(t: HubTab): SectionNavItem {
-    return { id: t.id, label: hubLabel(t.id, t.label), icon: ICON_MAP[t.icon], href: t.href };
+    return { id: t.id, label: t.label, icon: ICON_MAP[t.icon], href: t.href };
   }
 
   // Build grouped sections; SideNav handles search filtering + empty-group culling.
   const groups = $derived.by<SectionNavGroup[]>(() => {
     const out: SectionNavGroup[] = [];
-    out.push({ id: 'general', label: 'General', items: GENERAL_TABS.map(hubItem) });
+    out.push({ id: 'general', label: m.settings_nav_group_general(), items: GENERAL_TABS.map(hubItem) });
     if (visibleGatewayTabs.length) {
       out.push({
         id: 'server',
-        label: 'Server',
+        label: m.settings_nav_group_server(),
         items: visibleGatewayTabs.map((t) => ({
           id: t.id,
           label: t.label,
@@ -88,8 +84,8 @@
         })),
       });
     }
-    if (visibleHubTabs.length) out.push({ id: 'hub', label: 'Hub', items: visibleHubTabs.map(hubItem) });
-    if (visibleTeamTabs.length) out.push({ id: 'team', label: 'Team', items: visibleTeamTabs.map(hubItem) });
+    if (visibleHubTabs.length) out.push({ id: 'hub', label: m.settings_nav_group_hub(), items: visibleHubTabs.map(hubItem) });
+    if (visibleTeamTabs.length) out.push({ id: 'team', label: m.settings_nav_group_team(), items: visibleTeamTabs.map(hubItem) });
     return out;
   });
 
@@ -105,7 +101,7 @@
 <SectionNav
   items={groups}
   {activeId}
-  ariaLabel="Settings"
-  search={{ enabled: true, placeholder: 'Search settings' }}
+  ariaLabel={m.settings_title()}
+  search={{ enabled: true, placeholder: m.settings_nav_search() }}
   onSelect={onselect}
 />

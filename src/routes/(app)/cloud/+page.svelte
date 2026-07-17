@@ -274,13 +274,20 @@
     box-shadow: var(--shadow-md);
   }
 
+  /* Unit-number badge on the circle's edge — a surface pill so it never
+     collides with the icon strokes behind it. */
   .machine-glyph span {
     position: absolute;
-    right: var(--space-2);
-    bottom: var(--space-2);
+    right: calc(var(--space-1) * -1);
+    bottom: calc(var(--space-1) * -1);
+    padding: 0 var(--space-1);
     font-family: var(--font-mono);
     font-size: var(--font-size-telemetry);
     font-weight: var(--font-weight-bold);
+    line-height: 1.6;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border-default));
+    border-radius: var(--radius-full);
+    background: var(--color-surface-1);
   }
 
   .spec-grid {

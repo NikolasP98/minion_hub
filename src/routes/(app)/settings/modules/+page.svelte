@@ -126,12 +126,12 @@
 
 				<div class="mod-row">
 					<div class="mod-info">
-						<span class="mod-label">Support</span>
-						<span class="t-caption">Customer support tickets with SLA tracking.</span>
+						<span class="mod-label">{m.nav_support()}</span>
+						<span class="t-caption">{m.settings_modules_supportDesc()}</span>
 					</div>
 					<Toggle
 						bind:checked={supportEnabled}
-						ariaLabel="Support"
+						ariaLabel={m.nav_support()}
 						disabled={moduleBusy === 'support'}
 						onchange={(v) => setModule('support', v)}
 						size="md"
@@ -140,12 +140,12 @@
 
 				<div class="mod-row">
 					<div class="mod-info">
-						<span class="mod-label">Sales Orders</span>
-						<span class="t-caption">Commitments to bill, created from bookings.</span>
+						<span class="mod-label">{m.nav_salesOrders()}</span>
+						<span class="t-caption">{m.settings_modules_salesOrdersDesc()}</span>
 					</div>
 					<Toggle
 						bind:checked={salesEnabled}
-						ariaLabel="Sales Orders"
+						ariaLabel={m.nav_salesOrders()}
 						disabled={moduleBusy === 'sales'}
 						onchange={(v) => setModule('sales', v)}
 						size="md"

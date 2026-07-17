@@ -1,6 +1,7 @@
 /**
  * Pure utility functions for config schema interpretation, dirty tracking, and patching.
  */
+import * as m from '$lib/paraglide/messages';
 import type {
   JsonSchemaNode,
   ConfigUiHints,
@@ -25,12 +26,12 @@ import { REDACTED_SENTINEL } from '$lib/types/config';
 //   System      500+    logging (and any unknown high-order groups)
 
 export const META_GROUPS: { id: string; label: string; minOrder: number; maxOrder: number }[] = [
-  { id: 'setup', label: 'Setup', minOrder: 0, maxOrder: 39 },
-  { id: 'ai', label: 'AI', minOrder: 40, maxOrder: 79 },
-  { id: 'automation', label: 'Automation', minOrder: 80, maxOrder: 129 },
-  { id: 'comms', label: 'Communication', minOrder: 130, maxOrder: 199 },
-  { id: 'extensions', label: 'Extensions', minOrder: 200, maxOrder: 499 },
-  { id: 'system', label: 'System', minOrder: 500, maxOrder: Infinity },
+  { id: 'setup', label: m.config_meta_setup(), minOrder: 0, maxOrder: 39 },
+  { id: 'ai', label: m.config_meta_ai(), minOrder: 40, maxOrder: 79 },
+  { id: 'automation', label: m.config_meta_automation(), minOrder: 80, maxOrder: 129 },
+  { id: 'comms', label: m.config_meta_comms(), minOrder: 130, maxOrder: 199 },
+  { id: 'extensions', label: m.config_meta_extensions(), minOrder: 200, maxOrder: 499 },
+  { id: 'system', label: m.config_meta_system(), minOrder: 500, maxOrder: Infinity },
 ];
 
 /** Returns the meta-group ID for a given group order value. */
@@ -72,31 +73,31 @@ const GROUP_ORDER: Record<string, number> = {
 };
 
 const GROUP_LABELS: Record<string, string> = {
-  wizard: 'Wizard',
-  update: 'Update',
-  diagnostics: 'Diagnostics',
-  logging: 'Logging',
-  gateway: 'Gateway',
-  nodeHost: 'Node Host',
-  agents: 'Agents',
-  tools: 'Tools',
-  bindings: 'Bindings',
-  audio: 'Audio',
-  models: 'Models',
-  messages: 'Messages',
-  commands: 'Commands',
-  session: 'Session',
-  cron: 'Cron',
-  hooks: 'Hooks',
-  ui: 'UI',
-  browser: 'Browser',
-  talk: 'Talk',
-  channels: 'Messaging Channels',
-  skills: 'Skills',
-  plugins: 'Plugins',
-  discovery: 'Discovery',
-  presence: 'Presence',
-  voicewake: 'Voice Wake',
+  wizard: m.config_group_wizard(),
+  update: m.config_group_update(),
+  diagnostics: m.config_group_diagnostics(),
+  logging: m.config_group_logging(),
+  gateway: m.config_group_gateway(),
+  nodeHost: m.config_group_nodeHost(),
+  agents: m.config_group_agents(),
+  tools: m.config_group_tools(),
+  bindings: m.config_group_bindings(),
+  audio: m.config_group_audio(),
+  models: m.config_group_models(),
+  messages: m.config_group_messages(),
+  commands: m.config_group_commands(),
+  session: m.config_group_session(),
+  cron: m.config_group_cron(),
+  hooks: m.config_group_hooks(),
+  ui: m.config_group_ui(),
+  browser: m.config_group_browser(),
+  talk: m.config_group_talk(),
+  channels: m.config_group_channels(),
+  skills: m.config_group_skills(),
+  plugins: m.config_group_plugins(),
+  discovery: m.config_group_discovery(),
+  presence: m.config_group_presence(),
+  voicewake: m.config_group_voicewake(),
 };
 
 // ─── Tab definitions ─────────────────────────────────────────────────────────
@@ -110,13 +111,13 @@ export const SECURITY_GROUP_IDS = new Set(['session', 'commands']);
 
 /** Tab definitions with id, label, and lucide icon name. */
 export const TABS: { id: string; label: string; icon: string }[] = [
-  { id: 'ai', label: 'AI', icon: 'Brain' },
-  { id: 'agents', label: 'Agents', icon: 'Bot' },
-  { id: 'comms', label: 'Comms', icon: 'Radio' },
-  { id: 'security', label: 'Security', icon: 'Shield' },
-  { id: 'system', label: 'System', icon: 'Server' },
-  { id: 'backups', label: 'Backups', icon: 'DatabaseBackup' },
-  { id: 'appearance', label: 'Appearance', icon: 'Palette' },
+  { id: 'ai', label: m.settings_tab_ai(), icon: 'Brain' },
+  { id: 'agents', label: m.settings_tab_agents(), icon: 'Bot' },
+  { id: 'comms', label: m.settings_tab_comms(), icon: 'Radio' },
+  { id: 'security', label: m.settings_tab_security(), icon: 'Shield' },
+  { id: 'system', label: m.settings_tab_system(), icon: 'Server' },
+  { id: 'backups', label: m.settings_nav_backups(), icon: 'DatabaseBackup' },
+  { id: 'appearance', label: m.settings_nav_appearance(), icon: 'Palette' },
 ];
 
 /**

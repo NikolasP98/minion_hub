@@ -23,7 +23,7 @@
         "@minion-stack/cache": "^0.3",
         "@minion-stack/crm-sdk": "file:deps/minion-stack-crm-sdk-0.1.0-776d8c49.tgz",
         "@minion-stack/db": "file:deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz",
-        "@minion-stack/design-tokens": "file:deps/minion-stack-design-tokens-0.1.0-ui-coherence-61273ea5.tgz",
+        "@minion-stack/design-tokens": "file:deps/minion-stack-design-tokens-0.1.0-onaccent-3344a63.tgz",
         "@minion-stack/shared": "^0.9.0",
         "@minion-stack/ui": "file:deps/minion-stack-ui-0.1.0-ui-coherence-6b21ce0e.tgz",
         "@minion-stack/workforce-client": "^0.3.0",
@@ -367,7 +367,7 @@
 
     "@minion-stack/db": ["@minion-stack/db@deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }],
 
-    "@minion-stack/design-tokens": ["@minion-stack/design-tokens@deps/minion-stack-design-tokens-0.1.0-ui-coherence-61273ea5.tgz", {}],
+    "@minion-stack/design-tokens": ["@minion-stack/design-tokens@deps/minion-stack-design-tokens-0.1.0-onaccent-3344a63.tgz", {}],
 
     "@minion-stack/lint-config": ["@minion-stack/lint-config@0.1.2", "", { "peerDependencies": { "@eslint/js": ">=9.0.0", "eslint": ">=9.0.0", "oxlint": ">=0.15.0", "prettier": ">=3.0.0", "typescript-eslint": ">=8.0.0" }, "optionalPeers": ["@eslint/js", "eslint", "oxlint", "prettier", "typescript-eslint"] }, "sha512-68UnBGAn0xbrsL50CX2JQApmFiELDbRfz5RZKTvy52I12TrnZzvqJ+U1jjSG6un4RvWEu0hBcIm5ymCz2FFrKg=="],
 

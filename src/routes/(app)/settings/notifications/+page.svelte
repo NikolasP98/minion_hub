@@ -13,11 +13,11 @@
 	const EVENTS = ['insert', 'update', 'date_offset'];
 	const CHANNELS = ['whatsapp', 'telegram', 'email'];
 	const TABLE_LABEL: Record<string, string> = {
-		support_issues: 'Support tickets',
-		sales_orders: 'Sales orders',
-		crm_contacts: 'CRM contacts',
-		sched_bookings: 'Bookings',
-		fin_invoices: 'Invoices',
+		support_issues: m.notif_table_supportIssues(),
+		sales_orders: m.notif_table_salesOrders(),
+		crm_contacts: m.notif_table_crmContacts(),
+		sched_bookings: m.notif_table_schedBookings(),
+		fin_invoices: m.notif_table_finInvoices(),
 	};
 
 	let editId = $state<string | null>(null);
@@ -59,10 +59,10 @@
 			recipients = JSON.parse(recipientsText);
 			if (!Array.isArray(condition) || !Array.isArray(recipients)) throw new Error('condition and recipients must be arrays');
 		} catch (e) {
-			err = `Invalid JSON: ${e instanceof Error ? e.message : e}`;
+			err = m.notif_errInvalidJson({ message: e instanceof Error ? e.message : String(e) });
 			return;
 		}
-		if (!name.trim() || !template.trim()) { err = 'Name and template are required.'; return; }
+		if (!name.trim() || !template.trim()) { err = m.notif_errNameTemplate(); return; }
 		const payload = {
 			name, enabled, triggerTable, triggerEvent, channel,
 			accountId: accountId.trim() || null,
@@ -108,51 +108,51 @@
 	}
 </script>
 
-<PageHeader title="Notifications" subtitle="When something happens to a record, message someone over a channel" />
+<PageHeader title={m.notif_title()} subtitle={m.notif_subtitle()} />
 
 <div class="wrap">
 	<div class="card">
-		<h3>{editId ? 'Edit rule' : 'New rule'}</h3>
+		<h3>{editId ? m.notif_editRule() : m.notif_newRule()}</h3>
 		<div class="grid">
-			<label>Name<input class="inp" bind:value={name} placeholder="Urgent ticket → on-call" /></label>
-			<label>Channel
+			<label>{m.notif_name()}<input class="inp" bind:value={name} placeholder="Urgent ticket → on-call" /></label>
+			<label>{m.notif_channel()}
 				<Select size="sm" bind:value={channel}>{#each CHANNELS as c (c)}<option value={c}>{c}</option>{/each}</Select>
 			</label>
-			<label>When (table)
+			<label>{m.notif_whenTable()}
 				<Select size="sm" bind:value={triggerTable}>{#each data.tables as t (t.table)}<option value={t.table}>{TABLE_LABEL[t.table] ?? t.table}</option>{/each}</Select>
 			</label>
-			<label>Event
+			<label>{m.notif_event()}
 				<Select size="sm" bind:value={triggerEvent}>{#each EVENTS as e (e)}<option value={e}>{e}</option>{/each}</Select>
 			</label>
 		</div>
 
 		{#if triggerEvent === 'date_offset'}
 			<div class="grid">
-				<label>Date field
+				<label>{m.notif_dateField()}
 					<Select size="sm" bind:value={dateField}>
 						<option value="">—</option>
 						{#each dateFields as f (f)}<option value={f}>{f}</option>{/each}
 					</Select>
 				</label>
-				<label>Offset (minutes, negative = before)<input class="inp" type="number" bind:value={dateOffsetMins} /></label>
+				<label>{m.notif_offsetMins()}<input class="inp" type="number" bind:value={dateOffsetMins} /></label>
 			</div>
 		{/if}
 
-		<label class="block">Account ID (optional — gateway channel account)<input class="inp" bind:value={accountId} /></label>
-		<label class="block">Condition (JSON: <code>[{`{ "field": "priority", "op": "eq", "value": "urgent" }`}]</code>)
+		<label class="block">{m.notif_accountId()}<input class="inp" bind:value={accountId} /></label>
+		<label class="block">{m.notif_condition()} (JSON: <code>[{`{ "field": "priority", "op": "eq", "value": "urgent" }`}]</code>)
 			<textarea class="inp ta" rows="3" bind:value={conditionText}></textarea>
 		</label>
-		<label class="block">Recipients (JSON: <code>[{`{ "type": "field"|"static", "value": "phone"|"+51..." }`}]</code>)
+		<label class="block">{m.notif_recipients()} (JSON: <code>[{`{ "type": "field"|"static", "value": "phone"|"+51..." }`}]</code>)
 			<textarea class="inp ta" rows="3" bind:value={recipientsText}></textarea>
 		</label>
-		<label class="block">Template (<code>{`{{field}}`}</code> interpolated from the row)
+		<label class="block">{m.notif_template()} (<code>{`{{field}}`}</code> {m.notif_templateHint()})
 			<textarea class="inp ta" rows="3" bind:value={template} placeholder={'Ticket {{subject}} is now {{status}}'}></textarea>
 		</label>
-		<label class="row"><input type="checkbox" bind:checked={enabled} /> Enabled</label>
+		<label class="row"><input type="checkbox" bind:checked={enabled} /> {m.notif_enabled()}</label>
 		{#if err}<p class="err">{err}</p>{/if}
 		<div class="actions">
-			<Button onclick={save} disabled={busy || !name.trim()}>{editId ? 'Update rule' : 'Create rule'}</Button>
-			{#if editId}<Button variant="ghost" onclick={reset}>Cancel</Button>{/if}
+			<Button onclick={save} disabled={busy || !name.trim()}>{editId ? m.notif_updateRule() : m.notif_createRule()}</Button>
+			{#if editId}<Button variant="ghost" onclick={reset}>{m.common_cancel()}</Button>{/if}
 		</div>
 	</div>
 
@@ -160,15 +160,15 @@
 		<div class="card def">
 			<div class="def-head">
 				<strong>{r.name}</strong>
-				{#if !r.enabled}<span class="muted">(disabled)</span>{/if}
+				{#if !r.enabled}<span class="muted">{m.notif_disabled()}</span>{/if}
 				<div class="spacer"></div>
-				<Button size="sm" variant="ghost" onclick={() => loadRule(r)}>Edit</Button>
-				<Button size="sm" variant="ghost" onclick={() => remove(r.id)}>Delete</Button>
+				<Button size="sm" variant="ghost" onclick={() => loadRule(r)}>{m.common_edit()}</Button>
+				<Button size="sm" variant="ghost" onclick={() => remove(r.id)}>{m.common_delete()}</Button>
 			</div>
 			<div class="muted small">{TABLE_LABEL[r.triggerTable] ?? r.triggerTable} · {r.triggerEvent} → {r.channel}</div>
 		</div>
 	{:else}
-		<p class="muted small">No rules yet. The engine + per-minute tick are live — create a rule and it fires.</p>
+		<p class="muted small">{m.notif_empty()}</p>
 	{/each}
 </div>
 
