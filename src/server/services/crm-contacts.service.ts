@@ -454,11 +454,20 @@ function bustCrmList(tenantId: string) {
 }
 
 /**
- * The full ranked roster for the list page, Valkey-cached. The page does all
- * search/stage/tag/sort filtering CLIENT-SIDE over this list (instant, no Apply,
- * no per-keystroke server round-trip), so we cache one unfiltered payload per org.
- * RFM recency is day-scaled, so a 2m TTL is imperceptible; mutations bust the tag.
+ * The full ranked roster, Valkey-cached — the single source for BOTH the
+ * Customers list (ships the payload; filters/sorts/searches CLIENT-SIDE, instant,
+ * no per-keystroke round-trip) AND the dashboard (aggregates counts server-side,
+ * returns only stats). Uncapped up to ROSTER_CAP so neither truncates a large org
+ * — an ORDER-BY-score-DESC cap at 5000 used to drop the lowest-scoring contacts,
+ * under-reporting the dashboard and hiding rows from the list. RFM recency is
+ * day-scaled, so a 2m TTL is imperceptible; mutations bust the tag.
+ *
+ * ponytail: ROSTER_CAP is a safety valve, not a real limit. Past ~50k contacts,
+ * shipping the whole roster to the browser stops scaling — that's when the list
+ * needs server-side pagination/search and the dashboard a pure SQL COUNT/GROUP BY
+ * (no roster materialization). Fine for the current few-thousand scale.
  */
+const ROSTER_CAP = 50_000;
 export function listContactsCached(
   ctx: CoreCtx,
   ownerId?: string,
@@ -472,41 +481,7 @@ export function listContactsCached(
       t: `${ctx.tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`,
     }),
     { ttl: '2m', swr: '30s', tags: [...crmListTags(ctx.tenantId)] },
-    () => rankContacts(ctx, { limit: 5000, ownerId, maskSensitive }),
-  );
-}
-
-/**
- * Uncapped roster for the CRM DASHBOARD's server-side aggregation. The list-page
- * roster above caps at 5000 because it ships the whole payload to the browser
- * for client-side filtering; the dashboard has the opposite need — it must COUNT
- * every contact (a 5000 cap silently under-reported an 8454-contact org as
- * "5,000") but only returns the small computed stats, never the rows. Distinct
- * cache key so it never collides with the capped list payload; same tags so any
- * mutation busts both.
- *
- * ponytail: DASHBOARD_ROSTER_CAP is a safety valve, not a real limit — an org
- * would need >50k contacts to re-truncate, at which point the dashboard should
- * move to a pure SQL COUNT/GROUP BY (no roster materialization) instead.
- */
-const DASHBOARD_ROSTER_CAP = 50_000;
-export function listContactsForDashboard(
-  ctx: CoreCtx,
-  ownerId?: string,
-  maskSensitive = false,
-): Promise<RankedContact[]> {
-  return cached(
-    keys.hub('crm-contacts-dash', {
-      t: `${ctx.tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`,
-    }),
-    { ttl: '2m', swr: '30s', tags: [...crmListTags(ctx.tenantId)] },
-    () =>
-      rankContacts(ctx, {
-        limit: DASHBOARD_ROSTER_CAP,
-        maxLimit: DASHBOARD_ROSTER_CAP,
-        ownerId,
-        maskSensitive,
-      }),
+    () => rankContacts(ctx, { limit: ROSTER_CAP, maxLimit: ROSTER_CAP, ownerId, maskSensitive }),
   );
 }
 
