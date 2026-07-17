@@ -874,8 +874,9 @@ export async function getIgLoginUser(
 type RawIgConvo = {
   id?: string;
   updated_time?: string;
-  participants?: { data?: Array<{ id?: string; username?: string }> };
-  messages?: { data?: Array<{ id: string; from?: { id?: string; username?: string }; message?: string; created_time?: string }> };
+  // `name` accepted too so normalizeIgConvo is idempotent (see below).
+  participants?: { data?: Array<{ id?: string; username?: string; name?: string }> };
+  messages?: { data?: Array<{ id: string; from?: { id?: string; username?: string; name?: string }; message?: string; created_time?: string }> };
 };
 
 /**
@@ -901,20 +902,28 @@ export async function listIgLoginConversations(
   );
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
-  const { data, nextCursor } = unwrapList<RawIgConvo>(res.body);
-  return { ok: true, status: res.status, data: (data ?? []).map(normalizeIgConvo), nextCursor, usage: res.usage };
+  // Returns the RAW IG shape (username, not name); the caller normalizes every
+  // page uniformly (this one AND fetchNextPage results) — see normalizeIgConvo.
+  const { data, nextCursor } = unwrapList<Conversation>(res.body);
+  return { ok: true, status: res.status, data, nextCursor, usage: res.usage };
 }
 
-/** username→name so the shared FB-shaped mapper resolves handles unchanged. */
+/**
+ * username→name so the shared FB-shaped mapper resolves handles unchanged.
+ * IDEMPOTENT (`name ?? username`): safe to apply to an already-normalized
+ * convo — the sync loop normalizes EVERY page, because `fetchNextPage` returns
+ * the raw IG shape (username, not name) and would otherwise drop every
+ * paginated commenter's handle.
+ */
 export function normalizeIgConvo(c: RawIgConvo): Conversation {
   return {
     id: c.id,
     updated_time: c.updated_time,
-    participants: { data: (c.participants?.data ?? []).map((p) => ({ id: p.id, name: p.username })) },
+    participants: { data: (c.participants?.data ?? []).map((p) => ({ id: p.id, name: p.name ?? p.username })) },
     messages: {
       data: (c.messages?.data ?? []).map((m) => ({
         id: m.id,
-        from: { id: m.from?.id, name: m.from?.username },
+        from: { id: m.from?.id, name: m.from?.name ?? m.from?.username },
         message: m.message,
         created_time: m.created_time,
       })),

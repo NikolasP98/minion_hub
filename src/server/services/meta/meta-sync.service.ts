@@ -41,6 +41,7 @@ import {
   listAdsWithStoryIds,
   listConversations,
   listIgLoginConversations,
+  normalizeIgConvo,
   getIgLoginUser,
   fetchNextPage,
   refreshIgToken,
@@ -947,7 +948,12 @@ async function syncMessages(
         break;
       }
       const ingestRows: IngestRow[] = [];
-      for (const convo of page.data ?? []) {
+      for (const rawConvo of page.data ?? []) {
+        // IG-Login pages (initial AND every fetchNextPage) come back in the raw
+        // `username` shape; normalize to `name` so toMetaIngestRow resolves the
+        // customer handle. Idempotent, so FB-Login convos could pass through too
+        // — but they already carry `name`, so only pay it for igLogin.
+        const convo = igLogin ? normalizeIgConvo(rawConvo as Parameters<typeof normalizeIgConvo>[0]) : rawConvo;
         for (const msg of convo.messages?.data ?? []) {
           const row = toMetaIngestRow({
             message: msg,
