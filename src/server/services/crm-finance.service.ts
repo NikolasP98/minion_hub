@@ -4,12 +4,6 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
 
-// Sits at the crm×finances intersection: either domain's invalidation busts it.
-const cfTags = (orgId: string) => [
-  ...tags.tenantDomain(orgId, 'crm'),
-  ...tags.tenantDomain(orgId, 'finances'),
-];
-
 // A line item is a "reservation deposit" (the 50-soles "Reserva de Consulta")
 // rather than an actual procedure — the signal that splits "reservó pero no
 // compró" from real buyers.
@@ -50,7 +44,12 @@ export async function contactFinanceMap(ctx: CoreCtx): Promise<Record<string, Co
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return {};
   return cached(
     keys.hub('crm-fin-map', { t: ctx.tenantId }),
-    { ttl: '2m', swr: '30s', tags: cfTags(ctx.tenantId) },
+    // crm×finances intersection: either domain's invalidation busts it.
+    {
+      ttl: '2m',
+      swr: '30s',
+      tags: [...tags.tenantDomain(ctx.tenantId, 'crm'), ...tags.tenantDomain(ctx.tenantId, 'finances')],
+    },
     () => loadContactFinanceMap(ctx),
   );
 }

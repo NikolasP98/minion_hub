@@ -4,11 +4,6 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { appModules } from '$server/db/pg-modules-schema';
 
-export function resolveEnabled(rows: { moduleId: string; enabled: boolean }[], moduleId: string): boolean {
-  const row = rows.find((r) => r.moduleId === moduleId);
-  return row ? row.enabled : true; // absent = enabled
-}
-
 const moduleTags = (orgId: string) => tags.tenantDomain(orgId, 'modules');
 
 /** Org module toggles — near-static, but read on virtually every request
@@ -30,13 +25,12 @@ export async function listModuleStates(ctx: CoreCtx): Promise<Record<string, boo
 
 export async function isModuleEnabled(ctx: CoreCtx, moduleId: string): Promise<boolean> {
   const states = await listModuleStates(ctx);
-  return states[moduleId] ?? true; // absent = enabled, same as resolveEnabled
+  return states[moduleId] ?? true; // absent = enabled
 }
 
 export async function bothEnabled(ctx: CoreCtx, a: string, b: string): Promise<boolean> {
   const states = await listModuleStates(ctx);
-  return resolveEnabled(Object.entries(states).map(([moduleId, enabled]) => ({ moduleId, enabled })), a)
-    && resolveEnabled(Object.entries(states).map(([moduleId, enabled]) => ({ moduleId, enabled })), b);
+  return (states[a] ?? true) && (states[b] ?? true);
 }
 
 export async function setModuleEnabled(ctx: CoreCtx, moduleId: string, enabled: boolean): Promise<void> {
