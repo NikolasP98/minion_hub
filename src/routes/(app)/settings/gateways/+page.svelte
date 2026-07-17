@@ -182,7 +182,7 @@
                         <Wifi size={10} /> {m.hosts_connect()}
                       </span>
                     {:else}
-                      <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+                      <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-surface-3 text-muted-foreground text-xs font-medium">
                         <WifiOff size={10} /> {m.hosts_offline()}
                       </span>
                     {/if}

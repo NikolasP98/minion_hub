@@ -409,6 +409,21 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       limit ${limit} offset ${offset}
     `);
     let out = rows as unknown as RankedContact[];
+    // pg returns numeric/bigint columns as STRINGS; coerce here so no consumer
+    // ever does arithmetic on a digit-string (scoreSum += "50" concatenated its
+    // way to avgScore = Infinity on the dashboard).
+    out = out.map((r) => ({
+      ...r,
+      score: Number(r.score) || 0,
+      r_score: Number(r.r_score) || 0,
+      f_score: Number(r.f_score) || 0,
+      m_score: Number(r.m_score) || 0,
+      last_days: Number(r.last_days) || 0,
+      reciprocity: Number(r.reciprocity) || 0,
+      total_msgs: Number(r.total_msgs) || 0,
+      inbound_msgs: Number(r.inbound_msgs) || 0,
+      channels_used: Number(r.channels_used) || 0,
+    }));
     // Age is DERIVED from parties.dob (set by DNI validation); when known it
     // overrides the imported custom_fields.edad so the Age column never goes stale.
     out = out.map((r) =>

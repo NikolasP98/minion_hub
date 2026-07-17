@@ -308,6 +308,17 @@
   });
 </script>
 
+<!-- Panel-dismissal contract: document-level outside-pointerdown + Escape
+     (never a fixed backdrop — see ui-design-governance). -->
+<svelte:document
+  onpointerdown={(e) => {
+    if (openMenuId && !(e.target as Element).closest('[data-team-actions]')) openMenuId = null;
+  }}
+  onkeydown={(e) => {
+    if (e.key === 'Escape') openMenuId = null;
+  }}
+/>
+
 <div class="flex-1 overflow-y-auto p-6">
   <div class="max-w-3xl mx-auto">
     <!-- Header -->
@@ -440,7 +451,11 @@
                     </div>
                   {/if}
                 </td>
-                <td class="px-4 py-3 text-right relative" onclick={(e) => e.stopPropagation()}>
+                <td
+                  class="px-4 py-3 text-right relative"
+                  data-team-actions
+                  onclick={(e) => e.stopPropagation()}
+                >
                   <Button variant="ghost" size="xs"
                     type="button"
                     class="text-muted hover:text-foreground transition-colors bg-transparent border-none cursor-pointer p-1 rounded-md hover:bg-bg2"

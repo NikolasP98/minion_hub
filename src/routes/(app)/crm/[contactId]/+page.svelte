@@ -376,12 +376,23 @@
 
 <svelte:head><title>{contactLabel(c.displayName)} — {m.crm_title()}</title></svelte:head>
 
+<!-- Panel-dismissal contract: outside-pointerdown + Escape (the old fixed
+     backdrop painted ABOVE the menu — items were unclickable). -->
+<svelte:document
+  onpointerdown={(e) => {
+    if (menuOpen && !(e.target as Element).closest('[data-crm-kebab]')) menuOpen = false;
+  }}
+  onkeydown={(e) => {
+    if (e.key === 'Escape') menuOpen = false;
+  }}
+/>
+
 {#snippet detailsCard()}
   <section class="card">
     <header class="card-h">
       <span>{m.crm_details()}</span>
       {#if !editingDetails}
-        <div class="menu-wrap">
+        <div class="menu-wrap" data-crm-kebab>
           <Button
             variant="ghost"
             size="sm"
@@ -393,13 +404,6 @@
             <MoreVertical size={15} />
           </Button>
           {#if menuOpen}
-            <Button
-              variant="ghost"
-              size="sm"
-              class="backdrop"
-              aria-label="close"
-              onclick={() => (menuOpen = false)}
-            ></Button>
             <div class="menu">
               <Button
                 variant="ghost"
@@ -893,12 +897,6 @@
   }
   :global(.crm-contact-surface .kebab:hover) {
     background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
-  }
-  :global(.crm-contact-surface .backdrop) {
-    position: fixed;
-    inset: 0;
-    z-index: var(--layer-modal);
-    background: transparent;
   }
   .menu {
     position: absolute;

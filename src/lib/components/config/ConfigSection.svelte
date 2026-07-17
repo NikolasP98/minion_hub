@@ -35,7 +35,7 @@
   <Button
     variant="outline"
     type="button"
-    class="!h-auto !w-full !justify-start !px-4 !py-3.5 sticky top-0 z-[var(--layer-sticky,10)]
+    class="!h-auto !w-full !justify-start !px-4 !py-3.5 !bg-surface-1 sticky top-0 z-[var(--layer-sticky,10)]
       {expanded ? 'rounded-t-lg !border-b-0' : 'rounded-lg'}"
     onclick={() => ontoggle?.()}
     aria-expanded={expanded}

@@ -163,7 +163,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "operations",
         item: {
             href: "/work",
-            label: "My Work",
+            label: m.nav_myWork(),
             icon: Inbox,
             matcher: (p: string) => p === "/work" || p.startsWith("/work/"),
         },
@@ -172,7 +172,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "operations",
         item: {
             href: "/workforce",
-            label: "Workforce",
+            label: m.nav_workforce(),
             icon: FolderKanban,
             matcher: (p: string) => p.startsWith("/workforce"),
         },
@@ -181,7 +181,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "operations",
         item: {
             href: "/scheduling",
-            label: "Scheduling",
+            label: m.nav_scheduling(),
             icon: CalendarClock,
             matcher: (p: string) => p.startsWith("/scheduling"),
         },
@@ -208,7 +208,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "finance",
         item: {
             href: "/finances",
-            label: "Finances",
+            label: m.nav_finances(),
             icon: Wallet,
             matcher: (p: string) => p.startsWith("/finances"),
         },
@@ -217,7 +217,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "finance",
         item: {
             href: "/sales",
-            label: "Sales Orders",
+            label: m.nav_salesOrders(),
             icon: ClipboardList,
             matcher: (p: string) => p.startsWith("/sales"),
         },
@@ -226,7 +226,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "finance",
         item: {
             href: "/memberships",
-            label: "Memberships",
+            label: m.nav_memberships(),
             icon: RefreshCw,
             matcher: (p: string) => p.startsWith("/memberships"),
         },
@@ -235,7 +235,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "customer-support",
         item: {
             href: "/support",
-            label: "Support",
+            label: m.nav_support(),
             icon: LifeBuoy,
             matcher: (p: string) => p.startsWith("/support"),
         },

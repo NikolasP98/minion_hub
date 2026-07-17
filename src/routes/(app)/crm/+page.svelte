@@ -474,7 +474,9 @@
   }
   .funnel-row {
     display: grid;
-    grid-template-columns: 5.5rem 1fr auto;
+    /* max-content: the label track sizes to the widest StagePill in ANY locale
+       ("Interactuando" > 5.5rem) — a fixed track let chips spill under the bars. */
+    grid-template-columns: max-content 1fr auto;
     align-items: center;
     gap: var(--space-2, 8px);
     width: 100%;

@@ -6,22 +6,62 @@
   import * as m from '$lib/paraglide/messages';
   import UtilizationHeatmap from '$lib/components/scheduling/UtilizationHeatmap.svelte';
   import RevenueByResource from '$lib/components/scheduling/RevenueByResource.svelte';
+  import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
+  import { isAdmin } from '$lib/state/features/user.svelte';
+  import { canAct } from '$lib/access/can.svelte';
 
   let { data }: { data: PageData } = $props();
 
   const kpis = $derived([
-    { label: m.sched_kpi_upcoming(), value: data.summary.upcoming },
-    { label: m.sched_kpi_booked(), value: data.summary.bookedThisRange },
-    { label: m.sched_kpi_cancelled(), value: data.summary.cancelled },
-    { label: m.sched_kpi_noShow(), value: data.summary.noShow },
-    { label: m.sched_kpi_staff(), value: data.summary.resourceCount },
-    { label: m.sched_kpi_eventTypes(), value: data.summary.eventTypeCount },
+    { id: 'k-upcoming', label: m.sched_kpi_upcoming(), value: data.summary.upcoming },
+    { id: 'k-booked', label: m.sched_kpi_booked(), value: data.summary.bookedThisRange },
+    { id: 'k-cancelled', label: m.sched_kpi_cancelled(), value: data.summary.cancelled },
+    { id: 'k-noShow', label: m.sched_kpi_noShow(), value: data.summary.noShow },
+    { id: 'k-staff', label: m.sched_kpi_staff(), value: data.summary.resourceCount },
+    { id: 'k-eventTypes', label: m.sched_kpi_eventTypes(), value: data.summary.eventTypeCount },
   ]);
+  const kpiById = $derived(new Map(kpis.map((k) => [k.id, k])));
 
   const hasRevenue = $derived(data.revenue.some((r) => r.linkedRevenue > 0 || r.bookings > 0));
+
+  // Same 12-col/56px grid as the other module dashboards (crm, finances): six
+  // 2-wide KPI tiles on one row, full-width utilization + revenue cards below.
+  const items = $derived([
+    ...kpis.map((k) => ({ id: k.id, w: 2, h: 2 })),
+    { id: 'utilization', w: 12, h: 4 },
+    ...(hasRevenue ? [{ id: 'revenue', w: 12, h: 4 }] : []),
+  ]);
 </script>
 
 <svelte:head><title>{m.nav_scheduling()}</title></svelte:head>
+
+{#snippet cellBody(id: string)}
+  {#if id.startsWith('k-')}
+    {@const k = kpiById.get(id)}
+    {#if k}
+      <Card padding="md" class="h-full">
+        <div class="t-caption">{k.label}</div>
+        <div class="text-2xl font-semibold mt-1">{k.value}</div>
+      </Card>
+    {/if}
+  {:else if id === 'utilization'}
+    <Card padding="lg" class="h-full">
+      <div class="mb-3">
+        <h2 class="text-sm font-semibold">{m.sched_utilization_title()}</h2>
+        <p class="t-caption">{m.sched_utilization_subtitle()}</p>
+      </div>
+      <UtilizationHeatmap utilization={data.utilization} />
+    </Card>
+  {:else if id === 'revenue'}
+    <Card padding="lg" class="h-full">
+      <div class="mb-3">
+        <h2 class="text-sm font-semibold">{m.sched_revenue_title()}</h2>
+        <p class="t-caption">{m.sched_revenue_subtitle()}</p>
+      </div>
+      <RevenueByResource revenue={data.revenue} />
+    </Card>
+  {/if}
+{/snippet}
 
 <PageShell
   archetype="dashboard"
@@ -39,17 +79,7 @@
     {/snippet}
   </PageHeader>
 
-  <PageBody padding="compact" scroll="region" class="flex flex-col gap-4">
-    <!-- KPI row -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-      {#each kpis as kpi (kpi.label)}
-        <Card padding="md">
-          <div class="t-caption">{kpi.label}</div>
-          <div class="text-2xl font-semibold mt-1">{kpi.value}</div>
-        </Card>
-      {/each}
-    </div>
-
+  <PageBody padding="compact" scroll="region">
     {#if data.summary.resourceCount === 0}
       <EmptyState title={m.sched_empty_resources()}>
         {#snippet action()}
@@ -59,25 +89,16 @@
         {/snippet}
       </EmptyState>
     {:else}
-      <!-- Utilization heatmap -->
-      <Card padding="lg">
-        <div class="mb-3">
-          <h2 class="text-sm font-semibold">{m.sched_utilization_title()}</h2>
-          <p class="t-caption">{m.sched_utilization_subtitle()}</p>
-        </div>
-        <UtilizationHeatmap utilization={data.utilization} />
-      </Card>
-
-      <!-- Revenue overlay -->
-      {#if hasRevenue}
-        <Card padding="lg">
-          <div class="mb-3">
-            <h2 class="text-sm font-semibold">{m.sched_revenue_title()}</h2>
-            <p class="t-caption">{m.sched_revenue_subtitle()}</p>
-          </div>
-          <RevenueByResource revenue={data.revenue} />
-        </Card>
-      {/if}
+      <EditableGrid
+        id="scheduling-dashboard-v1"
+        {items}
+        cols={12}
+        rowHeight={56}
+        canSetDefault={isAdmin.value}
+        readonly={!canAct('scheduling', 'edit')}
+      >
+        {#snippet cell(id)}{@render cellBody(id)}{/snippet}
+      </EditableGrid>
     {/if}
   </PageBody>
 </PageShell>

@@ -360,17 +360,22 @@
               {#each data.entries as entry, i (entry.pluginId + ':' + entry.entrypoint)}
                 {@const active = selected === i}
                 <li>
+                  <!-- Selection = accent-TINTED surface + accent text (house pattern,
+                       same as the sidebar nav) — never a full accent fill: on-accent
+                       is near-black on most themes and drowns icons/status dots. -->
                   <Button
-                    variant={active ? 'primary' : 'ghost'}
+                    variant="ghost"
                     type="button"
                     onclick={() => (selected = i)}
                     aria-current={active ? 'page' : undefined}
-                    class="group relative !h-auto !w-full !justify-start !rounded-none !px-4 !py-3 text-left"
+                    class="group relative !h-auto !w-full !justify-start !rounded-none !px-4 !py-3 text-left {active
+                      ? '!bg-accent/10'
+                      : ''}"
                   >
                     <span
                       class="mt-0.5 inline-flex items-center justify-center text-base leading-none"
                       class:text-muted-foreground={!active}
-                      class:text-accent-foreground={active}
+                      class:text-accent={active}
                     >
                       {#if entry.icon && /\p{Extended_Pictographic}/u.test(entry.icon)}
                         {entry.icon}
@@ -414,24 +419,14 @@
                       <span
                         class="block truncate font-medium"
                         class:text-foreground={!active}
-                        class:text-accent-foreground={active}
+                        class:text-accent={active}
                       >{entry.title}</span>
                       {#if entry.description}
-                        <span
-                          class="mt-0.5 block truncate text-xs"
-                          class:text-muted-foreground={!active}
-                          class:text-accent-foreground={active}
-                          class:opacity-80={active}
-                        >
+                        <span class="mt-0.5 block truncate text-xs text-muted-foreground">
                           {entry.description}
                         </span>
                       {/if}
-                      <span
-                        class="mt-1 block truncate font-mono text-xs"
-                        class:text-muted-foreground={!active}
-                        class:text-accent-foreground={active}
-                        class:opacity-60={active}
-                      >
+                      <span class="mt-1 block truncate font-mono text-xs text-muted-foreground">
                         {entry.pluginId}
                       </span>
                     </span>

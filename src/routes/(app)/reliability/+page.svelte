@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Chart from '$lib/components/charts/Chart.svelte';
+	import { cssVar } from '$lib/utils/chart-colors';
 	import { Button, PageHeader, Tabs, MultiSelectFilter, MathFormula } from '$lib/components/ui';
 	import {
 		AsyncBoundary,
@@ -118,21 +119,23 @@
 	// previously `channel` (~5.8k events) was invisible because it wasn't curated.
 	// Council 2026-05-29 (taxonomy-unification). crash kept off the critical-red
 	// rose ramp so category never reads as severity.
+	// ECharts' canvas renderer cannot parse `var(--token)` — colors MUST be
+	// resolved to concrete strings at option-build time (see chart-colors.ts).
 	const CATEGORY_COLORS: Record<string, string> = {
-		gateway:       'var(--color-success-fg)',
-		agent:         'var(--color-pink)',
-		channel:       'var(--color-warning-fg)',
-		message:       'var(--color-cyan)',
-		tool:          'var(--color-purple)',
-		orchestration: 'var(--color-pink)',
-		skill:         'var(--color-cyan)',
-		connection:    'var(--color-emerald)',
-		auth:          'var(--color-success-fg)',
-		cron:          'var(--color-info-fg)',
-		crash:         'var(--color-brand)',
-		browser:       'var(--color-purple)',
-		timezone:      'var(--color-purple)',
-		general:       'var(--color-text-tertiary)'
+		gateway:       cssVar('--color-success-fg', '#4ade80'),
+		agent:         cssVar('--color-pink', '#ec4899'),
+		channel:       cssVar('--color-warning-fg', '#f59e0b'),
+		message:       cssVar('--color-cyan', '#06b6d4'),
+		tool:          cssVar('--color-purple', '#a855f7'),
+		orchestration: cssVar('--color-pink', '#ec4899'),
+		skill:         cssVar('--color-cyan', '#06b6d4'),
+		connection:    cssVar('--color-emerald', '#10b981'),
+		auth:          cssVar('--color-success-fg', '#4ade80'),
+		cron:          cssVar('--color-info-fg', '#38bdf8'),
+		crash:         cssVar('--color-brand', '#f43f5e'),
+		browser:       cssVar('--color-purple', '#a855f7'),
+		timezone:      cssVar('--color-purple', '#a855f7'),
+		general:       cssVar('--color-text-tertiary', '#64748b')
 	};
 
 	// Severity = ordinal alarm ramp. info (blue) + low (slate) are the non-alarm
@@ -141,12 +144,12 @@
 	// wasn't perceptually monotonic — slate restores a colourblind-safe ramp while
 	// staying distinct from info. `ok` is a separate resolved state. Council 2026-05-29.
 	const SEVERITY_COLORS: Record<string, string> = {
-		info:     'var(--color-info-fg)',
-		low:      'var(--color-neutral)',
-		medium:   'var(--color-warning-fg)',
-		high:     'var(--color-warning-fg)',
-		critical: 'var(--color-danger-fg)',
-		ok:       'var(--color-success-fg)'
+		info:     cssVar('--color-info-fg', '#38bdf8'),
+		low:      cssVar('--color-neutral', '#64748b'),
+		medium:   cssVar('--color-warning-fg', '#f59e0b'),
+		high:     cssVar('--color-warning-fg', '#f59e0b'),
+		critical: cssVar('--color-danger-fg', '#ef4444'),
+		ok:       cssVar('--color-success-fg', '#4ade80')
 	};
 
 	const CATEGORIES = ['gateway', 'agent', 'channel', 'message', 'tool', 'orchestration', 'skill', 'connection', 'auth', 'cron', 'crash', 'browser', 'timezone', 'general'] as const;
@@ -962,7 +965,7 @@
 	// labelled by mode and coloured by their type so the same chart shows BOTH
 	// dimensions. Counting keys on the full event name (unique); the y-axis label
 	// + tooltip surface the type/mode split. Click a bar to filter by that mode.
-	const TOP_EVENT_FALLBACK_COLOR = 'var(--color-accent)';
+	const TOP_EVENT_FALLBACK_COLOR = cssVar('--color-accent', '#3b82f6');
 
 	let topEvents = $derived.by(() => {
 		const eventCounts = new Map<string, number>();
@@ -1066,7 +1069,7 @@
 			.map(([name, value]) => ({
 				name,
 				value,
-				itemStyle: { color: SEVERITY_COLORS[name] ?? 'var(--color-neutral)' },
+				itemStyle: { color: SEVERITY_COLORS[name] ?? cssVar('--color-neutral', '#64748b') },
 				label: { color: SEVERITY_COLORS[name] ?? 'var(--color-neutral)' }
 			}));
 
@@ -1160,11 +1163,11 @@
 		// Mode labels sit to the LEFT of the first column (clear of the ribbons);
 		// category + severity labels to the right of their bars.
 		for (const mode of modesUsed) {
-			const color = mode === OTHER ? 'var(--color-text-disabled)' : (CATEGORY_COLORS[modeType.get(mode) ?? ''] ?? 'var(--color-accent)');
+			const color = mode === OTHER ? cssVar('--color-text-disabled', '#64748b') : (CATEGORY_COLORS[modeType.get(mode) ?? ''] ?? cssVar('--color-accent', '#3b82f6'));
 			addNode(`m:${mode}`, color, 'left');
 		}
-		for (const cat of catsUsed) addNode(`c:${cat}`, CATEGORY_COLORS[cat] ?? 'var(--color-text-tertiary)', 'right');
-		for (const sevKey of sevsUsed) addNode(`s:${sevKey}`, SEVERITY_COLORS[sevKey] ?? 'var(--color-neutral)', 'right');
+		for (const cat of catsUsed) addNode(`c:${cat}`, CATEGORY_COLORS[cat] ?? cssVar('--color-text-tertiary', '#64748b'), 'right');
+		for (const sevKey of sevsUsed) addNode(`s:${sevKey}`, SEVERITY_COLORS[sevKey] ?? cssVar('--color-neutral', '#64748b'), 'right');
 
 		const links: Array<{ source: string; target: string; value: number }> = [];
 		for (const [k, v] of mc) { const [mode, cat] = k.split('\0'); links.push({ source: `m:${mode}`, target: `c:${cat}`, value: v }); }
@@ -1196,7 +1199,7 @@
 				links,
 				label: {
 					fontSize: 10,
-					color: getCSSVar('--color-foreground', 'var(--color-text-primary)'),
+					color: getCSSVar('--color-foreground', '#fafafa'),
 					formatter: (p: any) => String(p.name).slice(2),
 				},
 				lineStyle: { color: 'gradient', opacity: 0.32, curveness: 0.5 },
@@ -1293,7 +1296,7 @@
 		id={`reliability-tabs-panel-${activeTab}`}
 		role="tabpanel"
 		aria-labelledby={`reliability-tabs-tab-${activeTab}`}
-		class="flex-1 min-h-0 overflow-y-auto p-4"
+		class="h-full overflow-y-auto p-4"
 	>
 		<AsyncBoundary state={pageState} class="h-full">
 		<div class="flex flex-col gap-3">

@@ -133,6 +133,8 @@
 				echartsLib.registerTheme('minion-dark', buildTheme());
 				// Re-init with updated theme
 				const currentOpts = chart.getOption() as EChartsOption;
+				// appendToBody tooltips live on <body>; hide before dispose or they orphan
+				chart.dispatchAction({ type: 'hideTip' });
 				chart.dispose();
 				chart = echartsLib.init(container, 'minion-dark');
 				chart.setOption(applyDefaults(currentOpts));
@@ -149,12 +151,16 @@
 			disposed = true;
 			themeObserver?.disconnect();
 			resizeObs?.disconnect();
+			chart?.dispatchAction({ type: 'hideTip' });
 			chart?.dispose();
 		};
 	});
 
 	$effect(() => {
 		if (chart) {
+			// notMerge re-renders detach the body-appended tooltip from its chart;
+			// hide it first or it lingers after the pointer leaves.
+			chart.dispatchAction({ type: 'hideTip' });
 			chart.setOption(applyDefaults(options), { notMerge: notMergeUpdate });
 		}
 	});
