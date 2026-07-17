@@ -12,7 +12,6 @@ import { getFleetUpdateAvailability } from '$server/services/fleet-update.servic
 
 // update.run holds the RPC open through the npm install (40-120s in prod) —
 // keep the serverless function alive for the whole window (Vercel).
-export const config = { maxDuration: 300 };
 
 export const GET: RequestHandler = async ({ locals }) => {
   requireAdmin(locals);

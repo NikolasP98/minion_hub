@@ -27,7 +27,10 @@ const config = {
   preprocess: [vitePreprocess(), ...(paraglidePreprocessor ? [paraglidePreprocessor] : [])],
   kit: {
     outDir: svelteKitOutDir(process.env.VITE_CACHE_DIR),
-    adapter: process.env.DESKTOP === '1' ? adapter() : adapter({ runtime: 'nodejs22.x' }),
+    // Single serverless function (no per-route `export const config`): split
+    // functions break locale-prefixed URLs — the /en|/es catchall lands in a
+    // routes:[] 404 function where reroute() has nothing to resolve to.
+    adapter: process.env.DESKTOP === '1' ? adapter() : adapter({ runtime: 'nodejs22.x', maxDuration: 300 }),
     alias: {
       $server: 'src/server',
       '$server/*': 'src/server/*',

@@ -7,7 +7,6 @@ import { getArtifactRow, snapshotRevision, updateArtifactHtml, artifactRowToDesc
 import { ndjsonBuild } from '$lib/server/artifacts/build-stream';
 
 // ponytail: 300s is the Vercel Pro ceiling; on Hobby it's hard-capped to 60s.
-export const config = { maxDuration: 300 };
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   requireAdmin(locals);

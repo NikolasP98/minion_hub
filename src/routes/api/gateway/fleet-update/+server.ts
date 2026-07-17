@@ -14,7 +14,6 @@ import {
 
 // advance() drives one instance's drain+run+poll-verify cycle, which can
 // alone take up to ~243s — keep the function alive for the whole window.
-export const config = { maxDuration: 300 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   const user = requireAdmin(locals);

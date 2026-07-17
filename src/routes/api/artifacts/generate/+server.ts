@@ -8,7 +8,6 @@ import { ndjsonBuild } from '$lib/server/artifacts/build-stream';
 
 // ponytail: 300s is the Vercel Pro ceiling; on Hobby it's hard-capped to 60s.
 // Streaming keeps the client alive but does NOT raise this limit.
-export const config = { maxDuration: 300 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   requireAdmin(locals);
