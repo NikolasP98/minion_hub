@@ -3,7 +3,7 @@
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
   import { Wallet } from 'lucide-svelte';
-  import { PageHeader, Button } from '$lib/components/ui';
+  import { PageHeader, Button, Skeleton, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import Chart from '$lib/components/charts/Chart.svelte';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
@@ -100,77 +100,89 @@
     navigate('', '', 'month');
   }
 
-  function formatMoney(val: number): string {
-    try {
-      return val.toLocaleString('es-PE', {
-        style: 'currency',
-        currency: data.summary.currency || 'PEN',
-        maximumFractionDigits: 0,
-      });
-    } catch {
-      return `${data.summary.currency || 'S/'} ${Math.round(val).toLocaleString()}`;
+  type FinData = Awaited<PageData['streamed']['data']>;
+
+  const buckets: Array<{ key: 'day' | 'week' | 'month'; label: () => string }> = [
+    { key: 'day', label: m.fin_bucket_day },
+    { key: 'week', label: m.fin_bucket_week },
+    { key: 'month', label: m.fin_bucket_month },
+  ];
+  const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
+
+  // Everything below depends on the resolved (streamed) finance data — built
+  // once per `{:then d}` render rather than as top-level $derived (the raw
+  // promise isn't a value to derive from). Stays reactive to mode/prodMode/
+  // hiddenBands/netHidden/c since those $state/derived reads happen inside
+  // the call, evaluated live in the template's {@const}.
+  function buildView(d: FinData) {
+    const s = d.summary;
+
+    function formatMoney(val: number): string {
+      try {
+        return val.toLocaleString('es-PE', {
+          style: 'currency',
+          currency: s.currency || 'PEN',
+          maximumFractionDigits: 0,
+        });
+      } catch {
+        return `${s.currency || 'S/'} ${Math.round(val).toLocaleString()}`;
+      }
     }
-  }
 
-  // Compact money for crowded value axes (e.g. horizontal bar charts) so labels
-  // like "S/ 10,000" don't overlap. Tooltips still use the full formatMoney.
-  function moneyShort(val: number): string {
-    const cur =
-      !data.summary.currency || data.summary.currency === 'PEN' ? 'S/' : data.summary.currency;
-    const a = Math.abs(val);
-    if (a >= 1_000_000) return `${cur} ${(val / 1_000_000).toFixed(a % 1_000_000 ? 1 : 0)}M`;
-    if (a >= 1_000) return `${cur} ${Math.round(val / 1000)}k`;
-    return `${cur} ${Math.round(val)}`;
-  }
+    // Compact money for crowded value axes (e.g. horizontal bar charts) so labels
+    // like "S/ 10,000" don't overlap. Tooltips still use the full formatMoney.
+    function moneyShort(val: number): string {
+      const cur = !s.currency || s.currency === 'PEN' ? 'S/' : s.currency;
+      const a = Math.abs(val);
+      if (a >= 1_000_000) return `${cur} ${(val / 1_000_000).toFixed(a % 1_000_000 ? 1 : 0)}M`;
+      if (a >= 1_000) return `${cur} ${Math.round(val / 1000)}k`;
+      return `${cur} ${Math.round(val)}`;
+    }
 
-  const periodGrowth = $derived(
-    (() => {
-      const s = data.series;
-      if (s.length < 2) return null;
-      const curr = s[s.length - 1].revenue;
-      const prev = s[s.length - 2].revenue;
+    const periodGrowth = (() => {
+      const series = d.series;
+      if (series.length < 2) return null;
+      const curr = series[series.length - 1].revenue;
+      const prev = series[series.length - 2].revenue;
       return prev > 0 ? ((curr - prev) / prev) * 100 : null;
-    })(),
-  );
+    })();
 
-  // Localized band names double as ECharts series ids + legend/hidden-map keys.
-  const bandNames = $derived({
-    tax: m.fin_chart_tax(),
-    op: m.fin_chart_op_cost(),
-    discount: m.fin_chart_discount(),
-    void: m.fin_chart_void(),
-  });
-  // A deduction is "active" only when its band is visible.
-  const taxActive = $derived(!hiddenBands[bandNames.tax]);
-  const opActive = $derived(!hiddenBands[bandNames.op]);
-  // Stable series identity for the net band (so ECharts morphs it vertically on
-  // toggle instead of re-introing). The dynamic label is applied via legend.formatter.
-  const netId = 'net-band';
-  // Net-band label names only the deductions actually folded into it.
-  const netName = $derived(
-    taxActive && opActive
-      ? m.fin_chart_net_after()
-      : taxActive
-        ? m.fin_chart_net_after_tax()
-        : opActive
-          ? m.fin_chart_net_after_cost()
-          : m.fin_chart_net(),
-  );
+    // Localized band names double as ECharts series ids + legend/hidden-map keys.
+    const bandNames = {
+      tax: m.fin_chart_tax(),
+      op: m.fin_chart_op_cost(),
+      discount: m.fin_chart_discount(),
+      void: m.fin_chart_void(),
+    };
+    // A deduction is "active" only when its band is visible.
+    const taxActive = !hiddenBands[bandNames.tax];
+    const opActive = !hiddenBands[bandNames.op];
+    // Stable series identity for the net band (so ECharts morphs it vertically on
+    // toggle instead of re-introing). The dynamic label is applied via legend.formatter.
+    const netId = 'net-band';
+    // Net-band label names only the deductions actually folded into it.
+    const netName =
+      taxActive && opActive
+        ? m.fin_chart_net_after()
+        : taxActive
+          ? m.fin_chart_net_after_tax()
+          : opActive
+            ? m.fin_chart_net_after_cost()
+            : m.fin_chart_net();
 
-  const revenueOpts = $derived(
-    (() => {
+    const revenueOpts = (() => {
       const L = bandNames;
-      const xData = data.series.map((r) => fmtBucket(r.bucket));
-      const pick = (sel: (r: (typeof data.series)[number]) => number) => {
-        if (mode !== 'cumulative') return data.series.map(sel);
+      const xData = d.series.map((r) => fmtBucket(r.bucket));
+      const pick = (sel: (r: (typeof d.series)[number]) => number) => {
+        if (mode !== 'cumulative') return d.series.map(sel);
         let sum = 0;
-        return data.series.map((r) => (sum += sel(r)));
+        return d.series.map((r) => (sum += sel(r)));
       };
       // Realized deductions (taxes, op-cost) carve OUT of net; each absorbs back
       // into net when its band is hidden. Floor at 0 so a cost-heavy month can't
       // push the net band below the axis. Unrealized bands (discount/void) stack
       // on top and never touch net.
-      const netSel = (r: (typeof data.series)[number]) =>
+      const netSel = (r: (typeof d.series)[number]) =>
         Math.max(0, r.revenue - (taxActive ? r.tax : 0) - (opActive ? r.opCost : 0));
       const netData = pick(netSel);
       const taxData = pick((r) => r.tax);
@@ -233,31 +245,29 @@
           { ...area(c.destructive), name: L.void, data: voidData },
         ],
       } satisfies EChartsOption;
-    })(),
-  );
+    })();
 
-  const avgTicketOpts = $derived({
-    grid: { left: 8, right: 18, top: 16, bottom: 24, containLabel: true },
-    tooltip: { trigger: 'axis', valueFormatter: (v) => formatMoney(Number(v)) },
-    xAxis: {
-      type: 'category',
-      data: data.series.map((r) => fmtBucket(r.bucket)),
-      axisLabel: { hideOverlap: true },
-    },
-    yAxis: { type: 'value', axisLabel: { formatter: (v: number) => formatMoney(v) } },
-    series: [
-      {
-        name: m.fin_chart_avg_ticket(),
-        type: 'line',
-        data: data.series.map((r) => (r.invoices > 0 ? Math.round(r.revenue / r.invoices) : 0)),
-        smooth: true,
+    const avgTicketOpts = {
+      grid: { left: 8, right: 18, top: 16, bottom: 24, containLabel: true },
+      tooltip: { trigger: 'axis', valueFormatter: (v) => formatMoney(Number(v)) },
+      xAxis: {
+        type: 'category',
+        data: d.series.map((r) => fmtBucket(r.bucket)),
+        axisLabel: { hideOverlap: true },
       },
-    ],
-  } satisfies EChartsOption);
+      yAxis: { type: 'value', axisLabel: { formatter: (v: number) => formatMoney(v) } },
+      series: [
+        {
+          name: m.fin_chart_avg_ticket(),
+          type: 'line',
+          data: d.series.map((r) => (r.invoices > 0 ? Math.round(r.revenue / r.invoices) : 0)),
+          smooth: true,
+        },
+      ],
+    } satisfies EChartsOption;
 
-  const topProductsOpts = $derived(
-    (() => {
-      const sorted = [...data.products]
+    const topProductsOpts = (() => {
+      const sorted = [...d.products]
         .sort((a, b) => (prodMode === 'revenue' ? b.revenue - a.revenue : b.qty - a.qty))
         .slice(0, 12);
       const fmt = (v: number) =>
@@ -284,12 +294,10 @@
           },
         ],
       } satisfies EChartsOption;
-    })(),
-  );
+    })();
 
-  const topClientsOpts = $derived(
-    (() => {
-      const sorted = [...data.clients].sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+    const topClientsOpts = (() => {
+      const sorted = [...d.clients].sort((a, b) => b.revenue - a.revenue).slice(0, 10);
       return {
         grid: { left: 8, right: 24, top: 16, bottom: 24, containLabel: true },
         tooltip: { trigger: 'axis', valueFormatter: (v) => formatMoney(Number(v)) },
@@ -304,19 +312,10 @@
         },
         series: [{ type: 'bar', data: sorted.map((c) => Math.round(c.revenue)) }],
       } satisfies EChartsOption;
-    })(),
-  );
+    })();
 
-  const buckets: Array<{ key: 'day' | 'week' | 'month'; label: () => string }> = [
-    { key: 'day', label: m.fin_bucket_day },
-    { key: 'week', label: m.fin_bucket_week },
-    { key: 'month', label: m.fin_bucket_month },
-  ];
-
-  // KPI cards rendered by the editable grid (id-keyed).
-  const s = $derived(data.summary);
-  const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
-  const kpis = $derived([
+    // KPI cards rendered by the editable grid (id-keyed).
+    const kpis = [
     // Revenue composition: billed → −taxes → −COGS → = net revenue (margin).
     { id: 'k-net', label: m.fin_kpi_revenue(), value: formatMoney(s.totalNet) },
     ...(s.sensitiveMasked
@@ -327,26 +326,26 @@
           { id: 'k-cogs', label: m.fin_kpi_cogs(), value: formatMoney(s.totalCogs) },
         ]),
     { id: 'k-tax-rate', label: m.fin_kpi_tax_rate(), value: pct(s.taxRate) },
-    { id: 'k-avg', label: m.fin_kpi_avg_ticket(), value: formatMoney(data.summary.avgTicket) },
+    { id: 'k-avg', label: m.fin_kpi_avg_ticket(), value: formatMoney(s.avgTicket) },
     {
       id: 'k-invoices',
       label: m.fin_kpi_invoices(),
-      value: data.summary.invoiceCount.toLocaleString(),
+      value: s.invoiceCount.toLocaleString(),
     },
     {
       id: 'k-clients',
       label: m.fin_kpi_unique_clients(),
-      value: data.summary.uniqueClients.toLocaleString(),
+      value: s.uniqueClients.toLocaleString(),
     },
     {
       id: 'k-newclients',
       label: m.fin_kpi_new_clients(),
-      value: data.summary.newClients.toLocaleString(),
+      value: s.newClients.toLocaleString(),
     },
     {
       id: 'k-discount',
       label: m.fin_kpi_discount_rate(),
-      value: `${(data.summary.discountRate * 100).toFixed(1)}%`,
+      value: `${(s.discountRate * 100).toFixed(1)}%`,
       href: '/finances/invoices?discounted=1',
     },
     {
@@ -358,24 +357,28 @@
     {
       id: 'k-void',
       label: m.fin_kpi_void_rate(),
-      value: `${(data.summary.voidRate * 100).toFixed(1)}%`,
+      value: `${(s.voidRate * 100).toFixed(1)}%`,
       href: '/finances/invoices?status=void',
     },
-  ]);
-  const kpiById = $derived(new Map(kpis.map((k) => [k.id, k])));
+    ];
+    const kpiById = new Map(kpis.map((k) => [k.id, k]));
 
-  // Grid items: 8 KPIs (3×2) then the four charts. Order/spans are user-editable
-  // and persisted (localStorage personal + org default). Chart heights are sized
-  // to roughly match their default span so the plot fills the cell.
-  // ponytail: fixed chart px-heights; vertical resize sets the floor, not the chart
-  // height (EditableGrid rows are minmax(row, auto) — no definite height to fill).
-  const items = $derived([
-    ...kpis.map((k) => ({ id: k.id, w: 3, h: 2 })),
-    { id: 'revenue', w: 12, h: 6 },
-    { id: 'avgticket', w: 12, h: 5 },
-    { id: 'products', w: 6, h: 6 },
-    { id: 'clients', w: 6, h: 6 },
-  ]);
+    // Grid items: 8 KPIs (3×2) then the four charts. Order/spans are user-editable
+    // and persisted (localStorage personal + org default). Chart heights are sized
+    // to roughly match their default span so the plot fills the cell.
+    // ponytail: fixed chart px-heights; vertical resize sets the floor, not the chart
+    // height (EditableGrid rows are minmax(row, auto) — no definite height to fill).
+    const items = [
+      ...kpis.map((k) => ({ id: k.id, w: 3, h: 2 })),
+      { id: 'revenue', w: 12, h: 6 },
+      { id: 'avgticket', w: 12, h: 5 },
+      { id: 'products', w: 6, h: 6 },
+      { id: 'clients', w: 6, h: 6 },
+    ];
+
+    return { d, s, kpiById, items, revenueOpts, avgTicketOpts, topProductsOpts, topClientsOpts };
+  }
+  type View = ReturnType<typeof buildView>;
 </script>
 
 <svelte:head><title>{m.nav_finance()}</title></svelte:head>
@@ -420,7 +423,8 @@
 {/snippet}
 
 <!-- One snippet keyed by item id — EditableGrid renders each cell by id. -->
-{#snippet cellBody(id: string)}
+{#snippet cellBody(id: string, view: View)}
+  {@const { kpiById, revenueOpts, avgTicketOpts, topProductsOpts, topClientsOpts } = view}
   {#if id.startsWith('k-')}
     {@const k = kpiById.get(id)}
     {#if k}
@@ -505,22 +509,38 @@
   <!-- Full-width scroller so the scrollbar hugs the screen edge; content padded. -->
   <PageBody padding="compact" scroll="region">
     <div class="w-full max-w-6xl mx-auto">
-      {#if !data.hasData}
-        {@render periodControls()}
-        <p class="t-caption mt-4">{m.fin_empty()}</p>
-      {:else}
-        <EditableGrid
-          id="finances-dashboard-v2"
-          {items}
-          cols={12}
-          rowHeight={56}
-          canSetDefault={isAdmin.value}
-          readonly={!canAct('finance', 'edit')}
-        >
-          {#snippet toolbar()}{@render periodControls()}{/snippet}
-          {#snippet cell(id)}{@render cellBody(id)}{/snippet}
-        </EditableGrid>
-      {/if}
+      <!-- Period controls paint instantly, independent of the streamed data. -->
+      {@render periodControls()}
+
+      {#await data.streamed.data}
+        <div class="skel-grid">
+          {#each { length: 8 } as _, i (i)}
+            <Skeleton height="4.5rem" rounded="rounded-lg" />
+          {/each}
+          <div class="skel-wide"><Skeleton height="16rem" rounded="rounded-lg" /></div>
+          <div class="skel-wide"><Skeleton height="14rem" rounded="rounded-lg" /></div>
+          <Skeleton height="16rem" rounded="rounded-lg" />
+          <Skeleton height="16rem" rounded="rounded-lg" />
+        </div>
+      {:then d}
+        {#if !d.hasData}
+          <p class="t-caption mt-4">{m.fin_empty()}</p>
+        {:else}
+          {@const view = buildView(d)}
+          <EditableGrid
+            id="finances-dashboard-v2"
+            items={view.items}
+            cols={12}
+            rowHeight={56}
+            canSetDefault={isAdmin.value}
+            readonly={!canAct('finance', 'edit')}
+          >
+            {#snippet cell(id)}{@render cellBody(id, view)}{/snippet}
+          </EditableGrid>
+        {/if}
+      {:catch}
+        <EmptyState title="Couldn't load finance dashboard data" icon={Wallet} compact />
+      {/await}
     </div>
   </PageBody>
 </PageShell>
@@ -566,6 +586,17 @@
   .presets {
     display: flex;
     gap: var(--space-2, 8px);
+  }
+
+  /* loading skeleton — rough shape of the KPI row + chart cards below */
+  .skel-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-3, 12px);
+    margin-top: var(--space-3, 12px);
+  }
+  .skel-wide {
+    grid-column: 1 / -1;
   }
   .kpi {
     display: flex;

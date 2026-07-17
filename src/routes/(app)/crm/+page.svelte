@@ -13,7 +13,7 @@
     Flame,
     Wallet,
   } from 'lucide-svelte';
-  import { PageHeader, Button } from '$lib/components/ui';
+  import { PageHeader, Button, Skeleton, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import StagePill from '$lib/components/crm/StagePill.svelte';
   import CrmFunnelRibbon from '$lib/components/crm/CrmFunnelRibbon.svelte';
@@ -26,12 +26,105 @@
   import { stageLabel } from '$lib/components/crm/crm-i18n';
 
   let { data }: { data: PageData } = $props();
-  const s = $derived(data.stats);
+  type Stats = Awaited<PageData['streamed']['stats']>;
 
   const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'];
-  const funnelMax = $derived(Math.max(1, ...STAGES.map((st) => s.stageCounts[st] ?? 0)));
-  const bucketMax = $derived(Math.max(1, ...s.scoreBuckets));
-  const channelTotal = $derived(s.channels.reduce((acc, c) => acc + c.count, 0));
+
+  // Derived widgets depend on the resolved (streamed) stats — built once per
+  // `{:then stats}` render rather than as top-level $derived (the raw promise
+  // isn't a value to derive from).
+  function buildView(s: Stats) {
+    const funnelMax = Math.max(1, ...STAGES.map((st) => s.stageCounts[st] ?? 0));
+    const bucketMax = Math.max(1, ...s.scoreBuckets);
+    const channelTotal = s.channels.reduce((acc, c) => acc + c.count, 0);
+
+    const kpis = [
+      {
+        id: 'k-total',
+        label: m.crm_dash_total(),
+        value: s.total,
+        icon: Users,
+        help: m.crm_dash_total_help(),
+        href: C,
+      },
+      {
+        id: 'k-active',
+        label: m.crm_dash_active(),
+        value: s.activeWeek,
+        icon: Activity,
+        help: m.crm_dash_active_help(),
+        href: stageHref('Active'),
+      },
+      {
+        id: 'k-new',
+        label: m.crm_dash_new(),
+        value: s.newCount,
+        icon: UserPlus,
+        help: m.crm_dash_new_help(),
+        href: stageHref('New'),
+      },
+      {
+        id: 'k-churned',
+        label: m.crm_dash_churned(),
+        value: s.churned,
+        icon: TrendingDown,
+        help: m.crm_dash_churned_help(),
+        href: stageHref('Churned'),
+      },
+    ];
+    const kpiById = new Map(kpis.map((k) => [k.id, k]));
+
+    const tempRows = (['hot', 'warm', 'cold'] as Temperature[]).map((t) => ({
+      key: t,
+      label: t === 'hot' ? m.crm_temp_hot() : t === 'warm' ? m.crm_temp_warm() : m.crm_temp_cold(),
+      count: s.temperature[t],
+      color: temperatureColor(t),
+    }));
+    const tempTotal = s.temperature.hot + s.temperature.warm + s.temperature.cold;
+
+    const convRows = [
+      {
+        key: 'leads',
+        label: m.crm_conv_leads(),
+        count: s.conversion.leads,
+        color: funnelStageColor('lead'),
+        href: funnelHref('lead'),
+      },
+      {
+        key: 'booked',
+        label: m.crm_conv_booked(),
+        count: s.conversion.booked,
+        color: funnelStageColor('opportunity'),
+        href: funnelHref('opportunity'),
+      },
+      {
+        key: 'bought',
+        label: m.crm_conv_bought(),
+        count: s.conversion.bought,
+        color: funnelStageColor('customer'),
+        href: funnelHref('customer'),
+      },
+    ];
+
+    // Grid items. KPIs span 1 col / 1 row; the funnel ribbon spans full width;
+    // charts span 2 cols / 2 rows. Order + spans are user-editable (persisted).
+    // 12-col / 56px grid → fine resize steps (thirds, quarters, half-rows). Default
+    // spans reproduce the original 4-up KPIs + 2-up cards layout.
+    const items = [
+      ...kpis.map((k) => ({ id: k.id, w: 3, h: 2 })),
+      { id: 'funnel', w: 12, h: 2 },
+      { id: 'stage', w: 6, h: 4 },
+      { id: 'score', w: 6, h: 4 },
+      { id: 'channels', w: 6, h: 4 },
+      { id: 'temp', w: 6, h: 4 },
+      ...(s.revenue ? [{ id: 'revenue', w: 6, h: 4 }] : []),
+      { id: 'response', w: 6, h: 4 },
+      { id: 'conversion', w: 6, h: 4 },
+    ];
+
+    return { s, kpiById, tempRows, tempTotal, convRows, funnelMax, bucketMax, channelTotal, items };
+  }
+  type View = ReturnType<typeof buildView>;
 
   // ── Click-through to the filtered customer list. Each chart segment links to
   // /crm/customers with the matching filter as a query param (parsed there). ──
@@ -50,81 +143,6 @@
     Dormant: m.crm_stage_help_Dormant(),
     Churned: m.crm_stage_help_Churned(),
   };
-
-  // KPI cards. `href` filters the customer list by the closest lifecycle stage
-  // (Total → no filter). Active(7d)/New(30d) are cohort counts, so the stage
-  // filter is an approximation of intent, not an exact reproduction of the KPI.
-  const kpis = $derived([
-    {
-      id: 'k-total',
-      label: m.crm_dash_total(),
-      value: s.total,
-      icon: Users,
-      help: m.crm_dash_total_help(),
-      href: C,
-    },
-    {
-      id: 'k-active',
-      label: m.crm_dash_active(),
-      value: s.activeWeek,
-      icon: Activity,
-      help: m.crm_dash_active_help(),
-      href: stageHref('Active'),
-    },
-    {
-      id: 'k-new',
-      label: m.crm_dash_new(),
-      value: s.newCount,
-      icon: UserPlus,
-      help: m.crm_dash_new_help(),
-      href: stageHref('New'),
-    },
-    {
-      id: 'k-churned',
-      label: m.crm_dash_churned(),
-      value: s.churned,
-      icon: TrendingDown,
-      help: m.crm_dash_churned_help(),
-      href: stageHref('Churned'),
-    },
-  ]);
-  const kpiById = $derived(new Map(kpis.map((k) => [k.id, k])));
-
-  // Engagement-temperature breakdown (hot/warm/cold), computed server-side.
-  const tempRows = $derived(
-    (['hot', 'warm', 'cold'] as Temperature[]).map((t) => ({
-      key: t,
-      label: t === 'hot' ? m.crm_temp_hot() : t === 'warm' ? m.crm_temp_warm() : m.crm_temp_cold(),
-      count: s.temperature[t],
-      color: temperatureColor(t),
-    })),
-  );
-  const tempTotal = $derived(s.temperature.hot + s.temperature.warm + s.temperature.cold);
-
-  // Conversion funnel rows (leads → booked → bought), coloured by funnel stage.
-  const convRows = $derived([
-    {
-      key: 'leads',
-      label: m.crm_conv_leads(),
-      count: s.conversion.leads,
-      color: funnelStageColor('lead'),
-      href: funnelHref('lead'),
-    },
-    {
-      key: 'booked',
-      label: m.crm_conv_booked(),
-      count: s.conversion.booked,
-      color: funnelStageColor('opportunity'),
-      href: funnelHref('opportunity'),
-    },
-    {
-      key: 'bought',
-      label: m.crm_conv_bought(),
-      count: s.conversion.bought,
-      color: funnelStageColor('customer'),
-      href: funnelHref('customer'),
-    },
-  ]);
 
   const fmtMoney = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
@@ -150,28 +168,13 @@
     const pct = i / 9;
     return `color-mix(in srgb, var(--color-accent) ${Math.round(25 + pct * 75)}%, var(--color-muted))`;
   }
-
-  // Grid items. KPIs span 1 col / 1 row; the funnel ribbon spans full width;
-  // charts span 2 cols / 2 rows. Order + spans are user-editable (persisted).
-  // 12-col / 56px grid → fine resize steps (thirds, quarters, half-rows). Default
-  // spans reproduce the original 4-up KPIs + 2-up cards layout.
-  const items = $derived([
-    ...kpis.map((k) => ({ id: k.id, w: 3, h: 2 })),
-    { id: 'funnel', w: 12, h: 2 },
-    { id: 'stage', w: 6, h: 4 },
-    { id: 'score', w: 6, h: 4 },
-    { id: 'channels', w: 6, h: 4 },
-    { id: 'temp', w: 6, h: 4 },
-    ...(s.revenue ? [{ id: 'revenue', w: 6, h: 4 }] : []),
-    { id: 'response', w: 6, h: 4 },
-    { id: 'conversion', w: 6, h: 4 },
-  ]);
 </script>
 
 <svelte:head><title>{m.crm_nav_dashboard()} — {m.crm_title()}</title></svelte:head>
 
 <!-- One snippet keyed by item id — EditableGrid renders each cell by id. -->
-{#snippet cellBody(id: string)}
+{#snippet cellBody(id: string, view: View)}
+  {@const { s, kpiById, tempRows, tempTotal, convRows, funnelMax, bucketMax, channelTotal } = view}
   {#if id.startsWith('k-')}
     {@const k = kpiById.get(id)}
     {#if k}
@@ -366,31 +369,47 @@
 
   <!-- Full-width scroller so the scrollbar hugs the screen edge; content padded. -->
   <PageBody padding="compact" scroll="region">
-    <EditableGrid
-      id="crm-dashboard-v2"
-      {items}
-      cols={12}
-      rowHeight={56}
-      canSetDefault={isAdmin.value}
-      readonly={!canAct('crm', 'edit')}
-    >
-      <!-- Date-range cohort filter, inline with the Edit-layout button. -->
-      {#snippet toolbar()}
-        <div class="seg" role="group" title={m.crm_dash_range_hint()}>
-          {#each RANGES as r (r.id)}
-            <Button
-              variant="ghost"
-              size="sm"
-              class={`seg-btn ${s.range === r.id ? 'active' : ''}`}
-              aria-pressed={s.range === r.id}
-              onclick={() => setRange(r.id)}>{r.label()}</Button
-            >
-          {/each}
-        </div>
-        <span class="t-caption">{m.crm_dash_range_hint()}</span>
-      {/snippet}
-      {#snippet cell(id)}{@render cellBody(id)}{/snippet}
-    </EditableGrid>
+    <!-- Date-range cohort filter — paints instantly, independent of the streamed stats. -->
+    <div class="seg-row">
+      <div class="seg" role="group" title={m.crm_dash_range_hint()}>
+        {#each RANGES as r (r.id)}
+          <Button
+            variant="ghost"
+            size="sm"
+            class={`seg-btn ${data.range === r.id ? 'active' : ''}`}
+            aria-pressed={data.range === r.id}
+            onclick={() => setRange(r.id)}>{r.label()}</Button
+          >
+        {/each}
+      </div>
+      <span class="t-caption">{m.crm_dash_range_hint()}</span>
+    </div>
+
+    {#await data.streamed.stats}
+      <div class="skel-grid">
+        {#each { length: 4 } as _, i (i)}
+          <Skeleton height="5.5rem" rounded="rounded-lg" />
+        {/each}
+        <div class="skel-wide"><Skeleton height="4rem" rounded="rounded-lg" /></div>
+        {#each { length: 4 } as _, i (i)}
+          <Skeleton height="12rem" rounded="rounded-lg" />
+        {/each}
+      </div>
+    {:then stats}
+      {@const view = buildView(stats)}
+      <EditableGrid
+        id="crm-dashboard-v2"
+        items={view.items}
+        cols={12}
+        rowHeight={56}
+        canSetDefault={isAdmin.value}
+        readonly={!canAct('crm', 'edit')}
+      >
+        {#snippet cell(id)}{@render cellBody(id, view)}{/snippet}
+      </EditableGrid>
+    {:catch}
+      <EmptyState title="Couldn't load CRM dashboard data" icon={Info} compact />
+    {/await}
   </PageBody>
 </PageShell>
 
@@ -587,6 +606,13 @@
   }
 
   /* date-range segmented control */
+  .seg-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    margin-bottom: var(--space-2, 8px);
+    flex-wrap: wrap;
+  }
   .seg {
     display: inline-flex;
     gap: var(--space-1, 4px);
@@ -594,6 +620,16 @@
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
     background: var(--color-card);
+  }
+
+  /* loading skeleton — rough shape of the KPI row + ribbon + chart cards below */
+  .skel-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-3, 12px);
+  }
+  .skel-wide {
+    grid-column: 1 / -1;
   }
   :global(.crm-dashboard-surface .seg-btn) {
     padding: var(--space-1, 4px) var(--space-3, 12px);
