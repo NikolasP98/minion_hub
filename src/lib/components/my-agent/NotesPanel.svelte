@@ -470,7 +470,10 @@
     padding: var(--space-2);
     border-top: 1px solid var(--color-border);
   }
-  :global(.collapse-row) {
+  /* Forwarded-class contract: Button classes MUST be anchored under a scoped
+     ancestor — a bare :global(.rail) leaked flex:1/width:100% onto EventCard's
+     3px accent rail and painted a giant block in the home feed. */
+  .notes-panel :global(.collapse-row) {
     width: 100%;
     height: 2.25rem;
     padding: 0 0.625rem;
@@ -486,16 +489,16 @@
       color var(--duration-fast) ease,
       background var(--duration-fast) ease;
   }
-  :global(.collapse-row > span) {
+  .notes-panel :global(.collapse-row > span) {
     gap: var(--space-3);
   }
-  :global(.collapse-row):hover {
+  .notes-panel :global(.collapse-row):hover {
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
   }
 
   /* Collapsed rail: vertical, discoverable, click-to-expand. */
-  :global(.rail) {
+  .notes-panel :global(.rail) {
     flex: 1;
     min-height: 0;
     width: 100%;
@@ -508,12 +511,12 @@
       color var(--duration-fast) ease,
       background var(--duration-fast) ease;
   }
-  :global(.rail > span) {
+  .notes-panel :global(.rail > span) {
     flex-direction: column;
     align-items: center;
     gap: var(--space-3);
   }
-  :global(.rail):hover {
+  .notes-panel :global(.rail):hover {
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
   }
