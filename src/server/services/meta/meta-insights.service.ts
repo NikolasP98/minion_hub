@@ -337,6 +337,23 @@ export interface PostDetail {
   thumbStatus: string | null;
   /** Reverse lookup on meta_ad_posts (post_id → ad ids) — populated only when isPromoted. */
   promotedByAdIds: string[];
+  /** True when this detail was reconstructed from an unpublished ad creative
+   *  that has no organic post-insight rows. */
+  isDarkPost?: boolean;
+  /** Paid performance attached to a dark post's linked ads. */
+  ad?: {
+    spend: number;
+    impressions: number;
+    reach: number;
+    clicks: number;
+    ctr: number;
+    cpc: number;
+    adNames: string[];
+    campaignId: string | null;
+    campaignName: string | null;
+    firstDate: string | null;
+    lastDate: string | null;
+  };
 }
 
 /**
@@ -371,7 +388,77 @@ export function getPostDetail(ctx: CoreCtx, postId: string): Promise<PostDetail 
       group by mi.org_id, mi.post_id
     `)) as unknown as Array<Record<string, unknown>>;
     const r = rows[0];
-    if (!r) return null;
+    if (!r) {
+      // Unpublished ("dark") ad creatives have an ad→post mapping and often a
+      // mirrored thumbnail, but no organic post-insight rows. Aggregate the
+      // daily paid facts before the media join so the sums cannot be multiplied
+      // by joined media rows.
+      const fallbackRows = (await tx.execute(sql`
+        with ad_totals as (
+          select ap.org_id,
+                 ap.post_id,
+                 ap.platform,
+                 string_agg(distinct ap.ad_id, ',' order by ap.ad_id) as promoted_by_ad_ids,
+                 coalesce(sum(mai.spend), 0)::float8 as spend,
+                 coalesce(sum(mai.impressions), 0)::bigint as impressions,
+                 coalesce(sum(mai.reach), 0)::bigint as reach,
+                 coalesce(sum(mai.clicks), 0)::bigint as clicks,
+                 max(mai.campaign_id) as campaign_id,
+                 max(mai.campaign_name) as campaign_name,
+                 array_agg(distinct mai.ad_name order by mai.ad_name)
+                   filter (where mai.ad_name is not null) as ad_names,
+                 min(mai.date)::text as first_date,
+                 max(mai.date)::text as last_date
+          from meta_ad_posts ap
+          left join meta_ad_insights mai
+            on mai.org_id = ap.org_id and mai.ad_id = ap.ad_id
+          where ap.org_id = ${ctx.tenantId} and ap.post_id = ${postId}
+          group by ap.org_id, ap.post_id, ap.platform
+        )
+        select a.*,
+               max(mm.file_id) filter (where mm.status = 'mirrored') as thumb_file_id,
+               max(mm.status) filter (where mm.status = 'mirrored') as thumb_status
+        from ad_totals a
+        left join meta_post_media mm
+          on mm.org_id = a.org_id and mm.platform = a.platform and mm.post_id = a.post_id
+        group by a.org_id, a.post_id, a.platform, a.promoted_by_ad_ids,
+                 a.spend, a.impressions, a.reach, a.clicks, a.campaign_id,
+                 a.campaign_name, a.ad_names, a.first_date, a.last_date
+      `)) as unknown as Array<Record<string, unknown>>;
+      const dark = fallbackRows[0];
+      if (!dark) return null;
+
+      const spend = Number(dark.spend ?? 0);
+      const impressions = Number(dark.impressions ?? 0);
+      const clicks = Number(dark.clicks ?? 0);
+      return {
+        postId: String(dark.post_id),
+        platform: dark.platform != null ? String(dark.platform) : null,
+        permalink: null,
+        caption: null,
+        mediaType: null,
+        postedAt: null,
+        isPromoted: true,
+        metrics: {},
+        thumbFileId: dark.thumb_file_id != null ? String(dark.thumb_file_id) : null,
+        thumbStatus: dark.thumb_status != null ? String(dark.thumb_status) : null,
+        promotedByAdIds: dark.promoted_by_ad_ids ? String(dark.promoted_by_ad_ids).split(',') : [],
+        isDarkPost: true,
+        ad: {
+          spend,
+          impressions,
+          reach: Number(dark.reach ?? 0),
+          clicks,
+          ctr: calcCtr(clicks, impressions),
+          cpc: calcCpc(spend, clicks),
+          adNames: Array.isArray(dark.ad_names) ? dark.ad_names.map(String) : [],
+          campaignId: dark.campaign_id != null ? String(dark.campaign_id) : null,
+          campaignName: dark.campaign_name != null ? String(dark.campaign_name) : null,
+          firstDate: dark.first_date != null ? String(dark.first_date) : null,
+          lastDate: dark.last_date != null ? String(dark.last_date) : null,
+        },
+      };
+    }
     return {
       postId: String(r.post_id),
       platform: r.platform != null ? String(r.platform) : null,

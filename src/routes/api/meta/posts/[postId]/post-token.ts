@@ -45,8 +45,38 @@ export async function resolvePostToken(ctx: CoreCtx, postId: string): Promise<{ 
       where mi.org_id = ${ctx.tenantId} and mi.post_id = ${postId}
       limit 1
     `)) as unknown as PostTokenRow[];
-    const r = rows[0];
+    let r = rows[0];
+    if (!r) {
+      const fallbackRows = (await tx.execute(sql`
+        select ap.platform,
+               a.page_token_ciphertext,
+               a.page_token_iv,
+               c.token_ciphertext as conn_token_ciphertext,
+               c.token_iv as conn_token_iv
+        from meta_ad_posts ap
+        left join lateral (
+          select ma.page_token_ciphertext, ma.page_token_iv
+          from meta_assets ma
+          where ma.org_id = ap.org_id
+            and ma.kind = 'page'
+            and ma.page_token_ciphertext is not null
+          limit 1
+        ) a on ap.platform = 'fb'
+        left join lateral (
+          select mc.token_ciphertext, mc.token_iv
+          from meta_connections mc
+          where mc.org_id = ap.org_id
+            and mc.kind = 'ig_login'
+            and mc.status <> 'revoked'
+          limit 1
+        ) c on ap.platform = 'ig'
+        where ap.org_id = ${ctx.tenantId} and ap.post_id = ${postId}
+        limit 1
+      `)) as unknown as PostTokenRow[];
+      r = fallbackRows[0];
+    }
     if (!r) return null;
+    if (r.platform !== 'fb' && r.platform !== 'ig') return null;
     const platform: 'fb' | 'ig' = r.platform === 'ig' ? 'ig' : 'fb';
     const token =
       platform === 'fb'

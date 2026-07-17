@@ -4,6 +4,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { ArrowLeft, ExternalLink, Megaphone, MessageCircle, X } from 'lucide-svelte';
 	import PlatformIcon from '$lib/components/socials/PlatformIcon.svelte';
+	import VideoPlayer from '$lib/components/socials/VideoPlayer.svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import { createBackNav } from '$lib/nav/back-nav.svelte';
 	import { metricLabel } from '$lib/ads/metric-labels';
@@ -19,6 +20,16 @@
 	function fmtInt(v: number): string {
 		return Math.round(v).toLocaleString();
 	}
+	function fmtDecimal(v: number): string {
+		return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+	}
+	const subtitleDate = $derived(
+		post.postedAt
+			? fmtDate(post.postedAt)
+			: post.ad
+				? `${fmtDate(post.ad.firstDate)} → ${fmtDate(post.ad.lastDate)}`
+				: fmtDate(null),
+	);
 
 	const metricEntries = $derived(Object.entries(post.metrics).sort(([a], [b]) => a.localeCompare(b)));
 
@@ -97,7 +108,7 @@
 <!-- flex-1 min-w-0: page roots inside the SectionShell flex-row must fill it
      (bare h-full roots shrink to intrinsic width — governance layout contract). -->
 <div class="social-post-page flex flex-col h-full min-h-0 flex-1 min-w-0">
-	<PageHeader title={m.ads_post_detail_title()} subtitle={fmtDate(post.postedAt)}>
+	<PageHeader title={m.ads_post_detail_title()} subtitle={subtitleDate}>
 		{#snippet leading()}
 			<PlatformIcon platform={post.platform} size={16} class="text-accent shrink-0" />
 		{/snippet}
@@ -118,16 +129,18 @@
 						<div class="carousel">
 							{#each media as item, i (i)}
 								{#if item.type === 'video'}
-									<!-- svelte-ignore a11y_media_has_caption -- ponytail: source video has no caption track (Meta CDN), no captioning pipeline in scope -->
-									<video controls poster={item.poster} src={item.url} class="carousel-item"></video>
+									<div class="carousel-item video-wrap">
+										<VideoPlayer poster={item.poster} src={item.url} />
+									</div>
 								{:else}
 									<img src={item.url} alt="" class="carousel-item" />
 								{/if}
 							{/each}
 						</div>
 					{:else if media.length === 1 && media[0].type === 'video'}
-						<!-- svelte-ignore a11y_media_has_caption -- ponytail: source video has no caption track (Meta CDN), no captioning pipeline in scope -->
-						<video controls poster={media[0].poster ?? mirroredUrl ?? undefined} src={media[0].url} class="media-single"></video>
+						<div class="media-single video-wrap">
+							<VideoPlayer poster={media[0].poster ?? mirroredUrl ?? undefined} src={media[0].url} />
+						</div>
 					{:else if media.length === 1}
 						<img src={media[0].url} alt="" class="media-single" />
 					{:else if mirroredUrl}
@@ -142,9 +155,9 @@
 				<!-- Badges + meta -->
 				<section class="doc-sec meta-row">
 					<span class="post-platform" data-platform={post.platform ?? ''}>{post.platform === 'ig' ? m.ads_platform_ig() : m.ads_platform_fb()}</span>
-					<span class="post-type" class:ad={post.isPromoted}>{post.isPromoted ? m.ads_badge_boosted() : m.ads_badge_organic()}</span>
+					<span class="post-type" class:ad={post.isPromoted}>{post.ad ? m.ads_badge_ad() : post.isPromoted ? m.ads_badge_boosted() : m.ads_badge_organic()}</span>
 					{#if post.promotedByAdIds.length > 0}
-						<a class="promoted-chip" href="/socials/campaigns">
+						<a class="promoted-chip" href={post.ad?.campaignId ? `/socials/campaigns/${encodeURIComponent(post.ad.campaignId)}` : '/socials/campaigns'}>
 							<Megaphone size={13} />
 							{m.ads_post_detail_promoted_chip({ count: post.promotedByAdIds.length })}
 						</a>
@@ -177,6 +190,41 @@
 								</div>
 							{/each}
 						</div>
+					</section>
+				{/if}
+
+				{#if post.ad}
+					<section class="doc-sec">
+						<header class="panel-h">{m.ads_post_detail_ad_stats_title()}</header>
+						<div class="stats-grid">
+							<div class="stat">
+								<span class="stat-v">{fmtDecimal(post.ad.spend)}</span>
+								<span class="stat-l">{m.ads_kpi_spend()}</span>
+							</div>
+							<div class="stat">
+								<span class="stat-v">{fmtInt(post.ad.impressions)}</span>
+								<span class="stat-l">{m.ads_kpi_impressions()}</span>
+							</div>
+							<div class="stat">
+								<span class="stat-v">{fmtInt(post.ad.reach)}</span>
+								<span class="stat-l">{m.ads_kpi_reach()}</span>
+							</div>
+							<div class="stat">
+								<span class="stat-v">{fmtInt(post.ad.clicks)}</span>
+								<span class="stat-l">{m.ads_kpi_clicks()}</span>
+							</div>
+							<div class="stat">
+								<span class="stat-v">{fmtDecimal(post.ad.ctr)}%</span>
+								<span class="stat-l">{m.ads_kpi_ctr()}</span>
+							</div>
+							<div class="stat">
+								<span class="stat-v">{fmtDecimal(post.ad.cpc)}</span>
+								<span class="stat-l">{m.ads_kpi_cpc()}</span>
+							</div>
+						</div>
+						{#if post.ad.adNames.length > 0}
+							<p class="ad-names"><span>{m.ads_post_detail_ad_names()}:</span> {post.ad.adNames.join(', ')}</p>
+						{/if}
 					</section>
 				{/if}
 			</div>
@@ -266,6 +314,26 @@
 		object-fit: contain;
 	}
 
+	/* VideoPlayer is a separate component — its root class is invisible to our
+	   scoped rules (forwarded-class trap), so we wrap it and reach in with
+	   :global to cap the inner <video>. contain letterboxes tall Reels against
+	   the player's own overlay background. */
+	.video-wrap {
+		display: block;
+		width: 100%;
+	}
+	.video-wrap :global(.video-player) {
+		width: 100%;
+	}
+	.media-single.video-wrap :global(video) {
+		max-height: min(640px, 60vh);
+		object-fit: contain;
+	}
+	.carousel-item.video-wrap :global(video) {
+		max-height: min(520px, 55vh);
+		object-fit: contain;
+	}
+
 	.doc-sec {
 		border-top: 1px solid var(--hairline);
 		padding: var(--space-4) var(--space-6);
@@ -347,6 +415,14 @@
 	.stat-l {
 		font-size: var(--font-size-caption);
 		color: var(--color-muted-foreground);
+	}
+	.ad-names {
+		margin-top: var(--space-4);
+		font-size: var(--font-size-body);
+		color: var(--color-foreground);
+	}
+	.ad-names span {
+		font-weight: 600;
 	}
 
 	/* ── Comments panel ──────────────────────────────────────────────────── */

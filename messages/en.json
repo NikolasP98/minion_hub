@@ -4363,6 +4363,8 @@
   "ads_preset_all": "All",
   "ads_post_detail_title": "Post",
   "ads_post_detail_stats_title": "Performance",
+  "ads_post_detail_ad_stats_title": "Ad performance",
+  "ads_post_detail_ad_names": "Ad names",
   "ads_post_detail_promoted_chip": "Promoted by {count} ads",
   "ads_post_detail_comments_title": "Comments ({count})",
   "ads_post_detail_comments_empty": "No comments yet",
@@ -4606,5 +4608,13 @@
   "crm_dni_apply": "Apply",
   "crm_dni_age": "{n} yrs",
   "crm_dni_not_found": "No match found in the DNI registry.",
-  "crm_dni_error": "Lookup failed. Try again."
+  "crm_dni_error": "Lookup failed. Try again.",
+  "video_player": "Video player",
+  "video_play": "Play video",
+  "video_pause": "Pause video",
+  "video_mute": "Mute video",
+  "video_unmute": "Unmute video",
+  "video_seek": "Seek video",
+  "video_fullscreen": "Enter fullscreen",
+  "video_exit_fullscreen": "Exit fullscreen"
 }

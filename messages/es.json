@@ -4363,6 +4363,8 @@
   "ads_preset_all": "Todo",
   "ads_post_detail_title": "Publicación",
   "ads_post_detail_stats_title": "Rendimiento",
+  "ads_post_detail_ad_stats_title": "Rendimiento del anuncio",
+  "ads_post_detail_ad_names": "Nombres de los anuncios",
   "ads_post_detail_promoted_chip": "Promocionado por {count} anuncios",
   "ads_post_detail_comments_title": "Comentarios ({count})",
   "ads_post_detail_comments_empty": "Aún no hay comentarios",
@@ -4606,5 +4608,13 @@
   "crm_dni_apply": "Aplicar",
   "crm_dni_age": "{n} años",
   "crm_dni_not_found": "No se encontró coincidencia en el registro de DNI.",
-  "crm_dni_error": "La consulta falló. Inténtalo de nuevo."
+  "crm_dni_error": "La consulta falló. Inténtalo de nuevo.",
+  "video_player": "Reproductor de video",
+  "video_play": "Reproducir video",
+  "video_pause": "Pausar video",
+  "video_mute": "Silenciar video",
+  "video_unmute": "Activar sonido del video",
+  "video_seek": "Buscar en el video",
+  "video_fullscreen": "Entrar en pantalla completa",
+  "video_exit_fullscreen": "Salir de pantalla completa"
 }

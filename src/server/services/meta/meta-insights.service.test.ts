@@ -4,6 +4,21 @@ import { previousRange, deltaPct, calcCtr, calcCpc, extentToRange, getPostDetail
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
+function rawSqlDb(...queryResults: unknown[]) {
+  let executeCount = 0;
+  const tx = {
+    execute: async () => {
+      executeCount += 1;
+      // withOrgCore's four SET LOCAL / set_config statements precede service queries.
+      if (executeCount <= 4) return undefined;
+      return queryResults[executeCount - 5] ?? [];
+    },
+  };
+  return {
+    transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
+  };
+}
+
 describe('previousRange', () => {
   it('returns the equal-length window immediately before range', () => {
     expect(previousRange({ from: '2026-06-01', to: '2026-07-01' })).toEqual({
@@ -127,5 +142,61 @@ describe('getPostDetail', () => {
     expect(detail?.isPromoted).toBe(false);
     expect(detail?.promotedByAdIds).toEqual([]);
     expect(detail?.thumbFileId).toBeNull();
+  });
+
+  it('falls back to linked ad aggregates for a dark post', async () => {
+    const db = rawSqlDb([], [
+      {
+        post_id: 'dark-post-1',
+        platform: 'fb',
+        promoted_by_ad_ids: 'ad-1,ad-2',
+        spend: 75.5,
+        impressions: 5000,
+        reach: 4200,
+        clicks: 125,
+        campaign_id: 'campaign-1',
+        campaign_name: 'Winter launch',
+        ad_names: ['Dark creative A', 'Dark creative B'],
+        first_date: '2026-06-01',
+        last_date: '2026-06-10',
+        thumb_file_id: 'file-dark-1',
+        thumb_status: 'mirrored',
+      },
+    ]);
+
+    const detail = await getPostDetail(ctx(db), 'dark-post-1');
+
+    expect(detail).toEqual({
+      postId: 'dark-post-1',
+      platform: 'fb',
+      permalink: null,
+      caption: null,
+      mediaType: null,
+      postedAt: null,
+      isPromoted: true,
+      metrics: {},
+      thumbFileId: 'file-dark-1',
+      thumbStatus: 'mirrored',
+      promotedByAdIds: ['ad-1', 'ad-2'],
+      isDarkPost: true,
+      ad: {
+        spend: 75.5,
+        impressions: 5000,
+        reach: 4200,
+        clicks: 125,
+        ctr: 2.5,
+        cpc: 0.604,
+        adNames: ['Dark creative A', 'Dark creative B'],
+        campaignId: 'campaign-1',
+        campaignName: 'Winter launch',
+        firstDate: '2026-06-01',
+        lastDate: '2026-06-10',
+      },
+    });
+  });
+
+  it('returns null after both the organic and dark-post lookups miss', async () => {
+    const db = rawSqlDb([], []);
+    expect(await getPostDetail(ctx(db), 'truly-unknown')).toBeNull();
   });
 });
