@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
 import { supabaseAdmin } from '$server/supabase';
 import {
   MODULE_SUBRESOURCES,
@@ -304,7 +305,31 @@ export function buildCapabilities(roles: string[], overrides: OverrideRow[]): Ca
  * any per-org overrides via the service-role client. The caller must already be
  * authorized + org-scoped upstream (resolveAssistantPrincipal does this).
  */
+function rbacCacheTags(orgId: string) {
+  return tags.tenantDomain(orgId, 'rbac');
+}
+/** Bust cached role/rule resolution — call after ANY member-role or permission-rule write. */
+export function invalidateRbac(orgId: string) {
+  return invalidateTags([...rbacCacheTags(orgId)]);
+}
+
 export async function resolveCapabilities(orgId: string, profileId: string): Promise<Capabilities> {
+  // Capabilities is a bundle of closures, so the cache holds the raw rows
+  // (roles + override rules) and rebuilds. Cuts 2-3 PostgREST calls per call
+  // site; resolveCapabilities runs 3x+ per navigation (permissions load,
+  // owner-scope, field-level).
+  const { roles, rules } = await cached(
+    keys.hub('rbac-caps', { t: orgId, u: profileId }),
+    { ttl: '2m', swr: '30s', tags: [...rbacCacheTags(orgId)] },
+    () => loadCapabilityRows(orgId, profileId),
+  );
+  return buildCapabilities(roles, rules);
+}
+
+async function loadCapabilityRows(
+  orgId: string,
+  profileId: string,
+): Promise<{ roles: string[]; rules: OverrideRow[] }> {
   const admin = supabaseAdmin();
 
   const memberRolesResult = await admin
@@ -340,7 +365,7 @@ export async function resolveCapabilities(orgId: string, profileId: string): Pro
     roles = legacyMembership ? [legacyRoleKey(legacyMembership.role)] : [];
   }
 
-  if (roles.length === 0) return buildCapabilities([], []);
+  if (roles.length === 0) return { roles: [], rules: [] };
 
   const permissionRulesResult = await admin
     .from('permission_rules')
@@ -355,7 +380,7 @@ export async function resolveCapabilities(orgId: string, profileId: string): Pro
     });
   }
 
-  return buildCapabilities(roles, (permissionRulesResult.data ?? []) as OverrideRow[]);
+  return { roles, rules: (permissionRulesResult.data ?? []) as OverrideRow[] };
 }
 
 /**
@@ -776,6 +801,7 @@ export async function createCustomRole(
     source_role_key: params.sourceRoleKey,
     created_by: createdBy,
   });
+  await invalidateRbac(orgId);
 
   return { key, name, rank, description: null, isCustom: true };
 }
@@ -805,6 +831,7 @@ export async function deleteCustomRole(orgId: string, key: string): Promise<void
 
   await admin.from('permission_rules').delete().eq('org_id', orgId).eq('role_key', key);
   await admin.from('org_roles').delete().eq('org_id', orgId).eq('key', key);
+  await invalidateRbac(orgId);
 }
 
 /**
@@ -852,6 +879,7 @@ export async function setMemberRole(
   await admin
     .from('member_roles')
     .insert({ org_id: orgId, profile_id: profileId, role_key: roleKey, granted_by: grantedBy });
+  await invalidateRbac(orgId);
 }
 
 /**
@@ -911,6 +939,7 @@ export async function addMemberRole(
       { org_id: orgId, profile_id: profileId, role_key: roleKey, granted_by: grantedBy },
       { onConflict: 'org_id,profile_id,role_key', ignoreDuplicates: true },
     );
+  await invalidateRbac(orgId);
 }
 
 /**
@@ -940,6 +969,7 @@ export async function removeMemberRole(
     .eq('org_id', orgId)
     .eq('profile_id', profileId)
     .eq('role_key', roleKey);
+  await invalidateRbac(orgId);
 }
 
 /**
@@ -978,6 +1008,7 @@ export async function setRoleOverride(
     },
     { onConflict: 'org_id,role_key,module' },
   );
+  await invalidateRbac(orgId);
 }
 
 /** Remove a per-org override so (role, module-or-subresource) reverts to default/inherited. */
@@ -993,6 +1024,7 @@ export async function clearRoleOverride(
     .eq('org_id', orgId)
     .eq('role_key', roleKey)
     .eq('module', module);
+  await invalidateRbac(orgId);
 }
 
 export function isModule(x: unknown): x is Module {

@@ -1,7 +1,14 @@
 import { sql } from 'drizzle-orm';
+import { cached, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
+
+// Sits at the crm×finances intersection: either domain's invalidation busts it.
+const cfTags = (orgId: string) => [
+  ...tags.tenantDomain(orgId, 'crm'),
+  ...tags.tenantDomain(orgId, 'finances'),
+];
 
 // A line item is a "reservation deposit" (the 50-soles "Reserva de Consulta")
 // rather than an actual procedure — the signal that splits "reservó pero no
@@ -41,6 +48,14 @@ export interface ContactFinance {
 
 export async function contactFinanceMap(ctx: CoreCtx): Promise<Record<string, ContactFinance>> {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return {};
+  return cached(
+    keys.hub('crm-fin-map', { t: ctx.tenantId }),
+    { ttl: '2m', swr: '30s', tags: cfTags(ctx.tenantId) },
+    () => loadContactFinanceMap(ctx),
+  );
+}
+
+async function loadContactFinanceMap(ctx: CoreCtx): Promise<Record<string, ContactFinance>> {
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
       with ${CONTACT_PARTY},
@@ -85,44 +100,32 @@ export async function crmRevenueSummary(
   ctx: CoreCtx,
 ): Promise<{ revenue: number; invoices: number; buyers: number; avgTicket: number; customers: number; reserved: number; loyal: number } | null> {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
-  return withOrgCore(ctx, async (tx) => {
-    const [agg] = (await tx.execute(sql`
-      with ${CONTACT_PARTY},
-      inv as (
-        select cp.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
-               bool_or(${IS_RESERVA}) has_reserva, bool_or(${IS_PROCEDURE}) has_proc
-        from contact_party cp
-        join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
-        join fin_invoices fi on fi.client_id = fc.id
-        left join fin_invoice_items ii on ii.invoice_id = fi.id
-        group by cp.contact_id, fi.id, fi.total, fi.issued_at
-      ),
-      cls as (
-        select contact_id, sum(total)::float8 revenue, count(*)::int invoices,
-               bool_or(has_proc) purchased, bool_or(has_reserva) has_reserva,
-               count(distinct case when has_proc then issued_at::date end)::int proc_dates
-        from inv group by contact_id
-      )
-      select coalesce(sum(revenue),0)::float8 revenue,
-             coalesce(sum(invoices),0)::int invoices,
-             count(*)::int buyers,
-             count(*) filter (where purchased)::int customers,
-             count(*) filter (where not purchased and has_reserva)::int reserved,
-             count(*) filter (where proc_dates >= 2)::int loyal
-      from cls
-    `)) as unknown as Array<{ revenue: number; invoices: number; buyers: number; customers: number; reserved: number; loyal: number }>;
-    const revenue = Number(agg?.revenue ?? 0);
-    const invoices = Number(agg?.invoices ?? 0);
-    return {
-      revenue,
-      invoices,
-      buyers: Number(agg?.buyers ?? 0),
-      avgTicket: invoices ? revenue / invoices : 0,
-      customers: Number(agg?.customers ?? 0),
-      reserved: Number(agg?.reserved ?? 0),
-      loyal: Number(agg?.loyal ?? 0),
-    };
-  });
+  // Pure aggregation over the (cached) per-contact map — it used to re-run the
+  // exact same CONTACT_PARTY/inv CTE as contactFinanceMap in a second query.
+  const map = await contactFinanceMap(ctx);
+  let revenue = 0;
+  let invoices = 0;
+  let buyers = 0;
+  let customers = 0;
+  let reserved = 0;
+  let loyal = 0;
+  for (const f of Object.values(map)) {
+    revenue += f.revenue;
+    invoices += f.invoices;
+    buyers += 1;
+    if (f.purchased) customers += 1;
+    if (f.reservedOnly) reserved += 1;
+    if (f.loyal) loyal += 1;
+  }
+  return {
+    revenue,
+    invoices,
+    buyers,
+    avgTicket: invoices ? revenue / invoices : 0,
+    customers,
+    reserved,
+    loyal,
+  };
 }
 
 export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
