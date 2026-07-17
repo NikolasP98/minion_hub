@@ -5,7 +5,7 @@
   // (?tab=skills) so deep links and the legacy /tools redirect land correctly.
   // The tabs render as a vertical second nav (mirrors /scheduling).
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { Wrench, BookOpen, Plug } from 'lucide-svelte';
   import BuilderHub from '$lib/components/builder/BuilderHub.svelte';
   import McpPanel from '$lib/components/builder/McpPanel.svelte';

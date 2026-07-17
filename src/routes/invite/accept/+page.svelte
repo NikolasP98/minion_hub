@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
   import { LoaderCircle } from 'lucide-svelte';
 

@@ -6,6 +6,7 @@ import '$server/env-hoist';
 import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
+import { canonicalPath } from '$lib/canonical-path';
 import { getPostHogClient } from '$lib/server/posthog';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
@@ -122,7 +123,8 @@ const wellKnownHandle: Handle = async ({ event, resolve }) => {
  */
 const cloudPasskeyHandle: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);
-  if (event.url.pathname === '/cloud' || event.url.pathname.startsWith('/cloud/')) {
+  const cloudPath = canonicalPath(event.url.pathname);
+  if (cloudPath === '/cloud' || cloudPath.startsWith('/cloud/')) {
     response.headers.set(
       'Permissions-Policy',
       'publickey-credentials-get=(self "https://exe.dev" "https://*.exe.xyz")',
@@ -143,7 +145,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
   if (bypassGate) {
     // AUTH_DISABLED bypass skips finishApp, so mirror its "/" → landing redirect
     // here or the root URL 404s in dev (there is no +page at "/").
-    if (event.url.pathname === '/') {
+    if (canonicalPath(event.url.pathname) === '/') {
       return new Response(null, { status: 307, headers: { location: '/home' } });
     }
     return resolve(event);
@@ -158,7 +160,8 @@ const appHandle: Handle = async ({ event, resolve }) => {
  * unauthenticated-API fallback + redirect logic isn't duplicated.
  */
 const finishApp: Handle = async ({ event, resolve }) => {
-  const path = event.url.pathname;
+  // Locale-blind: every comparison below assumes canonical (unprefixed) paths.
+  const path = canonicalPath(event.url.pathname);
 
   // For API routes: unauthenticated fallback is restricted to explicitly safe paths only.
   // Sensitive routes (workshop, flows, personal-agent, users) require explicit auth and
@@ -331,7 +334,7 @@ const workforceIdentityHandle: Handle = async ({ event, resolve }) => {
     // The Workforce company id IS the active hub org id (native single-id
     // model). Only attach it for routes that consume it (the workforce UI + the
     // backend proxy) so non-workforce requests skip the work entirely.
-    const path = event.url.pathname;
+    const path = canonicalPath(event.url.pathname);
     const needsCompany = needsWorkforceIdentity(path);
     if (!needsCompany) return resolve(event);
     const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId ?? null;

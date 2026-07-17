@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { invalidate, goto } from '$app/navigation';
+  import { invalidate, goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
   import { PageHeader, Button, Modal } from '$lib/components/ui';

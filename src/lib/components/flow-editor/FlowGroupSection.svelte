@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-import { goto } from '$app/navigation';
+import { goto } from '$lib/navigation';
   import { GitBranch, Plus, Trash2, Clock, Puzzle, Lock, Pencil, ChevronDown, ChevronRight } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import NewFromTemplateMenu from './NewFromTemplateMenu.svelte';

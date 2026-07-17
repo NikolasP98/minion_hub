@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Input } from '$lib/components/ui';
-  import { invalidateAll, goto } from '$app/navigation';
+  import { invalidateAll, goto } from '$lib/navigation';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
   import GatewayUpdateCard from '$lib/components/settings/GatewayUpdateCard.svelte';
   import { addHost, removeHost, updateHost, hostsState } from '$lib/state/features/hosts.svelte';

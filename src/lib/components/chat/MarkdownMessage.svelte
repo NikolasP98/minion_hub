@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Carta } from 'carta-md';
   import DOMPurify from 'dompurify';
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { resolveInternalNav } from '$lib/utils/internal-nav';
   import 'carta-md/default.css';
 

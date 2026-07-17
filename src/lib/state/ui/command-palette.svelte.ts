@@ -1,4 +1,4 @@
-import { goto } from '$app/navigation';
+import { goto } from '$lib/navigation';
 import { visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
 import { palettePageRoutes } from '$lib/nav/routes';
 import { canViewPath } from '$lib/access/can.svelte';

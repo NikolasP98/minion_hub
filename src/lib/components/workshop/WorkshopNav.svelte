@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { GitCompare, LayoutGrid, MessagesSquare } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
@@ -12,7 +13,7 @@
     { id: 'groupchat', label: m.workshop_exp_group_chat(), icon: MessagesSquare, href: '/agents/workshop/groupchat' },
   ];
 
-  const pathname = $derived(page.url.pathname);
+  const pathname = $derived(canonicalPath(page.url.pathname));
   const activeId = $derived(
     pathname === '/agents/workshop'
       ? 'canvases'

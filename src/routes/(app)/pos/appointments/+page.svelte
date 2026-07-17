@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { CalendarDays, Plus, Check, X, UserX, ShoppingCart } from 'lucide-svelte';
-  import { invalidate, goto } from '$app/navigation';
+  import { invalidate, goto } from '$lib/navigation';
   import { page } from '$app/state';
   import {
     PageHeader,

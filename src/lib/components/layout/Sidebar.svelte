@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
@@ -47,7 +48,7 @@
 
   const showReliability = $derived(canViewPath('/reliability'));
   const showCloud = $derived(canViewPath('/cloud'));
-  const isSettings = $derived(page.url.pathname.startsWith('/settings'));
+  const isSettings = $derived(canonicalPath(page.url.pathname).startsWith('/settings'));
 
   // Top utility row: icon-only pills that expand inline to icon+label when the
   // user is on that page. Reliability is gated by the monitor policy.
@@ -113,7 +114,7 @@
 
   // Active-state resolver: archetype roster filters are query-aware.
   function isActive(item: SectionItem): boolean {
-    return item.activeWhen ? item.activeWhen(page.url) : item.matcher(page.url.pathname);
+    return item.activeWhen ? item.activeWhen(page.url) : item.matcher(canonicalPath(page.url.pathname));
   }
 
   // Collapsible subsection state (Customer Support → Channels). Default open.
@@ -295,7 +296,7 @@
   {#if topItems.length}
     <div class="top-row {collapsed ? 'is-collapsed' : ''}">
       {#each topItems as t (t.href)}
-        {@const active = page.url.pathname.startsWith(t.href)}
+        {@const active = canonicalPath(page.url.pathname).startsWith(t.href)}
         {@const showLabel = !collapsed && isMd && active}
         <Tooltip
           label={t.label}

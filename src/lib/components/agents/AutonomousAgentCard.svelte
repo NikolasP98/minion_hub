@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto, invalidateAll } from '$app/navigation';
+  import { goto, invalidateAll } from '$lib/navigation';
   import { Zap, Settings2, Workflow, MoreVertical, ArrowUpRight } from 'lucide-svelte';
   import { StatusDot, Dropdown, type DropdownItem } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';

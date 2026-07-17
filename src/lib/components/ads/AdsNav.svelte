@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { LayoutDashboard, Target, Image, Settings } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
@@ -16,7 +17,7 @@
     ].filter((i) => canViewPath(i.href)),
   );
 
-  const pathname = $derived(page.url.pathname);
+  const pathname = $derived(canonicalPath(page.url.pathname));
 
   function isActive(id: string, href: string): boolean {
     if (id === 'dashboard') return pathname === '/socials';

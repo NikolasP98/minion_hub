@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
     import type { Snippet } from 'svelte';
     import SettingsNav from '$lib/components/settings/SettingsNav.svelte';
     import { page } from '$app/state';
-    import { goto } from '$app/navigation';
+    import { goto } from '$lib/navigation';
     import { SectionShell } from '$lib/components/ui/foundations';
 
     interface Props {
@@ -16,7 +17,7 @@
     // navigates to /settings?s=<id>.
     function handleSelect(id: string) {
         const target = `/settings?s=${id}`;
-        if (page.url.pathname === '/settings') {
+        if (canonicalPath(page.url.pathname) === '/settings') {
             goto(target, { replaceState: true, noScroll: true });
         } else {
             goto(target);

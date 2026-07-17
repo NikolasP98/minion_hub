@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import {
     LayoutDashboard,
     Package,
@@ -45,7 +46,7 @@
     ].filter((i) => canViewPath(i.href)),
   );
 
-  const pathname = $derived(page.url.pathname);
+  const pathname = $derived(canonicalPath(page.url.pathname));
 
   function isActive(id: string, href: string): boolean {
     if (id === 'overview') return pathname === '/stock';

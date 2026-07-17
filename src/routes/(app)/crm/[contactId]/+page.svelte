@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { goto, invalidate } from '$app/navigation';
+  import { goto, invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import {
     ArrowLeft,

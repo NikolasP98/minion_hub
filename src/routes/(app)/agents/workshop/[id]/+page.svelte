@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { onDestroy, onMount } from 'svelte';
 
   import WorkshopToolbar from '$lib/components/workshop/WorkshopToolbar.svelte';

@@ -47,6 +47,13 @@ vi.mock('@minion-stack/db/schema', () => ({
   member: { userId: 'user_id', organizationId: 'organization_id' },
   session: { id: 'id' },
 }));
+// The layout wraps its core loads in the PG pool guards (singleflight
+// app-shell gates); pass-through here so no real SUPABASE_DB_URL is needed.
+vi.mock('$server/db/pg-client', () => ({
+  withCriticalCoreDb: (fn: () => unknown) => fn(),
+  withCoreDbRecovery: (fn: () => unknown) => fn(),
+  getCoreDb: vi.fn(() => ({})),
+}));
 
 // `requireAuth` lives in $server/auth/authorize. Import the real module so
 // it throws the real SvelteKit 401 when `locals.user` is missing.

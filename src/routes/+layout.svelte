@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import '../app.css';
   import { onMount } from 'svelte';
-  import { goto, afterNavigate } from '$app/navigation';
+  import { goto, afterNavigate } from '$lib/navigation';
   import { page } from '$app/state';
   import { ParaglideJS } from '@inlang/paraglide-sveltekit';
   import { i18n } from '$lib/i18n';
@@ -58,7 +59,7 @@
   onMount(async () => {
     installInterceptor();
 
-    const current = page.url.pathname;
+    const current = canonicalPath(page.url.pathname);
     // Public auth-flow pages (sign-in, forgot-password, recovery-link
     // landing) must render for a signed-out visitor — mirrors the
     // UNPROTECTED_PREFIXES SSR gate in hooks.server.ts. Without this
@@ -98,13 +99,13 @@
 </script>
 
 <ParaglideJS {i18n} languageTag={locale.current}>
-  {#if isVoxelized && page.url.pathname !== '/login'}
+  {#if isVoxelized && canonicalPath(page.url.pathname) !== '/login'}
     <VoxelShader />
   {/if}
   {#if !isVoxelized}
     <ParticleCanvas />
   {/if}
-  {#if page.url.pathname !== '/login' && !isVoxelized}
+  {#if canonicalPath(page.url.pathname) !== '/login' && !isVoxelized}
     <BgPattern />
   {/if}
   <Toaster />
@@ -116,7 +117,7 @@
     </div>
   {/if}
 
-  {#key page.url.pathname.split('/')[1]}
+  {#key canonicalPath(page.url.pathname).split('/')[1]}
     <div style="animation: page-fade-in 120ms ease-out">
       {@render children()}
     </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { page } from '$app/state';
   import {
     SectionNav,
@@ -19,7 +20,7 @@
     })),
   );
 
-  const activeId = $derived(items.find((i) => page.url.pathname === i.href)?.id);
+  const activeId = $derived(items.find((i) => canonicalPath(page.url.pathname) === i.href)?.id);
 </script>
 
 <SectionNav {items} {activeId} ariaLabel={m.nav_channels()} />

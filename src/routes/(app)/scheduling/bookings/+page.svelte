@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { CalendarClock, Plus, Check, X, UserX, ClipboardList } from 'lucide-svelte';
-  import { invalidate, goto } from '$app/navigation';
+  import { invalidate, goto } from '$lib/navigation';
   import { PageHeader, Card, Button, Badge, EmptyState, Modal, Select } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';

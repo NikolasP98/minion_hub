@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { UserRound, Link2, ShieldCheck } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
@@ -22,7 +23,7 @@
     },
   ]);
 
-  const pathname = $derived(page.url.pathname);
+  const pathname = $derived(canonicalPath(page.url.pathname));
 
   function isActive(id: string, href: string): boolean {
     if (id === 'profile') return pathname === '/account';

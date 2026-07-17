@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { onMount, untrack } from 'svelte';
   import CloudHeader from '$lib/components/cloud/CloudHeader.svelte';
   import CloudNav from '$lib/components/cloud/CloudNav.svelte';

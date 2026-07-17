@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { invalidate, goto } from '$app/navigation';
+  import { invalidate, goto } from '$lib/navigation';
   import { Bot } from 'lucide-svelte';
   import { Badge, Button, PageHeader } from '$lib/components/ui';
   import AsyncBoundary from '$lib/components/ui/foundations/AsyncBoundary.svelte';

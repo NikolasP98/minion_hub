@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import type { Snippet } from 'svelte';
   import { page } from '$app/state';
   import WorkshopNav from '$lib/components/workshop/WorkshopNav.svelte';
@@ -16,7 +17,7 @@
     '/agents/workshop/groupchat',
     '/agents/workshop/leaderboard',
   ]);
-  const showNav = $derived(NAV_PATHS.has(page.url.pathname));
+  const showNav = $derived(NAV_PATHS.has(canonicalPath(page.url.pathname)));
 </script>
 
 {#if showNav}

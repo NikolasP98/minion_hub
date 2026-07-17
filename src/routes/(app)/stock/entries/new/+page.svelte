@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { ArrowLeftRight, Check, ArrowLeft, Trash2 } from 'lucide-svelte';
   import { PageHeader, Button, Combobox } from '$lib/components/ui';

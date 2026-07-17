@@ -3,6 +3,8 @@ import {
   availableLanguageTags,
   type AvailableLanguageTag,
 } from '$lib/paraglide/runtime';
+import { goto } from '$app/navigation';
+import { localizePath } from '$lib/canonical-path';
 import { syncPreferenceToServer } from './preference-sync.svelte';
 
 const STORAGE_KEY = 'minion-hub-locale';
@@ -10,6 +12,14 @@ const DEFAULT_LOCALE: AvailableLanguageTag = 'en';
 
 function loadLocale(): AvailableLanguageTag {
   if (typeof localStorage === 'undefined') return DEFAULT_LOCALE;
+  // URL wins: with prefixDefaultLanguage 'always' the locale is part of the
+  // address (/en/..., /es/...) — the store follows it, never the reverse.
+  if (typeof location !== 'undefined') {
+    const seg = location.pathname.split('/')[1];
+    if ((availableLanguageTags as readonly string[]).includes(seg)) {
+      return seg as AvailableLanguageTag;
+    }
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw && (availableLanguageTags as readonly string[]).includes(raw)) {
@@ -17,6 +27,15 @@ function loadLocale(): AvailableLanguageTag {
     }
   } catch {}
   return DEFAULT_LOCALE;
+}
+
+/** Re-enter the current page under the new locale prefix (URL = source of truth). */
+function navigateToLocale(tag: AvailableLanguageTag) {
+  if (typeof location === 'undefined') return;
+  const target = localizePath(location.pathname, tag) + location.search + location.hash;
+  if (location.pathname + location.search + location.hash !== target) {
+    void goto(target, { noScroll: true, keepFocus: true });
+  }
 }
 
 function saveLocale(tag: AvailableLanguageTag) {
@@ -41,6 +60,7 @@ export const locale = {
     current = tag;
     saveLocale(tag);
     syncPreferenceToServer('locale', { tag });
+    navigateToLocale(tag);
   },
 
   toggle() {
@@ -48,12 +68,22 @@ export const locale = {
     current = next;
     saveLocale(next);
     syncPreferenceToServer('locale', { tag: next });
+    navigateToLocale(next);
   },
 
   applyFromServer(data: { tag: string }) {
-    if ((availableLanguageTags as readonly string[]).includes(data.tag)) {
-      current = data.tag as AvailableLanguageTag;
-      saveLocale(current);
+    if (!(availableLanguageTags as readonly string[]).includes(data.tag)) return;
+    // URL is the source of truth: when the address already carries a locale
+    // segment, the server preference only persists for future sessions —
+    // it must not yank the user off the language they explicitly opened.
+    if (typeof location !== 'undefined') {
+      const seg = location.pathname.split('/')[1];
+      if ((availableLanguageTags as readonly string[]).includes(seg)) {
+        saveLocale(data.tag as AvailableLanguageTag);
+        return;
+      }
     }
+    current = data.tag as AvailableLanguageTag;
+    saveLocale(current);
   },
 };

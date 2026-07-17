@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
     // Mobile-only header (< md). At md+ the sidebar carries brand + host + nav,
     // and the floating DynamicIsland carries the global actions.
     import HostPill from "../hosts/HostPill.svelte";
@@ -24,12 +25,12 @@
         ...getDynamicPluginsSections(pluginNavState.controlCenters, pluginNavState.enabledByPluginId),
     ]);
     function isActive(item: SectionItem): boolean {
-        return item.activeWhen ? item.activeWhen(page.url) : item.matcher(page.url.pathname);
+        return item.activeWhen ? item.activeWhen(page.url) : item.matcher(canonicalPath(page.url.pathname));
     }
-    const isReliability = $derived(page.url.pathname.startsWith("/reliability"));
-    const isCloud = $derived(page.url.pathname.startsWith("/cloud"));
-    const isSettings = $derived(page.url.pathname.startsWith("/settings"));
-    const isWorkforce = $derived(page.url.pathname.startsWith("/workforce"));
+    const isReliability = $derived(canonicalPath(page.url.pathname).startsWith("/reliability"));
+    const isCloud = $derived(canonicalPath(page.url.pathname).startsWith("/cloud"));
+    const isSettings = $derived(canonicalPath(page.url.pathname).startsWith("/settings"));
+    const isWorkforce = $derived(canonicalPath(page.url.pathname).startsWith("/workforce"));
 
     let mobileMenuOpen = $state(false);
     function toggleMobileMenu() {

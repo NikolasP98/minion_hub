@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages';
-	import { goto } from '$app/navigation';
+	import { goto } from '$lib/navigation';
 	import { Image, ExternalLink } from 'lucide-svelte';
 	import PlatformIcon from '$lib/components/socials/PlatformIcon.svelte';
 	import { PageHeader, EmptyState } from '$lib/components/ui';

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
 	import { page } from '$app/state';
 	import { LayoutDashboard, Inbox, MailOpen, CheckCircle2, Target, Layers, FolderKanban, Users } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -17,7 +18,7 @@
 		{ href: '/workforce/org', label: m.workforce_org(), icon: Users },
 	];
 
-	const currentPath = $derived(page.url.pathname);
+	const currentPath = $derived(canonicalPath(page.url.pathname));
 
 	// Highlight only the most-specific matching item so e.g. /workforce/issues
 	// lights up Issues rather than both Issues and the (prefix) Dashboard.

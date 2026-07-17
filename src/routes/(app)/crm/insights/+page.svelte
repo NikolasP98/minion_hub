@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { goto, invalidateAll } from '$app/navigation';
+  import { goto, invalidateAll } from '$lib/navigation';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { Sparkles, RefreshCw, Trophy } from 'lucide-svelte';

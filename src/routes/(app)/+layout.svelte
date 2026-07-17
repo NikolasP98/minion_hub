@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
 	import Topbar from '$lib/components/layout/Topbar.svelte';
 	import Sidebar from '$lib/components/layout/Sidebar.svelte';
 	import DynamicIsland from '$lib/components/layout/DynamicIsland.svelte';
@@ -25,8 +26,8 @@
 	// leaderboard) keep the rail — only a save-id path is immersive.
 	const WORKSHOP_NON_IMMERSIVE = /^\/agents\/workshop\/(compare|groupchat|leaderboard)(\/|$)/;
 	const immersive = $derived(
-		/^\/agents\/workshop\/[^/]+/.test(page.url.pathname) &&
-			!WORKSHOP_NON_IMMERSIVE.test(page.url.pathname),
+		/^\/agents\/workshop\/[^/]+/.test(canonicalPath(page.url.pathname)) &&
+			!WORKSHOP_NON_IMMERSIVE.test(canonicalPath(page.url.pathname)),
 	);
 
 	// Fade wrapper keys on the top-level module segment, NOT the full pathname:
@@ -34,7 +35,7 @@
 	// recreating the module's side-nav (CrmNav/FinanceNav/…) and resetting its
 	// scroll. Segment-keyed, module layouts persist across sub-page navigation
 	// (scroll kept); the fade still plays when switching between modules.
-	const moduleKey = $derived(page.url.pathname.split('/')[1] ?? '');
+	const moduleKey = $derived(canonicalPath(page.url.pathname).split('/')[1] ?? '');
 
 	onMount(() => {
 		void ensurePermissions();

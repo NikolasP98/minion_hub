@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { page } from '$app/state';
   import { Gauge, Monitor, Settings, SquareTerminal } from 'lucide-svelte';
   import { SideNav, type SideNavItem } from '$lib/components/ui';
@@ -16,7 +17,7 @@
 
   const selected = $derived(page.url.searchParams.get('server'));
   const suffix = $derived(selected ? `?server=${encodeURIComponent(selected)}` : '');
-  const pathname = $derived(page.url.pathname);
+  const pathname = $derived(canonicalPath(page.url.pathname));
   const items = $derived<SideNavItem[]>([
     { id: 'overview', label: m.cloud_nav_overview(), icon: Gauge, href: `/cloud${suffix}` },
     ...(canConnect

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';

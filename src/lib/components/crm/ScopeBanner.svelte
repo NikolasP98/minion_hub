@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   // Cross-module nav landing banner: when a list is scoped to one contact via
   // ?contact= (from the Connections panel count→list jump), tell the user it's
   // filtered and give a one-click Clear. ERPNext's route_options round-trip; the
@@ -18,7 +19,7 @@
     qs.delete('contact');
     qs.delete('new');
     const s = qs.toString();
-    return s ? `${page.url.pathname}?${s}` : page.url.pathname;
+    return s ? `${canonicalPath(page.url.pathname)}?${s}` : canonicalPath(page.url.pathname);
   });
 </script>
 

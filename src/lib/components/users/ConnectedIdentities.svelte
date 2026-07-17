@@ -1,7 +1,7 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
   import { onMount } from 'svelte';
-  import { goto, invalidate } from '$app/navigation';
+  import { goto, invalidate } from '$lib/navigation';
   import { page } from '$app/state';
   import { supabaseBrowser } from '$lib/supabase/client';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';

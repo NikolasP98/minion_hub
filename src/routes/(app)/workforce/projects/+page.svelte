@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { invalidate, goto } from '$app/navigation';
+	import { invalidate, goto } from '$lib/navigation';
 	import { PageHeader, Button, Select } from '$lib/components/ui';
 	import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
 	import { GanttChartSquare, FolderPlus, Sparkles, Boxes, FolderGit2, Layers3 } from 'lucide-svelte';

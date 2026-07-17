@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Badge, Button } from '$lib/components/ui';
-  import { invalidate, goto } from '$app/navigation';
+  import { invalidate, goto } from '$lib/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { Building2, RefreshCw, Check, Plus } from 'lucide-svelte';

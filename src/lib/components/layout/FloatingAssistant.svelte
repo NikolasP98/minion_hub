@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
     import { Button } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
     import { Sparkles, Minus, SquarePen, Send, ChevronDown, AlertCircle, Mic, MicOff, PhoneOff, Factory, MessageCircle } from 'lucide-svelte';
@@ -73,7 +74,7 @@
 
     // Update scope reactively from current route + selected agent
     $effect(() => {
-        assistant.scope.route = page.url.pathname;
+        assistant.scope.route = canonicalPath(page.url.pathname);
         assistant.scope.agentId = ui.selectedAgentId;
     });
 
@@ -127,7 +128,7 @@
     // Route entry chooses a sensible default once. The explicit selector remains
     // authoritative until the next navigation, so chat is always available.
     $effect(() => {
-        const route = page.url.pathname;
+        const route = canonicalPath(page.url.pathname);
         if (route === previousRoute) return;
         previousRoute = route;
         composerMode = route === '/work' || route.startsWith('/workforce') ? 'factory' : 'chat';
@@ -202,7 +203,7 @@
                     request,
                     source: {
                         kind: 'hub_assistant',
-                        route: page.url.pathname,
+                        route: canonicalPath(page.url.pathname),
                         selectedAgentId: ui.selectedAgentId ?? undefined,
                     },
                     idempotencyKey: factoryAttempt.idempotencyKey,
@@ -299,7 +300,7 @@
     // On /my-agent the user is already in a full chat with this same personal
     // agent (same thread, same AI), so the floating assistant is redundant
     // there — hide it entirely on that route.
-    const onMyAgentPage = $derived(page.url.pathname === '/home');
+    const onMyAgentPage = $derived(canonicalPath(page.url.pathname) === '/home');
 
     // A call lives at the app level (module singleton). When it's running and
     // the user has navigated off the call UI, this anchored popup surfaces the

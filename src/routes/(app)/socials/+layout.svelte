@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { page } from '$app/state';
   import type { Snippet } from 'svelte';
   import AdsNav from '$lib/components/ads/AdsNav.svelte';
@@ -6,7 +7,7 @@
   import { socialsRouteShell } from '$lib/routes/business-route-shells';
   let { children }: { children: Snippet } = $props();
 
-  const routeShell = $derived(socialsRouteShell(page.url.pathname));
+  const routeShell = $derived(socialsRouteShell(canonicalPath(page.url.pathname)));
 </script>
 
 <PageShell

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto, invalidate } from '$app/navigation';
+  import { goto, invalidate } from '$lib/navigation';
   import { createHotkey } from '$lib/hotkeys';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';

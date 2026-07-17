@@ -3,6 +3,7 @@ import { error, redirect } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
 import { decideRouteAccess } from '$lib/routes/route-access-policies';
+import { canonicalPath } from '$lib/canonical-path';
 import { loadWorkspacesForUser } from '$server/services/workspaces.service';
 import { loadOrganizationsForUser } from '$server/services/organizations.service';
 import { loadPersonalAgentForUser } from '$server/services/personal-agent.service';
@@ -141,7 +142,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
   // already-resolved RBAC bridge; route-owned page guards remain defense in
   // depth for direct loads and contextual data operations.
   const granted = new Set(permissions.permissions);
-  const routeAccess = decideRouteAccess(url.pathname, {
+  const routeAccess = decideRouteAccess(canonicalPath(url.pathname), {
     authenticated: true,
     role: user.role,
     permissions: granted,
@@ -156,7 +157,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
 
   // Redirect to onboarding if user hasn't completed it yet
   if (
-    !url.pathname.startsWith('/onboarding') &&
+    !canonicalPath(url.pathname).startsWith('/onboarding') &&
     (!personalAgent.agent || personalAgent.agent.provisioningStatus !== 'active')
   ) {
     throw redirect(303, '/onboarding');

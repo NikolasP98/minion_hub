@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { Plus, Workflow } from 'lucide-svelte';

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-svelte';
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { PageHeader, Button, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';

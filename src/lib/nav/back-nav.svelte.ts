@@ -1,4 +1,4 @@
-import { goto, afterNavigate } from '$app/navigation';
+import { goto, afterNavigate } from '$lib/navigation';
 import * as m from '$lib/paraglide/messages';
 
 /**

@@ -1,7 +1,7 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import {
     listShells,
     getQuota,

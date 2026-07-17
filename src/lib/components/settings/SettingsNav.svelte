@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow } from "lucide-svelte";
   import { page } from "$app/state";
   import { isAdmin } from "$lib/state/features/user.svelte";
@@ -45,7 +46,7 @@
   const HUB_LEGACY_IDS = new Set(['appearance', 'backups']);
   const gatewayTabs = $derived(TABS.filter((t) => !HUB_LEGACY_IDS.has(t.id)));
 
-  const pathname = $derived(page.url.pathname);
+  const pathname = $derived(canonicalPath(page.url.pathname));
   const queryS = $derived(page.url.searchParams.get('s'));
 
   function isHubActive(tab: HubTab): boolean {

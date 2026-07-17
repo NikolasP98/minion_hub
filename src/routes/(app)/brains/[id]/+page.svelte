@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { goto, invalidate } from '$app/navigation';
+  import { goto, invalidate } from '$lib/navigation';
   import { ArrowLeft, Lock, Globe, Trash2 } from 'lucide-svelte';
   import { PageHeader, Button, Tabs } from '$lib/components/ui';
   import PageBody from '$lib/components/ui/foundations/PageBody.svelte';

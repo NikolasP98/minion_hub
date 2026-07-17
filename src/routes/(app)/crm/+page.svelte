@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import {

@@ -1,3 +1,4 @@
+import { canonicalPath } from '$lib/canonical-path';
 import type { ComponentType, SvelteComponent } from "svelte";
 import {
     FolderKanban,
@@ -82,7 +83,7 @@ function archetypeItem(archetype: AgentArchetype, label: string, icon: LucideIco
         // Never active by path alone — the three archetype items share /agents.
         matcher: () => false,
         activeWhen: (url) =>
-            (url.pathname === "/agents" || url.pathname.startsWith("/agents/")) &&
+            (canonicalPath(url.pathname) === "/agents" || canonicalPath(url.pathname).startsWith("/agents/")) &&
             url.searchParams.get("archetype") === archetype,
     };
 }

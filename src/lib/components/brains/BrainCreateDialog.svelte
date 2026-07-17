@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidate, goto } from '$app/navigation';
+  import { invalidate, goto } from '$lib/navigation';
   import { Button, Input, Select } from '$lib/components/ui';
   import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import { fetchJson } from '$lib/api/fetch-json';

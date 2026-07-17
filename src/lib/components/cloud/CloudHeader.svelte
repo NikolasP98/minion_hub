@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { page } from '$app/state';
   import { Cloud, Plus, RefreshCw } from 'lucide-svelte';
   import { Button, Select, type SelectOption, type SelectValue } from '$lib/components/ui';

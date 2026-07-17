@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import type { MarketplaceAgent } from '$lib/state/features/marketplace.svelte';
   import { parseTags } from '$lib/state/features/marketplace.svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';

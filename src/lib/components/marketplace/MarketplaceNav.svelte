@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { Puzzle, Terminal, Bot, Anchor, Server } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SideNav, type SideNavItem } from '$lib/components/ui';
 
-  const pathname = $derived(page.url.pathname);
+  const pathname = $derived(canonicalPath(page.url.pathname));
 
   // 'soon' sections are disabled with a trailing badge (matches the rest of the
   // hub's SideNav usage — CRM/Finance/Settings).

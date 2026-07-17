@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { BookOpen, Bot, Settings } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
@@ -17,7 +18,7 @@
     ].filter((i) => canViewPath(i.href) && (i.id !== 'template' || canAct('brains', 'manage'))),
   );
 
-  const pathname = $derived(page.url.pathname);
+  const pathname = $derived(canonicalPath(page.url.pathname));
 
   function isActive(id: string, href: string): boolean {
     if (id === 'brains') return pathname === '/brains';

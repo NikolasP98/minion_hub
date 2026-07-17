@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { page } from '$app/state';
   import { type Snippet } from 'svelte';
   import KanbanNavRail from '$lib/components/workforce/KanbanNavRail.svelte';
@@ -6,7 +7,7 @@
   import { workforceRouteShell } from '$lib/routes/business-route-shells';
   let { children }: { children: Snippet } = $props();
 
-  const routeShell = $derived(workforceRouteShell(page.url.pathname));
+  const routeShell = $derived(workforceRouteShell(canonicalPath(page.url.pathname)));
 </script>
 
 <!--

@@ -1,6 +1,7 @@
 import { redirect, error } from '@sveltejs/kit';
 import { ensureWorkforceCompany } from '$lib/server/workforce-company';
 import { canRenderWithoutWorkforce } from '$lib/server/workforce-degradation';
+import { canonicalPath } from '$lib/canonical-path';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -15,12 +16,13 @@ export const load: LayoutServerLoad = async (event) => {
   // Inbox uses this dependency for its six-second live refresh. Registering it
   // here makes a backend outage recover without a full navigation: invalidating
   // the Inbox reruns this availability probe as well as the child page load.
-  if (event.url.pathname === '/workforce/inbox') event.depends('app:inbox');
+  const path = canonicalPath(event.url.pathname);
+  if (path === '/workforce/inbox') event.depends('app:inbox');
 
   // The welcome page is itself under this layout and is the redirect target for
   // the gate below — it must render WITHOUT being gated, or a no-org /
   // provision-failed user loops welcome → welcome forever.
-  if (event.url.pathname === '/workforce/welcome') {
+  if (path === '/workforce/welcome') {
     return { companyId: null, workforceAvailable: false };
   }
 
@@ -39,7 +41,7 @@ export const load: LayoutServerLoad = async (event) => {
     // real provisioning problem → reason-aware welcome.
     if (!status || status >= 500) {
       console.warn('[workforce] backend unreachable', err);
-      if (!canRenderWithoutWorkforce(event.url.pathname)) {
+      if (!canRenderWithoutWorkforce(path)) {
         throw error(status && status >= 500 ? status : 502, 'Workforce backend unavailable');
       }
       workforceAvailable = false;

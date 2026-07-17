@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-import { goto } from '$app/navigation';
+import { goto } from '$lib/navigation';
   import { Plus, ChevronDown } from 'lucide-svelte';
 
   type Template = { id: string; name: string; nodes: unknown[]; edges: unknown[] };

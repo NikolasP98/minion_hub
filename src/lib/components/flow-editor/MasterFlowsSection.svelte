@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-import { goto } from '$app/navigation';
+import { goto } from '$lib/navigation';
   import { Workflow, ChevronDown, ChevronRight, BookOpen } from 'lucide-svelte';
   import { MASTER_FLOWS } from '$lib/flows/master-flows';
 

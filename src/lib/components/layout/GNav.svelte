@@ -4,7 +4,7 @@
   // native sequence support (`createHotkeySequence`) — each destination is
   // its own ['G', <letter>] sequence, so arming/timeout/reset are handled
   // by the manager, not a hand-rolled listener.
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import { createHotkey, createHotkeySequence, getHotkeyRegistrations } from '$lib/hotkeys';
   import { palettePageRoutes } from '$lib/nav/routes';
   import { BUILTIN_PLUGIN_ITEMS } from '$lib/components/layout/sections';

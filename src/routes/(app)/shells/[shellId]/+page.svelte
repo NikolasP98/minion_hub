@@ -2,7 +2,7 @@
   import * as m from '$lib/paraglide/messages';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
+  import { goto } from '$lib/navigation';
   import {
     getShell,
     archiveShell,

@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { canonicalPath } from '$lib/canonical-path';
   import { LayoutDashboard, Users, Sparkles, Settings } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
   import { canViewPath } from '$lib/access/can.svelte';
 
-  const pathname = $derived(page.url.pathname);
+  const pathname = $derived(canonicalPath(page.url.pathname));
 
   function isActive(id: string): boolean {
     if (id === 'dashboard') return pathname === '/crm';
