@@ -94,7 +94,9 @@
 
 <svelte:head><title>{m.ads_post_detail_title()} · {m.nav_ads()}</title></svelte:head>
 
-<div class="social-post-page flex flex-col h-full min-h-0">
+<!-- flex-1 min-w-0: page roots inside the SectionShell flex-row must fill it
+     (bare h-full roots shrink to intrinsic width — governance layout contract). -->
+<div class="social-post-page flex flex-col h-full min-h-0 flex-1 min-w-0">
 	<PageHeader title={m.ads_post_detail_title()} subtitle={fmtDate(post.postedAt)}>
 		{#snippet leading()}
 			<PlatformIcon platform={post.platform} size={16} class="text-accent shrink-0" />
@@ -103,7 +105,7 @@
 
 	<div class="flex-1 min-h-0 lg:flex lg:gap-4 lg:p-4 lg:items-stretch">
 		<!-- LEFT: media + badges + caption + stats — own scroll on lg so it never pushes the comments panel off-screen -->
-		<div class="flex-1 min-w-0 min-h-0 overflow-auto p-4 lg:p-0 flex flex-col gap-4 max-w-3xl mx-auto lg:mx-0">
+		<div class="flex-1 min-w-0 min-h-0 overflow-auto p-4 lg:p-0 flex flex-col gap-4 max-w-3xl mx-auto lg:max-w-none lg:mx-0">
 			<Button variant="outline" size="sm" onclick={back.go} class="self-start">
 				<ArrowLeft size={14} />
 				{back.label}
@@ -204,8 +206,10 @@
 		</aside>
 	</div>
 
-	<!-- Mobile toggle — comments panel becomes an overlay covering the content -->
-	<Button variant="ghost" type="button" class="comments-fab lg:hidden" onclick={() => (mobileCommentsOpen = true)} aria-label={m.ads_post_detail_comments_open()}>
+	<!-- Mobile toggle — comments panel becomes an overlay covering the content.
+	     Hidden at lg+ via the scoped media rule below (a lg:hidden utility loses
+	     the specificity fight against the scoped .comments-fab display rule). -->
+	<Button variant="ghost" type="button" class="comments-fab" onclick={() => (mobileCommentsOpen = true)} aria-label={m.ads_post_detail_comments_open()}>
 		<MessageCircle size={18} />
 		{#if commentCount > 0}<span class="fab-count">{commentCount}</span>{/if}
 	</Button>
@@ -354,12 +358,17 @@
 		flex-direction: column;
 		min-height: 0;
 	}
-	.comments-panel.is-open {
-		display: flex;
-		position: fixed;
-		inset: 0;
-		z-index: var(--layer-modal);
-		background: var(--color-bg, var(--color-card));
+	/* Overlay chrome is mobile-ONLY: at lg+ the panel is a static column, and
+	   .is-open (2 classes) would otherwise outrank the lg reset (1 class) and
+	   pin a 340px fixed drawer to the LEFT edge of the viewport. */
+	@media (max-width: 1023.98px) {
+		.comments-panel.is-open {
+			display: flex;
+			position: fixed;
+			inset: 0;
+			z-index: var(--layer-modal);
+			background: var(--color-bg, var(--color-card));
+		}
 	}
 	@media (min-width: 1024px) {
 		.comments-panel {
@@ -465,6 +474,11 @@
 		color: var(--color-accent-foreground, var(--color-text-primary));
 		box-shadow: var(--shadow-elevation-1);
 		z-index: var(--layer-popover);
+	}
+	@media (min-width: 1024px) {
+		.social-post-page :global(.comments-fab) {
+			display: none;
+		}
 	}
 	.fab-count {
 		font-size: var(--font-size-caption);
