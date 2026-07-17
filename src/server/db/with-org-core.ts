@@ -42,6 +42,11 @@ export function withOrgCore<T>(scope: OrgScope, fn: (tx: CoreTx) => Promise<T>):
   if (!scope.tenantId) throw new Error('withOrgCore requires a non-empty tenantId');
   const transactionDb = getOrgTransactionDb(scope.db);
   return transactionDb.transaction(async (tx) => {
+    // Wedge guard: a load that opens this txn and then stalls (e.g. starved
+    // waiting for another pool slot) would pin its pooled connection for the
+    // whole serverless maxDuration (300s) and starve every org-scoped page.
+    // SET LOCAL scopes the kill-switch to this txn only.
+    await tx.execute(sql`set local idle_in_transaction_session_timeout = '20s'`);
     await tx.execute(sql`set local role app_ledger`);
     await tx.execute(sql`select set_config('app.current_org_id', ${scope.tenantId}, true)`);
     // Record-level scoping basis (if-owner). Always set (empty when unknown) so a

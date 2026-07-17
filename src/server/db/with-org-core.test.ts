@@ -33,15 +33,15 @@ describe('withOrgCore', () => {
       return 'ok';
     });
     expect(out).toBe('ok');
-    // SET LOCAL ROLE + set_config(app.current_org_id) + set_config(app.current_profile_id)
-    expect(executed.length).toBe(3);
+    // idle-in-txn guard + SET LOCAL ROLE + set_config(app.current_org_id) + set_config(app.current_profile_id)
+    expect(executed.length).toBe(4);
   });
 
   it('runs the role/GUC statements before the callback body', async () => {
     const order: string[] = [];
     await withOrgCore(fakeScope('org-x'), async () => {
       order.push('fn');
-      expect(executed.length).toBe(3); // setup already ran
+      expect(executed.length).toBe(4); // setup already ran
     });
     expect(order).toEqual(['fn']);
   });
