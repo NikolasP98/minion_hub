@@ -58,6 +58,10 @@ async function traceLayoutLoad<T>(name: string, promise: Promise<T>): Promise<T>
  * `setActive()` flows (legacy users, session-table drift, manual SQL).
  */
 export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) => {
+  // Prod-visible regression guardrail: log the total layout-load duration when
+  // it crosses the slow threshold (the per-sub-load `traceLayoutLoad` above is
+  // dev-only). Only slow loads log, so this stays quiet on healthy requests.
+  const loadStartedAt = Date.now();
   depends(
     'app:user',
     'app:permissions',
@@ -161,6 +165,11 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
     (!personalAgent.agent || personalAgent.agent.provisioningStatus !== 'active')
   ) {
     throw redirect(303, '/onboarding');
+  }
+
+  const loadMs = Date.now() - loadStartedAt;
+  if (loadMs > SLOW_LOAD_WARNING_MS) {
+    console.warn(`[app-layout] load ${canonicalPath(url.pathname)} took ${loadMs}ms`);
   }
 
   return {
