@@ -105,6 +105,8 @@ import {
   runJob,
 } from './meta-sync.service';
 
+import { normalizeIgConvo } from './graph-read';
+
 const PAGE_ID = 'page-1';
 const CUSTOMER_ID = 'customer-1';
 const participants = { data: [{ id: PAGE_ID, name: 'FACES' }, { id: CUSTOMER_ID, name: 'Customer' }] };
@@ -206,6 +208,34 @@ describe('toMetaIngestRow', () => {
       channel: 'messenger',
     });
     expect(row).toBeNull();
+  });
+
+  // IG-Login DMs: normalizeIgConvo maps username→name, and the account's self
+  // id (the professional-account id from getIgLoginUser) drives direction —
+  // NOT the asset external_id (the OAuth-flow id, which never appears in the
+  // conversation). This is the id-mismatch that would misclassify every message.
+  it('IG-Login DM: inbound handle + outbound account name resolve after normalizeIgConvo', () => {
+    const SELF = '17841448369679209';
+    const CUST = '1579908617077220';
+    const convo = normalizeIgConvo({
+      id: 'c1',
+      participants: {
+        data: [
+          { id: SELF, username: 'facesculptors' },
+          { id: CUST, username: 'tatiana.peralta15' },
+        ],
+      },
+      messages: {
+        data: [
+          { id: 'g1', from: { id: CUST, username: 'tatiana.peralta15' }, message: 'Tengo dudas', created_time: '2026-07-17T02:36:42+0000' },
+          { id: 'g2', from: { id: SELF, username: 'facesculptors' }, message: 'Hola', created_time: '2026-07-17T02:36:44+0000' },
+        ],
+      },
+    });
+    const inbound = toMetaIngestRow({ message: convo.messages!.data![0], participants: convo.participants, pageExternalId: SELF, channel: 'instagram', pageName: 'facesculptors' });
+    expect(inbound).toMatchObject({ direction: 'inbound', channel: 'instagram', accountId: SELF, chatId: CUST, senderName: 'tatiana.peralta15', content: 'Tengo dudas', clientId: 'meta:instagram:g1' });
+    const outbound = toMetaIngestRow({ message: convo.messages!.data![1], participants: convo.participants, pageExternalId: SELF, channel: 'instagram', pageName: 'facesculptors' });
+    expect(outbound).toMatchObject({ direction: 'outbound', chatId: CUST, senderId: SELF, senderName: 'facesculptors' });
   });
 });
 

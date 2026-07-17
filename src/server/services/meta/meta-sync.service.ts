@@ -40,6 +40,8 @@ import {
   adInsights,
   listAdsWithStoryIds,
   listConversations,
+  listIgLoginConversations,
+  getIgLoginUser,
   fetchNextPage,
   refreshIgToken,
   pickPreviewUrl,
@@ -867,34 +869,80 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
   return { cursor: null, counts };
 }
 
-async function syncMessages(ctx: CoreCtx, assets: MetaAsset[], job: MetaSyncJob): Promise<SliceResult> {
-  const targets = assets
-    .filter((a) => a.kind === 'page')
-    .flatMap((a) => [
-      { asset: a, platform: 'messenger' as const },
-      { asset: a, platform: 'instagram' as const },
-    ])
-    .sort((a, b) => (a.asset.externalId + a.platform).localeCompare(b.asset.externalId + b.platform));
+async function syncMessages(
+  ctx: CoreCtx,
+  assets: MetaAsset[],
+  job: MetaSyncJob,
+  tokensByConnection: Map<string, string | null>,
+): Promise<SliceResult> {
+  // FB-Login pages carry BOTH Messenger and page-linked-IG conversations; an
+  // IG-Login `ig` asset (parentPageId null) carries the account's own IG DMs
+  // via graph.instagram.com. `igLogin` flags the latter — its token lives on
+  // the connection, its host is unversioned, and its self-id must be fetched.
+  const targets = [
+    ...assets
+      .filter((a) => a.kind === 'page')
+      .flatMap((a) => [
+        { asset: a, platform: 'messenger' as const, igLogin: false },
+        { asset: a, platform: 'instagram' as const, igLogin: false },
+      ]),
+    ...assets.filter((a) => a.kind === 'ig' && !a.parentPageId).map((a) => ({ asset: a, platform: 'instagram' as const, igLogin: true })),
+  ].sort((a, b) => (a.asset.externalId + a.platform + a.igLogin).localeCompare(b.asset.externalId + b.platform + b.igLogin));
   const resume = parseResume(job.pageCursor);
   const counts = { conversationsProcessed: 0, messagesInserted: 0, instagramSkipped: 0 };
+  // IG-Login self-identity (professional-account id + handle), fetched once per
+  // connection — the conversation `from.id` matches this, NOT the asset's
+  // external_id (which is the OAuth-flow user id).
+  const igSelf = new Map<string, { userId: string; username: string | null }>();
 
   for (let i = resume.i; i < targets.length; i++) {
-    const { asset, platform } = targets[i];
-    const token = decryptOrNull(asset.pageTokenCiphertext, asset.pageTokenIv);
-    if (!token) continue;
+    const { asset, platform, igLogin } = targets[i];
     const channel = platform === 'messenger' ? 'messenger' : 'instagram';
+    // graph.instagram.com paging.next links are self-contained (no proof/version) — same as media sync.
+    const nextOpts = igLogin ? {} : graphAuthOpts();
+
+    let accountId = asset.externalId;
+    let pageName = asset.name;
+    let token: string | null;
+    if (igLogin) {
+      token = tokensByConnection.get(asset.connectionId) ?? null;
+      if (!token) {
+        counts.instagramSkipped++;
+        continue;
+      }
+      let self = igSelf.get(asset.connectionId);
+      if (!self) {
+        const who = await getIgLoginUser(token);
+        if (!who.ok || !who.data) {
+          if (who.error === 'token_expired') return { cursor: null, counts, tokenExpired: true, expiredConnectionId: asset.connectionId };
+          counts.instagramSkipped++;
+          continue;
+        }
+        self = who.data;
+        igSelf.set(asset.connectionId, self);
+      }
+      accountId = self.userId;
+      pageName = self.username;
+    } else {
+      token = decryptOrNull(asset.pageTokenCiphertext, asset.pageTokenIv);
+      if (!token) continue;
+    }
 
     let page =
       i === resume.i && resume.next
-        ? await fetchNextPage<Conversation>(resume.next, graphAuthOpts())
-        : await listConversations(asset.externalId, token, { platform }, graphAuthOpts());
+        ? await fetchNextPage<Conversation>(resume.next, nextOpts)
+        : igLogin
+          ? await listIgLoginConversations(token)
+          : await listConversations(asset.externalId, token, { platform }, graphAuthOpts());
 
     for (;;) {
       if (!page.ok) {
-        if (page.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
-        // IG conversation read needs instagram_manage_messages, which this app's
-        // login config may not grant yet (spec §10 risk #3) — tolerate, Messenger
-        // still lands. Any other per-target error tolerates the same way.
+        if (page.error === 'token_expired') {
+          return { cursor: null, counts, tokenExpired: true, expiredConnectionId: igLogin ? asset.connectionId : undefined };
+        }
+        // IG conversation read needs manage_messages (until the app is Live +
+        // reconnected) — tolerate, Messenger still lands. Any per-target error
+        // tolerates the same way.
         if (platform === 'instagram') counts.instagramSkipped++;
         break;
       }
@@ -904,9 +952,9 @@ async function syncMessages(ctx: CoreCtx, assets: MetaAsset[], job: MetaSyncJob)
           const row = toMetaIngestRow({
             message: msg,
             participants: convo.participants,
-            pageExternalId: asset.externalId,
+            pageExternalId: accountId,
             channel,
-            pageName: asset.name,
+            pageName,
           });
           if (row) ingestRows.push(row);
         }
@@ -917,7 +965,7 @@ async function syncMessages(ctx: CoreCtx, assets: MetaAsset[], job: MetaSyncJob)
         return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
       }
       if (!page.nextCursor) break;
-      page = await fetchNextPage<Conversation>(page.nextCursor, graphAuthOpts());
+      page = await fetchNextPage<Conversation>(page.nextCursor, nextOpts);
     }
   }
   return { cursor: null, counts };
@@ -1061,7 +1109,7 @@ export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
   try {
     if (job.kind === 'posts') result = await syncPosts(ctx, job, assets, primaryToken, tokensByConnection);
     else if (job.kind === 'ads') result = await syncAds(ctx, primaryToken, assets, job);
-    else if (job.kind === 'messages') result = await syncMessages(ctx, assets, job);
+    else if (job.kind === 'messages') result = await syncMessages(ctx, assets, job, tokensByConnection);
     else {
       await finishJob(ctx, jobId, 'failed', { error: `unknown job kind: ${job.kind}` });
       return;

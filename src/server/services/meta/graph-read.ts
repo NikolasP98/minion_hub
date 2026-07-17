@@ -850,3 +850,74 @@ export async function listConversations(
   const { data, nextCursor } = unwrapList<Conversation>(res.body);
   return { ok: true, status: res.status, data, nextCursor, usage: res.usage };
 }
+
+/**
+ * The IG-Login professional-account id (the participant id that shows up in
+ * conversations, e.g. `17841448369679209`) — distinct from the OAuth-flow user
+ * id stored as the asset's external_id. Needed to classify DM direction
+ * (from === this ⇒ outbound). graph.instagram.com, unversioned.
+ */
+export async function getIgLoginUser(
+  token: string,
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+): Promise<GraphResult<{ userId: string; username: string | null }>> {
+  const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
+  const url = buildUrl('me', { fields: 'user_id,username', access_token: token }, o);
+  const res = await graphRequest(url, o);
+  if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
+  const b = (res.body ?? {}) as { user_id?: unknown; username?: unknown };
+  const userId = b.user_id != null ? String(b.user_id) : '';
+  if (!userId) return { ok: false, status: res.status, error: 'no user_id', usage: res.usage };
+  return { ok: true, status: res.status, data: { userId, username: b.username != null ? String(b.username) : null }, usage: res.usage };
+}
+
+type RawIgConvo = {
+  id?: string;
+  updated_time?: string;
+  participants?: { data?: Array<{ id?: string; username?: string }> };
+  messages?: { data?: Array<{ id: string; from?: { id?: string; username?: string }; message?: string; created_time?: string }> };
+};
+
+/**
+ * IG-Login DM conversations via graph.instagram.com `/me/conversations`
+ * (spec 2026-07-05-instagram-login-integration §7 fast-follow). The IG-Login
+ * shape uses `username` where the FB-Login graph uses `name`, so we normalize
+ * username→name into the shared `Conversation` shape — the ledger mapper
+ * (`toMetaIngestRow`) reads `.name`/`.id` and works unchanged.
+ */
+export async function listIgLoginConversations(
+  token: string,
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+): Promise<GraphResult<Conversation[]>> {
+  const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
+  const url = buildUrl(
+    'me/conversations',
+    {
+      platform: 'instagram',
+      fields: 'updated_time,participants{id,username},messages{id,from{id,username},message,created_time}',
+      access_token: token,
+    },
+    o,
+  );
+  const res = await graphRequest(url, o);
+  if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
+  const { data, nextCursor } = unwrapList<RawIgConvo>(res.body);
+  return { ok: true, status: res.status, data: (data ?? []).map(normalizeIgConvo), nextCursor, usage: res.usage };
+}
+
+/** username→name so the shared FB-shaped mapper resolves handles unchanged. */
+export function normalizeIgConvo(c: RawIgConvo): Conversation {
+  return {
+    id: c.id,
+    updated_time: c.updated_time,
+    participants: { data: (c.participants?.data ?? []).map((p) => ({ id: p.id, name: p.username })) },
+    messages: {
+      data: (c.messages?.data ?? []).map((m) => ({
+        id: m.id,
+        from: { id: m.from?.id, name: m.from?.username },
+        message: m.message,
+        created_time: m.created_time,
+      })),
+    },
+  };
+}
