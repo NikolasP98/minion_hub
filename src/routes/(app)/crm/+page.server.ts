@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
-import { listContactsCached } from '$server/services/crm-contacts.service';
+import { listContactsForDashboard } from '$server/services/crm-contacts.service';
 import { crmRevenueSummary, contactFinanceMap } from '$server/services/crm-finance.service';
 import { FUNNEL_ORDER, effectiveFunnelStage, maxFunnelStage, financeFloorStage } from '$lib/components/crm/crm-funnel';
 import { temperatureOf } from '$lib/components/crm/crm-format';
@@ -51,7 +51,10 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   // heavy), only counts. Streamed so the page shell paints instantly with
   // skeletons instead of blocking on this.
   async function computeStats() {
-    const roster = await listContactsCached(ctx, owner, masked);
+    // Uncapped roster: the dashboard COUNTS every contact (the 5000-capped list
+    // roster silently under-reported large orgs). Aggregated server-side here;
+    // only the compact stats below are returned to the client, never the rows.
+    const roster = await listContactsForDashboard(ctx, owner, masked);
 
     // Dashboard scope: contacts first seen within the selected acquisition
     // window (default 'all' = today's behaviour). Revenue stays an all-time

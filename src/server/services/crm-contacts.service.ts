@@ -183,6 +183,10 @@ export interface RankFilters {
   search?: string;
   sort?: 'score' | 'recent' | 'frequency' | 'name';
   limit?: number;
+  /** Upper bound on `limit`. Defaults to 5000 (the list-page payload cap). The
+   *  dashboard raises it so its COUNTS reflect every contact, not a truncated
+   *  roster — it aggregates server-side and never ships the rows. */
+  maxLimit?: number;
   offset?: number;
   /** Record-level (if-owner) scope: restrict to contacts owned by this profile. */
   ownerId?: string;
@@ -296,7 +300,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
             ? sql`display_name asc nulls last`
             : sql`score desc, display_name asc nulls last`;
 
-    const limit = Math.min(f.limit ?? 100, 5000);
+    const limit = Math.min(f.limit ?? 100, f.maxLimit ?? 5000);
     const offset = f.offset ?? 0;
 
     // When scoring a single contact (detail page), push its id into the agg CTE
@@ -469,6 +473,40 @@ export function listContactsCached(
     }),
     { ttl: '2m', swr: '30s', tags: [...crmListTags(ctx.tenantId)] },
     () => rankContacts(ctx, { limit: 5000, ownerId, maskSensitive }),
+  );
+}
+
+/**
+ * Uncapped roster for the CRM DASHBOARD's server-side aggregation. The list-page
+ * roster above caps at 5000 because it ships the whole payload to the browser
+ * for client-side filtering; the dashboard has the opposite need — it must COUNT
+ * every contact (a 5000 cap silently under-reported an 8454-contact org as
+ * "5,000") but only returns the small computed stats, never the rows. Distinct
+ * cache key so it never collides with the capped list payload; same tags so any
+ * mutation busts both.
+ *
+ * ponytail: DASHBOARD_ROSTER_CAP is a safety valve, not a real limit — an org
+ * would need >50k contacts to re-truncate, at which point the dashboard should
+ * move to a pure SQL COUNT/GROUP BY (no roster materialization) instead.
+ */
+const DASHBOARD_ROSTER_CAP = 50_000;
+export function listContactsForDashboard(
+  ctx: CoreCtx,
+  ownerId?: string,
+  maskSensitive = false,
+): Promise<RankedContact[]> {
+  return cached(
+    keys.hub('crm-contacts-dash', {
+      t: `${ctx.tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`,
+    }),
+    { ttl: '2m', swr: '30s', tags: [...crmListTags(ctx.tenantId)] },
+    () =>
+      rankContacts(ctx, {
+        limit: DASHBOARD_ROSTER_CAP,
+        maxLimit: DASHBOARD_ROSTER_CAP,
+        ownerId,
+        maskSensitive,
+      }),
   );
 }
 
