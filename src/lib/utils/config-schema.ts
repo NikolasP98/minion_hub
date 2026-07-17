@@ -25,13 +25,13 @@ import { REDACTED_SENTINEL } from '$lib/types/config';
 //   Extensions 200-499  skills, plugins, discovery, presence, voicewake
 //   System      500+    logging (and any unknown high-order groups)
 
-export const META_GROUPS: { id: string; label: string; minOrder: number; maxOrder: number }[] = [
-  { id: 'setup', label: m.config_meta_setup(), minOrder: 0, maxOrder: 39 },
-  { id: 'ai', label: m.config_meta_ai(), minOrder: 40, maxOrder: 79 },
-  { id: 'automation', label: m.config_meta_automation(), minOrder: 80, maxOrder: 129 },
-  { id: 'comms', label: m.config_meta_comms(), minOrder: 130, maxOrder: 199 },
-  { id: 'extensions', label: m.config_meta_extensions(), minOrder: 200, maxOrder: 499 },
-  { id: 'system', label: m.config_meta_system(), minOrder: 500, maxOrder: Infinity },
+export const META_GROUPS: { id: string; label: () => string; minOrder: number; maxOrder: number }[] = [
+  { id: 'setup', label: m.config_meta_setup, minOrder: 0, maxOrder: 39 },
+  { id: 'ai', label: m.config_meta_ai, minOrder: 40, maxOrder: 79 },
+  { id: 'automation', label: m.config_meta_automation, minOrder: 80, maxOrder: 129 },
+  { id: 'comms', label: m.config_meta_comms, minOrder: 130, maxOrder: 199 },
+  { id: 'extensions', label: m.config_meta_extensions, minOrder: 200, maxOrder: 499 },
+  { id: 'system', label: m.config_meta_system, minOrder: 500, maxOrder: Infinity },
 ];
 
 /** Returns the meta-group ID for a given group order value. */
@@ -72,32 +72,32 @@ const GROUP_ORDER: Record<string, number> = {
   logging: 900,
 };
 
-const GROUP_LABELS: Record<string, string> = {
-  wizard: m.config_group_wizard(),
-  update: m.config_group_update(),
-  diagnostics: m.config_group_diagnostics(),
-  logging: m.config_group_logging(),
-  gateway: m.config_group_gateway(),
-  nodeHost: m.config_group_nodeHost(),
-  agents: m.config_group_agents(),
-  tools: m.config_group_tools(),
-  bindings: m.config_group_bindings(),
-  audio: m.config_group_audio(),
-  models: m.config_group_models(),
-  messages: m.config_group_messages(),
-  commands: m.config_group_commands(),
-  session: m.config_group_session(),
-  cron: m.config_group_cron(),
-  hooks: m.config_group_hooks(),
-  ui: m.config_group_ui(),
-  browser: m.config_group_browser(),
-  talk: m.config_group_talk(),
-  channels: m.config_group_channels(),
-  skills: m.config_group_skills(),
-  plugins: m.config_group_plugins(),
-  discovery: m.config_group_discovery(),
-  presence: m.config_group_presence(),
-  voicewake: m.config_group_voicewake(),
+const GROUP_LABELS: Record<string, () => string> = {
+  wizard: m.config_group_wizard,
+  update: m.config_group_update,
+  diagnostics: m.config_group_diagnostics,
+  logging: m.config_group_logging,
+  gateway: m.config_group_gateway,
+  nodeHost: m.config_group_nodeHost,
+  agents: m.config_group_agents,
+  tools: m.config_group_tools,
+  bindings: m.config_group_bindings,
+  audio: m.config_group_audio,
+  models: m.config_group_models,
+  messages: m.config_group_messages,
+  commands: m.config_group_commands,
+  session: m.config_group_session,
+  cron: m.config_group_cron,
+  hooks: m.config_group_hooks,
+  ui: m.config_group_ui,
+  browser: m.config_group_browser,
+  talk: m.config_group_talk,
+  channels: m.config_group_channels,
+  skills: m.config_group_skills,
+  plugins: m.config_group_plugins,
+  discovery: m.config_group_discovery,
+  presence: m.config_group_presence,
+  voicewake: m.config_group_voicewake,
 };
 
 // ─── Tab definitions ─────────────────────────────────────────────────────────
@@ -110,14 +110,14 @@ const GROUP_LABELS: Record<string, string> = {
 export const SECURITY_GROUP_IDS = new Set(['session', 'commands']);
 
 /** Tab definitions with id, label, and lucide icon name. */
-export const TABS: { id: string; label: string; icon: string }[] = [
-  { id: 'ai', label: m.settings_tab_ai(), icon: 'Brain' },
-  { id: 'agents', label: m.settings_tab_agents(), icon: 'Bot' },
-  { id: 'comms', label: m.settings_tab_comms(), icon: 'Radio' },
-  { id: 'security', label: m.settings_tab_security(), icon: 'Shield' },
-  { id: 'system', label: m.settings_tab_system(), icon: 'Server' },
-  { id: 'backups', label: m.settings_nav_backups(), icon: 'DatabaseBackup' },
-  { id: 'appearance', label: m.settings_nav_appearance(), icon: 'Palette' },
+export const TABS: { id: string; label: () => string; icon: string }[] = [
+  { id: 'ai', label: m.settings_tab_ai, icon: 'Brain' },
+  { id: 'agents', label: m.settings_tab_agents, icon: 'Bot' },
+  { id: 'comms', label: m.settings_tab_comms, icon: 'Radio' },
+  { id: 'security', label: m.settings_tab_security, icon: 'Shield' },
+  { id: 'system', label: m.settings_tab_system, icon: 'Server' },
+  { id: 'backups', label: m.settings_nav_backups, icon: 'DatabaseBackup' },
+  { id: 'appearance', label: m.settings_nav_appearance, icon: 'Palette' },
 ];
 
 /**
@@ -220,7 +220,7 @@ export function extractGroups(
     const hint = uiHints[key] ?? {};
     // Determine group: explicit hint.group, or infer from key
     const groupId = (hint.group ?? key).toLowerCase();
-    const groupLabel = GROUP_LABELS[groupId] ?? GROUP_LABELS[key] ?? capitalize(groupId);
+    const groupLabel = (GROUP_LABELS[groupId] ?? GROUP_LABELS[key])?.() ?? capitalize(groupId);
     // hint.order is authoritative when present (gateway sends numeric order directly).
     // Fall back to GROUP_ORDER lookup by id or key, then default to 500 (System).
     const groupOrder = hint.order ?? GROUP_ORDER[groupId] ?? GROUP_ORDER[key] ?? 500;

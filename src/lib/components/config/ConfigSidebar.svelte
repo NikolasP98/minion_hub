@@ -79,8 +79,8 @@
           size="icon"
           type="button"
           onclick={() => firstGroup && onselect(firstGroup.id)}
-          title={meta.label}
-          aria-label={meta.label}
+          title={meta.label()}
+          aria-label={meta.label()}
           aria-pressed={meta.items.some((group) => group.id === activeGroupId)}
         >
           <Icon size={15} />
@@ -90,7 +90,7 @@
   {:else}
     {#each visibleMeta as meta (meta.id)}
       <div class="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-widest text-muted-strong select-none">
-        {meta.label}
+        {meta.label()}
       </div>
       {#each meta.items as group (group.id)}
         {@const dirtyCount = dirtyCountForGroup(group.id)}

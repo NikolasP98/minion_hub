@@ -78,7 +78,7 @@
         label: m.settings_nav_group_server(),
         items: visibleGatewayTabs.map((t) => ({
           id: t.id,
-          label: t.label,
+          label: t.label(),
           icon: ICON_MAP[t.icon],
           dot: dirtyTabIds.has(t.id),
         })),

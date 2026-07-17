@@ -239,7 +239,7 @@
                             {#if getTabGroups(tab.id).length === 0 && configState.loaded && tab.id !== 'security' && tab.id !== 'agents' && tab.id !== 'comms'}
                                 <div class="text-center py-12">
                                     <p class="text-muted-foreground text-sm">
-                                        {m.config_noTabSettings({ label: tab.label })}
+                                        {m.config_noTabSettings({ label: tab.label() })}
                                     </p>
                                     <p class="text-xs text-muted-strong mt-1">
                                         {m.config_noTabSettingsHint()}
