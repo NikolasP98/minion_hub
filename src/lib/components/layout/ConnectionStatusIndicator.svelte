@@ -10,7 +10,7 @@
   import { ui } from '$lib/state/ui/ui.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
   import { isUpdateRestartExpected } from '$lib/state/gateway/update-state.svelte';
-  import { restartState } from '$lib/state/config/config.svelte';
+  import { restartState } from '$lib/state/config/restart.svelte';
   import { fmtTimeAgo, fmtUptime } from '$lib/utils/format';
   import { Button, Spinner } from '$lib/components/ui';
   import { AlertTriangle, RotateCw, Settings2 } from 'lucide-svelte';

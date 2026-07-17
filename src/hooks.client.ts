@@ -4,28 +4,36 @@ import type { HandleClientError } from '@sveltejs/kit';
 // client when a deploy serves a server/client build with mismatched hashes.
 import { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } from '$env/static/public';
 
-export async function init() {
+export function init() {
   // D-08: skip PostHog initialization in desktop mode
   if (import.meta.env.VITE_DESKTOP) return;
 
   if (!PUBLIC_POSTHOG_KEY) return;
 
-  const posthog = (await import('posthog-js')).default;
+  // Defer to first idle: posthog-js is ~213KB and has no business on the
+  // boot-critical path. The initial $pageview is captured here on init since
+  // the afterNavigate hook in +layout.svelte fires before posthog exists.
+  const start = async () => {
+    const posthog = (await import('posthog-js')).default;
 
-  posthog.init(PUBLIC_POSTHOG_KEY, {
-    api_host: `${window.location.origin}/ingest`,
-    ui_host: PUBLIC_POSTHOG_HOST,
-    defaults: '2026-01-30',
-    capture_exceptions: true,
-    // Disable PostHog's history.pushState/replaceState monkey-patch. SvelteKit's
-    // router warns about direct history manipulation, and PostHog's default
-    // `'history_change'` pageview tracker triggers that warning on every nav.
-    // We capture pageviews manually via `afterNavigate` in `+layout.svelte`.
-    capture_pageview: false,
-    capture_pageleave: 'if_capture_pageview',
-  });
-  // Expose for browser console debugging
-  (window as Window & { posthog?: typeof posthog }).posthog = posthog;
+    posthog.init(PUBLIC_POSTHOG_KEY, {
+      api_host: `${window.location.origin}/ingest`,
+      ui_host: PUBLIC_POSTHOG_HOST,
+      defaults: '2026-01-30',
+      capture_exceptions: true,
+      // Disable PostHog's history.pushState/replaceState monkey-patch. SvelteKit's
+      // router warns about direct history manipulation, and PostHog's default
+      // `'history_change'` pageview tracker triggers that warning on every nav.
+      // We capture pageviews manually via `afterNavigate` in `+layout.svelte`.
+      capture_pageview: false,
+      capture_pageleave: 'if_capture_pageview',
+    });
+    // Expose for browser console debugging
+    (window as Window & { posthog?: typeof posthog }).posthog = posthog;
+    posthog.capture('$pageview');
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(() => void start(), { timeout: 3000 });
+  else setTimeout(() => void start(), 1000);
 }
 
 export const handleError: HandleClientError = async ({ error, status, message }) => {

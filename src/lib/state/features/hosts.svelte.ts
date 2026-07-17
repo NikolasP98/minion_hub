@@ -3,7 +3,6 @@ import { uuid } from '@minion-stack/shared';
 import { page } from '$app/state';
 import { invalidateHosts } from './user.svelte';
 import { toastAsync } from '$lib/state/ui/toast.svelte';
-import * as m from '$lib/paraglide/messages';
 
 const HOSTS_CACHE_KEY = 'minion-dash-hosts-cache';
 /** Manual host pick — sessionStorage: respected for the current session only,
@@ -215,6 +214,9 @@ export async function addHost(host: { name: string; url: string; token: string }
   const id = uuid();
   const newHost: Host = { id, ...host, lastConnectedAt: null };
 
+  // Lazy: this module loads with the root layout — a module-scope messages
+  // import would drag the full paraglide chunk into the eager shell bundle.
+  const m = await import('$lib/paraglide/messages');
   return toastAsync(
     (async () => {
       const res = await fetch('/api/servers', {

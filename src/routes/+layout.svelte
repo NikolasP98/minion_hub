@@ -8,11 +8,8 @@
   import { i18n } from '$lib/i18n';
   import ParticleCanvas from '$lib/components/layout/ParticleCanvas.svelte';
   import BgPattern from '$lib/components/decorations/BgPattern.svelte';
-  import VoxelShader from '$lib/components/decorations/VoxelShader.svelte';
-  import Toaster from '$lib/components/layout/Toaster.svelte';
-  import BugReporter from '$lib/components/layout/BugReporter.svelte';
-  import HostsOverlay from '$lib/components/hosts/HostsOverlay.svelte';
   import { theme, applyTheme } from '$lib/state/ui/theme.svelte';
+  import { bugReporter } from '$lib/state/ui/bug-reporter.svelte';
   import { crtConfig } from '$lib/state/ui/crt-config.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
@@ -24,20 +21,21 @@
   import { locale } from '$lib/state/ui/locale.svelte';
   import { loadAndApplyServerPreferences } from '$lib/state/ui/preference-sync.svelte';
   import { installInterceptor } from '$lib/utils/console-interceptor';
-  import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
-  import { inject as injectAnalytics } from '@vercel/analytics';
 
-  // D-07: only call Vercel telemetry when NOT in desktop mode
-  if (!import.meta.env.VITE_DESKTOP) {
-    injectSpeedInsights();
-    injectAnalytics();
-  }
+  // Vercel telemetry (analytics + speed insights) is injected lazily from
+  // +layout.ts — it was previously ALSO injected here, double-loading the
+  // analytics script eagerly in the shell bundle.
 
   // `data` (LayoutData) is consumed via `page.data` getters in userState; we
   // don't need it directly in this component.
   let { children }: { data: LayoutData; children: Snippet } = $props();
 
   const isVoxelized = $derived(theme.preset.id === 'voxelized');
+
+  // Deferred shell chrome (Toaster, HostsOverlay): mounted after first idle so
+  // their chunks — and the paraglide messages chunk they pull — stay off the
+  // boot-critical path. Toasts fired before mount queue in the zag store.
+  let idleReady = $state(false);
 
   // userState now derives from `page.data` via getters — no rune hydration
   // needed. Server load + `invalidate('app:user')` is the single refresh path.
@@ -58,6 +56,10 @@
 
   onMount(async () => {
     installInterceptor();
+
+    const markIdle = () => (idleReady = true);
+    if ('requestIdleCallback' in window) requestIdleCallback(markIdle, { timeout: 1500 });
+    else setTimeout(markIdle, 300);
 
     const current = canonicalPath(page.url.pathname);
     // Public auth-flow pages (sign-in, forgot-password, recovery-link
@@ -80,8 +82,9 @@
       return;
     }
 
-    await loadAndApplyServerPreferences();
-    await loadHosts();
+    // Independent server calls — sequential awaits here cost a full serial
+    // RTT each before the gateway WS could even start connecting.
+    await Promise.all([loadAndApplyServerPreferences(), loadHosts()]);
     if (hostsState.activeHostId) wsConnect();
   });
 
@@ -100,7 +103,9 @@
 
 <ParaglideJS {i18n} languageTag={locale.current}>
   {#if isVoxelized && canonicalPath(page.url.pathname) !== '/login'}
-    <VoxelShader />
+    {#await import('$lib/components/decorations/VoxelShader.svelte') then { default: VoxelShader }}
+      <VoxelShader />
+    {/await}
   {/if}
   {#if !isVoxelized}
     <ParticleCanvas />
@@ -108,8 +113,16 @@
   {#if canonicalPath(page.url.pathname) !== '/login' && !isVoxelized}
     <BgPattern />
   {/if}
-  <Toaster />
-  <BugReporter />
+  {#if idleReady}
+    {#await import('$lib/components/layout/Toaster.svelte') then { default: Toaster }}
+      <Toaster />
+    {/await}
+  {/if}
+  {#if bugReporter.phase !== 'idle'}
+    {#await import('$lib/components/layout/BugReporter.svelte') then { default: BugReporter }}
+      <BugReporter />
+    {/await}
+  {/if}
 
   {#if conn.connecting}
     <div class="fixed top-0 left-0 right-0 h-[2px] bg-bg3 z-[var(--layer-toast)] overflow-hidden">
@@ -124,6 +137,8 @@
   {/key}
 
   {#if ui.overlayOpen}
-    <HostsOverlay />
+    {#await import('$lib/components/hosts/HostsOverlay.svelte') then { default: HostsOverlay }}
+      <HostsOverlay />
+    {/await}
   {/if}
 </ParaglideJS>

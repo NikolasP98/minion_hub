@@ -57,14 +57,15 @@ import {
   pushReliabilityEvent,
   type ReliabilityEvent,
 } from '$lib/state/reliability/reliability.svelte';
+// Restart machine only — the config EDITOR module ($lib/state/config/config.svelte)
+// must never be imported statically here: it chains config-schema + the full
+// paraglide messages chunk into the eager shell bundle.
 import {
-  configState,
-  loadConfig,
   restartState,
   onRestartReconnected,
   resetRestartState,
   beginRestart,
-} from '$lib/state/config/config.svelte';
+} from '$lib/state/config/restart.svelte';
 import {
   updateState,
   applyUpdateStatus,
@@ -78,7 +79,11 @@ import {
 import { extractText } from '$lib/utils/text';
 import type { ChatMessage } from '$lib/types/chat';
 import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
-import * as m from '$lib/paraglide/messages';
+// Lazy paraglide messages: this module loads with the root layout, and a
+// module-scope `import * as m` drags the full both-locale messages chunk
+// (~495KB) into the eager shell bundle. The only consumers are rare
+// update-flow toasts, so they fetch the chunk on demand.
+const msgs = () => import('$lib/paraglide/messages');
 import {
   GatewayClient,
   newTraceparent,
@@ -206,6 +211,19 @@ async function fetchGatewayJwt(): Promise<string | null> {
   }
 }
 
+// One-shot JWT prefetch: wsConnect kicks this off so the fetch overlaps the
+// token fetch + WS open + challenge instead of adding a serial RTT inside the
+// handshake. Consume-once — auto-reconnect handshakes fetch fresh.
+let prefetchedJwt: Promise<string | null> | null = null;
+function prefetchGatewayJwt(): void {
+  if (isJwtAuthEnabled()) prefetchedJwt = fetchGatewayJwt();
+}
+function takePrefetchedJwt(): Promise<string | null> | null {
+  const p = prefetchedJwt;
+  prefetchedJwt = null;
+  return p;
+}
+
 /** A 1008 close whose reason implicates JWT validation (issuer/audience/exp/sig). */
 function isJwtAuthClose(code: number, reason: string): boolean {
   return code === 1008 && /jwt/i.test(reason);
@@ -310,7 +328,7 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // Best-effort org-identity JWT (gated). Only included when fetched OK; a
       // failed fetch falls back to shared-token auth (orgId undefined => full
       // roster) rather than sending a known-bad credential.
-      const jwt = isJwtAuthEnabled() ? await fetchGatewayJwt() : null;
+      const jwt = isJwtAuthEnabled() ? await (takePrefetchedJwt() ?? fetchGatewayJwt()) : null;
 
       return {
         minProtocol: 3,
@@ -480,6 +498,7 @@ export async function wsConnect() {
     conn.connecting = false;
     return;
   }
+  prefetchGatewayJwt();
   const fetched = await fetchHostToken(capturedHostId);
   if (!lifecycleFence.isCurrent(generation)) return;
   if (fetched === null) {
@@ -818,10 +837,13 @@ function handleEvent(evt: Record<string, unknown>) {
       updateState.pending = evt.payload as PendingUpdate;
       // A fresh pending update supersedes any leftover progress from the last install.
       setUpdateProgress(null);
-      toastInfo(
-        m.gateway_update_available_title(),
-        m.gateway_update_available_body({ version: updateState.pending.version }),
-        { id: 'gateway-update' },
+      const pendingVersion = updateState.pending.version;
+      void msgs().then((m) =>
+        toastInfo(
+          m.gateway_update_available_title(),
+          m.gateway_update_available_body({ version: pendingVersion }),
+          { id: 'gateway-update' },
+        ),
       );
       break;
     }
@@ -879,7 +901,7 @@ function handleEvent(evt: Record<string, unknown>) {
         // A rolled-back update slower than the 30s restart window would
         // otherwise fail silently — this event is the authoritative failure
         // signal regardless of timing.
-        toastError(m.gateway_update_installFailed(), r.detail);
+        void msgs().then((m) => toastError(m.gateway_update_installFailed(), r.detail));
       }
       break;
     }
@@ -1354,7 +1376,9 @@ async function confirmUpdateOutcomeViaStatus(targetVersion: string): Promise<voi
     if (status.current === targetVersion) {
       updateState.pending = null;
       setUpdateProgress({ phase: 'done', pct: 100, version: targetVersion });
-      toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion }));
+      void msgs().then((m) =>
+        toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion })),
+      );
     } else if (status.lastResult && !status.lastResult.ok) {
       // Rolled back — the 'update.applied' handler owns the failure toast;
       // just settle the bar.
@@ -1362,7 +1386,7 @@ async function confirmUpdateOutcomeViaStatus(targetVersion: string): Promise<voi
     } else if (status.pending?.version === targetVersion) {
       // Reconnected on the old version with the update still pending.
       setUpdateProgress(null);
-      toastWarning(m.gateway_update_restartMismatch());
+      void msgs().then((m) => toastWarning(m.gateway_update_restartMismatch()));
     }
   } catch {
     /* leave state as-is — 'update.applied' or the card's refetch settles it */
@@ -1385,7 +1409,9 @@ function onHelloOk(hello: HelloOk) {
     updateState.installing = false;
     updateState.pending = null;
     setUpdateProgress({ phase: 'done', pct: 100, version: targetVersion });
-    toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion }));
+    void msgs().then((m) =>
+      toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion })),
+    );
     updateToastShown = true;
   } else if (targetVersion && (updateState.installing || updateState.progress)) {
     // Install in flight but hello is inconclusive — prod gateways report a
@@ -1498,10 +1524,13 @@ function onHelloOk(hello: HelloOk) {
   // now lives in gateway config (`agents.list[].identity.name`) and survives
   // restarts. /my-agent writes via config.patch directly.
 
-  // Reload config if it was loaded before disconnect (e.g. after a save that restarted the gateway)
-  if (configState.loaded || configState.loading) {
-    loadConfig().catch(() => {});
-  }
+  // Reload config if it was loaded before disconnect (e.g. after a save that
+  // restarted the gateway). Dynamic import: if the config page was ever opened
+  // the module is already loaded and this resolves instantly; otherwise
+  // `loaded` is false and nothing happens.
+  void import('$lib/state/config/config.svelte').then(({ configState, loadConfig }) => {
+    if (configState.loaded || configState.loading) loadConfig().catch(() => {});
+  });
 
   setTimeout(startPolling, 3000);
 }

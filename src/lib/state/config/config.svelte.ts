@@ -3,10 +3,15 @@
  * tracks edits, computes patches, and saves.
  */
 import { sendRequest } from '$lib/services/gateway-rpc';
-import { toaster, toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
-import { updateState } from '$lib/state/gateway/update-state.svelte';
+import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
 import * as m from '$lib/paraglide/messages';
 import { isAdmin } from '$lib/state/features/user.svelte';
+import {
+  restartState,
+  beginRestart,
+  resetRestartState,
+  registerRestartDirtyCheck,
+} from './restart.svelte';
 import {
   extractGroups,
   computeDirtyPaths,
@@ -14,16 +19,7 @@ import {
   deepGet,
   deepSet,
 } from '$lib/utils/config-schema';
-import {
-  type RestartPhase,
-  type RestartStateData,
-  createRestartState,
-  applyBeginRestart,
-  applyReconnected,
-  applyReset,
-  RESTART_TIMEOUT_MS,
-  RECONNECTED_DISMISS_MS,
-} from './config-restart';
+import { type RestartPhase } from './config-restart';
 import type {
   ConfigFileSnapshot,
   ConfigSchemaResponse,
@@ -33,6 +29,9 @@ import type {
 } from '$lib/types/config';
 
 export type { RestartPhase };
+// Restart machine moved to ./restart.svelte (see rationale there); re-exported
+// for the config-page consumers that import it from this module.
+export { restartState, beginRestart, resetRestartState, onRestartReconnected } from './restart.svelte';
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -83,90 +82,9 @@ export const groups = {
   },
 };
 
-// ─── Restart state machine ──────────────────────────────────────────────────
-
-export const restartState = $state<RestartStateData>(createRestartState());
-
-let _restartTimeoutId: ReturnType<typeof setTimeout> | null = null;
-let _dismissTimeoutId: ReturnType<typeof setTimeout> | null = null;
-let _restartToastId: string | null = null;
-
-export function beginRestart() {
-  _clearRestartTimers();
-  Object.assign(restartState, applyBeginRestart(restartState, Date.now()));
-  if (_restartToastId) {
-    toaster.dismiss(_restartToastId);
-    _restartToastId = null;
-  }
-  // During an update install the Updates card's progress bar + the calm
-  // connection banner already narrate the restart — skip the duplicate toast.
-  if (!updateState.installing) {
-    _restartToastId = toaster.create({
-      title: m.config_gatewayRestarting(),
-      type: 'loading',
-      duration: Infinity,
-    });
-  }
-  _restartTimeoutId = setTimeout(() => {
-    if (restartState.phase === 'restarting') {
-      restartState.phase = 'failed';
-      if (_restartToastId) {
-        toaster.dismiss(_restartToastId);
-        _restartToastId = null;
-      }
-      if (updateState.installing) {
-        // An update install (npm install + restart + boot) routinely exceeds
-        // this 30s window — that's expected, not a failure. Unstick the
-        // Updates card button and say what's actually happening instead of
-        // showing the generic reconnect-failed error.
-        updateState.installing = false;
-        toastWarning(m.gateway_update_restarting());
-      } else {
-        toastError(m.config_reconnectFailed(), m.config_reconnectManually());
-      }
-    }
-  }, RESTART_TIMEOUT_MS);
-}
-
-export function onRestartReconnected(opts?: { silent?: boolean }) {
-  _clearRestartTimers();
-  if (_restartToastId) {
-    toaster.dismiss(_restartToastId);
-    _restartToastId = null;
-  }
-  const dirty = _isDirty;
-  Object.assign(restartState, applyReconnected(restartState, dirty));
-  // silent: the caller already showed a more specific toast for this
-  // reconnect (e.g. the update success/mismatch toast) — one toast per event.
-  if (opts?.silent) {
-    // no generic toast
-  } else if (dirty) {
-    toastWarning(m.config_gatewayReconnected(), m.config_unsavedPreserved());
-  } else {
-    toastSuccess(m.config_gatewayReconnected(), m.config_changesApplied());
-  }
-  _dismissTimeoutId = setTimeout(() => {
-    if (restartState.phase === 'reconnected') {
-      resetRestartState();
-    }
-  }, 0);
-}
-
-export function resetRestartState() {
-  _clearRestartTimers();
-  Object.assign(restartState, applyReset(restartState));
-}
-
-function _clearRestartTimers() {
-  if (_restartTimeoutId) {
-    clearTimeout(_restartTimeoutId);
-    _restartTimeoutId = null;
-  }
-  if (_dismissTimeoutId) {
-    clearTimeout(_dismissTimeoutId);
-    _dismissTimeoutId = null;
-  }
-}
+// Feed the restart module our dirty flag without it importing this module
+// (which would re-create the eager messages chain it exists to break).
+registerRestartDirtyCheck(() => _isDirty);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

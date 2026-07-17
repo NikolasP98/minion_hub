@@ -3,11 +3,6 @@
 	import Topbar from '$lib/components/layout/Topbar.svelte';
 	import Sidebar from '$lib/components/layout/Sidebar.svelte';
 	import DynamicIsland from '$lib/components/layout/DynamicIsland.svelte';
-	import CommandPalette from '$lib/components/layout/CommandPalette.svelte';
-	import LiveRunWidget from '$lib/components/sessions/LiveRunWidget.svelte';
-	import FloatingAssistant from '$lib/components/layout/FloatingAssistant.svelte';
-	import ShortcutsOverlay from '$lib/components/layout/ShortcutsOverlay.svelte';
-	import GNav from '$lib/components/layout/GNav.svelte';
 	import { type Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -37,9 +32,17 @@
 	// (scroll kept); the fade still plays when switching between modules.
 	const moduleKey = $derived(canonicalPath(page.url.pathname).split('/')[1] ?? '');
 
+	// Overlay chrome (palette, assistant, shortcuts, g-nav, live-run) is
+	// invisible until invoked — mount after first idle so its chunks stay off
+	// the shell's hydration path. Hotkeys go live once mounted (≤1.5s).
+	let idleReady = $state(false);
+
 	onMount(() => {
 		void ensurePermissions();
 		void hydratePluginNav();
+		const markIdle = () => (idleReady = true);
+		if ('requestIdleCallback' in window) requestIdleCallback(markIdle, { timeout: 1500 });
+		else setTimeout(markIdle, 300);
 	});
 </script>
 
@@ -63,11 +66,23 @@
 		</div>
 	</AppViewport>
 
-	<CommandPalette />
-	<LiveRunWidget />
-	<FloatingAssistant />
-	<ShortcutsOverlay />
-	<GNav />
+	{#if idleReady}
+		{#await import('$lib/components/layout/CommandPalette.svelte') then { default: CommandPalette }}
+			<CommandPalette />
+		{/await}
+		{#await import('$lib/components/sessions/LiveRunWidget.svelte') then { default: LiveRunWidget }}
+			<LiveRunWidget />
+		{/await}
+		{#await import('$lib/components/layout/FloatingAssistant.svelte') then { default: FloatingAssistant }}
+			<FloatingAssistant />
+		{/await}
+		{#await import('$lib/components/layout/ShortcutsOverlay.svelte') then { default: ShortcutsOverlay }}
+			<ShortcutsOverlay />
+		{/await}
+		{#await import('$lib/components/layout/GNav.svelte') then { default: GNav }}
+			<GNav />
+		{/await}
+	{/if}
 
 	{#if import.meta.env.DEV}
 		{#await import('@tanstack/svelte-query-devtools') then { SvelteQueryDevtools }}

@@ -4,7 +4,6 @@ import { gw } from '$lib/state/gateway/gateway-data.svelte';
 import { ui } from './ui.svelte';
 import { toaster, toastSuccess, toastError, toastAsync } from './toast.svelte';
 import { hostsState } from '$lib/state/features/hosts.svelte';
-import * as m from '$lib/paraglide/messages';
 declare const __APP_VERSION__: string;
 const hubVersion = __APP_VERSION__;
 
@@ -173,6 +172,9 @@ export function removePastedImage(index: number): void {
 }
 
 export async function submitReport(): Promise<void> {
+  // Lazy: keeps the 495KB paraglide messages chunk out of the eager shell
+  // bundle (this module loads with the root layout).
+  const m = await import('$lib/paraglide/messages');
   const snapshot = {
     screenshot: bugReporter.screenshotDataUrl,
     pastedImages: bugReporter.pastedImages.length > 0 ? [...bugReporter.pastedImages] : undefined,
