@@ -58,7 +58,7 @@
 
 <svelte:head><title>{m.ads_nav_posts()} · {m.nav_ads()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
+<div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
 	<PageHeader title={m.ads_nav_posts()} subtitle={m.ads_posts_subtitle()}>
 		{#snippet leading()}<Image size={16} class="text-accent shrink-0" />{/snippet}
 	</PageHeader>

@@ -56,7 +56,7 @@
 
 <svelte:head><title>{m.stock_entries_title()} — {m.nav_stock()}</title></svelte:head>
 
-<div class="stock-entries-page flex flex-col h-full min-h-0">
+<div class="stock-entries-page flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.stock_entries_title()} subtitle={m.stock_entries_subtitle()}>
     {#snippet leading()}<ArrowLeftRight size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>

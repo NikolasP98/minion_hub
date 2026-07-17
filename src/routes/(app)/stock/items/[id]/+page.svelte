@@ -134,7 +134,7 @@
 
 <svelte:head><title>{item.name} — {m.nav_stock()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
+<div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={item.name} subtitle={item.code}>
     {#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
     {#snippet actions()}

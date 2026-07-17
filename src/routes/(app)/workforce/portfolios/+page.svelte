@@ -39,7 +39,7 @@
 
 <svelte:head><title>{m.workforce_portfolios()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
+<div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
 	<PageHeader title={m.workforce_portfolios()} subtitle={m.workforce_portfolios_subtitle()} />
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">

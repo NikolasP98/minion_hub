@@ -125,7 +125,7 @@
 
 <svelte:head><title>{m.stock_consume_title()} — {m.nav_stock()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
+<div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.stock_consume_title()}>
     {#snippet leading()}<Boxes size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>

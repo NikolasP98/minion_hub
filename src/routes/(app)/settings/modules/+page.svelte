@@ -67,7 +67,7 @@
 
 <svelte:head><title>{m.settings_modules()}</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
+<div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
 	<PageHeader title={m.settings_modules()} subtitle={m.settings_modules_subtitle()}>
 		{#snippet leading()}
 			<Blocks size={16} class="text-accent shrink-0" />

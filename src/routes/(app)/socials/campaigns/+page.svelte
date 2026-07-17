@@ -92,7 +92,7 @@
 
 <svelte:head><title>{m.ads_nav_campaigns()} · {m.nav_ads()}</title></svelte:head>
 
-<div class="social-campaigns-page flex flex-col h-full min-h-0">
+<div class="social-campaigns-page flex flex-col h-full min-h-0 flex-1 min-w-0">
 	<PageHeader title={m.ads_nav_campaigns()} subtitle={m.ads_campaigns_subtitle()}>
 		{#snippet leading()}<Target size={16} class="text-accent shrink-0" />{/snippet}
 	</PageHeader>

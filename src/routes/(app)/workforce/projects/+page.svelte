@@ -104,7 +104,7 @@
 
 <svelte:head><title>Projects</title></svelte:head>
 
-<div class="flex flex-col h-full min-h-0">
+<div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
 	<PageHeader title="Projects" subtitle="Where people and agents do the work — tasks, milestones, timesheets, execution" />
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
