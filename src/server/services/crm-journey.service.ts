@@ -91,8 +91,36 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
     const [stat] = (await tx.execute(sql`
       select first_contact_at from crm_contact_stats where contact_id = ${contactId}
     `)) as unknown as Array<{ first_contact_at: string | null }>;
-    if (stat?.first_contact_at)
-      out.push({ id: 'first-contact', type: 'contact', label: 'First contact', at: String(stat.first_contact_at), detail: null });
+
+    // Ad attribution: enrich the first-contact milestone with the ad/organic
+    // origin, matched via the contact's instagram identity (Tier 3 / backfill).
+    const [attr] = (await tx.execute(sql`
+      select la.origin, la.campaign_name, la.first_contact_at
+      from crm_contact_identities ci
+      join meta_lead_attribution la
+        on la.org_id = ci.org_id and la.channel = ci.channel and la.sender_id = ci.external_id
+      where ci.contact_id = ${contactId} and ci.channel = 'instagram'
+        and ci.org_id = current_setting('app.current_org_id', true)
+      order by la.first_contact_at asc nulls last
+      limit 1
+    `)) as unknown as Array<{ origin: string | null; campaign_name: string | null; first_contact_at: string | null }>;
+
+    const firstContactAt = stat?.first_contact_at ?? attr?.first_contact_at ?? null;
+    if (firstContactAt) {
+      const label =
+        attr?.origin === 'ad'
+          ? `First contact — ${attr.campaign_name ?? 'ad'} ad`
+          : attr?.origin === 'organic'
+            ? 'First contact — organic'
+            : 'First contact';
+      out.push({
+        id: 'first-contact',
+        type: 'contact',
+        label,
+        at: String(firstContactAt),
+        detail: attr?.origin === 'ad' ? (attr.campaign_name ?? null) : null,
+      });
+    }
 
     out.sort((a, b) => (b.at ? Date.parse(b.at) : 0) - (a.at ? Date.parse(a.at) : 0));
     return out;

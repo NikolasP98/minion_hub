@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
-  import { LayoutDashboard, Target, Image, Settings } from 'lucide-svelte';
+  import { LayoutDashboard, Target, Image, MessagesSquare, Settings } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
@@ -12,6 +12,7 @@
     [
       { id: 'dashboard', label: m.nav_ads(), icon: LayoutDashboard, href: '/socials' },
       { id: 'campaigns', label: m.ads_nav_campaigns(), icon: Target, href: '/socials/campaigns' },
+      { id: 'performance', label: m.ads_nav_performance(), icon: MessagesSquare, href: '/socials/ad-performance' },
       { id: 'posts', label: m.ads_nav_posts(), icon: Image, href: '/socials/posts' },
       { id: 'settings', label: m.nav_settings(), icon: Settings, href: '/socials/settings' },
     ].filter((i) => canViewPath(i.href)),

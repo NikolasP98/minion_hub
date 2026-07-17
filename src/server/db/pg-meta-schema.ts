@@ -182,8 +182,51 @@ export const metaAdPosts = pgTable(
   }),
 );
 
+/**
+ * One row per inbound DM lead (org, channel, sender) — which ad/campaign or
+ * organic origin drove them. ONE shape across two collection surfaces: exact
+ * webhook `message.referral` (provenance='webhook') and retroactive icebreaker
+ * heuristic (provenance='heuristic-icebreaker'). Webhook rows are authoritative.
+ * See specs/2026-07-17-ig-ad-attribution-spec.md. Migration
+ * 20260717170000_meta_lead_attribution.sql.
+ */
+export const metaLeadAttribution = pgTable(
+  'meta_lead_attribution',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    channel: text('channel').notNull(),
+    senderId: text('sender_id').notNull(),
+    chatId: text('chat_id'),
+    firstMessageId: text('first_message_id'),
+    firstContactAt: timestamp('first_contact_at', { withTimezone: true }),
+    origin: text('origin').notNull().default('unknown'), // 'ad'|'organic'|'unknown'
+    source: text('source'),
+    ref: text('ref'),
+    adId: text('ad_id'),
+    adsetId: text('adset_id'),
+    campaignId: text('campaign_id'),
+    campaignName: text('campaign_name'),
+    adTitle: text('ad_title'),
+    photoUrl: text('photo_url'),
+    videoUrl: text('video_url'),
+    provenance: text('provenance').notNull(), // 'webhook'|'heuristic-icebreaker'
+    confidence: text('confidence').notNull(), // 'exact'|'high'|'medium'|'low'
+    matchMeta: jsonb('match_meta').notNull().default({}),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    leadUniq: uniqueIndex('meta_lead_attribution_org_id_channel_sender_id_key').on(t.orgId, t.channel, t.senderId),
+    campaignIdx: index('meta_lead_attribution_org_campaign_idx').on(t.orgId, t.campaignId),
+    originIdx: index('meta_lead_attribution_org_origin_idx').on(t.orgId, t.origin),
+  }),
+);
+
 export type MetaConnection = typeof metaConnections.$inferSelect;
 export type MetaAsset = typeof metaAssets.$inferSelect;
+export type MetaLeadAttribution = typeof metaLeadAttribution.$inferSelect;
 export type MetaPostInsight = typeof metaPostInsights.$inferSelect;
 export type MetaAdInsight = typeof metaAdInsights.$inferSelect;
 export type MetaSyncJob = typeof metaSyncJobs.$inferSelect;

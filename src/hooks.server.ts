@@ -217,6 +217,7 @@ const finishApp: Handle = async ({ event, resolve }) => {
       path === '/api/org-config/tick' ||
       path === '/api/jobs/tick' ||
       path === '/api/meta/sync/tick' ||
+      path === '/api/meta/attribution' ||
       path === '/api/email-ledger/tick' ||
       path === '/api/crm/dni-validation/tick'
     ) {
