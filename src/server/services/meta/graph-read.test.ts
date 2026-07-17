@@ -534,7 +534,7 @@ describe('igMediaComments', () => {
     expect(res.data).toEqual([{ id: 'c1', text: 'hi', username: 'a', like_count: 1 }]);
     const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
     expect(calledUrl).toBe(
-      `https://graph.instagram.com/media-1/comments?fields=${encodeURIComponent('id,text,username,timestamp,like_count,replies{id,text,username,timestamp,like_count}')}&access_token=ig-token`,
+      `https://graph.instagram.com/media-1/comments?fields=${encodeURIComponent('id,text,username,from{id,username},timestamp,like_count,replies{id,text,username,from{id,username},timestamp,like_count}')}&access_token=ig-token`,
     );
     expect(calledUrl).not.toContain('appsecret_proof');
   });
