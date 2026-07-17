@@ -42,11 +42,14 @@ export const GET: RequestHandler = async ({ locals, cookies }) => {
     client_id: igAppId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    // Read-only media sync + comment reading — no config_id (that's FLB-only).
-    // manage_comments added 2026-07-05: basic alone returns EMPTY comment lists
-    // (200 OK, silently filtered) — content needs this scope. Works in dev mode
-    // for tester accounts, no business verification required.
-    scope: 'instagram_business_basic,instagram_business_manage_comments',
+    // Read-only media sync + comment/DM reading — no config_id (that's FLB-only).
+    // manage_comments/manage_messages both return EMPTY (200, silently filtered)
+    // or 403 until the app is LIVE (published) — content-withholding is a
+    // Development-mode gate, not an access-level one: a tester account's own
+    // comments/DMs need Standard Access + Live mode, NOT App Review / Advanced
+    // Access (that's only for accounts you don't own). Verified live 2026-07-16:
+    // comments returned real content the moment the app went Live.
+    scope: 'instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages',
     state,
   });
   throw redirect(302, `https://www.instagram.com/oauth/authorize?${params.toString()}`);
