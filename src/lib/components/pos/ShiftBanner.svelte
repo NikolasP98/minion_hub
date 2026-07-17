@@ -169,15 +169,13 @@
     {/if}
   </div>
   <div class="mini-rail">
-    <Button
-      type="button"
-      class="mini mini-open"
-      title={m.pos_shift_open_cta()}
-      disabled={!canAct('pos', 'edit')}
-      onclick={startOpen}
-    >
-      <AlertTriangle size={16} />
-    </Button>
+    <div class="mini-row mini-open-row">
+      <AlertTriangle size={14} class="shrink-0" />
+      <span class="mini-status">{m.pos_no_open_shift()}</span>
+      {#if canAct('pos', 'edit')}
+        <Button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</Button>
+      {/if}
+    </div>
   </div>
 {:else}
   <div class="box box-live hidden xl:flex">
@@ -202,17 +200,19 @@
     {/if}
   </div>
   <div class="mini-rail">
-    <Button
-      type="button"
-      class="mini"
-      title={isStale
-        ? m.pos_shift_stale()
-        : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}
-      disabled={!canAct('pos', 'manage')}
-      onclick={startClose}
-    >
+    <div class="mini-row">
       <span class="dot" class:stale-dot={isStale}></span>
-    </Button>
+      <span class="mini-status">{m.pos_sell_shift_status_open()}</span>
+      <span class="tickets">{openShift.summary.ticketCount}</span>
+      <span class="mini-detail"
+        >{isStale
+          ? m.pos_shift_stale()
+          : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
+      >
+      {#if canAct('pos', 'manage')}
+        <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -321,12 +321,14 @@
     align-items: center;
     gap: var(--space-1);
     padding: var(--space-0-5) var(--space-2);
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-brand) 15%, transparent);
     color: var(--color-brand);
     font-size: var(--font-size-caption);
+    text-wrap: balance;
   }
-  .box :global(.act) {
+  .box :global(.act),
+  .mini-row :global(.act) {
     padding: var(--space-1) var(--space-3);
     border-radius: var(--radius-md, 6px);
     border: 1px solid currentColor;
@@ -335,13 +337,15 @@
     font-size: var(--font-size-caption);
     cursor: pointer;
   }
+  .mini-row :global(.act):hover {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
   .box-live :global(.act) {
     color: var(--color-muted-foreground);
   }
-  /* Collapsed rail (< xl) only: a single icon button carrying the status color.
-     Display is controlled on the scoped .mini-rail wrapper — the Button is a
-     component child, so scoped rules need a real ancestor anchor (a bare
-     `.box :global(.mini)` never matched: .mini is a SIBLING of .box). */
+  /* Compact strip (< xl): here the SectionNav footer is a FULL-WIDTH horizontal
+     bar (not a narrow icon rail), so show status + detail + action inline rather
+     than a bare dot. Display is controlled on the scoped .mini-rail wrapper. */
   .mini-rail {
     display: none;
   }
@@ -350,26 +354,35 @@
       display: block;
     }
   }
-  .mini-rail :global(.mini) {
+  .mini-row {
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: var(--space-2);
     width: 100%;
-    padding: var(--space-2) 0;
-    background: transparent;
-    border: none;
-    cursor: pointer;
+    padding: var(--space-2) var(--space-page-gutter, 24px);
+    font-size: var(--font-size-caption);
     color: var(--color-muted-foreground);
   }
-  .mini-rail :global(.mini-open) {
+  .mini-row .mini-status {
+    font-weight: 600;
+    color: var(--color-foreground);
+  }
+  .mini-open-row {
     color: var(--color-warning);
   }
-  .mini-rail :global(.mini):disabled {
-    cursor: default;
-    opacity: 0.7;
+  .mini-open-row .mini-status {
+    color: var(--color-warning);
   }
-  .mini-rail :global(.mini):not(:disabled):hover {
-    background: color-mix(in srgb, currentColor 10%, transparent);
+  .mini-detail {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mini-row :global(.act) {
+    margin-left: auto;
+    flex-shrink: 0;
   }
   .box :global(.act.primary) {
     border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
