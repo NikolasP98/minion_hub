@@ -202,10 +202,10 @@
             title={`${stageLabel(st)} — ${STAGE_HELP[st]}`}
           >
             <span class="funnel-label"><StagePill stage={st} overridden={false} /></span>
+            <span class="funnel-n">{n.toLocaleString()}</span>
             <span class="funnel-bar-wrap">
               <span class="funnel-bar" style:width={`${(n / funnelMax) * 100}%`}></span>
             </span>
-            <span class="funnel-n">{n.toLocaleString()}</span>
           </a>
         {/each}
       </div>
@@ -241,9 +241,9 @@
             <a class="chrow" href={channelHref(c.channel)}>
               <ChannelBrandIcon channel={c.channel} size={16} />
               <span class="ch-name">{c.channel.charAt(0).toUpperCase() + c.channel.slice(1)}</span>
-              <span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`}></span></span>
               <span class="ch-n">{c.count.toLocaleString()}</span>
               <span class="ch-pct">{pct}%</span>
+              <span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`}></span></span>
             </a>
           {/each}
         </div>
@@ -262,11 +262,11 @@
           <a class="chrow" href={tempHref(t.key)}>
             <span class="temp-dot" style:background={t.color}></span>
             <span class="ch-name">{t.label}</span>
+            <span class="ch-n">{t.count.toLocaleString()}</span>
+            <span class="ch-pct">{pct}%</span>
             <span class="ch-bar-wrap"
               ><span class="ch-bar" style:width={`${pct}%`} style:background={t.color}></span></span
             >
-            <span class="ch-n">{t.count.toLocaleString()}</span>
-            <span class="ch-pct">{pct}%</span>
           </a>
         {/each}
       </div>
@@ -336,11 +336,11 @@
           <a class="chrow" href={r.href}>
             <span class="temp-dot" style:background={r.color}></span>
             <span class="ch-name">{r.label}</span>
+            <span class="ch-n">{r.count.toLocaleString()}</span>
+            <span class="ch-pct">{pct}%</span>
             <span class="ch-bar-wrap"
               ><span class="ch-bar" style:width={`${pct}%`} style:background={r.color}></span></span
             >
-            <span class="ch-n">{r.count.toLocaleString()}</span>
-            <span class="ch-pct">{pct}%</span>
           </a>
         {/each}
       </div>
@@ -467,19 +467,19 @@
   }
 
   /* funnel */
+  /* Bar-row contract: label | values | bar LAST. The container owns the column
+     tracks and rows subgrid into them so every bar starts at the same x —
+     per-row grids sized their own label columns and staggered the bars. */
   .funnel {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: max-content max-content 1fr;
     gap: var(--space-2, 8px);
   }
   .funnel-row {
     display: grid;
-    /* max-content: the label track sizes to the widest StagePill in ANY locale
-       ("Interactuando" > 5.5rem) — a fixed track let chips spill under the bars. */
-    grid-template-columns: max-content 1fr auto;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
     align-items: center;
-    gap: var(--space-2, 8px);
-    width: 100%;
     text-align: left;
     text-decoration: none;
     color: inherit;
@@ -540,16 +540,18 @@
   }
 
   /* channel mix */
+  /* Same bar-row contract as .funnel: icon | name | n | % | bar LAST, tracks
+     owned by the container so bars align across rows. */
   .chmix {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: max-content max-content max-content max-content 1fr;
     gap: var(--space-2, 8px);
   }
   .chrow {
     display: grid;
-    grid-template-columns: auto 5rem 1fr auto auto;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
     align-items: center;
-    gap: var(--space-2, 8px);
     font-size: var(--font-size-body, 14px);
     text-decoration: none;
     color: inherit;
