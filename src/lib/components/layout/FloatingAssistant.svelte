@@ -336,7 +336,20 @@
     onMount(() => {
         try {
             const s = localStorage.getItem('assistant-launcher-pos');
-            if (s) pos = JSON.parse(s);
+            if (s) {
+                // Re-clamp the restored position into the CURRENT viewport. A pos
+                // saved at a different window size (or a stale/off-screen value)
+                // would otherwise render the launcher outside the visible area —
+                // it reads as "the assistant is gone". Clamp only ran on resize
+                // before, so a fresh load with a bad pos left the pill invisible.
+                const p = JSON.parse(s);
+                const w = launcherW();
+                const h = launcherH();
+                pos = {
+                    left: clampN(p.left, LAUNCH_MARGIN, window.innerWidth - w - LAUNCH_MARGIN),
+                    top: clampN(p.top, LAUNCH_MARGIN, window.innerHeight - h - LAUNCH_MARGIN),
+                };
+            }
         } catch {
             /* ignore */
         }
