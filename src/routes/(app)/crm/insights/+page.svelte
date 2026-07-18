@@ -8,6 +8,7 @@
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import CrmWordCloud from '$lib/components/crm/CrmWordCloud.svelte';
   import CrmSentimentTrend from '$lib/components/crm/CrmSentimentTrend.svelte';
+  import CrmInsightsChat from '$lib/components/crm/CrmInsightsChat.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -73,6 +74,9 @@
   <!-- Full-width scroller so the scrollbar hugs the screen edge; content centered. -->
   <PageBody padding="compact" scroll="region">
     <div class="flex flex-col gap-4 max-w-5xl mx-auto w-full">
+      <!-- Conversation intelligence chat — ask the CRM analyst directly -->
+      <CrmInsightsChat />
+
       <!-- C3 — learning from winning conversations -->
       <section class="card">
         <header class="card-h">

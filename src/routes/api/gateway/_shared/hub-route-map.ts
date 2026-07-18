@@ -11,6 +11,11 @@
  */
 export const HUB_ROUTE_MAP: Array<[route: string, description: string]> = [
 	['/crm/customers', 'CRM customers grid (filterable/sortable list of all customers).'],
+	[
+		'/crm/insights',
+		'CRM conversation intelligence — win/sentiment analysis, word cloud, and an embedded chat with ' +
+			'the CRM conversation analyst (search_crm_conversations, crm_conversation_themes).',
+	],
 	['/crm/', "A single customer's CRM profile — journey, identities, revenue, notes."],
 	['/crm', 'CRM dashboard — customer overview, funnel, tags.'],
 	['/finances/invoices', 'Invoices list. Filter to one customer with ?contact={id}.'],

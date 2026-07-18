@@ -91,3 +91,34 @@ export function buildAssistantContext(): string {
 
 	return lines.join('\n') + '\n\n';
 }
+
+/**
+ * Context envelope for the CRM Insights chat panel (`/crm/insights`, see
+ * CrmInsightsChat.svelte). Frames the same personal agent as a CRM
+ * conversation analyst pointed at the two conversation-intelligence tools
+ * (gateway-side, landing separately): `search_crm_conversations` for
+ * targeted lookups and `crm_conversation_themes` for aggregate/census
+ * questions. Same envelope shape and stripping contract as
+ * buildAssistantContext (model-only; sendAssistantTurn's caller strips it
+ * for display) — the panel shares the personal agent's main session/thread
+ * (see CrmInsightsChat.svelte for why), so this just swaps the framing.
+ */
+export function buildInsightsContext(): string {
+	const org = activeOrg();
+
+	const lines = [
+		`[In-app assistant context — the user is on the CRM Insights page` +
+			`${org.name ? ` for ${org.name}` : ''}, talking to you as a CRM conversation analyst.`,
+		`Use \`search_crm_conversations\` for targeted lookups (e.g. "what did people say about ` +
+			`pricing?") and \`crm_conversation_themes\` for aggregate questions (pain-point census, ` +
+			`over-explaining rate, intent distribution). If a tool isn't available yet, say so plainly ` +
+			`instead of guessing at data you can't see.`,
+		org.multi && org.id ? `active_org_id: ${org.id} (pass to data tools as orgId).` : '',
+		`Always cite how many conversations/messages back a claim, and support it with an in-app ` +
+			`markdown link [label](/crm/...) — e.g. a customer name links to /crm/{id}. Links render as ` +
+			`clickable navigation.`,
+		`Keep replies tight. Don't restate this context.]`,
+	].filter(Boolean);
+
+	return lines.join('\n') + '\n\n';
+}
