@@ -95,7 +95,7 @@
 		crash: palette.destructive,
 		connection: palette.cyan,
 		session: palette.accent,
-		auth: palette.success,
+		auth: palette.info,
 		cron: palette.info,
 		memory: palette.purple,
 		heartbeat: palette.pink,
@@ -115,7 +115,7 @@
 		high: 'bg-warning text-[var(--color-canvas)]',
 		medium: 'bg-info text-primary-foreground',
 		low: 'bg-surface-3 text-foreground',
-		info: 'bg-accent/80 text-primary-foreground',
+		info: 'bg-accent text-[var(--color-on-accent)]',
 		ok: 'bg-success text-primary-foreground',
 	};
 
@@ -138,7 +138,7 @@
 		skill: 'bg-info/15 text-info border border-info/30',
 		crash: 'bg-destructive/15 text-destructive border border-destructive/30',
 		connection: 'bg-info/15 text-info border border-info/30',
-		auth: 'bg-success/15 text-success border border-success/30',
+		auth: 'bg-info/15 text-info border border-info/30',
 		cron: 'bg-accent/15 text-accent border border-accent/30',
 		browser: 'bg-warning/15 text-warning border border-warning/30',
 		timezone: 'bg-accent/15 text-accent border border-accent/30',

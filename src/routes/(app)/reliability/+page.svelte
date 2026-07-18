@@ -130,7 +130,7 @@
 		orchestration: cssVar('--color-pink', '#ec4899'),
 		skill:         cssVar('--color-cyan', '#06b6d4'),
 		connection:    cssVar('--color-emerald', '#10b981'),
-		auth:          cssVar('--color-success-fg', '#4ade80'),
+		auth:          cssVar('--color-info-fg', '#38bdf8'),
 		cron:          cssVar('--color-info-fg', '#38bdf8'),
 		crash:         cssVar('--color-brand', '#f43f5e'),
 		browser:       cssVar('--color-purple', '#a855f7'),
