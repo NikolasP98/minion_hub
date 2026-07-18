@@ -14,7 +14,7 @@ import { getProposal, markApproved, dismiss, editPayload } from '$server/service
 const EXECUTE_KINDS = new Set(['create_event', 'reminder']);
 
 const postSchema = z.object({ action: z.enum(['approve', 'dismiss']) });
-const patchSchema = z.object({ args: z.record(z.unknown()) });
+const patchSchema = z.object({ args: z.record(z.string(), z.unknown()) });
 
 /** POST /api/pulse/proposals/[id] — approve or dismiss a Pulse card.
  *  Approving a create_event/reminder card fires a one-shot gateway agentTurn
@@ -28,6 +28,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   const id = params.id;
   const proposal = await getProposal(ctx, id);
   if (!proposal) throw error(404, 'proposal not found');
+  if (proposal.status !== 'pending') {
+    return json({ ok: false, status: proposal.status, reason: 'already decided' }, { status: 409 });
+  }
 
   const by = ctx.profileId ?? user.id;
 

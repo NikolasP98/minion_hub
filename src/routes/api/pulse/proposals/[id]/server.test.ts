@@ -53,6 +53,7 @@ describe('POST /api/pulse/proposals/[id]', () => {
     getProposalMock.mockResolvedValue({
       id: 'p1',
       kind: 'create_event',
+      status: 'pending',
       payload: { args: { title: 'Dentist', start: '2026-07-20T15:00:00Z' } },
     });
 
@@ -77,6 +78,7 @@ describe('POST /api/pulse/proposals/[id]', () => {
     getProposalMock.mockResolvedValue({
       id: 'p2',
       kind: 'digest',
+      status: 'pending',
       payload: {},
     });
 
@@ -88,7 +90,7 @@ describe('POST /api/pulse/proposals/[id]', () => {
   });
 
   it('dismiss calls dismiss() and never the gateway', async () => {
-    getProposalMock.mockResolvedValue({ id: 'p3', kind: 'create_event', payload: {} });
+    getProposalMock.mockResolvedValue({ id: 'p3', kind: 'create_event', status: 'pending', payload: {} });
 
     const res = await call('p3', { action: 'dismiss' });
 
@@ -100,5 +102,20 @@ describe('POST /api/pulse/proposals/[id]', () => {
   it('404s when the proposal does not exist', async () => {
     getProposalMock.mockResolvedValue(null);
     await expect(call('missing', { action: 'approve' })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('409s on re-approving an already-approved proposal and never re-fires the gateway', async () => {
+    getProposalMock.mockResolvedValue({
+      id: 'p4',
+      kind: 'create_event',
+      status: 'approved',
+      payload: { args: { title: 'Dentist', start: '2026-07-20T15:00:00Z' } },
+    });
+
+    const res = await call('p4', { action: 'approve' });
+
+    expect(res.status).toBe(409);
+    expect(gatewayCallAsUser).not.toHaveBeenCalled();
+    expect(markApprovedMock).not.toHaveBeenCalled();
   });
 });
