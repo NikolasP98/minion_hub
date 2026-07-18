@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+	import KpiRow from './KpiRow.svelte';
 	import { onMount, untrack } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
 	import {
@@ -15,7 +16,8 @@
 		Clock,
 		CircleAlert,
 		EyeOff,
-		Eye
+		Eye,
+		TrendingDown
 	} from 'lucide-svelte';
 	import { createPluginHealthState, type PluginHealthEntry } from '$lib/state/reliability/plugin-health.svelte';
 	import { reliability, type ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
@@ -120,6 +122,25 @@
 			errors += p.telemetry.errors;
 		}
 		return { total: plugins.length, loaded, errored, disabled, events, errors };
+	});
+
+	// Fleet-of-plugins health row — the one-glance summary the other reliability
+	// tabs have, above the per-plugin sections. Static reads (no hover detail).
+	let pluginKpis = $derived.by(() => {
+		const s = summary;
+		const errRate = s.events > 0 ? (s.errors / s.events) * 100 : null;
+		return [
+			{ key: 'loaded', Icon: Puzzle, color: 'var(--color-success)', label: m.reliability_pluginKpiLoaded(), value: `${s.loaded}/${s.total}` },
+			{ key: 'errored', Icon: CircleAlert, color: s.errored > 0 ? 'var(--color-destructive)' : 'var(--color-muted-foreground)', label: m.reliability_pluginKpiErrored(), value: s.errored },
+			{ key: 'disabled', Icon: EyeOff, color: 'var(--color-muted-foreground)', label: m.reliability_pluginKpiDisabled(), value: s.disabled },
+			{ key: 'events', Icon: Activity, color: 'var(--color-accent)', label: m.reliability_capEvents(), value: formatNumber(s.events) },
+			{ key: 'errors', Icon: AlertCircle, color: s.errors > 0 ? 'var(--color-destructive)' : 'var(--color-muted-foreground)', label: m.reliability_capErrors(), value: formatNumber(s.errors) },
+			{
+				key: 'errRate', Icon: TrendingDown,
+				color: errRate === null ? 'var(--color-muted-foreground)' : errRate < 1 ? 'var(--color-success)' : errRate < 5 ? 'var(--color-warning)' : 'var(--color-destructive)',
+				label: m.reliability_pluginKpiErrRate(), value: errRate === null ? '—' : errRate.toFixed(1), unit: errRate === null ? '' : '%',
+			},
+		];
 	});
 
 	function statusColor(status: string): string {
@@ -260,6 +281,11 @@
 			{/if}
 		{/if}
 	</div>
+
+	<!-- Fleet-of-plugins health row (one-glance summary, like the other tabs). -->
+	{#if snap}
+		<KpiRow items={pluginKpis} cols={6} />
+	{/if}
 
 	{#if health.loading && !snap}
 		<div class="surface-2 rounded-lg flex items-center justify-center py-12 text-muted-foreground text-sm">

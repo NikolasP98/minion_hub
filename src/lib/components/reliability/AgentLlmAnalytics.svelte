@@ -460,14 +460,16 @@
 				<Cpu size={11} class="text-accent shrink-0" />
 			{/snippet}
 			{#snippet actions()}
-				<!-- Cost ⟷ Tokens toggle -->
-				<div class="flex items-center rounded-md border border-border overflow-hidden h-6">
+				<!-- Cost ⟷ Tokens toggle — pill segmented, matches the date-range presets
+				     (the old bordered wrapper double-bordered against each Button's own
+				     border/radius, which read as a broken seam). -->
+				<div class="flex items-center gap-1">
 					<Button
 						type="button"
 						onclick={() => (metric = 'cost')}
-						variant={metric === 'cost' ? 'primary' : 'secondary'}
+						variant={metric === 'cost' ? 'primary' : 'outline'}
 						size="sm"
-						class="!h-full"
+						class="rounded-full"
 						aria-pressed={metric === 'cost'}
 					>
 						Cost
@@ -475,9 +477,9 @@
 					<Button
 						type="button"
 						onclick={() => (metric = 'tokens')}
-						variant={metric === 'tokens' ? 'primary' : 'secondary'}
+						variant={metric === 'tokens' ? 'primary' : 'outline'}
 						size="sm"
-						class="!h-full"
+						class="rounded-full"
 						aria-pressed={metric === 'tokens'}
 					>
 						Tokens

@@ -16,6 +16,8 @@
 	import ConnectionEventsPanel from '$lib/components/reliability/ConnectionEventsPanel.svelte';
 	import AgentLlmAnalytics from '$lib/components/reliability/AgentLlmAnalytics.svelte';
 	import KpiSparkline from '$lib/components/reliability/KpiSparkline.svelte';
+	import KpiRow from '$lib/components/reliability/KpiRow.svelte';
+	import { formatUsd } from '$lib/utils/model-pricing';
 	import ScanLine from '$lib/components/decorations/ScanLine.svelte';
 	import {
 		reliability,
@@ -46,10 +48,13 @@
 		Puzzle,
 		Gauge,
 		HeartPulse,
-		Layers,
 		Zap,
 		TrendingDown,
 		GitMerge,
+		Timer,
+		DollarSign,
+		ShieldAlert,
+		ArrowLeftRight,
 	} from 'lucide-svelte';
 
 	// ── Persistence ───────────────────────────────────────────────────────────
@@ -63,6 +68,7 @@
 		customFrom?: number;
 		customTo?: number;
 		tab?: string;
+		scope?: ScopeMode;
 	}
 
 	const PRESET_MS: Record<string, number> = {
@@ -105,6 +111,7 @@
 			customFrom: preset ? undefined : reliability.dateRange.from,
 			customTo: preset ? undefined : reliability.dateRange.to,
 			tab: activeTab,
+			scope: scopeMode,
 		});
 	}
 
@@ -154,6 +161,19 @@
 
 	const CATEGORIES = ['gateway', 'agent', 'channel', 'message', 'tool', 'orchestration', 'skill', 'connection', 'auth', 'cron', 'crash', 'browser', 'timezone', 'general'] as const;
 
+	// ── Org-scope lens ────────────────────────────────────────────────────────
+	// Events carry no orgId at the gateway, but the category taxonomy cleanly
+	// bisects: GLOBAL = infra not tied to a tenant (gateway health, crashes, ws
+	// lifecycle, cron ticks, gateway-token auth); ORG = something a user/agent in a
+	// tenant did (agent/tool/skill/message/channel/orchestration). So All/Global/Org
+	// is a free category-class filter — no gateway change. A per-ORG picker needs the
+	// gateway to stamp orgId on each event (deferred). Scope only means something on
+	// Overview (Agents is inherently org, Plugins inherently global), so it's shown
+	// there only.
+	const GLOBAL_CATEGORIES: ReadonlySet<string> = new Set(['gateway', 'crash', 'connection', 'cron', 'timezone', 'general', 'auth']);
+	const ORG_CATEGORIES: ReadonlySet<string> = new Set(CATEGORIES.filter((c) => !GLOBAL_CATEGORIES.has(c)));
+	type ScopeMode = 'all' | 'global' | 'org';
+
 	let summary = $derived(reliability.summary);
 	// Unfiltered summary → filter-dropdown facet counts (true totals per option).
 	let summaryAll = $derived(reliability.summaryAll);
@@ -167,6 +187,8 @@
 	// Failure mode = the part of an event name after its `<type>.` prefix
 	// (e.g. `gateway.ws_slow_response` → type `gateway`, mode `ws_slow_response`).
 	let selectedFailureModes = $state<Set<string>>(new Set(_saved.failureModes ?? []));
+	// Org-scope lens (All / Global / Org). See GLOBAL_CATEGORIES above.
+	let scopeMode = $state<ScopeMode>(_saved.scope ?? 'all');
 
 	// Split an event name into its type prefix + failure-mode suffix. Events are
 	// dotted (`<type>.<mode...>`); a dotless event is its own type with no mode.
@@ -208,6 +230,29 @@
 	const effSeverities = $derived(tabFilterVis.severity ? selectedSeverities : EMPTY_SET);
 	const effCategories = $derived(tabFilterVis.category ? selectedCategories : EMPTY_SET);
 	const effModes = $derived(tabFilterVis.mode ? selectedFailureModes : EMPTY_SET);
+
+	// Scope lens only applies on Overview (Agents = inherently org, Plugins =
+	// inherently global). Elsewhere it's hidden and ignored.
+	const scopeActive = $derived(activeTab === 'overview');
+	// Effective category list sent to the server: the user's explicit picks,
+	// narrowed to the active scope class (global/org) when the lens is engaged.
+	// Never resolves to an empty list (that would return nothing) — an empty
+	// intersection falls back to the whole class, so "scope wins".
+	const scopedCategories = $derived.by((): string[] | undefined => {
+		const base = effCategories.size ? [...effCategories] : undefined;
+		if (!scopeActive || scopeMode === 'all') return base;
+		const classSet = scopeMode === 'global' ? GLOBAL_CATEGORIES : ORG_CATEGORIES;
+		if (base) {
+			const intersect = base.filter((c) => classSet.has(c));
+			return intersect.length ? intersect : [...classSet];
+		}
+		return [...classSet];
+	});
+
+	function setScope(mode: ScopeMode) {
+		scopeMode = mode;
+		persistFilters();
+	}
 
 	function toggleCategory(cat: string) {
 		const next = new Set(selectedCategories);
@@ -531,7 +576,6 @@
 
 	const statItems = $derived.by(() => {
 		const sev = overviewStats.bySeverity;
-		const cat = overviewStats.byCategory;
 		const total = overviewStats.total;
 		const crit = sev.critical ?? 0;
 		const high = sev.high ?? 0;
@@ -540,23 +584,6 @@
 		const low = sev.low ?? 0;
 		const fail = crit + high;
 		const noise = info + low;
-
-		// Dominant category within the current view.
-		let topCatName = ''; let topCatCount = 0;
-		for (const [k, v] of Object.entries(cat)) if (v > topCatCount) { topCatCount = v; topCatName = k; }
-
-		// When a single category is pinned the "top category" cell is redundant
-		// (always 100% that one) — swap it for the dominant failure-mode in view.
-		const singleCategory = effCategories.size === 1;
-		let topModeName = ''; let topModeCount = 0;
-		if (singleCategory) {
-			const counts = new Map<string, number>();
-			for (const e of filteredEvents) {
-				const md = parseEventName(e.event).failureMode;
-				counts.set(md, (counts.get(md) ?? 0) + 1);
-			}
-			for (const [k, v] of counts) if (v > topModeCount) { topModeCount = v; topModeName = k; }
-		}
 
 		// Throughput — events per hour across the active range.
 		const rangeHours = Math.max((reliability.dateRange.to - reliability.dateRange.from) / 3_600_000, 1 / 60);
@@ -607,115 +634,193 @@
 		const hbFailed = Math.max(hb.total - hb.ok, 0);
 		const toolErr = Math.max(tl.total - tl.ok, 0);
 
-		const concentration = singleCategory
-			? {
-				key: 'topmode', Icon: Layers, color: C.accent, label: m.reliability_kpiTopMode(),
-				value: pct(topModeCount, total) ?? '—', unit: total ? '%' : '',
-				subtext: topModeName ? `${topModeName} · ${compact(topModeCount)}` : '',
-				detail: {
-					label: m.reliability_kpiTopMode(),
-					texFormula: '\\dfrac{\\text{events in top mode}}{\\text{total}}',
-					texValues: `\\dfrac{${fmt(topModeCount)}}{${fmt(total)}} = ${resPct(pct(topModeCount, total))}`,
-					note: topModeName ? `${m.reliability_flowMode()}: ${topModeName}` : undefined,
-				} as KpiDetail,
-			}
-			: {
-				key: 'topcat', Icon: Layers, color: CATEGORY_COLORS[topCatName] ?? C.accent, label: m.reliability_kpiTopCategory(),
-				value: pct(topCatCount, total) ?? '—', unit: total ? '%' : '',
-				subtext: topCatName ? `${topCatName} · ${compact(topCatCount)}` : '',
-				detail: {
-					label: m.reliability_kpiTopCategory(),
-					texFormula: '\\dfrac{\\text{events in top category}}{\\text{total}}',
-					texValues: `\\dfrac{${fmt(topCatCount)}}{${fmt(total)}} = ${resPct(pct(topCatCount, total))}`,
-					note: topCatName ? `${m.reliability_flowCategory()}: ${topCatName}` : undefined,
-				} as KpiDetail,
-			};
+		// ── Gateway infra vitals (reliability.perf — the fleet-GLOBAL signal). Null
+		//    on older gateways / when disconnected → these cells read an em-dash. ──
+		const perf = reliability.perf?.latest ?? null;
+		const p95Ms = perf ? Math.round(perf.latencyMs.p95) : null;
+		const throughput = perf ? perf.throughputPerSec : null;
+		const loopP99 = perf ? Math.round(perf.eventLoopDelayMs.p99) : null;
+		const latColor = p95Ms === null ? C.muted : p95Ms < 200 ? C.success : p95Ms < 1000 ? C.warning : C.destructive;
+		const loopColor = loopP99 === null ? C.muted : loopP99 < 50 ? C.success : loopP99 < 100 ? C.warning : C.destructive;
+		const thrStr = throughput === null ? '—' : throughput >= 10 ? String(Math.round(throughput)) : throughput.toFixed(1);
 
-		return [
-			{
-				key: 'health', Icon: Gauge, color: healthSpark?.statusColor ?? rampGood(healthPct), label: m.reliability_kpiHealth(),
-				value: healthPct ?? '—', unit: healthPct ? '%' : '',
-				subtext: total ? m.reliability_kpiHealthSub({ crit: compact(crit), high: compact(high), med: compact(med) }) : '',
-				detail: {
-					label: m.reliability_kpiHealth(),
-					texFormula: '100\\left(1-\\dfrac{c+0.6h+0.3m}{N}\\right)',
-					texValues: `100\\left(1-\\dfrac{${fmt(crit)}+0.6(${fmt(high)})+0.3(${fmt(med)})}{${fmt(total)}}\\right) = ${resPct(healthPct)}`,
-					note: total < HEALTH_MIN_SAMPLE
-						? m.reliability_tipSampleFloor({ n: HEALTH_MIN_SAMPLE })
-						: m.reliability_tipWeights(),
-					spark: healthSpark,
-				} as KpiDetail,
-			},
-			{
-				key: 'error', Icon: TrendingDown, color: errorSpark?.statusColor ?? rampBad(errorPct), label: m.reliability_kpiErrorRate(),
-				value: errorPct ?? '—', unit: errorPct ? '%' : '',
-				subtext: total ? `${compact(fail)} ${m.reliability_kpiOfTotal({ total: compact(total) })}` : '',
-				detail: {
-					label: m.reliability_kpiErrorRate(),
-					texFormula: '\\dfrac{\\text{high}+\\text{critical}}{\\text{total}}',
-					texValues: `\\dfrac{${fmt(high)}+${fmt(crit)}}{${fmt(total)}} = ${resPct(errorPct)}`,
-					spark: errorSpark,
-				} as KpiDetail,
-			},
-			{
-				key: 'critical', Icon: AlertCircle, color: critSpark?.statusColor ?? (crit > 0 ? C.destructive : C.success), label: m.reliability_kpiCriticalRate(),
-				value: critPct ?? '—', unit: critPct ? '%' : '',
-				subtext: total ? compact(crit) : '',
-				detail: {
-					label: m.reliability_kpiCriticalRate(),
-					texFormula: '\\dfrac{\\text{critical}}{\\text{total}}',
-					texValues: `\\dfrac{${fmt(crit)}}{${fmt(total)}} = ${resPct(critPct)}`,
-					spark: critSpark,
-				} as KpiDetail,
-			},
-			{
-				key: 'noise', Icon: Radio, color: C.muted, label: m.reliability_kpiNoise(),
-				value: noisePct ?? '—', unit: noisePct ? '%' : '',
-				subtext: total ? compact(noise) : '',
-				detail: {
-					label: m.reliability_kpiNoise(),
-					texFormula: '\\dfrac{\\text{info}+\\text{low}}{\\text{total}}',
-					texValues: `\\dfrac{${fmt(info)}+${fmt(low)}}{${fmt(total)}} = ${resPct(noisePct)}`,
-				} as KpiDetail,
-			},
-			{
-				key: 'heartbeat', Icon: HeartPulse, color: hbSpark?.statusColor ?? rampGood(hbPct), label: m.reliability_kpiHeartbeat(),
-				value: hbPct ?? '—', unit: hbPct ? '%' : '',
-				subtext: hb.total ? `${compact(hb.ok)}/${compact(hb.total)}` : '',
-				detail: {
-					label: m.reliability_kpiHeartbeat(),
-					texFormula: '\\dfrac{\\text{ok}}{\\text{ok}+\\text{failed}}',
-					texValues: `\\dfrac{${fmt(hb.ok)}}{${fmt(hb.ok)}+${fmt(hbFailed)}} = ${resPct(hbPct)}`,
-					note: `${m.reliability_tipSource()}: ${dataSrc}`,
-					spark: hbSpark,
-				} as KpiDetail,
-			},
-			{
-				key: 'tool', Icon: Wrench, color: toolSpark?.statusColor ?? rampGood(toolPct), label: m.reliability_kpiToolSuccess(),
-				value: toolPct ?? '—', unit: toolPct ? '%' : '',
-				subtext: tl.total ? `${compact(tl.ok)}/${compact(tl.total)}` : '',
-				detail: {
-					label: m.reliability_kpiToolSuccess(),
-					texFormula: '\\dfrac{\\text{exec.ok}}{\\text{exec.ok}+\\text{exec.error}}',
-					texValues: `\\dfrac{${fmt(tl.ok)}}{${fmt(tl.ok)}+${fmt(toolErr)}} = ${resPct(toolPct)}`,
-					note: `${m.reliability_tipSource()}: ${dataSrc}`,
-					spark: toolSpark,
-				} as KpiDetail,
-			},
-			concentration,
-			{
-				key: 'rate', Icon: Zap, color: C.cyan, label: m.reliability_kpiEventRate(),
-				value: total ? rateStr : '—', unit: total ? m.reliability_kpiPerHour() : '',
-				subtext: total ? `${compact(total)}` : '',
-				detail: {
-					label: m.reliability_kpiEventRate(),
-					texFormula: '\\dfrac{\\text{total events}}{\\text{range (hours)}}',
-					texValues: `\\dfrac{${fmt(total)}}{${fmt(Math.round(rangeHours))}} = \\text{${rateStr}/hr}`,
-					note: `${m.reliability_tipRange()}: ${m.reliability_tipHours({ h: Math.round(rangeHours) })}`,
-				} as KpiDetail,
-			},
-		];
+		// ── Agent/LLM KPIs — tool failure modes (activity.toolOutcomes) + LLM
+		//    cost/usage (usage aggregate). All ORG-scoped, all agent-domain. ──
+		const outc = reliability.activity?.toolOutcomes ?? null;
+		const outcTot = outc?.total ?? 0;
+		const timeoutPct = outc ? pct(outc.timeout, outcTot) : null;
+		const authPct = outc ? pct(outc.authError, outcTot) : null;
+		const usageTot = reliability.usage?.total ?? null;
+		const costUsd = usageTot ? usageTot.costMicroUsd / 1_000_000 : null;
+		const callN = usageTot?.calls ?? null;
+		const avgCostUsd = usageTot && usageTot.calls ? usageTot.costMicroUsd / 1_000_000 / usageTot.calls : null;
+		const pro = reliability.activity?.proactivity ?? null;
+		const proDen = pro ? pro.proactive + pro.reactive : 0;
+		const proPct = pro ? pct(pro.proactive, proDen) : null;
+
+		const healthItem = {
+			key: 'health', Icon: Gauge, color: healthSpark?.statusColor ?? rampGood(healthPct), label: m.reliability_kpiHealth(),
+			value: healthPct ?? '—', unit: healthPct ? '%' : '',
+			subtext: total ? m.reliability_kpiHealthSub({ crit: compact(crit), high: compact(high), med: compact(med) }) : '',
+			detail: {
+				label: m.reliability_kpiHealth(),
+				texFormula: '100\\left(1-\\dfrac{c+0.6h+0.3m}{N}\\right)',
+				texValues: `100\\left(1-\\dfrac{${fmt(crit)}+0.6(${fmt(high)})+0.3(${fmt(med)})}{${fmt(total)}}\\right) = ${resPct(healthPct)}`,
+				note: total < HEALTH_MIN_SAMPLE
+					? m.reliability_tipSampleFloor({ n: HEALTH_MIN_SAMPLE })
+					: m.reliability_tipWeights(),
+				spark: healthSpark,
+			} as KpiDetail,
+		};
+		const errorItem = {
+			key: 'error', Icon: TrendingDown, color: errorSpark?.statusColor ?? rampBad(errorPct), label: m.reliability_kpiErrorRate(),
+			value: errorPct ?? '—', unit: errorPct ? '%' : '',
+			subtext: total ? `${compact(fail)} ${m.reliability_kpiOfTotal({ total: compact(total) })}` : '',
+			detail: {
+				label: m.reliability_kpiErrorRate(),
+				texFormula: '\\dfrac{\\text{high}+\\text{critical}}{\\text{total}}',
+				texValues: `\\dfrac{${fmt(high)}+${fmt(crit)}}{${fmt(total)}} = ${resPct(errorPct)}`,
+				spark: errorSpark,
+			} as KpiDetail,
+		};
+		const criticalItem = {
+			key: 'critical', Icon: AlertCircle, color: critSpark?.statusColor ?? (crit > 0 ? C.destructive : C.success), label: m.reliability_kpiCriticalRate(),
+			value: critPct ?? '—', unit: critPct ? '%' : '',
+			subtext: total ? compact(crit) : '',
+			detail: {
+				label: m.reliability_kpiCriticalRate(),
+				texFormula: '\\dfrac{\\text{critical}}{\\text{total}}',
+				texValues: `\\dfrac{${fmt(crit)}}{${fmt(total)}} = ${resPct(critPct)}`,
+				spark: critSpark,
+			} as KpiDetail,
+		};
+		const noiseItem = {
+			key: 'noise', Icon: Radio, color: C.muted, label: m.reliability_kpiNoise(),
+			value: noisePct ?? '—', unit: noisePct ? '%' : '',
+			subtext: total ? compact(noise) : '',
+			detail: {
+				label: m.reliability_kpiNoise(),
+				texFormula: '\\dfrac{\\text{info}+\\text{low}}{\\text{total}}',
+				texValues: `\\dfrac{${fmt(info)}+${fmt(low)}}{${fmt(total)}} = ${resPct(noisePct)}`,
+			} as KpiDetail,
+		};
+		const rateItem = {
+			key: 'rate', Icon: Zap, color: C.cyan, label: m.reliability_kpiEventRate(),
+			value: total ? rateStr : '—', unit: total ? m.reliability_kpiPerHour() : '',
+			subtext: total ? `${compact(total)}` : '',
+			detail: {
+				label: m.reliability_kpiEventRate(),
+				texFormula: '\\dfrac{\\text{total events}}{\\text{range (hours)}}',
+				texValues: `\\dfrac{${fmt(total)}}{${fmt(Math.round(rangeHours))}} = \\text{${rateStr}/hr}`,
+				note: `${m.reliability_tipRange()}: ${m.reliability_tipHours({ h: Math.round(rangeHours) })}`,
+			} as KpiDetail,
+		};
+		const heartbeatItem = {
+			key: 'heartbeat', Icon: HeartPulse, color: hbSpark?.statusColor ?? rampGood(hbPct), label: m.reliability_kpiHeartbeat(),
+			value: hbPct ?? '—', unit: hbPct ? '%' : '',
+			subtext: hb.total ? `${compact(hb.ok)}/${compact(hb.total)}` : '',
+			detail: {
+				label: m.reliability_kpiHeartbeat(),
+				texFormula: '\\dfrac{\\text{ok}}{\\text{ok}+\\text{failed}}',
+				texValues: `\\dfrac{${fmt(hb.ok)}}{${fmt(hb.ok)}+${fmt(hbFailed)}} = ${resPct(hbPct)}`,
+				note: `${m.reliability_tipSource()}: ${dataSrc}`,
+				spark: hbSpark,
+			} as KpiDetail,
+		};
+		const toolItem = {
+			key: 'tool', Icon: Wrench, color: toolSpark?.statusColor ?? rampGood(toolPct), label: m.reliability_kpiToolSuccess(),
+			value: toolPct ?? '—', unit: toolPct ? '%' : '',
+			subtext: tl.total ? `${compact(tl.ok)}/${compact(tl.total)}` : '',
+			detail: {
+				label: m.reliability_kpiToolSuccess(),
+				texFormula: '\\dfrac{\\text{exec.ok}}{\\text{exec.ok}+\\text{exec.error}}',
+				texValues: `\\dfrac{${fmt(tl.ok)}}{${fmt(tl.ok)}+${fmt(toolErr)}} = ${resPct(toolPct)}`,
+				note: `${m.reliability_tipSource()}: ${dataSrc}`,
+				spark: toolSpark,
+			} as KpiDetail,
+		};
+
+		return {
+			// Overview = GLOBAL gateway/fleet health: severity signals + infra vitals
+			// (perf latency/throughput/event-loop). tool-success + heartbeat moved to
+			// Agents; the top-category concentration cell dropped for real infra reads.
+			overview: [
+				healthItem,
+				errorItem,
+				criticalItem,
+				noiseItem,
+				{
+					key: 'p95', Icon: Timer, color: latColor, label: m.reliability_kpiLatencyP95(),
+					value: p95Ms ?? '—', unit: p95Ms !== null ? 'ms' : '',
+					subtext: perf ? m.reliability_kpiLatencyP99Sub({ p99: Math.round(perf.latencyMs.p99) }) : '',
+				},
+				{
+					key: 'throughput', Icon: Activity, color: C.cyan, label: m.reliability_kpiThroughput(),
+					value: thrStr, unit: throughput !== null ? m.reliability_kpiPerSec() : '',
+					subtext: perf ? m.reliability_kpiReqSub({ n: compact(perf.requests) }) : '',
+				},
+				{
+					key: 'loop', Icon: Gauge, color: loopColor, label: m.reliability_kpiEventLoop(),
+					value: loopP99 ?? '—', unit: loopP99 !== null ? 'ms' : '',
+					subtext: perf ? m.reliability_kpiLoopSub({ p50: Math.round(perf.eventLoopDelayMs.p50) }) : '',
+				},
+				rateItem,
+			],
+			// Agents = ORG-scoped agent/LLM signals. The two that used to sit on
+			// Overview lead the row, then tool failure modes + LLM cost/usage.
+			agents: [
+				toolItem,
+				heartbeatItem,
+				{
+					key: 'timeout', Icon: Timer, color: timeoutPct === null ? C.muted : rampBad(timeoutPct, 2, 10), label: m.reliability_kpiToolTimeout(),
+					value: timeoutPct ?? '—', unit: timeoutPct !== null ? '%' : '',
+					subtext: outc ? `${compact(outc.timeout)}/${compact(outcTot)}` : '',
+					detail: {
+						label: m.reliability_kpiToolTimeout(),
+						texFormula: '\\dfrac{\\text{tool timeouts}}{\\text{tool calls}}',
+						texValues: `\\dfrac{${fmt(outc?.timeout ?? 0)}}{${fmt(outcTot)}} = ${resPct(timeoutPct)}`,
+					} as KpiDetail,
+				},
+				{
+					key: 'auth', Icon: ShieldAlert, color: authPct === null ? C.muted : rampBad(authPct, 1, 5), label: m.reliability_kpiAuthError(),
+					value: authPct ?? '—', unit: authPct !== null ? '%' : '',
+					subtext: outc ? `${compact(outc.authError)}/${compact(outcTot)}` : '',
+					detail: {
+						label: m.reliability_kpiAuthError(),
+						texFormula: '\\dfrac{\\text{auth errors}}{\\text{tool calls}}',
+						texValues: `\\dfrac{${fmt(outc?.authError ?? 0)}}{${fmt(outcTot)}} = ${resPct(authPct)}`,
+					} as KpiDetail,
+				},
+				{
+					key: 'cost', Icon: DollarSign, color: C.success, label: m.reliability_kpiCost(),
+					value: costUsd === null ? '—' : formatUsd(costUsd), unit: '',
+					subtext: usageTot ? m.reliability_kpiCallsSub({ n: compact(usageTot.calls) }) : '',
+				},
+				{
+					key: 'calls', Icon: Zap, color: C.accent, label: m.reliability_kpiLlmCalls(),
+					value: callN === null ? '—' : compact(callN), unit: '',
+					subtext: usageTot ? m.reliability_kpiTokensSub({ n: compact(usageTot.total) }) : '',
+				},
+				{
+					key: 'avgcost', Icon: DollarSign, color: C.muted, label: m.reliability_kpiAvgCost(),
+					value: avgCostUsd === null ? '—' : formatUsd(avgCostUsd), unit: '',
+					subtext: '',
+				},
+				{
+					key: 'proactive', Icon: ArrowLeftRight, color: C.accent, label: m.reliability_kpiProactive(),
+					value: proPct ?? '—', unit: proPct !== null ? '%' : '',
+					subtext: pro ? `${compact(pro.proactive)}/${compact(proDen)}` : '',
+					detail: {
+						label: m.reliability_kpiProactive(),
+						texFormula: '\\dfrac{\\text{proactive}}{\\text{proactive}+\\text{reactive}}',
+						texValues: `\\dfrac{${fmt(pro?.proactive ?? 0)}}{${fmt(proDen)}} = ${resPct(proPct)}`,
+					} as KpiDetail,
+				},
+			],
+		};
 	});
+	const overviewKpis = $derived(statItems.overview);
+	const agentKpis = $derived(statItems.agents);
 
 	// ── KPI hover tooltip (fixed-position so the card's overflow-hidden can't clip it)
 	let hoveredKpi = $state<KpiDetail | null>(null);
@@ -776,7 +881,8 @@
 		if (!serverId) return;
 		const { from, to } = reliability.dateRange;
 		const severities = effSeverities.size ? [...effSeverities] : undefined;
-		const categories = effCategories.size ? [...effCategories] : undefined;
+		// scopedCategories folds the org-scope lens into the category filter.
+		const categories = scopedCategories;
 		const eventModes = effModes.size ? [...effModes] : undefined;
 		await Promise.all([
 			loadReliabilitySummary(serverId, from, to, { severities, categories, eventModes }),
@@ -830,7 +936,7 @@
 		const _from = reliability.dateRange.from;
 		const _to = reliability.dateRange.to;
 		const _sev = effSeverities;
-		const _cat = effCategories;
+		const _cat = scopedCategories;
 		const _mode = effModes;
 		const _sid = serverId;
 		const _connected = conn.connected;
@@ -1218,6 +1324,16 @@
 			<ShieldCheck size={16} class="text-accent shrink-0" />
 		{/snippet}
 		{#snippet actions()}
+			{#if scopeActive}
+				<!-- Org-scope lens — All / Global / Org. Client-side category-class split
+				     (events carry no orgId at the gateway); Overview only. -->
+				<div class="flex items-center gap-1" role="group" aria-label={m.reliability_scopeLabel()}>
+					<span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-0.5 hidden sm:inline">{m.reliability_scopeLabel()}</span>
+					<Button type="button" onclick={() => setScope('all')} variant={scopeMode === 'all' ? 'primary' : 'outline'} size="sm" class="rounded-full" aria-pressed={scopeMode === 'all'}>{m.reliability_scopeAll()}</Button>
+					<Button type="button" onclick={() => setScope('global')} variant={scopeMode === 'global' ? 'primary' : 'outline'} size="sm" class="rounded-full" aria-pressed={scopeMode === 'global'}>{m.reliability_scopeGlobal()}</Button>
+					<Button type="button" onclick={() => setScope('org')} variant={scopeMode === 'org' ? 'primary' : 'outline'} size="sm" class="rounded-full" aria-pressed={scopeMode === 'org'}>{m.reliability_scopeOrg()}</Button>
+				</div>
+			{/if}
 			<DateRangePicker
 				from={reliability.dateRange.from}
 				to={reliability.dateRange.to}
@@ -1302,43 +1418,16 @@
 		<AsyncBoundary state={pageState} class="h-full">
 		<div class="flex flex-col gap-3">
 			{#if activeTab === 'overview'}
-			<!-- ── Overview Stats Widget ───────────────────────────────────────── -->
-			<div class="bg-card border border-border rounded-lg overflow-hidden">
-				<div class="grid grid-cols-8 divide-x divide-border/60 max-[1100px]:grid-cols-4 max-[700px]:grid-cols-2">
-					{#each statItems as item (item.key)}
-						{@const Icon = item.Icon}
-						<div
-							class="relative px-5 pt-4 pb-4 flex flex-col gap-1.5 cursor-help transition-colors hover:bg-bg3/30 focus-visible:bg-bg3/30 outline-none"
-							role="button"
-							tabindex="0"
-							aria-label={item.detail ? `${item.label}: ${item.value}${item.unit}` : undefined}
-							onmouseenter={(e) => showKpiTip(e, item.detail)}
-							onmouseleave={hideKpiTip}
-							onfocus={(e) => showKpiTip(e, item.detail)}
-							onblur={hideKpiTip}
-						>
-							<!-- Colored top accent stripe -->
-							<div class="absolute top-0 left-0 right-0 h-[2px]" style:background={item.color}></div>
-							<div class="flex items-center gap-1.5 mt-0.5">
-								<span style:color={item.color} class="shrink-0 flex"><Icon size={10} /></span>
-								<span class="text-xs font-semibold text-muted-foreground uppercase tracking-widest truncate">{item.label}</span>
-							</div>
-							<div class="flex items-baseline gap-0.5">
-								<span class="text-3xl font-bold font-mono tabular-nums leading-none tracking-tight" style:color={item.color}>
-									{item.value}
-								</span>
-								{#if item.unit}
-									<span class="text-sm font-semibold text-muted-foreground leading-none">{item.unit}</span>
-								{/if}
-							</div>
-							<span class="text-xs text-muted-strong tabular-nums truncate min-h-[12px]">{item.subtext}</span>
-						</div>
-					{/each}
-				</div>
-			</div>
+			<!-- ── Overview KPI row — GLOBAL gateway/fleet health (severity + infra) ── -->
+			<KpiRow
+				items={overviewKpis}
+				cols={8}
+				onHover={(e, detail) => showKpiTip(e, detail as KpiDetail | undefined)}
+				onLeave={hideKpiTip}
+			/>
 
 			<!-- ── Event Flow ribbon (Sankey: mode → category → severity) ──────── -->
-			<div class="bg-card border border-border rounded-lg overflow-hidden">
+			<div class="surface-2 rounded-lg overflow-hidden">
 				<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 					<GitMerge size={11} class="text-accent shrink-0" />
 					<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_eventFlow()}</span>
@@ -1359,7 +1448,7 @@
 
 			<!-- ── Two-column: Top Events + Severity ──────────────────────────── -->
 			<div class="grid grid-cols-2 gap-3 max-[800px]:grid-cols-1">
-				<div class="bg-card border border-border rounded-lg overflow-hidden">
+				<div class="surface-2 rounded-lg overflow-hidden">
 					<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 						<BarChart2 size={11} class="text-accent shrink-0" />
 						<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_topEvents()}</span>
@@ -1386,7 +1475,7 @@
 					</div>
 				</div>
 
-				<div class="bg-card border border-border rounded-lg overflow-hidden">
+				<div class="surface-2 rounded-lg overflow-hidden">
 					<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 						<PieChart size={11} class="text-accent shrink-0" />
 						<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_severityDistribution()}</span>
@@ -1418,6 +1507,14 @@
 				onTimelineClick={handleTimelineClick}
 			/>
 			{:else if activeTab === 'agents'}
+			<!-- ── Agents & LLM KPI row — ORG-scoped agent signals (tool success +
+			     heartbeat moved here from Overview) + tool failure modes + LLM cost ── -->
+			<KpiRow
+				items={agentKpis}
+				cols={8}
+				onHover={(e, detail) => showKpiTip(e, detail as KpiDetail | undefined)}
+				onLeave={hideKpiTip}
+			/>
 			<!-- ── Agents & LLM: token cost + origin analytics + agent-activity log ── -->
 			<AgentLlmAnalytics
 				events={filteredEvents}
