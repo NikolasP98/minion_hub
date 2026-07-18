@@ -4042,6 +4042,7 @@
   "brains_agents_col_status": "Status",
   "nav_stock": "Stock",
   "nav_pos": "Point of Sale",
+  "nav_pulse": "Pulse",
   "pos_nav_sell": "Sell",
   "pos_nav_appointments": "Appointments",
   "pos_nav_catalog": "Catalog",

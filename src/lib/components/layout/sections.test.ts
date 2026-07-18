@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getSections } from './sections';
+import { getSections, getDynamicPluginsSections } from './sections';
 
 describe('getSections — core nav taxonomy', () => {
   it('exposes Organization (Home/Overview/Team) and Agents groups', () => {
@@ -35,5 +35,30 @@ describe('getSections — core nav taxonomy', () => {
     const agents = getSections().find((s) => s.id === 'agents');
     const brainItem = agents?.items.find((i) => i.href === '/agents?archetype=brain');
     expect(brainItem).toBeUndefined();
+  });
+});
+
+describe('personal-org nav gating', () => {
+  it('hides pos/stock/workforce for personal orgs, adds /pulse', () => {
+    const secs = getDynamicPluginsSections([], {}, 'personal');
+    const hrefs = secs.flatMap((s) => s.items.map((i) => i.href));
+    expect(hrefs).not.toContain('/pos');
+    expect(hrefs).not.toContain('/stock');
+    expect(hrefs).not.toContain('/workforce');
+    expect(hrefs).toContain('/pulse');
+  });
+
+  it('keeps them for business orgs', () => {
+    const secs = getDynamicPluginsSections([], {}, 'business');
+    const hrefs = secs.flatMap((s) => s.items.map((i) => i.href));
+    expect(hrefs).toContain('/pos');
+    expect(hrefs).toContain('/stock');
+    expect(hrefs).toContain('/workforce');
+  });
+
+  it('keeps them when orgKind is omitted (safe default)', () => {
+    const secs = getDynamicPluginsSections([]);
+    const hrefs = secs.flatMap((s) => s.items.map((i) => i.href));
+    expect(hrefs).toContain('/pos');
   });
 });

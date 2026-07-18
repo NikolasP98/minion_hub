@@ -4042,6 +4042,7 @@
   "brains_agents_col_status": "Estado",
   "nav_stock": "Inventario",
   "nav_pos": "Punto de venta",
+  "nav_pulse": "Pulso",
   "pos_nav_sell": "Vender",
   "pos_nav_appointments": "Citas",
   "pos_nav_catalog": "Catálogo",

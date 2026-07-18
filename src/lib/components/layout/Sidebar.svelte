@@ -42,7 +42,11 @@
   // Pass per-org enabled map so the derive re-runs when a plugin is toggled —
   // disabled-for-org plugin items render dimmed, reactively, with no reload.
   const pluginsSections = $derived(
-    getDynamicPluginsSections(pluginNavState.controlCenters, pluginNavState.enabledByPluginId),
+    getDynamicPluginsSections(
+      pluginNavState.controlCenters,
+      pluginNavState.enabledByPluginId,
+      page.data.activeOrgKind,
+    ),
   );
   const navSections = $derived<Section[]>([...staticSections, ...pluginsSections]);
 
