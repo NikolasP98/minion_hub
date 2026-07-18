@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
-  import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow, Building2 } from "lucide-svelte";
+  import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow, Building2, Activity } from "lucide-svelte";
   import { page } from "$app/state";
   import { isAdmin } from "$lib/state/features/user.svelte";
   import { TABS } from "$lib/utils/config-schema";
@@ -19,7 +19,7 @@
   let { dirtyTabIds = new Set<string>(), onselect }: Props = $props();
 
   const ICON_MAP: Record<string, typeof Brain> = {
-    Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow, Building2,
+    Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow, Building2, Activity,
   };
 
   type HubTab = { id: string; label: string; icon: string; href: string; adminOnly: boolean };
@@ -27,6 +27,8 @@
   const GENERAL_TABS: HubTab[] = [
     { id: 'appearance', label: m.settings_nav_appearance(), icon: 'Palette', href: '/settings/appearance', adminOnly: false },
     { id: 'plugins', label: m.settings_plugins(), icon: 'Puzzle', href: '/settings/plugins', adminOnly: false },
+    // ponytail: literal label — i18n key is a follow-up (shared worktree, messages/*.json off-limits this task)
+    { id: 'pulse', label: 'Pulse', icon: 'Activity', href: '/settings/pulse', adminOnly: false },
   ];
   // "Hub" group — admin route tabs.
   const HUB_TABS: HubTab[] = [
