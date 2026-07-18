@@ -69,13 +69,13 @@
             {monogram(agent.label)}
           </span>
         {/if}
-        <span class="tooltip">{agent.label}</span>
+        <span class="tooltip surface-3">{agent.label}</span>
       </div>
     {/each}
     {#if overflow > 0}
       <div class="chip overflow" title={agents.slice(max).map((a) => a.label).join(", ")}>
         <span class="mono">+{overflow}</span>
-        <span class="tooltip">
+        <span class="tooltip surface-3">
           {#each agents.slice(max) as a, i}
             {a.label}{i < overflow - 1 ? ", " : ""}
           {/each}
@@ -144,7 +144,11 @@
     font-size: var(--font-size-telemetry);
   }
 
-  /* Tooltip: hidden by default, fades in on chip hover. Positioned above. */
+  /* Tooltip: hidden by default, fades in on chip hover. Positioned above.
+     Background/border/shadow come from the shared `.surface-3` compound
+     class (elevated surface) — NOT `--color-canvas`, which is the same
+     token the ambient row background uses, camouflaging the pill against
+     whatever it floats over (root cause of the invisible hover pill). */
   .tooltip {
     position: absolute;
     bottom: calc(100% + 6px);
@@ -152,8 +156,6 @@
     transform: translateX(-50%) translateY(2px);
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
-    background: var(--color-canvas);
-    border: 1px solid var(--color-border, var(--color-surface-3));
     color: var(--color-text-primary);
     font-size: var(--font-size-telemetry);
     font-family: ui-monospace, monospace;

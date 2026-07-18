@@ -3,6 +3,13 @@
 	import Topbar from '$lib/components/layout/Topbar.svelte';
 	import Sidebar from '$lib/components/layout/Sidebar.svelte';
 	import DynamicIsland from '$lib/components/layout/DynamicIsland.svelte';
+	// Eager (not idle-gated like the palette/shortcuts/g-nav/live-run group
+	// below): the launcher pill is persistent, always-visible chrome — not an
+	// invoked-on-demand overlay — so it must render on first paint, not appear
+	// ~0.3-1.5s later once requestIdleCallback fires (that gap read as "the
+	// hover pill isn't there" — regression from the P2 boot-diet commit,
+	// which mis-grouped it with the genuinely invoke-only overlays).
+	import FloatingAssistant from '$lib/components/layout/FloatingAssistant.svelte';
 	import { type Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -32,9 +39,11 @@
 	// (scroll kept); the fade still plays when switching between modules.
 	const moduleKey = $derived(canonicalPath(page.url.pathname).split('/')[1] ?? '');
 
-	// Overlay chrome (palette, assistant, shortcuts, g-nav, live-run) is
-	// invisible until invoked — mount after first idle so its chunks stay off
-	// the shell's hydration path. Hotkeys go live once mounted (≤1.5s).
+	// Overlay chrome (palette, shortcuts, g-nav, live-run) is invisible until
+	// invoked — mount after first idle so their chunks stay off the shell's
+	// hydration path. Hotkeys go live once mounted (≤1.5s). FloatingAssistant
+	// is imported eagerly above — it is NOT invoked-only, its launcher pill is
+	// always-visible chrome.
 	let idleReady = $state(false);
 
 	onMount(() => {
@@ -66,15 +75,14 @@
 		</div>
 	</AppViewport>
 
+	<FloatingAssistant />
+
 	{#if idleReady}
 		{#await import('$lib/components/layout/CommandPalette.svelte') then { default: CommandPalette }}
 			<CommandPalette />
 		{/await}
 		{#await import('$lib/components/sessions/LiveRunWidget.svelte') then { default: LiveRunWidget }}
 			<LiveRunWidget />
-		{/await}
-		{#await import('$lib/components/layout/FloatingAssistant.svelte') then { default: FloatingAssistant }}
-			<FloatingAssistant />
 		{/await}
 		{#await import('$lib/components/layout/ShortcutsOverlay.svelte') then { default: ShortcutsOverlay }}
 			<ShortcutsOverlay />

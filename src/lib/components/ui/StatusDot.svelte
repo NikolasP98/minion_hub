@@ -51,10 +51,13 @@
   // ancestor marked `group/card` is hovered (i.e. hovering the whole card),
   // not the chip itself. Margins live on the label so the collapsed chip is a
   // clean, symmetrically-padded dot (no stray right padding).
+  // Defensive: also reveal on the pill's OWN hover (`group` on the wrapping
+  // span below) so an ancestor refactor that drops `group/card` can't
+  // silently kill the affordance again — the pill still works stood alone.
   const reveal = $derived(
     expanded
       ? 'max-w-[10rem] opacity-100 ml-1.5 mr-0.5'
-      : 'max-w-0 opacity-0 group-hover/card:max-w-[10rem] group-hover/card:opacity-100 group-hover/card:ml-1.5 group-hover/card:mr-0.5',
+      : 'max-w-0 opacity-0 group-hover:max-w-[10rem] group-hover:opacity-100 group-hover:ml-1.5 group-hover:mr-0.5 group-hover/card:max-w-[10rem] group-hover/card:opacity-100 group-hover/card:ml-1.5 group-hover/card:mr-0.5',
   );
 </script>
 
@@ -63,9 +66,11 @@
   <div class="rounded-full shrink-0 {sizeMap[size]} {colorMap[status]} {glowMap[status]} {animMap[status]}"></div>
 {:else}
   <!-- Non-interactive status chip. The label rides aria-label so AT always gets it;
-       visually it expands on card hover (or is always shown when `expanded`). -->
+       visually it expands on card hover (or is always shown when `expanded`).
+       `group` (unnamed) is scoped to THIS span so its own hover reveals the
+       label even without a `group/card` ancestor. -->
   <span
-    class="inline-flex items-center rounded-full bg-foreground/[0.04] p-1 ring-1 ring-border"
+    class="group inline-flex items-center rounded-full bg-foreground/[0.04] p-1 ring-1 ring-border"
     role="img"
     aria-label={label}
   >
