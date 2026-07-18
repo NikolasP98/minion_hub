@@ -9,7 +9,7 @@ import type { TenantContext } from './base';
 export async function getTenant(ctx: TenantContext) {
   const { data, error } = await supabaseAdmin()
     .from('organizations')
-    .select('id, name, slug, status, created_at')
+    .select('id, name, slug, status, created_at, kind')
     .eq('id', ctx.tenantId)
     .maybeSingle();
   if (error) throw error;

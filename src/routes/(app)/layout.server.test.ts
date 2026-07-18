@@ -26,6 +26,9 @@ vi.mock('$server/services/organizations.service', () => ({
     activeOrgId: 'org-1',
   })),
 }));
+vi.mock('$server/services/tenant.service', () => ({
+  getTenant: vi.fn(async () => ({ id: 'org-1', name: 'Org', kind: 'business' })),
+}));
 vi.mock('$server/auth/core-ctx', () => ({
   getCoreCtx: vi.fn(async () => ({ db: {} as never, tenantId: 'tenant-x' })),
 }));
@@ -107,6 +110,7 @@ describe('(app)/+layout.server load', () => {
       preferences: { preferences: {} },
       organizations: [{ id: 'org-1', name: 'Org', slug: null, role: 'admin' }],
       activeOrgId: 'org-1',
+      activeOrgKind: 'business',
       brainAgentIds: [],
     });
     // depends() should register all seven keys

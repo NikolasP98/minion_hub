@@ -7,6 +7,7 @@ import { canonicalPath } from '$lib/canonical-path';
 import { loadWorkspacesForUser } from '$server/services/workspaces.service';
 import { loadOrganizationsForUser } from '$server/services/organizations.service';
 import { loadPersonalAgentForUser } from '$server/services/personal-agent.service';
+import { getTenant } from '$server/services/tenant.service';
 import { loadHostsForUser } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
@@ -141,6 +142,14 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
   ]);
   const [workspaces, personalAgent, hosts, preferences, brainAgentIds] = coreBundle;
 
+  const activeOrgId = organizations.activeOrgId;
+  const activeTenant = activeOrgId
+    ? await traceLayoutLoad(
+        'active-tenant-kind',
+        getTenant({ db: getDb(), tenantId: activeOrgId }),
+      )
+    : null;
+
   // Central route-policy guard. The serializable policy registry also drives
   // the route design manifest and client navigation visibility. Reuse the
   // already-resolved RBAC bridge; route-owned page guards remain defense in
@@ -178,6 +187,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
     workspaces,
     organizations: organizations.organizations,
     activeOrgId: organizations.activeOrgId,
+    activeOrgKind: activeTenant?.kind ?? 'business',
     personalAgent,
     hosts,
     preferences,
