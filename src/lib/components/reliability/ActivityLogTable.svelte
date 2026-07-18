@@ -109,17 +109,19 @@
 		info: -1,
 	};
 
-	// Severity = ordinal alarm ramp (council 2026-05-29).
-	// Maps to SEMANTIC STATUS tokens, identical to +page.svelte SEVERITY_COLORS
-	// (dropdown/sankey/scatter) so a level reads the same hue everywhere. Never accent
-	// for a status level — accent is a primary-action colour (gov: severity-ramp rule).
+	// Severity = ordinal alarm ramp (council 2026-05-29), same semantic status hue as
+	// +page.svelte SEVERITY_COLORS so a level reads identically on every surface.
+	// Uses the STATUS TRIPLE (surface bg + fg text + border), NOT a solid fill:
+	// `--color-{status}` aliases the FG text colour (dark) and `text-primary-foreground`
+	// is undefined → solid `bg-{status} text-primary-foreground` = dark-on-dark. The
+	// tinted triple is the sanctioned readable pattern (matches the category chips).
 	const severityClasses: Record<string, string> = {
-		critical: 'bg-destructive text-primary-foreground',
-		high: 'bg-warning text-[var(--color-canvas)]',
-		medium: 'bg-warning text-[var(--color-canvas)]',
+		critical: 'bg-destructive/15 text-destructive border border-destructive/30',
+		high: 'bg-warning/15 text-warning border border-warning/30',
+		medium: 'bg-warning/15 text-warning border border-warning/30',
 		low: 'bg-surface-3 text-foreground',
-		info: 'bg-info text-primary-foreground',
-		ok: 'bg-success text-primary-foreground',
+		info: 'bg-info/15 text-info border border-info/30',
+		ok: 'bg-success/15 text-success border border-success/30',
 	};
 
 	const severityRowBorder: Record<string, string> = {
