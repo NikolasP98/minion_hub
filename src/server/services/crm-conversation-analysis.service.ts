@@ -298,3 +298,17 @@ export async function conversationThemes(
     };
   });
 }
+
+/** Conversations indexed (`crm_conversation_index`) but not yet analyzed — the
+ *  "N conversations pending" count for the Insights empty-state before the
+ *  paid `analyzeConversationsTick` pass has run. */
+export function pendingAnalysisCount(ctx: CoreCtx): Promise<number> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = (await tx.execute(sql`
+      select count(*)::int as n
+      from crm_conversation_index
+      where org_id = current_setting('app.current_org_id', true) and analyzed_at is null
+    `)) as unknown as Array<{ n: number }>;
+    return Number(row?.n ?? 0);
+  });
+}

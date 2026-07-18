@@ -3,14 +3,21 @@
   import { goto, invalidateAll } from '$lib/navigation';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { Sparkles, RefreshCw, Trophy } from 'lucide-svelte';
-  import { PageHeader, Button } from '$lib/components/ui';
+  import { Sparkles, RefreshCw, Trophy, Brain } from 'lucide-svelte';
+  import { PageHeader, Button, EmptyState, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import CrmWordCloud from '$lib/components/crm/CrmWordCloud.svelte';
   import CrmSentimentTrend from '$lib/components/crm/CrmSentimentTrend.svelte';
   import CrmInsightsChat from '$lib/components/crm/CrmInsightsChat.svelte';
 
   let { data }: { data: PageData } = $props();
+
+  const maxPain = $derived(data.themes.topPainPoints[0]?.count ?? 1);
+  const maxIntent = $derived(data.themes.intentDistribution[0]?.count ?? 1);
+  const overPct = $derived(Math.round(data.themes.overAnswered.rate * 100));
+  function barPct(count: number, max: number): number {
+    return max > 0 ? Math.round((count / max) * 100) : 0;
+  }
 
   const RANGES = [
     { id: '30d', label: () => m.crm_insights_range_30d() },
@@ -126,6 +133,64 @@
           </div>
         {:else if (data.winIndex?.count ?? 0) > 0}
           <p class="t-caption">{m.crm_wins_analysis_hint()}</p>
+        {/if}
+      </section>
+
+      <!-- Conversation intelligence — aggregate rollup over the vectorized +
+           analyzed conversation corpus (crm_conversation_analysis). -->
+      <section class="card">
+        <header class="card-h">
+          <span class="flex items-center gap-1.5"><Brain size={iconSizes.sm} /> {m.crm_themes_title()}</span>
+        </header>
+        {#if data.themes.overAnswered.total === 0}
+          <EmptyState
+            compact
+            title={m.crm_themes_empty_title()}
+            description={m.crm_themes_empty_desc({ count: data.pendingAnalysis })}
+          />
+        {:else}
+          <div class="themes">
+            <div>
+              <h4 class="wa-h">{m.crm_themes_pain_title()}</h4>
+              <div class="bars">
+                {#each data.themes.topPainPoints as p (p.point)}
+                  <div class="bars-row">
+                    <span class="bars-label">{p.point}</span>
+                    <span class="bars-n">{p.count}</span>
+                    <span class="bars-wrap"
+                      ><span class="bars-fill" style:width={`${barPct(p.count, maxPain)}%`}></span></span
+                    >
+                  </div>
+                {/each}
+              </div>
+            </div>
+            <div>
+              <h4 class="wa-h">{m.crm_themes_intent_title()}</h4>
+              <div class="bars">
+                {#each data.themes.intentDistribution as it (it.intent)}
+                  <div class="bars-row">
+                    <span class="bars-label">{it.intent}</span>
+                    <span class="bars-n">{it.count}</span>
+                    <span class="bars-wrap"
+                      ><span class="bars-fill" style:width={`${barPct(it.count, maxIntent)}%`}></span></span
+                    >
+                  </div>
+                {/each}
+              </div>
+            </div>
+            <div>
+              <h4 class="wa-h">{m.crm_themes_over_title()}</h4>
+              <div class="over-stat">
+                <span class="trend-cur">{overPct}%</span>
+                <span class="t-caption"
+                  >{m.crm_themes_over_desc({
+                    count: data.themes.overAnswered.count,
+                    total: data.themes.overAnswered.total,
+                  })}</span
+                >
+              </div>
+            </div>
+          </div>
         {/if}
       </section>
 
@@ -269,5 +334,56 @@
   }
   .wa-sublist > li {
     list-style: disc;
+  }
+
+  /* Conversation intelligence — pain points / intent / over-answered */
+  .themes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 16px);
+  }
+  /* Bar-row contract (matches crm/+page.svelte .funnel/.chmix): label | value |
+     bar LAST, container owns the column tracks so every bar shares one start x. */
+  .bars {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content 8rem;
+    gap: var(--space-2, 8px);
+    margin-top: var(--space-2, 8px);
+  }
+  .bars-row {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    align-items: center;
+  }
+  .bars-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--font-size-body, 14px);
+  }
+  .bars-n {
+    font-size: var(--font-size-body, 14px);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-muted-foreground);
+    text-align: right;
+  }
+  .bars-wrap {
+    height: 0.5rem;
+    border-radius: var(--radius-full);
+    background: var(--color-bg3);
+    overflow: hidden;
+  }
+  .bars-fill {
+    display: block;
+    height: 100%;
+    border-radius: var(--radius-full);
+    background: var(--color-accent);
+  }
+  .over-stat {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2, 8px);
+    margin-top: var(--space-2, 8px);
   }
 </style>
