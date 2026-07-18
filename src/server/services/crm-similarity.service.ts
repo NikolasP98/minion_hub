@@ -28,13 +28,25 @@ export interface WinAnalysis {
   basedOn: number;
 }
 
-const PHONE9 = (col: string) => sql.raw(`right(regexp_replace(coalesce(${col},''),'\\D','','g'), 9)`);
 const IS_PROCEDURE = sql.raw(`(ii.description is not null and ii.description not ilike '%reserva%')`);
 
 /** Bind a JS string[] as a real Postgres text[] (each element parameterized). */
 function textArray(arr: string[]) {
   if (arr.length === 0) return sql`array[]::text[]`;
   return sql`array[${sql.join(arr.map((x) => sql`${x}`), sql`, `)}]::text[]`;
+}
+
+/** Bind a JS string[] of uuids as a real Postgres uuid[] (each element parameterized). */
+function uuidArray(arr: string[]) {
+  if (arr.length === 0) return sql`array[]::uuid[]`;
+  return sql`array[${sql.join(arr.map((x) => sql`${x}::uuid`), sql`, `)}]::uuid[]`;
+}
+
+/** Split an array into chunks of at most `size` — caps embedding-request and VALUES-list size. */
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
 }
 
 export interface SimilarWin {
@@ -67,83 +79,96 @@ async function conversationText(ctx: CoreCtx, contactId: string): Promise<{ text
 
 /**
  * (Re)build the winning-conversation index: embed each procedure-buyer's
- * conversation and upsert it. Idempotent; N is tiny so we re-embed all.
+ * conversation and upsert it. Idempotent; re-embeds all buyers on every call.
+ *
+ * Buyers are matched via the party-spine (crm_contacts.party_id →
+ * fin_clients.party_id) — reliable across ALL channels, unlike the old
+ * phone-number match hard-filtered to WhatsApp (which missed nearly every
+ * buyer and all Instagram conversations).
  */
 export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> {
   if (!(await enabled(ctx))) return { indexed: 0 };
 
   // Buyers + their conversations in a SINGLE round-trip each (not per-contact):
-  // (1) procedure-buyers with bought procedures, (2) every message for those
-  // chats. Grouping happens in JS — avoids O(buyers) sequential queries.
+  // (1) procedure-buyers with bought procedures, (2) every message across every
+  // channel for those contacts. Grouping happens in JS — avoids O(buyers)
+  // sequential queries.
   const { buyers, messages } = await withOrgCore(ctx, async (tx) => {
     const buyerRows = (await tx.execute(sql`
-      with phones as (
-        select ci.contact_id, ci.external_id, ${PHONE9('ci.external_id')} p9
-        from crm_contact_identities ci
-        where ci.org_id = current_setting('app.current_org_id', true) and ci.channel = 'whatsapp'
-          and length(${PHONE9('ci.external_id')}) >= 8
-      )
-      select ph.contact_id::text id, ph.external_id,
+      select c.id::text id,
              array_agg(distinct ii.description) filter (where ${IS_PROCEDURE}) bought
-      from phones ph
-      join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and ${PHONE9('fc.phone')} = ph.p9
+      from crm_contacts c
+      join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = c.party_id
       join fin_invoices fi on fi.client_id = fc.id
       join fin_invoice_items ii on ii.invoice_id = fi.id
-      group by ph.contact_id, ph.external_id
+      where c.org_id = current_setting('app.current_org_id', true) and c.party_id is not null
+      group by c.id
       having bool_or(${IS_PROCEDURE})
-    `)) as unknown as Array<{ id: string; external_id: string; bought: string[] | null }>;
-    if (buyerRows.length === 0) return { buyers: buyerRows, messages: [] as Array<{ chat_id: string; direction: string; content: string | null }> };
-    const chatIds = [...new Set(buyerRows.map((b) => b.external_id))];
+    `)) as unknown as Array<{ id: string; bought: string[] | null }>;
+    if (buyerRows.length === 0) return { buyers: buyerRows, messages: [] as Array<{ contact_id: string; direction: string; content: string | null }> };
+    const buyerIds = buyerRows.map((b) => b.id);
     const msgRows = (await tx.execute(sql`
-      select m.chat_id, m.direction, m.content
-      from messages m
-      where m.org_id = current_setting('app.current_org_id', true) and m.channel = 'whatsapp'
-        and m.is_bot is not true and m.chat_id in ${chatIds}
-      order by m.chat_id, coalesce(m.occurred_at, m.created_at) asc
-    `)) as unknown as Array<{ chat_id: string; direction: string; content: string | null }>;
+      select ci.contact_id::text contact_id, m.direction, m.content
+      from crm_contact_identities ci
+      join messages m on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
+      where ci.org_id = current_setting('app.current_org_id', true) and ci.contact_id = any(${uuidArray(buyerIds)})
+        and m.is_bot is not true
+      order by ci.contact_id, coalesce(m.occurred_at, m.created_at) asc
+    `)) as unknown as Array<{ contact_id: string; direction: string; content: string | null }>;
     return { buyers: buyerRows, messages: msgRows };
   });
   if (buyers.length === 0) return { indexed: 0 };
 
-  // Group messages by chat_id, then map each buyer to its conversation.
-  const byChat = new Map<string, Array<{ direction: string; content: string | null }>>();
+  // Group messages by contact_id (merges e.g. WA + IG identities of the same
+  // contact into one conversation doc), then map each buyer to its conversation.
+  const byContact = new Map<string, Array<{ direction: string; content: string | null }>>();
   for (const m of messages) {
-    const arr = byChat.get(m.chat_id) ?? [];
+    const arr = byContact.get(m.contact_id) ?? [];
     arr.push({ direction: m.direction, content: m.content });
-    byChat.set(m.chat_id, arr);
+    byContact.set(m.contact_id, arr);
   }
   const docs: { id: string; text: string; count: number; bought: string[] }[] = [];
   for (const b of buyers) {
-    const rows = byChat.get(b.external_id) ?? [];
+    const rows = byContact.get(b.id) ?? [];
     const text = buildConversationText(rows);
     if (!text) continue;
     docs.push({ id: b.id, text, count: rows.length, bought: (b.bought ?? []).filter(Boolean) });
   }
   if (docs.length === 0) return { indexed: 0 };
 
-  let vectors: number[][];
+  // Hundreds-to-thousands of docs now (not a dozen) — batch embedding calls and
+  // upserts instead of sending everything in one request/query.
+  const BATCH = 150;
+  const batches = chunk(docs, BATCH);
+  const vectors: number[][] = [];
   try {
-    vectors = await embedTexts(docs.map((d) => d.text));
+    for (const batch of batches) {
+      vectors.push(...(await embedTexts(batch.map((d) => d.text))));
+    }
   } catch {
     return { indexed: 0 };
   }
 
-  // One set-based upsert (not N sequential round-trips).
   await withOrgCore(ctx, async (tx) => {
-    const values = sql.join(
-      docs.map(
-        (d, i) =>
-          sql`(current_setting('app.current_org_id', true), ${d.id}::uuid, ${toVectorLiteral(vectors[i])}::vector, ${d.count}, ${textArray(d.bought)}, ${d.text.slice(0, 120)}, now())`,
-      ),
-      sql`, `,
-    );
-    await tx.execute(sql`
-      insert into crm_win_embeddings (org_id, contact_id, embedding, msg_count, bought, snippet, built_at)
-      values ${values}
-      on conflict (org_id, contact_id) do update set
-        embedding = excluded.embedding, msg_count = excluded.msg_count,
-        bought = excluded.bought, snippet = excluded.snippet, built_at = excluded.built_at
-    `);
+    let offset = 0;
+    for (const batch of batches) {
+      const batchVectors = vectors.slice(offset, offset + batch.length);
+      offset += batch.length;
+      const values = sql.join(
+        batch.map(
+          (d, i) =>
+            sql`(current_setting('app.current_org_id', true), ${d.id}::uuid, ${toVectorLiteral(batchVectors[i])}::vector, ${d.count}, ${textArray(d.bought)}, ${d.text.slice(0, 120)}, now())`,
+        ),
+        sql`, `,
+      );
+      await tx.execute(sql`
+        insert into crm_win_embeddings (org_id, contact_id, embedding, msg_count, bought, snippet, built_at)
+        values ${values}
+        on conflict (org_id, contact_id) do update set
+          embedding = excluded.embedding, msg_count = excluded.msg_count,
+          bought = excluded.bought, snippet = excluded.snippet, built_at = excluded.built_at
+      `);
+    }
   });
 
   // Generate + persist the AI breakdown of these winning conversations. Stored in
@@ -163,7 +188,7 @@ async function analyzeWins(
   if (!apiKey || docs.length === 0) return null;
 
   const sample = docs
-    .slice(0, 15)
+    .slice(0, 20)
     .map((d, i) => {
       const bought = d.bought.length ? ` [purchased: ${d.bought.join(', ')}]` : '';
       return `### Conversation ${i + 1}${bought}\n${d.text.slice(0, 800).replace(/\s+/g, ' ').trim()}`;
