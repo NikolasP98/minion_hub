@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import { cssVar } from '$lib/utils/chart-colors';
-	import { Button, PageHeader, Tabs, MultiSelectFilter, MathFormula, iconSizes } from '$lib/components/ui';
+	import { Button, PageHeader, Tabs, MultiSelectFilter, MathFormula } from '$lib/components/ui';
 	import {
 		AsyncBoundary,
 		PageBody,
@@ -13,6 +13,7 @@
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
 	import LatencyPanel from '$lib/components/reliability/LatencyPanel.svelte';
 	import PluginHealthPanel from '$lib/components/reliability/PluginHealthPanel.svelte';
+	import InsightsPanel from '$lib/components/reliability/InsightsPanel.svelte';
 	import ConnectionEventsPanel from '$lib/components/reliability/ConnectionEventsPanel.svelte';
 	import AgentLlmAnalytics from '$lib/components/reliability/AgentLlmAnalytics.svelte';
 	import KpiSparkline from '$lib/components/reliability/KpiSparkline.svelte';
@@ -55,7 +56,7 @@
 		DollarSign,
 		ShieldAlert,
 		ArrowLeftRight,
-		X,
+		Lightbulb,
 	} from 'lucide-svelte';
 
 	// ── Persistence ───────────────────────────────────────────────────────────
@@ -205,6 +206,7 @@
 		{ value: 'overview', label: m.reliability_tabOverview(), icon: Activity },
 		{ value: 'agents', label: m.reliability_tabAgents(), icon: Bot },
 		{ value: 'plugins', label: m.reliability_tabPlugins(), icon: Puzzle },
+		{ value: 'insights', label: m.reliability_tabInsights(), icon: Lightbulb },
 	]);
 
 	function handleTabChange(v: string) {
@@ -823,59 +825,48 @@
 	const overviewKpis = $derived(statItems.overview);
 	const agentKpis = $derived(statItems.agents);
 
-	// ── KPI popover, 2-step (fixed-position so the card's overflow-hidden can't clip it):
-	//    step 1 = hover → VISUALS (spark timeseries), step 2 = click → FORMULA + result.
-	//    `hoveredKpi` drives the pointer-events-none visuals tooltip; `pinnedKpi` drives
-	//    the interactive formula popover. A pin suppresses hover so they never stack.
+	// ── KPI popover: a single HOVER-ONLY popover (fixed-position so the card's
+	//    overflow-hidden can't clip it) that steps through views. View 0 = spark
+	//    VISUALS (if any), then FORMULA. Clicking the cell cycles to the next view;
+	//    a stepper shows the position. No pin/dismiss — moving off the cell closes it.
 	let hoveredKpi = $state<KpiDetail | null>(null);
-	let pinnedKpi = $state<KpiDetail | null>(null);
 	let kpiTipPos = $state<{ left: number; top: number } | null>(null);
+	let kpiStep = $state(0);
 	let tipEl = $state<HTMLDivElement>();
-	let pinEl = $state<HTMLDivElement>();
 
-	function anchorBelow(e: MouseEvent | FocusEvent | KeyboardEvent) {
+	// Views for the hovered KPI: spark visuals (when present) then the formula
+	// (always present on a KpiDetail). A single-view KPI has nothing to cycle.
+	const kpiViews = $derived<Array<'visuals' | 'formula'>>(
+		hoveredKpi ? (hoveredKpi.spark ? ['visuals', 'formula'] : ['formula']) : [],
+	);
+	const kpiView = $derived(kpiViews[kpiStep] ?? kpiViews[0] ?? 'formula');
+
+	function showKpiTip(e: MouseEvent | FocusEvent, detail: KpiDetail | undefined) {
+		if (!detail) return;
 		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		// Anchor below-left of the cell; the post-render effect re-clamps using the
 		// popover's real (content-sized) width so a right-edge cell never overflows.
 		kpiTipPos = { left: r.left, top: r.bottom + 6 };
-	}
-	function showKpiTip(e: MouseEvent | FocusEvent, detail: KpiDetail | undefined) {
-		if (!detail || pinnedKpi) return; // a pinned formula popover wins over hover
-		anchorBelow(e);
+		if (detail !== hoveredKpi) kpiStep = 0; // fresh cell → back to the first view
 		hoveredKpi = detail;
 	}
 	function hideKpiTip() {
 		hoveredKpi = null;
-		if (!pinnedKpi) kpiTipPos = null;
-	}
-	// Step 2: click / Enter / Space pins the formula popover for this cell.
-	function pinKpiTip(e: MouseEvent | KeyboardEvent, detail: KpiDetail | undefined) {
-		if (!detail) return;
-		anchorBelow(e);
-		hoveredKpi = null;
-		pinnedKpi = detail;
-	}
-	function unpinKpiTip() {
-		pinnedKpi = null;
 		kpiTipPos = null;
 	}
-	function onKpiDocPointerDown(e: PointerEvent) {
-		if (pinnedKpi && pinEl && !pinEl.contains(e.target as Node)) unpinKpiTip();
-	}
-	function onKpiDocKeydown(e: KeyboardEvent) {
-		if (pinnedKpi && e.key === 'Escape') unpinKpiTip();
+	// Click / Enter / Space steps to the next view (wraps). Hover-only — no pin.
+	function cycleKpiView() {
+		if (kpiViews.length > 1) kpiStep = (kpiStep + 1) % kpiViews.length;
 	}
 
 	// Clamp the content-sized popover into the viewport once it has a measurable
-	// width (no fixed width → can't pre-compute at anchor time). Handles whichever
-	// layer is showing (hover tooltip or pinned formula popover).
+	// width (no fixed width → can't pre-compute at anchor time).
 	$effect(() => {
 		const p = kpiTipPos;
-		const el = pinnedKpi ? pinEl : hoveredKpi ? tipEl : null;
-		if (!p || !el) return;
-		const w = el.offsetWidth;
+		if (!p || !hoveredKpi || !tipEl) return;
+		const w = tipEl.offsetWidth;
 		const left = Math.max(8, Math.min(p.left, window.innerWidth - w - 8));
-		el.style.left = `${left}px`;
+		tipEl.style.left = `${left}px`;
 	});
 
 	// Date-only aggregates (usage / activity) + the UNFILTERED summary that drives
@@ -1452,7 +1443,7 @@
 				cols={8}
 				onHover={(e, detail) => showKpiTip(e, detail as KpiDetail | undefined)}
 				onLeave={hideKpiTip}
-				onActivate={(e, detail) => pinKpiTip(e, detail as KpiDetail | undefined)}
+				onActivate={() => cycleKpiView()}
 			/>
 
 			<!-- ── Event Flow ribbon (Sankey: mode → category → severity) ──────── -->
@@ -1543,7 +1534,7 @@
 				cols={8}
 				onHover={(e, detail) => showKpiTip(e, detail as KpiDetail | undefined)}
 				onLeave={hideKpiTip}
-				onActivate={(e, detail) => pinKpiTip(e, detail as KpiDetail | undefined)}
+				onActivate={() => cycleKpiView()}
 			/>
 			<!-- ── Agents & LLM: token cost + origin analytics + agent-activity log ── -->
 			<AgentLlmAnalytics
@@ -1556,17 +1547,23 @@
 			{#if serverId}
 				<PluginHealthPanel {serverId} from={reliability.dateRange.from} to={reliability.dateRange.to} />
 			{/if}
+			{:else if activeTab === 'insights'}
+			<!-- ── Insights: ranked proposed actions + evidence derived from unified_events ── -->
+			{#if serverId}
+				<InsightsPanel {serverId} from={reliability.dateRange.from} to={reliability.dateRange.to} />
+			{/if}
 			{/if}
 		</div>
 		</AsyncBoundary>
 	</div>
 	</PageBody>
 
-	<!-- ── KPI popover, 2-step. Step 1 (hover): VISUALS — the spark timeseries only,
-	     pointer-events-none. Step 2 (click): interactive FORMULA popover, dismissed via
-	     document pointerdown + Escape + a close button (floating-panel dismissal contract).
-	     Both use clamp() width so every KPI's popover is the same size (no per-cell jitter). -->
-	{#if hoveredKpi && !pinnedKpi && kpiTipPos}
+	<!-- ── KPI popover: HOVER-ONLY, steps through views. View 0 = spark VISUALS (when
+	     present), then FORMULA (always present). Clicking the cell cycles to the next
+	     view; the stepper dots show the position + count. A formula-only KPI is a single
+	     view (no stepper). pointer-events-none → hovering off the card closes it.
+	     clamp() width so every KPI's popover is the same size (no per-cell jitter). -->
+	{#if hoveredKpi && kpiTipPos}
 		<div
 			bind:this={tipEl}
 			class="fixed z-[var(--layer-popover)] pointer-events-none rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay,var(--shadow-xl))] px-3 py-2.5"
@@ -1574,7 +1571,7 @@
 		>
 			<div class="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">{hoveredKpi.label}</div>
 
-			{#if hoveredKpi.spark}
+			{#if kpiView === 'visuals' && hoveredKpi.spark}
 				{@const s = hoveredKpi.spark}
 				<div class="flex items-center justify-between mb-1">
 					<span class="text-xs text-muted-strong uppercase tracking-wide">{m.reliability_tipTrend()}</span>
@@ -1593,37 +1590,26 @@
 					<div class="flex justify-between gap-2"><span class="text-muted-strong">μ±3σ</span><span>{s.lcl.toFixed(0)}–{s.ucl.toFixed(0)}%</span></div>
 					<div class="flex justify-between gap-2"><span class="text-muted-strong">z</span><span>{s.z >= 0 ? '+' : ''}{s.z.toFixed(1)}σ</span></div>
 				</div>
+			{:else}
+				<div class="text-xs text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipFormula()}</div>
+				<div class="text-foreground text-sm mb-2 overflow-hidden"><MathFormula tex={hoveredKpi.texFormula} /></div>
+				<div class="text-xs text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipResult()}</div>
+				<div class="text-foreground text-sm overflow-hidden"><MathFormula tex={hoveredKpi.texValues} /></div>
+				{#if hoveredKpi.note}
+					<div class="mt-2 pt-1.5 border-t border-border/60 text-xs text-muted-strong leading-snug whitespace-normal">{hoveredKpi.note}</div>
+				{/if}
 			{/if}
 
-			<div class="mt-2 pt-1.5 border-t border-border/60 text-xs text-accent font-medium">{m.reliability_tipClickFormula()}</div>
-		</div>
-	{/if}
-
-	{#if pinnedKpi && kpiTipPos}
-		<div
-			bind:this={pinEl}
-			role="dialog"
-			aria-label={pinnedKpi.label}
-			class="fixed z-[var(--layer-popover)] rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay,var(--shadow-xl))] px-3 py-2.5"
-			style="left:{kpiTipPos.left}px; top:{kpiTipPos.top}px; width:clamp(256px, 22vw, 320px)"
-		>
-			<div class="flex items-start justify-between gap-2 mb-1.5">
-				<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground pt-0.5">{pinnedKpi.label}</span>
-				<Button variant="ghost" size="xs" shape="icon" class="-mr-1.5 -mt-1" onclick={unpinKpiTip} aria-label={m.common_close()}>
-					<X size={iconSizes.sm} />
-				</Button>
-			</div>
-			<div class="text-xs text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipFormula()}</div>
-			<div class="text-foreground text-sm mb-2 overflow-hidden"><MathFormula tex={pinnedKpi.texFormula} /></div>
-			<div class="text-xs text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipResult()}</div>
-			<div class="text-foreground text-sm overflow-hidden"><MathFormula tex={pinnedKpi.texValues} /></div>
-
-			{#if pinnedKpi.note}
-				<div class="mt-2 pt-1.5 border-t border-border/60 text-xs text-muted-strong leading-snug whitespace-normal">{pinnedKpi.note}</div>
+			{#if kpiViews.length > 1}
+				<!-- stepper: which view is active + how many there are (click the card to cycle) -->
+				<div class="mt-2.5 pt-2 border-t border-border/60 flex items-center justify-center gap-1.5" aria-hidden="true">
+					{#each kpiViews as _view, i (i)}
+						<span
+							class="h-1.5 rounded-full {i === kpiStep ? 'w-4 bg-accent' : 'w-1.5 bg-muted-foreground/30'}"
+						></span>
+					{/each}
+				</div>
 			{/if}
 		</div>
 	{/if}
-
 </PageShell>
-
-<svelte:document onpointerdown={onKpiDocPointerDown} onkeydown={onKpiDocKeydown} />
