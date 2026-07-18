@@ -266,6 +266,9 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
     // gateway→hub email-ledger write (processed-email summaries/tags/metadata);
     // the handler requires locals.serverId and resolves the mailbox's org.
     path === '/api/gateway/email-ledger' ||
+    // gateway→hub Pulse proposal-card ingest (gateway pushes explicit orgId,
+    // no mailbox→org lookup needed); the handler requires locals.serverId.
+    path === '/api/gateway/pulse/proposals' ||
     // MCP tool-pack write/read surface (P1): confirm-gated business actions +
     // module query endpoints. Each handler resolves the same trusted principal
     // via resolveAssistantPrincipal + an explicit RBAC capability check.

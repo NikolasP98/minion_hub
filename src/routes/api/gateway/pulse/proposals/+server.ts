@@ -12,6 +12,8 @@ import { upsertProposals, type ProposalInput } from '$server/services/pulse.serv
  * (contrast with email-ledger). Gateway-only (locals.serverId).
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  // NOTE: requires '/api/gateway/pulse/proposals' in isServerTokenPath
+  // (resolve-identity.ts) or this always 401s.
   if (!locals.serverId) throw error(401, 'gateway server token required');
   const body = (await request.json().catch(() => ({}))) as { orgId?: unknown; proposals?: unknown };
   const orgId = typeof body.orgId === 'string' ? body.orgId : '';
