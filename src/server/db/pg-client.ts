@@ -25,7 +25,7 @@ const RECOVERABLE_POOL_CODES = new Set([
   'EPIPE',
 ]);
 
-function isRecoverablePoolError(error: unknown): boolean {
+export function isRecoverablePoolError(error: unknown): boolean {
   let current = error;
   for (let depth = 0; current && depth < 5; depth += 1) {
     if (current instanceof CoreDbOperationTimeout) return true;
@@ -41,6 +41,24 @@ function isRecoverablePoolError(error: unknown): boolean {
 
 function isOperationTimeout(error: unknown): error is CoreDbOperationTimeout {
   return error instanceof CoreDbOperationTimeout;
+}
+
+/**
+ * Retry an idempotent DB thunk ONCE if it fails with a transient pooler drop
+ * (CONNECTION_CLOSED / ECONNRESET / …). postgres-js evicts the dead connection
+ * and hands a fresh one on the next query, so the retry runs on a healed pool.
+ * Use only where the op is safe to repeat (idempotent upsert, read, atomic txn).
+ * Unlike `withCoreDbRecovery` this adds NO timeout race — right for long batch
+ * writes that legitimately exceed the 10s critical-load budget.
+ */
+export async function retryOnPoolDrop<T>(op: () => Promise<T>): Promise<T> {
+  try {
+    return await op();
+  } catch (error) {
+    if (!isRecoverablePoolError(error)) throw error;
+    console.warn(`[pg-pool] transient connection drop; retrying operation once`);
+    return op();
+  }
 }
 
 function createDrizzle(client = clientContext.getStore() ?? getPgClient()) {

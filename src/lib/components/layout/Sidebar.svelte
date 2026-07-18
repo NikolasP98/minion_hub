@@ -383,9 +383,24 @@
                 ondragend={endDrag}
                 oncontextmenu={(e) => openCtx(e, item.href, item.label)}
               >
-                <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
+                {#snippet navIconEl()}
+                  <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
+                {/snippet}
+                {#if item.href === '/finances' && financeSync.active && showTooltips}
+                  <!-- Collapsed: progress rides the icon border (360°, rounded) instead
+                       of a separate badge that would widen the icon-only row. -->
+                  <span
+                    class="icon-ring"
+                    class:indeterminate={financeSync.total == null}
+                    style="--sync-pct:{financeSync.percent}"
+                  >
+                    {@render navIconEl()}
+                  </span>
+                {:else}
+                  {@render navIconEl()}
+                {/if}
                 <span class="nav-label {labelCls}">{item.label}</span>
-                {#if item.href === '/finances'}
+                {#if item.href === '/finances' && !showTooltips}
                   <FinanceSyncBadge />
                 {/if}
                 {#if currentHome === item.href}
@@ -578,6 +593,62 @@
   .nav-row :global(.nav-icon) {
     opacity: 0.75;
     transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  /* Sync progress as a 360° rounded border hugging the icon (collapsed rail). */
+  .icon-ring {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+  }
+  .icon-ring::before {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    border-radius: var(--radius-md);
+    padding: var(--space-0-5);
+    background: conic-gradient(
+      from 0deg,
+      var(--color-accent) calc(var(--sync-pct, 0) * 1%),
+      var(--color-surface-2) 0
+    );
+    -webkit-mask:
+      linear-gradient(var(--color-foreground) 0 0) content-box,
+      linear-gradient(var(--color-foreground) 0 0);
+    mask:
+      linear-gradient(var(--color-foreground) 0 0) content-box,
+      linear-gradient(var(--color-foreground) 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .icon-ring.indeterminate::before {
+    background: conic-gradient(
+      from var(--sync-angle, 0deg),
+      var(--color-surface-2) 0 70%,
+      var(--color-accent) 100%
+    );
+    animation: icon-ring-sweep 0.9s linear infinite;
+  }
+  /* Animate the gradient's START ANGLE so the accent arc travels around a FIXED
+     rounded frame — rotating the element itself would spin the whole (corners
+     and all) border, which reads as the container tumbling. Needs @property so
+     the <angle> custom prop interpolates instead of jumping. */
+  @property --sync-angle {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+  }
+  @keyframes icon-ring-sweep {
+    to {
+      --sync-angle: 360deg;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .icon-ring.indeterminate::before {
+      animation: none;
+    }
   }
   .nav-row:hover {
     color: var(--color-foreground);

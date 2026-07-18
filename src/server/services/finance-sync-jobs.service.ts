@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { finSyncJobs, type FinSyncJob } from '$server/db/pg-finance-schema';
+import { finSources, finSyncJobs, type FinSyncJob } from '$server/db/pg-finance-schema';
 
 export const STALE_MS = 5 * 60_000; // 5min — wide enough that a slow page (per-page heartbeat) is never mistaken for a dead worker; cron still resumes truly-dead jobs
 const ACTIVE = ['queued', 'running'];
@@ -122,4 +122,15 @@ export async function findResumableJobs(limit = 3): Promise<Array<{ jobId: strin
     .where(or(eq(finSyncJobs.status, 'queued'), and(eq(finSyncJobs.status, 'running'), lt(finSyncJobs.heartbeatAt, staleClause))))
     .orderBy(finSyncJobs.createdAt).limit(limit);
   return rows;
+}
+
+/**
+ * Cross-org list of enabled sources for a provider — the daily-cron entrypoint.
+ * Bypass-RLS by design (not request-scoped); the caller builds a per-org CoreCtx.
+ */
+export async function listEnabledSources(provider: string): Promise<Array<{ orgId: string; provider: string }>> {
+  const db = getCoreDb();
+  return db.select({ orgId: finSources.orgId, provider: finSources.provider })
+    .from(finSources)
+    .where(and(eq(finSources.provider, provider), eq(finSources.enabled, true)));
 }

@@ -1,4 +1,5 @@
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { retryOnPoolDrop } from '$server/db/pg-client';
 import { getConnector } from '$server/finance/connector';
 import '$server/finance/connectors/susii-connector'; // self-registers the 'susii' connector
 import { getSource, upsertInvoicesBatch, loadProductMap, bustFinanceCache, setSourceSync } from './finance.service';
@@ -14,7 +15,11 @@ import { reconcileOrdersToInvoices } from './sales.service';
  * after every page, so a later call (manual re-trigger or cron tick) continues
  * from where this one stopped. budgetMs = Infinity runs to completion.
  */
-export async function advanceJob(ctx: CoreCtx, jobId: string, opts: { budgetMs: number }): Promise<void> {
+export async function advanceJob(
+  ctx: CoreCtx,
+  jobId: string,
+  opts: { budgetMs: number; recentWindowMs?: number },
+): Promise<void> {
   if (!(await claimJob(ctx, jobId))) return; // already actively running elsewhere, or terminal
   const job = await getJobById(ctx, jobId);
   if (!job) return;
@@ -39,7 +44,16 @@ export async function advanceJob(ctx: CoreCtx, jobId: string, opts: { budgetMs: 
   const { username, password } = decryptCreds(String(refs.ciphertext), String(refs.iv));
   const secrets: Record<string, string> = { username, password };
   const config = (source.config ?? {}) as Record<string, unknown>;
-  const since = overlapSince(source.watermark);
+  // Manual sync (no window): watermark-based `since` — an empty watermark means a
+  // full history sweep. Daily cron (recentWindowMs): sync from the OLDER of
+  // (now - window) and the watermark, so it never sweeps full AND never skips a
+  // gap when the watermark is stale. On resume the persisted cursor drives paging,
+  // so this only sets the first-page `since`.
+  const wmSince = overlapSince(source.watermark);
+  const windowSince =
+    opts.recentWindowMs != null ? new Date(Date.now() - opts.recentWindowMs).toISOString() : undefined;
+  const since =
+    windowSince != null ? (wmSince && wmSince < windowSince ? wmSince : windowSince) : wmSince;
   // Watermark target = when THIS backfill began (advance-only; overlapSince covers the edge).
   const watermarkTarget = job.startedAt ? new Date(job.startedAt).toISOString() : nowIso();
 
@@ -58,15 +72,19 @@ export async function advanceJob(ctx: CoreCtx, jobId: string, opts: { budgetMs: 
 
   try {
     for await (const page of connector.pullPages({ config, secrets, since, cursor })) {
-      if (await isCancelRequested(ctx, jobId)) { await finishJob(ctx, jobId, 'cancelled'); return; }
+      // Each per-page DB op survives ONE transient pooler drop (CONNECTION_CLOSED):
+      // ~114 round-trips over a full sync, any one of which was previously fatal.
+      // All three are idempotent/atomic, so a retry is safe. ponytail: hot-loop
+      // only — a rarer drop on setup/finish self-heals via the cron stale-resume.
+      if (await retryOnPoolDrop(() => isCancelRequested(ctx, jobId))) { await finishJob(ctx, jobId, 'cancelled'); return; }
       try {
-        await upsertInvoicesBatch(ctx, page.invoices, productMap); // one tx for the whole page (atomic)
+        await retryOnPoolDrop(() => upsertInvoicesBatch(ctx, page.invoices, productMap)); // one tx for the whole page (atomic)
         processed += page.invoices.length;
       } catch (e) {
         throw e instanceof Error ? e : new Error('batch upsert failed'); // page tx rolled back; cursor preserved
       }
       cursor = page.cursor;
-      await heartbeat(ctx, jobId, { processed, total, pageCursor: cursor });
+      await retryOnPoolDrop(() => heartbeat(ctx, jobId, { processed, total, pageCursor: cursor }));
       if (cursor == null) {
         await setSourceSync(ctx, provider, { watermark: watermarkTarget, status: 'success' });
         await finishJob(ctx, jobId, 'succeeded');

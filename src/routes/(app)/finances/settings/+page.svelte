@@ -368,7 +368,8 @@
               <div
                 {...prog.getRangeProps()}
                 class="prog-range"
-                style={financeSync.total != null ? `width:${financeSync.percent}%` : 'width:40%'}
+                class:indeterminate={financeSync.total == null}
+                style={financeSync.total != null ? `width:${financeSync.percent}%` : ''}
               ></div>
             </div>
           </div>
@@ -489,6 +490,25 @@
     background: var(--color-accent);
     border-radius: var(--radius-full);
     transition: width var(--duration-fast) ease;
+  }
+  /* Total unknown (still counting): a sweeping bar, not a misleading static fill. */
+  .prog-range.indeterminate {
+    width: 40%;
+    transition: none;
+    animation: prog-indeterminate 1.2s ease-in-out infinite;
+  }
+  @keyframes prog-indeterminate {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(250%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .prog-range.indeterminate {
+      animation: none;
+    }
   }
   .sync-actions {
     display: flex;
