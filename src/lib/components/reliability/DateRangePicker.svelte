@@ -68,8 +68,10 @@
 	let triggerLabel = $derived(activePreset ?? m.dateRange_custom());
 </script>
 
-<!-- Desktop: inline layout (>=640px) -->
-<div class="hidden sm:flex flex-row items-end gap-2">
+<!-- Desktop: inline layout (>=640px). Labels sit BESIDE the inputs so the whole
+     picker is a single control-height row — a stacked label above made it taller
+     than the sibling refresh button, which then centre-aligned off the input row. -->
+<div class="hidden sm:flex flex-row items-center gap-2">
 	<div class="flex flex-row items-center gap-1.5">
 		{#each presets as preset (preset.label)}
 			<Button
@@ -84,8 +86,8 @@
 		{/each}
 	</div>
 
-	<div class="flex flex-col gap-0.5">
-		<label for="date-from" class="text-xs text-muted-foreground leading-none">{m.dateRange_from()}</label>
+	<div class="flex flex-row items-center gap-1.5">
+		<label for="date-from" class="text-xs text-muted-foreground">{m.dateRange_from()}</label>
 		<input
 			id="date-from"
 			type="date"
@@ -95,8 +97,8 @@
 		/>
 	</div>
 
-	<div class="flex flex-col gap-0.5">
-		<label for="date-to" class="text-xs text-muted-foreground leading-none">{m.dateRange_to()}</label>
+	<div class="flex flex-row items-center gap-1.5">
+		<label for="date-to" class="text-xs text-muted-foreground">{m.dateRange_to()}</label>
 		<input
 			id="date-to"
 			type="date"

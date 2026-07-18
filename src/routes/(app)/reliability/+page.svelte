@@ -1225,7 +1225,8 @@
 			/>
 			<Button
 				variant="secondary"
-				size="icon"
+				size="sm"
+				shape="icon"
 				onclick={loadData}
 				title={m.reliability_refreshData()}
 				aria-label={m.reliability_refreshData()}
