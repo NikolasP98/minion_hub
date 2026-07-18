@@ -221,6 +221,7 @@
   "reliability_kpiFleet": "fleet",
   "reliability_tipFormula": "Formula",
   "reliability_tipResult": "Result",
+  "reliability_tipClickFormula": "Click for formula →",
   "reliability_tipSource": "Source",
   "reliability_tipFleet": "fleet · all events",
   "reliability_tipFiltered": "current filtered view",

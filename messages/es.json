@@ -1654,6 +1654,7 @@
   "reliability_kpiFleet": "flota",
   "reliability_tipFormula": "Fórmula",
   "reliability_tipResult": "Resultado",
+  "reliability_tipClickFormula": "Clic para ver la fórmula →",
   "reliability_tipSource": "Fuente",
   "reliability_tipFleet": "flota · todos los eventos",
   "reliability_tipFiltered": "vista filtrada actual",

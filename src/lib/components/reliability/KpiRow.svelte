@@ -26,12 +26,15 @@
 		cols = 8,
 		onHover,
 		onLeave,
+		onActivate,
 	}: {
 		items: KpiItem[];
 		/** Column count at the widest breakpoint (8 or 6). Collapses to half, then 2. */
 		cols?: 8 | 6;
 		onHover?: (e: MouseEvent | FocusEvent, detail: unknown) => void;
 		onLeave?: () => void;
+		/** Click / Enter / Space on a detail cell — step 2 of the popover (formula). */
+		onActivate?: (e: MouseEvent | KeyboardEvent, detail: unknown) => void;
 	} = $props();
 
 	// Tailwind needs static class strings (JIT can't see interpolated ones), so the
@@ -61,6 +64,15 @@
 				onmouseleave={item.detail ? onLeave : undefined}
 				onfocus={item.detail ? (e) => onHover?.(e, item.detail) : undefined}
 				onblur={item.detail ? onLeave : undefined}
+				onclick={item.detail ? (e) => onActivate?.(e, item.detail) : undefined}
+				onkeydown={item.detail
+					? (e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								onActivate?.(e, item.detail);
+							}
+						}
+					: undefined}
 			>
 				<!-- Coloured top accent stripe -->
 				<div class="absolute top-0 left-0 right-0 h-[2px]" style:background={item.color}></div>

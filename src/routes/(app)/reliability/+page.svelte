@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import { cssVar } from '$lib/utils/chart-colors';
-	import { Button, PageHeader, Tabs, MultiSelectFilter, MathFormula } from '$lib/components/ui';
+	import { Button, PageHeader, Tabs, MultiSelectFilter, MathFormula, iconSizes } from '$lib/components/ui';
 	import {
 		AsyncBoundary,
 		PageBody,
@@ -55,6 +55,7 @@
 		DollarSign,
 		ShieldAlert,
 		ArrowLeftRight,
+		X,
 	} from 'lucide-svelte';
 
 	// ── Persistence ───────────────────────────────────────────────────────────
@@ -822,32 +823,59 @@
 	const overviewKpis = $derived(statItems.overview);
 	const agentKpis = $derived(statItems.agents);
 
-	// ── KPI hover tooltip (fixed-position so the card's overflow-hidden can't clip it)
+	// ── KPI popover, 2-step (fixed-position so the card's overflow-hidden can't clip it):
+	//    step 1 = hover → VISUALS (spark timeseries), step 2 = click → FORMULA + result.
+	//    `hoveredKpi` drives the pointer-events-none visuals tooltip; `pinnedKpi` drives
+	//    the interactive formula popover. A pin suppresses hover so they never stack.
 	let hoveredKpi = $state<KpiDetail | null>(null);
+	let pinnedKpi = $state<KpiDetail | null>(null);
 	let kpiTipPos = $state<{ left: number; top: number } | null>(null);
 	let tipEl = $state<HTMLDivElement>();
+	let pinEl = $state<HTMLDivElement>();
 
-	function showKpiTip(e: MouseEvent | FocusEvent, detail: KpiDetail | undefined) {
-		if (!detail) return;
+	function anchorBelow(e: MouseEvent | FocusEvent | KeyboardEvent) {
 		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		// Anchor below-left of the cell; the post-render effect re-clamps using the
-		// tooltip's real (content-sized) width so a right-edge cell never overflows.
+		// popover's real (content-sized) width so a right-edge cell never overflows.
 		kpiTipPos = { left: r.left, top: r.bottom + 6 };
+	}
+	function showKpiTip(e: MouseEvent | FocusEvent, detail: KpiDetail | undefined) {
+		if (!detail || pinnedKpi) return; // a pinned formula popover wins over hover
+		anchorBelow(e);
 		hoveredKpi = detail;
 	}
 	function hideKpiTip() {
 		hoveredKpi = null;
+		if (!pinnedKpi) kpiTipPos = null;
+	}
+	// Step 2: click / Enter / Space pins the formula popover for this cell.
+	function pinKpiTip(e: MouseEvent | KeyboardEvent, detail: KpiDetail | undefined) {
+		if (!detail) return;
+		anchorBelow(e);
+		hoveredKpi = null;
+		pinnedKpi = detail;
+	}
+	function unpinKpiTip() {
+		pinnedKpi = null;
 		kpiTipPos = null;
 	}
+	function onKpiDocPointerDown(e: PointerEvent) {
+		if (pinnedKpi && pinEl && !pinEl.contains(e.target as Node)) unpinKpiTip();
+	}
+	function onKpiDocKeydown(e: KeyboardEvent) {
+		if (pinnedKpi && e.key === 'Escape') unpinKpiTip();
+	}
 
-	// Clamp the content-sized tooltip into the viewport once it has a measurable
-	// width (no fixed width → can't pre-compute in showKpiTip).
+	// Clamp the content-sized popover into the viewport once it has a measurable
+	// width (no fixed width → can't pre-compute at anchor time). Handles whichever
+	// layer is showing (hover tooltip or pinned formula popover).
 	$effect(() => {
 		const p = kpiTipPos;
-		if (!p || !hoveredKpi || !tipEl) return;
-		const w = tipEl.offsetWidth;
+		const el = pinnedKpi ? pinEl : hoveredKpi ? tipEl : null;
+		if (!p || !el) return;
+		const w = el.offsetWidth;
 		const left = Math.max(8, Math.min(p.left, window.innerWidth - w - 8));
-		tipEl.style.left = `${left}px`;
+		el.style.left = `${left}px`;
 	});
 
 	// Date-only aggregates (usage / activity) + the UNFILTERED summary that drives
@@ -1424,6 +1452,7 @@
 				cols={8}
 				onHover={(e, detail) => showKpiTip(e, detail as KpiDetail | undefined)}
 				onLeave={hideKpiTip}
+				onActivate={(e, detail) => pinKpiTip(e, detail as KpiDetail | undefined)}
 			/>
 
 			<!-- ── Event Flow ribbon (Sankey: mode → category → severity) ──────── -->
@@ -1514,6 +1543,7 @@
 				cols={8}
 				onHover={(e, detail) => showKpiTip(e, detail as KpiDetail | undefined)}
 				onLeave={hideKpiTip}
+				onActivate={(e, detail) => pinKpiTip(e, detail as KpiDetail | undefined)}
 			/>
 			<!-- ── Agents & LLM: token cost + origin analytics + agent-activity log ── -->
 			<AgentLlmAnalytics
@@ -1532,47 +1562,68 @@
 	</div>
 	</PageBody>
 
-	<!-- ── KPI hover breakdown tooltip (fixed → escapes card overflow clipping) ──
-	     Width is standardised with clamp() so every KPI's tooltip is the same
-	     size regardless of formula/sparkline content (no per-cell jitter). -->
-	{#if hoveredKpi && kpiTipPos}
+	<!-- ── KPI popover, 2-step. Step 1 (hover): VISUALS — the spark timeseries only,
+	     pointer-events-none. Step 2 (click): interactive FORMULA popover, dismissed via
+	     document pointerdown + Escape + a close button (floating-panel dismissal contract).
+	     Both use clamp() width so every KPI's popover is the same size (no per-cell jitter). -->
+	{#if hoveredKpi && !pinnedKpi && kpiTipPos}
 		<div
 			bind:this={tipEl}
 			class="fixed z-[var(--layer-popover)] pointer-events-none rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay,var(--shadow-xl))] px-3 py-2.5"
 			style="left:{kpiTipPos.left}px; top:{kpiTipPos.top}px; width:clamp(256px, 22vw, 320px)"
 		>
 			<div class="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">{hoveredKpi.label}</div>
-			<div class="text-xs text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipFormula()}</div>
-			<div class="text-foreground text-sm mb-2 overflow-hidden"><MathFormula tex={hoveredKpi.texFormula} /></div>
-			<div class="text-xs text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipResult()}</div>
-			<div class="text-foreground text-sm overflow-hidden"><MathFormula tex={hoveredKpi.texValues} /></div>
 
 			{#if hoveredKpi.spark}
 				{@const s = hoveredKpi.spark}
-				<div class="mt-2.5 pt-2 border-t border-border/60">
-					<div class="flex items-center justify-between mb-1">
-						<span class="text-xs text-muted-strong uppercase tracking-wide">{m.reliability_tipTrend()}</span>
-						<span class="text-xs font-semibold uppercase tracking-wide" style:color={s.statusColor}>{s.statusLabel}</span>
-					</div>
-					<KpiSparkline series={s.series} rollAvg={s.rollAvg} mean={s.mean} sigma={s.sigma} color={s.color} />
-					<!-- legend: raw line · rolling-avg line · μ±3σ band -->
-					<div class="flex items-center gap-3 mt-1 text-xs text-muted-strong">
-						<span class="flex items-center gap-1"><span class="inline-block w-3 h-[2px] opacity-40" style:background={s.color}></span>{m.reliability_tipRaw()}</span>
-						<span class="flex items-center gap-1"><span class="inline-block w-3 h-[2px]" style:background={s.color}></span>{m.reliability_tipRollingShort()}</span>
-						<span class="flex items-center gap-1"><span class="inline-block w-3 border-t border-dashed opacity-60" style:border-color={s.color}></span>μ±3σ</span>
-					</div>
-					<div class="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1.5 text-xs tabular-nums">
-						<div class="flex justify-between gap-2"><span class="text-muted-strong">{m.reliability_tipRolling()}</span><span>{s.rollAvgVal.toFixed(0)}%</span></div>
-						<div class="flex justify-between gap-2"><span class="text-muted-strong">{m.reliability_tipVsAvg()}</span><span class="font-semibold" style:color={s.vsRollGood ? C.success : C.warning}>{s.current - s.rollAvgVal >= 0 ? '+' : ''}{(s.current - s.rollAvgVal).toFixed(1)} · {s.trendLabel}</span></div>
-						<div class="flex justify-between gap-2"><span class="text-muted-strong">μ±3σ</span><span>{s.lcl.toFixed(0)}–{s.ucl.toFixed(0)}%</span></div>
-						<div class="flex justify-between gap-2"><span class="text-muted-strong">z</span><span>{s.z >= 0 ? '+' : ''}{s.z.toFixed(1)}σ</span></div>
-					</div>
+				<div class="flex items-center justify-between mb-1">
+					<span class="text-xs text-muted-strong uppercase tracking-wide">{m.reliability_tipTrend()}</span>
+					<span class="text-xs font-semibold uppercase tracking-wide" style:color={s.statusColor}>{s.statusLabel}</span>
+				</div>
+				<KpiSparkline series={s.series} rollAvg={s.rollAvg} mean={s.mean} sigma={s.sigma} color={s.color} />
+				<!-- legend: raw line · rolling-avg line · μ±3σ band -->
+				<div class="flex items-center gap-3 mt-1 text-xs text-muted-strong">
+					<span class="flex items-center gap-1"><span class="inline-block w-3 h-[2px] opacity-40" style:background={s.color}></span>{m.reliability_tipRaw()}</span>
+					<span class="flex items-center gap-1"><span class="inline-block w-3 h-[2px]" style:background={s.color}></span>{m.reliability_tipRollingShort()}</span>
+					<span class="flex items-center gap-1"><span class="inline-block w-3 border-t border-dashed opacity-60" style:border-color={s.color}></span>μ±3σ</span>
+				</div>
+				<div class="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1.5 text-xs tabular-nums">
+					<div class="flex justify-between gap-2"><span class="text-muted-strong">{m.reliability_tipRolling()}</span><span>{s.rollAvgVal.toFixed(0)}%</span></div>
+					<div class="flex justify-between gap-2"><span class="text-muted-strong">{m.reliability_tipVsAvg()}</span><span class="font-semibold" style:color={s.vsRollGood ? C.success : C.warning}>{s.current - s.rollAvgVal >= 0 ? '+' : ''}{(s.current - s.rollAvgVal).toFixed(1)} · {s.trendLabel}</span></div>
+					<div class="flex justify-between gap-2"><span class="text-muted-strong">μ±3σ</span><span>{s.lcl.toFixed(0)}–{s.ucl.toFixed(0)}%</span></div>
+					<div class="flex justify-between gap-2"><span class="text-muted-strong">z</span><span>{s.z >= 0 ? '+' : ''}{s.z.toFixed(1)}σ</span></div>
 				</div>
 			{/if}
 
-			{#if hoveredKpi.note}
-				<div class="mt-2 pt-1.5 border-t border-border/60 text-xs text-muted-strong leading-snug whitespace-normal">{hoveredKpi.note}</div>
+			<div class="mt-2 pt-1.5 border-t border-border/60 text-xs text-accent font-medium">{m.reliability_tipClickFormula()}</div>
+		</div>
+	{/if}
+
+	{#if pinnedKpi && kpiTipPos}
+		<div
+			bind:this={pinEl}
+			role="dialog"
+			aria-label={pinnedKpi.label}
+			class="fixed z-[var(--layer-popover)] rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay,var(--shadow-xl))] px-3 py-2.5"
+			style="left:{kpiTipPos.left}px; top:{kpiTipPos.top}px; width:clamp(256px, 22vw, 320px)"
+		>
+			<div class="flex items-start justify-between gap-2 mb-1.5">
+				<span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground pt-0.5">{pinnedKpi.label}</span>
+				<Button variant="ghost" size="xs" shape="icon" class="-mr-1.5 -mt-1" onclick={unpinKpiTip} aria-label={m.common_close()}>
+					<X size={iconSizes.sm} />
+				</Button>
+			</div>
+			<div class="text-xs text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipFormula()}</div>
+			<div class="text-foreground text-sm mb-2 overflow-hidden"><MathFormula tex={pinnedKpi.texFormula} /></div>
+			<div class="text-xs text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipResult()}</div>
+			<div class="text-foreground text-sm overflow-hidden"><MathFormula tex={pinnedKpi.texValues} /></div>
+
+			{#if pinnedKpi.note}
+				<div class="mt-2 pt-1.5 border-t border-border/60 text-xs text-muted-strong leading-snug whitespace-normal">{pinnedKpi.note}</div>
 			{/if}
 		</div>
 	{/if}
+
 </PageShell>
+
+<svelte:document onpointerdown={onKpiDocPointerDown} onkeydown={onKpiDocKeydown} />
