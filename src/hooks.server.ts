@@ -4,6 +4,7 @@
 import '$server/env-hoist';
 
 import { sequence } from '@sveltejs/kit/hooks';
+import * as Sentry from '@sentry/sveltekit';
 import type { Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
 import { canonicalPath } from '$lib/canonical-path';
@@ -220,7 +221,8 @@ const finishApp: Handle = async ({ event, resolve }) => {
       path === '/api/meta/sync/tick' ||
       path === '/api/meta/attribution' ||
       path === '/api/email-ledger/tick' ||
-      path === '/api/crm/dni-validation/tick'
+      path === '/api/crm/dni-validation/tick' ||
+      path === '/api/reliability/retention/tick'
     ) {
       return resolve(event);
     }
@@ -385,7 +387,20 @@ const workforceIdentityHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
+// Server-side error tracking. No-op until SENTRY_DSN is set — hub + site had NO
+// Sentry (only the gateway did), so hub server crashes were invisible; this
+// closes that gap. Client errors still go to PostHog captureException. Upgrade
+// path: move init to instrumentation.server.ts + add sentrySvelteKit() to
+// vite.config for source maps + full request tracing.
+Sentry.init({
+  dsn: env.SENTRY_DSN,
+  enabled: !!env.SENTRY_DSN,
+  tracesSampleRate: env.SENTRY_TRACES_SAMPLE_RATE ? Number(env.SENTRY_TRACES_SAMPLE_RATE) : 0.1,
+  environment: env.PUBLIC_VERCEL_ENV ?? env.NODE_ENV ?? 'development',
+});
+
 export const handle = sequence(
+  Sentry.sentryHandle(),
   i18n.handle(),
   cloudPasskeyHandle,
   posthogProxyHandle,
@@ -396,7 +411,7 @@ export const handle = sequence(
 
 import type { HandleServerError } from '@sveltejs/kit';
 
-export const handleError: HandleServerError = ({ error, event, status, message }) => {
+const serverErrorHandler: HandleServerError = ({ error, event, status, message }) => {
   console.error(`[handleError] ${event.request.method} ${event.url.pathname}`, error);
   // M8: fire-and-forget. Never await the capture (or the client's dynamic
   // import) on the error path — an error storm must not fan out into synchronous
@@ -421,6 +436,10 @@ export const handleError: HandleServerError = ({ error, event, status, message }
     .catch(() => {});
   return { message: 'Internal Error' };
 };
+
+// Wrap so exceptions also reach Sentry (no-op without a DSN); the PostHog
+// capture inside stays as the product-analytics record.
+export const handleError = Sentry.handleErrorWithSentry(serverErrorHandler);
 
 startBackupScheduler();
 
