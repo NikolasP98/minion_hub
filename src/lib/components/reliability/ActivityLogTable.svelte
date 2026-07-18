@@ -109,22 +109,25 @@
 		info: -1,
 	};
 
-	// Severity = ordinal alarm ramp; aligned with the page palette (council 2026-05-29).
+	// Severity = ordinal alarm ramp (council 2026-05-29).
+	// Maps to SEMANTIC STATUS tokens, identical to +page.svelte SEVERITY_COLORS
+	// (dropdown/sankey/scatter) so a level reads the same hue everywhere. Never accent
+	// for a status level — accent is a primary-action colour (gov: severity-ramp rule).
 	const severityClasses: Record<string, string> = {
 		critical: 'bg-destructive text-primary-foreground',
 		high: 'bg-warning text-[var(--color-canvas)]',
-		medium: 'bg-info text-primary-foreground',
+		medium: 'bg-warning text-[var(--color-canvas)]',
 		low: 'bg-surface-3 text-foreground',
-		info: 'bg-accent text-[var(--color-on-accent)]',
+		info: 'bg-info text-primary-foreground',
 		ok: 'bg-success text-primary-foreground',
 	};
 
 	const severityRowBorder: Record<string, string> = {
 		critical: 'border-l-2 border-l-destructive',
 		high: 'border-l-2 border-l-warning',
-		medium: 'border-l-2 border-l-info',
+		medium: 'border-l-2 border-l-warning',
 		low: 'border-l-2 border-l-muted-foreground/30',
-		info: 'border-l-2 border-l-accent/40',
+		info: 'border-l-2 border-l-info/40',
 		ok: 'border-l-2 border-l-success',
 	};
 
