@@ -51,6 +51,7 @@ export const MODULES = [
   'stock',
   'ads',
   'pos',
+  'pulse',
   // platform / admin
   'agents',
   'channels',
@@ -83,6 +84,7 @@ export const MODULE_LABELS: Record<Module, string> = {
   stock: 'Stock',
   ads: 'Ads',
   pos: 'Point of Sale',
+  pulse: 'Pulse',
   agents: 'Agents',
   channels: 'Channels',
   flows: 'Agent Builder',
@@ -108,6 +110,7 @@ export const BUSINESS_MODULES: readonly Module[] = [
   'stock',
   'ads',
   'pos',
+  'pulse',
 ];
 const ADMIN_MODULES: readonly Module[] = [
   'agents',
@@ -1082,6 +1085,7 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/stock', 'stock'],
   ['/api/meta', 'ads'],
   ['/api/pos', 'pos'],
+  ['/api/pulse', 'pulse'],
   ['/api/projects', 'projects'],
   ['/api/project-tasks', 'projects'],
   ['/api/project-templates', 'projects'],
