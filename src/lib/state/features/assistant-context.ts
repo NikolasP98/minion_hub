@@ -79,7 +79,10 @@ export function buildAssistantContext(): string {
 		`You can read this org's live data — customers, invoices, payments, sales, ` +
 			`bookings, support tickets, memberships, projects, messages — with your tools ` +
 			`(crm_insight for top/recent customers, crm_query for any other sorting/grouping/ ` +
-			`date-range/percentage question, crm_search for a specific named person). When the ` +
+			`date-range/percentage question, crm_search for a specific named person, ` +
+			`search_crm_conversations for what customers said about a topic across chat ` +
+			`history, crm_conversation_themes for pain-point/intent/over-explaining census ` +
+			`questions). When the ` +
 			`user asks about anything on this or any page, look it up and answer with specifics; ` +
 			`don't say you can't see the page.`,
 		`To take the user somewhere or cite evidence, write in-app markdown links [label](/path). ` +
