@@ -18,7 +18,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // runtime graph needs as a virtual that re-exports the real file (imported by
 // its absolute path, which bun resolves natively). `import type` specifiers are
 // erased by bun, so type-only aliases ($server/auth/core-ctx) need no shim.
-const SERVER_VALUE_MODULES = ['$server/db/with-org-core'];
+const SERVER_VALUE_MODULES = ['$server/db/with-org-core', '$server/llm'];
 
 plugin({
   name: 'sveltekit-bun-shim',

@@ -6,6 +6,7 @@ import {
   timestamp,
   doublePrecision,
   integer,
+  boolean,
   index,
   uniqueIndex,
   primaryKey,
@@ -229,6 +230,97 @@ export const crmWinEmbeddings = pgTable(
   },
   (t) => [primaryKey({ columns: [t.orgId, t.contactId] })],
 );
+
+/**
+ * CRM Conversation Intelligence (spec 2026-07-17). One row per ~1500-token
+ * role-tagged chunk of a (channel, chat_id) 1:1 conversation. The
+ * `embedding vector(1536)` column is managed via raw SQL (pgvector, mirrors
+ * crm_win_embeddings / brain_chunks) and is NOT modeled here — every read/write
+ * goes through crm-conversation-vectors.service.ts using tx.execute(sql\`...\`),
+ * same convention as similarWins()/buildWinIndex() for crm_win_embeddings.
+ */
+export const crmConversationChunks = pgTable(
+  'crm_conversation_chunks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    channel: text('channel').notNull(),
+    chatId: text('chat_id').notNull(),
+    contactId: uuid('contact_id'),
+    partyId: uuid('party_id'),
+    chunkIndex: integer('chunk_index').notNull().default(0),
+    content: text('content').notNull(),
+    msgCount: integer('msg_count').notNull().default(0),
+    firstAt: timestamp('first_at', { withTimezone: true }),
+    lastAt: timestamp('last_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb('metadata').notNull().default({}),
+  },
+  (t) => ({
+    uniq: uniqueIndex('crm_conversation_chunks_uniq').on(t.orgId, t.channel, t.chatId, t.chunkIndex),
+    orgChatIdx: index('crm_conversation_chunks_org_chat_idx').on(t.orgId, t.channel, t.chatId),
+  }),
+);
+
+/**
+ * Per-conversation structured LLM rollup (intent, pain_points, over_answered).
+ * PK (org_id, channel, chat_id) — one row per conversation, upserted by
+ * crm-conversation-analysis.service.ts's analyzeConversationsTick.
+ */
+export const crmConversationAnalysis = pgTable(
+  'crm_conversation_analysis',
+  {
+    orgId: text('org_id').notNull(),
+    channel: text('channel').notNull(),
+    chatId: text('chat_id').notNull(),
+    contactId: uuid('contact_id'),
+    primaryIntent: text('primary_intent'),
+    painPoints: jsonb('pain_points').notNull().default([]),
+    askedFor: text('asked_for'),
+    answeredSummary: text('answered_summary'),
+    overAnswered: boolean('over_answered'),
+    overAnsweredReason: text('over_answered_reason'),
+    msgCount: integer('msg_count').notNull().default(0),
+    firstAt: timestamp('first_at', { withTimezone: true }),
+    lastAt: timestamp('last_at', { withTimezone: true }),
+    analyzedAt: timestamp('analyzed_at', { withTimezone: true }).notNull().defaultNow(),
+    model: text('model'),
+    metadata: jsonb('metadata').notNull().default({}),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.channel, t.chatId] })],
+);
+
+/**
+ * Signature store for incremental/idempotent vectorize+analyze ticks (spec §6).
+ * One row per (org_id, channel, chat_id); `contentSig` (md5 of concatenated
+ * eligible message ids+content) is the authoritative "did anything change"
+ * check, `lastIngestedAt` (MAX(created_at) of eligible rows) is the cheap
+ * candidate-scan filter that catches late/imported inserts by insert-time
+ * rather than event-time (occurred_at).
+ */
+export const crmConversationIndex = pgTable(
+  'crm_conversation_index',
+  {
+    orgId: text('org_id').notNull(),
+    channel: text('channel').notNull(),
+    chatId: text('chat_id').notNull(),
+    contactId: uuid('contact_id'),
+    partyId: uuid('party_id'),
+    eligibleCount: integer('eligible_count').notNull().default(0),
+    lastOccurredAt: timestamp('last_occurred_at', { withTimezone: true }),
+    lastIngestedAt: timestamp('last_ingested_at', { withTimezone: true }),
+    contentSig: text('content_sig'),
+    chunkCount: integer('chunk_count').notNull().default(0),
+    vectorizedAt: timestamp('vectorized_at', { withTimezone: true }),
+    analyzedAt: timestamp('analyzed_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.channel, t.chatId] })],
+);
+
+export type CrmConversationChunk = typeof crmConversationChunks.$inferSelect;
+export type CrmConversationAnalysis = typeof crmConversationAnalysis.$inferSelect;
+export type CrmConversationIndexRow = typeof crmConversationIndex.$inferSelect;
 
 export type CrmContact = typeof crmContacts.$inferSelect;
 export type NewCrmContact = typeof crmContacts.$inferInsert;
