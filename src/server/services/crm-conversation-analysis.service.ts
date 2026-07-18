@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -34,7 +34,10 @@ const DEFAULT_ANALYZE_BATCH = 120; // LLM cost cap (spec: "Cap 120/run").
 // batch (extractOne's abortSignal timeout + this tick's per-item try/catch
 // demote it to "retry next tick" either way). Raise if this model/provider
 // combo turns out to handle concurrency fine after all.
-const CONCURRENCY = 2;
+// generateText (not generateObject) is light enough to raise concurrency and
+// still stay under OpenRouter rate limits; per-item failures are caught and
+// retried on the next idempotent tick, so a transient 429 spike self-heals.
+const CONCURRENCY = 10;
 
 const ANALYSIS_MODEL =
   env.CRM_SENTIMENT_MODEL || env.CRM_FUNNEL_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
@@ -49,7 +52,7 @@ const analysisResultSchema = z.object({
 });
 type AnalysisResult = z.infer<typeof analysisResultSchema>;
 
-const EXTRACT_TIMEOUT_MS = 30_000;
+const EXTRACT_TIMEOUT_MS = 45_000;
 
 /** One cheap LLM call: extract intent/pain-points/over-answered verdict from a
  *  single conversation's initial window (chunkConversation's first ~1500-tok
@@ -76,14 +79,23 @@ ${text.slice(0, 6000)}`;
   // call so one bad response degrades to a retried-next-tick failure, not a
   // hung tick. Verified in local testing: without this, a single slow/stuck
   // generateObject call on real conversation content hung the entire batch.
-  const { object } = await generateObject({
+  // generateObject (strict json_schema structured output) is too slow on
+  // gemini-2.5-flash over OpenRouter for real ~6000-char conversations — it
+  // routinely blew past the timeout so every extraction failed (analyzed=0).
+  // generateText is markedly faster; the prompt already demands raw JSON, and
+  // the schema's per-field .default() tolerates a partial/missing field.
+  const { text: raw } = await generateText({
     model: getOpenRouterModel(ANALYSIS_MODEL),
-    schema: analysisResultSchema,
     prompt,
     temperature: 0.2,
     abortSignal: AbortSignal.timeout(EXTRACT_TIMEOUT_MS),
   });
-  return object;
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`no JSON object in model output: ${raw.slice(0, 80)}`);
+  }
+  return analysisResultSchema.parse(JSON.parse(raw.slice(start, end + 1)));
 }
 
 const FIELD_MAX_CHARS = 240;
