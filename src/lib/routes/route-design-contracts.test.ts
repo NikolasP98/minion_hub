@@ -56,7 +56,7 @@ describe('route design contracts', () => {
       output[route.migrationWave] = (output[route.migrationWave] ?? 0) + 1;
       return output;
     }, {});
-    expect(counts).toEqual({ A: 30, B: 67, C: 16, D: 23, E: 10 });
+    expect(counts).toEqual({ A: 32, B: 69, C: 16, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

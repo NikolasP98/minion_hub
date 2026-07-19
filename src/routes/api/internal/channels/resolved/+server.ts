@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { channels } from '@minion-stack/db/pg';
 import { getCoreDb } from '$server/db/pg-client';
 import { resolveGatewayId } from '$server/services/gateway.pg.service';
@@ -40,6 +40,10 @@ export const GET: RequestHandler = async ({ locals }) => {
       replies: channels.replies,
       settings: channels.settings,
       authRef: channels.authRef,
+      // Raw column select: owner_profile_id isn't in the vendored @minion-stack/db
+      // pgTable yet (P0 migration, not yet applied). Drop this sql<> cast once the
+      // package ships the typed column.
+      ownerProfileId: sql<string | null>`owner_profile_id`,
     })
     .from(channels)
     .where(eq(channels.gatewayId, gatewayId));

@@ -73,12 +73,16 @@ export function refreshCloud(options: RefreshCloudOptions = {}): Promise<void> {
   };
   if (request.visible) state.refreshing = true;
 
-  request.promise = Promise.all([listShells(), getQuota()])
+  request.promise = Promise.all([listShells(requestedOrgId ?? undefined), getQuota()])
     .then(([shells, quota]) => {
       // An organization switch can complete while the old request is in flight.
       // Never let that response populate the next organization's Cloud surface.
       if (state.orgId !== requestedOrgId) return;
-      state.shells = shells;
+      // The Gateway scopes this request too. Keep a client-side defense so an
+      // older Gateway cannot leak another organization's picker entries.
+      state.shells = requestedOrgId
+        ? shells.filter((shell) => shell.orgId === requestedOrgId)
+        : [];
       state.quota = quota;
       state.error = null;
     })

@@ -17,8 +17,8 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function shell(shellId: string) {
-  return { shellId, displayName: shellId } as never;
+function shell(shellId: string, orgId: string) {
+  return { shellId, displayName: shellId, orgId } as never;
 }
 
 describe('cloud inventory refresh', () => {
@@ -41,13 +41,14 @@ describe('cloud inventory refresh', () => {
     expect(visible).toBe(background);
     expect(cloudState.refreshing).toBe(true);
     expect(rpc.listShells).toHaveBeenCalledOnce();
+    expect(rpc.listShells).toHaveBeenCalledWith('refresh-dedupe');
     expect(rpc.getQuota).toHaveBeenCalledOnce();
 
-    shells.resolve([shell('shell-dedupe')]);
+    shells.resolve([shell('shell-dedupe', 'refresh-dedupe'), shell('other-shell', 'other-org')]);
     quota.resolve({} as never);
     await visible;
 
-    expect(cloudState.shells[0]?.shellId).toBe('shell-dedupe');
+    expect(cloudState.shells.map((entry) => entry.shellId)).toEqual(['shell-dedupe']);
     expect(cloudState.refreshing).toBe(false);
   });
 
@@ -64,10 +65,10 @@ describe('cloud inventory refresh', () => {
     setCloudOrg('active-org');
     const active = refreshCloud();
 
-    nextShells.resolve([shell('active-shell')]);
+    nextShells.resolve([shell('active-shell', 'active-org')]);
     nextQuota.resolve({} as never);
     await active;
-    oldShells.resolve([shell('stale-shell')]);
+    oldShells.resolve([shell('stale-shell', 'stale-org')]);
     oldQuota.resolve({} as never);
     await stale;
 

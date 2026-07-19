@@ -391,8 +391,10 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/settings/gateways', 'Gateways', 'organization', 'form-settings'),
   screen('/settings/modules', 'Modules', 'organization', 'form-settings'),
   screen('/settings/notifications', 'Notification settings', 'organization', 'form-settings'),
+  screen('/settings/organizations', 'Organizations', 'organization', 'form-settings'),
   screen('/settings/plugins', 'Plugin settings', 'organization', 'form-settings'),
   screen('/settings/provision', 'Provisioning', 'organization', 'form-settings'),
+  screen('/settings/pulse', 'Pulse settings', 'organization', 'form-settings'),
   screen('/settings/roles', 'Roles', 'organization', 'form-settings'),
   screen('/settings/team', 'Team settings', 'organization', 'form-settings'),
   screen('/settings/workflows', 'Workflow settings', 'organization', 'form-settings'),
@@ -498,6 +500,8 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/pos/refills', 'POS refills', 'scheduling-pos', 'collection'),
   screen('/pos/sell', 'Point of sale', 'scheduling-pos', 'workspace-editor'),
 
+  screen('/pulse', 'Pulse', 'business-operations', 'collection'),
+
   // Socials (6)
   screen('/socials', 'Socials', 'socials', 'dashboard'),
   screen('/socials/campaigns', 'Campaigns', 'socials', 'collection'),
@@ -505,6 +509,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     fixtureId: 'social-campaign-detail',
     states: MUTATING_DETAIL_STATES,
   }),
+  screen('/socials/ad-performance', 'Ad performance', 'socials', 'collection'),
   screen('/socials/posts', 'Posts', 'socials', 'collection'),
   screen('/socials/posts/[postId]', 'Post', 'socials', 'record-detail', {
     fixtureId: 'social-post-detail',

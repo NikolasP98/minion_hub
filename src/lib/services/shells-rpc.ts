@@ -114,8 +114,8 @@ export interface ShellsProvisionResponse {
 // RPCs
 // ---------------------------------------------------------------------------
 
-export async function listShells(): Promise<ShellSummary[]> {
-  const res = (await sendRequest('shells.list')) as { shells: ShellSummary[] };
+export async function listShells(orgId?: string): Promise<ShellSummary[]> {
+  const res = (await sendRequest('shells.list', orgId ? { orgId } : {})) as { shells: ShellSummary[] };
   return res.shells;
 }
 

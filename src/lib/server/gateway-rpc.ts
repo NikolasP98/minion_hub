@@ -124,7 +124,19 @@ async function gatewayCallWithCreds<T = unknown>(
   params: Record<string, unknown>,
   url: string,
   token: string,
-  opts: { timeoutMs?: number; onEvent?: (event: string, payload: unknown) => void } = {},
+  opts: {
+    timeoutMs?: number;
+    onEvent?: (event: string, payload: unknown) => void;
+    /**
+     * Hub-signed gateway JWT (see gateway-jwt.service.ts) carrying an
+     * RBAC-validated `orgId` claim. The shared operator token alone is not an
+     * org-scoping credential — every hub session (browser and server) holds
+     * the same token, so the gateway cannot tell them apart by token alone.
+     * Passing this lets org-scoped gateway RPCs (shells.*) trust `orgId` from
+     * validated connect-time identity instead of an unauthenticated param.
+     */
+    jwt?: string;
+  } = {},
 ): Promise<T> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -215,6 +227,7 @@ async function gatewayCallWithCreds<T = unknown>(
               scopes: ['operator.admin', 'operator.read', 'operator.write'],
               caps: [],
               auth: { token },
+              ...(opts.jwt ? { jwt: opts.jwt } : {}),
             },
           }),
         );
@@ -274,7 +287,7 @@ export async function gatewayCallAsUser<T = unknown>(
   method: string,
   params: Record<string, unknown> = {},
   profileId: string | undefined,
-  opts: { timeoutMs?: number; orgId?: string | null } = {},
+  opts: { timeoutMs?: number; orgId?: string | null; jwt?: string } = {},
 ): Promise<T> {
   const { url, token } = await resolveCredentialsForUser(profileId, opts.orgId);
   return gatewayCallWithCreds<T>(method, params, url, token, opts);
