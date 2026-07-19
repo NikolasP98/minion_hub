@@ -62,6 +62,7 @@
     minute: m.automation_cadence_minute,
     hourly: m.automation_cadence_hourly,
     daily_3am: m.automation_cadence_daily_3am,
+    semimonthly: m.automation_cadence_semimonthly,
   };
   const wiringLabel: Record<string, () => string> = {
     netcup: m.automation_wiring_netcup,
@@ -140,8 +141,12 @@
       <section class="mt-8">
         <div class="mb-1 flex items-center gap-2">
           <h2 class="t-title">{m.automation_system_section()}</h2>
-          <Badge variant="semantic" value="info" size="sm">{m.automation_system_badge()}</Badge>
-          <span class="t-caption">{systemAutomations.length}</span>
+          <!-- Counts live INSIDE their chip (user directive) — a bare count next
+             to a chip reads as two unrelated things. Hues match the CARD ramp:
+             scheduled=success, unscheduled=warning, same meaning same colour. -->
+          <Badge variant="semantic" value="success" size="sm"
+            >{m.automation_scheduled_count({ count: systemAutomations.length - unscheduled })}</Badge
+          >
           {#if unscheduled > 0}
             <Badge variant="semantic" value="warning" size="sm"
               >{m.automation_unscheduled_warn({ count: unscheduled })}</Badge
