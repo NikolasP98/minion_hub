@@ -39,8 +39,10 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   }));
 
   // Shared inboxes this user may opt into (empty until an admin marks an
-  // account 'service' and flags one of its identities shareable).
-  const sharedIdentities = await listAvailableSharedIdentities(supabaseId).catch(() => []);
+  // account 'service' and flags one of its identities shareable), scoped to
+  // the caller's ACTIVE org — never any org they merely belong to.
+  const orgId = locals.orgId ?? locals.tenantCtx.tenantId;
+  const sharedIdentities = await listAvailableSharedIdentities(supabaseId, orgId).catch(() => []);
 
   return {
     userId: locals.user.id,

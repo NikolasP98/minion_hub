@@ -38,7 +38,9 @@ export const load: LayoutServerLoad = async ({ locals }) => {
       ]);
     const [own, shared] = await Promise.all([
       getGoogleCredentialFromSupabase(supabaseId).catch(() => null),
-      listAvailableSharedIdentities(supabaseId).catch(() => []),
+      orgId
+        ? listAvailableSharedIdentities(supabaseId, orgId).catch(() => [])
+        : Promise.resolve([]),
     ]);
     gmailConnected = own !== null || shared.some((s) => s.provider === 'google');
   }

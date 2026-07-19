@@ -4,13 +4,21 @@ import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { resolveFeedGoogleCredentials } from '$server/services/shared-identity.service';
 
 /**
- * GET /api/gateway/google-identities?userId=<id>
+ * GET /api/gateway/google-identities?userId=<id>&orgId=<id>
  *
- * Returns ALL Google ADC blobs the user's feed should pull: their own identity
- * plus every shared identity they hold an active subscription to. The hub is
- * the sole holder of ENCRYPTION_KEY and the authority on subscriptions, so this
- * is the pull-time authorization point — a shared identity appears only while
- * `shareable=true` and the subscription exists.
+ * Returns Google ADC blobs the user's feed should pull: their own identity
+ * (always) plus every shared identity they hold an active subscription to
+ * IN `orgId`. `orgId` is OPTIONAL but SHARED identities require it — omit it
+ * and only the own identity comes back (fail closed; see
+ * resolveFeedGoogleCredentials). We deliberately do NOT fall back to
+ * `getTenantCtx`'s org here — that resolves to "the first organization in the
+ * table" when there's no session, which is arbitrary and would let a caller
+ * silently pull an unrelated org's shared credentials.
+ *
+ * The hub is the sole holder of ENCRYPTION_KEY and the authority on
+ * subscriptions, so this is the pull-time authorization point — a shared
+ * identity appears only while `shareable=true` and a subscription row tagged
+ * to `orgId` exists.
  *
  * Returns DECRYPTED Google ADC blobs, so access is restricted: a valid gateway
  * server token (locals.serverId, set for this path in resolve-identity), an
@@ -22,6 +30,7 @@ import { resolveFeedGoogleCredentials } from '$server/services/shared-identity.s
 export const GET: RequestHandler = async ({ locals, url }) => {
   const userId = url.searchParams.get('userId');
   if (!userId) throw error(400, 'userId query param required');
+  const orgId = url.searchParams.get('orgId') ?? undefined;
 
   // Authorize: gateway server-token caller, OR admin, OR self. The bare
   // tenant-ctx is NOT sufficient — any logged-in session resolves one, which
@@ -38,7 +47,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   if (!ctx) throw error(401, 'Authentication required');
 
   try {
-    const identities = await resolveFeedGoogleCredentials(ctx, userId);
+    const identities = await resolveFeedGoogleCredentials(ctx, userId, orgId);
     return json({ identities }); // [{ email, adc, shared, ownerName? }]
   } catch (e) {
     console.error('[GET /api/gateway/google-identities]', e);

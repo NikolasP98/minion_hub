@@ -15,7 +15,10 @@ import type { GoogleAdc } from './identity-secrets';
  *
  * Availability rule: a user `p` may subscribe to identity `ui` iff
  * `ui.shareable` AND `ui.user_id <> p` AND owner+`p` share an organization.
- * Sharing is org-scoped — never cross-org.
+ * Sharing is org-scoped — never cross-org: every read below is constrained to
+ * the caller's ACTIVE org (never "any org the user happens to belong to"),
+ * because a user in multiple orgs must not see or pull credentials shared in
+ * an org they aren't currently acting as.
  *
  * All reads/writes go through the service role (`supabaseAdmin`), which bypasses
  * RLS; we enforce ownership/availability here in code, matching user.service.ts.
@@ -38,21 +41,26 @@ export interface AvailableSharedIdentity {
  * Shared identities the given subscriber is eligible to opt into, each flagged
  * with whether they're already subscribed. Assembled from a few scoped reads
  * (same style as listUsers) rather than one cross-table join.
+ *
+ * `orgId` is the caller's ACTIVE org — required. Results are constrained to
+ * that single org; if the subscriber isn't a member of it, returns [].
  */
 export async function listAvailableSharedIdentities(
   subscriberProfileId: string,
+  orgId: string,
 ): Promise<AvailableSharedIdentity[]> {
-  if (!UUID_RE.test(subscriberProfileId)) return [];
+  if (!UUID_RE.test(subscriberProfileId) || !UUID_RE.test(orgId)) return [];
   const admin = supabaseAdmin();
 
-  // 1. Orgs the subscriber belongs to.
+  // 1. Verify the subscriber is actually a member of the active org.
   const { data: myOrgs, error: myErr } = await admin
     .from('organization_members')
     .select('organization_id')
-    .eq('profile_id', subscriberProfileId);
+    .eq('profile_id', subscriberProfileId)
+    .eq('organization_id', orgId);
   if (myErr) throw myErr;
-  const myOrgIds = [...new Set((myOrgs ?? []).map((m) => (m as { organization_id: string }).organization_id))];
-  if (myOrgIds.length === 0) return [];
+  if ((myOrgs ?? []).length === 0) return [];
+  const myOrgIds = [orgId];
 
   // 2. Other members of those orgs (potential owners) + which org each is shared in.
   const { data: coMembers, error: cmErr } = await admin
@@ -110,12 +118,13 @@ export async function listAvailableSharedIdentities(
   }));
 }
 
-/** Subscribe the current user to a shared identity (validates availability). */
+/** Subscribe the current user to a shared identity (validates availability, active-org-scoped). */
 export async function subscribeToIdentity(
   subscriberProfileId: string,
   identityId: string,
+  orgId: string,
 ): Promise<void> {
-  const available = await listAvailableSharedIdentities(subscriberProfileId);
+  const available = await listAvailableSharedIdentities(subscriberProfileId, orgId);
   const match = available.find((a) => a.identityId === identityId);
   if (!match) {
     // Not shareable, not in a shared org, or owned by the caller.
@@ -228,17 +237,25 @@ export interface FeedGoogleCredential {
 
 /**
  * Every Google credential a user's feed should pull: their OWN google identity
- * plus each SHARED google identity they hold an active subscription to.
+ * (user-scoped, always returned) plus each SHARED google identity they hold an
+ * active subscription to IN THE GIVEN `orgId`.
  *
  * This is the pull-time authorization point (spec §4): a shared identity is
- * resolved only while `shareable = true` AND a subscription row exists, so
- * revoking either (admin un-shares, or user unsubscribes) drops it on the next
- * resolve. Returns decrypted ADC blobs — the hub is the sole key holder; the
- * gateway only ever receives the resolved list over the server-token channel.
+ * resolved only while `shareable = true` AND a subscription row exists tagged
+ * to `orgId`, so revoking either (admin un-shares, or user unsubscribes) drops
+ * it on the next resolve. Returns decrypted ADC blobs — the hub is the sole
+ * key holder; the gateway only ever receives the resolved list over the
+ * server-token channel.
+ *
+ * `orgId` is OPTIONAL and fails CLOSED: when omitted, only the own identity is
+ * returned — no shared identity from ANY org. A caller must name the active
+ * org to receive shared credentials; it must never receive another org's
+ * credentials just because the caller didn't specify one.
  */
 export async function resolveFeedGoogleCredentials(
   ctx: TenantContext,
   userId: string,
+  orgId?: string,
 ): Promise<FeedGoogleCredential[]> {
   const out: FeedGoogleCredential[] = [];
 
@@ -246,12 +263,15 @@ export async function resolveFeedGoogleCredentials(
   if (own) out.push({ email: own.email, adc: own.adc, shared: false });
 
   if (!UUID_RE.test(userId)) return out;
+  if (!orgId || !UUID_RE.test(orgId)) return out; // fail closed: no org named, no shared identities
+
   const admin = supabaseAdmin();
 
   const { data: subs } = await admin
     .from('identity_subscriptions')
     .select('identity_id')
-    .eq('subscriber_profile_id', userId);
+    .eq('subscriber_profile_id', userId)
+    .eq('organization_id', orgId);
   const identityIds = [...new Set(((subs ?? []) as Array<{ identity_id: string }>).map((s) => s.identity_id))];
   if (identityIds.length === 0) return out;
 

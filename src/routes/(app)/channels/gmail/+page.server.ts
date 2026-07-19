@@ -50,9 +50,10 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const ctx = locals.tenantCtx;
   const supabaseId = locals.user.supabaseId ?? locals.user.id;
 
+  const orgId = locals.orgId ?? ctx.tenantId;
   const [own, shared] = await Promise.all([
     getGoogleCredential(ctx, supabaseId).catch(() => null),
-    listAvailableSharedIdentities(supabaseId).catch(
+    listAvailableSharedIdentities(supabaseId, orgId).catch(
       () => [] as Awaited<ReturnType<typeof listAvailableSharedIdentities>>,
     ),
   ]);
