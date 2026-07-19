@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ALL_PERIODS_WITH_TIME,
+  SUBDAY_RANGE_IDS,
+  DATE_RANGE_IDS,
+  isSubDayRange,
   daysBetween,
   periodEnabled,
   enabledPeriods,
@@ -124,5 +128,41 @@ describe('storage config', () => {
     cfg = setDefaultRange(cfg, 'all');
     expect(cfg.visible).toEqual(['7d', '30d', 'all']);
     expect(cfg.default).toBe('all');
+  });
+});
+
+describe('sub-day (time-of-day opt-in)', () => {
+  it('keeps sub-day ranges out of the date-granular set', () => {
+    expect(SUBDAY_RANGE_IDS).toEqual(['1h', '6h', '24h']);
+    expect(DATE_RANGE_IDS).not.toContain('1h');
+    expect(isSubDayRange('1h')).toBe(true);
+    expect(isSubDayRange('7d')).toBe(false);
+  });
+
+  it('resolves a sub-day range to datetime bounds an hour apart', () => {
+    const r = resolveRange('1h', ctx)!;
+    expect(r.from).toContain('T');
+    expect(r.to).toContain('T');
+    const { fromTs, toTs } = toTimestamps(r);
+    expect(toTs - fromTs).toBe(3_600_000);
+  });
+
+  it('hour is viewable for short windows and too FINE for long ones', () => {
+    const short = resolveRange('24h', ctx)!;
+    expect(periodEnabled('hour', short.from, short.to)).toBe(true);
+    // 30 days of hourly buckets = 720 bars → disabled by the max-span rule
+    expect(periodEnabled('hour', '2026-06-19', '2026-07-19')).toBe(false);
+  });
+
+  it('coerces hour away once the window grows past the hourly cap', () => {
+    // 30d: hour is too fine → snap to the coarsest viewable period
+    expect(coercePeriod('hour', '2026-06-19', '2026-07-19', ALL_PERIODS_WITH_TIME)).toBe('month');
+    // 1d: 24 hourly bars is perfectly readable → hour is kept
+    expect(coercePeriod('hour', '2026-07-18', '2026-07-19', ALL_PERIODS_WITH_TIME)).toBe('hour');
+  });
+
+  it('datetime bounds are used verbatim (not widened to the whole day)', () => {
+    const { fromTs, toTs } = toTimestamps({ from: '2026-06-01T08:00', to: '2026-06-01T09:30' });
+    expect(toTs - fromTs).toBe(90 * 60_000);
   });
 });

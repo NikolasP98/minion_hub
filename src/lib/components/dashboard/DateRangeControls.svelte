@@ -17,6 +17,7 @@
     type RangeConfig,
     ALL_PERIODS,
     ALL_RANGE_IDS,
+    DATE_RANGE_IDS,
     DEFAULT_VISIBLE_RANGES,
     rangeDef,
     resolveRange,
@@ -37,6 +38,11 @@
     /** Granularity. Pass `periods={[]}` on dashboards that don't bucket. */
     period?: Period;
     periods?: Period[];
+    /**
+     * Opt into time-of-day: datetime bounds + the sub-day ranges (1h/6h/24h).
+     * Telemetry surfaces only — every other dashboard stays date-granular.
+     */
+    withTime?: boolean;
     /** Which quick ranges this dashboard offers at all. */
     ranges?: RangeId[];
     /** Which of those start out as pills (the rest live in the ⋯ menu). */
@@ -55,7 +61,9 @@
     to,
     period = 'day',
     periods = ALL_PERIODS,
-    ranges = ALL_RANGE_IDS,
+    withTime = false,
+    // Sub-day ranges stay hidden unless the surface opted into time-of-day.
+    ranges = withTime ? ALL_RANGE_IDS : DATE_RANGE_IDS,
     defaultVisible = DEFAULT_VISIBLE_RANGES,
     dataMin,
     dataMax,
@@ -78,6 +86,7 @@
   const activeQuick = $derived(matchRange({ from, to }, ranges, ctx) ?? '');
 
   const periodLabel: Record<Period, () => string> = {
+    hour: m.dr_p_hour,
     day: m.dr_p_day,
     week: m.dr_p_week,
     month: m.dr_p_month,
@@ -143,11 +152,11 @@
   <div class="dr-dates">
     <label class="dr-field">
       <span>{m.dr_from()}</span>
-      <input type="date" value={from} max={to || undefined} oninput={onFrom} />
+      <input type={withTime ? 'datetime-local' : 'date'} value={from} max={to || undefined} oninput={onFrom} />
     </label>
     <label class="dr-field">
       <span>{m.dr_to()}</span>
-      <input type="date" value={to} min={from || undefined} oninput={onTo} />
+      <input type={withTime ? 'datetime-local' : 'date'} value={to} min={from || undefined} oninput={onTo} />
     </label>
   </div>
 

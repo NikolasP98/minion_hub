@@ -9,7 +9,8 @@
 		type AsyncBoundaryState,
 	} from '$lib/components/ui/foundations';
 	import type { MultiSelectOption } from '$lib/components/ui';
-	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
+	import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
+	import { toTimestamps, fromTimestamps } from '$lib/components/dashboard/date-range';
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
 	import LatencyPanel from '$lib/components/reliability/LatencyPanel.svelte';
 	import PluginHealthPanel from '$lib/components/reliability/PluginHealthPanel.svelte';
@@ -917,6 +918,18 @@
 		persistFilters();
 	}
 
+	// Reliability is the one time-of-day surface: it keeps ms bounds internally and
+	// offers sub-day windows, so it opts into `withTime` and converts at the edge.
+	const REL_RANGES = ['1h', '6h', '24h', '7d', '30d', '90d'];
+	const relWindow = $derived(
+		fromTimestamps(reliability.dateRange.from, reliability.dateRange.to, { withTime: true }),
+	);
+	function onRangeChange(v: { from: string; to: string }) {
+		const { fromTs, toTs } = toTimestamps(v);
+		if (!Number.isFinite(fromTs) || !Number.isFinite(toTs)) return;
+		handleDateChange(fromTs, toTs);
+	}
+
 	onMount(() => {
 		const now = Date.now();
 		if (_saved.datePreset && PRESET_MS[_saved.datePreset]) {
@@ -1353,10 +1366,15 @@
 					<Button type="button" onclick={() => setScope('org')} variant={scopeMode === 'org' ? 'primary' : 'outline'} size="sm" class="rounded-full" aria-pressed={scopeMode === 'org'}>{m.reliability_scopeOrg()}</Button>
 				</div>
 			{/if}
-			<DateRangePicker
-				from={reliability.dateRange.from}
-				to={reliability.dateRange.to}
-				onchange={handleDateChange}
+			<DateRangeControls
+				from={relWindow.from}
+				to={relWindow.to}
+				withTime
+				periods={[]}
+				ranges={REL_RANGES}
+				defaultVisible={['1h', '24h', '7d', '30d']}
+				storageKey="reliability"
+				onChange={onRangeChange}
 			/>
 			<Button
 				variant="secondary"

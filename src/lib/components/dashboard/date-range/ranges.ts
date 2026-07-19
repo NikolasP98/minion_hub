@@ -23,9 +23,28 @@ export interface RangeDef {
   /** Shorthand label (lazy so the locale is read at render time). */
   label: () => string;
   resolve: (ctx: RangeContext) => DateRange;
+  /**
+   * Sub-day range — resolves to datetime bounds and is only meaningful on a
+   * surface that opted into time-of-day (`withTime`). Hidden everywhere else.
+   */
+  time?: boolean;
 }
 
 export const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
+
+/** Local 'YYYY-MM-DDTHH:mm' — matches what <input type="datetime-local"> wants. */
+export const isoDateTime = (d: Date): string => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+/** Build a sub-day window ending now, starting `hours` back. */
+function backHours(hours: number): (ctx: RangeContext) => DateRange {
+  return ({ now }) => {
+    const from = new Date(now.getTime() - hours * 3_600_000);
+    return { from: isoDateTime(from), to: isoDateTime(now) };
+  };
+}
 
 /** Build a window ending today, starting `mutate` days/months/years back. */
 function back(mutate: (d: Date) => void): (ctx: RangeContext) => DateRange {
@@ -37,6 +56,10 @@ function back(mutate: (d: Date) => void): (ctx: RangeContext) => DateRange {
 }
 
 export const RANGE_DEFS: RangeDef[] = [
+  // Sub-day (opt-in via `withTime`) — telemetry surfaces only.
+  { id: '1h', label: m.dr_q_1h, resolve: backHours(1), time: true },
+  { id: '6h', label: m.dr_q_6h, resolve: backHours(6), time: true },
+  { id: '24h', label: m.dr_q_24h, resolve: backHours(24), time: true },
   { id: '1d', label: m.dr_q_1d, resolve: back((d) => d.setDate(d.getDate() - 1)) },
   { id: '7d', label: m.dr_q_7d, resolve: back((d) => d.setDate(d.getDate() - 7)) },
   { id: '30d', label: m.dr_q_30d, resolve: back((d) => d.setDate(d.getDate() - 30)) },
@@ -60,6 +83,14 @@ export const RANGE_DEFS: RangeDef[] = [
 ];
 
 export const ALL_RANGE_IDS: RangeId[] = RANGE_DEFS.map((r) => r.id);
+
+/** Sub-day ids — excluded unless a surface opts into time-of-day. */
+export const SUBDAY_RANGE_IDS: RangeId[] = RANGE_DEFS.filter((r) => r.time).map((r) => r.id);
+
+/** Date-granular ids — the default menu for every non-telemetry dashboard. */
+export const DATE_RANGE_IDS: RangeId[] = RANGE_DEFS.filter((r) => !r.time).map((r) => r.id);
+
+export const isSubDayRange = (id: RangeId): boolean => rangeDef(id)?.time === true;
 
 /** Sensible pill set; everything else lives behind the show/hide menu. */
 export const DEFAULT_VISIBLE_RANGES: RangeId[] = ['1d', '7d', '30d', 'ytd', '1y'];

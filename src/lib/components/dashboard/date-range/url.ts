@@ -67,19 +67,41 @@ export function toSearchParams(
 export const START_OF_DAY = 'T00:00:00.000';
 export const END_OF_DAY = 'T23:59:59.999';
 
-/** Inclusive ms bounds. Missing bounds become ±Infinity (open). */
+const hasTime = (v: string) => v.includes('T');
+
+/**
+ * Inclusive ms bounds. A date-only bound is widened to the whole day; a datetime
+ * bound ('YYYY-MM-DDTHH:mm', from sub-day ranges) is used as given. Missing
+ * bounds become ±Infinity (open).
+ */
 export function toTimestamps(range: DateRange): { fromTs: number; toTs: number } {
-  const from = range.from ? Date.parse(`${range.from}${START_OF_DAY}`) : Number.NaN;
-  const to = range.to ? Date.parse(`${range.to}${END_OF_DAY}`) : Number.NaN;
+  const from = range.from
+    ? Date.parse(hasTime(range.from) ? range.from : `${range.from}${START_OF_DAY}`)
+    : Number.NaN;
+  const to = range.to
+    ? Date.parse(hasTime(range.to) ? range.to : `${range.to}${END_OF_DAY}`)
+    : Number.NaN;
   return {
     fromTs: Number.isFinite(from) ? from : -Infinity,
     toTs: Number.isFinite(to) ? to : Infinity,
   };
 }
 
-/** Inverse of toTimestamps — ms bounds back to 'YYYY-MM-DD' ('' when open). */
-export function fromTimestamps(fromTs: number, toTs: number): DateRange {
-  const iso = (t: number) =>
-    Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : '';
-  return { from: iso(fromTs), to: iso(toTs) };
+/**
+ * Inverse of toTimestamps. `withTime` emits local 'YYYY-MM-DDTHH:mm' (what a
+ * time-of-day surface round-trips); otherwise plain 'YYYY-MM-DD'. '' when open.
+ */
+export function fromTimestamps(
+  fromTs: number,
+  toTs: number,
+  opts: { withTime?: boolean } = {},
+): DateRange {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmt = (t: number) => {
+    if (!Number.isFinite(t)) return '';
+    const d = new Date(t);
+    if (!opts.withTime) return d.toISOString().slice(0, 10);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  return { from: fmt(fromTs), to: fmt(toTs) };
 }
