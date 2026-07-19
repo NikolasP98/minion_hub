@@ -110,6 +110,7 @@ describe('toResolvedChannels (hub hydration mapper)', () => {
         accountId: '+51906090526',
         type: 'whatsapp',
         orgId: 'org-1',
+        ownerProfileId: null,
         projection: {
           enabled: true,
           allowFrom: [],
@@ -121,6 +122,15 @@ describe('toResolvedChannels (hub hydration mapper)', () => {
         },
       },
     ]);
+  });
+
+  it('carries ownerProfileId (P0 user-scoped classification primitive) through untouched', () => {
+    const out = toResolvedChannels([
+      { ...waRow, tenantId: 'org-1', ownerProfileId: 'profile-1' },
+    ]);
+    expect(out[0].ownerProfileId).toBe('profile-1');
+    // org-scoped row (no owner) — orgId still present, ownerProfileId null.
+    expect(toResolvedChannels([{ ...waRow, tenantId: 'org-1' }])[0].ownerProfileId).toBeNull();
   });
 
   it('keeps all migrated types (whatsapp/telegram/discord), drops unknown types + null/empty accountId', () => {

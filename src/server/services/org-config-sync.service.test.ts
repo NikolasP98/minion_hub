@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   buildAccountOrgs,
+  buildAccountOwners,
+  replaceNestedScalar,
   buildPluginOrgDisabled,
   replaceFlat,
   replaceNested,
@@ -61,6 +63,41 @@ describe('unwrapConfigSnapshot (config.get returns {config,hash} wrapper)', () =
   it('returns {} for null/undefined', () => {
     expect(unwrapConfigSnapshot(null)).toEqual({});
     expect(unwrapConfigSnapshot(undefined)).toEqual({});
+  });
+});
+
+describe('buildAccountOwners', () => {
+  it('emits ONLY user-scoped accounts; org-scoped rows are absent', () => {
+    const map = buildAccountOwners([
+      // user-scoped: Nikolas's own WhatsApp — follows him across every org
+      { type: 'whatsapp', accountId: '+51900000009', ownerProfileId: 'profile-nik' },
+      // org-scoped: shared business account — belongs to the org via accountOrgs
+      { type: 'whatsapp', accountId: '+51900000001', ownerProfileId: null },
+      { type: 'telegram', accountId: 'bot123', ownerProfileId: null },
+    ]);
+    expect(map).toEqual({ whatsapp: { '+51900000009': 'profile-nik' } });
+    // the shared account must NOT be claimed by a person
+    expect(map.whatsapp?.['+51900000001']).toBeUndefined();
+  });
+
+  it('skips rows with no account key', () => {
+    expect(buildAccountOwners([{ type: 'whatsapp', accountId: null, ownerProfileId: 'p1' }])).toEqual(
+      {},
+    );
+  });
+});
+
+describe('replaceNestedScalar', () => {
+  it('nulls an owner the DB no longer claims (authoritative replace)', () => {
+    const patch = replaceNestedScalar(
+      { whatsapp: { '+1': 'profile-old', '+2': 'profile-keep' } },
+      { whatsapp: { '+2': 'profile-keep' } },
+    );
+    expect(patch).toEqual({ whatsapp: { '+1': null, '+2': 'profile-keep' } });
+  });
+
+  it('nulls a whole channel type gone from the DB', () => {
+    expect(replaceNestedScalar({ telegram: { bot: 'p1' } }, {})).toEqual({ telegram: null });
   });
 });
 
@@ -173,7 +210,7 @@ describe('reconcileOrgConfig (Phase-4 ORG_CONFIG_PUSH flag)', () => {
     process.env.ORG_CONFIG_PUSH = 'off';
     const result = await reconcileOrgConfig('gw');
     expect(mockGatewayCall).not.toHaveBeenCalled();
-    expect(result).toEqual({ accountOrgs: {}, orgDisabled: {} });
+    expect(result).toEqual({ accountOrgs: {}, accountOwners: {}, orgDisabled: {} });
   });
 
   it('unset (default) still pushes via config.patch — zero behavior change', async () => {

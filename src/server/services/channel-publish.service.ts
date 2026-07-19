@@ -84,12 +84,18 @@ export interface ChannelRowLite {
   authRef?: string | null;
   /** Owning org (channels.tenant_id) — the DB source of accountOrgs for P4. */
   tenantId?: string;
+  /** Set => account is USER-scoped (follows this person across orgs); null/absent
+   *  => ORG-scoped via tenantId (P0 classification primitive, channel-scoping-fix §3). */
+  ownerProfileId?: string | null;
 }
 export interface HydrationItem {
   accountId: string;
   type: string;
   /** Owning org id — the gateway derives accountOrgs[type][accountId] from this (P4). */
   orgId: string | null;
+  /** Set => USER-scoped account (visible to this profile in every org); null =>
+   *  classify by orgId instead. Additive — P0 carries the class, no enforcement yet. */
+  ownerProfileId: string | null;
   projection: ChannelProjection;
 }
 
@@ -109,6 +115,7 @@ export function toResolvedChannels(rows: ChannelRowLite[]): HydrationItem[] {
       accountId: r.accountId,
       type: r.type,
       orgId: r.tenantId ?? null,
+      ownerProfileId: r.ownerProfileId ?? null,
       projection: projectChannelRow(r),
     }));
 }
