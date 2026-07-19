@@ -9,18 +9,23 @@ import {
   topProducts,
   topClients,
   financeDataSpan,
+  getFinSettings,
 } from '$server/services/finance.service';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
-import { parsePeriod } from '$lib/finance/period';
+import { parsePeriod, resolvePeriodWindow } from '$lib/finance/period';
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const ctx = await requireCoreCtx(locals);
   if (!(await isModuleEnabled(ctx, 'finances'))) throw error(404, 'Finances module disabled');
   depends('finances:data');
-  const period = parsePeriod(url);
+  // A calendar day is LOCAL. Resolve the picked days to instants in the org's
+  // business timezone so an evening sale isn't reported on the next day.
+  const settings = await getFinSettings(ctx);
+  const picked = parsePeriod(url);
+  const period = resolvePeriodWindow(picked, settings.timezone);
   // Full data span (min/max invoice date) — cheap + non-streamed so the date
   // controls can show real dates for "All time".
-  const dataSpan = await financeDataSpan(ctx);
+  const dataSpan = await financeDataSpan(ctx, settings.timezone);
   // Field-level (Phase 4): hide cost/margin (discount, gross) below the finance
   // sensitive field level. RBAC gate stays synchronous.
   const maskCost = await shouldMaskSensitive(locals, 'finance');
@@ -39,7 +44,8 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   }
 
   return {
-    period,
+    // The UI shows the days the user picked; the services get resolved instants.
+    period: picked,
     dataSpan,
     streamed: {
       data: computeData(),

@@ -176,6 +176,9 @@ export const finSettings = pgTable('fin_settings', {
   orgId: text('org_id').primaryKey(),
   currency: text('currency').notNull().default('PEN'),
   taxRate: numeric('tax_rate').notNull().default('0.18'), // IGV as a fraction (0.18 = 18%)
+  // Business timezone. A calendar "day" is local: comparing a Lima (UTC-5) shop
+  // against UTC days cuts its day at 19:00 and rolls evening sales into tomorrow.
+  timezone: text('timezone').notNull().default('America/Lima'),
   fxBase: text('fx_base').notNull().default('USD'),
   fxQuote: text('fx_quote').notNull().default('PEN'),
   fxMode: text('fx_mode').notNull().default('auto'),      // 'auto' | 'manual'

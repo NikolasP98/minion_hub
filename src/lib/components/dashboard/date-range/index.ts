@@ -53,6 +53,8 @@ export {
   toSearchParams,
   toTimestamps,
   fromTimestamps,
+  zonedStartOfDay,
+  zonedDayWindow,
 } from './url';
 
 export {

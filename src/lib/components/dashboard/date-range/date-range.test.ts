@@ -18,6 +18,7 @@ import {
   defaultRangeConfig,
   toggleRangeVisible,
   setDefaultRange,
+  zonedDayWindow,
 } from './index';
 
 const NOW = new Date('2026-07-19T00:00:00Z');
@@ -166,3 +167,35 @@ describe('sub-day (time-of-day opt-in)', () => {
     expect(toTs - fromTs).toBe(90 * 60_000);
   });
 });
+
+describe('business-timezone day windows', () => {
+  it('brackets a Lima day at 05:00Z..05:00Z (UTC-5), not 00:00Z', () => {
+    const w = zonedDayWindow('2026-06-01', '2026-06-01', 'America/Lima');
+    expect(w.from!.toISOString()).toBe('2026-06-01T05:00:00.000Z');
+    expect(w.to!.toISOString()).toBe('2026-06-02T05:00:00.000Z');
+  });
+
+  it('includes a 19:30 Lima sale that a UTC day window would drop', () => {
+    // 2026-06-01 19:30 Lima == 2026-06-02 00:30Z
+    const sale = Date.parse('2026-06-02T00:30:00.000Z');
+    const lima = zonedDayWindow('2026-06-01', '2026-06-01', 'America/Lima');
+    expect(sale).toBeGreaterThanOrEqual(lima.from!.getTime());
+    expect(sale).toBeLessThan(lima.to!.getTime());
+    // the old UTC-day window excluded it
+    const utcEnd = Date.parse('2026-06-02T00:00:00.000Z');
+    expect(sale).toBeGreaterThanOrEqual(utcEnd);
+  });
+
+  it('is UTC-identical for a UTC business', () => {
+    const w = zonedDayWindow('2026-06-01', '2026-06-01', 'UTC');
+    expect(w.from!.toISOString()).toBe('2026-06-01T00:00:00.000Z');
+    expect(w.to!.toISOString()).toBe('2026-06-02T00:00:00.000Z');
+  });
+
+  it('handles a multi-day span and open bounds', () => {
+    const w = zonedDayWindow('2026-06-01', '2026-06-30', 'America/Lima');
+    expect(w.from!.toISOString()).toBe('2026-06-01T05:00:00.000Z');
+    expect(w.to!.toISOString()).toBe('2026-07-01T05:00:00.000Z');
+    expect(zonedDayWindow('', '', 'America/Lima')).toEqual({ from: null, to: null });
+  });
+})

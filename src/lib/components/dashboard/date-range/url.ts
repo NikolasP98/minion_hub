@@ -105,3 +105,60 @@ export function fromTimestamps(
   };
   return { from: fmt(fromTs), to: fmt(toTs) };
 }
+
+// ── Business-timezone day windows ────────────────────────────────────────────
+// A calendar day is a LOCAL concept. Comparing a Lima (UTC-5) business's sales
+// against UTC day boundaries cuts its day at 19:00 — evening sales roll into the
+// next "day". These resolve a from/to DATE pair to the absolute instants that
+// bracket those local days, so SQL keeps comparing a plain indexed timestamp
+// (sargable) instead of `issued_at at time zone tz`.
+
+/** Offset (ms) of `tz` from UTC at the given instant. */
+function tzOffsetMs(at: Date, tz: string): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const p: Record<string, number> = {};
+  for (const part of dtf.formatToParts(at)) {
+    if (part.type !== 'literal') p[part.type] = Number(part.value);
+  }
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second);
+  return asUtc - at.getTime();
+}
+
+/** The instant at which 'YYYY-MM-DD' 00:00 begins in `tz`. */
+export function zonedStartOfDay(date: string, tz: string): Date {
+  const [y, m, d] = date.split('-').map(Number);
+  const guess = Date.UTC(y, (m ?? 1) - 1, d ?? 1);
+  // Correct twice so a DST boundary near midnight still lands exactly.
+  let ms = guess - tzOffsetMs(new Date(guess), tz);
+  ms = guess - tzOffsetMs(new Date(ms), tz);
+  return new Date(ms);
+}
+
+/**
+ * Half-open instant window covering the local days `from`..`to` INCLUSIVE in
+ * `tz`: [start of `from`, start of the day AFTER `to`). Either bound may be ''
+ * for an open side.
+ */
+export function zonedDayWindow(
+  from: string,
+  to: string,
+  tz: string,
+): { from: Date | null; to: Date | null } {
+  const start = from ? zonedStartOfDay(from, tz) : null;
+  let end: Date | null = null;
+  if (to) {
+    const [y, m, d] = to.split('-').map(Number);
+    const next = new Date(Date.UTC(y, (m ?? 1) - 1, (d ?? 1) + 1));
+    end = zonedStartOfDay(next.toISOString().slice(0, 10), tz);
+  }
+  return { from: start, to: end };
+}

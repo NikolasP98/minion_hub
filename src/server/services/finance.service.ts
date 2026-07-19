@@ -332,6 +332,8 @@ export async function getInvoice(ctx: CoreCtx, id: string) {
 export interface FinSettings {
   currency: string;
   taxRate: number; // IGV as a fraction (0.18 = 18%)
+  /** IANA business timezone — defines what a calendar "day" means in reports. */
+  timezone: string;
   fxBase: string;
   fxQuote: string;
   fxMode: 'auto' | 'manual';
@@ -346,6 +348,7 @@ export interface FinSettings {
 export const DEFAULT_FIN_SETTINGS: Readonly<FinSettings> = Object.freeze({
   currency: 'PEN',
   taxRate: 0.18,
+  timezone: 'America/Lima',
   fxBase: 'USD',
   fxQuote: 'PEN',
   fxMode: 'auto',
@@ -363,6 +366,7 @@ function mapFinSettings(row: typeof finSettings.$inferSelect): FinSettings {
   return {
     currency: row.currency,
     taxRate: Number(row.taxRate),
+    timezone: row.timezone,
     fxBase: row.fxBase,
     fxQuote: row.fxQuote,
     fxMode: mode,
@@ -386,6 +390,17 @@ export async function updateFinSettings(ctx: CoreCtx, patch: Partial<FinSettings
   // exchange rates must be positive when provided.
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.currency != null) set.currency = String(patch.currency).toUpperCase().slice(0, 8);
+  if (patch.timezone != null) {
+    const tz = String(patch.timezone);
+    // Reject anything Intl can't resolve — a bad zone would silently shift every
+    // reported day boundary.
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    } catch {
+      throw new Error(`unknown timezone: ${tz}`);
+    }
+    set.timezone = tz;
+  }
   if (patch.taxRate != null) {
     const t = Number(patch.taxRate);
     if (!Number.isFinite(t) || t < 0 || t >= 1) throw new Error('taxRate must be a fraction in [0, 1)');
@@ -567,10 +582,10 @@ function periodWhere(p: Period, alias = '') {
   const c = alias ? `${alias}.` : '';
   const conds = [sql`${sql.raw(c)}org_id = current_setting('app.current_org_id', true)`];
   if (p.from) conds.push(sql`${sql.raw(c)}issued_at >= ${p.from}`);
-  // INCLUSIVE of the whole `to` day: `p.to` is normalized to that day's midnight,
-  // so a plain `< to` drops same-day records (from=to=Jun-1 returned zero despite
-  // Jun-1 sales). Half-open interval to the NEXT day's midnight covers the full day.
-  if (p.to) conds.push(sql`${sql.raw(c)}issued_at < (${p.to}::timestamptz + interval '1 day')`);
+  // INCLUSIVE of the whole `to` day. `p.to` arrives already resolved by
+  // resolvePeriodWindow() to the exclusive start of the next day in the org's
+  // business timezone, so a plain `<` is both correct and index-friendly.
+  if (p.to) conds.push(sql`${sql.raw(c)}issued_at < ${p.to}`);
   return sql.join(conds, sql` and `);
 }
 
@@ -581,14 +596,15 @@ const ctags = (org: string) => [...financeCacheTags(org)];
 
 /** Full data span (min/max invoice date) for the org — lets "All time" show real
  *  dates. Unscoped by period on purpose. Returns 'YYYY-MM-DD' ('' when no data). */
-export function financeDataSpan(ctx: CoreCtx) {
+export function financeDataSpan(ctx: CoreCtx, tz = 'UTC') {
   return cached(
-    keys.hub('fin-span', { t: ctx.tenantId }),
+    keys.hub('fin-span', { t: ctx.tenantId, d: { tz } }),
     { ttl: '5m', swr: '1m', tags: ctags(ctx.tenantId) },
     () =>
       withOrgCore(ctx, async (tx) => {
         const [r] = (await tx.execute(sql`
-          select min(issued_at)::date::text lo, max(issued_at)::date::text hi
+          select min(issued_at at time zone ${tz})::date::text lo,
+                 max(issued_at at time zone ${tz})::date::text hi
           from fin_invoices
           where org_id = current_setting('app.current_org_id', true) and issued_at is not null
         `)) as unknown as Array<{ lo: string | null; hi: string | null }>;
@@ -619,7 +635,7 @@ export function financeSummary(ctx: CoreCtx, p: Period) {
         from stk_ledger l join stk_entries e on e.id = l.entry_id
         where e.type = 'issue' and l.org_id = current_setting('app.current_org_id', true)
           ${p.from ? sql`and l.posted_at >= ${p.from}` : sql``}
-          ${p.to ? sql`and l.posted_at < (${p.to}::timestamptz + interval '1 day')` : sql``}
+          ${p.to ? sql`and l.posted_at < ${p.to}` : sql``}
       `)) as unknown as Array<{ cogs: number }>;
         const net = Number(r.net),
           gross = Number(r.gross),
