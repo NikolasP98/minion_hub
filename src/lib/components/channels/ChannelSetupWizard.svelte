@@ -3,6 +3,7 @@
     import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
     import { sendRequest } from '$lib/services/gateway.svelte';
     import { configState, loadConfig } from '$lib/state/config/config.svelte';
+    import { conn } from '$lib/state/gateway/connection.svelte';
     import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
     import { WIZARD_INTENTS, type WizardIntent } from './wizard-intent';
@@ -116,11 +117,30 @@
         return { replies: 'bound', allowFrom: [] }; // 'pairing' — closed until a sender pairs
     }
 
+    /** config.patch needs a baseHash from config.get, which rides the gateway WS.
+     *  That socket is legitimately down for a few seconds after any gateway restart —
+     *  including the one a freshly paired account triggers — so a single failure here
+     *  is usually a dropped socket, not a real error. Retry once before giving up. */
+    async function ensureBaseHash(): Promise<boolean> {
+        if (configState.baseHash) return true;
+        await loadConfig();
+        if (configState.baseHash) return true;
+        await new Promise((r) => setTimeout(r, 2000));
+        await loadConfig();
+        return !!configState.baseHash;
+    }
+
     async function commit() {
         if (!verified) return;
-        if (!configState.baseHash) await loadConfig();
-        if (!configState.baseHash) {
-            toastError('Save failed', 'Could not load config.');
+        if (!(await ensureBaseHash())) {
+            // loadConfig() swallows the cause into configState.loadError — surface it
+            // instead of the generic string, which sent us chasing the wrong bug twice.
+            toastError(
+                'Save failed',
+                conn.connected
+                    ? (configState.loadError ?? 'Could not load config.')
+                    : 'Lost the gateway connection — reconnect and try again.',
+            );
             return;
         }
         const accountId =
