@@ -4,6 +4,7 @@ import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
 import { enqueueJob, listEnabledSources } from '$server/services/finance-sync-jobs.service';
 import { advanceJob } from '$server/services/finance-sync.service';
+import { reconcileParties } from '$server/services/party.service';
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -26,6 +27,17 @@ export const GET: RequestHandler = async ({ request }) => {
     try {
       const job = await enqueueJob(ctx, s.provider);
       await advanceJob(ctx, job.id, { budgetMs: 50_000, recentWindowMs: ONE_WEEK_MS });
+      // Freshly-synced payers need their party + CRM contact minted, or they
+      // sit in finances but in nobody's CRM. `syncSource` does this for manual
+      // runs; this cron path calls advanceJob directly, so without it every
+      // customer who first buys overnight drifts out of the CRM until someone
+      // syncs by hand. Idempotent + guarded so a reconcile failure can't fail
+      // the sync that already succeeded.
+      try {
+        await reconcileParties(ctx);
+      } catch (e) {
+        console.error('[finance-sync] daily reconcileParties failed', s.orgId, e);
+      }
       started++;
     } catch (e) {
       console.error('[finance-sync] daily advanceJob failed', s.orgId, s.provider, e);
