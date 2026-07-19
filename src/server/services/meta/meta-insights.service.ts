@@ -13,7 +13,7 @@ import { metaConnections, metaAssets, metaSyncJobs } from '$server/db/pg-meta-sc
 export interface DateRange {
   /** Inclusive lower bound, 'YYYY-MM-DD'. */
   from: string;
-  /** Exclusive upper bound, 'YYYY-MM-DD'. */
+  /** INCLUSIVE upper bound, 'YYYY-MM-DD' — the whole `to` day counts. */
   to: string;
 }
 
@@ -23,8 +23,9 @@ export interface DateRange {
 export function previousRange(range: DateRange): DateRange {
   const from = new Date(`${range.from}T00:00:00Z`).getTime();
   const to = new Date(`${range.to}T00:00:00Z`).getTime();
-  const days = Math.max(1, Math.round((to - from) / 86_400_000));
-  const prevTo = range.from;
+  // Bounds are INCLUSIVE, so a from==to window is 1 day long.
+  const days = Math.max(1, Math.round((to - from) / 86_400_000) + 1);
+  const prevTo = new Date(from - 86_400_000).toISOString().slice(0, 10); // day before `from`
   const prevFrom = new Date(from - days * 86_400_000).toISOString().slice(0, 10);
   return { from: prevFrom, to: prevTo };
 }
@@ -74,9 +75,8 @@ export function extentToRange(extent: DataExtent, now: Date = new Date(), fallba
     from.setUTCDate(from.getUTCDate() - fallbackDays);
     return { from: from.toISOString().slice(0, 10), to };
   }
-  const toDate = new Date(`${extent.maxDate}T00:00:00Z`);
-  toDate.setUTCDate(toDate.getUTCDate() + 1);
-  return { from: extent.minDate, to: toDate.toISOString().slice(0, 10) };
+  // Bounds are INCLUSIVE — the newest day of data is the upper bound as-is.
+  return { from: extent.minDate, to: extent.maxDate };
 }
 
 // ── Ad KPIs (dashboard ribbon) ──────────────────────────────────────────────
@@ -101,7 +101,7 @@ async function kpiAgg(tx: Parameters<Parameters<CoreCtx['db']['transaction']>[0]
            coalesce(sum(reach), 0)::bigint reach,
            coalesce(sum(clicks), 0)::bigint clicks
     from meta_ad_insights
-    where org_id = ${orgId} and date >= ${r.from} and date < ${r.to}
+    where org_id = ${orgId} and date >= ${r.from} and date <= ${r.to}
   `)) as unknown as Array<{ spend: number; impressions: number; reach: number; clicks: number }>;
   const spend = Number(row?.spend ?? 0);
   const impressions = Number(row?.impressions ?? 0);
@@ -150,7 +150,7 @@ export function adSpendSeries(ctx: CoreCtx, range: DateRange): Promise<AdSpendPo
              coalesce(sum(impressions), 0)::bigint impressions,
              coalesce(sum(clicks), 0)::bigint clicks
       from meta_ad_insights
-      where org_id = ${ctx.tenantId} and date >= ${range.from} and date < ${range.to}
+      where org_id = ${ctx.tenantId} and date >= ${range.from} and date <= ${range.to}
       group by date
       order by date
     `)) as unknown as Array<{ date: string; spend: number; impressions: number; clicks: number }>;
@@ -216,7 +216,7 @@ export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: Campaig
              ${selectPost}
       from meta_ad_insights mai
       ${postJoin}
-      where mai.org_id = ${ctx.tenantId} and mai.date >= ${range.from} and mai.date < ${range.to}
+      where mai.org_id = ${ctx.tenantId} and mai.date >= ${range.from} and mai.date <= ${range.to}
       group by ${groupBy}
       order by spend desc
       limit 500
@@ -653,7 +653,7 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
              coalesce(sum(clicks), 0)::bigint clicks
       from meta_ad_insights
       where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
-        and date >= ${range.from} and date < ${range.to}
+        and date >= ${range.from} and date <= ${range.to}
     `)) as unknown as Array<{ spend: number; impressions: number; reach: number; clicks: number }>;
     const spend = Number(totalsRow?.spend ?? 0);
     const impressions = Number(totalsRow?.impressions ?? 0);
@@ -668,7 +668,7 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
              coalesce(sum(clicks), 0)::bigint clicks
       from meta_ad_insights
       where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
-        and date >= ${range.from} and date < ${range.to}
+        and date >= ${range.from} and date <= ${range.to}
       group by adset_id
       order by spend desc
     `)) as unknown as Array<Record<string, unknown>>;
@@ -688,7 +688,7 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
       left join meta_ad_posts map on map.org_id = mai.org_id and map.ad_id = mai.ad_id
       left join meta_post_media mm on mm.org_id = map.org_id and mm.platform = map.platform and mm.post_id = map.post_id
       where mai.org_id = ${ctx.tenantId} and mai.campaign_id = ${campaignId}
-        and mai.date >= ${range.from} and mai.date < ${range.to}
+        and mai.date >= ${range.from} and mai.date <= ${range.to}
       group by mai.ad_id
       order by spend desc
     `)) as unknown as Array<Record<string, unknown>>;
@@ -697,7 +697,7 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
       select date::text as date, coalesce(sum(spend), 0)::float8 spend
       from meta_ad_insights
       where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
-        and date >= ${range.from} and date < ${range.to}
+        and date >= ${range.from} and date <= ${range.to}
       group by date
       order by date
     `)) as unknown as Array<{ date: string; spend: number }>;

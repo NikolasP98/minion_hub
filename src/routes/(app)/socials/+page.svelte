@@ -6,6 +6,7 @@
 	import { PageHeader, Button, EmptyState } from '$lib/components/ui';
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
+	import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
 	import { canAct } from '$lib/access/can.svelte';
 	import { isAdmin } from '$lib/state/features/user.svelte';
 	import { chartColors } from '$lib/utils/chart-colors';
@@ -27,23 +28,11 @@
 		goto(`/socials?${p}`, { keepFocus: true, noScroll: true });
 	}
 
-	function preset30d() {
-		const to = new Date();
-		const from = new Date();
-		from.setDate(from.getDate() - 30);
-		fromDate = from.toISOString().slice(0, 10);
-		toDate = to.toISOString().slice(0, 10);
-		navigate(fromDate, toDate);
-	}
-
-	function presetAll() {
-		if (!data.extent.minDate || !data.extent.maxDate) return;
-		// range.to is exclusive — bump maxDate by 1 day so the last day of data is included.
-		const to = new Date(`${data.extent.maxDate}T00:00:00Z`);
-		to.setUTCDate(to.getUTCDate() + 1);
-		fromDate = data.extent.minDate;
-		toDate = to.toISOString().slice(0, 10);
-		navigate(fromDate, toDate);
+	// Bounds are INCLUSIVE, so the picker's `to` is used as-is (no +1 bump).
+	function onRangeChange(v: { from: string; to: string }) {
+		fromDate = v.from;
+		toDate = v.to;
+		navigate(v.from, v.to);
 	}
 
 	function fmtMoney(v: number): string {
@@ -196,20 +185,15 @@
 				{/if}
 				<EditableGrid id="ads-dashboard-v1" {items} cols={12} rowHeight={56} canSetDefault={isAdmin.value} readonly={!canAct('ads', 'edit')}>
 					{#snippet toolbar()}
-						<div class="period-controls">
-							<div class="date-range">
-								<label class="date-label">
-									<span>{m.ads_date_from()}</span>
-									<input type="date" bind:value={fromDate} oninput={() => navigate(fromDate, toDate)} />
-								</label>
-								<label class="date-label">
-									<span>{m.ads_date_to()}</span>
-									<input type="date" bind:value={toDate} oninput={() => navigate(fromDate, toDate)} />
-								</label>
-							</div>
-							<Button variant="ghost" class="preset" onclick={preset30d}>{m.ads_preset_30d()}</Button>
-							<Button variant="ghost" class="preset" onclick={presetAll}>{m.ads_preset_all()}</Button>
-						</div>
+							<DateRangeControls
+								from={fromDate}
+								to={toDate}
+								periods={[]}
+								dataMin={data.extent.minDate ?? ''}
+								dataMax={data.extent.maxDate ?? ''}
+								storageKey="socials"
+								onChange={onRangeChange}
+							/>
 					{/snippet}
 					{#snippet cell(id)}{@render cellBody(id)}{/snippet}
 				</EditableGrid>
@@ -219,49 +203,6 @@
 </div>
 
 <style>
-	.period-controls {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--space-3);
-	}
-	.date-range {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-	}
-	.date-label {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: var(--space-2);
-		font-size: var(--font-size-caption);
-		color: var(--color-muted-foreground);
-		white-space: nowrap;
-	}
-	.date-label input {
-		padding: var(--space-1) var(--space-2);
-		border: 1px solid var(--hairline);
-		border-radius: var(--radius-md);
-		background: var(--color-card);
-		color: var(--color-foreground);
-		font-size: var(--font-size-body);
-		color-scheme: dark;
-	}
-	.period-controls :global(.preset) {
-		padding: var(--space-1) var(--space-3);
-		font-size: var(--font-size-caption);
-		background: transparent;
-		border: 1px solid var(--hairline);
-		border-radius: var(--radius-md);
-		cursor: pointer;
-		color: var(--color-muted-foreground);
-		transition: background var(--duration-fast), color var(--duration-fast);
-	}
-	.period-controls :global(.preset):hover {
-		background: var(--color-card);
-		color: inherit;
-	}
 	.kpi {
 		display: flex;
 		flex-direction: column;

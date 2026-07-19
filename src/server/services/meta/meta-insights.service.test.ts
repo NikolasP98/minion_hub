@@ -20,17 +20,19 @@ function rawSqlDb(...queryResults: unknown[]) {
 }
 
 describe('previousRange', () => {
+  // Bounds are INCLUSIVE: Jun-1..Jun-30 is 30 days, so the previous window is
+  // the 30 inclusive days ending the day before `from`.
   it('returns the equal-length window immediately before range', () => {
-    expect(previousRange({ from: '2026-06-01', to: '2026-07-01' })).toEqual({
+    expect(previousRange({ from: '2026-06-01', to: '2026-06-30' })).toEqual({
       from: '2026-05-02',
-      to: '2026-06-01',
+      to: '2026-05-31',
     });
   });
 
-  it('handles single-day ranges', () => {
-    expect(previousRange({ from: '2026-07-01', to: '2026-07-02' })).toEqual({
+  it('handles single-day ranges (from == to)', () => {
+    expect(previousRange({ from: '2026-07-01', to: '2026-07-01' })).toEqual({
       from: '2026-06-30',
-      to: '2026-07-01',
+      to: '2026-06-30',
     });
   });
 });
@@ -66,10 +68,10 @@ describe('calcCtr / calcCpc', () => {
 describe('extentToRange', () => {
   const now = new Date('2026-07-04T12:00:00Z');
 
-  it('spans the full extent, to exclusive (maxDate + 1 day)', () => {
+  it('spans the full extent, to INCLUSIVE (maxDate as-is)', () => {
     expect(extentToRange({ minDate: '2026-04-01', maxDate: '2026-04-06' }, now)).toEqual({
       from: '2026-04-01',
-      to: '2026-04-07',
+      to: '2026-04-06',
     });
   });
 

@@ -2,8 +2,10 @@
   // Standard dashboard date controls: inclusive from/to, a customizable quick-range
   // picker (the ⋯ menu shows/hides which ranges appear as pills + sets the default),
   // and a SMART period picker that disables granularities too coarse for the span.
-  // Controlled — the page owns the URL/state and reacts to onChange. See
-  // UI-governance "dashboard date controls" contract.
+  //
+  // Controlled — the page owns the URL/state and reacts to onChange. All logic
+  // lives in the ./date-range SDK; this file is presentation + wiring only.
+  // See UI-governance "dashboard date controls" contract.
   import { onMount } from 'svelte';
   import { MoreHorizontal, Check, Star } from 'lucide-svelte';
   import { iconSizes } from '$lib/components/ui';
@@ -11,23 +13,38 @@
   import * as m from '$lib/paraglide/messages';
   import {
     type Period,
+    type RangeId,
+    type RangeConfig,
     ALL_PERIODS,
+    ALL_RANGE_IDS,
+    DEFAULT_VISIBLE_RANGES,
+    rangeDef,
+    resolveRange,
+    matchRange,
     periodEnabled,
     coercePeriod,
-    quickRange,
-    matchQuickRange,
+    defaultRangeConfig,
+    loadRangeConfig,
+    saveRangeConfig,
+    toggleRangeVisible,
+    setDefaultRange,
   } from './date-range';
 
   interface Props {
     /** 'YYYY-MM-DD' or '' for an open bound. */
     from: string;
     to: string;
-    period: Period;
+    /** Granularity. Pass `periods={[]}` on dashboards that don't bucket. */
+    period?: Period;
     periods?: Period[];
+    /** Which quick ranges this dashboard offers at all. */
+    ranges?: RangeId[];
+    /** Which of those start out as pills (the rest live in the ⋯ menu). */
+    defaultVisible?: RangeId[];
     /** Real data span — lets "All time" show real dates. */
     dataMin?: string;
     dataMax?: string;
-    /** Persist per-user quick-range visibility + default under this key. */
+    /** Persist per-user pill visibility + default under this key. */
     storageKey?: string;
     class?: string;
     onChange: (v: { from: string; to: string; period: Period }) => void;
@@ -36,8 +53,10 @@
   let {
     from,
     to,
-    period,
+    period = 'day',
     periods = ALL_PERIODS,
+    ranges = ALL_RANGE_IDS,
+    defaultVisible = DEFAULT_VISIBLE_RANGES,
     dataMin,
     dataMax,
     storageKey,
@@ -45,40 +64,25 @@
     onChange,
   }: Props = $props();
 
-  // Every selectable range, in display order. The menu shows ALL of these; the
-  // pills show only the `visible` subset. Labels are shorthand.
-  const ALL_RANGES = ['1d', '7d', '30d', 'ytd', '1y', 'mtd', '2mo', '3mo', '6mo', 'all'];
-  const DEFAULT_VISIBLE = ['1d', '7d', '30d', 'ytd', '1y'];
-  const label: Record<string, () => string> = {
-    '1d': m.dr_q_1d,
-    '7d': m.dr_q_7d,
-    '30d': m.dr_q_30d,
-    ytd: m.dr_q_ytd,
-    '1y': m.dr_q_1y,
-    mtd: m.dr_q_mtd,
-    '2mo': m.dr_q_2mo,
-    '3mo': m.dr_q_3mo,
-    '6mo': m.dr_q_6mo,
-    all: m.dr_q_all,
-  };
+  const ctx = $derived({ now: new Date(), dataMin, dataMax });
+  const seedVisible = $derived(defaultVisible.filter((id) => ranges.includes(id)));
+
+  let cfg = $state<RangeConfig>(
+    defaultRangeConfig(DEFAULT_VISIBLE_RANGES.filter((id) => ranges.includes(id))),
+  );
+
+  const visibleIds = $derived(cfg.visible.filter((id) => ranges.includes(id)));
+  const quickItems = $derived<SegmentItem[]>(
+    visibleIds.map((id) => ({ value: id, label: rangeDef(id)?.label() ?? id })),
+  );
+  const activeQuick = $derived(matchRange({ from, to }, ranges, ctx) ?? '');
+
   const periodLabel: Record<Period, () => string> = {
     day: m.dr_p_day,
     week: m.dr_p_week,
     month: m.dr_p_month,
     year: m.dr_p_year,
   };
-
-  const now = () => new Date();
-
-  let visibleIds = $state<string[]>(DEFAULT_VISIBLE);
-  let defaultId = $state<string | null>(null);
-
-  const quickItems = $derived<SegmentItem[]>(
-    visibleIds.map((id) => ({ value: id, label: label[id]() })),
-  );
-  const activeQuick = $derived(
-    matchQuickRange(from, to, ALL_RANGES, now(), dataMin, dataMax) ?? '',
-  );
 
   const periodItems = $derived<SegmentItem[]>(
     periods.map((p) => {
@@ -93,10 +97,11 @@
   );
 
   function apply(f: string, t: string, keepPeriod: Period = period) {
-    onChange({ from: f, to: t, period: coercePeriod(keepPeriod, f, t, periods) });
+    const allowed = periods.length ? periods : ALL_PERIODS;
+    onChange({ from: f, to: t, period: coercePeriod(keepPeriod, f, t, allowed) });
   }
-  function applyQuick(id: string) {
-    const r = quickRange(id, now(), dataMin, dataMax);
+  function applyRange(id: RangeId) {
+    const r = resolveRange(id, ctx);
     if (r) apply(r.from, r.to);
   }
   const onFrom = (e: Event) => apply((e.currentTarget as HTMLInputElement).value, to);
@@ -105,52 +110,21 @@
 
   // ── Show/hide + default config menu (⋯ button or right-click) ─────────────────
   let menuOpen = $state(false);
-  function persistCfg() {
-    if (!storageKey) return;
-    try {
-      localStorage.setItem(
-        `dash-range-cfg:${storageKey}`,
-        JSON.stringify({ visible: visibleIds, default: defaultId }),
-      );
-    } catch {
-      /* ignore */
-    }
+  const persist = () => storageKey && saveRangeConfig(storageKey, cfg);
+  function onToggleVisible(id: RangeId) {
+    cfg = toggleRangeVisible(cfg, id);
+    persist();
   }
-  function toggleVisible(id: string) {
-    if (visibleIds.includes(id)) {
-      if (visibleIds.length <= 1) return; // keep at least one pill
-      visibleIds = visibleIds.filter((x) => x !== id);
-      if (defaultId === id) defaultId = null; // a hidden range can't be the default
-    } else {
-      visibleIds = ALL_RANGES.filter((x) => visibleIds.includes(x) || x === id);
-    }
-    persistCfg();
-  }
-  function setDefault(id: string) {
-    defaultId = defaultId === id ? null : id;
-    if (defaultId && !visibleIds.includes(id)) {
-      visibleIds = ALL_RANGES.filter((x) => visibleIds.includes(x) || x === id);
-    }
-    persistCfg();
+  function onSetDefault(id: RangeId) {
+    cfg = setDefaultRange(cfg, id);
+    persist();
   }
 
   onMount(() => {
-    if (!storageKey) return;
-    try {
-      const raw = localStorage.getItem(`dash-range-cfg:${storageKey}`);
-      if (raw) {
-        const cfg = JSON.parse(raw) as { visible?: string[]; default?: string | null };
-        if (Array.isArray(cfg.visible) && cfg.visible.length) {
-          visibleIds = ALL_RANGES.filter((x) => cfg.visible!.includes(x));
-        }
-        defaultId = typeof cfg.default === 'string' ? cfg.default : null;
-      }
-    } catch {
-      /* ignore */
-    }
-    // Apply the stored default range once, if it differs from the current window.
-    if (defaultId) {
-      const r = quickRange(defaultId, now(), dataMin, dataMax);
+    if (storageKey) cfg = loadRangeConfig(storageKey, seedVisible);
+    // Apply the stored default window once, if it differs from the current one.
+    if (cfg.default) {
+      const r = resolveRange(cfg.default, ctx);
       if (r && (r.from !== from || r.to !== to)) apply(r.from, r.to);
     }
   });
@@ -182,7 +156,7 @@
       items={quickItems}
       value={activeQuick}
       aria-label={m.dr_quick_label()}
-      onValueChange={applyQuick}
+      onValueChange={applyRange}
       oncontextmenu={(e) => {
         e.preventDefault();
         menuOpen = true;
@@ -206,7 +180,7 @@
 
     {#if menuOpen}
       <div class="dr-menu" role="menu">
-        {#each ALL_RANGES as id (id)}
+        {#each ranges as id (id)}
           {@const shown = visibleIds.includes(id)}
           <div class="dr-row">
             <button
@@ -216,18 +190,18 @@
               role="menuitemcheckbox"
               aria-checked={shown}
               title={m.dr_toggle_visible()}
-              onclick={() => toggleVisible(id)}
+              onclick={() => onToggleVisible(id)}
             >
               <span class="dr-check">{#if shown}<Check size={iconSizes.xs} strokeWidth={3} />{/if}</span>
-              <span class="dr-label">{label[id]()}</span>
+              <span class="dr-label">{rangeDef(id)?.label() ?? id}</span>
             </button>
             <button
               type="button"
               class="dr-star"
-              class:on={defaultId === id}
-              aria-pressed={defaultId === id}
+              class:on={cfg.default === id}
+              aria-pressed={cfg.default === id}
               title={m.dr_set_default()}
-              onclick={() => setDefault(id)}
+              onclick={() => onSetDefault(id)}
             >
               <Star size={iconSizes.xs} />
             </button>

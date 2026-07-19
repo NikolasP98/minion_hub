@@ -2,6 +2,7 @@
   import type { PageData } from './$types';
   import { goto } from '$lib/navigation';
   import { page } from '$app/state';
+  import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
   import * as m from '$lib/paraglide/messages';
   import {
     LayoutDashboard,
@@ -13,7 +14,7 @@
     Flame,
     Wallet,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Skeleton, EmptyState } from '$lib/components/ui';
+  import { PageHeader, Skeleton, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import StagePill from '$lib/components/crm/StagePill.svelte';
   import CrmFunnelRibbon from '$lib/components/crm/CrmFunnelRibbon.svelte';
@@ -146,20 +147,20 @@
 
   const fmtMoney = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
-  // Acquisition-date range filter (server-side cohort scoping).
-  const RANGES = [
-    { id: 'all', label: () => m.crm_dash_range_all() },
-    { id: '7d', label: () => m.crm_dash_range_7d() },
-    { id: '30d', label: () => m.crm_dash_range_30d() },
-    { id: '90d', label: () => m.crm_dash_range_90d() },
-    { id: '365d', label: () => m.crm_dash_range_365d() },
-  ];
-  function setRange(r: string) {
+  // Acquisition-date cohort window (server-side scoping). The shared controls
+  // emit an INCLUSIVE from/to; the server reads them via range=custom.
+  const CRM_RANGES = ['7d', '30d', '90d', 'ytd', '1y', 'mtd', '3mo', '6mo', 'all'];
+  function onRangeChange(v: { from: string; to: string }) {
     const url = new URL(page.url);
-    if (r === 'all') url.searchParams.delete('range');
-    else url.searchParams.set('range', r);
-    url.searchParams.delete('from');
-    url.searchParams.delete('to');
+    if (v.from && v.to) {
+      url.searchParams.set('range', 'custom');
+      url.searchParams.set('from', v.from);
+      url.searchParams.set('to', v.to);
+    } else {
+      url.searchParams.delete('range');
+      url.searchParams.delete('from');
+      url.searchParams.delete('to');
+    }
     goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
   }
 
@@ -379,17 +380,14 @@
   <PageBody padding="compact" scroll="region">
     <!-- Date-range cohort filter — paints instantly, independent of the streamed stats. -->
     <div class="seg-row">
-      <div class="seg" role="group" title={m.crm_dash_range_hint()}>
-        {#each RANGES as r (r.id)}
-          <Button
-            variant="ghost"
-            size="sm"
-            class={`seg-btn ${data.range === r.id ? 'active' : ''}`}
-            aria-pressed={data.range === r.id}
-            onclick={() => setRange(r.id)}>{r.label()}</Button
-          >
-        {/each}
-      </div>
+      <DateRangeControls
+        from={data.from}
+        to={data.to}
+        periods={[]}
+        ranges={CRM_RANGES}
+        storageKey="crm"
+        onChange={onRangeChange}
+      />
       <span class="t-caption">{m.crm_dash_range_hint()}</span>
     </div>
 
@@ -660,14 +658,6 @@
     margin-bottom: var(--space-2, 8px);
     flex-wrap: wrap;
   }
-  .seg {
-    display: inline-flex;
-    gap: var(--space-1, 4px);
-    padding: var(--space-1, 4px);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-md);
-    background: var(--color-card);
-  }
 
   /* loading skeleton — rough shape of the KPI row + ribbon + chart cards below */
   .skel-grid {
@@ -677,25 +667,6 @@
   }
   .skel-wide {
     grid-column: 1 / -1;
-  }
-  :global(.crm-dashboard-surface .seg-btn) {
-    padding: var(--space-1, 4px) var(--space-3, 12px);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-caption, 12px);
-    font-weight: 500;
-    color: var(--color-muted-foreground);
-    font-variant-numeric: tabular-nums;
-    transition:
-      color var(--duration-fast) var(--ease-standard),
-      background-color var(--duration-fast) var(--ease-standard);
-  }
-  :global(.crm-dashboard-surface .seg-btn:hover) {
-    color: var(--color-foreground);
-  }
-  :global(.crm-dashboard-surface .seg-btn.active) {
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-    font-weight: 600;
   }
 
   /* temperature breakdown (reuses .chmix/.chrow grid) */

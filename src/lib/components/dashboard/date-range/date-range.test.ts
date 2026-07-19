@@ -1,0 +1,128 @@
+import { describe, it, expect } from 'vitest';
+import {
+  daysBetween,
+  periodEnabled,
+  enabledPeriods,
+  coercePeriod,
+  resolveRange,
+  matchRange,
+  orderRangeIds,
+  toSearchParams,
+  fromSearchParams,
+  toTimestamps,
+  fromTimestamps,
+  defaultRangeConfig,
+  toggleRangeVisible,
+  setDefaultRange,
+} from './index';
+
+const NOW = new Date('2026-07-19T00:00:00Z');
+const ctx = { now: NOW };
+
+describe('periods', () => {
+  it('disables periods too coarse for the span (15d → no month/year)', () => {
+    const from = '2026-07-04';
+    const to = '2026-07-19';
+    expect(daysBetween(from, to)).toBe(15);
+    expect(periodEnabled('day', from, to)).toBe(true);
+    expect(periodEnabled('week', from, to)).toBe(true);
+    expect(periodEnabled('month', from, to)).toBe(false);
+    expect(periodEnabled('year', from, to)).toBe(false);
+    expect(enabledPeriods(from, to)).toEqual(['day', 'week']);
+  });
+
+  it('treats an open window as unmeasurable → all periods stay available', () => {
+    expect(periodEnabled('year', '', '')).toBe(true);
+    expect(enabledPeriods('', '')).toEqual(['day', 'week', 'month', 'year']);
+  });
+
+  it('snaps a disabled period down to the coarsest enabled one', () => {
+    expect(coercePeriod('month', '2026-07-04', '2026-07-19')).toBe('week');
+    expect(coercePeriod('day', '2026-07-04', '2026-07-19')).toBe('day');
+    // respects the allowed subset (finances has no year bucket)
+    expect(coercePeriod('year', '2020-01-01', '2026-07-19', ['day', 'week', 'month'])).toBe('month');
+  });
+});
+
+describe('ranges', () => {
+  it('resolves relative windows against a reference now', () => {
+    expect(resolveRange('7d', ctx)).toEqual({ from: '2026-07-12', to: '2026-07-19' });
+    expect(resolveRange('ytd', ctx)).toEqual({ from: '2026-01-01', to: '2026-07-19' });
+  });
+
+  it('resolves "all" to the real data span so inputs show real dates', () => {
+    expect(resolveRange('all', ctx)).toEqual({ from: '', to: '' });
+    expect(resolveRange('all', { ...ctx, dataMin: '2024-03-01', dataMax: '2026-07-01' })).toEqual({
+      from: '2024-03-01',
+      to: '2026-07-01',
+    });
+  });
+
+  it('matches a window back to its range id', () => {
+    expect(matchRange({ from: '2026-07-12', to: '2026-07-19' }, ['1d', '7d'], ctx)).toBe('7d');
+    expect(matchRange({ from: '2020-01-01', to: '2026-07-19' }, ['1d', '7d'], ctx)).toBe(null);
+  });
+
+  it('keeps ids in canonical registry order', () => {
+    expect(orderRangeIds(['all', '7d', 'ytd'])).toEqual(['7d', 'ytd', 'all']);
+  });
+});
+
+describe('url adapters', () => {
+  it('round-trips a window through search params', () => {
+    const p = toSearchParams({ from: '2026-01-01', to: '2026-07-19', period: 'month' }, { periodKey: 'bucket' });
+    expect(p.get('from')).toBe('2026-01-01');
+    expect(p.get('bucket')).toBe('month');
+    expect(fromSearchParams(p, { periodKey: 'bucket' })).toEqual({
+      from: '2026-01-01',
+      to: '2026-07-19',
+      period: 'month',
+    });
+  });
+
+  it('writes/reads the all-time sentinel for an open window', () => {
+    const p = toSearchParams({ from: '', to: '' }, { allKey: 'range' });
+    expect(p.get('range')).toBe('all');
+    expect(fromSearchParams(p, { allKey: 'range' })).toMatchObject({ from: '', to: '' });
+  });
+
+  it('timestamp bounds are INCLUSIVE of the whole `to` day', () => {
+    const { fromTs, toTs } = toTimestamps({ from: '2026-06-01', to: '2026-06-01' });
+    // a same-day record at 19:30 must fall inside a from==to window
+    const sameDayEvening = Date.parse('2026-06-01T19:30:00.000');
+    expect(sameDayEvening).toBeGreaterThanOrEqual(fromTs);
+    expect(sameDayEvening).toBeLessThanOrEqual(toTs);
+  });
+
+  it('open bounds become infinite, and round-trip back to empty', () => {
+    const { fromTs, toTs } = toTimestamps({ from: '', to: '' });
+    expect(fromTs).toBe(-Infinity);
+    expect(toTs).toBe(Infinity);
+    expect(fromTimestamps(fromTs, toTs)).toEqual({ from: '', to: '' });
+  });
+});
+
+describe('storage config', () => {
+  it('toggles visibility, keeps at least one, and clears a hidden default', () => {
+    let cfg = defaultRangeConfig(['7d', '30d']);
+    cfg = setDefaultRange(cfg, '7d');
+    expect(cfg.default).toBe('7d');
+
+    cfg = toggleRangeVisible(cfg, '7d'); // hiding the default clears it
+    expect(cfg.visible).toEqual(['30d']);
+    expect(cfg.default).toBe(null);
+
+    const only = toggleRangeVisible(cfg, '30d'); // last one can't be hidden
+    expect(only.visible).toEqual(['30d']);
+  });
+
+  it('showing a range keeps canonical order; setting a default reveals it', () => {
+    let cfg = defaultRangeConfig(['30d']);
+    cfg = toggleRangeVisible(cfg, '7d');
+    expect(cfg.visible).toEqual(['7d', '30d']);
+
+    cfg = setDefaultRange(cfg, 'all');
+    expect(cfg.visible).toEqual(['7d', '30d', 'all']);
+    expect(cfg.default).toBe('all');
+  });
+});

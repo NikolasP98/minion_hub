@@ -5,6 +5,7 @@ import { listContactsCached } from '$server/services/crm-contacts.service';
 import { crmRevenueSummary, contactFinanceMap } from '$server/services/crm-finance.service';
 import { FUNNEL_ORDER, effectiveFunnelStage, maxFunnelStage, financeFloorStage } from '$lib/components/crm/crm-funnel';
 import { temperatureOf } from '$lib/components/crm/crm-format';
+import { fromTimestamps } from '$lib/components/dashboard/date-range/url';
 
 const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'] as const;
 
@@ -175,8 +176,13 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
     };
   }
 
+  // Expose the resolved window as dates so the shared date controls can show it.
+  const window = fromTimestamps(fromTs, toTs);
+
   return {
     range,
+    from: window.from,
+    to: window.to,
     streamed: {
       stats: computeStats(),
     },
