@@ -9,14 +9,17 @@
   import WhatsAppQrPairing from '$lib/components/channels/WhatsAppQrPairing.svelte';
   import WhatsAppClaimCard from '$lib/components/users/WhatsAppClaimCard.svelte';
   import TelegramClaimCard from '$lib/components/users/TelegramClaimCard.svelte';
+  import ChannelSetupWizard from '$lib/components/channels/ChannelSetupWizard.svelte';
   import PluginSlotHost from '$lib/plugins/PluginSlotHost.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import type { ChannelPluginInfo } from '$lib/types/channel-link';
+  import type { ChannelType } from '$lib/types/channels';
   import { Plug, RefreshCw, Settings as SettingsIcon, ChevronDown } from 'lucide-svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import { Puzzle } from 'lucide-svelte';
   import { Button } from '$lib/components/ui';
+  import { Dialog } from '$lib/components/ui/foundations';
 
   type Identity = {
     id: string;
@@ -37,6 +40,14 @@
   const whatsappIdentity = $derived(channelIdentities.find((i) => i.provider === 'whatsapp') ?? null);
   const telegramIdentity = $derived(channelIdentities.find((i) => i.provider === 'telegram') ?? null);
   const serverId = $derived(hostsState.activeHostId ?? '');
+
+  // Full-sync wizard (provisions a real channel account + session — distinct
+  // from the identity-claim cards above, which only attribute inbound
+  // messages and never sync history).
+  let wizardType = $state<ChannelType | null>(null);
+  function closeWizard() {
+    wizardType = null;
+  }
 
   function isClaimChannel(p: ChannelPluginInfo): boolean {
     const hay = `${p.pluginId} ${p.icon ?? ''} ${p.label}`.toLowerCase();
@@ -151,9 +162,47 @@
 
   <!-- One row per channel. Each card shows its own connected state + manage
        controls, so there is no separate "linked channels" list. -->
+  <p class="px-3 pt-2.5 pb-1 text-[length:var(--font-size-label)] text-muted-foreground">
+    Linking only attributes messages to you — it doesn't sync history. To pull in an
+    account's full conversations, set up full sync per channel below.
+  </p>
   <div class="channel-rows divide-y divide-border/60">
-    <WhatsAppClaimCard {userId} {serverId} identity={whatsappIdentity} onDisconnect={disconnect} />
-    <TelegramClaimCard {userId} identity={telegramIdentity} onDisconnect={disconnect} />
+    <div>
+      <WhatsAppClaimCard {userId} {serverId} identity={whatsappIdentity} onDisconnect={disconnect} />
+      <div class="flex items-center gap-2 px-3 pb-2.5">
+        {#if !serverId}
+          <span class="text-[length:var(--font-size-label)] text-muted-strong">Connect a gateway to run full sync.</span>
+        {/if}
+        <Button
+          variant="outline"
+          size="xs"
+          class="ml-auto shrink-0"
+          onclick={() => (wizardType = 'whatsapp')}
+          disabled={!serverId}
+          title={!serverId ? m.usersui_connectGatewayToLinkChannels() : undefined}
+        >
+          Set up full sync
+        </Button>
+      </div>
+    </div>
+    <div>
+      <TelegramClaimCard {userId} identity={telegramIdentity} onDisconnect={disconnect} />
+      <div class="flex items-center gap-2 px-3 pb-2.5">
+        {#if !serverId}
+          <span class="text-[length:var(--font-size-label)] text-muted-strong">Connect a gateway to run full sync.</span>
+        {/if}
+        <Button
+          variant="outline"
+          size="xs"
+          class="ml-auto shrink-0"
+          onclick={() => (wizardType = 'telegram')}
+          disabled={!serverId}
+          title={!serverId ? m.usersui_connectGatewayToLinkChannels() : undefined}
+        >
+          Set up full sync
+        </Button>
+      </div>
+    </div>
 
     {#if conn.connected}
       {#each otherPlugins as p (p.pluginId)}
@@ -239,6 +288,19 @@
       {/each}
     {/if}
   </div>
+
+  <!-- Full-sync provisioning wizard (same wizard used by /settings CHANNEL
+       ACCOUNTS "Add account" — provisions a channels row + live session). -->
+  <Dialog
+    open={wizardType !== null}
+    title="Set up full sync"
+    size="md"
+    onclose={closeWizard}
+  >
+    {#if wizardType}
+      <ChannelSetupWizard {serverId} channelType={wizardType} onclose={closeWizard} />
+    {/if}
+  </Dialog>
 
   <!-- Footnotes -->
   {#if !conn.connected}
