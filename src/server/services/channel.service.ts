@@ -133,6 +133,18 @@ export async function getChannel(ctx: ServerCtx, channelId: string) {
   };
 }
 
+/** `channels_uniq_type_label` is UNIQUE (tenant_id, gateway_id, type, label). */
+function isDuplicateChannel(e: unknown): boolean {
+  const err = e as { code?: string; cause?: { code?: string } };
+  return err?.code === '23505' || err?.cause?.code === '23505';
+}
+
+/** Create the channel, or return the existing one when this (type, label) is already
+ * registered for the org+gateway. Callers retry this: the setup wizard's DB insert can
+ * succeed and its follow-up gateway patch fail, and the user then clicks Continue again.
+ * A raw 23505 there surfaced as an opaque 500 and stranded the flow with the row already
+ * created, so creation is idempotent. Scoped by withOrgCore, so the lookup can only ever
+ * return a row in the caller's own org. */
 export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
   const id = newId();
 
@@ -140,38 +152,57 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
     ? encryptCredentials(input.credentials)
     : { ciphertext: '', iv: '' };
 
-  await withOrgCore(ctx, async (tx) => {
-    await tx.insert(channels).values({
-      id,
-      tenantId: ctx.tenantId,
-      gatewayId: ctx.gatewayId,
-      type: input.type,
-      // Phone/handle when already known (e.g. wizard pre-pair) so the row is keyed by
-      // the gateway account from birth; null for opaque-first channels that bind on pair.
-      accountId: input.accountId ?? null,
-      label: input.label,
-      credentials: ciphertext,
-      credentialsIv: iv,
-      credentialsMeta: JSON.stringify(input.credentialsMeta ?? {}),
-      status: input.status ?? 'inactive',
-      // Access rules (Phase 4: DB-authoritative, mirrored to the gateway via
-      // publishChannel — no longer written to gateway.json). Column defaults
-      // ('none' / []) apply when the caller doesn't collect these yet.
-      ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
-      ...(input.replies !== undefined ? { replies: input.replies } : {}),
-      ...(input.allowFrom !== undefined ? { allowFrom: input.allowFrom } : {}),
-      ...(input.groupAllowFrom !== undefined ? { groupAllowFrom: input.groupAllowFrom } : {}),
-      ...(input.requireMention !== undefined ? { requireMention: input.requireMention } : {}),
+  try {
+    await withOrgCore(ctx, async (tx) => {
+      await tx.insert(channels).values({
+        id,
+        tenantId: ctx.tenantId,
+        gatewayId: ctx.gatewayId,
+        type: input.type,
+        // Phone/handle when already known (e.g. wizard pre-pair) so the row is keyed by
+        // the gateway account from birth; null for opaque-first channels that bind on pair.
+        accountId: input.accountId ?? null,
+        label: input.label,
+        credentials: ciphertext,
+        credentialsIv: iv,
+        credentialsMeta: JSON.stringify(input.credentialsMeta ?? {}),
+        status: input.status ?? 'inactive',
+        // Access rules (Phase 4: DB-authoritative, mirrored to the gateway via
+        // publishChannel — no longer written to gateway.json). Column defaults
+        // ('none' / []) apply when the caller doesn't collect these yet.
+        ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        ...(input.replies !== undefined ? { replies: input.replies } : {}),
+        ...(input.allowFrom !== undefined ? { allowFrom: input.allowFrom } : {}),
+        ...(input.groupAllowFrom !== undefined ? { groupAllowFrom: input.groupAllowFrom } : {}),
+        ...(input.requireMention !== undefined ? { requireMention: input.requireMention } : {}),
+      });
+      // owner_profile_id is written raw: the hub consumes @minion-stack/db as a vendored
+      // tarball, so the column isn't in its Drizzle types yet (same workaround as
+      // org-config-sync.service). Swap to channels.ownerProfileId once the pkg is repacked.
+      if (input.ownerProfileId) {
+        await tx.execute(
+          sql`update channels set owner_profile_id = ${input.ownerProfileId} where id = ${id}`,
+        );
+      }
     });
-    // owner_profile_id is written raw: the hub consumes @minion-stack/db as a vendored
-    // tarball, so the column isn't in its Drizzle types yet (same workaround as
-    // org-config-sync.service). Swap to channels.ownerProfileId once the pkg is repacked.
-    if (input.ownerProfileId) {
-      await tx.execute(
-        sql`update channels set owner_profile_id = ${input.ownerProfileId} where id = ${id}`,
-      );
-    }
-  });
+  } catch (e) {
+    if (!isDuplicateChannel(e)) throw e;
+    const [existing] = await withOrgCore(ctx, (tx) =>
+      tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(
+          and(
+            eq(channels.tenantId, ctx.tenantId),
+            eq(channels.gatewayId, ctx.gatewayId),
+            eq(channels.type, input.type),
+            eq(channels.label, input.label),
+          ),
+        ),
+    );
+    if (!existing) throw e; // duplicate on some other constraint — don't swallow it
+    return existing.id;
+  }
 
   // Adding the row sets this account's org ownership — push the updated
   // accountOrgs to the gateway now so the account is org-scoped immediately,
