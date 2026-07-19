@@ -44,6 +44,10 @@
   // Full-sync wizard (provisions a real channel account + session — distinct
   // from the identity-claim cards above, which only attribute inbound
   // messages and never sync history).
+  // The wizard needs a LIVE gateway socket, not just a selected host: it reads
+  // config.get / writes config.patch over the WS. Without this gate a disconnected
+  // gateway surfaces as a late, opaque "Could not load config" at the last step.
+  const canSync = $derived(!!serverId && conn.connected);
   let wizardType = $state<ChannelType | null>(null);
   function closeWizard() {
     wizardType = null;
@@ -170,7 +174,7 @@
     <div>
       <WhatsAppClaimCard {userId} {serverId} identity={whatsappIdentity} onDisconnect={disconnect} />
       <div class="flex items-center gap-2 px-3 pb-2.5">
-        {#if !serverId}
+        {#if !canSync}
           <span class="text-[length:var(--font-size-label)] text-muted-strong">Connect a gateway to run full sync.</span>
         {/if}
         <Button
@@ -178,8 +182,8 @@
           size="xs"
           class="ml-auto shrink-0"
           onclick={() => (wizardType = 'whatsapp')}
-          disabled={!serverId}
-          title={!serverId ? m.usersui_connectGatewayToLinkChannels() : undefined}
+          disabled={!canSync}
+          title={!canSync ? m.usersui_connectGatewayToLinkChannels() : undefined}
         >
           Set up full sync
         </Button>
@@ -188,7 +192,7 @@
     <div>
       <TelegramClaimCard {userId} identity={telegramIdentity} onDisconnect={disconnect} />
       <div class="flex items-center gap-2 px-3 pb-2.5">
-        {#if !serverId}
+        {#if !canSync}
           <span class="text-[length:var(--font-size-label)] text-muted-strong">Connect a gateway to run full sync.</span>
         {/if}
         <Button
@@ -196,8 +200,8 @@
           size="xs"
           class="ml-auto shrink-0"
           onclick={() => (wizardType = 'telegram')}
-          disabled={!serverId}
-          title={!serverId ? m.usersui_connectGatewayToLinkChannels() : undefined}
+          disabled={!canSync}
+          title={!canSync ? m.usersui_connectGatewayToLinkChannels() : undefined}
         >
           Set up full sync
         </Button>
@@ -298,7 +302,7 @@
     onclose={closeWizard}
   >
     {#if wizardType}
-      <ChannelSetupWizard {serverId} channelType={wizardType} onclose={closeWizard} />
+      <ChannelSetupWizard {serverId} channelType={wizardType} intent="personal" onclose={closeWizard} />
     {/if}
   </Dialog>
 

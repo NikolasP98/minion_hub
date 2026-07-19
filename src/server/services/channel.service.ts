@@ -1,4 +1,4 @@
-import { eq, and, ne } from 'drizzle-orm';
+import { eq, and, ne, sql } from 'drizzle-orm';
 import { channels, channelAssignments } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
 import { withOrgCore } from '$server/db/with-org-core';
@@ -44,6 +44,10 @@ export interface ChannelInput {
   allowFrom?: string[];
   /** Group access list (same semantics as allowFrom, for group chats). */
   groupAllowFrom?: string[];
+  /** Set ⇒ the account is USER-scoped: it belongs to this person and follows them
+   * across orgs (tenantId stays the "home" org). Null ⇒ org-scoped via tenantId.
+   * Callers must derive this from the session, never from request input. */
+  ownerProfileId?: string;
   /** Require an @mention to reply in groups. */
   requireMention?: boolean;
 }
@@ -136,8 +140,8 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
     ? encryptCredentials(input.credentials)
     : { ciphertext: '', iv: '' };
 
-  await withOrgCore(ctx, (tx) =>
-    tx.insert(channels).values({
+  await withOrgCore(ctx, async (tx) => {
+    await tx.insert(channels).values({
       id,
       tenantId: ctx.tenantId,
       gatewayId: ctx.gatewayId,
@@ -158,8 +162,16 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
       ...(input.allowFrom !== undefined ? { allowFrom: input.allowFrom } : {}),
       ...(input.groupAllowFrom !== undefined ? { groupAllowFrom: input.groupAllowFrom } : {}),
       ...(input.requireMention !== undefined ? { requireMention: input.requireMention } : {}),
-    }),
-  );
+    });
+    // owner_profile_id is written raw: the hub consumes @minion-stack/db as a vendored
+    // tarball, so the column isn't in its Drizzle types yet (same workaround as
+    // org-config-sync.service). Swap to channels.ownerProfileId once the pkg is repacked.
+    if (input.ownerProfileId) {
+      await tx.execute(
+        sql`update channels set owner_profile_id = ${input.ownerProfileId} where id = ${id}`,
+      );
+    }
+  });
 
   // Adding the row sets this account's org ownership — push the updated
   // accountOrgs to the gateway now so the account is org-scoped immediately,

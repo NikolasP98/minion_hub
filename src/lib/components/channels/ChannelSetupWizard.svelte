@@ -5,20 +5,26 @@
     import { configState, loadConfig } from '$lib/state/config/config.svelte';
     import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
+    import { WIZARD_INTENTS, type WizardIntent } from './wizard-intent';
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
     import { CircleCheck, CircleX, Eye, EyeOff } from 'lucide-svelte';
-    import { Button, Input, Select } from '$lib/components/ui';
+    import { Button, Input, Select, iconSizes } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
         serverId: string;
         channelType: ChannelType;
+        /** Where the wizard was opened from — the trigger carries the intent.
+         *  'operator' = wiring a business channel for the org (default, unchanged).
+         *  'personal' = a person connecting their OWN account (/account/connections). */
+        intent?: WizardIntent;
         onclose: () => void;
     }
-    let { serverId, channelType, onclose }: Props = $props();
+    let { serverId, channelType, intent = 'operator', onclose }: Props = $props();
 
     type Step = 'connect' | 'name' | 'assign' | 'done';
     let step = $state<Step>('connect');
+    const mode = $derived(WIZARD_INTENTS[intent]);
 
     // Step 1 state
     let token = $state('');
@@ -34,7 +40,10 @@
 
     // Step 2 state
     let label = $state('');
-    let dmPolicy = $state<'open' | 'pairing' | 'disabled'>('open');
+    // Seeded once from the intent, then user-editable (operator mode) — a $derived
+    // here would wipe the operator's choice on every re-render.
+    // svelte-ignore state_referenced_locally
+    let dmPolicy = $state<'open' | 'pairing' | 'disabled'>(WIZARD_INTENTS[intent].dmPolicy);
 
     // Step 3 state
     let committedChannelId = $state<string | null>(null);
@@ -129,7 +138,14 @@
             const res = await fetch(`/api/servers/${serverId}/channels`, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ type: channelType, label, accountId, replies, allowFrom }),
+                body: JSON.stringify({
+                    type: channelType,
+                    label,
+                    accountId,
+                    replies,
+                    allowFrom,
+                    personal: mode.personal,
+                }),
             });
             const data = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string };
             if (!res.ok || data.ok === false || !data.id) {
@@ -159,7 +175,7 @@
             await loadConfig();
             committedChannelId = channelId;
             toastSuccess(`Created ${CHANNEL_TYPE_LABELS[channelType]}: ${label}`);
-            step = 'assign';
+            step = mode.steps.includes('assign') ? 'assign' : 'done';
         } catch (e) {
             try { await loadConfig(); } catch { /* refresh baseHash for retry */ }
             toastError('Save failed', (e as Error).message);
@@ -175,7 +191,7 @@
 <div class="bg-card border border-border rounded-lg p-5 space-y-4">
     <!-- Stepper -->
     <div class="flex items-center gap-2 text-xs">
-        {#each ['connect', 'name', 'assign'] as s, i}
+        {#each mode.steps as s, i}
             <div
                 class="flex items-center gap-1.5
                 {step === s ? 'text-foreground font-semibold' : 'text-muted-foreground'}"
@@ -188,7 +204,7 @@
                 {#if s === 'name'}{m.channelWizard_stepName()}{/if}
                 {#if s === 'assign'}{m.channelWizard_stepAssign()}{/if}
             </div>
-            {#if i < 2}<span class="text-muted-strong">›</span>{/if}
+            {#if i < mode.steps.length - 1}<span class="text-muted-strong">›</span>{/if}
         {/each}
     </div>
 
@@ -288,6 +304,7 @@
     {:else if step === 'name'}
         <div class="space-y-3">
             <Input id="wizard-label" type="text" label="Label" bind:value={label} />
+            {#if mode.asksDmPolicy}
             <div>
                 <label for="wizard-dm" class="text-xs font-medium text-muted-foreground block mb-1"
                     >DM policy</label
@@ -298,6 +315,7 @@
                     <option value="disabled">disabled — DMs disabled</option>
                 </Select>
             </div>
+            {/if}
         </div>
         <div class="flex gap-2">
             <Button type="button" variant="secondary" onclick={() => (step = 'connect')}>
@@ -315,6 +333,16 @@
                 {m.channelWizard_stepAssign()}
             </h4>
             <ChannelAssignmentPicker {serverId} channelId={committedChannelId} />
+        </div>
+        <Button type="button" variant="primary" onclick={onclose}>
+            {m.channelWizard_finish()}
+        </Button>
+
+        <!-- Done (personal intent — no assign step) -->
+    {:else if step === 'done'}
+        <div class="flex items-start gap-3 p-3 bg-success/10 border border-success/30 rounded-md">
+            <CircleCheck size={iconSizes.sm} class="text-success shrink-0 mt-0.5" />
+            <p class="text-xs text-foreground">{m.channelWizard_verified()} · {label}</p>
         </div>
         <Button type="button" variant="primary" onclick={onclose}>
             {m.channelWizard_finish()}

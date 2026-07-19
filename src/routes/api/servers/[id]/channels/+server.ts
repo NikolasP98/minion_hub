@@ -52,6 +52,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
       status: body.status,
       replies: body.replies,
       allowFrom: body.allowFrom,
+      // Personal intent ⇒ user-scoped account. Derived from the SESSION — an
+      // `ownerProfileId` in the body is ignored, else one user could claim another's.
+      ownerProfileId: body.personal === true ? ctx.profileId : undefined,
     });
 
     // Mirror the row to the gateway (self-gates to migrated, account-keyed types —
