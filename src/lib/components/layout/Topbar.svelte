@@ -8,6 +8,7 @@
     import MinionLogo from "./MinionLogo.svelte";
     import CompanySwitcher from "./CompanySwitcher.svelte";
     import { getSections, getDynamicPluginsSections, type Section, type SectionItem } from "./sections";
+    import { readNavOrder, orderSections, orderItems } from "./nav-order";
     import { pluginNavState } from "$lib/state/plugin-nav.svelte";
     import { canViewPath } from "$lib/access/can.svelte";
     import { togglePalette } from "$lib/state/ui/command-palette.svelte";
@@ -28,6 +29,10 @@
             page.data.activeOrgKind,
         ),
     ]);
+    // Honor the user's drag-reordered sidebar order here too (same prefs source),
+    // so desktop nav and the mobile hamburger stay consistent.
+    const navOrder = $derived(readNavOrder(page.data));
+    const orderedSections = $derived(orderSections(allSections, navOrder));
     function isActive(item: SectionItem): boolean {
         return item.activeWhen ? item.activeWhen(page.url) : item.matcher(canonicalPath(page.url.pathname));
     }
@@ -134,8 +139,8 @@
             <!-- Scroll body: domains + sections -->
             <nav class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 overflow-y-auto px-2 pt-2 pb-1">
                 <div class="flex-1 min-w-0">
-                    {#each allSections as section (section.id)}
-                        {@const items = section.items.filter((i) => canViewPath(i.href))}
+                    {#each orderedSections as section (section.id)}
+                        {@const items = orderItems(section, navOrder).filter((i) => canViewPath(i.href))}
                         {@const hasSubs = (section.subsections?.length ?? 0) > 0}
                         {#if items.length || hasSubs}
                             <div

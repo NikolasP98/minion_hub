@@ -24,6 +24,7 @@
     type Section,
     type SectionItem,
   } from './sections';
+  import { readNavOrder, bySavedOrder, type NavOrder } from './nav-order';
   import MinionLogo from './MinionLogo.svelte';
   import OrgPicker from './OrgPicker.svelte';
   import { pluginNavState } from '$lib/state/plugin-nav.svelte';
@@ -156,9 +157,8 @@
   // "navOrder") and applied at render as a sort key — unknown/new sections and
   // items sort last (Infinity), so nav additions gracefully append.
   // ponytail: native HTML5 DnD, no lib; desktop-only (sidebar is hidden <md).
-  type NavOrder = { sections?: string[]; items?: Record<string, string[]> };
-  const savedNav = ((page.data as { preferences?: { preferences?: { navOrder?: NavOrder } } })
-    ?.preferences?.preferences?.navOrder ?? {}) as NavOrder;
+  // Apply logic (read + sort) is shared with the mobile menu via ./nav-order.
+  const savedNav: NavOrder = readNavOrder(page.data);
   let sectionOrder = $state<string[]>(savedNav.sections ?? []);
   let itemOrder = $state<Record<string, string[]>>(savedNav.items ?? {});
 
@@ -169,11 +169,6 @@
   let drag = $state<DragState>(null);
   const reorderable = $derived(!collapsed && isMd);
 
-  function bySavedOrder<T>(list: T[], key: (t: T) => string, order: string[]): T[] {
-    if (!order.length) return list;
-    const idx = new Map(order.map((k, i) => [k, i]));
-    return [...list].sort((a, b) => (idx.get(key(a)) ?? Infinity) - (idx.get(key(b)) ?? Infinity));
-  }
   const orderedSections = $derived(bySavedOrder(navSections, (s) => String(s.id), sectionOrder));
   function orderedItems(section: Section): SectionItem[] {
     return bySavedOrder(section.items, (i) => i.href, itemOrder[String(section.id)] ?? []);

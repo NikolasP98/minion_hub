@@ -217,20 +217,28 @@
     <section class="card">
       <header class="card-h">
         {m.crm_dash_score_dist()}
-        <span class="avg">{m.crm_dash_avg_score({ score: s.avgScore })}</span>
       </header>
-      <div class="dist">
-        {#each s.scoreBuckets as count, i (i)}
-          <a class="dist-col" href={bucketHref(i)} title={`${i * 10}–${i * 10 + 9}: ${count}`}>
-            <span
-              class="dist-bar"
-              style:height={`${Math.max(2, (count / bucketMax) * 100)}%`}
-              style:background={bucketColor(i)}
-            ></span>
-          </a>
-        {/each}
+      <div class="dist-wrap">
+        <div class="dist">
+          {#each s.scoreBuckets as count, i (i)}
+            <a class="dist-col" href={bucketHref(i)} title={`${i * 10}–${i * 10 + 9}: ${count}`}>
+              <span
+                class="dist-bar"
+                style:height={`${Math.max(2, (count / bucketMax) * 100)}%`}
+                style:background={bucketColor(i)}
+              ></span>
+            </a>
+          {/each}
+        </div>
+        <div class="dist-axis"><span>0</span><span>50</span><span>100</span></div>
+        <!-- Average marker: the value floats above the bars and a high-contrast
+             line (backdrop invert → reads on every bar shade AND the light gaps)
+             runs from it down to the axis. ponytail: linear 0–100 x-map matches
+             the axis; extreme means (~0/100) could clip the label. -->
+        <div class="avg-mark" style:left={`${s.avgScore}%`}>
+          <span class="avg">{m.crm_dash_avg_score({ score: s.avgScore })}</span>
+        </div>
       </div>
-      <div class="dist-axis"><span>0</span><span>50</span><span>100</span></div>
     </section>
   {:else if id === 'channels'}
     <section class="card">
@@ -530,11 +538,48 @@
   }
 
   /* score distribution */
+  /* padding-top reserves a strip ABOVE the bars for the floating average value;
+     no bottom padding so the axis stays flush to the card. */
+  .dist-wrap {
+    position: relative;
+    padding-top: 1.3rem;
+  }
   .dist {
     display: flex;
     align-items: flex-end;
     gap: var(--space-1, 4px);
     height: 7rem;
+  }
+  /* Average marker — a full-height guide at the mean score, non-interactive. */
+  .avg-mark {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    pointer-events: none;
+  }
+  /* Line runs from just under the value (padding-top 1.3rem) down to the axis
+     (chart is 7rem tall); the small overlap makes it meet the label. It inverts
+     whatever is behind it, so it stays high-contrast against every bar shade and
+     the light gaps alike (the "contrast filter"). */
+  .avg-mark::before {
+    content: '';
+    position: absolute;
+    top: 1.5rem;
+    height: 6.8rem;
+    left: 0;
+    width: 2px;
+    transform: translateX(-50%);
+    backdrop-filter: invert(1);
+    -webkit-backdrop-filter: invert(1);
+  }
+  /* Value floats at the wrap top → above the bars, in the reserved strip. */
+  .avg-mark .avg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateX(-50%);
+    white-space: nowrap;
   }
   .dist-col {
     flex: 1;

@@ -343,12 +343,17 @@
                 // it reads as "the assistant is gone". Clamp only ran on resize
                 // before, so a fresh load with a bad pos left the pill invisible.
                 const p = JSON.parse(s);
-                const w = launcherW();
-                const h = launcherH();
-                pos = {
-                    left: clampN(p.left, LAUNCH_MARGIN, window.innerWidth - w - LAUNCH_MARGIN),
-                    top: clampN(p.top, LAUNCH_MARGIN, window.innerHeight - h - LAUNCH_MARGIN),
-                };
+                // A corrupt/non-finite saved value would clamp to NaN → the pill
+                // renders fixed at 0,0 (under the topbar) and reads as "gone".
+                // Ignore it and fall back to the default bottom-right anchor.
+                if (Number.isFinite(p?.left) && Number.isFinite(p?.top)) {
+                    const w = launcherW();
+                    const h = launcherH();
+                    pos = {
+                        left: clampN(p.left, LAUNCH_MARGIN, window.innerWidth - w - LAUNCH_MARGIN),
+                        top: clampN(p.top, LAUNCH_MARGIN, window.innerHeight - h - LAUNCH_MARGIN),
+                    };
+                }
             }
         } catch {
             /* ignore */

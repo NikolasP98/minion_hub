@@ -319,7 +319,11 @@
   .rz-table {
     border-collapse: separate;
     border-spacing: 0;
-    width: max-content;
+    /* Fixed layout so per-column widths are honoured and long names/values
+       ellipsize inside their cell. Auto layout ignored the cells' max-width and
+       ballooned columns to the full contact name, overflowing the dialog. */
+    table-layout: fixed;
+    width: calc(8.5rem + 12rem + var(--cand-count) * 12rem);
     min-width: 100%;
     font-size: var(--font-size-body);
   }
@@ -359,7 +363,7 @@
     text-align: left;
   }
   .rz-result-h {
-    min-width: 12rem;
+    width: 12rem;
     padding: var(--space-2) var(--space-2);
     text-align: left;
     color: var(--color-accent);
@@ -376,8 +380,7 @@
   }
 
   .rz-cand {
-    min-width: 11rem;
-    max-width: 16rem;
+    width: 12rem;
     padding: var(--space-2) var(--space-2);
     text-align: left;
   }

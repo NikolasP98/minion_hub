@@ -188,6 +188,7 @@
   :global(.invoice-link-cell) {
     display: inline-flex;
     align-items: center;
+    justify-content: flex-start;
     gap: var(--space-1, 4px);
     max-width: 100%;
     font: inherit;
@@ -195,6 +196,12 @@
     text-align: left;
     cursor: pointer;
     border-radius: var(--radius-sm);
+  }
+  /* Button wraps slotted children in an inner justify-center inline-flex row;
+     left-align it too so the name reads from the left (not centered). */
+  :global(.invoice-link-cell > span) {
+    justify-content: flex-start;
+    min-width: 0;
   }
   :global(.invoice-link-cell:hover) {
     color: var(--color-accent);
