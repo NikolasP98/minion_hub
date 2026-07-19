@@ -567,7 +567,10 @@ function periodWhere(p: Period, alias = '') {
   const c = alias ? `${alias}.` : '';
   const conds = [sql`${sql.raw(c)}org_id = current_setting('app.current_org_id', true)`];
   if (p.from) conds.push(sql`${sql.raw(c)}issued_at >= ${p.from}`);
-  if (p.to) conds.push(sql`${sql.raw(c)}issued_at < ${p.to}`);
+  // INCLUSIVE of the whole `to` day: `p.to` is normalized to that day's midnight,
+  // so a plain `< to` drops same-day records (from=to=Jun-1 returned zero despite
+  // Jun-1 sales). Half-open interval to the NEXT day's midnight covers the full day.
+  if (p.to) conds.push(sql`${sql.raw(c)}issued_at < (${p.to}::timestamptz + interval '1 day')`);
   return sql.join(conds, sql` and `);
 }
 

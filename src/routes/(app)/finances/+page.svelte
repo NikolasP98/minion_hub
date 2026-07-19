@@ -3,7 +3,10 @@
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
   import { Wallet } from 'lucide-svelte';
-  import { PageHeader, Button, Skeleton, EmptyState } from '$lib/components/ui';
+  import { PageHeader, Skeleton, EmptyState } from '$lib/components/ui';
+  import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
+  import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
+  import type { Period as DatePeriod } from '$lib/components/dashboard/date-range';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import Chart from '$lib/components/charts/Chart.svelte';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
@@ -57,56 +60,29 @@
 
   function navigate(f: string, t: string, b: string) {
     const p = new URLSearchParams();
-    if (f) p.set('from', f);
-    if (t) p.set('to', t);
+    if (f && t) {
+      p.set('from', f);
+      p.set('to', t);
+    } else {
+      // Open range (either bound cleared / "All time") → server all-time.
+      p.set('range', 'all');
+    }
     p.set('bucket', b);
     goto(`/finances?${p}`, { keepFocus: true, noScroll: true });
   }
 
-  function preset30d() {
-    const to = new Date();
-    const from = new Date();
-    from.setDate(from.getDate() - 30);
-    const f = from.toISOString().slice(0, 10);
-    const t = to.toISOString().slice(0, 10);
-    fromDate = f;
-    toDate = t;
-    navigate(f, t, 'day');
-  }
-
-  function preset12m() {
-    const to = new Date();
-    const from = new Date();
-    from.setMonth(from.getMonth() - 12);
-    const f = from.toISOString().slice(0, 10);
-    const t = to.toISOString().slice(0, 10);
-    fromDate = f;
-    toDate = t;
-    navigate(f, t, 'month');
-  }
-
-  function presetYTD() {
-    const now = new Date();
-    const f = `${now.getFullYear()}-01-01`;
-    const t = now.toISOString().slice(0, 10);
-    fromDate = f;
-    toDate = t;
-    navigate(f, t, 'month');
-  }
-
-  function presetAll() {
-    fromDate = '';
-    toDate = '';
-    navigate('', '', 'month');
+  // Finances supports day/week/month buckets (no year). The shared date controls
+  // pre-fill from/to, expose quick + extended ranges, and smart-disable periods.
+  const FIN_PERIODS: DatePeriod[] = ['day', 'week', 'month'];
+  function onRangeChange(v: { from: string; to: string; period: DatePeriod }) {
+    fromDate = v.from;
+    toDate = v.to;
+    bucket = v.period as 'day' | 'week' | 'month';
+    navigate(v.from, v.to, bucket);
   }
 
   type FinData = Awaited<PageData['streamed']['data']>;
 
-  const buckets: Array<{ key: 'day' | 'week' | 'month'; label: () => string }> = [
-    { key: 'day', label: m.fin_bucket_day },
-    { key: 'week', label: m.fin_bucket_week },
-    { key: 'month', label: m.fin_bucket_month },
-  ];
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
   // Everything below depends on the resolved (streamed) finance data — built
@@ -385,41 +361,14 @@
 
 <!-- Period controls — shared between the empty state and the grid toolbar. -->
 {#snippet periodControls()}
-  <div class="period-controls">
-    <div class="date-range">
-      <label class="date-label">
-        <span>{m.fin_date_from()}</span>
-        <input
-          type="date"
-          bind:value={fromDate}
-          oninput={() => navigate(fromDate, toDate, bucket)}
-        />
-      </label>
-      <label class="date-label">
-        <span>{m.fin_date_to()}</span>
-        <input type="date" bind:value={toDate} oninput={() => navigate(fromDate, toDate, bucket)} />
-      </label>
-    </div>
-    <div class="seg-group">
-      {#each buckets as b (b.key)}
-        <Button
-          variant={bucket === b.key ? 'primary' : 'ghost'}
-          size="sm"
-          aria-pressed={bucket === b.key}
-          onclick={() => {
-            bucket = b.key;
-            navigate(fromDate, toDate, b.key);
-          }}>{b.label()}</Button
-        >
-      {/each}
-    </div>
-    <div class="presets">
-      <Button variant="outline" size="sm" onclick={preset30d}>{m.fin_preset_30d()}</Button>
-      <Button variant="outline" size="sm" onclick={preset12m}>{m.fin_preset_12m()}</Button>
-      <Button variant="outline" size="sm" onclick={presetYTD}>{m.fin_preset_ytd()}</Button>
-      <Button variant="outline" size="sm" onclick={presetAll}>{m.fin_preset_all()}</Button>
-    </div>
-  </div>
+  <DateRangeControls
+    from={fromDate}
+    to={toDate}
+    period={bucket}
+    periods={FIN_PERIODS}
+    storageKey="finances"
+    onChange={onRangeChange}
+  />
 {/snippet}
 
 <!-- One snippet keyed by item id — EditableGrid renders each cell by id. -->
@@ -445,20 +394,15 @@
     <div class="card">
       <div class="card-h-row">
         <span class="card-h">{m.fin_chart_revenue_area()}</span>
-        <div class="chart-toggle">
-          <Button
-            variant={mode === 'period' ? 'primary' : 'ghost'}
-            size="sm"
-            aria-pressed={mode === 'period'}
-            onclick={() => (mode = 'period')}>{m.fin_toggle_period()}</Button
-          >
-          <Button
-            variant={mode === 'cumulative' ? 'primary' : 'ghost'}
-            size="sm"
-            aria-pressed={mode === 'cumulative'}
-            onclick={() => (mode = 'cumulative')}>{m.fin_toggle_cumulative()}</Button
-          >
-        </div>
+        <SegmentedControl
+          items={[
+            { value: 'period', label: m.fin_toggle_period() },
+            { value: 'cumulative', label: m.fin_toggle_cumulative() },
+          ]}
+          value={mode}
+          aria-label={m.fin_chart_revenue_area()}
+          onValueChange={(v) => (mode = v as 'period' | 'cumulative')}
+        />
       </div>
       <Chart options={revenueOpts} height="330px" {onLegendToggle} notMergeUpdate={false} />
       <p class="chart-note">{m.fin_chart_deduct_note()}</p>
@@ -472,20 +416,15 @@
     <div class="card">
       <div class="card-h-row">
         <span class="card-h">{m.fin_chart_top_products()}</span>
-        <div class="chart-toggle">
-          <Button
-            variant={prodMode === 'revenue' ? 'primary' : 'ghost'}
-            size="sm"
-            aria-pressed={prodMode === 'revenue'}
-            onclick={() => (prodMode = 'revenue')}>{m.fin_toggle_revenue()}</Button
-          >
-          <Button
-            variant={prodMode === 'qty' ? 'primary' : 'ghost'}
-            size="sm"
-            aria-pressed={prodMode === 'qty'}
-            onclick={() => (prodMode = 'qty')}>{m.fin_toggle_qty()}</Button
-          >
-        </div>
+        <SegmentedControl
+          items={[
+            { value: 'revenue', label: m.fin_toggle_revenue() },
+            { value: 'qty', label: m.fin_toggle_qty() },
+          ]}
+          value={prodMode}
+          aria-label={m.fin_chart_top_products()}
+          onValueChange={(v) => (prodMode = v as 'revenue' | 'qty')}
+        />
       </div>
       <Chart options={topProductsOpts} height="330px" />
     </div>
@@ -546,48 +485,6 @@
 </PageShell>
 
 <style>
-  .period-controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-3, 12px);
-  }
-  .date-range {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2, 8px);
-  }
-  .date-label {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: var(--space-2, 8px);
-    font-size: var(--font-size-caption, 12px);
-    color: var(--color-muted-foreground);
-    white-space: nowrap;
-  }
-  .date-label input {
-    padding: var(--space-1, 4px) var(--space-2, 8px);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-sm);
-    background: var(--color-card);
-    color: var(--color-foreground);
-    font-size: var(--font-size-body, 14px);
-    /* Render the native calendar picker icon + popup in dark mode so the
-		   indicator contrasts against the dark input (hub convention). */
-    color-scheme: dark;
-  }
-  .seg-group {
-    display: flex;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-  }
-  .presets {
-    display: flex;
-    gap: var(--space-2, 8px);
-  }
-
   /* loading skeleton — rough shape of the KPI row + chart cards below */
   .skel-grid {
     display: grid;
@@ -659,11 +556,5 @@
     font-size: var(--font-size-caption, 12px);
     color: var(--color-muted-foreground);
     text-align: center;
-  }
-  .chart-toggle {
-    display: flex;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
   }
 </style>
