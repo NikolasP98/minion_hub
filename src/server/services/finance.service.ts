@@ -579,6 +579,24 @@ const ck = (org: string, name: string, p: Period) =>
 
 const ctags = (org: string) => [...financeCacheTags(org)];
 
+/** Full data span (min/max invoice date) for the org — lets "All time" show real
+ *  dates. Unscoped by period on purpose. Returns 'YYYY-MM-DD' ('' when no data). */
+export function financeDataSpan(ctx: CoreCtx) {
+  return cached(
+    keys.hub('fin-span', { t: ctx.tenantId }),
+    { ttl: '5m', swr: '1m', tags: ctags(ctx.tenantId) },
+    () =>
+      withOrgCore(ctx, async (tx) => {
+        const [r] = (await tx.execute(sql`
+          select min(issued_at)::date::text lo, max(issued_at)::date::text hi
+          from fin_invoices
+          where org_id = current_setting('app.current_org_id', true) and issued_at is not null
+        `)) as unknown as Array<{ lo: string | null; hi: string | null }>;
+        return { min: r?.lo ?? '', max: r?.hi ?? '' };
+      }),
+  );
+}
+
 export function financeSummary(ctx: CoreCtx, p: Period) {
   return cached(
     ck(ctx.tenantId, 'summary', p),
@@ -601,7 +619,7 @@ export function financeSummary(ctx: CoreCtx, p: Period) {
         from stk_ledger l join stk_entries e on e.id = l.entry_id
         where e.type = 'issue' and l.org_id = current_setting('app.current_org_id', true)
           ${p.from ? sql`and l.posted_at >= ${p.from}` : sql``}
-          ${p.to ? sql`and l.posted_at < ${p.to}` : sql``}
+          ${p.to ? sql`and l.posted_at < (${p.to}::timestamptz + interval '1 day')` : sql``}
       `)) as unknown as Array<{ cogs: number }>;
         const net = Number(r.net),
           gross = Number(r.gross),

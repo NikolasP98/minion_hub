@@ -8,6 +8,7 @@ import {
   revenueSeries,
   topProducts,
   topClients,
+  financeDataSpan,
 } from '$server/services/finance.service';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { parsePeriod } from '$lib/finance/period';
@@ -17,6 +18,9 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   if (!(await isModuleEnabled(ctx, 'finances'))) throw error(404, 'Finances module disabled');
   depends('finances:data');
   const period = parsePeriod(url);
+  // Full data span (min/max invoice date) — cheap + non-streamed so the date
+  // controls can show real dates for "All time".
+  const dataSpan = await financeDataSpan(ctx);
   // Field-level (Phase 4): hide cost/margin (discount, gross) below the finance
   // sensitive field level. RBAC gate stays synchronous.
   const maskCost = await shouldMaskSensitive(locals, 'finance');
@@ -36,6 +40,7 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
 
   return {
     period,
+    dataSpan,
     streamed: {
       data: computeData(),
     },

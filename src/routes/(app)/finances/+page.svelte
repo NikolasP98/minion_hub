@@ -366,6 +366,8 @@
     to={toDate}
     period={bucket}
     periods={FIN_PERIODS}
+    dataMin={data.dataSpan?.min ?? ''}
+    dataMax={data.dataSpan?.max ?? ''}
     storageKey="finances"
     onChange={onRangeChange}
   />

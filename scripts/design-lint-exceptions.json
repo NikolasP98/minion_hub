@@ -2,6 +2,13 @@
   "schemaVersion": 1,
   "exceptions": [
     {
+      "file": "src/lib/components/dashboard/DateRangeControls.svelte",
+      "rule": "bare-button",
+      "allowance": 3,
+      "category": "third-party-render-surface",
+      "reason": "Menu-row checkbox, default-star and the in-group menu trigger are compound-widget internals (role=menuitemcheckbox / aria-pressed) that Button's fixed inner inline-flex row cannot express; the selectable options themselves use the SegmentedControl primitive."
+    },
+    {
       "file": "src/lib/components/layout/MinionLogo.svelte",
       "rule": "raw-color",
       "allowance": 35,

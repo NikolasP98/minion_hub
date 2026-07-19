@@ -13,6 +13,7 @@ export { default as Select } from './Select.svelte';
 export { default as MultiSelectFilter } from './MultiSelectFilter.svelte';
 export { default as Toggle } from './Toggle.svelte';
 export { default as Tabs } from './Tabs.svelte';
+export { default as SegmentedControl } from './SegmentedControl.svelte';
 export { default as EmptyState } from './EmptyState.svelte';
 export { default as MathFormula } from './MathFormula.svelte';
 export { default as SideNav } from './SideNav.svelte';

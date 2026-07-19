@@ -542,7 +542,7 @@
      no bottom padding so the axis stays flush to the card. */
   .dist-wrap {
     position: relative;
-    padding-top: 1.3rem;
+    padding-top: var(--space-6);
   }
   .dist {
     display: flex;
@@ -565,7 +565,9 @@
   .avg-mark::before {
     content: '';
     position: absolute;
-    top: 1.5rem;
+    /* starts just under the value (wrap padding-top 1.5rem), ends at the axis
+       (chart is 7rem tall → 1.5 + 7 = 8.5rem) */
+    top: 1.7rem;
     height: 6.8rem;
     left: 0;
     width: 2px;

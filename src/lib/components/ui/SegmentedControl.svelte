@@ -10,6 +10,7 @@
 </script>
 
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   // Canonical segmented control: a bordered pill group where the active option is
   // an accent-TINTED pill with accent text (never a full accent fill — that's a
   // primary-action style). The single default for dashboard toggles + range/period
@@ -24,6 +25,9 @@
     onValueChange?: (value: string) => void;
     /** Forwarded so callers can open an extended-range menu on right-click. */
     oncontextmenu?: (e: MouseEvent) => void;
+    /** Non-selectable content rendered inside the group at the end (e.g. a menu
+     *  trigger). Divided from the options. */
+    trailing?: Snippet;
   }
 
   let {
@@ -34,6 +38,7 @@
     'aria-label': ariaLabel,
     onValueChange,
     oncontextmenu,
+    trailing,
   }: Props = $props();
 
   function select(v: string, disabled?: boolean) {
@@ -55,6 +60,10 @@
       onclick={() => select(it.value, it.disabled)}>{it.label}</button
     >
   {/each}
+  {#if trailing}
+    <span class="seg-div" aria-hidden="true"></span>
+    {@render trailing()}
+  {/if}
 </div>
 
 <style>
@@ -100,5 +109,12 @@
   .seg-btn:focus-visible {
     outline: none;
     box-shadow: var(--shadow-focus);
+  }
+  /* Divider before a trailing (non-selectable) affordance. */
+  .seg-div {
+    width: 1px;
+    align-self: stretch;
+    margin: var(--space-0-5) var(--space-0-5);
+    background: var(--color-border, var(--hairline));
   }
 </style>

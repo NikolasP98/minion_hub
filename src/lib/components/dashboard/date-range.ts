@@ -40,12 +40,13 @@ export function coercePeriod(
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
-// Quick + extended range ids → {from,to} for a reference "now". 'all' clamps to
-// dataMin when known, else an open ('') start.
+// Quick + extended range ids → {from,to} for a reference "now". 'all' spans the
+// real data range (dataMin → dataMax) when known, so the inputs show real dates.
 export function quickRange(
   id: string,
   now: Date,
   dataMin?: string,
+  dataMax?: string,
 ): { from: string; to: string } | null {
   const to = iso(now);
   const from = new Date(now);
@@ -59,7 +60,7 @@ export function quickRange(
     case '2mo': from.setMonth(from.getMonth() - 2); break;
     case '3mo': from.setMonth(from.getMonth() - 3); break;
     case '6mo': from.setMonth(from.getMonth() - 6); break;
-    case 'all': return { from: dataMin ?? '', to: '' };
+    case 'all': return { from: dataMin ?? '', to: dataMax ?? '' };
     default: return null;
   }
   return { from: iso(from), to };
@@ -72,9 +73,10 @@ export function matchQuickRange(
   ids: string[],
   now: Date,
   dataMin?: string,
+  dataMax?: string,
 ): string | null {
   for (const id of ids) {
-    const r = quickRange(id, now, dataMin);
+    const r = quickRange(id, now, dataMin, dataMax);
     if (r && r.from === from && r.to === to) return id;
   }
   return null;
