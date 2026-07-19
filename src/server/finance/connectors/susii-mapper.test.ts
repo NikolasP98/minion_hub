@@ -40,3 +40,32 @@ describe('mapSusiiSale', () => {
     expect(inv.client).toBeNull();
   });
 });
+
+describe('docless sale totals (SUSII sends no sale.total)', () => {
+  // Production sale #3554 (2026-06-01): no document_set, SUSII UI shows S/ 1,300.
+  const docless = {
+    id: 38813907,
+    number: '3554',
+    date: '2026-06-01T19:27:28-05:00',
+    tax: '198.3100000000',
+    discount: '42.3700000000',
+    other_charges: '0.00',
+    rounding: '0.00',
+    document_set: [],
+    items: [{ name: 'Procedimiento', quantity: 1, price: 1144.0677966102, total: 1144.0677966102 }],
+  };
+
+  it('derives the total from the sale money fields when there is no document', () => {
+    // 1144.07 + 198.31 - 42.37 = 1300.01 (SUSII shows S/ 1,300)
+    expect(mapSusiiSale(docless).total).toBe(1300.01);
+  });
+
+  it('still prefers the document total when a document exists', () => {
+    const withDoc = { ...docless, document_set: [{ serial: 'BE01-2105', total: 1200 }] };
+    expect(mapSusiiSale(withDoc).total).toBe(1200);
+  });
+
+  it('leaves the total unknown rather than inventing 0 when there are no lines', () => {
+    expect(mapSusiiSale({ ...docless, items: [] }).total).toBeNull();
+  });
+});
