@@ -9,6 +9,7 @@
   import { visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { configState, loadConfig, getField } from '$lib/state/config/config.svelte';
+  import { sortedSystemAutomations, unscheduledCount } from '$lib/automations/system-automations';
 
   let {
     data,
@@ -53,6 +54,39 @@
   // Core autonomous agents = built-in system agents + gateway autonomous agents.
   const agents = $derived<AutonomousAgentVM[]>([...data.systemAgents, ...gatewayVMs]);
   const workforceAgents = $derived(data.workforceAgents ?? []);
+  // System automations: cron-driven, no agent behind them. Static manifest —
+  // scheduling lives on netcup, outside this app.
+  const systemAutomations = sortedSystemAutomations();
+  const unscheduled = unscheduledCount();
+  const cadenceLabel: Record<string, () => string> = {
+    minute: m.automation_cadence_minute,
+    hourly: m.automation_cadence_hourly,
+    daily_3am: m.automation_cadence_daily_3am,
+  };
+  const wiringLabel: Record<string, () => string> = {
+    netcup: m.automation_wiring_netcup,
+    vercel: m.automation_wiring_vercel,
+    unscheduled: m.automation_wiring_unscheduled,
+  };
+  // Static per-key lookups: paraglide messages are referenced by name so unused-
+  // message tooling still sees them (a dynamic `m[\`automation_${key}\`]` would
+  // hide every one of them and doesn't typecheck against the generated module).
+  const copy: Record<string, { title: () => string; desc: () => string }> = {
+    reminders: { title: m.automation_reminders_title, desc: m.automation_reminders_desc },
+    finance_sync: { title: m.automation_finance_sync_title, desc: m.automation_finance_sync_desc },
+    notifications: { title: m.automation_notifications_title, desc: m.automation_notifications_desc },
+    jobs: { title: m.automation_jobs_title, desc: m.automation_jobs_desc },
+    org_config: { title: m.automation_org_config_title, desc: m.automation_org_config_desc },
+    retention: { title: m.automation_retention_title, desc: m.automation_retention_desc },
+    memberships: { title: m.automation_memberships_title, desc: m.automation_memberships_desc },
+    finance_daily: { title: m.automation_finance_daily_title, desc: m.automation_finance_daily_desc },
+    dni: { title: m.automation_dni_title, desc: m.automation_dni_desc },
+    meta_sync: { title: m.automation_meta_sync_title, desc: m.automation_meta_sync_desc },
+    email_ledger: { title: m.automation_email_ledger_title, desc: m.automation_email_ledger_desc },
+    vectorize: { title: m.automation_vectorize_title, desc: m.automation_vectorize_desc },
+    analyze: { title: m.automation_analyze_title, desc: m.automation_analyze_desc },
+  };
+
   const pageState = $derived(
     agents.length === 0 && workforceAgents.length === 0
       ? { kind: 'empty' as const, title: m.autonomous_empty() }
@@ -99,6 +133,62 @@
           </div>
         </section>
       {/if}
+
+      <!-- Segregated group, always last: SYSTEM automations. Not agents — cron
+         endpoints on a schedule. `unscheduled` is the one that matters: an
+         endpoint can exist, be allowlisted, and still never be called. -->
+      <section class="mt-8">
+        <div class="mb-1 flex items-center gap-2">
+          <h2 class="t-title">{m.automation_system_section()}</h2>
+          <Badge variant="semantic" value="info" size="sm">{m.automation_system_badge()}</Badge>
+          <span class="t-caption">{systemAutomations.length}</span>
+          {#if unscheduled > 0}
+            <Badge variant="semantic" value="warning" size="sm"
+              >{m.automation_unscheduled_warn({ count: unscheduled })}</Badge
+            >
+          {/if}
+        </div>
+        <p class="mb-3 t-caption">{m.automation_system_desc()}</p>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {#each systemAutomations as a (a.path)}
+            <article class="auto-card" class:unwired={a.wiring === 'unscheduled'}>
+              <header class="mb-1 flex items-baseline justify-between gap-2">
+                <h3 class="t-label">{copy[a.key].title()}</h3>
+                <Badge
+                  variant="semantic"
+                  value={a.wiring === 'unscheduled' ? 'warning' : 'success'}
+                  size="sm">{wiringLabel[a.wiring]()}</Badge
+                >
+              </header>
+              <p class="t-caption">{copy[a.key].desc()}</p>
+              <footer class="mt-2 flex items-center justify-between gap-2">
+                <code class="auto-path t-mono">{a.path}</code>
+                <span class="t-caption">{cadenceLabel[a.cadence]()}</span>
+              </footer>
+            </article>
+          {/each}
+        </div>
+      </section>
     </AsyncBoundary>
   </PageBody>
 </PageShell>
+
+<style>
+  .auto-card {
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3);
+  }
+  .auto-card.unwired {
+    border-color: var(--color-warning-border);
+    background: var(--color-warning-surface);
+  }
+  .auto-path {
+    color: var(--color-text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+</style>
