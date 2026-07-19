@@ -113,9 +113,9 @@
             {#if switchingTo}
                 <Loader2 size={iconSizes.xs} class="shrink-0 animate-spin opacity-80" />
             {:else if activeKind === "personal"}
-                <User size={iconSizes.xs} class="shrink-0 opacity-70" aria-hidden="true" />
+                <User size={iconSizes.xs} class="shrink-0 opacity-70" role="img" aria-label="Personal" />
             {:else}
-                <Building2 size={iconSizes.xs} class="shrink-0 opacity-70" aria-hidden="true" />
+                <Building2 size={iconSizes.xs} class="shrink-0 opacity-70" role="img" aria-label="Business" />
             {/if}
             <span class="flex-1 overflow-hidden text-ellipsis text-left">{currentName}</span>
             {#if canSwitch && !switchingTo}
@@ -141,17 +141,15 @@
                         onclick={() => select(o.id)}
                         onkeydown={(e) => e.key === "Enter" && select(o.id)}
                     >
+                        <!-- Kind is conveyed by the icon alone (user directive 2026-07-19);
+                             the icon is therefore labelled, not decorative, so it still
+                             reaches screen readers. -->
                         {#if (o.kind ?? "business") === "personal"}
-                            <User size={iconSizes.xs} class="shrink-0 opacity-70" aria-hidden="true" />
+                            <User size={iconSizes.xs} class="shrink-0 opacity-70" role="img" aria-label="Personal" />
                         {:else}
-                            <Building2 size={iconSizes.xs} class="shrink-0 opacity-70" aria-hidden="true" />
+                            <Building2 size={iconSizes.xs} class="shrink-0 opacity-70" role="img" aria-label="Business" />
                         {/if}
-                        <span class="flex-1 min-w-0 flex items-center gap-1.5">
-                            <span class="overflow-hidden text-ellipsis whitespace-nowrap">{o.name}</span>
-                            {#if (o.kind ?? "business") === "personal"}
-                                <span class="text-muted-foreground text-[length:var(--font-size-telemetry)] shrink-0">Personal</span>
-                            {/if}
-                        </span>
+                        <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{o.name}</span>
                         {#if switchingTo === o.id}
                             <Loader2 size={iconSizes.xs} class="text-accent shrink-0 animate-spin" />
                         {:else if o.id === activeOrgId}
