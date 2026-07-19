@@ -2,6 +2,7 @@
   import type { PageData } from './$types';
   import { goto, invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
+  import { formatMoney } from '$lib/utils/format';
   import { createHotkey } from '$lib/hotkeys';
   import { Package, ArrowLeft, ExternalLink } from 'lucide-svelte';
   import { PageHeader, Button, Toggle } from '$lib/components/ui';
@@ -113,6 +114,8 @@
   }
 
   const fmt = (n: string | number) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
+  const fmtMoney = (n: string | number) => formatMoney(Number(n));
 
   // [ / ] prev/next through the ordered item list (clamped at the ends —
   // simpler than wraparound). Off while editing so a stray bracket keystroke
@@ -266,8 +269,8 @@
               <tr>
                 <td>{b.warehouseName}</td>
                 <td class="num">{fmt(b.qty)}</td>
-                <td class="num">{fmt(b.valuationRate)}</td>
-                <td class="num">{fmt(Number(b.qty) * Number(b.valuationRate))}</td>
+                <td class="num">{fmtMoney(b.valuationRate)}</td>
+                <td class="num">{fmtMoney(Number(b.qty) * Number(b.valuationRate))}</td>
               </tr>
             {/each}
           </tbody>
@@ -319,7 +322,7 @@
                   {Number(l.qtyDelta) > 0 ? '+' : ''}{fmt(l.qtyDelta)}
                 </td>
                 <td class="num">{fmt(l.qtyAfter)}</td>
-                <td class="num">{fmt(l.valuationRate)}</td>
+                <td class="num">{fmtMoney(l.valuationRate)}</td>
               </tr>
             {/each}
           </tbody>

@@ -2,6 +2,7 @@
   import type { PageData } from './$types';
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
+  import { formatMoney } from '$lib/utils/format';
   import { ArrowLeftRight, X } from 'lucide-svelte';
   import { PageHeader, Badge, Button } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
@@ -92,7 +93,7 @@
                   <tr>
                     <td class="li-item">{itemLabel(ln.itemId)}</td>
                     <td class="li-num">{fmtNum(ln.qty)}{ln.uom ? ` ${ln.uom}` : ''}</td>
-                    <td class="li-num">{fmtNum(ln.rate)}</td>
+                    <td class="li-num">{ln.rate == null ? '—' : formatMoney(ln.rate)}</td>
                   </tr>
                 {/each}
               </tbody>

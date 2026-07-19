@@ -50,6 +50,11 @@ export function calcCpc(spend: number, clicks: number): number {
 export interface DataExtent {
   minDate: string | null;
   maxDate: string | null;
+  /** ISO code the org's ad spend is denominated in (ad accounts can be PEN or
+   *  USD). Null when there are no rows, or when accounts disagree — callers fall
+   *  back to the org default rather than mislabel a number. Optional so the
+   *  `{minDate:null,maxDate:null}` no-connection literals stay valid. */
+  currency?: string | null;
 }
 
 /** Org's ad-spend date range (min/max `date` in meta_ad_insights). Null bounds
@@ -57,11 +62,17 @@ export interface DataExtent {
 export function adDataExtent(ctx: CoreCtx): Promise<DataExtent> {
   return withOrgCore(ctx, async (tx) => {
     const [row] = (await tx.execute(sql`
-      select min(date)::text as min_date, max(date)::text as max_date
+      select min(date)::text as min_date, max(date)::text as max_date,
+             -- one distinct currency ⇒ safe to label; mixed ⇒ null (don't guess)
+             case when count(distinct currency) = 1 then min(currency) end as currency
       from meta_ad_insights
       where org_id = ${ctx.tenantId}
-    `)) as unknown as Array<{ min_date: string | null; max_date: string | null }>;
-    return { minDate: row?.min_date ?? null, maxDate: row?.max_date ?? null };
+    `)) as unknown as Array<{ min_date: string | null; max_date: string | null; currency: string | null }>;
+    return {
+      minDate: row?.min_date ?? null,
+      maxDate: row?.max_date ?? null,
+      currency: row?.currency ?? null,
+    };
   });
 }
 

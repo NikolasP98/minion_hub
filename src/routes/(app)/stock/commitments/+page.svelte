@@ -1,12 +1,15 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
+  import { formatMoney } from '$lib/utils/format';
   import { CalendarClock } from 'lucide-svelte';
   import { PageHeader } from '$lib/components/ui';
 
   let { data }: { data: PageData } = $props();
 
   const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
+  const fmtMoney = (n: string | number) => formatMoney(Number(n));
 
   const realizedSpend = $derived(data.realized.reduce((sum, r) => sum + Number(r.realizedValue ?? 0), 0));
   const variance = $derived(data.realized.reduce((sum, r) => sum + (Number(r.realizedValue ?? 0) - Number(r.estValue)), 0));
@@ -23,15 +26,15 @@
     <div class="w-full max-w-5xl mx-auto flex flex-col gap-4">
       <div class="kpi-row">
         <div class="kpi">
-          <div class="kpi-val">{fmt(data.committed)}</div>
+          <div class="kpi-val">{fmtMoney(data.committed)}</div>
           <div class="kpi-label">{m.stock_commitments_committed()}</div>
         </div>
         <div class="kpi">
-          <div class="kpi-val">{fmt(realizedSpend)}</div>
+          <div class="kpi-val">{fmtMoney(realizedSpend)}</div>
           <div class="kpi-label">{m.stock_commitments_realized()}</div>
         </div>
         <div class="kpi">
-          <div class="kpi-val" class:warn={variance > 0}>{fmt(variance)}</div>
+          <div class="kpi-val" class:warn={variance > 0}>{fmtMoney(variance)}</div>
           <div class="kpi-label">{m.stock_commitments_variance()}</div>
         </div>
       </div>
@@ -60,7 +63,7 @@
                   </td>
                   <td class="t-caption">{r.source}</td>
                   <td class="num">{fmt(Number(r.qtyConsumption))} {r.consumptionUom ?? r.itemUom}</td>
-                  <td class="num">{fmt(Number(r.estValue))}</td>
+                  <td class="num">{fmtMoney(Number(r.estValue))}</td>
                   <td class="t-caption">{new Date(r.createdAt).toLocaleDateString()}</td>
                 </tr>
               {/each}
@@ -95,9 +98,9 @@
                   <td class="num">
                     {fmt(Number(r.qtyConsumption))} / {fmt(Number(r.realizedQty ?? 0))} {r.consumptionUom ?? r.itemUom}
                   </td>
-                  <td class="num">{fmt(Number(r.estValue))}</td>
-                  <td class="num">{fmt(Number(r.realizedValue ?? 0))}</td>
-                  <td class="num" class:warn={rowVariance > 0}>{fmt(rowVariance)}</td>
+                  <td class="num">{fmtMoney(Number(r.estValue))}</td>
+                  <td class="num">{fmtMoney(Number(r.realizedValue ?? 0))}</td>
+                  <td class="num" class:warn={rowVariance > 0}>{fmtMoney(rowVariance)}</td>
                 </tr>
               {/each}
             </tbody>

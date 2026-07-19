@@ -124,6 +124,7 @@
     { key: 'category', label: m.pos_sell_col_category(), accessor: (s) => s.category ?? '—' },
     {
       key: 'unitPrice',
+      money: true,
       label: m.pos_sell_price(),
       align: 'right',
       custom: true,

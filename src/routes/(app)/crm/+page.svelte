@@ -15,6 +15,7 @@
     Wallet,
   } from 'lucide-svelte';
   import { PageHeader, Skeleton, EmptyState } from '$lib/components/ui';
+  import { formatMoney } from '$lib/utils/format';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import StagePill from '$lib/components/crm/StagePill.svelte';
   import CrmFunnelRibbon from '$lib/components/crm/CrmFunnelRibbon.svelte';
@@ -145,7 +146,8 @@
     Churned: m.crm_stage_help_Churned(),
   };
 
-  const fmtMoney = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  // Money ALWAYS carries its symbol — route through the canonical formatter.
+  const fmtMoney = (n: number) => formatMoney(n, 'PEN', { decimals: 0 });
 
   // Acquisition-date cohort window (server-side scoping). The shared controls
   // emit an INCLUSIVE from/to; the server reads them via range=custom.

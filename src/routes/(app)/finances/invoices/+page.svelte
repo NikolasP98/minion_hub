@@ -68,6 +68,7 @@
     { key: 'dni', label: m.fin_col_dni(), custom: true, accessor: (r) => r.clientDocNumber ?? '' },
     {
       key: 'total',
+      money: true,
       label: m.fin_col_total(),
       align: 'right',
       custom: true,

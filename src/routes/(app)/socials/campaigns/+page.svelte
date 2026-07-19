@@ -2,6 +2,7 @@
 	import { goto } from '$lib/navigation';
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages';
+	import { formatMoney } from '$lib/utils/format';
 	import { Target, Image } from 'lucide-svelte';
 	import { PageHeader, EmptyState, Button } from '$lib/components/ui';
 	import DataTable from '$lib/components/data-table/DataTable.svelte';
@@ -36,8 +37,10 @@
 		return parts.join(' ');
 	}
 
+	// Ad spend carries the AD ACCOUNT's currency (PEN or USD), not the org default.
+	const adCurrency = $derived(data.extent.currency ?? 'PEN');
 	function fmtMoney(v: number): string {
-		return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+		return formatMoney(v, adCurrency);
 	}
 	function fmtInt(v: number): string {
 		return Math.round(v).toLocaleString();
@@ -58,12 +61,12 @@
 	const columns: DataColumn<Row>[] = [
 		{ key: 'preview', label: m.ads_col_thumbnail(), custom: true, sortable: false, exportable: false, align: 'center', width: 56 },
 		{ key: 'name', label: m.ads_col_campaign(), custom: true, accessor: nameOf, exportValue: nameOf, sortFn: (a, b) => nameOf(a).localeCompare(nameOf(b)), width: 300 },
-		{ key: 'spend', label: m.ads_col_spend(), align: 'right', numeric: true, custom: true, accessor: (r) => r.spend, sortFn: (a, b) => a.spend - b.spend, width: 120 },
+		{ key: 'spend', money: true, label: m.ads_col_spend(), align: 'right', numeric: true, custom: true, accessor: (r) => r.spend, sortFn: (a, b) => a.spend - b.spend, width: 120 },
 		{ key: 'impressions', label: m.ads_col_impressions(), align: 'right', numeric: true, custom: true, accessor: (r) => r.impressions, sortFn: (a, b) => a.impressions - b.impressions, width: 120 },
 		{ key: 'reach', label: m.ads_col_reach(), align: 'right', numeric: true, custom: true, accessor: (r) => r.reach, sortFn: (a, b) => a.reach - b.reach, width: 110 },
 		{ key: 'clicks', label: m.ads_col_clicks(), align: 'right', numeric: true, custom: true, accessor: (r) => r.clicks, sortFn: (a, b) => a.clicks - b.clicks, width: 100 },
 		{ key: 'ctr', label: m.ads_col_ctr(), align: 'right', numeric: true, custom: true, accessor: (r) => r.ctr, sortFn: (a, b) => a.ctr - b.ctr, width: 90 },
-		{ key: 'cpc', label: m.ads_col_cpc(), align: 'right', numeric: true, custom: true, accessor: (r) => r.cpc, sortFn: (a, b) => a.cpc - b.cpc, width: 100 },
+		{ key: 'cpc', money: true, label: m.ads_col_cpc(), align: 'right', numeric: true, custom: true, accessor: (r) => r.cpc, sortFn: (a, b) => a.cpc - b.cpc, width: 100 },
 	];
 
 	function navigateRange(f: string, t: string) {

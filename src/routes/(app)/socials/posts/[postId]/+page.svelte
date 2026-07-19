@@ -2,6 +2,7 @@
 	import type { PageData } from './$types';
 	import { onMount } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { formatMoney } from '$lib/utils/format';
 	import { ArrowLeft, ExternalLink, Megaphone, MessageCircle, X } from 'lucide-svelte';
 	import PlatformIcon from '$lib/components/socials/PlatformIcon.svelte';
 	import VideoPlayer from '$lib/components/socials/VideoPlayer.svelte';
@@ -207,7 +208,7 @@
 						<header class="panel-h">{m.ads_post_detail_ad_stats_title()}</header>
 						<div class="stats-grid">
 							<div class="stat">
-								<span class="stat-v">{fmtDecimal(post.ad.spend)}</span>
+								<span class="stat-v">{formatMoney(post.ad.spend)}</span>
 								<span class="stat-l">{m.ads_kpi_spend()}</span>
 							</div>
 							<div class="stat">
@@ -227,7 +228,7 @@
 								<span class="stat-l">{m.ads_kpi_ctr()}</span>
 							</div>
 							<div class="stat">
-								<span class="stat-v">{fmtDecimal(post.ad.cpc)}</span>
+								<span class="stat-v">{formatMoney(post.ad.cpc)}</span>
 								<span class="stat-l">{m.ads_kpi_cpc()}</span>
 							</div>
 						</div>

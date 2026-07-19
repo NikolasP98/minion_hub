@@ -5,6 +5,7 @@
   import { PageHeader, Card, Button, Badge, EmptyState, Modal, Select } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
+  import { formatMoney } from '$lib/utils/format';
   import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
@@ -344,7 +345,7 @@
                 {@const acc = accrualBySource.get(b.id)!}
                 {#if acc.open > 0}
                   <Badge variant="semantic" value="warning"
-                    >{m.sched_stock_committed({ value: acc.estValue.toFixed(2) })}</Badge
+                    >{m.sched_stock_committed({ value: formatMoney(acc.estValue) })}</Badge
                   >
                 {:else if acc.realized > 0}
                   <a
@@ -352,7 +353,7 @@
                     class="no-underline"
                   >
                     <Badge variant="semantic" value="success"
-                      >{m.sched_stock_realized({ value: acc.realizedValue.toFixed(2) })}</Badge
+                      >{m.sched_stock_realized({ value: formatMoney(acc.realizedValue) })}</Badge
                     >
                   </a>
                 {:else}

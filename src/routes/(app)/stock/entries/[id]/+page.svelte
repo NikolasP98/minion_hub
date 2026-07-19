@@ -2,6 +2,7 @@
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
+  import { formatMoney } from '$lib/utils/format';
   import { ArrowLeftRight, ArrowLeft } from 'lucide-svelte';
   import { PageHeader, Button, Badge, Modal } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
@@ -112,7 +113,7 @@
             <tr>
               <td>{l.itemLabel}</td>
               <td class="num">{Number(l.qty).toLocaleString()}</td>
-              <td class="num">{l.rate != null ? Number(l.rate).toLocaleString() : '—'}</td>
+              <td class="num">{l.rate != null ? formatMoney(l.rate) : '—'}</td>
               <td>{l.fromWarehouseName ?? '—'}</td>
               <td>{l.toWarehouseName ?? '—'}</td>
             </tr>

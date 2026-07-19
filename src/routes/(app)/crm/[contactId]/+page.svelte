@@ -20,6 +20,7 @@
   } from 'lucide-svelte';
   import { PageHeader, Button, Select, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import { formatMoney } from '$lib/utils/format';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
   import MathFormula from '$lib/components/ui/MathFormula.svelte';
@@ -684,7 +685,7 @@
         <dl class="kv">
           <div>
             <dt>{m.crm_col_revenue()}</dt>
-            <dd>{data.finance.revenue.toLocaleString()}</dd>
+            <dd>{formatMoney(data.finance.revenue, 'PEN', { decimals: 0 })}</dd>
           </div>
           <div>
             <dt>{m.crm_col_invoices()}</dt>
@@ -708,7 +709,7 @@
                 <span class="fin-date t-caption"
                   >{inv.issuedAt ? relativeTime(inv.issuedAt) : '—'}</span
                 >
-                <span class="fin-total">{inv.total.toLocaleString()}</span>
+                <span class="fin-total">{formatMoney(inv.total)}</span>
                 {#if inv.status}<span class="fin-status" data-status={inv.status}>{inv.status}</span
                   >{/if}
               </li>

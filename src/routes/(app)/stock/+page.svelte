@@ -2,6 +2,7 @@
   import type { PageData } from './$types';
   import { Warehouse } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { formatMoney } from '$lib/utils/format';
   import { PageHeader, EmptyState } from '$lib/components/ui';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import { canAct } from '$lib/access/can.svelte';
@@ -10,9 +11,11 @@
   let { data }: { data: PageData } = $props();
 
   const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
+  const fmtMoney = (n: string | number) => formatMoney(Number(n));
 
   const kpis = $derived([
-    { id: 'k-valuation', label: m.stock_kpi_valuation(), value: fmt(data.totalValuation) },
+    { id: 'k-valuation', label: m.stock_kpi_valuation(), value: fmtMoney(data.totalValuation) },
     { id: 'k-lowstock', label: m.stock_kpi_low_stock(), value: String(data.lowStock.length), href: '/stock/items' },
     { id: 'k-items', label: m.stock_kpi_items(), value: String(data.itemCount), href: '/stock/items' },
     { id: 'k-warehouses', label: m.stock_kpi_warehouses(), value: String(data.warehouseCount), href: '/stock/warehouses' },

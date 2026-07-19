@@ -30,5 +30,5 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
   const campaign = await getCampaignDetail(ctx, params.campaignId, range);
   if (!campaign) throw error(404, 'Campaign not found');
 
-  return { campaign, range };
+  return { campaign, range, currency: extent.currency };
 };

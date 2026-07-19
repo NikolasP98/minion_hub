@@ -2,6 +2,7 @@
   import { goto } from '$lib/navigation';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
+  import { formatMoney, formatMoneyShort } from '$lib/utils/format';
   import { ArrowLeft, Target, Image } from 'lucide-svelte';
   import { PageHeader, Button } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
@@ -19,8 +20,10 @@
 
   const c = $derived(chartColors());
 
+  // Ad spend carries the AD ACCOUNT's currency (PEN or USD), not the org default.
+  const adCurrency = $derived(data.currency ?? 'PEN');
   function fmtMoney(v: number): string {
-    return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return formatMoney(v, adCurrency);
   }
   function fmtInt(v: number): string {
     return Math.round(v).toLocaleString();
@@ -41,13 +44,13 @@
 
   const spendOpts = $derived({
     grid: { left: 8, right: 18, top: 16, bottom: 30, containLabel: true },
-    tooltip: { trigger: 'axis' },
+    tooltip: { trigger: 'axis', valueFormatter: (v) => fmtMoney(Number(v)) },
     xAxis: {
       type: 'category',
       data: campaign.spendSeries.map((r) => r.date),
       axisLabel: { hideOverlap: true },
     },
-    yAxis: { type: 'value' },
+    yAxis: { type: 'value', axisLabel: { formatter: (v: number) => formatMoneyShort(v, adCurrency) } },
     series: [
       {
         name: m.ads_kpi_spend(),
@@ -86,6 +89,7 @@
     },
     {
       key: 'spend',
+      money: true,
       label: m.ads_col_spend(),
       align: 'right',
       numeric: true,
@@ -126,6 +130,7 @@
     },
     {
       key: 'cpc',
+      money: true,
       label: m.ads_col_cpc(),
       align: 'right',
       numeric: true,

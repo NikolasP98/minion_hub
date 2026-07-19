@@ -4,6 +4,7 @@
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
+  import { formatMoney } from '$lib/utils/format';
   import { Contact, RefreshCw, ArrowUp, ArrowDown, X, CircleCheck, Circle } from 'lucide-svelte';
   import { PageHeader, Button, Modal, Select, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
@@ -206,6 +207,7 @@
     if (data.financeEnabled) {
       cols.push({
         key: 'revenue',
+      money: true,
         label: m.crm_col_revenue(),
         align: 'right',
         custom: true,
@@ -347,7 +349,7 @@
       const fin = finOf(r);
       const subtitle = [
         m.crm_merge_msgs({ n: r.total_msgs }),
-        fin && fin.revenue > 0 ? fin.revenue.toLocaleString() : null,
+        fin && fin.revenue > 0 ? formatMoney(fin.revenue, 'PEN', { decimals: 0 }) : null,
       ]
         .filter(Boolean)
         .join(' · ');
@@ -605,7 +607,7 @@
         <span class="meta-cell" title={v}>{v || '—'}</span>
       {:else if col.key === 'revenue'}
         <span class="t-caption tabular-nums"
-          >{finOf(c) ? finOf(c)!.revenue.toLocaleString() : '—'}</span
+          >{finOf(c) ? formatMoney(finOf(c)!.revenue, 'PEN', { decimals: 0 }) : '—'}</span
         >
       {:else if col.key === 'invoices'}
         <span class="t-caption tabular-nums">{finOf(c) ? finOf(c)!.invoices : '—'}</span>

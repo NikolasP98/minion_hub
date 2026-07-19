@@ -48,6 +48,7 @@
     },
     {
       key: 'unitPrice',
+      money: true,
       label: m.fin_col_ref_price(),
       align: 'right',
       editable: true,
@@ -67,6 +68,7 @@
     { key: 'billed', label: m.fin_col_billed(), align: 'right', accessor: (p) => p.billed },
     {
       key: 'revenue',
+      money: true,
       label: m.fin_col_revenue(),
       align: 'right',
       custom: true,
@@ -75,6 +77,7 @@
     },
     {
       key: 'cost',
+      money: true,
       label: m.fin_col_cost(),
       align: 'right',
       custom: true,
@@ -83,6 +86,7 @@
     },
     {
       key: 'margin',
+      money: true,
       label: m.fin_col_margin(),
       align: 'right',
       custom: true,

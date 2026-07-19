@@ -68,6 +68,7 @@
     },
     {
       key: 'unitPrice',
+      money: true,
       label: m.pos_sell_price(),
       align: 'right',
       editable: true,

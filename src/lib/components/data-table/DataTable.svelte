@@ -47,6 +47,9 @@
 		resizable?: boolean;
 		/** Force numeric treatment for the header-aggregate menu (else auto-detected). */
 		numeric?: boolean;
+		/** This column holds money — sum/avg aggregates render with the currency
+		 *  symbol via `formatMoney`. Pass an ISO code to override the org default. */
+		money?: boolean | string;
 
 		/** Inline-editable cell. Renders an input in edit mode; the draft value is
 		 *  passed to `onSaveRow`. */
@@ -100,6 +103,7 @@
 		Hash,
 	} from 'lucide-svelte';
 	import { Button, Tooltip } from '$lib/components/ui';
+	import { formatMoney } from '$lib/utils/format';
 	import ColumnFilter from '$lib/components/crm/ColumnFilter.svelte';
 	import ExportDialog from '$lib/components/crm/ExportDialog.svelte';
 	import { downloadCsv, downloadXlsx, type Rows } from '$lib/export/table-export';
@@ -440,6 +444,8 @@
 		if (!nums.length) return '—';
 		const sum = nums.reduce((a, b) => a + b, 0);
 		const out = mode === 'sum' ? sum : sum / nums.length;
+		// A money column's aggregate is money too — never a bare number.
+		if (c.money) return formatMoney(out, typeof c.money === 'string' ? c.money : 'PEN');
 		return out.toLocaleString(undefined, { maximumFractionDigits: 2 });
 	}
 	// All active aggregates for a column, in a stable order, with their values.

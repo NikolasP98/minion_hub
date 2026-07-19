@@ -2,6 +2,7 @@
 	import { goto } from '$lib/navigation';
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages';
+	import { formatMoney, formatMoneyShort } from '$lib/utils/format';
 	import { Megaphone, ExternalLink } from 'lucide-svelte';
 	import { PageHeader, Button, EmptyState } from '$lib/components/ui';
 	import Chart from '$lib/components/charts/Chart.svelte';
@@ -35,8 +36,10 @@
 		navigate(v.from, v.to);
 	}
 
+	// Ad spend carries the AD ACCOUNT's currency (PEN or USD), not the org default.
+	const adCurrency = $derived(data.extent.currency ?? 'PEN');
 	function fmtMoney(v: number): string {
-		return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+		return formatMoney(v, adCurrency);
 	}
 	function fmtInt(v: number): string {
 		return Math.round(v).toLocaleString();
@@ -76,9 +79,9 @@
 
 	const spendOpts = $derived({
 		grid: { left: 8, right: 18, top: 16, bottom: 30, containLabel: true },
-		tooltip: { trigger: 'axis' },
+		tooltip: { trigger: 'axis', valueFormatter: (v) => fmtMoney(Number(v)) },
 		xAxis: { type: 'category', data: data.series.map((r) => r.date), axisLabel: { hideOverlap: true } },
-		yAxis: { type: 'value' },
+		yAxis: { type: 'value', axisLabel: { formatter: (v: number) => formatMoneyShort(v, adCurrency) } },
 		series: [
 			{
 				name: m.ads_kpi_spend(),
@@ -96,9 +99,9 @@
 		const sorted = [...data.campaigns].sort((a, b) => b.spend - a.spend).slice(0, 10);
 		return {
 			grid: { left: 8, right: 24, top: 16, bottom: 24, containLabel: true },
-			tooltip: { trigger: 'axis' },
+			tooltip: { trigger: 'axis', valueFormatter: (v) => fmtMoney(Number(v)) },
 			yAxis: { type: 'category', data: sorted.map((r) => r.campaignName ?? r.campaignId ?? '—'), inverse: true },
-			xAxis: { type: 'value' },
+			xAxis: { type: 'value', axisLabel: { formatter: (v: number) => formatMoneyShort(v, adCurrency) } },
 			series: [{ type: 'bar', itemStyle: { color: c.accent }, data: sorted.map((r) => Math.round(r.spend * 100) / 100) }],
 		} satisfies EChartsOption;
 	})());
