@@ -10,9 +10,44 @@
   const segments = $derived(FUNNEL_ORDER.map((id) => ({ id, count: counts[id] ?? 0 })));
   const total = $derived(segments.reduce((a, s) => a + s.count, 0));
   const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+
+  // Synchronized wrap: a segment's width is proportional to its count, so the
+  // narrowest one wraps "qty · %" to two lines before the others — which reads
+  // as ragged. Instead: if ANY segment can't fit the value on one line, ALL
+  // switch to the stacked qty/% form. Measured (siblings can't coordinate via
+  // CSS); summing intrinsic child widths works in either layout, so no fl/toggle
+  // flicker. ponytail: ~8px fudge covers the "·" separator + gaps.
+  let ribbonEl: HTMLElement | null = $state(null);
+  let stacked = $state(false);
+  function measure() {
+    const el = ribbonEl;
+    if (!el) return;
+    let overflow = false;
+    for (const seg of el.querySelectorAll<HTMLElement>('.seg')) {
+      const inner = seg.querySelector<HTMLElement>('.seg-inner');
+      const q = seg.querySelector<HTMLElement>('.seg-q');
+      const p = seg.querySelector<HTMLElement>('.seg-p');
+      if (!inner || !q || !p) continue;
+      if (q.scrollWidth + p.scrollWidth + 8 > inner.clientWidth + 1) {
+        overflow = true;
+        break;
+      }
+    }
+    stacked = overflow;
+  }
+  $effect(() => {
+    // Re-run when the segment data changes (widths shift with counts).
+    void segments;
+    const el = ribbonEl;
+    if (!el) return;
+    measure();
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
 </script>
 
-<div class="ribbon" role="img" aria-label="Marketing funnel breakdown">
+<div bind:this={ribbonEl} class="ribbon" class:stacked role="img" aria-label="Marketing funnel breakdown">
   {#each segments as s, i (s.id)}
     {@const color = funnelStageColor(s.id)}
     <svelte:element
@@ -29,7 +64,11 @@
     >
       <span class="seg-inner">
         <span class="seg-label">{funnelStageLabel(s.id)}</span>
-        <span class="seg-count">{s.count.toLocaleString()} · {pct(s.count)}%</span>
+        <span class="seg-count">
+          <span class="seg-q">{s.count.toLocaleString()}</span>
+          <span class="seg-sep">·</span>
+          <span class="seg-p">{pct(s.count)}%</span>
+        </span>
       </span>
     </svelte:element>
   {/each}
@@ -98,6 +137,9 @@
     flex-direction: column;
     align-items: center;
     line-height: 1.1;
+    /* Fill the segment so the wrap-measure compares against the real available
+       width (not the shrink-to-content width). */
+    width: 100%;
     min-width: 0;
     text-align: center;
   }
@@ -109,9 +151,26 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* One line by default: "qty · %". When the ribbon is `stacked` (any segment
+     couldn't fit), every segment switches to qty over %. */
   .seg-count {
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0 0.25rem;
+    max-width: 100%;
     font-size: var(--font-size-caption);
     opacity: 0.85;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .ribbon.stacked .seg-count {
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    line-height: 1.05;
+  }
+  .ribbon.stacked .seg-sep {
+    display: none;
   }
 </style>
