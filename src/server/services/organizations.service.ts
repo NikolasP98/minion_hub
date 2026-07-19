@@ -1,10 +1,12 @@
 import { supabaseAdmin } from '$server/supabase';
 import type { LoadCtx } from './types';
+import type { OrgKind } from '$lib/org-kind';
 
 export interface OrganizationEntry {
   id: string;
   name: string;
   slug: string | null;
+  kind: OrgKind;
   /** The user's role WITHIN this organization. */
   role: string;
 }
@@ -33,17 +35,18 @@ export async function loadOrganizationsForUser(
   const admin = supabaseAdmin();
   const { data, error } = await admin
     .from('organization_members')
-    .select('role, organizations(id, name, slug)')
+    .select('role, organizations(id, name, slug, kind)')
     .eq('profile_id', supabaseId);
   if (error || !data) return { organizations: [], activeOrgId };
 
-  type OrgRow = { id: string; name: string; slug: string | null };
+  type OrgRow = { id: string; name: string; slug: string | null; kind: string | null };
   type MemRow = { role: string; organizations: OrgRow | OrgRow[] | null };
   const organizations: OrganizationEntry[] = (data as unknown as MemRow[])
     .map((row) => {
       const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations;
       if (!org) return null;
-      return { id: org.id, name: org.name, slug: org.slug, role: row.role };
+      const kind: OrgKind = org.kind === 'personal' ? 'personal' : 'business';
+      return { id: org.id, name: org.name, slug: org.slug, kind, role: row.role };
     })
     .filter((o): o is OrganizationEntry => o !== null)
     .sort((a, b) => a.name.localeCompare(b.name));

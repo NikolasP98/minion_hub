@@ -21,6 +21,7 @@ import {
 import { ROUTES, SECTION_META, type SectionId, type SectionTone } from "$lib/nav/routes";
 import { resolvePluginIcon } from "$lib/plugins/icon-map";
 import type { PluginUiManifestOccupant } from "$lib/plugins/plugin-types";
+import { isModuleVisibleForKind } from "$lib/org-kind";
 import * as m from "$lib/paraglide/messages";
 
 // lucide-svelte still ships legacy SvelteComponentTyped types; widen for Svelte 5 mixed code.
@@ -321,10 +322,6 @@ function normalizePluginCategory(raw: string | undefined): PluginNavCategory {
  * Customer Support, Tools). Channel plugins are folded into a collapsible
  * Channels subsection under Customer Support. Returns [] when nothing maps.
  */
-// Modules hidden entirely for personal (non-business) orgs — Pulse is their
-// home-turf replacement, so it's never in this set.
-const PERSONAL_HIDDEN_MODULES = new Set(["pos", "stock", "workforce"]);
-
 export function getDynamicPluginsSections(
     entries: PluginUiManifestOccupant[],
     enabledByPluginId: Record<string, boolean> = {},
@@ -348,7 +345,7 @@ export function getDynamicPluginsSections(
         // first segment unless the item overrides it (e.g. /socials -> 'ads').
         const moduleId = item.moduleId ?? item.href.replace(/^\//, "").split("/")[0];
         if (enabledByPluginId[moduleId] === false) continue; // per-org module gate
-        if (orgKind === "personal" && PERSONAL_HIDDEN_MODULES.has(moduleId)) continue;
+        if (!isModuleVisibleForKind(moduleId, orgKind)) continue;
         place(category, item);
     }
     for (const e of entries) {

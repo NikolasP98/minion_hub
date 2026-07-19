@@ -6,10 +6,11 @@
     import { applyOrgAssignedHost } from "$lib/state/features/hosts.svelte";
     import { isAdmin } from "$lib/state/features/user.svelte";
     import { toastSuccess, toastError } from "$lib/state/ui/toast.svelte";
-    import { Building2, Loader2, Check } from "lucide-svelte";
-    import { Button } from '$lib/components/ui';
+    import { Building2, User, Loader2, Check } from "lucide-svelte";
+    import { Button, iconSizes } from '$lib/components/ui';
+    import type { OrgKind } from "$lib/org-kind";
 
-    type OrgEntry = { id: string; name: string; slug: string | null; role: string };
+    type OrgEntry = { id: string; name: string; slug: string | null; role: string; kind?: OrgKind };
 
     // Organizations + active org flow through (app)/+layout.server.ts into
     // page.data (keyed by the resolved active-org id, so it works across auth
@@ -21,13 +22,24 @@
         (page.data as { activeOrgId?: string | null })?.activeOrgId ?? null,
     );
 
-    const currentName = $derived(
-        organizations.find((o) => o.id === activeOrgId)?.name ??
-            organizations[0]?.name ??
-            "Organization",
+    const activeOrg = $derived(
+        organizations.find((o) => o.id === activeOrgId) ?? organizations[0],
     );
+    const currentName = $derived(activeOrg?.name ?? "Organization");
+    const activeKind = $derived<OrgKind>(activeOrg?.kind ?? "business");
     // Only admins with more than one org can switch; everyone else sees the name.
     const canSwitch = $derived(isAdmin.value && organizations.length > 1);
+    // Business orgs first, then personal; stable secondary sort by name — the
+    // two classes read as distinct blocks (cosmetic with few orgs, pays off as
+    // the list grows).
+    const sortedOrganizations = $derived(
+        [...organizations].sort((a, b) => {
+            const ak = a.kind ?? "business";
+            const bk = b.kind ?? "business";
+            if (ak !== bk) return ak === "business" ? -1 : 1;
+            return a.name.localeCompare(b.name);
+        }),
+    );
 
     let open = $state(false);
     // The org id currently being switched to (non-null = a switch is in flight).
@@ -99,9 +111,11 @@
             title={switchingTo ? "Switching organization…" : currentName}
         >
             {#if switchingTo}
-                <Loader2 size={12} class="shrink-0 animate-spin opacity-80" />
+                <Loader2 size={iconSizes.xs} class="shrink-0 animate-spin opacity-80" />
+            {:else if activeKind === "personal"}
+                <User size={iconSizes.xs} class="shrink-0 opacity-70" aria-hidden="true" />
             {:else}
-                <Building2 size={12} class="shrink-0 opacity-70" />
+                <Building2 size={iconSizes.xs} class="shrink-0 opacity-70" aria-hidden="true" />
             {/if}
             <span class="flex-1 overflow-hidden text-ellipsis text-left">{currentName}</span>
             {#if canSwitch && !switchingTo}
@@ -117,7 +131,7 @@
                 onclick={(e) => e.stopPropagation()}
                 onkeydown={(e) => e.stopPropagation()}
             >
-                {#each organizations as o (o.id)}
+                {#each sortedOrganizations as o (o.id)}
                     <div
                         class="!h-auto flex items-center gap-2 py-[var(--space-2)] px-[var(--space-4)] cursor-pointer text-[length:var(--font-size-body)] text-foreground transition-colors hover:bg-bg3 [&>span]:w-full [&>span]:justify-start {switchingTo
                             ? 'pointer-events-none opacity-60'
@@ -127,11 +141,21 @@
                         onclick={() => select(o.id)}
                         onkeydown={(e) => e.key === "Enter" && select(o.id)}
                     >
-                        <span class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{o.name}</span>
+                        {#if (o.kind ?? "business") === "personal"}
+                            <User size={iconSizes.xs} class="shrink-0 opacity-70" aria-hidden="true" />
+                        {:else}
+                            <Building2 size={iconSizes.xs} class="shrink-0 opacity-70" aria-hidden="true" />
+                        {/if}
+                        <span class="flex-1 min-w-0 flex items-center gap-1.5">
+                            <span class="overflow-hidden text-ellipsis whitespace-nowrap">{o.name}</span>
+                            {#if (o.kind ?? "business") === "personal"}
+                                <span class="text-muted-foreground text-[length:var(--font-size-telemetry)] shrink-0">Personal</span>
+                            {/if}
+                        </span>
                         {#if switchingTo === o.id}
-                            <Loader2 size={12} class="text-accent shrink-0 animate-spin" />
+                            <Loader2 size={iconSizes.xs} class="text-accent shrink-0 animate-spin" />
                         {:else if o.id === activeOrgId}
-                            <Check size={12} class="text-accent shrink-0" />
+                            <Check size={iconSizes.xs} class="text-accent shrink-0" />
                         {/if}
                     </div>
                 {/each}
