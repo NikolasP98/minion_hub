@@ -156,6 +156,30 @@ function inferProperties(obj: Record<string, unknown>): Record<string, JsonSchem
 
 // ─── Actions ────────────────────────────────────────────────────────────────
 
+/** Fetch ONLY the snapshot hash that `config.patch` needs as its baseHash.
+ *
+ * `loadConfig` also asks for `config.schema`, which runs `loadSchemaWithPlugins()`
+ * on the gateway and regularly blows its 8s deadline. Both calls share one socket,
+ * so a slow schema queues `config.get` behind it and makes IT time out too — which
+ * is what made the setup wizard fail with "Could not load config" while the gateway
+ * was demonstrably healthy. Callers that only need a baseHash must not pay for the
+ * schema.
+ */
+export async function loadBaseHash(): Promise<string | null> {
+  try {
+    const snapshot = await withTimeout(
+      sendRequest('config.get', {}) as Promise<ConfigFileSnapshot>,
+      10000,
+    );
+    configState.baseHash = snapshot.hash ?? null;
+    if (configState.baseHash) configState.loadError = null;
+    return configState.baseHash;
+  } catch (e) {
+    configState.loadError = (e as Error).message ?? 'Failed to load config';
+    return null;
+  }
+}
+
 export async function loadConfig(): Promise<void> {
   configState.loading = true;
   configState.loadError = null;

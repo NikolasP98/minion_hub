@@ -2,7 +2,7 @@
     import type { ChannelType } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
     import { sendRequest } from '$lib/services/gateway.svelte';
-    import { configState, loadConfig } from '$lib/state/config/config.svelte';
+    import { configState, loadBaseHash } from '$lib/state/config/config.svelte';
     import { conn } from '$lib/state/gateway/connection.svelte';
     import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
@@ -117,23 +117,23 @@
         return { replies: 'bound', allowFrom: [] }; // 'pairing' — closed until a sender pairs
     }
 
-    /** config.patch needs a baseHash from config.get, which rides the gateway WS.
-     *  That socket is legitimately down for a few seconds after any gateway restart —
-     *  including the one a freshly paired account triggers — so a single failure here
-     *  is usually a dropped socket, not a real error. Retry once before giving up. */
+    /** config.patch needs a baseHash — and ONLY a baseHash, so this asks for
+     *  config.get alone (loadBaseHash). Going through loadConfig() also fired
+     *  config.schema, whose gateway-side work regularly exceeds 8s and queued
+     *  config.get behind it on the same socket until it timed out too.
+     *  The retry covers the other real case: the socket is down for a few seconds
+     *  after any gateway restart, including the one a fresh pairing triggers. */
     async function ensureBaseHash(): Promise<boolean> {
         if (configState.baseHash) return true;
-        await loadConfig();
-        if (configState.baseHash) return true;
+        if (await loadBaseHash()) return true;
         await new Promise((r) => setTimeout(r, 2000));
-        await loadConfig();
-        return !!configState.baseHash;
+        return !!(await loadBaseHash());
     }
 
     async function commit() {
         if (!verified) return;
         if (!(await ensureBaseHash())) {
-            // loadConfig() swallows the cause into configState.loadError — surface it
+            // loadBaseHash() stores the cause in configState.loadError — surface it
             // instead of the generic string, which sent us chasing the wrong bug twice.
             toastError(
                 'Save failed',
@@ -192,12 +192,12 @@
                 note: `Create ${channelType}:${accountId} via Hub wizard`,
             })) as { reloadMode?: string } | undefined;
             void result; // reloadMode is informational — restart happens in background; user still advances to Step 3
-            await loadConfig();
+            await loadBaseHash(); // refresh baseHash for any follow-up patch (schema not needed)
             committedChannelId = channelId;
             toastSuccess(`Created ${CHANNEL_TYPE_LABELS[channelType]}: ${label}`);
             step = mode.steps.includes('assign') ? 'assign' : 'done';
         } catch (e) {
-            try { await loadConfig(); } catch { /* refresh baseHash for retry */ }
+            await loadBaseHash(); // refresh baseHash so a retry isn't stale
             toastError('Save failed', (e as Error).message);
         }
     }
