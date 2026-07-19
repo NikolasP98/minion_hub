@@ -73,6 +73,22 @@
       accessor: (p) => p.revenue,
       exportValue: (p) => Number(p.revenue),
     },
+    {
+      key: 'cost',
+      label: m.fin_col_cost(),
+      align: 'right',
+      custom: true,
+      accessor: (p) => p.cost,
+      exportValue: (p) => p.cost ?? '',
+    },
+    {
+      key: 'margin',
+      label: m.fin_col_margin(),
+      align: 'right',
+      custom: true,
+      accessor: (p) => p.margin,
+      exportValue: (p) => p.margin ?? '',
+    },
   ];
 
   // ── Import from billing ──────────────────────────────────────────────────
@@ -166,12 +182,49 @@
         <span class={p.active ? 'badge-active' : 'badge-inactive'}>{p.active ? '✓' : '✗'}</span>
       {:else if col.key === 'revenue'}
         <span class="tabular-nums font-medium">{formatMoney(p.revenue)}</span>
+      {:else if col.key === 'cost'}
+        {#if p.costMasked}
+          <span class="muted">•••</span>
+        {:else if p.cost == null}
+          <span class="muted">—</span>
+        {:else}
+          <span class="tabular-nums" title={p.partial ? m.fin_cost_partial_hint() : undefined}>
+            {formatMoney(p.cost)}{#if p.partial}<span class="partial-mark">*</span>{/if}
+          </span>
+        {/if}
+      {:else if col.key === 'margin'}
+        {#if p.costMasked}
+          <span class="muted">•••</span>
+        {:else if p.margin == null}
+          <span class="muted">—</span>
+        {:else}
+          <span class="tabular-nums font-medium" class:margin-pos={p.margin >= 0} class:margin-neg={p.margin < 0}>
+            {formatMoney(p.margin)}{#if p.marginPct != null}<span class="t-caption pct">{p.marginPct}%</span>{/if}
+          </span>
+        {/if}
       {/if}
     {/snippet}
   </DataTable>
 </PageShell>
 
 <style>
+  .muted {
+    color: var(--color-text-tertiary);
+  }
+  .margin-pos {
+    color: var(--color-success-fg);
+  }
+  .margin-neg {
+    color: var(--color-danger-fg);
+  }
+  .partial-mark {
+    color: var(--color-warning-fg);
+    margin-left: var(--space-0-5);
+  }
+  .pct {
+    color: var(--color-text-tertiary);
+    margin-left: var(--space-1);
+  }
   .badge-active {
     display: inline-block;
     font-size: var(--font-size-caption, 12px);
