@@ -17,9 +17,13 @@
         meta: { name: m.shortcuts_openHotkeyName(), description: m.shortcuts_openHotkeyDesc() },
     });
 
+    // `allow`: Escape is intentionally owned by several overlays at once, kept
+    // mutually exclusive by `enabled`. That's a soft disable — the registration
+    // stays in the manager — so without this the layer warns on every load.
     createHotkey('Escape', () => { open = false; }, () => ({
         enabled: open,
         stopPropagation: false,
+        conflictBehavior: 'allow',
     }));
 
     const registrations = getHotkeyRegistrations();

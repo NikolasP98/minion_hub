@@ -361,13 +361,10 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // Fence: a client that's been replaced (cutover, or an eager recreate)
       // must never mutate shared event-sequence/handler state.
       if (getClient() !== client) return;
-      const seq = typeof frame.seq === 'number' ? frame.seq : null;
-      if (seq !== null) {
-        if (gw.lastSeq !== null && seq > gw.lastSeq + 1) {
-          console.warn('[hub] event gap: expected', gw.lastSeq + 1, 'got', seq);
-        }
-        gw.lastSeq = seq;
-      }
+      // `seq` is a broadcaster-global counter stamped BEFORE the gateway's
+      // per-client scope filter, so a skipped seq means "not for us", not
+      // "dropped". Track it for debugging; never warn on gaps.
+      if (typeof frame.seq === 'number') gw.lastSeq = frame.seq;
       handleEvent(frame as unknown as Record<string, unknown>);
     },
 

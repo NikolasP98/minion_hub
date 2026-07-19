@@ -66,10 +66,12 @@
         { meta: { name: m.shortcuts_assistantName(), description: m.shortcuts_assistantDesc() } },
     );
 
-    // Escape closes only while open; keep it propagating to other overlays.
+    // Escape closes only while open; keep it propagating to other overlays
+    // (`allow` = shared ownership is intended; see ShortcutsOverlay).
     createHotkey('Escape', () => closeAssistant(), () => ({
         enabled: assistant.open,
         stopPropagation: false,
+        conflictBehavior: 'allow',
     }));
 
     // Update scope reactively from current route + selected agent

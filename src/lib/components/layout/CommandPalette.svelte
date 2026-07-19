@@ -78,6 +78,7 @@
     createHotkey('Escape', () => closePalette(), () => ({
         enabled: palette.open,
         stopPropagation: false,
+        conflictBehavior: 'allow',
     }));
     createHotkey(
         'ArrowDown',

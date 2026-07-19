@@ -18,6 +18,12 @@
  * override per-binding with { ignoreInputs }. Bindings clean up on component
  * unmount; must be called during component init (top of <script>), like $effect.
  *
+ * Overlays that each own the SAME key (Escape: CommandPalette, FloatingAssistant,
+ * ShortcutsOverlay) stay mutually exclusive via `enabled` — but that's a soft
+ * disable, the registration stays in the manager, so the engine warns about the
+ * conflict. Pass `conflictBehavior: 'allow'` on those. Never `'replace'`: it
+ * unregisters the other overlays' handler.
+ *
  * `meta: { name, description }` on a binding feeds getHotkeyRegistrations(),
  * the source for the `?` shortcuts cheat-sheet (`ShortcutsOverlay.svelte`).
  */
