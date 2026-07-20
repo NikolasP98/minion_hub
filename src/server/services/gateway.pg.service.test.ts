@@ -35,10 +35,13 @@ vi.mock('@minion-stack/db/pg', () => ({
   userGateway: { profileId: 'profileId', gatewayId: 'gatewayId', isDefault: 'isDefault' },
 }));
 
-// ── mock drizzle-orm (eq, and) ───────────────────────────────────────────────
+// ── mock drizzle-orm (eq, and, or, sql, desc) ────────────────────────────────
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((a: unknown, b: unknown) => ({ _eq: [a, b] })),
   and: vi.fn((...args: unknown[]) => ({ _and: args })),
+  or: vi.fn((...args: unknown[]) => ({ _or: args })),
+  sql: vi.fn(() => ({ _sql: true })),
+  desc: vi.fn((col: unknown) => ({ _desc: col })),
 }));
 
 beforeEach(() => {
@@ -50,6 +53,8 @@ beforeEach(() => {
     orderBy: vi.fn().mockResolvedValue([]),
     innerJoin: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({
+        // getUserGatewayCredentials orders before limiting (deterministic gateway pick)
+        orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
         limit: vi.fn().mockResolvedValue([]),
       }),
     }),
@@ -73,9 +78,11 @@ describe('gateway.pg.service', () => {
     selectFrom.mockReturnValueOnce({
       innerJoin: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([
-            { url: 'ws://gw', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' },
-          ]),
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              { url: 'ws://gw', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' },
+            ]),
+          }),
         }),
       }),
     });
@@ -90,9 +97,11 @@ describe('gateway.pg.service', () => {
     selectFrom.mockReturnValueOnce({
       innerJoin: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([
-            { url: 'ws://gw', tokenCiphertext: 'rawtoken', tokenIv: '' },
-          ]),
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              { url: 'ws://gw', tokenCiphertext: 'rawtoken', tokenIv: '' },
+            ]),
+          }),
         }),
       }),
     });
