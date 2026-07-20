@@ -60,9 +60,18 @@ export function rollupFlatCost(
 }
 
 /**
- * Cost per fin_product, keyed by id. Products with no consumption mapping are
- * absent from the map (caller treats missing as uncostable). Materials are
- * valued at the org's DEFAULT warehouse rate (same choice as accruals).
+ * Cost per fin_product, keyed by id. Products with neither a consumption
+ * mapping nor a 1:1 stock item are absent from the map (caller treats missing
+ * as uncostable). Materials are valued at the org's DEFAULT warehouse rate
+ * (same choice as accruals).
+ *
+ * Mirrors BOTH paths `resolveIssueLines` (pos.service) uses, so anything the
+ * POS can issue stock for can also be costed:
+ *   - service-kind → `stk_consumption` recipe (qty × qtyPerUnit fan-out)
+ *   - product-kind → 1:1 `stk_items.fin_product_id` bridge (qty 1 of itself),
+ *     i.e. a physical good sold standalone (a mask). Reading only the recipe
+ *     table would leave these showing "no cost" despite a known valuation.
+ * A product on both paths keeps its explicit recipe (the bridge is a fallback).
  */
 export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Promise<Map<string, ProductCost>> {
   const out = new Map<string, ProductCost>();
@@ -92,6 +101,19 @@ export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Pr
         unitsPerStockUom: r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom),
       });
       byProduct.set(r.finProductId, list);
+    }
+
+    // 1:1 bridge fallback — only for products with no explicit recipe.
+    const bridged = await tx
+      .select({ id: stkItems.id, finProductId: stkItems.finProductId, unitsPerStockUom: stkItems.unitsPerStockUom })
+      .from(stkItems)
+      .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.finProductId, finProductIds)));
+    for (const b of bridged) {
+      if (!b.finProductId || byProduct.has(b.finProductId)) continue;
+      itemIds.add(b.id);
+      byProduct.set(b.finProductId, [
+        { itemId: b.id, qtyPerUnit: 1, unitsPerStockUom: b.unitsPerStockUom == null ? null : Number(b.unitsPerStockUom) },
+      ]);
     }
 
     const rateByItem = new Map<string, number>();
