@@ -44,6 +44,27 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn((col: unknown) => ({ _desc: col })),
 }));
 
+/** `select().from(gateway).orderBy(...)` — the system-credential read. It is
+ *  ORDERED now (channel → created_at → id); an unordered heap scan let an
+ *  unattended cron pick the DEV gateway. */
+const systemOrderBy = vi.fn();
+function systemRows(rows: unknown[]) {
+  systemOrderBy.mockResolvedValue(rows);
+  return { orderBy: systemOrderBy };
+}
+
+/** `…innerJoin().where().orderBy().limit()` — the per-user read, with the
+ *  orderBy args captured so the TOTAL order can be asserted. */
+const userOrderBy = vi.fn();
+function userRows(rows: unknown[]) {
+  userOrderBy.mockReturnValue({ limit: vi.fn().mockResolvedValue(rows) });
+  return {
+    innerJoin: vi
+      .fn()
+      .mockReturnValue({ where: vi.fn().mockReturnValue({ orderBy: userOrderBy }) }),
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   // Default chain for insert().values().returning()
@@ -129,7 +150,7 @@ describe('gateway.pg.service', () => {
   test('getSystemGatewayCredentials picks preferredUrl and decrypts', async () => {
     const { getSystemGatewayCredentials } = await import('./gateway.pg.service');
     selectFrom.mockReturnValueOnce(
-      Promise.resolve([
+      systemRows([
         { url: 'ws://other', tokenCiphertext: 'enc:nope', tokenIv: 'iv1' },
         { url: 'ws://primary', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' },
       ]),
@@ -142,7 +163,7 @@ describe('gateway.pg.service', () => {
   test('getSystemGatewayCredentials returns plaintext token when token_iv empty', async () => {
     const { getSystemGatewayCredentials } = await import('./gateway.pg.service');
     selectFrom.mockReturnValueOnce(
-      Promise.resolve([{ url: 'ws://gw', tokenCiphertext: 'rawtoken', tokenIv: '' }]),
+      systemRows([{ url: 'ws://gw', tokenCiphertext: 'rawtoken', tokenIv: '' }]),
     );
     const cred = await getSystemGatewayCredentials();
     expect(cred?.token).toBe('rawtoken');
@@ -150,9 +171,49 @@ describe('gateway.pg.service', () => {
 
   test('getSystemGatewayCredentials returns null when no gateways', async () => {
     const { getSystemGatewayCredentials } = await import('./gateway.pg.service');
-    selectFrom.mockReturnValueOnce(Promise.resolve([]));
+    selectFrom.mockReturnValueOnce(systemRows([]));
     const cred = await getSystemGatewayCredentials();
     expect(cred).toBeNull();
+  });
+
+  /**
+   * Regression: the fallback per-user pick was `order by created_at desc` and
+   * nothing else. `user_gateway` links every user to every row and the DEV rows
+   * are the NEWEST, so that ordering handed the fallback a DEV gateway; and two
+   * rows inserted in one transaction share a `created_at`, so even within a
+   * channel the winner fell to Postgres heap order. The order must be TOTAL:
+   * preferred channel → created_at → id.
+   */
+  test('getUserGatewayCredentials orders channel-first, then created_at, then id', async () => {
+    const { getUserGatewayCredentials } = await import('./gateway.pg.service');
+    selectFrom.mockReturnValueOnce(
+      userRows([{ url: 'ws://gw', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' }]),
+    );
+    await getUserGatewayCredentials('p1');
+    const args = userOrderBy.mock.calls[0];
+    expect(args).toHaveLength(3);
+    expect(args[0]).toEqual({ _sql: true }); // channelFirst(channel)
+    expect(args[1]).toEqual({ _desc: 'createdAt' });
+    expect(args[2]).toBe('id'); // the tiebreak that makes it total
+  });
+
+  test('getUserGatewayCredentials defaults to the prd channel, never dev', async () => {
+    const { sql } = await import('drizzle-orm');
+    const { getUserGatewayCredentials } = await import('./gateway.pg.service');
+    selectFrom.mockReturnValueOnce(
+      userRows([{ url: 'ws://gw', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' }]),
+    );
+    await getUserGatewayCredentials('p1');
+    // channelFirst() interpolates the preferred channel into the template.
+    expect(vi.mocked(sql).mock.calls.flat(2)).toContain('prd');
+    expect(vi.mocked(sql).mock.calls.flat(2)).not.toContain('dev');
+  });
+
+  test('getSystemGatewayCredentials orders instead of trusting heap order', async () => {
+    const { getSystemGatewayCredentials } = await import('./gateway.pg.service');
+    selectFrom.mockReturnValueOnce(systemRows([]));
+    await getSystemGatewayCredentials();
+    expect(systemOrderBy.mock.calls[0]).toEqual([{ _sql: true }, 'createdAt', 'id']);
   });
 
   test('deleteGateway calls delete with eq', async () => {

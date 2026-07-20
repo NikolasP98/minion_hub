@@ -15,6 +15,19 @@ const LAST_HOST_KEY = 'minion-dash-last-host';
  *  server-resolved `channels` list on every load, so losing a channel silently
  *  drops the pick instead of black-holing the connection. */
 const BUILD_CHANNEL_KEY = 'minion-dash-build-channel';
+/** Server-visible mirror of the same pick (`$server/gateway-channel.ts`).
+ *  sessionStorage never reaches the server, and a server that doesn't know the
+ *  channel resolves its own instance — that independent choice is exactly the
+ *  client/server split that caused the all-day intermittency. No Max-Age, so it
+ *  dies with the browser session like the sessionStorage key it mirrors. */
+const BUILD_CHANNEL_COOKIE = 'minion-build-channel';
+
+function writeChannelCookie(channel: BuildChannel | null) {
+  if (typeof document === 'undefined') return;
+  document.cookie = channel
+    ? `${BUILD_CHANNEL_COOKIE}=${channel}; path=/; SameSite=Lax`
+    : `${BUILD_CHANNEL_COOKIE}=; path=/; Max-Age=0; SameSite=Lax`;
+}
 
 /**
  * Hosts now flow through the canonical (app)/+layout.server.ts bundle
@@ -187,6 +200,7 @@ export function selectChannel(channel: BuildChannel): string | null {
   const target = pageChannels().find((c) => c.channel === channel);
   if (!target) return null;
   local.activeChannel = channel;
+  writeChannelCookie(channel);
   if (typeof sessionStorage !== 'undefined') {
     sessionStorage.setItem(BUILD_CHANNEL_KEY, channel);
   }
@@ -263,6 +277,7 @@ export function loadHosts(): void {
       sessionStorage.removeItem(BUILD_CHANNEL_KEY);
     }
     local.activeChannel = chosen.channel;
+    writeChannelCookie(chosen.channel);
     local.activeHostId = chosen.serverId;
     return;
   }
@@ -295,10 +310,12 @@ export function applyOrgAssignedHost(): boolean {
   // have that channel (FACES is prd-only). Drop it and take the new org's
   // default; keeping it is how an org gets pinned to a channel it lost.
   if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(BUILD_CHANNEL_KEY);
+  writeChannelCookie(null);
   const channels = pageChannels();
   if (channels.length > 0) {
     const chosen = channels.find((c) => c.channel === pageDefaultChannel()) ?? channels[0];
     local.activeChannel = chosen.channel;
+    writeChannelCookie(chosen.channel);
     if (chosen.serverId === local.activeHostId) return false;
     local.activeHostId = chosen.serverId;
     return true;

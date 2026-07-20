@@ -29,6 +29,8 @@ import {
   proxyResponseHeaders,
   safeClientAddress,
 } from '$server/http/proxy-headers';
+import { BUILD_CHANNEL_COOKIE, runWithBuildChannel } from '$server/gateway-channel';
+import { isGatewayChannel } from '$server/services/gateway.pg.service';
 
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
@@ -135,6 +137,25 @@ const cloudPasskeyHandle: Handle = async ({ event, resolve }) => {
 };
 
 const UNPROTECTED_PREFIXES = ['/login', '/api/', '/invite/', '/.well-known/', '/auth/', '/book'];
+
+/**
+ * Carry the caller's selected build channel for the whole request (spec §D4).
+ *
+ * The browser mirrors its sessionStorage pick into a session cookie; everything
+ * downstream — layout loads, API handlers, `gatewayCallAsUser` — reads it via
+ * `currentBuildChannel()` so the browser's WS and the server's RPC resolve to
+ * the SAME instance. Them choosing independently is what produced the all-day
+ * intermittency.
+ *
+ * Anything unrecognised is `'prd'`. There is no input that yields `'dev'` other
+ * than the literal string, and an org without a dev row still cannot reach one.
+ */
+const buildChannelHandle: Handle = ({ event, resolve }) => {
+  const raw = event.cookies.get(BUILD_CHANNEL_COOKIE);
+  const channel = isGatewayChannel(raw) ? raw : 'prd';
+  event.locals.buildChannel = channel;
+  return runWithBuildChannel(channel, () => resolve(event));
+};
 
 const appHandle: Handle = async ({ event, resolve }) => {
   // Identity resolution (provider selection + tenant context) lives in
@@ -407,6 +428,7 @@ export const handle = sequence(
   cloudPasskeyHandle,
   posthogProxyHandle,
   wellKnownHandle,
+  buildChannelHandle,
   appHandle,
   workforceIdentityHandle,
 );

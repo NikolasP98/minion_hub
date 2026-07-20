@@ -78,6 +78,24 @@ export function isGatewayChannel(v: unknown): v is GatewayChannel {
  */
 const channelExpr = sql<GatewayChannel>`coalesce(to_jsonb(${gateway}) ->> 'channel', 'prd')`;
 
+/**
+ * TOTAL order for any multi-row gateway pick: preferred channel, then oldest,
+ * then id. Every clause matters.
+ *
+ * `created_at` alone is NOT a total order — PINONITE's dev and prd rows were
+ * inserted in the same transaction and therefore share a `created_at` to the
+ * microsecond, so the tiebreak fell to Postgres heap order and a server-side
+ * RPC could land on the protopi DEV gateway instead of netcup PRD. `id` is the
+ * primary key, so appending it makes the order total and the pick reproducible.
+ *
+ * The channel clause comes FIRST because a wrong channel is a worse outcome
+ * than a wrong instance: `preferred` defaults to `'prd'` everywhere, so the
+ * only way to reach `dev` is to ask for it explicitly.
+ */
+function channelFirst(preferred: GatewayChannel) {
+  return sql`(${channelExpr} = ${preferred}) desc`;
+}
+
 export interface GatewayInput {
   name: string;
   url: string;
@@ -191,14 +209,18 @@ export async function listGatewayHostsForUser(
     channel: channelExpr,
   };
   const rows = isAdmin
-    ? await db.select(cols).from(gateway).where(eq(gateway.orgId, orgId)).orderBy(gateway.createdAt)
+    ? await db
+        .select(cols)
+        .from(gateway)
+        .where(eq(gateway.orgId, orgId))
+        .orderBy(gateway.createdAt, gateway.id)
     : profileId
       ? await db
           .select(cols)
           .from(gateway)
           .innerJoin(userGateway, eq(userGateway.gatewayId, gateway.id))
           .where(and(eq(userGateway.profileId, profileId), eq(gateway.orgId, orgId)))
-          .orderBy(gateway.createdAt)
+          .orderBy(gateway.createdAt, gateway.id)
       : [];
   return rows.map((r) => ({
     id: r.legacyServerId ?? r.id,
@@ -245,7 +267,7 @@ export async function listChannelCandidates(
     })
     .from(gateway)
     .where(eq(gateway.orgId, orgId))
-    .orderBy(gateway.createdAt);
+    .orderBy(gateway.createdAt, gateway.id);
   return rows
     .filter((r) => (isGatewayChannel(r.channel) ? r.channel : 'prd') === channel)
     .filter((r) => r.tokenCiphertext)
@@ -347,13 +369,16 @@ export async function getGatewayCredentialsById(
  * server-side RPCs fail intermittently while the browser (which uses the
  * explicitly selected host) worked fine. Ordering makes selection deterministic.
  *
- * Newest-first is a stopgap, not a real answer: the correct source of truth is
- * the acting org's assigned gateway (tried first in gateway-rpc) or the user's
- * selected host, which this function has no access to. Thread that through and
- * this heuristic can go.
+ * This is the FALLBACK path — the acting org's channel lease (tried first in
+ * gateway-rpc) is the real source of truth. It still has to be channel-aware:
+ * `user_gateway` links every user to every row, and the dev rows are the
+ * NEWEST, so plain newest-first handed the fallback a DEV gateway. `channel`
+ * defaults to `'prd'`, and the order is total (channel → created_at → id) so
+ * rows sharing a `created_at` cannot flip between requests.
  */
 export async function getUserGatewayCredentials(
   profileId: string,
+  channel: GatewayChannel = 'prd',
 ): Promise<{ url: string; token: string } | null> {
   const db = getCoreDb();
   const rows = await db
@@ -365,7 +390,7 @@ export async function getUserGatewayCredentials(
     .from(userGateway)
     .innerJoin(gateway, eq(userGateway.gatewayId, gateway.id))
     .where(eq(userGateway.profileId, profileId))
-    .orderBy(desc(gateway.createdAt))
+    .orderBy(channelFirst(channel), desc(gateway.createdAt), gateway.id)
     .limit(1);
   if (!rows.length) return null;
   const { url, tokenCiphertext, tokenIv } = rows[0];
@@ -386,9 +411,11 @@ export async function getUserGatewayCredentials(
  * fallback. `token_iv=''` means the ciphertext IS the plaintext token (legacy
  * unencrypted row).
  *
- * Only token-bearing rows are eligible: the query has no ORDER BY, so `rows[0]`
- * is non-deterministic heap order — a tokenless row (e.g. a `local_dev` entry)
- * could otherwise win and return null, silently breaking the reminders cron.
+ * Only token-bearing rows are eligible: a tokenless row (e.g. a `local_dev`
+ * entry) could otherwise win and return null, silently breaking the reminders
+ * cron. The rows are ordered `prd → created_at → id`: unordered heap order let
+ * an unattended cron pick the DEV gateway, and `created_at` ties are real (the
+ * dev/prd rows for an org were inserted in one transaction).
  */
 export async function getSystemGatewayCredentials(
   preferredUrl?: string,
@@ -399,7 +426,8 @@ export async function getSystemGatewayCredentials(
       tokenCiphertext: gateway.tokenCiphertext,
       tokenIv: gateway.tokenIv,
     })
-    .from(gateway);
+    .from(gateway)
+    .orderBy(channelFirst('prd'), gateway.createdAt, gateway.id);
   const tokened = rows.filter((r) => r.tokenCiphertext);
   if (!tokened.length) return null;
   const row = (preferredUrl && tokened.find((r) => r.url === preferredUrl)) || tokened[0];
@@ -408,37 +436,20 @@ export async function getSystemGatewayCredentials(
 }
 
 /**
- * Per-org gateway assignment lookup (per-org volume tenancy spec §3.4).
+ * Per-org gateway credentials used to live here as
+ * `getOrgAssignedGatewayCredentials(orgId)` — a channel-BLIND `order by
+ * created_at` + "first row with a token". Once every switchable org had both a
+ * dev and a prd row it became a coin flip: PINONITE's two rows were inserted in
+ * the same transaction, so their `created_at` tie let a server-side RPC resolve
+ * to the protopi DEV gateway while the browser sat on netcup PRD — the same
+ * client/server split that caused the all-day intermittency.
  *
- * `gateway.org_id` here is a mutable ASSIGNMENT key — "this instance currently
- * serves org X's volume" — a lease read-model, not ownership. (Its other,
- * pre-existing use is metrics-ingest tenant resolution.) Null = shared/default
- * pool. Phase 2 moves assignment into paperclip environment leases and this
- * column becomes a projection of the lease.
+ * It is deleted, not patched. `(org, channel)` has exactly ONE authority now:
+ * `resolveOrgChannelCredentials` in `gateway-lease.service.ts` (spec §D4).
  *
- * Returns url + decrypted token of the token-bearing gateway currently
- * assigned to the org, or null when the org has no assignment — callers MUST
- * fall through to the existing user/system/env chain (byte-identical old
- * behavior when no rows are assigned). `token_iv=''` means the ciphertext IS
- * the plaintext token (legacy unencrypted row).
+ * (This file cannot import the lease service — the lease service imports
+ * `listChannelCandidates` from here.)
  */
-export async function getOrgAssignedGatewayCredentials(
-  orgId: string,
-): Promise<{ url: string; token: string } | null> {
-  const rows = await getCoreDb()
-    .select({
-      url: gateway.url,
-      tokenCiphertext: gateway.tokenCiphertext,
-      tokenIv: gateway.tokenIv,
-    })
-    .from(gateway)
-    .where(eq(gateway.orgId, orgId))
-    .orderBy(gateway.createdAt);
-  const row = rows.find((r) => r.tokenCiphertext);
-  if (!row) return null;
-  const token = row.tokenIv ? decrypt(row.tokenCiphertext, row.tokenIv) : row.tokenCiphertext;
-  return { url: row.url, token };
-}
 
 /**
  * True if the profile is linked (via `user_gateway`) to the gateway behind the
@@ -494,7 +505,7 @@ export async function ensureDefaultGatewayForUser(
       .select({ id: gateway.id })
       .from(gateway)
       .where(eq(gateway.orgId, orgId))
-      .orderBy(gateway.createdAt)
+      .orderBy(channelFirst('prd'), gateway.createdAt, gateway.id)
       .limit(1);
     if (assigned) {
       await db
@@ -512,7 +523,7 @@ export async function ensureDefaultGatewayForUser(
     .select({ id: gateway.id })
     .from(gateway)
     .where(sql`${gateway.tokenCiphertext} <> ''`)
-    .orderBy(gateway.createdAt)
+    .orderBy(channelFirst('prd'), gateway.createdAt, gateway.id)
     .limit(1);
   if (!oldest) return;
 

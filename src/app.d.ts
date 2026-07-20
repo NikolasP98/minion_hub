@@ -23,6 +23,11 @@ declare global {
       // always-true Supabase case.
       session?: { activeOrganizationId?: string | null };
       orgId?: string;
+      /** Build channel this request selected (spec §D4). Set by
+       * buildChannelHandle from the client's cookie; 'prd' unless explicitly
+       * 'dev'. Read it directly, or `currentBuildChannel()` where locals
+       * aren't in reach. */
+      buildChannel?: 'dev' | 'prd';
       tenantCtx?: TenantContext;
       // serverId is set for metrics Bearer-token auth
       serverId?: string;

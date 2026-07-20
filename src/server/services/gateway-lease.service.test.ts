@@ -131,10 +131,67 @@ describe('resolveChannelEndpoint — lease is authority', () => {
   });
 });
 
+/**
+ * The regression this closes. `getOrgAssignedGatewayCredentials(orgId)` had no
+ * notion of channel: it read every row for the org `order by created_at` and
+ * took the first one carrying a token. Once PINONITE got a dev row and a prd
+ * row IN THE SAME TRANSACTION their `created_at` tied, the tiebreak was
+ * Postgres heap order, and a server-side RPC could resolve to the protopi DEV
+ * gateway while the browser sat on netcup PRD.
+ *
+ * `resolveOrgChannelCredentials` resolves for an EXPLICIT channel through the
+ * same lease the browser's endpoint comes from, so a tie can no longer decide
+ * which gateway a request hits.
+ */
+describe('resolveOrgChannelCredentials — a tie must not pick the gateway', () => {
+  /** Both rows created at the same instant; only `channel` tells them apart. */
+  const DEV = { ...A, name: 'protopi-dev', url: 'wss://protopi' };
+  const PRD = { ...B, name: 'netcup-prd', url: 'wss://netcup' };
+  const byChannel = (_org: string, channel: string) => [channel === 'dev' ? DEV : PRD];
+
+  it('resolves prd to the PRD instance, never the dev one', async () => {
+    candidates.mockImplementation(byChannel);
+    results = [[], [{ gateway_id: PRD.gatewayId }]];
+    const { resolveOrgChannelCredentials } = await import('./gateway-lease.service');
+    expect(await resolveOrgChannelCredentials(ORG, 'prd')).toEqual({
+      url: 'wss://netcup',
+      token: 't',
+    });
+  });
+
+  it('is stable across repeated calls (no arbitrary tiebreak left)', async () => {
+    candidates.mockImplementation(byChannel);
+    const { resolveOrgChannelCredentials } = await import('./gateway-lease.service');
+    const urls: (string | undefined)[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      results = [[], [{ gateway_id: PRD.gatewayId }]];
+      urls.push((await resolveOrgChannelCredentials(ORG, 'prd'))?.url);
+    }
+    expect(urls).toEqual(['wss://netcup', 'wss://netcup', 'wss://netcup']);
+  });
+
+  it('reaches dev ONLY when dev is asked for explicitly', async () => {
+    candidates.mockImplementation(byChannel);
+    results = [[], [{ gateway_id: DEV.gatewayId }]];
+    const { resolveOrgChannelCredentials } = await import('./gateway-lease.service');
+    expect((await resolveOrgChannelCredentials(ORG, 'dev'))?.url).toBe('wss://protopi');
+  });
+
+  it('fails closed rather than borrowing the other channel', async () => {
+    candidates.mockResolvedValue([]); // FACES: prd row only, asked for dev
+    const { resolveOrgChannelCredentials } = await import('./gateway-lease.service');
+    expect(await resolveOrgChannelCredentials(ORG, 'dev')).toBeNull();
+    expect(await resolveOrgChannelCredentials(null, 'prd')).toBeNull();
+  });
+});
+
 describe('revalidateChannelLease — health', () => {
   it('renews the lease when the holder still accepts a WS upgrade', async () => {
     candidates.mockResolvedValue([A, B]);
-    results = [[{ gateway_id: A.gatewayId, live: true, healthy: null }], [{ gateway_id: A.gatewayId }]];
+    results = [
+      [{ gateway_id: A.gatewayId, live: true, healthy: null }],
+      [{ gateway_id: A.gatewayId }],
+    ];
     const { revalidateChannelLease } = await import('./gateway-lease.service');
     const r = await revalidateChannelLease(ORG, 'prd');
     expect(r).toMatchObject({ serverId: 'srv-a', healthy: true, stateMoved: false });
@@ -157,7 +214,11 @@ describe('revalidateChannelLease — health', () => {
   it('never claims state followed the failover', async () => {
     candidates.mockResolvedValue([A, B]);
     probe.mockImplementation((url: string) => url === 'wss://b');
-    results = [[{ gateway_id: A.gatewayId, live: true, healthy: true }], [], [{ gateway_id: B.gatewayId }]];
+    results = [
+      [{ gateway_id: A.gatewayId, live: true, healthy: true }],
+      [],
+      [{ gateway_id: B.gatewayId }],
+    ];
     const { revalidateChannelLease } = await import('./gateway-lease.service');
     expect((await revalidateChannelLease(ORG, 'prd'))?.stateMoved).toBe(false);
   });

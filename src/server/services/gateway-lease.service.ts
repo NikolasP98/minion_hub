@@ -224,10 +224,10 @@ async function expireLease(
  * Returns `null` when the org has no row for the channel. That is the
  * fail-closed answer, not an error condition.
  */
-export async function resolveChannelEndpoint(
+async function pickChannelHolder(
   orgId: string | null,
   channel: GatewayChannel,
-): Promise<ResolvedEndpoint | null> {
+): Promise<{ candidate: ChannelCandidate; healthy: boolean | null } | null> {
   if (!orgId) return null;
   const candidates = await listChannelCandidates(orgId, channel);
   if (!candidates.length) return null;
@@ -236,12 +236,44 @@ export async function resolveChannelEndpoint(
   if (lease?.live) {
     const held = candidates.find((c) => c.gatewayId === lease.gatewayId);
     // A lease pointing at a row the org no longer has is stale, not authority.
-    if (held) return toEndpoint(held, channel, lease.healthy);
+    if (held) return { candidate: held, healthy: lease.healthy };
   }
 
+  // `candidates` is ordered (created_at, id) by `listChannelCandidates` — a
+  // total order, so two rows sharing a `created_at` still pick the same one on
+  // every request. Without the id clause this fell to Postgres heap order.
   const taken = await acquireLease(orgId, channel, candidates[0].gatewayId, null);
   const winner = (taken && candidates.find((c) => c.gatewayId === taken)) || candidates[0];
-  return toEndpoint(winner, channel, lease?.healthy ?? null);
+  return { candidate: winner, healthy: lease?.healthy ?? null };
+}
+
+export async function resolveChannelEndpoint(
+  orgId: string | null,
+  channel: GatewayChannel,
+): Promise<ResolvedEndpoint | null> {
+  const held = await pickChannelHolder(orgId, channel);
+  return held && toEndpoint(held.candidate, channel, held.healthy);
+}
+
+/**
+ * `(org, channel) → the credentials to talk to it`. THE authority for
+ * server-side gateway RPC (spec §D4: a human picks the CHANNEL, the system
+ * picks the INSTANCE), and the same lease the browser's endpoint comes from —
+ * so HTTP, RPC and WS cannot disagree about which box serves an org.
+ *
+ * Replaces `getOrgAssignedGatewayCredentials(orgId)`, which was channel-blind
+ * and, once every switchable org had a dev row too, could hand a server-side
+ * RPC the DEV gateway on a `created_at` tie.
+ *
+ * Fail closed: an org with no row for `channel` gets `null` and the caller
+ * falls through its own chain — it never silently borrows another channel.
+ */
+export async function resolveOrgChannelCredentials(
+  orgId: string | null,
+  channel: GatewayChannel,
+): Promise<{ url: string; token: string } | null> {
+  const held = await pickChannelHolder(orgId, channel);
+  return held && { url: held.candidate.url, token: held.candidate.token };
 }
 
 /**
