@@ -29,7 +29,7 @@ import {
   listAllComponentEdges,
   type CreateIssueFromInvoiceLine,
 } from './stock.service';
-import { edgesByParent, explodeToStockLeaves } from './stock.logic';
+import { edgesByParent, explodeLineWithModifiers, type ComponentEdge, type LineModifier } from './stock.logic';
 import { stkItems, stkConsumption } from '$server/db/pg-schema/stock';
 import { finProducts } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
@@ -345,42 +345,56 @@ async function resolveIssueLines(ctx: CoreCtx, lines: PosTicketLine[]): Promise<
     }
   }
 
+  // The component graph, loaded once for every line.
+  const { byParent, isStockItem } = await loadComponentGraph(ctx);
+
+  // Resolve AND expand per line, not in two phases: modifiers (#9) are a
+  // property of the LINE, so an aggregate-then-expand pass would have already
+  // merged away the identity they attach to.
   const qtyByItem = new Map<string, number>();
-  const add = (itemId: string, q: number) => qtyByItem.set(itemId, (qtyByItem.get(itemId) ?? 0) + q);
   for (const l of lines) {
     if (l.bookingId || !l.finProductId) continue; // booking-owned or unmapped → issues nothing
     const qty = Number(l.qty);
     const mappings = consumptionByFinProductId.get(l.finProductId);
-    if (mappings?.length) {
-      for (const m of mappings) add(m.itemId, qty * m.qtyPerUnit);
-      continue;
-    }
     const bridgeItemId = itemByFinProductId.get(l.finProductId);
-    if (bridgeItemId) add(bridgeItemId, qty);
+    // Recipe outranks the 1:1 bridge (see PRECEDENCE above).
+    const roots = mappings?.length
+      ? mappings.map((mp) => ({ itemId: mp.itemId, q: qty * mp.qtyPerUnit }))
+      : bridgeItemId
+        ? [{ itemId: bridgeItemId, q: qty }]
+        : [];
+    const mods = lineModifiersOf(l);
+    for (const r of roots) {
+      explodeLineWithModifiers(r.itemId, r.q, byParent, isStockItem, mods, qtyByItem);
+    }
   }
+  return [...qtyByItem].map(([itemId, qty]) => ({ itemId, qty: round2(qty) }));
+}
 
-  // Slice 1b: whatever the flat mapping resolved to may itself be a RECIPE, so
-  // walk each result down to real stock leaves. This is the identity for any
-  // item with no components, which is every item until someone builds one —
-  // so it changes nothing for existing data.
-  const exploded = await explodeResolvedItems(ctx, qtyByItem);
-  return [...exploded].map(([itemId, qty]) => ({ itemId, qty: round2(qty) }));
+/** Per-line customer choices, tolerant of legacy rows and hand-written JSON. */
+function lineModifiersOf(line: PosTicketLine): LineModifier[] {
+  const raw = (line as { modifiers?: unknown }).modifiers;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (mod): mod is LineModifier =>
+      !!mod && typeof mod === 'object' && ((mod as LineModifier).action === 'exclude' || (mod as LineModifier).action === 'add') && typeof (mod as LineModifier).itemId === 'string',
+  );
 }
 
 /**
- * Shared tail of both issue paths (POS tickets and booking accruals): expand a
- * flat item→qty map through the component DAG down to stock leaves.
- * Short-circuits entirely when the org has no components at all, so the common
- * case costs one cheap query.
+ * The org's component graph + stock flags, loaded once per issue. When nothing
+ * is composed this returns an empty graph, which makes every expansion the
+ * identity — so the common case costs one cheap query and behaves exactly as
+ * it did before Slice 1b.
  */
-export async function explodeResolvedItems(ctx: CoreCtx, qtyByItem: Map<string, number>): Promise<Map<string, number>> {
-  if (qtyByItem.size === 0) return qtyByItem;
+export async function loadComponentGraph(
+  ctx: CoreCtx,
+): Promise<{ byParent: Map<string, ComponentEdge[]>; isStockItem: (id: string) => boolean }> {
   const edges = await listAllComponentEdges(ctx);
-  if (edges.length === 0) return qtyByItem; // nothing composed → nothing to expand
-  const byParent = edgesByParent(edges);
+  if (edges.length === 0) return { byParent: new Map(), isStockItem: () => true };
 
   // Only leaves that actually hold stock may be issued.
-  const involved = new Set<string>([...qtyByItem.keys(), ...edges.map((e) => e.childItemId), ...edges.map((e) => e.parentItemId)]);
+  const involved = new Set<string>(edges.flatMap((e) => [e.parentItemId, e.childItemId]));
   const flags = await withOrgCore(ctx, (tx) =>
     tx
       .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
@@ -388,12 +402,9 @@ export async function explodeResolvedItems(ctx: CoreCtx, qtyByItem: Map<string, 
       .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, [...involved]))),
   );
   const stockFlag = new Map(flags.map((r) => [r.id, r.isStockItem]));
-
-  const out = new Map<string, number>();
-  for (const [itemId, qty] of qtyByItem) {
-    explodeToStockLeaves(itemId, qty, byParent, (id) => stockFlag.get(id) ?? true, out);
-  }
-  return out;
+  // Unknown ids are roots resolved from the catalog, not graph nodes — they are
+  // real stock items by construction, so default true.
+  return { byParent: edgesByParent(edges), isStockItem: (id) => stockFlag.get(id) ?? true };
 }
 
 /**

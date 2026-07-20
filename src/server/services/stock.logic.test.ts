@@ -9,6 +9,7 @@ import {
   wouldCreateComponentCycle,
   rollupItemCost,
   explodeToStockLeaves,
+  explodeLineWithModifiers,
   edgesByParent,
   type ComponentEdge,
   replayBins,
@@ -410,5 +411,58 @@ describe('explodeToStockLeaves', () => {
   it('does not hang on cyclic data', () => {
     const byParent = edgesByParent([e('a', 'b', 1), e('b', 'a', 1)]);
     expect(() => explodeToStockLeaves('a', 1, byParent, allStock)).not.toThrow();
+  });
+});
+
+describe('explodeLineWithModifiers — order-line configuration', () => {
+  const allStock = () => true;
+  // plate -> 1 mash -> (3 potato, 2 salt); a drink exists but is not in the template
+  const graph = edgesByParent([e('plate', 'mash', 1), e('mash', 'potato', 3), e('mash', 'salt', 2)]);
+
+  it('with no modifiers it matches the plain explosion', () => {
+    const plain = explodeToStockLeaves('plate', 1, graph, allStock);
+    const withMods = explodeLineWithModifiers('plate', 1, graph, allStock, []);
+    expect([...withMods].sort()).toEqual([...plain].sort());
+  });
+
+  it('excludes an ingredient nested SEVERAL levels down ("no salt" on a plate)', () => {
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'exclude', itemId: 'salt' }]);
+    expect(out.get('potato')).toBe(3);
+    expect(out.has('salt')).toBe(false);
+  });
+
+  it('excluding a sub-recipe prunes everything under it', () => {
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'exclude', itemId: 'mash' }]);
+    expect(out.size).toBe(0);
+  });
+
+  it('adds an optional item on top of the template', () => {
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'add', itemId: 'drink', qty: 2 }]);
+    expect(out.get('drink')).toBe(2);
+    expect(out.get('potato')).toBe(3); // template untouched
+  });
+
+  it('an added SUB-RECIPE brings its own ingredients', () => {
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'add', itemId: 'mash', qty: 1 }]);
+    expect(out.get('potato')).toBe(6); // 3 from the template + 3 from the add
+  });
+
+  it('scales adds by the line qty', () => {
+    const out = explodeLineWithModifiers('plate', 3, graph, allStock, [{ action: 'add', itemId: 'drink', qty: 1 }]);
+    expect(out.get('drink')).toBe(3);
+  });
+
+  it('exclude beats add for the same item — the customer said no', () => {
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [
+      { action: 'add', itemId: 'salt', qty: 5 },
+      { action: 'exclude', itemId: 'salt' },
+    ]);
+    expect(out.has('salt')).toBe(false);
+  });
+
+  it('modifiers never mutate the template — a second line is unaffected', () => {
+    explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'exclude', itemId: 'salt' }]);
+    const clean = explodeLineWithModifiers('plate', 1, graph, allStock, []);
+    expect(clean.get('salt')).toBe(2);
   });
 });

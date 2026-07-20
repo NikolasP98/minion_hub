@@ -271,7 +271,11 @@ export function explodeToStockLeaves(
   isStockItem: (id: string) => boolean,
   out: Map<string, number> = new Map(),
   path: Set<string> = new Set(),
+  /** Items the customer excluded for this line — pruned wherever they appear,
+   *  since an ingredient can sit several levels down ("no salt" on a plate). */
+  exclude: ReadonlySet<string> = new Set(),
 ): Map<string, number> {
+  if (exclude.has(itemId)) return out;
   const kids = byParent.get(itemId);
   if (!kids || kids.length === 0) {
     if (isStockItem(itemId)) out.set(itemId, (out.get(itemId) ?? 0) + qty);
@@ -281,8 +285,43 @@ export function explodeToStockLeaves(
   // cyclic graph from recursing forever.
   if (path.has(itemId)) return out;
   path.add(itemId);
-  for (const e of kids) explodeToStockLeaves(e.childItemId, qty * e.qty, byParent, isStockItem, out, path);
+  for (const e of kids) explodeToStockLeaves(e.childItemId, qty * e.qty, byParent, isStockItem, out, path, exclude);
   path.delete(itemId);
+  return out;
+}
+
+/** One customer choice on one order line. See the companion migration. */
+export interface LineModifier {
+  action: 'exclude' | 'add';
+  itemId: string;
+  /** `add` only — how much of the optional item. */
+  qty?: number;
+}
+
+/**
+ * Explode one order line, applying what the CUSTOMER chose on top of what the
+ * item IS. Excludes prune at any depth; adds are expanded like any other item
+ * so an optional sub-recipe brings its own ingredients.
+ *
+ * Configuration never touches the template — two lines of the same item with
+ * different modifiers stay one item in the catalog.
+ */
+export function explodeLineWithModifiers(
+  itemId: string,
+  qty: number,
+  byParent: Map<string, ComponentEdge[]>,
+  isStockItem: (id: string) => boolean,
+  modifiers: readonly LineModifier[] = [],
+  out: Map<string, number> = new Map(),
+): Map<string, number> {
+  const exclude = new Set(modifiers.filter((mod) => mod.action === 'exclude').map((mod) => mod.itemId));
+  explodeToStockLeaves(itemId, qty, byParent, isStockItem, out, new Set(), exclude);
+  for (const mod of modifiers) {
+    if (mod.action !== 'add') continue;
+    const addQty = (mod.qty ?? 1) * qty; // per unit of the line
+    if (!(addQty > 0) || exclude.has(mod.itemId)) continue;
+    explodeToStockLeaves(mod.itemId, addQty, byParent, isStockItem, out, new Set(), exclude);
+  }
   return out;
 }
 
