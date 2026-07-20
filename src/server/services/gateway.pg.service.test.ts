@@ -66,7 +66,12 @@ beforeEach(() => {
 describe('gateway.pg.service', () => {
   test('createGateway seals token and inserts via Drizzle, returns id', async () => {
     const { createGateway } = await import('./gateway.pg.service');
-    const g = await createGateway({ name: 'prod', url: 'ws://gw', token: 'secret', profileId: 'p1' });
+    const g = await createGateway({
+      name: 'prod',
+      url: 'ws://gw',
+      token: 'secret',
+      profileId: 'p1',
+    });
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({ tokenCiphertext: 'enc:secret', tokenIv: 'iv1' }),
     );
@@ -79,9 +84,11 @@ describe('gateway.pg.service', () => {
       innerJoin: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
           orderBy: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([
-              { url: 'ws://gw', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' },
-            ]),
+            limit: vi
+              .fn()
+              .mockResolvedValue([
+                { url: 'ws://gw', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' },
+              ]),
           }),
         }),
       }),
@@ -98,9 +105,9 @@ describe('gateway.pg.service', () => {
       innerJoin: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
           orderBy: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([
-              { url: 'ws://gw', tokenCiphertext: 'rawtoken', tokenIv: '' },
-            ]),
+            limit: vi
+              .fn()
+              .mockResolvedValue([{ url: 'ws://gw', tokenCiphertext: 'rawtoken', tokenIv: '' }]),
           }),
         }),
       }),

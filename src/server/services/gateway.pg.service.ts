@@ -191,7 +191,11 @@ export async function getGatewayCredentialsById(
   gatewayId: string,
 ): Promise<{ url: string; token: string } | null> {
   const [row] = await getCoreDb()
-    .select({ url: gateway.url, tokenCiphertext: gateway.tokenCiphertext, tokenIv: gateway.tokenIv })
+    .select({
+      url: gateway.url,
+      tokenCiphertext: gateway.tokenCiphertext,
+      tokenIv: gateway.tokenIv,
+    })
     .from(gateway)
     .where(eq(gateway.id, gatewayId))
     .limit(1);

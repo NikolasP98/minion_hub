@@ -51,8 +51,8 @@
       <p
         class="mb-3 rounded-md border border-warning/30 bg-warning/15 px-3 py-2 text-[length:var(--font-size-label)] text-warning"
       >
-        The gateway server didn't respond, so only hub-native channels are shown. Check that
-        it's online and that the host URL is correct in Hosts → Edit.
+        The gateway server didn't respond, so only hub-native channels are shown. Check that it's
+        online and that the host URL is correct in Hosts → Edit.
       </p>
     {/if}
     <AsyncBoundary
