@@ -24,6 +24,12 @@ export const stkItems = pgTable(
     isStockItem: boolean('is_stock_item').notNull().default(true),
     reorderLevel: numeric('reorder_level'),
     reorderQty: numeric('reorder_qty'),
+    /** Minimum order quantity, in `uom`. Supply-side (#12). */
+    moq: numeric('moq'),
+    /** Standing supplier — soft ref → parties. NOTE stk_entries.party_id is the
+     *  supplier on one RECEIPT; this is the item's default. Last restock COST is
+     *  NOT stored — it derives exactly from stk_ledger (see lastRestockByItem). */
+    defaultSupplierPartyId: uuid('default_supplier_party_id'),
     /** P5.1b: unit services consume this item in, e.g. 'ml', when it differs
      *  from `uom` (the stock/ledger unit, e.g. 'caja'). Null = same as uom. */
     consumptionUom: text('consumption_uom'),

@@ -8,6 +8,7 @@
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
   import { canAct } from '$lib/access/can.svelte';
+  import { formatMoney } from '$lib/utils/format';
 
   let { data }: { data: PageData } = $props();
   const items = $derived(data.items);
@@ -22,6 +23,7 @@
         itemGroup: draft.itemGroup || null,
         reorderLevel: draft.reorderLevel !== '' ? Number(draft.reorderLevel) : null,
         reorderQty: draft.reorderQty !== '' ? Number(draft.reorderQty) : null,
+        moq: draft.moq !== '' ? Number(draft.moq) : null,
       }),
     });
     if (res.ok) await invalidate('stock:items');
@@ -65,6 +67,29 @@
       editable: true,
       editType: 'number',
       accessor: (it) => it.reorderQty,
+    },
+    {
+      key: 'moq',
+      label: m.stock_col_moq(),
+      align: 'right',
+      editable: true,
+      editType: 'number',
+      accessor: (it) => it.moq,
+    },
+    // Derived from the ledger (last positive movement), not columns — so
+    // read-only here.
+    {
+      key: 'lastRestockCost',
+      label: m.stock_col_last_restock_cost(),
+      align: 'right',
+      custom: true,
+      accessor: (it) => it.lastRestockCost,
+      exportValue: (it) => it.lastRestockCost ?? '',
+    },
+    {
+      key: 'lastSupplierName',
+      label: m.stock_col_last_supplier(),
+      accessor: (it) => it.lastSupplierName ?? '',
     },
   ];
 
@@ -135,6 +160,10 @@
         <a href="/stock/items/{it.id}" class="hover:underline">{it.code}</a>
       {:else if col.key === 'name'}
         <span class="truncate block max-w-[16rem]">{it.name}</span>
+      {:else if col.key === 'lastRestockCost'}
+        <span class="tabular-nums"
+          >{it.lastRestockCost != null ? formatMoney(it.lastRestockCost) : '—'}</span
+        >
       {/if}
     {/snippet}
   </DataTable>

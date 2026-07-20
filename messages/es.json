@@ -4942,5 +4942,11 @@
   "stock_uom_stage_order": "Compra",
   "stock_uom_stage_usage": "Después del servicio",
   "stock_uom_err_subunits_integer": "Las subunidades deben ser un número entero.",
-  "stock_uom_err_diagram_needs_conversion": "Configura primero la conversión."
+  "stock_uom_err_diagram_needs_conversion": "Configura primero la conversión.",
+  "stock_col_moq": "MOQ",
+  "stock_moq_hint": "Cantidad mínima de compra, en {uom}.",
+  "stock_col_last_restock_cost": "Último costo de reposición",
+  "stock_col_last_supplier": "Último proveedor",
+  "stock_field_default_supplier": "Proveedor por defecto",
+  "stock_field_default_supplier_hint": "A quién se le compra normalmente este artículo. El último costo y proveedor de arriba se leen del libro mayor."
 }

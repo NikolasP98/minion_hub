@@ -4942,5 +4942,11 @@
   "stock_uom_stage_order": "Ordering",
   "stock_uom_stage_usage": "After the service",
   "stock_uom_err_subunits_integer": "Sub-units must be a whole number.",
-  "stock_uom_err_diagram_needs_conversion": "Set a conversion first."
+  "stock_uom_err_diagram_needs_conversion": "Set a conversion first.",
+  "stock_col_moq": "MOQ",
+  "stock_moq_hint": "Minimum order quantity, in {uom}.",
+  "stock_col_last_restock_cost": "Last restock cost",
+  "stock_col_last_supplier": "Last supplier",
+  "stock_field_default_supplier": "Default supplier",
+  "stock_field_default_supplier_hint": "Who this item is usually bought from. The last restock cost and supplier above are read from the ledger."
 }

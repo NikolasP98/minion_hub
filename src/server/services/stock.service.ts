@@ -69,6 +69,54 @@ export function listItems(ctx: CoreCtx): Promise<StkItem[]> {
   return withOrgCore(ctx, (tx) => tx.select().from(stkItems).where(eq(stkItems.orgId, ctx.tenantId)).orderBy(asc(stkItems.name)));
 }
 
+export interface ItemSupplyInfo {
+  /** Unit cost actually paid on the most recent receipt, in the item's stock uom. */
+  lastRestockCost: number;
+  lastRestockAt: string;
+  supplierName: string | null;
+}
+
+/**
+ * Supply-side facts per item, keyed by item id (#12). Kept OUT of `listItems`
+ * on purpose — that one is also loaded by the POS sellable wizard, which has no
+ * use for procurement data.
+ *
+ * Last restock cost is DERIVED, never stored: `value_delta / qty_delta` of the
+ * most recent POSITIVE ledger movement is the rate actually paid on that
+ * receipt. (`valuation_rate` would be wrong here — it is the resulting moving
+ * average after the receipt, not what this delivery cost.) Storing it would be
+ * a denormalised copy free to drift from the ledger.
+ */
+export function itemSupplyInfo(ctx: CoreCtx): Promise<Map<string, ItemSupplyInfo>> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`
+      select l.item_id,
+             (l.value_delta / nullif(l.qty_delta, 0))::float8 as rate,
+             l.posted_at,
+             p.name as supplier_name
+      from (
+        select distinct on (item_id) item_id, value_delta, qty_delta, posted_at, entry_id
+        from stk_ledger
+        where org_id = ${ctx.tenantId} and qty_delta > 0
+        order by item_id, posted_at desc, id desc
+      ) l
+      left join stk_entries e on e.id = l.entry_id and e.org_id = ${ctx.tenantId}
+      left join parties p on p.id = e.party_id and p.org_id = ${ctx.tenantId}
+    `)) as unknown as Array<{ item_id: string; rate: number | null; posted_at: string; supplier_name: string | null }>;
+
+    const out = new Map<string, ItemSupplyInfo>();
+    for (const r of rows) {
+      if (r.rate == null) continue; // qty_delta 0 → not a real receipt
+      out.set(String(r.item_id), {
+        lastRestockCost: round4(Number(r.rate)),
+        lastRestockAt: String(r.posted_at),
+        supplierName: r.supplier_name ?? null,
+      });
+    }
+    return out;
+  });
+}
+
 export interface ItemUomInfo {
   itemId: string;
   uom: string;

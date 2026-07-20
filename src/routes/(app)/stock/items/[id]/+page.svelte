@@ -13,6 +13,7 @@
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import UnitDiagram from '$lib/components/stock/UnitDiagram.svelte';
   import ShapePicker from '$lib/components/stock/ShapePicker.svelte';
+  import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
 
   let { data }: { data: PageData } = $props();
   // ponytail: backend contract fields (consumptionUom/unitsPerStockUom/subunitsPerStockUom/
@@ -25,6 +26,8 @@
   let editName = $state('');
   let editReorderLevel = $state('');
   let editReorderQty = $state('');
+  let editMoq = $state('');
+  let editSupplierPartyId = $state<string | null>(null);
   let editUom = $state('');
   let editConsumptionUom = $state('');
   let editUnitsPerStockUom = $state('');
@@ -60,6 +63,8 @@
     editName = item.name;
     editReorderLevel = item.reorderLevel ?? '';
     editReorderQty = item.reorderQty ?? '';
+    editMoq = item.moq ?? '';
+    editSupplierPartyId = item.defaultSupplierPartyId ?? null;
     editUom = item.uom;
     editConsumptionUom = item.consumptionUom ?? '';
     editUnitsPerStockUom = item.unitsPerStockUom != null ? String(item.unitsPerStockUom) : '';
@@ -155,6 +160,8 @@
           name: editName,
           reorderLevel: editReorderLevel !== '' ? Number(editReorderLevel) : null,
           reorderQty: editReorderQty !== '' ? Number(editReorderQty) : null,
+          moq: editMoq !== '' ? Number(editMoq) : null,
+          defaultSupplierPartyId: editSupplierPartyId,
           uom: editUom,
           // The mode decides what a conversion even means for this item:
           // 'none' clears it outright, 'bulk' has no sub-unit tier.
@@ -225,6 +232,23 @@
           <label class="fld"><span>{m.stock_field_name()}</span><input class="inp" bind:value={editName} /></label>
           <label class="fld"><span>{m.stock_col_reorder_level()}</span><input class="inp" type="number" min="0" step="0.01" bind:value={editReorderLevel} /></label>
           <label class="fld"><span>{m.stock_col_reorder_qty()}</span><input class="inp" type="number" min="0" step="0.01" bind:value={editReorderQty} /></label>
+
+          <!-- Supply side (#12): the stock module owns procurement facts. -->
+          <Input
+            size="sm"
+            type="number"
+            min="0"
+            step="any"
+            label={m.stock_col_moq()}
+            helper={m.stock_moq_hint({ uom: editUom || m.stock_uom_order_unit_generic() })}
+            bind:value={editMoq}
+          />
+          <PartyPicker
+            bind:value={editSupplierPartyId}
+            label={m.stock_field_default_supplier()}
+            initialName={item.defaultSupplierName ?? ''}
+          />
+          <p class="t-caption stage-hint">{m.stock_field_default_supplier_hint()}</p>
 
           <div class="uom-section">
             <div class="card-h">{m.stock_uom_section_title()}</div>
@@ -365,6 +389,15 @@
           <dt>{m.stock_col_group()}</dt><dd>{item.itemGroup ?? '—'}</dd>
           <dt>{m.stock_col_reorder_level()}</dt><dd>{item.reorderLevel ?? '—'}</dd>
           <dt>{m.stock_col_reorder_qty()}</dt><dd>{item.reorderQty ?? '—'}</dd>
+          <dt>{m.stock_col_moq()}</dt><dd>{item.moq ?? '—'}</dd>
+          <dt>{m.stock_field_default_supplier()}</dt><dd>{item.defaultSupplierName ?? '—'}</dd>
+          <dt>{m.stock_col_last_restock_cost()}</dt>
+          <dd>
+            {#if item.lastRestockCost != null}
+              {fmtMoney(item.lastRestockCost)}
+              {#if item.lastSupplierName}<span class="t-caption stage-hint">· {item.lastSupplierName}</span>{/if}
+            {:else}—{/if}
+          </dd>
           {#if item.consumptionUom}
             <dt>{m.stock_field_consumption_uom()}</dt><dd>{item.consumptionUom}</dd>
           {/if}
