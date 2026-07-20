@@ -47,7 +47,6 @@ export const MODULE_SUBRESOURCES: Readonly<Record<string, readonly SubResource[]
     { key: 'pos.sell', label: 'Sell', route: '/pos/sell' },
     { key: 'pos.appointments', label: 'Appointments', route: '/pos/appointments' },
     { key: 'pos.items', label: 'Catalog', route: '/pos/catalog' },
-    { key: 'pos.refills', label: 'Refills', route: '/pos/refills' },
   ],
   workspace: [
     { key: 'workspace.gui', label: 'Remote Desktop', route: '/cloud/gui' },

@@ -497,7 +497,6 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/scheduling/settings', 'Scheduling settings', 'scheduling-pos', 'form-settings'),
   screen('/pos/appointments', 'POS appointments', 'scheduling-pos', 'workspace-editor'),
   screen('/pos/catalog', 'POS catalog', 'scheduling-pos', 'collection'),
-  screen('/pos/refills', 'POS refills', 'scheduling-pos', 'collection'),
   screen('/pos/sell', 'Point of sale', 'scheduling-pos', 'workspace-editor'),
 
   screen('/pulse', 'Pulse', 'business-operations', 'collection'),
@@ -693,7 +692,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   ),
   redirectRoute('/pos', 'Point of sale entry', 'scheduling-pos', '/pos/sell', 302, {
     preserveQuery: false,
-    alternates: ['/pos/appointments', '/pos/catalog', '/pos/refills'],
+    alternates: ['/pos/appointments', '/pos/catalog'],
   }),
   redirectRoute('/shells', 'Legacy shells', 'platform-reliability', '/cloud', 307, {
     preserveQuery: true,

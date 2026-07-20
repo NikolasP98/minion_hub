@@ -4,15 +4,10 @@ import { requiredViewPermForPath } from '$lib/permissions';
 
 /** `/pos` has no view of its own — redirect to the first sub-route the user can view. */
 export const load: PageServerLoad = async ({ parent }) => {
-  const { permissions, schedulingEnabled, stockEnabled } = await parent();
+  const { permissions, schedulingEnabled } = await parent();
   const perms = permissions.permissions;
 
-  const candidates = [
-    '/pos/sell',
-    ...(schedulingEnabled ? ['/pos/appointments'] : []),
-    '/pos/catalog',
-    ...(stockEnabled ? ['/pos/refills'] : []),
-  ];
+  const candidates = ['/pos/sell', ...(schedulingEnabled ? ['/pos/appointments'] : []), '/pos/catalog'];
 
   for (const href of candidates) {
     const perm = requiredViewPermForPath(href);

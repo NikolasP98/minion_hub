@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
-  import { ShoppingCart, CalendarDays, LayoutGrid, PackagePlus } from 'lucide-svelte';
+  import { ShoppingCart, CalendarDays, LayoutGrid } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
@@ -27,9 +27,8 @@
           ]
         : []),
       { id: 'catalog', label: m.pos_nav_catalog(), icon: LayoutGrid, href: '/pos/catalog' },
-      ...(page.data.stockEnabled
-        ? [{ id: 'refills', label: m.pos_nav_refills(), icon: PackagePlus, href: '/pos/refills' }]
-        : []),
+      // No refills tab: stock operations live ONLY in the stock module
+      // (/stock/entries, /stock/consume). POS owns recipes + commerce.
     ].filter((i) => canViewPath(i.href)),
   );
 
