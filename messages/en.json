@@ -4952,5 +4952,12 @@
   "fin_products_manage_in_pos": "Manage in POS",
   "fin_products_tree_title": "Composition",
   "fin_products_tree_empty": "No item relationships — this product isn't linked to stock.",
-  "fin_products_tree_recipe": "recipe"
+  "fin_products_tree_recipe": "recipe",
+  "pos_recipe_title": "Recipe",
+  "pos_recipe_depth": "{n} levels deep",
+  "pos_recipe_empty": "No components yet — this is a simple item.",
+  "pos_recipe_pick_child": "Add an item or recipe",
+  "pos_recipe_is_recipe": "recipe",
+  "pos_recipe_cycle": "That would make the recipe contain itself.",
+  "pos_recipe_needs_item": "Only sellables backed by a stock item can have a recipe."
 }

@@ -4952,5 +4952,12 @@
   "fin_products_manage_in_pos": "Gestionar en POS",
   "fin_products_tree_title": "Composición",
   "fin_products_tree_empty": "Sin relaciones de insumos — este producto no está vinculado al stock.",
-  "fin_products_tree_recipe": "receta"
+  "fin_products_tree_recipe": "receta",
+  "pos_recipe_title": "Receta",
+  "pos_recipe_depth": "{n} niveles",
+  "pos_recipe_empty": "Sin componentes — es un artículo simple.",
+  "pos_recipe_pick_child": "Agregar un insumo o receta",
+  "pos_recipe_is_recipe": "receta",
+  "pos_recipe_cycle": "Eso haría que la receta se contenga a sí misma.",
+  "pos_recipe_needs_item": "Solo los vendibles respaldados por un insumo pueden tener receta."
 }
