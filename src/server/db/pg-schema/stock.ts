@@ -9,6 +9,7 @@
  * see stock.logic.ts for the (pure) valuation math both rest on.
  */
 
+import { sql } from 'drizzle-orm';
 import { bigserial, boolean, integer, jsonb, numeric, pgTable, text, timestamp, uuid, index, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const stkItems = pgTable(
@@ -43,7 +44,16 @@ export const stkItems = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('stk_items_org_code_uniq').on(t.orgId, t.code), index('stk_items_org_idx').on(t.orgId)],
+  (t) => [
+    uniqueIndex('stk_items_org_code_uniq').on(t.orgId, t.code),
+    index('stk_items_org_idx').on(t.orgId),
+    // At most ONE item may back a given fin_product — resolveIssueLines and
+    // the derived `kind` both assume it. Companion migration:
+    // 20260719230000_stk_items_fin_product_uniq.sql
+    uniqueIndex('stk_items_org_fin_product_uniq')
+      .on(t.orgId, t.finProductId)
+      .where(sql`fin_product_id is not null`),
+  ],
 );
 
 export const stkWarehouses = pgTable(

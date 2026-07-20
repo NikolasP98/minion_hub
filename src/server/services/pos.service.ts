@@ -22,6 +22,7 @@ import {
   cancelEntry,
   StockError,
   createItem,
+  updateItem,
   setConsumption,
   deleteConsumption,
   listConsumption,
@@ -723,6 +724,14 @@ export interface SellableInput {
   kind: 'product' | 'service';
   trackStock?: boolean;
   uom?: string;
+  /**
+   * Publish an EXISTING stk_item as this sellable (the raw-material case: a
+   * mask, a vial — "the POS section can publish raw ingredients"). Links that
+   * item's finProductId instead of creating a new one, which also makes the
+   * sellable product-kind for free (`kind` is derived from the link).
+   * Mutually exclusive with `trackStock`; when both are sent, this wins.
+   */
+  itemId?: string;
   consumption?: Array<{ itemId: string; qtyPerUnit: number }>;
   active?: boolean;
 }
@@ -758,7 +767,19 @@ export async function createSellable(ctx: CoreCtx, input: SellableInput, actor: 
   );
   if (!product) throw new PosError('product write did not persist', 'write_failed');
 
-  if (input.kind === 'product' && input.trackStock) {
+  if (input.itemId) {
+    // Publish an existing raw material. The partial unique index
+    // (stk_items_org_fin_product_uniq) is the real guard against two items
+    // claiming one product; catching it here just turns 23505 into a usable
+    // error instead of a 500.
+    try {
+      const linked = await updateItem(ctx, input.itemId, { finProductId: product.id });
+      if (!linked) throw new PosError('stock item not found', 'item_not_found');
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new PosError('that item is already published as a sellable', 'item_taken');
+      throw e;
+    }
+  } else if (input.kind === 'product' && input.trackStock) {
     await createItem(ctx, { code, name: input.name, uom: input.uom ?? 'unit', finProductId: product.id });
   }
 

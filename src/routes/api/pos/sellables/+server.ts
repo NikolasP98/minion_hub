@@ -20,6 +20,8 @@ const postSchema = z.object({
   kind: z.enum(['product', 'service']),
   trackStock: z.boolean().optional(),
   uom: z.string().min(1).max(50).optional(),
+  /** Publish an existing stk_item instead of creating one — see SellableInput. */
+  itemId: z.string().uuid().optional(),
   consumption: z.array(consumptionSchema).optional(),
   active: z.boolean().optional(),
 });
