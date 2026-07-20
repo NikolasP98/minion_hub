@@ -10,6 +10,8 @@
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
     import ChannelEditForm from './ChannelEditForm.svelte';
     import ChannelStatusPill from './ChannelStatusPill.svelte';
+    import ChannelSyncStatus from './ChannelSyncStatus.svelte';
+    import { isSyncActive } from '$lib/state/gateway';
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
     import * as m from '$lib/paraglide/messages';
 
@@ -404,6 +406,14 @@
             </Button>
         {/if}
     </div>
+
+    <!-- History-sync readout: only while there is work in flight. The pill above
+         already names the state — this adds the progress the pill can't carry. -->
+    {#if isSyncActive(channel.historySync)}
+        <div class="px-4 pb-3 -mt-1">
+            <ChannelSyncStatus sync={channel.historySync} compact />
+        </div>
+    {/if}
 
     <!-- Expanded accordion content -->
     <div

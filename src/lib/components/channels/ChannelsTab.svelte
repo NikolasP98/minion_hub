@@ -137,6 +137,7 @@
                     gwIdentityMismatch: acct.identityMismatch ?? undefined,
                     gwPairing: gw.pairingChannelIds.includes(channelKey),
                     orgIds: acct.orgIds,
+                    historySync: acct.historySync,
                 });
             }
         }
@@ -174,6 +175,7 @@
                 gwRunning: gwMatch.gwRunning,
                 gwLastError: gwMatch.gwLastError,
                 gwReconnectAttempts: gwMatch.gwReconnectAttempts,
+                historySync: gwMatch.historySync,
             };
         });
 

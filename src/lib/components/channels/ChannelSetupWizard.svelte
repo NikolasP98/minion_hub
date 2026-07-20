@@ -6,8 +6,10 @@
     import { conn } from '$lib/state/gateway/connection.svelte';
     import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
-    import { WIZARD_INTENTS, type WizardIntent } from './wizard-intent';
+    import { WIZARD_INTENTS, wizardSteps, type WizardIntent, type WizardStep } from './wizard-intent';
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
+    import ChannelSyncStatus from './ChannelSyncStatus.svelte';
+    import { findHistorySync } from '$lib/state/gateway';
     import { CircleCheck, CircleX, Eye, EyeOff } from 'lucide-svelte';
     import { Button, Input, Select, iconSizes } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
@@ -23,9 +25,11 @@
     }
     let { serverId, channelType, intent = 'operator', onclose }: Props = $props();
 
-    type Step = 'connect' | 'name' | 'assign' | 'done';
+    type Step = WizardStep | 'done';
     let step = $state<Step>('connect');
     const mode = $derived(WIZARD_INTENTS[intent]);
+    /** Steps for THIS intent + channel (WhatsApp gains a terminal `sync`). */
+    const steps = $derived(wizardSteps(intent, channelType));
 
     // Step 1 state
     let token = $state('');
@@ -38,6 +42,11 @@
         | { kind: 'whatsapp'; phone: string }
         | null
     >(null);
+
+    /** Live history-sync for the account just paired, straight off channels.status. */
+    const sync = $derived(
+        findHistorySync(channelType, verified?.kind === 'whatsapp' ? verified.phone : null),
+    );
 
     // Step 2 state
     let label = $state('');
@@ -195,7 +204,7 @@
             await loadBaseHash(); // refresh baseHash for any follow-up patch (schema not needed)
             committedChannelId = channelId;
             toastSuccess(`Created ${CHANNEL_TYPE_LABELS[channelType]}: ${label}`);
-            step = mode.steps.includes('assign') ? 'assign' : 'done';
+            step = steps.includes('assign') ? 'assign' : steps.includes('sync') ? 'sync' : 'done';
         } catch (e) {
             await loadBaseHash(); // refresh baseHash so a retry isn't stale
             toastError('Save failed', (e as Error).message);
@@ -211,7 +220,7 @@
 <div class="bg-card border border-border rounded-lg p-5 space-y-4">
     <!-- Stepper -->
     <div class="flex items-center gap-2 text-xs">
-        {#each mode.steps as s, i}
+        {#each steps as s, i}
             <div
                 class="flex items-center gap-1.5
                 {step === s ? 'text-foreground font-semibold' : 'text-muted-foreground'}"
@@ -223,8 +232,9 @@
                 {#if s === 'connect'}{m.channelWizard_stepConnect()}{/if}
                 {#if s === 'name'}{m.channelWizard_stepName()}{/if}
                 {#if s === 'assign'}{m.channelWizard_stepAssign()}{/if}
+                {#if s === 'sync'}{m.channelWizard_stepSync()}{/if}
             </div>
-            {#if i < mode.steps.length - 1}<span class="text-muted-strong">›</span>{/if}
+            {#if i < steps.length - 1}<span class="text-muted-strong">›</span>{/if}
         {/each}
     </div>
 
@@ -354,8 +364,29 @@
             </h4>
             <ChannelAssignmentPicker {serverId} channelId={committedChannelId} />
         </div>
+        {#if steps.includes('sync')}
+            <Button type="button" variant="primary" onclick={() => (step = 'sync')}>
+                {m.channelWizard_next()}
+            </Button>
+        {:else}
+            <Button type="button" variant="primary" onclick={onclose}>
+                {m.channelWizard_finish()}
+            </Button>
+        {/if}
+
+        <!-- Terminal Sync step — pairing is the START of the work. WhatsApp keeps
+             streaming history from the PHONE for minutes; closing this dialog does
+             not stop it, and a sleeping phone stalls it. -->
+    {:else if step === 'sync'}
+        <div class="flex items-start gap-3 p-3 bg-success/10 border border-success/30 rounded-md">
+            <CircleCheck size={iconSizes.md} class="text-success shrink-0 mt-0.5" />
+            <p class="text-xs text-foreground">
+                {m.channelWizard_linkedAccount({ account: label })}
+            </p>
+        </div>
+        <ChannelSyncStatus {sync} />
         <Button type="button" variant="primary" onclick={onclose}>
-            {m.channelWizard_finish()}
+            {m.channelSync_doneKeepSyncing()}
         </Button>
 
         <!-- Done (personal intent — no assign step) -->
