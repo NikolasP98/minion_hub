@@ -19,13 +19,14 @@ import {
   stkAccruals,
   stkBins,
   stkConsumption,
+  stkItemComponents,
   stkItems,
   stkLedger,
   stkWarehouses,
   type StkAccrual,
   type StkEntry,
 } from '$server/db/pg-schema/stock';
-import { consumptionToStockQty, round4 } from './stock.logic';
+import { consumptionToStockQty, edgesByParent, explodeToStockLeaves, round4 } from './stock.logic';
 import {
   buildServiceIssuePreview,
   createServiceIssue,
@@ -97,6 +98,34 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
       lines = [...byItem].map(([itemId, qtyConsumption]) => ({ itemId, qtyConsumption }));
     }
     if (!lines.length) return 0; // unmapped product
+
+    // Slice 1b: a mapped item may itself be a RECIPE — expand to stock leaves so
+    // a booked composite accrues its ingredients. Done inline on `tx` rather
+    // than via pos.service's helper because withOrgCore does not nest.
+    // Identity when nothing is composed, so existing accruals are untouched.
+    const edgeRows = await tx
+      .select({
+        parentItemId: stkItemComponents.parentItemId,
+        childItemId: stkItemComponents.childItemId,
+        qty: stkItemComponents.qty,
+      })
+      .from(stkItemComponents)
+      .where(eq(stkItemComponents.orgId, orgId));
+    if (edgeRows.length) {
+      const byParent = edgesByParent(edgeRows.map((e) => ({ parentItemId: e.parentItemId, childItemId: e.childItemId, qty: Number(e.qty) })));
+      const involved = new Set<string>([...lines.map((l) => l.itemId), ...edgeRows.flatMap((e) => [e.parentItemId, e.childItemId])]);
+      const flagRows = await tx
+        .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
+        .from(stkItems)
+        .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, [...involved])));
+      const stockFlag = new Map(flagRows.map((r) => [r.id, r.isStockItem]));
+      const expanded = new Map<string, number>();
+      for (const l of lines) {
+        explodeToStockLeaves(l.itemId, l.qtyConsumption, byParent, (id) => stockFlag.get(id) ?? true, expanded);
+      }
+      lines = [...expanded].map(([itemId, qtyConsumption]) => ({ itemId, qtyConsumption }));
+      if (!lines.length) return 0; // everything expanded to non-stock leaves
+    }
 
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
     const items = await tx

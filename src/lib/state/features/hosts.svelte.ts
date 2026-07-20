@@ -371,6 +371,11 @@ export async function addHost(host: { name: string; url: string; token: string }
       local.activeHostId = id;
       saveLastActiveHost(id);
       await invalidateHosts();
+      // The overlay is a bridge, not a store: page.data is authoritative once the
+      // invalidation has landed. Leaving it set would permanently shadow the real
+      // host list (it survives HMR and every SPA navigation), which is how a
+      // partial list froze the picker.
+      local.overlay = null;
       return id;
     })(),
     {
@@ -396,10 +401,19 @@ export async function updateHost(
       body: JSON.stringify(updates),
     });
     if (!res.ok) throw new Error(`Failed to update host: ${res.status}`);
-    const merged = hostsState.hosts.map((h) => (h.id === id ? { ...h, ...updates } : h));
-    local.overlay = merged;
-    updateHostsCache(merged);
+    // `silent` = a background stamp (gateway.svelte.ts writes lastConnectedAt on
+    // every WS connect), NOT a user edit. It must never publish an optimistic
+    // list: the socket connects during boot, before the (app) layout data lands,
+    // so `hostsState.hosts` is still the cache or a partial list — and freezing
+    // THAT into the overlay + localStorage made the host picker show a subset of
+    // the user's gateways for the rest of the session.
+    if (!options?.silent) {
+      const merged = hostsState.hosts.map((h) => (h.id === id ? { ...h, ...updates } : h));
+      local.overlay = merged;
+      updateHostsCache(merged);
+    }
     await invalidateHosts();
+    local.overlay = null; // authoritative page.data has landed — stop shadowing it
   };
 
   if (options?.silent) {
@@ -431,6 +445,7 @@ export async function removeHost(id: string, options?: { silent?: boolean }) {
       else if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(LAST_HOST_KEY);
     }
     await invalidateHosts();
+    local.overlay = null; // authoritative page.data has landed — stop shadowing it
   };
 
   if (options?.silent) {

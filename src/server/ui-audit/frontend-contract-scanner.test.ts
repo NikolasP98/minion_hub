@@ -7,7 +7,7 @@ describe('frontend route and API contracts', () => {
   it('resolves identifiable navigation and frontend API calls to tracked handlers', () => {
     const report = scanFrontendContracts(projectRoot);
 
-    expect(report.pages).toBe(150);
+    expect(report.pages).toBe(149);
     expect(report.apiHandlers).toBeGreaterThan(340);
     expect(report.navigationReferences.length).toBeGreaterThan(200);
     expect(report.apiCalls.length).toBeGreaterThan(300);

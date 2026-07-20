@@ -10,6 +10,8 @@
   import WhatsAppClaimCard from '$lib/components/users/WhatsAppClaimCard.svelte';
   import TelegramClaimCard from '$lib/components/users/TelegramClaimCard.svelte';
   import ChannelSetupWizard from '$lib/components/channels/ChannelSetupWizard.svelte';
+  import ChannelSyncStatus from '$lib/components/channels/ChannelSyncStatus.svelte';
+  import { findHistorySync, isSyncActive } from '$lib/state/gateway';
   import PluginSlotHost from '$lib/plugins/PluginSlotHost.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import type { ChannelPluginInfo } from '$lib/types/channel-link';
@@ -40,6 +42,12 @@
   const whatsappIdentity = $derived(channelIdentities.find((i) => i.provider === 'whatsapp') ?? null);
   const telegramIdentity = $derived(channelIdentities.find((i) => i.provider === 'telegram') ?? null);
   const serverId = $derived(hostsState.activeHostId ?? '');
+
+  // History-sync for THIS person's accounts. Keyed off the claimed identity's
+  // external id (the phone/handle) so another org's syncing account can never
+  // surface here — the trade-off is that an unclaimed identity shows nothing.
+  const whatsappSync = $derived(findHistorySync('whatsapp', whatsappIdentity?.externalId));
+  const telegramSync = $derived(findHistorySync('telegram', telegramIdentity?.externalId));
 
   // Full-sync wizard (provisions a real channel account + session — distinct
   // from the identity-claim cards above, which only attribute inbound
@@ -173,6 +181,9 @@
   <div class="channel-rows divide-y divide-border/60">
     <div>
       <WhatsAppClaimCard {userId} {serverId} identity={whatsappIdentity} onDisconnect={disconnect} />
+      {#if isSyncActive(whatsappSync)}
+        <div class="px-3 pb-2"><ChannelSyncStatus sync={whatsappSync} compact /></div>
+      {/if}
       <div class="flex items-center gap-2 px-3 pb-2.5">
         {#if !canSync}
           <span class="text-[length:var(--font-size-label)] text-muted-strong">Connect a gateway to run full sync.</span>
@@ -191,6 +202,9 @@
     </div>
     <div>
       <TelegramClaimCard {userId} identity={telegramIdentity} onDisconnect={disconnect} />
+      {#if isSyncActive(telegramSync)}
+        <div class="px-3 pb-2"><ChannelSyncStatus sync={telegramSync} compact /></div>
+      {/if}
       <div class="flex items-center gap-2 px-3 pb-2.5">
         {#if !canSync}
           <span class="text-[length:var(--font-size-label)] text-muted-strong">Connect a gateway to run full sync.</span>

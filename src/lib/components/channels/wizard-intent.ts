@@ -11,9 +11,11 @@
 
 export type WizardIntent = 'operator' | 'personal';
 
+export type WizardStep = 'connect' | 'name' | 'assign' | 'sync';
+
 export interface WizardMode {
     /** Steps shown in the stepper, in order. */
-    steps: ('connect' | 'name' | 'assign')[];
+    steps: WizardStep[];
     /** Whether the user picks a DM policy; when false, `dmPolicy` is forced. */
     asksDmPolicy: boolean;
     /** Effective DM policy when `asksDmPolicy` is false. */
@@ -37,3 +39,17 @@ export const WIZARD_INTENTS: Record<WizardIntent, WizardMode> = {
         personal: true,
     },
 };
+
+/**
+ * Channels whose work CONTINUES after pairing — they get a terminal Sync step.
+ * WhatsApp hands its history over from the phone in chunks for minutes after
+ * the link succeeds, so ending the wizard at "paired" reports the start of the
+ * job as if it were the end. Adding a channel here is the whole change.
+ */
+export const SYNC_STEP_CHANNELS: readonly string[] = ['whatsapp'];
+
+/** The step list for this intent + channel — data, not a branch in the component. */
+export function wizardSteps(intent: WizardIntent, channelType: string): WizardStep[] {
+    const base = WIZARD_INTENTS[intent].steps;
+    return SYNC_STEP_CHANNELS.includes(channelType) ? [...base, 'sync'] : [...base];
+}

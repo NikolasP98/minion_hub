@@ -6,6 +6,12 @@ import {
   validateEntryLine,
   expandLine,
   wouldCreateCycle,
+  wouldCreateComponentCycle,
+  rollupItemCost,
+  explodeToStockLeaves,
+  explodeLineWithModifiers,
+  edgesByParent,
+  type ComponentEdge,
   replayBins,
   binKey,
   consumptionToStockQty,
@@ -253,5 +259,210 @@ describe('validateItemUomConfig', () => {
   });
   it('allows no consumptionUom at all (stock uom == consumption uom)', () => {
     expect(validateItemUomConfig({ consumptionUom: null, unitsPerStockUom: null })).toBeNull();
+  });
+});
+
+// ── Item composition DAG ────────────────────────────────────────────────────
+// The cooking model: potato/milk/salt -> mash; chicken/batter -> fried chicken;
+// mash + fried chicken -> plate.
+const e = (parentItemId: string, childItemId: string, qty: number): ComponentEdge => ({ parentItemId, childItemId, qty });
+
+describe('wouldCreateComponentCycle — DAG reachability', () => {
+  it('rejects a self-edge', () => {
+    expect(wouldCreateComponentCycle([], 'mash', 'mash')).toBe(true);
+  });
+
+  it('allows an item to be a component of TWO different recipes (a DAG, not a tree)', () => {
+    // salt is already in mash; adding it to the sauce too is legitimate —
+    // this is exactly what wouldCreateCycle (tree/single-parent) cannot model.
+    const edges = [e('mash', 'salt', 2)];
+    expect(wouldCreateComponentCycle(edges, 'sauce', 'salt')).toBe(false);
+  });
+
+  it('allows a diamond: two recipes sharing a sub-recipe', () => {
+    const edges = [e('plate', 'mash', 1), e('plate', 'chicken', 1), e('mash', 'salt', 2)];
+    expect(wouldCreateComponentCycle(edges, 'chicken', 'salt')).toBe(false);
+  });
+
+  it('rejects a direct back-edge (child already reaches parent)', () => {
+    const edges = [e('mash', 'potato', 3)];
+    expect(wouldCreateComponentCycle(edges, 'potato', 'mash')).toBe(true);
+  });
+
+  it('rejects an INDIRECT back-edge several levels up', () => {
+    const edges = [e('plate', 'chicken', 1), e('chicken', 'batter', 1), e('batter', 'flour', 2)];
+    // flour -> plate would close plate -> chicken -> batter -> flour -> plate
+    expect(wouldCreateComponentCycle(edges, 'flour', 'plate')).toBe(true);
+  });
+
+  it('terminates on pre-existing bad data instead of hanging', () => {
+    const edges = [e('a', 'b', 1), e('b', 'a', 1)]; // already cyclic
+    expect(wouldCreateComponentCycle(edges, 'c', 'a')).toBe(false);
+  });
+});
+
+describe('rollupItemCost — recursive cost', () => {
+  const rates: Record<string, number> = { potato: 2, milk: 5, salt: 1, chicken: 20, flour: 3 };
+  const leafRate = (id: string) => rates[id] ?? 0;
+
+  it('a leaf costs its own rate', () => {
+    expect(rollupItemCost('potato', new Map(), leafRate).cost).toBe(2);
+  });
+
+  it('a one-level recipe sums qty x child cost', () => {
+    // mash = 3 potato (2) + 1 milk (5) + 2 salt (1) = 6 + 5 + 2 = 13
+    const byParent = edgesByParent([e('mash', 'potato', 3), e('mash', 'milk', 1), e('mash', 'salt', 2)]);
+    expect(rollupItemCost('mash', byParent, leafRate).cost).toBe(13);
+  });
+
+  it('recurses through sub-recipes to arbitrary depth', () => {
+    // batter = 2 flour (3) = 6
+    // fried  = 1 chicken (20) + 1 batter (6) = 26
+    // plate  = 1 fried (26) + 1 mash (13) = 39
+    const byParent = edgesByParent([
+      e('plate', 'fried', 1),
+      e('plate', 'mash', 1),
+      e('fried', 'chicken', 1),
+      e('fried', 'batter', 1),
+      e('batter', 'flour', 2),
+      e('mash', 'potato', 3),
+      e('mash', 'milk', 1),
+      e('mash', 'salt', 2),
+    ]);
+    expect(rollupItemCost('batter', byParent, leafRate).cost).toBe(6);
+    expect(rollupItemCost('fried', byParent, leafRate).cost).toBe(26);
+    expect(rollupItemCost('plate', byParent, leafRate).cost).toBe(39);
+  });
+
+  it('multiplies quantities down the tree', () => {
+    // 2 batter per fried => 2 x (2 flour x 3) = 12
+    const byParent = edgesByParent([e('fried', 'batter', 2), e('batter', 'flour', 2)]);
+    expect(rollupItemCost('fried', byParent, leafRate).cost).toBe(12);
+  });
+
+  it('counts a shared sub-recipe once per use, not once overall', () => {
+    // both halves use salt; each contributes its own qty
+    const byParent = edgesByParent([e('plate', 'mash', 1), e('plate', 'sauce', 1), e('mash', 'salt', 2), e('sauce', 'salt', 3)]);
+    expect(rollupItemCost('plate', byParent, leafRate).cost).toBe(5);
+  });
+
+  it('an unpriced leaf contributes 0 AND marks the whole recipe partial', () => {
+    const byParent = edgesByParent([e('mash', 'unknown-item', 4)]);
+    expect(rollupItemCost('mash', byParent, leafRate)).toEqual({ cost: 0, partial: true });
+  });
+
+  it('partial propagates upward from any depth — one unpriced ingredient taints the plate', () => {
+    const byParent = edgesByParent([e('plate', 'fried', 1), e('fried', 'batter', 1), e('batter', 'mystery', 2), e('plate', 'mash', 1), e('mash', 'salt', 1)]);
+    const plate = rollupItemCost('plate', byParent, leafRate);
+    expect(plate.partial).toBe(true);
+    expect(plate.cost).toBe(1); // only the salt is known — an UNDERSTATED bound
+  });
+
+  it('a fully priced recipe is not partial', () => {
+    const byParent = edgesByParent([e('mash', 'potato', 3), e('mash', 'milk', 1)]);
+    expect(rollupItemCost('mash', byParent, leafRate)).toEqual({ cost: 11, partial: false });
+  });
+
+  it('does not hang on cyclic data (guard, not a substitute for the write check)', () => {
+    const byParent = edgesByParent([e('a', 'b', 1), e('b', 'a', 1)]);
+    expect(rollupItemCost('a', byParent, leafRate).cost).toBe(0);
+  });
+});
+
+describe('explodeToStockLeaves', () => {
+  const allStock = () => true;
+
+  // THE property that makes wiring this into the live issue paths safe.
+  it('is the IDENTITY for an item with no components', () => {
+    expect([...explodeToStockLeaves('salt', 7, new Map(), allStock)]).toEqual([['salt', 7]]);
+  });
+
+  it('replaces a composite with its leaves, multiplying qty down', () => {
+    // 2 plates, each 1 mash, each 3 potato => 6 potato
+    const byParent = edgesByParent([e('plate', 'mash', 1), e('mash', 'potato', 3)]);
+    expect(explodeToStockLeaves('plate', 2, byParent, allStock).get('potato')).toBe(6);
+  });
+
+  it('never issues the composite itself, only its leaves', () => {
+    const byParent = edgesByParent([e('mash', 'potato', 3)]);
+    const out = explodeToStockLeaves('mash', 1, byParent, allStock);
+    expect(out.has('mash')).toBe(false);
+    expect(out.get('potato')).toBe(3);
+  });
+
+  it('accumulates a leaf reached by two different branches', () => {
+    // salt appears in both halves: 1x2 + 1x3 = 5
+    const byParent = edgesByParent([e('plate', 'mash', 1), e('plate', 'sauce', 1), e('mash', 'salt', 2), e('sauce', 'salt', 3)]);
+    expect(explodeToStockLeaves('plate', 1, byParent, allStock).get('salt')).toBe(5);
+  });
+
+  it('drops a leaf that is not a stock item (a service has no inventory to move)', () => {
+    const byParent = edgesByParent([e('facial', 'serum', 2), e('facial', 'chair-time', 1)]);
+    const out = explodeToStockLeaves('facial', 1, byParent, (id) => id === 'serum');
+    expect(out.get('serum')).toBe(2);
+    expect(out.has('chair-time')).toBe(false);
+  });
+
+  it('recurses to arbitrary depth', () => {
+    const byParent = edgesByParent([e('plate', 'fried', 1), e('fried', 'batter', 2), e('batter', 'flour', 3)]);
+    expect(explodeToStockLeaves('plate', 1, byParent, allStock).get('flour')).toBe(6);
+  });
+
+  it('does not hang on cyclic data', () => {
+    const byParent = edgesByParent([e('a', 'b', 1), e('b', 'a', 1)]);
+    expect(() => explodeToStockLeaves('a', 1, byParent, allStock)).not.toThrow();
+  });
+});
+
+describe('explodeLineWithModifiers — order-line configuration', () => {
+  const allStock = () => true;
+  // plate -> 1 mash -> (3 potato, 2 salt); a drink exists but is not in the template
+  const graph = edgesByParent([e('plate', 'mash', 1), e('mash', 'potato', 3), e('mash', 'salt', 2)]);
+
+  it('with no modifiers it matches the plain explosion', () => {
+    const plain = explodeToStockLeaves('plate', 1, graph, allStock);
+    const withMods = explodeLineWithModifiers('plate', 1, graph, allStock, []);
+    expect([...withMods].sort()).toEqual([...plain].sort());
+  });
+
+  it('excludes an ingredient nested SEVERAL levels down ("no salt" on a plate)', () => {
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'exclude', itemId: 'salt' }]);
+    expect(out.get('potato')).toBe(3);
+    expect(out.has('salt')).toBe(false);
+  });
+
+  it('excluding a sub-recipe prunes everything under it', () => {
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'exclude', itemId: 'mash' }]);
+    expect(out.size).toBe(0);
+  });
+
+  it('adds an optional item on top of the template', () => {
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'add', itemId: 'drink', qty: 2 }]);
+    expect(out.get('drink')).toBe(2);
+    expect(out.get('potato')).toBe(3); // template untouched
+  });
+
+  it('an added SUB-RECIPE brings its own ingredients', () => {
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'add', itemId: 'mash', qty: 1 }]);
+    expect(out.get('potato')).toBe(6); // 3 from the template + 3 from the add
+  });
+
+  it('scales adds by the line qty', () => {
+    const out = explodeLineWithModifiers('plate', 3, graph, allStock, [{ action: 'add', itemId: 'drink', qty: 1 }]);
+    expect(out.get('drink')).toBe(3);
+  });
+
+  it('exclude beats add for the same item — the customer said no', () => {
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [
+      { action: 'add', itemId: 'salt', qty: 5 },
+      { action: 'exclude', itemId: 'salt' },
+    ]);
+    expect(out.has('salt')).toBe(false);
+  });
+
+  it('modifiers never mutate the template — a second line is unaffected', () => {
+    explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'exclude', itemId: 'salt' }]);
+    const clean = explodeLineWithModifiers('plate', 1, graph, allStock, []);
+    expect(clean.get('salt')).toBe(2);
   });
 });

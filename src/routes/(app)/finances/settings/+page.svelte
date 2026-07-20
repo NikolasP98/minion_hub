@@ -1,12 +1,10 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { Settings2, RefreshCw, Plug, Coins } from 'lucide-svelte';
-  import { PageHeader, Button, Select, Toggle } from '$lib/components/ui';
+  import { PageHeader, Button, Select, Toggle, ProgressBar, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { financeSync } from '$lib/state/features/finance-sync.svelte';
-  import * as progress from '@zag-js/progress';
-  import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { onMount } from 'svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
@@ -122,16 +120,6 @@
     }
   }
 
-  // ── Sync card ─────────────────────────────────────────────────────────────
-  const progressSvc = useMachine(progress.machine as any, () => ({
-    id: 'fin-sync-progress',
-    value: financeSync.total == null ? null : financeSync.processed,
-    max: financeSync.total ?? 100,
-  }));
-  const prog = $derived(
-    progress.connect(progressSvc as unknown as progress.Service, normalizeProps),
-  );
-
   onMount(() => {
     financeSync.refresh('susii');
     return () => financeSync.stop();
@@ -163,7 +151,7 @@
     subtitle={m.fin_settings_subtitle()}
   >
     {#snippet leading()}
-      <Settings2 size={16} class="text-accent shrink-0" />
+      <Settings2 size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 
@@ -172,7 +160,7 @@
       <!-- ── Connector card ─────────────────────────────────────────────── -->
       <section class="card">
         <header class="card-h">
-          <Plug size={14} />
+          <Plug size={iconSizes.sm} />
           <span>{m.fin_connector_card()}</span>
         </header>
 
@@ -254,7 +242,7 @@
       <!-- ── Currency / Tax / Exchange-rate card ────────────────────────── -->
       <section class="card">
         <header class="card-h">
-          <Coins size={14} />
+          <Coins size={iconSizes.sm} />
           <span>{m.fin_money_card()}</span>
         </header>
 
@@ -343,36 +331,25 @@
       <!-- ── Sync card ──────────────────────────────────────────────────── -->
       <section class="card">
         <header class="card-h">
-          <RefreshCw size={14} />
+          <RefreshCw size={iconSizes.sm} />
           <span>{m.fin_sync_card()}</span>
         </header>
 
         <p class="t-caption mb-3">{m.fin_sync_description()}</p>
 
         {#if financeSync.active || financeSync.status}
-          <div {...prog.getRootProps()} class="prog">
-            <div class="prog-meta">
-              <span class="t-caption">{syncStatusLabel()}</span>
-              {#if financeSync.total != null}
-                <span class="mono-val"
-                  >{m.fin_sync_progress({
-                    processed: financeSync.processed,
-                    total: financeSync.total,
-                  })} · {financeSync.percent}%</span
-                >
-              {:else}
-                <span class="mono-val">{financeSync.processed}</span>
-              {/if}
-            </div>
-            <div {...prog.getTrackProps()} class="prog-track">
-              <div
-                {...prog.getRangeProps()}
-                class="prog-range"
-                class:indeterminate={financeSync.total == null}
-                style={financeSync.total != null ? `width:${financeSync.percent}%` : ''}
-              ></div>
-            </div>
-          </div>
+          <ProgressBar
+            class="mb-3"
+            value={financeSync.total == null ? null : financeSync.processed}
+            max={financeSync.total ?? 100}
+            label={syncStatusLabel()}
+            detail={financeSync.total != null
+              ? `${m.fin_sync_progress({
+                  processed: financeSync.processed,
+                  total: financeSync.total,
+                })} · ${financeSync.percent}%`
+              : String(financeSync.processed)}
+          />
         {/if}
 
         {#if financeSync.status === 'failed' && financeSync.error}
@@ -387,7 +364,7 @@
             disabled={financeSync.active || !canAct('finance', 'edit')}
             title={canAct('finance', 'edit') ? undefined : m.no_permission()}
           >
-            <RefreshCw size={14} class={financeSync.active ? 'animate-spin' : ''} />
+            <RefreshCw size={iconSizes.sm} class={financeSync.active ? 'animate-spin' : ''} />
             {financeSync.active ? m.fin_sync_running() : m.fin_sync_now()}
           </Button>
           {#if financeSync.active}
@@ -469,46 +446,6 @@
     color: var(--color-muted-foreground);
     margin-bottom: var(--space-2, 8px);
     font-style: italic;
-  }
-  .prog {
-    margin-bottom: var(--space-3, 12px);
-  }
-  .prog-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: var(--space-2, 8px);
-  }
-  .prog-track {
-    height: 6px;
-    border-radius: var(--radius-full);
-    background: var(--color-bg3);
-    overflow: hidden;
-  }
-  .prog-range {
-    height: 100%;
-    background: var(--color-accent);
-    border-radius: var(--radius-full);
-    transition: width var(--duration-fast) ease;
-  }
-  /* Total unknown (still counting): a sweeping bar, not a misleading static fill. */
-  .prog-range.indeterminate {
-    width: 40%;
-    transition: none;
-    animation: prog-indeterminate 1.2s ease-in-out infinite;
-  }
-  @keyframes prog-indeterminate {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(250%);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .prog-range.indeterminate {
-      animation: none;
-    }
   }
   .sync-actions {
     display: flex;

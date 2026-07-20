@@ -13,7 +13,9 @@ import {
   stkLedger,
   stkBins,
   stkConsumption,
+  stkItemComponents,
   type StkItem,
+  type StkItemComponent,
   type StkWarehouse,
   type StkEntry,
   type StkEntryLine,
@@ -38,6 +40,8 @@ import {
   consumptionToStockQty,
   round4,
   validateItemUomConfig,
+  wouldCreateComponentCycle,
+  type ComponentEdge,
   type LedgerReplayRow,
 } from './stock.logic';
 
@@ -67,6 +71,195 @@ const ALLOW_NEGATIVE_STOCK_V1 = false;
 
 export function listItems(ctx: CoreCtx): Promise<StkItem[]> {
   return withOrgCore(ctx, (tx) => tx.select().from(stkItems).where(eq(stkItems.orgId, ctx.tenantId)).orderBy(asc(stkItems.name)));
+}
+
+// ── Item composition DAG (Slice 1b) ─────────────────────────────────────────
+
+export interface ComponentRow {
+  id: string;
+  parentItemId: string;
+  childItemId: string;
+  childCode: string;
+  childName: string;
+  childUom: string;
+  qty: number;
+  optional: boolean;
+  defaultIncluded: boolean;
+  choiceGroup: string | null;
+  note: string | null;
+}
+
+/** Every edge in the org's graph — the whole-graph shape the cycle check and
+ *  the recursive rollup both need (a single item's children is not enough to
+ *  know whether an edge closes a loop). */
+export function listAllComponentEdges(ctx: CoreCtx): Promise<ComponentEdge[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({ parentItemId: stkItemComponents.parentItemId, childItemId: stkItemComponents.childItemId, qty: stkItemComponents.qty })
+      .from(stkItemComponents)
+      .where(eq(stkItemComponents.orgId, ctx.tenantId));
+    return rows.map((r) => ({ parentItemId: r.parentItemId, childItemId: r.childItemId, qty: Number(r.qty) }));
+  });
+}
+
+/** One item's direct children, joined to the child item for display. */
+export function listComponents(ctx: CoreCtx, parentItemId: string): Promise<ComponentRow[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: stkItemComponents.id,
+        parentItemId: stkItemComponents.parentItemId,
+        childItemId: stkItemComponents.childItemId,
+        childCode: stkItems.code,
+        childName: stkItems.name,
+        childUom: stkItems.uom,
+        qty: stkItemComponents.qty,
+        optional: stkItemComponents.optional,
+        defaultIncluded: stkItemComponents.defaultIncluded,
+        choiceGroup: stkItemComponents.choiceGroup,
+        note: stkItemComponents.note,
+      })
+      .from(stkItemComponents)
+      .innerJoin(stkItems, eq(stkItems.id, stkItemComponents.childItemId))
+      .where(and(eq(stkItemComponents.orgId, ctx.tenantId), eq(stkItemComponents.parentItemId, parentItemId)))
+      .orderBy(asc(stkItems.name));
+    return rows.map((r) => ({ ...r, qty: Number(r.qty) }));
+  });
+}
+
+export interface SetComponentInput {
+  parentItemId: string;
+  childItemId: string;
+  qty: number;
+  optional?: boolean;
+  defaultIncluded?: boolean;
+  choiceGroup?: string | null;
+  note?: string | null;
+}
+
+/**
+ * Upsert one edge, rejecting anything that would close a loop.
+ *
+ * The check runs against the WHOLE graph, not just the parent's children: an
+ * edge is only safe if the child cannot already reach the parent by any path.
+ * Read-then-write is not atomic, so a concurrent pair of edges could in
+ * principle still race into a cycle — `rollupItemCost` carries a path guard so
+ * that degrades to a wrong number, never a hung request.
+ * ponytail: a serialized transaction here would cost every write to defend
+ * against a race nobody has hit; revisit if recipes ever get bulk-imported.
+ */
+export async function setComponent(ctx: CoreCtx, input: SetComponentInput, actor: Actor): Promise<StkItemComponent> {
+  if (!(input.qty > 0)) throw new StockError('qty must be greater than 0', 'invalid_qty');
+  const edges = await listAllComponentEdges(ctx);
+  // Ignore the edge being replaced — re-saving an existing edge is not a cycle.
+  const others = edges.filter((e) => !(e.parentItemId === input.parentItemId && e.childItemId === input.childItemId));
+  if (wouldCreateComponentCycle(others, input.parentItemId, input.childItemId)) {
+    throw new StockError('that would make the recipe contain itself', 'component_cycle');
+  }
+
+  const row = await withOrgCore(ctx, async (tx) => {
+    const [r] = await tx
+      .insert(stkItemComponents)
+      .values({
+        orgId: ctx.tenantId,
+        parentItemId: input.parentItemId,
+        childItemId: input.childItemId,
+        qty: String(input.qty),
+        optional: input.optional ?? false,
+        defaultIncluded: input.defaultIncluded ?? true,
+        choiceGroup: input.choiceGroup ?? null,
+        note: input.note ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [stkItemComponents.orgId, stkItemComponents.parentItemId, stkItemComponents.childItemId],
+        set: {
+          qty: String(input.qty),
+          optional: input.optional ?? false,
+          defaultIncluded: input.defaultIncluded ?? true,
+          choiceGroup: input.choiceGroup ?? null,
+          note: input.note ?? null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return r;
+  });
+  await recordAudit(ctx, {
+    refType: 'stk_item_component',
+    refId: row.id,
+    op: 'update',
+    changes: [{ field: 'qty', label: 'Component qty', old: null, new: String(input.qty) }],
+    actor,
+  });
+  return row;
+}
+
+export async function removeComponent(ctx: CoreCtx, id: string, actor: Actor): Promise<boolean> {
+  const deleted = await withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .delete(stkItemComponents)
+      .where(and(eq(stkItemComponents.id, id), eq(stkItemComponents.orgId, ctx.tenantId)))
+      .returning({ id: stkItemComponents.id });
+    return rows.length > 0;
+  });
+  if (deleted) {
+    await recordAudit(ctx, {
+      refType: 'stk_item_component',
+      refId: id,
+      op: 'delete',
+      changes: [{ field: 'component', label: 'Component', old: id, new: null }],
+      actor,
+    });
+  }
+  return deleted;
+}
+
+export interface ItemSupplyInfo {
+  /** Unit cost actually paid on the most recent receipt, in the item's stock uom. */
+  lastRestockCost: number;
+  lastRestockAt: string;
+  supplierName: string | null;
+}
+
+/**
+ * Supply-side facts per item, keyed by item id (#12). Kept OUT of `listItems`
+ * on purpose — that one is also loaded by the POS sellable wizard, which has no
+ * use for procurement data.
+ *
+ * Last restock cost is DERIVED, never stored: `value_delta / qty_delta` of the
+ * most recent POSITIVE ledger movement is the rate actually paid on that
+ * receipt. (`valuation_rate` would be wrong here — it is the resulting moving
+ * average after the receipt, not what this delivery cost.) Storing it would be
+ * a denormalised copy free to drift from the ledger.
+ */
+export function itemSupplyInfo(ctx: CoreCtx): Promise<Map<string, ItemSupplyInfo>> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`
+      select l.item_id,
+             (l.value_delta / nullif(l.qty_delta, 0))::float8 as rate,
+             l.posted_at,
+             p.name as supplier_name
+      from (
+        select distinct on (item_id) item_id, value_delta, qty_delta, posted_at, entry_id
+        from stk_ledger
+        where org_id = ${ctx.tenantId} and qty_delta > 0
+        order by item_id, posted_at desc, id desc
+      ) l
+      left join stk_entries e on e.id = l.entry_id and e.org_id = ${ctx.tenantId}
+      left join parties p on p.id = e.party_id and p.org_id = ${ctx.tenantId}
+    `)) as unknown as Array<{ item_id: string; rate: number | null; posted_at: string; supplier_name: string | null }>;
+
+    const out = new Map<string, ItemSupplyInfo>();
+    for (const r of rows) {
+      if (r.rate == null) continue; // qty_delta 0 → not a real receipt
+      out.set(String(r.item_id), {
+        lastRestockCost: round4(Number(r.rate)),
+        lastRestockAt: String(r.posted_at),
+        supplierName: r.supplier_name ?? null,
+      });
+    }
+    return out;
+  });
 }
 
 export interface ItemUomInfo {

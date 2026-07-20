@@ -11,6 +11,7 @@
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
   import SellableWizard, { type SellableLike } from '$lib/components/pos/SellableWizard.svelte';
+  import RecipeEditor from '$lib/components/pos/RecipeEditor.svelte';
 
   let { data }: { data: PageData } = $props();
   const sellables = $derived(data.sellables);
@@ -154,6 +155,7 @@
     storageKey="pos-catalog"
     canEdit={canWrite}
     onSaveRow={saveRow}
+    {expandedContent}
     addLabel={m.pos_catalog_new()}
     onAdd={openCreate}
     addDisabled={!canWrite}
@@ -196,6 +198,23 @@
   </DataTable>
 </PageShell>
 
+<!-- Recipe builder (#8): composition is edited per sellable, in POS. Only
+     sellables backed by a stk_item can have one — a pure fin_product has no
+     node in the graph to hang components off. -->
+{#snippet expandedContent(s: Row)}
+  {#if stockEnabled && s.itemId}
+    <RecipeEditor
+      itemId={s.itemId}
+      items={data.stockItems}
+      edges={data.componentEdges}
+      canEdit={canWrite}
+      onChanged={() => invalidate('pos:catalog')}
+    />
+  {:else}
+    <p class="t-caption no-recipe">{m.pos_recipe_needs_item()}</p>
+  {/if}
+{/snippet}
+
 <SellableWizard
   bind:open={wizardOpen}
   {stockEnabled}
@@ -222,6 +241,10 @@
     height: 0.5rem;
     border-radius: var(--radius-full);
     background: var(--color-border, var(--hairline));
+  }
+  .no-recipe {
+    padding: var(--space-2) var(--space-4);
+    color: var(--color-text-tertiary);
   }
   .mapping-dot.on {
     background: var(--color-success, var(--color-emerald));

@@ -76,7 +76,7 @@ describe('UI audit route inventory', () => {
     const inventory = await buildRouteInventory();
     const terminal = inventory.routes.find((route) => route.pattern === '/terminal');
 
-    expect(inventory.summary).toMatchObject({ endpoints: 150, screens: 140, redirects: 10 });
+    expect(inventory.summary).toMatchObject({ endpoints: 149, screens: 139, redirects: 10 });
     expect(terminal).toMatchObject({
       kind: 'redirect',
       source: 'src/routes/(app)/terminal/+page.svelte',

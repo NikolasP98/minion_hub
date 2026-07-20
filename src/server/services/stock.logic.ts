@@ -154,6 +154,177 @@ export function wouldCreateCycle(warehouses: WarehouseNode[], id: string, newPar
   return false;
 }
 
+// ── Item composition DAG (Slice 1b) ──────────────────────────────────────────
+
+export interface ComponentEdge {
+  parentItemId: string;
+  childItemId: string;
+  qty: number;
+}
+
+/** Group edges by parent — the shape both walks below want. */
+export function edgesByParent(edges: ComponentEdge[]): Map<string, ComponentEdge[]> {
+  const out = new Map<string, ComponentEdge[]>();
+  for (const e of edges) {
+    const list = out.get(e.parentItemId) ?? [];
+    list.push(e);
+    out.set(e.parentItemId, list);
+  }
+  return out;
+}
+
+/**
+ * Would adding parent→child close a loop?
+ *
+ * NOTE this is NOT `wouldCreateCycle` (above): that one walks a single
+ * `parentId` chain because warehouses form a TREE. Components form a DAG — an
+ * item can be a component of many recipes — so there is no chain to walk;
+ * correctness needs a reachability search instead. Adding parent→child cycles
+ * exactly when `child` can already reach `parent`.
+ */
+export function wouldCreateComponentCycle(edges: ComponentEdge[], parentItemId: string, childItemId: string): boolean {
+  if (parentItemId === childItemId) return true; // self-edge
+  const byParent = edgesByParent(edges);
+  const seen = new Set<string>();
+  const stack = [childItemId];
+  while (stack.length) {
+    const cur = stack.pop() as string;
+    if (cur === parentItemId) return true; // child already reaches parent
+    if (seen.has(cur)) continue;
+    seen.add(cur);
+    for (const e of byParent.get(cur) ?? []) stack.push(e.childItemId);
+  }
+  return false;
+}
+
+export interface ItemCostResult {
+  cost: number;
+  /** Some leaf in this subtree has no valuation ⇒ `cost` is an UNDERSTATED
+   *  lower bound. Propagates upward: one unpriced ingredient makes every
+   *  recipe containing it partial, at any depth. Without this a composite
+   *  would report a confident number built on a missing price. */
+  partial: boolean;
+}
+
+/**
+ * Recursive cost of one item: a leaf (no components) costs `leafRate(id)`;
+ * a composite costs Σ (edge qty × child cost), to any depth.
+ *
+ * `memo` makes a diamond (two recipes sharing a sub-recipe) evaluate once, not
+ * twice — it still contributes per use, since each edge multiplies its own qty.
+ * `path` is a belt-and-braces guard: writes are cycle-checked, but bad data
+ * must never hang a request — a node revisited on the current path contributes
+ * 0 (and is marked partial) instead of recursing forever.
+ */
+export function rollupItemCost(
+  rootId: string,
+  byParent: Map<string, ComponentEdge[]>,
+  leafRate: (id: string) => number,
+  memo: Map<string, ItemCostResult> = new Map(),
+  path: Set<string> = new Set(),
+): ItemCostResult {
+  const cached = memo.get(rootId);
+  if (cached !== undefined) return cached;
+  if (path.has(rootId)) return { cost: 0, partial: true }; // cycle — never recurse
+  const kids = byParent.get(rootId);
+  if (!kids || kids.length === 0) {
+    const rate = leafRate(rootId);
+    // A rate of 0 is "nobody valued this", not "it is free".
+    const result: ItemCostResult = { cost: rate, partial: !(rate > 0) };
+    memo.set(rootId, result);
+    return result;
+  }
+  path.add(rootId);
+  let cost = 0;
+  let partial = false;
+  for (const e of kids) {
+    const child = rollupItemCost(e.childItemId, byParent, leafRate, memo, path);
+    cost += e.qty * child.cost;
+    partial = partial || child.partial;
+  }
+  path.delete(rootId);
+  const result: ItemCostResult = { cost: round4(cost), partial };
+  memo.set(rootId, result);
+  return result;
+}
+
+/**
+ * Expand `qty` of an item down to the things stock is actually kept for.
+ *
+ * A node WITH components contributes its children (qty multiplied down); a node
+ * WITHOUT components is a leaf and contributes itself — but only if it is a
+ * stock item, since a leaf service ("chair time") has no inventory to move.
+ * Same leaf/composite rule as `rollupItemCost`, so what a sale COSTS and what
+ * it CONSUMES can never disagree.
+ *
+ * ★ For an item with no components this is the IDENTITY (`{itemId: qty}`) —
+ * which is what makes wiring it into the existing issue paths a no-op for every
+ * item that has no recipe.
+ *
+ * Quantities are multiplied verbatim; uom conversion stays with the caller,
+ * which already applies its own convention.
+ */
+export function explodeToStockLeaves(
+  itemId: string,
+  qty: number,
+  byParent: Map<string, ComponentEdge[]>,
+  isStockItem: (id: string) => boolean,
+  out: Map<string, number> = new Map(),
+  path: Set<string> = new Set(),
+  /** Items the customer excluded for this line — pruned wherever they appear,
+   *  since an ingredient can sit several levels down ("no salt" on a plate). */
+  exclude: ReadonlySet<string> = new Set(),
+): Map<string, number> {
+  if (exclude.has(itemId)) return out;
+  const kids = byParent.get(itemId);
+  if (!kids || kids.length === 0) {
+    if (isStockItem(itemId)) out.set(itemId, (out.get(itemId) ?? 0) + qty);
+    return out;
+  }
+  // No memo here (results are qty-scaled); the path guard is what stops a
+  // cyclic graph from recursing forever.
+  if (path.has(itemId)) return out;
+  path.add(itemId);
+  for (const e of kids) explodeToStockLeaves(e.childItemId, qty * e.qty, byParent, isStockItem, out, path, exclude);
+  path.delete(itemId);
+  return out;
+}
+
+/** One customer choice on one order line. See the companion migration. */
+export interface LineModifier {
+  action: 'exclude' | 'add';
+  itemId: string;
+  /** `add` only — how much of the optional item. */
+  qty?: number;
+}
+
+/**
+ * Explode one order line, applying what the CUSTOMER chose on top of what the
+ * item IS. Excludes prune at any depth; adds are expanded like any other item
+ * so an optional sub-recipe brings its own ingredients.
+ *
+ * Configuration never touches the template — two lines of the same item with
+ * different modifiers stay one item in the catalog.
+ */
+export function explodeLineWithModifiers(
+  itemId: string,
+  qty: number,
+  byParent: Map<string, ComponentEdge[]>,
+  isStockItem: (id: string) => boolean,
+  modifiers: readonly LineModifier[] = [],
+  out: Map<string, number> = new Map(),
+): Map<string, number> {
+  const exclude = new Set(modifiers.filter((mod) => mod.action === 'exclude').map((mod) => mod.itemId));
+  explodeToStockLeaves(itemId, qty, byParent, isStockItem, out, new Set(), exclude);
+  for (const mod of modifiers) {
+    if (mod.action !== 'add') continue;
+    const addQty = (mod.qty ?? 1) * qty; // per unit of the line
+    if (!(addQty > 0) || exclude.has(mod.itemId)) continue;
+    explodeToStockLeaves(mod.itemId, addQty, byParent, isStockItem, out, new Set(), exclude);
+  }
+  return out;
+}
+
 // ── rebuildBins replay ───────────────────────────────────────────────────────
 
 export interface LedgerReplayRow {

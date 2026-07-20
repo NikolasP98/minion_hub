@@ -1,7 +1,9 @@
 import type { Agent, Session, PresenceEntry, HelloOk } from '@minion-stack/shared';
+import type { ChannelHistorySync } from '$lib/types/channels';
 import { page } from '$app/state';
 import { userState } from '$lib/state/features/user.svelte';
 import { filterAgentsByOrg, type OrgRef } from './agent-org';
+import { pickHistorySync } from './history-sync';
 
 /**
  * Non-reactive index for O(1) session lookup by sessionKey.
@@ -33,6 +35,8 @@ export const gw = $state({
         connected?: boolean | null;
         reconnectAttempts?: number | null;
         lastError?: string | null;
+        /** WhatsApp history-sync progress; absent on older gateways. */
+        historySync?: ChannelHistorySync;
       }[]
     >;
   } | null,
@@ -44,6 +48,14 @@ export const gw = $state({
   // (gwRunning=false) and the snapshot alone would derive a misleading "Starting".
   pairingChannelIds: [] as string[],
 });
+
+/** Live history-sync for one gateway account, off the last channels.status. */
+export function findHistorySync(
+  channelType: string,
+  accountId: string | null | undefined,
+): ChannelHistorySync | undefined {
+  return pickHistorySync(gw.channels?.channelAccounts?.[channelType], accountId);
+}
 
 /**
  * Agents visible in the current context, after two layers of scoping:

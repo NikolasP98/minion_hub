@@ -101,6 +101,10 @@ export const posTicketLines = pgTable(
     discount: numeric('discount').notNull().default('0'),
     total: numeric('total').notNull(),
     lineNo: integer('line_no').notNull().default(0),
+    /** Order-line CONFIGURATION (#9): what the customer chose for this line —
+     *  [{action:'exclude'|'add', itemId, qty?}]. Deliberately not composition;
+     *  see supabase/migrations/20260720030000_pos_line_modifiers.sql. */
+    modifiers: jsonb('modifiers').notNull().default([]),
   },
   (t) => ({
     orgTicketIdx: index('pos_ticket_lines_org_ticket_idx').on(t.orgId, t.ticketId),

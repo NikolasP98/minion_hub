@@ -22,11 +22,14 @@ import {
   cancelEntry,
   StockError,
   createItem,
+  updateItem,
   setConsumption,
   deleteConsumption,
   listConsumption,
+  listAllComponentEdges,
   type CreateIssueFromInvoiceLine,
 } from './stock.service';
+import { edgesByParent, explodeLineWithModifiers, type ComponentEdge, type LineModifier } from './stock.logic';
 import { stkItems, stkConsumption } from '$server/db/pg-schema/stock';
 import { finProducts } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
@@ -342,20 +345,66 @@ async function resolveIssueLines(ctx: CoreCtx, lines: PosTicketLine[]): Promise<
     }
   }
 
+  // The component graph, loaded once for every line.
+  const { byParent, isStockItem } = await loadComponentGraph(ctx);
+
+  // Resolve AND expand per line, not in two phases: modifiers (#9) are a
+  // property of the LINE, so an aggregate-then-expand pass would have already
+  // merged away the identity they attach to.
   const qtyByItem = new Map<string, number>();
-  const add = (itemId: string, q: number) => qtyByItem.set(itemId, (qtyByItem.get(itemId) ?? 0) + q);
   for (const l of lines) {
     if (l.bookingId || !l.finProductId) continue; // booking-owned or unmapped → issues nothing
     const qty = Number(l.qty);
     const mappings = consumptionByFinProductId.get(l.finProductId);
-    if (mappings?.length) {
-      for (const m of mappings) add(m.itemId, qty * m.qtyPerUnit);
-      continue;
-    }
     const bridgeItemId = itemByFinProductId.get(l.finProductId);
-    if (bridgeItemId) add(bridgeItemId, qty);
+    // Recipe outranks the 1:1 bridge (see PRECEDENCE above).
+    const roots = mappings?.length
+      ? mappings.map((mp) => ({ itemId: mp.itemId, q: qty * mp.qtyPerUnit }))
+      : bridgeItemId
+        ? [{ itemId: bridgeItemId, q: qty }]
+        : [];
+    const mods = lineModifiersOf(l);
+    for (const r of roots) {
+      explodeLineWithModifiers(r.itemId, r.q, byParent, isStockItem, mods, qtyByItem);
+    }
   }
   return [...qtyByItem].map(([itemId, qty]) => ({ itemId, qty: round2(qty) }));
+}
+
+/** Per-line customer choices, tolerant of legacy rows and hand-written JSON. */
+function lineModifiersOf(line: PosTicketLine): LineModifier[] {
+  const raw = (line as { modifiers?: unknown }).modifiers;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (mod): mod is LineModifier =>
+      !!mod && typeof mod === 'object' && ((mod as LineModifier).action === 'exclude' || (mod as LineModifier).action === 'add') && typeof (mod as LineModifier).itemId === 'string',
+  );
+}
+
+/**
+ * The org's component graph + stock flags, loaded once per issue. When nothing
+ * is composed this returns an empty graph, which makes every expansion the
+ * identity — so the common case costs one cheap query and behaves exactly as
+ * it did before Slice 1b.
+ */
+export async function loadComponentGraph(
+  ctx: CoreCtx,
+): Promise<{ byParent: Map<string, ComponentEdge[]>; isStockItem: (id: string) => boolean }> {
+  const edges = await listAllComponentEdges(ctx);
+  if (edges.length === 0) return { byParent: new Map(), isStockItem: () => true };
+
+  // Only leaves that actually hold stock may be issued.
+  const involved = new Set<string>(edges.flatMap((e) => [e.parentItemId, e.childItemId]));
+  const flags = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
+      .from(stkItems)
+      .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, [...involved]))),
+  );
+  const stockFlag = new Map(flags.map((r) => [r.id, r.isStockItem]));
+  // Unknown ids are roots resolved from the catalog, not graph nodes — they are
+  // real stock items by construction, so default true.
+  return { byParent: edgesByParent(edges), isStockItem: (id) => stockFlag.get(id) ?? true };
 }
 
 /**
@@ -723,6 +772,14 @@ export interface SellableInput {
   kind: 'product' | 'service';
   trackStock?: boolean;
   uom?: string;
+  /**
+   * Publish an EXISTING stk_item as this sellable (the raw-material case: a
+   * mask, a vial — "the POS section can publish raw ingredients"). Links that
+   * item's finProductId instead of creating a new one, which also makes the
+   * sellable product-kind for free (`kind` is derived from the link).
+   * Mutually exclusive with `trackStock`; when both are sent, this wins.
+   */
+  itemId?: string;
   consumption?: Array<{ itemId: string; qtyPerUnit: number }>;
   active?: boolean;
 }
@@ -758,7 +815,19 @@ export async function createSellable(ctx: CoreCtx, input: SellableInput, actor: 
   );
   if (!product) throw new PosError('product write did not persist', 'write_failed');
 
-  if (input.kind === 'product' && input.trackStock) {
+  if (input.itemId) {
+    // Publish an existing raw material. The partial unique index
+    // (stk_items_org_fin_product_uniq) is the real guard against two items
+    // claiming one product; catching it here just turns 23505 into a usable
+    // error instead of a 500.
+    try {
+      const linked = await updateItem(ctx, input.itemId, { finProductId: product.id });
+      if (!linked) throw new PosError('stock item not found', 'item_not_found');
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new PosError('that item is already published as a sellable', 'item_taken');
+      throw e;
+    }
+  } else if (input.kind === 'product' && input.trackStock) {
     await createItem(ctx, { code, name: input.name, uom: input.uom ?? 'unit', finProductId: product.id });
   }
 

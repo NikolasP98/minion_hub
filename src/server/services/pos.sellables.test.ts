@@ -10,6 +10,7 @@ vi.mock('./finance-products.service', () => ({
 // ── stock.service mock — sellables slice only; ticket-flow exports are
 // stubbed no-ops since pos.sellables.test.ts never exercises them ──
 const createItemMock = vi.fn<(ctx: unknown, input: unknown) => Promise<{ id: string }>>();
+const updateItemMock = vi.fn<(ctx: unknown, id: string, patch: unknown) => Promise<{ id: string } | null>>();
 const setConsumptionMock = vi.fn<(ctx: unknown, input: unknown, actor: unknown) => Promise<{ id: string }>>();
 const deleteConsumptionMock = vi.fn<(ctx: unknown, id: string) => Promise<boolean>>();
 const listConsumptionMock = vi.fn<(ctx: unknown, filters: unknown) => Promise<Array<{ id: string; itemId: string }>>>();
@@ -20,6 +21,7 @@ vi.mock('./stock.service', () => ({
   cancelEntry: vi.fn(),
   StockError: class StockError extends Error {},
   createItem: (ctx: unknown, input: unknown) => createItemMock(ctx, input),
+  updateItem: (ctx: unknown, id: string, patch: unknown) => updateItemMock(ctx, id, patch),
   setConsumption: (ctx: unknown, input: unknown, actor: unknown) => setConsumptionMock(ctx, input, actor),
   deleteConsumption: (ctx: unknown, id: string) => deleteConsumptionMock(ctx, id),
   listConsumption: (ctx: unknown, filters: unknown) => listConsumptionMock(ctx, filters),
@@ -97,6 +99,56 @@ describe('createSellable', () => {
     expect(createItemMock).toHaveBeenCalledWith(expect.anything(), { code: 'BOTOX', name: 'Botox', uom: 'vial', finProductId: 'fp-2' });
     expect(row.itemId).toBe('item-9');
     expect(row.kind).toBe('product');
+  });
+
+  // ── #10: publish an EXISTING raw material (a mask, a vial) as a sellable ──
+  it('itemId links the existing item instead of creating one', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ id: 'fp-x' }]]);
+    mockExecute(db, [{ id: 'fp-x', code: 'MASK', name: 'Mask', category: null, unit_price: '40', active: true, item_id: 'item-raw', stock_qty: '5', has_mapping: false }]);
+    upsertProductMock.mockResolvedValue(undefined);
+    updateItemMock.mockResolvedValue({ id: 'item-raw' });
+
+    const input: SellableInput = { name: 'Mask', code: 'MASK', unitPrice: 40, kind: 'product', itemId: 'item-raw' };
+    const row = await createSellable(ctx(db), input, actor);
+
+    expect(updateItemMock).toHaveBeenCalledWith(expect.anything(), 'item-raw', { finProductId: 'fp-x' });
+    expect(createItemMock).not.toHaveBeenCalled(); // linked, never created
+    expect(row.kind).toBe('product'); // derived from the link, for free
+  });
+
+  it('itemId wins over trackStock when both are sent', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ id: 'fp-y' }]]);
+    mockExecute(db, [{ id: 'fp-y', code: 'DUAL', name: 'Dual', category: null, unit_price: null, active: true, item_id: 'item-raw', stock_qty: '0', has_mapping: false }]);
+    upsertProductMock.mockResolvedValue(undefined);
+    updateItemMock.mockResolvedValue({ id: 'item-raw' });
+
+    await createSellable(ctx(db), { name: 'Dual', code: 'DUAL', unitPrice: null, kind: 'product', trackStock: true, uom: 'unit', itemId: 'item-raw' }, actor);
+
+    expect(updateItemMock).toHaveBeenCalled();
+    expect(createItemMock).not.toHaveBeenCalled();
+  });
+
+  it('publishing an already-published item surfaces item_taken, not a raw 23505', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ id: 'fp-z' }]]);
+    upsertProductMock.mockResolvedValue(undefined);
+    // what the stk_items_org_fin_product_uniq partial index raises
+    updateItemMock.mockRejectedValue(Object.assign(new Error('duplicate key'), { code: '23505' }));
+
+    const input: SellableInput = { name: 'Dup', code: 'DUP', unitPrice: null, kind: 'product', itemId: 'item-raw' };
+    await expect(createSellable(ctx(db), input, actor)).rejects.toMatchObject({ code: 'item_taken' });
+  });
+
+  it('a missing itemId surfaces item_not_found', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ id: 'fp-w' }]]);
+    upsertProductMock.mockResolvedValue(undefined);
+    updateItemMock.mockResolvedValue(null); // updateItem returns null when not found
+
+    const input: SellableInput = { name: 'Ghost', code: 'GHOST', unitPrice: null, kind: 'product', itemId: 'nope' };
+    await expect(createSellable(ctx(db), input, actor)).rejects.toMatchObject({ code: 'item_not_found' });
   });
 
   it('product-kind WITHOUT trackStock writes the product only — no item created', async () => {

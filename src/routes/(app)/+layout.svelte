@@ -13,6 +13,7 @@
 	import { type Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { loadHosts } from '$lib/state/features/hosts.svelte';
 	import { ensurePermissions } from '$lib/state/features/permissions.svelte';
 	import { hydratePluginNav } from '$lib/state/plugin-nav.svelte';
 	import { fadeIn } from '$lib/animations';
@@ -53,6 +54,18 @@
 		if ('requestIdleCallback' in window) requestIdleCallback(markIdle, { timeout: 1500 });
 		else setTimeout(markIdle, 300);
 	});
+
+	// Re-sync hosts whenever the authoritative list lands or changes.
+	// loadHosts() also runs from the ROOT layout, but that fires before this
+	// (app) layout's data exists — so it used to initialise activeHostId from an
+	// empty list and never re-run, leaving the picker showing "Add host" (and a
+	// stale cached subset) until the user happened to visit a route that called
+	// it again. Keyed on the server list so it re-runs on org switch too.
+	$effect(() => {
+		const servers = (page.data as { hosts?: { servers?: unknown[] } })?.hosts?.servers;
+		if (servers) loadHosts();
+	});
+
 </script>
 
 <QueryClientProvider client={queryClient}>
