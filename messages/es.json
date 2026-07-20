@@ -4948,5 +4948,9 @@
   "stock_col_last_restock_cost": "Último costo de reposición",
   "stock_col_last_supplier": "Último proveedor",
   "stock_field_default_supplier": "Proveedor por defecto",
-  "stock_field_default_supplier_hint": "A quién se le compra normalmente este artículo. El último costo y proveedor de arriba se leen del libro mayor."
+  "stock_field_default_supplier_hint": "A quién se le compra normalmente este artículo. El último costo y proveedor de arriba se leen del libro mayor.",
+  "fin_products_manage_in_pos": "Gestionar en POS",
+  "fin_products_tree_title": "Composición",
+  "fin_products_tree_empty": "Sin relaciones de insumos — este producto no está vinculado al stock.",
+  "fin_products_tree_recipe": "receta"
 }

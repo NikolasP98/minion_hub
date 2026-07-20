@@ -84,48 +84,68 @@ export function rollupFlatCost(
  *     table would leave these showing "no cost" despite a known valuation.
  * A product on both paths keeps its explicit recipe (the bridge is a fallback).
  */
+interface ProductRoot {
+  itemId: string;
+  qtyPerUnit: number;
+  unitsPerStockUom: number | null;
+}
+
+/**
+ * The items a product resolves to BEFORE any component expansion — the recipe
+ * (`stk_consumption`), else the 1:1 `fin_product_id` bridge. Shared by the cost
+ * rollup and the composition tree so what finances DISPLAYS and what it COSTS
+ * can never drift apart.
+ */
+async function loadProductRoots(
+  tx: Parameters<Parameters<typeof withOrgCore>[1]>[0],
+  orgId: string,
+  finProductIds: string[],
+): Promise<Map<string, ProductRoot[]>> {
+  const byProduct = new Map<string, ProductRoot[]>();
+
+  const maps = await tx
+    .select({
+      finProductId: stkConsumption.finProductId,
+      itemId: stkConsumption.itemId,
+      qtyPerUnit: stkConsumption.qtyPerUnit,
+      unitsPerStockUom: stkItems.unitsPerStockUom,
+    })
+    .from(stkConsumption)
+    .innerJoin(stkItems, eq(stkItems.id, stkConsumption.itemId))
+    .where(and(eq(stkConsumption.orgId, orgId), inArray(stkConsumption.finProductId, finProductIds)));
+  for (const r of maps) {
+    const list = byProduct.get(r.finProductId) ?? [];
+    list.push({
+      itemId: r.itemId,
+      qtyPerUnit: Number(r.qtyPerUnit),
+      unitsPerStockUom: r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom),
+    });
+    byProduct.set(r.finProductId, list);
+  }
+
+  // 1:1 bridge fallback — only for products with no explicit recipe.
+  const bridged = await tx
+    .select({ id: stkItems.id, finProductId: stkItems.finProductId, unitsPerStockUom: stkItems.unitsPerStockUom })
+    .from(stkItems)
+    .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.finProductId, finProductIds)));
+  for (const b of bridged) {
+    if (!b.finProductId || byProduct.has(b.finProductId)) continue;
+    byProduct.set(b.finProductId, [
+      { itemId: b.id, qtyPerUnit: 1, unitsPerStockUom: b.unitsPerStockUom == null ? null : Number(b.unitsPerStockUom) },
+    ]);
+  }
+  return byProduct;
+}
+
 export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Promise<Map<string, ProductCost>> {
   const out = new Map<string, ProductCost>();
   if (finProductIds.length === 0) return out;
   const [warehouseId, componentEdges] = await Promise.all([resolveDefaultWarehouse(ctx), listAllComponentEdges(ctx)]);
 
   return withOrgCore(ctx, async (tx) => {
-    const maps = await tx
-      .select({
-        finProductId: stkConsumption.finProductId,
-        itemId: stkConsumption.itemId,
-        qtyPerUnit: stkConsumption.qtyPerUnit,
-        unitsPerStockUom: stkItems.unitsPerStockUom,
-      })
-      .from(stkConsumption)
-      .innerJoin(stkItems, eq(stkItems.id, stkConsumption.itemId))
-      .where(and(eq(stkConsumption.orgId, ctx.tenantId), inArray(stkConsumption.finProductId, finProductIds)));
-
-    const byProduct = new Map<string, Array<{ itemId: string; qtyPerUnit: number; unitsPerStockUom: number | null }>>();
+    const byProduct = await loadProductRoots(tx, ctx.tenantId, finProductIds);
     const itemIds = new Set<string>();
-    for (const r of maps) {
-      itemIds.add(r.itemId);
-      const list = byProduct.get(r.finProductId) ?? [];
-      list.push({
-        itemId: r.itemId,
-        qtyPerUnit: Number(r.qtyPerUnit),
-        unitsPerStockUom: r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom),
-      });
-      byProduct.set(r.finProductId, list);
-    }
-
-    // 1:1 bridge fallback — only for products with no explicit recipe.
-    const bridged = await tx
-      .select({ id: stkItems.id, finProductId: stkItems.finProductId, unitsPerStockUom: stkItems.unitsPerStockUom })
-      .from(stkItems)
-      .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.finProductId, finProductIds)));
-    for (const b of bridged) {
-      if (!b.finProductId || byProduct.has(b.finProductId)) continue;
-      itemIds.add(b.id);
-      byProduct.set(b.finProductId, [
-        { itemId: b.id, qtyPerUnit: 1, unitsPerStockUom: b.unitsPerStockUom == null ? null : Number(b.unitsPerStockUom) },
-      ]);
-    }
+    for (const roots of byProduct.values()) for (const r of roots) itemIds.add(r.itemId);
 
     // Every bin at the default warehouse, not just the directly-mapped items:
     // a mapped item may be a COMPOSITE whose leaves are items nothing maps to
@@ -155,6 +175,76 @@ export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Pr
     }
 
     for (const [productId, mappings] of byProduct) out.set(productId, rollupFlatCost(mappings, rateByItem, unvalued));
+    return out;
+  });
+}
+
+export interface CompositionNode {
+  itemId: string;
+  code: string;
+  name: string;
+  uom: string;
+  /** Quantity per 1 of the immediate parent (not cumulative). */
+  qty: number;
+  isStockItem: boolean;
+  children: CompositionNode[];
+}
+
+/** Depth cap — a display guard for pathological data; real recipes nest a few
+ *  levels. Combined with the visited-path check, the walk always terminates. */
+const MAX_TREE_DEPTH = 12;
+
+/**
+ * Per-product composition TREE for the finances read-only view: "their
+ * relationships to items, recursively".
+ *
+ * Deliberately NOT flattened — the nesting is the point. Quantities are
+ * per-parent, so the UI can show "1 plate → 2 mash → 3 potato" rather than a
+ * pre-multiplied total. Roots come from the same resolution the cost rollup
+ * uses, so the tree always explains the number displayed beside it.
+ */
+export async function productCompositionTrees(ctx: CoreCtx, finProductIds: string[]): Promise<Map<string, CompositionNode[]>> {
+  const out = new Map<string, CompositionNode[]>();
+  if (finProductIds.length === 0) return out;
+  const edges = await listAllComponentEdges(ctx);
+  const byParent = edgesByParent(edges);
+
+  return withOrgCore(ctx, async (tx) => {
+    const byProduct = await loadProductRoots(tx, ctx.tenantId, finProductIds);
+    if (byProduct.size === 0) return out;
+
+    const items = await tx
+      .select({ id: stkItems.id, code: stkItems.code, name: stkItems.name, uom: stkItems.uom, isStockItem: stkItems.isStockItem })
+      .from(stkItems)
+      .where(eq(stkItems.orgId, ctx.tenantId));
+    const itemById = new Map(items.map((i) => [i.id, i]));
+
+    const build = (itemId: string, qty: number, depth: number, path: Set<string>): CompositionNode | null => {
+      const it = itemById.get(itemId);
+      if (!it) return null; // unknown id → omit rather than render a ghost row
+      const node: CompositionNode = {
+        itemId,
+        code: it.code,
+        name: it.name,
+        uom: it.uom,
+        qty,
+        isStockItem: it.isStockItem,
+        children: [],
+      };
+      if (depth >= MAX_TREE_DEPTH || path.has(itemId)) return node; // cycle/depth → stop, keep the node
+      path.add(itemId);
+      for (const e of byParent.get(itemId) ?? []) {
+        const child = build(e.childItemId, e.qty, depth + 1, path);
+        if (child) node.children.push(child);
+      }
+      path.delete(itemId);
+      return node;
+    };
+
+    for (const [productId, roots] of byProduct) {
+      const nodes = roots.map((r) => build(r.itemId, r.qtyPerUnit, 0, new Set<string>())).filter((n): n is CompositionNode => n !== null);
+      if (nodes.length) out.set(productId, nodes);
+    }
     return out;
   });
 }
