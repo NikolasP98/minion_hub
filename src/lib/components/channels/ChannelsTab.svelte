@@ -18,6 +18,7 @@
     import ChannelCard from './ChannelCard.svelte';
     import ChannelGroup from './ChannelGroup.svelte';
     import ChannelSetupWizard from './ChannelSetupWizard.svelte';
+    import HistorySyncControl from './HistorySyncControl.svelte';
     import { MessageSquare, Download } from 'lucide-svelte';
     import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
     import * as m from '$lib/paraglide/messages';
@@ -352,6 +353,13 @@
                 {transportEnabled}
                 onaddclick={() => { wizardType = type; }}
             >
+                <!-- Gateway-wide history-sync default. WhatsApp is the only transport
+                     that streams history from the device, so it only shows here. -->
+                {#if type === 'whatsapp'}
+                    <div class="pb-2">
+                        <HistorySyncControl />
+                    </div>
+                {/if}
                 {#if channelsOfType.length === 0}
                     <p class="text-xs text-muted-foreground text-center py-4">
                         No {CHANNEL_TYPE_LABELS[type]} accounts yet.

@@ -11,6 +11,7 @@
     import ChannelEditForm from './ChannelEditForm.svelte';
     import ChannelStatusPill from './ChannelStatusPill.svelte';
     import ChannelSyncStatus from './ChannelSyncStatus.svelte';
+    import HistorySyncControl from './HistorySyncControl.svelte';
     import { isSyncActive } from '$lib/state/gateway';
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
     import * as m from '$lib/paraglide/messages';
@@ -514,8 +515,12 @@
                     </div>
                 {/if}
 
-                <!-- WhatsApp markOnline: transport-level knob, source of truth = gateway.json -->
+                <!-- WhatsApp history sync: per-account override of the gateway default.
+                     Source of truth = gateway config, so it patches, it doesn't PUT. -->
                 {#if isGateway && channel.type === 'whatsapp' && gwAccountId}
+                    <HistorySyncControl accountId={gwAccountId} />
+
+                    <!-- markOnline: transport-level knob, source of truth = gateway.json -->
                     <div>
                         <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_markOnlineTitle()}</h4>
                         <Toggle
