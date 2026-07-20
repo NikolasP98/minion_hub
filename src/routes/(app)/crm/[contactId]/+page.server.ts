@@ -56,6 +56,9 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     contact: record.contact,
     identities: record.identities,
     stats: record.stats,
+    // Party-spine identity (doc_number / dob / derived age) — the authority for
+    // DNI + date of birth on this page, replacing custom_fields.dni / .edad.
+    party: record.party,
     score,
     timeline,
     contactTags,

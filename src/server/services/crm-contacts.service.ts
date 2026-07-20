@@ -218,6 +218,8 @@ export interface RankedContact {
   /** Whole-year age derived live from parties.dob; null when dob is unknown.
    *  Overrides custom_fields.edad for display so age never goes stale. */
   age: number | null;
+  /** parties.dob as "YYYY-MM-DD" — the STORED fact; `age` above is derived from it. */
+  dob: string | null;
   /** Canonical sex from the DNI registry ('M' | 'F' | null). Stored canonical;
    *  the UI localizes to Hombre/Mujer. */
   sex: string | null;
@@ -349,10 +351,21 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       ${finCte},
       base as (
         select c.id as contact_id, c.display_name, c.owner_id, c.source, c.lifecycle_override,
-               c.custom_fields as custom_fields,
+               -- The PARTY SPINE is authoritative for identity. custom_fields.dni is
+               -- import residue: 208 contacts were dni_verified (read from
+               -- parties.dni_verified) while their custom_fields.dni was blank, so the
+               -- roster showed "verified" next to an empty document. Overlay the real
+               -- document so every consumer of custom_fields (list column, detail,
+               -- export, merge) agrees, without a data migration.
+               case when nullif(trim(p.doc_number), '') is not null
+                 then coalesce(c.custom_fields, '{}'::jsonb) || jsonb_build_object('dni', p.doc_number)
+                 else c.custom_fields end as custom_fields,
                c.party_id,
                coalesce(p.dni_verified, false) as dni_verified,
+               -- Age is ALWAYS derived from dob, never stored (custom_fields.edad is a
+               -- frozen import value that silently ages out of date).
                (case when p.dob is not null then date_part('year', age(p.dob))::int end) as age,
+               to_char(p.dob, 'YYYY-MM-DD') as dob,
                p.metadata->'dni_registry'->>'sex' as sex,
                coalesce(a.total_msgs, 0) as total_msgs,
                coalesce(a.inbound_msgs, 0) as inbound_msgs,
@@ -383,7 +396,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       scored as (
         select contact_id, display_name, owner_id, source, channels, identities, tag_ids,
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
-               party_id, dni_verified, age, sex,
+               party_id, dni_verified, age, dob, sex,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
@@ -521,7 +534,37 @@ export async function getContact(ctx: CoreCtx, id: string, ownerId?: string, mas
       select message_count, inbound_count, channels_used, first_contact_at, last_contact_at
       from crm_contact_stats where contact_id = ${id}
     `)) as unknown as Array<Record<string, unknown>>;
-    return { contact: maskedContact, identities, stats: stats ?? null, piiMasked: maskSensitive };
+    // Identity comes from the PARTY SPINE, not custom_fields — same authority the
+    // roster uses. dob is the stored fact; age is derived here so it can never go
+    // stale the way the imported custom_fields.edad did.
+    const [party] = (await tx.execute(sql`
+      select p.doc_number, to_char(p.dob, 'YYYY-MM-DD') as dob,
+             (case when p.dob is not null then date_part('year', age(p.dob))::int end) as age,
+             coalesce(p.dni_verified, false) as dni_verified,
+             p.metadata->'dni_registry'->>'sex' as sex
+      from parties p where p.id = ${contact.partyId ?? null}
+    `)) as unknown as Array<{
+      doc_number: string | null;
+      dob: string | null;
+      age: number | null;
+      dni_verified: boolean;
+      sex: string | null;
+    }>;
+    return {
+      contact: maskedContact,
+      identities,
+      stats: stats ?? null,
+      piiMasked: maskSensitive,
+      party: party
+        ? {
+            docNumber: maskSensitive ? maskPii(party.doc_number ?? '') || null : party.doc_number,
+            dob: party.dob,
+            age: party.age,
+            dniVerified: party.dni_verified,
+            sex: party.sex,
+          }
+        : null,
+    };
   });
 }
 

@@ -85,12 +85,12 @@
     id: string;
     label: () => string;
     icon: typeof User;
-    kind: 'name' | 'phone' | 'cf';
+    kind: 'name' | 'phone' | 'cf' | 'dni' | 'dob';
     keys: string[];
   };
   const STD: StdField[] = [
     { id: 'name', label: m.crm_std_name, icon: User, kind: 'name', keys: [] },
-    { id: 'dni', label: m.crm_std_dni, icon: IdCard, kind: 'cf', keys: ['dni'] },
+    { id: 'dni', label: m.crm_std_dni, icon: IdCard, kind: 'dni', keys: ['dni'] },
     {
       id: 'phone',
       label: m.crm_std_phone,
@@ -100,10 +100,13 @@
     },
     { id: 'email', label: m.crm_std_email, icon: Mail, kind: 'cf', keys: ['email', 'correo'] },
     {
-      id: 'edad',
-      label: m.crm_std_age,
+      // Date of birth is the STORED fact; age is derived from it for display.
+      // `edad`/`fecha_nacimiento` stay in `keys` so the stale imported values are
+      // still treated as standard (kept out of "Additional") but never rendered.
+      id: 'dob',
+      label: m.crm_std_dob,
       icon: Cake,
-      kind: 'cf',
+      kind: 'dob',
       keys: ['edad', 'fecha_nacimiento'],
     },
     { id: 'sexo', label: m.crm_std_sex, icon: User, kind: 'cf', keys: ['sexo'] },
@@ -128,6 +131,11 @@
   }
   function stdValue(f: StdField): string {
     if (f.kind === 'name') return c.displayName ?? '';
+    // Identity fields come from the PARTY SPINE (parties.doc_number / parties.dob),
+    // never custom_fields — those hold frozen import residue that drifts out of
+    // sync (208 contacts read as dni_verified with a blank custom_fields.dni).
+    if (f.kind === 'dni') return data.party?.docNumber ?? cfValue(f.keys);
+    if (f.kind === 'dob') return data.party?.dob ?? '';
     if (f.kind === 'phone') {
       const wa = data.identities.find((i) => i.channel === 'whatsapp');
       if (wa) return identityValue(wa.externalId, wa.handle);
@@ -236,7 +244,6 @@
   function applyDniHit(hit: DniHit) {
     if (hit.name) stdDraft.name = hit.name;
     if (hit.sex) stdDraft.sexo = sexLabel(hit.sex);
-    if (hit.age != null) stdDraft.edad = String(hit.age);
     dniLookup = { state: 'idle' };
   }
 
@@ -463,6 +470,13 @@
                   {dniLookup.state === 'loading' ? m.crm_dni_checking() : m.crm_dni_lookup()}
                 </Button>
               </div>
+            {:else if f.kind === 'dob'}
+              <span class="meta-val dob-ro" title={m.crm_dob_registry_hint()}>
+                {stdDraft[f.id] || m.crm_field_empty()}
+                {#if data.party?.age != null}<span class="age-chip"
+                    >{m.crm_age_years({ n: data.party.age })}</span
+                  >{/if}
+              </span>
             {:else}
               <input
                 id={`std-${f.id}`}
@@ -535,7 +549,16 @@
           <li class="meta-item" class:empty={!v}>
             <span class="meta-ic"><Icon size={14} /></span>
             <span class="meta-k">{f.label()}</span>
-            <span class="meta-v" title={v}>{v || m.crm_field_empty()}</span>
+            {#if f.kind === 'dob' && v}
+              <!-- Date of birth is stored; the age beside it is DERIVED server-side
+                 from parties.dob, so it can never go stale like the old custom
+                 field `edad` (a number frozen at import time). -->
+              <span class="meta-v" title={v}>
+                {v}<span class="age-chip">{m.crm_age_years({ n: data.party?.age ?? 0 })}</span>
+              </span>
+            {:else}
+              <span class="meta-v" title={v}>{v || m.crm_field_empty()}</span>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -879,6 +902,18 @@
 </PageShell>
 
 <style>
+  /* Derived age sits beside the stored date of birth. */
+  .age-chip {
+    margin-left: var(--space-2);
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-2);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-telemetry);
+  }
+  .dob-ro {
+    color: var(--color-text-secondary);
+  }
   .menu-wrap {
     position: relative;
     display: inline-flex;
