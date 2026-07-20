@@ -81,3 +81,77 @@ describe('deriveChannelDisplayState', () => {
     expect(deriveChannelDisplayState({ ...base })).toBe('live');
   });
 });
+
+describe('deriveChannelDisplayState — history sync', () => {
+  const linked: Channel = {
+    ...base,
+    type: 'whatsapp',
+    gwEnabled: true,
+    gwConfigured: true,
+    gwLinked: true,
+    gwRunning: true,
+    gwConnected: true,
+  };
+  const sync = (phase: NonNullable<Channel['historySync']>['phase']) => ({
+    phase,
+    progress: null,
+    explicit: false,
+    messages: 0,
+    chats: 0,
+    startedAt: null,
+    updatedAt: 0,
+  });
+
+  it.each(['bootstrap', 'recent', 'full', 'on-demand'] as const)('returns syncing for phase %s', (phase) => {
+    expect(deriveChannelDisplayState({ ...linked, historySync: sync(phase) })).toBe('syncing');
+  });
+
+  it('returns sync-stalled for phase stalled', () => {
+    expect(deriveChannelDisplayState({ ...linked, historySync: sync('stalled') })).toBe('sync-stalled');
+  });
+
+  it.each(['idle', 'complete'] as const)('falls through to live for phase %s', (phase) => {
+    expect(deriveChannelDisplayState({ ...linked, historySync: sync(phase) })).toBe('live');
+  });
+
+  it('regression guard: an undefined historySync changes nothing', () => {
+    expect(deriveChannelDisplayState(linked)).toBe('live');
+    expect(deriveChannelDisplayState({ ...linked, historySync: undefined })).toBe('live');
+    expect(deriveChannelDisplayState({ ...base })).toBe('live');
+  });
+
+  // PRECEDENCE: connection problems outrank sync — an errored/unlinked channel
+  // must never report syncing even if a stale historySync says so.
+  it('does NOT report syncing for an errored channel', () => {
+    expect(deriveChannelDisplayState({ ...linked, gwLastError: 'boom', historySync: sync('recent') })).toBe('error');
+  });
+  it('does NOT report syncing for an unlinked channel', () => {
+    expect(deriveChannelDisplayState({ ...linked, gwLinked: false, historySync: sync('recent') })).toBe('not-linked');
+  });
+  it('does NOT report syncing for a disabled channel', () => {
+    expect(deriveChannelDisplayState({ ...linked, gwEnabled: false, historySync: sync('recent') })).toBe('disabled');
+  });
+  it('does NOT report syncing for an unconfigured channel', () => {
+    expect(deriveChannelDisplayState({ ...linked, gwConfigured: false, historySync: sync('recent') })).toBe(
+      'pending-config',
+    );
+  });
+  it('does NOT report syncing for an identity mismatch', () => {
+    expect(deriveChannelDisplayState({ ...linked, gwIdentityMismatch: true, historySync: sync('recent') })).toBe(
+      'identity-mismatch',
+    );
+  });
+  it('does NOT report sync-stalled during an active QR pairing window', () => {
+    expect(
+      deriveChannelDisplayState({ ...linked, gwPairing: true, gwConnected: false, historySync: sync('stalled') }),
+    ).toBe('pairing');
+  });
+  it('does NOT report syncing while still starting', () => {
+    expect(deriveChannelDisplayState({ ...linked, gwRunning: false, historySync: sync('recent') })).toBe('starting');
+  });
+  it('degraded outranks syncing (a flapping socket is the more actionable signal)', () => {
+    expect(deriveChannelDisplayState({ ...linked, gwReconnectAttempts: 2, historySync: sync('recent') })).toBe(
+      'degraded',
+    );
+  });
+});
