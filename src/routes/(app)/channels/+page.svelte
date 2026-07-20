@@ -11,7 +11,9 @@
   const channels = $derived(data.channels);
   // Set when the gateway couldn't be reached — the page still renders (hub-native
   // cards like Gmail stay usable) but must not imply "no channels are enabled".
-  const gatewayError = $derived(data.gatewayError);
+  // Boolean by design: the underlying RPC error can name internal hosts, so it
+  // stays in the server log.
+  const gatewayUnavailable = $derived(data.gatewayUnavailable);
 
   // Map the manifest status to a label + tone for the card's status pill.
   function status(s: string | undefined): {
@@ -45,12 +47,12 @@
   </PageHeader>
 
   <PageBody width="content">
-    {#if gatewayError}
+    {#if gatewayUnavailable}
       <p
         class="mb-3 rounded-md border border-warning/30 bg-warning/15 px-3 py-2 text-[length:var(--font-size-label)] text-warning"
       >
-        Gateway plugins couldn't be loaded, so only hub-native channels are shown.
-        {gatewayError}
+        The gateway server didn't respond, so only hub-native channels are shown. Check that
+        it's online and that the host URL is correct in Hosts → Edit.
       </p>
     {/if}
     <AsyncBoundary

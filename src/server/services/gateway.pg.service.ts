@@ -1,4 +1,4 @@
-import { eq, and, or, sql } from 'drizzle-orm';
+import { eq, and, or, sql, desc } from 'drizzle-orm';
 import { getCoreDb } from '$server/db/pg-client';
 import { encrypt, decrypt } from '$server/auth/crypto';
 import { gateway, userGateway } from '@minion-stack/db/pg';
@@ -203,6 +203,17 @@ export async function getGatewayCredentialsById(
 /**
  * Return the URL + decrypted token for a user's default (or first) linked gateway.
  * Called by gateway-rpc to resolve per-user credentials from Postgres.
+ *
+ * ⚠️ `limit(1)` with no ORDER BY let Postgres pick an ARBITRARY row for anyone
+ * linked to more than one gateway — so consecutive requests from the same user
+ * could resolve to DIFFERENT gateways, and any stale/unreachable one made
+ * server-side RPCs fail intermittently while the browser (which uses the
+ * explicitly selected host) worked fine. Ordering makes selection deterministic.
+ *
+ * Newest-first is a stopgap, not a real answer: the correct source of truth is
+ * the acting org's assigned gateway (tried first in gateway-rpc) or the user's
+ * selected host, which this function has no access to. Thread that through and
+ * this heuristic can go.
  */
 export async function getUserGatewayCredentials(
   profileId: string,
@@ -217,6 +228,7 @@ export async function getUserGatewayCredentials(
     .from(userGateway)
     .innerJoin(gateway, eq(userGateway.gatewayId, gateway.id))
     .where(eq(userGateway.profileId, profileId))
+    .orderBy(desc(gateway.createdAt))
     .limit(1);
   if (!rows.length) return null;
   const { url, tokenCiphertext, tokenIv } = rows[0];

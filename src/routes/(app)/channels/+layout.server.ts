@@ -17,13 +17,15 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   // The gateway is a remote dependency: when it's down, mid-restart, or missing its
   // plugin UI assets, this RPC rejects. Letting that escape 500s the ENTIRE /channels
   // subtree (it's a layout load), hiding the hub-native Gmail card too. Degrade to
-  // "no gateway plugins" instead and surface the reason to the page.
+  // "no gateway plugins" instead, and tell the page THAT it failed — not WHY.
+  // The RPC's message can carry the gateway URL, internal hostnames, or auth
+  // detail, so the cause stays in the server log; the client gets a boolean.
   let all: Awaited<ReturnType<typeof pluginsUiList>> = [];
-  let gatewayError: string | null = null;
+  let gatewayUnavailable = false;
   try {
     all = await pluginsUiList(locals?.user?.supabaseId, orgId);
   } catch (e) {
-    gatewayError = e instanceof Error ? e.message : 'Gateway unreachable';
+    gatewayUnavailable = true;
     console.error('[channels] plugins.ui.list failed:', e);
   }
   const channels: ChannelEntry[] = all
@@ -63,5 +65,5 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     status: gmailConnected ? 'loaded' : undefined,
   });
 
-  return { channels, gatewayError };
+  return { channels, gatewayUnavailable };
 };
