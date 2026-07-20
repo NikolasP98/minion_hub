@@ -246,7 +246,54 @@ export const stkAccruals = pgTable(
   ],
 );
 
+/**
+ * Item composition DAG (Slice 1b) — "items build products/services".
+ * A node with no children is a raw material (owned by the stock module); a node
+ * with children is a recipe (owned by POS). Sellability is orthogonal:
+ * stk_items.fin_product_id, so ANY node can be sold on its own.
+ *
+ * COMPOSITION only. Per-order-line configuration (exclude the salt, add a
+ * drink) belongs on the order line — encoding it here would mint one item per
+ * combination. `optional`/`defaultIncluded`/`choiceGroup` describe what the
+ * template ALLOWS; the choice itself is recorded at sale time.
+ *
+ * Companion migration: supabase/migrations/20260720020000_stk_item_components.sql
+ */
+export const stkItemComponents = pgTable(
+  'stk_item_components',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    parentItemId: uuid('parent_item_id')
+      .notNull()
+      .references(() => stkItems.id, { onDelete: 'cascade' }),
+    /** restrict: deleting a material a recipe still uses must fail loudly. */
+    childItemId: uuid('child_item_id')
+      .notNull()
+      .references(() => stkItems.id, { onDelete: 'restrict' }),
+    /** Child qty per 1 parent, in the child's consumption uom. */
+    qty: numeric('qty').notNull(),
+    optional: boolean('optional').notNull().default(false),
+    defaultIncluded: boolean('default_included').notNull().default(true),
+    /** Edges sharing a tag are alternatives (pick from the set). */
+    choiceGroup: text('choice_group'),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Name matches what Postgres actually created for the table-level
+    // `unique (org_id, parent_item_id, child_item_id)` in the migration — the
+    // upsert targets COLUMNS, not this name, so it works either way, but the
+    // schema should not describe an index that doesn't exist.
+    uniqueIndex('stk_item_components_org_id_parent_item_id_child_item_id_key').on(t.orgId, t.parentItemId, t.childItemId),
+    index('stk_item_components_org_parent_idx').on(t.orgId, t.parentItemId),
+    index('stk_item_components_org_child_idx').on(t.orgId, t.childItemId),
+  ],
+);
+
 export type StkItem = typeof stkItems.$inferSelect;
+export type StkItemComponent = typeof stkItemComponents.$inferSelect;
 export type StkWarehouse = typeof stkWarehouses.$inferSelect;
 export type StkEntry = typeof stkEntries.$inferSelect;
 export type StkEntryLine = typeof stkEntryLines.$inferSelect;

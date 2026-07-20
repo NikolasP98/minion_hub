@@ -14,8 +14,9 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { stkBins, stkConsumption, stkItems } from '$server/db/pg-schema/stock';
-import { consumptionToStockQty, round4 } from './stock.logic';
+import { consumptionToStockQty, edgesByParent, rollupItemCost, round4 } from './stock.logic';
 import { resolveDefaultWarehouse } from './stock-accruals.service';
+import { listAllComponentEdges } from './stock.service';
 
 export interface CostLine {
   itemId: string;
@@ -47,6 +48,10 @@ export interface ProductCost {
 export function rollupFlatCost(
   mappings: Array<{ itemId: string; qtyPerUnit: number; unitsPerStockUom: number | null }>,
   rateByItem: Map<string, number>,
+  /** Items whose EFFECTIVE rate is understated because something in their
+   *  component subtree is unpriced. A composite can cost > 0 and still be
+   *  incomplete, so rate alone can't detect it. */
+  unvalued: Set<string> = new Set(),
 ): ProductCost {
   if (mappings.length === 0) return { cost: 0, costable: false, partial: false, lines: [] };
   let cost = 0;
@@ -54,7 +59,9 @@ export function rollupFlatCost(
   const lines = mappings.map((m) => {
     const stockQty = consumptionToStockQty({ unitsPerStockUom: m.unitsPerStockUom }, m.qtyPerUnit);
     const rate = rateByItem.get(m.itemId) ?? 0;
-    const hasBin = rate > 0; // a rate-0 bin is unvalued, not free — see CostLine.hasBin
+    // rate-0 is unvalued (not free); a composite may price > 0 yet still hide
+    // an unpriced ingredient — hence the explicit set.
+    const hasBin = rate > 0 && !unvalued.has(m.itemId);
     const value = round4(stockQty * rate);
     if (!hasBin) partial = true;
     cost = round4(cost + value);
@@ -80,7 +87,7 @@ export function rollupFlatCost(
 export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Promise<Map<string, ProductCost>> {
   const out = new Map<string, ProductCost>();
   if (finProductIds.length === 0) return out;
-  const warehouseId = await resolveDefaultWarehouse(ctx);
+  const [warehouseId, componentEdges] = await Promise.all([resolveDefaultWarehouse(ctx), listAllComponentEdges(ctx)]);
 
   return withOrgCore(ctx, async (tx) => {
     const maps = await tx
@@ -120,16 +127,34 @@ export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Pr
       ]);
     }
 
-    const rateByItem = new Map<string, number>();
-    if (warehouseId && itemIds.size) {
+    // Every bin at the default warehouse, not just the directly-mapped items:
+    // a mapped item may be a COMPOSITE whose leaves are items nothing maps to
+    // directly, and computing the transitive closure to narrow the IN list
+    // would cost more than just reading them all.
+    const binRate = new Map<string, number>();
+    if (warehouseId) {
       const bins = await tx
         .select({ itemId: stkBins.itemId, valuationRate: stkBins.valuationRate })
         .from(stkBins)
-        .where(and(eq(stkBins.orgId, ctx.tenantId), eq(stkBins.warehouseId, warehouseId), inArray(stkBins.itemId, [...itemIds])));
-      for (const b of bins) rateByItem.set(b.itemId, Number(b.valuationRate));
+        .where(and(eq(stkBins.orgId, ctx.tenantId), eq(stkBins.warehouseId, warehouseId)));
+      for (const b of bins) binRate.set(b.itemId, Number(b.valuationRate));
     }
 
-    for (const [productId, mappings] of byProduct) out.set(productId, rollupFlatCost(mappings, rateByItem));
+    // A mapped item's EFFECTIVE unit cost recurses through its components
+    // (Slice 1b): a leaf costs its bin rate, a composite costs its recipe. So
+    // "1 plate" prices the whole tree beneath it, at any depth.
+    const byParent = edgesByParent(componentEdges);
+    const memo = new Map<string, ReturnType<typeof rollupItemCost>>();
+    const effective = (itemId: string) => rollupItemCost(itemId, byParent, (id) => binRate.get(id) ?? 0, memo);
+    const rateByItem = new Map<string, number>();
+    const unvalued = new Set<string>();
+    for (const id of itemIds) {
+      const r = effective(id);
+      rateByItem.set(id, r.cost);
+      if (r.partial) unvalued.add(id);
+    }
+
+    for (const [productId, mappings] of byProduct) out.set(productId, rollupFlatCost(mappings, rateByItem, unvalued));
     return out;
   });
 }
