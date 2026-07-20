@@ -8,6 +8,8 @@
   import { fmtTimeAgo } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import type { DropdownItem } from '$lib/components/ui';
+  import { page } from '$app/state';
+  import { hostLabel } from './host-label';
 
   let { align = 'left' }: { align?: 'left' | 'right' } = $props();
 
@@ -16,8 +18,18 @@
   // parent (HostPill toggles `ui.dropdownOpen` and closes on document click),
   // so this renders the menu panel directly rather than wiring the Zag-trigger
   // `<Dropdown>` machine (which would need to own the trigger button too).
+  /** Gateways are assigned per org, and two orgs can be leased instances that
+   *  share a name AND a URL (e.g. two `protopi-dev`). Labelling by name alone
+   *  makes them indistinguishable — and picking the wrong one provisions a
+   *  channel into another org. Qualify with the org name, but only for the
+   *  names that actually collide, so the common case stays clean. */
+  const orgNameById = $derived.by(() => {
+    const orgs = (page.data as { organizations?: { id: string; name: string }[] })?.organizations ?? [];
+    return new Map(orgs.map((o) => [o.id, o.name]));
+  });
+
   const items = $derived<DropdownItem[]>([
-    ...hostsState.hosts.map((h) => ({ value: h.id, label: h.name })),
+    ...hostsState.hosts.map((h) => ({ value: h.id, label: hostLabel(h, hostsState.hosts, orgNameById) })),
     { value: '__sep', label: '', divider: true },
     { value: '__manage', label: m.hosts_manage() },
   ]);

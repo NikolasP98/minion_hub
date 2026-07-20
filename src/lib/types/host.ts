@@ -10,4 +10,8 @@ export interface Host {
    */
   token?: string;
   lastConnectedAt: number | null;
+  /** Org this gateway is ASSIGNED to (lease read-model, not ownership). Used to
+   *  disambiguate hosts that share a name — picking the wrong one provisions
+   *  into another org. Absent on locally-created rows before the server echoes. */
+  orgId?: string | null;
 }
