@@ -90,7 +90,9 @@
             ? 'bg-success shadow-[var(--shadow-status-glow)]'
             : 'bg-muted-foreground'}"
         ></span>
-        <span class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{host.name}</span>
+        <!-- it.label, NOT host.name: the label is org-qualified when two gateways
+             share a name, and picking the wrong one provisions into another org. -->
+        <span class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{it.label}</span>
         <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground shrink-0"
           >{fmtTimeAgo(host.lastConnectedAt)}</span
         >
