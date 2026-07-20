@@ -10,6 +10,7 @@
   import type { DropdownItem } from '$lib/components/ui';
   import { page } from '$app/state';
   import { hostLabel } from './host-label';
+  import { scopeHostsToOrg } from './host-scope';
 
   let { align = 'left' }: { align?: 'left' | 'right' } = $props();
 
@@ -23,13 +24,22 @@
    *  makes them indistinguishable — and picking the wrong one provisions a
    *  channel into another org. Qualify with the org name, but only for the
    *  names that actually collide, so the common case stays clean. */
+  const activeOrgId = $derived((page.data as { activeOrgId?: string | null })?.activeOrgId ?? null);
+
   const orgNameById = $derived.by(() => {
     const orgs = (page.data as { organizations?: { id: string; name: string }[] })?.organizations ?? [];
     return new Map(orgs.map((o) => [o.id, o.name]));
   });
 
+  /** Only the acting org's gateways (plus shared-pool ones, plus whatever is
+   *  currently active). Scoping is what actually removes the ambiguity — the
+   *  org-qualified label below is the safety net for whatever still collides. */
+  const visibleHosts = $derived(
+    scopeHostsToOrg(hostsState.hosts, activeOrgId, hostsState.activeHostId),
+  );
+
   const items = $derived<DropdownItem[]>([
-    ...hostsState.hosts.map((h) => ({ value: h.id, label: hostLabel(h, hostsState.hosts, orgNameById) })),
+    ...visibleHosts.map((h) => ({ value: h.id, label: hostLabel(h, visibleHosts, orgNameById) })),
     { value: '__sep', label: '', divider: true },
     { value: '__manage', label: m.hosts_manage() },
   ]);
@@ -75,7 +85,7 @@
         {it.label}
       </Button>
     {:else}
-      {@const host = hostsState.hosts.find((h) => h.id === it.value)!}
+      {@const host = visibleHosts.find((h) => h.id === it.value)!}
       <Button
         variant="ghost"
         type="button"
