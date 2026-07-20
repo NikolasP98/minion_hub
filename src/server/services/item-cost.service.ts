@@ -23,7 +23,11 @@ export interface CostLine {
   stockQty: number; // converted to the item's stock uom
   rate: number; // valuation per stock uom (0 when no bin)
   value: number; // stockQty × rate
-  hasBin: boolean; // false ⇒ material has no valuation yet
+  /** false ⇒ material has NO usable valuation: either no bin row at all, or a
+   *  bin sitting at rate 0. A zero rate is "not valued yet", NOT "free" — 7 of
+   *  24 bins are in that state, and treating them as valued reported a
+   *  confident 0.00 cost for products nobody has costed. */
+  hasBin: boolean;
 }
 
 export interface ProductCost {
@@ -49,8 +53,8 @@ export function rollupFlatCost(
   let partial = false;
   const lines = mappings.map((m) => {
     const stockQty = consumptionToStockQty({ unitsPerStockUom: m.unitsPerStockUom }, m.qtyPerUnit);
-    const hasBin = rateByItem.has(m.itemId);
     const rate = rateByItem.get(m.itemId) ?? 0;
+    const hasBin = rate > 0; // a rate-0 bin is unvalued, not free — see CostLine.hasBin
     const value = round4(stockQty * rate);
     if (!hasBin) partial = true;
     cost = round4(cost + value);
@@ -60,9 +64,18 @@ export function rollupFlatCost(
 }
 
 /**
- * Cost per fin_product, keyed by id. Products with no consumption mapping are
- * absent from the map (caller treats missing as uncostable). Materials are
- * valued at the org's DEFAULT warehouse rate (same choice as accruals).
+ * Cost per fin_product, keyed by id. Products with neither a consumption
+ * mapping nor a 1:1 stock item are absent from the map (caller treats missing
+ * as uncostable). Materials are valued at the org's DEFAULT warehouse rate
+ * (same choice as accruals).
+ *
+ * Mirrors BOTH paths `resolveIssueLines` (pos.service) uses, so anything the
+ * POS can issue stock for can also be costed:
+ *   - service-kind → `stk_consumption` recipe (qty × qtyPerUnit fan-out)
+ *   - product-kind → 1:1 `stk_items.fin_product_id` bridge (qty 1 of itself),
+ *     i.e. a physical good sold standalone (a mask). Reading only the recipe
+ *     table would leave these showing "no cost" despite a known valuation.
+ * A product on both paths keeps its explicit recipe (the bridge is a fallback).
  */
 export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Promise<Map<string, ProductCost>> {
   const out = new Map<string, ProductCost>();
@@ -92,6 +105,19 @@ export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Pr
         unitsPerStockUom: r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom),
       });
       byProduct.set(r.finProductId, list);
+    }
+
+    // 1:1 bridge fallback — only for products with no explicit recipe.
+    const bridged = await tx
+      .select({ id: stkItems.id, finProductId: stkItems.finProductId, unitsPerStockUom: stkItems.unitsPerStockUom })
+      .from(stkItems)
+      .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.finProductId, finProductIds)));
+    for (const b of bridged) {
+      if (!b.finProductId || byProduct.has(b.finProductId)) continue;
+      itemIds.add(b.id);
+      byProduct.set(b.finProductId, [
+        { itemId: b.id, qtyPerUnit: 1, unitsPerStockUom: b.unitsPerStockUom == null ? null : Number(b.unitsPerStockUom) },
+      ]);
     }
 
     const rateByItem = new Map<string, number>();

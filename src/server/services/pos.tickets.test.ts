@@ -298,6 +298,73 @@ describe('postTicketStock — line resolution', () => {
       { itemId: 'item-b', qty: 10 }, // 2 × 5 qtyPerUnit
     ]);
   });
+
+  // ── Precedence: an authored recipe outranks the implicit 1:1 bridge ──────
+  // spec 2026-07-19-pos-stock-split. `kind` is no longer consulted, so a
+  // product-kind sellable may carry a recipe.
+  it('product-kind WITH a real recipe explodes the recipe and does NOT issue itself', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 'ticket-r1' })],
+      [{ id: 'l1', orgId: 'org-1', ticketId: 'ticket-r1', kind: 'product', finProductId: 'fp-kit', bookingId: null, qty: '2', unitPrice: '40' }],
+      [{ id: 'item-kit', finProductId: 'fp-kit' }], // bridge exists…
+      [
+        // …but a real recipe naming OTHER items wins over it
+        { finProductId: 'fp-kit', itemId: 'item-x', qtyPerUnit: '3' },
+        { finProductId: 'fp-kit', itemId: 'item-y', qtyPerUnit: '1' },
+      ],
+      [],
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-r1' });
+
+    await postTicketStock(ctx(db), 'ticket-r1', actor);
+
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
+    expect(call.lines).toEqual([
+      { itemId: 'item-x', qty: 6 }, // 2 × 3
+      { itemId: 'item-y', qty: 2 }, // 2 × 1
+    ]);
+    expect(call.lines.some((l) => l.itemId === 'item-kit')).toBe(false); // finished good NOT issued
+  });
+
+  it('a self-mapping recipe acts as a qty multiplier on the bridge item', async () => {
+    // The real Hialuronidasa shape: the only recipe row points at the
+    // product's own item, so it multiplies rather than substituting.
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 'ticket-r2' })],
+      [{ id: 'l1', orgId: 'org-1', ticketId: 'ticket-r2', kind: 'product', finProductId: 'fp-h', bookingId: null, qty: '2', unitPrice: '80' }],
+      [{ id: 'item-h', finProductId: 'fp-h' }],
+      [{ finProductId: 'fp-h', itemId: 'item-h', qtyPerUnit: '10' }], // self-map
+      [],
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-r2' });
+
+    await postTicketStock(ctx(db), 'ticket-r2', actor);
+
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
+    expect(call.lines).toEqual([{ itemId: 'item-h', qty: 20 }]); // 2 × 10, not 2
+  });
+
+  it('service-kind WITHOUT a recipe but WITH a bridge falls back to 1:1', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 'ticket-r3' })],
+      [{ id: 'l1', orgId: 'org-1', ticketId: 'ticket-r3', kind: 'service', finProductId: 'fp-s', bookingId: null, qty: '4', unitPrice: '15' }],
+      [{ id: 'item-s', finProductId: 'fp-s' }],
+      [], // no recipe
+      [],
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-r3' });
+
+    await postTicketStock(ctx(db), 'ticket-r3', actor);
+
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
+    expect(call.lines).toEqual([{ itemId: 'item-s', qty: 4 }]);
+  });
 });
 
 describe('submitTicket — stock fail-soft', () => {

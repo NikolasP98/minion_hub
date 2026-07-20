@@ -29,7 +29,9 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     console.error('[channels] plugins.ui.list failed:', e);
   }
   const channels: ChannelEntry[] = all
-    .filter((e) => e.slot === 'plugins.controlCenter' && e.orgEnabled !== false && isChannelPlugin(e))
+    .filter(
+      (e) => e.slot === 'plugins.controlCenter' && e.orgEnabled !== false && isChannelPlugin(e),
+    )
     .map((e) => ({
       pluginId: e.pluginId,
       title: e.title,

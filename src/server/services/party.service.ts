@@ -341,7 +341,8 @@ export async function ensurePartyForContact(
 /**
  * Manual override for the CRM customers-table verified checkmark.
  * Records manual:true in metadata.dni_validation so the tick never re-queries
- * a hand-set row. Returns false when the party doesn't exist in this org.
+ * a hand-set row. Returns false when the party doesn't exist in this org — or,
+ * when turning verification ON, when it carries no 8-digit DNI to verify.
  */
 export async function setPartyDniVerified(
   ctx: CoreCtx,
@@ -358,7 +359,18 @@ export async function setPartyDniVerified(
           jsonb_build_object('status', ${verified ? 'verified' : 'mismatch'}::text, 'manual', true))`,
         updatedAt: new Date(),
       })
-      .where(and(eq(parties.id, partyId), eq(parties.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(parties.id, partyId),
+          eq(parties.orgId, ctx.tenantId),
+          // "Verified" MEANS "this document was checked against the registry", so
+          // it is meaningless without a document. Turning it ON requires an
+          // 8-digit DNI; turning it OFF is always allowed. Without this the
+          // manual toggle can mint a verified party with no doc_number — exactly
+          // the "verified but no DNI" rows that made the roster contradict itself.
+          ...(verified ? [sql`${parties.docNumber} ~ '^[0-9]{8}$'`] : []),
+        ),
+      )
       .returning({ id: parties.id });
     return rows.length > 0;
   });

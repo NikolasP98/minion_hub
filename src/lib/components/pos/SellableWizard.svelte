@@ -142,7 +142,11 @@
         if (trackStock) payload.uom = uom.trim() || 'unit';
       }
     }
-    if (kind === 'service' && stockEnabled) {
+    // Recipes are NOT service-only: a product-kind sellable may carry one too
+    // (resolveIssueLines gives an authored recipe precedence over the 1:1
+    // bridge). createSellable/updateSellable already accepted this for any
+    // kind — only this form was gating it.
+    if (stockEnabled) {
       payload.consumption = rows
         .filter((r) => r.itemId && Number(r.qtyPerUnit) > 0)
         .map((r) => ({ itemId: r.itemId, qtyPerUnit: Number(r.qtyPerUnit) }));
@@ -241,7 +245,7 @@
       {/if}
     {/if}
 
-    {#if kind === 'service' && stockEnabled}
+    {#if stockEnabled}
       <div class="fld">
         <span>{m.pos_catalog_consumption()}</span>
         <div class="consumption-rows">

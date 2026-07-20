@@ -3,7 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { sql } from 'drizzle-orm';
 import { getCoreDb } from '$server/db/pg-client';
-import { validatePendingDnis } from '$server/services/party.service';
+import { validatePendingDnis, reenrichVerifiedDnis } from '$server/services/party.service';
 
 /** Rows claimed per DB round-trip. Small keeps the `for update skip locked`
  *  claim short-lived; the drain loop is what clears the whole backlog. */
@@ -45,8 +45,20 @@ export const GET: RequestHandler = async ({ request }) => {
                and updated_at < now() - interval '5 minutes'))
   `)) as unknown as { org_id: string }[];
 
+  // Verified rows that never received registry enrichment (name/sex/dob). This
+  // set is DISJOINT from the validation fanout above — a row can be verified and
+  // still un-enriched — so it needs its own scan or `reenrichVerifiedDnis` never
+  // runs at all. It had no callers anywhere in the app; 22 verified parties had
+  // no dni_registry as a result.
+  const enrichOrgs = (await getCoreDb().execute(sql`
+    select distinct org_id from parties
+    where type = 'person' and dni_verified = true
+      and doc_number ~ '^[0-9]{8}$' and metadata->'dni_registry' is null
+  `)) as unknown as { org_id: string }[];
+
   const deadline = Date.now() + BUDGET_MS;
   const totals = { orgs: orgs.length, claimed: 0, verified: 0, mismatch: 0, not_found: 0, error: 0 };
+  const enrich = { orgs: enrichOrgs.length, scanned: 0, enriched: 0, gone: 0, error: 0 };
   let drained = true;
   for (const { org_id } of orgs) {
     const ctx = { db: getCoreDb(), tenantId: org_id };
@@ -71,5 +83,30 @@ export const GET: RequestHandler = async ({ request }) => {
     }
     if (!drained) break;
   }
-  return json({ ok: true, drained, ...totals });
+  // Enrichment runs on whatever budget the validation drain left over; anything
+  // not reached is picked up next tick (the selector is self-clearing).
+  for (const { org_id } of enrichOrgs) {
+    if (Date.now() >= deadline) {
+      drained = false;
+      break;
+    }
+    try {
+      for (;;) {
+        if (Date.now() >= deadline) {
+          drained = false;
+          break;
+        }
+        const r = await reenrichVerifiedDnis({ db: getCoreDb(), tenantId: org_id }, apiKey, BATCH);
+        enrich.scanned += r.scanned;
+        enrich.enriched += r.enriched;
+        enrich.gone += r.gone;
+        enrich.error += r.error;
+        if (r.scanned < BATCH) break;
+      }
+    } catch (e) {
+      console.error('[dni-validation] enrich failed for org', org_id, e);
+    }
+  }
+
+  return json({ ok: true, drained, ...totals, enrich });
 };

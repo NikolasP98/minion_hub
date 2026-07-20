@@ -292,37 +292,50 @@ async function stampTicketStock(ctx: CoreCtx, id: string, patch: { stockEntryId:
 }
 
 /**
- * Line→stock resolution: product-kind lines resolve 1:1 via a batch
- * stk_items.fin_product_id lookup; service-kind lines WITHOUT a bookingId
- * resolve via stk_consumption (qty × qtyPerUnit, one line can fan out to
- * several items); lines carrying a bookingId are booking-owned and never
- * issue from here; unmapped lines issue nothing. Aggregated by item so two
- * lines mapping to the same item collapse into one issue line.
+ * Line→stock resolution. Lines carrying a bookingId are booking-owned and
+ * never issue from here; unmapped lines issue nothing. Aggregated by item so
+ * two lines mapping to the same item collapse into one issue line.
+ *
+ * ★ PRECEDENCE (spec 2026-07-19-pos-stock-split, kept consistent with
+ * item-cost.service so cost and issue never disagree) — a sellable may have
+ * its own tracked item (the stk_items.fin_product_id bridge), a
+ * stk_consumption recipe, or both:
+ *
+ *   1. A recipe exists → explode it (qty × qtyPerUnit per mapped item) and
+ *      ignore the bridge: the ingredients are consumed INSTEAD of the
+ *      finished good. A SELF-MAPPING recipe (its only row points at the
+ *      product's own item) needs no special case — it falls out of this same
+ *      multiplication as a qty multiplier on that item.
+ *   2. No recipe → bridge 1:1 (qty × 1).
+ *
+ * An authored recipe outranks the implicit 1:1 default. `kind` is NOT
+ * consulted any more (it stays a display concern): a product-kind sellable
+ * may legitimately carry a recipe.
  */
 async function resolveIssueLines(ctx: CoreCtx, lines: PosTicketLine[]): Promise<CreateIssueFromInvoiceLine[]> {
-  const productFinIds = [...new Set(lines.filter((l) => l.kind === 'product' && !l.bookingId && l.finProductId).map((l) => l.finProductId as string))];
-  const serviceFinIds = [...new Set(lines.filter((l) => l.kind === 'service' && !l.bookingId && l.finProductId).map((l) => l.finProductId as string))];
+  // Every issuable line regardless of kind — the bridge AND the recipe are
+  // looked up for all of them, and precedence decides per product.
+  const finIds = [...new Set(lines.filter((l) => !l.bookingId && l.finProductId).map((l) => l.finProductId as string))];
 
   const itemByFinProductId = new Map<string, string>();
-  if (productFinIds.length) {
-    const rows = await withOrgCore(ctx, (tx) =>
-      tx
-        .select({ id: stkItems.id, finProductId: stkItems.finProductId })
-        .from(stkItems)
-        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.finProductId, productFinIds))),
-    );
-    for (const r of rows) if (r.finProductId) itemByFinProductId.set(r.finProductId, r.id);
-  }
-
   const consumptionByFinProductId = new Map<string, { itemId: string; qtyPerUnit: number }[]>();
-  if (serviceFinIds.length) {
-    const rows = await withOrgCore(ctx, (tx) =>
-      tx
-        .select({ finProductId: stkConsumption.finProductId, itemId: stkConsumption.itemId, qtyPerUnit: stkConsumption.qtyPerUnit })
-        .from(stkConsumption)
-        .where(and(eq(stkConsumption.orgId, ctx.tenantId), inArray(stkConsumption.finProductId, serviceFinIds))),
-    );
-    for (const r of rows) {
+  if (finIds.length) {
+    const [itemRows, consumptionRows] = await Promise.all([
+      withOrgCore(ctx, (tx) =>
+        tx
+          .select({ id: stkItems.id, finProductId: stkItems.finProductId })
+          .from(stkItems)
+          .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.finProductId, finIds))),
+      ),
+      withOrgCore(ctx, (tx) =>
+        tx
+          .select({ finProductId: stkConsumption.finProductId, itemId: stkConsumption.itemId, qtyPerUnit: stkConsumption.qtyPerUnit })
+          .from(stkConsumption)
+          .where(and(eq(stkConsumption.orgId, ctx.tenantId), inArray(stkConsumption.finProductId, finIds))),
+      ),
+    ]);
+    for (const r of itemRows) if (r.finProductId) itemByFinProductId.set(r.finProductId, r.id);
+    for (const r of consumptionRows) {
       const list = consumptionByFinProductId.get(r.finProductId) ?? [];
       list.push({ itemId: r.itemId, qtyPerUnit: Number(r.qtyPerUnit) });
       consumptionByFinProductId.set(r.finProductId, list);
@@ -330,16 +343,17 @@ async function resolveIssueLines(ctx: CoreCtx, lines: PosTicketLine[]): Promise<
   }
 
   const qtyByItem = new Map<string, number>();
+  const add = (itemId: string, q: number) => qtyByItem.set(itemId, (qtyByItem.get(itemId) ?? 0) + q);
   for (const l of lines) {
     if (l.bookingId || !l.finProductId) continue; // booking-owned or unmapped → issues nothing
     const qty = Number(l.qty);
-    if (l.kind === 'product') {
-      const itemId = itemByFinProductId.get(l.finProductId);
-      if (itemId) qtyByItem.set(itemId, (qtyByItem.get(itemId) ?? 0) + qty);
-    } else {
-      const mappings = consumptionByFinProductId.get(l.finProductId);
-      if (mappings) for (const m of mappings) qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + qty * m.qtyPerUnit);
+    const mappings = consumptionByFinProductId.get(l.finProductId);
+    if (mappings?.length) {
+      for (const m of mappings) add(m.itemId, qty * m.qtyPerUnit);
+      continue;
     }
+    const bridgeItemId = itemByFinProductId.get(l.finProductId);
+    if (bridgeItemId) add(bridgeItemId, qty);
   }
   return [...qtyByItem].map(([itemId, qty]) => ({ itemId, qty: round2(qty) }));
 }
