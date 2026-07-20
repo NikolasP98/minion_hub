@@ -57,10 +57,16 @@
 />
 
 {#if canSwitch}
+  <!-- The dropdown MUST be a sibling of the trigger, not a child: its rows are
+       Button components, and nesting one button element inside another is invalid
+       HTML. The parser implicitly closes the open one and hoists the rows out,
+       which browsers recover from differently — Chromium rendered every host,
+       Firefox rendered one. Positioning context lives on this wrapper instead. -->
+  <div class="relative inline-flex">
   <Button
     variant="ghost"
     type="button"
-    class="relative flex items-center gap-1.5 h-6 px-1.5 max-w-[160px] rounded-[var(--radius-sm)] text-[length:var(--font-size-caption)] font-medium transition-colors whitespace-nowrap select-none {canSwitch
+    class="flex items-center gap-1.5 h-6 px-1.5 max-w-[160px] rounded-[var(--radius-sm)] text-[length:var(--font-size-caption)] font-medium transition-colors whitespace-nowrap select-none {canSwitch
       ? 'cursor-pointer'
       : 'cursor-default'} {!activeHost ? 'text-accent' : 'text-muted-foreground'} {canSwitch
       ? !activeHost
@@ -88,8 +94,9 @@
       <span>{canSwitch ? m.hosts_addHost() : 'No server'}</span>
     {/if}
 
-    {#if ui.dropdownOpen && activeHost && canSwitch}
-      <HostDropdown {align} />
-    {/if}
   </Button>
+  {#if ui.dropdownOpen && activeHost && canSwitch}
+    <HostDropdown {align} />
+  {/if}
+  </div>
 {/if}
