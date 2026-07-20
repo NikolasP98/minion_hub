@@ -248,6 +248,44 @@ export function rollupItemCost(
   return result;
 }
 
+/**
+ * Expand `qty` of an item down to the things stock is actually kept for.
+ *
+ * A node WITH components contributes its children (qty multiplied down); a node
+ * WITHOUT components is a leaf and contributes itself — but only if it is a
+ * stock item, since a leaf service ("chair time") has no inventory to move.
+ * Same leaf/composite rule as `rollupItemCost`, so what a sale COSTS and what
+ * it CONSUMES can never disagree.
+ *
+ * ★ For an item with no components this is the IDENTITY (`{itemId: qty}`) —
+ * which is what makes wiring it into the existing issue paths a no-op for every
+ * item that has no recipe.
+ *
+ * Quantities are multiplied verbatim; uom conversion stays with the caller,
+ * which already applies its own convention.
+ */
+export function explodeToStockLeaves(
+  itemId: string,
+  qty: number,
+  byParent: Map<string, ComponentEdge[]>,
+  isStockItem: (id: string) => boolean,
+  out: Map<string, number> = new Map(),
+  path: Set<string> = new Set(),
+): Map<string, number> {
+  const kids = byParent.get(itemId);
+  if (!kids || kids.length === 0) {
+    if (isStockItem(itemId)) out.set(itemId, (out.get(itemId) ?? 0) + qty);
+    return out;
+  }
+  // No memo here (results are qty-scaled); the path guard is what stops a
+  // cyclic graph from recursing forever.
+  if (path.has(itemId)) return out;
+  path.add(itemId);
+  for (const e of kids) explodeToStockLeaves(e.childItemId, qty * e.qty, byParent, isStockItem, out, path);
+  path.delete(itemId);
+  return out;
+}
+
 // ── rebuildBins replay ───────────────────────────────────────────────────────
 
 export interface LedgerReplayRow {

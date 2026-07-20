@@ -26,8 +26,10 @@ import {
   setConsumption,
   deleteConsumption,
   listConsumption,
+  listAllComponentEdges,
   type CreateIssueFromInvoiceLine,
 } from './stock.service';
+import { edgesByParent, explodeToStockLeaves } from './stock.logic';
 import { stkItems, stkConsumption } from '$server/db/pg-schema/stock';
 import { finProducts } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
@@ -356,7 +358,42 @@ async function resolveIssueLines(ctx: CoreCtx, lines: PosTicketLine[]): Promise<
     const bridgeItemId = itemByFinProductId.get(l.finProductId);
     if (bridgeItemId) add(bridgeItemId, qty);
   }
-  return [...qtyByItem].map(([itemId, qty]) => ({ itemId, qty: round2(qty) }));
+
+  // Slice 1b: whatever the flat mapping resolved to may itself be a RECIPE, so
+  // walk each result down to real stock leaves. This is the identity for any
+  // item with no components, which is every item until someone builds one —
+  // so it changes nothing for existing data.
+  const exploded = await explodeResolvedItems(ctx, qtyByItem);
+  return [...exploded].map(([itemId, qty]) => ({ itemId, qty: round2(qty) }));
+}
+
+/**
+ * Shared tail of both issue paths (POS tickets and booking accruals): expand a
+ * flat item→qty map through the component DAG down to stock leaves.
+ * Short-circuits entirely when the org has no components at all, so the common
+ * case costs one cheap query.
+ */
+export async function explodeResolvedItems(ctx: CoreCtx, qtyByItem: Map<string, number>): Promise<Map<string, number>> {
+  if (qtyByItem.size === 0) return qtyByItem;
+  const edges = await listAllComponentEdges(ctx);
+  if (edges.length === 0) return qtyByItem; // nothing composed → nothing to expand
+  const byParent = edgesByParent(edges);
+
+  // Only leaves that actually hold stock may be issued.
+  const involved = new Set<string>([...qtyByItem.keys(), ...edges.map((e) => e.childItemId), ...edges.map((e) => e.parentItemId)]);
+  const flags = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
+      .from(stkItems)
+      .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, [...involved]))),
+  );
+  const stockFlag = new Map(flags.map((r) => [r.id, r.isStockItem]));
+
+  const out = new Map<string, number>();
+  for (const [itemId, qty] of qtyByItem) {
+    explodeToStockLeaves(itemId, qty, byParent, (id) => stockFlag.get(id) ?? true, out);
+  }
+  return out;
 }
 
 /**

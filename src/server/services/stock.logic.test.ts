@@ -8,6 +8,7 @@ import {
   wouldCreateCycle,
   wouldCreateComponentCycle,
   rollupItemCost,
+  explodeToStockLeaves,
   edgesByParent,
   type ComponentEdge,
   replayBins,
@@ -364,5 +365,50 @@ describe('rollupItemCost — recursive cost', () => {
   it('does not hang on cyclic data (guard, not a substitute for the write check)', () => {
     const byParent = edgesByParent([e('a', 'b', 1), e('b', 'a', 1)]);
     expect(rollupItemCost('a', byParent, leafRate).cost).toBe(0);
+  });
+});
+
+describe('explodeToStockLeaves', () => {
+  const allStock = () => true;
+
+  // THE property that makes wiring this into the live issue paths safe.
+  it('is the IDENTITY for an item with no components', () => {
+    expect([...explodeToStockLeaves('salt', 7, new Map(), allStock)]).toEqual([['salt', 7]]);
+  });
+
+  it('replaces a composite with its leaves, multiplying qty down', () => {
+    // 2 plates, each 1 mash, each 3 potato => 6 potato
+    const byParent = edgesByParent([e('plate', 'mash', 1), e('mash', 'potato', 3)]);
+    expect(explodeToStockLeaves('plate', 2, byParent, allStock).get('potato')).toBe(6);
+  });
+
+  it('never issues the composite itself, only its leaves', () => {
+    const byParent = edgesByParent([e('mash', 'potato', 3)]);
+    const out = explodeToStockLeaves('mash', 1, byParent, allStock);
+    expect(out.has('mash')).toBe(false);
+    expect(out.get('potato')).toBe(3);
+  });
+
+  it('accumulates a leaf reached by two different branches', () => {
+    // salt appears in both halves: 1x2 + 1x3 = 5
+    const byParent = edgesByParent([e('plate', 'mash', 1), e('plate', 'sauce', 1), e('mash', 'salt', 2), e('sauce', 'salt', 3)]);
+    expect(explodeToStockLeaves('plate', 1, byParent, allStock).get('salt')).toBe(5);
+  });
+
+  it('drops a leaf that is not a stock item (a service has no inventory to move)', () => {
+    const byParent = edgesByParent([e('facial', 'serum', 2), e('facial', 'chair-time', 1)]);
+    const out = explodeToStockLeaves('facial', 1, byParent, (id) => id === 'serum');
+    expect(out.get('serum')).toBe(2);
+    expect(out.has('chair-time')).toBe(false);
+  });
+
+  it('recurses to arbitrary depth', () => {
+    const byParent = edgesByParent([e('plate', 'fried', 1), e('fried', 'batter', 2), e('batter', 'flour', 3)]);
+    expect(explodeToStockLeaves('plate', 1, byParent, allStock).get('flour')).toBe(6);
+  });
+
+  it('does not hang on cyclic data', () => {
+    const byParent = edgesByParent([e('a', 'b', 1), e('b', 'a', 1)]);
+    expect(() => explodeToStockLeaves('a', 1, byParent, allStock)).not.toThrow();
   });
 });

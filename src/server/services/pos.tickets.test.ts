@@ -18,12 +18,15 @@ const createSourcedIssueMock = vi.fn<(ctx: unknown, input: unknown) => Promise<{
 const findEntryBySourceMock = vi.fn<(ctx: unknown, source: string, sourceId: string) => Promise<{ id: string; status: string } | null>>();
 const submitEntryMock = vi.fn<(ctx: unknown, id: string, actor: unknown) => Promise<{ id: string }>>();
 const cancelEntryMock = vi.fn<(ctx: unknown, id: string, actor: unknown) => Promise<{ id: string }>>();
+const listAllComponentEdgesMock = vi.fn<(ctx: unknown) => Promise<Array<{ parentItemId: string; childItemId: string; qty: number }>>>();
 vi.mock('./stock.service', () => ({
   createSourcedIssue: (ctx: unknown, input: unknown) => createSourcedIssueMock(ctx, input),
   findEntryBySource: (ctx: unknown, source: string, sourceId: string) => findEntryBySourceMock(ctx, source, sourceId),
   submitEntry: (ctx: unknown, id: string, actor: unknown) => submitEntryMock(ctx, id, actor),
   cancelEntry: (ctx: unknown, id: string, actor: unknown) => cancelEntryMock(ctx, id, actor),
   StockError: MockStockError,
+  // Slice 1b: resolveIssueLines expands results through the component DAG.
+  listAllComponentEdges: (ctx: unknown) => listAllComponentEdgesMock(ctx),
 }));
 
 // ── stock-accruals.service mock (resolveDefaultWarehouse) ──
@@ -46,6 +49,9 @@ function mockExecute(db: unknown, value: unknown) {
 beforeEach(() => {
   vi.clearAllMocks();
   findEntryBySourceMock.mockResolvedValue(null);
+  // Default: no components anywhere => the explosion is the identity, so every
+  // pre-Slice-1b expectation still describes the behaviour exactly.
+  listAllComponentEdgesMock.mockResolvedValue([]);
 });
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
@@ -346,6 +352,38 @@ describe('postTicketStock — line resolution', () => {
 
     const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
     expect(call.lines).toEqual([{ itemId: 'item-h', qty: 20 }]); // 2 × 10, not 2
+  });
+
+  it('a sold COMPOSITE consumes its leaves, not itself (Slice 1b explosion)', async () => {
+    // fp-plate resolves 1:1 to item-plate, which is a recipe:
+    //   plate -> 2 mash -> 3 potato  => 1 plate sold = 6 potato consumed
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 'ticket-x1' })],
+      [{ id: 'l1', orgId: 'org-1', ticketId: 'ticket-x1', kind: 'product', finProductId: 'fp-plate', bookingId: null, qty: '1', unitPrice: '90' }],
+      [{ id: 'item-plate', finProductId: 'fp-plate' }], // bridge
+      [], // no stk_consumption recipe
+      [
+        // stk_items is_stock_item flags for the explosion
+        { id: 'item-plate', isStockItem: false },
+        { id: 'item-mash', isStockItem: false },
+        { id: 'item-potato', isStockItem: true },
+      ],
+      [], // stampTicketStock
+    ]);
+    listAllComponentEdgesMock.mockResolvedValue([
+      { parentItemId: 'item-plate', childItemId: 'item-mash', qty: 2 },
+      { parentItemId: 'item-mash', childItemId: 'item-potato', qty: 3 },
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-x1' });
+
+    await postTicketStock(ctx(db), 'ticket-x1', actor);
+
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
+    expect(call.lines).toEqual([{ itemId: 'item-potato', qty: 6 }]);
+    // the composite and the intermediate sub-recipe are never issued
+    expect(call.lines.some((l) => l.itemId === 'item-plate' || l.itemId === 'item-mash')).toBe(false);
   });
 
   it('service-kind WITHOUT a recipe but WITH a bridge falls back to 1:1', async () => {
