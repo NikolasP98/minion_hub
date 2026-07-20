@@ -229,9 +229,9 @@
     <div class="card">
       {#if editing}
         <div class="flex flex-col gap-3 max-w-md">
-          <label class="fld"><span>{m.stock_field_name()}</span><input class="inp" bind:value={editName} /></label>
-          <label class="fld"><span>{m.stock_col_reorder_level()}</span><input class="inp" type="number" min="0" step="0.01" bind:value={editReorderLevel} /></label>
-          <label class="fld"><span>{m.stock_col_reorder_qty()}</span><input class="inp" type="number" min="0" step="0.01" bind:value={editReorderQty} /></label>
+          <Input size="sm" label={m.stock_field_name()} bind:value={editName} />
+          <Input size="sm" type="number" min="0" step="0.01" label={m.stock_col_reorder_level()} bind:value={editReorderLevel} />
+          <Input size="sm" type="number" min="0" step="0.01" label={m.stock_col_reorder_qty()} bind:value={editReorderQty} />
 
           <!-- Supply side (#12): the stock module owns procurement facts. -->
           <Input
@@ -521,9 +521,7 @@
   .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: var(--space-3); }
   .meta-grid { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4); font-size: var(--font-size-body); }
   .meta-grid dt { color: var(--color-muted-foreground); }
-  .fld { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-body); color: var(--color-muted-foreground); }
-  .inp { height: 1.75rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
-  .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }
+  .err-msg { font-size: var(--font-size-body); color: var(--color-danger-fg); }
   .uom-section { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--hairline); container-type: inline-size; container-name: uomcfg; }
   .uom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
   /* The three tiers share one row so their relationship reads left→right. */

@@ -3,7 +3,7 @@
   import { invalidate, goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
-  import { PageHeader, Button, Modal } from '$lib/components/ui';
+  import { PageHeader, Button, Modal, Input } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
@@ -171,18 +171,9 @@
 
 <Modal bind:open={createOpen} title={m.stock_create_item_title()}>
   <div class="flex flex-col gap-3">
-    <label class="fld">
-      <span>{m.stock_field_code()}</span>
-      <input class="inp" bind:value={newCode} />
-    </label>
-    <label class="fld">
-      <span>{m.stock_field_name()}</span>
-      <input class="inp" bind:value={newName} />
-    </label>
-    <label class="fld">
-      <span>{m.stock_field_uom()}</span>
-      <input class="inp" bind:value={newUom} />
-    </label>
+    <Input size="sm" label={m.stock_field_code()} bind:value={newCode} />
+    <Input size="sm" label={m.stock_field_name()} bind:value={newName} />
+    <Input size="sm" label={m.stock_field_uom()} bind:value={newUom} />
     {#if createErr}<p class="err-msg text-xs">{createErr}</p>{/if}
   </div>
   {#snippet footer()}
@@ -201,24 +192,7 @@
 </Modal>
 
 <style>
-  .inp {
-    height: 1.75rem;
-    padding: 0 var(--space-2, 8px);
-    font-size: var(--font-size-body, 14px);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg3);
-    border: 1px solid var(--hairline);
-    color: var(--color-foreground);
-  }
-  .fld {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1, 4px);
-    font-size: var(--font-size-body, 14px);
-    color: var(--color-muted-foreground);
-  }
   .err-msg {
-    font-size: var(--font-size-body, 14px);
-    color: var(--color-destructive);
+    color: var(--color-danger-fg);
   }
 </style>

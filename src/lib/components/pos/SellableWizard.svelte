@@ -3,7 +3,7 @@
 
   import * as m from '$lib/paraglide/messages';
   import { Plus, Trash2 } from 'lucide-svelte';
-  import { Modal, Button, SegmentedControl } from '$lib/components/ui';
+  import { Modal, Button, SegmentedControl, Input } from '$lib/components/ui';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
 
   // Narrow local shapes (mirrors server types) — avoids importing $server/*
@@ -219,25 +219,19 @@
 
 <Modal bind:open title={editing ? m.pos_catalog_edit() : m.pos_catalog_new()}>
   <div class="flex flex-col gap-3">
-    <label class="fld">
-      <span>{m.stock_field_name()}</span>
-      <input class="inp" bind:value={name} />
-    </label>
-    <label class="fld">
-      <span>{m.stock_field_code()}</span>
-      <input class="inp font-mono" bind:value={code} oninput={() => (codeTouched = true)} />
-    </label>
-    <label class="fld">
-      <span>{m.fin_col_category()}</span>
-      <input class="inp" bind:value={category} list="pos-catalog-categories" />
-      <datalist id="pos-catalog-categories">
-        {#each categories as c (c)}<option value={c}></option>{/each}
-      </datalist>
-    </label>
-    <label class="fld">
-      <span>{m.pos_sell_price()}</span>
-      <input class="inp" type="number" min="0" step="0.01" bind:value={unitPrice} />
-    </label>
+    <Input size="sm" label={m.stock_field_name()} bind:value={name} />
+    <Input
+      size="sm"
+      inputClass="font-mono"
+      label={m.stock_field_code()}
+      bind:value={code}
+      oninput={() => (codeTouched = true)}
+    />
+    <Input size="sm" label={m.fin_col_category()} list="pos-catalog-categories" bind:value={category} />
+    <datalist id="pos-catalog-categories">
+      {#each categories as c (c)}<option value={c}></option>{/each}
+    </datalist>
+    <Input size="sm" type="number" min="0" step="0.01" label={m.pos_sell_price()} bind:value={unitPrice} />
 
     {#if editing}
       <!-- updateSellable ignores kind/trackStock/uom on PATCH — showing live
@@ -267,10 +261,7 @@
       </div>
 
       {#if source === 'new-item' && stockEnabled}
-        <label class="fld">
-          <span>{m.stock_field_uom()}</span>
-          <input class="inp" bind:value={uom} />
-        </label>
+        <Input size="sm" label={m.stock_field_uom()} bind:value={uom} />
       {:else if source === 'existing-item' && stockEnabled}
         <label class="fld">
           <span>{m.pos_catalog_pick_item()}</span>
@@ -290,13 +281,14 @@
         <div class="consumption-rows">
           {#each rows as row, idx (idx)}
             <div class="consumption-row">
-              <Select class="inp" fieldClass="min-w-0 flex-1" bind:value={row.itemId}>
+              <Select fieldClass="min-w-0 flex-1" bind:value={row.itemId}>
                 {#each optionsFor(idx) as item (item.id)}
                   <option value={item.id}>{item.code} — {item.name}</option>
                 {/each}
               </Select>
-              <input
-                class="inp w-24"
+              <Input
+                size="sm"
+                class="w-24"
                 type="number"
                 min="0"
                 step="0.01"
@@ -334,22 +326,14 @@
 </Modal>
 
 <style>
-  .inp {
-    height: 1.75rem;
-    padding: 0 0.5rem;
-    font-size: var(--font-size-body);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg3);
-    border: 1px solid var(--hairline);
-    color: var(--color-foreground);
-    font-family: inherit;
-  }
+  /* `.fld` survives only for the two grouping wrappers (consumption rows,
+     existing-item picker) that aren't a single Input. */
   .fld {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
     font-size: var(--font-size-caption);
-    color: var(--color-muted-foreground);
+    color: var(--color-text-secondary);
   }
   .consumption-rows {
     display: flex;
