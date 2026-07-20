@@ -50,6 +50,34 @@ export async function resolveServerId(gatewayId: string): Promise<string> {
   return serverId;
 }
 
+/** Build channel a gateway row serves (spec 2026-07-19 §D2). */
+export type GatewayChannel = 'dev' | 'prd';
+
+export const GATEWAY_CHANNELS: readonly GatewayChannel[] = ['dev', 'prd'];
+
+export function isGatewayChannel(v: unknown): v is GatewayChannel {
+  return v === 'dev' || v === 'prd';
+}
+
+/**
+ * `channel` is read as a raw expression, NOT as a column on the shared
+ * `@minion-stack/db` drizzle table — deliberately.
+ *
+ * Drizzle expands `.select()` over a schema object into an explicit column
+ * list, so adding `channel` to the shared table definition would put
+ * `"gateway"."channel"` into EVERY query in every consumer the moment the
+ * package is rebuilt, and each one would 500 until the migration landed. That
+ * exact failure mode took /finances down on 2026-07-19
+ * (`additive-column-breaks-identity-select`).
+ *
+ * `to_jsonb(row) ->> 'channel'` returns NULL when the column does not exist
+ * yet, so the pre-migration state degrades to `'prd'` — the default the
+ * migration itself backfills — instead of erroring. Once
+ * `20260719210000_gateway_channel_lease.sql` is applied everywhere this can
+ * become a plain column reference.
+ */
+const channelExpr = sql<GatewayChannel>`coalesce(to_jsonb(${gateway}) ->> 'channel', 'prd')`;
+
 export interface GatewayInput {
   name: string;
   url: string;
@@ -119,20 +147,39 @@ export interface UserHostRow {
    * spec §3.4) — a mutable lease read-model, not ownership. Null = shared/
    * default pool. */
   orgId: string | null;
+  /** Build channel this row serves. Pre-migration rows read as 'prd'. */
+  channel: GatewayChannel;
 }
 
 /**
  * List the hosts visible to a user, from Supabase `gateway` (+ `user_gateway`
  * for non-admins). Replaces the Turso `servers`/`user_servers` read in
  * `loadHostsForUser` — keyed by the profile uuid, never the legacy id.
- *   - admin → all gateways in the project
- *   - non-admin → only gateways linked via `user_gateway` (by profile id)
- *   - non-admin with no profile id → []
+ *
+ * Visibility is ACTIVE ORG first, then the user link:
+ *   - no active org        → []          (fail closed)
+ *   - admin                → the active org's rows
+ *   - non-admin            → the active org's rows the user is linked to
+ *   - non-admin, no profile → []
+ *
+ * ⚠️ Admin is NOT a cross-org escape hatch here. The previous behavior ("admin →
+ * all gateways in the project") is precisely the fail-open shape that let one
+ * org see another's channels (`channel-identity-org-scoping-failopen`). An admin
+ * of org A switching to org B sees org B's rows and no others; to reach org A's
+ * gateways they switch back.
+ *
+ * ⚠️ `user_gateway` currently links all 7 users to both legacy rows. That sprawl
+ * is now harmless — the org predicate is ANDed, not ORed — but it is still worth
+ * pruning (see supabase/scripts/2026-07-19-gateway-channel-repoint.sql §7).
  */
 export async function listGatewayHostsForUser(
   profileId: string | null,
   isAdmin: boolean,
+  orgId: string | null,
 ): Promise<UserHostRow[]> {
+  // Fail closed. An absent active org is not "show everything" — that is how a
+  // hand-crafted request reaches a channel the caller's org does not have.
+  if (!orgId) return [];
   const db = getCoreDb();
   const cols = {
     id: gateway.id,
@@ -141,15 +188,16 @@ export async function listGatewayHostsForUser(
     url: gateway.url,
     lastConnectedAt: gateway.lastConnectedAt,
     orgId: gateway.orgId,
+    channel: channelExpr,
   };
   const rows = isAdmin
-    ? await db.select(cols).from(gateway).orderBy(gateway.createdAt)
+    ? await db.select(cols).from(gateway).where(eq(gateway.orgId, orgId)).orderBy(gateway.createdAt)
     : profileId
       ? await db
           .select(cols)
           .from(gateway)
           .innerJoin(userGateway, eq(userGateway.gatewayId, gateway.id))
-          .where(eq(userGateway.profileId, profileId))
+          .where(and(eq(userGateway.profileId, profileId), eq(gateway.orgId, orgId)))
           .orderBy(gateway.createdAt)
       : [];
   return rows.map((r) => ({
@@ -158,7 +206,92 @@ export async function listGatewayHostsForUser(
     url: r.url,
     lastConnectedAt: r.lastConnectedAt ? r.lastConnectedAt.getTime() : null,
     orgId: r.orgId ?? null,
+    channel: isGatewayChannel(r.channel) ? r.channel : 'prd',
   }));
+}
+
+/** Candidate instance for a (org, channel) pair — the resolver's input set. */
+export interface ChannelCandidate {
+  gatewayId: string;
+  serverId: string;
+  name: string;
+  url: string;
+  token: string;
+}
+
+/**
+ * Every gateway row assigned to `(orgId, channel)`, oldest first, with tokens
+ * decrypted. The fail-closed authority behind both the picker and the lease
+ * resolver: an org with no row for a channel gets `[]` and therefore cannot
+ * select it, no matter what the client asks for.
+ *
+ * Tokenless rows are excluded — a row we cannot authenticate to is not a
+ * candidate, and returning it would surface as a confusing NOT_PAIRED close
+ * rather than "this channel is unavailable".
+ */
+export async function listChannelCandidates(
+  orgId: string,
+  channel: GatewayChannel,
+): Promise<ChannelCandidate[]> {
+  const rows = await getCoreDb()
+    .select({
+      id: gateway.id,
+      legacyServerId: gateway.legacyServerId,
+      name: gateway.name,
+      url: gateway.url,
+      tokenCiphertext: gateway.tokenCiphertext,
+      tokenIv: gateway.tokenIv,
+      channel: channelExpr,
+    })
+    .from(gateway)
+    .where(eq(gateway.orgId, orgId))
+    .orderBy(gateway.createdAt);
+  return rows
+    .filter((r) => (isGatewayChannel(r.channel) ? r.channel : 'prd') === channel)
+    .filter((r) => r.tokenCiphertext)
+    .map((r) => ({
+      gatewayId: r.id,
+      serverId: r.legacyServerId ?? r.id,
+      name: r.name,
+      url: r.url,
+      // token_iv='' means the ciphertext IS the plaintext token (legacy row).
+      token: r.tokenIv ? decrypt(r.tokenCiphertext, r.tokenIv) : r.tokenCiphertext,
+    }));
+}
+
+/**
+ * Channels the org actually has rows for, in display order (prd first — it is
+ * the safe default and the only channel FACES has). An org with one entry gets
+ * no picker at all (spec §D2).
+ */
+export async function listOrgChannels(orgId: string | null): Promise<GatewayChannel[]> {
+  if (!orgId) return [];
+  const rows = await getCoreDb()
+    .select({ channel: channelExpr })
+    .from(gateway)
+    .where(eq(gateway.orgId, orgId));
+  const present = new Set(rows.map((r) => (isGatewayChannel(r.channel) ? r.channel : 'prd')));
+  return (['prd', 'dev'] as const).filter((c) => present.has(c));
+}
+
+/**
+ * True when `serverId` resolves to a gateway row assigned to `orgId`. The
+ * server-side gate on `/api/servers/[id]/*`: UI-only gating is a bug, and
+ * "admin" is not an exemption (see `listGatewayHostsForUser`).
+ */
+export async function gatewayBelongsToOrg(
+  serverId: string,
+  orgId: string | null,
+): Promise<boolean> {
+  if (!orgId) return false;
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return false;
+  const [row] = await getCoreDb()
+    .select({ id: gateway.id })
+    .from(gateway)
+    .where(and(eq(gateway.id, gatewayId), eq(gateway.orgId, orgId)))
+    .limit(1);
+  return !!row;
 }
 
 /**

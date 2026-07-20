@@ -39,6 +39,7 @@ import {
   saveLastActiveHost,
   fetchHostToken,
   getOrgAssignedHost,
+  revalidateChannel,
 } from '$lib/state/features/hosts.svelte';
 import { userState } from '$lib/state/features/user.svelte';
 import type { Host } from '$lib/types/host';
@@ -588,6 +589,16 @@ export async function wsConnect() {
       const info = describeGatewayError(raw);
       setConnectError(raw);
       toastError(info.title, info.hint, { id: 'gateway-connect-failed' });
+      // Spec §F2: probe on connect failure. Ask the server to re-verify the
+      // lease holder with a REAL WS upgrade and flip if it's dead. Only retry
+      // when the lease actually moved — a blind retry against the same dead
+      // instance is the reconnect loop this is meant to end. State does NOT
+      // follow the flip (§F7); `revalidateChannel` surfaces that.
+      void revalidateChannel().then((next) => {
+        if (!next || next.serverId === capturedHostId) return;
+        if (!lifecycleFence.isCurrent(generation)) return;
+        void wsConnect();
+      });
     });
 }
 

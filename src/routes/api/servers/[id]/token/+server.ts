@@ -8,6 +8,7 @@ import { getServerToken } from '$server/services/server.service';
 import {
   userHasGatewayAccess,
   getGatewayTokenByServerId,
+  gatewayBelongsToOrg,
 } from '$server/services/gateway.pg.service';
 
 /**
@@ -38,6 +39,21 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   console.log('[token-ep] tenant=', ctx.tenantId);
 
   const id = params.id!;
+
+  // ── Org/channel gate (spec §C5). Fail closed, and BEFORE the role check ────
+  // The gateway row must belong to the caller's ACTIVE org. Handing out a token
+  // is handing out the connection, so this is the real enforcement point — UI
+  // gating alone is a bug, and `role === 'admin'` is deliberately NOT an
+  // exemption: the old admin bypass below meant an admin sitting in FACES could
+  // fetch the DEV gateway's token with a hand-crafted request, which is exactly
+  // what "FACES cannot reach DEV even by hand-crafting a request" forbids.
+  // Channel is enforced transitively: a channel's rows are org-scoped, so an org
+  // with no row for a channel has no id here that will pass.
+  const orgId = locals.orgId ?? ctx.tenantId ?? null;
+  if (!(await gatewayBelongsToOrg(id, orgId))) {
+    console.log('[token-ep] gateway not assigned to active org -> 404');
+    return json({ error: 'Not found' }, { status: 404 });
+  }
 
   if (user.role !== 'admin') {
     // Access source of truth = Supabase user_gateway (by profile uuid); fall

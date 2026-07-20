@@ -16,14 +16,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 const mockListGatewayHostsForUser =
-  vi.fn<(profileId: string | null, isAdmin: boolean) => Promise<unknown[]>>();
+  vi.fn<(profileId: string | null, isAdmin: boolean, orgId: string | null) => Promise<unknown[]>>();
+const mockListOrgChannels = vi.fn<(orgId: string | null) => Promise<string[]>>();
 vi.mock('../gateway.pg.service', () => ({
-  listGatewayHostsForUser: (profileId: string | null, isAdmin: boolean) =>
-    mockListGatewayHostsForUser(profileId, isAdmin),
+  listGatewayHostsForUser: (profileId: string | null, isAdmin: boolean, orgId: string | null) =>
+    mockListGatewayHostsForUser(profileId, isAdmin, orgId),
+  listOrgChannels: (orgId: string | null) => mockListOrgChannels(orgId),
+}));
+vi.mock('../gateway-lease.service', () => ({
+  resolveChannelEndpoint: vi.fn(async () => null),
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockListOrgChannels.mockResolvedValue([]);
 });
 
 // ── permissions.service ──────────────────────────────────────────────────────
@@ -59,13 +65,19 @@ describe('loadHostsForUser', () => {
     mockListGatewayHostsForUser.mockResolvedValue([{ id: 's1', name: 'host-1' }]);
     const { loadHostsForUser } = await import('../hosts.service');
 
-    const result = await loadHostsForUser({ user: { supabaseId: 'p1' } } as never, 'u1', 'admin');
+    const result = await loadHostsForUser(
+      { user: { supabaseId: 'p1' }, orgId: 'org-A' } as never,
+      'u1',
+      'admin',
+    );
     expect(result).toEqual({
       servers: [{ id: 's1', name: 'host-1' }],
       authoritative: true,
       orgAssignedHostId: null,
+      channels: [],
+      defaultChannel: null,
     });
-    expect(mockListGatewayHostsForUser).toHaveBeenCalledWith('p1', true);
+    expect(mockListGatewayHostsForUser).toHaveBeenCalledWith('p1', true, 'org-A');
   });
 
   it('returns authoritative empty list when no gateways seeded', async () => {
@@ -73,8 +85,15 @@ describe('loadHostsForUser', () => {
     const { loadHostsForUser } = await import('../hosts.service');
 
     const result = await loadHostsForUser({ user: { supabaseId: 'p1' } } as never, 'u1', 'user');
-    expect(result).toEqual({ servers: [], authoritative: true, orgAssignedHostId: null });
-    expect(mockListGatewayHostsForUser).toHaveBeenCalledWith('p1', false);
+    expect(result).toEqual({
+      servers: [],
+      authoritative: true,
+      orgAssignedHostId: null,
+      channels: [],
+      defaultChannel: null,
+    });
+    // Fail closed: no active org ⇒ the scoping arg is null, not "everything".
+    expect(mockListGatewayHostsForUser).toHaveBeenCalledWith('p1', false, null);
   });
 
   it('surfaces the active org-assigned host id (tenancy §3.4), null otherwise', async () => {

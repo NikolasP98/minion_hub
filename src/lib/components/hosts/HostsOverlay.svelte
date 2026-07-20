@@ -137,6 +137,15 @@
           <div class="flex-1 min-w-0">
             <div class="text-sm font-semibold flex items-center gap-2">
               {host.name}
+              {#if host.channel}
+                <!-- §D1: this admin surface still shows instances (it is the CRUD
+                     screen for them), but each row states which BUILD CHANNEL it
+                     serves — the thing users actually pick. -->
+                <span
+                  class="text-[length:var(--font-size-telemetry)] font-semibold bg-info/12 text-info border border-info/25 rounded-full py-px px-1.75 uppercase"
+                  >{host.channel}</span
+                >
+              {/if}
               {#if host.id === hostsState.activeHostId && conn.connected}
                 <span
                   class="text-[length:var(--font-size-telemetry)] font-semibold bg-success/12 text-success border border-success/25 rounded-full py-px px-1.75"
