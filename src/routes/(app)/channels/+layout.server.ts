@@ -14,7 +14,18 @@ export type ChannelEntry = {
 // side-menu and the overview render without a hydration flash.
 export const load: LayoutServerLoad = async ({ locals }) => {
   const orgId = locals?.orgId ?? locals?.tenantCtx?.tenantId;
-  const all = await pluginsUiList(locals?.user?.supabaseId, orgId);
+  // The gateway is a remote dependency: when it's down, mid-restart, or missing its
+  // plugin UI assets, this RPC rejects. Letting that escape 500s the ENTIRE /channels
+  // subtree (it's a layout load), hiding the hub-native Gmail card too. Degrade to
+  // "no gateway plugins" instead and surface the reason to the page.
+  let all: Awaited<ReturnType<typeof pluginsUiList>> = [];
+  let gatewayError: string | null = null;
+  try {
+    all = await pluginsUiList(locals?.user?.supabaseId, orgId);
+  } catch (e) {
+    gatewayError = e instanceof Error ? e.message : 'Gateway unreachable';
+    console.error('[channels] plugins.ui.list failed:', e);
+  }
   const channels: ChannelEntry[] = all
     .filter((e) => e.slot === 'plugins.controlCenter' && e.orgEnabled !== false && isChannelPlugin(e))
     .map((e) => ({
@@ -52,5 +63,5 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     status: gmailConnected ? 'loaded' : undefined,
   });
 
-  return { channels };
+  return { channels, gatewayError };
 };

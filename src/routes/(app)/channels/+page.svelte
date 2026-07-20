@@ -9,6 +9,9 @@
 
   let { data }: { data: PageData } = $props();
   const channels = $derived(data.channels);
+  // Set when the gateway couldn't be reached — the page still renders (hub-native
+  // cards like Gmail stay usable) but must not imply "no channels are enabled".
+  const gatewayError = $derived(data.gatewayError);
 
   // Map the manifest status to a label + tone for the card's status pill.
   function status(s: string | undefined): {
@@ -42,6 +45,14 @@
   </PageHeader>
 
   <PageBody width="content">
+    {#if gatewayError}
+      <p
+        class="mb-3 rounded-md border border-warning/30 bg-warning/15 px-3 py-2 text-[length:var(--font-size-label)] text-warning"
+      >
+        Gateway plugins couldn't be loaded, so only hub-native channels are shown.
+        {gatewayError}
+      </p>
+    {/if}
     <AsyncBoundary
       state={channels.length === 0
         ? {
