@@ -23,7 +23,11 @@ export interface CostLine {
   stockQty: number; // converted to the item's stock uom
   rate: number; // valuation per stock uom (0 when no bin)
   value: number; // stockQty × rate
-  hasBin: boolean; // false ⇒ material has no valuation yet
+  /** false ⇒ material has NO usable valuation: either no bin row at all, or a
+   *  bin sitting at rate 0. A zero rate is "not valued yet", NOT "free" — 7 of
+   *  24 bins are in that state, and treating them as valued reported a
+   *  confident 0.00 cost for products nobody has costed. */
+  hasBin: boolean;
 }
 
 export interface ProductCost {
@@ -49,8 +53,8 @@ export function rollupFlatCost(
   let partial = false;
   const lines = mappings.map((m) => {
     const stockQty = consumptionToStockQty({ unitsPerStockUom: m.unitsPerStockUom }, m.qtyPerUnit);
-    const hasBin = rateByItem.has(m.itemId);
     const rate = rateByItem.get(m.itemId) ?? 0;
+    const hasBin = rate > 0; // a rate-0 bin is unvalued, not free — see CostLine.hasBin
     const value = round4(stockQty * rate);
     if (!hasBin) partial = true;
     cost = round4(cost + value);
