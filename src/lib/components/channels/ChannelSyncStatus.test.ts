@@ -34,8 +34,7 @@ describe('ChannelSyncStatus', () => {
     expect(body).toContain('Acknowledged by Hub');
     expect(body).toContain('69,600 of 156,485');
     expect(body).toContain('44.5%');
-    expect(body).toContain('86,885 pending · 55.5%');
-    expect(body).toContain('data-progress-buffer="pending"');
+    expect(body).not.toContain('86,885 pending');
     expect(body).toContain('1,200 messages');
     expect(body).not.toContain('Confirmation unavailable');
   });
@@ -66,5 +65,30 @@ describe('ChannelSyncStatus', () => {
 
     expect(body).toContain('Uploading to Hub');
     expect(body).not.toContain('Paused — no data for 2 minutes');
+  });
+
+  it('uses distinct compact status and progress wording', () => {
+    const { body } = render(ChannelSyncStatus, {
+      props: {
+        sync: activeSync,
+        compact: true,
+        delivery: {
+          total: 100,
+          acknowledged: 75,
+          pending: 25,
+          retrying: 0,
+          lastAcknowledgedAt: 1_721_000_020_000,
+          updatedAt: 1_721_000_020_000,
+        },
+      },
+    });
+
+    expect(body.match(/Uploading to Hub/g)).toHaveLength(1);
+    expect(body).toContain('Acknowledged by Hub');
+    expect(body).toContain('75.0%');
+    expect(body).toContain('t-title font-semibold');
+    expect(body).toContain('t-telemetry');
+    expect(body).toContain('data-part="spinner"');
+    expect(body).not.toContain('25 pending');
   });
 });

@@ -42,14 +42,4 @@ describe('ProgressBar', () => {
     expect(body).toContain('aria-valuemax="100"');
     expect(body).toContain('aria-valuenow="50"');
   });
-
-  test('renders queued progress beneath acknowledged progress in one track', () => {
-    const { body } = render(ProgressBar, {
-      props: { value: 60, bufferedValue: 100, max: 100, tone: 'success' },
-    });
-    expect(body).toContain('data-progress-buffer="pending"');
-    expect(body).toContain('width: 100%');
-    expect(body).toContain('success');
-    expect(body.match(/role="progressbar"/g)).toHaveLength(1);
-  });
 });

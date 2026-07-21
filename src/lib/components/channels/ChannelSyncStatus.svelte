@@ -65,26 +65,11 @@
         })
       : '',
   );
-  const pendingDetail = $derived(
-    delivery
-      ? delivery.retrying > 0
-        ? m.channelSync_uploadPendingRetrying({
-            pending: delivery.pending.toLocaleString(),
-            retrying: delivery.retrying.toLocaleString(),
-          })
-        : m.channelSync_uploadPending({ pending: delivery.pending.toLocaleString() })
-      : '',
-  );
   const deliveryProgress = $derived(
     delivery && delivery.total > 0 ? (delivery.acknowledged / delivery.total) * 100 : null,
   );
   const deliveryPercent = $derived(
     deliveryProgress == null ? '0.0%' : `${deliveryProgress.toFixed(1)}%`,
-  );
-  const pendingPercent = $derived(
-    delivery && delivery.total > 0
-      ? `${((delivery.pending / delivery.total) * 100).toFixed(1)}%`
-      : '0.0%',
   );
   const Icon = $derived(
     deliveryActive
@@ -103,6 +88,9 @@
         : collectionStalled
           ? 'warning'
           : 'accent',
+  );
+  const spinning = $derived(
+    deliveryActive || (!collectionDone && !collectionStalled && phase !== 'idle'),
   );
   const hasSync = $derived(!!sync && phase !== 'idle');
   const waitingForDelivery = $derived(!!accountId && hasSync && !delivery);
@@ -142,9 +130,9 @@
 </script>
 
 {#snippet deliveryReadout()}
-  <span class="inline-flex items-baseline gap-1.5">
-    <span class="t-label text-foreground">{deliveryPercent}</span>
+  <span class="inline-flex items-baseline gap-2">
     <span class="t-telemetry text-muted-foreground">{deliveryDetail}</span>
+    <span class="t-title font-semibold text-foreground">{deliveryPercent}</span>
   </span>
 {/snippet}
 
@@ -152,14 +140,18 @@
   {#if hasSync || delivery}
     <div class="flex flex-col gap-1.5">
       <div class="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
-        <Icon
-          size={iconSizes.xs}
-          class="shrink-0 {tone === 'warning'
-            ? 'text-warning'
-            : tone === 'success'
-              ? 'text-success'
-              : 'text-accent'}"
-        />
+        {#if spinning}
+          <Spinner size="xs" label={m.common_loading()} class="text-accent" />
+        {:else}
+          <Icon
+            size={iconSizes.xs}
+            class="shrink-0 {tone === 'warning'
+              ? 'text-warning'
+              : tone === 'success'
+                ? 'text-success'
+                : 'text-accent'}"
+          />
+        {/if}
         <span class="truncate {tone === 'warning' ? 'text-warning' : ''}">{label}</span>
         {#if hasSync}
           <span class="ml-auto shrink-0 tabular-nums">{counts}</span>
@@ -174,19 +166,11 @@
       {/if}
       {#if delivery}
         <ProgressBar
-          value={delivery?.acknowledged ?? 0}
-          bufferedValue={delivery?.total ?? 0}
-          max={delivery?.total ?? 0}
-          tone="success"
-          label={deliveryDone ? m.channelSync_uploadComplete() : m.channelSync_uploadingToHub()}
+          value={deliveryProgress}
+          label={m.channelSync_acknowledgedByHub()}
           detail={deliveryReadout}
           size="sm"
         />
-        {#if deliveryActive}
-          <p class="text-xs text-muted-foreground tabular-nums">
-            {pendingDetail} · {pendingPercent}
-          </p>
-        {/if}
       {:else if waitingForDelivery}
         <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Database size={iconSizes.xs} class="shrink-0" />
@@ -200,14 +184,18 @@
 {:else}
   <div class="flex flex-col gap-2">
     <div class="flex items-center gap-2 text-sm">
-      <Icon
-        size={iconSizes.sm}
-        class="shrink-0 {tone === 'warning'
-          ? 'text-warning'
-          : tone === 'success'
-            ? 'text-success'
-            : 'text-accent'}"
-      />
+      {#if spinning}
+        <Spinner size="sm" label={m.common_loading()} class="text-accent" />
+      {:else}
+        <Icon
+          size={iconSizes.sm}
+          class="shrink-0 {tone === 'warning'
+            ? 'text-warning'
+            : tone === 'success'
+              ? 'text-success'
+              : 'text-accent'}"
+        />
+      {/if}
       <span class="font-medium text-foreground">{label}</span>
     </div>
 
@@ -232,19 +220,11 @@
           </span>
         </div>
         <ProgressBar
-          value={delivery.acknowledged}
-          bufferedValue={delivery.total}
-          max={delivery.total}
-          tone="success"
+          value={deliveryProgress}
           label={m.channelSync_acknowledgedByHub()}
           detail={deliveryReadout}
           size="md"
         />
-        {#if deliveryActive}
-          <p class="text-xs text-muted-foreground tabular-nums">
-            {pendingDetail} · {pendingPercent}
-          </p>
-        {/if}
         <p class="text-xs text-muted-foreground">{m.channelSync_acknowledgedHint()}</p>
       </div>
     {:else if waitingForDelivery}
