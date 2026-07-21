@@ -384,7 +384,7 @@
                 {m.channelWizard_linkedAccount({ account: label })}
             </p>
         </div>
-        <ChannelSyncStatus {sync} />
+        <ChannelSyncStatus {sync} {serverId} accountId={verified?.kind === 'whatsapp' ? verified.phone : null} />
         <Button type="button" variant="primary" onclick={onclose}>
             {m.channelSync_doneKeepSyncing()}
         </Button>

@@ -57,6 +57,9 @@
             clearTimeout(noQrTimer);
             noQrTimer = null;
         }
+        // Baileys rotates QR codes during one pairing attempt. An older timer
+        // must never expire the fresh code that just replaced it.
+        if (scanTimer) clearTimeout(scanTimer);
         scanTimer = setTimeout(() => {
             if (pairingStatus === 'waiting') failWith('QR code expired. Tap Retry to get a new one.');
         }, 160_000);

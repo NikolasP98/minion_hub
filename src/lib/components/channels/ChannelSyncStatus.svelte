@@ -10,15 +10,22 @@
      * "no info", not an error — compact renders nothing, full says so plainly.
      */
     import type { ChannelHistorySync } from '$lib/types/channels';
-    import { ProgressBar, iconSizes } from '$lib/components/ui';
-    import { PauseCircle, RefreshCw, CircleCheck, Smartphone } from 'lucide-svelte';
+    import { ProgressBar, Spinner, iconSizes } from '$lib/components/ui';
+    import { PauseCircle, RefreshCw, CircleCheck, Smartphone, Database } from 'lucide-svelte';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
         sync: ChannelHistorySync | undefined;
         compact?: boolean;
+        /** Hub server/gateway id + account key enable authoritative DB confirmation. */
+        serverId?: string;
+        accountId?: string | null;
     }
-    let { sync, compact = false }: Props = $props();
+    let { sync, compact = false, serverId, accountId }: Props = $props();
+
+    let persisted = $state<number | null>(null);
+    let persistenceUnavailable = $state(false);
+    let persistenceLoading = $state(false);
 
     // Message refs, NOT calls — a module-scope m.x() in a .ts const bakes 'en' at SSR.
     const PHASE_LABELS: Record<ChannelHistorySync['phase'], () => string> = {
@@ -48,6 +55,67 @@
     );
     const Icon = $derived(stalled ? PauseCircle : done ? CircleCheck : RefreshCw);
     const tone = $derived(stalled ? 'warning' : done ? 'success' : 'accent');
+    const canConfirmPersistence = $derived(
+        !!serverId && !!accountId && sync?.startedAt != null && phase !== 'idle',
+    );
+
+    // Baileys activity and durable ingestion are deliberately separate. Poll the
+    // org-scoped Hub DB for rows committed since this sync session began; never
+    // derive "saved" from the gateway progress bar or the local outbox.
+    $effect(() => {
+        const gateway = serverId;
+        const account = accountId;
+        const since = sync?.startedAt;
+        const terminal = done;
+        if (!gateway || !account || since == null || phase === 'idle') {
+            persisted = null;
+            persistenceUnavailable = false;
+            persistenceLoading = false;
+            return;
+        }
+
+        let cancelled = false;
+        let inFlight = false;
+        let firstLoad = true;
+        const load = async () => {
+            if (inFlight) return;
+            inFlight = true;
+            if (firstLoad) persistenceLoading = true;
+            try {
+                const params = new URLSearchParams({
+                    serverId: gateway,
+                    channel: 'whatsapp',
+                    accountId: account,
+                    since: String(since),
+                });
+                const response = await fetch(`/api/messages/stats?${params}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = (await response.json()) as { persisted?: unknown };
+                if (typeof data.persisted !== 'number') throw new Error('Invalid persistence stats');
+                if (!cancelled) {
+                    persisted = data.persisted;
+                    persistenceUnavailable = false;
+                }
+            } catch {
+                if (!cancelled) persistenceUnavailable = true;
+            } finally {
+                if (!cancelled) persistenceLoading = false;
+                inFlight = false;
+                firstLoad = false;
+            }
+        };
+
+        void load();
+        if (terminal)
+            return () => {
+                cancelled = true;
+            };
+        const timer = setInterval(() => void load(), 5_000);
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    });
 </script>
 
 {#if compact}
@@ -61,7 +129,22 @@
                 <span class="truncate {stalled ? 'text-warning' : ''}">{label}</span>
                 <span class="ml-auto shrink-0 tabular-nums">{counts}</span>
             </div>
-            <ProgressBar value={sync.progress} size="sm" />
+            <ProgressBar value={sync.progress} label={m.channelSync_receivedFromWhatsApp()} size="sm" />
+            {#if canConfirmPersistence}
+                <div class="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
+                    <Database size={iconSizes.xs} class="shrink-0 text-success" />
+                    <span class="truncate">{m.channelSync_savedToHub()}</span>
+                    <span class="ml-auto shrink-0 tabular-nums">
+                        {#if persisted !== null}
+                            {m.channelSync_savedCount({ messages: persisted.toLocaleString() })}
+                        {:else if persistenceLoading}
+                            <Spinner size="xs" label={m.channelSync_savedChecking()} />
+                        {:else if persistenceUnavailable}
+                            {m.channelSync_savedUnavailable()}
+                        {/if}
+                    </span>
+                </div>
+            {/if}
         </div>
     {/if}
 {:else if !sync}
@@ -80,9 +163,32 @@
             <span class="font-medium text-foreground">{label}</span>
         </div>
         {#if !done}
-            <ProgressBar value={sync.progress} detail={counts} size="md" />
+            <ProgressBar
+                value={sync.progress}
+                label={m.channelSync_receivedFromWhatsApp()}
+                detail={counts}
+                size="md"
+            />
         {:else}
             <p class="text-xs text-muted-foreground tabular-nums">{counts}</p>
+        {/if}
+        {#if canConfirmPersistence}
+            <div class="flex flex-col gap-1 rounded-md border border-border bg-bg2 p-2.5">
+                <div class="flex items-center gap-2 text-xs">
+                    <Database size={iconSizes.sm} class="shrink-0 text-success" />
+                    <span class="font-medium text-foreground">{m.channelSync_savedToHub()}</span>
+                    <span class="ml-auto tabular-nums text-muted-foreground">
+                        {#if persisted !== null}
+                            {m.channelSync_savedCount({ messages: persisted.toLocaleString() })}
+                        {:else if persistenceLoading}
+                            <Spinner size="xs" label={m.channelSync_savedChecking()} />
+                        {:else if persistenceUnavailable}
+                            {m.channelSync_savedUnavailable()}
+                        {/if}
+                    </span>
+                </div>
+                <p class="text-xs text-muted-foreground">{m.channelSync_savedHint()}</p>
+            </div>
         {/if}
         {#if stalled}
             <div

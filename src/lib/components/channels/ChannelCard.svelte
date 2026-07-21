@@ -412,7 +412,12 @@
          already names the state — this adds the progress the pill can't carry. -->
     {#if isSyncActive(channel.historySync)}
         <div class="px-4 pb-3 -mt-1">
-            <ChannelSyncStatus sync={channel.historySync} compact />
+            <ChannelSyncStatus
+                sync={channel.historySync}
+                {serverId}
+                accountId={channel.accountId ?? gwAccountId}
+                compact
+            />
         </div>
     {/if}
 

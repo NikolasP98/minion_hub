@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import {
-  insertMessages,
+  insertMessagesDetailed,
   applyRoutingPatches,
   type IngestRow,
   type RoutingPatch,
@@ -19,8 +19,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   );
   const patches = Array.isArray(body.patches) ? body.patches : [];
 
-  const accepted = await insertMessages(orgId, serverId ?? null, rows);
+  const ingest = await insertMessagesDetailed(orgId, serverId ?? null, rows);
   await applyRoutingPatches(orgId, patches);
 
-  return json({ ok: true, accepted, patched: patches.length });
+  return json({
+    ok: true,
+    accepted: ingest.accepted,
+    acceptedClientIds: ingest.acceptedClientIds,
+    patched: patches.length,
+    patchedClientIds: patches.map((patch) => patch.clientId),
+  });
 };

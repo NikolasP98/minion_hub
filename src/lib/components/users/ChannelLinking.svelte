@@ -182,7 +182,14 @@
     <div>
       <WhatsAppClaimCard {userId} {serverId} identity={whatsappIdentity} onDisconnect={disconnect} />
       {#if isSyncActive(whatsappSync)}
-        <div class="px-3 pb-2"><ChannelSyncStatus sync={whatsappSync} compact /></div>
+        <div class="px-3 pb-2">
+          <ChannelSyncStatus
+            sync={whatsappSync}
+            {serverId}
+            accountId={whatsappIdentity?.externalId}
+            compact
+          />
+        </div>
       {/if}
       <div class="flex items-center gap-2 px-3 pb-2.5">
         {#if !canSync}

@@ -29,6 +29,16 @@ export interface RoutingPatch {
   sessionKey: string;
 }
 
+export interface MessageIngestResult {
+  accepted: number;
+  acceptedClientIds: string[];
+}
+
+export interface MessageIngestStats {
+  persisted: number;
+  latestPersistedAt: number | null;
+}
+
 export type MessageInsert = typeof messages.$inferInsert;
 
 /** Pure mapping from an ingest row → Drizzle insert values (testable without a DB). */
@@ -86,20 +96,23 @@ const ON_CONFLICT = {
  * failure we fall back to per-row inserts (savepoint each) and drop only the
  * rows that can't be stored. Bad rows never block the queue again.
  */
-export async function insertMessages(
+export async function insertMessagesDetailed(
   orgId: string,
   gatewayId: string | null,
   rows: IngestRow[],
-): Promise<number> {
-  if (rows.length === 0) return 0;
+): Promise<MessageIngestResult> {
+  if (rows.length === 0) return { accepted: 0, acceptedClientIds: [] };
   const values = rows.map((r) => toInsertValues(r, orgId, gatewayId));
   try {
     await withOrg(orgId, async (tx) => {
       await tx.insert(messages).values(values).onConflictDoUpdate(ON_CONFLICT);
     });
-    return values.length;
+    return {
+      accepted: values.length,
+      acceptedClientIds: values.map((value) => value.clientId),
+    };
   } catch (bulkErr) {
-    let accepted = 0;
+    const acceptedClientIds: string[] = [];
     await withOrg(orgId, async (tx) => {
       for (const v of values) {
         try {
@@ -108,19 +121,65 @@ export async function insertMessages(
           await tx.transaction(async (sp) => {
             await sp.insert(messages).values(v).onConflictDoUpdate(ON_CONFLICT);
           });
-          accepted += 1;
+          acceptedClientIds.push(v.clientId);
         } catch (rowErr) {
           console.warn(
-            `[ingest] dropping unpersistable message client_id=${v.clientId}: ${String(rowErr)}`,
+            `[ingest] rejecting unpersistable message client_id=${v.clientId}: ${String(rowErr)}`,
           );
         }
       }
     });
     console.warn(
-      `[ingest] bulk insert failed (${String(bulkErr)}); per-row fallback accepted ${accepted}/${values.length}`,
+      `[ingest] bulk insert failed (${String(bulkErr)}); per-row fallback accepted ${acceptedClientIds.length}/${values.length}`,
     );
-    return accepted;
+    return { accepted: acceptedClientIds.length, acceptedClientIds };
   }
+}
+
+/** Backward-compatible count-only facade for in-process callers. */
+export async function insertMessages(
+  orgId: string,
+  gatewayId: string | null,
+  rows: IngestRow[],
+): Promise<number> {
+  return (await insertMessagesDetailed(orgId, gatewayId, rows)).accepted;
+}
+
+/**
+ * Authoritative, post-commit persistence count for one gateway account.
+ * `since` scopes the total to the current history-sync session when supplied.
+ */
+export async function getMessageIngestStats(
+  orgId: string,
+  filters: {
+    gatewayId: string;
+    channel: string;
+    accountId: string;
+    since?: number;
+  },
+): Promise<MessageIngestStats> {
+  const conds: SQL[] = [
+    eq(messages.orgId, orgId),
+    eq(messages.gatewayId, filters.gatewayId),
+    eq(messages.channel, filters.channel),
+    eq(messages.accountId, filters.accountId),
+  ];
+  if (filters.since !== undefined) {
+    conds.push(gte(messages.createdAt, new Date(filters.since)));
+  }
+  return withOrg(orgId, async (tx) => {
+    const [row] = await tx
+      .select({
+        persisted: sql<number>`count(*)::int`,
+        latestPersistedAt: sql<Date | null>`max(${messages.createdAt})`,
+      })
+      .from(messages)
+      .where(and(...conds));
+    return {
+      persisted: row?.persisted ?? 0,
+      latestPersistedAt: row?.latestPersistedAt?.getTime() ?? null,
+    };
+  });
 }
 
 /** Apply late routing backfills, keyed by client_id. */
