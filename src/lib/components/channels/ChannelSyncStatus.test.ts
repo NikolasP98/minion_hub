@@ -17,7 +17,6 @@ describe('ChannelSyncStatus', () => {
     const { body } = render(ChannelSyncStatus, {
       props: {
         sync: activeSync,
-        serverId: 'gateway-1',
         accountId: '+51900000000',
       },
     });

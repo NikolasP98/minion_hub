@@ -17,11 +17,11 @@
     interface Props {
         sync: ChannelHistorySync | undefined;
         compact?: boolean;
-        /** Hub server/gateway id + account key enable authoritative DB confirmation. */
+        /** Accepted for caller compatibility; persistence is account-scoped in the authenticated org. */
         serverId?: string;
         accountId?: string | null;
     }
-    let { sync, compact = false, serverId, accountId }: Props = $props();
+    let { sync, compact = false, accountId }: Props = $props();
 
     let persisted = $state<number | null>(null);
     let persistenceUnavailable = $state(false);
@@ -56,18 +56,17 @@
     const Icon = $derived(stalled ? PauseCircle : done ? CircleCheck : RefreshCw);
     const tone = $derived(stalled ? 'warning' : done ? 'success' : 'accent');
     const canConfirmPersistence = $derived(
-        !!serverId && !!accountId && sync?.startedAt != null && phase !== 'idle',
+        !!accountId && sync?.startedAt != null && phase !== 'idle',
     );
 
     // Baileys activity and durable ingestion are deliberately separate. Poll the
     // org-scoped Hub DB for rows committed since this sync session began; never
     // derive "saved" from the gateway progress bar or the local outbox.
     $effect(() => {
-        const gateway = serverId;
         const account = accountId;
         const since = sync?.startedAt;
         const terminal = done;
-        if (!gateway || !account || since == null || phase === 'idle') {
+        if (!account || since == null || phase === 'idle') {
             persisted = null;
             persistenceUnavailable = false;
             persistenceLoading = false;
@@ -83,7 +82,6 @@
             if (firstLoad) persistenceLoading = true;
             try {
                 const params = new URLSearchParams({
-                    serverId: gateway,
                     channel: 'whatsapp',
                     accountId: account,
                     since: String(since),

@@ -152,7 +152,7 @@ export async function insertMessages(
 export async function getMessageIngestStats(
   orgId: string,
   filters: {
-    gatewayId: string;
+    gatewayId?: string;
     channel: string;
     accountId: string;
     since?: number;
@@ -160,10 +160,10 @@ export async function getMessageIngestStats(
 ): Promise<MessageIngestStats> {
   const conds: SQL[] = [
     eq(messages.orgId, orgId),
-    eq(messages.gatewayId, filters.gatewayId),
     eq(messages.channel, filters.channel),
     eq(messages.accountId, filters.accountId),
   ];
+  if (filters.gatewayId !== undefined) conds.push(eq(messages.gatewayId, filters.gatewayId));
   if (filters.since !== undefined) {
     conds.push(gte(messages.createdAt, new Date(filters.since)));
   }
