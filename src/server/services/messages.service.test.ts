@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { MESSAGE_CONFLICT_TARGET, toInsertValues, type IngestRow } from './messages.service';
+import {
+  MESSAGE_CONFLICT_TARGET,
+  toInsertValues,
+  toTimestampMs,
+  type IngestRow,
+} from './messages.service';
 
 const base: IngestRow = {
   clientId: 'c1',
@@ -43,5 +48,21 @@ describe('toInsertValues', () => {
 describe('message ingest idempotency', () => {
   it('scopes client IDs to the organization', () => {
     expect(MESSAGE_CONFLICT_TARGET.map((column) => column.name)).toEqual(['org_id', 'client_id']);
+  });
+});
+
+describe('toTimestampMs', () => {
+  it('normalizes Date, ISO text, and numeric driver values', () => {
+    const timestamp = 1_784_611_440_671;
+    expect(toTimestampMs(new Date(timestamp))).toBe(timestamp);
+    expect(toTimestampMs(new Date(timestamp).toISOString())).toBe(timestamp);
+    expect(toTimestampMs(timestamp)).toBe(timestamp);
+    expect(toTimestampMs(String(timestamp))).toBe(timestamp);
+  });
+
+  it('returns null for nullish and invalid values', () => {
+    expect(toTimestampMs(null)).toBeNull();
+    expect(toTimestampMs('not-a-date')).toBeNull();
+    expect(toTimestampMs(new Date('invalid'))).toBeNull();
   });
 });

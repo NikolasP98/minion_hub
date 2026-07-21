@@ -41,6 +41,21 @@ export interface MessageIngestStats {
 
 export type MessageInsert = typeof messages.$inferInsert;
 
+/** Postgres drivers may return timestamp aggregates as Date, ISO text, or epoch numbers. */
+export function toTimestampMs(value: unknown): number | null {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    const timestamp = value.getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 /** Pure mapping from an ingest row → Drizzle insert values (testable without a DB). */
 export function toInsertValues(
   row: IngestRow,
@@ -177,7 +192,7 @@ export async function getMessageIngestStats(
       .where(and(...conds));
     return {
       persisted: row?.persisted ?? 0,
-      latestPersistedAt: row?.latestPersistedAt?.getTime() ?? null,
+      latestPersistedAt: toTimestampMs(row?.latestPersistedAt),
     };
   });
 }
