@@ -3,7 +3,6 @@
   import { invalidate } from '$app/navigation';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
-  import WhatsAppQrPairing from '$lib/components/channels/WhatsAppQrPairing.svelte';
   import { Check, ChevronDown, MessageSquare } from 'lucide-svelte';
   import { Button } from '$lib/components/ui';
 
@@ -19,12 +18,10 @@
 
   let {
     userId,
-    serverId,
     identity,
     onDisconnect,
   }: {
     userId: string;
-    serverId: string;
     identity: Identity | null;
     onDisconnect: (identity: Identity) => void;
   } = $props();
@@ -42,9 +39,6 @@
   let errorMsg = $state<string | null>(null);
   let cooldown = $state(0); // seconds until resend allowed
   let cdTimer: ReturnType<typeof setInterval> | null = null;
-
-  // ---- Tier 2: full integration (QR linked device) ----
-  let showFull = $state(false);
 
   function stopCooldown() {
     if (cdTimer) {
@@ -240,29 +234,6 @@
         </section>
       {/if}
 
-      <!-- Tier 2: full integration (available connected or not) -->
-      <section class="space-y-2 pt-3 border-t border-border/60">
-        <Button variant="ghost" size="xs"
-          class="flex items-center gap-1.5 text-[length:var(--font-size-label)] uppercase tracking-wider text-muted font-semibold bg-transparent border-none cursor-pointer hover:text-foreground"
-          onclick={() => (showFull = !showFull)}
-        >
-          <MessageSquare size={12} /> Full integration (link device)
-          <ChevronDown size={12} class="text-muted-foreground transition-transform {showFull ? 'rotate-180' : ''}" />
-        </Button>
-        {#if showFull}
-          <p class="text-[length:var(--font-size-label)] text-muted-foreground">
-            Links your WhatsApp as a new device so the hub can read messages for deeper analysis.
-          </p>
-          <WhatsAppQrPairing
-            channelId="pending"
-            {serverId}
-            onpaired={async () => {
-              toastSuccess('WhatsApp linked');
-              await invalidate('app:identities');
-            }}
-          />
-        {/if}
-      </section>
     </div>
   {/if}
 </div>

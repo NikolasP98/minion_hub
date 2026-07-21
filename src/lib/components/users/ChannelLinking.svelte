@@ -11,16 +11,16 @@
   import TelegramClaimCard from '$lib/components/users/TelegramClaimCard.svelte';
   import ChannelSetupWizard from '$lib/components/channels/ChannelSetupWizard.svelte';
   import ChannelSyncStatus from '$lib/components/channels/ChannelSyncStatus.svelte';
-  import { findHistorySync, isSyncActive } from '$lib/state/gateway';
+  import { findHistorySync, gw, isSyncActive } from '$lib/state/gateway';
   import PluginSlotHost from '$lib/plugins/PluginSlotHost.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import type { ChannelPluginInfo } from '$lib/types/channel-link';
   import type { ChannelType } from '$lib/types/channels';
-  import { Plug, RefreshCw, Settings as SettingsIcon, ChevronDown } from 'lucide-svelte';
+  import { Check, Plug, RefreshCw, Settings as SettingsIcon, ChevronDown } from 'lucide-svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import { Puzzle } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { Button, iconSizes } from '$lib/components/ui';
   import { Dialog } from '$lib/components/ui/foundations';
 
   type Identity = {
@@ -48,6 +48,21 @@
   // surface here — the trade-off is that an unclaimed identity shows nothing.
   const whatsappSync = $derived(findHistorySync('whatsapp', whatsappIdentity?.externalId));
   const telegramSync = $derived(findHistorySync('telegram', telegramIdentity?.externalId));
+  const whatsappFullSyncConnected = $derived.by(() => {
+    const identityDigits = whatsappIdentity?.externalId.replace(/\D/g, '') ?? '';
+    if (identityDigits.length < 6) return false;
+    const accounts = gw.channels?.channelAccounts?.whatsapp;
+    if (!Array.isArray(accounts)) return false;
+    return accounts.some((account) => {
+      const accountDigits = account.accountId.replace(/\D/g, '');
+      const sameAccount =
+        accountDigits.length >= 6 &&
+        (accountDigits === identityDigits ||
+          accountDigits.endsWith(identityDigits) ||
+          identityDigits.endsWith(accountDigits));
+      return sameAccount && account.connected === true;
+    });
+  });
 
   // Full-sync wizard (provisions a real channel account + session — distinct
   // from the identity-claim cards above, which only attribute inbound
@@ -180,7 +195,7 @@
   </p>
   <div class="channel-rows divide-y divide-border/60">
     <div>
-      <WhatsAppClaimCard {userId} {serverId} identity={whatsappIdentity} onDisconnect={disconnect} />
+      <WhatsAppClaimCard {userId} identity={whatsappIdentity} onDisconnect={disconnect} />
       {#if isSyncActive(whatsappSync)}
         <div class="px-3 pb-2">
           <ChannelSyncStatus
@@ -194,17 +209,20 @@
       <div class="flex items-center gap-2 px-3 pb-2.5">
         {#if !canSync}
           <span class="text-[length:var(--font-size-label)] text-muted-strong">Connect a gateway to run full sync.</span>
+        {:else if whatsappFullSyncConnected}
+          <span class="ml-auto inline-flex items-center gap-1.5 text-[length:var(--font-size-label)] font-medium text-success">
+            <Check size={iconSizes.xs} /> {m.usersui_fullSyncConnected()}
+          </span>
+        {:else}
+          <Button
+            variant="outline"
+            size="xs"
+            class="ml-auto shrink-0"
+            onclick={() => (wizardType = 'whatsapp')}
+          >
+            {m.usersui_setupFullSync()}
+          </Button>
         {/if}
-        <Button
-          variant="outline"
-          size="xs"
-          class="ml-auto shrink-0"
-          onclick={() => (wizardType = 'whatsapp')}
-          disabled={!canSync}
-          title={!canSync ? m.usersui_connectGatewayToLinkChannels() : undefined}
-        >
-          Set up full sync
-        </Button>
       </div>
     </div>
     <div>
@@ -224,7 +242,7 @@
           disabled={!canSync}
           title={!canSync ? m.usersui_connectGatewayToLinkChannels() : undefined}
         >
-          Set up full sync
+          {m.usersui_setupFullSync()}
         </Button>
       </div>
     </div>
@@ -318,7 +336,7 @@
        ACCOUNTS "Add account" — provisions a channels row + live session). -->
   <Dialog
     open={wizardType !== null}
-    title="Set up full sync"
+    title={m.usersui_setupFullSync()}
     size="md"
     onclose={closeWizard}
   >

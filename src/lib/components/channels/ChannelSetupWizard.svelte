@@ -57,6 +57,7 @@
 
     // Step 3 state
     let committedChannelId = $state<string | null>(null);
+    let committing = $state(false);
 
     async function verifyTelegram() {
         verifying = true;
@@ -139,8 +140,7 @@
         return !!(await loadBaseHash());
     }
 
-    async function commit() {
-        if (!verified) return;
+    async function commitVerified(verifiedAccount: NonNullable<typeof verified>) {
         if (!(await ensureBaseHash())) {
             // loadBaseHash() stores the cause in configState.loadError — surface it
             // instead of the generic string, which sent us chasing the wrong bug twice.
@@ -153,11 +153,11 @@
             return;
         }
         const accountId =
-            verified.kind === 'telegram'
-                ? String(verified.id)
-                : verified.kind === 'discord'
-                  ? verified.id
-                  : verified.phone;
+            verifiedAccount.kind === 'telegram'
+                ? String(verifiedAccount.id)
+                : verifiedAccount.kind === 'discord'
+                  ? verifiedAccount.id
+                  : verifiedAccount.phone;
 
         // 1) DB create FIRST (access fields live here now — Phase 4). If this fails,
         // no gateway.json account is written, so nothing is left half-configured.
@@ -191,8 +191,8 @@
         // `label` key is rejected. Access rules (dmPolicy/allowFrom) no longer go
         // here; they reach the gateway via the channel-publish mirror (above).
         const accountPatch: Record<string, unknown> = { name: label };
-        if (verified.kind === 'telegram') accountPatch.botToken = token;
-        if (verified.kind === 'discord') accountPatch.token = token;
+        if (verifiedAccount.kind === 'telegram') accountPatch.botToken = token;
+        if (verifiedAccount.kind === 'discord') accountPatch.token = token;
         const patch = { channels: { [channelType]: { accounts: { [accountId]: accountPatch } } } };
         try {
             const result = (await sendRequest('config.patch', {
@@ -208,6 +208,17 @@
         } catch (e) {
             await loadBaseHash(); // refresh baseHash so a retry isn't stale
             toastError('Save failed', (e as Error).message);
+        }
+    }
+
+    async function commit() {
+        const verifiedAccount = verified;
+        if (!verifiedAccount || committing) return;
+        committing = true;
+        try {
+            await commitVerified(verifiedAccount);
+        } finally {
+            committing = false;
         }
     }
 
@@ -348,13 +359,18 @@
             {/if}
         </div>
         <div class="flex gap-2">
-            <Button type="button" variant="secondary" onclick={() => (step = 'connect')}>
+            <Button type="button" variant="secondary" onclick={() => (step = 'connect')} disabled={committing}>
                 {m.channelWizard_back()}
             </Button>
-            <Button type="button" variant="primary" onclick={commit} disabled={!label}>
-                {m.channelWizard_next()}
+            <Button type="button" variant="primary" onclick={commit} disabled={!label} loading={committing}>
+                {committing ? m.channelWizard_saving() : m.channelWizard_next()}
             </Button>
         </div>
+        {#if committing}
+            <p class="text-xs text-muted-foreground" role="status" aria-live="polite">
+                {m.channelWizard_savingHint()}
+            </p>
+        {/if}
 
         <!-- Step 3: Assign -->
     {:else if step === 'assign' && committedChannelId}
