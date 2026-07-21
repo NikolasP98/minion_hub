@@ -22,11 +22,36 @@ describe('account full-sync UI contract', () => {
     expect(wizard).toContain('aria-live="polite"');
   });
 
-  it('replaces the setup action with a connected confirmation after live gateway confirmation', () => {
+  it('derives WhatsApp integration health from a matching gateway account', () => {
     const linking = readComponent('./ChannelLinking.svelte');
 
-    expect(linking).toContain('whatsappFullSyncConnected');
-    expect(linking).toContain('account.connected === true');
-    expect(linking).toContain('m.usersui_fullSyncConnected()');
+    expect(linking).toContain('matchClaimedAccount');
+    expect(linking).toContain('deriveWhatsAppAccountState');
+    expect(linking).toContain('accountState={whatsappAccountState}');
+    expect(linking).not.toContain('m.usersui_fullSyncConnected()');
+  });
+
+  it('keeps sync setup exclusive to WhatsApp', () => {
+    const linking = readComponent('./ChannelLinking.svelte');
+    const whatsapp = readComponent('./WhatsAppClaimCard.svelte');
+    const telegram = readComponent('./TelegramClaimCard.svelte');
+
+    expect(whatsapp).toContain('m.usersui_setupSync()');
+    expect(telegram).not.toContain('usersui_setupSync');
+    expect(linking).not.toContain("wizardType = 'telegram'");
+  });
+
+  it('shows the claimed identity inline and removes the connected-as accordions', () => {
+    const whatsapp = readComponent('./WhatsAppClaimCard.svelte');
+    const telegram = readComponent('./TelegramClaimCard.svelte');
+
+    expect(whatsapp).toContain('{identity.externalId}');
+    expect(whatsapp).toContain('{displayName}');
+    expect(telegram).toContain('{identity.externalId}');
+    expect(telegram).toContain('{displayName}');
+    expect(whatsapp).not.toContain('Connected as');
+    expect(telegram).not.toContain('Connected as');
+    expect(whatsapp).not.toContain('ChevronDown');
+    expect(telegram).not.toContain('ChevronDown');
   });
 });

@@ -9,18 +9,21 @@
   import WhatsAppQrPairing from '$lib/components/channels/WhatsAppQrPairing.svelte';
   import WhatsAppClaimCard from '$lib/components/users/WhatsAppClaimCard.svelte';
   import TelegramClaimCard from '$lib/components/users/TelegramClaimCard.svelte';
+  import {
+    deriveWhatsAppAccountState,
+    matchClaimedAccount,
+  } from '$lib/components/users/channel-account-state';
   import ChannelSetupWizard from '$lib/components/channels/ChannelSetupWizard.svelte';
   import ChannelSyncStatus from '$lib/components/channels/ChannelSyncStatus.svelte';
   import { findHistorySync, findHubSync, gw, isSyncActive } from '$lib/state/gateway';
   import PluginSlotHost from '$lib/plugins/PluginSlotHost.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import type { ChannelPluginInfo } from '$lib/types/channel-link';
-  import type { ChannelType } from '$lib/types/channels';
-  import { Check, Plug, RefreshCw, Settings as SettingsIcon, ChevronDown } from 'lucide-svelte';
+  import { Plug, RefreshCw, Settings as SettingsIcon, ChevronDown } from 'lucide-svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import { Puzzle } from 'lucide-svelte';
-  import { Button, iconSizes } from '$lib/components/ui';
+  import { Button } from '$lib/components/ui';
   import { Dialog } from '$lib/components/ui/foundations';
 
   type Identity = {
@@ -37,8 +40,8 @@
 
   const channelIdentities = $derived(identities.filter((i) => i.kind === 'channel'));
 
-  // WhatsApp + Telegram get dedicated connect cards (OTP / deep-link). The card
-  // itself shows the connected identity, so there is no separate linked list.
+  // WhatsApp + Telegram get dedicated claim cards (OTP / deep-link). The card
+  // itself shows the claimed identity, so there is no separate linked list.
   const whatsappIdentity = $derived(
     channelIdentities.find((i) => i.provider === 'whatsapp') ?? null,
   );
@@ -52,22 +55,12 @@
   // surface here — the trade-off is that an unclaimed identity shows nothing.
   const whatsappSync = $derived(findHistorySync('whatsapp', whatsappIdentity?.externalId));
   const whatsappDelivery = $derived(findHubSync('whatsapp', whatsappIdentity?.externalId));
-  const telegramSync = $derived(findHistorySync('telegram', telegramIdentity?.externalId));
-  const whatsappFullSyncConnected = $derived.by(() => {
-    const identityDigits = whatsappIdentity?.externalId.replace(/\D/g, '') ?? '';
-    if (identityDigits.length < 6) return false;
-    const accounts = gw.channels?.channelAccounts?.whatsapp;
-    if (!Array.isArray(accounts)) return false;
-    return accounts.some((account) => {
-      const accountDigits = account.accountId.replace(/\D/g, '');
-      const sameAccount =
-        accountDigits.length >= 6 &&
-        (accountDigits === identityDigits ||
-          accountDigits.endsWith(identityDigits) ||
-          identityDigits.endsWith(accountDigits));
-      return sameAccount && account.connected === true;
-    });
-  });
+  const whatsappAccount = $derived(
+    matchClaimedAccount(gw.channels?.channelAccounts?.whatsapp, whatsappIdentity?.externalId),
+  );
+  const whatsappAccountState = $derived(
+    deriveWhatsAppAccountState(!!whatsappIdentity, whatsappAccount),
+  );
 
   // Full-sync wizard (provisions a real channel account + session — distinct
   // from the identity-claim cards above, which only attribute inbound
@@ -76,7 +69,7 @@
   // config.get / writes config.patch over the WS. Without this gate a disconnected
   // gateway surfaces as a late, opaque "Could not load config" at the last step.
   const canSync = $derived(!!serverId && conn.connected);
-  let wizardType = $state<ChannelType | null>(null);
+  let wizardType = $state<'whatsapp' | null>(null);
   function closeWizard() {
     wizardType = null;
   }
@@ -140,15 +133,15 @@
     if (conn.connected && plugins.length === 0 && !loading) loadPlugins();
   });
 
-  async function disconnect(identity: Identity) {
+  async function unclaim(identity: Identity) {
     const label = identity.provider.charAt(0).toUpperCase() + identity.provider.slice(1);
-    if (!confirm(m.usersui_disconnectChannelConfirm({ label }))) return;
+    if (!confirm(m.usersui_unclaimChannelConfirm({ label }))) return;
     const qs = identity.source ? `?source=${identity.source}` : '';
     const res = await fetch(`/api/users/${userId}/identities/${identity.id}${qs}`, {
       method: 'DELETE',
     });
     if (res.ok) {
-      toastSuccess(m.usersui_channelDisconnected({ label }));
+      toastSuccess(m.usersui_channelUnclaimed({ label }));
       await invalidate('app:identities');
     } else {
       toastError(m.usersui_disconnectFailed());
@@ -204,15 +197,20 @@
     {/if}
   </div>
 
-  <!-- One row per channel. Each card shows its own connected state + manage
-       controls, so there is no separate "linked channels" list. -->
+  <!-- Claiming is attribution; only a matching live gateway account is an integration. -->
   <p class="px-3 pt-2.5 pb-1 text-[length:var(--font-size-label)] text-muted-foreground">
-    Linking only attributes messages to you — it doesn't sync history. To pull in an account's full
-    conversations, set up full sync per channel below.
+    {m.usersui_channelLinkingHelp()}
   </p>
   <div class="channel-rows divide-y divide-border/60">
     <div>
-      <WhatsAppClaimCard {userId} identity={whatsappIdentity} onDisconnect={disconnect} />
+      <WhatsAppClaimCard
+        {userId}
+        identity={whatsappIdentity}
+        accountState={whatsappAccountState}
+        {canSync}
+        onSetupSync={() => (wizardType = 'whatsapp')}
+        onUnclaim={unclaim}
+      />
       {#if isSyncActive(whatsappSync, whatsappDelivery)}
         <div class="px-3 pb-2">
           <ChannelSyncStatus
@@ -224,52 +222,9 @@
           />
         </div>
       {/if}
-      <div class="flex items-center gap-2 px-3 pb-2.5">
-        {#if !canSync}
-          <span class="text-[length:var(--font-size-label)] text-muted-strong"
-            >Connect a gateway to run full sync.</span
-          >
-        {:else if whatsappFullSyncConnected}
-          <span
-            class="ml-auto inline-flex items-center gap-1.5 text-[length:var(--font-size-label)] font-medium text-success"
-          >
-            <Check size={iconSizes.xs} />
-            {m.usersui_fullSyncConnected()}
-          </span>
-        {:else}
-          <Button
-            variant="outline"
-            size="xs"
-            class="ml-auto shrink-0"
-            onclick={() => (wizardType = 'whatsapp')}
-          >
-            {m.usersui_setupFullSync()}
-          </Button>
-        {/if}
-      </div>
     </div>
     <div>
-      <TelegramClaimCard {userId} identity={telegramIdentity} onDisconnect={disconnect} />
-      {#if isSyncActive(telegramSync)}
-        <div class="px-3 pb-2"><ChannelSyncStatus sync={telegramSync} compact /></div>
-      {/if}
-      <div class="flex items-center gap-2 px-3 pb-2.5">
-        {#if !canSync}
-          <span class="text-[length:var(--font-size-label)] text-muted-strong"
-            >Connect a gateway to run full sync.</span
-          >
-        {/if}
-        <Button
-          variant="outline"
-          size="xs"
-          class="ml-auto shrink-0"
-          onclick={() => (wizardType = 'telegram')}
-          disabled={!canSync}
-          title={!canSync ? m.usersui_connectGatewayToLinkChannels() : undefined}
-        >
-          {m.usersui_setupFullSync()}
-        </Button>
-      </div>
+      <TelegramClaimCard {userId} identity={telegramIdentity} onUnclaim={unclaim} />
     </div>
 
     {#if conn.connected}
@@ -382,7 +337,7 @@
        ACCOUNTS "Add account" — provisions a channels row + live session). -->
   <Dialog
     open={wizardType !== null}
-    title={m.usersui_setupFullSync()}
+    title={m.usersui_setupSync()}
     size="md"
     onclose={closeWizard}
   >
@@ -420,7 +375,7 @@
     height: auto;
     white-space: normal;
   }
-  .channel-rows :global(.channel-row > span) {
+  .channel-rows :global(button.channel-row > span) {
     width: 100%;
     justify-content: flex-start;
     text-align: left;

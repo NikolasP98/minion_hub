@@ -3,8 +3,10 @@
   import { invalidate } from '$app/navigation';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
-  import { Check, ChevronDown, Send } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { MoreVertical, Send, Unlink } from 'lucide-svelte';
+  import { Button, Dropdown, Spinner } from '$lib/components/ui';
+  import * as m from '$lib/paraglide/messages';
+  import ChannelAccountStateBadge from './ChannelAccountStateBadge.svelte';
 
   type Identity = {
     id: string;
@@ -19,16 +21,19 @@
   let {
     userId,
     identity,
-    onDisconnect,
+    onUnclaim,
   }: {
     userId: string;
     identity: Identity | null;
-    onDisconnect: (identity: Identity) => void;
+    onUnclaim: (identity: Identity) => void;
   } = $props();
 
   const connected = $derived(!!identity);
-
-  let open = $state(false);
+  let claimOpen = $state(false);
+  const displayName = $derived(identity?.displayName?.trim() || null);
+  const showDisplayName = $derived(
+    !!displayName && displayName.toLowerCase() !== identity?.externalId.toLowerCase(),
+  );
 
   type Phase = 'idle' | 'starting' | 'awaiting' | 'done' | 'error';
   let phase = $state<Phase>('idle');
@@ -106,45 +111,70 @@
 </script>
 
 <div>
-  <Button variant="ghost" size="xs"
-    class="channel-row w-full px-3 py-2.5 bg-transparent border-none cursor-pointer text-left hover:bg-bg3/30 transition-colors"
-    onclick={() => (open = !open)}
-  >
+  <div class="channel-row flex items-center gap-3 px-3 py-2.5">
     <ChannelBrandIcon channel="telegram" class="h-4 w-4 shrink-0" />
     <span class="flex-1 min-w-0">
       <span class="block text-sm text-foreground">Telegram</span>
-      <span class="block text-[length:var(--font-size-label)] text-muted-foreground truncate">
-        {connected ? (identity?.displayName ?? identity?.externalId ?? 'Connected') : 'One-tap link — the bot confirms it’s you'}
+      <span
+        class="flex min-w-0 items-center gap-1.5 text-[length:var(--font-size-label)] text-muted-foreground"
+      >
+        {#if identity}
+          <span class="shrink-0">{identity.externalId}</span>
+          {#if showDisplayName}
+            <span aria-hidden="true" class="text-muted-strong">·</span>
+            <span class="truncate text-foreground">{displayName}</span>
+          {/if}
+        {:else}
+          <span class="truncate">{m.usersui_telegramClaimHint()}</span>
+        {/if}
       </span>
     </span>
     {#if connected}
-      <span class="inline-flex items-center gap-1 text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-success/15 text-success border border-success/20 shrink-0">
-        <Check size={10} /> Connected
-      </span>
-    {:else}
-      <span class="text-[length:var(--font-size-label)] text-muted-foreground shrink-0">Connect</span>
-    {/if}
-    <ChevronDown size={14} class="text-muted shrink-0 transition-transform {open ? 'rotate-180' : ''}" />
-  </Button>
-
-  {#if open}
-    <div class="px-3 pb-3 pt-1 space-y-2">
-      {#if connected}
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-xs text-muted-foreground">
-            Connected as <span class="text-foreground">{identity?.displayName ?? identity?.externalId}</span>
+      <ChannelAccountStateBadge state="claimed" />
+      <Dropdown
+        items={[
+          {
+            value: 'unclaim',
+            label: m.usersui_unclaimIdentity(),
+            icon: Unlink,
+            danger: true,
+          },
+        ]}
+        onSelect={(value) => {
+          if (value === 'unclaim' && identity) onUnclaim(identity);
+        }}
+        placement="bottom"
+      >
+        {#snippet trigger()}
+          <span
+            class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
+            aria-label={m.usersui_accountActions()}
+          >
+            <MoreVertical size={15} />
           </span>
-          {#if identity}
-            <Button variant="ghost" size="xs"
-              class="text-[length:var(--font-size-label)] text-muted hover:text-destructive bg-transparent border-none cursor-pointer"
-              onclick={() => onDisconnect(identity!)}
-            >
-              Disconnect
-            </Button>
-          {/if}
-        </div>
-      {:else if phase === 'idle'}
-        <Button variant="primary" size="sm"
+        {/snippet}
+      </Dropdown>
+    {:else}
+      <ChannelAccountStateBadge state="unlinked" />
+      <Button
+        variant="outline"
+        size="xs"
+        class="shrink-0"
+        aria-expanded={claimOpen}
+        aria-controls="telegram-claim-form"
+        onclick={() => (claimOpen = !claimOpen)}
+      >
+        {m.usersui_claimAccount()}
+      </Button>
+    {/if}
+  </div>
+
+  {#if claimOpen && !identity}
+    <div id="telegram-claim-form" class="px-3 pb-3 pt-1 space-y-2">
+      {#if phase === 'idle'}
+        <Button
+          variant="primary"
+          size="sm"
           class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90"
           onclick={start}
         >
@@ -152,7 +182,7 @@
         </Button>
       {:else if phase === 'starting'}
         <div class="flex items-center gap-2 text-sm text-muted-foreground">
-          <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+          <Spinner size="sm" label={m.common_loading()} />
           Preparing link…
         </div>
       {:else if phase === 'awaiting' && deepLink}
@@ -165,10 +195,15 @@
           <Send size={12} /> Open Telegram
         </a>
         <div class="flex items-center gap-2 text-xs text-muted-foreground">
-          <div class="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+          <Spinner size="xs" label={m.common_loading()} />
           Waiting for you to open the bot and press Start…
         </div>
-        <Button variant="ghost" size="xs" class="text-[length:var(--font-size-label)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer" onclick={reset}>
+        <Button
+          variant="ghost"
+          size="xs"
+          class="text-[length:var(--font-size-label)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
+          onclick={reset}
+        >
           Cancel
         </Button>
       {:else if phase === 'done'}
@@ -177,7 +212,12 @@
         </div>
       {:else if phase === 'error'}
         <div class="text-sm text-destructive">{errorMsg}</div>
-        <Button variant="ghost" size="xs" class="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer" onclick={start}>
+        <Button
+          variant="ghost"
+          size="xs"
+          class="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer"
+          onclick={start}
+        >
           Try again
         </Button>
       {/if}

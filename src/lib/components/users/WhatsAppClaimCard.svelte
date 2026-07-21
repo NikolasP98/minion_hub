@@ -3,8 +3,11 @@
   import { invalidate } from '$app/navigation';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
-  import { Check, ChevronDown, MessageSquare } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { MessageSquare, MoreVertical, Unlink } from 'lucide-svelte';
+  import { Button, Dropdown } from '$lib/components/ui';
+  import * as m from '$lib/paraglide/messages';
+  import ChannelAccountStateBadge from './ChannelAccountStateBadge.svelte';
+  import type { ChannelAccountUiState } from './channel-account-state';
 
   type Identity = {
     id: string;
@@ -19,16 +22,24 @@
   let {
     userId,
     identity,
-    onDisconnect,
+    accountState,
+    canSync,
+    onSetupSync,
+    onUnclaim,
   }: {
     userId: string;
     identity: Identity | null;
-    onDisconnect: (identity: Identity) => void;
+    accountState: ChannelAccountUiState;
+    canSync: boolean;
+    onSetupSync: () => void;
+    onUnclaim: (identity: Identity) => void;
   } = $props();
 
-  const connected = $derived(!!identity);
-
-  let open = $state(false);
+  let claimOpen = $state(false);
+  const displayName = $derived(identity?.displayName?.trim() || null);
+  const showDisplayName = $derived(
+    !!displayName && displayName.toLowerCase() !== identity?.externalId.toLowerCase(),
+  );
 
   // ---- Tier 1: connect the number via OTP ----
   type Phase = 'idle' | 'sending' | 'otp' | 'verifying' | 'done' | 'error';
@@ -133,107 +144,155 @@
 </script>
 
 <div>
-  <Button variant="ghost" size="xs"
-    class="channel-row w-full px-3 py-2.5 bg-transparent border-none cursor-pointer text-left hover:bg-bg3/30 transition-colors"
-    onclick={() => (open = !open)}
-  >
+  <div class="channel-row flex items-center gap-3 px-3 py-2.5">
     <ChannelBrandIcon channel="whatsapp" class="h-4 w-4 shrink-0" />
     <span class="flex-1 min-w-0">
       <span class="block text-sm text-foreground">WhatsApp</span>
-      <span class="block text-[length:var(--font-size-label)] text-muted-foreground truncate">
-        {connected ? (identity?.externalId ?? identity?.displayName ?? 'Connected') : 'Verify your number to link this channel'}
+      <span
+        class="flex min-w-0 items-center gap-1.5 text-[length:var(--font-size-label)] text-muted-foreground"
+      >
+        {#if identity}
+          <span class="shrink-0 tabular-nums">{identity.externalId}</span>
+          {#if showDisplayName}
+            <span aria-hidden="true" class="text-muted-strong">·</span>
+            <span class="truncate text-foreground">{displayName}</span>
+          {/if}
+        {:else}
+          <span class="truncate">{m.usersui_whatsappClaimHint()}</span>
+        {/if}
       </span>
     </span>
-    {#if connected}
-      <span class="inline-flex items-center gap-1 text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-success/15 text-success border border-success/20 shrink-0">
-        <Check size={10} /> Connected
-      </span>
-    {:else}
-      <span class="text-[length:var(--font-size-label)] text-muted-foreground shrink-0">Connect</span>
-    {/if}
-    <ChevronDown size={14} class="text-muted shrink-0 transition-transform {open ? 'rotate-180' : ''}" />
-  </Button>
-
-  {#if open}
-    <div class="px-3 pb-3 pt-1 space-y-4">
-      {#if connected}
-        <!-- Connected summary + manage -->
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-xs text-muted-foreground">
-            Connected as <span class="text-foreground">{identity?.displayName ?? identity?.externalId}</span>
+    <ChannelAccountStateBadge state={accountState} />
+    {#if identity}
+      {#if accountState === 'claimed'}
+        <Button
+          variant="outline"
+          size="xs"
+          class="shrink-0"
+          onclick={onSetupSync}
+          disabled={!canSync}
+          title={!canSync ? m.usersui_connectGatewayToLinkChannels() : undefined}
+        >
+          {m.usersui_setupSync()}
+        </Button>
+      {/if}
+      <Dropdown
+        items={[
+          {
+            value: 'unclaim',
+            label: m.usersui_unclaimIdentity(),
+            icon: Unlink,
+            danger: true,
+          },
+        ]}
+        onSelect={(value) => {
+          if (value === 'unclaim' && identity) onUnclaim(identity);
+        }}
+        placement="bottom"
+      >
+        {#snippet trigger()}
+          <span
+            class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
+            aria-label={m.usersui_accountActions()}
+          >
+            <MoreVertical size={15} />
           </span>
-          {#if identity}
-            <Button variant="ghost" size="xs"
-              class="text-[length:var(--font-size-label)] text-muted hover:text-destructive bg-transparent border-none cursor-pointer"
-              onclick={() => onDisconnect(identity!)}
+        {/snippet}
+      </Dropdown>
+    {:else}
+      <Button
+        variant="outline"
+        size="xs"
+        class="shrink-0"
+        aria-expanded={claimOpen}
+        aria-controls="whatsapp-claim-form"
+        onclick={() => (claimOpen = !claimOpen)}
+      >
+        {m.usersui_claimAccount()}
+      </Button>
+    {/if}
+  </div>
+
+  {#if claimOpen && !identity}
+    <div id="whatsapp-claim-form" class="px-3 pb-3 pt-1 space-y-4">
+      <!-- Tier 1: claim the number for attribution/outgoing messaging. -->
+      <section class="space-y-2">
+        {#if phase === 'done'}
+          <div class="flex items-center gap-2 text-sm text-success">
+            <span class="w-2 h-2 rounded-full bg-success"></span> Number connected
+          </div>
+          <Button
+            variant="ghost"
+            size="xs"
+            class="text-[length:var(--font-size-label)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
+            onclick={resetTier1}
+          >
+            Use a different number
+          </Button>
+        {:else if phase === 'idle' || phase === 'sending' || phase === 'error'}
+          <div class="flex gap-2">
+            <input
+              type="tel"
+              placeholder="+51 922 286 663"
+              bind:value={phone}
+              class="flex-1 bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90 disabled:opacity-50 whitespace-nowrap"
+              onclick={() => sendCode(false)}
+              disabled={phase === 'sending'}
             >
-              Disconnect
+              <MessageSquare size={12} /> Send code
             </Button>
-          {/if}
-        </div>
-      {:else}
-        <!-- Tier 1: connect number -->
-        <section class="space-y-2">
-          {#if phase === 'done'}
-            <div class="flex items-center gap-2 text-sm text-success">
-              <span class="w-2 h-2 rounded-full bg-success"></span> Number connected
-            </div>
-            <Button variant="ghost" size="xs" class="text-[length:var(--font-size-label)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer" onclick={resetTier1}>
+          </div>
+          {#if errorMsg}<div class="text-xs text-destructive">{errorMsg}</div>{/if}
+        {:else}
+          <!-- otp / verifying -->
+          <p class="text-[length:var(--font-size-label)] text-muted-foreground">
+            Enter the 6-digit code we sent to your WhatsApp.
+          </p>
+          <div class="flex gap-2">
+            <input
+              inputmode="numeric"
+              maxlength="6"
+              placeholder="000000"
+              bind:value={code}
+              class="w-28 bg-bg border border-border rounded px-2.5 py-1.5 text-sm tracking-[0.3em] text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
+              onclick={verify}
+              disabled={phase === 'verifying'}
+            >
+              Verify
+            </Button>
+          </div>
+          <div class="flex items-center gap-3 text-[length:var(--font-size-label)]">
+            <Button
+              variant="ghost"
+              size="xs"
+              class="text-accent hover:underline disabled:opacity-40 disabled:no-underline bg-transparent border-none cursor-pointer"
+              onclick={() => sendCode(true)}
+              disabled={cooldown > 0}
+            >
+              {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
+              class="text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
+              onclick={resetTier1}
+            >
               Use a different number
             </Button>
-          {:else if phase === 'idle' || phase === 'sending' || phase === 'error'}
-            <div class="flex gap-2">
-              <input
-                type="tel"
-                placeholder="+51 922 286 663"
-                bind:value={phone}
-                class="flex-1 bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
-              />
-              <Button variant="primary" size="sm"
-                class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90 disabled:opacity-50 whitespace-nowrap"
-                onclick={() => sendCode(false)}
-                disabled={phase === 'sending'}
-              >
-                <MessageSquare size={12} /> Send code
-              </Button>
-            </div>
-            {#if errorMsg}<div class="text-xs text-destructive">{errorMsg}</div>{/if}
-          {:else}
-            <!-- otp / verifying -->
-            <p class="text-[length:var(--font-size-label)] text-muted-foreground">Enter the 6-digit code we sent to your WhatsApp.</p>
-            <div class="flex gap-2">
-              <input
-                inputmode="numeric"
-                maxlength="6"
-                placeholder="000000"
-                bind:value={code}
-                class="w-28 bg-bg border border-border rounded px-2.5 py-1.5 text-sm tracking-[0.3em] text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
-              />
-              <Button variant="primary" size="sm"
-                class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
-                onclick={verify}
-                disabled={phase === 'verifying'}
-              >
-                Verify
-              </Button>
-            </div>
-            <div class="flex items-center gap-3 text-[length:var(--font-size-label)]">
-              <Button variant="ghost" size="xs"
-                class="text-accent hover:underline disabled:opacity-40 disabled:no-underline bg-transparent border-none cursor-pointer"
-                onclick={() => sendCode(true)}
-                disabled={cooldown > 0}
-              >
-                {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
-              </Button>
-              <Button variant="ghost" size="xs" class="text-muted hover:text-foreground bg-transparent border-none cursor-pointer" onclick={resetTier1}>
-                Use a different number
-              </Button>
-            </div>
-            {#if errorMsg}<div class="text-xs text-destructive">{errorMsg}</div>{/if}
-          {/if}
-        </section>
-      {/if}
-
+          </div>
+          {#if errorMsg}<div class="text-xs text-destructive">{errorMsg}</div>{/if}
+        {/if}
+      </section>
     </div>
   {/if}
 </div>
