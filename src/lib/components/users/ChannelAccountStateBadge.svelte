@@ -1,13 +1,5 @@
 <script lang="ts">
-  import { iconSizes, Spinner } from '$lib/components/ui';
-  import {
-    AlertTriangle,
-    CircleCheck,
-    CircleOff,
-    Link2,
-    PauseCircle,
-    RefreshCw,
-  } from 'lucide-svelte';
+  import { Badge } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import type { ChannelAccountUiState } from './channel-account-state';
 
@@ -18,64 +10,70 @@
       case 'unlinked':
         return {
           label: m.usersui_channelStateUnlinked(),
-          tone: 'border-border bg-surface-3 text-muted-foreground',
-          icon: CircleOff,
+          variant: 'neutral' as const,
+          value: undefined,
+          pulse: false,
         };
       case 'claimed':
         return {
           label: m.usersui_channelStateClaimed(),
-          tone: 'border-info/30 bg-info/15 text-info',
-          icon: Link2,
+          variant: 'semantic' as const,
+          value: 'info' as const,
+          pulse: false,
         };
       case 'syncing':
         return {
           label: m.usersui_channelStateSyncing(),
-          tone: 'border-info/30 bg-info/15 text-info',
-          icon: null,
+          variant: 'semantic' as const,
+          value: 'info' as const,
+          pulse: true,
         };
       case 'sync-paused':
         return {
           label: m.usersui_channelStateSyncPaused(),
-          tone: 'border-warning/30 bg-warning/15 text-warning',
-          icon: PauseCircle,
+          variant: 'semantic' as const,
+          value: 'warning' as const,
+          pulse: false,
         };
       case 'reconnecting':
         return {
           label: m.usersui_channelStateReconnecting(),
-          tone: 'border-warning/30 bg-warning/15 text-warning',
-          icon: RefreshCw,
+          variant: 'semantic' as const,
+          value: 'warning' as const,
+          pulse: true,
         };
       case 'sync-offline':
         return {
           label: m.usersui_channelStateSyncOffline(),
-          tone: 'border-warning/30 bg-warning/15 text-warning',
-          icon: CircleOff,
+          variant: 'semantic' as const,
+          value: 'warning' as const,
+          pulse: false,
         };
       case 'connection-issue':
         return {
           label: m.usersui_channelStateConnectionIssue(),
-          tone: 'border-destructive/30 bg-destructive/15 text-destructive',
-          icon: AlertTriangle,
+          variant: 'semantic' as const,
+          value: 'error' as const,
+          pulse: false,
         };
       default:
         return {
           label: m.usersui_channelStateSyncActive(),
-          tone: 'border-success/30 bg-success/15 text-success',
-          icon: CircleCheck,
+          variant: 'semantic' as const,
+          value: 'success' as const,
+          pulse: false,
         };
     }
   });
 </script>
 
-<span
-  class="t-telemetry inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-medium {presentation.tone}"
-  data-account-state={state}
+<Badge
+  variant={presentation.variant}
+  value={presentation.value}
+  size="sm"
+  dot
+  pulse={presentation.pulse}
+  class="!rounded-full"
 >
-  {#if state === 'syncing'}
-    <Spinner size="xs" label={presentation.label} />
-  {:else if presentation.icon}
-    {@const Icon = presentation.icon}
-    <Icon size={iconSizes.xs} />
-  {/if}
   {presentation.label}
-</span>
+</Badge>
