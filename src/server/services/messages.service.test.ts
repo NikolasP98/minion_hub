@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toInsertValues, type IngestRow } from './messages.service';
+import { MESSAGE_CONFLICT_TARGET, toInsertValues, type IngestRow } from './messages.service';
 
 const base: IngestRow = {
   clientId: 'c1',
@@ -37,5 +37,11 @@ describe('toInsertValues', () => {
     const v = toInsertValues({ ...base, occurredAt: null as unknown as number }, 'orgA', null);
     expect(v.occurredAt).toBeNull();
     expect(v.gatewayId).toBeNull();
+  });
+});
+
+describe('message ingest idempotency', () => {
+  it('scopes client IDs to the organization', () => {
+    expect(MESSAGE_CONFLICT_TARGET.map((column) => column.name)).toEqual(['org_id', 'client_id']);
   });
 });

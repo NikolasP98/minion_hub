@@ -61,8 +61,10 @@ export function toInsertValues(
   };
 }
 
+export const MESSAGE_CONFLICT_TARGET = [messages.orgId, messages.clientId];
+
 const ON_CONFLICT = {
-  target: messages.clientId,
+  target: MESSAGE_CONFLICT_TARGET,
   set: {
     agentId: sql`excluded.agent_id`,
     sessionKey: sql`excluded.session_key`,
