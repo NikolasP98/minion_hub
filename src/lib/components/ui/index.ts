@@ -44,6 +44,6 @@ export type { EmptyStateTone } from './EmptyState.svelte';
 export type { SideNavItem, SideNavGroup } from './SideNav.svelte';
 export type { TooltipPlacement } from './Tooltip.svelte';
 export type { DropdownItem } from './Dropdown.svelte';
-export type { ProgressBarProps, ProgressBarSize } from './ProgressBar.svelte';
+export type { ProgressBarProps, ProgressBarSize, ProgressBarTone } from './ProgressBar.svelte';
 export type { ChipStatus } from './Chip.svelte';
 export type { AvatarSize } from './Avatar.svelte';

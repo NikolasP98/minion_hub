@@ -33,7 +33,9 @@ describe('ChannelSyncStatus', () => {
     expect(body).toContain('Uploading to Hub');
     expect(body).toContain('Acknowledged by Hub');
     expect(body).toContain('69,600 of 156,485');
-    expect(body).toContain('86,885 pending');
+    expect(body).toContain('44.5%');
+    expect(body).toContain('86,885 pending · 55.5%');
+    expect(body).toContain('data-progress-buffer="pending"');
     expect(body).toContain('1,200 messages');
     expect(body).not.toContain('Confirmation unavailable');
   });

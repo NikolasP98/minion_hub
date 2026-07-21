@@ -78,6 +78,14 @@
   const deliveryProgress = $derived(
     delivery && delivery.total > 0 ? (delivery.acknowledged / delivery.total) * 100 : null,
   );
+  const deliveryPercent = $derived(
+    deliveryProgress == null ? '0.0%' : `${deliveryProgress.toFixed(1)}%`,
+  );
+  const pendingPercent = $derived(
+    delivery && delivery.total > 0
+      ? `${((delivery.pending / delivery.total) * 100).toFixed(1)}%`
+      : '0.0%',
+  );
   const Icon = $derived(
     deliveryActive
       ? RefreshCw
@@ -133,6 +141,13 @@
   });
 </script>
 
+{#snippet deliveryReadout()}
+  <span class="inline-flex items-baseline gap-1.5">
+    <span class="t-label text-foreground">{deliveryPercent}</span>
+    <span class="t-telemetry text-muted-foreground">{deliveryDetail}</span>
+  </span>
+{/snippet}
+
 {#if compact}
   {#if hasSync || delivery}
     <div class="flex flex-col gap-1.5">
@@ -159,13 +174,18 @@
       {/if}
       {#if delivery}
         <ProgressBar
-          value={deliveryProgress}
+          value={delivery?.acknowledged ?? 0}
+          bufferedValue={delivery?.total ?? 0}
+          max={delivery?.total ?? 0}
+          tone="success"
           label={deliveryDone ? m.channelSync_uploadComplete() : m.channelSync_uploadingToHub()}
-          detail={deliveryDetail}
+          detail={deliveryReadout}
           size="sm"
         />
         {#if deliveryActive}
-          <p class="text-xs text-muted-foreground tabular-nums">{pendingDetail}</p>
+          <p class="text-xs text-muted-foreground tabular-nums">
+            {pendingDetail} · {pendingPercent}
+          </p>
         {/if}
       {:else if waitingForDelivery}
         <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -212,13 +232,18 @@
           </span>
         </div>
         <ProgressBar
-          value={deliveryProgress}
+          value={delivery.acknowledged}
+          bufferedValue={delivery.total}
+          max={delivery.total}
+          tone="success"
           label={m.channelSync_acknowledgedByHub()}
-          detail={deliveryDetail}
+          detail={deliveryReadout}
           size="md"
         />
         {#if deliveryActive}
-          <p class="text-xs text-muted-foreground tabular-nums">{pendingDetail}</p>
+          <p class="text-xs text-muted-foreground tabular-nums">
+            {pendingDetail} · {pendingPercent}
+          </p>
         {/if}
         <p class="text-xs text-muted-foreground">{m.channelSync_acknowledgedHint()}</p>
       </div>

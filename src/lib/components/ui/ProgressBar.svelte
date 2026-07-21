@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
 
   export type ProgressBarSize = 'sm' | 'md';
+  export type ProgressBarTone = 'accent' | 'success';
 
   export interface ProgressBarProps {
     /**
@@ -11,6 +12,13 @@
     value: number | null;
     /** Upper bound. Non-positive / non-finite values fall back to 100. */
     max?: number;
+    /**
+     * Optional buffered/queued progress rendered beneath `value` in the same
+     * track. Useful for pipelines where one stage advances behind another.
+     */
+    bufferedValue?: number | null;
+    /** Semantic tone for the foreground value. */
+    tone?: ProgressBarTone;
     /** Leading meta text (string or snippet for custom typography). */
     label?: string | Snippet;
     /** Trailing meta text — counts, percentage, ETA. */
@@ -28,6 +36,8 @@
   let {
     value,
     max = 100,
+    bufferedValue,
+    tone = 'accent',
     label,
     detail,
     size = 'md',
@@ -45,6 +55,12 @@
     value == null || !Number.isFinite(value) ? null : Math.max(0, Math.min(value, safeMax)),
   );
   const pct = $derived(safeValue == null ? 0 : (safeValue / safeMax) * 100);
+  const safeBufferedValue = $derived(
+    bufferedValue == null || !Number.isFinite(bufferedValue)
+      ? null
+      : Math.max(0, Math.min(bufferedValue, safeMax)),
+  );
+  const bufferedPct = $derived(safeBufferedValue == null ? 0 : (safeBufferedValue / safeMax) * 100);
 
   const service = useMachine(progress.machine as any, () => ({
     id: uid,
@@ -73,9 +89,13 @@
     </div>
   {/if}
   <div {...trackProps} class="prg-track">
+    {#if safeBufferedValue != null}
+      <div class="prg-buffer" style:width={`${bufferedPct}%`} data-progress-buffer="pending"></div>
+    {/if}
     <div
       {...api.getRangeProps()}
       class="prg-range"
+      class:success={tone === 'success'}
       class:indeterminate={safeValue == null}
       class:complete={safeValue != null && pct >= 100}
     ></div>
@@ -105,6 +125,7 @@
     color: var(--color-text-secondary);
   }
   .prg-track {
+    position: relative;
     border-radius: var(--radius-full);
     background: var(--color-surface-3);
     overflow: hidden;
@@ -116,13 +137,23 @@
     height: 6px;
   }
   .prg-range {
+    position: relative;
     height: 100%;
     background: var(--color-accent);
     border-radius: var(--radius-full);
     transition: width var(--duration-fast) var(--ease-standard);
   }
+  .prg-range.success,
   .prg-range.complete {
     background: var(--color-success);
+  }
+  .prg-buffer {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    background: var(--color-accent);
+    border-radius: var(--radius-full);
+    transition: width var(--duration-fast) var(--ease-standard);
   }
   /* Total unknown (still counting): a sweeping bar, not a misleading static fill. */
   .prg-range.indeterminate {
