@@ -13,24 +13,56 @@ const activeSync = {
 };
 
 describe('ChannelSyncStatus', () => {
-  it('separates WhatsApp receipt from authoritative Hub persistence', () => {
+  it('separates WhatsApp receipt from exact Hub acknowledgements', () => {
     const { body } = render(ChannelSyncStatus, {
       props: {
         sync: activeSync,
+        delivery: {
+          total: 156_485,
+          acknowledged: 69_600,
+          pending: 86_885,
+          retrying: 0,
+          lastAcknowledgedAt: 1_721_000_020_000,
+          updatedAt: 1_721_000_020_000,
+        },
         accountId: '+51900000000',
       },
     });
 
     expect(body).toContain('Received from WhatsApp');
-    expect(body).toContain('Saved to Hub');
+    expect(body).toContain('Uploading to Hub');
+    expect(body).toContain('Acknowledged by Hub');
+    expect(body).toContain('69,600 of 156,485');
+    expect(body).toContain('86,885 pending');
     expect(body).toContain('1,200 messages');
-    expect(body).toContain('Confirmed from the Hub database');
+    expect(body).not.toContain('Confirmation unavailable');
   });
 
-  it('does not claim database confirmation without an account identity', () => {
+  it('does not claim a Hub acknowledgement without gateway delivery data', () => {
     const { body } = render(ChannelSyncStatus, { props: { sync: activeSync } });
 
     expect(body).toContain('Received from WhatsApp');
-    expect(body).not.toContain('Saved to Hub');
+    expect(body).not.toContain('Acknowledged by Hub');
+    expect(body).not.toContain('Confirmation unavailable');
+  });
+
+  it('does not call an active outbox a paused WhatsApp sync', () => {
+    const { body } = render(ChannelSyncStatus, {
+      props: {
+        sync: { ...activeSync, phase: 'stalled' as const },
+        delivery: {
+          total: 100,
+          acknowledged: 75,
+          pending: 25,
+          retrying: 0,
+          lastAcknowledgedAt: 1_721_000_020_000,
+          updatedAt: 1_721_000_020_000,
+        },
+        accountId: '+51900000000',
+      },
+    });
+
+    expect(body).toContain('Uploading to Hub');
+    expect(body).not.toContain('Paused — no data for 2 minutes');
   });
 });

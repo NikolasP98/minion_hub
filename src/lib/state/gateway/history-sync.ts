@@ -1,4 +1,4 @@
-import type { ChannelHistorySync } from '$lib/types/channels';
+import type { ChannelHistorySync, ChannelHubSync } from '$lib/types/channels';
 
 /** Phone-ish account ids arrive in several shapes (+51…, 51…@s.whatsapp.net). */
 const digits = (s: string) => s.replace(/\D/g, '');
@@ -31,7 +31,26 @@ export function pickHistorySync(
   return hit?.historySync;
 }
 
+export function pickHubSync(
+  accounts: { accountId: string; hubSync?: ChannelHubSync }[] | undefined,
+  accountId: string | null | undefined,
+): ChannelHubSync | undefined {
+  if (!accountId || !Array.isArray(accounts)) return undefined;
+  const want = digits(accountId);
+  if (want.length < 6) return undefined;
+  const hit = accounts.find((a) => {
+    const have = digits(a.accountId ?? '');
+    return have.length >= 6 && (have === want || have.endsWith(want) || want.endsWith(have));
+  });
+  return hit?.hubSync;
+}
+
 /** True while the account is doing work the user should be able to see. */
-export function isSyncActive(sync: ChannelHistorySync | undefined): boolean {
-  return !!sync && sync.phase !== 'idle' && sync.phase !== 'complete';
+export function isSyncActive(
+  sync: ChannelHistorySync | undefined,
+  hubSync?: ChannelHubSync,
+): boolean {
+  return (
+    (!!sync && sync.phase !== 'idle' && sync.phase !== 'complete') || (hubSync?.pending ?? 0) > 0
+  );
 }

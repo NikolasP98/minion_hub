@@ -48,16 +48,12 @@ export interface Channel {
    * is "no sync info", NOT an error.
    */
   historySync?: ChannelHistorySync;
+  /** Exact durable gateway -> Hub delivery counters for this account. */
+  hubSync?: ChannelHubSync;
 }
 
 export type ChannelHistorySyncPhase =
-  | 'idle'
-  | 'bootstrap'
-  | 'recent'
-  | 'full'
-  | 'on-demand'
-  | 'complete'
-  | 'stalled';
+  'idle' | 'bootstrap' | 'recent' | 'full' | 'on-demand' | 'complete' | 'stalled';
 
 export interface ChannelHistorySync {
   phase: ChannelHistorySyncPhase;
@@ -68,6 +64,16 @@ export interface ChannelHistorySync {
   messages: number;
   chats: number;
   startedAt: number | null;
+  updatedAt: number;
+}
+
+export interface ChannelHubSync {
+  total: number;
+  acknowledged: number;
+  pending: number;
+  /** Pending rows that have already failed at least one delivery attempt. */
+  retrying: number;
+  lastAcknowledgedAt: number | null;
   updatedAt: number;
 }
 
