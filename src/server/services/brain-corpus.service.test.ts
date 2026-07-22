@@ -4,6 +4,7 @@ import {
   encodeWhatsAppCursor,
   knowledgeContentHash,
   normalizeWhatsAppConversation,
+  preparedConversationNeedsWrite,
   type WhatsAppMessageInput,
 } from './brain-corpus.service';
 
@@ -88,5 +89,41 @@ describe('brain corpus WhatsApp cursor', () => {
   it('fails closed for malformed cursors', () => {
     expect(decodeWhatsAppCursor('not-base64-json')).toBeNull();
     expect(decodeWhatsAppCursor(Buffer.from('{}').toString('base64url'))).toBeNull();
+  });
+});
+
+describe('brain corpus idempotent persistence', () => {
+  it('skips document and chunk upserts when a prepared conversation is fully current', () => {
+    expect(
+      preparedConversationNeedsWrite({
+        changedDocument: false,
+        changedChunkKeys: new Set(),
+        staleChunkKeys: [],
+      }),
+    ).toBe(false);
+  });
+
+  it('writes when document content, a chunk, or trailing chunk membership changed', () => {
+    expect(
+      preparedConversationNeedsWrite({
+        changedDocument: true,
+        changedChunkKeys: new Set(),
+        staleChunkKeys: [],
+      }),
+    ).toBe(true);
+    expect(
+      preparedConversationNeedsWrite({
+        changedDocument: false,
+        changedChunkKeys: new Set(['raw:000000']),
+        staleChunkKeys: [],
+      }),
+    ).toBe(true);
+    expect(
+      preparedConversationNeedsWrite({
+        changedDocument: false,
+        changedChunkKeys: new Set(),
+        staleChunkKeys: ['raw:000001'],
+      }),
+    ).toBe(true);
   });
 });

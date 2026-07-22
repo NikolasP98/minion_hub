@@ -172,6 +172,16 @@ interface PreparedConversation {
   staleChunkKeys: string[];
 }
 
+export function preparedConversationNeedsWrite(value: {
+  changedDocument: boolean;
+  changedChunkKeys: Set<string>;
+  staleChunkKeys: string[];
+}): boolean {
+  return (
+    value.changedDocument || value.changedChunkKeys.size > 0 || value.staleChunkKeys.length > 0
+  );
+}
+
 function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
 }
@@ -742,6 +752,11 @@ async function persistConversations(
   return withOrgCore(ctx, async (tx) => {
     let deletedChunks = 0;
     for (const conversation of prepared) {
+      // A reconcile page can contain hundreds of documents whose hashes and
+      // embeddings are already current. Do not turn an idempotency check into
+      // per-document/chunk writes; source health/freshness is updated once
+      // below for every source represented by the page.
+      if (!preparedConversationNeedsWrite(conversation)) continue;
       const { document, documentId, key } = conversation;
       const allChangedEmbedded = [...conversation.changedChunkKeys].every((chunkKey) =>
         vectors.has(`${documentId}\u0000${chunkKey}`),

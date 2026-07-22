@@ -1,6 +1,6 @@
 {
   "crons": [
     { "path": "/api/finances/sync/daily", "schedule": "0 8 * * *" },
-    { "path": "/api/brains/reconcile/tick", "schedule": "25 * * * *" }
+    { "path": "/api/brains/reconcile/tick", "schedule": "25 3 * * *" }
   ]
 }

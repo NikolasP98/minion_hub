@@ -43,6 +43,7 @@
     "@tiptap/pm": "^3.27.3",
     "@tiptap/starter-kit": "^3.27.3",
     "@vercel/analytics": "^2",
+    "@vercel/functions": "^3.7.5",
     "@vercel/speed-insights": "^2",
     "@wterm/dom": "^0.3.0",
     "@xyflow/svelte": "^1.6.2",

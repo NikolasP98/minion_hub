@@ -33,6 +33,7 @@ export interface RoutingPatch {
 export interface MessageIngestResult {
   accepted: number;
   acceptedClientIds: string[];
+  brainJobId: string | null;
 }
 
 export interface MessageIngestStats {
@@ -111,14 +112,15 @@ async function enqueueBrainChangesAfterCommit(
   orgId: string,
   rows: IngestRow[],
   acceptedClientIds: string[],
-): Promise<void> {
+): Promise<string | null> {
   try {
-    await enqueueWhatsAppBrainChanges(orgId, acceptedIngestRows(rows, acceptedClientIds));
+    return await enqueueWhatsAppBrainChanges(orgId, acceptedIngestRows(rows, acceptedClientIds));
   } catch (cause) {
     // The ledger commit already succeeded. Never return a false ingest failure
     // to the gateway (which would replay the batch); durable reconciliation is
     // the repair path if queue insertion is temporarily unavailable.
     console.error('[brain-corpus] post-commit enqueue failed; reconcile will repair', cause);
+    return null;
   }
 }
 
@@ -137,7 +139,7 @@ export async function insertMessagesDetailed(
   gatewayId: string | null,
   rows: IngestRow[],
 ): Promise<MessageIngestResult> {
-  if (rows.length === 0) return { accepted: 0, acceptedClientIds: [] };
+  if (rows.length === 0) return { accepted: 0, acceptedClientIds: [], brainJobId: null };
   const values = rows.map((r) => toInsertValues(r, orgId, gatewayId));
   try {
     await withOrg(orgId, async (tx) => {
@@ -147,8 +149,8 @@ export async function insertMessagesDetailed(
       accepted: values.length,
       acceptedClientIds: values.map((value) => value.clientId),
     };
-    await enqueueBrainChangesAfterCommit(orgId, rows, result.acceptedClientIds);
-    return result;
+    const brainJobId = await enqueueBrainChangesAfterCommit(orgId, rows, result.acceptedClientIds);
+    return { ...result, brainJobId };
   } catch (bulkErr) {
     const acceptedClientIds: string[] = [];
     await withOrg(orgId, async (tx) => {
@@ -170,8 +172,8 @@ export async function insertMessagesDetailed(
     console.warn(
       `[ingest] bulk insert failed (${String(bulkErr)}); per-row fallback accepted ${acceptedClientIds.length}/${values.length}`,
     );
-    await enqueueBrainChangesAfterCommit(orgId, rows, acceptedClientIds);
-    return { accepted: acceptedClientIds.length, acceptedClientIds };
+    const brainJobId = await enqueueBrainChangesAfterCommit(orgId, rows, acceptedClientIds);
+    return { accepted: acceptedClientIds.length, acceptedClientIds, brainJobId };
   }
 }
 
