@@ -4375,6 +4375,7 @@
   "tools_title": "Registro de Herramientas",
   "tools_tooltip": "Las herramientas son capacidades ejecutables que el agente puede invocar durante las tareas.\n\nHAZ: Activa las herramientas que el agente necesita para su rol.\nNO HAGAS: Actives todas las herramientas — más herramientas = contexto más lento y ruidoso.",
   "tools_waitingGateway": "Esperando conexión con el gateway…",
+  "topbar_quickActions": "Acciones rápidas",
   "topbar_toggleMenu": "Abrir menú",
   "tx_audioSources": "Fuentes de audio…",
   "tx_autoPolish": "Pulir automáticamente dictado",

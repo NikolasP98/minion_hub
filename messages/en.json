@@ -4375,6 +4375,7 @@
   "tools_title": "Tool Registry",
   "tools_tooltip": "Tools are executable capabilities the agent can invoke during tasks.\n\nDO: Enable tools the agent needs for its role.\nDON'T: Enable all tools — more tools = slower, noisier context.",
   "tools_waitingGateway": "Waiting for gateway connection…",
+  "topbar_quickActions": "Quick actions",
   "topbar_toggleMenu": "Toggle menu",
   "tx_audioSources": "Audio sources…",
   "tx_autoPolish": "Auto-polish dictation",
