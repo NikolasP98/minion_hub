@@ -30,5 +30,5 @@ drop policy if exists member_roles_org_guc on public.member_roles;
 create policy member_roles_org_guc on public.member_roles
   for select to app_ledger
   using (
-    org_id = current_setting('app.current_org_id', true)
+    org_id::text = current_setting('app.current_org_id', true)
   );
