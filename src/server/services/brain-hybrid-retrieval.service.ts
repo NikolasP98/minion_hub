@@ -16,9 +16,12 @@ import { embeddingsEnabled, embedTexts, toVectorLiteral } from './embeddings';
 export const HYBRID_RRF_K = 60;
 /** ANN breadth applied transaction-locally before post-filtered vector search. */
 export const HNSW_EF_SEARCH = 200;
+/** Indexed word-similarity threshold; exact one-edit policy still decides eligibility. */
+export const PG_TRGM_WORD_SIMILARITY_THRESHOLD = 0.3;
 
 const VECTOR_WEIGHT = 1;
 const LEXICAL_WEIGHT = 1;
+const FUZZY_WEIGHT = 1;
 const TOKEN_MATCH_WEIGHT = 1.25;
 const MAX_RECENCY_BOOST = 0.05;
 const STRONG_SINGLE_TOKEN_VECTOR_SCORE = 0.35;
@@ -94,8 +97,9 @@ export interface BrainHybridSearchHit {
   scores: {
     vector: number | null;
     lexical: number | null;
+    fuzzy: number | null;
     recency: number;
-    rrf: { vector: number; lexical: number; tokenMatch: number };
+    rrf: { vector: number; lexical: number; fuzzy: number; tokenMatch: number };
     recencyBoost: number;
     fused: number;
     relative: number;
@@ -129,10 +133,16 @@ export interface BrainHybridSearchResult {
   diagnostics: {
     vectorCandidates: number;
     lexicalCandidates: number;
+    fuzzyCandidates: number;
     fusedCandidates: number;
     filteredCandidates: number;
     queryPolicy: 'single-token-anchored' | 'hybrid-semantic';
     queryTokens: string[];
+    fuzzyStatus:
+      | 'searched'
+      | 'skipped_empty_query'
+      | 'skipped_multi_token'
+      | 'skipped_short_token';
     scoreSemantics: typeof SCORE_SEMANTICS | 'legacy cosine similarity; not a probability';
     emptyReason: 'empty_query' | 'no_canonical_candidates' | 'relevance_policy_filtered_all' | null;
     warnings: string[];
@@ -184,6 +194,7 @@ export interface HybridCandidate {
   recencyHalfLifeDays: number;
   vectorScore: number | null;
   lexicalScore: number | null;
+  fuzzyScore: number | null;
 }
 
 interface RankedCandidate extends HybridCandidate {
@@ -191,9 +202,11 @@ interface RankedCandidate extends HybridCandidate {
   recencyScore: number;
   vectorRank: number | null;
   lexicalRank: number | null;
+  fuzzyRank: number | null;
   tokenMatchRank: number | null;
   rrfVector: number;
   rrfLexical: number;
+  rrfFuzzy: number;
   rrfTokenMatch: number;
   recencyBoost: number;
   fusedScore: number;
@@ -242,7 +255,10 @@ function isoDate(value: Date | string | null): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-function toCandidate(row: CanonicalCandidateRow, retriever: 'vector' | 'lexical'): HybridCandidate {
+function toCandidate(
+  row: CanonicalCandidateRow,
+  retriever: 'vector' | 'lexical' | 'fuzzy',
+): HybridCandidate {
   const sourceWeight = row.includeAllSources ? 1 : (finitePositive(row.membershipWeight) ?? 1);
   return {
     chunkId: row.chunkId,
@@ -265,6 +281,7 @@ function toCandidate(row: CanonicalCandidateRow, retriever: 'vector' | 'lexical'
     recencyHalfLifeDays: configuredHalfLife(row),
     vectorScore: retriever === 'vector' ? Number(row.retrievalScore) : null,
     lexicalScore: retriever === 'lexical' ? Number(row.retrievalScore) : null,
+    fuzzyScore: retriever === 'fuzzy' ? Number(row.retrievalScore) : null,
   };
 }
 
@@ -336,6 +353,15 @@ function editDistance(left: string, right: string, maxDistance: number): number 
 function fuzzyDistanceLimit(token: string): number {
   if (token.length < 5) return 0;
   return token.length >= 9 ? 2 : 1;
+}
+
+export function fuzzySearchStatus(
+  queryTokens: string[],
+): BrainHybridSearchResult['diagnostics']['fuzzyStatus'] {
+  if (queryTokens.length === 0) return 'skipped_empty_query';
+  if (queryTokens.length !== 1) return 'skipped_multi_token';
+  if (fuzzyDistanceLimit(queryTokens[0]) === 0) return 'skipped_short_token';
+  return 'searched';
 }
 
 function matchDiagnostics(
@@ -507,10 +533,11 @@ function dedupeKey(candidate: HybridCandidate): string {
 export function rankHybridCandidates(
   vectorCandidates: HybridCandidate[],
   lexicalCandidates: HybridCandidate[],
+  fuzzyCandidates: HybridCandidate[],
   options: { limit: number; now: Date; query: string },
 ): RankedCandidate[] {
   const merged = new Map<string, HybridCandidate>();
-  for (const candidate of [...vectorCandidates, ...lexicalCandidates]) {
+  for (const candidate of [...vectorCandidates, ...lexicalCandidates, ...fuzzyCandidates]) {
     const current = merged.get(candidate.chunkId);
     if (!current) {
       merged.set(candidate.chunkId, { ...candidate });
@@ -518,6 +545,7 @@ export function rankHybridCandidates(
     }
     current.vectorScore ??= candidate.vectorScore;
     current.lexicalScore ??= candidate.lexicalScore;
+    current.fuzzyScore ??= candidate.fuzzyScore;
   }
 
   const vectorRanks = new Map(
@@ -525,6 +553,9 @@ export function rankHybridCandidates(
   );
   const lexicalRanks = new Map(
     lexicalCandidates.map((candidate, index) => [candidate.chunkId, index + 1]),
+  );
+  const fuzzyRanks = new Map(
+    fuzzyCandidates.map((candidate, index) => [candidate.chunkId, index + 1]),
   );
   const queryTokens = tokenizeQuery(options.query);
   const topVectorScore = Math.max(
@@ -560,6 +591,7 @@ export function rankHybridCandidates(
   const ranked = eligible.map<RankedCandidate>(({ candidate, match }) => {
     const vectorRank = vectorRanks.get(candidate.chunkId) ?? null;
     const lexicalRank = lexicalRanks.get(candidate.chunkId) ?? null;
+    const fuzzyRank = fuzzyRanks.get(candidate.chunkId) ?? null;
     const tokenMatchRank = tokenMatchRanks.get(candidate.chunkId) ?? null;
     const recencyScore = computeRecencyScore(
       candidate.occurredAt,
@@ -574,11 +606,15 @@ export function rankHybridCandidates(
       lexicalRank === null
         ? 0
         : (LEXICAL_WEIGHT * candidate.sourceWeight) / (HYBRID_RRF_K + lexicalRank);
+    const rrfFuzzy =
+      fuzzyRank === null
+        ? 0
+        : (FUZZY_WEIGHT * candidate.sourceWeight) / (HYBRID_RRF_K + fuzzyRank);
     const rrfTokenMatch =
       tokenMatchRank === null
         ? 0
         : (TOKEN_MATCH_WEIGHT * candidate.sourceWeight) / (HYBRID_RRF_K + tokenMatchRank);
-    const relevanceScore = rrfVector + rrfLexical + rrfTokenMatch;
+    const relevanceScore = rrfVector + rrfLexical + rrfFuzzy + rrfTokenMatch;
     // Freshness can refine relevant evidence, but can never create relevance.
     const recencyBoost = relevanceScore * MAX_RECENCY_BOOST * recencyScore;
     const fusedScore = relevanceScore + recencyBoost;
@@ -588,9 +624,11 @@ export function rankHybridCandidates(
       recencyScore,
       vectorRank,
       lexicalRank,
+      fuzzyRank,
       tokenMatchRank,
       rrfVector,
       rrfLexical,
+      rrfFuzzy,
       rrfTokenMatch,
       recencyBoost,
       fusedScore,
@@ -603,6 +641,8 @@ export function rankHybridCandidates(
       b.fusedScore - a.fusedScore ||
       (a.tokenMatchRank ?? Number.MAX_SAFE_INTEGER) -
         (b.tokenMatchRank ?? Number.MAX_SAFE_INTEGER) ||
+      (a.fuzzyRank ?? Number.MAX_SAFE_INTEGER) -
+        (b.fuzzyRank ?? Number.MAX_SAFE_INTEGER) ||
       (a.vectorRank ?? Number.MAX_SAFE_INTEGER) - (b.vectorRank ?? Number.MAX_SAFE_INTEGER) ||
       (a.lexicalRank ?? Number.MAX_SAFE_INTEGER) - (b.lexicalRank ?? Number.MAX_SAFE_INTEGER) ||
       (b.occurredAt ?? '').localeCompare(a.occurredAt ?? '') ||
@@ -685,6 +725,33 @@ export function sourceAccessPredicate(
 /** Keep the ANN breadth scoped to the current RLS transaction/connection. */
 export function hnswSearchConfigSql(): SQL {
   return sql`set local hnsw.ef_search = ${sql.raw(String(HNSW_EF_SEARCH))}`;
+}
+
+/** `%>` is the index-supported commutator of the query-to-text `<%` word
+ * similarity operator. Keep the indexed expression identical to the migration. */
+export function fuzzyCandidatePredicate(queryToken: string): SQL {
+  return sql`lower(${knowledgeChunks.chunkText}) %> ${queryToken}`;
+}
+
+export function fuzzySearchConfigSql(): SQL {
+  return sql`set local pg_trgm.word_similarity_threshold = ${sql.raw(
+    String(PG_TRGM_WORD_SIMILARITY_THRESHOLD),
+  )}`;
+}
+
+/** Exported for SQL-shape regression coverage of the security-critical fuzzy lane. */
+export function fuzzyRetrievalConditions(
+  ctx: CoreCtx,
+  brainId: string,
+  options: BrainHybridSearchOptions,
+  searchableModules: string[],
+  fieldLevels: Record<string, number>,
+  queryToken: string,
+): SQL {
+  return and(
+    scopeConditions(ctx, brainId, options, searchableModules, fieldLevels),
+    fuzzyCandidatePredicate(queryToken),
+  )!;
 }
 
 function scopeConditions(
@@ -845,6 +912,60 @@ async function retrieveLexical(
   return (rows as CanonicalCandidateRow[]).map((row) => toCandidate(row, 'lexical'));
 }
 
+/** Indexed spelling candidate lane for one entity-like token. The pg_trgm
+ * operator only supplies candidates; the deterministic edit-distance policy
+ * still rejects anything outside the permitted one/two-edit boundary. */
+async function retrieveFuzzy(
+  ctx: CoreCtx,
+  brainId: string,
+  query: string,
+  options: BrainHybridSearchOptions,
+  searchableModules: string[],
+  fieldLevels: Record<string, number>,
+  cap: number,
+): Promise<HybridCandidate[]> {
+  const queryTokens = tokenizeQuery(query);
+  if (fuzzySearchStatus(queryTokens) !== 'searched') return [];
+  const queryToken = queryTokens[0];
+  const fuzzyScore = sql<number>`word_similarity(${queryToken}, lower(${knowledgeChunks.chunkText}))`;
+  const rows = await withOrgCore(ctx, async (tx) => {
+    await tx.execute(fuzzySearchConfigSql());
+    return tx
+      .select(candidateSelection(fuzzyScore))
+      .from(knowledgeChunks)
+      .innerJoin(
+        knowledgeDocuments,
+        and(
+          eq(knowledgeDocuments.id, knowledgeChunks.documentId),
+          eq(knowledgeDocuments.sourceId, knowledgeChunks.sourceId),
+        ),
+      )
+      .innerJoin(knowledgeSources, eq(knowledgeSources.id, knowledgeChunks.sourceId))
+      .innerJoin(brains, and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)))
+      .leftJoin(
+        brainSources,
+        and(
+          eq(brainSources.brainId, brains.id),
+          eq(brainSources.sourceId, knowledgeSources.id),
+          eq(brainSources.orgId, ctx.tenantId),
+        ),
+      )
+      .where(
+        fuzzyRetrievalConditions(
+          ctx,
+          brainId,
+          options,
+          searchableModules,
+          fieldLevels,
+          queryToken,
+        ),
+      )
+      .orderBy(sql`${fuzzyScore} desc`, knowledgeChunks.id)
+      .limit(cap);
+  });
+  return (rows as CanonicalCandidateRow[]).map((row) => toCandidate(row, 'fuzzy'));
+}
+
 async function loadNeighbors(
   ctx: CoreCtx,
   brainId: string,
@@ -966,10 +1087,12 @@ export function attachNeighbors(
       scores: {
         vector: candidate.vectorScore,
         lexical: candidate.lexicalScore,
+        fuzzy: candidate.fuzzyScore,
         recency: candidate.recencyScore,
         rrf: {
           vector: candidate.rrfVector,
           lexical: candidate.rrfLexical,
+          fuzzy: candidate.rrfFuzzy,
           tokenMatch: candidate.rrfTokenMatch,
         },
         recencyBoost: candidate.recencyBoost,
@@ -1013,6 +1136,7 @@ function legacyHit(
       recencyHalfLifeDays: DEFAULT_RECENCY_HALF_LIFE_DAYS,
       vectorScore: hit.score,
       lexicalScore: null,
+      fuzzyScore: null,
     },
     hit.score,
   );
@@ -1064,8 +1188,9 @@ function legacyHit(
     scores: {
       vector: hit.score,
       lexical: null,
+      fuzzy: null,
       recency: 0,
-      rrf: { vector: 0, lexical: 0, tokenMatch: 0 },
+      rrf: { vector: 0, lexical: 0, fuzzy: 0, tokenMatch: 0 },
       recencyBoost: 0,
       fused: hit.score,
       relative: hit.score,
@@ -1096,6 +1221,7 @@ export async function searchBrainHybrid(
   const q = query.trim();
   const queryTokens = tokenizeQuery(q);
   const queryPolicy = queryTokens.length === 1 ? 'single-token-anchored' : 'hybrid-semantic';
+  const fuzzyStatus = fuzzySearchStatus(queryTokens);
   if (!q) {
     return {
       mode: 'hybrid',
@@ -1103,10 +1229,12 @@ export async function searchBrainHybrid(
       diagnostics: {
         vectorCandidates: 0,
         lexicalCandidates: 0,
+        fuzzyCandidates: 0,
         fusedCandidates: 0,
         filteredCandidates: 0,
         queryPolicy,
         queryTokens,
+        fuzzyStatus,
         scoreSemantics: SCORE_SEMANTICS,
         emptyReason: 'empty_query',
         warnings: [],
@@ -1122,23 +1250,28 @@ export async function searchBrainHybrid(
   const warnings: string[] = [];
   const searchableModules = principal.searchableModules ?? [];
   const fieldLevels = principal.fieldLevels ?? {};
-  const [vectorResult, lexicalResult] = await Promise.allSettled([
+  const [vectorResult, lexicalResult, fuzzyResult] = await Promise.allSettled([
     retrieveVector(ctx, brainId, q, options, searchableModules, fieldLevels, candidateCap),
     retrieveLexical(ctx, brainId, q, options, searchableModules, fieldLevels, candidateCap),
+    retrieveFuzzy(ctx, brainId, q, options, searchableModules, fieldLevels, candidateCap),
   ]);
   const vectorCandidates = vectorResult.status === 'fulfilled' ? vectorResult.value : [];
   const lexicalCandidates = lexicalResult.status === 'fulfilled' ? lexicalResult.value : [];
+  const fuzzyCandidates = fuzzyResult.status === 'fulfilled' ? fuzzyResult.value : [];
   if (vectorResult.status === 'rejected') warnings.push('vector retrieval unavailable');
   if (!embeddingsEnabled()) warnings.push('vector retrieval disabled');
   if (lexicalResult.status === 'rejected') warnings.push('lexical retrieval unavailable');
+  if (fuzzyResult.status === 'rejected') warnings.push('fuzzy retrieval unavailable');
 
-  const ranked = rankHybridCandidates(vectorCandidates, lexicalCandidates, {
+  const ranked = rankHybridCandidates(vectorCandidates, lexicalCandidates, fuzzyCandidates, {
     limit,
     now: options.now ?? new Date(),
     query: q,
   });
   const retrievedCandidates = new Set(
-    [...vectorCandidates, ...lexicalCandidates].map((candidate) => candidate.chunkId),
+    [...vectorCandidates, ...lexicalCandidates, ...fuzzyCandidates].map(
+      (candidate) => candidate.chunkId,
+    ),
   ).size;
   const policyFilteredAll = ranked.length === 0 && retrievedCandidates > 0;
   if (policyFilteredAll) warnings.push('all canonical candidates rejected by relevance policy');
@@ -1156,10 +1289,12 @@ export async function searchBrainHybrid(
         diagnostics: {
           vectorCandidates: vectorCandidates.length,
           lexicalCandidates: lexicalCandidates.length,
+          fuzzyCandidates: fuzzyCandidates.length,
           fusedCandidates: 0,
           filteredCandidates: 0,
           queryPolicy,
           queryTokens,
+          fuzzyStatus,
           scoreSemantics: 'legacy cosine similarity; not a probability',
           emptyReason: hits.length === 0 ? 'no_canonical_candidates' : null,
           warnings,
@@ -1173,10 +1308,12 @@ export async function searchBrainHybrid(
       diagnostics: {
         vectorCandidates: vectorCandidates.length,
         lexicalCandidates: lexicalCandidates.length,
+        fuzzyCandidates: fuzzyCandidates.length,
         fusedCandidates: 0,
         filteredCandidates: 0,
         queryPolicy,
         queryTokens,
+        fuzzyStatus,
         scoreSemantics: SCORE_SEMANTICS,
         emptyReason: 'no_canonical_candidates',
         warnings,
@@ -1205,10 +1342,12 @@ export async function searchBrainHybrid(
     diagnostics: {
       vectorCandidates: vectorCandidates.length,
       lexicalCandidates: lexicalCandidates.length,
+      fuzzyCandidates: fuzzyCandidates.length,
       fusedCandidates: ranked.length,
       filteredCandidates: Math.max(0, retrievedCandidates - ranked.length),
       queryPolicy,
       queryTokens,
+      fuzzyStatus,
       scoreSemantics: SCORE_SEMANTICS,
       emptyReason: policyFilteredAll ? 'relevance_policy_filtered_all' : null,
       warnings,

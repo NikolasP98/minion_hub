@@ -27,8 +27,13 @@ vi.mock('./embeddings', () => ({
 import {
   HNSW_EF_SEARCH,
   HYBRID_RRF_K,
+  PG_TRGM_WORD_SIMILARITY_THRESHOLD,
   attachNeighbors,
   computeRecencyScore,
+  fuzzyCandidatePredicate,
+  fuzzyRetrievalConditions,
+  fuzzySearchConfigSql,
+  fuzzySearchStatus,
   hnswSearchConfigSql,
   neighborScopeConditions,
   rankHybridCandidates,
@@ -61,6 +66,7 @@ function candidate(overrides: Partial<HybridCandidate> = {}): HybridCandidate {
     recencyHalfLifeDays: 90,
     vectorScore: 0.9,
     lexicalScore: null,
+    fuzzyScore: null,
     ...overrides,
   };
 }
@@ -72,6 +78,66 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
     expect(HNSW_EF_SEARCH).toBe(200);
     expect(query.sql).toBe('set local hnsw.ef_search = 200');
     expect(query.params).toEqual([]);
+  });
+
+  it('uses the indexed lower(chunk_text) trigram expression and a transaction-local threshold', () => {
+    const dialect = new PgDialect();
+    const predicate = dialect.sqlToQuery(fuzzyCandidatePredicate('krispy'));
+    const config = dialect.sqlToQuery(fuzzySearchConfigSql());
+
+    expect(predicate.sql).toBe('lower("knowledge_chunks"."chunk_text") %> $1');
+    expect(predicate.params).toEqual(['krispy']);
+    expect(PG_TRGM_WORD_SIMILARITY_THRESHOLD).toBe(0.3);
+    expect(config.sql).toBe('set local pg_trgm.word_similarity_threshold = 0.3');
+    expect(config.params).toEqual([]);
+  });
+
+  it('keeps org, brain, source, membership, RBAC, kind, and metadata scope in fuzzy SQL', () => {
+    const query = new PgDialect().sqlToQuery(
+      fuzzyRetrievalConditions(
+        { db: {} as never, tenantId: 'org-1' },
+        '11111111-1111-4111-8111-111111111111',
+        {
+          sourceIds: ['22222222-2222-4222-8222-222222222222'],
+          connectors: ['whatsapp'],
+          kinds: ['raw'],
+          metadata: { sensitivity: 'public' },
+        },
+        ['crm'],
+        { crm: 1 },
+        'krispy',
+      ),
+    );
+
+    expect(query.sql).toContain('"brains"."org_id"');
+    expect(query.sql).toContain('"knowledge_chunks"."org_id"');
+    expect(query.sql).toContain('"knowledge_documents"."org_id"');
+    expect(query.sql).toContain('"knowledge_sources"."org_id"');
+    expect(query.sql).toContain('"brain_sources"."config"->\'metadataFilters\'');
+    expect(query.sql).toContain('"brain_sources"."config"->\'enabledChunkKinds\'');
+    expect(query.sql).toContain("->>'requiredModule'");
+    expect(query.sql).toContain("->>'requiredFieldLevel'");
+    expect(query.sql).toContain('lower("knowledge_chunks"."chunk_text") %>');
+    expect(query.params).toEqual(
+      expect.arrayContaining([
+        'org-1',
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+        'whatsapp',
+        'raw',
+        JSON.stringify({ sensitivity: 'public' }),
+        'crm',
+        1,
+        'krispy',
+      ]),
+    );
+  });
+
+  it('reports whether fuzzy retrieval searched or deliberately skipped', () => {
+    expect(fuzzySearchStatus([])).toBe('skipped_empty_query');
+    expect(fuzzySearchStatus(['como'])).toBe('skipped_short_token');
+    expect(fuzzySearchStatus(['refund', 'policy'])).toBe('skipped_multi_token');
+    expect(fuzzySearchStatus(['krispy'])).toBe('searched');
   });
 
   it('fails classified source access closed unless its required module is visible', () => {
@@ -133,6 +199,7 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
     const ranked = rankHybridCandidates(
       [both, vectorOnly],
       [lexicalOnly, { ...both, vectorScore: null, lexicalScore: 0.7 }],
+      [],
       { limit: 10, now: NOW, query: 'refund policy' },
     );
 
@@ -141,8 +208,38 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
     expect(ranked[0].rrfVector).toBeCloseTo(1 / 61);
     expect(ranked[0].rrfLexical).toBeCloseTo(1 / 62);
     expect(ranked[0].fusedScore).toBeCloseTo(
-      ranked[0].rrfVector + ranked[0].rrfLexical + ranked[0].rrfTokenMatch + ranked[0].recencyBoost,
+      ranked[0].rrfVector +
+        ranked[0].rrfLexical +
+        ranked[0].rrfFuzzy +
+        ranked[0].rrfTokenMatch +
+        ranked[0].recencyBoost,
     );
+  });
+
+  it('admits a KRISPI one-edit match supplied only by the bounded fuzzy lane', () => {
+    const krispi = candidate({
+      chunkId: 'krispi',
+      chunkText: 'Customer asked whether KRISPI is available.',
+      vectorScore: null,
+      fuzzyScore: 0.72,
+    });
+
+    const ranked = rankHybridCandidates([], [], [krispi], {
+      limit: 5,
+      now: NOW,
+      query: 'krispy',
+    });
+
+    expect(ranked).toHaveLength(1);
+    expect(ranked[0]).toMatchObject({
+      chunkId: 'krispi',
+      fuzzyRank: 1,
+      match: {
+        eligibility: 'fuzzy',
+        fuzzyTokens: [{ queryToken: 'krispy', matchedToken: 'krispi', distance: 1 }],
+      },
+    });
+    expect(ranked[0].rrfFuzzy).toBeCloseTo(1 / 61);
   });
 
   it('computes deterministic half-life recency without rewarding future timestamps', () => {
@@ -170,7 +267,11 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
       candidate({ chunkId: 'c', seq: 2, contentHash: 'hash-c' }),
       candidate({ chunkId: 'd', documentId: 'document-2', seq: 0, contentHash: 'hash-d' }),
     ];
-    const ranked = rankHybridCandidates(rows, [], { limit: 10, now: NOW, query: 'refund policy' });
+    const ranked = rankHybridCandidates(rows, [], [], {
+      limit: 10,
+      now: NOW,
+      query: 'refund policy',
+    });
 
     expect(ranked.filter((row) => row.contentHash === 'same-transcript')).toHaveLength(1);
     expect(ranked.filter((row) => row.documentId === 'document-1')).toHaveLength(2);
@@ -187,7 +288,11 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
         contentHash: `hash-${index}`,
       });
     });
-    const ranked = rankHybridCandidates(rows, [], { limit: 6, now: NOW, query: 'refund policy' });
+    const ranked = rankHybridCandidates(rows, [], [], {
+      limit: 6,
+      now: NOW,
+      query: 'refund policy',
+    });
     const bySource = Map.groupBy(ranked, (row) => row.sourceId);
 
     expect(ranked).toHaveLength(6);
@@ -196,7 +301,7 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
   });
 
   it('expands immediate neighbors only after final ranking', () => {
-    const [ranked] = rankHybridCandidates([candidate()], [], {
+    const [ranked] = rankHybridCandidates([candidate()], [], [], {
       limit: 1,
       now: NOW,
       query: 'refund policy',
@@ -261,7 +366,7 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
       vectorScore: 0.23,
     });
 
-    const ranked = rankHybridCandidates([unrelated, fuzzyHit], [], {
+    const ranked = rankHybridCandidates([unrelated, fuzzyHit], [], [], {
       limit: 10,
       now: NOW,
       query: 'krispy',
@@ -291,11 +396,16 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
       chunkText: 'Customer discussed dessert delivery.',
       vectorScore: 0.8,
     });
-    const ranked = rankHybridCandidates([semantic, exact], [{ ...exact, vectorScore: null }], {
-      limit: 10,
-      now: NOW,
-      query: 'krispy',
-    });
+    const ranked = rankHybridCandidates(
+      [semantic, exact],
+      [{ ...exact, vectorScore: null }],
+      [],
+      {
+        limit: 10,
+        now: NOW,
+        query: 'krispy',
+      },
+    );
 
     expect(ranked[0].chunkId).toBe('exact');
     expect(ranked[0].match.eligibility).toBe('exact');
@@ -308,7 +418,7 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
       chunkText: 'El cliente estaba molesto porque su pedido llegó tarde.',
       vectorScore: 0.31,
     });
-    const ranked = rankHybridCandidates([semantic], [], {
+    const ranked = rankHybridCandidates([semantic], [], [], {
       limit: 10,
       now: NOW,
       query: 'customers unhappy about shipping delays',
@@ -325,7 +435,7 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
       vectorScore: 0.2,
       lexicalScore: 0.4,
     });
-    const ranked = rankHybridCandidates([exact], [exact], {
+    const ranked = rankHybridCandidates([exact], [exact], [], {
       limit: 1,
       now: NOW,
       query: 'como',
@@ -423,6 +533,63 @@ describe('brain hybrid retrieval — canonical/legacy compatibility', () => {
       documentExternalId: 'whatsapp:account-1:chat-1',
     });
     expect(result.hits[0].scores.lexical).toBe(0.6);
+    expect(mocks.searchBrain).not.toHaveBeenCalled();
+  });
+
+  it('retrieves KRISPI through trigram candidates when vector and FTS return nothing', async () => {
+    mocks.embeddingsEnabled.mockReturnValue(true);
+    mocks.embedTexts.mockResolvedValue([[0.1, 0.2, 0.3]]);
+    const krispiRow = {
+      chunkId: 'krispi-chunk',
+      sourceId: '22222222-2222-4222-8222-222222222222',
+      sourceName: 'WhatsApp +51999',
+      connector: 'whatsapp',
+      sourceExternalKey: 'account-1',
+      sourceConfig: { requiredModule: 'crm', requiredFieldLevel: 1 },
+      documentId: '33333333-3333-4333-8333-333333333333',
+      documentExternalId: 'conversation:account-1:chat-1:2026-07',
+      documentTitle: 'Conversation with Ada',
+      chunkKey: 'raw:000000',
+      kind: 'raw',
+      seq: 0,
+      chunkText: 'Agent: Sí, tenemos KRISPI disponible.',
+      contextPrefix: null,
+      contentHash: 'krispi-hash',
+      occurredAt: NOW,
+      metadata: { chatId: 'chat-1' },
+      includeAllSources: true,
+      membershipWeight: null,
+      membershipConfig: null,
+      retrievalScore: 0.72,
+    };
+    // Lexical starts synchronously, then fuzzy; vector resumes after embedding.
+    // The fourth scoped call is neighbor expansion.
+    mocks.withOrgCore
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([krispiRow])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await searchBrainHybrid(
+      { db: {} as never, tenantId: 'org-1' },
+      '11111111-1111-4111-8111-111111111111',
+      'krispy',
+      { limit: 5 },
+      { searchableModules: ['crm'], fieldLevels: { crm: 1 } },
+    );
+
+    expect(result).toMatchObject({
+      mode: 'hybrid',
+      diagnostics: { vectorCandidates: 0, lexicalCandidates: 0, fuzzyCandidates: 1 },
+      hits: [
+        {
+          chunkId: 'krispi-chunk',
+          matchBasis: 'fuzzy',
+          scores: { fuzzy: 0.72 },
+        },
+      ],
+    });
+    expect(result.hits[0].chunkText).toContain('KRISPI');
     expect(mocks.searchBrain).not.toHaveBeenCalled();
   });
 
