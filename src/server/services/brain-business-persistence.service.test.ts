@@ -86,8 +86,8 @@ describe('business corpus set-based persistence', () => {
       persistBusinessDocuments({ tenantId: 'org-1' } as never, prepared, vectors),
     ).resolves.toBe(0);
 
-    // 3 document batches (100/100/5) + 4 chunk batches (64/64/64/13).
-    expect(mocks.execute).toHaveBeenCalledTimes(7);
+    // 3 document batches (100/100/5) + 26 chunk batches (25×8 + 5).
+    expect(mocks.execute).toHaveBeenCalledTimes(29);
     expect(queryText(0)).toMatch(/insert into knowledge_documents[\s\S]*on conflict/);
     expect(queryText(3)).toMatch(/insert into knowledge_chunks[\s\S]*on conflict/);
     expect(queryText(3)).toContain('coalesce(excluded.embedding, knowledge_chunks.embedding)');
@@ -95,7 +95,8 @@ describe('business corpus set-based persistence', () => {
     expect(queryParams(1)).toHaveLength(1_200);
     expect(queryParams(2)).toHaveLength(60);
     expect(queryParams(2)).toContain('document-hash-204');
-    expect(queryParams(6)).toHaveLength(156);
+    expect(queryParams(3)).toHaveLength(96);
+    expect(queryParams(28)).toHaveLength(60);
   });
 
   it('batches stale chunk deletion and returns the deleted count', async () => {

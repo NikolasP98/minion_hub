@@ -17,7 +17,10 @@ const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_CHUNK_MAX_CHARS = 6000;
 const EMBEDDING_BATCH_SIZE = 64;
 const PERSIST_DOCUMENT_BATCH_SIZE = 100;
-const PERSIST_CHUNK_BATCH_SIZE = 64;
+// HNSW maintenance makes vector upserts materially heavier than document rows.
+// Eight stays below the production statement timeout while still removing the
+// former one-statement-per-chunk round trip.
+const PERSIST_CHUNK_BATCH_SIZE = 8;
 const PERSIST_STALE_CHUNK_BATCH_SIZE = 500;
 const EMBEDDING_BATCH_CONCURRENCY = Math.min(
   8,
