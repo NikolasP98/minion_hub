@@ -9,12 +9,13 @@ import { createKeyedDebouncer } from '$lib/pacer/index.svelte';
 
 const DEBOUNCE_MS = 1_000;
 
-async function putPreference(section: string, value: unknown) {
+async function putPreference(section: string, value: unknown, keepalive = false) {
   try {
     await fetch(`/api/me/preferences/${section}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value }),
+      keepalive,
     });
   } catch {
     // Silent fail — localStorage is the fallback
@@ -40,6 +41,16 @@ export function setApplying(value: boolean) {
 export function syncPreferenceToServer(section: string, value: unknown) {
   if (applying || !userState.user) return;
   prefDebouncer.run(section, value);
+}
+
+/**
+ * Persist a preference immediately before a full-page navigation. `keepalive`
+ * lets the request finish after the current document starts unloading; the
+ * normal debounced writer would never fire once the page is replaced.
+ */
+export function syncPreferenceToServerImmediately(section: string, value: unknown) {
+  if (applying || !userState.user) return;
+  void putPreference(section, value, true);
 }
 
 /**

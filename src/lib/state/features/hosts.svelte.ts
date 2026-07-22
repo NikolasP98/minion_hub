@@ -36,7 +36,7 @@ function writeChannelCookie(channel: BuildChannel | null) {
  * pages outside (app)/ that still consume `hostsState`).
  *
  * activeHostId precedence ("the balancer decides where requests go"):
- *   1. a manual pick made THIS session (sessionStorage — HostPill/HostsOverlay),
+ *   1. a manual pick made THIS session (sessionStorage — ProfileMenu/HostsOverlay),
  *   2. the active org's assigned host (page.data orgAssignedHostId),
  *   3. first host.
  * A persisted localStorage pick from previous days no longer pins users to a
