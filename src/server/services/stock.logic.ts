@@ -294,8 +294,63 @@ export function explodeToStockLeaves(
 export interface LineModifier {
   action: 'exclude' | 'add';
   itemId: string;
-  /** `add` only — how much of the optional item. */
+  /** `add` only — how many stock-UOM units of the optional item per sold unit. */
   qty?: number;
+}
+
+/** A POS line root before component expansion. Recipes are expressed in the
+ *  mapped item's consumption UOM; a plain 1:1 sellable bridge is already in
+ *  the item's stock UOM. Keeping that distinction prevents `5 ml` from being
+ *  posted as `5 cajas`. */
+export interface IssueRoot {
+  itemId: string;
+  qty: number;
+  unitKind: 'stock' | 'consumption';
+}
+
+export interface ExplodedIssueQuantities {
+  stockQtyByItem: Map<string, number>;
+  consumptionQtyByItem: Map<string, number>;
+}
+
+/**
+ * Expand all roots for ONE order line without mixing stock-UOM quantities
+ * with consumption-UOM quantities.
+ *
+ * A direct stock bridge remains stock-UOM only while it is a leaf. Once a
+ * bridge traverses a component edge, the resulting child quantities are in
+ * each child's consumption UOM (the component-edge contract). An added item
+ * is expressed in that item's stock UOM, just like a direct bridge; if the
+ * added item is composite, its children switch to consumption UOM. Additions
+ * are applied once per sold line rather than once per recipe root.
+ */
+export function explodeIssueRoots(
+  roots: readonly IssueRoot[],
+  lineQty: number,
+  byParent: Map<string, ComponentEdge[]>,
+  isStockItem: (id: string) => boolean,
+  modifiers: readonly LineModifier[] = [],
+): ExplodedIssueQuantities {
+  const stockQtyByItem = new Map<string, number>();
+  const consumptionQtyByItem = new Map<string, number>();
+  const exclude = new Set(modifiers.filter((mod) => mod.action === 'exclude').map((mod) => mod.itemId));
+
+  for (const root of roots) {
+    const traversesComponents = (byParent.get(root.itemId)?.length ?? 0) > 0;
+    const out = root.unitKind === 'stock' && !traversesComponents ? stockQtyByItem : consumptionQtyByItem;
+    explodeToStockLeaves(root.itemId, root.qty, byParent, isStockItem, out, new Set(), exclude);
+  }
+
+  for (const mod of modifiers) {
+    if (mod.action !== 'add') continue;
+    const addQty = (mod.qty ?? 1) * lineQty;
+    if (!(addQty > 0) || exclude.has(mod.itemId)) continue;
+    const traversesComponents = (byParent.get(mod.itemId)?.length ?? 0) > 0;
+    const out = traversesComponents ? consumptionQtyByItem : stockQtyByItem;
+    explodeToStockLeaves(mod.itemId, addQty, byParent, isStockItem, out, new Set(), exclude);
+  }
+
+  return { stockQtyByItem, consumptionQtyByItem };
 }
 
 /**

@@ -102,7 +102,8 @@ export const posTicketLines = pgTable(
     total: numeric('total').notNull(),
     lineNo: integer('line_no').notNull().default(0),
     /** Order-line CONFIGURATION (#9): what the customer chose for this line —
-     *  [{action:'exclude'|'add', itemId, qty?}]. Deliberately not composition;
+     *  [{action:'exclude'|'add', itemId, qty?}]. `add.qty` is in the added
+     *  item's stock UOM per sold unit. Deliberately not composition;
      *  see supabase/migrations/20260720030000_pos_line_modifiers.sql. */
     modifiers: jsonb('modifiers').notNull().default([]),
   },

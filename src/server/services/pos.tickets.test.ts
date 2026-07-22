@@ -298,10 +298,10 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-8', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
     expect(call.lines).toEqual([
       { itemId: 'item-a', qty: 3 }, // 1:1
-      { itemId: 'item-b', qty: 10 }, // 2 × 5 qtyPerUnit
+      { itemId: 'item-b', qty: 10, qtyConsumption: 10 }, // 2 × 5 consumption-UOM
     ]);
   });
 
@@ -326,12 +326,73 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-r1', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
     expect(call.lines).toEqual([
-      { itemId: 'item-x', qty: 6 }, // 2 × 3
-      { itemId: 'item-y', qty: 2 }, // 2 × 1
+      { itemId: 'item-x', qty: 6, qtyConsumption: 6 }, // 2 × 3 consumption-UOM
+      { itemId: 'item-y', qty: 2, qtyConsumption: 2 }, // 2 × 1 consumption-UOM
     ]);
     expect(call.lines.some((l) => l.itemId === 'item-kit')).toBe(false); // finished good NOT issued
+  });
+
+  it('preserves separate stock and consumption quantities when two lines reach the same item', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 'ticket-mixed-uom' })],
+      [
+        { id: 'l1', orgId: 'org-1', ticketId: 'ticket-mixed-uom', kind: 'product', finProductId: 'fp-vial', bookingId: null, qty: '1', unitPrice: '20' },
+        { id: 'l2', orgId: 'org-1', ticketId: 'ticket-mixed-uom', kind: 'service', finProductId: 'fp-procedure', bookingId: null, qty: '1', unitPrice: '80' },
+      ],
+      [{ id: 'item-h', finProductId: 'fp-vial' }],
+      [{ finProductId: 'fp-procedure', itemId: 'item-h', qtyPerUnit: '10' }],
+      [],
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-mixed-uom' });
+
+    await postTicketStock(ctx(db), 'ticket-mixed-uom', actor);
+
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
+    expect(call.lines).toEqual([
+      { itemId: 'item-h', qty: 1 }, // one whole vial sold
+      { itemId: 'item-h', qty: 10, qtyConsumption: 10 }, // plus 10 mL consumed by the procedure
+    ]);
+  });
+
+  it('applies an add modifier once for a multi-root recipe', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 'ticket-mod' })],
+      [
+        {
+          id: 'l1',
+          orgId: 'org-1',
+          ticketId: 'ticket-mod',
+          kind: 'service',
+          finProductId: 'fp-procedure',
+          bookingId: null,
+          qty: '1',
+          unitPrice: '80',
+          modifiers: [{ action: 'add', itemId: 'item-drink', qty: 1 }],
+        },
+      ],
+      [],
+      [
+        { finProductId: 'fp-procedure', itemId: 'item-a', qtyPerUnit: '1' },
+        { finProductId: 'fp-procedure', itemId: 'item-b', qtyPerUnit: '2' },
+      ],
+      [],
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-mod' });
+
+    await postTicketStock(ctx(db), 'ticket-mod', actor);
+
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
+    expect(call.lines).toEqual([
+      { itemId: 'item-drink', qty: 1 },
+      { itemId: 'item-a', qty: 1, qtyConsumption: 1 },
+      { itemId: 'item-b', qty: 2, qtyConsumption: 2 },
+    ]);
   });
 
   it('a self-mapping recipe acts as a qty multiplier on the bridge item', async () => {
@@ -350,8 +411,8 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-r2', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
-    expect(call.lines).toEqual([{ itemId: 'item-h', qty: 20 }]); // 2 × 10, not 2
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
+    expect(call.lines).toEqual([{ itemId: 'item-h', qty: 20, qtyConsumption: 20 }]); // 20 mL; stock service converts using vial capacity
   });
 
   it('a sold COMPOSITE consumes its leaves, not itself (Slice 1b explosion)', async () => {
@@ -380,8 +441,8 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-x1', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
-    expect(call.lines).toEqual([{ itemId: 'item-potato', qty: 6 }]);
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
+    expect(call.lines).toEqual([{ itemId: 'item-potato', qty: 6, qtyConsumption: 6 }]);
     // the composite and the intermediate sub-recipe are never issued
     expect(call.lines.some((l) => l.itemId === 'item-plate' || l.itemId === 'item-mash')).toBe(false);
   });

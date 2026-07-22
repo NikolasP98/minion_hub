@@ -6,6 +6,7 @@
 -- mint a new item for every combination.
 --
 -- Shape: [{ "action": "exclude" | "add", "itemId": "<uuid>", "qty": <number> }]
+-- `add.qty` is expressed in the added item's stock UOM per sold line unit.
 --   exclude — prune that item wherever it appears in this line's expansion
 --             (an ingredient can sit several levels down, e.g. salt inside the
 --             mash inside the plate)

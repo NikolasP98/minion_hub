@@ -109,6 +109,7 @@ function matchSayphaCaja(norm: string): string | null {
 interface ConsumptionMatch {
   itemName: string;
   qty: number;
+  note?: string;
 }
 function matchConsumption(finProductName: string): ConsumptionMatch | null {
   const n = normalize(finProductName);
@@ -118,7 +119,9 @@ function matchConsumption(finProductName: string): ConsumptionMatch | null {
   if (saypha) return { itemName: saypha, qty: 1 };
   if (n.includes('toxina') || n.includes('botox')) return { itemName: 'Toxina Botulinica (units)', qty: 30 };
   if (n.includes('nctf')) return { itemName: 'NCTF', qty: 1 };
-  if (n.includes('hialuronidasa')) return { itemName: 'Hialuronidasa', qty: 10 };
+  if (n.includes('hialuronidasa')) {
+    return { itemName: 'Hialuronidasa', qty: 10, note: 'confirmed: 10 mL/procedure; 15 mL/vial' };
+  }
   return null;
 }
 
@@ -160,6 +163,7 @@ async function main() {
     const max = lvl?.max ?? null;
     const reorderQty = min != null && max != null && max > min ? max - min : null;
     const fin = matchFinProduct(c.name);
+    const isHialuronidasa = c.src_id === '1262' && normalize(c.name) === 'hialuronidasa';
     // ponytail: `||` (not `??`) on purpose — 0 means "no priced data", fall through.
     const rate = (lvl?.avg_cost || c.avg_cost || c.cost_price || 0) as number;
     return {
@@ -168,6 +172,8 @@ async function main() {
         code: c.src_id,
         name: c.name,
         uom: 'Unidad',
+        consumptionUom: isHialuronidasa ? 'mL' : null,
+        unitsPerStockUom: isHialuronidasa ? '15' : null,
         itemGroup: c.family || null,
         reorderLevel: min != null ? String(min) : null,
         reorderQty: reorderQty != null ? String(reorderQty) : null,
@@ -378,9 +384,10 @@ async function main() {
       if (!match) continue;
       const item = itemByName.get(match.itemName);
       if (!item) continue;
+      const note = match.note ?? 'seed:heuristic';
       await tx.execute(sql`
         insert into stk_consumption (org_id, fin_product_id, item_id, qty_per_unit, note)
-        values (${orgId}, ${p.id}, ${item.id}, ${match.qty}, 'seed:heuristic')
+        values (${orgId}, ${p.id}, ${item.id}, ${match.qty}, ${note})
         on conflict (org_id, fin_product_id, item_id) do update set qty_per_unit = excluded.qty_per_unit, note = excluded.note, updated_at = now()
       `);
       consumptionSeeded.push({ finProduct: p.name, item: match.itemName, qty: match.qty });

@@ -29,7 +29,7 @@ import {
   listAllComponentEdges,
   type CreateIssueFromInvoiceLine,
 } from './stock.service';
-import { edgesByParent, explodeLineWithModifiers, type ComponentEdge, type LineModifier } from './stock.logic';
+import { edgesByParent, explodeIssueRoots, round4, type ComponentEdge, type IssueRoot, type LineModifier } from './stock.logic';
 import { stkItems, stkConsumption } from '$server/db/pg-schema/stock';
 import { finProducts } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
@@ -351,24 +351,37 @@ async function resolveIssueLines(ctx: CoreCtx, lines: PosTicketLine[]): Promise<
   // Resolve AND expand per line, not in two phases: modifiers (#9) are a
   // property of the LINE, so an aggregate-then-expand pass would have already
   // merged away the identity they attach to.
-  const qtyByItem = new Map<string, number>();
+  const stockQtyByItem = new Map<string, number>();
+  const consumptionQtyByItem = new Map<string, number>();
+  const accumulate = (target: Map<string, number>, additions: Map<string, number>) => {
+    for (const [itemId, qty] of additions) target.set(itemId, (target.get(itemId) ?? 0) + qty);
+  };
   for (const l of lines) {
     if (l.bookingId || !l.finProductId) continue; // booking-owned or unmapped → issues nothing
     const qty = Number(l.qty);
     const mappings = consumptionByFinProductId.get(l.finProductId);
     const bridgeItemId = itemByFinProductId.get(l.finProductId);
     // Recipe outranks the 1:1 bridge (see PRECEDENCE above).
-    const roots = mappings?.length
-      ? mappings.map((mp) => ({ itemId: mp.itemId, q: qty * mp.qtyPerUnit }))
+    const roots: IssueRoot[] = mappings?.length
+      ? mappings.map((mp) => ({ itemId: mp.itemId, qty: qty * mp.qtyPerUnit, unitKind: 'consumption' }))
       : bridgeItemId
-        ? [{ itemId: bridgeItemId, q: qty }]
+        ? [{ itemId: bridgeItemId, qty, unitKind: 'stock' }]
         : [];
     const mods = lineModifiersOf(l);
-    for (const r of roots) {
-      explodeLineWithModifiers(r.itemId, r.q, byParent, isStockItem, mods, qtyByItem);
-    }
+    const exploded = explodeIssueRoots(roots, qty, byParent, isStockItem, mods);
+    accumulate(stockQtyByItem, exploded.stockQtyByItem);
+    accumulate(consumptionQtyByItem, exploded.consumptionQtyByItem);
   }
-  return [...qtyByItem].map(([itemId, qty]) => ({ itemId, qty: round2(qty) }));
+  return [
+    ...[...stockQtyByItem].map(([itemId, qty]) => ({ itemId, qty: round4(qty) })),
+    ...[...consumptionQtyByItem].map(([itemId, qtyConsumption]) => ({
+      itemId,
+      // Required compatibility field. The stock service ignores it whenever
+      // qtyConsumption is present and converts authoritatively server-side.
+      qty: round4(qtyConsumption),
+      qtyConsumption: round4(qtyConsumption),
+    })),
+  ];
 }
 
 /** Per-line customer choices, tolerant of legacy rows and hand-written JSON. */

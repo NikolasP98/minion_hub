@@ -10,6 +10,7 @@ import {
   rollupItemCost,
   explodeToStockLeaves,
   explodeLineWithModifiers,
+  explodeIssueRoots,
   edgesByParent,
   type ComponentEdge,
   replayBins,
@@ -464,5 +465,48 @@ describe('explodeLineWithModifiers — order-line configuration', () => {
     explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'exclude', itemId: 'salt' }]);
     const clean = explodeLineWithModifiers('plate', 1, graph, allStock, []);
     expect(clean.get('salt')).toBe(2);
+  });
+});
+
+describe('explodeIssueRoots — POS quantity domains', () => {
+  const allStock = () => true;
+
+  it('keeps a direct bridge leaf in stock UOM', () => {
+    const out = explodeIssueRoots([{ itemId: 'vial', qty: 2, unitKind: 'stock' }], 2, new Map(), allStock);
+    expect([...out.stockQtyByItem]).toEqual([['vial', 2]]);
+    expect(out.consumptionQtyByItem.size).toBe(0);
+  });
+
+  it('keeps mapped recipe quantities in consumption UOM', () => {
+    const out = explodeIssueRoots([{ itemId: 'hialuronidasa', qty: 10, unitKind: 'consumption' }], 1, new Map(), allStock);
+    expect(out.stockQtyByItem.size).toBe(0);
+    expect([...out.consumptionQtyByItem]).toEqual([['hialuronidasa', 10]]);
+  });
+
+  it('switches a composed bridge to child consumption UOM', () => {
+    const graph = edgesByParent([e('plate', 'serum', 5)]);
+    const out = explodeIssueRoots([{ itemId: 'plate', qty: 2, unitKind: 'stock' }], 2, graph, allStock);
+    expect(out.stockQtyByItem.size).toBe(0);
+    expect([...out.consumptionQtyByItem]).toEqual([['serum', 10]]);
+  });
+
+  it('applies an addition once per sold line, not once per recipe root', () => {
+    const roots = [
+      { itemId: 'ingredient-a', qty: 1, unitKind: 'consumption' as const },
+      { itemId: 'ingredient-b', qty: 2, unitKind: 'consumption' as const },
+    ];
+    const out = explodeIssueRoots(roots, 1, new Map(), allStock, [{ action: 'add', itemId: 'drink', qty: 1 }]);
+    expect([...out.consumptionQtyByItem]).toEqual([
+      ['ingredient-a', 1],
+      ['ingredient-b', 2],
+    ]);
+    expect([...out.stockQtyByItem]).toEqual([['drink', 1]]);
+  });
+
+  it('switches an added composite from parent stock UOM to child consumption UOM', () => {
+    const graph = edgesByParent([e('optional-kit', 'serum', 5)]);
+    const out = explodeIssueRoots([], 2, graph, allStock, [{ action: 'add', itemId: 'optional-kit', qty: 1 }]);
+    expect(out.stockQtyByItem.size).toBe(0);
+    expect([...out.consumptionQtyByItem]).toEqual([['serum', 10]]);
   });
 });
