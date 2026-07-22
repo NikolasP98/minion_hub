@@ -19,6 +19,10 @@ export const WHATSAPP_FOCUSED_BRAIN_NAME = 'WhatsApp Conversations';
 const DEFAULT_CONVERSATION_BATCH = 50;
 const DEFAULT_CHUNK_MAX_CHARS = 6000;
 const EMBEDDING_BATCH_SIZE = 64;
+const EMBEDDING_BATCH_CONCURRENCY = Math.min(
+  8,
+  Math.max(1, Number(process.env.BRAIN_EMBEDDING_BATCH_CONCURRENCY) || 4),
+);
 
 export type BrainKind = 'master' | 'focused';
 
@@ -792,10 +796,18 @@ async function embedChangedChunks(
   );
   const out = new Map<string, number[]>();
   if (changed.length === 0 || !embeddingsEnabled()) return out;
+  const batches: Array<typeof changed> = [];
   for (let i = 0; i < changed.length; i += EMBEDDING_BATCH_SIZE) {
-    const batch = changed.slice(i, i + EMBEDDING_BATCH_SIZE);
-    const vectors = await embedTexts(batch.map((item) => item.text));
-    batch.forEach((item, index) => out.set(item.key, vectors[index]));
+    batches.push(changed.slice(i, i + EMBEDDING_BATCH_SIZE));
+  }
+  for (let i = 0; i < batches.length; i += EMBEDDING_BATCH_CONCURRENCY) {
+    const group = batches.slice(i, i + EMBEDDING_BATCH_CONCURRENCY);
+    const results = await Promise.all(
+      group.map((batch) => embedTexts(batch.map((item) => item.text))),
+    );
+    group.forEach((batch, groupIndex) => {
+      batch.forEach((item, index) => out.set(item.key, results[groupIndex][index]));
+    });
   }
   return out;
 }

@@ -16,6 +16,10 @@ export const BUSINESS_CONNECTOR = 'hub-business';
 const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_CHUNK_MAX_CHARS = 6000;
 const EMBEDDING_BATCH_SIZE = 64;
+const EMBEDDING_BATCH_CONCURRENCY = Math.min(
+  8,
+  Math.max(1, Number(process.env.BRAIN_EMBEDDING_BATCH_CONCURRENCY) || 4),
+);
 
 export type BusinessKnowledgeDomainKey =
   | 'stock'
@@ -1491,7 +1495,13 @@ export function decodeBusinessKnowledgeCursor(
     >;
     if (typeof parsed.domain !== 'string' || !Number.isInteger(parsed.tableIndex)) return null;
     if (parsed.lastId !== null && typeof parsed.lastId !== 'string') return null;
-    if (!BUSINESS_KNOWLEDGE_DOMAINS.some((domain) => domain.key === parsed.domain)) return null;
+    const domain = BUSINESS_KNOWLEDGE_DOMAINS.find((candidate) => candidate.key === parsed.domain);
+    if (
+      !domain ||
+      (parsed.tableIndex as number) < 0 ||
+      (parsed.tableIndex as number) >= domain.tables.length
+    )
+      return null;
     return parsed as unknown as BusinessKnowledgeCursor;
   } catch {
     return null;
@@ -1934,10 +1944,18 @@ async function embedBusinessDocuments(
   );
   const vectors = new Map<string, number[]>();
   if (changed.length === 0 || !embeddingsEnabled()) return vectors;
+  const batches: Array<typeof changed> = [];
   for (let i = 0; i < changed.length; i += EMBEDDING_BATCH_SIZE) {
-    const batch = changed.slice(i, i + EMBEDDING_BATCH_SIZE);
-    const embedded = await embedTexts(batch.map((item) => item.text));
-    batch.forEach((item, index) => vectors.set(item.key, embedded[index]));
+    batches.push(changed.slice(i, i + EMBEDDING_BATCH_SIZE));
+  }
+  for (let i = 0; i < batches.length; i += EMBEDDING_BATCH_CONCURRENCY) {
+    const group = batches.slice(i, i + EMBEDDING_BATCH_CONCURRENCY);
+    const results = await Promise.all(
+      group.map((batch) => embedTexts(batch.map((item) => item.text))),
+    );
+    group.forEach((batch, groupIndex) => {
+      batch.forEach((item, index) => vectors.set(item.key, results[groupIndex][index]));
+    });
   }
   return vectors;
 }

@@ -13,8 +13,14 @@ import { env } from '$env/dynamic/private';
  * api.openai.com — routing through OpenRouter avoids that.
  */
 export const EMBEDDING_DIMENSIONS = 1536;
+const EMBEDDING_MAX_ATTEMPTS = 3;
+const EMBEDDING_REQUEST_TIMEOUT_MS = Math.min(
+  120_000,
+  Math.max(5_000, Number(process.env.BRAIN_EMBEDDING_REQUEST_TIMEOUT_MS) || 45_000),
+);
 
 type EmbedProvider = { url: string; key: string; model: string };
+type EmbeddingResponseItem = { index: number; embedding: number[] };
 
 function resolveEmbedProvider(): EmbedProvider | null {
   if (env.OPENROUTER_API_KEY) {
@@ -52,26 +58,75 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
     throw new Error('No embeddings provider configured (set OPENROUTER_API_KEY or OPENAI_API_KEY)');
   }
 
-  const res = await fetch(provider.url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${provider.key}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: provider.model,
-      input: texts.map((t) => t.slice(0, 8000)),
-    }),
-  });
+  for (let attempt = 1; attempt <= EMBEDDING_MAX_ATTEMPTS; attempt += 1) {
+    let res: Response;
+    try {
+      res = await fetch(provider.url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${provider.key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          input: texts.map((t) => t.slice(0, 8000)),
+        }),
+        signal: AbortSignal.timeout(EMBEDDING_REQUEST_TIMEOUT_MS),
+      });
+    } catch (cause) {
+      if (attempt >= EMBEDDING_MAX_ATTEMPTS) throw cause;
+      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
+      continue;
+    }
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`Embeddings failed (${res.status}): ${detail.slice(0, 200)}`);
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      const failure = new Error(`Embeddings failed (${res.status}): ${detail.slice(0, 200)}`);
+      const transient = res.status === 429 || res.status >= 500;
+      if (!transient || attempt >= EMBEDDING_MAX_ATTEMPTS) throw failure;
+      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
+      continue;
+    }
+
+    try {
+      const json = (await res.json()) as { data?: unknown };
+      if (!Array.isArray(json.data) || json.data.length !== texts.length) {
+        throw new Error(
+          `Embeddings returned ${Array.isArray(json.data) ? json.data.length : 0} vectors for ${texts.length} inputs`,
+        );
+      }
+      const ordered = new Array<number[] | undefined>(texts.length);
+      for (const candidate of json.data as EmbeddingResponseItem[]) {
+        if (
+          !candidate ||
+          !Number.isInteger(candidate.index) ||
+          candidate.index < 0 ||
+          candidate.index >= texts.length ||
+          ordered[candidate.index]
+        ) {
+          throw new Error('Embeddings returned invalid or duplicate vector indices');
+        }
+        if (
+          !Array.isArray(candidate.embedding) ||
+          candidate.embedding.length !== EMBEDDING_DIMENSIONS ||
+          !candidate.embedding.every(Number.isFinite)
+        ) {
+          throw new Error(
+            `Embeddings returned an invalid ${EMBEDDING_DIMENSIONS}-dimension vector`,
+          );
+        }
+        ordered[candidate.index] = candidate.embedding;
+      }
+      if (ordered.some((embedding) => !embedding)) {
+        throw new Error('Embeddings response omitted one or more vector indices');
+      }
+      return ordered as number[][];
+    } catch (cause) {
+      if (attempt >= EMBEDDING_MAX_ATTEMPTS) throw cause;
+      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
+    }
   }
-
-  const json = (await res.json()) as { data: { index: number; embedding: number[] }[] };
-  // Order by `index` defensively — providers return in order but don't rely on it.
-  return json.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+  throw new Error('Embeddings failed after retries');
 }
 
 /** Serialize a vector to the pgvector text literal form: `[0.1,0.2,...]`. */

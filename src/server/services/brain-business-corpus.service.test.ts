@@ -214,6 +214,16 @@ describe('business knowledge cursors', () => {
       'base64url',
     );
     expect(decodeBusinessKnowledgeCursor(invalid)).toBeNull();
+    expect(
+      decodeBusinessKnowledgeCursor(
+        encodeBusinessKnowledgeCursor({ domain: 'crm', tableIndex: -1, lastId: null }),
+      ),
+    ).toBeNull();
+    expect(
+      decodeBusinessKnowledgeCursor(
+        encodeBusinessKnowledgeCursor({ domain: 'crm', tableIndex: 99, lastId: null }),
+      ),
+    ).toBeNull();
   });
 
   it('continues within one table before advancing to the next table', () => {
