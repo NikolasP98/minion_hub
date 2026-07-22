@@ -16,6 +16,9 @@ export const BUSINESS_CONNECTOR = 'hub-business';
 const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_CHUNK_MAX_CHARS = 6000;
 const EMBEDDING_BATCH_SIZE = 64;
+const PERSIST_DOCUMENT_BATCH_SIZE = 100;
+const PERSIST_CHUNK_BATCH_SIZE = 64;
+const PERSIST_STALE_CHUNK_BATCH_SIZE = 500;
 const EMBEDDING_BATCH_CONCURRENCY = Math.min(
   8,
   Math.max(1, Number(process.env.BRAIN_EMBEDDING_BATCH_CONCURRENCY) || 4),
@@ -1372,7 +1375,7 @@ interface ExistingChunkRow {
   has_embedding: boolean;
 }
 
-interface PreparedBusinessDocument {
+export interface PreparedBusinessDocument {
   sourceId: string;
   documentId: string;
   document: NormalizedBusinessDocument;
@@ -1960,14 +1963,24 @@ async function embedBusinessDocuments(
   return vectors;
 }
 
-async function persistBusinessDocuments(
+function boundedBatches<T>(values: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    batches.push(values.slice(index, index + size));
+  }
+  return batches;
+}
+
+/** Persist one prepared page with bounded set-based writes. The page remains a
+ * single transaction, but query count scales by batch rather than by record. */
+export async function persistBusinessDocuments(
   ctx: CoreCtx,
   prepared: PreparedBusinessDocument[],
   vectors: Map<string, number[]>,
 ): Promise<number> {
   if (prepared.length === 0) return 0;
   return withOrgCore(ctx, async (tx) => {
-    let deletedChunks = 0;
+    const changedByIdentity = new Map<string, PreparedBusinessDocument>();
     for (const item of prepared) {
       if (
         !item.changedDocument &&
@@ -1975,21 +1988,49 @@ async function persistBusinessDocuments(
         item.staleChunkKeys.length === 0
       )
         continue;
-      const document = item.document;
+      // PostgreSQL rejects one multi-row ON CONFLICT statement that targets the
+      // same row twice. Source queries are unique today; this keeps a future
+      // imperfect definition deterministic and matches the old loop's last win.
+      changedByIdentity.set(`${item.sourceId}\u0000${item.document.externalId}`, item);
+    }
+    const changedItems = [...changedByIdentity.values()];
+    const documentRows = changedItems.map((item) => {
       const allChangedEmbedded = [...item.changedChunkKeys].every((key) =>
         vectors.has(`${item.documentId}\u0000${key}`),
       );
       const status = item.changedChunkKeys.size > 0 && !allChangedEmbedded ? 'pending' : 'ready';
+      return { item, status };
+    });
+    const chunkRows = changedItems.flatMap((item) =>
+      item.document.chunks
+        .filter((chunk) => item.changedChunkKeys.has(chunk.chunkKey))
+        .map((chunk) => ({
+          item,
+          chunk,
+          vector: vectors.get(`${item.documentId}\u0000${chunk.chunkKey}`),
+        })),
+    );
+    const staleRows = changedItems.flatMap((item) =>
+      item.staleChunkKeys.map((chunkKey) => ({ documentId: item.documentId, chunkKey })),
+    );
+
+    for (const batch of boundedBatches(documentRows, PERSIST_DOCUMENT_BATCH_SIZE)) {
       await tx.execute(sql`
         insert into knowledge_documents
           (id, org_id, source_id, external_id, title, raw_text, normalized_text,
            content_hash, source_revision, occurred_at, source_updated_at,
            ingested_at, status, metadata, updated_at)
-        values (${item.documentId}::uuid, current_setting('app.current_org_id', true), ${item.sourceId}::uuid,
-          ${document.externalId}, ${document.title}, ${document.rawText}, ${document.normalizedText},
-          ${document.contentHash}, ${document.sourceRevision}, ${document.occurredAt.toISOString()}::timestamptz,
-          ${document.sourceUpdatedAt.toISOString()}::timestamptz, now(), ${status},
-          ${JSON.stringify(document.metadata)}::jsonb, now())
+        values ${sql.join(
+          batch.map(({ item, status }) => {
+            const document = item.document;
+            return sql`(${item.documentId}::uuid, current_setting('app.current_org_id', true), ${item.sourceId}::uuid,
+              ${document.externalId}, ${document.title}, ${document.rawText}, ${document.normalizedText},
+              ${document.contentHash}, ${document.sourceRevision}, ${document.occurredAt.toISOString()}::timestamptz,
+              ${document.sourceUpdatedAt.toISOString()}::timestamptz, now(), ${status},
+              ${JSON.stringify(document.metadata)}::jsonb, now())`;
+          }),
+          sql`, `,
+        )}
         on conflict (org_id, source_id, external_id) do update set
           title = excluded.title, raw_text = excluded.raw_text,
           normalized_text = excluded.normalized_text, content_hash = excluded.content_hash,
@@ -1997,18 +2038,23 @@ async function persistBusinessDocuments(
           source_updated_at = excluded.source_updated_at, ingested_at = excluded.ingested_at,
           status = excluded.status, metadata = excluded.metadata, updated_at = excluded.updated_at
       `);
-      for (const chunk of document.chunks) {
-        if (!item.changedChunkKeys.has(chunk.chunkKey)) continue;
-        const vector = vectors.get(`${item.documentId}\u0000${chunk.chunkKey}`);
-        const vectorSql = vector ? sql`${toVectorLiteral(vector)}::vector` : sql`null`;
-        await tx.execute(sql`
+    }
+
+    for (const batch of boundedBatches(chunkRows, PERSIST_CHUNK_BATCH_SIZE)) {
+      await tx.execute(sql`
           insert into knowledge_chunks
             (org_id, source_id, document_id, chunk_key, kind, seq, chunk_text,
              context_prefix, content_hash, embedding, embedding_model, occurred_at, metadata, updated_at)
-          values (current_setting('app.current_org_id', true), ${item.sourceId}::uuid, ${item.documentId}::uuid,
-            ${chunk.chunkKey}, ${chunk.kind}, ${chunk.seq}, ${chunk.chunkText}, ${chunk.contextPrefix},
-            ${chunk.contentHash}, ${vectorSql}, ${vector ? KNOWLEDGE_EMBEDDING_MODEL : null},
-            ${chunk.occurredAt.toISOString()}::timestamptz, ${JSON.stringify(chunk.metadata)}::jsonb, now())
+          values ${sql.join(
+            batch.map(({ item, chunk, vector }) => {
+              const vectorSql = vector ? sql`${toVectorLiteral(vector)}::vector` : sql`null`;
+              return sql`(current_setting('app.current_org_id', true), ${item.sourceId}::uuid, ${item.documentId}::uuid,
+                ${chunk.chunkKey}, ${chunk.kind}, ${chunk.seq}, ${chunk.chunkText}, ${chunk.contextPrefix},
+                ${chunk.contentHash}, ${vectorSql}, ${vector ? KNOWLEDGE_EMBEDDING_MODEL : null},
+                ${chunk.occurredAt.toISOString()}::timestamptz, ${JSON.stringify(chunk.metadata)}::jsonb, now())`;
+            }),
+            sql`, `,
+          )}
           on conflict (org_id, document_id, chunk_key) do update set
             source_id = excluded.source_id, kind = excluded.kind, seq = excluded.seq,
             chunk_text = excluded.chunk_text, context_prefix = excluded.context_prefix,
@@ -2018,18 +2064,23 @@ async function persistBusinessDocuments(
               then coalesce(excluded.embedding_model, knowledge_chunks.embedding_model) else excluded.embedding_model end,
             content_hash = excluded.content_hash, occurred_at = excluded.occurred_at,
             metadata = excluded.metadata, updated_at = excluded.updated_at
-        `);
-      }
-      if (item.staleChunkKeys.length > 0) {
-        const deleted = (await tx.execute(sql`
+      `);
+    }
+
+    let deletedChunks = 0;
+    for (const batch of boundedBatches(staleRows, PERSIST_STALE_CHUNK_BATCH_SIZE)) {
+      const deleted = (await tx.execute(sql`
           delete from knowledge_chunks
-          where org_id = current_setting('app.current_org_id', true)
-            and document_id = ${item.documentId}::uuid
-            and chunk_key = any(${textArray(item.staleChunkKeys)})
+          using (values ${sql.join(
+            batch.map(({ documentId, chunkKey }) => sql`(${documentId}::uuid, ${chunkKey}::text)`),
+            sql`, `,
+          )}) as stale(document_id, chunk_key)
+          where knowledge_chunks.org_id = current_setting('app.current_org_id', true)
+            and knowledge_chunks.document_id = stale.document_id
+            and knowledge_chunks.chunk_key = stale.chunk_key
           returning id
-        `)) as unknown as Array<{ id: string }>;
-        deletedChunks += deleted.length;
-      }
+      `)) as unknown as Array<{ id: string }>;
+      deletedChunks += deleted.length;
     }
     return deletedChunks;
   });
