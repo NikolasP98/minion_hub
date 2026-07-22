@@ -41,6 +41,14 @@ function initialCursor(): BusinessReconcileCursor {
   };
 }
 
+function businessCompletion(failedDomains: number): AdvanceResult {
+  if (failedDomains <= 0) return { done: true };
+  return {
+    done: true,
+    error: `Business corpus reconciliation completed with ${failedDomains} failed domain${failedDomains === 1 ? '' : 's'}`,
+  };
+}
+
 function parseCursor(job: BgJob): BusinessReconcileCursor {
   if (!job.cursor) return initialCursor();
   const value = JSON.parse(job.cursor) as Partial<BusinessReconcileCursor>;
@@ -107,7 +115,7 @@ export async function advanceBusinessCorpusJob(job: BgJob): Promise<AdvanceResul
       failedDomains: cursor.failedDomains + 1,
     };
     return next.domainIndex >= BUSINESS_KNOWLEDGE_DOMAINS.length
-      ? { done: true }
+      ? businessCompletion(next.failedDomains)
       : { done: false, cursor: next };
   }
   const next: BusinessReconcileCursor = {
@@ -119,7 +127,7 @@ export async function advanceBusinessCorpusJob(job: BgJob): Promise<AdvanceResul
     failedDomains: cursor.failedDomains,
   };
   return next.domainIndex >= BUSINESS_KNOWLEDGE_DOMAINS.length
-    ? { done: true }
+    ? businessCompletion(next.failedDomains)
     : { done: false, cursor: next };
 }
 

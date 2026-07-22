@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canPromoteVerifiedEmptyWhatsAppSource,
   decodeWhatsAppCursor,
   encodeWhatsAppCursor,
   knowledgeContentHash,
@@ -143,5 +144,16 @@ describe('brain corpus idempotent persistence', () => {
         staleChunkKeys: ['raw:000001'],
       }),
     ).toBe(true);
+  });
+});
+
+describe('brain corpus verified-empty source health', () => {
+  it('promotes only idle discovery states and preserves real failure semantics', () => {
+    expect(canPromoteVerifiedEmptyWhatsAppSource('discovered')).toBe(true);
+    expect(canPromoteVerifiedEmptyWhatsAppSource('queued')).toBe(true);
+    expect(canPromoteVerifiedEmptyWhatsAppSource('processing')).toBe(false);
+    expect(canPromoteVerifiedEmptyWhatsAppSource('degraded')).toBe(false);
+    expect(canPromoteVerifiedEmptyWhatsAppSource('failed')).toBe(false);
+    expect(canPromoteVerifiedEmptyWhatsAppSource('ready')).toBe(false);
   });
 });

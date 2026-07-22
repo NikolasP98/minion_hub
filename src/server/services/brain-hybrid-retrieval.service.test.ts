@@ -34,6 +34,7 @@ import {
   fuzzyRetrievalConditions,
   fuzzySearchConfigSql,
   fuzzySearchStatus,
+  hnswIterativeScanConfigSql,
   hnswSearchConfigSql,
   neighborScopeConditions,
   rankHybridCandidates,
@@ -77,6 +78,12 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
 
     expect(HNSW_EF_SEARCH).toBe(200);
     expect(query.sql).toBe('set local hnsw.ef_search = 200');
+    expect(query.params).toEqual([]);
+  });
+
+  it('enables strict iterative scanning so policy filters do not starve ANN recall', () => {
+    const query = new PgDialect().sqlToQuery(hnswIterativeScanConfigSql());
+    expect(query.sql).toBe('set local hnsw.iterative_scan = strict_order');
     expect(query.params).toEqual([]);
   });
 
@@ -396,16 +403,11 @@ describe('brain hybrid retrieval — deterministic scoring', () => {
       chunkText: 'Customer discussed dessert delivery.',
       vectorScore: 0.8,
     });
-    const ranked = rankHybridCandidates(
-      [semantic, exact],
-      [{ ...exact, vectorScore: null }],
-      [],
-      {
-        limit: 10,
-        now: NOW,
-        query: 'krispy',
-      },
-    );
+    const ranked = rankHybridCandidates([semantic, exact], [{ ...exact, vectorScore: null }], [], {
+      limit: 10,
+      now: NOW,
+      query: 'krispy',
+    });
 
     expect(ranked[0].chunkId).toBe('exact');
     expect(ranked[0].match.eligibility).toBe('exact');

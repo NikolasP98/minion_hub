@@ -138,11 +138,7 @@ export interface BrainHybridSearchResult {
     filteredCandidates: number;
     queryPolicy: 'single-token-anchored' | 'hybrid-semantic';
     queryTokens: string[];
-    fuzzyStatus:
-      | 'searched'
-      | 'skipped_empty_query'
-      | 'skipped_multi_token'
-      | 'skipped_short_token';
+    fuzzyStatus: 'searched' | 'skipped_empty_query' | 'skipped_multi_token' | 'skipped_short_token';
     scoreSemantics: typeof SCORE_SEMANTICS | 'legacy cosine similarity; not a probability';
     emptyReason: 'empty_query' | 'no_canonical_candidates' | 'relevance_policy_filtered_all' | null;
     warnings: string[];
@@ -607,9 +603,7 @@ export function rankHybridCandidates(
         ? 0
         : (LEXICAL_WEIGHT * candidate.sourceWeight) / (HYBRID_RRF_K + lexicalRank);
     const rrfFuzzy =
-      fuzzyRank === null
-        ? 0
-        : (FUZZY_WEIGHT * candidate.sourceWeight) / (HYBRID_RRF_K + fuzzyRank);
+      fuzzyRank === null ? 0 : (FUZZY_WEIGHT * candidate.sourceWeight) / (HYBRID_RRF_K + fuzzyRank);
     const rrfTokenMatch =
       tokenMatchRank === null
         ? 0
@@ -641,8 +635,7 @@ export function rankHybridCandidates(
       b.fusedScore - a.fusedScore ||
       (a.tokenMatchRank ?? Number.MAX_SAFE_INTEGER) -
         (b.tokenMatchRank ?? Number.MAX_SAFE_INTEGER) ||
-      (a.fuzzyRank ?? Number.MAX_SAFE_INTEGER) -
-        (b.fuzzyRank ?? Number.MAX_SAFE_INTEGER) ||
+      (a.fuzzyRank ?? Number.MAX_SAFE_INTEGER) - (b.fuzzyRank ?? Number.MAX_SAFE_INTEGER) ||
       (a.vectorRank ?? Number.MAX_SAFE_INTEGER) - (b.vectorRank ?? Number.MAX_SAFE_INTEGER) ||
       (a.lexicalRank ?? Number.MAX_SAFE_INTEGER) - (b.lexicalRank ?? Number.MAX_SAFE_INTEGER) ||
       (b.occurredAt ?? '').localeCompare(a.occurredAt ?? '') ||
@@ -725,6 +718,12 @@ export function sourceAccessPredicate(
 /** Keep the ANN breadth scoped to the current RLS transaction/connection. */
 export function hnswSearchConfigSql(): SQL {
   return sql`set local hnsw.ef_search = ${sql.raw(String(HNSW_EF_SEARCH))}`;
+}
+
+/** pgvector 0.8+ continues scanning after post-ANN org/source/policy filters
+ * remove early candidates, preserving recall for small Focused Brains. */
+export function hnswIterativeScanConfigSql(): SQL {
+  return sql`set local hnsw.iterative_scan = strict_order`;
 }
 
 /** `%>` is the index-supported commutator of the query-to-text `<%` word
@@ -836,6 +835,7 @@ async function retrieveVector(
   const vectorScore = sql<number>`1 - (${vectorDistance})`;
   const rows = await withOrgCore(ctx, async (tx) => {
     await tx.execute(hnswSearchConfigSql());
+    await tx.execute(hnswIterativeScanConfigSql());
     return tx
       .select(candidateSelection(vectorScore))
       .from(knowledgeChunks)
@@ -951,14 +951,7 @@ async function retrieveFuzzy(
         ),
       )
       .where(
-        fuzzyRetrievalConditions(
-          ctx,
-          brainId,
-          options,
-          searchableModules,
-          fieldLevels,
-          queryToken,
-        ),
+        fuzzyRetrievalConditions(ctx, brainId, options, searchableModules, fieldLevels, queryToken),
       )
       .orderBy(sql`${fuzzyScore} desc`, knowledgeChunks.id)
       .limit(cap);

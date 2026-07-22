@@ -131,6 +131,7 @@
     "vercel-build": "([ -f .env ] || cp .env.example .env) && bun scripts/db-migrate.ts && bun run build",
     "db:migrate": "bun scripts/db-migrate.ts",
     "db:status": "bun scripts/db-status.ts",
+    "db:restore-brain-ann": "bun scripts/restore-brain-ann.ts",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { error } from '@sveltejs/kit';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql, type SQL } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   brainSources,
@@ -138,12 +138,19 @@ export interface BrainKnowledgeOverviewDTO {
   connectors: BrainConnectorStats[];
 }
 
+export interface BrainSourceMembershipResult {
+  sourceId: string;
+  member: boolean;
+  changed: boolean;
+}
+
 interface SourceAggregateRow {
   brain_id: string;
   source_id: string;
   name: string;
   connector: string;
   external_key: string;
+  source_config: unknown;
   status: string;
   sync_mode: string;
   cadence: string | null;
@@ -154,6 +161,37 @@ interface SourceAggregateRow {
   document_count: number | string;
   chunk_count: number | string;
   pending_count: number | string;
+}
+
+/** Mirror retrieval's fail-closed source classification for the Sources UI
+ * and membership mutation path. A Focused Brain reference never broadens the
+ * caller's underlying module/field access. */
+export function canPrincipalSearchKnowledgeSource(
+  configValue: unknown,
+  principal: AccessPrincipal,
+): boolean {
+  const config =
+    configValue && typeof configValue === 'object' && !Array.isArray(configValue)
+      ? (configValue as Record<string, unknown>)
+      : {};
+  const requiredModule =
+    typeof config.requiredModule === 'string' && config.requiredModule.trim()
+      ? config.requiredModule.trim()
+      : null;
+  const rawFieldLevel = config.requiredFieldLevel;
+  const parsedFieldLevel = Number(rawFieldLevel ?? 0);
+  const requiredFieldLevel =
+    rawFieldLevel === undefined ||
+    rawFieldLevel === null ||
+    rawFieldLevel === '' ||
+    (Number.isInteger(parsedFieldLevel) && parsedFieldLevel >= 0)
+      ? Math.max(0, parsedFieldLevel)
+      : Number.MAX_SAFE_INTEGER;
+  if (!requiredModule) return requiredFieldLevel === 0;
+  return (
+    (principal.searchableModules ?? []).includes(requiredModule) &&
+    (principal.fieldLevels?.[requiredModule] ?? 0) >= requiredFieldLevel
+  );
 }
 
 interface ExistingDocumentRow {
@@ -368,6 +406,19 @@ export function decodeWhatsAppCursor(cursor?: string | null): WhatsAppConversati
   }
 }
 
+/** One canonical eligibility predicate for discovery, reconciliation, reads,
+ * and verified-empty source promotion. Keeping this shared prevents source
+ * health from drifting away from the corpus population rules. */
+export function eligibleWhatsAppMessagePredicate(alias: string): SQL {
+  const message = sql.identifier(alias);
+  return sql`
+    nullif(trim(${message}.chat_id), '') is not null
+    and coalesce(${message}.is_group, false) = false
+    and ${message}.is_bot is not true
+    and nullif(trim(${message}.content), '') is not null
+  `;
+}
+
 export async function ensureMasterBrain(ctx: CoreCtx, createdBy?: string | null): Promise<Brain> {
   return withOrgCore(ctx, async (tx) => {
     await tx
@@ -397,22 +448,19 @@ export async function ensureMasterBrain(ctx: CoreCtx, createdBy?: string | null)
 export async function discoverWhatsAppSources(ctx: CoreCtx): Promise<KnowledgeSource[]> {
   return withOrgCore(ctx, async (tx) => {
     const accounts = (await tx.execute(sql`
-      select trim(account_id) as account_id,
+      select trim(message.account_id) as account_id,
         count(distinct (
-          chat_id,
-          to_char(coalesce(occurred_at, created_at) at time zone 'UTC', 'YYYY-MM')
+          message.chat_id,
+          to_char(coalesce(message.occurred_at, message.created_at) at time zone 'UTC', 'YYYY-MM')
         )) filter (
-          where nullif(trim(chat_id), '') is not null
-            and coalesce(is_group, false) = false
-            and is_bot is not true
-            and nullif(trim(content), '') is not null
+          where ${eligibleWhatsAppMessagePredicate('message')}
         )::int as conversation_count
-      from messages
-      where org_id = current_setting('app.current_org_id', true)
-        and channel = 'whatsapp'
-        and nullif(trim(account_id), '') is not null
-      group by trim(account_id)
-      order by trim(account_id)
+      from messages message
+      where message.org_id = current_setting('app.current_org_id', true)
+        and message.channel = 'whatsapp'
+        and nullif(trim(message.account_id), '') is not null
+      group by trim(message.account_id)
+      order by trim(message.account_id)
     `)) as unknown as Array<{ account_id: string; conversation_count: number }>;
     if (accounts.length === 0) return [];
 
@@ -537,6 +585,45 @@ export async function markWhatsAppSourceFailure(
   });
 }
 
+const VERIFIED_EMPTY_WHATSAPP_SOURCE_STATUSES = ['discovered', 'queued'] as const;
+
+/**
+ * A source with no eligible 1:1 messages is still a successfully reconciled
+ * source. Promote only idle discovery states after the full ledger scan has
+ * completed; never erase a real processing/degraded/failed state here.
+ */
+export function canPromoteVerifiedEmptyWhatsAppSource(status: string): boolean {
+  return (VERIFIED_EMPTY_WHATSAPP_SOURCE_STATUSES as readonly string[]).includes(status);
+}
+
+export async function markVerifiedEmptyWhatsAppSourcesReady(ctx: CoreCtx): Promise<number> {
+  return withOrgCore(ctx, async (tx) => {
+    const promoted = (await tx.execute(sql`
+      update knowledge_sources source
+      set status = 'ready', last_synced_at = now(), last_error = null, updated_at = now()
+      where source.org_id = current_setting('app.current_org_id', true)
+        and source.connector = ${WHATSAPP_CONNECTOR}
+        and source.status = any(${textArray([...VERIFIED_EMPTY_WHATSAPP_SOURCE_STATUSES])})
+        and coalesce((source.watermark->>'expectedDocuments')::int, 0) = 0
+        and not exists (
+          select 1 from knowledge_documents document
+          where document.org_id = source.org_id
+            and document.source_id = source.id
+            and document.status <> 'deleted'
+        )
+        and not exists (
+          select 1 from messages message
+          where message.org_id = source.org_id
+            and message.channel = 'whatsapp'
+            and trim(message.account_id) = source.external_key
+            and ${eligibleWhatsAppMessagePredicate('message')}
+        )
+      returning source.id
+    `)) as unknown as Array<{ id: string }>;
+    return promoted.length;
+  });
+}
+
 export async function ensureWhatsAppFocusedBrain(
   ctx: CoreCtx,
   sourceIds: string[],
@@ -596,10 +683,7 @@ async function scanWhatsAppKeys(
     where m.org_id = current_setting('app.current_org_id', true)
       and m.channel = 'whatsapp'
       and m.account_id = any(${textArray(accounts)})
-      and nullif(trim(m.chat_id), '') is not null
-      and coalesce(m.is_group, false) = false
-      and m.is_bot is not true
-      and nullif(trim(m.content), '') is not null
+      and ${eligibleWhatsAppMessagePredicate('m')}
       ${cursorFilter}
     group by m.account_id, m.chat_id
     order by m.account_id, m.chat_id
@@ -657,9 +741,7 @@ async function loadWhatsAppRows(
       from messages m
       where m.org_id = current_setting('app.current_org_id', true)
         and m.channel = 'whatsapp'
-        and coalesce(m.is_group, false) = false
-        and m.is_bot is not true
-        and nullif(trim(m.content), '') is not null
+        and ${eligibleWhatsAppMessagePredicate('m')}
         and (m.account_id, m.chat_id) in (${keyValues(keys)})
       order by m.account_id, m.chat_id,
         coalesce(nullif(m.message_id, ''), 'row:' || m.id::text),
@@ -1009,9 +1091,7 @@ export async function reconcileDeletedWhatsAppDocuments(
               coalesce(message.occurred_at, message.created_at) at time zone 'UTC',
               'YYYY-MM'
             ) = document.metadata->>'segmentMonth'
-            and coalesce(message.is_group, false) = false
-            and message.is_bot is not true
-            and nullif(trim(message.content), '') is not null
+            and ${eligibleWhatsAppMessagePredicate('message')}
           )
         )
       returning document.id::text
@@ -1048,9 +1128,11 @@ export async function backfillWhatsAppConversations(
   });
   const counts = await runPreparedBatch(ctx, preparedPage.prepared);
   const last = preparedPage.keys.at(-1) ?? null;
-  const reconciled = preparedPage.hasMore
-    ? { deletedDocuments: 0, deletedChunks: 0 }
-    : await reconcileDeletedWhatsAppDocuments(ctx);
+  let reconciled = { deletedDocuments: 0, deletedChunks: 0 };
+  if (!preparedPage.hasMore) {
+    reconciled = await reconcileDeletedWhatsAppDocuments(ctx);
+    await markVerifiedEmptyWhatsAppSourcesReady(ctx);
+  }
   return {
     ...counts,
     deletedChunks: counts.deletedChunks + reconciled.deletedChunks,
@@ -1150,7 +1232,8 @@ async function loadSourceAggregates(
     with requested(brain_id, include_all_sources) as (values ${values})
     select requested.brain_id::text,
       source.id::text as source_id, source.name, source.connector,
-      source.external_key, source.status, source.sync_mode, source.cadence,
+      source.external_key, source.config as source_config,
+      source.status, source.sync_mode, source.cadence,
       source.last_synced_at, source.last_error, membership.weight,
       (requested.include_all_sources or membership.source_id is not null) as member,
       coalesce(counts.document_count, 0)::int as document_count,
@@ -1238,7 +1321,9 @@ export async function listBrainsWithKnowledgeStats(
 ): Promise<BrainKnowledgeStatsDTO[]> {
   const { listBrains } = await import('./brains.service');
   const rows = await listBrains(ctx, principal);
-  const sourceRows = await loadSourceAggregates(ctx, rows);
+  const sourceRows = (await loadSourceAggregates(ctx, rows)).filter((row) =>
+    canPrincipalSearchKnowledgeSource(row.source_config, principal),
+  );
   return rows
     .map((brain) =>
       aggregateBrain(
@@ -1257,7 +1342,9 @@ export async function getBrainKnowledgeOverview(
   const { getBrain } = await import('./brains.service');
   const rawBrain = await getBrain(ctx, brainId, principal);
   if (!rawBrain) throw error(404, 'Brain not found');
-  const rows = await loadSourceAggregates(ctx, [rawBrain]);
+  const rows = (await loadSourceAggregates(ctx, [rawBrain])).filter((row) =>
+    canPrincipalSearchKnowledgeSource(row.source_config, principal),
+  );
   const brain = aggregateBrain(rawBrain, rows);
   const sources = rows.map((row): BrainKnowledgeSourceDTO => ({
     id: row.source_id,
@@ -1276,4 +1363,90 @@ export async function getBrainKnowledgeOverview(
     member: row.member,
   }));
   return { brain, stats: brain.stats, sources, connectors: brain.connectors };
+}
+
+/**
+ * Attach or detach one shared corpus source from a Focused Brain. Master Brain
+ * membership is implicit and therefore never mutable through this path.
+ *
+ * Both records are loaded inside the caller's forced-RLS org transaction. A
+ * guessed source id from another organization is indistinguishable from a
+ * missing source, and changing membership never mutates or re-embeds corpus
+ * documents/chunks.
+ */
+export async function setFocusedBrainSourceMembership(
+  ctx: CoreCtx,
+  brainId: string,
+  sourceId: string,
+  member: boolean,
+  principal: AccessPrincipal,
+  actor: { id: string | null; name: string | null },
+): Promise<BrainSourceMembershipResult> {
+  const { canAccessBrain } = await import('./brains.service');
+  if (!(await canAccessBrain(ctx, brainId, 'write', principal))) {
+    throw error(404, 'Brain or source not found');
+  }
+
+  const result = await withOrgCore(ctx, async (tx) => {
+    const [brain] = await tx
+      .select({ id: brains.id, kind: brains.kind })
+      .from(brains)
+      .where(and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!brain) throw error(404, 'Brain or source not found');
+    if (brain.kind === 'master') {
+      throw error(409, 'Master Brain sources are managed organization-wide');
+    }
+
+    const [source] = await tx
+      .select({ id: knowledgeSources.id, config: knowledgeSources.config })
+      .from(knowledgeSources)
+      .where(and(eq(knowledgeSources.id, sourceId), eq(knowledgeSources.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!source) throw error(404, 'Brain or source not found');
+    if (!canPrincipalSearchKnowledgeSource(source.config, principal)) {
+      throw error(404, 'Brain or source not found');
+    }
+
+    if (member) {
+      const inserted = await tx
+        .insert(brainSources)
+        .values({ brainId, orgId: ctx.tenantId, sourceId, weight: 1, config: {} })
+        .onConflictDoNothing()
+        .returning({ sourceId: brainSources.sourceId });
+      return { sourceId, member: true, changed: inserted.length > 0 };
+    }
+
+    const removed = await tx
+      .delete(brainSources)
+      .where(
+        and(
+          eq(brainSources.brainId, brainId),
+          eq(brainSources.sourceId, sourceId),
+          eq(brainSources.orgId, ctx.tenantId),
+        ),
+      )
+      .returning({ sourceId: brainSources.sourceId });
+    return { sourceId, member: false, changed: removed.length > 0 };
+  });
+
+  if (result.changed) {
+    const { recordAudit } = await import('./activity.service');
+    await recordAudit(ctx, {
+      refType: 'brain',
+      refId: brainId,
+      op: 'update',
+      changes: [
+        {
+          field: 'source_membership',
+          label: 'Knowledge source',
+          old: member ? null : sourceId,
+          new: member ? sourceId : null,
+        },
+      ],
+      actor,
+    });
+  }
+
+  return result;
 }

@@ -109,4 +109,74 @@ describe('business corpus job cursor', () => {
       },
     });
   });
+
+  it('finishes failed when an earlier isolated domain failed', async () => {
+    backfillBusinessKnowledgeDomain.mockResolvedValue({
+      processed: 3,
+      changedChunks: 0,
+      embeddedChunks: 0,
+      hasMore: false,
+      nextCursor: null,
+    });
+    let finalDomainIndex = 0;
+    while (businessDomainAt(finalDomainIndex + 1)) finalDomainIndex += 1;
+
+    const result = await advanceBusinessCorpusJob({
+      tenantId: 'org-1',
+      cursor: JSON.stringify({
+        domainIndex: finalDomainIndex,
+        domainCursor: null,
+        processed: 75,
+        changedChunks: 8,
+        embeddedChunks: 7,
+        failedDomains: 2,
+      }),
+    } as never);
+
+    expect(result).toEqual({
+      done: true,
+      error: 'Business corpus reconciliation completed with 2 failed domains',
+    });
+  });
+
+  it('finishes cleanly when every domain completed without an isolated failure', async () => {
+    backfillBusinessKnowledgeDomain.mockResolvedValue({
+      processed: 0,
+      changedChunks: 0,
+      embeddedChunks: 0,
+      hasMore: false,
+      nextCursor: null,
+    });
+    let finalDomainIndex = 0;
+    while (businessDomainAt(finalDomainIndex + 1)) finalDomainIndex += 1;
+
+    await expect(
+      advanceBusinessCorpusJob({
+        tenantId: 'org-1',
+        cursor: JSON.stringify({ domainIndex: finalDomainIndex, failedDomains: 0 }),
+      } as never),
+    ).resolves.toEqual({ done: true });
+  });
+
+  it('finishes failed when the final domain itself is isolated', async () => {
+    const failure = new Error('final domain failed');
+    backfillBusinessKnowledgeDomain.mockRejectedValueOnce(failure);
+    let finalDomainIndex = 0;
+    while (businessDomainAt(finalDomainIndex + 1)) finalDomainIndex += 1;
+
+    const result = await advanceBusinessCorpusJob({
+      tenantId: 'org-1',
+      cursor: JSON.stringify({ domainIndex: finalDomainIndex, failedDomains: 0 }),
+    } as never);
+
+    expect(result).toEqual({
+      done: true,
+      error: 'Business corpus reconciliation completed with 1 failed domain',
+    });
+    expect(recordBusinessKnowledgeDomainError).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'org-1' }),
+      businessDomainAt(finalDomainIndex),
+      failure,
+    );
+  });
 });
