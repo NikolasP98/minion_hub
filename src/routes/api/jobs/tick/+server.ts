@@ -5,6 +5,7 @@ import { runTick } from '$server/services/bg-runtime';
 // Importing the service registers its bg-runtime handler (side effect).
 import '$server/services/groupchat.service';
 import '$server/services/brains.service';
+import '$server/services/brain-corpus-jobs.service';
 
 /**
  * GET /api/jobs/tick — cron entrypoint for the GLOBAL background-job runtime.

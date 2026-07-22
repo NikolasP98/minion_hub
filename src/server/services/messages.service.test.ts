@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   MESSAGE_CONFLICT_TARGET,
+  acceptedIngestRows,
   toInsertValues,
   toTimestampMs,
   type IngestRow,
@@ -48,6 +49,11 @@ describe('toInsertValues', () => {
 describe('message ingest idempotency', () => {
   it('scopes client IDs to the organization', () => {
     expect(MESSAGE_CONFLICT_TARGET.map((column) => column.name)).toEqual(['org_id', 'client_id']);
+  });
+
+  it('queues brain work only for rows that survived poison-row fallback', () => {
+    const rejected = { ...base, clientId: 'bad', chatId: 'bad-chat' };
+    expect(acceptedIngestRows([base, rejected], ['c1'])).toEqual([base]);
   });
 });
 

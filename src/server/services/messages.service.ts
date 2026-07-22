@@ -1,6 +1,7 @@
 import { and, eq, gte, lte, desc, sql, type SQL } from 'drizzle-orm';
 import { messages } from '@minion-stack/db/pg';
 import { withOrg } from '$server/db/pg-ledger-client';
+import { enqueueWhatsAppBrainChanges } from './brain-corpus-jobs.service';
 
 export interface IngestRow {
   clientId: string;
@@ -101,6 +102,26 @@ const ON_CONFLICT = {
   },
 } as const;
 
+export function acceptedIngestRows(rows: IngestRow[], acceptedClientIds: string[]): IngestRow[] {
+  const accepted = new Set(acceptedClientIds);
+  return rows.filter((row) => accepted.has(row.clientId));
+}
+
+async function enqueueBrainChangesAfterCommit(
+  orgId: string,
+  rows: IngestRow[],
+  acceptedClientIds: string[],
+): Promise<void> {
+  try {
+    await enqueueWhatsAppBrainChanges(orgId, acceptedIngestRows(rows, acceptedClientIds));
+  } catch (cause) {
+    // The ledger commit already succeeded. Never return a false ingest failure
+    // to the gateway (which would replay the batch); durable reconciliation is
+    // the repair path if queue insertion is temporarily unavailable.
+    console.error('[brain-corpus] post-commit enqueue failed; reconcile will repair', cause);
+  }
+}
+
 /**
  * Insert ingested rows; idempotent on client_id.
  *
@@ -122,10 +143,12 @@ export async function insertMessagesDetailed(
     await withOrg(orgId, async (tx) => {
       await tx.insert(messages).values(values).onConflictDoUpdate(ON_CONFLICT);
     });
-    return {
+    const result = {
       accepted: values.length,
       acceptedClientIds: values.map((value) => value.clientId),
     };
+    await enqueueBrainChangesAfterCommit(orgId, rows, result.acceptedClientIds);
+    return result;
   } catch (bulkErr) {
     const acceptedClientIds: string[] = [];
     await withOrg(orgId, async (tx) => {
@@ -147,6 +170,7 @@ export async function insertMessagesDetailed(
     console.warn(
       `[ingest] bulk insert failed (${String(bulkErr)}); per-row fallback accepted ${acceptedClientIds.length}/${values.length}`,
     );
+    await enqueueBrainChangesAfterCommit(orgId, rows, acceptedClientIds);
     return { accepted: acceptedClientIds.length, acceptedClientIds };
   }
 }

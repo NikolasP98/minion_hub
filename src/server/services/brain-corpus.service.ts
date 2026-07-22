@@ -411,6 +411,69 @@ export async function discoverWhatsAppSources(ctx: CoreCtx): Promise<KnowledgeSo
   });
 }
 
+/** Lightweight event-path ensure: no corpus-wide ledger aggregate. */
+export async function ensureWhatsAppSource(
+  ctx: CoreCtx,
+  accountId: string,
+): Promise<KnowledgeSource> {
+  const normalizedAccountId = accountId.trim();
+  if (!normalizedAccountId) throw new Error('WhatsApp source requires a non-empty accountId');
+  const source = await withOrgCore(ctx, async (tx) => {
+    await tx
+      .insert(knowledgeSources)
+      .values({
+        orgId: ctx.tenantId,
+        connector: WHATSAPP_CONNECTOR,
+        externalKey: normalizedAccountId,
+        name: `WhatsApp ${normalizedAccountId}`,
+        config: { channel: 'whatsapp', accountId: normalizedAccountId },
+        status: 'processing',
+        syncMode: 'incremental',
+        cadence: 'event+reconcile',
+      })
+      .onConflictDoUpdate({
+        target: [knowledgeSources.orgId, knowledgeSources.connector, knowledgeSources.externalKey],
+        set: { status: 'processing', lastError: null, updatedAt: new Date() },
+      });
+    const [source] = await tx
+      .select()
+      .from(knowledgeSources)
+      .where(
+        and(
+          eq(knowledgeSources.orgId, ctx.tenantId),
+          eq(knowledgeSources.connector, WHATSAPP_CONNECTOR),
+          eq(knowledgeSources.externalKey, normalizedAccountId),
+        ),
+      )
+      .limit(1);
+    if (!source) throw new Error(`failed to ensure WhatsApp source ${normalizedAccountId}`);
+    return source;
+  });
+  // Master membership is implicit; the standard WhatsApp focused scope needs
+  // an explicit reference when an account first appears after bootstrap.
+  await ensureMasterBrain(ctx);
+  await ensureWhatsAppFocusedBrain(ctx, [source.id]);
+  return source;
+}
+
+export async function markWhatsAppSourceFailure(
+  ctx: CoreCtx,
+  accountId: string | null,
+  cause: unknown,
+): Promise<void> {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  await withOrgCore(ctx, (tx) => {
+    const accountFilter = accountId ? sql`and external_key = ${accountId}` : sql``;
+    return tx.execute(sql`
+      update knowledge_sources
+      set status = 'failed', last_error = ${message.slice(0, 1000)}, updated_at = now()
+      where org_id = current_setting('app.current_org_id', true)
+        and connector = ${WHATSAPP_CONNECTOR}
+        ${accountFilter}
+    `);
+  });
+}
+
 export async function ensureWhatsAppFocusedBrain(
   ctx: CoreCtx,
   sourceIds: string[],
@@ -873,7 +936,12 @@ export async function backfillWhatsAppConversations(
   opts?: { cursor?: string | null; limit?: number },
 ): Promise<WhatsAppBackfillResult> {
   const limit = Math.max(1, Math.min(500, Math.floor(opts?.limit ?? DEFAULT_CONVERSATION_BATCH)));
+  await ensureMasterBrain(ctx);
   const sources = await discoverWhatsAppSources(ctx);
+  await ensureWhatsAppFocusedBrain(
+    ctx,
+    sources.map((source) => source.id),
+  );
   const sourceByAccount = new Map(sources.map((source) => [source.externalKey, source.id]));
   const cursor = decodeWhatsAppCursor(opts?.cursor);
   const preparedPage = await withOrgCore(ctx, async (tx) => {
@@ -902,20 +970,7 @@ export async function syncWhatsAppConversation(
   accountId: string,
   chatId: string,
 ): Promise<WhatsAppBackfillResult> {
-  const sources = await discoverWhatsAppSources(ctx);
-  const source = sources.find((row) => row.externalKey === accountId);
-  if (!source) {
-    return {
-      processed: 0,
-      changedDocuments: 0,
-      changedChunks: 0,
-      embeddedChunks: 0,
-      unchangedChunks: 0,
-      deletedChunks: 0,
-      nextCursor: null,
-      hasMore: false,
-    };
-  }
+  const source = await ensureWhatsAppSource(ctx, accountId);
   const key = { accountId, chatId, sourceId: source.id };
   const prepared = await withOrgCore(ctx, (tx) => prepareConversations(tx, [key]));
   if (prepared.length === 0) {
