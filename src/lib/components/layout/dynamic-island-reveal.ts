@@ -16,14 +16,27 @@ export function setRevealIntent(
 ): RevealGate {
   return {
     intent,
-    // With no transition to await, enable on first entry and leave the child
-    // popover's own intent/grace timer in charge of closing. Disabling here on
-    // leave would remove the panel before the pointer can cross its gap.
-    complete: reducedMotion ? current.complete || intent : current.complete,
+    // With no transition to await, the popup lock included in `intent` owns
+    // the close grace and lets the gate settle immediately in either direction.
+    complete: reducedMotion ? intent : current.complete,
   };
 }
 
 /** Settle the gate to whichever direction the CSS transition just completed. */
 export function settleRevealTransition(current: RevealGate): RevealGate {
   return { ...current, complete: current.intent };
+}
+
+/**
+ * Popups own the notch while open. Pointer/focus intent may disappear while
+ * crossing an anchored panel's gap; collapsing before its close grace expires
+ * moves the anchor under the cursor and creates a collapse/re-expand loop.
+ */
+export function shouldExpandIsland(
+  pointerInside: boolean,
+  focusInside: boolean,
+  statusPopoverOpen: boolean,
+  notificationsOpen: boolean,
+): boolean {
+  return pointerInside || focusInside || statusPopoverOpen || notificationsOpen;
 }

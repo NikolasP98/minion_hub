@@ -16,7 +16,10 @@
   import { AlertTriangle, RotateCw, Settings2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
-  let { popoverEnabled = true }: { popoverEnabled?: boolean } = $props();
+  let {
+    popoverEnabled = true,
+    open = $bindable(false),
+  }: { popoverEnabled?: boolean; open?: boolean } = $props();
 
   const activeHost = $derived(getActiveHost());
   const connected = $derived(conn.connected);
@@ -90,7 +93,6 @@
 
   // Hover/focus popover with a small close grace so moving dot → panel across
   // the gap doesn't flicker it shut.
-  let open = $state(false);
   let wantsOpen = $state(false);
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   function show() {
@@ -102,6 +104,12 @@
     wantsOpen = false;
     clearTimeout(closeTimer);
     closeTimer = setTimeout(() => (open = false), 140);
+  }
+
+  function handleFocusOut(event: FocusEvent) {
+    const wrapper = event.currentTarget as HTMLElement;
+    if (event.relatedTarget instanceof Node && wrapper.contains(event.relatedTarget)) return;
+    hide();
   }
 
   $effect(() => {
@@ -120,7 +128,14 @@
   }
 </script>
 
-<div class="relative flex items-center" onmouseenter={show} onmouseleave={hide} role="presentation">
+<div
+  class="relative flex items-center"
+  onmouseenter={show}
+  onmouseleave={hide}
+  onfocusin={show}
+  onfocusout={handleFocusOut}
+  role="presentation"
+>
   <Button
     variant="ghost"
     size="xs"
@@ -128,8 +143,6 @@
     class="flex items-center justify-center w-4 h-4 -m-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
     aria-label={ariaLabel}
     aria-expanded={open}
-    onfocus={show}
-    onblur={hide}
   >
     <span class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors {DOT_CLASS[dotState]}"></span>
   </Button>

@@ -12,43 +12,46 @@
   import { Button } from '$lib/components/ui';
   import {
     setRevealIntent,
+    shouldExpandIsland,
     settleRevealTransition,
     type RevealGate,
   } from './dynamic-island-reveal';
 
   let notificationsOpen = $state(false);
+  let statusPopoverOpen = $state(false);
   let pointerInside = $state(false);
   let focusInside = $state(false);
   let reveal = $state<RevealGate>({ intent: false, complete: false });
+  const expanded = $derived(
+    shouldExpandIsland(pointerInside, focusInside, statusPopoverOpen, notificationsOpen),
+  );
 
-  function syncRevealIntent() {
-    const next = pointerInside || focusInside;
-    reveal = setRevealIntent(
+  $effect(() => {
+    if (reveal.intent === expanded && reveal.complete === expanded) return;
+
+    const next = setRevealIntent(
       reveal,
-      next,
+      expanded,
       window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     );
-  }
+    if (next.intent !== reveal.intent || next.complete !== reveal.complete) reveal = next;
+  });
 
   function onIslandMouseEnter() {
     pointerInside = true;
-    syncRevealIntent();
   }
 
   function onIslandMouseLeave() {
     pointerInside = false;
-    syncRevealIntent();
   }
 
   function onIslandFocusIn() {
     focusInside = true;
-    syncRevealIntent();
   }
 
   function onIslandFocusOut(event: FocusEvent) {
     const island = event.currentTarget as HTMLElement;
     focusInside = event.relatedTarget instanceof Node && island.contains(event.relatedTarget);
-    syncRevealIntent();
   }
 
   function onRevealTransitionEnd(event: TransitionEvent) {
@@ -98,6 +101,7 @@
          transition-[box-shadow,border-color] duration-[var(--duration-normal)] ease-[var(--ease-standard)]"
   role="group"
   aria-label={m.topbar_quickActions()}
+  class:expanded
   onmouseenter={onIslandMouseEnter}
   onmouseleave={onIslandMouseLeave}
   onfocusin={onIslandFocusIn}
@@ -106,7 +110,7 @@
   <!-- Connection status dot — always visible at the far left. Hovering it opens
        the status popover (uptime / reconnecting / error detail) to its left. -->
   <div class="ml-1 mr-0.5">
-    <ConnectionStatusIndicator popoverEnabled={reveal.complete} />
+    <ConnectionStatusIndicator popoverEnabled={reveal.complete} bind:open={statusPopoverOpen} />
   </div>
 
   <!-- Hover-revealed cluster: bug and (when nothing is pending) the bell. -->
@@ -168,8 +172,7 @@
       grid-template-columns var(--duration-normal) var(--ease-standard),
       opacity var(--duration-fast) var(--ease-standard);
   }
-  .island:hover .ci,
-  .island:focus-within .ci {
+  .island.expanded .ci {
     grid-template-columns: 1fr;
     opacity: 1;
   }
