@@ -13,12 +13,12 @@
 import './_sveltekit-bun-shim.ts';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import {
-  BUSINESS_KNOWLEDGE_DOMAINS,
-  reconcileAllBusinessKnowledge,
-  type BusinessKnowledgeDomainKey,
-} from '../src/server/services/brain-business-corpus.service.ts';
+import type { BusinessKnowledgeDomainKey } from '../src/server/services/brain-business-corpus.service.ts';
 import type { CoreCtx } from '../src/server/auth/core-ctx.ts';
+
+// The alias shim must be registered before Bun evaluates service imports.
+const { BUSINESS_KNOWLEDGE_DOMAINS, reconcileAllBusinessKnowledge } =
+  await import('../src/server/services/brain-business-corpus.service.ts');
 
 const args = process.argv.slice(2);
 const all = args.includes('--all');
