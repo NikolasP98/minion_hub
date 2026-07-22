@@ -4,6 +4,7 @@ import {
   encodeWhatsAppCursor,
   knowledgeContentHash,
   normalizeWhatsAppConversation,
+  normalizeWhatsAppConversationSegments,
   preparedConversationNeedsWrite,
   type WhatsAppMessageInput,
 } from './brain-corpus.service';
@@ -35,12 +36,29 @@ describe('brain corpus WhatsApp normalization', () => {
     );
     const relinked = normalizeWhatsAppConversation('+51900000000', 'customer-1', rows);
 
-    expect(first.externalId).toBe('conversation:customer-1');
+    expect(first.externalId).toBe('conversation:+51922286663:customer-1:2026-07');
     expect(first.rawText).toBe('Customer: Hello\nAgent: Hi!');
     expect(repeated).toEqual(first);
     expect(first.chunks[0].chunkKey).toBe('raw:000000');
     expect(first.chunks[0].contentHash).not.toBe(relinked.chunks[0].contentHash);
     expect(relinked.chunks[0].contextPrefix).toContain('+51900000000');
+  });
+
+  it('segments by stable UTC month without rekeying later months', () => {
+    const july = message('1', 'July', { occurredAt: new Date('2026-07-31T23:59:59Z') });
+    const august = message('2', 'August', { occurredAt: new Date('2026-08-01T00:00:00Z') });
+    const initial = normalizeWhatsAppConversationSegments('account', 'chat', [july, august]);
+    const inserted = normalizeWhatsAppConversationSegments('account', 'chat', [
+      july,
+      message('3', 'Earlier July', { occurredAt: new Date('2026-07-15T00:00:00Z') }),
+      august,
+    ]);
+    expect(initial.map((document) => document.externalId)).toEqual([
+      'conversation:account:chat:2026-07',
+      'conversation:account:chat:2026-08',
+    ]);
+    expect(inserted[1]).toEqual(initial[1]);
+    expect(inserted[0].contentHash).not.toBe(initial[0].contentHash);
   });
 
   it('deduplicates repeated stable channel message IDs', () => {

@@ -12,8 +12,8 @@ import {
 } from './route-design-manifest';
 
 export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
-  endpoints: 149,
-  screens: 139,
+  endpoints: 150,
+  screens: 140,
   redirects: 10,
   fixtures: 27,
   viewports: ['compact', 'medium', 'wide'] as const,

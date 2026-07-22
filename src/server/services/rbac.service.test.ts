@@ -395,6 +395,16 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
 		expect(apiWriteCapability('/api/finances/products', 'PUT')).toEqual({ module: 'finance', action: 'edit' });
 		expect(apiWriteCapability('/api/sales/orders/x', 'PATCH')).toEqual({ module: 'sales', action: 'edit' });
 	});
+	test('brain search is a read operation even though its query body uses POST', () => {
+		expect(apiWriteCapability('/api/brains/11111111-1111-4111-8111-111111111111/search', 'POST')).toEqual({
+			module: 'brains',
+			action: 'view',
+		});
+		expect(apiWriteCapability('/api/brains/11111111-1111-4111-8111-111111111111', 'POST')).toEqual({
+			module: 'brains',
+			action: 'edit',
+		});
+	});
 	test('work + workforce map to projects (no /api/work ↔ /api/workforce collision)', () => {
 		expect(apiWriteCapability('/api/work/reassign', 'PATCH')).toEqual({ module: 'projects', action: 'edit' });
 		expect(apiWriteCapability('/api/workforce/anything', 'POST')).toEqual({ module: 'projects', action: 'edit' });

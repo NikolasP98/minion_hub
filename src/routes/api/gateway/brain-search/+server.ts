@@ -5,6 +5,7 @@ import { getCoreDb } from '$server/db/pg-client';
 import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
 import { parseBody } from '$server/api/validate';
 import { searchBrainHybrid } from '$server/services/brain-hybrid-retrieval.service';
+import { brainSourceAccess } from '$server/services/brains.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 const postSchema = z.object({
@@ -48,11 +49,16 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
       profileId: principalId,
       agentId,
       roles: capabilities.roles,
+      ...brainSourceAccess(capabilities),
     });
     return json({ orgId, brainId: body.brainId, ...result });
   } catch (e) {
     if (isHttpError(e)) return json({ error: e.body.message }, { status: e.status });
-    const message = e instanceof Error ? e.message : 'search failed';
-    return json({ error: message }, { status: 400 });
+    console.error('[gateway brain-search] retrieval failed', {
+      orgId,
+      brainId: body.brainId,
+      error: e,
+    });
+    return json({ error: 'search failed' }, { status: 400 });
   }
 };

@@ -423,6 +423,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     states: DESTRUCTIVE_DETAIL_STATES,
   }),
   screen('/brains/agents', 'Brain agents', 'agents-builders', 'collection'),
+  screen('/brains/settings', 'Brain settings', 'agents-builders', 'form-settings'),
   screen('/brains/template', 'Brain template', 'agents-builders', 'form-settings'),
   screen('/capabilities', 'Capabilities', 'agents-builders', 'collection'),
   screen('/flow-editor', 'Flow editor', 'agents-builders', 'collection'),

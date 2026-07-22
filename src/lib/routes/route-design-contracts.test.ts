@@ -58,7 +58,7 @@ describe('route design contracts', () => {
     }, {});
     // B lost one when /pos/refills was removed — stock operations live only in
     // the stock module now.
-    expect(counts).toEqual({ A: 32, B: 68, C: 16, D: 23, E: 10 });
+    expect(counts).toEqual({ A: 32, B: 68, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

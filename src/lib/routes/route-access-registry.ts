@@ -82,6 +82,7 @@ export const PUBLIC_ROUTE_PATTERNS = [
  * guards with stronger action/admin requirements than their parent module.
  */
 export const ROUTE_ACCESS_POLICY_OVERRIDES: Readonly<Record<string, RouteAccessPolicyId>> = {
+  '/brains/settings': 'org-capability:brains:manage',
   '/brains/template': 'org-capability:brains:manage',
   '/cloud': 'org-capability:workspace:view',
   '/cloud/gui': 'org-capability:workspace:edit',

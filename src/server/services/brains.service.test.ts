@@ -38,6 +38,7 @@ import {
   canAccessBrain,
   chunkText,
   searchBrain,
+  resolvePrincipal,
   loadDocumentContent,
   listModuleSources,
   MODULE_SOURCES,
@@ -63,6 +64,25 @@ const brainRow = (over: Partial<{ id: string; createdBy: string | null; visibili
 });
 
 describe('brains.service — canAccessBrain (fail-closed access resolution)', () => {
+  it('carries effective module visibility into the brain principal', async () => {
+    vi.mocked(resolveCapabilities).mockResolvedValueOnce({
+      roles: ['viewer'],
+      visibleModules: () => ['brains', 'crm', 'finance'],
+      ownerScoped: (module: string) => module === 'crm',
+      fieldLevel: (module: string) => (module === 'finance' ? 1 : 0),
+    } as never);
+
+    await expect(
+      resolvePrincipal({ db: undefined as never, tenantId: 'org-1', profileId: 'user-1' }),
+    ).resolves.toEqual({
+      profileId: 'user-1',
+      roles: ['viewer'],
+      visibleModules: ['brains', 'crm', 'finance'],
+      searchableModules: ['brains', 'finance'],
+      fieldLevels: { brains: 0, crm: 0, finance: 1 },
+    });
+  });
+
   it('denies when the brain does not exist', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[]]); // loadBrain → no row

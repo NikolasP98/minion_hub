@@ -18,7 +18,12 @@ import { listProducts } from './finance-products.service';
 import { listContactsCached, listTags } from './crm-contacts.service';
 import { listItems, getBins } from './stock.service';
 import { enqueueJob, registerJobHandler, type AdvanceResult, type BgJob } from './bg-runtime';
-import { resolveCapabilities, type Module, type PermAction } from './rbac.service';
+import {
+  resolveCapabilities,
+  type Capabilities,
+  type Module,
+  type PermAction,
+} from './rbac.service';
 import { assertSafeUrl } from './ssrf-guard';
 
 /**
@@ -39,6 +44,34 @@ export interface AccessPrincipal {
   profileId?: string | null;
   agentId?: string | null;
   roles?: string[];
+  /** Effective RBAC module visibility used to intersect source-level access. */
+  visibleModules?: string[];
+  /** Modules safe for source-wide semantic search. Owner-scoped modules are
+   * deliberately omitted because Brain retrieval cannot apply record ownership. */
+  searchableModules?: string[];
+  /** Effective ERPNext-style field sensitivity level by visible module. */
+  fieldLevels?: Record<string, number>;
+}
+
+type BrainSourceCapabilities = Pick<
+  Capabilities,
+  'visibleModules' | 'ownerScoped' | 'fieldLevel'
+>;
+
+/** Convert general Hub capabilities into the narrower source-wide access that
+ * semantic retrieval can safely enforce. */
+export function brainSourceAccess(capabilities: BrainSourceCapabilities): Pick<
+  AccessPrincipal,
+  'visibleModules' | 'searchableModules' | 'fieldLevels'
+> {
+  const visibleModules = capabilities.visibleModules();
+  return {
+    visibleModules,
+    searchableModules: visibleModules.filter((module) => !capabilities.ownerScoped(module)),
+    fieldLevels: Object.fromEntries(
+      visibleModules.map((module) => [module, capabilities.fieldLevel(module)]),
+    ),
+  };
 }
 
 /** Build an `AccessPrincipal` for a signed-in browser caller (API routes).
@@ -46,7 +79,7 @@ export interface AccessPrincipal {
 export async function resolvePrincipal(ctx: CoreCtx): Promise<AccessPrincipal> {
   if (!ctx.profileId) return {};
   const caps = await resolveCapabilities(ctx.tenantId, ctx.profileId);
-  return { profileId: ctx.profileId, roles: caps.roles };
+  return { profileId: ctx.profileId, roles: caps.roles, ...brainSourceAccess(caps) };
 }
 
 async function loadBrain(ctx: CoreCtx, brainId: string): Promise<Brain | null> {

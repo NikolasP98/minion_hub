@@ -6,6 +6,7 @@ import { runTick } from '$server/services/bg-runtime';
 import '$server/services/groupchat.service';
 import '$server/services/brains.service';
 import '$server/services/brain-corpus-jobs.service';
+import '$server/services/brain-business-corpus-jobs.service';
 
 /**
  * GET /api/jobs/tick — cron entrypoint for the GLOBAL background-job runtime.

@@ -62,6 +62,10 @@ export interface NormalizedWhatsAppDocument {
   chunks: NormalizedKnowledgeChunk[];
 }
 
+export function whatsappCalendarMonth(value: Date): string {
+  return value.toISOString().slice(0, 7);
+}
+
 export interface WhatsAppConversationKey extends WhatsAppConversationCursor {
   sourceId: string;
 }
@@ -245,7 +249,11 @@ export function normalizeWhatsAppConversation(
   );
   const rawText = rawTurns.join('\n');
   const normalizedText = normalizedTurns.join('\n');
-  const contextPrefix = `WhatsApp account ${accountId}; conversation ${chatId}`;
+  const segmentMonth = whatsappCalendarMonth(rows[0].occurredAt);
+  if (rows.some((row) => whatsappCalendarMonth(row.occurredAt) !== segmentMonth)) {
+    throw new Error('normalizeWhatsAppConversation requires rows from one UTC calendar month');
+  }
+  const contextPrefix = `WhatsApp account ${accountId}; conversation ${chatId}; month ${segmentMonth}`;
   const occurredAt = rows.at(-1)!.occurredAt;
   const sourceUpdatedAt = rows.reduce(
     (latest, row) => (row.createdAt > latest ? row.createdAt : latest),
@@ -280,12 +288,18 @@ export function normalizeWhatsAppConversation(
     contextPrefix,
     contentHash: knowledgeContentHash(`${contextPrefix}\n\n${chunkText}`),
     occurredAt,
-    metadata: { channel: 'whatsapp', accountId, chatId, messageCount: rows.length },
+    metadata: {
+      channel: 'whatsapp',
+      accountId,
+      chatId,
+      segmentMonth,
+      messageCount: rows.length,
+    },
   }));
 
   return {
-    externalId: `conversation:${chatId}`,
-    title: `WhatsApp · ${chatId}`,
+    externalId: `conversation:${accountId}:${chatId}:${segmentMonth}`,
+    title: `WhatsApp · ${chatId} · ${segmentMonth}`,
     rawText,
     normalizedText,
     contentHash: knowledgeContentHash(normalizedText),
@@ -296,6 +310,7 @@ export function normalizeWhatsAppConversation(
       channel: 'whatsapp',
       accountId,
       chatId,
+      segmentMonth,
       messageCount: rows.length,
       firstOccurredAt: rows[0].occurredAt.toISOString(),
       lastOccurredAt: occurredAt.toISOString(),
@@ -309,6 +324,26 @@ export function normalizeWhatsAppConversation(
     },
     chunks,
   };
+}
+
+/** Stable UTC-month segments: later or mid-history messages only change their
+ * own month and can never renumber/rekey subsequent documents. */
+export function normalizeWhatsAppConversationSegments(
+  accountId: string,
+  chatId: string,
+  inputRows: WhatsAppMessageInput[],
+  maxChars = DEFAULT_CHUNK_MAX_CHARS,
+): NormalizedWhatsAppDocument[] {
+  const byMonth = new Map<string, WhatsAppMessageInput[]>();
+  for (const row of inputRows) {
+    const month = whatsappCalendarMonth(row.occurredAt);
+    const values = byMonth.get(month) ?? [];
+    values.push(row);
+    byMonth.set(month, values);
+  }
+  return [...byMonth.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, rows]) => normalizeWhatsAppConversation(accountId, chatId, rows, maxChars));
 }
 
 export function encodeWhatsAppCursor(cursor: WhatsAppConversationCursor): string {
@@ -359,7 +394,10 @@ export async function discoverWhatsAppSources(ctx: CoreCtx): Promise<KnowledgeSo
   return withOrgCore(ctx, async (tx) => {
     const accounts = (await tx.execute(sql`
       select trim(account_id) as account_id,
-        count(distinct chat_id) filter (
+        count(distinct (
+          chat_id,
+          to_char(coalesce(occurred_at, created_at) at time zone 'UTC', 'YYYY-MM')
+        )) filter (
           where nullif(trim(chat_id), '') is not null
             and coalesce(is_group, false) = false
             and is_bot is not true
@@ -379,7 +417,7 @@ export async function discoverWhatsAppSources(ctx: CoreCtx): Promise<KnowledgeSo
         ({ account_id, conversation_count }) => sql`(
         current_setting('app.current_org_id', true), ${WHATSAPP_CONNECTOR}, ${account_id},
         ${`WhatsApp ${account_id}`},
-        ${JSON.stringify({ channel: 'whatsapp', accountId: account_id })}::jsonb,
+        ${JSON.stringify({ channel: 'whatsapp', accountId: account_id, domain: 'whatsapp', requiredModule: 'crm', requiredFieldLevel: 1 })}::jsonb,
         'discovered', 'incremental', 'event+reconcile',
         ${JSON.stringify({ expectedDocuments: Number(conversation_count) })}::jsonb
       )`,
@@ -392,7 +430,7 @@ export async function discoverWhatsAppSources(ctx: CoreCtx): Promise<KnowledgeSo
       values ${values}
       on conflict (org_id, connector, external_key) do update set
         name = excluded.name,
-        config = excluded.config,
+        config = knowledge_sources.config || excluded.config,
         sync_mode = excluded.sync_mode,
         cadence = excluded.cadence,
         watermark = knowledge_sources.watermark || excluded.watermark,
@@ -436,14 +474,25 @@ export async function ensureWhatsAppSource(
         connector: WHATSAPP_CONNECTOR,
         externalKey: normalizedAccountId,
         name: `WhatsApp ${normalizedAccountId}`,
-        config: { channel: 'whatsapp', accountId: normalizedAccountId },
+        config: {
+          channel: 'whatsapp',
+          accountId: normalizedAccountId,
+          domain: 'whatsapp',
+          requiredModule: 'crm',
+          requiredFieldLevel: 1,
+        },
         status: 'processing',
         syncMode: 'incremental',
         cadence: 'event+reconcile',
       })
       .onConflictDoUpdate({
         target: [knowledgeSources.orgId, knowledgeSources.connector, knowledgeSources.externalKey],
-        set: { status: 'processing', lastError: null, updatedAt: new Date() },
+        set: {
+          config: sql`${knowledgeSources.config} || excluded.config`,
+          status: 'processing',
+          lastError: null,
+          updatedAt: new Date(),
+        },
       });
     const [source] = await tx
       .select()
@@ -587,9 +636,13 @@ function uuidArray(values: string[]) {
 async function loadWhatsAppRows(
   tx: CoreTx,
   keys: WhatsAppConversationKey[],
+  onlyMonths?: string[],
 ): Promise<Map<string, WhatsAppMessageInput[]>> {
   const out = new Map<string, WhatsAppMessageInput[]>();
   if (keys.length === 0) return out;
+  const monthFilter = onlyMonths?.length
+    ? sql`where to_char(coalesce(occurred_at, created_at) at time zone 'UTC', 'YYYY-MM') = any(${textArray(onlyMonths)})`
+    : sql``;
   const rows = (await tx.execute(sql`
     select account_id, chat_id, id::text as id, message_id, direction, content,
       sender_id, sender_name, occurred_at, created_at
@@ -608,6 +661,7 @@ async function loadWhatsAppRows(
         coalesce(nullif(m.message_id, ''), 'row:' || m.id::text),
         coalesce(m.occurred_at, m.created_at), m.id
     ) deduped
+    ${monthFilter}
     order by account_id, chat_id, coalesce(occurred_at, created_at), id
   `)) as unknown as Array<{
     account_id: string;
@@ -643,14 +697,17 @@ async function loadWhatsAppRows(
 async function prepareConversations(
   tx: CoreTx,
   keys: WhatsAppConversationKey[],
+  onlyMonths?: string[],
 ): Promise<PreparedConversation[]> {
-  const rowsByKey = await loadWhatsAppRows(tx, keys);
+  const rowsByKey = await loadWhatsAppRows(tx, keys, onlyMonths);
   const normalized = keys
-    .map((key) => {
+    .flatMap((key) => {
       const rows = rowsByKey.get(`${key.accountId}\u0000${key.chatId}`) ?? [];
       return rows.length > 0
-        ? { key, document: normalizeWhatsAppConversation(key.accountId, key.chatId, rows) }
-        : null;
+        ? normalizeWhatsAppConversationSegments(key.accountId, key.chatId, rows).map(
+            (document) => ({ key, document }),
+          )
+        : [];
     })
     .filter(
       (row): row is { key: WhatsAppConversationKey; document: NormalizedWhatsAppDocument } =>
@@ -905,12 +962,19 @@ async function runPreparedBatch(
  */
 export async function reconcileDeletedWhatsAppDocuments(
   ctx: CoreCtx,
-  only?: { accountId: string; chatId: string },
+  only?: { accountId: string; chatId: string; months?: string[] },
 ): Promise<WhatsAppReconcileResult> {
   return withOrgCore(ctx, async (tx) => {
+    const monthScope = only?.months?.length
+      ? sql`and (
+          document.metadata->>'segmentMonth' is null
+          or document.metadata->>'segmentMonth' = any(${textArray(only.months)})
+        )`
+      : sql``;
     const specific = only
       ? sql`and source.external_key = ${only.accountId}
-            and document.metadata->>'chatId' = ${only.chatId}`
+            and document.metadata->>'chatId' = ${only.chatId}
+            ${monthScope}`
       : sql``;
     const tombstones = (await tx.execute(sql`
       update knowledge_documents document
@@ -921,15 +985,22 @@ export async function reconcileDeletedWhatsAppDocuments(
         and source.connector = ${WHATSAPP_CONNECTOR}
         and document.status <> 'deleted'
         ${specific}
-        and not exists (
+        and (
+          document.metadata->>'segmentMonth' is null
+          or not exists (
           select 1 from messages message
           where message.org_id = document.org_id
             and message.channel = 'whatsapp'
             and message.account_id = source.external_key
             and message.chat_id = document.metadata->>'chatId'
+            and to_char(
+              coalesce(message.occurred_at, message.created_at) at time zone 'UTC',
+              'YYYY-MM'
+            ) = document.metadata->>'segmentMonth'
             and coalesce(message.is_group, false) = false
             and message.is_bot is not true
             and nullif(trim(message.content), '') is not null
+          )
         )
       returning document.id::text
     `)) as unknown as Array<{ id: string }>;
@@ -984,12 +1055,18 @@ export async function syncWhatsAppConversation(
   ctx: CoreCtx,
   accountId: string,
   chatId: string,
+  opts?: { months?: string[] },
 ): Promise<WhatsAppBackfillResult> {
   const source = await ensureWhatsAppSource(ctx, accountId);
   const key = { accountId, chatId, sourceId: source.id };
-  const prepared = await withOrgCore(ctx, (tx) => prepareConversations(tx, [key]));
+  const months = opts?.months?.filter((month) => /^\d{4}-\d{2}$/.test(month));
+  const prepared = await withOrgCore(ctx, (tx) => prepareConversations(tx, [key], months));
   if (prepared.length === 0) {
-    const reconciled = await reconcileDeletedWhatsAppDocuments(ctx, { accountId, chatId });
+    const reconciled = await reconcileDeletedWhatsAppDocuments(ctx, {
+      accountId,
+      chatId,
+      months,
+    });
     return {
       processed: 0,
       changedDocuments: 0,
@@ -1001,7 +1078,14 @@ export async function syncWhatsAppConversation(
       hasMore: false,
     };
   }
-  return { ...(await runPreparedBatch(ctx, prepared)), nextCursor: null, hasMore: false };
+  const counts = await runPreparedBatch(ctx, prepared);
+  const reconciled = await reconcileDeletedWhatsAppDocuments(ctx, { accountId, chatId, months });
+  return {
+    ...counts,
+    deletedChunks: counts.deletedChunks + reconciled.deletedChunks,
+    nextCursor: null,
+    hasMore: false,
+  };
 }
 
 export async function bootstrapBrainCorpus(

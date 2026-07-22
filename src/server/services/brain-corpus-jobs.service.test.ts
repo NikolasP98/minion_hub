@@ -5,6 +5,14 @@ const registerJobHandler = vi.fn();
 const syncWhatsAppConversation = vi.fn();
 const backfillWhatsAppConversations = vi.fn();
 const markWhatsAppSourceFailure = vi.fn();
+const selectLimit = vi.fn();
+const updateReturning = vi.fn();
+const db = {
+  select: vi.fn(() => ({ from: () => ({ where: () => ({ limit: selectLimit }) }) })),
+  update: vi.fn(() => ({
+    set: () => ({ where: () => ({ returning: updateReturning }) }),
+  })),
+};
 
 vi.mock('./bg-runtime', () => ({
   enqueueJob,
@@ -16,10 +24,14 @@ vi.mock('./brain-corpus.service', () => ({
   backfillWhatsAppConversations,
   markWhatsAppSourceFailure,
 }));
-vi.mock('$server/db/pg-client', () => ({ getCoreDb: vi.fn(() => ({})) }));
+vi.mock('$server/db/pg-client', () => ({ getCoreDb: vi.fn(() => db) }));
 
-const { advanceBrainCorpusJob, collectDirtyWhatsAppConversations, enqueueWhatsAppBrainChanges } =
-  await import('./brain-corpus-jobs.service');
+const {
+  advanceBrainCorpusJob,
+  collectDirtyWhatsAppConversations,
+  enqueueWhatsAppBrainChanges,
+  mergeDirtyWhatsAppConversations,
+} = await import('./brain-corpus-jobs.service');
 
 const job = (cursor: unknown) => ({
   id: 'job-1',
@@ -41,6 +53,8 @@ const job = (cursor: unknown) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   enqueueJob.mockResolvedValue('job-1');
+  selectLimit.mockResolvedValue([]);
+  updateReturning.mockResolvedValue([]);
   syncWhatsAppConversation.mockResolvedValue({ processed: 1 });
   markWhatsAppSourceFailure.mockResolvedValue(undefined);
 });
@@ -55,6 +69,7 @@ describe('WhatsApp brain dirty jobs', () => {
         isGroup: false,
         isBot: false,
         content: 'one',
+        occurredAt: Date.parse('2026-07-10T00:00:00Z'),
       },
       {
         channel: 'whatsapp',
@@ -63,6 +78,7 @@ describe('WhatsApp brain dirty jobs', () => {
         isGroup: null,
         isBot: null,
         content: 'two',
+        occurredAt: Date.parse('2026-08-10T00:00:00Z'),
       },
       {
         channel: 'whatsapp',
@@ -81,7 +97,9 @@ describe('WhatsApp brain dirty jobs', () => {
         content: 'skip',
       },
     ];
-    expect(collectDirtyWhatsAppConversations(rows)).toEqual([{ accountId: 'a1', chatId: 'c1' }]);
+    expect(collectDirtyWhatsAppConversations(rows)).toEqual([
+      { accountId: 'a1', chatId: 'c1', months: ['2026-07', '2026-08'] },
+    ]);
   });
 
   it('enqueues one durable batch job for distinct conversations', async () => {
@@ -108,9 +126,66 @@ describe('WhatsApp brain dirty jobs', () => {
       expect.objectContaining({
         tenantId: 'org-1',
         type: 'brain_corpus_whatsapp',
-        cursor: expect.objectContaining({ kind: 'dirty', next: 0 }),
+        cursor: expect.objectContaining({ kind: 'dirty', next: 0, failures: [] }),
       }),
     );
+  });
+
+  it('coalesces into an existing queued dirty job instead of creating another job', async () => {
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: 'queued-1',
+        cursor: JSON.stringify({
+          kind: 'dirty',
+          conversations: [{ accountId: 'a1', chatId: 'c1', months: ['2026-07'] }],
+          next: 0,
+        }),
+      },
+    ]);
+    updateReturning.mockResolvedValueOnce([{ id: 'queued-1' }]);
+    await expect(
+      enqueueWhatsAppBrainChanges('org-1', [
+        {
+          channel: 'whatsapp',
+          accountId: 'a1',
+          chatId: 'c1',
+          isGroup: false,
+          isBot: false,
+          content: 'August',
+          occurredAt: Date.parse('2026-08-01T00:00:00Z'),
+        },
+      ]),
+    ).resolves.toBe('queued-1');
+    expect(enqueueJob).not.toHaveBeenCalled();
+    expect(db.update).toHaveBeenCalledOnce();
+  });
+
+  it('enqueues a fresh repair when a concurrent writer wins the queued-job CAS', async () => {
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: 'queued-1',
+        cursor: JSON.stringify({
+          kind: 'dirty',
+          conversations: [{ accountId: 'a1', chatId: 'c1', months: ['2026-07'] }],
+          next: 0,
+          failures: [],
+        }),
+      },
+    ]);
+    updateReturning.mockResolvedValueOnce([]);
+    await expect(
+      enqueueWhatsAppBrainChanges('org-1', [
+        {
+          channel: 'whatsapp',
+          accountId: 'a1',
+          chatId: 'c2',
+          isGroup: false,
+          isBot: false,
+          content: 'new work',
+        },
+      ]),
+    ).resolves.toBe('job-1');
+    expect(enqueueJob).toHaveBeenCalledOnce();
   });
 
   it('advances one conversation and persists the next index', async () => {
@@ -118,8 +193,8 @@ describe('WhatsApp brain dirty jobs', () => {
       job({
         kind: 'dirty',
         conversations: [
-          { accountId: 'a1', chatId: 'c1' },
-          { accountId: 'a1', chatId: 'c2' },
+          { accountId: 'a1', chatId: 'c1', months: ['2026-07'] },
+          { accountId: 'a1', chatId: 'c2', months: ['2026-08'] },
         ],
         next: 0,
       }) as never,
@@ -128,28 +203,46 @@ describe('WhatsApp brain dirty jobs', () => {
       expect.objectContaining({ tenantId: 'org-1' }),
       'a1',
       'c1',
+      { months: ['2026-07'] },
     );
     expect(result).toEqual(
       expect.objectContaining({ done: false, cursor: expect.objectContaining({ next: 1 }) }),
     );
   });
 
-  it('surfaces handler failures on the source before failing the durable job', async () => {
+  it('isolates a poison conversation and marks only its account source', async () => {
     syncWhatsAppConversation.mockRejectedValueOnce(new Error('provider down'));
     await expect(
       advanceBrainCorpusJob(
         job({
           kind: 'dirty',
-          conversations: [{ accountId: 'a1', chatId: 'c1' }],
+          conversations: [{ accountId: 'a1', chatId: 'c1', months: ['2026-07'] }],
           next: 0,
         }) as never,
       ),
-    ).rejects.toThrow('provider down');
+    ).resolves.toEqual({
+      done: true,
+      error: 'a1/c1: provider down',
+    });
     expect(markWhatsAppSourceFailure).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'org-1' }),
       'a1',
       expect.any(Error),
     );
+  });
+
+  it('coalesces account/chat/month work and lets an unknown month dominate', () => {
+    expect(
+      mergeDirtyWhatsAppConversations([
+        { accountId: 'a1', chatId: 'c1', months: ['2026-07'] },
+        { accountId: 'a1', chatId: 'c1', months: ['2026-08', '2026-07'] },
+        { accountId: 'a1', chatId: 'c2', months: [] },
+        { accountId: 'a1', chatId: 'c2', months: ['2026-09'] },
+      ]),
+    ).toEqual([
+      { accountId: 'a1', chatId: 'c1', months: ['2026-07', '2026-08'] },
+      { accountId: 'a1', chatId: 'c2', months: [] },
+    ]);
   });
 });
 
