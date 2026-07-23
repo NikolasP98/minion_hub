@@ -59,5 +59,9 @@ export function deriveChannelDisplayState(c: Channel): ChannelDisplayState {
   if (phase === 'stalled') return 'sync-stalled';
   if (phase === 'bootstrap' || phase === 'recent' || phase === 'full' || phase === 'on-demand')
     return 'syncing';
+  // History receipt and durable Hub delivery are separate stages. A completed
+  // WhatsApp history sweep can still have rows queued in the gateway outbox;
+  // reporting `live` before those rows are acknowledged is a false success.
+  if ((c.hubSync?.pending ?? 0) > 0) return 'syncing';
   return 'live';
 }
