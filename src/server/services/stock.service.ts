@@ -1259,9 +1259,57 @@ export async function buildInvoiceIssuePreview(
 }
 
 /**
- * Shared preview tail for both the invoice and the service paths: given a
- * per-item aggregate in each item's CONSUMPTION uom (identity when the item has
- * no consumptionUom), joins item metadata + warehouse bins and builds the
+ * Expand mapped recipe parents to the stock leaves that the accrual/issue
+ * commit paths actually move. A direct stock-leaf mapping remains an identity.
+ */
+async function expandPreviewQtyToStockLeaves(
+  tx: CoreTx,
+  orgId: string,
+  qtyByItem: Map<string, number>,
+): Promise<Map<string, number>> {
+  if (!qtyByItem.size) return qtyByItem;
+  const edgeRows = await tx
+    .select({
+      parentItemId: stkItemComponents.parentItemId,
+      childItemId: stkItemComponents.childItemId,
+      qty: stkItemComponents.qty,
+    })
+    .from(stkItemComponents)
+    .where(eq(stkItemComponents.orgId, orgId));
+  if (!edgeRows.length) return qtyByItem;
+
+  const byParent = edgesByParent(
+    edgeRows.map((edge) => ({
+      parentItemId: edge.parentItemId,
+      childItemId: edge.childItemId,
+      qty: Number(edge.qty),
+    })),
+  );
+  const involved = new Set<string>([
+    ...qtyByItem.keys(),
+    ...edgeRows.flatMap((edge) => [edge.parentItemId, edge.childItemId]),
+  ]);
+  const flagRows = await tx
+    .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
+    .from(stkItems)
+    .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, [...involved])));
+  const stockFlag = new Map(flagRows.map((row) => [row.id, row.isStockItem]));
+  const expanded = new Map<string, number>();
+  for (const [itemId, qtyConsumption] of qtyByItem) {
+    explodeToStockLeaves(
+      itemId,
+      qtyConsumption,
+      byParent,
+      (id) => stockFlag.get(id) ?? true,
+      expanded,
+    );
+  }
+  return expanded;
+}
+
+/**
+ * Shared preview tail for both invoice and service paths: expands any recipe
+ * parents, then joins stock-leaf metadata + warehouse bins and builds the
  * gauge-ready lines (stock-uom `qty` converted authoritatively, plus the raw
  * consumption qty and UOM fields the ConsumptionGauge needs).
  */
@@ -1271,7 +1319,8 @@ async function previewLinesForItemQtys(
   qtyByItem: Map<string, number>,
   warehouseId: string,
 ): Promise<InvoicePreviewLine[]> {
-  const itemIds = [...qtyByItem.keys()];
+  const previewQtyByItem = await expandPreviewQtyToStockLeaves(tx, orgId, qtyByItem);
+  const itemIds = [...previewQtyByItem.keys()];
   if (!itemIds.length) return [];
   const itemRows = await tx
     .select({
@@ -1303,7 +1352,7 @@ async function previewLinesForItemQtys(
 
   return itemIds.map((itemId) => {
     const item = itemById.get(itemId);
-    const qtyConsumption = qtyByItem.get(itemId)!;
+    const qtyConsumption = previewQtyByItem.get(itemId)!;
     const unitsPerStockUom = item?.unitsPerStockUom == null ? null : Number(item.unitsPerStockUom);
     const qty = round4(consumptionToStockQty({ unitsPerStockUom }, qtyConsumption));
     return {
@@ -1404,56 +1453,7 @@ export async function buildServiceIssuePreview(
     for (const m of mappingRows)
       qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + quantity * Number(m.qtyPerUnit));
 
-    // Keep this in lockstep with accrueConsumption's commit path: a mapped
-    // item can be a recipe parent, so the preview must show the stock leaves
-    // that will actually be committed rather than the non-stock parent.
-    let previewQtyByItem = qtyByItem;
-    if (qtyByItem.size) {
-      const edgeRows = await tx
-        .select({
-          parentItemId: stkItemComponents.parentItemId,
-          childItemId: stkItemComponents.childItemId,
-          qty: stkItemComponents.qty,
-        })
-        .from(stkItemComponents)
-        .where(eq(stkItemComponents.orgId, ctx.tenantId));
-      if (edgeRows.length) {
-        const byParent = edgesByParent(
-          edgeRows.map((edge) => ({
-            parentItemId: edge.parentItemId,
-            childItemId: edge.childItemId,
-            qty: Number(edge.qty),
-          })),
-        );
-        const involved = new Set<string>([
-          ...qtyByItem.keys(),
-          ...edgeRows.flatMap((edge) => [edge.parentItemId, edge.childItemId]),
-        ]);
-        const flagRows = await tx
-          .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
-          .from(stkItems)
-          .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, [...involved])));
-        const stockFlag = new Map(flagRows.map((row) => [row.id, row.isStockItem]));
-        const expanded = new Map<string, number>();
-        for (const [itemId, qtyConsumption] of qtyByItem) {
-          explodeToStockLeaves(
-            itemId,
-            qtyConsumption,
-            byParent,
-            (id) => stockFlag.get(id) ?? true,
-            expanded,
-          );
-        }
-        previewQtyByItem = expanded;
-      }
-    }
-
-    const lines = await previewLinesForItemQtys(
-      tx,
-      ctx.tenantId,
-      previewQtyByItem,
-      input.warehouseId,
-    );
+    const lines = await previewLinesForItemQtys(tx, ctx.tenantId, qtyByItem, input.warehouseId);
     return {
       productName: product.name ?? input.finProductId,
       productCode: product.code ?? null,

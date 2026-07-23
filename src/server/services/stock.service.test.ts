@@ -152,6 +152,7 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
         { id: 'item_tox_retail', finProductId: 'p1' }, // decoy: p1 already mapped — must be ignored (dedupe)
         { id: 'item_derma', finProductId: 'p2' },
       ], // 1:1 fallback candidates
+      [], // no recipe components
       [
         { id: 'item_tox', name: 'Toxina Botulinica', code: 'TOX', uom: 'unit' },
         { id: 'item_derma', name: 'Dermaquench', code: 'DQ', uom: 'unit' },
@@ -208,6 +209,7 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
       [{ productId: 'p1', description: 'Botox 5ml shot', quantity: '5' }], // invoice items — 5 units of consumption-uom-per-service
       [{ finProductId: 'p1', itemId: 'item_caja', qtyPerUnit: '1' }], // mapping: 1 ml per unit sold
       [], // no 1:1 fallback candidates
+      [], // no recipe components
       [
         {
           id: 'item_caja',
@@ -242,6 +244,55 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
         estValue: 1.2,
       },
     ]);
+  });
+
+  it('expands an invoice-mapped recipe to the stock leaves used by commit paths', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'inv1' }],
+      [{ productId: 'p1', description: 'Composite treatment', quantity: '3' }],
+      [{ finProductId: 'p1', itemId: 'recipe', qtyPerUnit: '2' }],
+      [], // no 1:1 fallback candidates
+      [{ parentItemId: 'recipe', childItemId: 'serum', qty: '5' }],
+      [
+        { id: 'recipe', isStockItem: false },
+        { id: 'serum', isStockItem: true },
+      ],
+      [
+        {
+          id: 'serum',
+          name: 'Serum vial',
+          code: 'SER-1',
+          uom: 'vial',
+          consumptionUom: 'ml',
+          unitsPerStockUom: '100',
+          subunitsPerStockUom: null,
+          diagramEnabled: false,
+        },
+      ],
+      [{ itemId: 'serum', qty: '2', valuationRate: '10' }],
+    ]);
+
+    const preview = await buildInvoiceIssuePreview(ctx(db), 'inv1', 'wh1');
+
+    expect(preview.lines).toEqual([
+      {
+        itemId: 'serum',
+        itemName: 'Serum vial',
+        itemCode: 'SER-1',
+        uom: 'vial',
+        qty: 0.3,
+        available: 2,
+        qtyConsumption: 30,
+        consumptionUom: 'ml',
+        unitsPerStockUom: 100,
+        subunitsPerStockUom: null,
+        diagramEnabled: false,
+        estUnitCost: 10,
+        estValue: 3,
+      },
+    ]);
+    expect(preview.unmatched).toEqual([]);
   });
 
   it('rejects a preview for an invoice not in this org', async () => {
