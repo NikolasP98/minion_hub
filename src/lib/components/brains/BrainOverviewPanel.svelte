@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { AlertTriangle, CheckCircle2, Clock3, Database, FileText, Layers3, Plug } from 'lucide-svelte';
+  import {
+    AlertTriangle,
+    CheckCircle2,
+    Clock3,
+    Database,
+    FileText,
+    Layers3,
+    Plug,
+  } from 'lucide-svelte';
   import type { SemanticValue } from '@minion-stack/ui';
   import { Badge, Card, EmptyState, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
@@ -48,7 +56,9 @@
     </div>
     <div>
       <dt><Clock3 size={iconSizes.md} aria-hidden="true" /> {m.brains_metric_pending()}</dt>
-      <dd class:attention={overview.stats.pendingCount > 0}>{overview.stats.pendingCount.toLocaleString()}</dd>
+      <dd class:attention={overview.stats.pendingCount > 0}>
+        {overview.stats.pendingCount.toLocaleString()}
+      </dd>
     </div>
   </dl>
 
@@ -60,7 +70,8 @@
       </div>
       {#if overview.stats.failedSourceCount > 0}
         <Badge variant="semantic" value="error" size="sm" dot>
-          {overview.stats.failedSourceCount.toLocaleString()} {m.brains_status_failed()}
+          {overview.stats.failedSourceCount.toLocaleString()}
+          {m.brains_status_failed()}
         </Badge>
       {/if}
     </div>
@@ -84,7 +95,9 @@
               <p>{m.brains_connector_sources({ count: connector.sourceCount })}</p>
               <p class="freshness">
                 <span>{m.brains_last_synced()}</span>
-                <time datetime={connector.lastSyncedAt ?? undefined}>{formatDate(connector.lastSyncedAt)}</time>
+                <time datetime={connector.lastSyncedAt ?? undefined}
+                  >{formatDate(connector.lastSyncedAt)}</time
+                >
               </p>
               {#if connector.lastError}
                 <p class="connector-error" title={connector.lastError}>

@@ -123,10 +123,12 @@ describe('validateEntryLine', () => {
   });
 
   it('transfer requires two distinct warehouses', () => {
-    expect(validateEntryLine('transfer', line({ fromWarehouseId: 'w1', toWarehouseId: 'w1' }))).toEqual([
-      'transfer requires two different warehouses',
-    ]);
-    expect(validateEntryLine('transfer', line({ fromWarehouseId: 'w1', toWarehouseId: 'w2' }))).toEqual([]);
+    expect(
+      validateEntryLine('transfer', line({ fromWarehouseId: 'w1', toWarehouseId: 'w1' })),
+    ).toEqual(['transfer requires two different warehouses']);
+    expect(
+      validateEntryLine('transfer', line({ fromWarehouseId: 'w1', toWarehouseId: 'w2' })),
+    ).toEqual([]);
   });
 
   it('adjustment requires exactly one warehouse side; a positive (to_) side needs a rate', () => {
@@ -141,36 +143,40 @@ describe('validateEntryLine', () => {
   });
 
   it('rejects a non-positive qty', () => {
-    expect(validateEntryLine('issue', line({ qty: 0, fromWarehouseId: 'w1' }))).toEqual(['qty must be > 0']);
+    expect(validateEntryLine('issue', line({ qty: 0, fromWarehouseId: 'w1' }))).toEqual([
+      'qty must be > 0',
+    ]);
   });
 });
 
 describe('expandLine', () => {
   it('receipt → one in-leg on to_warehouse at the line rate', () => {
-    expect(expandLine('receipt', { qty: 10, rate: 5, fromWarehouseId: null, toWarehouseId: 'w1' })).toEqual([
-      { warehouseId: 'w1', qtyDelta: 10, rate: 5 },
-    ]);
+    expect(
+      expandLine('receipt', { qty: 10, rate: 5, fromWarehouseId: null, toWarehouseId: 'w1' }),
+    ).toEqual([{ warehouseId: 'w1', qtyDelta: 10, rate: 5 }]);
   });
   it('issue → one out-leg on from_warehouse, rate null (consume at bin rate)', () => {
-    expect(expandLine('issue', { qty: 4, rate: null, fromWarehouseId: 'w1', toWarehouseId: null })).toEqual([
-      { warehouseId: 'w1', qtyDelta: -4, rate: null },
-    ]);
+    expect(
+      expandLine('issue', { qty: 4, rate: null, fromWarehouseId: 'w1', toWarehouseId: null }),
+    ).toEqual([{ warehouseId: 'w1', qtyDelta: -4, rate: null }]);
   });
   it('transfer → an out-leg and an in-leg, both with rate null (filled in by orchestration)', () => {
-    expect(expandLine('transfer', { qty: 3, rate: null, fromWarehouseId: 'w1', toWarehouseId: 'w2' })).toEqual([
+    expect(
+      expandLine('transfer', { qty: 3, rate: null, fromWarehouseId: 'w1', toWarehouseId: 'w2' }),
+    ).toEqual([
       { warehouseId: 'w1', qtyDelta: -3, rate: null },
       { warehouseId: 'w2', qtyDelta: 3, rate: null },
     ]);
   });
   it('adjustment with to_warehouse → an in-leg at the line rate', () => {
-    expect(expandLine('adjustment', { qty: 2, rate: 9, fromWarehouseId: null, toWarehouseId: 'w1' })).toEqual([
-      { warehouseId: 'w1', qtyDelta: 2, rate: 9 },
-    ]);
+    expect(
+      expandLine('adjustment', { qty: 2, rate: 9, fromWarehouseId: null, toWarehouseId: 'w1' }),
+    ).toEqual([{ warehouseId: 'w1', qtyDelta: 2, rate: 9 }]);
   });
   it('adjustment with from_warehouse → an out-leg', () => {
-    expect(expandLine('adjustment', { qty: 2, rate: null, fromWarehouseId: 'w1', toWarehouseId: null })).toEqual([
-      { warehouseId: 'w1', qtyDelta: -2, rate: null },
-    ]);
+    expect(
+      expandLine('adjustment', { qty: 2, rate: null, fromWarehouseId: 'w1', toWarehouseId: null }),
+    ).toEqual([{ warehouseId: 'w1', qtyDelta: -2, rate: null }]);
   });
 });
 
@@ -203,8 +209,18 @@ describe('replayBins — rebuildBins recovery path', () => {
       { itemId: 'i2', warehouseId: 'w1', seq: 1, qtyAfter: 4, valuationRate: 2 },
     ];
     const bins = replayBins(rows);
-    expect(bins.get(binKey('i1', 'w1'))).toEqual({ itemId: 'i1', warehouseId: 'w1', qty: 15, rate: 10 });
-    expect(bins.get(binKey('i2', 'w1'))).toEqual({ itemId: 'i2', warehouseId: 'w1', qty: 4, rate: 2 });
+    expect(bins.get(binKey('i1', 'w1'))).toEqual({
+      itemId: 'i1',
+      warehouseId: 'w1',
+      qty: 15,
+      rate: 10,
+    });
+    expect(bins.get(binKey('i2', 'w1'))).toEqual({
+      itemId: 'i2',
+      warehouseId: 'w1',
+      qty: 4,
+      rate: 2,
+    });
   });
 
   it('an item never ledgered has no bin', () => {
@@ -216,7 +232,13 @@ describe('replayBins — rebuildBins recovery path', () => {
     // first receipt (reversing row) → replay must land on the SAME final bin a
     // live sequential apply would.
     let bin: BinState = applyLedgerDelta(EMPTY_BIN, 10, 50);
-    const seq: Array<{ itemId: string; warehouseId: string; seq: number; qtyAfter: number; valuationRate: number }> = [];
+    const seq: Array<{
+      itemId: string;
+      warehouseId: string;
+      seq: number;
+      qtyAfter: number;
+      valuationRate: number;
+    }> = [];
     seq.push({ itemId: 'i', warehouseId: 'w', seq: 1, qtyAfter: bin.qty, valuationRate: bin.rate });
 
     bin = applyLedgerDelta(bin, 10, 150);
@@ -231,7 +253,12 @@ describe('replayBins — rebuildBins recovery path', () => {
     seq.push({ itemId: 'i', warehouseId: 'w', seq: 4, qtyAfter: bin.qty, valuationRate: bin.rate });
 
     const replayed = replayBins(seq);
-    expect(replayed.get(binKey('i', 'w'))).toEqual({ itemId: 'i', warehouseId: 'w', qty: bin.qty, rate: bin.rate });
+    expect(replayed.get(binKey('i', 'w'))).toEqual({
+      itemId: 'i',
+      warehouseId: 'w',
+      qty: bin.qty,
+      rate: bin.rate,
+    });
   });
 });
 
@@ -253,7 +280,9 @@ describe('round4', () => {
 
 describe('validateItemUomConfig', () => {
   it('rejects a consumptionUom set without a unitsPerStockUom', () => {
-    expect(validateItemUomConfig({ consumptionUom: 'ml', unitsPerStockUom: null })).toMatch(/unitsPerStockUom/);
+    expect(validateItemUomConfig({ consumptionUom: 'ml', unitsPerStockUom: null })).toMatch(
+      /unitsPerStockUom/,
+    );
   });
   it('allows a consumptionUom with a unitsPerStockUom', () => {
     expect(validateItemUomConfig({ consumptionUom: 'ml', unitsPerStockUom: 500 })).toBeNull();
@@ -266,7 +295,11 @@ describe('validateItemUomConfig', () => {
 // ── Item composition DAG ────────────────────────────────────────────────────
 // The cooking model: potato/milk/salt -> mash; chicken/batter -> fried chicken;
 // mash + fried chicken -> plate.
-const e = (parentItemId: string, childItemId: string, qty: number): ComponentEdge => ({ parentItemId, childItemId, qty });
+const e = (parentItemId: string, childItemId: string, qty: number): ComponentEdge => ({
+  parentItemId,
+  childItemId,
+  qty,
+});
 
 describe('wouldCreateComponentCycle — DAG reachability', () => {
   it('rejects a self-edge', () => {
@@ -312,7 +345,11 @@ describe('rollupItemCost — recursive cost', () => {
 
   it('a one-level recipe sums qty x child cost', () => {
     // mash = 3 potato (2) + 1 milk (5) + 2 salt (1) = 6 + 5 + 2 = 13
-    const byParent = edgesByParent([e('mash', 'potato', 3), e('mash', 'milk', 1), e('mash', 'salt', 2)]);
+    const byParent = edgesByParent([
+      e('mash', 'potato', 3),
+      e('mash', 'milk', 1),
+      e('mash', 'salt', 2),
+    ]);
     expect(rollupItemCost('mash', byParent, leafRate).cost).toBe(13);
   });
 
@@ -343,7 +380,12 @@ describe('rollupItemCost — recursive cost', () => {
 
   it('counts a shared sub-recipe once per use, not once overall', () => {
     // both halves use salt; each contributes its own qty
-    const byParent = edgesByParent([e('plate', 'mash', 1), e('plate', 'sauce', 1), e('mash', 'salt', 2), e('sauce', 'salt', 3)]);
+    const byParent = edgesByParent([
+      e('plate', 'mash', 1),
+      e('plate', 'sauce', 1),
+      e('mash', 'salt', 2),
+      e('sauce', 'salt', 3),
+    ]);
     expect(rollupItemCost('plate', byParent, leafRate).cost).toBe(5);
   });
 
@@ -353,7 +395,13 @@ describe('rollupItemCost — recursive cost', () => {
   });
 
   it('partial propagates upward from any depth — one unpriced ingredient taints the plate', () => {
-    const byParent = edgesByParent([e('plate', 'fried', 1), e('fried', 'batter', 1), e('batter', 'mystery', 2), e('plate', 'mash', 1), e('mash', 'salt', 1)]);
+    const byParent = edgesByParent([
+      e('plate', 'fried', 1),
+      e('fried', 'batter', 1),
+      e('batter', 'mystery', 2),
+      e('plate', 'mash', 1),
+      e('mash', 'salt', 1),
+    ]);
     const plate = rollupItemCost('plate', byParent, leafRate);
     expect(plate.partial).toBe(true);
     expect(plate.cost).toBe(1); // only the salt is known — an UNDERSTATED bound
@@ -393,7 +441,12 @@ describe('explodeToStockLeaves', () => {
 
   it('accumulates a leaf reached by two different branches', () => {
     // salt appears in both halves: 1x2 + 1x3 = 5
-    const byParent = edgesByParent([e('plate', 'mash', 1), e('plate', 'sauce', 1), e('mash', 'salt', 2), e('sauce', 'salt', 3)]);
+    const byParent = edgesByParent([
+      e('plate', 'mash', 1),
+      e('plate', 'sauce', 1),
+      e('mash', 'salt', 2),
+      e('sauce', 'salt', 3),
+    ]);
     expect(explodeToStockLeaves('plate', 1, byParent, allStock).get('salt')).toBe(5);
   });
 
@@ -405,7 +458,11 @@ describe('explodeToStockLeaves', () => {
   });
 
   it('recurses to arbitrary depth', () => {
-    const byParent = edgesByParent([e('plate', 'fried', 1), e('fried', 'batter', 2), e('batter', 'flour', 3)]);
+    const byParent = edgesByParent([
+      e('plate', 'fried', 1),
+      e('fried', 'batter', 2),
+      e('batter', 'flour', 3),
+    ]);
     expect(explodeToStockLeaves('plate', 1, byParent, allStock).get('flour')).toBe(6);
   });
 
@@ -418,7 +475,11 @@ describe('explodeToStockLeaves', () => {
 describe('explodeLineWithModifiers — order-line configuration', () => {
   const allStock = () => true;
   // plate -> 1 mash -> (3 potato, 2 salt); a drink exists but is not in the template
-  const graph = edgesByParent([e('plate', 'mash', 1), e('mash', 'potato', 3), e('mash', 'salt', 2)]);
+  const graph = edgesByParent([
+    e('plate', 'mash', 1),
+    e('mash', 'potato', 3),
+    e('mash', 'salt', 2),
+  ]);
 
   it('with no modifiers it matches the plain explosion', () => {
     const plain = explodeToStockLeaves('plate', 1, graph, allStock);
@@ -427,29 +488,39 @@ describe('explodeLineWithModifiers — order-line configuration', () => {
   });
 
   it('excludes an ingredient nested SEVERAL levels down ("no salt" on a plate)', () => {
-    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'exclude', itemId: 'salt' }]);
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [
+      { action: 'exclude', itemId: 'salt' },
+    ]);
     expect(out.get('potato')).toBe(3);
     expect(out.has('salt')).toBe(false);
   });
 
   it('excluding a sub-recipe prunes everything under it', () => {
-    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'exclude', itemId: 'mash' }]);
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [
+      { action: 'exclude', itemId: 'mash' },
+    ]);
     expect(out.size).toBe(0);
   });
 
   it('adds an optional item on top of the template', () => {
-    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'add', itemId: 'drink', qty: 2 }]);
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [
+      { action: 'add', itemId: 'drink', qty: 2 },
+    ]);
     expect(out.get('drink')).toBe(2);
     expect(out.get('potato')).toBe(3); // template untouched
   });
 
   it('an added SUB-RECIPE brings its own ingredients', () => {
-    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [{ action: 'add', itemId: 'mash', qty: 1 }]);
+    const out = explodeLineWithModifiers('plate', 1, graph, allStock, [
+      { action: 'add', itemId: 'mash', qty: 1 },
+    ]);
     expect(out.get('potato')).toBe(6); // 3 from the template + 3 from the add
   });
 
   it('scales adds by the line qty', () => {
-    const out = explodeLineWithModifiers('plate', 3, graph, allStock, [{ action: 'add', itemId: 'drink', qty: 1 }]);
+    const out = explodeLineWithModifiers('plate', 3, graph, allStock, [
+      { action: 'add', itemId: 'drink', qty: 1 },
+    ]);
     expect(out.get('drink')).toBe(3);
   });
 
@@ -472,20 +543,35 @@ describe('explodeIssueRoots — POS quantity domains', () => {
   const allStock = () => true;
 
   it('keeps a direct bridge leaf in stock UOM', () => {
-    const out = explodeIssueRoots([{ itemId: 'vial', qty: 2, unitKind: 'stock' }], 2, new Map(), allStock);
+    const out = explodeIssueRoots(
+      [{ itemId: 'vial', qty: 2, unitKind: 'stock' }],
+      2,
+      new Map(),
+      allStock,
+    );
     expect([...out.stockQtyByItem]).toEqual([['vial', 2]]);
     expect(out.consumptionQtyByItem.size).toBe(0);
   });
 
   it('keeps mapped recipe quantities in consumption UOM', () => {
-    const out = explodeIssueRoots([{ itemId: 'hialuronidasa', qty: 10, unitKind: 'consumption' }], 1, new Map(), allStock);
+    const out = explodeIssueRoots(
+      [{ itemId: 'hialuronidasa', qty: 10, unitKind: 'consumption' }],
+      1,
+      new Map(),
+      allStock,
+    );
     expect(out.stockQtyByItem.size).toBe(0);
     expect([...out.consumptionQtyByItem]).toEqual([['hialuronidasa', 10]]);
   });
 
   it('switches a composed bridge to child consumption UOM', () => {
     const graph = edgesByParent([e('plate', 'serum', 5)]);
-    const out = explodeIssueRoots([{ itemId: 'plate', qty: 2, unitKind: 'stock' }], 2, graph, allStock);
+    const out = explodeIssueRoots(
+      [{ itemId: 'plate', qty: 2, unitKind: 'stock' }],
+      2,
+      graph,
+      allStock,
+    );
     expect(out.stockQtyByItem.size).toBe(0);
     expect([...out.consumptionQtyByItem]).toEqual([['serum', 10]]);
   });
@@ -495,7 +581,9 @@ describe('explodeIssueRoots — POS quantity domains', () => {
       { itemId: 'ingredient-a', qty: 1, unitKind: 'consumption' as const },
       { itemId: 'ingredient-b', qty: 2, unitKind: 'consumption' as const },
     ];
-    const out = explodeIssueRoots(roots, 1, new Map(), allStock, [{ action: 'add', itemId: 'drink', qty: 1 }]);
+    const out = explodeIssueRoots(roots, 1, new Map(), allStock, [
+      { action: 'add', itemId: 'drink', qty: 1 },
+    ]);
     expect([...out.consumptionQtyByItem]).toEqual([
       ['ingredient-a', 1],
       ['ingredient-b', 2],
@@ -505,7 +593,9 @@ describe('explodeIssueRoots — POS quantity domains', () => {
 
   it('switches an added composite from parent stock UOM to child consumption UOM', () => {
     const graph = edgesByParent([e('optional-kit', 'serum', 5)]);
-    const out = explodeIssueRoots([], 2, graph, allStock, [{ action: 'add', itemId: 'optional-kit', qty: 1 }]);
+    const out = explodeIssueRoots([], 2, graph, allStock, [
+      { action: 'add', itemId: 'optional-kit', qty: 1 },
+    ]);
     expect(out.stockQtyByItem.size).toBe(0);
     expect([...out.consumptionQtyByItem]).toEqual([['serum', 10]]);
   });

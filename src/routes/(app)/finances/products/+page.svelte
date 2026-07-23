@@ -79,7 +79,6 @@
       exportValue: (p) => p.margin ?? '',
     },
   ];
-
 </script>
 
 <svelte:head><title>{m.fin_products_title()}</title></svelte:head>
@@ -137,15 +136,20 @@
         {:else if p.margin == null}
           <span class="muted">—</span>
         {:else}
-          <span class="tabular-nums font-medium" class:margin-pos={p.margin >= 0} class:margin-neg={p.margin < 0}>
-            {formatMoney(p.margin)}{#if p.marginPct != null}<span class="t-caption pct">{p.marginPct}%</span>{/if}
+          <span
+            class="tabular-nums font-medium"
+            class:margin-pos={p.margin >= 0}
+            class:margin-neg={p.margin < 0}
+          >
+            {formatMoney(p.margin)}{#if p.marginPct != null}<span class="t-caption pct"
+                >{p.marginPct}%</span
+              >{/if}
           </span>
         {/if}
       {/if}
     {/snippet}
   </DataTable>
 </PageShell>
-
 
 <!-- Recursive composition: "their relationships to items, recursively".
      A self-recursive snippet renders arbitrary depth; qty is PER PARENT, so a

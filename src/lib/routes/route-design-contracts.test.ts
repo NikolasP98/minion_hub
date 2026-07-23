@@ -139,11 +139,7 @@ describe('route design contracts', () => {
     const destructive = SCREEN_DESIGN_MANIFEST.filter((route) =>
       route.capture.states.includes('destructive-confirm'),
     ).map((route) => route.pattern);
-    expect(destructive.sort()).toEqual([
-      '/brains/[id]',
-      '/crm/[contactId]',
-      '/stock/entries/[id]',
-    ]);
+    expect(destructive.sort()).toEqual(['/brains/[id]', '/crm/[contactId]', '/stock/entries/[id]']);
   });
 
   it('builds a capture plan without pretending state fixtures have been prepared', async () => {

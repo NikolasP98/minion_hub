@@ -1192,7 +1192,9 @@
       aria-checked={dockSections.notes}
       onclick={() => toggleDockSection('notes')}
     >
-      <span class="dm-check">{#if dockSections.notes}<Check size={iconSizes.sm} />{/if}</span>
+      <span class="dm-check"
+        >{#if dockSections.notes}<Check size={iconSizes.sm} />{/if}</span
+      >
       <span>{m.note_panelLabel()}</span>
     </Button>
     <Button
@@ -1202,7 +1204,9 @@
       aria-checked={dockSections.omni}
       onclick={() => toggleDockSection('omni')}
     >
-      <span class="dm-check">{#if dockSections.omni}<Check size={iconSizes.sm} />{/if}</span>
+      <span class="dm-check"
+        >{#if dockSections.omni}<Check size={iconSizes.sm} />{/if}</span
+      >
       <span>{m.omni_panelTitle()}</span>
     </Button>
   </div>

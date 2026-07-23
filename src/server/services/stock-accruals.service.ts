@@ -79,7 +79,13 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
     const existing = await tx
       .select({ id: stkAccruals.id, status: stkAccruals.status })
       .from(stkAccruals)
-      .where(and(eq(stkAccruals.orgId, orgId), eq(stkAccruals.source, input.source), eq(stkAccruals.sourceId, input.sourceId)));
+      .where(
+        and(
+          eq(stkAccruals.orgId, orgId),
+          eq(stkAccruals.source, input.source),
+          eq(stkAccruals.sourceId, input.sourceId),
+        ),
+      );
     if (existing.some((r) => r.status !== 'open')) return 0; // settled — never resurrect
 
     const warehouseId = input.warehouseId ?? (await defaultWarehouseTx(tx, orgId));
@@ -92,9 +98,12 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
       const mapping = await tx
         .select({ itemId: stkConsumption.itemId, qtyPerUnit: stkConsumption.qtyPerUnit })
         .from(stkConsumption)
-        .where(and(eq(stkConsumption.orgId, orgId), eq(stkConsumption.finProductId, input.finProductId)));
+        .where(
+          and(eq(stkConsumption.orgId, orgId), eq(stkConsumption.finProductId, input.finProductId)),
+        );
       const byItem = new Map<string, number>();
-      for (const m of mapping) byItem.set(m.itemId, (byItem.get(m.itemId) ?? 0) + quantity * Number(m.qtyPerUnit));
+      for (const m of mapping)
+        byItem.set(m.itemId, (byItem.get(m.itemId) ?? 0) + quantity * Number(m.qtyPerUnit));
       lines = [...byItem].map(([itemId, qtyConsumption]) => ({ itemId, qtyConsumption }));
     }
     if (!lines.length) return 0; // unmapped product
@@ -112,8 +121,17 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
       .from(stkItemComponents)
       .where(eq(stkItemComponents.orgId, orgId));
     if (edgeRows.length) {
-      const byParent = edgesByParent(edgeRows.map((e) => ({ parentItemId: e.parentItemId, childItemId: e.childItemId, qty: Number(e.qty) })));
-      const involved = new Set<string>([...lines.map((l) => l.itemId), ...edgeRows.flatMap((e) => [e.parentItemId, e.childItemId])]);
+      const byParent = edgesByParent(
+        edgeRows.map((e) => ({
+          parentItemId: e.parentItemId,
+          childItemId: e.childItemId,
+          qty: Number(e.qty),
+        })),
+      );
+      const involved = new Set<string>([
+        ...lines.map((l) => l.itemId),
+        ...edgeRows.flatMap((e) => [e.parentItemId, e.childItemId]),
+      ]);
       const flagRows = await tx
         .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
         .from(stkItems)
@@ -121,7 +139,13 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
       const stockFlag = new Map(flagRows.map((r) => [r.id, r.isStockItem]));
       const expanded = new Map<string, number>();
       for (const l of lines) {
-        explodeToStockLeaves(l.itemId, l.qtyConsumption, byParent, (id) => stockFlag.get(id) ?? true, expanded);
+        explodeToStockLeaves(
+          l.itemId,
+          l.qtyConsumption,
+          byParent,
+          (id) => stockFlag.get(id) ?? true,
+          expanded,
+        );
       }
       lines = [...expanded].map(([itemId, qtyConsumption]) => ({ itemId, qtyConsumption }));
       if (!lines.length) return 0; // everything expanded to non-stock leaves
@@ -132,17 +156,30 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
       .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
       .from(stkItems)
       .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
-    const upsByItem = new Map(items.map((i) => [i.id, i.unitsPerStockUom == null ? null : Number(i.unitsPerStockUom)]));
+    const upsByItem = new Map(
+      items.map((i) => [i.id, i.unitsPerStockUom == null ? null : Number(i.unitsPerStockUom)]),
+    );
     const bins = await tx
       .select({ itemId: stkBins.itemId, valuationRate: stkBins.valuationRate })
       .from(stkBins)
-      .where(and(eq(stkBins.orgId, orgId), eq(stkBins.warehouseId, warehouseId), inArray(stkBins.itemId, itemIds)));
+      .where(
+        and(
+          eq(stkBins.orgId, orgId),
+          eq(stkBins.warehouseId, warehouseId),
+          inArray(stkBins.itemId, itemIds),
+        ),
+      );
     const rateByItem = new Map(bins.map((b) => [b.itemId, Number(b.valuationRate)]));
 
     const rows = lines
       .filter((l) => upsByItem.has(l.itemId)) // unknown item id → skip, not fail
       .map((l) => {
-        const qty = round4(consumptionToStockQty({ unitsPerStockUom: upsByItem.get(l.itemId) ?? null }, l.qtyConsumption));
+        const qty = round4(
+          consumptionToStockQty(
+            { unitsPerStockUom: upsByItem.get(l.itemId) ?? null },
+            l.qtyConsumption,
+          ),
+        );
         const rate = rateByItem.get(l.itemId) ?? 0;
         return {
           orgId,
@@ -161,19 +198,37 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
 
     await tx
       .delete(stkAccruals)
-      .where(and(eq(stkAccruals.orgId, orgId), eq(stkAccruals.source, input.source), eq(stkAccruals.sourceId, input.sourceId), eq(stkAccruals.status, 'open')));
+      .where(
+        and(
+          eq(stkAccruals.orgId, orgId),
+          eq(stkAccruals.source, input.source),
+          eq(stkAccruals.sourceId, input.sourceId),
+          eq(stkAccruals.status, 'open'),
+        ),
+      );
     await tx.insert(stkAccruals).values(rows);
     return rows.length;
   });
 }
 
 /** Cancel / no-show path: open rows → released. Idempotent. */
-export async function releaseAccruals(ctx: CoreCtx, source: string, sourceId: string): Promise<number> {
+export async function releaseAccruals(
+  ctx: CoreCtx,
+  source: string,
+  sourceId: string,
+): Promise<number> {
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .update(stkAccruals)
       .set({ status: 'released', releasedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(stkAccruals.orgId, ctx.tenantId), eq(stkAccruals.source, source), eq(stkAccruals.sourceId, sourceId), eq(stkAccruals.status, 'open')))
+      .where(
+        and(
+          eq(stkAccruals.orgId, ctx.tenantId),
+          eq(stkAccruals.source, source),
+          eq(stkAccruals.sourceId, sourceId),
+          eq(stkAccruals.status, 'open'),
+        ),
+      )
       .returning({ id: stkAccruals.id });
     return rows.length;
   });
@@ -202,16 +257,28 @@ export interface AccrualPreview {
  */
 export async function buildAccrualPreview(
   ctx: CoreCtx,
-  input: { finProductId: string; quantity: number; warehouseId?: string | null; excludeSource?: { source: string; sourceId: string } | null },
+  input: {
+    finProductId: string;
+    quantity: number;
+    warehouseId?: string | null;
+    excludeSource?: { source: string; sourceId: string } | null;
+  },
 ): Promise<AccrualPreview> {
   const warehouseId = input.warehouseId ?? (await resolveDefaultWarehouse(ctx));
   if (!warehouseId) throw new StockError('no warehouse configured', 'no_warehouse');
-  const preview = await buildServiceIssuePreview(ctx, { finProductId: input.finProductId, quantity: input.quantity, warehouseId });
+  const preview = await buildServiceIssuePreview(ctx, {
+    finProductId: input.finProductId,
+    quantity: input.quantity,
+    warehouseId,
+  });
   const itemIds = preview.lines.map((l) => l.itemId);
   const committed = itemIds.length
     ? await withOrgCore(ctx, (tx) =>
         tx
-          .select({ itemId: stkAccruals.itemId, total: sql<string>`coalesce(sum(${stkAccruals.qty}), 0)` })
+          .select({
+            itemId: stkAccruals.itemId,
+            total: sql<string>`coalesce(sum(${stkAccruals.qty}), 0)`,
+          })
           .from(stkAccruals)
           .where(
             and(
@@ -220,7 +287,9 @@ export async function buildAccrualPreview(
               inArray(stkAccruals.itemId, itemIds),
               eq(stkAccruals.status, 'open'),
               ...(input.excludeSource
-                ? [sql`not (${stkAccruals.source} = ${input.excludeSource.source} and ${stkAccruals.sourceId} = ${input.excludeSource.sourceId})`]
+                ? [
+                    sql`not (${stkAccruals.source} = ${input.excludeSource.source} and ${stkAccruals.sourceId} = ${input.excludeSource.sourceId})`,
+                  ]
                 : []),
             ),
           )
@@ -274,18 +343,30 @@ export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promis
     tx
       .select()
       .from(stkAccruals)
-      .where(and(eq(stkAccruals.orgId, ctx.tenantId), eq(stkAccruals.source, input.source), eq(stkAccruals.sourceId, input.sourceId), eq(stkAccruals.status, 'open'))),
+      .where(
+        and(
+          eq(stkAccruals.orgId, ctx.tenantId),
+          eq(stkAccruals.source, input.source),
+          eq(stkAccruals.sourceId, input.sourceId),
+          eq(stkAccruals.status, 'open'),
+        ),
+      ),
   );
 
   let entry = await findEntryBySource(ctx, input.source, input.sourceId);
   if (!entry) {
     const lines: CreateIssueFromInvoiceLine[] = input.lines?.length
       ? input.lines
-      : open.map((a) => ({ itemId: a.itemId, qty: Number(a.qty), qtyConsumption: Number(a.qtyConsumption) }));
+      : open.map((a) => ({
+          itemId: a.itemId,
+          qty: Number(a.qty),
+          qtyConsumption: Number(a.qtyConsumption),
+        }));
     if (!lines.length) return { entry: null, realized: 0, stockWarning: null };
     const finProductId = input.finProductId ?? open[0]?.finProductId ?? null;
     if (!finProductId) return { entry: null, realized: 0, stockWarning: null };
-    const warehouseId = input.warehouseId ?? open[0]?.warehouseId ?? (await resolveDefaultWarehouse(ctx));
+    const warehouseId =
+      input.warehouseId ?? open[0]?.warehouseId ?? (await resolveDefaultWarehouse(ctx));
     if (!warehouseId) throw new StockError('no warehouse configured', 'no_warehouse');
     try {
       entry = await createServiceIssue(ctx, {
@@ -317,7 +398,11 @@ export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promis
       entry = await submitEntry(ctx, entry.id, input.actor);
     } catch (e) {
       if (e instanceof StockError) {
-        return { entry, realized: 0, stockWarning: { code: e.code, message: e.message, draftEntryId: entry.id } };
+        return {
+          entry,
+          realized: 0,
+          stockWarning: { code: e.code, message: e.message, draftEntryId: entry.id },
+        };
       }
       throw e;
     }
@@ -326,7 +411,11 @@ export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promis
   const entryId = entry.id;
   const realized = await withOrgCore(ctx, async (tx) => {
     const ledger = await tx
-      .select({ itemId: stkLedger.itemId, qtyDelta: stkLedger.qtyDelta, valueDelta: stkLedger.valueDelta })
+      .select({
+        itemId: stkLedger.itemId,
+        qtyDelta: stkLedger.qtyDelta,
+        valueDelta: stkLedger.valueDelta,
+      })
       .from(stkLedger)
       .where(and(eq(stkLedger.orgId, ctx.tenantId), eq(stkLedger.entryId, entryId)));
     const qtyByItem = new Map<string, number>();
@@ -414,22 +503,42 @@ export function listAccruals(
 }
 
 /** bin.qty − Σ open-accrual qty for (item, warehouse). */
-export async function availableToPromise(ctx: CoreCtx, itemId: string, warehouseId: string): Promise<number> {
+export async function availableToPromise(
+  ctx: CoreCtx,
+  itemId: string,
+  warehouseId: string,
+): Promise<number> {
   return withOrgCore(ctx, async (tx) => {
     const [bin] = await tx
       .select({ qty: stkBins.qty })
       .from(stkBins)
-      .where(and(eq(stkBins.orgId, ctx.tenantId), eq(stkBins.itemId, itemId), eq(stkBins.warehouseId, warehouseId)));
+      .where(
+        and(
+          eq(stkBins.orgId, ctx.tenantId),
+          eq(stkBins.itemId, itemId),
+          eq(stkBins.warehouseId, warehouseId),
+        ),
+      );
     const [committed] = await tx
       .select({ total: sql<string>`coalesce(sum(${stkAccruals.qty}), 0)` })
       .from(stkAccruals)
-      .where(and(eq(stkAccruals.orgId, ctx.tenantId), eq(stkAccruals.itemId, itemId), eq(stkAccruals.warehouseId, warehouseId), eq(stkAccruals.status, 'open')));
+      .where(
+        and(
+          eq(stkAccruals.orgId, ctx.tenantId),
+          eq(stkAccruals.itemId, itemId),
+          eq(stkAccruals.warehouseId, warehouseId),
+          eq(stkAccruals.status, 'open'),
+        ),
+      );
     return round4(Number(bin?.qty ?? 0) - Number(committed?.total ?? 0));
   });
 }
 
 /** Σ est_value of open accruals — the "potential spend" headline. */
-export async function committedSpend(ctx: CoreCtx, filters: { warehouseId?: string } = {}): Promise<number> {
+export async function committedSpend(
+  ctx: CoreCtx,
+  filters: { warehouseId?: string } = {},
+): Promise<number> {
   return withOrgCore(ctx, async (tx) => {
     const conds = [eq(stkAccruals.orgId, ctx.tenantId), eq(stkAccruals.status, 'open')];
     if (filters.warehouseId) conds.push(eq(stkAccruals.warehouseId, filters.warehouseId));
@@ -452,7 +561,11 @@ export interface AccrualSourceSummary {
 }
 
 /** Batch rollup for list pages (one query, no N+1). */
-export async function accrualSummaryForSources(ctx: CoreCtx, source: string, sourceIds: string[]): Promise<AccrualSourceSummary[]> {
+export async function accrualSummaryForSources(
+  ctx: CoreCtx,
+  source: string,
+  sourceIds: string[],
+): Promise<AccrualSourceSummary[]> {
   if (!sourceIds.length) return [];
   const rows = await withOrgCore(ctx, (tx) =>
     tx
@@ -464,11 +577,25 @@ export async function accrualSummaryForSources(ctx: CoreCtx, source: string, sou
         realizedEntryId: stkAccruals.realizedEntryId,
       })
       .from(stkAccruals)
-      .where(and(eq(stkAccruals.orgId, ctx.tenantId), eq(stkAccruals.source, source), inArray(stkAccruals.sourceId, sourceIds))),
+      .where(
+        and(
+          eq(stkAccruals.orgId, ctx.tenantId),
+          eq(stkAccruals.source, source),
+          inArray(stkAccruals.sourceId, sourceIds),
+        ),
+      ),
   );
   const bySource = new Map<string, AccrualSourceSummary>();
   for (const r of rows) {
-    const s = bySource.get(r.sourceId) ?? { sourceId: r.sourceId, open: 0, realized: 0, released: 0, estValue: 0, realizedValue: 0, realizedEntryId: null };
+    const s = bySource.get(r.sourceId) ?? {
+      sourceId: r.sourceId,
+      open: 0,
+      realized: 0,
+      released: 0,
+      estValue: 0,
+      realizedValue: 0,
+      realizedEntryId: null,
+    };
     if (r.status === 'open') s.open++;
     else if (r.status === 'realized') s.realized++;
     else s.released++;

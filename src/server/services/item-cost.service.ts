@@ -65,7 +65,14 @@ export function rollupFlatCost(
     const value = round4(stockQty * rate);
     if (!hasBin) partial = true;
     cost = round4(cost + value);
-    return { itemId: m.itemId, qtyPerUnit: m.qtyPerUnit, stockQty: round4(stockQty), rate, value, hasBin };
+    return {
+      itemId: m.itemId,
+      qtyPerUnit: m.qtyPerUnit,
+      stockQty: round4(stockQty),
+      rate,
+      value,
+      hasBin,
+    };
   });
   return { cost, costable: true, partial, lines };
 }
@@ -112,7 +119,9 @@ async function loadProductRoots(
     })
     .from(stkConsumption)
     .innerJoin(stkItems, eq(stkItems.id, stkConsumption.itemId))
-    .where(and(eq(stkConsumption.orgId, orgId), inArray(stkConsumption.finProductId, finProductIds)));
+    .where(
+      and(eq(stkConsumption.orgId, orgId), inArray(stkConsumption.finProductId, finProductIds)),
+    );
   for (const r of maps) {
     const list = byProduct.get(r.finProductId) ?? [];
     list.push({
@@ -125,22 +134,36 @@ async function loadProductRoots(
 
   // 1:1 bridge fallback — only for products with no explicit recipe.
   const bridged = await tx
-    .select({ id: stkItems.id, finProductId: stkItems.finProductId, unitsPerStockUom: stkItems.unitsPerStockUom })
+    .select({
+      id: stkItems.id,
+      finProductId: stkItems.finProductId,
+      unitsPerStockUom: stkItems.unitsPerStockUom,
+    })
     .from(stkItems)
     .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.finProductId, finProductIds)));
   for (const b of bridged) {
     if (!b.finProductId || byProduct.has(b.finProductId)) continue;
     byProduct.set(b.finProductId, [
-      { itemId: b.id, qtyPerUnit: 1, unitsPerStockUom: b.unitsPerStockUom == null ? null : Number(b.unitsPerStockUom) },
+      {
+        itemId: b.id,
+        qtyPerUnit: 1,
+        unitsPerStockUom: b.unitsPerStockUom == null ? null : Number(b.unitsPerStockUom),
+      },
     ]);
   }
   return byProduct;
 }
 
-export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Promise<Map<string, ProductCost>> {
+export async function costForProducts(
+  ctx: CoreCtx,
+  finProductIds: string[],
+): Promise<Map<string, ProductCost>> {
   const out = new Map<string, ProductCost>();
   if (finProductIds.length === 0) return out;
-  const [warehouseId, componentEdges] = await Promise.all([resolveDefaultWarehouse(ctx), listAllComponentEdges(ctx)]);
+  const [warehouseId, componentEdges] = await Promise.all([
+    resolveDefaultWarehouse(ctx),
+    listAllComponentEdges(ctx),
+  ]);
 
   return withOrgCore(ctx, async (tx) => {
     const byProduct = await loadProductRoots(tx, ctx.tenantId, finProductIds);
@@ -165,7 +188,8 @@ export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Pr
     // "1 plate" prices the whole tree beneath it, at any depth.
     const byParent = edgesByParent(componentEdges);
     const memo = new Map<string, ReturnType<typeof rollupItemCost>>();
-    const effective = (itemId: string) => rollupItemCost(itemId, byParent, (id) => binRate.get(id) ?? 0, memo);
+    const effective = (itemId: string) =>
+      rollupItemCost(itemId, byParent, (id) => binRate.get(id) ?? 0, memo);
     const rateByItem = new Map<string, number>();
     const unvalued = new Set<string>();
     for (const id of itemIds) {
@@ -174,7 +198,8 @@ export async function costForProducts(ctx: CoreCtx, finProductIds: string[]): Pr
       if (r.partial) unvalued.add(id);
     }
 
-    for (const [productId, mappings] of byProduct) out.set(productId, rollupFlatCost(mappings, rateByItem, unvalued));
+    for (const [productId, mappings] of byProduct)
+      out.set(productId, rollupFlatCost(mappings, rateByItem, unvalued));
     return out;
   });
 }
@@ -203,7 +228,10 @@ const MAX_TREE_DEPTH = 12;
  * pre-multiplied total. Roots come from the same resolution the cost rollup
  * uses, so the tree always explains the number displayed beside it.
  */
-export async function productCompositionTrees(ctx: CoreCtx, finProductIds: string[]): Promise<Map<string, CompositionNode[]>> {
+export async function productCompositionTrees(
+  ctx: CoreCtx,
+  finProductIds: string[],
+): Promise<Map<string, CompositionNode[]>> {
   const out = new Map<string, CompositionNode[]>();
   if (finProductIds.length === 0) return out;
   const edges = await listAllComponentEdges(ctx);
@@ -214,12 +242,23 @@ export async function productCompositionTrees(ctx: CoreCtx, finProductIds: strin
     if (byProduct.size === 0) return out;
 
     const items = await tx
-      .select({ id: stkItems.id, code: stkItems.code, name: stkItems.name, uom: stkItems.uom, isStockItem: stkItems.isStockItem })
+      .select({
+        id: stkItems.id,
+        code: stkItems.code,
+        name: stkItems.name,
+        uom: stkItems.uom,
+        isStockItem: stkItems.isStockItem,
+      })
       .from(stkItems)
       .where(eq(stkItems.orgId, ctx.tenantId));
     const itemById = new Map(items.map((i) => [i.id, i]));
 
-    const build = (itemId: string, qty: number, depth: number, path: Set<string>): CompositionNode | null => {
+    const build = (
+      itemId: string,
+      qty: number,
+      depth: number,
+      path: Set<string>,
+    ): CompositionNode | null => {
       const it = itemById.get(itemId);
       if (!it) return null; // unknown id → omit rather than render a ghost row
       const node: CompositionNode = {
@@ -242,7 +281,9 @@ export async function productCompositionTrees(ctx: CoreCtx, finProductIds: strin
     };
 
     for (const [productId, roots] of byProduct) {
-      const nodes = roots.map((r) => build(r.itemId, r.qtyPerUnit, 0, new Set<string>())).filter((n): n is CompositionNode => n !== null);
+      const nodes = roots
+        .map((r) => build(r.itemId, r.qtyPerUnit, 0, new Set<string>()))
+        .filter((n): n is CompositionNode => n !== null);
       if (nodes.length) out.set(productId, nodes);
     }
     return out;

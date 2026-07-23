@@ -77,7 +77,9 @@
         </div>
         <div>
           <dt>{m.brains_metric_pending()}</dt>
-          <dd class:attention={brain.stats.pendingCount > 0}>{brain.stats.pendingCount.toLocaleString()}</dd>
+          <dd class:attention={brain.stats.pendingCount > 0}>
+            {brain.stats.pendingCount.toLocaleString()}
+          </dd>
         </div>
       </dl>
 

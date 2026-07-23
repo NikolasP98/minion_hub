@@ -10,7 +10,20 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { bigserial, boolean, integer, jsonb, numeric, pgTable, text, timestamp, uuid, index, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  bigserial,
+  boolean,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  index,
+  primaryKey,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 
 export const stkItems = pgTable(
   'stk_items',
@@ -76,7 +89,10 @@ export const stkWarehouses = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('stk_warehouses_org_idx').on(t.orgId), index('stk_warehouses_org_parent_idx').on(t.orgId, t.parentId)],
+  (t) => [
+    index('stk_warehouses_org_idx').on(t.orgId),
+    index('stk_warehouses_org_parent_idx').on(t.orgId, t.parentId),
+  ],
 );
 
 export const stkEntries = pgTable(
@@ -123,7 +139,10 @@ export const stkEntryLines = pgTable(
     toWarehouseId: uuid('to_warehouse_id'),
     lineNo: integer('line_no').notNull().default(0),
   },
-  (t) => [index('stk_entry_lines_entry_idx').on(t.entryId), index('stk_entry_lines_org_idx').on(t.orgId)],
+  (t) => [
+    index('stk_entry_lines_entry_idx').on(t.entryId),
+    index('stk_entry_lines_org_idx').on(t.orgId),
+  ],
 );
 
 /**
@@ -286,7 +305,11 @@ export const stkItemComponents = pgTable(
     // `unique (org_id, parent_item_id, child_item_id)` in the migration — the
     // upsert targets COLUMNS, not this name, so it works either way, but the
     // schema should not describe an index that doesn't exist.
-    uniqueIndex('stk_item_components_org_id_parent_item_id_child_item_id_key').on(t.orgId, t.parentItemId, t.childItemId),
+    uniqueIndex('stk_item_components_org_id_parent_item_id_child_item_id_key').on(
+      t.orgId,
+      t.parentItemId,
+      t.childItemId,
+    ),
     index('stk_item_components_org_parent_idx').on(t.orgId, t.parentItemId),
     index('stk_item_components_org_child_idx').on(t.orgId, t.childItemId),
   ],

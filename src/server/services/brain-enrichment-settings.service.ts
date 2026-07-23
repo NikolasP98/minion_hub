@@ -109,8 +109,7 @@ export function listBrainEnrichmentModelCatalog(): BrainEnrichmentModelCatalogEn
       ...parsed
         .filter(
           (entry) =>
-            entry.inputUsdPerMillion <= inputCeiling &&
-            entry.outputUsdPerMillion <= outputCeiling,
+            entry.inputUsdPerMillion <= inputCeiling && entry.outputUsdPerMillion <= outputCeiling,
         )
         .map((entry) => ({
           provider: entry.provider,

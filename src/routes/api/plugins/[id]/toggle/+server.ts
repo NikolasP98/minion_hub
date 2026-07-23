@@ -2,10 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import {
-  listGatewayHostsForUser,
-  resolveGatewayId,
-} from '$server/services/gateway.pg.service';
+import { listGatewayHostsForUser, resolveGatewayId } from '$server/services/gateway.pg.service';
 import { setPluginDisabledForOrg } from '$server/services/org-config-sync.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
 

@@ -119,7 +119,7 @@
         <BrainOverviewPanel overview={data.overview} />
       {:else if tab === 'sources'}
         <div class="sources-stack">
-          <BrainKnowledgeSources {brain} sources={data.overview.sources} canEdit={canEdit} />
+          <BrainKnowledgeSources {brain} sources={data.overview.sources} {canEdit} />
           <section aria-labelledby="added-content-title">
             <div class="legacy-heading">
               <h2 id="added-content-title">{m.brains_legacy_sources()}</h2>

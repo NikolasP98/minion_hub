@@ -215,7 +215,9 @@ function parseCursor(job: BgJob): BrainCorpusCursor {
         })),
       next: Math.max(0, Number(value.next) || 0),
       failures: Array.isArray(value.failures)
-        ? value.failures.filter((failure): failure is string => typeof failure === 'string').slice(-20)
+        ? value.failures
+            .filter((failure): failure is string => typeof failure === 'string')
+            .slice(-20)
         : [],
     };
   }

@@ -131,7 +131,10 @@
           {:else}
             <div class="source-list">
               {#each group.sources as source (source.id)}
-                <article class:included={brain.kind !== 'master' && source.member} class="source-row">
+                <article
+                  class:included={brain.kind !== 'master' && source.member}
+                  class="source-row"
+                >
                   <div class="source-icon" aria-hidden="true"><Database size={iconSizes.md} /></div>
                   <div class="source-copy">
                     <div class="source-title-row">
@@ -165,7 +168,9 @@
                   </div>
                   <div class="source-sync">
                     <p><RefreshCw size={iconSizes.xs} aria-hidden="true" /> {source.syncMode}</p>
-                    <time datetime={source.lastSyncedAt ?? undefined}>{formatDate(source.lastSyncedAt)}</time>
+                    <time datetime={source.lastSyncedAt ?? undefined}
+                      >{formatDate(source.lastSyncedAt)}</time
+                    >
                     {#if source.lastError}
                       <p class="source-error" title={source.lastError}>
                         <AlertTriangle size={iconSizes.xs} aria-hidden="true" />

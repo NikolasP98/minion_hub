@@ -87,7 +87,15 @@ export async function sendContactMessage(
   });
 
   await insertMessages(ctx.tenantId, gatewayId, [
-    buildOutboundRow({ contactId, channel, to, accountId, text: body, occurredAt: Date.now(), clientId }),
+    buildOutboundRow({
+      contactId,
+      channel,
+      to,
+      accountId,
+      text: body,
+      occurredAt: Date.now(),
+      clientId,
+    }),
   ]);
 
   return { ok: true };

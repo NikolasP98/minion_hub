@@ -1,4 +1,15 @@
-import { pgTable, uuid, text, numeric, jsonb, timestamp, integer, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  numeric,
+  jsonb,
+  timestamp,
+  integer,
+  boolean,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -43,7 +54,9 @@ export const posShifts = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    oneOpen: uniqueIndex('pos_shifts_one_open_per_org').on(t.orgId).where(sql.raw(`status = 'open'`)),
+    oneOpen: uniqueIndex('pos_shifts_one_open_per_org')
+      .on(t.orgId)
+      .where(sql.raw(`status = 'open'`)),
   }),
 );
 export type PosShift = typeof posShifts.$inferSelect;

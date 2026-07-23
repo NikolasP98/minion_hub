@@ -20,14 +20,7 @@ async function mutateMembership(
     id: ctx.profileId ?? null,
     name: locals.user?.displayName ?? locals.user?.email ?? null,
   };
-  return setFocusedBrainSourceMembership(
-    ctx,
-    brainId,
-    sourceId,
-    member,
-    principal,
-    actor,
-  );
+  return setFocusedBrainSourceMembership(ctx, brainId, sourceId, member, principal, actor);
 }
 
 /** Attach an existing shared corpus source to a Focused Brain. */

@@ -400,12 +400,7 @@
               {m.fleet_update_progress({ done: doneCount, total: job.instances.length })}
             </span>
             {#if job.active}
-              <Button
-                variant="danger"
-                size="sm"
-                onclick={abortFleet}
-                class="font-mono text-xs"
-              >
+              <Button variant="danger" size="sm" onclick={abortFleet} class="font-mono text-xs">
                 <Square size={10} />
                 {m.fleet_update_abort()}
               </Button>

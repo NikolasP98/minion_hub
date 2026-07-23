@@ -335,12 +335,7 @@
 
   <!-- Full-sync provisioning wizard (same wizard used by /settings CHANNEL
        ACCOUNTS "Add account" — provisions a channels row + live session). -->
-  <Dialog
-    open={wizardType !== null}
-    title={m.usersui_setupSync()}
-    size="md"
-    onclose={closeWizard}
-  >
+  <Dialog open={wizardType !== null} title={m.usersui_setupSync()} size="md" onclose={closeWizard}>
     {#if wizardType}
       <ChannelSetupWizard
         {serverId}

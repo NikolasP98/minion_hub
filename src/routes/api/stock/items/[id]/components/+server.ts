@@ -39,7 +39,11 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   if (!ctx) throw error(401);
   const body = await parseBody(request, postSchema);
   try {
-    const row = await setComponent(ctx, { parentItemId: params.id as string, ...body }, actorOf(locals, ctx.profileId ?? null));
+    const row = await setComponent(
+      ctx,
+      { parentItemId: params.id as string, ...body },
+      actorOf(locals, ctx.profileId ?? null),
+    );
     return json({ ok: true, component: row }, { status: 201 });
   } catch (e) {
     handleStockError(e);

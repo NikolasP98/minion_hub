@@ -37,7 +37,10 @@ plugin({
     }));
     for (const spec of SERVER_VALUE_MODULES) {
       const real = join(ROOT, 'src/server', `${spec.slice('$server/'.length)}.ts`);
-      build.module(spec, async () => ({ exports: { ...(await import(real)) }, loader: 'object' as const }));
+      build.module(spec, async () => ({
+        exports: { ...(await import(real)) },
+        loader: 'object' as const,
+      }));
     }
   },
 });

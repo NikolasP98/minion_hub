@@ -22,8 +22,6 @@ export function scopeHostsToOrg<T extends LabelHost>(
   activeHostId?: string | null,
 ): T[] {
   if (!activeOrgId) return hosts;
-  const scoped = hosts.filter(
-    (h) => !h.orgId || h.orgId === activeOrgId || h.id === activeHostId,
-  );
+  const scoped = hosts.filter((h) => !h.orgId || h.orgId === activeOrgId || h.id === activeHostId);
   return scoped.length > 0 ? scoped : hosts;
 }

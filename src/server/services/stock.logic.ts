@@ -53,7 +53,11 @@ export function applyLedgerDelta(bin: BinState, qtyDelta: number, valueDelta: nu
  * adjustments (ERPNext rule: you don't choose what you paid for stock that's
  * leaving).
  */
-export function computeLegValue(bin: BinState, qtyDelta: number, rate: number | null): { valueDelta: number; rateUsed: number } {
+export function computeLegValue(
+  bin: BinState,
+  qtyDelta: number,
+  rate: number | null,
+): { valueDelta: number; rateUsed: number } {
   if (qtyDelta >= 0) {
     const r = rate ?? bin.rate;
     return { valueDelta: qtyDelta * r, rateUsed: r };
@@ -95,12 +99,15 @@ export function validateEntryLine(type: EntryType, line: EntryLineLike): string[
   } else if (type === 'issue') {
     if (!line.fromWarehouseId) errs.push('issue requires from_warehouse');
   } else if (type === 'transfer') {
-    if (!line.fromWarehouseId || !line.toWarehouseId) errs.push('transfer requires from_warehouse and to_warehouse');
-    else if (line.fromWarehouseId === line.toWarehouseId) errs.push('transfer requires two different warehouses');
+    if (!line.fromWarehouseId || !line.toWarehouseId)
+      errs.push('transfer requires from_warehouse and to_warehouse');
+    else if (line.fromWarehouseId === line.toWarehouseId)
+      errs.push('transfer requires two different warehouses');
   } else if (type === 'adjustment') {
     const has = [line.fromWarehouseId, line.toWarehouseId].filter(Boolean).length;
     if (has !== 1) errs.push('adjustment requires exactly one of from_warehouse / to_warehouse');
-    if (line.toWarehouseId && line.rate == null) errs.push('a positive (found-stock) adjustment requires a rate');
+    if (line.toWarehouseId && line.rate == null)
+      errs.push('a positive (found-stock) adjustment requires a rate');
   }
   return errs;
 }
@@ -139,7 +146,11 @@ export interface WarehouseNode {
 /** True if setting `id`'s parent to `newParentId` would create a cycle
  *  (including newParentId === id, or a self-loop reachable through the
  *  existing tree). Walks the existing parent chain from newParentId. */
-export function wouldCreateCycle(warehouses: WarehouseNode[], id: string, newParentId: string | null): boolean {
+export function wouldCreateCycle(
+  warehouses: WarehouseNode[],
+  id: string,
+  newParentId: string | null,
+): boolean {
   if (!newParentId) return false;
   if (newParentId === id) return true;
   const byId = new Map(warehouses.map((w) => [w.id, w]));
@@ -182,7 +193,11 @@ export function edgesByParent(edges: ComponentEdge[]): Map<string, ComponentEdge
  * correctness needs a reachability search instead. Adding parent→child cycles
  * exactly when `child` can already reach `parent`.
  */
-export function wouldCreateComponentCycle(edges: ComponentEdge[], parentItemId: string, childItemId: string): boolean {
+export function wouldCreateComponentCycle(
+  edges: ComponentEdge[],
+  parentItemId: string,
+  childItemId: string,
+): boolean {
   if (parentItemId === childItemId) return true; // self-edge
   const byParent = edgesByParent(edges);
   const seen = new Set<string>();
@@ -285,7 +300,8 @@ export function explodeToStockLeaves(
   // cyclic graph from recursing forever.
   if (path.has(itemId)) return out;
   path.add(itemId);
-  for (const e of kids) explodeToStockLeaves(e.childItemId, qty * e.qty, byParent, isStockItem, out, path, exclude);
+  for (const e of kids)
+    explodeToStockLeaves(e.childItemId, qty * e.qty, byParent, isStockItem, out, path, exclude);
   path.delete(itemId);
   return out;
 }
@@ -333,11 +349,14 @@ export function explodeIssueRoots(
 ): ExplodedIssueQuantities {
   const stockQtyByItem = new Map<string, number>();
   const consumptionQtyByItem = new Map<string, number>();
-  const exclude = new Set(modifiers.filter((mod) => mod.action === 'exclude').map((mod) => mod.itemId));
+  const exclude = new Set(
+    modifiers.filter((mod) => mod.action === 'exclude').map((mod) => mod.itemId),
+  );
 
   for (const root of roots) {
     const traversesComponents = (byParent.get(root.itemId)?.length ?? 0) > 0;
-    const out = root.unitKind === 'stock' && !traversesComponents ? stockQtyByItem : consumptionQtyByItem;
+    const out =
+      root.unitKind === 'stock' && !traversesComponents ? stockQtyByItem : consumptionQtyByItem;
     explodeToStockLeaves(root.itemId, root.qty, byParent, isStockItem, out, new Set(), exclude);
   }
 
@@ -369,7 +388,9 @@ export function explodeLineWithModifiers(
   modifiers: readonly LineModifier[] = [],
   out: Map<string, number> = new Map(),
 ): Map<string, number> {
-  const exclude = new Set(modifiers.filter((mod) => mod.action === 'exclude').map((mod) => mod.itemId));
+  const exclude = new Set(
+    modifiers.filter((mod) => mod.action === 'exclude').map((mod) => mod.itemId),
+  );
   explodeToStockLeaves(itemId, qty, byParent, isStockItem, out, new Set(), exclude);
   for (const mod of modifiers) {
     if (mod.action !== 'add') continue;
@@ -407,7 +428,12 @@ export function replayBins(rows: LedgerReplayRow[]): Map<string, BinSnapshot> {
   const out = new Map<string, BinSnapshot>();
   for (const r of [...rows].sort((a, b) => a.seq - b.seq)) {
     const key = `${r.itemId}:${r.warehouseId}`;
-    out.set(key, { itemId: r.itemId, warehouseId: r.warehouseId, qty: r.qtyAfter, rate: r.valuationRate });
+    out.set(key, {
+      itemId: r.itemId,
+      warehouseId: r.warehouseId,
+      qty: r.qtyAfter,
+      rate: r.valuationRate,
+    });
   }
   return out;
 }
@@ -422,7 +448,10 @@ export function binKey(itemId: string, warehouseId: string): string {
  *  uom (the ledger/entry-line unit). Identity when unitsPerStockUom is unset
  *  (the item has no separate consumption uom). E.g. 5 ml of a 500 ml/caja
  *  item → 5 / 500 = 0.01 caja. */
-export function consumptionToStockQty(item: { unitsPerStockUom: number | null }, qty: number): number {
+export function consumptionToStockQty(
+  item: { unitsPerStockUom: number | null },
+  qty: number,
+): number {
   return item.unitsPerStockUom ? qty / item.unitsPerStockUom : qty;
 }
 
@@ -434,7 +463,11 @@ export function round4(n: number): number {
 
 /** Cross-field item validation shared by create/update: a consumption uom
  *  only makes sense once the conversion factor to the stock uom is known. */
-export function validateItemUomConfig(input: { consumptionUom?: string | null; unitsPerStockUom?: number | null }): string | null {
-  if (input.consumptionUom && !input.unitsPerStockUom) return 'consumptionUom requires unitsPerStockUom to be set';
+export function validateItemUomConfig(input: {
+  consumptionUom?: string | null;
+  unitsPerStockUom?: number | null;
+}): string | null {
+  if (input.consumptionUom && !input.unitsPerStockUom)
+    return 'consumptionUom requires unitsPerStockUom to be set';
   return null;
 }

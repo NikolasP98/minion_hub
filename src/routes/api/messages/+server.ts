@@ -10,7 +10,8 @@ import {
 
 export const GET: RequestHandler = async ({ locals, url }) => {
   const ctx = requireTenantCtx(locals);
-  const num = (k: string) => (url.searchParams.get(k) ? Number(url.searchParams.get(k)) : undefined);
+  const num = (k: string) =>
+    url.searchParams.get(k) ? Number(url.searchParams.get(k)) : undefined;
   const view = url.searchParams.get('view');
 
   // Omnichat dock: latest thread per (channel, chat_id) across all channels.

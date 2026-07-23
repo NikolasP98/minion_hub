@@ -61,14 +61,17 @@
   }
 
   const alreadyUsed = $derived(new Set(children.map((c) => c.childItemId)));
-  const candidates = $derived(items.filter((i) => i.id !== itemId && !alreadyUsed.has(i.id) && !reaches(i.id, itemId)));
+  const candidates = $derived(
+    items.filter((i) => i.id !== itemId && !alreadyUsed.has(i.id) && !reaches(i.id, itemId)),
+  );
 
   /** Depth of the subtree under an item — surfaces nesting at a glance. */
   function depthOf(id: string, guard: Set<string> = new Set()): number {
     if (guard.has(id)) return 0;
     guard.add(id);
     let deepest = 0;
-    for (const e of byParent.get(id) ?? []) deepest = Math.max(deepest, 1 + depthOf(e.childItemId, guard));
+    for (const e of byParent.get(id) ?? [])
+      deepest = Math.max(deepest, 1 + depthOf(e.childItemId, guard));
     guard.delete(id);
     return deepest;
   }
@@ -92,7 +95,11 @@
         onChanged();
       } else {
         const d = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
-        toastError(d.code === 'component_cycle' ? m.pos_recipe_cycle() : (d.error ?? m.data_table_save_failed()));
+        toastError(
+          d.code === 'component_cycle'
+            ? m.pos_recipe_cycle()
+            : (d.error ?? m.data_table_save_failed()),
+        );
       }
     } finally {
       busy = false;
@@ -103,7 +110,9 @@
     // The delete endpoint keys on the edge id; find it from the loaded rows.
     const res = await fetch(`/api/stock/items/${itemId}/components`, { method: 'GET' });
     if (!res.ok) return toastError(m.data_table_save_failed());
-    const { components } = (await res.json()) as { components: Array<{ id: string; childItemId: string }> };
+    const { components } = (await res.json()) as {
+      components: Array<{ id: string; childItemId: string }>;
+    };
     const edge = components.find((c) => c.childItemId === childItemId);
     if (!edge) return onChanged();
     const del = await fetch(`/api/stock/items/${itemId}/components`, {
@@ -132,7 +141,8 @@
 <div class="recipe">
   <p class="t-caption head">
     {m.pos_recipe_title()}
-    {#if depthOf(itemId) > 1}<span class="depth">{m.pos_recipe_depth({ n: depthOf(itemId) })}</span>{/if}
+    {#if depthOf(itemId) > 1}<span class="depth">{m.pos_recipe_depth({ n: depthOf(itemId) })}</span
+      >{/if}
   </p>
 
   {#if children.length === 0}
@@ -172,8 +182,21 @@
           <option value={i.id}>{i.code} — {i.name}</option>
         {/each}
       </Select>
-      <Input size="sm" class="w-24" type="number" min="0" step="any" placeholder={m.pos_catalog_qty_per_unit()} bind:value={newQty} />
-      <Button variant="outline" size="sm" onclick={addComponent} disabled={busy || !newChildId || !(Number(newQty) > 0)}>
+      <Input
+        size="sm"
+        class="w-24"
+        type="number"
+        min="0"
+        step="any"
+        placeholder={m.pos_catalog_qty_per_unit()}
+        bind:value={newQty}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        onclick={addComponent}
+        disabled={busy || !newChildId || !(Number(newQty) > 0)}
+      >
         <Plus size={iconSizes.xs} />
         {m.common_add()}
       </Button>

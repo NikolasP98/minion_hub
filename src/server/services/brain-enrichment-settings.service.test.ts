@@ -145,7 +145,10 @@ describe('brain enrichment settings validation', () => {
       executionReady: false,
     });
     vi.stubEnv('BRAIN_ENRICHMENT_ENABLED', 'true');
-    expect(getBrainEnrichmentPlatformState()).toMatchObject({ enabled: true, source: 'environment' });
+    expect(getBrainEnrichmentPlatformState()).toMatchObject({
+      enabled: true,
+      source: 'environment',
+    });
   });
 });
 
