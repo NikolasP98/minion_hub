@@ -38,6 +38,8 @@ import {
   replayBins,
   binKey,
   consumptionToStockQty,
+  edgesByParent,
+  explodeToStockLeaves,
   round4,
   validateItemUomConfig,
   wouldCreateComponentCycle,
@@ -1402,7 +1404,56 @@ export async function buildServiceIssuePreview(
     for (const m of mappingRows)
       qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + quantity * Number(m.qtyPerUnit));
 
-    const lines = await previewLinesForItemQtys(tx, ctx.tenantId, qtyByItem, input.warehouseId);
+    // Keep this in lockstep with accrueConsumption's commit path: a mapped
+    // item can be a recipe parent, so the preview must show the stock leaves
+    // that will actually be committed rather than the non-stock parent.
+    let previewQtyByItem = qtyByItem;
+    if (qtyByItem.size) {
+      const edgeRows = await tx
+        .select({
+          parentItemId: stkItemComponents.parentItemId,
+          childItemId: stkItemComponents.childItemId,
+          qty: stkItemComponents.qty,
+        })
+        .from(stkItemComponents)
+        .where(eq(stkItemComponents.orgId, ctx.tenantId));
+      if (edgeRows.length) {
+        const byParent = edgesByParent(
+          edgeRows.map((edge) => ({
+            parentItemId: edge.parentItemId,
+            childItemId: edge.childItemId,
+            qty: Number(edge.qty),
+          })),
+        );
+        const involved = new Set<string>([
+          ...qtyByItem.keys(),
+          ...edgeRows.flatMap((edge) => [edge.parentItemId, edge.childItemId]),
+        ]);
+        const flagRows = await tx
+          .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
+          .from(stkItems)
+          .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, [...involved])));
+        const stockFlag = new Map(flagRows.map((row) => [row.id, row.isStockItem]));
+        const expanded = new Map<string, number>();
+        for (const [itemId, qtyConsumption] of qtyByItem) {
+          explodeToStockLeaves(
+            itemId,
+            qtyConsumption,
+            byParent,
+            (id) => stockFlag.get(id) ?? true,
+            expanded,
+          );
+        }
+        previewQtyByItem = expanded;
+      }
+    }
+
+    const lines = await previewLinesForItemQtys(
+      tx,
+      ctx.tenantId,
+      previewQtyByItem,
+      input.warehouseId,
+    );
     return {
       productName: product.name ?? input.finProductId,
       productCode: product.code ?? null,
