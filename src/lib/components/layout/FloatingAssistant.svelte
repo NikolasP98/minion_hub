@@ -134,7 +134,7 @@
   const canSend = $derived(!!assistant.personalAgentId && conn.connected && !sending);
 
   type ComposerMode = 'chat' | 'factory';
-  let composerMode = $state<ComposerMode>('chat');
+  let modeChoice = $state<ComposerMode>('chat');
   let previousRoute = $state('');
   let factorySending = $state(false);
   let factoryIntake = $state<FactoryIntakeView | null>(null);
@@ -142,13 +142,22 @@
   let factoryPollTimer: ReturnType<typeof setTimeout> | null = null;
   let factoryAttempt = $state<FactoryIntakeAttempt | null>(null);
 
+  // The factory desk only exists inside the Workforce module — an intake creates
+  // production-line work there and nowhere else. Off /workforce the composer is
+  // chat-only, so the two-button switcher is dead chrome and isn't rendered.
+  const factoryAvailable = $derived(canonicalPath(page.url.pathname).startsWith('/workforce'));
+
+  // Derived, not raw state: factory mode is then IMPOSSIBLE off /workforce by
+  // construction, rather than depending on the reset effect below having run.
+  const composerMode = $derived<ComposerMode>(factoryAvailable ? modeChoice : 'chat');
+
   // Route entry chooses a sensible default once. The explicit selector remains
   // authoritative until the next navigation, so chat is always available.
   $effect(() => {
     const route = canonicalPath(page.url.pathname);
     if (route === previousRoute) return;
     previousRoute = route;
-    composerMode = route === '/work' || route.startsWith('/workforce') ? 'factory' : 'chat';
+    modeChoice = route.startsWith('/workforce') ? 'factory' : 'chat';
   });
 
   const canSubmit = $derived(composerMode === 'factory' ? !factorySending : canSend);
@@ -875,29 +884,31 @@
 
     <!-- Scope badge + input -->
     <div class="shrink-0 border-t border-border bg-bg3/40">
-      <div class="composer-modes" aria-label={m.factoryDesk_controlDesk()}>
-        <Button
-          variant="ghost"
-          size="xs"
-          type="button"
-          class={composerMode === 'chat' ? 'active' : undefined}
-          aria-pressed={composerMode === 'chat'}
-          onclick={() => (composerMode = 'chat')}
-          ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</Button
-        >
-        <Button
-          variant="ghost"
-          size="xs"
-          type="button"
-          class={composerMode === 'factory' ? 'active' : undefined}
-          aria-pressed={composerMode === 'factory'}
-          onclick={() => (composerMode = 'factory')}
-          ><Factory size={11} /> {m.factoryDesk_modeFactory()}</Button
-        >
-        {#if composerMode === 'factory'}
-          <span>{m.factoryDesk_factoryHint()}</span>
-        {/if}
-      </div>
+      {#if factoryAvailable}
+        <div class="composer-modes" aria-label={m.factoryDesk_controlDesk()}>
+          <Button
+            variant="ghost"
+            size="xs"
+            type="button"
+            class={composerMode === 'chat' ? 'active' : undefined}
+            aria-pressed={composerMode === 'chat'}
+            onclick={() => (modeChoice = 'chat')}
+            ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</Button
+          >
+          <Button
+            variant="ghost"
+            size="xs"
+            type="button"
+            class={composerMode === 'factory' ? 'active' : undefined}
+            aria-pressed={composerMode === 'factory'}
+            onclick={() => (modeChoice = 'factory')}
+            ><Factory size={11} /> {m.factoryDesk_modeFactory()}</Button
+          >
+          {#if composerMode === 'factory'}
+            <span>{m.factoryDesk_factoryHint()}</span>
+          {/if}
+        </div>
+      {/if}
       <div
         class="flex items-center gap-1.5 px-3 py-1.5 text-[length:var(--font-size-telemetry)] text-muted-foreground border-b border-border/60"
       >
