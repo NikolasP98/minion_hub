@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   withOrgCore: vi.fn(),
   embeddingsEnabled: vi.fn(),
   embedTexts: vi.fn(),
+  brainVectorServingEnabled: vi.fn(),
+  brainVectorClientConfig: vi.fn(),
+  searchBrainVectorApi: vi.fn(),
 }));
 
 vi.mock('./brains.service', () => ({
@@ -24,6 +27,19 @@ vi.mock('./embeddings', () => ({
   toVectorLiteral: (vector: number[]) => `[${vector.join(',')}]`,
 }));
 
+vi.mock('./brain-vector-client', () => ({
+  BRAIN_VECTOR_MAX_SOURCE_IDS: 512,
+  brainVectorServingEnabled: mocks.brainVectorServingEnabled,
+  brainVectorClientConfig: mocks.brainVectorClientConfig,
+  searchBrainVectorApi: mocks.searchBrainVectorApi,
+  brainVectorContentFingerprint: (
+    key: string,
+    chunkId: string,
+    contentHash: string,
+    generation: string,
+  ) => `${key}:${chunkId}:${contentHash}:${generation}`,
+}));
+
 import {
   HNSW_EF_SEARCH,
   HYBRID_RRF_K,
@@ -36,6 +52,7 @@ import {
   fuzzySearchStatus,
   hnswIterativeScanConfigSql,
   hnswSearchConfigSql,
+  isCanonicalChunkId,
   neighborScopeConditions,
   rankHybridCandidates,
   searchBrainHybrid,
@@ -73,6 +90,12 @@ function candidate(overrides: Partial<HybridCandidate> = {}): HybridCandidate {
 }
 
 describe('brain hybrid retrieval — deterministic scoring', () => {
+  it('accepts every canonical UUID version while rejecting malformed Qdrant chunk IDs', () => {
+    expect(isCanonicalChunkId('018f87f4-e934-7a21-98b6-4f6b8d3898dd')).toBe(true);
+    expect(isCanonicalChunkId('d7cb8de1-05f3-822a-b514-aa419dca59de')).toBe(true);
+    expect(isCanonicalChunkId('not-a-uuid')).toBe(false);
+  });
+
   it('sets a transaction-local HNSW breadth before post-filtered vector retrieval', () => {
     const query = new PgDialect().sqlToQuery(hnswSearchConfigSql());
 
@@ -457,6 +480,7 @@ describe('brain hybrid retrieval — canonical/legacy compatibility', () => {
     vi.clearAllMocks();
     mocks.canAccessBrain.mockResolvedValue(true);
     mocks.embeddingsEnabled.mockReturnValue(false);
+    mocks.brainVectorServingEnabled.mockReturnValue(false);
     mocks.withOrgCore.mockResolvedValue([]);
     mocks.searchBrain.mockResolvedValue([]);
   });
@@ -593,6 +617,150 @@ describe('brain hybrid retrieval — canonical/legacy compatibility', () => {
     });
     expect(result.hits[0].chunkText).toContain('KRISPI');
     expect(mocks.searchBrain).not.toHaveBeenCalled();
+  });
+
+  it('rehydrates Qdrant IDs under canonical scope and drops the raw payload boundary', async () => {
+    mocks.embeddingsEnabled.mockReturnValue(true);
+    mocks.brainVectorServingEnabled.mockReturnValue(true);
+    mocks.embedTexts.mockResolvedValue([Array.from({ length: 1536 }, () => 0)]);
+    mocks.brainVectorClientConfig.mockReturnValue({
+      generation: 'openai_te3s_1536_g1',
+      fingerprintKey: 'fingerprint-key',
+    });
+    mocks.searchBrainVectorApi.mockResolvedValue({
+      generation: 'openai_te3s_1536_g1',
+      collection: 'minion_knowledge_active',
+      tookMs: 2,
+      candidates: [
+        {
+          chunkId: '44444444-4444-4444-8444-444444444444',
+          score: 0.91,
+          indexedFingerprint:
+            'fingerprint-key:44444444-4444-4444-8444-444444444444:current-hash:openai_te3s_1536_g1',
+        },
+      ],
+    });
+    const qdrantRow = {
+      chunkId: '44444444-4444-4444-8444-444444444444',
+      sourceId: '22222222-2222-4222-8222-222222222222',
+      sourceName: 'WhatsApp +51999',
+      connector: 'whatsapp',
+      sourceExternalKey: 'account-1',
+      sourceConfig: {},
+      documentId: '33333333-3333-4333-8333-333333333333',
+      documentExternalId: 'conversation:account-1:chat-1:2026-07',
+      documentTitle: 'Conversation with Ada',
+      chunkKey: 'raw:000000',
+      kind: 'raw',
+      seq: 0,
+      chunkText: 'Refund policy from the canonical database',
+      contextPrefix: null,
+      contentHash: 'current-hash',
+      occurredAt: NOW,
+      metadata: { chatId: 'chat-1' },
+      includeAllSources: true,
+      membershipWeight: null,
+      membershipConfig: null,
+      retrievalScore: 0,
+    };
+    // Lexical query starts first. Vector resumes after embedding and resolves
+    // source scope, then rehydrates the untrusted Qdrant ID, then neighbors.
+    mocks.withOrgCore
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ sourceId: qdrantRow.sourceId }])
+      .mockResolvedValueOnce([qdrantRow])
+      .mockResolvedValueOnce([]);
+
+    const result = await searchBrainHybrid(
+      { db: {} as never, tenantId: 'org-1', profileId: 'profile-1' },
+      '11111111-1111-4111-8111-111111111111',
+      'refund policy',
+      { limit: 5 },
+      {},
+    );
+
+    expect(mocks.searchBrainVectorApi).toHaveBeenCalledWith(
+      expect.objectContaining({ generation: 'openai_te3s_1536_g1' }),
+      expect.objectContaining({
+        orgId: 'org-1',
+        brainId: '11111111-1111-4111-8111-111111111111',
+        subject: 'profile-1',
+        filters: {
+          scopeMode: 'source_list',
+          sourceIds: [qdrantRow.sourceId],
+          kinds: undefined,
+        },
+      }),
+    );
+    expect(result.hits[0]).toMatchObject({
+      chunkId: qdrantRow.chunkId,
+      evidenceText: qdrantRow.chunkText,
+      scores: { vector: 0.91 },
+    });
+    expect(result.diagnostics.warnings).toEqual([]);
+  });
+
+  it('falls back to exact Supabase vectors when a Qdrant fingerprint is stale', async () => {
+    mocks.embeddingsEnabled.mockReturnValue(true);
+    mocks.brainVectorServingEnabled.mockReturnValue(true);
+    mocks.embedTexts.mockResolvedValue([[0.1, 0.2, 0.3]]);
+    mocks.brainVectorClientConfig.mockReturnValue({
+      generation: 'openai_te3s_1536_g1',
+      fingerprintKey: 'fingerprint-key',
+    });
+    mocks.searchBrainVectorApi.mockResolvedValue({
+      generation: 'openai_te3s_1536_g1',
+      collection: 'minion_knowledge_active',
+      tookMs: 2,
+      candidates: [
+        {
+          chunkId: '44444444-4444-4444-8444-444444444444',
+          score: 0.91,
+          indexedFingerprint: 'fingerprint-key:stale',
+        },
+      ],
+    });
+    const row = {
+      chunkId: '44444444-4444-4444-8444-444444444444',
+      sourceId: '22222222-2222-4222-8222-222222222222',
+      sourceName: 'CRM',
+      connector: 'hub-business',
+      sourceExternalKey: 'crm',
+      sourceConfig: {},
+      documentId: '33333333-3333-4333-8333-333333333333',
+      documentExternalId: 'crm:1',
+      documentTitle: 'Refund policy',
+      chunkKey: 'raw:0',
+      kind: 'raw',
+      seq: 0,
+      chunkText: 'Refund policy current evidence',
+      contextPrefix: null,
+      contentHash: 'current-hash',
+      occurredAt: NOW,
+      metadata: {},
+      includeAllSources: true,
+      membershipWeight: null,
+      membershipConfig: null,
+      retrievalScore: 0.8,
+    };
+    mocks.withOrgCore
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ sourceId: row.sourceId }])
+      .mockResolvedValueOnce([row])
+      .mockResolvedValueOnce([row])
+      .mockResolvedValueOnce([]);
+
+    const result = await searchBrainHybrid(
+      { db: {} as never, tenantId: 'org-1' },
+      '11111111-1111-4111-8111-111111111111',
+      'refund policy',
+      { limit: 5 },
+      {},
+    );
+    expect(result.hits[0].scores.vector).toBe(0.8);
+    expect(result.diagnostics.warnings).toContain(
+      'Qdrant returned no current authorized candidates; exact vector fallback used',
+    );
   });
 
   it('does not bypass relevance policy through legacy fallback after rejecting canonical noise', async () => {

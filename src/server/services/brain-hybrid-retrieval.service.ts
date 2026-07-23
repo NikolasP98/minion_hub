@@ -11,6 +11,14 @@ import {
 import { withOrgCore } from '$server/db/with-org-core';
 import { canAccessBrain, searchBrain, type AccessPrincipal } from './brains.service';
 import { embeddingsEnabled, embedTexts, toVectorLiteral } from './embeddings';
+import {
+  BRAIN_VECTOR_MAX_SOURCE_IDS,
+  brainVectorClientConfig,
+  brainVectorContentFingerprint,
+  brainVectorServingEnabled,
+  searchBrainVectorApi,
+  type BrainVectorCandidate,
+} from './brain-vector-client';
 
 /** Cerebras-style deterministic fusion. Ranks are one-based. */
 export const HYBRID_RRF_K = 60;
@@ -18,6 +26,12 @@ export const HYBRID_RRF_K = 60;
 export const HNSW_EF_SEARCH = 200;
 /** Indexed word-similarity threshold; exact one-edit policy still decides eligibility. */
 export const PG_TRGM_WORD_SIMILARITY_THRESHOLD = 0.3;
+export const CANONICAL_CHUNK_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+export function isCanonicalChunkId(value: string): boolean {
+  return CANONICAL_CHUNK_ID_PATTERN.test(value);
+}
 
 const VECTOR_WEIGHT = 1;
 const LEXICAL_WEIGHT = 1;
@@ -819,17 +833,15 @@ function candidateSelection(retrievalScore: SQL<number>) {
   };
 }
 
-async function retrieveVector(
+async function retrieveExactVector(
   ctx: CoreCtx,
   brainId: string,
-  query: string,
+  embedding: number[],
   options: BrainHybridSearchOptions,
   searchableModules: string[],
   fieldLevels: Record<string, number>,
   cap: number,
 ): Promise<HybridCandidate[]> {
-  if (!embeddingsEnabled()) return [];
-  const [embedding] = await embedTexts([query]);
   const literal = toVectorLiteral(embedding);
   const vectorDistance = sql<number>`${knowledgeChunks.embedding} <=> ${literal}::vector`;
   const vectorScore = sql<number>`1 - (${vectorDistance})`;
@@ -866,6 +878,201 @@ async function retrieveVector(
       .limit(cap);
   });
   return (rows as CanonicalCandidateRow[]).map((row) => toCandidate(row, 'vector'));
+}
+
+async function resolveVectorSourceScope(
+  ctx: CoreCtx,
+  brainId: string,
+  options: BrainHybridSearchOptions,
+  searchableModules: string[],
+  fieldLevels: Record<string, number>,
+): Promise<string[]> {
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .selectDistinct({ sourceId: knowledgeSources.id })
+      .from(knowledgeChunks)
+      .innerJoin(
+        knowledgeDocuments,
+        and(
+          eq(knowledgeDocuments.id, knowledgeChunks.documentId),
+          eq(knowledgeDocuments.sourceId, knowledgeChunks.sourceId),
+        ),
+      )
+      .innerJoin(knowledgeSources, eq(knowledgeSources.id, knowledgeChunks.sourceId))
+      .innerJoin(brains, and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)))
+      .leftJoin(
+        brainSources,
+        and(
+          eq(brainSources.brainId, brains.id),
+          eq(brainSources.sourceId, knowledgeSources.id),
+          eq(brainSources.orgId, ctx.tenantId),
+        ),
+      )
+      .where(scopeConditions(ctx, brainId, options, searchableModules, fieldLevels))
+      .orderBy(knowledgeSources.id),
+  );
+  return rows.map((row) => row.sourceId);
+}
+
+async function rehydrateVectorCandidates(
+  ctx: CoreCtx,
+  brainId: string,
+  options: BrainHybridSearchOptions,
+  searchableModules: string[],
+  fieldLevels: Record<string, number>,
+  candidates: BrainVectorCandidate[],
+  generation: string,
+  fingerprintKey: string,
+): Promise<HybridCandidate[]> {
+  if (candidates.length === 0) return [];
+  const byId = new Map(
+    candidates
+      .filter((candidate) => isCanonicalChunkId(candidate.chunkId))
+      .map((candidate) => [candidate.chunkId, candidate]),
+  );
+  if (byId.size === 0) return [];
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select(candidateSelection(sql<number>`0`))
+      .from(knowledgeChunks)
+      .innerJoin(
+        knowledgeDocuments,
+        and(
+          eq(knowledgeDocuments.id, knowledgeChunks.documentId),
+          eq(knowledgeDocuments.sourceId, knowledgeChunks.sourceId),
+        ),
+      )
+      .innerJoin(knowledgeSources, eq(knowledgeSources.id, knowledgeChunks.sourceId))
+      .innerJoin(brains, and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)))
+      .leftJoin(
+        brainSources,
+        and(
+          eq(brainSources.brainId, brains.id),
+          eq(brainSources.sourceId, knowledgeSources.id),
+          eq(brainSources.orgId, ctx.tenantId),
+        ),
+      )
+      .where(
+        and(
+          scopeConditions(ctx, brainId, options, searchableModules, fieldLevels),
+          inArray(knowledgeChunks.id, [...byId.keys()]),
+        ),
+      ),
+  );
+  return (rows as CanonicalCandidateRow[])
+    .flatMap((row) => {
+      const indexed = byId.get(row.chunkId);
+      if (!indexed) return [];
+      const expected = brainVectorContentFingerprint(
+        fingerprintKey,
+        row.chunkId,
+        row.contentHash,
+        generation,
+      );
+      if (expected !== indexed.indexedFingerprint) return [];
+      return [toCandidate({ ...row, retrievalScore: indexed.score }, 'vector')];
+    })
+    .sort(
+      (left, right) =>
+        (right.vectorScore ?? Number.NEGATIVE_INFINITY) -
+          (left.vectorScore ?? Number.NEGATIVE_INFINITY) ||
+        left.chunkId.localeCompare(right.chunkId),
+    );
+}
+
+interface VectorRetrievalResult {
+  candidates: HybridCandidate[];
+  warnings: string[];
+}
+
+async function retrieveVector(
+  ctx: CoreCtx,
+  brainId: string,
+  query: string,
+  options: BrainHybridSearchOptions,
+  searchableModules: string[],
+  fieldLevels: Record<string, number>,
+  cap: number,
+): Promise<VectorRetrievalResult> {
+  if (!embeddingsEnabled()) return { candidates: [], warnings: [] };
+  const [embedding] = await embedTexts([query]);
+  if (!brainVectorServingEnabled()) {
+    return {
+      candidates: await retrieveExactVector(
+        ctx,
+        brainId,
+        embedding,
+        options,
+        searchableModules,
+        fieldLevels,
+        cap,
+      ),
+      warnings: [],
+    };
+  }
+
+  const warnings: string[] = [];
+  try {
+    const config = brainVectorClientConfig();
+    const sourceIds = await resolveVectorSourceScope(
+      ctx,
+      brainId,
+      options,
+      searchableModules,
+      fieldLevels,
+    );
+    const partitions: string[][] = [];
+    for (let offset = 0; offset < sourceIds.length; offset += BRAIN_VECTOR_MAX_SOURCE_IDS) {
+      partitions.push(sourceIds.slice(offset, offset + BRAIN_VECTOR_MAX_SOURCE_IDS));
+    }
+    const responses = await Promise.all(
+      partitions.map((partition) =>
+        searchBrainVectorApi(config, {
+          orgId: ctx.tenantId,
+          brainId,
+          subject: ctx.profileId || `org:${ctx.tenantId}`,
+          vector: embedding,
+          limit: cap,
+          filters: {
+            scopeMode: 'source_list',
+            sourceIds: partition,
+            kinds: options.kinds,
+          },
+        }),
+      ),
+    );
+    const candidates = responses
+      .flatMap((response) => response.candidates)
+      .sort((left, right) => right.score - left.score || left.chunkId.localeCompare(right.chunkId))
+      .slice(0, cap);
+    const hydrated = await rehydrateVectorCandidates(
+      ctx,
+      brainId,
+      options,
+      searchableModules,
+      fieldLevels,
+      candidates,
+      config.generation,
+      config.fingerprintKey,
+    );
+    if (hydrated.length > 0) return { candidates: hydrated, warnings };
+    warnings.push('Qdrant returned no current authorized candidates; exact vector fallback used');
+  } catch {
+    warnings.push('Qdrant vector retrieval unavailable; exact vector fallback used');
+  }
+
+  return {
+    candidates: await retrieveExactVector(
+      ctx,
+      brainId,
+      embedding,
+      options,
+      searchableModules,
+      fieldLevels,
+      cap,
+    ),
+    warnings,
+  };
 }
 
 async function retrieveLexical(
@@ -1248,10 +1455,11 @@ export async function searchBrainHybrid(
     retrieveLexical(ctx, brainId, q, options, searchableModules, fieldLevels, candidateCap),
     retrieveFuzzy(ctx, brainId, q, options, searchableModules, fieldLevels, candidateCap),
   ]);
-  const vectorCandidates = vectorResult.status === 'fulfilled' ? vectorResult.value : [];
+  const vectorCandidates = vectorResult.status === 'fulfilled' ? vectorResult.value.candidates : [];
   const lexicalCandidates = lexicalResult.status === 'fulfilled' ? lexicalResult.value : [];
   const fuzzyCandidates = fuzzyResult.status === 'fulfilled' ? fuzzyResult.value : [];
   if (vectorResult.status === 'rejected') warnings.push('vector retrieval unavailable');
+  if (vectorResult.status === 'fulfilled') warnings.push(...vectorResult.value.warnings);
   if (!embeddingsEnabled()) warnings.push('vector retrieval disabled');
   if (lexicalResult.status === 'rejected') warnings.push('lexical retrieval unavailable');
   if (fuzzyResult.status === 'rejected') warnings.push('fuzzy retrieval unavailable');
