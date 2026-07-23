@@ -168,7 +168,13 @@
           // svelte-ignore state_referenced_locally -- init-time read of the just-seeded cart
           if (!lines.some((l) => l.bookingId === h.bookingId)) {
             lines = [
-              { sellable, qty: 1, unitPrice: sellable.unitPrice, discount: 0, bookingId: h.bookingId },
+              {
+                sellable,
+                qty: 1,
+                unitPrice: sellable.unitPrice,
+                discount: 0,
+                bookingId: h.bookingId,
+              },
               // svelte-ignore state_referenced_locally -- init-time spread of the just-seeded cart
               ...lines,
             ];
