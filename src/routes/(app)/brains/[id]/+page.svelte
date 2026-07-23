@@ -12,6 +12,8 @@
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
   import BrainDocumentsTable from '$lib/components/brains/BrainDocumentsTable.svelte';
+  import BrainOverviewPanel from '$lib/components/brains/BrainOverviewPanel.svelte';
+  import BrainKnowledgeSources from '$lib/components/brains/BrainKnowledgeSources.svelte';
   import BrainSearchPanel from '$lib/components/brains/BrainSearchPanel.svelte';
   import BrainAccessPanel from '$lib/components/brains/BrainAccessPanel.svelte';
   import BrainAgentPanel from '$lib/components/brains/BrainAgentPanel.svelte';
@@ -28,11 +30,14 @@
   // both must hold, same as the write API enforces (apiWriteCapability +
   // requireAccess).
   const canEdit = $derived(data.canWriteBrain && canAct('brains', 'edit'));
-  const canDelete = $derived(data.canWriteBrain && canAct('brains', 'delete'));
+  const canDelete = $derived(
+    brain.kind !== 'master' && data.canWriteBrain && canAct('brains', 'delete'),
+  );
 
-  let tab = $state('documents');
+  let tab = $state('overview');
   const tabs = $derived<TabItem[]>([
-    { value: 'documents', label: m.brains_tab_documents(), count: data.documents.length },
+    { value: 'overview', label: m.brains_tab_overview() },
+    { value: 'sources', label: m.brains_tab_sources(), count: data.overview.stats.sourceCount },
     { value: 'search', label: m.brains_tab_search() },
     ...(canEdit ? [{ value: 'access', label: m.brains_tab_access() }] : []),
     { value: 'agent', label: m.brains_agent_tab() },
@@ -110,8 +115,23 @@
       role="tabpanel"
       aria-labelledby={`brain-tabs-tab-${tab}`}
     >
-      {#if tab === 'documents'}
-        <BrainDocumentsTable brainId={brain.id} documents={data.documents} {canEdit} />
+      {#if tab === 'overview'}
+        <BrainOverviewPanel overview={data.overview} />
+      {:else if tab === 'sources'}
+        <div class="sources-stack">
+          <BrainKnowledgeSources {brain} sources={data.overview.sources} {canEdit} />
+          <section aria-labelledby="added-content-title">
+            <div class="legacy-heading">
+              <h2 id="added-content-title">{m.brains_legacy_sources()}</h2>
+              <p>{m.brains_legacy_sources_desc()}</p>
+            </div>
+            <BrainDocumentsTable
+              brainId={brain.id}
+              documents={data.documents}
+              canEdit={canEdit && brain.kind !== 'master'}
+            />
+          </section>
+        </div>
       {:else if tab === 'search'}
         <BrainSearchPanel brainId={brain.id} />
       {:else if tab === 'access' && canEdit}
@@ -171,5 +191,29 @@
 
   .brain-panel {
     margin-top: var(--space-4);
+  }
+
+  .sources-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-page-section);
+  }
+
+  .legacy-heading {
+    margin-bottom: var(--space-3);
+  }
+
+  .legacy-heading h2 {
+    color: var(--color-text-primary);
+    font-size: var(--font-size-section-title);
+    line-height: var(--line-height-heading);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .legacy-heading p {
+    margin-top: var(--space-1);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-body);
   }
 </style>

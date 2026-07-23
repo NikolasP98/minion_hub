@@ -1,11 +1,13 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { waitUntil } from '@vercel/functions';
 import {
-  insertMessages,
+  insertMessagesDetailed,
   applyRoutingPatches,
   type IngestRow,
   type RoutingPatch,
 } from '$server/services/messages.service';
+import { advanceBrainCorpusJobNow } from '$server/services/brain-corpus-jobs.service';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   // Authenticated via Bearer server token (resolveViaMetricsBearer sets tenantCtx + serverId).
@@ -19,8 +21,25 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   );
   const patches = Array.isArray(body.patches) ? body.patches : [];
 
-  const accepted = await insertMessages(orgId, serverId ?? null, rows);
+  const ingest = await insertMessagesDetailed(orgId, serverId ?? null, rows);
   await applyRoutingPatches(orgId, patches);
 
-  return json({ ok: true, accepted, patched: patches.length });
+  // adapter-vercel's `platform.context` is Edge-only. This app deploys Node 22
+  // functions, so use Vercel's official Node request-context API. Outside
+  // Vercel the durable bg job remains queued for /api/jobs/tick.
+  if (ingest.brainJobId && process.env.VERCEL === '1') {
+    waitUntil(
+      advanceBrainCorpusJobNow(ingest.brainJobId).catch((cause) => {
+        console.error('[brain-corpus] immediate background advance failed', cause);
+      }),
+    );
+  }
+
+  return json({
+    ok: true,
+    accepted: ingest.accepted,
+    acceptedClientIds: ingest.acceptedClientIds,
+    patched: patches.length,
+    patchedClientIds: patches.map((patch) => patch.clientId),
+  });
 };

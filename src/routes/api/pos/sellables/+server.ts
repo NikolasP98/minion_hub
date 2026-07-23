@@ -20,6 +20,8 @@ const postSchema = z.object({
   kind: z.enum(['product', 'service']),
   trackStock: z.boolean().optional(),
   uom: z.string().min(1).max(50).optional(),
+  /** Publish an existing stk_item instead of creating one — see SellableInput. */
+  itemId: z.string().uuid().optional(),
   consumption: z.array(consumptionSchema).optional(),
   active: z.boolean().optional(),
 });
@@ -38,7 +40,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
   const body = await parseBody(request, postSchema);
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const actor = {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
   try {
     const sellable = await createSellable(ctx, body, actor);
     return json({ ok: true, sellable }, { status: 201 });

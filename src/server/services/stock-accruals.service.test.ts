@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { accrueConsumption, releaseAccruals, resolveDefaultWarehouse, realizeAccruals, accrualSummaryForSources, availableToPromise } from './stock-accruals.service';
+import {
+  accrueConsumption,
+  releaseAccruals,
+  resolveDefaultWarehouse,
+  realizeAccruals,
+  accrualSummaryForSources,
+  availableToPromise,
+} from './stock-accruals.service';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -11,10 +18,12 @@ const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 describe('resolveDefaultWarehouse', () => {
   it('prefers the flagged default over the earliest-created', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[
-      { id: 'w-old', isDefault: false },
-      { id: 'w-def', isDefault: true },
-    ]]);
+    resolveSequence([
+      [
+        { id: 'w-old', isDefault: false },
+        { id: 'w-def', isDefault: true },
+      ],
+    ]);
     expect(await resolveDefaultWarehouse(ctx(db))).toBe('w-def');
   });
   it('falls back to the earliest-created; null when no warehouses', async () => {
@@ -31,6 +40,7 @@ describe('accrueConsumption', () => {
     resolveSequence([
       [], // existing accruals for source (none)
       [{ id: 'w1', isDefault: true }], // warehouses (default resolution)
+      [], // stk_item_components (Slice 1b) — none, so the explosion is the identity
       [{ id: 'i1', unitsPerStockUom: '500' }], // items (500 ml per caja)
       [{ itemId: 'i1', valuationRate: '100' }], // bins (S/100 per caja)
       [], // delete open rows
@@ -52,12 +62,17 @@ describe('accrueConsumption', () => {
       [], // existing accruals
       [{ id: 'w1', isDefault: false }], // warehouses
       [{ itemId: 'i1', qtyPerUnit: '2' }], // mapping: 2 per unit
+      [], // stk_item_components (Slice 1b) — none
       [{ id: 'i1', unitsPerStockUom: null }], // item (no conversion)
       [], // bins (no bin yet → cost 0)
       [], // delete
       [], // insert
     ]);
-    const n = await accrueConsumption(ctx(db), { source: 'booking', sourceId: 'b1', finProductId: 'p1' });
+    const n = await accrueConsumption(ctx(db), {
+      source: 'booking',
+      sourceId: 'b1',
+      finProductId: 'p1',
+    });
     expect(n).toBe(1);
   });
 
@@ -89,7 +104,11 @@ describe('accrueConsumption', () => {
   it('is a no-op for an unmapped product (no lines, empty stk_consumption)', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[], [{ id: 'w1', isDefault: true }], []]); // no accruals, warehouse, empty mapping
-    const n = await accrueConsumption(ctx(db), { source: 'booking', sourceId: 'b1', finProductId: 'p1' });
+    const n = await accrueConsumption(ctx(db), {
+      source: 'booking',
+      sourceId: 'b1',
+      finProductId: 'p1',
+    });
     expect(n).toBe(0);
   });
 
@@ -140,7 +159,14 @@ describe('realizeAccruals', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [
-        { id: 'a1', itemId: 'i1', qty: '0.01', qtyConsumption: '5', finProductId: 'p1', warehouseId: 'w1' },
+        {
+          id: 'a1',
+          itemId: 'i1',
+          qty: '0.01',
+          qtyConsumption: '5',
+          finProductId: 'p1',
+          warehouseId: 'w1',
+        },
       ], // open accruals
       [{ id: 'e1', orgId: 'org-1', status: 'submitted', type: 'issue' }], // findEntryBySource
       [{ itemId: 'i1', qtyDelta: '-0.01', valueDelta: '-1' }], // ledger rows for e1
@@ -156,12 +182,31 @@ describe('realizeAccruals', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [
-        { id: 'a1', itemId: 'i1', qty: '10', qtyConsumption: '10', finProductId: 'p1', warehouseId: 'w1' },
+        {
+          id: 'a1',
+          itemId: 'i1',
+          qty: '10',
+          qtyConsumption: '10',
+          finProductId: 'p1',
+          warehouseId: 'w1',
+        },
       ], // open accruals
       [{ id: 'e1', orgId: 'org-1', status: 'draft', type: 'issue' }], // findEntryBySource → draft
       // submitEntry's internal sequence:
       [{ id: 'e1', orgId: 'org-1', status: 'draft', type: 'issue', humanId: null }], // entry for update
-      [{ id: 'l1', entryId: 'e1', itemId: 'i1', qty: '10', uom: null, rate: null, fromWarehouseId: 'w1', toWarehouseId: null, lineNo: 0 }], // lines
+      [
+        {
+          id: 'l1',
+          entryId: 'e1',
+          itemId: 'i1',
+          qty: '10',
+          uom: null,
+          rate: null,
+          fromWarehouseId: 'w1',
+          toWarehouseId: null,
+          lineNo: 0,
+        },
+      ], // lines
       [{ id: 'i1' }], // item existence
       [{ id: 'w1' }], // warehouse existence
       [{ qty: '2', valuationRate: '1' }], // bin: only 2 in stock → negative_stock
@@ -176,7 +221,14 @@ describe('realizeAccruals', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [
-        { id: 'a1', itemId: 'i1', qty: '0.01', qtyConsumption: '5', finProductId: 'p1', warehouseId: 'w1' },
+        {
+          id: 'a1',
+          itemId: 'i1',
+          qty: '0.01',
+          qtyConsumption: '5',
+          finProductId: 'p1',
+          warehouseId: 'w1',
+        },
       ], // open accruals
       [], // findEntryBySource → none (the race window)
       // createServiceIssue's internal sequence:
@@ -193,11 +245,31 @@ describe('realizeAccruals', () => {
 describe('accrualSummaryForSources', () => {
   it('folds per-source status counts and values', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[
-      { sourceId: 'b1', status: 'open', estValue: '10', realizedValue: null, realizedEntryId: null },
-      { sourceId: 'b1', status: 'open', estValue: '5', realizedValue: null, realizedEntryId: null },
-      { sourceId: 'b2', status: 'realized', estValue: '7', realizedValue: '8', realizedEntryId: 'e1' },
-    ]]);
+    resolveSequence([
+      [
+        {
+          sourceId: 'b1',
+          status: 'open',
+          estValue: '10',
+          realizedValue: null,
+          realizedEntryId: null,
+        },
+        {
+          sourceId: 'b1',
+          status: 'open',
+          estValue: '5',
+          realizedValue: null,
+          realizedEntryId: null,
+        },
+        {
+          sourceId: 'b2',
+          status: 'realized',
+          estValue: '7',
+          realizedValue: '8',
+          realizedEntryId: 'e1',
+        },
+      ],
+    ]);
     const out = await accrualSummaryForSources(ctx(db), 'booking', ['b1', 'b2']);
     const b1 = out.find((s) => s.sourceId === 'b1')!;
     const b2 = out.find((s) => s.sourceId === 'b2')!;

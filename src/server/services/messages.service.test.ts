@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { toInsertValues, type IngestRow } from './messages.service';
+import {
+  MESSAGE_CONFLICT_TARGET,
+  acceptedIngestRows,
+  toInsertValues,
+  toTimestampMs,
+  type IngestRow,
+} from './messages.service';
 
 const base: IngestRow = {
   clientId: 'c1',
@@ -37,5 +43,32 @@ describe('toInsertValues', () => {
     const v = toInsertValues({ ...base, occurredAt: null as unknown as number }, 'orgA', null);
     expect(v.occurredAt).toBeNull();
     expect(v.gatewayId).toBeNull();
+  });
+});
+
+describe('message ingest idempotency', () => {
+  it('scopes client IDs to the organization', () => {
+    expect(MESSAGE_CONFLICT_TARGET.map((column) => column.name)).toEqual(['org_id', 'client_id']);
+  });
+
+  it('queues brain work only for rows that survived poison-row fallback', () => {
+    const rejected = { ...base, clientId: 'bad', chatId: 'bad-chat' };
+    expect(acceptedIngestRows([base, rejected], ['c1'])).toEqual([base]);
+  });
+});
+
+describe('toTimestampMs', () => {
+  it('normalizes Date, ISO text, and numeric driver values', () => {
+    const timestamp = 1_784_611_440_671;
+    expect(toTimestampMs(new Date(timestamp))).toBe(timestamp);
+    expect(toTimestampMs(new Date(timestamp).toISOString())).toBe(timestamp);
+    expect(toTimestampMs(timestamp)).toBe(timestamp);
+    expect(toTimestampMs(String(timestamp))).toBe(timestamp);
+  });
+
+  it('returns null for nullish and invalid values', () => {
+    expect(toTimestampMs(null)).toBeNull();
+    expect(toTimestampMs('not-a-date')).toBeNull();
+    expect(toTimestampMs(new Date('invalid'))).toBeNull();
   });
 });

@@ -1,4 +1,15 @@
-import { pgTable, uuid, text, numeric, jsonb, timestamp, integer, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  numeric,
+  jsonb,
+  timestamp,
+  integer,
+  boolean,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -43,7 +54,9 @@ export const posShifts = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    oneOpen: uniqueIndex('pos_shifts_one_open_per_org').on(t.orgId).where(sql.raw(`status = 'open'`)),
+    oneOpen: uniqueIndex('pos_shifts_one_open_per_org')
+      .on(t.orgId)
+      .where(sql.raw(`status = 'open'`)),
   }),
 );
 export type PosShift = typeof posShifts.$inferSelect;
@@ -101,6 +114,11 @@ export const posTicketLines = pgTable(
     discount: numeric('discount').notNull().default('0'),
     total: numeric('total').notNull(),
     lineNo: integer('line_no').notNull().default(0),
+    /** Order-line CONFIGURATION (#9): what the customer chose for this line —
+     *  [{action:'exclude'|'add', itemId, qty?}]. `add.qty` is in the added
+     *  item's stock UOM per sold unit. Deliberately not composition;
+     *  see supabase/migrations/20260720030000_pos_line_modifiers.sql. */
+    modifiers: jsonb('modifiers').notNull().default([]),
   },
   (t) => ({
     orgTicketIdx: index('pos_ticket_lines_org_ticket_idx').on(t.orgId, t.ticketId),

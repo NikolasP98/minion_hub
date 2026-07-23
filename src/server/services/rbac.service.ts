@@ -1068,7 +1068,8 @@ export async function hasOrgCapability(
  * mutations→edit; the org-config surfaces
  * (modules + per-org plugin toggles) require `settings:manage`. Reads (GET/HEAD)
  * are NOT gated here — pages gate their own view access; this tranche closes the
- * write holes. `/api/scheduling/public/*` (anonymous booking) is excluded.
+ * write holes. Query endpoints that use POST for a read body are explicitly
+ * mapped to `view`. `/api/scheduling/public/*` (anonymous booking) is excluded.
  */
 const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/builder/agent-skills', 'agents'],
@@ -1076,6 +1077,9 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/builder/skills', 'agents'],
   ['/api/builder/tools', 'tools'],
   ['/api/crm', 'crm'],
+  // Deliberately NOT the whole /api/messages prefix — /api/messages/ingest is
+  // the gateway's server-token ingest path and must stay capability-free.
+  ['/api/messages/send', 'crm'],
   ['/api/finances', 'finance'],
   ['/api/sales', 'sales'],
   ['/api/scheduling', 'scheduling'],
@@ -1096,6 +1100,9 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/plugins', 'settings'],
 ];
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const READ_POST_ENDPOINTS: ReadonlyArray<readonly [RegExp, Module]> = [
+  [/^\/api\/brains\/[^/]+\/search$/, 'brains'],
+];
 const CREATE_COLLECTION_ENDPOINTS = new Set([
   '/api/builder/agents',
   '/api/builder/skills',
@@ -1109,6 +1116,10 @@ export function apiWriteCapability(
 ): { module: Module; action: PermAction } | null {
   if (!WRITE_METHODS.has(method)) return null;
   if (pathname.startsWith('/api/scheduling/public/')) return null; // anonymous booking
+  if (method === 'POST') {
+    const readEndpoint = READ_POST_ENDPOINTS.find(([pattern]) => pattern.test(pathname));
+    if (readEndpoint) return { module: readEndpoint[1], action: 'view' };
+  }
   let best: readonly [string, Module] | null = null;
   for (const entry of API_WRITE_PREFIXES) {
     const prefix = entry[0];

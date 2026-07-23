@@ -13,6 +13,7 @@
 import type { GatewayClient } from '@minion-stack/shared';
 
 let client: GatewayClient | null = null;
+let channelStatusSink: ((status: object) => void) | null = null;
 
 /** Register the active client (or clear it with `null`). Called by `gateway.svelte`. */
 export function setClient(c: GatewayClient | null): void {
@@ -24,9 +25,22 @@ export function getClient(): GatewayClient | null {
   return client;
 }
 
+/** Register the dashboard-state sink without importing that state into this leaf module. */
+export function setChannelStatusSink(sink: ((status: object) => void) | null): void {
+  channelStatusSink = sink;
+}
+
 export function sendRequest(method: string, params?: unknown, timeoutMs = 15000): Promise<unknown> {
   if (!client) return Promise.reject(new Error('not connected'));
   return client.request<unknown>(method, params, { timeoutMs });
+}
+
+/** Fetch and publish a fresh channels.status snapshot through the registered sink. */
+export async function refreshChannelStatus(): Promise<object | null> {
+  const status = await sendRequest('channels.status', {});
+  if (!status || typeof status !== 'object') return null;
+  channelStatusSink?.(status);
+  return status;
 }
 
 /**

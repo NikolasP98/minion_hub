@@ -21,9 +21,21 @@ import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql, eq } from 'drizzle-orm';
-import { stkItems, stkWarehouses, stkEntries, stkEntryLines, stkLedger, stkBins } from '../src/server/db/pg-schema/stock';
+import {
+  stkItems,
+  stkWarehouses,
+  stkEntries,
+  stkEntryLines,
+  stkLedger,
+  stkBins,
+} from '../src/server/db/pg-schema/stock';
 import { finProducts } from '../src/server/db/pg-finance-schema';
-import { applyLedgerDelta, computeLegValue, EMPTY_BIN, type BinState } from '../src/server/services/stock.logic';
+import {
+  applyLedgerDelta,
+  computeLegValue,
+  EMPTY_BIN,
+  type BinState,
+} from '../src/server/services/stock.logic';
 import { nextSerialId } from '../src/server/services/naming-series';
 
 // ── input ────────────────────────────────────────────────────────────────
@@ -109,6 +121,7 @@ function matchSayphaCaja(norm: string): string | null {
 interface ConsumptionMatch {
   itemName: string;
   qty: number;
+  note?: string;
 }
 function matchConsumption(finProductName: string): ConsumptionMatch | null {
   const n = normalize(finProductName);
@@ -116,9 +129,12 @@ function matchConsumption(finProductName: string): ConsumptionMatch | null {
   if (opera) return { itemName: opera, qty: 1 };
   const saypha = matchSayphaCaja(n);
   if (saypha) return { itemName: saypha, qty: 1 };
-  if (n.includes('toxina') || n.includes('botox')) return { itemName: 'Toxina Botulinica (units)', qty: 30 };
+  if (n.includes('toxina') || n.includes('botox'))
+    return { itemName: 'Toxina Botulinica (units)', qty: 30 };
   if (n.includes('nctf')) return { itemName: 'NCTF', qty: 1 };
-  if (n.includes('hialuronidasa')) return { itemName: 'Hialuronidasa', qty: 10 };
+  if (n.includes('hialuronidasa')) {
+    return { itemName: 'Hialuronidasa', qty: 10, note: 'confirmed: 10 mL/procedure; 15 mL/vial' };
+  }
   return null;
 }
 
@@ -136,14 +152,21 @@ async function wipeOrgStock(orgId: string) {
 }
 
 async function main() {
-  const existing = await db.select({ id: stkItems.id }).from(stkItems).where(eq(stkItems.orgId, orgId)).limit(1);
+  const existing = await db
+    .select({ id: stkItems.id })
+    .from(stkItems)
+    .where(eq(stkItems.orgId, orgId))
+    .limit(1);
   if (existing.length && !force) {
     console.error(`stk_items already has rows for org ${orgId} — pass --force to wipe + reseed.`);
     process.exit(1);
   }
   if (existing.length && force) await wipeOrgStock(orgId);
 
-  const finProductRows = await db.select({ id: finProducts.id, name: finProducts.name }).from(finProducts).where(eq(finProducts.orgId, orgId));
+  const finProductRows = await db
+    .select({ id: finProducts.id, name: finProducts.name })
+    .from(finProducts)
+    .where(eq(finProducts.orgId, orgId));
   const finByNorm = new Map<string, { id: string; name: string }>();
   for (const p of finProductRows) finByNorm.set(normalize(p.name), { id: p.id, name: p.name });
   function matchFinProduct(itemName: string): { id: string; name: string } | null {
@@ -151,7 +174,9 @@ async function main() {
     return finByNorm.get(NAME_ALIASES[norm] ?? norm) ?? finByNorm.get(norm) ?? null;
   }
 
-  const catalogStock = data.catalog.filter((c) => c.type === 'Producto a la venta' || c.type === 'Producto interno');
+  const catalogStock = data.catalog.filter(
+    (c) => c.type === 'Producto a la venta' || c.type === 'Producto interno',
+  );
   const levelsBySrc = new Map(data.levels.map((l) => [l.src_id, l]));
 
   const itemPlan = catalogStock.map((c) => {
@@ -160,6 +185,7 @@ async function main() {
     const max = lvl?.max ?? null;
     const reorderQty = min != null && max != null && max > min ? max - min : null;
     const fin = matchFinProduct(c.name);
+    const isHialuronidasa = c.src_id === '1262' && normalize(c.name) === 'hialuronidasa';
     // ponytail: `||` (not `??`) on purpose — 0 means "no priced data", fall through.
     const rate = (lvl?.avg_cost || c.avg_cost || c.cost_price || 0) as number;
     return {
@@ -168,6 +194,8 @@ async function main() {
         code: c.src_id,
         name: c.name,
         uom: 'Unidad',
+        consumptionUom: isHialuronidasa ? 'mL' : null,
+        unitsPerStockUom: isHialuronidasa ? '15' : null,
         itemGroup: c.family || null,
         reorderLevel: min != null ? String(min) : null,
         reorderQty: reorderQty != null ? String(reorderQty) : null,
@@ -179,7 +207,10 @@ async function main() {
   });
 
   await db.transaction(async (tx) => {
-    const [warehouse] = await tx.insert(stkWarehouses).values({ orgId, name: 'Almacén Principal' }).returning();
+    const [warehouse] = await tx
+      .insert(stkWarehouses)
+      .values({ orgId, name: 'Almacén Principal' })
+      .returning();
 
     const insertedItems = await tx
       .insert(stkItems)
@@ -193,7 +224,9 @@ async function main() {
     insertedItems.forEach((row, i) => {
       itemByName.set(row.name, row);
       rateByItemId.set(row.id, itemPlan[i].rate);
-      console.log(`${row.code.padEnd(6)}${row.name.padEnd(32)}${itemPlan[i].matchedFinName ?? '(none)'}`);
+      console.log(
+        `${row.code.padEnd(6)}${row.name.padEnd(32)}${itemPlan[i].matchedFinName ?? '(none)'}`,
+      );
     });
     const nullFinMatches = itemPlan.filter((p) => !p.matchedFinName).map((p) => p.insert.name);
 
@@ -215,7 +248,9 @@ async function main() {
       groups.get(key)!.members.push(m);
       groupKeyByIdx[idx] = key;
     });
-    const orderedKeys = [...groups.keys()].sort((a, b) => groups.get(a)!.firstTs.localeCompare(groups.get(b)!.firstTs));
+    const orderedKeys = [...groups.keys()].sort((a, b) =>
+      groups.get(a)!.firstTs.localeCompare(groups.get(b)!.firstTs),
+    );
 
     const entryIdByKey = new Map<string, string>();
     for (const key of orderedKeys) {
@@ -288,8 +323,12 @@ async function main() {
         postedAt: new Date(m.ts),
       });
     });
-    if (mismatchCount) console.warn(`⚠ ${mismatchCount} movement(s) where our replay's running qty diverges from the CSV's own stock_after (source data drift — reconciliation below corrects the final total).`);
-    for (let i = 0; i < ledgerRows.length; i += 1000) await tx.insert(stkLedger).values(ledgerRows.slice(i, i + 1000));
+    if (mismatchCount)
+      console.warn(
+        `⚠ ${mismatchCount} movement(s) where our replay's running qty diverges from the CSV's own stock_after (source data drift — reconciliation below corrects the final total).`,
+      );
+    for (let i = 0; i < ledgerRows.length; i += 1000)
+      await tx.insert(stkLedger).values(ledgerRows.slice(i, i + 1000));
 
     // ── reconciliation: force finals to match export(1) units (18 items);
     // items absent from levels reconcile to their own last replayed qty,
@@ -334,7 +373,10 @@ async function main() {
         itemId: l.itemId,
         qty: String(l.qty),
         uom: 'Unidad',
-        rate: dir === 'pos' ? String(binState.get(l.itemId)?.rate || rateByItemId.get(l.itemId) || 0) : null,
+        rate:
+          dir === 'pos'
+            ? String(binState.get(l.itemId)?.rate || rateByItemId.get(l.itemId) || 0)
+            : null,
         fromWarehouseId: dir === 'pos' ? null : warehouse.id,
         toWarehouseId: dir === 'pos' ? warehouse.id : null,
         lineNo,
@@ -343,7 +385,8 @@ async function main() {
       const adjLedgerRows = lines.map((l) => {
         const bin = binState.get(l.itemId) ?? { ...EMPTY_BIN };
         const qtyDelta = dir === 'pos' ? l.qty : -l.qty;
-        const rate = dir === 'pos' ? Number(lineRows.find((r) => r.itemId === l.itemId)!.rate) : null;
+        const rate =
+          dir === 'pos' ? Number(lineRows.find((r) => r.itemId === l.itemId)!.rate) : null;
         const { valueDelta } = computeLegValue(bin, qtyDelta, rate);
         const next = applyLedgerDelta(bin, qtyDelta, valueDelta);
         binState.set(l.itemId, next);
@@ -366,7 +409,13 @@ async function main() {
     // ── write final bins ─────────────────────────────────────────────────
     const binRows = insertedItems.map((row) => {
       const b = binState.get(row.id) ?? { ...EMPTY_BIN };
-      return { orgId, itemId: row.id, warehouseId: warehouse.id, qty: String(b.qty), valuationRate: String(b.rate) };
+      return {
+        orgId,
+        itemId: row.id,
+        warehouseId: warehouse.id,
+        qty: String(b.qty),
+        valuationRate: String(b.rate),
+      };
     });
     await tx.insert(stkBins).values(binRows);
 
@@ -378,9 +427,10 @@ async function main() {
       if (!match) continue;
       const item = itemByName.get(match.itemName);
       if (!item) continue;
+      const note = match.note ?? 'seed:heuristic';
       await tx.execute(sql`
         insert into stk_consumption (org_id, fin_product_id, item_id, qty_per_unit, note)
-        values (${orgId}, ${p.id}, ${item.id}, ${match.qty}, 'seed:heuristic')
+        values (${orgId}, ${p.id}, ${item.id}, ${match.qty}, ${note})
         on conflict (org_id, fin_product_id, item_id) do update set qty_per_unit = excluded.qty_per_unit, note = excluded.note, updated_at = now()
       `);
       consumptionSeeded.push({ finProduct: p.name, item: match.itemName, qty: match.qty });
@@ -388,9 +438,12 @@ async function main() {
 
     console.log(`\nstk_consumption seeded (${consumptionSeeded.length} rows):`);
     console.log('fin_product'.padEnd(45) + 'item'.padEnd(32) + 'qty');
-    for (const row of consumptionSeeded) console.log(row.finProduct.padEnd(45) + row.item.padEnd(32) + row.qty);
+    for (const row of consumptionSeeded)
+      console.log(row.finProduct.padEnd(45) + row.item.padEnd(32) + row.qty);
 
-    console.log(`\nitems with no fin_product match (${nullFinMatches.length}): ${nullFinMatches.join(', ') || '(none)'}`);
+    console.log(
+      `\nitems with no fin_product match (${nullFinMatches.length}): ${nullFinMatches.join(', ') || '(none)'}`,
+    );
     console.log(
       `\nseeded: ${insertedItems.length} items, ${orderedKeys.length + adjEntryCount} entries (${adjEntryCount} reconciliation), ${ledgerRows.length + adjLedgerCount} ledger rows, ${consumptionSeeded.length} consumption mappings.`,
     );
@@ -412,13 +465,26 @@ async function main() {
     const actual = Number(bin.qty);
     const ok = expected == null || Math.abs(actual - expected) < EPS;
     if (!ok) mismatch = true;
-    console.log(item.name.padEnd(32) + String(expected ?? '(n/a)').padEnd(12) + String(actual).padEnd(12) + (ok ? 'OK' : 'MISMATCH'));
+    console.log(
+      item.name.padEnd(32) +
+        String(expected ?? '(n/a)').padEnd(12) +
+        String(actual).padEnd(12) +
+        (ok ? 'OK' : 'MISMATCH'),
+    );
   }
 
-  const [{ count: ledgerCount }] = (await db.execute(sql`select count(*)::int as count from stk_ledger where org_id = ${orgId}`)) as unknown as { count: number }[];
-  const [{ count: entryCount }] = (await db.execute(sql`select count(*)::int as count from stk_entries where org_id = ${orgId}`)) as unknown as { count: number }[];
-  const [{ count: consumptionCount }] = (await db.execute(sql`select count(*)::int as count from stk_consumption where org_id = ${orgId}`)) as unknown as { count: number }[];
-  console.log(`\nledger rows: ${ledgerCount}   entries: ${entryCount}   consumption mappings: ${consumptionCount}   items: ${items.length}`);
+  const [{ count: ledgerCount }] = (await db.execute(
+    sql`select count(*)::int as count from stk_ledger where org_id = ${orgId}`,
+  )) as unknown as { count: number }[];
+  const [{ count: entryCount }] = (await db.execute(
+    sql`select count(*)::int as count from stk_entries where org_id = ${orgId}`,
+  )) as unknown as { count: number }[];
+  const [{ count: consumptionCount }] = (await db.execute(
+    sql`select count(*)::int as count from stk_consumption where org_id = ${orgId}`,
+  )) as unknown as { count: number }[];
+  console.log(
+    `\nledger rows: ${ledgerCount}   entries: ${entryCount}   consumption mappings: ${consumptionCount}   items: ${items.length}`,
+  );
 
   if (mismatch) {
     console.error('\nFAIL: bin qty mismatch(es) above.');

@@ -16,6 +16,11 @@
   import { AlertTriangle, RotateCw, Settings2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
+  let {
+    popoverEnabled = true,
+    open = $bindable(false),
+  }: { popoverEnabled?: boolean; open?: boolean } = $props();
+
   const activeHost = $derived(getActiveHost());
   const connected = $derived(conn.connected);
   const reconnecting = $derived(conn.connecting);
@@ -84,22 +89,36 @@
       : null,
   );
 
-  const ariaLabel = $derived(
-    `${activeHost?.name ?? 'No server'} — ${STATUS_LABEL[dotState]()}`,
-  );
+  const ariaLabel = $derived(`${activeHost?.name ?? 'No server'} — ${STATUS_LABEL[dotState]()}`);
 
   // Hover/focus popover with a small close grace so moving dot → panel across
   // the gap doesn't flicker it shut.
-  let open = $state(false);
+  let wantsOpen = $state(false);
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   function show() {
     clearTimeout(closeTimer);
-    open = true;
+    wantsOpen = true;
+    if (popoverEnabled) open = true;
   }
   function hide() {
+    wantsOpen = false;
     clearTimeout(closeTimer);
     closeTimer = setTimeout(() => (open = false), 140);
   }
+
+  function handleFocusOut(event: FocusEvent) {
+    const wrapper = event.currentTarget as HTMLElement;
+    if (event.relatedTarget instanceof Node && wrapper.contains(event.relatedTarget)) return;
+    hide();
+  }
+
+  $effect(() => {
+    if (!popoverEnabled) {
+      open = false;
+    } else if (wantsOpen) {
+      open = true;
+    }
+  });
 
   function retry() {
     void wsConnect();
@@ -113,15 +132,17 @@
   class="relative flex items-center"
   onmouseenter={show}
   onmouseleave={hide}
+  onfocusin={show}
+  onfocusout={handleFocusOut}
   role="presentation"
 >
-  <Button variant="ghost" size="xs"
+  <Button
+    variant="ghost"
+    size="xs"
     type="button"
     class="flex items-center justify-center w-4 h-4 -m-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
     aria-label={ariaLabel}
     aria-expanded={open}
-    onfocus={show}
-    onblur={hide}
   >
     <span class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors {DOT_CLASS[dotState]}"></span>
   </Button>
@@ -142,14 +163,18 @@
         <span class="w-1.5 h-1.5 rounded-full shrink-0 {DOT_CLASS[dotState]}"></span>
         <span class="font-medium truncate">{activeHost?.name ?? 'No server connected'}</span>
         <span
-          class="ml-auto text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wide {STATUS_TEXT_CLASS[dotState]}"
+          class="ml-auto text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wide {STATUS_TEXT_CLASS[
+            dotState
+          ]}"
         >
           {STATUS_LABEL[dotState]()}
         </span>
       </div>
 
       {#if connected && uptimeMs != null}
-        <div class="text-[length:var(--font-size-label)] text-muted-foreground">up {fmtUptime(uptimeMs)}</div>
+        <div class="text-[length:var(--font-size-label)] text-muted-foreground">
+          up {fmtUptime(uptimeMs)}
+        </div>
       {:else if !connected && activeHost?.lastConnectedAt}
         <div class="text-[length:var(--font-size-label)] text-muted-foreground">
           last seen {fmtTimeAgo(activeHost.lastConnectedAt)}
@@ -163,7 +188,9 @@
         >
           <Spinner size="xs" class="!text-warning shrink-0" />
           <span class="font-medium">
-            {isUpdateRestartExpected() ? m.connectionBanner_updating() : m.config_gatewayRestarting()}
+            {isUpdateRestartExpected()
+              ? m.connectionBanner_updating()
+              : m.config_gatewayRestarting()}
           </span>
         </div>
       {:else if reconnecting}
@@ -172,7 +199,9 @@
                  bg-[color-mix(in_srgb,var(--color-warning)_12%,transparent)] text-warning"
         >
           <Spinner size="xs" class="!text-warning shrink-0" />
-          <span class="font-medium">{m.connectionBanner_reconnecting({ host: activeHost?.name ?? '' })}</span>
+          <span class="font-medium"
+            >{m.connectionBanner_reconnecting({ host: activeHost?.name ?? '' })}</span
+          >
         </div>
       {:else if !connected}
         <div
@@ -181,31 +210,43 @@
         >
           <div class="flex items-start gap-1.5">
             <AlertTriangle size={13} class="shrink-0 mt-0.5" />
-            <span class="font-medium leading-snug">{conn.connectError ?? m.connectionBanner_disconnected()}</span>
+            <span class="font-medium leading-snug"
+              >{conn.connectError ?? m.connectionBanner_disconnected()}</span
+            >
           </div>
           {#if conn.connectErrorHint}
-            <p class="text-destructive/80 leading-relaxed pl-[var(--space-6)]">{conn.connectErrorHint}</p>
+            <p class="text-destructive/80 leading-relaxed pl-[var(--space-6)]">
+              {conn.connectErrorHint}
+            </p>
           {/if}
           {#if conn.connectErrorRaw}
-            <p class="font-mono text-[length:var(--font-size-telemetry)] text-destructive/60 pl-[var(--space-6)] break-all">
+            <p
+              class="font-mono text-[length:var(--font-size-telemetry)] text-destructive/60 pl-[var(--space-6)] break-all"
+            >
               {conn.connectErrorRaw}
             </p>
           {/if}
           <div class="flex items-center gap-1.5 pl-[var(--space-6)] pt-0.5">
-            <Button variant="ghost" size="xs"
+            <Button
+              variant="ghost"
+              size="xs"
               type="button"
               onclick={retry}
               class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
             >
-              <RotateCw size={11} /> {m.common_retry()}
+              <RotateCw size={11} />
+              {m.common_retry()}
             </Button>
             {#if conn.connectErrorCta === 'hosts-edit'}
-              <Button variant="ghost" size="xs"
+              <Button
+                variant="ghost"
+                size="xs"
                 type="button"
                 onclick={manageHosts}
                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
               >
-                <Settings2 size={11} /> {m.connectionBanner_manageHosts()}
+                <Settings2 size={11} />
+                {m.connectionBanner_manageHosts()}
               </Button>
             {/if}
           </div>

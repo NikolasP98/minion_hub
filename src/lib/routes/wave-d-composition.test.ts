@@ -56,7 +56,10 @@ describe('Wave D route composition contract', () => {
 
   it('docks Notes and Todos on the trailing edge of the Home workspace', () => {
     const home = routeSource('home/+page.svelte');
-    expect(home).toContain('<div class="notes-dock" class:collapsed={!notesState.open}>');
+    // The dock carries section toggles (notes/omnichat) + a context menu now,
+    // so assert its class bindings rather than one literal opening tag.
+    expect(home).toContain('class="notes-dock"');
+    expect(home).toContain('class:collapsed={!notesState.open}');
     expect(home).toContain('direction="row"');
     expect(home).toMatch(/\.column\s*\{[\s\S]*?order:\s*1;/);
     expect(home).toMatch(/\.notes-dock\s*\{[\s\S]*?order:\s*2;/);

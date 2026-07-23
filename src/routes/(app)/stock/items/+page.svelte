@@ -3,11 +3,12 @@
   import { invalidate, goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
-  import { PageHeader, Button, Modal } from '$lib/components/ui';
+  import { PageHeader, Button, Modal, Input } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
   import { canAct } from '$lib/access/can.svelte';
+  import { formatMoney } from '$lib/utils/format';
 
   let { data }: { data: PageData } = $props();
   const items = $derived(data.items);
@@ -22,6 +23,7 @@
         itemGroup: draft.itemGroup || null,
         reorderLevel: draft.reorderLevel !== '' ? Number(draft.reorderLevel) : null,
         reorderQty: draft.reorderQty !== '' ? Number(draft.reorderQty) : null,
+        moq: draft.moq !== '' ? Number(draft.moq) : null,
       }),
     });
     if (res.ok) await invalidate('stock:items');
@@ -65,6 +67,29 @@
       editable: true,
       editType: 'number',
       accessor: (it) => it.reorderQty,
+    },
+    {
+      key: 'moq',
+      label: m.stock_col_moq(),
+      align: 'right',
+      editable: true,
+      editType: 'number',
+      accessor: (it) => it.moq,
+    },
+    // Derived from the ledger (last positive movement), not columns — so
+    // read-only here.
+    {
+      key: 'lastRestockCost',
+      label: m.stock_col_last_restock_cost(),
+      align: 'right',
+      custom: true,
+      accessor: (it) => it.lastRestockCost,
+      exportValue: (it) => it.lastRestockCost ?? '',
+    },
+    {
+      key: 'lastSupplierName',
+      label: m.stock_col_last_supplier(),
+      accessor: (it) => it.lastSupplierName ?? '',
     },
   ];
 
@@ -135,6 +160,10 @@
         <a href="/stock/items/{it.id}" class="hover:underline">{it.code}</a>
       {:else if col.key === 'name'}
         <span class="truncate block max-w-[16rem]">{it.name}</span>
+      {:else if col.key === 'lastRestockCost'}
+        <span class="tabular-nums"
+          >{it.lastRestockCost != null ? formatMoney(it.lastRestockCost) : '—'}</span
+        >
       {/if}
     {/snippet}
   </DataTable>
@@ -142,18 +171,9 @@
 
 <Modal bind:open={createOpen} title={m.stock_create_item_title()}>
   <div class="flex flex-col gap-3">
-    <label class="fld">
-      <span>{m.stock_field_code()}</span>
-      <input class="inp" bind:value={newCode} />
-    </label>
-    <label class="fld">
-      <span>{m.stock_field_name()}</span>
-      <input class="inp" bind:value={newName} />
-    </label>
-    <label class="fld">
-      <span>{m.stock_field_uom()}</span>
-      <input class="inp" bind:value={newUom} />
-    </label>
+    <Input size="sm" label={m.stock_field_code()} bind:value={newCode} />
+    <Input size="sm" label={m.stock_field_name()} bind:value={newName} />
+    <Input size="sm" label={m.stock_field_uom()} bind:value={newUom} />
     {#if createErr}<p class="err-msg text-xs">{createErr}</p>{/if}
   </div>
   {#snippet footer()}
@@ -172,24 +192,7 @@
 </Modal>
 
 <style>
-  .inp {
-    height: 1.75rem;
-    padding: 0 var(--space-2, 8px);
-    font-size: var(--font-size-body, 14px);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg3);
-    border: 1px solid var(--hairline);
-    color: var(--color-foreground);
-  }
-  .fld {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1, 4px);
-    font-size: var(--font-size-body, 14px);
-    color: var(--color-muted-foreground);
-  }
   .err-msg {
-    font-size: var(--font-size-body, 14px);
-    color: var(--color-destructive);
+    color: var(--color-danger-fg);
   }
 </style>

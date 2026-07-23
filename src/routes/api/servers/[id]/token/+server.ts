@@ -8,6 +8,8 @@ import { getServerToken } from '$server/services/server.service';
 import {
   userHasGatewayAccess,
   getGatewayTokenByServerId,
+  gatewayBelongsToOrg,
+  resolveGatewayId,
 } from '$server/services/gateway.pg.service';
 
 /**
@@ -38,6 +40,39 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   console.log('[token-ep] tenant=', ctx.tenantId);
 
   const id = params.id!;
+  let registryError: unknown = null;
+
+  // ── Org/channel gate (spec §C5). Fail closed, and BEFORE the role check ────
+  // The gateway row must belong to the caller's ACTIVE org. Handing out a token
+  // is handing out the connection, so this is the real enforcement point — UI
+  // gating alone is a bug, and `role === 'admin'` is deliberately NOT an
+  // exemption: the old admin bypass below meant an admin sitting in FACES could
+  // fetch the DEV gateway's token with a hand-crafted request, which is exactly
+  // what "FACES cannot reach DEV even by hand-crafting a request" forbids.
+  // Channel is enforced transitively: a channel's rows are org-scoped, so an org
+  // with no row for a channel has no id here that will pass.
+  // A server id absent from the PG registry may still be a legitimate,
+  // tenant-scoped Turso legacy row. Distinguish that migration fallback from a
+  // PG row assigned to another org: only the latter is an immediate 404.
+  const orgId = locals.orgId ?? ctx.tenantId ?? null;
+  let pgGatewayId: string | null = null;
+  try {
+    pgGatewayId = await resolveGatewayId(id);
+  } catch (err) {
+    registryError = err;
+    console.warn('[token-ep] Supabase gateway resolution threw (will try Turso):', err);
+  }
+  if (pgGatewayId) {
+    try {
+      if (!(await gatewayBelongsToOrg(id, orgId))) {
+        console.log('[token-ep] gateway not assigned to active org -> 404');
+        return json({ error: 'Not found' }, { status: 404 });
+      }
+    } catch (err) {
+      registryError = err;
+      console.warn('[token-ep] Supabase org-scope lookup threw (will try Turso):', err);
+    }
+  }
 
   if (user.role !== 'admin') {
     // Access source of truth = Supabase user_gateway (by profile uuid); fall
@@ -59,12 +94,13 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   // Try Supabase gateway table first (post-cutover source of truth), then fall
   // back to Turso servers table for legacy rows that haven't migrated yet.
   let token: string | null = null;
-  let registryError: unknown = null;
-  try {
-    token = await getGatewayTokenByServerId(id);
-  } catch (err) {
-    registryError = err;
-    console.warn('[token-ep] Supabase gateway lookup threw (will try Turso):', err);
+  if (pgGatewayId || registryError) {
+    try {
+      token = await getGatewayTokenByServerId(id, orgId);
+    } catch (err) {
+      registryError = err;
+      console.warn('[token-ep] Supabase gateway lookup threw (will try Turso):', err);
+    }
   }
   if (!token) {
     try {

@@ -22,6 +22,8 @@ const env = process.env;
 
 import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
 import { hubBaseUrl } from '$server/config/urls';
+import { currentBuildChannel } from '$server/gateway-channel';
+import type { GatewayChannel } from '$server/services/gateway.pg.service';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -50,42 +52,50 @@ export async function getGatewayHttpUrl(): Promise<string> {
 export async function getGatewayHttpUrlForUser(
   profileId: string | undefined,
   orgId?: string | null,
+  channel?: GatewayChannel,
 ): Promise<string> {
-  const { url } = await resolveCredentialsForUser(profileId, orgId);
+  const { url } = await resolveCredentialsForUser(profileId, orgId, channel);
   return toHttpUrl(url).replace(/\/+$/, '');
 }
 
 /**
  * Resolve gateway credentials for a specific user.
- * Priority: org-assigned gateway → PG per-user → PG system-wide → env bootstrap.
+ * Priority: (org, channel) lease → PG per-user → PG system-wide → env bootstrap.
  *
  * `orgId` is the caller's ACTIVE org (optional — thread it from locals/
- * resolveAssistantPrincipal where available). Per-org volume tenancy spec §3.4:
- * `gateway.org_id` is a mutable assignment ("instance currently serving this
- * org's volume", a lease read-model, not ownership). With no org-assigned rows
- * the whole function behaves byte-identically to the old chain.
+ * resolveAssistantPrincipal where available).
+ *
+ * `channel` is the BUILD CHANNEL the caller selected; omitted, it comes from the
+ * request-ambient `currentBuildChannel()`, which is `'prd'` unless the browser
+ * explicitly asked for `'dev'`. Every step below is channel-aware, because the
+ * dev rows are the newest rows and a channel-blind pick reached them: this
+ * function and the browser must land on the SAME instance (spec §D4) or the
+ * client/server split that caused the all-day intermittency comes straight back.
  */
 export async function resolveCredentialsForUser(
   profileId: string | undefined,
   orgId?: string | null,
+  channel?: GatewayChannel,
 ): Promise<{ url: string; token: string }> {
-  // 0. Org-assigned gateway (per-org volume tenancy). Miss/error → fall through.
+  const chan = channel ?? currentBuildChannel();
+  // 0. The (org, channel) lease — ONE authority for which instance serves this
+  //    org on this channel, shared with the endpoint the browser connects to.
+  //    Miss (org has no row for the channel) or error → fall through.
   if (orgId) {
     try {
-      const { getOrgAssignedGatewayCredentials } = await import(
-        '$server/services/gateway.pg.service'
-      );
-      const creds = await getOrgAssignedGatewayCredentials(orgId);
+      const { resolveOrgChannelCredentials } =
+        await import('$server/services/gateway-lease.service');
+      const creds = await resolveOrgChannelCredentials(orgId, chan);
       if (creds) return { url: toWsUrl(creds.url), token: creds.token };
     } catch (err) {
-      console.warn('[gateway-rpc] org-assigned gateway lookup failed, falling back', err);
+      console.warn('[gateway-rpc] org channel lease lookup failed, falling back', err);
     }
   }
   // 1. Per-user PG lookup (new primary path).
-  if (profileId) {
+  if (profileId && orgId) {
     try {
       const { getUserGatewayCredentials } = await import('$server/services/gateway.pg.service');
-      const creds = await getUserGatewayCredentials(profileId);
+      const creds = await getUserGatewayCredentials(profileId, orgId, chan);
       if (creds) return { url: toWsUrl(creds.url), token: creds.token };
     } catch (err) {
       // Wave 1: catch covers both the dynamic import() and getUserGatewayCredentials().
@@ -199,7 +209,12 @@ async function gatewayCallWithCreds<T = unknown>(
       const type = frame.type;
       // Broadcast events arrive on this socket while a long call (update.run)
       // is in flight — the fleet orchestrator uses them for true progress.
-      if (type === 'event' && typeof frame.event === 'string' && frame.event !== 'connect.challenge' && opts.onEvent) {
+      if (
+        type === 'event' &&
+        typeof frame.event === 'string' &&
+        frame.event !== 'connect.challenge' &&
+        opts.onEvent
+      ) {
         try {
           opts.onEvent(frame.event, frame.payload ?? frame.data ?? null);
         } catch {
@@ -280,16 +295,23 @@ export async function gatewayCall<T = unknown>(
 /**
  * Call a gateway RPC using per-user credentials resolved from PG.
  * Falls back to system-wide Turso creds and env if no per-user row exists.
- * `opts.orgId` (the caller's active org) routes to the org-assigned gateway
- * when one exists (per-org volume tenancy §3.4); omitted → old chain.
+ * `opts.orgId` (the caller's active org) routes through the (org, channel)
+ * lease when one exists; omitted → old chain. `opts.channel` overrides the
+ * request-ambient build channel — pass it only when the call is deliberately
+ * about a specific channel (fleet tooling), never to "pick a working one".
  */
 export async function gatewayCallAsUser<T = unknown>(
   method: string,
   params: Record<string, unknown> = {},
   profileId: string | undefined,
-  opts: { timeoutMs?: number; orgId?: string | null; jwt?: string } = {},
+  opts: {
+    timeoutMs?: number;
+    orgId?: string | null;
+    jwt?: string;
+    channel?: GatewayChannel;
+  } = {},
 ): Promise<T> {
-  const { url, token } = await resolveCredentialsForUser(profileId, opts.orgId);
+  const { url, token } = await resolveCredentialsForUser(profileId, opts.orgId, opts.channel);
   return gatewayCallWithCreds<T>(method, params, url, token, opts);
 }
 
@@ -328,7 +350,7 @@ export async function pluginsUiList(
   const res = await gatewayCallAsUser<
     | { entries?: PluginUiManifestOccupant[]; occupants?: PluginUiManifestOccupant[] }
     | PluginUiManifestOccupant[]
-  >('plugins.ui.list', orgId ? { orgId } : {}, profileId);
+  >('plugins.ui.list', orgId ? { orgId } : {}, profileId, { orgId });
   const raw = Array.isArray(res) ? res : (res?.entries ?? res?.occupants ?? []);
   return raw.filter((e) => !HIDDEN_PLUGIN_IDS.has(e.pluginId));
 }

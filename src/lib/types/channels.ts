@@ -42,6 +42,39 @@ export interface Channel {
   gwPairing?: boolean;
   /** Orgs this gateway account is scoped to (from the gateway's accountOrgs tag). */
   orgIds?: string[];
+  /**
+   * WhatsApp history-sync progress, mirrored from the gateway's account snapshot.
+   * Undefined on older gateways (and on channels that never sync history) — that
+   * is "no sync info", NOT an error.
+   */
+  historySync?: ChannelHistorySync;
+  /** Exact durable gateway -> Hub delivery counters for this account. */
+  hubSync?: ChannelHubSync;
+}
+
+export type ChannelHistorySyncPhase =
+  'idle' | 'bootstrap' | 'recent' | 'full' | 'on-demand' | 'complete' | 'stalled';
+
+export interface ChannelHistorySync {
+  phase: ChannelHistorySyncPhase;
+  /** 0-100, or null for an indeterminate sweep. */
+  progress: number | null;
+  /** Whether the terminal state was explicitly signalled by WhatsApp. */
+  explicit: boolean;
+  messages: number;
+  chats: number;
+  startedAt: number | null;
+  updatedAt: number;
+}
+
+export interface ChannelHubSync {
+  total: number;
+  acknowledged: number;
+  pending: number;
+  /** Pending rows that have already failed at least one delivery attempt. */
+  retrying: number;
+  lastAcknowledgedAt: number | null;
+  updatedAt: number;
 }
 
 export interface ChannelAssignment {

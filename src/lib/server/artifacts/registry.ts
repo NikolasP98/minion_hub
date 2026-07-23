@@ -12,12 +12,20 @@ import {
 } from '$lib/agents/artifacts';
 import * as m from '$lib/paraglide/messages';
 import { gatewayCallAsUser } from '$lib/server/gateway-rpc';
-import { listArtifactRows, getArtifactRow, artifactRowToDescriptor } from '$lib/server/artifacts/store';
+import {
+  listArtifactRows,
+  getArtifactRow,
+  artifactRowToDescriptor,
+} from '$lib/server/artifacts/store';
 import { getMasterFlow, flowExportedSpecs } from '$lib/flows/master-flows';
 import { flowVariableSchema } from '$lib/flows/flow-variables';
 import { listExportToggles } from '$lib/server/flows/exports-store';
 
-async function withVars(ctx: CoreCtx, agentId: string, context: ArtifactContext): Promise<ArtifactContext> {
+async function withVars(
+  ctx: CoreCtx,
+  agentId: string,
+  context: ArtifactContext,
+): Promise<ArtifactContext> {
   const desc = getSystemAgentDescriptors().find((d) => d.id === agentId);
   if (!desc?.flowId || !desc.resolveVariables) return context;
   const flow = getMasterFlow(desc.flowId);
@@ -32,9 +40,14 @@ async function withVars(ctx: CoreCtx, agentId: string, context: ArtifactContext)
 }
 
 /** Built-in + DB artifacts for an agent. */
-export async function getArtifactsForAgent(ctx: CoreCtx, agentId: string): Promise<ArtifactDescriptor[]> {
+export async function getArtifactsForAgent(
+  ctx: CoreCtx,
+  agentId: string,
+): Promise<ArtifactDescriptor[]> {
   if (agentId === 'artifact-builder') {
-    return [artifactBuilderDescriptorFor(agentId, m.artifact_builder_title(), m.artifact_builder_desc())];
+    return [
+      artifactBuilderDescriptorFor(agentId, m.artifact_builder_title(), m.artifact_builder_desc()),
+    ];
   }
   const builtins =
     agentId === 'alert-watcher'
@@ -58,7 +71,9 @@ export async function getArtifactContext(
   if (artifactId === 'builder' && agentId === 'artifact-builder') {
     const desc = getSystemAgentDescriptors().find((d) => d.id === agentId);
     const vars = desc?.resolveVariables
-      ? await desc.resolveVariables(ctx, ['artifacts.builtCount', 'artifacts.recent']).catch(() => ({}))
+      ? await desc
+          .resolveVariables(ctx, ['artifacts.builtCount', 'artifacts.recent'])
+          .catch(() => ({}))
       : {};
     return { ...base, vars };
   }
@@ -68,15 +83,27 @@ export async function getArtifactContext(
         'plugins.alerts.summary',
         { since: Date.now() - 30 * 24 * 60 * 60 * 1000 },
         ctx.profileId,
+        { orgId: ctx.tenantId },
       ).catch(() => null),
       gatewayCallAsUser<{ rows?: Array<Record<string, unknown>> }>(
         'plugins.alerts.recent',
         { limit: 10 },
         ctx.profileId,
+        { orgId: ctx.tenantId },
       ).catch(() => null),
     ]);
-    const counts = summary?.counts ?? { total: 0, high: 0, med: 0, low: 0, notified: 0, responded: 0 };
-    return withVars(ctx, agentId, { ...base, data: { counts, recent: mapRecentRows(recent?.rows ?? []) } });
+    const counts = summary?.counts ?? {
+      total: 0,
+      high: 0,
+      med: 0,
+      low: 0,
+      notified: 0,
+      responded: 0,
+    };
+    return withVars(ctx, agentId, {
+      ...base,
+      data: { counts, recent: mapRecentRows(recent?.rows ?? []) },
+    });
   }
   // DB (dynamic) artifact: base context (per-artifact data providers come with 5b)
   const row = await getArtifactRow(ctx, artifactId).catch(() => null);

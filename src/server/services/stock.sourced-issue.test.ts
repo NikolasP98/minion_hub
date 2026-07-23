@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { stkEntries, stkEntryLines } from '$server/db/pg-schema/stock';
+import { stkEntries, stkEntryLines, stkItems } from '$server/db/pg-schema/stock';
 import { createSourcedIssue } from './stock.service';
 
 beforeEach(() => {
@@ -18,7 +18,7 @@ const actor = { id: 'u1', name: 'Test User' };
  * audit-coverage.test.ts: stable vi.fn()s keyed by real table-object identity,
  * so `table === stkEntries` etc. just works without mocking the schema.
  */
-function buildTx() {
+function buildTx(itemRows: Array<{ id: string; unitsPerStockUom: string | null }> = []) {
   const insertCalls: Array<{ table: unknown; rows: unknown[] }> = [];
   const insert = vi.fn((table: unknown) => ({
     values: (rows: unknown) => {
@@ -30,13 +30,20 @@ function buildTx() {
       return Promise.resolve(undefined);
     },
   }));
-  const select = vi.fn(() => ({ from: () => ({ where: () => Promise.resolve([]) }) })); // no duplicate found
+  const select = vi.fn(() => ({
+    from: (table: unknown) => ({
+      where: () => Promise.resolve(table === stkItems ? itemRows : []),
+    }),
+  })); // no duplicate found; optional item rows support authoritative UOM conversion
   const execute = vi.fn().mockResolvedValue(undefined);
   return { tx: { insert, select, execute }, insertCalls };
 }
 
 function ctxWithTx(tx: unknown) {
-  return { db: { transaction: (cb: (t: unknown) => unknown) => cb(tx) }, tenantId: 'org-1' } as never;
+  return {
+    db: { transaction: (cb: (t: unknown) => unknown) => cb(tx) },
+    tenantId: 'org-1',
+  } as never;
 }
 
 describe('createSourcedIssue — draft creation', () => {
@@ -72,8 +79,55 @@ describe('createSourcedIssue — draft creation', () => {
     const lineInsert = insertCalls.find((c) => c.table === stkEntryLines);
     expect(lineInsert).toBeTruthy();
     expect(lineInsert!.rows).toEqual([
-      { orgId: 'org-1', entryId: 'entry1', itemId: 'item1', qty: '2', uom: null, rate: null, fromWarehouseId: 'wh1', toWarehouseId: null, lineNo: 0 },
-      { orgId: 'org-1', entryId: 'entry1', itemId: 'item2', qty: '1', uom: null, rate: null, fromWarehouseId: 'wh1', toWarehouseId: null, lineNo: 1 },
+      {
+        orgId: 'org-1',
+        entryId: 'entry1',
+        itemId: 'item1',
+        qty: '2',
+        uom: null,
+        rate: null,
+        fromWarehouseId: 'wh1',
+        toWarehouseId: null,
+        lineNo: 0,
+      },
+      {
+        orgId: 'org-1',
+        entryId: 'entry1',
+        itemId: 'item2',
+        qty: '1',
+        uom: null,
+        rate: null,
+        fromWarehouseId: 'wh1',
+        toWarehouseId: null,
+        lineNo: 1,
+      },
+    ]);
+  });
+
+  it('converts consumption UOM authoritatively and ignores the caller stock fallback', async () => {
+    const { tx, insertCalls } = buildTx([{ id: 'item-h', unitsPerStockUom: '15' }]);
+
+    await createSourcedIssue(ctxWithTx(tx), {
+      source: 'pos',
+      sourceId: 't-h',
+      warehouseId: 'wh1',
+      lines: [{ itemId: 'item-h', qty: 999, qtyConsumption: 10 }],
+      actor,
+    });
+
+    const lineInsert = insertCalls.find((c) => c.table === stkEntryLines);
+    expect(lineInsert?.rows).toEqual([
+      {
+        orgId: 'org-1',
+        entryId: 'entry1',
+        itemId: 'item-h',
+        qty: '0.6667',
+        uom: null,
+        rate: null,
+        fromWarehouseId: 'wh1',
+        toWarehouseId: null,
+        lineNo: 0,
+      },
     ]);
   });
 });
@@ -86,7 +140,19 @@ describe('createSourcedIssue — submit path', () => {
       [{ id: 'entry1', orgId: 'org-1', type: 'issue', status: 'draft' }], // stk_entries insert returning
       [], // stk_entry_lines insert
       [{ id: 'entry1', orgId: 'org-1', status: 'draft', type: 'issue', humanId: 'STE-PRESET' }], // submitEntry: select entry for update
-      [{ id: 'l1', entryId: 'entry1', itemId: 'item1', qty: '5', uom: null, rate: null, fromWarehouseId: 'wh1', toWarehouseId: null, lineNo: 0 }], // select lines
+      [
+        {
+          id: 'l1',
+          entryId: 'entry1',
+          itemId: 'item1',
+          qty: '5',
+          uom: null,
+          rate: null,
+          fromWarehouseId: 'wh1',
+          toWarehouseId: null,
+          lineNo: 0,
+        },
+      ], // select lines
       [{ id: 'item1' }], // item existence
       [{ id: 'wh1' }], // warehouse existence
       [{ qty: '10', valuationRate: '1' }], // locked bin — enough stock
@@ -130,7 +196,13 @@ describe('createSourcedIssue — no_lines guard', () => {
   it('throws no_lines before touching the db when lines is empty', async () => {
     const { db } = createMockDb();
     await expect(
-      createSourcedIssue(ctx(db), { source: 'pos', sourceId: 't-1', warehouseId: 'wh1', lines: [], actor }),
+      createSourcedIssue(ctx(db), {
+        source: 'pos',
+        sourceId: 't-1',
+        warehouseId: 'wh1',
+        lines: [],
+        actor,
+      }),
     ).rejects.toMatchObject({ code: 'no_lines' });
     expect(db.select).not.toHaveBeenCalled();
   });

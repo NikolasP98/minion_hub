@@ -5,6 +5,8 @@ import { runTick } from '$server/services/bg-runtime';
 // Importing the service registers its bg-runtime handler (side effect).
 import '$server/services/groupchat.service';
 import '$server/services/brains.service';
+import '$server/services/brain-corpus-jobs.service';
+import '$server/services/brain-business-corpus-jobs.service';
 
 /**
  * GET /api/jobs/tick — cron entrypoint for the GLOBAL background-job runtime.
@@ -15,8 +17,8 @@ import '$server/services/brains.service';
  * hooks.server.ts unauth allowlist.
  */
 export const GET: RequestHandler = async ({ request }) => {
-	const secret = env.CRON_SECRET;
-	if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
-	const res = await runTick(50_000);
-	return json(res);
+  const secret = env.CRON_SECRET;
+  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
+  const res = await runTick(50_000);
+  return json(res);
 };

@@ -1,6 +1,20 @@
 import { and, eq, gte, lte, desc, sql, type SQL } from 'drizzle-orm';
 import { messages } from '@minion-stack/db/pg';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrg } from '$server/db/pg-ledger-client';
+import { enqueueWhatsAppBrainChanges } from './brain-corpus-jobs.service';
+
+/** Cache tags for message-ledger reads (omnichat conversations/threads). */
+const messageTags = (orgId: string) => tags.tenantDomain(orgId, 'messages');
+
+/** Bust cached ledger reads after a write. Never lets a cache error fail ingest. */
+async function bustMessageCaches(orgId: string): Promise<void> {
+  try {
+    await invalidateTags([...messageTags(orgId)]);
+  } catch (cause) {
+    console.warn('[messages] cache invalidation failed (stale until TTL)', cause);
+  }
+}
 
 export interface IngestRow {
   clientId: string;
@@ -29,7 +43,33 @@ export interface RoutingPatch {
   sessionKey: string;
 }
 
+export interface MessageIngestResult {
+  accepted: number;
+  acceptedClientIds: string[];
+  brainJobId: string | null;
+}
+
+export interface MessageIngestStats {
+  persisted: number;
+  latestPersistedAt: number | null;
+}
+
 export type MessageInsert = typeof messages.$inferInsert;
+
+/** Postgres drivers may return timestamp aggregates as Date, ISO text, or epoch numbers. */
+export function toTimestampMs(value: unknown): number | null {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    const timestamp = value.getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
 
 /** Pure mapping from an ingest row → Drizzle insert values (testable without a DB). */
 export function toInsertValues(
@@ -61,8 +101,10 @@ export function toInsertValues(
   };
 }
 
+export const MESSAGE_CONFLICT_TARGET = [messages.orgId, messages.clientId];
+
 const ON_CONFLICT = {
-  target: messages.clientId,
+  target: MESSAGE_CONFLICT_TARGET,
   set: {
     agentId: sql`excluded.agent_id`,
     sessionKey: sql`excluded.session_key`,
@@ -74,6 +116,27 @@ const ON_CONFLICT = {
   },
 } as const;
 
+export function acceptedIngestRows(rows: IngestRow[], acceptedClientIds: string[]): IngestRow[] {
+  const accepted = new Set(acceptedClientIds);
+  return rows.filter((row) => accepted.has(row.clientId));
+}
+
+async function enqueueBrainChangesAfterCommit(
+  orgId: string,
+  rows: IngestRow[],
+  acceptedClientIds: string[],
+): Promise<string | null> {
+  try {
+    return await enqueueWhatsAppBrainChanges(orgId, acceptedIngestRows(rows, acceptedClientIds));
+  } catch (cause) {
+    // The ledger commit already succeeded. Never return a false ingest failure
+    // to the gateway (which would replay the batch); durable reconciliation is
+    // the repair path if queue insertion is temporarily unavailable.
+    console.error('[brain-corpus] post-commit enqueue failed; reconcile will repair', cause);
+    return null;
+  }
+}
+
 /**
  * Insert ingested rows; idempotent on client_id.
  *
@@ -84,20 +147,26 @@ const ON_CONFLICT = {
  * failure we fall back to per-row inserts (savepoint each) and drop only the
  * rows that can't be stored. Bad rows never block the queue again.
  */
-export async function insertMessages(
+export async function insertMessagesDetailed(
   orgId: string,
   gatewayId: string | null,
   rows: IngestRow[],
-): Promise<number> {
-  if (rows.length === 0) return 0;
+): Promise<MessageIngestResult> {
+  if (rows.length === 0) return { accepted: 0, acceptedClientIds: [], brainJobId: null };
   const values = rows.map((r) => toInsertValues(r, orgId, gatewayId));
   try {
     await withOrg(orgId, async (tx) => {
       await tx.insert(messages).values(values).onConflictDoUpdate(ON_CONFLICT);
     });
-    return values.length;
+    const result = {
+      accepted: values.length,
+      acceptedClientIds: values.map((value) => value.clientId),
+    };
+    await bustMessageCaches(orgId);
+    const brainJobId = await enqueueBrainChangesAfterCommit(orgId, rows, result.acceptedClientIds);
+    return { ...result, brainJobId };
   } catch (bulkErr) {
-    let accepted = 0;
+    const acceptedClientIds: string[] = [];
     await withOrg(orgId, async (tx) => {
       for (const v of values) {
         try {
@@ -106,19 +175,67 @@ export async function insertMessages(
           await tx.transaction(async (sp) => {
             await sp.insert(messages).values(v).onConflictDoUpdate(ON_CONFLICT);
           });
-          accepted += 1;
+          acceptedClientIds.push(v.clientId);
         } catch (rowErr) {
           console.warn(
-            `[ingest] dropping unpersistable message client_id=${v.clientId}: ${String(rowErr)}`,
+            `[ingest] rejecting unpersistable message client_id=${v.clientId}: ${String(rowErr)}`,
           );
         }
       }
     });
     console.warn(
-      `[ingest] bulk insert failed (${String(bulkErr)}); per-row fallback accepted ${accepted}/${values.length}`,
+      `[ingest] bulk insert failed (${String(bulkErr)}); per-row fallback accepted ${acceptedClientIds.length}/${values.length}`,
     );
-    return accepted;
+    if (acceptedClientIds.length > 0) await bustMessageCaches(orgId);
+    const brainJobId = await enqueueBrainChangesAfterCommit(orgId, rows, acceptedClientIds);
+    return { accepted: acceptedClientIds.length, acceptedClientIds, brainJobId };
   }
+}
+
+/** Backward-compatible count-only facade for in-process callers. */
+export async function insertMessages(
+  orgId: string,
+  gatewayId: string | null,
+  rows: IngestRow[],
+): Promise<number> {
+  return (await insertMessagesDetailed(orgId, gatewayId, rows)).accepted;
+}
+
+/**
+ * Authoritative, post-commit persistence count for one gateway account.
+ * `since` scopes the total to the current history-sync session when supplied.
+ */
+export async function getMessageIngestStats(
+  orgId: string,
+  filters: {
+    gatewayId?: string;
+    channel: string;
+    accountId: string;
+    since?: number;
+  },
+): Promise<MessageIngestStats> {
+  const conds: SQL[] = [
+    eq(messages.orgId, orgId),
+    eq(messages.channel, filters.channel),
+    eq(messages.accountId, filters.accountId),
+  ];
+  if (filters.gatewayId !== undefined) conds.push(eq(messages.gatewayId, filters.gatewayId));
+  if (filters.since !== undefined) {
+    conds.push(gte(messages.createdAt, new Date(filters.since)));
+  }
+  return withOrg(orgId, async (tx) => {
+    const [row] = await tx
+      .select({
+        persisted: sql<number>`count(*)::int`,
+        latestPersistedAt: sql<Date | null>`max(${messages.createdAt})`,
+      })
+      .from(messages)
+      .where(and(...conds));
+    return {
+      persisted: row?.persisted ?? 0,
+      latestPersistedAt: toTimestampMs(row?.latestPersistedAt),
+    };
+  });
 }
 
 /** Apply late routing backfills, keyed by client_id. */
@@ -154,6 +271,109 @@ export interface ListFilters {
   offset?: number;
 }
 
+export interface RecentConversation {
+  channel: string;
+  chatId: string;
+  accountId: string | null;
+  isGroup: boolean | null;
+  direction: 'inbound' | 'outbound';
+  content: string | null;
+  occurredAt: number | null;
+  /** Latest known counterparty name (from the last named inbound message). */
+  senderName: string | null;
+  senderHandle: string | null;
+}
+
+interface RecentConversationRow {
+  channel: string;
+  chat_id: string;
+  account_id: string | null;
+  is_group: boolean | null;
+  direction: 'inbound' | 'outbound';
+  content: string | null;
+  occurred_at: unknown;
+  sender_name: string | null;
+  sender_handle: string | null;
+}
+
+/**
+ * Most recent conversation threads across ALL channels: the latest message per
+ * (channel, chat_id), newest first. The counterparty name comes from the last
+ * named INBOUND message (the latest row may be ours, whose sender is us).
+ *
+ * Cached per page: ingest/send bust the tag, so the TTL only bounds staleness
+ * when invalidation can't reach this instance (memory backend on serverless).
+ */
+export async function listRecentConversations(
+  orgId: string,
+  limit = 25,
+  offset = 0,
+): Promise<RecentConversation[]> {
+  return cached(
+    keys.hub('omnichat-convos', { t: orgId, d: { n: limit, o: offset } }),
+    { ttl: '2m', swr: '30s', tags: [...messageTags(orgId)] },
+    () => loadRecentConversations(orgId, limit, offset),
+  );
+}
+
+/**
+ * Perf shape (measured on prod, 270k rows): GROUP BY over an INDEX-ONLY scan of
+ * messages_org_chat_idx picks the page of thread keys (~100ms warm), then two
+ * lateral index probes per page row fetch the latest message + last named
+ * inbound sender. The previous DISTINCT ON over full wide rows spilled a 10MB
+ * disk sort (~14s cold). Index-only depends on a healthy visibility map —
+ * autovacuum keeps it; a stale one shows up as Heap Fetches in EXPLAIN.
+ */
+async function loadRecentConversations(
+  orgId: string,
+  limit: number,
+  offset: number,
+): Promise<RecentConversation[]> {
+  return withOrg(orgId, async (tx) => {
+    const rows = (await tx.execute(sql`
+      with threads as (
+        select channel, chat_id, max(occurred_at) as last_at
+        from messages
+        where org_id = ${orgId} and chat_id is not null
+        group by channel, chat_id
+        order by max(occurred_at) desc nulls last
+        limit ${Math.min(limit, 100)} offset ${Math.max(offset, 0)}
+      )
+      select t.channel, t.chat_id, t.last_at as occurred_at,
+             l.account_id, l.is_group, l.direction, l.content,
+             n.sender_name, n.sender_handle
+      from threads t
+      left join lateral (
+        -- Last message WITH text: media/attachment rows are stored with empty
+        -- content (IG polling can't fetch them), useless as a snippet.
+        select account_id, is_group, direction, content from messages m
+        where m.org_id = ${orgId} and m.channel = t.channel and m.chat_id = t.chat_id
+          and m.content is not null and m.content <> ''
+        order by m.occurred_at desc nulls last limit 1
+      ) l on true
+      left join lateral (
+        select sender_name, sender_handle from messages m
+        where m.org_id = ${orgId} and m.channel = t.channel and m.chat_id = t.chat_id
+          and m.direction = 'inbound' and m.sender_name is not null
+        order by m.occurred_at desc nulls last limit 1
+      ) n on true
+      order by t.last_at desc nulls last
+    `)) as unknown as RecentConversationRow[];
+    return rows.map((r) => ({
+      channel: r.channel,
+      chatId: r.chat_id,
+      accountId: r.account_id,
+      isGroup: r.is_group,
+      // A thread whose every message is empty (all-media) yields no lateral row.
+      direction: r.direction ?? 'inbound',
+      content: r.content,
+      occurredAt: toTimestampMs(r.occurred_at),
+      senderName: r.sender_name,
+      senderHandle: r.sender_handle,
+    }));
+  });
+}
+
 /** List messages for an org (RLS also enforces org isolation as a backstop). */
 export async function listMessages(orgId: string, filters: ListFilters) {
   return withOrg(orgId, async (tx) => {
@@ -172,4 +392,23 @@ export async function listMessages(orgId: string, filters: ListFilters) {
       .limit(Math.min(filters.limit ?? 100, 500))
       .offset(filters.offset ?? 0);
   });
+}
+
+export type LedgerMessage = typeof messages.$inferSelect;
+
+/**
+ * One conversation's recent messages (newest first), cached under the same tag
+ * as the conversation list so any ingest/send refreshes both.
+ */
+export async function listThreadMessages(
+  orgId: string,
+  channel: string,
+  chatId: string,
+  limit = 60,
+): Promise<LedgerMessage[]> {
+  return cached(
+    keys.hub('omnichat-thread', { t: orgId, d: { c: channel, id: chatId, n: limit } }),
+    { ttl: '2m', swr: '30s', tags: [...messageTags(orgId)] },
+    () => listMessages(orgId, { channel, chatId, limit }),
+  );
 }

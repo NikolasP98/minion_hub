@@ -9,6 +9,8 @@ export type ChannelDisplayState =
   | 'identity-mismatch'
   | 'live'
   | 'degraded'
+  | 'syncing'
+  | 'sync-stalled'
   | 'error';
 
 /**
@@ -44,5 +46,22 @@ export function deriveChannelDisplayState(c: Channel): ChannelDisplayState {
   if (c.gwRunning === true && c.gwConnected === false) return 'pairing';
   if (c.gwRunning === false) return 'starting';
   if ((c.gwReconnectAttempts ?? 0) > 0) return 'degraded';
+  // History-sync states slot in LAST, just above `live`. Precedence rationale:
+  // every connection problem (disabled / pending-config / pairing / not-linked /
+  // identity-mismatch / error / starting / degraded) describes a broken or
+  // incomplete LINK and must win — a channel that is syncing is by definition
+  // linked and running, so reporting "syncing" over an error would hide the real
+  // fault. `degraded` (reconnect attempts) also outranks: a flapping socket is
+  // the more actionable signal, and it is what stalls the sync in the first place.
+  // phase 'idle'/'complete' (and an absent historySync, i.e. older gateways)
+  // fall through to `live` — there is no permanent "synced" pill.
+  const phase = c.historySync?.phase;
+  if (phase === 'stalled') return 'sync-stalled';
+  if (phase === 'bootstrap' || phase === 'recent' || phase === 'full' || phase === 'on-demand')
+    return 'syncing';
+  // History receipt and durable Hub delivery are separate stages. A completed
+  // WhatsApp history sweep can still have rows queued in the gateway outbox;
+  // reporting `live` before those rows are acknowledged is a false success.
+  if ((c.hubSync?.pending ?? 0) > 0) return 'syncing';
   return 'live';
 }

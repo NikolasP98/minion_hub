@@ -1,4 +1,5 @@
 import type { Host } from '$lib/types/host';
+import type { BuildChannel, ChannelEndpoint } from '$lib/types/host';
 import { uuid } from '@minion-stack/shared';
 import { page } from '$app/state';
 import { invalidateHosts } from './user.svelte';
@@ -8,6 +9,25 @@ const HOSTS_CACHE_KEY = 'minion-dash-hosts-cache';
 /** Manual host pick — sessionStorage: respected for the current session only,
  *  so a days-old selection can't override the org's assigned gateway. */
 const LAST_HOST_KEY = 'minion-dash-last-host';
+/** Manual BUILD CHANNEL pick (spec 2026-07-19 §D3). Same sessionStorage-only
+ *  rule as the host pick it replaces, for the same reason: a stale pick must
+ *  never pin an org to a channel it no longer has. Validated against the
+ *  server-resolved `channels` list on every load, so losing a channel silently
+ *  drops the pick instead of black-holing the connection. */
+const BUILD_CHANNEL_KEY = 'minion-dash-build-channel';
+/** Server-visible mirror of the same pick (`$server/gateway-channel.ts`).
+ *  sessionStorage never reaches the server, and a server that doesn't know the
+ *  channel resolves its own instance — that independent choice is exactly the
+ *  client/server split that caused the all-day intermittency. No Max-Age, so it
+ *  dies with the browser session like the sessionStorage key it mirrors. */
+const BUILD_CHANNEL_COOKIE = 'minion-build-channel';
+
+function writeChannelCookie(channel: BuildChannel | null) {
+  if (typeof document === 'undefined') return;
+  document.cookie = channel
+    ? `${BUILD_CHANNEL_COOKIE}=${channel}; path=/; SameSite=Lax`
+    : `${BUILD_CHANNEL_COOKIE}=; path=/; Max-Age=0; SameSite=Lax`;
+}
 
 /**
  * Hosts now flow through the canonical (app)/+layout.server.ts bundle
@@ -16,7 +36,7 @@ const LAST_HOST_KEY = 'minion-dash-last-host';
  * pages outside (app)/ that still consume `hostsState`).
  *
  * activeHostId precedence ("the balancer decides where requests go"):
- *   1. a manual pick made THIS session (sessionStorage — HostPill/HostsOverlay),
+ *   1. a manual pick made THIS session (sessionStorage — ProfileMenu/HostsOverlay),
  *   2. the active org's assigned host (page.data orgAssignedHostId),
  *   3. first host.
  * A persisted localStorage pick from previous days no longer pins users to a
@@ -94,6 +114,9 @@ export async function fetchHostToken(id: string): Promise<string | null> {
 
 const local = $state({
   activeHostId: null as string | null,
+  /** Build channel the user is on. The ONLY thing a human picks (§D4) — the
+   *  instance behind it is resolved server-side and arrives in page.data. */
+  activeChannel: null as BuildChannel | null,
   /** Local overlay applied after add/remove/update mutations so the UI
    *  reflects the change before `invalidateHosts()` re-runs the
    *  layout-load. Cleared on the next page-data read that includes the
@@ -115,6 +138,27 @@ function pageOrgAssignedHostId(): string | null {
   return data?.hosts?.orgAssignedHostId ?? null;
 }
 
+/** Build channels the active org has, each ALREADY resolved server-side to one
+ * instance (spec §D4 — a human picks the channel, the lease picks the box).
+ * Empty on a pre-migration server, which is why every consumer degrades to the
+ * old host-id path rather than assuming this is populated. */
+function pageChannels(): ChannelEndpoint[] {
+  const data = page.data as { hosts?: { channels?: ChannelEndpoint[] } } | undefined;
+  const channels = data?.hosts?.channels;
+  return Array.isArray(channels) ? channels : [];
+}
+
+function pageDefaultChannel(): BuildChannel | null {
+  const data = page.data as { hosts?: { defaultChannel?: BuildChannel | null } } | undefined;
+  return data?.hosts?.defaultChannel ?? null;
+}
+
+function readChannelPick(): BuildChannel | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  const raw = sessionStorage.getItem(BUILD_CHANNEL_KEY);
+  return raw === 'dev' || raw === 'prd' ? raw : null;
+}
+
 export const hostsState = {
   /** Authoritative on (app)/* via page.data; falls back to overlay /
    *  localStorage cache outside that scope or during transitions. */
@@ -134,7 +178,65 @@ export const hostsState = {
       sessionStorage.removeItem(LAST_HOST_KEY);
     }
   },
+  /** Channels the active org can reach, server-resolved. Length ≤ 1 ⇒ there is
+   *  nothing to pick and the control hides itself entirely (FACES). */
+  get channels(): ChannelEndpoint[] {
+    return pageChannels();
+  },
+  get activeChannel(): BuildChannel | null {
+    return local.activeChannel;
+  },
 };
+
+/**
+ * Switch build channel. Returns the instance the SERVER resolved for it, or
+ * null if the org can't reach that channel — the client never picks an instance
+ * and never invents one, which is the split that caused the all-day
+ * intermittency (browser on an explicit host, server guessing separately).
+ *
+ * Caller reconnects; this only moves the pointer.
+ */
+export function selectChannel(channel: BuildChannel): string | null {
+  const target = pageChannels().find((c) => c.channel === channel);
+  if (!target) return null;
+  local.activeChannel = channel;
+  writeChannelCookie(channel);
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem(BUILD_CHANNEL_KEY, channel);
+  }
+  local.activeHostId = target.serverId;
+  saveLastActiveHost(target.serverId);
+  return target.serverId;
+}
+
+/**
+ * Ask the server to re-probe the current channel and flip the lease if the
+ * holder is dead (spec §F2/§F4). Call on connect failure — never speculatively,
+ * it opens a real WS upgrade server-side.
+ *
+ * Returns `stateMoved: false` always: a flip restores SERVICE, not SESSIONS.
+ * Surface that; a silent partial recovery is worse than an honest error.
+ */
+export async function revalidateChannel(): Promise<ChannelEndpoint | null> {
+  const channel = local.activeChannel;
+  if (!channel) return null;
+  try {
+    const res = await fetch('/api/gateway/lease', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel }),
+    });
+    if (!res.ok) return null;
+    const next = (await res.json()) as ChannelEndpoint;
+    if (next.serverId && next.serverId !== local.activeHostId) {
+      local.activeHostId = next.serverId;
+      saveLastActiveHost(next.serverId);
+    }
+    return next;
+  } catch {
+    return null;
+  }
+}
 
 export function getActiveHost(): Host | null {
   if (!local.activeHostId) return null;
@@ -159,6 +261,29 @@ export function loadHosts(): void {
   // pinned sessions to hosts their org isn't assigned to.
   if (typeof localStorage !== 'undefined') localStorage.removeItem(LAST_HOST_KEY);
 
+  // Channel path (spec §D3). The server already resolved each channel the org
+  // has to exactly one instance, so picking a channel picks the connection.
+  // A this-session pick wins, but ONLY if the org still has that channel —
+  // validating against the server list is what keeps a stale pick from pinning
+  // an org to a channel it lost.
+  const channels = pageChannels();
+  if (channels.length > 0) {
+    const pick = readChannelPick();
+    const chosen =
+      channels.find((c) => c.channel === pick) ??
+      channels.find((c) => c.channel === pageDefaultChannel()) ??
+      channels[0];
+    if (pick && pick !== chosen.channel && typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(BUILD_CHANNEL_KEY);
+    }
+    local.activeChannel = chosen.channel;
+    writeChannelCookie(chosen.channel);
+    local.activeHostId = chosen.serverId;
+    return;
+  }
+
+  // Pre-migration / no-channel fallback: the original host-id precedence. Keeps
+  // this shippable ahead of 20260719210000_gateway_channel_lease.sql.
   const hosts = hostsState.hosts;
   const sessionPick =
     typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(LAST_HOST_KEY) : null;
@@ -181,6 +306,21 @@ export function loadHosts(): void {
  * changed (caller should reconnect exactly once — no reconnect loops).
  */
 export function applyOrgAssignedHost(): boolean {
+  // The channel pick belonged to the PREVIOUS org — the new org may not even
+  // have that channel (FACES is prd-only). Drop it and take the new org's
+  // default; keeping it is how an org gets pinned to a channel it lost.
+  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(BUILD_CHANNEL_KEY);
+  writeChannelCookie(null);
+  const channels = pageChannels();
+  if (channels.length > 0) {
+    const chosen = channels.find((c) => c.channel === pageDefaultChannel()) ?? channels[0];
+    local.activeChannel = chosen.channel;
+    writeChannelCookie(chosen.channel);
+    if (chosen.serverId === local.activeHostId) return false;
+    local.activeHostId = chosen.serverId;
+    return true;
+  }
+
   const orgHostId = pageOrgAssignedHostId();
   if (!orgHostId || !hostsState.hosts.some((h) => h.id === orgHostId)) return false;
   if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(LAST_HOST_KEY);
@@ -231,6 +371,11 @@ export async function addHost(host: { name: string; url: string; token: string }
       local.activeHostId = id;
       saveLastActiveHost(id);
       await invalidateHosts();
+      // The overlay is a bridge, not a store: page.data is authoritative once the
+      // invalidation has landed. Leaving it set would permanently shadow the real
+      // host list (it survives HMR and every SPA navigation), which is how a
+      // partial list froze the picker.
+      local.overlay = null;
       return id;
     })(),
     {
@@ -256,10 +401,19 @@ export async function updateHost(
       body: JSON.stringify(updates),
     });
     if (!res.ok) throw new Error(`Failed to update host: ${res.status}`);
-    const merged = hostsState.hosts.map((h) => (h.id === id ? { ...h, ...updates } : h));
-    local.overlay = merged;
-    updateHostsCache(merged);
+    // `silent` = a background stamp (gateway.svelte.ts writes lastConnectedAt on
+    // every WS connect), NOT a user edit. It must never publish an optimistic
+    // list: the socket connects during boot, before the (app) layout data lands,
+    // so `hostsState.hosts` is still the cache or a partial list — and freezing
+    // THAT into the overlay + localStorage made the host picker show a subset of
+    // the user's gateways for the rest of the session.
+    if (!options?.silent) {
+      const merged = hostsState.hosts.map((h) => (h.id === id ? { ...h, ...updates } : h));
+      local.overlay = merged;
+      updateHostsCache(merged);
+    }
     await invalidateHosts();
+    local.overlay = null; // authoritative page.data has landed — stop shadowing it
   };
 
   if (options?.silent) {
@@ -291,6 +445,7 @@ export async function removeHost(id: string, options?: { silent?: boolean }) {
       else if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(LAST_HOST_KEY);
     }
     await invalidateHosts();
+    local.overlay = null; // authoritative page.data has landed — stop shadowing it
   };
 
   if (options?.silent) {

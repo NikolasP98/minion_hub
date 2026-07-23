@@ -2,12 +2,12 @@ import type { PageServerLoad } from './$types';
 import { error, isHttpError } from '@sveltejs/kit';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import {
-  getBrain,
   listDocuments,
   listAccess,
   canAccessBrain,
   resolvePrincipal,
 } from '$server/services/brains.service';
+import { getBrainKnowledgeOverview } from '$server/services/brain-corpus.service';
 import { listRbacRoles } from '$server/services/rbac.service';
 import { listEntityTimeline } from '$server/services/activity.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
@@ -25,14 +25,14 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   depends('brains:detail');
   const principal = await resolvePrincipal(ctx);
 
-  let brain;
+  let overview;
   try {
-    brain = await getBrain(ctx, params.id, principal);
+    overview = await getBrainKnowledgeOverview(ctx, params.id, principal);
   } catch (e) {
     if (isHttpError(e) && e.status === 403) throw error(404, 'Brain not found');
     throw e;
   }
-  if (!brain) throw error(404, 'Brain not found');
+  if (!overview) throw error(404, 'Brain not found');
 
   const [documents, canWriteBrain, timeline] = await Promise.all([
     listDocuments(ctx, params.id, principal),
@@ -44,5 +44,5 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     ? await Promise.all([listAccess(ctx, params.id, principal), listRbacRoles(ctx.tenantId)])
     : [[], []];
 
-  return { brain, documents, canWriteBrain, access, roles, timeline };
+  return { brain: overview.brain, overview, documents, canWriteBrain, access, roles, timeline };
 };

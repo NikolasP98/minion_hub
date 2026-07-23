@@ -39,6 +39,7 @@ import {
   saveLastActiveHost,
   fetchHostToken,
   getOrgAssignedHost,
+  revalidateChannel,
 } from '$lib/state/features/hosts.svelte';
 import { userState } from '$lib/state/features/user.svelte';
 import type { Host } from '$lib/types/host';
@@ -101,8 +102,18 @@ import { loadChatHistory } from './gateway/chat-rpc';
 // `gateway-rpc` module so config/reliability/chat-rpc can import them without
 // forming a static import cycle back through this file. We re-export them below
 // to preserve the `$lib/services/gateway.svelte` import paths consumers use.
-import { getClient, setClient, sendRequest, sendInstall } from './gateway-rpc';
+import {
+  getClient,
+  setClient,
+  setChannelStatusSink,
+  sendRequest,
+  sendInstall,
+} from './gateway-rpc';
 import { env as publicEnv } from '$env/dynamic/public';
+
+setChannelStatusSink((status) => {
+  gw.channels = status as typeof gw.channels;
+});
 
 // ─── Pi-Agent Notification Preferences ────────────────────────────────────────
 
@@ -406,7 +417,10 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // never locked out by a JWT problem; it just loses org-scoping.
       if (isJwtAuthEnabled() && isJwtAuthClose(code, reason)) {
         jwtAuthDisabled = true;
-        console.warn('[hub] gateway rejected JWT — temporarily falling back to shared-token auth:', reason);
+        console.warn(
+          '[hub] gateway rejected JWT — temporarily falling back to shared-token auth:',
+          reason,
+        );
         // Re-enable the JWT after a cooldown and reconnect, so a transient
         // rejection doesn't leave the session permanently unscoped (cross-org
         // fail-open). If the next attempt fails too, this same path re-arms.
@@ -588,6 +602,16 @@ export async function wsConnect() {
       const info = describeGatewayError(raw);
       setConnectError(raw);
       toastError(info.title, info.hint, { id: 'gateway-connect-failed' });
+      // Spec §F2: probe on connect failure. Ask the server to re-verify the
+      // lease holder with a REAL WS upgrade and flip if it's dead. Only retry
+      // when the lease actually moved — a blind retry against the same dead
+      // instance is the reconnect loop this is meant to end. State does NOT
+      // follow the flip (§F7); `revalidateChannel` surfaces that.
+      void revalidateChannel().then((next) => {
+        if (!next || next.serverId === capturedHostId) return;
+        if (!lifecycleFence.isCurrent(generation)) return;
+        void wsConnect();
+      });
     });
 }
 
@@ -956,8 +980,7 @@ function handleEvent(evt: Record<string, unknown>) {
       break;
     case 'pi-agent.subagent-completed': {
       const scPayload = evt.payload as
-        | { key?: string; status?: string; agentId?: string }
-        | undefined;
+        { key?: string; status?: string; agentId?: string } | undefined;
       if (scPayload?.status === 'failed') {
         const prefs = getNotificationPrefs();
         if (prefs.subagentFailed && shouldShowToast(prefs)) {
@@ -971,8 +994,7 @@ function handleEvent(evt: Record<string, unknown>) {
     }
     case 'pi-agent.orchestration-progress': {
       const opPayload = evt.payload as
-        | { type?: string; orchestrationId?: string; data?: Record<string, unknown> }
-        | undefined;
+        { type?: string; orchestrationId?: string; data?: Record<string, unknown> } | undefined;
       const prefs = getNotificationPrefs();
       if (opPayload?.type === 'orchestration.started') {
         if (prefs.orchestrationStarted && shouldShowToast(prefs)) {
@@ -1691,7 +1713,7 @@ export function onBinaryMessage(handler: BinaryMessageHandler): () => void {
 /** Get whether the WebSocket is currently connected and ready. */
 export function isWsReady(): boolean {
   const sock = rawSocket();
-  return sock !== null && sock.readyState === 1 /* OPEN */;
+  return sock !== null && sock.readyState === 1; /* OPEN */
 }
 
 // ── Re-exports from sub-modules (see ./gateway/) ─────────────────────────────

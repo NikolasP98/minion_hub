@@ -133,7 +133,10 @@ export function stripVoiceTurnPrefix(text: string): string {
  * so a bracket-balanced match would stop early.
  */
 export function stripAssistantContext(text: string): string {
-  return text.replace(/^\s*\[In-app assistant context[\s\S]*?Don't restate this context\.\]\s*/, '');
+  return text.replace(
+    /^\s*\[In-app assistant context[\s\S]*?Don't restate this context\.\]\s*/,
+    '',
+  );
 }
 
 /** A dragged-context block parsed back out of a sent user message. */
@@ -185,7 +188,7 @@ const INBOUND_CONTEXT_BLOCKS: RegExp[] = [
  */
 export function cleanInboundForDisplay(text: string): string {
   let t = text;
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const re of INBOUND_CONTEXT_BLOCKS) {
       const next = t.replace(re, '');
@@ -199,19 +202,25 @@ export function cleanInboundForDisplay(text: string): string {
 }
 
 /**
- * Floating-assistant equivalent of sendChatMsg. Same agent + main session, but the
- * message the gateway sees is prefixed with a page-context envelope (route, focus,
- * navigation instructions) so the assistant is situationally aware. The clean user
- * text — not the envelope — is what's stored in the visible transcript, exactly like
- * the voice-turn path. `context` is built by buildAssistantContext() at the callsite
- * (it needs `$app/state` page, which only resolves in the component tree).
+ * Context-aware equivalent of sendChatMsg. Floating surfaces use the default
+ * main session; `/home` passes its selected conversation key explicitly. The
+ * message the gateway sees is prefixed with a page-context envelope (route,
+ * focus, navigation instructions) so the assistant is situationally aware.
+ * The clean user text — not the envelope — is what's stored in the visible
+ * transcript, exactly like the voice-turn path. `context` is built by
+ * buildAssistantContext() at the callsite (it needs `$app/state` page, which
+ * only resolves in the component tree).
  */
-export function sendAssistantTurn(agentId: string, text: string, context: string) {
+export function sendAssistantTurn(
+  agentId: string,
+  text: string,
+  context: string,
+  sessionKey = `agent:${agentId}:main`,
+) {
   const chat = ensureAgentChat(agentId);
   const clean = text.trim();
   if (!clean || chat.sending || !conn.connected) return;
 
-  const sessionKey = `agent:${agentId}:main`;
   const runId = uuid();
 
   pushChatMessage(chat, {

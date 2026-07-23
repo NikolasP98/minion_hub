@@ -18,7 +18,12 @@ import { listProducts } from './finance-products.service';
 import { listContactsCached, listTags } from './crm-contacts.service';
 import { listItems, getBins } from './stock.service';
 import { enqueueJob, registerJobHandler, type AdvanceResult, type BgJob } from './bg-runtime';
-import { resolveCapabilities, type Module, type PermAction } from './rbac.service';
+import {
+  resolveCapabilities,
+  type Capabilities,
+  type Module,
+  type PermAction,
+} from './rbac.service';
 import { assertSafeUrl } from './ssrf-guard';
 
 /**
@@ -39,6 +44,30 @@ export interface AccessPrincipal {
   profileId?: string | null;
   agentId?: string | null;
   roles?: string[];
+  /** Effective RBAC module visibility used to intersect source-level access. */
+  visibleModules?: string[];
+  /** Modules safe for source-wide semantic search. Owner-scoped modules are
+   * deliberately omitted because Brain retrieval cannot apply record ownership. */
+  searchableModules?: string[];
+  /** Effective ERPNext-style field sensitivity level by visible module. */
+  fieldLevels?: Record<string, number>;
+}
+
+type BrainSourceCapabilities = Pick<Capabilities, 'visibleModules' | 'ownerScoped' | 'fieldLevel'>;
+
+/** Convert general Hub capabilities into the narrower source-wide access that
+ * semantic retrieval can safely enforce. */
+export function brainSourceAccess(
+  capabilities: BrainSourceCapabilities,
+): Pick<AccessPrincipal, 'visibleModules' | 'searchableModules' | 'fieldLevels'> {
+  const visibleModules = capabilities.visibleModules();
+  return {
+    visibleModules,
+    searchableModules: visibleModules.filter((module) => !capabilities.ownerScoped(module)),
+    fieldLevels: Object.fromEntries(
+      visibleModules.map((module) => [module, capabilities.fieldLevel(module)]),
+    ),
+  };
 }
 
 /** Build an `AccessPrincipal` for a signed-in browser caller (API routes).
@@ -46,7 +75,7 @@ export interface AccessPrincipal {
 export async function resolvePrincipal(ctx: CoreCtx): Promise<AccessPrincipal> {
   if (!ctx.profileId) return {};
   const caps = await resolveCapabilities(ctx.tenantId, ctx.profileId);
-  return { profileId: ctx.profileId, roles: caps.roles };
+  return { profileId: ctx.profileId, roles: caps.roles, ...brainSourceAccess(caps) };
 }
 
 async function loadBrain(ctx: CoreCtx, brainId: string): Promise<Brain | null> {
@@ -86,10 +115,25 @@ export async function canAccessBrain(
   );
   const satisfies = (row: BrainAccessRow) => row.level === 'write' || level === 'read';
   for (const row of rows) {
-    if (row.principalType === 'role' && principal.roles?.includes(row.principalId) && satisfies(row)) return true;
-    if (row.principalType === 'user' && principal.profileId && row.principalId === principal.profileId && satisfies(row))
+    if (
+      row.principalType === 'role' &&
+      principal.roles?.includes(row.principalId) &&
+      satisfies(row)
+    )
       return true;
-    if (row.principalType === 'agent' && principal.agentId && row.principalId === principal.agentId && satisfies(row))
+    if (
+      row.principalType === 'user' &&
+      principal.profileId &&
+      row.principalId === principal.profileId &&
+      satisfies(row)
+    )
+      return true;
+    if (
+      row.principalType === 'agent' &&
+      principal.agentId &&
+      row.principalId === principal.agentId &&
+      satisfies(row)
+    )
       return true;
   }
   return false;
@@ -125,14 +169,23 @@ export async function listBrains(ctx: CoreCtx, principal: AccessPrincipal): Prom
   return out;
 }
 
-export async function getBrain(ctx: CoreCtx, brainId: string, principal: AccessPrincipal): Promise<Brain | null> {
+export async function getBrain(
+  ctx: CoreCtx,
+  brainId: string,
+  principal: AccessPrincipal,
+): Promise<Brain | null> {
   await requireAccess(ctx, brainId, 'read', principal);
   return loadBrain(ctx, brainId);
 }
 
 export async function createBrain(
   ctx: CoreCtx,
-  input: { name: string; description?: string | null; icon?: string | null; visibility?: 'org' | 'private' },
+  input: {
+    name: string;
+    description?: string | null;
+    icon?: string | null;
+    visibility?: 'org' | 'private';
+  },
   actor: Actor,
 ): Promise<Brain> {
   const [row] = await withOrgCore(ctx, (tx) =>
@@ -161,7 +214,12 @@ export async function createBrain(
 export async function updateBrain(
   ctx: CoreCtx,
   brainId: string,
-  patch: { name?: string; description?: string | null; icon?: string | null; visibility?: 'org' | 'private' },
+  patch: {
+    name?: string;
+    description?: string | null;
+    icon?: string | null;
+    visibility?: 'org' | 'private';
+  },
   principal: AccessPrincipal,
   actor: Actor,
 ): Promise<Brain | null> {
@@ -184,7 +242,12 @@ export async function updateBrain(
   ];
   for (const f of fields) {
     if (f.field in patch && before?.[f.field] !== row[f.field]) {
-      changes.push({ field: f.field, label: f.label, old: before?.[f.field] ?? null, new: row[f.field] });
+      changes.push({
+        field: f.field,
+        label: f.label,
+        old: before?.[f.field] ?? null,
+        new: row[f.field],
+      });
     }
   }
   await recordAudit(ctx, { refType: 'brain', refId: brainId, op: 'update', changes, actor });
@@ -231,7 +294,12 @@ export async function listDocuments(
 export async function addDocument(
   ctx: CoreCtx,
   brainId: string,
-  input: { title: string; sourceType: 'note' | 'url' | 'upload' | 'module_ref'; sourceRef?: string | null; contentMd?: string | null },
+  input: {
+    title: string;
+    sourceType: 'note' | 'url' | 'upload' | 'module_ref';
+    sourceRef?: string | null;
+    contentMd?: string | null;
+  },
   principal: AccessPrincipal,
   actor: Actor,
 ): Promise<BrainDocument> {
@@ -251,7 +319,12 @@ export async function addDocument(
       })
       .returning(),
   );
-  await enqueueJob({ tenantId: ctx.tenantId, userId: actor.id, type: 'brain_ingest', refId: row.id });
+  await enqueueJob({
+    tenantId: ctx.tenantId,
+    userId: actor.id,
+    type: 'brain_ingest',
+    refId: row.id,
+  });
   await recordAudit(ctx, {
     refType: 'brain_document',
     refId: row.id,
@@ -285,7 +358,13 @@ export async function removeDocument(
   const res = await withOrgCore(ctx, (tx) =>
     tx
       .delete(brainDocuments)
-      .where(and(eq(brainDocuments.id, docId), eq(brainDocuments.brainId, brainId), eq(brainDocuments.orgId, ctx.tenantId))),
+      .where(
+        and(
+          eq(brainDocuments.id, docId),
+          eq(brainDocuments.brainId, brainId),
+          eq(brainDocuments.orgId, ctx.tenantId),
+        ),
+      ),
   );
   await recordAudit(ctx, {
     refType: 'brain_document',
@@ -310,7 +389,13 @@ export async function reingestDocument(
     tx
       .update(brainDocuments)
       .set({ status: 'pending', error: null, updatedAt: new Date() })
-      .where(and(eq(brainDocuments.id, docId), eq(brainDocuments.brainId, brainId), eq(brainDocuments.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(brainDocuments.id, docId),
+          eq(brainDocuments.brainId, brainId),
+          eq(brainDocuments.orgId, ctx.tenantId),
+        ),
+      )
       .returning({ id: brainDocuments.id }),
   );
   if (res.length === 0) throw error(404, 'document not found');
@@ -376,10 +461,17 @@ export async function searchBrain(
 
 // ── Access management ───────────────────────────────────────────────────
 
-export async function listAccess(ctx: CoreCtx, brainId: string, principal: AccessPrincipal): Promise<BrainAccessRow[]> {
+export async function listAccess(
+  ctx: CoreCtx,
+  brainId: string,
+  principal: AccessPrincipal,
+): Promise<BrainAccessRow[]> {
   await requireAccess(ctx, brainId, 'write', principal);
   return withOrgCore(ctx, (tx) =>
-    tx.select().from(brainAccess).where(and(eq(brainAccess.brainId, brainId), eq(brainAccess.orgId, ctx.tenantId))),
+    tx
+      .select()
+      .from(brainAccess)
+      .where(and(eq(brainAccess.brainId, brainId), eq(brainAccess.orgId, ctx.tenantId))),
   );
 }
 
@@ -387,15 +479,27 @@ export async function listAccess(ctx: CoreCtx, brainId: string, principal: Acces
 export async function setAccess(
   ctx: CoreCtx,
   brainId: string,
-  rows: Array<{ principalType: 'role' | 'user' | 'agent'; principalId: string; level: 'read' | 'write' }>,
+  rows: Array<{
+    principalType: 'role' | 'user' | 'agent';
+    principalId: string;
+    level: 'read' | 'write';
+  }>,
   principal: AccessPrincipal,
 ): Promise<void> {
   await requireAccess(ctx, brainId, 'write', principal);
   await withOrgCore(ctx, async (tx) => {
-    await tx.delete(brainAccess).where(and(eq(brainAccess.brainId, brainId), eq(brainAccess.orgId, ctx.tenantId)));
+    await tx
+      .delete(brainAccess)
+      .where(and(eq(brainAccess.brainId, brainId), eq(brainAccess.orgId, ctx.tenantId)));
     if (rows.length > 0) {
       await tx.insert(brainAccess).values(
-        rows.map((r) => ({ brainId, orgId: ctx.tenantId, principalType: r.principalType, principalId: r.principalId, level: r.level })),
+        rows.map((r) => ({
+          brainId,
+          orgId: ctx.tenantId,
+          principalType: r.principalType,
+          principalId: r.principalId,
+          level: r.level,
+        })),
       );
     }
   });
@@ -450,9 +554,11 @@ async function embedInBatches(texts: string[], batchSize = 64): Promise<number[]
 /** Renders the org's product catalog to markdown rows. */
 async function renderFinProducts(ctx: CoreCtx): Promise<string> {
   const products = await listProducts(ctx);
-  const header = '| Code | Name | Category | Unit price | Active |\n| --- | --- | --- | --- | --- |';
+  const header =
+    '| Code | Name | Category | Unit price | Active |\n| --- | --- | --- | --- | --- |';
   const rows = products.map(
-    (p) => `| ${p.code} | ${p.name} | ${p.category ?? ''} | ${p.unitPrice ?? ''} | ${p.active ? 'yes' : 'no'} |`,
+    (p) =>
+      `| ${p.code} | ${p.name} | ${p.category ?? ''} | ${p.unitPrice ?? ''} | ${p.active ? 'yes' : 'no'} |`,
   );
   return [header, ...rows].join('\n');
 }
@@ -464,7 +570,8 @@ const CRM_CONTACTS_ROW_CAP = 2000;
 async function renderCrmContacts(ctx: CoreCtx): Promise<string> {
   const [contacts, tags] = await Promise.all([listContactsCached(ctx), listTags(ctx)]);
   const tagName = new Map(tags.map((t) => [t.id as string, t.name as string]));
-  const header = '| Name | Stage | Tags | First contact | Last contact |\n| --- | --- | --- | --- | --- |';
+  const header =
+    '| Name | Stage | Tags | First contact | Last contact |\n| --- | --- | --- | --- | --- |';
   const capped = contacts.slice(0, CRM_CONTACTS_ROW_CAP);
   const rows = capped.map((c) => {
     const tagLabels = (c.tag_ids ?? []).map((id) => tagName.get(id) ?? id).join(', ');
@@ -654,7 +761,10 @@ async function advanceBrainIngest(job: BgJob): Promise<AdvanceResult> {
   if (!doc) return { done: true, error: 'document not found' };
 
   await withOrgCore(ctx, (tx) =>
-    tx.update(brainDocuments).set({ status: 'ingesting', updatedAt: new Date() }).where(eq(brainDocuments.id, documentId)),
+    tx
+      .update(brainDocuments)
+      .set({ status: 'ingesting', updatedAt: new Date() })
+      .where(eq(brainDocuments.id, documentId)),
   );
 
   try {
@@ -685,7 +795,10 @@ async function advanceBrainIngest(job: BgJob): Promise<AdvanceResult> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await withOrgCore(ctx, (tx) =>
-      tx.update(brainDocuments).set({ status: 'failed', error: message, updatedAt: new Date() }).where(eq(brainDocuments.id, documentId)),
+      tx
+        .update(brainDocuments)
+        .set({ status: 'failed', error: message, updatedAt: new Date() })
+        .where(eq(brainDocuments.id, documentId)),
     );
     return { done: true, error: message };
   }

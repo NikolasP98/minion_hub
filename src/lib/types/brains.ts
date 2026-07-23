@@ -10,9 +10,58 @@ export interface BrainDTO {
   description: string | null;
   icon: string | null;
   visibility: string;
+  kind: string;
+  includeAllSources: boolean;
+  agentId: string | null;
   createdBy: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface BrainKnowledgeStatsDTO {
+  sourceCount: number;
+  documentCount: number;
+  chunkCount: number;
+  pendingCount: number;
+  failedSourceCount: number;
+}
+
+export interface BrainConnectorHealthDTO {
+  connector: string;
+  sourceCount: number;
+  status: string;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+}
+
+export interface BrainWithKnowledgeStatsDTO extends BrainDTO {
+  stats: BrainKnowledgeStatsDTO;
+  connectors: BrainConnectorHealthDTO[];
+  lastSyncedAt: string | null;
+}
+
+export interface BrainKnowledgeSourceDTO {
+  id: string;
+  name: string;
+  connector: string;
+  externalKey: string;
+  status: string;
+  syncMode: string;
+  cadence: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  documentCount: number;
+  chunkCount: number;
+  pendingCount: number;
+  weight: number | null;
+  member: boolean;
+}
+
+export interface BrainKnowledgeOverviewDTO {
+  brain: BrainWithKnowledgeStatsDTO;
+  stats: BrainKnowledgeStatsDTO;
+  sources: BrainKnowledgeSourceDTO[];
+  connectors: BrainConnectorHealthDTO[];
 }
 
 // Known values for these columns — documentation only. The DTO fields below

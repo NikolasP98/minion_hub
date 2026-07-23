@@ -59,12 +59,30 @@ const SERVER_TOKEN_TTL_MS = 60_000;
 const SERVER_TOKEN_MAX_ENTRIES = 500;
 const serverTokenCache = new Map<string, TokenCacheEntry>();
 
-function cacheServerToken(token: string, value: { tenantId: string; serverId: string }) {
+function serverTokenCacheKey(token: string, serverIdHint?: string): string {
+  return serverIdHint ? `${serverIdHint}\u0000${token}` : token;
+}
+
+function cacheServerToken(
+  token: string,
+  value: { tenantId: string; serverId: string },
+  serverIdHint?: string,
+) {
   if (serverTokenCache.size >= SERVER_TOKEN_MAX_ENTRIES) {
     const oldest = serverTokenCache.keys().next().value;
     if (oldest !== undefined) serverTokenCache.delete(oldest);
   }
-  serverTokenCache.set(token, { value, expires: Date.now() + SERVER_TOKEN_TTL_MS });
+  serverTokenCache.set(serverTokenCacheKey(token, serverIdHint), {
+    value,
+    expires: Date.now() + SERVER_TOKEN_TTL_MS,
+  });
+}
+
+export function matchesServerIdHint(
+  row: { id: string; legacyServerId?: string | null },
+  serverIdHint?: string,
+): boolean {
+  return !serverIdHint || row.id === serverIdHint || row.legacyServerId === serverIdHint;
 }
 
 /**
@@ -74,15 +92,19 @@ function cacheServerToken(token: string, value: { tenantId: string; serverId: st
  */
 export async function resolveServerTokenAuth(
   authorization: string | null,
+  rawServerIdHint?: string | null,
 ): Promise<{ tenantId: string; serverId: string } | null> {
   if (!authorization?.startsWith('Bearer ')) return null;
   const token = authorization.slice(7).trim();
   if (!token) return null;
+  const trimmedHint = rawServerIdHint?.trim();
+  const serverIdHint = trimmedHint && trimmedHint.length <= 256 ? trimmedHint : undefined;
 
   const now = Date.now();
-  const cached = serverTokenCache.get(token);
+  const cacheKey = serverTokenCacheKey(token, serverIdHint);
+  const cached = serverTokenCache.get(cacheKey);
   if (cached && cached.expires > now) return cached.value;
-  if (cached) serverTokenCache.delete(token);
+  if (cached) serverTokenCache.delete(cacheKey);
 
   // Primary: Supabase `gateway` (system-of-record). org_id supplies the tenant
   // (the Turso `servers.tenant_id` equivalent). getCoreDb runs as the bypass role
@@ -103,10 +125,11 @@ export async function resolveServerTokenAuth(
       .from(gateway);
     for (const row of gwRows) {
       if (!row.token || !row.orgId) continue;
+      if (!matchesServerIdHint(row, serverIdHint)) continue;
       const stored = row.tokenIv ? decryptToken(row.token, row.tokenIv) : row.token;
       if (stored === token) {
         const value = { tenantId: row.orgId, serverId: row.legacyServerId ?? row.id };
-        cacheServerToken(token, value);
+        cacheServerToken(token, value, serverIdHint);
         return value;
       }
     }
@@ -132,10 +155,11 @@ export async function resolveServerTokenAuth(
       .from(servers);
 
     for (const row of rows) {
+      if (!matchesServerIdHint({ id: row.id }, serverIdHint)) continue;
       const stored = row.tokenIv ? decryptToken(row.token, row.tokenIv) : row.token;
       if (stored === token) {
         const value = { tenantId: row.tenantId, serverId: row.id };
-        cacheServerToken(token, value);
+        cacheServerToken(token, value, serverIdHint);
         return value;
       }
     }
@@ -226,7 +250,8 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
 /** Bearer-token provider for gateway→hub push (/api/metrics/*, ledger, memory). */
 async function resolveViaMetricsBearer(event: RequestEvent): Promise<IdentityResolution | null> {
   const authHeader = event.request.headers.get('authorization');
-  const serverAuth = await resolveServerTokenAuth(authHeader);
+  const serverIdHint = event.request.headers.get('x-minion-server-id');
+  const serverAuth = await resolveServerTokenAuth(authHeader, serverIdHint);
   if (!serverAuth) return null; // fall through to session auth
   const db = getDb();
   return {

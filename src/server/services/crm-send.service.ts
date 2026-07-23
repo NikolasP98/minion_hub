@@ -87,7 +87,76 @@ export async function sendContactMessage(
   });
 
   await insertMessages(ctx.tenantId, gatewayId, [
-    buildOutboundRow({ contactId, channel, to, accountId, text: body, occurredAt: Date.now(), clientId }),
+    buildOutboundRow({
+      contactId,
+      channel,
+      to,
+      accountId,
+      text: body,
+      occurredAt: Date.now(),
+      clientId,
+    }),
+  ]);
+
+  return { ok: true };
+}
+
+/**
+ * Reply into an existing conversation thread (omnichat dock): the recipient IS
+ * the chat_id (DM jid or group jid), and the originating account comes from the
+ * thread's latest row. Ledger row recorded here (channels.send doesn't write it).
+ */
+export async function sendConversationMessage(
+  ctx: CoreCtx,
+  args: { channel: string; chatId: string; text: string; clientId?: string },
+): Promise<{ ok: true }> {
+  const body = args.text.trim();
+  if (!body) throw new Error('Message text is required');
+
+  const resolved = (await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`
+      select account_id, gateway_id, is_group from messages
+      where org_id = ${ctx.tenantId} and channel = ${args.channel} and chat_id = ${args.chatId}
+      order by occurred_at desc nulls last limit 1
+    `),
+  )) as unknown as Array<{
+    account_id: string | null;
+    gateway_id: string | null;
+    is_group: boolean | null;
+  }>;
+  if (resolved.length === 0) throw new Error('Unknown conversation');
+  const accountId = resolved[0].account_id ?? null;
+
+  await gatewayCall('channels.send', {
+    channel: args.channel,
+    to: args.chatId,
+    text: body,
+    ...(accountId ? { accountId } : {}),
+    idempotencyKey: args.clientId ?? randomUUID(),
+  });
+
+  const occurredAt = Date.now();
+  await insertMessages(ctx.tenantId, resolved[0].gateway_id ?? null, [
+    {
+      clientId: args.clientId ?? `omni-send:${args.chatId}:${occurredAt}`,
+      direction: 'outbound',
+      channel: args.channel,
+      accountId,
+      chatId: args.chatId,
+      isGroup: resolved[0].is_group,
+      senderId: accountId,
+      senderName: null,
+      senderHandle: null,
+      isBot: false,
+      content: body,
+      messageId: null,
+      agentId: null,
+      sessionKey: null,
+      success: true,
+      error: null,
+      occurredAt,
+      metadata: { source: 'omnichat-compose' },
+    },
   ]);
 
   return { ok: true };

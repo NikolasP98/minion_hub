@@ -47,7 +47,6 @@ export const MODULE_SUBRESOURCES: Readonly<Record<string, readonly SubResource[]
     { key: 'pos.sell', label: 'Sell', route: '/pos/sell' },
     { key: 'pos.appointments', label: 'Appointments', route: '/pos/appointments' },
     { key: 'pos.items', label: 'Catalog', route: '/pos/catalog' },
-    { key: 'pos.refills', label: 'Refills', route: '/pos/refills' },
   ],
   workspace: [
     { key: 'workspace.gui', label: 'Remote Desktop', route: '/cloud/gui' },
@@ -83,6 +82,7 @@ export const PUBLIC_ROUTE_PATTERNS = [
  * guards with stronger action/admin requirements than their parent module.
  */
 export const ROUTE_ACCESS_POLICY_OVERRIDES: Readonly<Record<string, RouteAccessPolicyId>> = {
+  '/brains/settings': 'org-capability:brains:manage',
   '/brains/template': 'org-capability:brains:manage',
   '/cloud': 'org-capability:workspace:view',
   '/cloud/gui': 'org-capability:workspace:edit',

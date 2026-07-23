@@ -18,6 +18,7 @@ describe('Wave C route composition contract', () => {
     ['brains/+page.svelte', 'archetype="collection"'],
     ['brains/[id]/+page.svelte', 'archetype="record-detail"'],
     ['brains/agents/+page.svelte', 'archetype="collection"'],
+    ['brains/settings/+page.svelte', 'archetype="form"'],
     ['brains/template/+page.svelte', 'archetype="form"'],
     ['capabilities/+page.svelte', 'archetype="collection"'],
     ['flow-editor/+page.svelte', 'archetype="collection"'],

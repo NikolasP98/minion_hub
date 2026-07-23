@@ -1,7 +1,9 @@
 import type { Agent, Session, PresenceEntry, HelloOk } from '@minion-stack/shared';
+import type { ChannelHistorySync, ChannelHubSync } from '$lib/types/channels';
 import { page } from '$app/state';
 import { userState } from '$lib/state/features/user.svelte';
 import { filterAgentsByOrg, type OrgRef } from './agent-org';
+import { pickHistorySync, pickHubSync } from './history-sync';
 
 /**
  * Non-reactive index for O(1) session lookup by sessionKey.
@@ -33,6 +35,10 @@ export const gw = $state({
         connected?: boolean | null;
         reconnectAttempts?: number | null;
         lastError?: string | null;
+        /** WhatsApp history-sync progress; absent on older gateways. */
+        historySync?: ChannelHistorySync;
+        /** Exact gateway outbox delivery counters; absent on older gateways. */
+        hubSync?: ChannelHubSync;
       }[]
     >;
   } | null,
@@ -44,6 +50,22 @@ export const gw = $state({
   // (gwRunning=false) and the snapshot alone would derive a misleading "Starting".
   pairingChannelIds: [] as string[],
 });
+
+/** Live history-sync for one gateway account, off the last channels.status. */
+export function findHistorySync(
+  channelType: string,
+  accountId: string | null | undefined,
+): ChannelHistorySync | undefined {
+  return pickHistorySync(gw.channels?.channelAccounts?.[channelType], accountId);
+}
+
+/** Live Hub-delivery state for one gateway account, off the last channels.status. */
+export function findHubSync(
+  channelType: string,
+  accountId: string | null | undefined,
+): ChannelHubSync | undefined {
+  return pickHubSync(gw.channels?.channelAccounts?.[channelType], accountId);
+}
 
 /**
  * Agents visible in the current context, after two layers of scoping:
@@ -62,7 +84,8 @@ export const gw = $state({
 const _visibleAgents = $derived.by((): Agent[] => {
   const orgs = ((page.data as { organizations?: OrgRef[] })?.organizations ?? []) as OrgRef[];
   const activeOrgId = (page.data as { activeOrgId?: string | null })?.activeOrgId ?? null;
-  const brainAgentIds = ((page.data as { brainAgentIds?: string[] })?.brainAgentIds ?? []) as string[];
+  const brainAgentIds = ((page.data as { brainAgentIds?: string[] })?.brainAgentIds ??
+    []) as string[];
   const scoped = filterAgentsByOrg(gw.agents, activeOrgId, orgs, brainAgentIds);
 
   const allowed = userState.allowedAgentIds;

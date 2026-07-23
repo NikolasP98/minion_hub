@@ -2,10 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import {
-  listGatewayHostsForUser,
-  resolveGatewayId,
-} from '$server/services/gateway.pg.service';
+import { listGatewayHostsForUser, resolveGatewayId } from '$server/services/gateway.pg.service';
 import { setPluginDisabledForOrg } from '$server/services/org-config-sync.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
 
@@ -32,7 +29,11 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   // Resolve the acting gateway. Single-gateway deploy: the user's (only) gateway.
   // ponytail: for multi-gateway, have the client pass the active serverId and use
   // getServerCtx(locals, serverId) instead of "first host".
-  const hosts = await listGatewayHostsForUser(ctx.profileId ?? null, locals.user?.role === 'admin');
+  const hosts = await listGatewayHostsForUser(
+    ctx.profileId ?? null,
+    locals.user?.role === 'admin',
+    orgId,
+  );
   const gatewayId = hosts[0] ? await resolveGatewayId(hosts[0].id) : null;
   if (!gatewayId) return json({ ok: false, error: 'no gateway available' }, { status: 502 });
 

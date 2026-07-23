@@ -423,6 +423,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     states: DESTRUCTIVE_DETAIL_STATES,
   }),
   screen('/brains/agents', 'Brain agents', 'agents-builders', 'collection'),
+  screen('/brains/settings', 'Brain settings', 'agents-builders', 'form-settings'),
   screen('/brains/template', 'Brain template', 'agents-builders', 'form-settings'),
   screen('/capabilities', 'Capabilities', 'agents-builders', 'collection'),
   screen('/flow-editor', 'Flow editor', 'agents-builders', 'collection'),
@@ -497,7 +498,6 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/scheduling/settings', 'Scheduling settings', 'scheduling-pos', 'form-settings'),
   screen('/pos/appointments', 'POS appointments', 'scheduling-pos', 'workspace-editor'),
   screen('/pos/catalog', 'POS catalog', 'scheduling-pos', 'collection'),
-  screen('/pos/refills', 'POS refills', 'scheduling-pos', 'collection'),
   screen('/pos/sell', 'Point of sale', 'scheduling-pos', 'workspace-editor'),
 
   screen('/pulse', 'Pulse', 'business-operations', 'collection'),
@@ -541,12 +541,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/cloud', 'Cloud workspace', 'immersive-workspaces', 'dashboard'),
   screen('/cloud/gui', 'Cloud remote desktop', 'immersive-workspaces', 'terminal-remote-desktop'),
   screen('/cloud/settings', 'Cloud settings', 'immersive-workspaces', 'form-settings'),
-  screen(
-    '/cloud/terminal',
-    'Cloud terminal',
-    'immersive-workspaces',
-    'terminal-remote-desktop',
-  ),
+  screen('/cloud/terminal', 'Cloud terminal', 'immersive-workspaces', 'terminal-remote-desktop'),
   screen('/channels', 'Channels', 'platform-reliability', 'collection'),
   screen('/channels/[id]', 'Channel', 'platform-reliability', 'record-detail', {
     fixtureId: 'plugin-channel-detail',
@@ -693,7 +688,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   ),
   redirectRoute('/pos', 'Point of sale entry', 'scheduling-pos', '/pos/sell', 302, {
     preserveQuery: false,
-    alternates: ['/pos/appointments', '/pos/catalog', '/pos/refills'],
+    alternates: ['/pos/appointments', '/pos/catalog'],
   }),
   redirectRoute('/shells', 'Legacy shells', 'platform-reliability', '/cloud', 307, {
     preserveQuery: true,
@@ -711,16 +706,9 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   redirectRoute('/tools', 'Tools', 'agents-builders', '/capabilities?tab=tools', 307, {
     preserveQuery: false,
   }),
-  redirectRoute(
-    '/terminal',
-    'Legacy terminal',
-    'immersive-workspaces',
-    '/cloud/terminal',
-    307,
-    {
-      preserveQuery: true,
-    },
-  ),
+  redirectRoute('/terminal', 'Legacy terminal', 'immersive-workspaces', '/cloud/terminal', 307, {
+    preserveQuery: true,
+  }),
   redirectRoute(
     '/workshop/[...path]',
     'Legacy workshop path',

@@ -3,9 +3,8 @@ import {
   availableLanguageTags,
   type AvailableLanguageTag,
 } from '$lib/paraglide/runtime';
-import { goto } from '$app/navigation';
 import { localizePath } from '$lib/canonical-path';
-import { syncPreferenceToServer } from './preference-sync.svelte';
+import { syncPreferenceToServerImmediately } from './preference-sync.svelte';
 
 const STORAGE_KEY = 'minion-hub-locale';
 const DEFAULT_LOCALE: AvailableLanguageTag = 'en';
@@ -34,7 +33,10 @@ function navigateToLocale(tag: AvailableLanguageTag) {
   if (typeof location === 'undefined') return;
   const target = localizePath(location.pathname, tag) + location.search + location.hash;
   if (location.pathname + location.search + location.hash !== target) {
-    void goto(target, { noScroll: true, keepFocus: true });
+    // This must be a document navigation, not an in-memory SvelteKit route
+    // update. The localized pathname is the durable locale source; replacing
+    // the document guarantees refresh/SSR cannot restore the previous prefix.
+    location.replace(target);
   }
 }
 
@@ -59,7 +61,7 @@ export const locale = {
   set(tag: AvailableLanguageTag) {
     current = tag;
     saveLocale(tag);
-    syncPreferenceToServer('locale', { tag });
+    syncPreferenceToServerImmediately('locale', { tag });
     navigateToLocale(tag);
   },
 
@@ -67,7 +69,7 @@ export const locale = {
     const next = current === 'en' ? 'es' : 'en';
     current = next;
     saveLocale(next);
-    syncPreferenceToServer('locale', { tag: next });
+    syncPreferenceToServerImmediately('locale', { tag: next });
     navigateToLocale(next);
   },
 

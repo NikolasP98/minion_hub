@@ -3,7 +3,7 @@
 
   import * as m from '$lib/paraglide/messages';
   import { Plus, Trash2 } from 'lucide-svelte';
-  import { Modal, Button, Toggle } from '$lib/components/ui';
+  import { Modal, Button, SegmentedControl, Input } from '$lib/components/ui';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
 
   // Narrow local shapes (mirrors server types) — avoids importing $server/*
@@ -13,6 +13,9 @@
     code: string;
     name: string;
     uom: string;
+    /** Set ⇒ already published as a sellable, so it can't be published again
+     *  (enforced by the stk_items_org_fin_product_uniq partial index). */
+    finProductId?: string | null;
   }
   interface ConsumptionLike {
     finProductId: string;
@@ -71,9 +74,20 @@
   let codeTouched = $state(false);
   let category = $state('');
   let unitPrice = $state('');
-  let kind = $state<'product' | 'service'>('service');
-  let trackStock = $state(false);
+  /**
+   * What backs this sellable. Replaces the old kind+trackStock pair:
+   *   service       → no stock item at all
+   *   new-item      → create a fresh tracked stk_item (was kind=product+trackStock)
+   *   existing-item → publish an EXISTING raw material (task #10)
+   * `kind` is derived from it — the server derives it again from the item link.
+   */
+  type Source = 'service' | 'new-item' | 'existing-item';
+  let source = $state<Source>('service');
+  let existingItemId = $state('');
   let uom = $state('unit');
+  const kind = $derived<'product' | 'service'>(source === 'service' ? 'service' : 'product');
+  /** Only items not already published can be linked. */
+  const availableItems = $derived(stockItems.filter((i) => !i.finProductId));
   let rows = $state<{ itemId: string; qtyPerUnit: string }[]>([]);
   let busy = $state(false);
 
@@ -90,8 +104,9 @@
     codeTouched = !!e; // edit mode: never auto-overwrite an existing code
     category = e?.category ?? '';
     unitPrice = e?.unitPrice != null ? String(e.unitPrice) : '';
-    kind = e?.kind ?? 'service';
-    trackStock = e?.itemId != null;
+    // `source` is creation-only (hidden in edit mode), so edit just resets it.
+    source = 'service';
+    existingItemId = '';
     uom = (e?.itemId ? stockItems.find((i) => i.id === e.itemId)?.uom : undefined) ?? 'unit';
     rows = e
       ? consumption
@@ -123,7 +138,13 @@
     rows = rows.filter((_, i) => i !== idx);
   }
 
-  const canSubmit = $derived(name.trim() !== '' && code.trim() !== '' && !busy);
+  const canSubmit = $derived(
+    name.trim() !== '' &&
+      code.trim() !== '' &&
+      !busy &&
+      // publishing an existing item requires one to be picked
+      !(!editing && source === 'existing-item' && !existingItemId),
+  );
 
   async function submit() {
     if (!canSubmit) return;
@@ -134,12 +155,17 @@
       category: category.trim() || null,
       unitPrice: unitPrice.trim() === '' ? null : Number(unitPrice),
     };
-    // kind/trackStock/uom are creation-only — updateSellable ignores them on PATCH.
+    // kind/trackStock/uom/itemId are creation-only — updateSellable ignores
+    // them on PATCH.
     if (!editing) {
       payload.kind = kind;
-      if (kind === 'product' && stockEnabled) {
-        payload.trackStock = trackStock;
-        if (trackStock) payload.uom = uom.trim() || 'unit';
+      if (stockEnabled) {
+        if (source === 'new-item') {
+          payload.trackStock = true;
+          payload.uom = uom.trim() || 'unit';
+        } else if (source === 'existing-item') {
+          payload.itemId = existingItemId;
+        }
       }
     }
     // Recipes are NOT service-only: a product-kind sellable may carry one too
@@ -193,25 +219,31 @@
 
 <Modal bind:open title={editing ? m.pos_catalog_edit() : m.pos_catalog_new()}>
   <div class="flex flex-col gap-3">
-    <label class="fld">
-      <span>{m.stock_field_name()}</span>
-      <input class="inp" bind:value={name} />
-    </label>
-    <label class="fld">
-      <span>{m.stock_field_code()}</span>
-      <input class="inp font-mono" bind:value={code} oninput={() => (codeTouched = true)} />
-    </label>
-    <label class="fld">
-      <span>{m.fin_col_category()}</span>
-      <input class="inp" bind:value={category} list="pos-catalog-categories" />
-      <datalist id="pos-catalog-categories">
-        {#each categories as c (c)}<option value={c}></option>{/each}
-      </datalist>
-    </label>
-    <label class="fld">
-      <span>{m.pos_sell_price()}</span>
-      <input class="inp" type="number" min="0" step="0.01" bind:value={unitPrice} />
-    </label>
+    <Input size="sm" label={m.stock_field_name()} bind:value={name} />
+    <Input
+      size="sm"
+      inputClass="font-mono"
+      label={m.stock_field_code()}
+      bind:value={code}
+      oninput={() => (codeTouched = true)}
+    />
+    <Input
+      size="sm"
+      label={m.fin_col_category()}
+      list="pos-catalog-categories"
+      bind:value={category}
+    />
+    <datalist id="pos-catalog-categories">
+      {#each categories as c (c)}<option value={c}></option>{/each}
+    </datalist>
+    <Input
+      size="sm"
+      type="number"
+      min="0"
+      step="0.01"
+      label={m.pos_sell_price()}
+      bind:value={unitPrice}
+    />
 
     {#if editing}
       <!-- updateSellable ignores kind/trackStock/uom on PATCH — showing live
@@ -219,29 +251,40 @@
       <p class="t-caption">{m.pos_catalog_kind_locked()}</p>
     {:else}
       <div class="fld">
-        <span>{m.pos_catalog_kind_product()} / {m.pos_catalog_kind_service()}</span>
-        <div class="kind-toggle">
-          <Button
-            type="button"
-            class="kind-btn {kind === 'service' ? 'active' : ''}"
-            onclick={() => (kind = 'service')}>{m.pos_catalog_kind_service()}</Button
-          >
-          <Button
-            type="button"
-            class="kind-btn {kind === 'product' ? 'active' : ''}"
-            onclick={() => (kind = 'product')}>{m.pos_catalog_kind_product()}</Button
-          >
-        </div>
+        <span>{m.pos_catalog_source()}</span>
+        <SegmentedControl
+          aria-label={m.pos_catalog_source()}
+          bind:value={source}
+          items={[
+            { value: 'service', label: m.pos_catalog_kind_service() },
+            ...(stockEnabled
+              ? [
+                  { value: 'new-item', label: m.pos_catalog_source_new_item() },
+                  {
+                    value: 'existing-item',
+                    label: m.pos_catalog_source_existing_item(),
+                    disabled: availableItems.length === 0,
+                    title:
+                      availableItems.length === 0 ? m.pos_catalog_no_unlinked_items() : undefined,
+                  },
+                ]
+              : []),
+          ]}
+        />
       </div>
 
-      {#if kind === 'product' && stockEnabled}
-        <Toggle bind:checked={trackStock} label={m.pos_catalog_track_stock()} />
-        {#if trackStock}
-          <label class="fld">
-            <span>{m.stock_field_uom()}</span>
-            <input class="inp" bind:value={uom} />
-          </label>
-        {/if}
+      {#if source === 'new-item' && stockEnabled}
+        <Input size="sm" label={m.stock_field_uom()} bind:value={uom} />
+      {:else if source === 'existing-item' && stockEnabled}
+        <label class="fld">
+          <span>{m.pos_catalog_pick_item()}</span>
+          <Select fieldClass="min-w-0" bind:value={existingItemId}>
+            <option value="">{m.pos_catalog_pick_item()}…</option>
+            {#each availableItems as item (item.id)}
+              <option value={item.id}>{item.code} — {item.name}</option>
+            {/each}
+          </Select>
+        </label>
       {/if}
     {/if}
 
@@ -251,13 +294,14 @@
         <div class="consumption-rows">
           {#each rows as row, idx (idx)}
             <div class="consumption-row">
-              <Select class="inp" fieldClass="min-w-0 flex-1" bind:value={row.itemId}>
+              <Select fieldClass="min-w-0 flex-1" bind:value={row.itemId}>
                 {#each optionsFor(idx) as item (item.id)}
                   <option value={item.id}>{item.code} — {item.name}</option>
                 {/each}
               </Select>
-              <input
-                class="inp w-24"
+              <Input
+                size="sm"
+                class="w-24"
                 type="number"
                 min="0"
                 step="0.01"
@@ -295,41 +339,14 @@
 </Modal>
 
 <style>
-  .inp {
-    height: 1.75rem;
-    padding: 0 0.5rem;
-    font-size: var(--font-size-body);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg3);
-    border: 1px solid var(--hairline);
-    color: var(--color-foreground);
-    font-family: inherit;
-  }
+  /* `.fld` survives only for the two grouping wrappers (consumption rows,
+     existing-item picker) that aren't a single Input. */
   .fld {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
     font-size: var(--font-size-caption);
-    color: var(--color-muted-foreground);
-  }
-  .kind-toggle {
-    display: flex;
-    gap: var(--space-2);
-  }
-  .kind-toggle :global(.kind-btn) {
-    flex: 1;
-    padding: var(--space-1) var(--space-2);
-    font-size: var(--font-size-body);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--hairline);
-    background: var(--color-bg3);
-    color: var(--color-muted-foreground);
-    cursor: pointer;
-  }
-  .kind-toggle :global(.kind-btn.active) {
-    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-    border-color: var(--color-accent);
-    color: var(--color-foreground);
+    color: var(--color-text-secondary);
   }
   .consumption-rows {
     display: flex;

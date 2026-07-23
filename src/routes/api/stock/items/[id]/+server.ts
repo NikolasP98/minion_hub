@@ -17,6 +17,8 @@ const patchSchema = z.object({
   isStockItem: z.boolean().optional(),
   reorderLevel: z.number().nonnegative().nullable().optional(),
   reorderQty: z.number().nonnegative().nullable().optional(),
+  moq: z.number().nonnegative().nullable().optional(),
+  defaultSupplierPartyId: z.string().uuid().nullable().optional(),
   finProductId: z.string().max(200).nullable().optional(),
   consumptionUom: z.string().min(1).max(50).nullable().optional(),
   unitsPerStockUom: z.number().positive().nullable().optional(),
@@ -34,11 +36,31 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   try {
     const item = await updateItem(ctx, params.id!, {
       ...body,
-      reorderLevel: body.reorderLevel === undefined ? undefined : body.reorderLevel == null ? null : String(body.reorderLevel),
-      reorderQty: body.reorderQty === undefined ? undefined : body.reorderQty == null ? null : String(body.reorderQty),
-      unitsPerStockUom: body.unitsPerStockUom === undefined ? undefined : body.unitsPerStockUom == null ? null : String(body.unitsPerStockUom),
+      reorderLevel:
+        body.reorderLevel === undefined
+          ? undefined
+          : body.reorderLevel == null
+            ? null
+            : String(body.reorderLevel),
+      reorderQty:
+        body.reorderQty === undefined
+          ? undefined
+          : body.reorderQty == null
+            ? null
+            : String(body.reorderQty),
+      moq: body.moq === undefined ? undefined : body.moq == null ? null : String(body.moq),
+      unitsPerStockUom:
+        body.unitsPerStockUom === undefined
+          ? undefined
+          : body.unitsPerStockUom == null
+            ? null
+            : String(body.unitsPerStockUom),
       subunitsPerStockUom:
-        body.subunitsPerStockUom === undefined ? undefined : body.subunitsPerStockUom == null ? null : String(body.subunitsPerStockUom),
+        body.subunitsPerStockUom === undefined
+          ? undefined
+          : body.subunitsPerStockUom == null
+            ? null
+            : String(body.subunitsPerStockUom),
     });
     if (!item) throw error(404);
     return json(item);

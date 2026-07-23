@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, ProgressBar, iconSizes } from '$lib/components/ui';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
@@ -324,7 +324,7 @@
 <div class="border border-border rounded-lg overflow-hidden mb-6">
   <div class="relative px-4 py-3 border-b border-border bg-bg/60 flex items-center gap-2">
     <ScanLine speed={10} opacity={0.02} />
-    <PackageCheck size={12} class="text-muted-strong" />
+    <PackageCheck size={iconSizes.xs} class="text-muted-strong" />
     <span class="text-xs font-mono text-muted uppercase tracking-widest"
       >{m.gateway_update_title()}</span
     >
@@ -363,7 +363,7 @@
               loading={installBusy}
               class="font-mono"
             >
-              <Download size={12} />
+              <Download size={iconSizes.xs} />
               {installBusy
                 ? m.gateway_update_installing()
                 : updateState.targetSource === 'external-image' ||
@@ -382,7 +382,7 @@
       {#if updateState.pending}
         <div class="rounded border border-accent/30 bg-accent/5 px-3 py-2">
           <div class="flex items-center gap-1.5 text-xs font-medium text-accent">
-            <Download size={12} />
+            <Download size={iconSizes.xs} />
             v{updateState.pending.version}
           </div>
           {#if updateState.pending.notes}
@@ -400,12 +400,7 @@
               {m.fleet_update_progress({ done: doneCount, total: job.instances.length })}
             </span>
             {#if job.active}
-              <Button
-                variant="danger"
-                size="sm"
-                onclick={abortFleet}
-                class="font-mono text-xs"
-              >
+              <Button variant="danger" size="sm" onclick={abortFleet} class="font-mono text-xs">
                 <Square size={10} />
                 {m.fleet_update_abort()}
               </Button>
@@ -454,30 +449,15 @@
                       ? { phase: inst.progressPhase ?? inst.state, pct: jobPct }
                       : { phase: inst.state, pct: STAGE_FALLBACK_PCT[inst.state] ?? 0 }}
                   {@const pct = Math.max(0, Math.min(100, Math.round(active.pct)))}
-                  {@const label = useWs
+                  {@const phaseLabel = useWs
                     ? progressLabel
                     : (PROGRESS_LABELS[active.phase]?.() ?? STATE_LABELS[inst.state]())}
                   <div class="space-y-1">
-                    <div class="flex items-center justify-between text-xs font-mono text-muted">
-                      <span class="uppercase tracking-widest">{label}</span>
-                      <span>{pct}%</span>
-                    </div>
-                    <div
-                      class="h-1.5 rounded-full bg-border/60 overflow-hidden"
-                      role="progressbar"
-                      aria-valuenow={pct}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label={label}
-                    >
-                      <div
-                        class="h-full rounded-full transition-[width] duration-[var(--duration-normal)] ease-out {pct >=
-                        100
-                          ? 'bg-success'
-                          : 'bg-accent'}"
-                        style="width: {pct}%"
-                      ></div>
-                    </div>
+                    <ProgressBar size="sm" value={pct} max={100} detail={`${pct}%`}>
+                      {#snippet label()}
+                        <span class="uppercase tracking-widest font-mono">{phaseLabel}</span>
+                      {/snippet}
+                    </ProgressBar>
                     {#if shownProgress?.detail}
                       <p class="text-xs font-mono text-muted-strong">{shownProgress.detail}</p>
                     {/if}
@@ -518,7 +498,7 @@
             ? 'text-muted-foreground'
             : 'text-destructive'} flex items-center gap-1.5"
         >
-          {#if !updateState.lastResult.ok}<AlertTriangle size={12} />{/if}
+          {#if !updateState.lastResult.ok}<AlertTriangle size={iconSizes.xs} />{/if}
           {updateState.lastResult.ok
             ? m.gateway_update_lastResultOk({
                 from: updateState.lastResult.from,

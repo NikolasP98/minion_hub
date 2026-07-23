@@ -7,6 +7,29 @@
   import type { Host } from '$lib/types/host';
   import { Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
+  import { page } from '$app/state';
+  import { hostLabel } from './host-label';
+  import { scopeHostsToOrg } from './host-scope';
+
+  // The build picker (HostPill) no longer names instances — but this is the CRUD
+  // screen for them, so it is now the ONLY surface where a human reads a gateway
+  // identity and clicks Connect. Both guards from the host-picker fixes live here:
+  //  - scope to the acting org, so another tenant's gateway is never listed. The
+  //    server list is already org-scoped and fails closed
+  //    (`listGatewayHostsForUser`); this also covers `hostsState.hosts` falling
+  //    back to the localStorage cache, which is written from the PREVIOUS org's
+  //    page data during an org switch.
+  //  - org-/url-qualify names that collide, so two rows are never indistinguishable
+  //    — picking the wrong one provisions a channel into the wrong place.
+  const activeOrgId = $derived((page.data as { activeOrgId?: string | null })?.activeOrgId ?? null);
+  const orgNameById = $derived.by(() => {
+    const orgs =
+      (page.data as { organizations?: { id: string; name: string }[] })?.organizations ?? [];
+    return new Map(orgs.map((o) => [o.id, o.name]));
+  });
+  const visibleHosts = $derived(
+    scopeHostsToOrg(hostsState.hosts, activeOrgId, hostsState.activeHostId),
+  );
 
   let formName = $state('');
   let formUrl = $state('');
@@ -127,7 +150,7 @@
       >
     </div>
     <div class="flex-1 overflow-y-auto py-3 px-4">
-      {#each hostsState.hosts as host (host.id)}
+      {#each visibleHosts as host (host.id)}
         <div
           class="bg-bg3 border rounded-lg py-3 px-3.5 mb-2 flex items-start gap-3 {editingId ===
           host.id
@@ -136,7 +159,18 @@
         >
           <div class="flex-1 min-w-0">
             <div class="text-sm font-semibold flex items-center gap-2">
-              {host.name}
+              <!-- The qualified label, NOT host.name: two gateways that share a
+                   name are otherwise indistinguishable in this list. -->
+              {hostLabel(host, visibleHosts, orgNameById)}
+              {#if host.channel}
+                <!-- §D1: this admin surface still shows instances (it is the CRUD
+                     screen for them), but each row states which BUILD CHANNEL it
+                     serves — the thing users actually pick. -->
+                <span
+                  class="text-[length:var(--font-size-telemetry)] font-semibold bg-info/12 text-info border border-info/25 rounded-full py-px px-1.75 uppercase"
+                  >{host.channel}</span
+                >
+              {/if}
               {#if host.id === hostsState.activeHostId && conn.connected}
                 <span
                   class="text-[length:var(--font-size-telemetry)] font-semibold bg-success/12 text-success border border-success/25 rounded-full py-px px-1.75"
