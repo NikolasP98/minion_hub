@@ -29,7 +29,10 @@ export const POST: RequestHandler = async (event) => {
   if (!event.locals.user) throw error(401, 'Authentication required');
   if (!event.locals.workforceIdentity) {
     return json(
-      { error: 'The factory control plane is unavailable.', code: 'workforce_unavailable' },
+      {
+        error: 'Workforce identity is not configured for this hub.',
+        code: 'workforce_identity_missing',
+      },
       { status: 503 },
     );
   }
@@ -69,11 +72,21 @@ export const POST: RequestHandler = async (event) => {
     );
     return json(result, { status: 202 });
   } catch (cause) {
-    console.warn('[factory-intake] Workforce request failed', cause);
     const status = (cause as { status?: number })?.status;
+    if (status && status >= 400 && status < 500) {
+      console.warn(`[factory-intake] Workforce rejected the request (upstream ${status})`);
+      return json(
+        { error: 'The factory rejected this request.', code: 'workforce_rejected' },
+        { status },
+      );
+    }
+    console.warn(
+      '[factory-intake] Workforce control plane unreachable',
+      status ? `upstream ${status}` : cause,
+    );
     return json(
       { error: 'The factory control plane is unavailable.', code: 'workforce_unavailable' },
-      { status: status && status >= 400 && status < 500 ? status : 502 },
+      { status: 502 },
     );
   }
 };

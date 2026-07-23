@@ -207,3 +207,14 @@ export function normalizeFactoryIntake(value: unknown): FactoryIntakeView | null
 export function factoryIntakeIsSettled(intake: FactoryIntakeView): boolean {
   return intake.state !== 'scouting';
 }
+
+export type FactoryIntakeFailure = 'identity_missing' | 'rejected' | 'unavailable';
+
+/** Maps a non-ok POST /api/workforce/factory-intake response to a user-facing failure kind. */
+export function classifyFactoryIntakeFailure(status: number, body: unknown): FactoryIntakeFailure {
+  const code = record(body)?.code;
+  if (code === 'workforce_identity_missing') return 'identity_missing';
+  // Hub-side SvelteKit errors (400/401/409) carry no `code` but are still rejections.
+  if (code === 'workforce_rejected' || (status >= 400 && status < 500)) return 'rejected';
+  return 'unavailable';
+}

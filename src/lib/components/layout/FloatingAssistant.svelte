@@ -50,6 +50,7 @@
     factoryIntakeIsSettled,
     factoryIntakeAttempt,
     normalizeFactoryIntake,
+    classifyFactoryIntakeFailure,
     type FactoryIntakeAttempt,
     type FactoryIntakeView,
   } from '$lib/workforce/factory-intake';
@@ -223,7 +224,19 @@
           idempotencyKey: factoryAttempt.idempotencyKey,
         }),
       });
-      if (!response.ok) throw new Error('factory unavailable');
+      if (!response.ok) {
+        const failure = classifyFactoryIntakeFailure(
+          response.status,
+          await response.json().catch(() => null),
+        );
+        factoryError =
+          failure === 'identity_missing'
+            ? m.factoryDesk_identityMissing()
+            : failure === 'rejected'
+              ? m.factoryDesk_rejected()
+              : m.factoryDesk_unavailable();
+        return;
+      }
       const accepted = normalizeFactoryIntake(await response.json());
       if (!accepted) {
         factoryError = m.factoryDesk_invalidResponse();
@@ -747,7 +760,6 @@
           class="h-full flex flex-col items-center justify-center text-center px-7 factory-welcome"
         >
           <div class="factory-welcome-mark"><Factory size={20} /></div>
-          <span class="factory-welcome-status"><i></i>{m.factoryDesk_stateQueued()}</span>
           <h3>{m.factoryDesk_welcomeTitle()}</h3>
           <p>{m.factoryDesk_welcomeDescription()}</p>
         </div>
@@ -997,24 +1009,6 @@
       color-mix(in srgb, var(--color-accent) 9%, transparent) 0 5px,
       transparent 5px 10px
     );
-    box-shadow: var(--shadow-status-glow);
-  }
-  .factory-welcome-status {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    color: var(--color-muted-foreground);
-    font-family: ui-monospace, monospace;
-    font-size: var(--font-size-telemetry);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-  .factory-welcome-status i {
-    width: 0.35rem;
-    height: 0.35rem;
-    border-radius: var(--radius-full);
-    background: var(--color-success);
-    color: var(--color-success);
     box-shadow: var(--shadow-status-glow);
   }
   .factory-welcome h3 {

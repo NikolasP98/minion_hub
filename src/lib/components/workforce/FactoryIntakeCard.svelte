@@ -14,6 +14,7 @@
   } = $props();
 
   const stateLabel = $derived.by(() => {
+    if (error) return m.factoryDesk_stateFailed();
     if (pending || intake?.state === 'scouting') return m.factoryDesk_stateScouting();
     if (intake?.state === 'awaiting_routing_approval') return m.factoryDesk_stateDecision();
     if (intake?.state === 'pipeline_active' || intake?.state === 'completed')
@@ -43,7 +44,7 @@
     </div>
     <span
       class:warning={intake?.state === 'awaiting_routing_approval'}
-      class:error={intake?.state === 'failed' || intake?.state === 'rejected'}
+      class:error={!!error || intake?.state === 'failed' || intake?.state === 'rejected'}
       class="signal"
     >
       <span></span>{stateLabel}

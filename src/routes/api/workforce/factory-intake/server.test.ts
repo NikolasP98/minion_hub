@@ -114,7 +114,7 @@ describe('POST /api/workforce/factory-intake', () => {
   it('returns a graceful 503 when signed Workforce identity is absent', async () => {
     const response = await POST(event({ request: 'Build it' }, { identity: false }));
     expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ code: 'workforce_unavailable' });
+    expect(await response.json()).toMatchObject({ code: 'workforce_identity_missing' });
     expect(mockWorkforceRawFetch).not.toHaveBeenCalled();
   });
 
@@ -123,5 +123,14 @@ describe('POST /api/workforce/factory-intake', () => {
     const response = await POST(event({ request: 'Build it' }));
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({ code: 'workforce_unavailable' });
+  });
+
+  it('surfaces an upstream 4xx as a rejection, not an outage', async () => {
+    mockWorkforceRawFetch.mockRejectedValueOnce(
+      Object.assign(new Error('workforce returned 422'), { status: 422 }),
+    );
+    const response = await POST(event({ request: 'Build it' }));
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ code: 'workforce_rejected' });
   });
 });
