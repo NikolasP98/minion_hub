@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classifyFactoryIntakeFailure,
   factoryIntakeAttempt,
   factoryIntakeIsSettled,
   factoryRepositoryKeys,
@@ -159,5 +160,19 @@ describe('normalizeFactoryScopes', () => {
       'workforce',
       'ui',
     ]);
+  });
+});
+
+describe('classifyFactoryIntakeFailure', () => {
+  it('splits identity_missing / rejected / unavailable', () => {
+    expect(classifyFactoryIntakeFailure(503, { code: 'workforce_identity_missing' })).toBe(
+      'identity_missing',
+    );
+    expect(classifyFactoryIntakeFailure(422, { code: 'workforce_rejected' })).toBe('rejected');
+    expect(classifyFactoryIntakeFailure(400, { message: 'request too long' })).toBe('rejected');
+    expect(classifyFactoryIntakeFailure(502, { code: 'workforce_unavailable' })).toBe(
+      'unavailable',
+    );
+    expect(classifyFactoryIntakeFailure(503, null)).toBe('unavailable');
   });
 });

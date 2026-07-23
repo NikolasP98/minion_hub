@@ -50,6 +50,7 @@
     factoryIntakeIsSettled,
     factoryIntakeAttempt,
     normalizeFactoryIntake,
+    classifyFactoryIntakeFailure,
     type FactoryIntakeAttempt,
     type FactoryIntakeView,
   } from '$lib/workforce/factory-intake';
@@ -133,7 +134,7 @@
   const canSend = $derived(!!assistant.personalAgentId && conn.connected && !sending);
 
   type ComposerMode = 'chat' | 'factory';
-  let composerMode = $state<ComposerMode>('chat');
+  let modeChoice = $state<ComposerMode>('chat');
   let previousRoute = $state('');
   let factorySending = $state(false);
   let factoryIntake = $state<FactoryIntakeView | null>(null);
@@ -141,13 +142,22 @@
   let factoryPollTimer: ReturnType<typeof setTimeout> | null = null;
   let factoryAttempt = $state<FactoryIntakeAttempt | null>(null);
 
+  // The factory desk only exists inside the Workforce module — an intake creates
+  // production-line work there and nowhere else. Off /workforce the composer is
+  // chat-only, so the two-button switcher is dead chrome and isn't rendered.
+  const factoryAvailable = $derived(canonicalPath(page.url.pathname).startsWith('/workforce'));
+
+  // Derived, not raw state: factory mode is then IMPOSSIBLE off /workforce by
+  // construction, rather than depending on the reset effect below having run.
+  const composerMode = $derived<ComposerMode>(factoryAvailable ? modeChoice : 'chat');
+
   // Route entry chooses a sensible default once. The explicit selector remains
   // authoritative until the next navigation, so chat is always available.
   $effect(() => {
     const route = canonicalPath(page.url.pathname);
     if (route === previousRoute) return;
     previousRoute = route;
-    composerMode = route === '/work' || route.startsWith('/workforce') ? 'factory' : 'chat';
+    modeChoice = route.startsWith('/workforce') ? 'factory' : 'chat';
   });
 
   const canSubmit = $derived(composerMode === 'factory' ? !factorySending : canSend);
@@ -223,7 +233,19 @@
           idempotencyKey: factoryAttempt.idempotencyKey,
         }),
       });
-      if (!response.ok) throw new Error('factory unavailable');
+      if (!response.ok) {
+        const failure = classifyFactoryIntakeFailure(
+          response.status,
+          await response.json().catch(() => null),
+        );
+        factoryError =
+          failure === 'identity_missing'
+            ? m.factoryDesk_identityMissing()
+            : failure === 'rejected'
+              ? m.factoryDesk_rejected()
+              : m.factoryDesk_unavailable();
+        return;
+      }
       const accepted = normalizeFactoryIntake(await response.json());
       if (!accepted) {
         factoryError = m.factoryDesk_invalidResponse();
@@ -591,7 +613,7 @@
   </div>
 {:else if !assistant.open}
   <!-- `!fixed` / `!h-auto` below are load-bearing, not cosmetic: Button's base
-         class hardcodes `relative` and `h-[--control-height-xs]`, and Tailwind
+         class hardcodes `relative` and `h-[var(--control-height-xs)]`, and Tailwind
          emits `.relative` AFTER `.fixed`, so class-attribute order does not
          decide the winner. Un-forced, the pill is position:relative — it renders
          at its static flow position (document bottom-left) and dragging writes
@@ -747,7 +769,6 @@
           class="h-full flex flex-col items-center justify-center text-center px-7 factory-welcome"
         >
           <div class="factory-welcome-mark"><Factory size={20} /></div>
-          <span class="factory-welcome-status"><i></i>{m.factoryDesk_stateQueued()}</span>
           <h3>{m.factoryDesk_welcomeTitle()}</h3>
           <p>{m.factoryDesk_welcomeDescription()}</p>
         </div>
@@ -863,29 +884,31 @@
 
     <!-- Scope badge + input -->
     <div class="shrink-0 border-t border-border bg-bg3/40">
-      <div class="composer-modes" aria-label={m.factoryDesk_controlDesk()}>
-        <Button
-          variant="ghost"
-          size="xs"
-          type="button"
-          class={composerMode === 'chat' ? 'active' : undefined}
-          aria-pressed={composerMode === 'chat'}
-          onclick={() => (composerMode = 'chat')}
-          ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</Button
-        >
-        <Button
-          variant="ghost"
-          size="xs"
-          type="button"
-          class={composerMode === 'factory' ? 'active' : undefined}
-          aria-pressed={composerMode === 'factory'}
-          onclick={() => (composerMode = 'factory')}
-          ><Factory size={11} /> {m.factoryDesk_modeFactory()}</Button
-        >
-        {#if composerMode === 'factory'}
-          <span>{m.factoryDesk_factoryHint()}</span>
-        {/if}
-      </div>
+      {#if factoryAvailable}
+        <div class="composer-modes" aria-label={m.factoryDesk_controlDesk()}>
+          <Button
+            variant="ghost"
+            size="xs"
+            type="button"
+            class={composerMode === 'chat' ? 'active' : undefined}
+            aria-pressed={composerMode === 'chat'}
+            onclick={() => (modeChoice = 'chat')}
+            ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</Button
+          >
+          <Button
+            variant="ghost"
+            size="xs"
+            type="button"
+            class={composerMode === 'factory' ? 'active' : undefined}
+            aria-pressed={composerMode === 'factory'}
+            onclick={() => (modeChoice = 'factory')}
+            ><Factory size={11} /> {m.factoryDesk_modeFactory()}</Button
+          >
+          {#if composerMode === 'factory'}
+            <span>{m.factoryDesk_factoryHint()}</span>
+          {/if}
+        </div>
+      {/if}
       <div
         class="flex items-center gap-1.5 px-3 py-1.5 text-[length:var(--font-size-telemetry)] text-muted-foreground border-b border-border/60"
       >
@@ -997,24 +1020,6 @@
       color-mix(in srgb, var(--color-accent) 9%, transparent) 0 5px,
       transparent 5px 10px
     );
-    box-shadow: var(--shadow-status-glow);
-  }
-  .factory-welcome-status {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    color: var(--color-muted-foreground);
-    font-family: ui-monospace, monospace;
-    font-size: var(--font-size-telemetry);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-  .factory-welcome-status i {
-    width: 0.35rem;
-    height: 0.35rem;
-    border-radius: var(--radius-full);
-    background: var(--color-success);
-    color: var(--color-success);
     box-shadow: var(--shadow-status-glow);
   }
   .factory-welcome h3 {
