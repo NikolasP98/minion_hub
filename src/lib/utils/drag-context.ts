@@ -50,8 +50,16 @@ let ghostCanvas: HTMLCanvasElement | null = null;
 function transparentGhost(): HTMLCanvasElement {
   if (!ghostCanvas) {
     ghostCanvas = document.createElement('canvas');
-    ghostCanvas.width = 1;
-    ghostCanvas.height = 1;
+    ghostCanvas.width = 4;
+    ghostCanvas.height = 4;
+    // A fully-transparent bitmap makes some platforms (Linux/GTK Chromium)
+    // substitute their default "document" drag badge. Paint one near-invisible
+    // pixel so the bitmap is non-empty and gets used as-is.
+    const g = ghostCanvas.getContext('2d');
+    if (g) {
+      g.fillStyle = 'rgba(0,0,0,0.01)';
+      g.fillRect(0, 0, 4, 4);
+    }
     ghostCanvas.style.cssText = 'position:absolute;top:-10px;left:-10px;pointer-events:none';
     document.body.appendChild(ghostCanvas);
   }
