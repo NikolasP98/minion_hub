@@ -73,16 +73,19 @@ export const POST: RequestHandler = async (event) => {
     return json(result, { status: 202 });
   } catch (cause) {
     const status = (cause as { status?: number })?.status;
+    // Always log `cause`: its message carries the target path and the upstream
+    // status came from it in the first place. Dropping it whenever a status
+    // exists is what made these failures undiagnosable from the logs alone.
     if (status && status >= 400 && status < 500) {
-      console.warn(`[factory-intake] Workforce rejected the request (upstream ${status})`);
+      console.warn(`[factory-intake] Workforce rejected the request (upstream ${status})`, cause);
       return json(
         { error: 'The factory rejected this request.', code: 'workforce_rejected' },
         { status },
       );
     }
     console.warn(
-      '[factory-intake] Workforce control plane unreachable',
-      status ? `upstream ${status}` : cause,
+      `[factory-intake] Workforce control plane unreachable${status ? ` (upstream ${status})` : ''}`,
+      cause,
     );
     return json(
       { error: 'The factory control plane is unavailable.', code: 'workforce_unavailable' },
