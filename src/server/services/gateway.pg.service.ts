@@ -102,6 +102,8 @@ export interface GatewayInput {
   /** Plain-text token — sealed before storage. */
   token: string;
   profileId: string;
+  /** Active organization assigned to this gateway row. */
+  orgId: string;
   isDefault?: boolean;
 }
 
@@ -123,6 +125,7 @@ export async function createGateway(input: GatewayInput): Promise<{ id: string }
       url: input.url,
       tokenCiphertext: ciphertext,
       tokenIv: iv,
+      orgId: input.orgId,
     })
     .returning({ id: gateway.id });
   if (!row) throw new Error('createGateway: insert returned no rows');
@@ -318,17 +321,22 @@ export async function gatewayBelongsToOrg(
 
 /**
  * Return the decrypted token for a gateway identified by a server id (legacy
- * Turso id or gateway uuid). Used by the /api/servers/[id]/token endpoint so
- * it reads from Supabase after the Turso→Supabase cutover.
- * Returns null when the id doesn't resolve or the gateway has no token.
+ * Turso id or gateway uuid) only when it belongs to the active organization.
+ * Used by the /api/servers/[id]/token endpoint so it reads from Supabase after
+ * the Turso→Supabase cutover without a check/read reassignment race.
+ * Returns null when the id doesn't resolve, belongs to another org, or has no
+ * token.
  */
-export async function getGatewayTokenByServerId(serverId: string): Promise<string | null> {
+export async function getGatewayTokenByServerId(
+  serverId: string,
+  orgId: string,
+): Promise<string | null> {
   const gatewayId = await resolveGatewayId(serverId);
   if (!gatewayId) return null;
   const [row] = await getCoreDb()
     .select({ tokenCiphertext: gateway.tokenCiphertext, tokenIv: gateway.tokenIv })
     .from(gateway)
-    .where(eq(gateway.id, gatewayId))
+    .where(and(eq(gateway.id, gatewayId), eq(gateway.orgId, orgId)))
     .limit(1);
   if (!row?.tokenCiphertext) return null;
   // token_iv='' means the ciphertext IS the plaintext token (legacy unencrypted row).
@@ -378,6 +386,7 @@ export async function getGatewayCredentialsById(
  */
 export async function getUserGatewayCredentials(
   profileId: string,
+  orgId: string,
   channel: GatewayChannel = 'prd',
 ): Promise<{ url: string; token: string } | null> {
   const db = getCoreDb();
@@ -389,7 +398,7 @@ export async function getUserGatewayCredentials(
     })
     .from(userGateway)
     .innerJoin(gateway, eq(userGateway.gatewayId, gateway.id))
-    .where(eq(userGateway.profileId, profileId))
+    .where(and(eq(userGateway.profileId, profileId), eq(gateway.orgId, orgId)))
     .orderBy(channelFirst(channel), desc(gateway.createdAt), gateway.id)
     .limit(1);
   if (!rows.length) return null;

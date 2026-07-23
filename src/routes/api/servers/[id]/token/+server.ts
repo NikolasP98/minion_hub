@@ -9,6 +9,7 @@ import {
   userHasGatewayAccess,
   getGatewayTokenByServerId,
   gatewayBelongsToOrg,
+  resolveGatewayId,
 } from '$server/services/gateway.pg.service';
 
 /**
@@ -39,6 +40,7 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   console.log('[token-ep] tenant=', ctx.tenantId);
 
   const id = params.id!;
+  let registryError: unknown = null;
 
   // ── Org/channel gate (spec §C5). Fail closed, and BEFORE the role check ────
   // The gateway row must belong to the caller's ACTIVE org. Handing out a token
@@ -49,10 +51,27 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   // what "FACES cannot reach DEV even by hand-crafting a request" forbids.
   // Channel is enforced transitively: a channel's rows are org-scoped, so an org
   // with no row for a channel has no id here that will pass.
+  // A server id absent from the PG registry may still be a legitimate,
+  // tenant-scoped Turso legacy row. Distinguish that migration fallback from a
+  // PG row assigned to another org: only the latter is an immediate 404.
   const orgId = locals.orgId ?? ctx.tenantId ?? null;
-  if (!(await gatewayBelongsToOrg(id, orgId))) {
-    console.log('[token-ep] gateway not assigned to active org -> 404');
-    return json({ error: 'Not found' }, { status: 404 });
+  let pgGatewayId: string | null = null;
+  try {
+    pgGatewayId = await resolveGatewayId(id);
+  } catch (err) {
+    registryError = err;
+    console.warn('[token-ep] Supabase gateway resolution threw (will try Turso):', err);
+  }
+  if (pgGatewayId) {
+    try {
+      if (!(await gatewayBelongsToOrg(id, orgId))) {
+        console.log('[token-ep] gateway not assigned to active org -> 404');
+        return json({ error: 'Not found' }, { status: 404 });
+      }
+    } catch (err) {
+      registryError = err;
+      console.warn('[token-ep] Supabase org-scope lookup threw (will try Turso):', err);
+    }
   }
 
   if (user.role !== 'admin') {
@@ -75,12 +94,13 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   // Try Supabase gateway table first (post-cutover source of truth), then fall
   // back to Turso servers table for legacy rows that haven't migrated yet.
   let token: string | null = null;
-  let registryError: unknown = null;
-  try {
-    token = await getGatewayTokenByServerId(id);
-  } catch (err) {
-    registryError = err;
-    console.warn('[token-ep] Supabase gateway lookup threw (will try Turso):', err);
+  if (pgGatewayId || registryError) {
+    try {
+      token = await getGatewayTokenByServerId(id, orgId);
+    } catch (err) {
+      registryError = err;
+      console.warn('[token-ep] Supabase gateway lookup threw (will try Turso):', err);
+    }
   }
   if (!token) {
     try {

@@ -31,6 +31,7 @@ vi.mock('@minion-stack/db/pg', () => ({
     createdAt: 'createdAt',
     tokenCiphertext: 'tokenCiphertext',
     tokenIv: 'tokenIv',
+    orgId: 'orgId',
   },
   userGateway: { profileId: 'profileId', gatewayId: 'gatewayId', isDefault: 'isDefault' },
 }));
@@ -92,9 +93,14 @@ describe('gateway.pg.service', () => {
       url: 'ws://gw',
       token: 'secret',
       profileId: 'p1',
+      orgId: 'org-1',
     });
     expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({ tokenCiphertext: 'enc:secret', tokenIv: 'iv1' }),
+      expect.objectContaining({
+        tokenCiphertext: 'enc:secret',
+        tokenIv: 'iv1',
+        orgId: 'org-1',
+      }),
     );
     expect(g.id).toBe('g1');
   });
@@ -114,7 +120,7 @@ describe('gateway.pg.service', () => {
         }),
       }),
     });
-    const cred = await getUserGatewayCredentials('p1');
+    const cred = await getUserGatewayCredentials('p1', 'org-1');
     expect(cred?.url).toBe('ws://gw');
     expect(cred?.token).toBe('secret');
   });
@@ -133,7 +139,7 @@ describe('gateway.pg.service', () => {
         }),
       }),
     });
-    const cred = await getUserGatewayCredentials('p1');
+    const cred = await getUserGatewayCredentials('p1', 'org-1');
     expect(cred?.token).toBe('rawtoken');
     // Real openSecret throws ERR_CRYPTO_INVALID_IV on an empty iv — the plaintext
     // row must bypass decrypt entirely (regression guard for the token-mismatch bug).
@@ -143,8 +149,32 @@ describe('gateway.pg.service', () => {
   test('getUserGatewayCredentials returns null when no rows', async () => {
     const { getUserGatewayCredentials } = await import('./gateway.pg.service');
     // Default mock returns []
-    const cred = await getUserGatewayCredentials('p1');
+    const cred = await getUserGatewayCredentials('p1', 'org-1');
     expect(cred).toBeNull();
+  });
+
+  test('getGatewayTokenByServerId reads the token only inside the active org', async () => {
+    const tokenWhere = vi.fn().mockReturnValue({
+      limit: vi.fn().mockResolvedValue([{ tokenCiphertext: 'enc:secret', tokenIv: 'iv1' }]),
+    });
+    selectFrom
+      .mockReturnValueOnce({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: 'gateway-scoped' }]),
+        }),
+      })
+      .mockReturnValueOnce({ where: tokenWhere });
+    const { and, eq } = await import('drizzle-orm');
+    const { getGatewayTokenByServerId } = await import('./gateway.pg.service');
+
+    const token = await getGatewayTokenByServerId('legacy-scoped', 'org-active');
+
+    expect(token).toBe('secret');
+    expect(vi.mocked(eq)).toHaveBeenCalledWith('orgId', 'org-active');
+    expect(vi.mocked(and)).toHaveBeenCalledWith(
+      { _eq: ['id', 'gateway-scoped'] },
+      { _eq: ['orgId', 'org-active'] },
+    );
   });
 
   test('getSystemGatewayCredentials picks preferredUrl and decrypts', async () => {
@@ -189,7 +219,7 @@ describe('gateway.pg.service', () => {
     selectFrom.mockReturnValueOnce(
       userRows([{ url: 'ws://gw', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' }]),
     );
-    await getUserGatewayCredentials('p1');
+    await getUserGatewayCredentials('p1', 'org-1');
     const args = userOrderBy.mock.calls[0];
     expect(args).toHaveLength(3);
     expect(args[0]).toEqual({ _sql: true }); // channelFirst(channel)
@@ -203,10 +233,27 @@ describe('gateway.pg.service', () => {
     selectFrom.mockReturnValueOnce(
       userRows([{ url: 'ws://gw', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' }]),
     );
-    await getUserGatewayCredentials('p1');
+    await getUserGatewayCredentials('p1', 'org-1');
     // channelFirst() interpolates the preferred channel into the template.
     expect(vi.mocked(sql).mock.calls.flat(2)).toContain('prd');
     expect(vi.mocked(sql).mock.calls.flat(2)).not.toContain('dev');
+  });
+
+  test('getUserGatewayCredentials scopes the linked gateway to the active org', async () => {
+    const { and, eq } = await import('drizzle-orm');
+    const { getUserGatewayCredentials } = await import('./gateway.pg.service');
+    selectFrom.mockReturnValueOnce(
+      userRows([{ url: 'ws://gw', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' }]),
+    );
+
+    await getUserGatewayCredentials('p1', 'org-active');
+
+    expect(vi.mocked(eq)).toHaveBeenCalledWith('profileId', 'p1');
+    expect(vi.mocked(eq)).toHaveBeenCalledWith('orgId', 'org-active');
+    expect(vi.mocked(and)).toHaveBeenCalledWith(
+      { _eq: ['profileId', 'p1'] },
+      { _eq: ['orgId', 'org-active'] },
+    );
   });
 
   test('getSystemGatewayCredentials orders instead of trusting heap order', async () => {

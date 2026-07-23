@@ -92,10 +92,10 @@ export async function resolveCredentialsForUser(
     }
   }
   // 1. Per-user PG lookup (new primary path).
-  if (profileId) {
+  if (profileId && orgId) {
     try {
       const { getUserGatewayCredentials } = await import('$server/services/gateway.pg.service');
-      const creds = await getUserGatewayCredentials(profileId, chan);
+      const creds = await getUserGatewayCredentials(profileId, orgId, chan);
       if (creds) return { url: toWsUrl(creds.url), token: creds.token };
     } catch (err) {
       // Wave 1: catch covers both the dynamic import() and getUserGatewayCredentials().

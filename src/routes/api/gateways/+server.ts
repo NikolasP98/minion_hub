@@ -12,14 +12,27 @@ export const GET: RequestHandler = async ({ locals }) => {
 export const POST: RequestHandler = async ({ locals, request }) => {
   const admin = requireAdmin(locals);
   if (!admin.supabaseId) throw error(400, 'supabase session required');
-  const b = (await request.json().catch(() => ({}))) as { name?: string; url?: string; token?: string };
+  const orgId = locals.orgId ?? locals.tenantCtx?.tenantId;
+  if (!orgId) throw error(400, 'active organization required');
+  const b = (await request.json().catch(() => ({}))) as {
+    name?: string;
+    url?: string;
+    token?: string;
+  };
   if (!b.name || !b.url || !b.token) throw error(400, 'name, url, and token required');
   try {
     await assertSafeUrl(b.url, 'gateway URL');
   } catch (e) {
-    if (e instanceof SsrfBlockedError) return json({ ok: false, error: e.message }, { status: 422 });
+    if (e instanceof SsrfBlockedError)
+      return json({ ok: false, error: e.message }, { status: 422 });
     throw e;
   }
-  const g = await createGateway({ name: b.name, url: b.url, token: b.token, profileId: admin.supabaseId });
+  const g = await createGateway({
+    name: b.name,
+    url: b.url,
+    token: b.token,
+    profileId: admin.supabaseId,
+    orgId,
+  });
   return json({ ok: true, id: g.id });
 };
