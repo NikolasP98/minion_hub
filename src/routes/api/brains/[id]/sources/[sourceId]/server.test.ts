@@ -34,7 +34,10 @@ describe('/api/brains/[id]/sources/[sourceId]', () => {
     const locals = {
       user: { displayName: 'Ada', email: 'ada@example.com' },
     } as never;
-    const response = (await PUT!({ locals, params: { id: brainId, sourceId } } as never)) as Response;
+    const response = (await PUT!({
+      locals,
+      params: { id: brainId, sourceId },
+    } as never)) as Response;
 
     expect(response.status).toBe(200);
     expect(requireOrgCapability).toHaveBeenCalledWith(locals, 'brains', 'edit');

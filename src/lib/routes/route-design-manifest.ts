@@ -541,12 +541,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/cloud', 'Cloud workspace', 'immersive-workspaces', 'dashboard'),
   screen('/cloud/gui', 'Cloud remote desktop', 'immersive-workspaces', 'terminal-remote-desktop'),
   screen('/cloud/settings', 'Cloud settings', 'immersive-workspaces', 'form-settings'),
-  screen(
-    '/cloud/terminal',
-    'Cloud terminal',
-    'immersive-workspaces',
-    'terminal-remote-desktop',
-  ),
+  screen('/cloud/terminal', 'Cloud terminal', 'immersive-workspaces', 'terminal-remote-desktop'),
   screen('/channels', 'Channels', 'platform-reliability', 'collection'),
   screen('/channels/[id]', 'Channel', 'platform-reliability', 'record-detail', {
     fixtureId: 'plugin-channel-detail',
@@ -711,16 +706,9 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   redirectRoute('/tools', 'Tools', 'agents-builders', '/capabilities?tab=tools', 307, {
     preserveQuery: false,
   }),
-  redirectRoute(
-    '/terminal',
-    'Legacy terminal',
-    'immersive-workspaces',
-    '/cloud/terminal',
-    307,
-    {
-      preserveQuery: true,
-    },
-  ),
+  redirectRoute('/terminal', 'Legacy terminal', 'immersive-workspaces', '/cloud/terminal', 307, {
+    preserveQuery: true,
+  }),
   redirectRoute(
     '/workshop/[...path]',
     'Legacy workshop path',

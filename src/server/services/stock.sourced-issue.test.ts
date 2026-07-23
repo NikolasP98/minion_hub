@@ -40,7 +40,10 @@ function buildTx(itemRows: Array<{ id: string; unitsPerStockUom: string | null }
 }
 
 function ctxWithTx(tx: unknown) {
-  return { db: { transaction: (cb: (t: unknown) => unknown) => cb(tx) }, tenantId: 'org-1' } as never;
+  return {
+    db: { transaction: (cb: (t: unknown) => unknown) => cb(tx) },
+    tenantId: 'org-1',
+  } as never;
 }
 
 describe('createSourcedIssue — draft creation', () => {
@@ -76,8 +79,28 @@ describe('createSourcedIssue — draft creation', () => {
     const lineInsert = insertCalls.find((c) => c.table === stkEntryLines);
     expect(lineInsert).toBeTruthy();
     expect(lineInsert!.rows).toEqual([
-      { orgId: 'org-1', entryId: 'entry1', itemId: 'item1', qty: '2', uom: null, rate: null, fromWarehouseId: 'wh1', toWarehouseId: null, lineNo: 0 },
-      { orgId: 'org-1', entryId: 'entry1', itemId: 'item2', qty: '1', uom: null, rate: null, fromWarehouseId: 'wh1', toWarehouseId: null, lineNo: 1 },
+      {
+        orgId: 'org-1',
+        entryId: 'entry1',
+        itemId: 'item1',
+        qty: '2',
+        uom: null,
+        rate: null,
+        fromWarehouseId: 'wh1',
+        toWarehouseId: null,
+        lineNo: 0,
+      },
+      {
+        orgId: 'org-1',
+        entryId: 'entry1',
+        itemId: 'item2',
+        qty: '1',
+        uom: null,
+        rate: null,
+        fromWarehouseId: 'wh1',
+        toWarehouseId: null,
+        lineNo: 1,
+      },
     ]);
   });
 
@@ -117,7 +140,19 @@ describe('createSourcedIssue — submit path', () => {
       [{ id: 'entry1', orgId: 'org-1', type: 'issue', status: 'draft' }], // stk_entries insert returning
       [], // stk_entry_lines insert
       [{ id: 'entry1', orgId: 'org-1', status: 'draft', type: 'issue', humanId: 'STE-PRESET' }], // submitEntry: select entry for update
-      [{ id: 'l1', entryId: 'entry1', itemId: 'item1', qty: '5', uom: null, rate: null, fromWarehouseId: 'wh1', toWarehouseId: null, lineNo: 0 }], // select lines
+      [
+        {
+          id: 'l1',
+          entryId: 'entry1',
+          itemId: 'item1',
+          qty: '5',
+          uom: null,
+          rate: null,
+          fromWarehouseId: 'wh1',
+          toWarehouseId: null,
+          lineNo: 0,
+        },
+      ], // select lines
       [{ id: 'item1' }], // item existence
       [{ id: 'wh1' }], // warehouse existence
       [{ qty: '10', valuationRate: '1' }], // locked bin — enough stock
@@ -161,7 +196,13 @@ describe('createSourcedIssue — no_lines guard', () => {
   it('throws no_lines before touching the db when lines is empty', async () => {
     const { db } = createMockDb();
     await expect(
-      createSourcedIssue(ctx(db), { source: 'pos', sourceId: 't-1', warehouseId: 'wh1', lines: [], actor }),
+      createSourcedIssue(ctx(db), {
+        source: 'pos',
+        sourceId: 't-1',
+        warehouseId: 'wh1',
+        lines: [],
+        actor,
+      }),
     ).rejects.toMatchObject({ code: 'no_lines' });
     expect(db.select).not.toHaveBeenCalled();
   });

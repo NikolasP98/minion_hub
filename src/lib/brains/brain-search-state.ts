@@ -1,7 +1,5 @@
 export type BrainSearchEmptyReason =
-  | 'empty_query'
-  | 'no_canonical_candidates'
-  | 'relevance_policy_filtered_all';
+  'empty_query' | 'no_canonical_candidates' | 'relevance_policy_filtered_all';
 
 export type BrainSearchEmptyState = 'generic' | 'no-canonical' | 'policy-filtered';
 

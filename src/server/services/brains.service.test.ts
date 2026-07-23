@@ -50,7 +50,9 @@ import type { BrainDocument } from '$server/db/pg-schema/brains';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
-const brainRow = (over: Partial<{ id: string; createdBy: string | null; visibility: string }> = {}) => ({
+const brainRow = (
+  over: Partial<{ id: string; createdBy: string | null; visibility: string }> = {},
+) => ({
   id: 'brain-1',
   orgId: 'org-1',
   name: 'Support KB',
@@ -100,7 +102,10 @@ describe('brains.service — canAccessBrain (fail-closed access resolution)', ()
   it('grants write to an org owner/admin role regardless of the brain', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[brainRow()]]);
-    const ok = await canAccessBrain(ctx(db), 'brain-1', 'write', { profileId: 'someone-else', roles: ['admin'] });
+    const ok = await canAccessBrain(ctx(db), 'brain-1', 'write', {
+      profileId: 'someone-else',
+      roles: ['admin'],
+    });
     expect(ok).toBe(true);
   });
 
@@ -118,34 +123,83 @@ describe('brains.service — canAccessBrain (fail-closed access resolution)', ()
 
   it('honors a role-principal brain_access row', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[brainRow()], [{ brainId: 'brain-1', orgId: 'org-1', principalType: 'role', principalId: 'staff', level: 'read' }]]);
+    resolveSequence([
+      [brainRow()],
+      [
+        {
+          brainId: 'brain-1',
+          orgId: 'org-1',
+          principalType: 'role',
+          principalId: 'staff',
+          level: 'read',
+        },
+      ],
+    ]);
     const principal: AccessPrincipal = { roles: ['staff'] };
     expect(await canAccessBrain(ctx(db), 'brain-1', 'read', principal)).toBe(true);
   });
 
   it('a read-level access row does not satisfy a write check', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[brainRow()], [{ brainId: 'brain-1', orgId: 'org-1', principalType: 'role', principalId: 'staff', level: 'read' }]]);
+    resolveSequence([
+      [brainRow()],
+      [
+        {
+          brainId: 'brain-1',
+          orgId: 'org-1',
+          principalType: 'role',
+          principalId: 'staff',
+          level: 'read',
+        },
+      ],
+    ]);
     const principal: AccessPrincipal = { roles: ['staff'] };
     expect(await canAccessBrain(ctx(db), 'brain-1', 'write', principal)).toBe(false);
   });
 
   it('honors a user-principal brain_access row', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[brainRow()], [{ brainId: 'brain-1', orgId: 'org-1', principalType: 'user', principalId: 'user-9', level: 'write' }]]);
+    resolveSequence([
+      [brainRow()],
+      [
+        {
+          brainId: 'brain-1',
+          orgId: 'org-1',
+          principalType: 'user',
+          principalId: 'user-9',
+          level: 'write',
+        },
+      ],
+    ]);
     expect(await canAccessBrain(ctx(db), 'brain-1', 'write', { profileId: 'user-9' })).toBe(true);
   });
 
   it('honors an agent-principal brain_access row', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[brainRow()], [{ brainId: 'brain-1', orgId: 'org-1', principalType: 'agent', principalId: 'agent-42', level: 'read' }]]);
+    resolveSequence([
+      [brainRow()],
+      [
+        {
+          brainId: 'brain-1',
+          orgId: 'org-1',
+          principalType: 'agent',
+          principalId: 'agent-42',
+          level: 'read',
+        },
+      ],
+    ]);
     expect(await canAccessBrain(ctx(db), 'brain-1', 'read', { agentId: 'agent-42' })).toBe(true);
   });
 
   it('fails closed when nothing matches (private brain, no grant, no roles)', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[brainRow()], []]);
-    expect(await canAccessBrain(ctx(db), 'brain-1', 'read', { profileId: 'nobody', agentId: 'nobody-agent' })).toBe(false);
+    expect(
+      await canAccessBrain(ctx(db), 'brain-1', 'read', {
+        profileId: 'nobody',
+        agentId: 'nobody-agent',
+      }),
+    ).toBe(false);
   });
 });
 
@@ -186,9 +240,14 @@ describe('brains.service — searchBrain brain isolation', () => {
     // principal is the creator of brain-1 (their own brain) but is querying brain-2,
     // which they have no relationship to at all.
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[brainRow({ id: 'brain-2', createdBy: 'someone-else', visibility: 'private' })], []]);
+    resolveSequence([
+      [brainRow({ id: 'brain-2', createdBy: 'someone-else', visibility: 'private' })],
+      [],
+    ]);
     const principal: AccessPrincipal = { profileId: 'user-1', roles: ['staff'] };
-    await expect(searchBrain(ctx(db), 'brain-2', 'refund policy', undefined, principal)).rejects.toMatchObject({
+    await expect(
+      searchBrain(ctx(db), 'brain-2', 'refund policy', undefined, principal),
+    ).rejects.toMatchObject({
       status: 403,
     });
   });
@@ -224,7 +283,9 @@ describe('brains.service — searchBrain brain isolation', () => {
     vi.mocked(embeddingsEnabled).mockReturnValueOnce(false);
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[brainRow({ id: 'brain-1', visibility: 'org' })]]);
-    await expect(searchBrain(ctx(db), 'brain-1', 'hello', undefined, {})).rejects.toMatchObject({ status: 503 });
+    await expect(searchBrain(ctx(db), 'brain-1', 'hello', undefined, {})).rejects.toMatchObject({
+      status: 503,
+    });
   });
 });
 
@@ -262,24 +323,35 @@ describe('brains.service — listModuleSources (module_ref permission filtering)
     expect(result).toEqual([]);
   });
 
-  it('filters registry entries by each entry\'s requiredPerm via resolveCapabilities', async () => {
+  it("filters registry entries by each entry's requiredPerm via resolveCapabilities", async () => {
     vi.mocked(resolveCapabilities).mockResolvedValueOnce({
       can: (module: string) => module === 'crm',
     } as never);
-    const result = await listModuleSources({ db: undefined as never, tenantId: 'org-1', profileId: 'user-1' });
+    const result = await listModuleSources({
+      db: undefined as never,
+      tenantId: 'org-1',
+      profileId: 'user-1',
+    });
     expect(result.map((r) => r.key)).toEqual(['crm_contacts']);
   });
 
   it('returns nothing when no module permission is granted', async () => {
     vi.mocked(resolveCapabilities).mockResolvedValueOnce({ can: () => false } as never);
-    const result = await listModuleSources({ db: undefined as never, tenantId: 'org-1', profileId: 'user-1' });
+    const result = await listModuleSources({
+      db: undefined as never,
+      tenantId: 'org-1',
+      profileId: 'user-1',
+    });
     expect(result).toEqual([]);
   });
 });
 
 describe('brains.service — MODULE_SOURCES renderers', () => {
   it('crm_contacts.render produces a non-empty markdown table from mocked rows', async () => {
-    const md = await MODULE_SOURCES.crm_contacts.render({ db: undefined as never, tenantId: 'org-1' });
+    const md = await MODULE_SOURCES.crm_contacts.render({
+      db: undefined as never,
+      tenantId: 'org-1',
+    });
     expect(md.length).toBeGreaterThan(0);
     expect(md).toContain('Ada Lovelace');
     expect(md).toContain('VIP');

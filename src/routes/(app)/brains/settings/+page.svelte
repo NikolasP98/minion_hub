@@ -35,9 +35,7 @@
   // svelte-ignore state_referenced_locally
   let profile = $state(configured.profile ?? '');
   // svelte-ignore state_referenced_locally
-  let distillationProvider = $state<BrainEnrichmentModelProvider>(
-    configured.distillation.provider,
-  );
+  let distillationProvider = $state<BrainEnrichmentModelProvider>(configured.distillation.provider);
   // svelte-ignore state_referenced_locally
   let distillationModelId = $state(configured.distillation.modelId);
   // svelte-ignore state_referenced_locally
@@ -47,9 +45,7 @@
     configured.reranking?.provider ?? configured.distillation.provider,
   );
   // svelte-ignore state_referenced_locally
-  let rerankingModelId = $state(
-    configured.reranking?.modelId ?? configured.distillation.modelId,
-  );
+  let rerankingModelId = $state(configured.reranking?.modelId ?? configured.distillation.modelId);
   // svelte-ignore state_referenced_locally
   let dailyTokenBudget = $state(String(configured.dailyTokenBudget));
   let saving = $state(false);
@@ -57,7 +53,8 @@
   let saved = $state(false);
 
   const customAvailable = $derived(
-    data.adapterIds.length > 0 && data.modelCatalog.some((model) => model.provider === 'openrouter'),
+    data.adapterIds.length > 0 &&
+      data.modelCatalog.some((model) => model.provider === 'openrouter'),
   );
   const harnessOptions = $derived<SelectOption[]>([
     { value: 'drone', label: m.brains_settings_harness_drone() },
@@ -74,9 +71,13 @@
     return m.brains_settings_provider_openai();
   }
 
-  function availableProviders(selectedHarness: BrainEnrichmentHarness): BrainEnrichmentModelProvider[] {
+  function availableProviders(
+    selectedHarness: BrainEnrichmentHarness,
+  ): BrainEnrichmentModelProvider[] {
     const compatible = providersForHarness(selectedHarness);
-    return compatible.filter((provider) => data.modelCatalog.some((model) => model.provider === provider));
+    return compatible.filter((provider) =>
+      data.modelCatalog.some((model) => model.provider === provider),
+    );
   }
 
   function modelOptions(provider: BrainEnrichmentModelProvider): SelectOption[] {

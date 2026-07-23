@@ -154,7 +154,12 @@
       emptyReason = body.diagnostics?.emptyReason ?? null;
     } catch (caught) {
       if (!isCurrentBrainSearchRequest(requestIdentity, brainId, requestGeneration)) return;
-      if (caught && typeof caught === 'object' && 'name' in caught && caught.name === 'AbortError') {
+      if (
+        caught &&
+        typeof caught === 'object' &&
+        'name' in caught &&
+        caught.name === 'AbortError'
+      ) {
         return;
       }
       error = caught instanceof Error ? caught.message : m.brains_search_error();

@@ -29,7 +29,14 @@ import {
   listAllComponentEdges,
   type CreateIssueFromInvoiceLine,
 } from './stock.service';
-import { edgesByParent, explodeIssueRoots, round4, type ComponentEdge, type IssueRoot, type LineModifier } from './stock.logic';
+import {
+  edgesByParent,
+  explodeIssueRoots,
+  round4,
+  type ComponentEdge,
+  type IssueRoot,
+  type LineModifier,
+} from './stock.logic';
 import { stkItems, stkConsumption } from '$server/db/pg-schema/stock';
 import { finProducts } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
@@ -71,7 +78,9 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
 });
 
 export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
-  const [row] = await withOrgCore(ctx, (tx) => tx.select().from(posSettings).where(eq(posSettings.orgId, ctx.tenantId)).limit(1));
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx.select().from(posSettings).where(eq(posSettings.orgId, ctx.tenantId)).limit(1),
+  );
   // Defensive copy — callers get a mutable object, never the shared singleton.
   if (!row) return { ...DEFAULT_POS_SETTINGS, methods: [...DEFAULT_POS_SETTINGS.methods] };
   return {
@@ -82,11 +91,21 @@ export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
   };
 }
 
-export async function updatePosSettings(ctx: CoreCtx, patch: Partial<PosSettings>): Promise<PosSettings> {
+export async function updatePosSettings(
+  ctx: CoreCtx,
+  patch: Partial<PosSettings>,
+): Promise<PosSettings> {
   const current = await getPosSettings(ctx);
   const next: PosSettings = { ...current, ...patch };
-  if (!Array.isArray(next.methods) || next.methods.length === 0 || next.methods.some((m) => typeof m !== 'string' || m !== m.toLowerCase() || m.length === 0)) {
-    throw new PosError('methods must be a non-empty array of non-empty lowercase strings', 'invalid_methods');
+  if (
+    !Array.isArray(next.methods) ||
+    next.methods.length === 0 ||
+    next.methods.some((m) => typeof m !== 'string' || m !== m.toLowerCase() || m.length === 0)
+  ) {
+    throw new PosError(
+      'methods must be a non-empty array of non-empty lowercase strings',
+      'invalid_methods',
+    );
   }
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
@@ -120,14 +139,21 @@ const NON_VOID = ne(posTickets.status, 'void');
  * a float; electronic methods have no starting balance to reconcile).
  * Pure, so the math is unit-testable without a db.
  */
-export function computeExpected(byMethod: Record<string, number>, openingFloat: Record<string, number>): Record<string, number> {
+export function computeExpected(
+  byMethod: Record<string, number>,
+  openingFloat: Record<string, number>,
+): Record<string, number> {
   const expected = { ...byMethod };
   expected.cash = round2((expected.cash ?? 0) + Number(openingFloat.cash ?? 0));
   return expected;
 }
 
 /** Per-method payment sums, joined to non-void tickets, for one shift. */
-async function paymentsByMethod(tx: CoreTx, orgId: string, shiftId: string): Promise<Record<string, number>> {
+async function paymentsByMethod(
+  tx: CoreTx,
+  orgId: string,
+  shiftId: string,
+): Promise<Record<string, number>> {
   const rows = await tx
     .select({ method: posPayments.method, amount: posPayments.amount })
     .from(posPayments)
@@ -140,7 +166,9 @@ async function paymentsByMethod(tx: CoreTx, orgId: string, shiftId: string): Pro
   return byMethod;
 }
 
-export async function getOpenShift(ctx: CoreCtx): Promise<{ shift: PosShift; summary: ShiftSummary } | null> {
+export async function getOpenShift(
+  ctx: CoreCtx,
+): Promise<{ shift: PosShift; summary: ShiftSummary } | null> {
   const [shift] = await withOrgCore(ctx, (tx) =>
     tx
       .select()
@@ -153,7 +181,10 @@ export async function getOpenShift(ctx: CoreCtx): Promise<{ shift: PosShift; sum
   return { shift, summary };
 }
 
-export async function openShift(ctx: CoreCtx, input: { openingFloat: Record<string, number>; actor: Actor }): Promise<PosShift> {
+export async function openShift(
+  ctx: CoreCtx,
+  input: { openingFloat: Record<string, number>; actor: Actor },
+): Promise<PosShift> {
   return withOrgCore(ctx, async (tx) => {
     const [existing] = await tx
       .select({ id: posShifts.id })
@@ -170,7 +201,10 @@ export async function openShift(ctx: CoreCtx, input: { openingFloat: Record<stri
   });
 }
 
-export async function closeShift(ctx: CoreCtx, input: { counted: Record<string, number>; note?: string | null; actor: Actor }): Promise<PosShift> {
+export async function closeShift(
+  ctx: CoreCtx,
+  input: { counted: Record<string, number>; note?: string | null; actor: Actor },
+): Promise<PosShift> {
   return withOrgCore(ctx, async (tx) => {
     const [open] = await tx
       .select()
@@ -277,15 +311,30 @@ export function computeTicketTotals(
   const lineTotals = lines.map((l) => round2(l.qty * l.unitPrice - (l.discount ?? 0)));
   const subtotal = round2(lineTotals.reduce((a, b) => a + b, 0));
   const ticketDiscount = round2(discount ?? 0);
-  return { lineTotals, subtotal, discount: ticketDiscount, total: round2(subtotal - ticketDiscount) };
+  return {
+    lineTotals,
+    subtotal,
+    discount: ticketDiscount,
+    total: round2(subtotal - ticketDiscount),
+  };
 }
 
 async function loadTicketRow(ctx: CoreCtx, id: string): Promise<PosTicket | null> {
-  const [row] = await withOrgCore(ctx, (tx) => tx.select().from(posTickets).where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId))).limit(1));
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(posTickets)
+      .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
+      .limit(1),
+  );
   return row ?? null;
 }
 
-async function stampTicketStock(ctx: CoreCtx, id: string, patch: { stockEntryId: string | null; stockWarning: StockWarning | null }): Promise<void> {
+async function stampTicketStock(
+  ctx: CoreCtx,
+  id: string,
+  patch: { stockEntryId: string | null; stockWarning: StockWarning | null },
+): Promise<void> {
   await withOrgCore(ctx, (tx) =>
     tx
       .update(posTickets)
@@ -315,10 +364,17 @@ async function stampTicketStock(ctx: CoreCtx, id: string, patch: { stockEntryId:
  * consulted any more (it stays a display concern): a product-kind sellable
  * may legitimately carry a recipe.
  */
-async function resolveIssueLines(ctx: CoreCtx, lines: PosTicketLine[]): Promise<CreateIssueFromInvoiceLine[]> {
+async function resolveIssueLines(
+  ctx: CoreCtx,
+  lines: PosTicketLine[],
+): Promise<CreateIssueFromInvoiceLine[]> {
   // Every issuable line regardless of kind — the bridge AND the recipe are
   // looked up for all of them, and precedence decides per product.
-  const finIds = [...new Set(lines.filter((l) => !l.bookingId && l.finProductId).map((l) => l.finProductId as string))];
+  const finIds = [
+    ...new Set(
+      lines.filter((l) => !l.bookingId && l.finProductId).map((l) => l.finProductId as string),
+    ),
+  ];
 
   const itemByFinProductId = new Map<string, string>();
   const consumptionByFinProductId = new Map<string, { itemId: string; qtyPerUnit: number }[]>();
@@ -332,9 +388,18 @@ async function resolveIssueLines(ctx: CoreCtx, lines: PosTicketLine[]): Promise<
       ),
       withOrgCore(ctx, (tx) =>
         tx
-          .select({ finProductId: stkConsumption.finProductId, itemId: stkConsumption.itemId, qtyPerUnit: stkConsumption.qtyPerUnit })
+          .select({
+            finProductId: stkConsumption.finProductId,
+            itemId: stkConsumption.itemId,
+            qtyPerUnit: stkConsumption.qtyPerUnit,
+          })
           .from(stkConsumption)
-          .where(and(eq(stkConsumption.orgId, ctx.tenantId), inArray(stkConsumption.finProductId, finIds))),
+          .where(
+            and(
+              eq(stkConsumption.orgId, ctx.tenantId),
+              inArray(stkConsumption.finProductId, finIds),
+            ),
+          ),
       ),
     ]);
     for (const r of itemRows) if (r.finProductId) itemByFinProductId.set(r.finProductId, r.id);
@@ -363,7 +428,11 @@ async function resolveIssueLines(ctx: CoreCtx, lines: PosTicketLine[]): Promise<
     const bridgeItemId = itemByFinProductId.get(l.finProductId);
     // Recipe outranks the 1:1 bridge (see PRECEDENCE above).
     const roots: IssueRoot[] = mappings?.length
-      ? mappings.map((mp) => ({ itemId: mp.itemId, qty: qty * mp.qtyPerUnit, unitKind: 'consumption' }))
+      ? mappings.map((mp) => ({
+          itemId: mp.itemId,
+          qty: qty * mp.qtyPerUnit,
+          unitKind: 'consumption',
+        }))
       : bridgeItemId
         ? [{ itemId: bridgeItemId, qty, unitKind: 'stock' }]
         : [];
@@ -390,7 +459,10 @@ function lineModifiersOf(line: PosTicketLine): LineModifier[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
     (mod): mod is LineModifier =>
-      !!mod && typeof mod === 'object' && ((mod as LineModifier).action === 'exclude' || (mod as LineModifier).action === 'add') && typeof (mod as LineModifier).itemId === 'string',
+      !!mod &&
+      typeof mod === 'object' &&
+      ((mod as LineModifier).action === 'exclude' || (mod as LineModifier).action === 'add') &&
+      typeof (mod as LineModifier).itemId === 'string',
   );
 }
 
@@ -429,13 +501,21 @@ export async function loadComponentGraph(
  * anything new is created; only a truly fresh ticket resolves lines and
  * creates one.
  */
-export async function postTicketStock(ctx: CoreCtx, ticketId: string, actor: Actor): Promise<{ entryId: string | null; stockWarning: StockWarning | null }> {
+export async function postTicketStock(
+  ctx: CoreCtx,
+  ticketId: string,
+  actor: Actor,
+): Promise<{ entryId: string | null; stockWarning: StockWarning | null }> {
   const ticket = await loadTicketRow(ctx, ticketId);
   if (!ticket) throw new PosError('ticket not found', 'not_found');
   if (ticket.status === 'void') throw new PosError('ticket is void', 'already_void');
 
   if (ticket.stockEntryId) {
-    if (ticket.stockWarning) await stampTicketStock(ctx, ticketId, { stockEntryId: ticket.stockEntryId, stockWarning: null });
+    if (ticket.stockWarning)
+      await stampTicketStock(ctx, ticketId, {
+        stockEntryId: ticket.stockEntryId,
+        stockWarning: null,
+      });
     return { entryId: ticket.stockEntryId, stockWarning: null };
   }
 
@@ -458,7 +538,10 @@ export async function postTicketStock(ctx: CoreCtx, ticketId: string, actor: Act
   }
 
   const lines = await withOrgCore(ctx, (tx) =>
-    tx.select().from(posTicketLines).where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticketId))),
+    tx
+      .select()
+      .from(posTicketLines)
+      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticketId))),
   );
   const issueLines = await resolveIssueLines(ctx, lines);
   if (!issueLines.length) {
@@ -504,7 +587,10 @@ export async function postTicketStock(ctx: CoreCtx, ticketId: string, actor: Act
  * hook in scheduling-bookings.service.ts:299) — a stock hiccup degrades to a
  * stockWarning on the returned ticket, it never fails the sale.
  */
-export async function submitTicket(ctx: CoreCtx, input: SubmitTicketInput): Promise<{ ticket: PosTicket; stockWarning: StockWarning | null }> {
+export async function submitTicket(
+  ctx: CoreCtx,
+  input: SubmitTicketInput,
+): Promise<{ ticket: PosTicket; stockWarning: StockWarning | null }> {
   const settings = await getPosSettings(ctx);
 
   // ---- pure validation (throw PosError before any write) ----
@@ -515,14 +601,22 @@ export async function submitTicket(ctx: CoreCtx, input: SubmitTicketInput): Prom
   }
   for (const p of input.payments) {
     if (p.amount < 0) throw new PosError('payment amount must be >= 0', 'invalid_amount');
-    if (!settings.methods.includes(p.method)) throw new PosError(`unknown method ${p.method}`, 'invalid_method');
-    if (p.method !== 'cash' && p.tendered != null) throw new PosError('tendered is cash-only', 'invalid_tender');
-    if (p.method === 'cash' && p.tendered != null && p.tendered < p.amount) throw new PosError('tendered below amount', 'invalid_tender');
+    if (!settings.methods.includes(p.method))
+      throw new PosError(`unknown method ${p.method}`, 'invalid_method');
+    if (p.method !== 'cash' && p.tendered != null)
+      throw new PosError('tendered is cash-only', 'invalid_tender');
+    if (p.method === 'cash' && p.tendered != null && p.tendered < p.amount)
+      throw new PosError('tendered below amount', 'invalid_tender');
   }
-  const { lineTotals, subtotal, discount, total } = computeTicketTotals(input.lines, input.discount);
+  const { lineTotals, subtotal, discount, total } = computeTicketTotals(
+    input.lines,
+    input.discount,
+  );
   const paid = round2(input.payments.reduce((a, p) => a + p.amount, 0));
-  if (Math.abs(paid - total) >= 0.01) throw new PosError(`paid ${paid} != total ${total}`, 'payment_mismatch');
-  if (settings.requireCustomer && !input.partyId && !input.customerName) throw new PosError('customer required', 'customer_required');
+  if (Math.abs(paid - total) >= 0.01)
+    throw new PosError(`paid ${paid} != total ${total}`, 'payment_mismatch');
+  if (settings.requireCustomer && !input.partyId && !input.customerName)
+    throw new PosError('customer required', 'customer_required');
 
   // ---- money tx ----
   const ticket = await withOrgCore(ctx, async (tx) => {
@@ -585,10 +679,12 @@ export async function submitTicket(ctx: CoreCtx, input: SubmitTicketInput): Prom
     // ponytail: HubEvent's union lives in $server/events/emit.ts, a shared
     // file out of this task's two-file commit scope — cast rather than add
     // the 'pos.ticket_submitted' variant there.
-    await emitHubEvent(
-      tx,
-      { type: 'pos.ticket_submitted', orgId: ctx.tenantId, ticketId: row.id, total: String(total) } as unknown as Parameters<typeof emitHubEvent>[1],
-    );
+    await emitHubEvent(tx, {
+      type: 'pos.ticket_submitted',
+      orgId: ctx.tenantId,
+      ticketId: row.id,
+      total: String(total),
+    } as unknown as Parameters<typeof emitHubEvent>[1]);
     return row;
   });
 
@@ -601,7 +697,10 @@ export async function submitTicket(ctx: CoreCtx, input: SubmitTicketInput): Prom
     }
   } catch (e) {
     console.error('[pos] post-commit stock failed', ticket.id, e);
-    stockWarning = { code: 'stock_post_failed', message: e instanceof Error ? e.message : String(e) };
+    stockWarning = {
+      code: 'stock_post_failed',
+      message: e instanceof Error ? e.message : String(e),
+    };
   }
   return { ticket, stockWarning };
 }
@@ -616,7 +715,8 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
   const ticket = await loadTicketRow(ctx, id);
   if (!ticket) throw new PosError('ticket not found', 'not_found');
   if (ticket.status === 'void') throw new PosError('ticket already void', 'already_void');
-  if (ticket.invoiceProviderRef) throw new PosError('ticket is reconciled to an invoice', 'reconciled');
+  if (ticket.invoiceProviderRef)
+    throw new PosError('ticket is reconciled to an invoice', 'reconciled');
 
   const [shift] = await withOrgCore(ctx, (tx) =>
     tx
@@ -640,14 +740,22 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .update(posTickets)
-      .set({ status: 'void', voidedAt: new Date(), voidedBy: actor.id, ...(stockWarning ? { stockWarning } : {}) })
+      .set({
+        status: 'void',
+        voidedAt: new Date(),
+        voidedBy: actor.id,
+        ...(stockWarning ? { stockWarning } : {}),
+      })
       .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
       .returning(),
   );
   return row;
 }
 
-export function listTickets(ctx: CoreCtx, opts: { shiftId?: string; from?: Date; to?: Date; limit?: number } = {}): Promise<PosTicket[]> {
+export function listTickets(
+  ctx: CoreCtx,
+  opts: { shiftId?: string; from?: Date; to?: Date; limit?: number } = {},
+): Promise<PosTicket[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(posTickets.orgId, ctx.tenantId)];
     if (opts.shiftId) conds.push(eq(posTickets.shiftId, opts.shiftId));
@@ -662,7 +770,10 @@ export function listTickets(ctx: CoreCtx, opts: { shiftId?: string; from?: Date;
   });
 }
 
-export async function getTicket(ctx: CoreCtx, id: string): Promise<{ ticket: PosTicket; lines: PosTicketLine[]; payments: PosPayment[] } | null> {
+export async function getTicket(
+  ctx: CoreCtx,
+  id: string,
+): Promise<{ ticket: PosTicket; lines: PosTicketLine[]; payments: PosPayment[] } | null> {
   return withOrgCore(ctx, async (tx) => {
     const [ticket] = await tx
       .select()
@@ -670,8 +781,16 @@ export async function getTicket(ctx: CoreCtx, id: string): Promise<{ ticket: Pos
       .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
       .limit(1);
     if (!ticket) return null;
-    const lines = await tx.select().from(posTicketLines).where(eq(posTicketLines.ticketId, id)).orderBy(asc(posTicketLines.lineNo));
-    const payments = await tx.select().from(posPayments).where(eq(posPayments.ticketId, id)).orderBy(asc(posPayments.paidAt));
+    const lines = await tx
+      .select()
+      .from(posTicketLines)
+      .where(eq(posTicketLines.ticketId, id))
+      .orderBy(asc(posTicketLines.lineNo));
+    const payments = await tx
+      .select()
+      .from(posPayments)
+      .where(eq(posPayments.ticketId, id))
+      .orderBy(asc(posPayments.paidAt));
     return { ticket, lines, payments };
   });
 }
@@ -807,13 +926,23 @@ export interface SellableInput {
  * stock-accruals.service.ts) — a failed item/consumption write after the
  * product commits is acceptable, re-running with the same input heals it.
  */
-export async function createSellable(ctx: CoreCtx, input: SellableInput, actor: Actor): Promise<SellableRow> {
+export async function createSellable(
+  ctx: CoreCtx,
+  input: SellableInput,
+  actor: Actor,
+): Promise<SellableRow> {
   const code = input.code?.trim() || slugifyCode(input.name);
   if (!code) throw new PosError('name or code required', 'invalid_code');
   const active = input.active ?? true;
 
   try {
-    await upsertProduct(ctx, { code, name: input.name, category: input.category ?? null, unitPrice: input.unitPrice, active });
+    await upsertProduct(ctx, {
+      code,
+      name: input.name,
+      category: input.category ?? null,
+      unitPrice: input.unitPrice,
+      active,
+    });
   } catch (e) {
     if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
     throw e;
@@ -837,16 +966,26 @@ export async function createSellable(ctx: CoreCtx, input: SellableInput, actor: 
       const linked = await updateItem(ctx, input.itemId, { finProductId: product.id });
       if (!linked) throw new PosError('stock item not found', 'item_not_found');
     } catch (e) {
-      if (isUniqueViolation(e)) throw new PosError('that item is already published as a sellable', 'item_taken');
+      if (isUniqueViolation(e))
+        throw new PosError('that item is already published as a sellable', 'item_taken');
       throw e;
     }
   } else if (input.kind === 'product' && input.trackStock) {
-    await createItem(ctx, { code, name: input.name, uom: input.uom ?? 'unit', finProductId: product.id });
+    await createItem(ctx, {
+      code,
+      name: input.name,
+      uom: input.uom ?? 'unit',
+      finProductId: product.id,
+    });
   }
 
   if (input.consumption?.length) {
     for (const c of input.consumption) {
-      await setConsumption(ctx, { finProductId: product.id, itemId: c.itemId, qtyPerUnit: c.qtyPerUnit }, actor);
+      await setConsumption(
+        ctx,
+        { finProductId: product.id, itemId: c.itemId, qtyPerUnit: c.qtyPerUnit },
+        actor,
+      );
     }
   }
 
@@ -861,7 +1000,12 @@ export async function createSellable(ctx: CoreCtx, input: SellableInput, actor: 
  * the new array are removed via deleteConsumption, the rest upserted via
  * setConsumption. `consumption` omitted leaves existing mappings untouched.
  */
-export async function updateSellable(ctx: CoreCtx, productId: string, patch: Partial<SellableInput>, actor: Actor): Promise<SellableRow> {
+export async function updateSellable(
+  ctx: CoreCtx,
+  productId: string,
+  patch: Partial<SellableInput>,
+  actor: Actor,
+): Promise<SellableRow> {
   const [current] = await withOrgCore(ctx, (tx) =>
     tx
       .select()
@@ -874,7 +1018,12 @@ export async function updateSellable(ctx: CoreCtx, productId: string, patch: Par
   const code = patch.code?.trim() || current.code;
   const name = patch.name ?? current.name;
   const category = patch.category !== undefined ? patch.category : current.category;
-  const unitPrice = patch.unitPrice !== undefined ? patch.unitPrice : current.unitPrice == null ? null : Number(current.unitPrice);
+  const unitPrice =
+    patch.unitPrice !== undefined
+      ? patch.unitPrice
+      : current.unitPrice == null
+        ? null
+        : Number(current.unitPrice);
   const active = patch.active !== undefined ? patch.active : current.active;
 
   try {
@@ -891,7 +1040,11 @@ export async function updateSellable(ctx: CoreCtx, productId: string, patch: Par
       if (!keep.has(row.itemId)) await deleteConsumption(ctx, row.id);
     }
     for (const c of patch.consumption) {
-      await setConsumption(ctx, { finProductId: productId, itemId: c.itemId, qtyPerUnit: c.qtyPerUnit }, actor);
+      await setConsumption(
+        ctx,
+        { finProductId: productId, itemId: c.itemId, qtyPerUnit: c.qtyPerUnit },
+        actor,
+      );
     }
   }
 

@@ -227,11 +227,23 @@
       bind:value={code}
       oninput={() => (codeTouched = true)}
     />
-    <Input size="sm" label={m.fin_col_category()} list="pos-catalog-categories" bind:value={category} />
+    <Input
+      size="sm"
+      label={m.fin_col_category()}
+      list="pos-catalog-categories"
+      bind:value={category}
+    />
     <datalist id="pos-catalog-categories">
       {#each categories as c (c)}<option value={c}></option>{/each}
     </datalist>
-    <Input size="sm" type="number" min="0" step="0.01" label={m.pos_sell_price()} bind:value={unitPrice} />
+    <Input
+      size="sm"
+      type="number"
+      min="0"
+      step="0.01"
+      label={m.pos_sell_price()}
+      bind:value={unitPrice}
+    />
 
     {#if editing}
       <!-- updateSellable ignores kind/trackStock/uom on PATCH — showing live
@@ -252,7 +264,8 @@
                     value: 'existing-item',
                     label: m.pos_catalog_source_existing_item(),
                     disabled: availableItems.length === 0,
-                    title: availableItems.length === 0 ? m.pos_catalog_no_unlinked_items() : undefined,
+                    title:
+                      availableItems.length === 0 ? m.pos_catalog_no_unlinked_items() : undefined,
                   },
                 ]
               : []),

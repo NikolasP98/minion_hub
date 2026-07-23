@@ -36,12 +36,31 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   try {
     const item = await updateItem(ctx, params.id!, {
       ...body,
-      reorderLevel: body.reorderLevel === undefined ? undefined : body.reorderLevel == null ? null : String(body.reorderLevel),
-      reorderQty: body.reorderQty === undefined ? undefined : body.reorderQty == null ? null : String(body.reorderQty),
+      reorderLevel:
+        body.reorderLevel === undefined
+          ? undefined
+          : body.reorderLevel == null
+            ? null
+            : String(body.reorderLevel),
+      reorderQty:
+        body.reorderQty === undefined
+          ? undefined
+          : body.reorderQty == null
+            ? null
+            : String(body.reorderQty),
       moq: body.moq === undefined ? undefined : body.moq == null ? null : String(body.moq),
-      unitsPerStockUom: body.unitsPerStockUom === undefined ? undefined : body.unitsPerStockUom == null ? null : String(body.unitsPerStockUom),
+      unitsPerStockUom:
+        body.unitsPerStockUom === undefined
+          ? undefined
+          : body.unitsPerStockUom == null
+            ? null
+            : String(body.unitsPerStockUom),
       subunitsPerStockUom:
-        body.subunitsPerStockUom === undefined ? undefined : body.subunitsPerStockUom == null ? null : String(body.subunitsPerStockUom),
+        body.subunitsPerStockUom === undefined
+          ? undefined
+          : body.subunitsPerStockUom == null
+            ? null
+            : String(body.subunitsPerStockUom),
     });
     if (!item) throw error(404);
     return json(item);

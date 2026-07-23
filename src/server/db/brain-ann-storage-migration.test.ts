@@ -3,10 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const guardFilename = '20260722233000_brain_ann_storage_guard.sql';
 const migrationsUrl = new URL('../../../supabase/migrations/', import.meta.url);
-const migration = readFileSync(
-  new URL(guardFilename, migrationsUrl),
-  'utf8',
-).toLowerCase();
+const migration = readFileSync(new URL(guardFilename, migrationsUrl), 'utf8').toLowerCase();
 
 describe('Brain ANN storage guard migration', () => {
   it('removes only the optional vector acceleration indexes', () => {
@@ -21,7 +18,9 @@ describe('Brain ANN storage guard migration', () => {
     expect(migration).not.toContain('messages_org_client_id_uniq');
     expect(migration).not.toContain('messages_org_channel_account_msg_uniq');
     expect(migration).not.toMatch(/drop\s+(table|column)/);
-    expect(migration).not.toMatch(/\b(create\s+index|alter\s+table|insert\s+into|update\s+|delete\s+from|truncate\s+)/);
+    expect(migration).not.toMatch(
+      /\b(create\s+index|alter\s+table|insert\s+into|update\s+|delete\s+from|truncate\s+)/,
+    );
   });
 
   it('documents exact retrieval as the supported fallback', () => {

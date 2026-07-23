@@ -23,7 +23,8 @@
   //    — picking the wrong one provisions a channel into the wrong place.
   const activeOrgId = $derived((page.data as { activeOrgId?: string | null })?.activeOrgId ?? null);
   const orgNameById = $derived.by(() => {
-    const orgs = (page.data as { organizations?: { id: string; name: string }[] })?.organizations ?? [];
+    const orgs =
+      (page.data as { organizations?: { id: string; name: string }[] })?.organizations ?? [];
     return new Map(orgs.map((o) => [o.id, o.name]));
   });
   const visibleHosts = $derived(

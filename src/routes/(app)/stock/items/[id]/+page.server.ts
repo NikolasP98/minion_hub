@@ -2,7 +2,14 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
-import { listItems, listWarehouses, getBins, getLedger, listConsumption, itemSupplyInfo } from '$server/services/stock.service';
+import {
+  listItems,
+  listWarehouses,
+  getBins,
+  getLedger,
+  listConsumption,
+  itemSupplyInfo,
+} from '$server/services/stock.service';
 import { getParty } from '$server/services/party.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 
@@ -26,7 +33,9 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const warehouseById = new Map(warehouses.map((w) => [w.id, w]));
   // Standing supplier name for the picker's initial label (the picker itself
   // only round-trips an id).
-  const supplier = item.defaultSupplierPartyId ? await getParty(ctx, item.defaultSupplierPartyId) : null;
+  const supplier = item.defaultSupplierPartyId
+    ? await getParty(ctx, item.defaultSupplierPartyId)
+    : null;
   const supplyInfo = supply.get(item.id) ?? null;
 
   return {
@@ -38,8 +47,14 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
       lastSupplierName: supplyInfo?.supplierName ?? null,
     },
     itemIds: items.map((i) => i.id), // ordered ids only (keep payload small) — [ / ] prev/next nav
-    bins: bins.map((b) => ({ ...b, warehouseName: warehouseById.get(b.warehouseId)?.name ?? b.warehouseId })),
-    ledger: ledger.map((l) => ({ ...l, warehouseName: warehouseById.get(l.warehouseId)?.name ?? l.warehouseId })),
+    bins: bins.map((b) => ({
+      ...b,
+      warehouseName: warehouseById.get(b.warehouseId)?.name ?? b.warehouseId,
+    })),
+    ledger: ledger.map((l) => ({
+      ...l,
+      warehouseName: warehouseById.get(l.warehouseId)?.name ?? l.warehouseId,
+    })),
     consumedBy,
   };
 };

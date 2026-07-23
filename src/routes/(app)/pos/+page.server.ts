@@ -7,7 +7,11 @@ export const load: PageServerLoad = async ({ parent }) => {
   const { permissions, schedulingEnabled } = await parent();
   const perms = permissions.permissions;
 
-  const candidates = ['/pos/sell', ...(schedulingEnabled ? ['/pos/appointments'] : []), '/pos/catalog'];
+  const candidates = [
+    '/pos/sell',
+    ...(schedulingEnabled ? ['/pos/appointments'] : []),
+    '/pos/catalog',
+  ];
 
   for (const href of candidates) {
     const perm = requiredViewPermForPath(href);

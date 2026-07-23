@@ -27,10 +27,11 @@ function isMode(v: unknown): v is HistorySyncMode {
 }
 
 /** Read the global default out of a gateway config snapshot. */
-export function readGlobalHistorySync(config: Record<string, unknown> | undefined): HistorySyncMode {
-  const v = (
-    config?.gateway as { messageLedger?: { historySync?: unknown } } | undefined
-  )?.messageLedger?.historySync;
+export function readGlobalHistorySync(
+  config: Record<string, unknown> | undefined,
+): HistorySyncMode {
+  const v = (config?.gateway as { messageLedger?: { historySync?: unknown } } | undefined)
+    ?.messageLedger?.historySync;
   return isMode(v) ? v : HISTORY_SYNC_DEFAULT;
 }
 
@@ -42,8 +43,7 @@ export function readAccountHistorySync(
   if (!accountId) return null;
   const v = (
     config?.channels as
-      | { whatsapp?: { accounts?: Record<string, { historySync?: unknown }> } }
-      | undefined
+      { whatsapp?: { accounts?: Record<string, { historySync?: unknown }> } } | undefined
   )?.whatsapp?.accounts?.[accountId]?.historySync;
   return isMode(v) ? v : null;
 }
@@ -59,10 +59,7 @@ export function selectedChoice(
 }
 
 /** What actually happens on the wire for the given choice. */
-export function effectiveMode(
-  choice: HistorySyncChoice,
-  global: HistorySyncMode,
-): HistorySyncMode {
+export function effectiveMode(choice: HistorySyncChoice, global: HistorySyncMode): HistorySyncMode {
   return choice === INHERIT ? global : choice;
 }
 

@@ -15,13 +15,26 @@ const { MockStockError } = vi.hoisted(() => ({
   },
 }));
 const createSourcedIssueMock = vi.fn<(ctx: unknown, input: unknown) => Promise<{ id: string }>>();
-const findEntryBySourceMock = vi.fn<(ctx: unknown, source: string, sourceId: string) => Promise<{ id: string; status: string } | null>>();
-const submitEntryMock = vi.fn<(ctx: unknown, id: string, actor: unknown) => Promise<{ id: string }>>();
-const cancelEntryMock = vi.fn<(ctx: unknown, id: string, actor: unknown) => Promise<{ id: string }>>();
-const listAllComponentEdgesMock = vi.fn<(ctx: unknown) => Promise<Array<{ parentItemId: string; childItemId: string; qty: number }>>>();
+const findEntryBySourceMock =
+  vi.fn<
+    (
+      ctx: unknown,
+      source: string,
+      sourceId: string,
+    ) => Promise<{ id: string; status: string } | null>
+  >();
+const submitEntryMock =
+  vi.fn<(ctx: unknown, id: string, actor: unknown) => Promise<{ id: string }>>();
+const cancelEntryMock =
+  vi.fn<(ctx: unknown, id: string, actor: unknown) => Promise<{ id: string }>>();
+const listAllComponentEdgesMock =
+  vi.fn<
+    (ctx: unknown) => Promise<Array<{ parentItemId: string; childItemId: string; qty: number }>>
+  >();
 vi.mock('./stock.service', () => ({
   createSourcedIssue: (ctx: unknown, input: unknown) => createSourcedIssueMock(ctx, input),
-  findEntryBySource: (ctx: unknown, source: string, sourceId: string) => findEntryBySourceMock(ctx, source, sourceId),
+  findEntryBySource: (ctx: unknown, source: string, sourceId: string) =>
+    findEntryBySourceMock(ctx, source, sourceId),
   submitEntry: (ctx: unknown, id: string, actor: unknown) => submitEntryMock(ctx, id, actor),
   cancelEntry: (ctx: unknown, id: string, actor: unknown) => cancelEntryMock(ctx, id, actor),
   StockError: MockStockError,
@@ -38,7 +51,13 @@ vi.mock('./stock-accruals.service', () => ({
 // ── modules.service mock (isModuleEnabled) ──
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => true }));
 
-import { submitTicket, postTicketStock, voidTicket, computeTicketTotals, type SubmitTicketInput } from './pos.service';
+import {
+  submitTicket,
+  postTicketStock,
+  voidTicket,
+  computeTicketTotals,
+  type SubmitTicketInput,
+} from './pos.service';
 
 /** The mock `Db` is typed as the sqlite/libsql client and doesn't expose
  *  `execute` — narrow-cast to reach the vi.fn the mock harness caches there. */
@@ -80,23 +99,32 @@ function ticketRow(overrides: Record<string, unknown> = {}) {
 
 describe('computeTicketTotals — pure money math (the persisted path)', () => {
   it('multi-line happy path: subtotal = Σ line totals, total = subtotal with no discounts', () => {
-    expect(computeTicketTotals([
-      { kind: 'product', description: 'A', qty: 2, unitPrice: 10 },
-      { kind: 'service', description: 'B', qty: 1, unitPrice: 50 },
-    ])).toEqual({ lineTotals: [20, 50], subtotal: 70, discount: 0, total: 70 });
+    expect(
+      computeTicketTotals([
+        { kind: 'product', description: 'A', qty: 2, unitPrice: 10 },
+        { kind: 'service', description: 'B', qty: 1, unitPrice: 50 },
+      ]),
+    ).toEqual({ lineTotals: [20, 50], subtotal: 70, discount: 0, total: 70 });
   });
 
   it('line discount is applied per line, inside the line total', () => {
-    expect(computeTicketTotals([
-      { kind: 'product', description: 'A', qty: 3, unitPrice: 10, discount: 5 },
-    ])).toEqual({ lineTotals: [25], subtotal: 25, discount: 0, total: 25 });
+    expect(
+      computeTicketTotals([
+        { kind: 'product', description: 'A', qty: 3, unitPrice: 10, discount: 5 },
+      ]),
+    ).toEqual({ lineTotals: [25], subtotal: 25, discount: 0, total: 25 });
   });
 
   it('ticket-level discount is subtracted once from the subtotal, not per line', () => {
-    expect(computeTicketTotals([
-      { kind: 'product', description: 'A', qty: 1, unitPrice: 40 },
-      { kind: 'product', description: 'B', qty: 1, unitPrice: 60 },
-    ], 10)).toEqual({ lineTotals: [40, 60], subtotal: 100, discount: 10, total: 90 });
+    expect(
+      computeTicketTotals(
+        [
+          { kind: 'product', description: 'A', qty: 1, unitPrice: 40 },
+          { kind: 'product', description: 'B', qty: 1, unitPrice: 60 },
+        ],
+        10,
+      ),
+    ).toEqual({ lineTotals: [40, 60], subtotal: 100, discount: 10, total: 90 });
   });
 
   it('rounds float drift to exact 2dp at every stage (3 × 0.10 = 0.30, not 0.30000000000000004)', () => {
@@ -216,7 +244,21 @@ describe('submitTicket — happy path', () => {
       [], // insert lines
       [], // insert payments
       [ticketRow()], // postTicketStock: loadTicketRow
-      [{ id: 'line-1', orgId: 'org-1', ticketId: 'ticket-1', kind: 'product', finProductId: 'fp-1', bookingId: null, qty: '2', unitPrice: '10', discount: '0', total: '20', lineNo: 0 }], // ticket lines
+      [
+        {
+          id: 'line-1',
+          orgId: 'org-1',
+          ticketId: 'ticket-1',
+          kind: 'product',
+          finProductId: 'fp-1',
+          bookingId: null,
+          qty: '2',
+          unitPrice: '10',
+          discount: '0',
+          total: '20',
+          lineNo: 0,
+        },
+      ], // ticket lines
       [{ id: 'item-1', finProductId: 'fp-1' }], // stk_items batch lookup
       [], // stampTicketStock update
     ]);
@@ -224,7 +266,9 @@ describe('submitTicket — happy path', () => {
     createSourcedIssueMock.mockResolvedValue({ id: 'entry-1' });
 
     const input: SubmitTicketInput = {
-      lines: [{ kind: 'product', finProductId: 'fp-1', description: 'Retail', qty: 2, unitPrice: 10 }],
+      lines: [
+        { kind: 'product', finProductId: 'fp-1', description: 'Retail', qty: 2, unitPrice: 10 },
+      ],
       payments: [{ method: 'cash', amount: 20, tendered: 20 }],
       actor,
     };
@@ -235,7 +279,12 @@ describe('submitTicket — happy path', () => {
     expect(result.stockWarning).toBeNull();
     expect(db.insert).toHaveBeenCalled();
     expect(createSourcedIssueMock).toHaveBeenCalledTimes(1);
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[]; warehouseId: string; source: string; sourceId: string };
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qty: number }[];
+      warehouseId: string;
+      source: string;
+      sourceId: string;
+    };
     expect(call.lines).toEqual([{ itemId: 'item-1', qty: 2 }]);
     expect(call.warehouseId).toBe('wh-1');
     expect(call.source).toBe('pos');
@@ -255,8 +304,32 @@ describe('submitTicket — booking-linked lines never issue', () => {
       [], // insert payments
       [ticketRow({ total: '70', subtotal: '70' })], // postTicketStock: loadTicketRow
       [
-        { id: 'line-1', orgId: 'org-1', ticketId: 'ticket-1', kind: 'service', finProductId: 'fp-svc', bookingId: 'bkg-1', qty: '1', unitPrice: '50', discount: '0', total: '50', lineNo: 0 },
-        { id: 'line-2', orgId: 'org-1', ticketId: 'ticket-1', kind: 'product', finProductId: 'fp-1', bookingId: null, qty: '2', unitPrice: '10', discount: '0', total: '20', lineNo: 1 },
+        {
+          id: 'line-1',
+          orgId: 'org-1',
+          ticketId: 'ticket-1',
+          kind: 'service',
+          finProductId: 'fp-svc',
+          bookingId: 'bkg-1',
+          qty: '1',
+          unitPrice: '50',
+          discount: '0',
+          total: '50',
+          lineNo: 0,
+        },
+        {
+          id: 'line-2',
+          orgId: 'org-1',
+          ticketId: 'ticket-1',
+          kind: 'product',
+          finProductId: 'fp-1',
+          bookingId: null,
+          qty: '2',
+          unitPrice: '10',
+          discount: '0',
+          total: '20',
+          lineNo: 1,
+        },
       ], // ticket lines
       [{ id: 'item-1', finProductId: 'fp-1' }], // stk_items batch lookup — booking line's fin id never queried
       [], // stampTicketStock update
@@ -266,7 +339,14 @@ describe('submitTicket — booking-linked lines never issue', () => {
 
     const input: SubmitTicketInput = {
       lines: [
-        { kind: 'service', finProductId: 'fp-svc', bookingId: 'bkg-1', description: 'Massage', qty: 1, unitPrice: 50 },
+        {
+          kind: 'service',
+          finProductId: 'fp-svc',
+          bookingId: 'bkg-1',
+          description: 'Massage',
+          qty: 1,
+          unitPrice: 50,
+        },
         { kind: 'product', finProductId: 'fp-1', description: 'Retail', qty: 2, unitPrice: 10 },
       ],
       payments: [{ method: 'cash', amount: 70, tendered: 70 }],
@@ -274,7 +354,9 @@ describe('submitTicket — booking-linked lines never issue', () => {
     };
     await submitTicket(ctx(db), input);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qty: number }[];
+    };
     expect(call.lines).toEqual([{ itemId: 'item-1', qty: 2 }]);
   });
 });
@@ -285,9 +367,36 @@ describe('postTicketStock — line resolution', () => {
     resolveSequence([
       [ticketRow({ id: 'ticket-8' })], // loadTicketRow
       [
-        { id: 'l1', orgId: 'org-1', ticketId: 'ticket-8', kind: 'product', finProductId: 'fp-prod', bookingId: null, qty: '3', unitPrice: '10' },
-        { id: 'l2', orgId: 'org-1', ticketId: 'ticket-8', kind: 'service', finProductId: 'fp-svc', bookingId: null, qty: '2', unitPrice: '30' },
-        { id: 'l3', orgId: 'org-1', ticketId: 'ticket-8', kind: 'product', finProductId: 'fp-unmapped', bookingId: null, qty: '1', unitPrice: '5' },
+        {
+          id: 'l1',
+          orgId: 'org-1',
+          ticketId: 'ticket-8',
+          kind: 'product',
+          finProductId: 'fp-prod',
+          bookingId: null,
+          qty: '3',
+          unitPrice: '10',
+        },
+        {
+          id: 'l2',
+          orgId: 'org-1',
+          ticketId: 'ticket-8',
+          kind: 'service',
+          finProductId: 'fp-svc',
+          bookingId: null,
+          qty: '2',
+          unitPrice: '30',
+        },
+        {
+          id: 'l3',
+          orgId: 'org-1',
+          ticketId: 'ticket-8',
+          kind: 'product',
+          finProductId: 'fp-unmapped',
+          bookingId: null,
+          qty: '1',
+          unitPrice: '5',
+        },
       ], // ticket lines
       [{ id: 'item-a', finProductId: 'fp-prod' }], // stk_items batch lookup (fp-unmapped has no match)
       [{ finProductId: 'fp-svc', itemId: 'item-b', qtyPerUnit: '5' }], // stk_consumption batch lookup
@@ -298,7 +407,9 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-8', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qty: number; qtyConsumption?: number }[];
+    };
     expect(call.lines).toEqual([
       { itemId: 'item-a', qty: 3 }, // 1:1
       { itemId: 'item-b', qty: 10, qtyConsumption: 10 }, // 2 × 5 consumption-UOM
@@ -312,7 +423,18 @@ describe('postTicketStock — line resolution', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 'ticket-r1' })],
-      [{ id: 'l1', orgId: 'org-1', ticketId: 'ticket-r1', kind: 'product', finProductId: 'fp-kit', bookingId: null, qty: '2', unitPrice: '40' }],
+      [
+        {
+          id: 'l1',
+          orgId: 'org-1',
+          ticketId: 'ticket-r1',
+          kind: 'product',
+          finProductId: 'fp-kit',
+          bookingId: null,
+          qty: '2',
+          unitPrice: '40',
+        },
+      ],
       [{ id: 'item-kit', finProductId: 'fp-kit' }], // bridge exists…
       [
         // …but a real recipe naming OTHER items wins over it
@@ -326,7 +448,9 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-r1', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qty: number; qtyConsumption?: number }[];
+    };
     expect(call.lines).toEqual([
       { itemId: 'item-x', qty: 6, qtyConsumption: 6 }, // 2 × 3 consumption-UOM
       { itemId: 'item-y', qty: 2, qtyConsumption: 2 }, // 2 × 1 consumption-UOM
@@ -339,8 +463,26 @@ describe('postTicketStock — line resolution', () => {
     resolveSequence([
       [ticketRow({ id: 'ticket-mixed-uom' })],
       [
-        { id: 'l1', orgId: 'org-1', ticketId: 'ticket-mixed-uom', kind: 'product', finProductId: 'fp-vial', bookingId: null, qty: '1', unitPrice: '20' },
-        { id: 'l2', orgId: 'org-1', ticketId: 'ticket-mixed-uom', kind: 'service', finProductId: 'fp-procedure', bookingId: null, qty: '1', unitPrice: '80' },
+        {
+          id: 'l1',
+          orgId: 'org-1',
+          ticketId: 'ticket-mixed-uom',
+          kind: 'product',
+          finProductId: 'fp-vial',
+          bookingId: null,
+          qty: '1',
+          unitPrice: '20',
+        },
+        {
+          id: 'l2',
+          orgId: 'org-1',
+          ticketId: 'ticket-mixed-uom',
+          kind: 'service',
+          finProductId: 'fp-procedure',
+          bookingId: null,
+          qty: '1',
+          unitPrice: '80',
+        },
       ],
       [{ id: 'item-h', finProductId: 'fp-vial' }],
       [{ finProductId: 'fp-procedure', itemId: 'item-h', qtyPerUnit: '10' }],
@@ -351,7 +493,9 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-mixed-uom', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qty: number; qtyConsumption?: number }[];
+    };
     expect(call.lines).toEqual([
       { itemId: 'item-h', qty: 1 }, // one whole vial sold
       { itemId: 'item-h', qty: 10, qtyConsumption: 10 }, // plus 10 mL consumed by the procedure
@@ -387,7 +531,9 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-mod', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qty: number; qtyConsumption?: number }[];
+    };
     expect(call.lines).toEqual([
       { itemId: 'item-drink', qty: 1 },
       { itemId: 'item-a', qty: 1, qtyConsumption: 1 },
@@ -401,7 +547,18 @@ describe('postTicketStock — line resolution', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 'ticket-r2' })],
-      [{ id: 'l1', orgId: 'org-1', ticketId: 'ticket-r2', kind: 'product', finProductId: 'fp-h', bookingId: null, qty: '2', unitPrice: '80' }],
+      [
+        {
+          id: 'l1',
+          orgId: 'org-1',
+          ticketId: 'ticket-r2',
+          kind: 'product',
+          finProductId: 'fp-h',
+          bookingId: null,
+          qty: '2',
+          unitPrice: '80',
+        },
+      ],
       [{ id: 'item-h', finProductId: 'fp-h' }],
       [{ finProductId: 'fp-h', itemId: 'item-h', qtyPerUnit: '10' }], // self-map
       [],
@@ -411,7 +568,9 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-r2', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qty: number; qtyConsumption?: number }[];
+    };
     expect(call.lines).toEqual([{ itemId: 'item-h', qty: 20, qtyConsumption: 20 }]); // 20 mL; stock service converts using vial capacity
   });
 
@@ -421,7 +580,18 @@ describe('postTicketStock — line resolution', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 'ticket-x1' })],
-      [{ id: 'l1', orgId: 'org-1', ticketId: 'ticket-x1', kind: 'product', finProductId: 'fp-plate', bookingId: null, qty: '1', unitPrice: '90' }],
+      [
+        {
+          id: 'l1',
+          orgId: 'org-1',
+          ticketId: 'ticket-x1',
+          kind: 'product',
+          finProductId: 'fp-plate',
+          bookingId: null,
+          qty: '1',
+          unitPrice: '90',
+        },
+      ],
       [{ id: 'item-plate', finProductId: 'fp-plate' }], // bridge
       [], // no stk_consumption recipe
       [
@@ -441,17 +611,32 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-x1', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number; qtyConsumption?: number }[] };
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qty: number; qtyConsumption?: number }[];
+    };
     expect(call.lines).toEqual([{ itemId: 'item-potato', qty: 6, qtyConsumption: 6 }]);
     // the composite and the intermediate sub-recipe are never issued
-    expect(call.lines.some((l) => l.itemId === 'item-plate' || l.itemId === 'item-mash')).toBe(false);
+    expect(call.lines.some((l) => l.itemId === 'item-plate' || l.itemId === 'item-mash')).toBe(
+      false,
+    );
   });
 
   it('service-kind WITHOUT a recipe but WITH a bridge falls back to 1:1', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 'ticket-r3' })],
-      [{ id: 'l1', orgId: 'org-1', ticketId: 'ticket-r3', kind: 'service', finProductId: 'fp-s', bookingId: null, qty: '4', unitPrice: '15' }],
+      [
+        {
+          id: 'l1',
+          orgId: 'org-1',
+          ticketId: 'ticket-r3',
+          kind: 'service',
+          finProductId: 'fp-s',
+          bookingId: null,
+          qty: '4',
+          unitPrice: '15',
+        },
+      ],
       [{ id: 'item-s', finProductId: 'fp-s' }],
       [], // no recipe
       [],
@@ -461,7 +646,9 @@ describe('postTicketStock — line resolution', () => {
 
     await postTicketStock(ctx(db), 'ticket-r3', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string; qty: number }[] };
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qty: number }[];
+    };
     expect(call.lines).toEqual([{ itemId: 'item-s', qty: 4 }]);
   });
 });
@@ -477,12 +664,25 @@ describe('submitTicket — stock fail-soft', () => {
       [], // insert lines
       [], // insert payments
       [ticketRow({ id: 'ticket-9' })], // postTicketStock: loadTicketRow
-      [{ id: 'line-1', orgId: 'org-1', ticketId: 'ticket-9', kind: 'product', finProductId: 'fp-1', bookingId: null, qty: '1', unitPrice: '20' }], // ticket lines
+      [
+        {
+          id: 'line-1',
+          orgId: 'org-1',
+          ticketId: 'ticket-9',
+          kind: 'product',
+          finProductId: 'fp-1',
+          bookingId: null,
+          qty: '1',
+          unitPrice: '20',
+        },
+      ], // ticket lines
       [{ id: 'item-1', finProductId: 'fp-1' }], // stk_items batch lookup
       [], // stampTicketStock update (stores the warning)
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
-    createSourcedIssueMock.mockRejectedValue(new MockStockError('insufficient stock', 'negative_stock'));
+    createSourcedIssueMock.mockRejectedValue(
+      new MockStockError('insufficient stock', 'negative_stock'),
+    );
 
     const input: SubmitTicketInput = {
       lines: [{ kind: 'product', finProductId: 'fp-1', description: 'X', qty: 1, unitPrice: 20 }],

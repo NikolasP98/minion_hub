@@ -19,7 +19,12 @@
   // ponytail: backend contract fields (consumptionUom/unitsPerStockUom/subunitsPerStockUom/
   // diagramEnabled) are landing via a parallel migration — intersect optionally so this
   // page compiles against the contract before the columns exist server-side.
-  type ItemUom = PageData['item'] & Partial<UomConvertible> & { diagramEnabled?: boolean; unitSvg?: string | null; subunitSvg?: string | null };
+  type ItemUom = PageData['item'] &
+    Partial<UomConvertible> & {
+      diagramEnabled?: boolean;
+      unitSvg?: string | null;
+      subunitSvg?: string | null;
+    };
   const item = $derived(data.item as ItemUom);
 
   let editing = $state(false);
@@ -53,7 +58,11 @@
    *  think in, so they type it and the total is computed. */
   let editPerSubunit = $state('');
 
-  function modeOf(i: { consumptionUom?: string | null; unitsPerStockUom?: number | string | null; subunitsPerStockUom?: number | string | null }): PackagingMode {
+  function modeOf(i: {
+    consumptionUom?: string | null;
+    unitsPerStockUom?: number | string | null;
+    subunitsPerStockUom?: number | string | null;
+  }): PackagingMode {
     if (!i.consumptionUom || !Number(i.unitsPerStockUom)) return 'none';
     return Number(i.subunitsPerStockUom) > 0 ? 'nested' : 'bulk';
   }
@@ -68,7 +77,8 @@
     editUom = item.uom;
     editConsumptionUom = item.consumptionUom ?? '';
     editUnitsPerStockUom = item.unitsPerStockUom != null ? String(item.unitsPerStockUom) : '';
-    editSubunitsPerStockUom = item.subunitsPerStockUom != null ? String(item.subunitsPerStockUom) : '';
+    editSubunitsPerStockUom =
+      item.subunitsPerStockUom != null ? String(item.subunitsPerStockUom) : '';
     editDiagramEnabled = item.diagramEnabled ?? false;
     editUnitSvg = item.unitSvg ?? null;
     editSubunitSvg = item.subunitSvg ?? null;
@@ -101,7 +111,9 @@
   /** Sub-unit counts must be whole — markerGrid() and the on-hand split below
    *  both assume it. */
   const subunitsError = $derived(
-    mode === 'nested' && editSubunitsPerStockUom !== '' && !Number.isInteger(Number(editSubunitsPerStockUom))
+    mode === 'nested' &&
+      editSubunitsPerStockUom !== '' &&
+      !Number.isInteger(Number(editSubunitsPerStockUom))
       ? m.stock_uom_err_subunits_integer()
       : undefined,
   );
@@ -119,12 +131,16 @@
   const qty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
   const previewUom = $derived(editUom || m.stock_uom_order_unit_generic());
   const previewComplete = $derived(
-    mode !== 'none' && !!editConsumptionUom && Number(editUnitsPerStockUom) > 0 && (mode === 'bulk' || Number(editSubunitsPerStockUom) > 0),
+    mode !== 'none' &&
+      !!editConsumptionUom &&
+      Number(editUnitsPerStockUom) > 0 &&
+      (mode === 'bulk' || Number(editSubunitsPerStockUom) > 0),
   );
   const uomPreview = $derived.by(() => {
     if (!previewComplete) return m.stock_uom_preview_pending();
     const total = qty(Number(editUnitsPerStockUom));
-    if (mode === 'bulk') return m.stock_uom_preview_bulk({ uom: previewUom, total, usageUom: editConsumptionUom });
+    if (mode === 'bulk')
+      return m.stock_uom_preview_bulk({ uom: previewUom, total, usageUom: editConsumptionUom });
     return m.stock_uom_preview_nested({
       uom: previewUom,
       subunits: qty(Number(editSubunitsPerStockUom)),
@@ -146,7 +162,9 @@
   const wholeUnits = $derived(Math.floor(totalQty + 1e-9));
   const fracSubunits = $derived(subunitsCount > 0 ? (totalQty - wholeUnits) * subunitsCount : 0);
   // No open (fractional) unit → draw a sealed full unit rather than an empty one.
-  const diagramFill = $derived(fracSubunits > 0 ? fracSubunits : wholeUnits > 0 ? subunitsCount : 0);
+  const diagramFill = $derived(
+    fracSubunits > 0 ? fracSubunits : wholeUnits > 0 ? subunitsCount : 0,
+  );
   const showUnitDiagram = $derived(subunitsCount >= 1 && subunitsCount <= MAX_MARKERS);
 
   async function save() {
@@ -166,8 +184,12 @@
           // The mode decides what a conversion even means for this item:
           // 'none' clears it outright, 'bulk' has no sub-unit tier.
           consumptionUom: mode === 'none' ? null : editConsumptionUom || null,
-          unitsPerStockUom: mode === 'none' || editUnitsPerStockUom === '' ? null : Number(editUnitsPerStockUom),
-          subunitsPerStockUom: mode === 'nested' && editSubunitsPerStockUom !== '' ? Number(editSubunitsPerStockUom) : null,
+          unitsPerStockUom:
+            mode === 'none' || editUnitsPerStockUom === '' ? null : Number(editUnitsPerStockUom),
+          subunitsPerStockUom:
+            mode === 'nested' && editSubunitsPerStockUom !== ''
+              ? Number(editSubunitsPerStockUom)
+              : null,
           diagramEnabled: mode === 'none' ? false : editDiagramEnabled,
           unitSvg: editUnitSvg,
           subunitSvg: editSubunitSvg,
@@ -184,7 +206,8 @@
     }
   }
 
-  const fmt = (n: string | number) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const fmt = (n: string | number) =>
+    Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
   // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
   const fmtMoney = (n: string | number) => formatMoney(Number(n));
 
@@ -192,18 +215,27 @@
   // simpler than wraparound). Off while editing so a stray bracket keystroke
   // can't navigate away from unsaved changes.
   const itemIndex = $derived(data.itemIds.indexOf(item.id));
-  createHotkey('[', () => {
-    if (itemIndex > 0) goto(`/stock/items/${data.itemIds[itemIndex - 1]}`);
-  }, () => ({
-    enabled: !editing,
-    meta: { name: m.shortcuts_stockPrevItem() },
-  }));
-  createHotkey(']', () => {
-    if (itemIndex >= 0 && itemIndex < data.itemIds.length - 1) goto(`/stock/items/${data.itemIds[itemIndex + 1]}`);
-  }, () => ({
-    enabled: !editing,
-    meta: { name: m.shortcuts_stockNextItem() },
-  }));
+  createHotkey(
+    '[',
+    () => {
+      if (itemIndex > 0) goto(`/stock/items/${data.itemIds[itemIndex - 1]}`);
+    },
+    () => ({
+      enabled: !editing,
+      meta: { name: m.shortcuts_stockPrevItem() },
+    }),
+  );
+  createHotkey(
+    ']',
+    () => {
+      if (itemIndex >= 0 && itemIndex < data.itemIds.length - 1)
+        goto(`/stock/items/${data.itemIds[itemIndex + 1]}`);
+    },
+    () => ({
+      enabled: !editing,
+      meta: { name: m.shortcuts_stockNextItem() },
+    }),
+  );
 </script>
 
 <svelte:head><title>{item.name} — {m.nav_stock()}</title></svelte:head>
@@ -212,15 +244,17 @@
   <PageHeader title={item.name} subtitle={item.code}>
     {#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
     {#snippet actions()}
-      <Button variant="outline" size="sm" onclick={() => history.back()}><ArrowLeft size={14} /> {m.common_back()}</Button>
+      <Button variant="outline" size="sm" onclick={() => history.back()}
+        ><ArrowLeft size={14} /> {m.common_back()}</Button
+      >
       {#if !editing}
         <Button
           variant="outline"
           size="sm"
           onclick={startEdit}
           disabled={!canAct('stock', 'edit')}
-          title={canAct('stock', 'edit') ? undefined : m.no_permission()}
-        >{m.common_edit()}</Button>
+          title={canAct('stock', 'edit') ? undefined : m.no_permission()}>{m.common_edit()}</Button
+        >
       {/if}
     {/snippet}
   </PageHeader>
@@ -230,8 +264,22 @@
       {#if editing}
         <div class="flex flex-col gap-3 max-w-md">
           <Input size="sm" label={m.stock_field_name()} bind:value={editName} />
-          <Input size="sm" type="number" min="0" step="0.01" label={m.stock_col_reorder_level()} bind:value={editReorderLevel} />
-          <Input size="sm" type="number" min="0" step="0.01" label={m.stock_col_reorder_qty()} bind:value={editReorderQty} />
+          <Input
+            size="sm"
+            type="number"
+            min="0"
+            step="0.01"
+            label={m.stock_col_reorder_level()}
+            bind:value={editReorderLevel}
+          />
+          <Input
+            size="sm"
+            type="number"
+            min="0"
+            step="0.01"
+            label={m.stock_col_reorder_qty()}
+            bind:value={editReorderQty}
+          />
 
           <!-- Supply side (#12): the stock module owns procurement facts. -->
           <Input
@@ -325,7 +373,9 @@
                   step="any"
                   inputmode="decimal"
                   label={m.stock_uom_total_per_order_unit({ uom: previewUom })}
-                  helper={mode === 'nested' ? m.stock_uom_total_hint_derived() : m.stock_uom_total_hint({ uom: previewUom })}
+                  helper={mode === 'nested'
+                    ? m.stock_uom_total_hint_derived()
+                    : m.stock_uom_total_hint({ uom: previewUom })}
                   bind:value={editUnitsPerStockUom}
                   oninput={syncFromTotal}
                 >
@@ -342,7 +392,9 @@
                 size="sm"
                 disabled={editGaugeMax <= 0}
                 label={m.stock_field_diagram_enabled()}
-                description={editGaugeMax > 0 ? m.stock_field_diagram_enabled_hint() : m.stock_uom_err_diagram_needs_conversion()}
+                description={editGaugeMax > 0
+                  ? m.stock_field_diagram_enabled_hint()
+                  : m.stock_uom_err_diagram_needs_conversion()}
               />
             {/if}
 
@@ -350,13 +402,21 @@
                  AFTER the service, to adjust what was actually used. -->
             {#if mode === 'nested' && editSubunits >= 1}
               <div class="shape-block">
-                <ShapePicker kind="container" bind:value={editUnitSvg} label={m.stock_field_unit_svg()} />
+                <ShapePicker
+                  kind="container"
+                  bind:value={editUnitSvg}
+                  label={m.stock_field_unit_svg()}
+                />
                 <p class="t-caption stage-hint">{m.stock_uom_shape_order_hint()}</p>
               </div>
             {/if}
             {#if editGaugeMax > 0}
               <div class="shape-block">
-                <ShapePicker kind="vessel" bind:value={editSubunitSvg} label={m.stock_field_subunit_svg()} />
+                <ShapePicker
+                  kind="vessel"
+                  bind:value={editSubunitSvg}
+                  label={m.stock_field_subunit_svg()}
+                />
                 <p class="t-caption stage-hint">{m.stock_uom_shape_usage_hint()}</p>
               </div>
             {/if}
@@ -370,7 +430,13 @@
                   </div>
                 {/if}
                 <div class="pack-block">
-                  <ConsumptionGauge readonly max={editGaugeMax} value={editGaugeMax} unit={editConsumptionUom} shape={editSubunitSvg} />
+                  <ConsumptionGauge
+                    readonly
+                    max={editGaugeMax}
+                    value={editGaugeMax}
+                    unit={editConsumptionUom}
+                    shape={editSubunitSvg}
+                  />
                   <span class="pack-caption">{m.stock_uom_stage_usage()}</span>
                 </div>
               </div>
@@ -379,30 +445,44 @@
 
           {#if err}<p class="err-msg">{err}</p>{/if}
           <div class="flex gap-2">
-            <Button variant="primary" size="sm" onclick={save} disabled={busy || !!subunitsError}>{m.common_save()}</Button>
-            <Button variant="outline" size="sm" onclick={() => (editing = false)}>{m.common_cancel()}</Button>
+            <Button variant="primary" size="sm" onclick={save} disabled={busy || !!subunitsError}
+              >{m.common_save()}</Button
+            >
+            <Button variant="outline" size="sm" onclick={() => (editing = false)}
+              >{m.common_cancel()}</Button
+            >
           </div>
         </div>
       {:else}
         <dl class="meta-grid">
-          <dt>{m.stock_col_uom()}</dt><dd>{item.uom}</dd>
-          <dt>{m.stock_col_group()}</dt><dd>{item.itemGroup ?? '—'}</dd>
-          <dt>{m.stock_col_reorder_level()}</dt><dd>{item.reorderLevel ?? '—'}</dd>
-          <dt>{m.stock_col_reorder_qty()}</dt><dd>{item.reorderQty ?? '—'}</dd>
-          <dt>{m.stock_col_moq()}</dt><dd>{item.moq ?? '—'}</dd>
-          <dt>{m.stock_field_default_supplier()}</dt><dd>{item.defaultSupplierName ?? '—'}</dd>
+          <dt>{m.stock_col_uom()}</dt>
+          <dd>{item.uom}</dd>
+          <dt>{m.stock_col_group()}</dt>
+          <dd>{item.itemGroup ?? '—'}</dd>
+          <dt>{m.stock_col_reorder_level()}</dt>
+          <dd>{item.reorderLevel ?? '—'}</dd>
+          <dt>{m.stock_col_reorder_qty()}</dt>
+          <dd>{item.reorderQty ?? '—'}</dd>
+          <dt>{m.stock_col_moq()}</dt>
+          <dd>{item.moq ?? '—'}</dd>
+          <dt>{m.stock_field_default_supplier()}</dt>
+          <dd>{item.defaultSupplierName ?? '—'}</dd>
           <dt>{m.stock_col_last_restock_cost()}</dt>
           <dd>
             {#if item.lastRestockCost != null}
               {fmtMoney(item.lastRestockCost)}
-              {#if item.lastSupplierName}<span class="t-caption stage-hint">· {item.lastSupplierName}</span>{/if}
+              {#if item.lastSupplierName}<span class="t-caption stage-hint"
+                  >· {item.lastSupplierName}</span
+                >{/if}
             {:else}—{/if}
           </dd>
           {#if item.consumptionUom}
-            <dt>{m.stock_field_consumption_uom()}</dt><dd>{item.consumptionUom}</dd>
+            <dt>{m.stock_field_consumption_uom()}</dt>
+            <dd>{item.consumptionUom}</dd>
           {/if}
           {#if displayGaugeMax > 0}
-            <dt>{m.stock_field_diagram_enabled()}</dt><dd>{item.diagramEnabled ? m.common_yes() : m.common_no()}</dd>
+            <dt>{m.stock_field_diagram_enabled()}</dt>
+            <dd>{item.diagramEnabled ? m.common_yes() : m.common_no()}</dd>
           {/if}
         </dl>
       {/if}
@@ -422,18 +502,38 @@
             </div>
           {/if}
           <div class="pack-block">
-            <ConsumptionGauge readonly max={displayGaugeMax} value={displayGaugeMax} unit={item.consumptionUom ?? item.uom} shape={item.subunitSvg} />
+            <ConsumptionGauge
+              readonly
+              max={displayGaugeMax}
+              value={displayGaugeMax}
+              unit={item.consumptionUom ?? item.uom}
+              shape={item.subunitSvg}
+            />
             {#if subunitsCount >= 1}
-              <span class="pack-caption">{m.stock_packaging_per_subunit({ qty: fmt(displayGaugeMax), unit: item.consumptionUom ?? item.uom })}</span>
+              <span class="pack-caption"
+                >{m.stock_packaging_per_subunit({
+                  qty: fmt(displayGaugeMax),
+                  unit: item.consumptionUom ?? item.uom,
+                })}</span
+              >
             {/if}
           </div>
           <div class="pack-sums">
-            <span class="pack-chip">{m.stock_packaging_on_hand({ qty: fmt(totalQty), uom: item.uom })}</span>
+            <span class="pack-chip"
+              >{m.stock_packaging_on_hand({ qty: fmt(totalQty), uom: item.uom })}</span
+            >
             {#if subunitsCount >= 1}
-              <span class="pack-chip">{m.stock_packaging_subunits({ count: fmt(totalQty * subunitsCount) })}</span>
+              <span class="pack-chip"
+                >{m.stock_packaging_subunits({ count: fmt(totalQty * subunitsCount) })}</span
+              >
             {/if}
             {#if unitsPerUom > 0 && item.consumptionUom}
-              <span class="pack-chip">{m.stock_packaging_consumption({ qty: fmt(totalQty * unitsPerUom), unit: item.consumptionUom })}</span>
+              <span class="pack-chip"
+                >{m.stock_packaging_consumption({
+                  qty: fmt(totalQty * unitsPerUom),
+                  unit: item.consumptionUom,
+                })}</span
+              >
             {/if}
           </div>
         </div>
@@ -446,7 +546,13 @@
         <p class="t-caption">{m.stock_bins_empty()}</p>
       {:else}
         <table class="mini-table">
-          <thead><tr><th>{m.stock_col_warehouse()}</th><th class="num">{m.stock_col_qty()}</th><th class="num">{m.stock_col_valuation_rate()}</th><th class="num">{m.stock_col_value()}</th></tr></thead>
+          <thead
+            ><tr
+              ><th>{m.stock_col_warehouse()}</th><th class="num">{m.stock_col_qty()}</th><th
+                class="num">{m.stock_col_valuation_rate()}</th
+              ><th class="num">{m.stock_col_value()}</th></tr
+            ></thead
+          >
           <tbody>
             {#each data.bins as b (b.warehouseId)}
               <tr>
@@ -467,7 +573,13 @@
         <p class="t-caption">{m.stock_item_consumed_by_empty()}</p>
       {:else}
         <table class="mini-table">
-          <thead><tr><th>{m.stock_col_product()}</th><th class="num">{m.stock_consumption_col_qty_per_unit()}</th><th>{m.stock_field_note()}</th></tr></thead>
+          <thead
+            ><tr
+              ><th>{m.stock_col_product()}</th><th class="num"
+                >{m.stock_consumption_col_qty_per_unit()}</th
+              ><th>{m.stock_field_note()}</th></tr
+            ></thead
+          >
           <tbody>
             {#each data.consumedBy as c (c.id)}
               <tr>
@@ -478,7 +590,9 @@
             {/each}
           </tbody>
         </table>
-        <a class="consumed-link" href="/stock/consumption">{m.stock_item_manage_consumption()} <ExternalLink size={12} /></a>
+        <a class="consumed-link" href="/stock/consumption"
+          >{m.stock_item_manage_consumption()} <ExternalLink size={12} /></a
+        >
       {/if}
     </div>
     <div class="card">
@@ -501,7 +615,11 @@
               <tr>
                 <td class="t-caption">{new Date(l.postedAt).toLocaleString()}</td>
                 <td>{l.warehouseName}</td>
-                <td class="num" class:in={Number(l.qtyDelta) > 0} class:out={Number(l.qtyDelta) < 0}>
+                <td
+                  class="num"
+                  class:in={Number(l.qtyDelta) > 0}
+                  class:out={Number(l.qtyDelta) < 0}
+                >
                   {Number(l.qtyDelta) > 0 ? '+' : ''}{fmt(l.qtyDelta)}
                 </td>
                 <td class="num">{fmt(l.qtyAfter)}</td>
@@ -512,23 +630,63 @@
         </table>
       {/if}
     </div>
-
   </div>
 </div>
 
 <style>
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-3) var(--space-4); }
-  .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: var(--space-3); }
-  .meta-grid { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4); font-size: var(--font-size-body); }
-  .meta-grid dt { color: var(--color-muted-foreground); }
-  .err-msg { font-size: var(--font-size-body); color: var(--color-danger-fg); }
-  .uom-section { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--hairline); container-type: inline-size; container-name: uomcfg; }
-  .uom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+  .card {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    background: var(--color-card);
+    padding: var(--space-3) var(--space-4);
+  }
+  .card-h {
+    font-size: var(--font-size-body);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-muted-foreground);
+    margin-bottom: var(--space-3);
+  }
+  .meta-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-2) var(--space-4);
+    font-size: var(--font-size-body);
+  }
+  .meta-grid dt {
+    color: var(--color-muted-foreground);
+  }
+  .err-msg {
+    font-size: var(--font-size-body);
+    color: var(--color-danger-fg);
+  }
+  .uom-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--hairline);
+    container-type: inline-size;
+    container-name: uomcfg;
+  }
+  .uom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+  }
   /* The three tiers share one row so their relationship reads left→right. */
-  .tier-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+  .tier-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
   /* Named container — Svelte prunes anonymous @container rules. */
   @container uomcfg (max-width: 36rem) {
-    .uom-grid, .tier-grid { grid-template-columns: 1fr; }
+    .uom-grid,
+    .tier-grid {
+      grid-template-columns: 1fr;
+    }
   }
   /* Self-verifying conversion sentence; accent only once complete. */
   .uom-preview {
@@ -539,21 +697,88 @@
     border-radius: var(--radius-sm);
     padding: var(--space-2) var(--space-3);
   }
-  .uom-preview.ok { color: var(--color-accent); }
-  .adorn { color: var(--color-text-tertiary); font-size: var(--font-size-caption); }
-  .shape-block { display: flex; flex-direction: column; gap: var(--space-1); }
-  .stage-hint { color: var(--color-text-tertiary); }
-  .pack-row { display: flex; align-items: flex-end; gap: var(--space-6); flex-wrap: wrap; }
-  .pack-block { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
-  .pack-caption { font-size: var(--font-size-caption); color: var(--color-muted-foreground); text-align: center; }
-  .pack-sums { display: flex; flex-direction: column; gap: var(--space-2); align-self: center; }
-  .pack-chip { font-size: var(--font-size-body); padding: var(--space-1) var(--space-2); border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--color-bg3); width: fit-content; font-variant-numeric: tabular-nums; }
-  .mini-table { width: 100%; font-size: var(--font-size-body); border-collapse: collapse; }
-  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
-  .mini-table td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
-  .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .mini-table .in { color: var(--color-success, var(--color-emerald)); }
-  .mini-table .out { color: var(--color-destructive); }
-  .consumed-link { display: inline-flex; align-items: center; gap: var(--space-1); margin-top: var(--space-2); font-size: var(--font-size-body); color: var(--color-accent); }
-  .consumed-link:hover { text-decoration: underline; }
+  .uom-preview.ok {
+    color: var(--color-accent);
+  }
+  .adorn {
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-caption);
+  }
+  .shape-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .stage-hint {
+    color: var(--color-text-tertiary);
+  }
+  .pack-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-6);
+    flex-wrap: wrap;
+  }
+  .pack-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .pack-caption {
+    font-size: var(--font-size-caption);
+    color: var(--color-muted-foreground);
+    text-align: center;
+  }
+  .pack-sums {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    align-self: center;
+  }
+  .pack-chip {
+    font-size: var(--font-size-body);
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg3);
+    width: fit-content;
+    font-variant-numeric: tabular-nums;
+  }
+  .mini-table {
+    width: 100%;
+    font-size: var(--font-size-body);
+    border-collapse: collapse;
+  }
+  .mini-table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--color-muted-foreground);
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .mini-table td {
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .mini-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .mini-table .in {
+    color: var(--color-success, var(--color-emerald));
+  }
+  .mini-table .out {
+    color: var(--color-destructive);
+  }
+  .consumed-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+    font-size: var(--font-size-body);
+    color: var(--color-accent);
+  }
+  .consumed-link:hover {
+    text-decoration: underline;
+  }
 </style>

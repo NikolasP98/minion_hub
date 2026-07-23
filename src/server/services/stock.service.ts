@@ -70,7 +70,9 @@ const ALLOW_NEGATIVE_STOCK_V1 = false;
 // ── Items ────────────────────────────────────────────────────────────────────
 
 export function listItems(ctx: CoreCtx): Promise<StkItem[]> {
-  return withOrgCore(ctx, (tx) => tx.select().from(stkItems).where(eq(stkItems.orgId, ctx.tenantId)).orderBy(asc(stkItems.name)));
+  return withOrgCore(ctx, (tx) =>
+    tx.select().from(stkItems).where(eq(stkItems.orgId, ctx.tenantId)).orderBy(asc(stkItems.name)),
+  );
 }
 
 // ── Item composition DAG (Slice 1b) ─────────────────────────────────────────
@@ -95,10 +97,18 @@ export interface ComponentRow {
 export function listAllComponentEdges(ctx: CoreCtx): Promise<ComponentEdge[]> {
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx
-      .select({ parentItemId: stkItemComponents.parentItemId, childItemId: stkItemComponents.childItemId, qty: stkItemComponents.qty })
+      .select({
+        parentItemId: stkItemComponents.parentItemId,
+        childItemId: stkItemComponents.childItemId,
+        qty: stkItemComponents.qty,
+      })
       .from(stkItemComponents)
       .where(eq(stkItemComponents.orgId, ctx.tenantId));
-    return rows.map((r) => ({ parentItemId: r.parentItemId, childItemId: r.childItemId, qty: Number(r.qty) }));
+    return rows.map((r) => ({
+      parentItemId: r.parentItemId,
+      childItemId: r.childItemId,
+      qty: Number(r.qty),
+    }));
   });
 }
 
@@ -121,7 +131,12 @@ export function listComponents(ctx: CoreCtx, parentItemId: string): Promise<Comp
       })
       .from(stkItemComponents)
       .innerJoin(stkItems, eq(stkItems.id, stkItemComponents.childItemId))
-      .where(and(eq(stkItemComponents.orgId, ctx.tenantId), eq(stkItemComponents.parentItemId, parentItemId)))
+      .where(
+        and(
+          eq(stkItemComponents.orgId, ctx.tenantId),
+          eq(stkItemComponents.parentItemId, parentItemId),
+        ),
+      )
       .orderBy(asc(stkItems.name));
     return rows.map((r) => ({ ...r, qty: Number(r.qty) }));
   });
@@ -148,11 +163,17 @@ export interface SetComponentInput {
  * ponytail: a serialized transaction here would cost every write to defend
  * against a race nobody has hit; revisit if recipes ever get bulk-imported.
  */
-export async function setComponent(ctx: CoreCtx, input: SetComponentInput, actor: Actor): Promise<StkItemComponent> {
+export async function setComponent(
+  ctx: CoreCtx,
+  input: SetComponentInput,
+  actor: Actor,
+): Promise<StkItemComponent> {
   if (!(input.qty > 0)) throw new StockError('qty must be greater than 0', 'invalid_qty');
   const edges = await listAllComponentEdges(ctx);
   // Ignore the edge being replaced — re-saving an existing edge is not a cycle.
-  const others = edges.filter((e) => !(e.parentItemId === input.parentItemId && e.childItemId === input.childItemId));
+  const others = edges.filter(
+    (e) => !(e.parentItemId === input.parentItemId && e.childItemId === input.childItemId),
+  );
   if (wouldCreateComponentCycle(others, input.parentItemId, input.childItemId)) {
     throw new StockError('that would make the recipe contain itself', 'component_cycle');
   }
@@ -171,7 +192,11 @@ export async function setComponent(ctx: CoreCtx, input: SetComponentInput, actor
         note: input.note ?? null,
       })
       .onConflictDoUpdate({
-        target: [stkItemComponents.orgId, stkItemComponents.parentItemId, stkItemComponents.childItemId],
+        target: [
+          stkItemComponents.orgId,
+          stkItemComponents.parentItemId,
+          stkItemComponents.childItemId,
+        ],
         set: {
           qty: String(input.qty),
           optional: input.optional ?? false,
@@ -247,7 +272,12 @@ export function itemSupplyInfo(ctx: CoreCtx): Promise<Map<string, ItemSupplyInfo
       ) l
       left join stk_entries e on e.id = l.entry_id and e.org_id = ${ctx.tenantId}
       left join parties p on p.id = e.party_id and p.org_id = ${ctx.tenantId}
-    `)) as unknown as Array<{ item_id: string; rate: number | null; posted_at: string; supplier_name: string | null }>;
+    `)) as unknown as Array<{
+      item_id: string;
+      rate: number | null;
+      posted_at: string;
+      supplier_name: string | null;
+    }>;
 
     const out = new Map<string, ItemSupplyInfo>();
     for (const r of rows) {
@@ -295,7 +325,10 @@ export async function getItemUomInfo(ctx: CoreCtx, itemIds: string[]): Promise<I
   }));
 }
 
-export type NewItemInput = Omit<typeof stkItems.$inferInsert, 'id' | 'orgId' | 'createdAt' | 'updatedAt'>;
+export type NewItemInput = Omit<
+  typeof stkItems.$inferInsert,
+  'id' | 'orgId' | 'createdAt' | 'updatedAt'
+>;
 
 export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
   const err = validateItemUomConfig({
@@ -303,20 +336,34 @@ export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<Stk
     unitsPerStockUom: input.unitsPerStockUom == null ? null : Number(input.unitsPerStockUom),
   });
   if (err) throw new StockError(err, 'invalid_uom_config');
-  const [row] = await withOrgCore(ctx, (tx) => tx.insert(stkItems).values({ ...input, orgId: ctx.tenantId }).returning());
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .insert(stkItems)
+      .values({ ...input, orgId: ctx.tenantId })
+      .returning(),
+  );
   return row;
 }
 
-export async function updateItem(ctx: CoreCtx, id: string, patch: Partial<NewItemInput>): Promise<StkItem | null> {
+export async function updateItem(
+  ctx: CoreCtx,
+  id: string,
+  patch: Partial<NewItemInput>,
+): Promise<StkItem | null> {
   return withOrgCore(ctx, async (tx) => {
-    const [cur] = await tx.select().from(stkItems).where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)));
+    const [cur] = await tx
+      .select()
+      .from(stkItems)
+      .where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)));
     if (!cur) return null;
     // Merge over the current row — a PATCH only sends the fields it's changing,
     // so the cross-field rule must be checked against the RESULTING config, not
     // just the patch in isolation (e.g. setting consumptionUom alone is fine
     // when unitsPerStockUom was already set on a prior PATCH).
-    const consumptionUom = patch.consumptionUom === undefined ? cur.consumptionUom : patch.consumptionUom;
-    const unitsPerStockUomRaw = patch.unitsPerStockUom === undefined ? cur.unitsPerStockUom : patch.unitsPerStockUom;
+    const consumptionUom =
+      patch.consumptionUom === undefined ? cur.consumptionUom : patch.consumptionUom;
+    const unitsPerStockUomRaw =
+      patch.unitsPerStockUom === undefined ? cur.unitsPerStockUom : patch.unitsPerStockUom;
     const err = validateItemUomConfig({
       consumptionUom,
       unitsPerStockUom: unitsPerStockUomRaw == null ? null : Number(unitsPerStockUomRaw),
@@ -334,27 +381,50 @@ export async function updateItem(ctx: CoreCtx, id: string, patch: Partial<NewIte
 // ── Warehouses ───────────────────────────────────────────────────────────────
 
 export function listWarehouses(ctx: CoreCtx): Promise<StkWarehouse[]> {
-  return withOrgCore(ctx, (tx) => tx.select().from(stkWarehouses).where(eq(stkWarehouses.orgId, ctx.tenantId)).orderBy(asc(stkWarehouses.name)));
+  return withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(stkWarehouses)
+      .where(eq(stkWarehouses.orgId, ctx.tenantId))
+      .orderBy(asc(stkWarehouses.name)),
+  );
 }
 
 export type NewWarehouseInput = { name: string; parentId?: string | null; isDefault?: boolean };
 
-export async function createWarehouse(ctx: CoreCtx, input: NewWarehouseInput): Promise<StkWarehouse> {
+export async function createWarehouse(
+  ctx: CoreCtx,
+  input: NewWarehouseInput,
+): Promise<StkWarehouse> {
   return withOrgCore(ctx, async (tx) => {
     if (input.parentId) {
-      const [parent] = await tx.select({ id: stkWarehouses.id }).from(stkWarehouses).where(and(eq(stkWarehouses.id, input.parentId), eq(stkWarehouses.orgId, ctx.tenantId)));
+      const [parent] = await tx
+        .select({ id: stkWarehouses.id })
+        .from(stkWarehouses)
+        .where(and(eq(stkWarehouses.id, input.parentId), eq(stkWarehouses.orgId, ctx.tenantId)));
       if (!parent) throw new StockError('parent warehouse not found', 'parent_not_found');
     }
-    const [row] = await tx.insert(stkWarehouses).values({ orgId: ctx.tenantId, name: input.name, parentId: input.parentId ?? null }).returning();
+    const [row] = await tx
+      .insert(stkWarehouses)
+      .values({ orgId: ctx.tenantId, name: input.name, parentId: input.parentId ?? null })
+      .returning();
     return row;
   });
 }
 
-export async function updateWarehouse(ctx: CoreCtx, id: string, patch: Partial<NewWarehouseInput>): Promise<StkWarehouse | null> {
+export async function updateWarehouse(
+  ctx: CoreCtx,
+  id: string,
+  patch: Partial<NewWarehouseInput>,
+): Promise<StkWarehouse | null> {
   return withOrgCore(ctx, async (tx) => {
     if (patch.parentId !== undefined && patch.parentId !== null) {
-      const all = await tx.select({ id: stkWarehouses.id, parentId: stkWarehouses.parentId }).from(stkWarehouses).where(eq(stkWarehouses.orgId, ctx.tenantId));
-      if (wouldCreateCycle(all, id, patch.parentId)) throw new StockError('would create a cycle in the warehouse tree', 'cycle');
+      const all = await tx
+        .select({ id: stkWarehouses.id, parentId: stkWarehouses.parentId })
+        .from(stkWarehouses)
+        .where(eq(stkWarehouses.orgId, ctx.tenantId));
+      if (wouldCreateCycle(all, id, patch.parentId))
+        throw new StockError('would create a cycle in the warehouse tree', 'cycle');
     }
     if (patch.isDefault === true) {
       // Partial unique index on (org_id) WHERE is_default rejects a second
@@ -395,21 +465,38 @@ function isEntryType(t: string): t is EntryType {
   return (ENTRY_TYPES as readonly string[]).includes(t);
 }
 
-export function listEntries(ctx: CoreCtx, filters: { status?: string; type?: string; partyId?: string } = {}): Promise<StkEntry[]> {
+export function listEntries(
+  ctx: CoreCtx,
+  filters: { status?: string; type?: string; partyId?: string } = {},
+): Promise<StkEntry[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(stkEntries.orgId, ctx.tenantId)];
     if (filters.status) conds.push(eq(stkEntries.status, filters.status));
     if (filters.type) conds.push(eq(stkEntries.type, filters.type));
     if (filters.partyId) conds.push(eq(stkEntries.partyId, filters.partyId));
-    return tx.select().from(stkEntries).where(and(...conds)).orderBy(desc(stkEntries.createdAt));
+    return tx
+      .select()
+      .from(stkEntries)
+      .where(and(...conds))
+      .orderBy(desc(stkEntries.createdAt));
   });
 }
 
-export async function getEntry(ctx: CoreCtx, id: string): Promise<{ entry: StkEntry; lines: StkEntryLine[] } | null> {
+export async function getEntry(
+  ctx: CoreCtx,
+  id: string,
+): Promise<{ entry: StkEntry; lines: StkEntryLine[] } | null> {
   return withOrgCore(ctx, async (tx) => {
-    const [entry] = await tx.select().from(stkEntries).where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)));
+    const [entry] = await tx
+      .select()
+      .from(stkEntries)
+      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)));
     if (!entry) return null;
-    const lines = await tx.select().from(stkEntryLines).where(eq(stkEntryLines.entryId, id)).orderBy(asc(stkEntryLines.lineNo));
+    const lines = await tx
+      .select()
+      .from(stkEntryLines)
+      .where(eq(stkEntryLines.entryId, id))
+      .orderBy(asc(stkEntryLines.lineNo));
     return { entry, lines };
   });
 }
@@ -428,24 +515,45 @@ function linesToRows(orgId: string, entryId: string, lines: NewEntryLineInput[])
   }));
 }
 
-export async function createEntry(ctx: CoreCtx, input: NewEntryInput, actor: Actor): Promise<StkEntry> {
+export async function createEntry(
+  ctx: CoreCtx,
+  input: NewEntryInput,
+  actor: Actor,
+): Promise<StkEntry> {
   if (!isEntryType(input.type)) throw new StockError('invalid entry type', 'invalid_type');
   return withOrgCore(ctx, async (tx) => {
     const [entry] = await tx
       .insert(stkEntries)
-      .values({ orgId: ctx.tenantId, type: input.type, status: 'draft', partyId: input.partyId ?? null, note: input.note ?? null, createdBy: actor.id })
+      .values({
+        orgId: ctx.tenantId,
+        type: input.type,
+        status: 'draft',
+        partyId: input.partyId ?? null,
+        note: input.note ?? null,
+        createdBy: actor.id,
+      })
       .returning();
-    if (input.lines.length) await tx.insert(stkEntryLines).values(linesToRows(ctx.tenantId, entry.id, input.lines));
+    if (input.lines.length)
+      await tx.insert(stkEntryLines).values(linesToRows(ctx.tenantId, entry.id, input.lines));
     return entry;
   });
 }
 
-export async function updateEntry(ctx: CoreCtx, id: string, input: Partial<NewEntryInput>): Promise<StkEntry | null> {
+export async function updateEntry(
+  ctx: CoreCtx,
+  id: string,
+  input: Partial<NewEntryInput>,
+): Promise<StkEntry | null> {
   return withOrgCore(ctx, async (tx) => {
-    const [cur] = await tx.select().from(stkEntries).where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)));
+    const [cur] = await tx
+      .select()
+      .from(stkEntries)
+      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)));
     if (!cur) return null;
-    if (cur.status !== 'draft') throw new StockError('only draft entries can be edited', 'not_draft');
-    if (input.type !== undefined && !isEntryType(input.type)) throw new StockError('invalid entry type', 'invalid_type');
+    if (cur.status !== 'draft')
+      throw new StockError('only draft entries can be edited', 'not_draft');
+    if (input.type !== undefined && !isEntryType(input.type))
+      throw new StockError('invalid entry type', 'invalid_type');
 
     if (input.type !== undefined || input.partyId !== undefined || input.note !== undefined) {
       await tx
@@ -460,7 +568,8 @@ export async function updateEntry(ctx: CoreCtx, id: string, input: Partial<NewEn
     }
     if (input.lines) {
       await tx.delete(stkEntryLines).where(eq(stkEntryLines.entryId, id));
-      if (input.lines.length) await tx.insert(stkEntryLines).values(linesToRows(ctx.tenantId, id, input.lines));
+      if (input.lines.length)
+        await tx.insert(stkEntryLines).values(linesToRows(ctx.tenantId, id, input.lines));
     }
     const [row] = await tx.select().from(stkEntries).where(eq(stkEntries.id, id));
     return row;
@@ -469,9 +578,13 @@ export async function updateEntry(ctx: CoreCtx, id: string, input: Partial<NewEn
 
 export async function deleteEntry(ctx: CoreCtx, id: string): Promise<boolean> {
   return withOrgCore(ctx, async (tx) => {
-    const [cur] = await tx.select({ status: stkEntries.status }).from(stkEntries).where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)));
+    const [cur] = await tx
+      .select({ status: stkEntries.status })
+      .from(stkEntries)
+      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)));
     if (!cur) return false;
-    if (cur.status !== 'draft') throw new StockError('only draft entries can be deleted', 'not_draft');
+    if (cur.status !== 'draft')
+      throw new StockError('only draft entries can be deleted', 'not_draft');
     await tx.delete(stkEntryLines).where(eq(stkEntryLines.entryId, id));
     await tx.delete(stkEntries).where(eq(stkEntries.id, id));
     return true;
@@ -482,16 +595,29 @@ export async function deleteEntry(ctx: CoreCtx, id: string): Promise<boolean> {
 
 type BinRow = { qty: string; valuationRate: string };
 
-async function lockBins(tx: CoreTx, orgId: string, keys: Iterable<string>): Promise<Map<string, BinState>> {
+async function lockBins(
+  tx: CoreTx,
+  orgId: string,
+  keys: Iterable<string>,
+): Promise<Map<string, BinState>> {
   const out = new Map<string, BinState>();
   for (const key of keys) {
     const [itemId, warehouseId] = key.split(':');
     const [row] = (await tx
       .select({ qty: stkBins.qty, valuationRate: stkBins.valuationRate })
       .from(stkBins)
-      .where(and(eq(stkBins.orgId, orgId), eq(stkBins.itemId, itemId), eq(stkBins.warehouseId, warehouseId)))
+      .where(
+        and(
+          eq(stkBins.orgId, orgId),
+          eq(stkBins.itemId, itemId),
+          eq(stkBins.warehouseId, warehouseId),
+        ),
+      )
       .for('update')) as BinRow[];
-    out.set(key, row ? { qty: Number(row.qty), rate: Number(row.valuationRate) } : { ...EMPTY_BIN });
+    out.set(
+      key,
+      row ? { qty: Number(row.qty), rate: Number(row.valuationRate) } : { ...EMPTY_BIN },
+    );
   }
   return out;
 }
@@ -522,9 +648,14 @@ async function writeBins(tx: CoreTx, orgId: string, bins: Map<string, BinState>)
 export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promise<StkEntry> {
   const orgId = ctx.tenantId;
   const result = await withOrgCore(ctx, async (tx) => {
-    const [entry] = await tx.select().from(stkEntries).where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, orgId))).for('update');
+    const [entry] = await tx
+      .select()
+      .from(stkEntries)
+      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, orgId)))
+      .for('update');
     if (!entry) throw new StockError('entry not found', 'not_found');
-    if (entry.status !== 'draft') throw new StockError(`entry is ${entry.status}, not draft`, 'not_draft'); // double-submit guard
+    if (entry.status !== 'draft')
+      throw new StockError(`entry is ${entry.status}, not draft`, 'not_draft'); // double-submit guard
 
     const lines = await tx.select().from(stkEntryLines).where(eq(stkEntryLines.entryId, id));
     if (!lines.length) throw new StockError('entry has no lines', 'no_lines');
@@ -532,11 +663,21 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
     const type = entry.type;
 
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
-    const items = await tx.select({ id: stkItems.id }).from(stkItems).where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
+    const items = await tx
+      .select({ id: stkItems.id })
+      .from(stkItems)
+      .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
     const itemIdSet = new Set(items.map((i) => i.id));
-    const warehouseIds = [...new Set(lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x))];
+    const warehouseIds = [
+      ...new Set(
+        lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x),
+      ),
+    ];
     const warehouses = warehouseIds.length
-      ? await tx.select({ id: stkWarehouses.id }).from(stkWarehouses).where(and(eq(stkWarehouses.orgId, orgId), inArray(stkWarehouses.id, warehouseIds)))
+      ? await tx
+          .select({ id: stkWarehouses.id })
+          .from(stkWarehouses)
+          .where(and(eq(stkWarehouses.orgId, orgId), inArray(stkWarehouses.id, warehouseIds)))
       : [];
     const warehouseIdSet = new Set(warehouses.map((w) => w.id));
 
@@ -548,16 +689,19 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
       toWarehouseId: l.toWarehouseId,
     }));
     for (const l of lineLikes) {
-      if (!itemIdSet.has(l.itemId)) throw new StockError(`item ${l.itemId} not found`, 'item_not_found');
+      if (!itemIdSet.has(l.itemId))
+        throw new StockError(`item ${l.itemId} not found`, 'item_not_found');
       const errs = validateEntryLine(type, l);
       if (errs.length) throw new StockError(errs.join('; '), 'invalid_line');
       for (const wid of [l.fromWarehouseId, l.toWarehouseId]) {
-        if (wid && !warehouseIdSet.has(wid)) throw new StockError(`warehouse ${wid} not found`, 'warehouse_not_found');
+        if (wid && !warehouseIdSet.has(wid))
+          throw new StockError(`warehouse ${wid} not found`, 'warehouse_not_found');
       }
     }
 
     const binKeys = new Set<string>();
-    for (const l of lineLikes) for (const leg of expandLine(type, l)) binKeys.add(binKey(l.itemId, leg.warehouseId));
+    for (const l of lineLikes)
+      for (const leg of expandLine(type, l)) binKeys.add(binKey(l.itemId, leg.warehouseId));
     const binMap = await lockBins(tx, orgId, binKeys);
 
     const ledgerInserts: Array<typeof stkLedger.$inferInsert> = [];
@@ -569,7 +713,10 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
         const bin = binMap.get(key)!;
         const rate = leg.rate ?? carryRate;
         if (leg.qtyDelta < 0 && !ALLOW_NEGATIVE_STOCK_V1 && wouldGoNegative(bin, leg.qtyDelta)) {
-          throw new StockError(`insufficient stock for item ${l.itemId} in warehouse ${leg.warehouseId}`, 'negative_stock');
+          throw new StockError(
+            `insufficient stock for item ${l.itemId} in warehouse ${leg.warehouseId}`,
+            'negative_stock',
+          );
         }
         const { valueDelta, rateUsed } = computeLegValue(bin, leg.qtyDelta, rate);
         const next = applyLedgerDelta(bin, leg.qtyDelta, valueDelta);
@@ -620,11 +767,19 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
 export async function cancelEntry(ctx: CoreCtx, id: string, actor: Actor): Promise<StkEntry> {
   const orgId = ctx.tenantId;
   const result = await withOrgCore(ctx, async (tx) => {
-    const [entry] = await tx.select().from(stkEntries).where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, orgId))).for('update');
+    const [entry] = await tx
+      .select()
+      .from(stkEntries)
+      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, orgId)))
+      .for('update');
     if (!entry) throw new StockError('entry not found', 'not_found');
-    if (entry.status !== 'submitted') throw new StockError(`entry is ${entry.status}, not submitted`, 'not_submitted');
+    if (entry.status !== 'submitted')
+      throw new StockError(`entry is ${entry.status}, not submitted`, 'not_submitted');
 
-    const origRows = await tx.select().from(stkLedger).where(and(eq(stkLedger.entryId, id), eq(stkLedger.orgId, orgId)));
+    const origRows = await tx
+      .select()
+      .from(stkLedger)
+      .where(and(eq(stkLedger.entryId, id), eq(stkLedger.orgId, orgId)));
     if (!origRows.length) throw new StockError('no ledger rows to reverse', 'no_ledger');
 
     const binKeys = new Set(origRows.map((r) => binKey(r.itemId, r.warehouseId)));
@@ -637,7 +792,10 @@ export async function cancelEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
       const qtyDelta = -Number(r.qtyDelta);
       const valueDelta = -Number(r.valueDelta);
       if (qtyDelta < 0 && !ALLOW_NEGATIVE_STOCK_V1 && wouldGoNegative(bin, qtyDelta)) {
-        throw new StockError(`cancelling would take item ${r.itemId} in warehouse ${r.warehouseId} negative`, 'negative_stock');
+        throw new StockError(
+          `cancelling would take item ${r.itemId} in warehouse ${r.warehouseId} negative`,
+          'negative_stock',
+        );
       }
       const next = applyLedgerDelta(bin, qtyDelta, valueDelta);
       binMap.set(key, next);
@@ -656,7 +814,11 @@ export async function cancelEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
     await tx.insert(stkLedger).values(ledgerInserts);
     await writeBins(tx, orgId, binMap);
 
-    const [updated] = await tx.update(stkEntries).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(stkEntries.id, id)).returning();
+    const [updated] = await tx
+      .update(stkEntries)
+      .set({ status: 'cancelled', updatedAt: new Date() })
+      .where(eq(stkEntries.id, id))
+      .returning();
     return updated;
   });
 
@@ -672,20 +834,34 @@ export async function cancelEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
 
 // ── Queries: bins + ledger ───────────────────────────────────────────────────
 
-export function getBins(ctx: CoreCtx, filters: { itemId?: string; warehouseId?: string } = {}): Promise<StkBin[]> {
+export function getBins(
+  ctx: CoreCtx,
+  filters: { itemId?: string; warehouseId?: string } = {},
+): Promise<StkBin[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(stkBins.orgId, ctx.tenantId)];
     if (filters.itemId) conds.push(eq(stkBins.itemId, filters.itemId));
     if (filters.warehouseId) conds.push(eq(stkBins.warehouseId, filters.warehouseId));
-    return tx.select().from(stkBins).where(and(...conds));
+    return tx
+      .select()
+      .from(stkBins)
+      .where(and(...conds));
   });
 }
 
-export function getLedger(ctx: CoreCtx, itemId: string, warehouseId?: string): Promise<StkLedgerRow[]> {
+export function getLedger(
+  ctx: CoreCtx,
+  itemId: string,
+  warehouseId?: string,
+): Promise<StkLedgerRow[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(stkLedger.orgId, ctx.tenantId), eq(stkLedger.itemId, itemId)];
     if (warehouseId) conds.push(eq(stkLedger.warehouseId, warehouseId));
-    return tx.select().from(stkLedger).where(and(...conds)).orderBy(desc(stkLedger.postedAt), desc(stkLedger.id));
+    return tx
+      .select()
+      .from(stkLedger)
+      .where(and(...conds))
+      .orderBy(desc(stkLedger.postedAt), desc(stkLedger.id));
   });
 }
 
@@ -694,7 +870,12 @@ export function getLedger(ctx: CoreCtx, itemId: string, warehouseId?: string): P
  *  separate small query rather than an optional param on getLedger. */
 export function getRecentLedger(ctx: CoreCtx, limit = 20): Promise<StkLedgerRow[]> {
   return withOrgCore(ctx, (tx) =>
-    tx.select().from(stkLedger).where(eq(stkLedger.orgId, ctx.tenantId)).orderBy(desc(stkLedger.postedAt), desc(stkLedger.id)).limit(limit),
+    tx
+      .select()
+      .from(stkLedger)
+      .where(eq(stkLedger.orgId, ctx.tenantId))
+      .orderBy(desc(stkLedger.postedAt), desc(stkLedger.id))
+      .limit(limit),
   );
 }
 
@@ -712,7 +893,10 @@ export async function rebuildBins(ctx: CoreCtx, itemId?: string): Promise<Rebuil
   return withOrgCore(ctx, async (tx) => {
     const conds = [eq(stkLedger.orgId, orgId)];
     if (itemId) conds.push(eq(stkLedger.itemId, itemId));
-    const rows = await tx.select().from(stkLedger).where(and(...conds));
+    const rows = await tx
+      .select()
+      .from(stkLedger)
+      .where(and(...conds));
 
     const replay: LedgerReplayRow[] = rows.map((r) => ({
       itemId: r.itemId,
@@ -727,9 +911,18 @@ export async function rebuildBins(ctx: CoreCtx, itemId?: string): Promise<Rebuil
     if (itemId) binConds.push(eq(stkBins.itemId, itemId));
     await tx.delete(stkBins).where(and(...binConds));
     for (const bin of bins.values()) {
-      await tx.insert(stkBins).values({ orgId, itemId: bin.itemId, warehouseId: bin.warehouseId, qty: String(bin.qty), valuationRate: String(bin.rate) });
+      await tx.insert(stkBins).values({
+        orgId,
+        itemId: bin.itemId,
+        warehouseId: bin.warehouseId,
+        qty: String(bin.qty),
+        valuationRate: String(bin.rate),
+      });
     }
-    return { itemsAffected: new Set([...bins.values()].map((b) => b.itemId)).size, binsWritten: bins.size };
+    return {
+      itemsAffected: new Set([...bins.values()].map((b) => b.itemId)).size,
+      binsWritten: bins.size,
+    };
   });
 }
 
@@ -774,7 +967,10 @@ export interface ConsumptionRow {
   note: string | null;
 }
 
-export function listConsumption(ctx: CoreCtx, filters: { finProductId?: string; itemId?: string } = {}): Promise<ConsumptionRow[]> {
+export function listConsumption(
+  ctx: CoreCtx,
+  filters: { finProductId?: string; itemId?: string } = {},
+): Promise<ConsumptionRow[]> {
   return withOrgCore(ctx, async (tx) => {
     const conds = [eq(stkConsumption.orgId, ctx.tenantId)];
     if (filters.finProductId) conds.push(eq(stkConsumption.finProductId, filters.finProductId));
@@ -814,7 +1010,10 @@ export function listConsumption(ctx: CoreCtx, filters: { finProductId?: string; 
  *  natural key before it can call setConsumption's upsert). */
 export async function getConsumptionById(ctx: CoreCtx, id: string): Promise<StkConsumption | null> {
   return withOrgCore(ctx, async (tx) => {
-    const [row] = await tx.select().from(stkConsumption).where(and(eq(stkConsumption.id, id), eq(stkConsumption.orgId, ctx.tenantId)));
+    const [row] = await tx
+      .select()
+      .from(stkConsumption)
+      .where(and(eq(stkConsumption.id, id), eq(stkConsumption.orgId, ctx.tenantId)));
     return row ?? null;
   });
 }
@@ -833,7 +1032,11 @@ export interface SetConsumptionInput {
  *  qty_per_unit to doc_audit_log (best-effort, own tx — same convention as
  *  submitEntry/cancelEntry above); a no-op change (e.g. only `note` patched)
  *  emits nothing, per recordAudit's own empty-changes guard. */
-export async function setConsumption(ctx: CoreCtx, input: SetConsumptionInput, actor: Actor): Promise<StkConsumption> {
+export async function setConsumption(
+  ctx: CoreCtx,
+  input: SetConsumptionInput,
+  actor: Actor,
+): Promise<StkConsumption> {
   if (!(input.qtyPerUnit > 0)) throw new StockError('qtyPerUnit must be > 0', 'invalid_qty');
   const { row, oldQtyPerUnit } = await withOrgCore(ctx, async (tx) => {
     const [item] = await tx
@@ -852,14 +1055,30 @@ export async function setConsumption(ctx: CoreCtx, input: SetConsumptionInput, a
     const [existing] = await tx
       .select({ qtyPerUnit: stkConsumption.qtyPerUnit })
       .from(stkConsumption)
-      .where(and(eq(stkConsumption.orgId, ctx.tenantId), eq(stkConsumption.finProductId, input.finProductId), eq(stkConsumption.itemId, input.itemId)));
+      .where(
+        and(
+          eq(stkConsumption.orgId, ctx.tenantId),
+          eq(stkConsumption.finProductId, input.finProductId),
+          eq(stkConsumption.itemId, input.itemId),
+        ),
+      );
 
     const [row] = await tx
       .insert(stkConsumption)
-      .values({ orgId: ctx.tenantId, finProductId: input.finProductId, itemId: input.itemId, qtyPerUnit: String(input.qtyPerUnit), note: input.note ?? null })
+      .values({
+        orgId: ctx.tenantId,
+        finProductId: input.finProductId,
+        itemId: input.itemId,
+        qtyPerUnit: String(input.qtyPerUnit),
+        note: input.note ?? null,
+      })
       .onConflictDoUpdate({
         target: [stkConsumption.orgId, stkConsumption.finProductId, stkConsumption.itemId],
-        set: { qtyPerUnit: String(input.qtyPerUnit), note: input.note ?? null, updatedAt: new Date() },
+        set: {
+          qtyPerUnit: String(input.qtyPerUnit),
+          note: input.note ?? null,
+          updatedAt: new Date(),
+        },
       })
       .returning();
     return { row, oldQtyPerUnit: existing ? Number(existing.qtyPerUnit) : null };
@@ -869,7 +1088,17 @@ export async function setConsumption(ctx: CoreCtx, input: SetConsumptionInput, a
     refType: 'stk_consumption',
     refId: row.id,
     op: oldQtyPerUnit == null ? 'create' : 'update',
-    changes: oldQtyPerUnit === input.qtyPerUnit ? [] : [{ field: 'qtyPerUnit', label: 'Qty per unit', old: oldQtyPerUnit, new: input.qtyPerUnit }],
+    changes:
+      oldQtyPerUnit === input.qtyPerUnit
+        ? []
+        : [
+            {
+              field: 'qtyPerUnit',
+              label: 'Qty per unit',
+              old: oldQtyPerUnit,
+              new: input.qtyPerUnit,
+            },
+          ],
     actor,
   });
   return row;
@@ -934,22 +1163,44 @@ export interface InvoicePreview {
  * Invoice items hitting neither path are reported in `unmatched` (name-only —
  * nothing to act on without a mapping).
  */
-export async function buildInvoiceIssuePreview(ctx: CoreCtx, invoiceId: string, warehouseId: string): Promise<InvoicePreview> {
+export async function buildInvoiceIssuePreview(
+  ctx: CoreCtx,
+  invoiceId: string,
+  warehouseId: string,
+): Promise<InvoicePreview> {
   return withOrgCore(ctx, async (tx) => {
-    const [invoice] = await tx.select({ id: finInvoices.id }).from(finInvoices).where(and(eq(finInvoices.id, invoiceId), eq(finInvoices.orgId, ctx.tenantId)));
+    const [invoice] = await tx
+      .select({ id: finInvoices.id })
+      .from(finInvoices)
+      .where(and(eq(finInvoices.id, invoiceId), eq(finInvoices.orgId, ctx.tenantId)));
     if (!invoice) throw new StockError('invoice not found', 'invoice_not_found');
 
     const invoiceItems = await tx
-      .select({ productId: finInvoiceItems.productId, description: finInvoiceItems.description, quantity: finInvoiceItems.quantity })
+      .select({
+        productId: finInvoiceItems.productId,
+        description: finInvoiceItems.description,
+        quantity: finInvoiceItems.quantity,
+      })
       .from(finInvoiceItems)
       .where(eq(finInvoiceItems.invoiceId, invoiceId));
 
-    const productIds = [...new Set(invoiceItems.map((i) => i.productId).filter((id): id is string => !!id))];
+    const productIds = [
+      ...new Set(invoiceItems.map((i) => i.productId).filter((id): id is string => !!id)),
+    ];
 
     const mappingRows = await tx
-      .select({ finProductId: stkConsumption.finProductId, itemId: stkConsumption.itemId, qtyPerUnit: stkConsumption.qtyPerUnit })
+      .select({
+        finProductId: stkConsumption.finProductId,
+        itemId: stkConsumption.itemId,
+        qtyPerUnit: stkConsumption.qtyPerUnit,
+      })
       .from(stkConsumption)
-      .where(and(eq(stkConsumption.orgId, ctx.tenantId), inArray(stkConsumption.finProductId, productIds)));
+      .where(
+        and(
+          eq(stkConsumption.orgId, ctx.tenantId),
+          inArray(stkConsumption.finProductId, productIds),
+        ),
+      );
     const mappingsByProduct = new Map<string, { itemId: string; qtyPerUnit: number }[]>();
     for (const m of mappingRows) {
       const list = mappingsByProduct.get(m.finProductId) ?? [];
@@ -965,10 +1216,17 @@ export async function buildInvoiceIssuePreview(ctx: CoreCtx, invoiceId: string, 
     const fallbackItems = await tx
       .select({ id: stkItems.id, finProductId: stkItems.finProductId })
       .from(stkItems)
-      .where(and(eq(stkItems.orgId, ctx.tenantId), eq(stkItems.isStockItem, true), inArray(stkItems.finProductId, productIds)));
+      .where(
+        and(
+          eq(stkItems.orgId, ctx.tenantId),
+          eq(stkItems.isStockItem, true),
+          inArray(stkItems.finProductId, productIds),
+        ),
+      );
     const fallbackByProduct = new Map<string, string>();
     for (const row of fallbackItems) {
-      if (row.finProductId && !fallbackByProduct.has(row.finProductId)) fallbackByProduct.set(row.finProductId, row.id);
+      if (row.finProductId && !fallbackByProduct.has(row.finProductId))
+        fallbackByProduct.set(row.finProductId, row.id);
     }
 
     const qtyByItem = new Map<string, number>();
@@ -981,7 +1239,8 @@ export async function buildInvoiceIssuePreview(ctx: CoreCtx, invoiceId: string, 
       }
       const mappings = mappingsByProduct.get(line.productId);
       if (mappings?.length) {
-        for (const m of mappings) qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + quantity * m.qtyPerUnit);
+        for (const m of mappings)
+          qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + quantity * m.qtyPerUnit);
         continue;
       }
       const fallbackItemId = fallbackByProduct.get(line.productId);
@@ -1030,7 +1289,13 @@ async function previewLinesForItemQtys(
   const binRows = await tx
     .select({ itemId: stkBins.itemId, qty: stkBins.qty, valuationRate: stkBins.valuationRate })
     .from(stkBins)
-    .where(and(eq(stkBins.orgId, orgId), eq(stkBins.warehouseId, warehouseId), inArray(stkBins.itemId, itemIds)));
+    .where(
+      and(
+        eq(stkBins.orgId, orgId),
+        eq(stkBins.warehouseId, warehouseId),
+        inArray(stkBins.itemId, itemIds),
+      ),
+    );
   const availableByItem = new Map(binRows.map((r) => [r.itemId, Number(r.qty)]));
   const rateByItem = new Map(binRows.map((r) => [r.itemId, Number(r.valuationRate)]));
 
@@ -1049,7 +1314,8 @@ async function previewLinesForItemQtys(
       qtyConsumption,
       consumptionUom: item?.consumptionUom ?? null,
       unitsPerStockUom,
-      subunitsPerStockUom: item?.subunitsPerStockUom == null ? null : Number(item.subunitsPerStockUom),
+      subunitsPerStockUom:
+        item?.subunitsPerStockUom == null ? null : Number(item.subunitsPerStockUom),
       diagramEnabled: item?.diagramEnabled ?? false,
       estUnitCost: rateByItem.get(itemId) ?? 0,
       estValue: round4((rateByItem.get(itemId) ?? 0) * qty),
@@ -1068,19 +1334,28 @@ async function resolveConsumptionLines(
   orgId: string,
   lines: CreateIssueFromInvoiceLine[],
 ): Promise<{ itemId: string; qty: number }[]> {
-  const convertItemIds = [...new Set(lines.filter((l) => l.qtyConsumption != null).map((l) => l.itemId))];
+  const convertItemIds = [
+    ...new Set(lines.filter((l) => l.qtyConsumption != null).map((l) => l.itemId)),
+  ];
   const unitsPerStockUomByItem = new Map<string, number | null>();
   if (convertItemIds.length) {
     const rows = await tx
       .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
       .from(stkItems)
       .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, convertItemIds)));
-    for (const r of rows) unitsPerStockUomByItem.set(r.id, r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom));
+    for (const r of rows)
+      unitsPerStockUomByItem.set(
+        r.id,
+        r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom),
+      );
   }
   return lines.map((l) => {
     if (l.qtyConsumption == null) return { itemId: l.itemId, qty: l.qty };
     const unitsPerStockUom = unitsPerStockUomByItem.get(l.itemId) ?? null;
-    return { itemId: l.itemId, qty: round4(consumptionToStockQty({ unitsPerStockUom }, l.qtyConsumption)) };
+    return {
+      itemId: l.itemId,
+      qty: round4(consumptionToStockQty({ unitsPerStockUom }, l.qtyConsumption)),
+    };
   });
 }
 
@@ -1116,13 +1391,24 @@ export async function buildServiceIssuePreview(
     const mappingRows = await tx
       .select({ itemId: stkConsumption.itemId, qtyPerUnit: stkConsumption.qtyPerUnit })
       .from(stkConsumption)
-      .where(and(eq(stkConsumption.orgId, ctx.tenantId), eq(stkConsumption.finProductId, input.finProductId)));
+      .where(
+        and(
+          eq(stkConsumption.orgId, ctx.tenantId),
+          eq(stkConsumption.finProductId, input.finProductId),
+        ),
+      );
 
     const qtyByItem = new Map<string, number>();
-    for (const m of mappingRows) qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + quantity * Number(m.qtyPerUnit));
+    for (const m of mappingRows)
+      qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + quantity * Number(m.qtyPerUnit));
 
     const lines = await previewLinesForItemQtys(tx, ctx.tenantId, qtyByItem, input.warehouseId);
-    return { productName: product.name ?? input.finProductId, productCode: product.code ?? null, lines, hasMapping: mappingRows.length > 0 };
+    return {
+      productName: product.name ?? input.finProductId,
+      productCode: product.code ?? null,
+      lines,
+      hasMapping: mappingRows.length > 0,
+    };
   });
 }
 
@@ -1176,7 +1462,8 @@ async function insertSourcedIssueEntry(
           sql`${stkEntries.metadata}->>'sourceId' = ${body.sourceId}`,
         ),
       );
-    if (dup) throw new StockError('a stock issue already exists for this source', 'duplicate_source');
+    if (dup)
+      throw new StockError('a stock issue already exists for this source', 'duplicate_source');
   }
 
   const resolvedLines = await resolveConsumptionLines(tx, ctx.tenantId, body.lines);
@@ -1197,7 +1484,11 @@ async function insertSourcedIssueEntry(
     linesToRows(
       ctx.tenantId,
       row.id,
-      resolvedLines.map((l) => ({ itemId: l.itemId, qty: l.qty, fromWarehouseId: body.warehouseId })),
+      resolvedLines.map((l) => ({
+        itemId: l.itemId,
+        qty: l.qty,
+        fromWarehouseId: body.warehouseId,
+      })),
     ),
   );
   return row;
@@ -1212,7 +1503,10 @@ async function insertSourcedIssueEntry(
  * guard only when `sourceId` is set (booking/order provenance); plain service
  * issues legitimately repeat.
  */
-export async function createServiceIssue(ctx: CoreCtx, input: CreateServiceIssueInput): Promise<StkEntry> {
+export async function createServiceIssue(
+  ctx: CoreCtx,
+  input: CreateServiceIssueInput,
+): Promise<StkEntry> {
   if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
 
   const entry = await withOrgCore(ctx, async (tx) => {
@@ -1265,7 +1559,10 @@ export interface CreateSourcedIssueInput {
  * dup guard always applies (sourceId is required here, unlike the optional
  * one on createServiceIssue).
  */
-export async function createSourcedIssue(ctx: CoreCtx, input: CreateSourcedIssueInput): Promise<StkEntry> {
+export async function createSourcedIssue(
+  ctx: CoreCtx,
+  input: CreateSourcedIssueInput,
+): Promise<StkEntry> {
   if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
 
   const entry = await withOrgCore(ctx, (tx) =>
@@ -1309,7 +1606,10 @@ export interface CreateIssueFromInvoiceInput {
  *  unique index on metadata->>'invoiceId' backs this — the migration's
  *  already applied to prod, so add one in a follow-up if this guard is ever
  *  found to lose the race in practice). */
-export async function createIssueFromInvoice(ctx: CoreCtx, input: CreateIssueFromInvoiceInput): Promise<StkEntry> {
+export async function createIssueFromInvoice(
+  ctx: CoreCtx,
+  input: CreateIssueFromInvoiceInput,
+): Promise<StkEntry> {
   if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
 
   const entry = await withOrgCore(ctx, async (tx) => {
@@ -1322,8 +1622,15 @@ export async function createIssueFromInvoice(ctx: CoreCtx, input: CreateIssueFro
     const [dup] = await tx
       .select({ id: stkEntries.id })
       .from(stkEntries)
-      .where(and(eq(stkEntries.orgId, ctx.tenantId), ne(stkEntries.status, 'cancelled'), sql`${stkEntries.metadata}->>'invoiceId' = ${input.invoiceId}`));
-    if (dup) throw new StockError('a stock issue already exists for this invoice', 'duplicate_invoice');
+      .where(
+        and(
+          eq(stkEntries.orgId, ctx.tenantId),
+          ne(stkEntries.status, 'cancelled'),
+          sql`${stkEntries.metadata}->>'invoiceId' = ${input.invoiceId}`,
+        ),
+      );
+    if (dup)
+      throw new StockError('a stock issue already exists for this invoice', 'duplicate_invoice');
 
     const resolvedLines = await resolveConsumptionLines(tx, ctx.tenantId, input.lines);
 
@@ -1335,14 +1642,22 @@ export async function createIssueFromInvoice(ctx: CoreCtx, input: CreateIssueFro
         status: 'draft',
         note: `Invoice issue: ${invoice.providerRef}`,
         createdBy: input.actor.id,
-        metadata: { source: 'invoice', invoiceId: input.invoiceId, providerRef: invoice.providerRef },
+        metadata: {
+          source: 'invoice',
+          invoiceId: input.invoiceId,
+          providerRef: invoice.providerRef,
+        },
       })
       .returning();
     await tx.insert(stkEntryLines).values(
       linesToRows(
         ctx.tenantId,
         row.id,
-        resolvedLines.map((l) => ({ itemId: l.itemId, qty: l.qty, fromWarehouseId: input.warehouseId })),
+        resolvedLines.map((l) => ({
+          itemId: l.itemId,
+          qty: l.qty,
+          fromWarehouseId: input.warehouseId,
+        })),
       ),
     );
     return row;
@@ -1362,12 +1677,26 @@ export interface EntryByInvoiceSummary {
 /** Most recent stk_entry linked to this invoice via metadata.invoiceId (any
  *  status — the invoice-detail card wants to show "cancelled" too, not just
  *  hide it), or null when none exists yet. */
-export async function findEntryByInvoice(ctx: CoreCtx, invoiceId: string): Promise<EntryByInvoiceSummary | null> {
+export async function findEntryByInvoice(
+  ctx: CoreCtx,
+  invoiceId: string,
+): Promise<EntryByInvoiceSummary | null> {
   return withOrgCore(ctx, async (tx) => {
     const [row] = await tx
-      .select({ id: stkEntries.id, humanId: stkEntries.humanId, status: stkEntries.status, type: stkEntries.type, postedAt: stkEntries.postedAt })
+      .select({
+        id: stkEntries.id,
+        humanId: stkEntries.humanId,
+        status: stkEntries.status,
+        type: stkEntries.type,
+        postedAt: stkEntries.postedAt,
+      })
       .from(stkEntries)
-      .where(and(eq(stkEntries.orgId, ctx.tenantId), sql`${stkEntries.metadata}->>'invoiceId' = ${invoiceId}`))
+      .where(
+        and(
+          eq(stkEntries.orgId, ctx.tenantId),
+          sql`${stkEntries.metadata}->>'invoiceId' = ${invoiceId}`,
+        ),
+      )
       .orderBy(desc(stkEntries.createdAt))
       .limit(1);
     return row ?? null;
@@ -1377,7 +1706,11 @@ export async function findEntryByInvoice(ctx: CoreCtx, invoiceId: string): Promi
 /** Latest NON-cancelled entry stamped with metadata {source, sourceId} — the
  *  booking realize path's retry/idempotency anchor (a draft left behind by a
  *  negative-stock failure is found and re-submitted instead of duplicated). */
-export async function findEntryBySource(ctx: CoreCtx, source: string, sourceId: string): Promise<StkEntry | null> {
+export async function findEntryBySource(
+  ctx: CoreCtx,
+  source: string,
+  sourceId: string,
+): Promise<StkEntry | null> {
   return withOrgCore(ctx, async (tx) => {
     const [row] = await tx
       .select()

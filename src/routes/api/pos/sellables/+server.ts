@@ -40,7 +40,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
   const body = await parseBody(request, postSchema);
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const actor = {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
   try {
     const sellable = await createSellable(ctx, body, actor);
     return json({ ok: true, sellable }, { status: 201 });
