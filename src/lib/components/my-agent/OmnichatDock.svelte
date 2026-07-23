@@ -1,24 +1,17 @@
 <script lang="ts" module>
   import type { RecentConversation } from '$server/services/messages.service';
-
-  /** Ledger row as serialized over JSON, plus optimistic-send flags. */
-  interface ThreadMsg {
-    id?: string;
-    clientId: string;
-    direction: 'inbound' | 'outbound';
-    content: string | null;
-    senderName: string | null;
-    occurredAt: string | null;
-    pending?: boolean;
-    failed?: boolean;
-  }
+  import {
+    LatestThreadRequests,
+    type OmnichatThreadMessage as CachedThreadMessage,
+  } from './omnichat-thread-cache';
 
   // Module-level caches survive unmount/remount (collapse, nav away and back),
   // so the dock paints instantly instead of repopulating on every mount.
   let convosCache: RecentConversation[] = [];
   let convosLoaded = false;
   let convosHasMore = true;
-  const threadCache = new Map<string, ThreadMsg[]>();
+  const threadCache = new Map<string, CachedThreadMessage[]>();
+  const threadRequests = new LatestThreadRequests();
   const threadKey = (c: RecentConversation) => `${c.channel}:${c.chatId}`;
   const PAGE = 25;
 </script>
@@ -39,6 +32,11 @@
   import { setDragContext } from '$lib/utils/drag-context';
   import { fmtTimeAgo } from '$lib/utils/format';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
+  import {
+    mergeServerThread,
+    settleOptimisticMessage,
+    type OmnichatThreadMessage,
+  } from './omnichat-thread-cache';
 
   interface Props {
     /** Render as the slim collapsed rail (used when the panel is collapsed). */
@@ -72,7 +70,7 @@
 
   // ─── Thread view ───
   let selected = $state<RecentConversation | null>(null);
-  let thread = $state<ThreadMsg[]>([]);
+  let thread = $state<OmnichatThreadMessage[]>([]);
   let threadLoading = $state(false);
   let draft = $state('');
   let sendSeq = 0;
@@ -121,6 +119,8 @@
   }
 
   async function refreshThread(c: RecentConversation) {
+    const key = threadKey(c);
+    const requestId = threadRequests.begin(key);
     try {
       const q = new URLSearchParams({
         view: 'thread',
@@ -130,20 +130,25 @@
       });
       const res = await fetch(`/api/messages?${q}`);
       if (!res.ok) return;
-      const rows = ((await res.json()).messages ?? []) as ThreadMsg[];
+      const rows = ((await res.json()).messages ?? []) as OmnichatThreadMessage[];
       const asc = rows.slice().reverse();
-      // Keep optimistic bubbles the server hasn't echoed back yet.
-      const stillLocal = thread.filter(
-        (t) => (t.pending || t.failed) && !asc.some((r) => r.clientId === t.clientId),
-      );
-      if (selected && threadKey(selected) === threadKey(c)) {
-        thread = [...asc, ...stillLocal];
-        threadCache.set(threadKey(c), thread);
+      if (!threadRequests.isLatest(key, requestId)) return;
+
+      // Merge against this conversation's cache, never whichever thread happens
+      // to be visible after navigation while the request was in flight.
+      const merged = mergeServerThread(asc, threadCache.get(key) ?? []);
+      threadCache.set(key, merged);
+      if (selected && threadKey(selected) === key) {
+        thread = merged;
       }
     } catch {
       /* transient — next poll retries */
     } finally {
-      threadLoading = false;
+      // An older request must not clear the spinner for a newer request, and a
+      // response for the previous conversation must not clear the current one.
+      if (threadRequests.finish(key, requestId) && selected && threadKey(selected) === key) {
+        threadLoading = false;
+      }
     }
   }
 
@@ -163,8 +168,9 @@
     const c = selected;
     const text = draft.trim();
     if (!c || !text) return;
+    const key = threadKey(c);
     const clientId = `omni-send:${c.chatId}:${Date.now()}-${sendSeq++}`;
-    const bubble: ThreadMsg = {
+    const bubble: OmnichatThreadMessage = {
       clientId,
       direction: 'outbound',
       content: text,
@@ -172,7 +178,9 @@
       occurredAt: new Date().toISOString(),
       pending: true,
     };
-    thread = [...thread, bubble];
+    const optimistic = [...(threadCache.get(key) ?? thread), bubble];
+    threadCache.set(key, optimistic);
+    thread = optimistic;
     draft = '';
     try {
       const res = await fetch('/api/messages/send', {
@@ -181,13 +189,14 @@
         body: JSON.stringify({ channel: c.channel, chatId: c.chatId, text, clientId }),
       });
       if (!res.ok) throw new Error(String(res.status));
-      thread = thread.map((t) => (t.clientId === clientId ? { ...t, pending: false } : t));
-      threadCache.set(threadKey(c), thread);
+      const settled = settleOptimisticMessage(threadCache.get(key) ?? optimistic, clientId, false);
+      threadCache.set(key, settled);
+      if (selected && threadKey(selected) === key) thread = settled;
       void refresh();
     } catch {
-      thread = thread.map((t) =>
-        t.clientId === clientId ? { ...t, pending: false, failed: true } : t,
-      );
+      const settled = settleOptimisticMessage(threadCache.get(key) ?? optimistic, clientId, true);
+      threadCache.set(key, settled);
+      if (selected && threadKey(selected) === key) thread = settled;
     }
   }
 

@@ -92,10 +92,10 @@ export async function resolveCredentialsForUser(
     }
   }
   // 1. Per-user PG lookup (new primary path).
-  if (profileId) {
+  if (profileId && orgId) {
     try {
       const { getUserGatewayCredentials } = await import('$server/services/gateway.pg.service');
-      const creds = await getUserGatewayCredentials(profileId, chan);
+      const creds = await getUserGatewayCredentials(profileId, orgId, chan);
       if (creds) return { url: toWsUrl(creds.url), token: creds.token };
     } catch (err) {
       // Wave 1: catch covers both the dynamic import() and getUserGatewayCredentials().
@@ -350,7 +350,7 @@ export async function pluginsUiList(
   const res = await gatewayCallAsUser<
     | { entries?: PluginUiManifestOccupant[]; occupants?: PluginUiManifestOccupant[] }
     | PluginUiManifestOccupant[]
-  >('plugins.ui.list', orgId ? { orgId } : {}, profileId);
+  >('plugins.ui.list', orgId ? { orgId } : {}, profileId, { orgId });
   const raw = Array.isArray(res) ? res : (res?.entries ?? res?.occupants ?? []);
   return raw.filter((e) => !HIDDEN_PLUGIN_IDS.has(e.pluginId));
 }

@@ -190,6 +190,40 @@ describe('deriveChannelDisplayState — history sync', () => {
     expect(deriveChannelDisplayState({ ...linked, historySync: sync(phase) })).toBe('live');
   });
 
+  it('returns syncing while durable Hub delivery still has pending rows', () => {
+    expect(
+      deriveChannelDisplayState({
+        ...linked,
+        historySync: sync('complete'),
+        hubSync: {
+          total: 155_484,
+          acknowledged: 98_599,
+          pending: 56_885,
+          retrying: 0,
+          lastAcknowledgedAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      }),
+    ).toBe('syncing');
+  });
+
+  it('returns live once durable Hub delivery has no pending rows', () => {
+    expect(
+      deriveChannelDisplayState({
+        ...linked,
+        historySync: sync('complete'),
+        hubSync: {
+          total: 155_484,
+          acknowledged: 155_484,
+          pending: 0,
+          retrying: 0,
+          lastAcknowledgedAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      }),
+    ).toBe('live');
+  });
+
   it('regression guard: an undefined historySync changes nothing', () => {
     expect(deriveChannelDisplayState(linked)).toBe('live');
     expect(deriveChannelDisplayState({ ...linked, historySync: undefined })).toBe('live');

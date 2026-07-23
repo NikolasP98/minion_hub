@@ -11,14 +11,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockOrg =
   vi.fn<(orgId: string, channel: string) => Promise<{ url: string; token: string } | null>>();
 const mockUser =
-  vi.fn<(profileId: string, channel: string) => Promise<{ url: string; token: string } | null>>();
+  vi.fn<
+    (
+      profileId: string,
+      orgId: string,
+      channel: string,
+    ) => Promise<{ url: string; token: string } | null>
+  >();
 const mockSystem =
   vi.fn<(preferredUrl?: string) => Promise<{ url: string; token: string } | null>>();
 vi.mock('$server/services/gateway-lease.service', () => ({
   resolveOrgChannelCredentials: (orgId: string, channel: string) => mockOrg(orgId, channel),
 }));
 vi.mock('$server/services/gateway.pg.service', () => ({
-  getUserGatewayCredentials: (profileId: string, channel: string) => mockUser(profileId, channel),
+  getUserGatewayCredentials: (profileId: string, orgId: string, channel: string) =>
+    mockUser(profileId, orgId, channel),
   getSystemGatewayCredentials: (preferredUrl?: string) => mockSystem(preferredUrl),
 }));
 
@@ -54,15 +61,17 @@ describe('resolveCredentialsForUser', () => {
 
     const creds = await resolveCredentialsForUser('p1', 'org-A');
     expect(mockOrg).toHaveBeenCalledWith('org-A', 'prd');
+    expect(mockUser).toHaveBeenCalledWith('p1', 'org-A', 'prd');
     expect(creds).toEqual({ url: 'wss://user-gw', token: 'user-tok' });
   });
 
-  it('never consults the org lookup without an orgId (old chain unchanged)', async () => {
-    mockUser.mockResolvedValue({ url: 'wss://user-gw', token: 'user-tok' });
+  it('never consults org-scoped user credentials without an orgId', async () => {
+    mockSystem.mockResolvedValue({ url: 'wss://system-gw', token: 'system-tok' });
 
     const creds = await resolveCredentialsForUser('p1');
     expect(mockOrg).not.toHaveBeenCalled();
-    expect(creds).toEqual({ url: 'wss://user-gw', token: 'user-tok' });
+    expect(mockUser).not.toHaveBeenCalled();
+    expect(creds).toEqual({ url: 'wss://system-gw', token: 'system-tok' });
   });
 
   /**
@@ -76,14 +85,14 @@ describe('resolveCredentialsForUser', () => {
     mockUser.mockResolvedValue({ url: 'wss://user-gw', token: 'user-tok' });
     await resolveCredentialsForUser('p1', 'org-A');
     expect(mockOrg).toHaveBeenCalledWith('org-A', 'prd');
-    expect(mockUser).toHaveBeenCalledWith('p1', 'prd');
+    expect(mockUser).toHaveBeenCalledWith('p1', 'org-A', 'prd');
   });
 
   it('honours an explicit dev selection end to end', async () => {
     mockUser.mockResolvedValue({ url: 'wss://user-gw', token: 'user-tok' });
     await resolveCredentialsForUser('p1', 'org-A', 'dev');
     expect(mockOrg).toHaveBeenCalledWith('org-A', 'dev');
-    expect(mockUser).toHaveBeenCalledWith('p1', 'dev');
+    expect(mockUser).toHaveBeenCalledWith('p1', 'org-A', 'dev');
   });
 
   it('degrades an org-lookup failure to the fallback chain instead of throwing', async () => {
