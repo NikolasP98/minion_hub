@@ -27,10 +27,10 @@
   } from '$lib/chat/blocks';
   import { notesState, loadNotes } from '$lib/state/features/agent-notes.svelte';
   import { conn } from '$lib/state/gateway';
-  import { agentChat, ensureAgentChat } from '$lib/state/chat/chat.svelte';
+  import { agentChat } from '$lib/state/chat/chat.svelte';
   import { assistant } from '$lib/state/features/assistant.svelte';
   import {
-    sendChatMsg,
+    sendAssistantTurn,
     resetChat,
     loadChatHistory,
     stripVoiceTurnPrefix,
@@ -38,6 +38,7 @@
     parseUserContext,
     type UserContextChip,
   } from '$lib/services/gateway.svelte';
+  import { buildAssistantContext } from '$lib/state/features/assistant-context';
   import {
     voiceCall,
     mouth,
@@ -587,9 +588,12 @@
       return;
     }
     if (!agentId || !conn.connected) return;
-    const c = ensureAgentChat(agentId);
-    c.inputText = text;
-    sendChatMsg(agentId);
+    sendAssistantTurn(
+      agentId,
+      text,
+      buildAssistantContext(),
+      chat?.sessionKey ?? `agent:${agentId}:main`,
+    );
   }
 
   // ─── Per-message actions (copy / reply / retry) ──────────────────────────────
