@@ -1,6 +1,9 @@
 <script lang="ts" module>
   import type { RecentConversation } from '$server/services/messages.service';
-  import type { OmnichatThreadMessage as CachedThreadMessage } from './omnichat-thread-cache';
+  import {
+    LatestThreadRequests,
+    type OmnichatThreadMessage as CachedThreadMessage,
+  } from './omnichat-thread-cache';
 
   // Module-level caches survive unmount/remount (collapse, nav away and back),
   // so the dock paints instantly instead of repopulating on every mount.
@@ -8,6 +11,7 @@
   let convosLoaded = false;
   let convosHasMore = true;
   const threadCache = new Map<string, CachedThreadMessage[]>();
+  const threadRequests = new LatestThreadRequests();
   const threadKey = (c: RecentConversation) => `${c.channel}:${c.chatId}`;
   const PAGE = 25;
 </script>
@@ -29,7 +33,6 @@
   import { fmtTimeAgo } from '$lib/utils/format';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import {
-    LatestThreadRequests,
     mergeServerThread,
     settleOptimisticMessage,
     type OmnichatThreadMessage,
@@ -72,7 +75,6 @@
   let draft = $state('');
   let sendSeq = 0;
   let threadEl = $state<HTMLDivElement | null>(null);
-  const threadRequests = new LatestThreadRequests();
 
   async function refresh() {
     try {
