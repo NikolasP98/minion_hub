@@ -321,7 +321,7 @@
     // persisting its spot. Anchored by whichever half it lands in so the
     // hover-expand always grows inward and never spills off-screen.
     const LAUNCH_MARGIN = 20;
-    let launcherEl: HTMLButtonElement | null = $state(null);
+    let launcherEl: HTMLElement | null = $state(null);
     let pos = $state<{ left: number; top: number } | null>(null);
     let dragging = $state(false);
     let vw = $state(typeof window !== 'undefined' ? window.innerWidth : 1280);
@@ -330,39 +330,52 @@
     let suppressClick = false;
 
     const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-    // Live collapsed size — hover-expand is disabled while dragging, so offsetWidth
-    // here is always the collapsed pill (no hardcoded guess to drift out of sync).
-    const launcherW = () => launcherEl?.offsetWidth ?? 56;
-    const launcherH = () => launcherEl?.offsetHeight ?? 44;
+
+    // Measured COLLAPSED pill size. Everything (edge snapping, the mirrored
+    // `right:` anchor, cursor centring, the in-view clamp) is derived from it,
+    // so it has to be the real box — the old `launcherEl?.offsetWidth ?? 56`
+    // read `null` on every first paint (the ref was only assigned on
+    // pointerdown), and `right: vw - left - 56` on a ~140px pill rendered it
+    // ~80px away from where it was dropped. Sampled only while collapsed:
+    // hovering expands the label, which must NOT move the anchor.
+    let launcherSize = $state({ w: 56, h: 44 });
+    const launcherW = () => launcherSize.w;
+    const launcherH = () => launcherSize.h;
+    function measureLauncher() {
+        if (!launcherEl || dragging) return;
+        const { offsetWidth: w, offsetHeight: h } = launcherEl;
+        if (w > 0 && h > 0 && (w !== launcherSize.w || h !== launcherSize.h)) launcherSize = { w, h };
+    }
+
+    // Keep the pill inside the viewport whenever the real size or the viewport
+    // changes. This is the single self-healing guard: a position saved at a
+    // different window size, or written against the old size guess, is pulled
+    // back on screen instead of leaving the launcher parked out of sight.
+    $effect(() => {
+        if (!pos) return;
+        const { w, h } = launcherSize;
+        const left = clampN(pos.left, LAUNCH_MARGIN, Math.max(LAUNCH_MARGIN, vw - w - LAUNCH_MARGIN));
+        const top = clampN(pos.top, LAUNCH_MARGIN, Math.max(LAUNCH_MARGIN, vh - h - LAUNCH_MARGIN));
+        if (left !== pos.left || top !== pos.top) pos = { left, top };
+    });
 
     onMount(() => {
         try {
             const s = localStorage.getItem('assistant-launcher-pos');
-            if (s) {
-                // Re-clamp the restored position into the CURRENT viewport. A pos
-                // saved at a different window size (or a stale/off-screen value)
-                // would otherwise render the launcher outside the visible area —
-                // it reads as "the assistant is gone". Clamp only ran on resize
-                // before, so a fresh load with a bad pos left the pill invisible.
-                const p = JSON.parse(s);
-                // A corrupt/non-finite saved value would clamp to NaN → the pill
-                // renders fixed at 0,0 (under the topbar) and reads as "gone".
-                // Ignore it and fall back to the default bottom-right anchor.
-                if (Number.isFinite(p?.left) && Number.isFinite(p?.top)) {
-                    const w = launcherW();
-                    const h = launcherH();
-                    pos = {
-                        left: clampN(p.left, LAUNCH_MARGIN, window.innerWidth - w - LAUNCH_MARGIN),
-                        top: clampN(p.top, LAUNCH_MARGIN, window.innerHeight - h - LAUNCH_MARGIN),
-                    };
-                }
-            }
+            const p = s ? JSON.parse(s) : null;
+            // A corrupt/non-finite saved value would clamp to NaN → the pill
+            // renders fixed at 0,0 (under the topbar) and reads as "gone".
+            // Ignore it and fall back to the default bottom-right anchor.
+            // In-viewport clamping is the $effect above, which re-runs once the
+            // real size lands.
+            if (Number.isFinite(p?.left) && Number.isFinite(p?.top)) pos = { left: p.left, top: p.top };
         } catch {
             /* ignore */
         }
         const onResize = () => {
             vw = window.innerWidth;
             vh = window.innerHeight;
+            measureLauncher();
             if (pos) snapToEdge();
         };
         window.addEventListener('resize', onResize);
@@ -395,7 +408,6 @@
     }
 
     function onLauncherPointerDown(e: PointerEvent) {
-        launcherEl = e.currentTarget as HTMLButtonElement;
         if (e.button !== 0 || !launcherEl) return;
         const r = launcherEl.getBoundingClientRect();
         pos = pos ?? { left: r.left, top: r.top };
@@ -409,10 +421,11 @@
         if (!drag.moved && Math.abs(e.clientX - drag.px) < 4 && Math.abs(e.clientY - drag.py) < 4)
             return;
         drag.moved = true;
-        // The pill collapses while dragging, so centre the (collapsed) pill on the
-        // cursor — it follows the pointer instead of floating off to one side.
-        const w = launcherEl.offsetWidth;
-        const h = launcherEl.offsetHeight;
+        // Centre the COLLAPSED pill on the cursor. Measured size, not a live
+        // offsetWidth read: the label collapse is a transition, so reading it
+        // mid-drag returns an interpolated width and the pill slides sideways
+        // under the cursor for the length of the animation.
+        const { w, h } = launcherSize;
         pos = {
             left: clampN(e.clientX - w / 2, LAUNCH_MARGIN, vw - w - LAUNCH_MARGIN),
             top: clampN(e.clientY - h / 2, LAUNCH_MARGIN, vh - h - LAUNCH_MARGIN),
@@ -554,13 +567,23 @@
         </Button>
     </div>
 {:else if !assistant.open}
+    <!-- `!fixed` / `!h-auto` below are load-bearing, not cosmetic: Button's base
+         class hardcodes `relative` and `h-[--control-height-xs]`, and Tailwind
+         emits `.relative` AFTER `.fixed`, so class-attribute order does not
+         decide the winner. Un-forced, the pill is position:relative — it renders
+         at its static flow position (document bottom-left) and dragging writes
+         left/top as RELATIVE offsets, throwing it off-screen. -->
     <Button variant="ghost" size="xs"
         type="button"
+        {@attach (el: HTMLElement) => {
+            launcherEl = el;
+            measureLauncher();
+        }}
         onpointerdown={onLauncherPointerDown}
         onpointermove={onLauncherPointerMove}
         onpointerup={onLauncherPointerUp}
         onclick={onLauncherClick}
-        class="fixed z-[var(--layer-popover,40)] flex items-center gap-1.5 p-1.5 rounded-full bg-bg2 border border-border shadow-[var(--shadow-elevation-3,var(--shadow-md))] transition-colors hover:border-accent/50 hover:bg-bg3 group select-none touch-none {dragging ? 'cursor-grabbing shadow-[var(--shadow-elevation-4,var(--shadow-lg))]' : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'}"
+        class="!fixed z-[var(--layer-popover,40)] !h-auto flex items-center gap-1.5 p-1.5 rounded-full bg-bg2 border border-border shadow-[var(--shadow-elevation-3,var(--shadow-md))] transition-colors hover:border-accent/50 hover:bg-bg3 group select-none touch-none {dragging ? 'cursor-grabbing shadow-[var(--shadow-elevation-4,var(--shadow-lg))]' : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'}"
         style={launcherStyle}
         aria-label={m.floatingAssistant_openLabel()}
         title={m.floatingAssistant_openTitle()}

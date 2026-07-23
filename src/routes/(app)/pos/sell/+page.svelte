@@ -796,6 +796,10 @@
   }
   :global(.pos-sell-surface .card > span) {
     width: 100%;
+    /* Without this the flex item's automatic minimum is its (nowrap) content,
+       so a long sellable name widens the card past its grid track and the
+       whole catalog — and with it the cart panel below — overflows sideways. */
+    min-width: 0;
     flex-direction: column;
     align-items: flex-start;
     gap: var(--space-1, 4px);
@@ -804,6 +808,13 @@
     border-color: var(--color-accent);
   }
   .cname {
+    /* Button's base class is `whitespace-nowrap`; sellable names are long
+       ("Contorno Mandibular (Saypha Volume Plus)") and must wrap inside the
+       card instead of pushing the grid wider than the viewport. */
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
     font-size: var(--font-size-body, 14px);
     font-weight: 500;
   }
