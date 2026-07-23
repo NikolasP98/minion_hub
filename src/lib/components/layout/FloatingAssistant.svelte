@@ -604,7 +604,7 @@
   </div>
 {:else if !assistant.open}
   <!-- `!fixed` / `!h-auto` below are load-bearing, not cosmetic: Button's base
-         class hardcodes `relative` and `h-[--control-height-xs]`, and Tailwind
+         class hardcodes `relative` and `h-[var(--control-height-xs)]`, and Tailwind
          emits `.relative` AFTER `.fixed`, so class-attribute order does not
          decide the winner. Un-forced, the pill is position:relative — it renders
          at its static flow position (document bottom-left) and dragging writes
