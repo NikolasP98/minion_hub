@@ -68,11 +68,13 @@ export async function getArtifactContext(
         'plugins.alerts.summary',
         { since: Date.now() - 30 * 24 * 60 * 60 * 1000 },
         ctx.profileId,
+        { orgId: ctx.tenantId },
       ).catch(() => null),
       gatewayCallAsUser<{ rows?: Array<Record<string, unknown>> }>(
         'plugins.alerts.recent',
         { limit: 10 },
         ctx.profileId,
+        { orgId: ctx.tenantId },
       ).catch(() => null),
     ]);
     const counts = summary?.counts ?? { total: 0, high: 0, med: 0, low: 0, notified: 0, responded: 0 };

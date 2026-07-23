@@ -105,6 +105,27 @@ describe('gateway.pg.service', () => {
     expect(g.id).toBe('g1');
   });
 
+  test('listGatewaysForOrgAdmin scopes gateway metadata to the active organization', async () => {
+    const orderBy = vi.fn().mockResolvedValue([
+      {
+        id: 'g1',
+        name: 'Production',
+        url: 'wss://gateway.example',
+        authMode: 'token',
+        createdAt: new Date('2026-07-23T00:00:00Z'),
+      },
+    ]);
+    const where = vi.fn().mockReturnValue({ orderBy });
+    selectFrom.mockReturnValueOnce({ where });
+    const { eq } = await import('drizzle-orm');
+    const { listGatewaysForOrgAdmin } = await import('./gateway.pg.service');
+
+    const rows = await listGatewaysForOrgAdmin('org-active');
+
+    expect(vi.mocked(eq)).toHaveBeenCalledWith('orgId', 'org-active');
+    expect(rows).toHaveLength(1);
+  });
+
   test('getUserGatewayCredentials returns decrypted token', async () => {
     const { getUserGatewayCredentials } = await import('./gateway.pg.service');
     selectFrom.mockReturnValueOnce({

@@ -1,12 +1,14 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { requireAdmin } from '$server/auth/authorize';
-import { createGateway, listGatewaysForAdmin } from '$server/services/gateway.pg.service';
+import { createGateway, listGatewaysForOrgAdmin } from '$server/services/gateway.pg.service';
 import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 
 export const GET: RequestHandler = async ({ locals }) => {
   requireAdmin(locals);
-  return json({ gateways: await listGatewaysForAdmin() });
+  const orgId = locals.orgId ?? locals.tenantCtx?.tenantId;
+  if (!orgId) throw error(400, 'active organization required');
+  return json({ gateways: await listGatewaysForOrgAdmin(orgId) });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {

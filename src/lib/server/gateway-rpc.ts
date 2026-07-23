@@ -350,7 +350,7 @@ export async function pluginsUiList(
   const res = await gatewayCallAsUser<
     | { entries?: PluginUiManifestOccupant[]; occupants?: PluginUiManifestOccupant[] }
     | PluginUiManifestOccupant[]
-  >('plugins.ui.list', orgId ? { orgId } : {}, profileId);
+  >('plugins.ui.list', orgId ? { orgId } : {}, profileId, { orgId });
   const raw = Array.isArray(res) ? res : (res?.entries ?? res?.occupants ?? []);
   return raw.filter((e) => !HIDDEN_PLUGIN_IDS.has(e.pluginId));
 }

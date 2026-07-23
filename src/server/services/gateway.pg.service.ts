@@ -152,6 +152,22 @@ export async function listGatewaysForAdmin(): Promise<GatewayRow[]> {
   return rows as GatewayRow[];
 }
 
+export async function listGatewaysForOrgAdmin(orgId: string): Promise<GatewayRow[]> {
+  const db = getCoreDb();
+  const rows = await db
+    .select({
+      id: gateway.id,
+      name: gateway.name,
+      url: gateway.url,
+      authMode: gateway.authMode,
+      createdAt: gateway.createdAt,
+    })
+    .from(gateway)
+    .where(eq(gateway.orgId, orgId))
+    .orderBy(gateway.createdAt);
+  return rows as GatewayRow[];
+}
+
 export async function deleteGateway(id: string): Promise<void> {
   await getCoreDb().delete(gateway).where(eq(gateway.id, id));
 }

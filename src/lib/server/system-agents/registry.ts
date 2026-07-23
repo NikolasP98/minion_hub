@@ -72,6 +72,7 @@ export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
           'plugins.alerts.summary',
           { since: Date.now() - 30 * 24 * 60 * 60 * 1000 },
           ctx.profileId,
+          { orgId: ctx.tenantId },
         ).catch(() => null);
         if (!summary) return { enabled: true, state: 'attention', detail: m.sysagent_triage_unreachable() };
         const c = summary.counts ?? null;
@@ -96,6 +97,7 @@ export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
             'plugins.alerts.summary',
             { since: Date.now() - 30 * 24 * 60 * 60 * 1000 },
             ctx.profileId,
+            { orgId: ctx.tenantId },
           ).catch(() => null);
           if (keys.includes('triage.counts.total')) result['triage.counts.total'] = summary?.counts?.total ?? 0;
           if (keys.includes('triage.counts.high')) result['triage.counts.high'] = summary?.counts?.high ?? 0;
@@ -105,6 +107,7 @@ export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
             'plugins.alerts.recent',
             { limit: 10 },
             ctx.profileId,
+            { orgId: ctx.tenantId },
           ).catch(() => null);
           result['triage.recent'] = mapRecentRows(recent?.rows ?? []);
         }

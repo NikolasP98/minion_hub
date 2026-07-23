@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   createGateway: vi.fn(),
+  listGatewaysForOrgAdmin: vi.fn(),
   assertSafeUrl: vi.fn(),
 }));
 
@@ -11,7 +12,7 @@ vi.mock('$server/auth/authorize', () => ({
 
 vi.mock('$server/services/gateway.pg.service', () => ({
   createGateway: mocks.createGateway,
-  listGatewaysForAdmin: vi.fn(),
+  listGatewaysForOrgAdmin: mocks.listGatewaysForOrgAdmin,
 }));
 
 vi.mock('$server/services/ssrf-guard', () => ({
@@ -19,7 +20,29 @@ vi.mock('$server/services/ssrf-guard', () => ({
   SsrfBlockedError: class SsrfBlockedError extends Error {},
 }));
 
-import { POST } from './+server';
+import { GET, POST } from './+server';
+
+describe('GET /api/gateways', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.listGatewaysForOrgAdmin.mockResolvedValue([{ id: 'gateway-1' }]);
+  });
+
+  test('returns only gateways assigned to the active organization', async () => {
+    const response = await GET({ locals: { orgId: 'org-active' } } as never);
+
+    expect(response.status).toBe(200);
+    expect(mocks.listGatewaysForOrgAdmin).toHaveBeenCalledWith('org-active');
+  });
+
+  test('rejects an unscoped gateway listing', async () => {
+    await expect(GET({ locals: {} } as never)).rejects.toMatchObject({
+      status: 400,
+      body: { message: 'active organization required' },
+    });
+    expect(mocks.listGatewaysForOrgAdmin).not.toHaveBeenCalled();
+  });
+});
 
 describe('POST /api/gateways', () => {
   beforeEach(() => {
