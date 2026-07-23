@@ -53,7 +53,8 @@ export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
         const result: Record<string, unknown> = {};
         if (keys.includes('reminders.sent')) result['reminders.sent'] = act?.counts.sent ?? 0;
         if (keys.includes('reminders.failed')) result['reminders.failed'] = act?.counts.failed ?? 0;
-        if (keys.includes('reminders.skipped')) result['reminders.skipped'] = act?.counts.skipped ?? 0;
+        if (keys.includes('reminders.skipped'))
+          result['reminders.skipped'] = act?.counts.skipped ?? 0;
         return result;
       },
     },
@@ -74,7 +75,8 @@ export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
           ctx.profileId,
           { orgId: ctx.tenantId },
         ).catch(() => null);
-        if (!summary) return { enabled: true, state: 'attention', detail: m.sysagent_triage_unreachable() };
+        if (!summary)
+          return { enabled: true, state: 'attention', detail: m.sysagent_triage_unreachable() };
         const c = summary.counts ?? null;
         const total = c?.total ?? 0;
         return {
@@ -87,7 +89,11 @@ export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
           }),
           // Triage is a continuous kernel (no discrete flow_runs): surface alert
           // volume + notify rate as the generic health metrics. lastRunAt N/A.
-          health: { lastRunAt: null, runs30d: c ? total : null, successRate: total > 0 ? c!.notified / total : null },
+          health: {
+            lastRunAt: null,
+            runs30d: c ? total : null,
+            successRate: total > 0 ? c!.notified / total : null,
+          },
         };
       },
       async resolveVariables(ctx, keys) {
@@ -99,8 +105,10 @@ export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
             ctx.profileId,
             { orgId: ctx.tenantId },
           ).catch(() => null);
-          if (keys.includes('triage.counts.total')) result['triage.counts.total'] = summary?.counts?.total ?? 0;
-          if (keys.includes('triage.counts.high')) result['triage.counts.high'] = summary?.counts?.high ?? 0;
+          if (keys.includes('triage.counts.total'))
+            result['triage.counts.total'] = summary?.counts?.total ?? 0;
+          if (keys.includes('triage.counts.high'))
+            result['triage.counts.high'] = summary?.counts?.high ?? 0;
         }
         if (keys.includes('triage.recent')) {
           const recent = await gatewayCallAsUser<{ rows?: Array<Record<string, unknown>> }>(
@@ -132,8 +140,10 @@ export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
       },
       async resolveVariables(ctx, keys) {
         const out: Record<string, unknown> = {};
-        if (keys.includes('artifacts.builtCount')) out['artifacts.builtCount'] = await countArtifacts(ctx).catch(() => 0);
-        if (keys.includes('artifacts.recent')) out['artifacts.recent'] = await listRecentArtifacts(ctx).catch(() => []);
+        if (keys.includes('artifacts.builtCount'))
+          out['artifacts.builtCount'] = await countArtifacts(ctx).catch(() => 0);
+        if (keys.includes('artifacts.recent'))
+          out['artifacts.recent'] = await listRecentArtifacts(ctx).catch(() => []);
         return out;
       },
     },
