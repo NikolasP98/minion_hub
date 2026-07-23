@@ -12,6 +12,7 @@
   import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
   import CallControls from '$lib/components/my-agent/CallControls.svelte';
   import NotesPanel from '$lib/components/my-agent/NotesPanel.svelte';
+  import OmnichatDock from '$lib/components/my-agent/OmnichatDock.svelte';
   import ChatTurn from '$lib/components/my-agent/ChatTurn.svelte';
   import MessageActions, {
     type MessageAction,
@@ -62,6 +63,7 @@
   import { distinctProviders } from '$lib/components/my-agent/provider';
   import { dragContextIcon, type DragContextKind } from '$lib/utils/drag-context';
   import {
+    Check,
     ChevronDown,
     ChevronLeft,
     ChevronRight,
@@ -73,7 +75,7 @@
   } from 'lucide-svelte';
   import { tick } from 'svelte';
   import type { PageData } from './$types';
-  import { Button } from '$lib/components/ui';
+  import { Button, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
 
   const { data }: { data: PageData } = $props();
@@ -96,6 +98,43 @@
   // "New since last view" highlight for emails. We persist the newest receivedAt
   // the user has already seen in localStorage; anything newer renders with the
   // fresh accent until the next visit re-baselines it.
+  // Right-dock section visibility (notes/todos vs omnichat), toggled via the
+  // dock's context menu and persisted locally. At least one section stays on —
+  // an empty dock would leave no surface to right-click it back.
+  const DOCK_SECTIONS_KEY = 'minion-home-dock-sections';
+  const dockSections = $state({ notes: true, omni: true });
+  $effect(() => {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(DOCK_SECTIONS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<typeof dockSections>;
+        dockSections.notes = saved.notes !== false;
+        dockSections.omni = saved.omni !== false;
+      }
+    } catch {
+      /* corrupted pref — keep defaults */
+    }
+  });
+  function toggleDockSection(key: 'notes' | 'omni') {
+    const other = key === 'notes' ? 'omni' : 'notes';
+    if (dockSections[key] && !dockSections[other]) return; // keep one section on
+    dockSections[key] = !dockSections[key];
+    localStorage.setItem(
+      DOCK_SECTIONS_KEY,
+      JSON.stringify({ notes: dockSections.notes, omni: dockSections.omni }),
+    );
+  }
+
+  // Dock context menu (right-click). Text-editing surfaces keep the native menu.
+  let dockMenu = $state<{ x: number; y: number } | null>(null);
+  function onDockContextMenu(e: MouseEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t?.closest('input, textarea, [contenteditable="true"]')) return;
+    e.preventDefault();
+    dockMenu = { x: Math.min(e.clientX, window.innerWidth - 220), y: e.clientY };
+  }
+
   const LAST_SEEN_KEY = 'minion:my-agent:emails-last-seen';
   let emailsLastSeen = $state(0);
   $effect(() => {
@@ -1123,10 +1162,60 @@
     </div>
   </div>
 
-  <div class="notes-dock" class:collapsed={!notesState.open}>
-    <NotesPanel />
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="notes-dock"
+    class:collapsed={!notesState.open}
+    class:has-omni={dockSections.notes && dockSections.omni}
+    oncontextmenu={onDockContextMenu}
+  >
+    {#if dockSections.notes}
+      <NotesPanel />
+    {/if}
+    {#if dockSections.omni}
+      <OmnichatDock rail={!notesState.open} />
+    {/if}
   </div>
 </PageShell>
+
+{#if dockMenu}
+  <div
+    class="dock-menu"
+    role="menu"
+    aria-label={m.omni_dockMenuLabel()}
+    style="left: {dockMenu.x}px; top: {dockMenu.y}px"
+  >
+    <Button
+      type="button"
+      class="dock-menu-item"
+      role="menuitemcheckbox"
+      aria-checked={dockSections.notes}
+      onclick={() => toggleDockSection('notes')}
+    >
+      <span class="dm-check">{#if dockSections.notes}<Check size={iconSizes.sm} />{/if}</span>
+      <span>{m.note_panelLabel()}</span>
+    </Button>
+    <Button
+      type="button"
+      class="dock-menu-item"
+      role="menuitemcheckbox"
+      aria-checked={dockSections.omni}
+      onclick={() => toggleDockSection('omni')}
+    >
+      <span class="dm-check">{#if dockSections.omni}<Check size={iconSizes.sm} />{/if}</span>
+      <span>{m.omni_panelTitle()}</span>
+    </Button>
+  </div>
+{/if}
+
+<svelte:document
+  onpointerdown={(e) => {
+    if (dockMenu && e.target instanceof Element && !e.target.closest('.dock-menu')) dockMenu = null;
+  }}
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && dockMenu) dockMenu = null;
+  }}
+/>
 
 <EventModal
   bind:open={eventModalOpen}
@@ -1171,7 +1260,71 @@
     min-height: 0;
     margin-left: auto;
     display: flex;
+    /* Sections (notes, omnichat) stack vertically inside the dock. */
+    flex-direction: column;
     flex-shrink: 0;
+  }
+
+  /* Split mode: notes + omnichat share the dock height; NotesPanel's own
+	   100%-height and bottom collapse footer yield to the stacked layout (the
+	   bottom-most section — omnichat — renders the collapse control instead). */
+  .notes-dock.has-omni :global(.notes-panel) {
+    height: auto;
+    flex: 1;
+    min-height: 0;
+  }
+  .notes-dock.has-omni :global(.notes-panel .panel-foot) {
+    display: none;
+  }
+  .notes-dock.has-omni :global(.omni-panel) {
+    border-top: 1px solid var(--color-border);
+  }
+
+  /* Dock section toggle menu (right-click). Dismissal: outside pointerdown +
+	   Escape via svelte:document — never a fixed backdrop element. */
+  .dock-menu {
+    position: fixed;
+    z-index: var(--layer-popover);
+    min-width: 190px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: var(--space-1);
+    border: 1px solid color-mix(in srgb, var(--color-foreground) 12%, transparent);
+    border-radius: var(--radius-xl);
+    background: var(--color-bg2);
+    box-shadow: var(--shadow-overlay);
+  }
+  .dock-menu :global(.dock-menu-item) {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: color-mix(in srgb, var(--color-foreground) 85%, transparent);
+    font-size: var(--font-size-caption);
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+  .dock-menu :global(.dock-menu-item):hover {
+    background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
+    color: var(--color-foreground);
+  }
+  /* Button's inner row span centers by default — pin menu rows to the left. */
+  .dock-menu :global(.dock-menu-item > span) {
+    justify-content: flex-start;
+    width: 100%;
+    gap: var(--space-2);
+  }
+  .dock-menu :global(.dm-check) {
+    display: inline-flex;
+    width: 14px;
+    flex-shrink: 0;
+    color: var(--color-accent);
   }
 
   @media (max-width: 768px) {
@@ -1190,7 +1343,8 @@
       box-shadow: var(--shadow-overlay);
     }
 
-    .notes-dock :global(.notes-panel) {
+    .notes-dock :global(.notes-panel),
+    .notes-dock :global(.omni-panel) {
       width: 100%;
       max-width: 100%;
     }

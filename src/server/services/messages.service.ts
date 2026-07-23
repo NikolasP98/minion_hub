@@ -1,7 +1,20 @@
 import { and, eq, gte, lte, desc, sql, type SQL } from 'drizzle-orm';
 import { messages } from '@minion-stack/db/pg';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrg } from '$server/db/pg-ledger-client';
 import { enqueueWhatsAppBrainChanges } from './brain-corpus-jobs.service';
+
+/** Cache tags for message-ledger reads (omnichat conversations/threads). */
+const messageTags = (orgId: string) => tags.tenantDomain(orgId, 'messages');
+
+/** Bust cached ledger reads after a write. Never lets a cache error fail ingest. */
+async function bustMessageCaches(orgId: string): Promise<void> {
+  try {
+    await invalidateTags([...messageTags(orgId)]);
+  } catch (cause) {
+    console.warn('[messages] cache invalidation failed (stale until TTL)', cause);
+  }
+}
 
 export interface IngestRow {
   clientId: string;
@@ -149,6 +162,7 @@ export async function insertMessagesDetailed(
       accepted: values.length,
       acceptedClientIds: values.map((value) => value.clientId),
     };
+    await bustMessageCaches(orgId);
     const brainJobId = await enqueueBrainChangesAfterCommit(orgId, rows, result.acceptedClientIds);
     return { ...result, brainJobId };
   } catch (bulkErr) {
@@ -172,6 +186,7 @@ export async function insertMessagesDetailed(
     console.warn(
       `[ingest] bulk insert failed (${String(bulkErr)}); per-row fallback accepted ${acceptedClientIds.length}/${values.length}`,
     );
+    if (acceptedClientIds.length > 0) await bustMessageCaches(orgId);
     const brainJobId = await enqueueBrainChangesAfterCommit(orgId, rows, acceptedClientIds);
     return { accepted: acceptedClientIds.length, acceptedClientIds, brainJobId };
   }
@@ -256,6 +271,109 @@ export interface ListFilters {
   offset?: number;
 }
 
+export interface RecentConversation {
+  channel: string;
+  chatId: string;
+  accountId: string | null;
+  isGroup: boolean | null;
+  direction: 'inbound' | 'outbound';
+  content: string | null;
+  occurredAt: number | null;
+  /** Latest known counterparty name (from the last named inbound message). */
+  senderName: string | null;
+  senderHandle: string | null;
+}
+
+interface RecentConversationRow {
+  channel: string;
+  chat_id: string;
+  account_id: string | null;
+  is_group: boolean | null;
+  direction: 'inbound' | 'outbound';
+  content: string | null;
+  occurred_at: unknown;
+  sender_name: string | null;
+  sender_handle: string | null;
+}
+
+/**
+ * Most recent conversation threads across ALL channels: the latest message per
+ * (channel, chat_id), newest first. The counterparty name comes from the last
+ * named INBOUND message (the latest row may be ours, whose sender is us).
+ *
+ * Cached per page: ingest/send bust the tag, so the TTL only bounds staleness
+ * when invalidation can't reach this instance (memory backend on serverless).
+ */
+export async function listRecentConversations(
+  orgId: string,
+  limit = 25,
+  offset = 0,
+): Promise<RecentConversation[]> {
+  return cached(
+    keys.hub('omnichat-convos', { t: orgId, d: { n: limit, o: offset } }),
+    { ttl: '2m', swr: '30s', tags: [...messageTags(orgId)] },
+    () => loadRecentConversations(orgId, limit, offset),
+  );
+}
+
+/**
+ * Perf shape (measured on prod, 270k rows): GROUP BY over an INDEX-ONLY scan of
+ * messages_org_chat_idx picks the page of thread keys (~100ms warm), then two
+ * lateral index probes per page row fetch the latest message + last named
+ * inbound sender. The previous DISTINCT ON over full wide rows spilled a 10MB
+ * disk sort (~14s cold). Index-only depends on a healthy visibility map —
+ * autovacuum keeps it; a stale one shows up as Heap Fetches in EXPLAIN.
+ */
+async function loadRecentConversations(
+  orgId: string,
+  limit: number,
+  offset: number,
+): Promise<RecentConversation[]> {
+  return withOrg(orgId, async (tx) => {
+    const rows = (await tx.execute(sql`
+      with threads as (
+        select channel, chat_id, max(occurred_at) as last_at
+        from messages
+        where org_id = ${orgId} and chat_id is not null
+        group by channel, chat_id
+        order by max(occurred_at) desc nulls last
+        limit ${Math.min(limit, 100)} offset ${Math.max(offset, 0)}
+      )
+      select t.channel, t.chat_id, t.last_at as occurred_at,
+             l.account_id, l.is_group, l.direction, l.content,
+             n.sender_name, n.sender_handle
+      from threads t
+      left join lateral (
+        -- Last message WITH text: media/attachment rows are stored with empty
+        -- content (IG polling can't fetch them), useless as a snippet.
+        select account_id, is_group, direction, content from messages m
+        where m.org_id = ${orgId} and m.channel = t.channel and m.chat_id = t.chat_id
+          and m.content is not null and m.content <> ''
+        order by m.occurred_at desc nulls last limit 1
+      ) l on true
+      left join lateral (
+        select sender_name, sender_handle from messages m
+        where m.org_id = ${orgId} and m.channel = t.channel and m.chat_id = t.chat_id
+          and m.direction = 'inbound' and m.sender_name is not null
+        order by m.occurred_at desc nulls last limit 1
+      ) n on true
+      order by t.last_at desc nulls last
+    `)) as unknown as RecentConversationRow[];
+    return rows.map((r) => ({
+      channel: r.channel,
+      chatId: r.chat_id,
+      accountId: r.account_id,
+      isGroup: r.is_group,
+      // A thread whose every message is empty (all-media) yields no lateral row.
+      direction: r.direction ?? 'inbound',
+      content: r.content,
+      occurredAt: toTimestampMs(r.occurred_at),
+      senderName: r.sender_name,
+      senderHandle: r.sender_handle,
+    }));
+  });
+}
+
 /** List messages for an org (RLS also enforces org isolation as a backstop). */
 export async function listMessages(orgId: string, filters: ListFilters) {
   return withOrg(orgId, async (tx) => {
@@ -274,4 +392,23 @@ export async function listMessages(orgId: string, filters: ListFilters) {
       .limit(Math.min(filters.limit ?? 100, 500))
       .offset(filters.offset ?? 0);
   });
+}
+
+export type LedgerMessage = typeof messages.$inferSelect;
+
+/**
+ * One conversation's recent messages (newest first), cached under the same tag
+ * as the conversation list so any ingest/send refreshes both.
+ */
+export async function listThreadMessages(
+  orgId: string,
+  channel: string,
+  chatId: string,
+  limit = 60,
+): Promise<LedgerMessage[]> {
+  return cached(
+    keys.hub('omnichat-thread', { t: orgId, d: { c: channel, id: chatId, n: limit } }),
+    { ttl: '2m', swr: '30s', tags: [...messageTags(orgId)] },
+    () => listMessages(orgId, { channel, chatId, limit }),
+  );
 }

@@ -1077,6 +1077,9 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/builder/skills', 'agents'],
   ['/api/builder/tools', 'tools'],
   ['/api/crm', 'crm'],
+  // Deliberately NOT the whole /api/messages prefix — /api/messages/ingest is
+  // the gateway's server-token ingest path and must stay capability-free.
+  ['/api/messages/send', 'crm'],
   ['/api/finances', 'finance'],
   ['/api/sales', 'sales'],
   ['/api/scheduling', 'scheduling'],

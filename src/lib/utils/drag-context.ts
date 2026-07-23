@@ -13,7 +13,7 @@
 
 export const DRAG_MIME = 'application/x-minion-context';
 
-export type DragContextKind = 'event' | 'email' | 'note' | 'todo';
+export type DragContextKind = 'event' | 'email' | 'note' | 'todo' | 'chat';
 
 export interface DragContext {
 	kind: DragContextKind;
@@ -28,6 +28,7 @@ const KIND_ICON: Record<DragContextKind, string> = {
 	email: '✉️',
 	note: '🗒️',
 	todo: '☑️',
+	chat: '💬',
 };
 
 export function dragContextIcon(kind: DragContextKind): string {
