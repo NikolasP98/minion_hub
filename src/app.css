@@ -97,6 +97,9 @@
      on the right (md:pr-[var(--notch-clearance)]) so content carves around the
      notch instead of colliding with a floating island. One contract, all pages. */
   --notch-clearance: 200px;
+  --shadow-notch-inset:
+    inset 0 var(--space-0-5) var(--space-1) rgba(0, 0, 0, 0.08),
+    inset var(--space-0-5) 0 var(--space-0-5) rgba(0, 0, 0, 0.04);
 
   /* Animations (keyframes defined in @layer utilities below) */
   --animate-typing-bounce: typing-bounce 0.6s ease infinite;
