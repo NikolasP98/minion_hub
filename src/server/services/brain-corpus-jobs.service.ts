@@ -11,17 +11,19 @@ import {
   type BgJob,
 } from './bg-runtime';
 import {
-  backfillWhatsAppConversations,
-  markWhatsAppSourceFailure,
-  syncWhatsAppConversation,
+  backfillConversations,
+  markConversationSourceFailure,
+  syncConversation,
 } from './brain-corpus.service';
 
-export const BRAIN_CORPUS_JOB_TYPE = 'brain_corpus_whatsapp';
-const RECONCILE_REF = 'whatsapp:reconcile';
-const DIRTY_REF = 'whatsapp:dirty';
+export const BRAIN_CORPUS_JOB_TYPE = 'brain_corpus_conversations';
+export const LEGACY_BRAIN_CORPUS_JOB_TYPE = 'brain_corpus_whatsapp';
+const RECONCILE_REF = 'conversations:reconcile';
+const DIRTY_REF = 'conversations:dirty';
 const RECONCILE_BATCH = 25;
 
-export interface DirtyWhatsAppConversation {
+export interface DirtyConversation {
+  channel: string;
   accountId: string;
   chatId: string;
   /** Empty means the event lacked a trustworthy timestamp; rescan all months. */
@@ -30,7 +32,7 @@ export interface DirtyWhatsAppConversation {
 
 interface DirtyCursor {
   kind: 'dirty';
-  conversations: DirtyWhatsAppConversation[];
+  conversations: DirtyConversation[];
   next: number;
   /** Durable, bounded failure notes accumulated while later items continue. */
   failures: string[];
@@ -45,23 +47,31 @@ interface ReconcileCursor {
 }
 
 type BrainCorpusCursor = DirtyCursor | ReconcileCursor;
+type LegacyCompatibleDirtyConversation = Omit<DirtyConversation, 'channel'> & {
+  channel?: string;
+};
+interface ParsedDirtyConversation {
+  channel?: unknown;
+  accountId?: unknown;
+  chatId?: unknown;
+  months?: unknown;
+}
 
 type DirtyIngestRow = Pick<
   IngestRow,
   'channel' | 'accountId' | 'chatId' | 'isGroup' | 'isBot' | 'content'
 > & { occurredAt?: number | null };
 
-export function collectDirtyWhatsAppConversations(
-  rows: DirtyIngestRow[],
-): DirtyWhatsAppConversation[] {
-  const unique = new Map<string, DirtyWhatsAppConversation>();
+export function collectDirtyConversations(rows: DirtyIngestRow[]): DirtyConversation[] {
+  const unique = new Map<string, DirtyConversation>();
   for (const row of rows) {
-    if (row.channel !== 'whatsapp') continue;
+    const channel = typeof row.channel === 'string' ? row.channel.trim().toLowerCase() : '';
+    if (!channel) continue;
     if (row.isGroup === true || row.isBot === true) continue;
-    if (!row.accountId?.trim() || !row.chatId?.trim() || !row.content?.trim()) continue;
-    const accountId = row.accountId.trim();
+    if (!row.chatId?.trim() || !row.content?.trim()) continue;
+    const accountId = row.accountId?.trim() || 'default';
     const chatId = row.chatId.trim();
-    const key = `${accountId}\u0000${chatId}`;
+    const key = `${channel}\u0000${accountId}\u0000${chatId}`;
     const existing = unique.get(key);
     const occurredAt = typeof row.occurredAt === 'number' ? new Date(row.occurredAt) : null;
     const month =
@@ -74,18 +84,21 @@ export function collectDirtyWhatsAppConversations(
       !month || existing?.months.length === 0
         ? []
         : [...new Set([...(existing?.months ?? []), month])].sort();
-    unique.set(key, { accountId, chatId, months });
+    unique.set(key, { channel, accountId, chatId, months });
   }
   return [...unique.values()].sort(
-    (a, b) => a.accountId.localeCompare(b.accountId) || a.chatId.localeCompare(b.chatId),
+    (a, b) =>
+      a.channel.localeCompare(b.channel) ||
+      a.accountId.localeCompare(b.accountId) ||
+      a.chatId.localeCompare(b.chatId),
   );
 }
 
-export async function enqueueWhatsAppBrainChanges(
+export async function enqueueConversationBrainChanges(
   orgId: string,
   rows: DirtyIngestRow[],
 ): Promise<string | null> {
-  const conversations = collectDirtyWhatsAppConversations(rows);
+  const conversations = collectDirtyConversations(rows);
   if (conversations.length === 0) return null;
   const db = getCoreDb();
   const [queued] = await db
@@ -104,7 +117,7 @@ export async function enqueueWhatsAppBrainChanges(
     try {
       const current = parseCursor({ cursor: queued.cursor } as BgJob);
       if (current.kind === 'dirty') {
-        const merged = mergeDirtyWhatsAppConversations([
+        const merged = mergeDirtyConversations([
           ...current.conversations.slice(current.next),
           ...conversations,
         ]);
@@ -141,26 +154,32 @@ export async function enqueueWhatsAppBrainChanges(
   });
 }
 
-export function mergeDirtyWhatsAppConversations(
-  conversations: DirtyWhatsAppConversation[],
-): DirtyWhatsAppConversation[] {
-  const merged = new Map<string, DirtyWhatsAppConversation>();
+export function mergeDirtyConversations(conversations: DirtyConversation[]): DirtyConversation[] {
+  const merged = new Map<string, DirtyConversation>();
   for (const item of conversations) {
-    const key = `${item.accountId}\u0000${item.chatId}`;
+    const key = `${item.channel}\u0000${item.accountId}\u0000${item.chatId}`;
     const current = merged.get(key);
     const months = !current
       ? [...item.months]
       : current.months.length === 0 || item.months.length === 0
         ? []
         : [...new Set([...current.months, ...item.months])].sort();
-    merged.set(key, { accountId: item.accountId, chatId: item.chatId, months });
+    merged.set(key, {
+      channel: item.channel,
+      accountId: item.accountId,
+      chatId: item.chatId,
+      months,
+    });
   }
   return [...merged.values()].sort(
-    (a, b) => a.accountId.localeCompare(b.accountId) || a.chatId.localeCompare(b.chatId),
+    (a, b) =>
+      a.channel.localeCompare(b.channel) ||
+      a.accountId.localeCompare(b.accountId) ||
+      a.chatId.localeCompare(b.chatId),
   );
 }
 
-export async function ensureWhatsAppReconcileJob(
+export async function ensureConversationReconcileJob(
   orgId: string,
 ): Promise<{ jobId: string; created: boolean }> {
   const db = getCoreDb();
@@ -194,16 +213,28 @@ export async function ensureWhatsAppReconcileJob(
 
 function parseCursor(job: BgJob): BrainCorpusCursor {
   if (!job.cursor) throw new Error('brain corpus job is missing its durable cursor');
-  const value = JSON.parse(job.cursor) as Partial<BrainCorpusCursor>;
+  const value = JSON.parse(job.cursor) as {
+    kind?: unknown;
+    conversations?: ParsedDirtyConversation[];
+    next?: unknown;
+    failures?: unknown;
+    cursor?: unknown;
+    processed?: unknown;
+    changedChunks?: unknown;
+    embeddedChunks?: unknown;
+  };
   if (value.kind === 'dirty' && Array.isArray(value.conversations)) {
     return {
       kind: 'dirty',
       conversations: value.conversations
         .filter(
-          (item): item is DirtyWhatsAppConversation =>
-            typeof item?.accountId === 'string' && typeof item?.chatId === 'string',
+          (item): item is LegacyCompatibleDirtyConversation =>
+            (typeof item?.channel === 'string' || job.type === LEGACY_BRAIN_CORPUS_JOB_TYPE) &&
+            typeof item?.accountId === 'string' &&
+            typeof item?.chatId === 'string',
         )
         .map((item) => ({
+          channel: item.channel ?? 'whatsapp',
           accountId: item.accountId,
           chatId: item.chatId,
           months: Array.isArray(item.months)
@@ -246,22 +277,34 @@ export async function advanceBrainCorpusJob(job: BgJob): Promise<AdvanceResult> 
     }
     let failure: string | null = null;
     try {
-      await syncWhatsAppConversation(ctx, conversation.accountId, conversation.chatId, {
-        months: conversation.months,
-      });
+      await syncConversation(
+        ctx,
+        conversation.channel,
+        conversation.accountId,
+        conversation.chatId,
+        {
+          months: conversation.months,
+        },
+      );
     } catch (cause) {
       try {
-        await markWhatsAppSourceFailure(ctx, conversation.accountId, cause);
+        await markConversationSourceFailure(
+          ctx,
+          conversation.channel,
+          conversation.accountId,
+          cause,
+        );
       } catch (markCause) {
         console.error('[brain-corpus] failed to expose source failure', markCause);
       }
       console.error('[brain-corpus] isolated dirty conversation failure', {
+        channel: conversation.channel,
         accountId: conversation.accountId,
         chatId: conversation.chatId,
         cause,
       });
       const reason = cause instanceof Error ? cause.message : String(cause);
-      failure = `${conversation.accountId}/${conversation.chatId}: ${reason}`;
+      failure = `${conversation.channel}/${conversation.accountId}/${conversation.chatId}: ${reason}`;
     }
     const next = cursor.next + 1;
     const failures = failure ? [...cursor.failures, failure].slice(-20) : cursor.failures;
@@ -271,7 +314,7 @@ export async function advanceBrainCorpusJob(job: BgJob): Promise<AdvanceResult> 
   }
 
   try {
-    const page = await backfillWhatsAppConversations(ctx, {
+    const page = await backfillConversations(ctx, {
       cursor: cursor.cursor,
       limit: RECONCILE_BATCH,
     });
@@ -285,7 +328,7 @@ export async function advanceBrainCorpusJob(job: BgJob): Promise<AdvanceResult> 
     return page.hasMore ? { done: false, cursor: next } : { done: true };
   } catch (cause) {
     try {
-      await markWhatsAppSourceFailure(ctx, null, cause);
+      await markConversationSourceFailure(ctx, null, null, cause);
     } catch (markCause) {
       console.error('[brain-corpus] failed to expose reconcile failure', markCause);
     }
@@ -294,8 +337,15 @@ export async function advanceBrainCorpusJob(job: BgJob): Promise<AdvanceResult> 
 }
 
 registerJobHandler({ type: BRAIN_CORPUS_JOB_TYPE, advance: advanceBrainCorpusJob });
+registerJobHandler({ type: LEGACY_BRAIN_CORPUS_JOB_TYPE, advance: advanceBrainCorpusJob });
 
 /** Optional on-demand kick after enqueue; the cron remains authoritative. */
 export async function advanceBrainCorpusJobNow(jobId: string): Promise<void> {
   await advanceJob(jobId, 20_000);
 }
+
+/** Compatibility aliases for routes/tests written before the all-channel corpus. */
+export const collectDirtyWhatsAppConversations = collectDirtyConversations;
+export const enqueueWhatsAppBrainChanges = enqueueConversationBrainChanges;
+export const mergeDirtyWhatsAppConversations = mergeDirtyConversations;
+export const ensureWhatsAppReconcileJob = ensureConversationReconcileJob;

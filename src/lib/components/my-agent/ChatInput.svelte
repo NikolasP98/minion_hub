@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, iconSizes } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import { X } from 'lucide-svelte';
@@ -11,7 +11,7 @@
   } from '$lib/utils/drag-context';
   import { createHotkeysAttachment } from '$lib/hotkeys';
   import { tick } from 'svelte';
-  import { detectTrigger, applySuggestion, matches, type Suggestion } from '$lib/chat/chat-suggest';
+  import { detectTrigger, matches, type Suggestion } from '$lib/chat/chat-suggest';
   import { visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
   import { agentSkillsState, loadAgentSkills } from '$lib/state/agents/agent-skills.svelte';
   import { getAliases, ensureAliases } from '$lib/state/features/aliases.svelte';
@@ -54,23 +54,28 @@
   // Labels must stay bracket-free — the gateway flattens newlines when it
   // records the turn, so `]` is the only reliable label terminator.
   function composed(text: string): string {
-    if (chips.length === 0) return text;
+    // Committed reference chips fold back to their literal tokens at the front,
+    // so the agent still sees `/skill` / `@mention` in the message.
+    const refTokens = refs.map((r) => `${r.char}${r.value}`).join(' ');
+    const body = refTokens ? (text ? `${refTokens} ${text}` : refTokens) : text;
+    if (chips.length === 0) return body;
     const ctx = chips
       .map((c) => {
         const label = c.label.replace(/\[/g, '(').replace(/\]/g, ')');
         return `[Context ${c.kind}: ${label}]\n${c.text}\n[/Context]`;
       })
       .join('\n\n');
-    return text ? `${ctx}\n\n${text}` : ctx;
+    return body ? `${ctx}\n\n${body}` : ctx;
   }
 
   function send(effectiveMode: 'ask' | 'capture') {
     const text = value.trim();
-    // Allow sending with only dragged context (no typed text).
-    if (!text && chips.length === 0) return;
+    // Allow sending with only dragged context or reference chips (no typed text).
+    if (!text && chips.length === 0 && refs.length === 0) return;
     onsubmit?.(composed(text), effectiveMode);
     value = '';
     chips = [];
+    refs = [];
     closeMenu();
   }
 
@@ -93,6 +98,76 @@
   }
 
   const trigger = $derived(detectTrigger(value, caret));
+
+  // Committed references (a chosen `/skill` or `@mention`) become discrete pill
+  // chips instead of inline text — visual confirmation the item was identified,
+  // with its icon. The token is stripped from the textarea and folded back into
+  // the outgoing message on send (see composed).
+  interface RefChip {
+    id: number;
+    char: '/' | '@';
+    value: string; // the token body, e.g. `notes.create` or `nikolas.whatsapp`
+    label: string;
+    icon: string;
+  }
+  let refs = $state<RefChip[]>([]);
+  let refSeq = 0;
+
+  function addRef(char: '/' | '@', value_: string, label: string, icon?: string) {
+    if (refs.some((r) => r.char === char && r.value === value_)) return; // dedup
+    refs = [...refs, { id: refSeq++, char, value: value_, label, icon: icon ?? '🧩' }];
+  }
+  function removeRef(id: number) {
+    refs = refs.filter((r) => r.id !== id);
+  }
+
+  // Resolve a raw `/name` or `@name` token to its display meta, or null if it
+  // isn't a known target — mirrors the suggestion sources below. Used to convert
+  // a manually-typed token into a chip once the user completes it.
+  function resolveRef(
+    char: '/' | '@',
+    name: string,
+  ): { value: string; label: string; icon: string } | null {
+    if (char === '/') {
+      const s = agentSkillsState.skills.find((sk) => sk.skillKey === name);
+      return s ? { value: s.skillKey, label: s.name || s.skillKey, icon: s.emoji || '🧩' } : null;
+    }
+    const dot = name.indexOf('.');
+    if (dot === -1) {
+      const a = visibleAgents.value.find((ag) => (ag.name || ag.id) === name);
+      if (a) return { value: name, label: a.name || a.id, icon: '🤖' };
+      if (getAliases().has(name)) return { value: name, label: name, icon: '👤' };
+      return null;
+    }
+    const base = name.slice(0, dot);
+    const ch = name.slice(dot + 1);
+    const baseOk =
+      visibleAgents.value.some((ag) => (ag.name || ag.id) === base) || getAliases().has(base);
+    return baseOk && channelPlugins().some((cp) => cp.id === ch)
+      ? { value: name, label: name, icon: '📡' }
+      : null;
+  }
+
+  // After input, if the user just completed a `/`/`@` token with a trailing
+  // boundary and it resolves to a known ref, lift it out into a chip.
+  function maybeCommitTypedRef() {
+    const pos = textarea?.selectionStart ?? value.length;
+    if (pos < 1 || !/\s/.test(value[pos - 1] ?? '')) return; // only right after a boundary
+    const pre = value.slice(0, pos - 1);
+    const t = detectTrigger(pre, pre.length);
+    if (!t || (t.char !== '/' && t.char !== '@') || !t.query) return;
+    const meta = resolveRef(t.char, t.query);
+    if (!meta) return;
+    value = value.slice(0, t.start) + value.slice(pos); // drop token + the boundary
+    addRef(t.char, meta.value, meta.label, meta.icon);
+    void tick().then(() => {
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(t.start, t.start);
+        caret = t.start;
+      }
+    });
+  }
 
   const suggestions = $derived.by<Suggestion[]>(() => {
     const t = trigger;
@@ -157,13 +232,16 @@
   async function choose(s: Suggestion) {
     const t = trigger;
     if (!t) return;
-    const r = applySuggestion(value, t, s.value);
-    value = r.text;
+    // Commit a discrete ref chip and strip the typed token from the text.
+    const before = value.slice(0, t.start);
+    const after = value.slice(t.end);
+    value = before + (after.startsWith(' ') ? after.slice(1) : after);
+    addRef(t.char as '/' | '@', s.value, s.label, s.icon);
     await tick();
     if (textarea) {
       textarea.focus();
-      textarea.setSelectionRange(r.caret, r.caret);
-      caret = r.caret;
+      textarea.setSelectionRange(before.length, before.length);
+      caret = before.length;
     }
   }
 
@@ -289,6 +367,20 @@
     {/if}
     <div class="input-row">
       <span class="prompt" aria-hidden="true">❯</span>
+      {#each refs as r (r.id)}
+        <span class="ref-pill" data-kind={r.char === '/' ? 'skill' : 'mention'}>
+          <span class="ref-ic" aria-hidden="true">{r.icon}</span>
+          <span class="ref-label">{r.label}</span>
+          <Button
+            type="button"
+            class="chip-x"
+            aria-label={m.chat_removeContext()}
+            onclick={() => removeRef(r.id)}
+          >
+            <X size={iconSizes.xs} />
+          </Button>
+        </span>
+      {/each}
       <textarea
         bind:this={textarea}
         bind:value
@@ -301,6 +393,7 @@
         oninput={() => {
           autoGrow();
           syncCaret();
+          maybeCommitTypedRef();
         }}
         placeholder={chips.length > 0 ? m.chat_addNoteOrSend() : placeholder}
         rows="1"
@@ -364,6 +457,7 @@
 
   .input-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
   }
@@ -430,8 +524,35 @@
     pointer-events: none;
   }
 
+  /* Committed reference pills sit inline in the input row, before the textarea. */
+  .ref-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    max-width: 180px;
+    padding: var(--space-0-5) var(--space-0-5) var(--space-0-5) var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-caption);
+    line-height: 1;
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 32%, transparent);
+    color: var(--color-foreground);
+  }
+  .ref-ic {
+    flex-shrink: 0;
+    font-size: var(--font-size-caption);
+    line-height: 1;
+  }
+  .ref-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    color: var(--color-accent);
+  }
   textarea {
     flex: 1;
+    min-width: 120px;
     min-height: 21px;
     max-height: 96px;
     resize: none;
@@ -490,6 +611,13 @@
     text-align: left;
     width: 100%;
   }
+  /* Button renders children in an inner `inline-flex justify-center` span, so the
+	   row content centers (short rows like "blucli" sit indented). Left-justify the
+	   inner span and let it fill the button width. */
+  :global(.sg-item > span) {
+    width: 100%;
+    justify-content: flex-start;
+  }
   :global(.sg-item.active) {
     background: color-mix(in srgb, var(--color-accent) 16%, transparent);
     color: var(--color-foreground);
@@ -511,7 +639,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    text-align: right;
+    text-align: left;
     font-size: var(--font-size-caption);
     font-family: ui-monospace, monospace;
     color: color-mix(in srgb, var(--color-foreground) 40%, transparent);

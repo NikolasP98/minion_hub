@@ -1,9 +1,18 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { browser } from '$app/environment';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { LayoutGrid } from 'lucide-svelte';
-  import { PageHeader, Badge, Button, Toggle } from '$lib/components/ui';
+  import { LayoutGrid, List, Columns3 } from 'lucide-svelte';
+  import {
+    PageHeader,
+    Badge,
+    Button,
+    Toggle,
+    SegmentedControl,
+    iconSizes,
+  } from '$lib/components/ui';
+  import { groupBy, type GroupAxis } from '$lib/catalog/grouping';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
@@ -21,6 +30,56 @@
   const categories = $derived(
     Array.from(new Set(sellables.map((s) => s.category).filter((c): c is string => !!c))).sort(),
   );
+  /** Feeds the wizard's code suggester so it never proposes a taken code. */
+  const takenCodes = $derived(sellables.map((s) => s.code));
+
+  // ── Table | Board ──────────────────────────────────────────────────────────
+  const VIEW_KEY = 'pos-catalog-view';
+  const BOARD_AXIS_KEY = 'pos-catalog-board-axis';
+  const BOARD_AXES: GroupAxis[] = ['category', 'zone', 'line'];
+
+  function stored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+    if (!browser) return fallback;
+    const raw = localStorage.getItem(key);
+    return allowed.includes(raw as T) ? (raw as T) : fallback;
+  }
+
+  // svelte-ignore state_referenced_locally -- seed once from localStorage
+  let view = $state<'table' | 'board'>(stored(VIEW_KEY, ['table', 'board'] as const, 'table'));
+  /**
+   * Defaults to `category` (10 coarse buckets), not zone or line. Those axes have
+   * 17 and 20 possible values against ~80 products, so opening straight onto them
+   * would greet you with a long horizontal scroll of mostly-thin columns. Coarse
+   * first, drill down by choosing the axis.
+   */
+  // svelte-ignore state_referenced_locally -- seed once from localStorage
+  let boardAxis = $state<GroupAxis>(stored(BOARD_AXIS_KEY, BOARD_AXES, 'category'));
+  $effect(() => {
+    if (browser) localStorage.setItem(VIEW_KEY, view);
+  });
+  $effect(() => {
+    if (browser) localStorage.setItem(BOARD_AXIS_KEY, boardAxis);
+  });
+
+  // One kind → one label+tone, used by BOTH the table cell and the board card so
+  // the same kind can never read as two different colours across views.
+  function kindLabel(kind: Row['kind']): string {
+    if (kind === 'bundle') return m.pos_catalog_kind_bundle();
+    return kind === 'product' ? m.pos_catalog_kind_product() : m.pos_catalog_kind_service();
+  }
+  // 'brand', not a categorical hue: --color-purple/pink/cyan are reserved for
+  // charts and data-viz, never for a semantic like "this row is a bundle".
+  function kindTone(kind: Row['kind']): 'accent' | 'info' | 'brand' {
+    if (kind === 'bundle') return 'brand';
+    return kind === 'product' ? 'accent' : 'info';
+  }
+
+  const boardColumns = $derived(groupBy(sellables, boardAxis));
+  const axisItems = $derived([
+    { value: 'category', label: m.catalog_group_category() },
+    { value: 'zone', label: m.catalog_group_zone() },
+    { value: 'line', label: m.catalog_group_line() },
+  ]);
 
   // Only the two `editable: true` columns (category, unitPrice) — DataTable's
   // draft only ever contains editable-column keys, so this never round-trips
@@ -140,62 +199,140 @@
     title={m.pos_catalog_title()}
     subtitle={m.pos_catalog_subtitle()}
   >
-    {#snippet leading()}<LayoutGrid size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<LayoutGrid size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
+    {#snippet actions()}
+      <div class="view-bar">
+        {#if view === 'board'}
+          <SegmentedControl
+            aria-label={m.catalog_group_by()}
+            value={boardAxis}
+            items={axisItems}
+            onValueChange={(v) => (boardAxis = v as GroupAxis)}
+          />
+        {/if}
+        <div class="view-toggle" role="group" aria-label={m.catalog_view_kanban()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            class={`vt-btn ${view === 'table' ? 'on' : ''}`}
+            aria-pressed={view === 'table'}
+            title={m.pos_sell_view_table()}
+            aria-label={m.pos_sell_view_table()}
+            onclick={() => (view = 'table')}
+          >
+            <List size={iconSizes.sm} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            class={`vt-btn ${view === 'board' ? 'on' : ''}`}
+            aria-pressed={view === 'board'}
+            title={m.catalog_view_kanban()}
+            aria-label={m.catalog_view_kanban()}
+            onclick={() => (view = 'board')}
+          >
+            <Columns3 size={iconSizes.sm} />
+          </Button>
+        </div>
+      </div>
+    {/snippet}
   </PageHeader>
 
-  <DataTable
-    class="flex-1 min-h-0"
-    {columns}
-    data={sellables}
-    getRowId={(s) => s.productId}
-    searchPlaceholder={m.data_table_search()}
-    exportable
-    exportName="pos-catalog"
-    selectable
-    storageKey="pos-catalog"
-    canEdit={canWrite}
-    onSaveRow={saveRow}
-    {expandedContent}
-    addLabel={m.pos_catalog_new()}
-    onAdd={openCreate}
-    addDisabled={!canWrite}
-    emptyMessage={m.pos_catalog_empty()}
-  >
-    {#snippet cell(s: Row, col: DataColumn<Row>)}
-      {#if col.key === 'name'}
-        {#if canWrite}
-          <Button variant="ghost" size="sm" class="name-link" onclick={() => openEdit(s)}
-            >{s.name}</Button
+  {#if view === 'board'}
+    <!-- Board: one column per group on the chosen axis, empty groups omitted.
+         Cards open the same wizard the table's name cell does, so the board is a
+         real editing surface rather than a read-only visualization. -->
+    <div class="board">
+      {#each boardColumns as col (col.key)}
+        <section class="bcol" aria-label={col.label}>
+          <header class="bhead">
+            <span class="btitle">{col.label}</span>
+            <span class="bcount">{col.rows.length}</span>
+          </header>
+          <div class="bcards">
+            {#each col.rows as s (s.productId)}
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                class="bcard"
+                disabled={!canWrite}
+                onclick={() => openEdit(s)}
+              >
+                <span class="bname">{s.name}</span>
+                <span class="bmeta">
+                  <span class="bcode">{s.code}</span>
+                  <span class="bprice">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
+                </span>
+                <span class="bbadges">
+                  <Badge variant="semantic" value={kindTone(s.kind)} size="sm"
+                    >{kindLabel(s.kind)}</Badge
+                  >
+                  {#if !s.active}
+                    <Badge variant="semantic" value="warning" size="sm">{m.fin_col_active()}</Badge>
+                  {/if}
+                </span>
+              </Button>
+            {/each}
+          </div>
+        </section>
+      {/each}
+    </div>
+  {:else}
+    <DataTable
+      class="flex-1 min-h-0"
+      {columns}
+      data={sellables}
+      getRowId={(s) => s.productId}
+      searchPlaceholder={m.data_table_search()}
+      exportable
+      exportName="pos-catalog"
+      selectable
+      storageKey="pos-catalog"
+      canEdit={canWrite}
+      onSaveRow={saveRow}
+      {expandedContent}
+      addLabel={m.pos_catalog_new()}
+      onAdd={openCreate}
+      addDisabled={!canWrite}
+      emptyMessage={m.pos_catalog_empty()}
+    >
+      {#snippet cell(s: Row, col: DataColumn<Row>)}
+        {#if col.key === 'name'}
+          {#if canWrite}
+            <Button variant="ghost" size="sm" class="name-link" onclick={() => openEdit(s)}
+              >{s.name}</Button
+            >
+          {:else}
+            <span class="truncate block max-w-[16rem]">{s.name}</span>
+          {/if}
+        {:else if col.key === 'unitPrice'}
+          <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
+        {:else if col.key === 'kind'}
+          <Badge variant="semantic" value={kindTone(s.kind)}>{kindLabel(s.kind)}</Badge>
+        {:else if col.key === 'stockQty'}
+          <span class="tabular-nums"
+            >{s.kind === 'product' && s.stockQty != null ? s.stockQty : '—'}</span
           >
-        {:else}
-          <span class="truncate block max-w-[16rem]">{s.name}</span>
+        {:else if col.key === 'hasMapping'}
+          <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}
+          ></span>
+        {:else if col.key === 'active'}
+          {#key `${s.productId}-${toggleNonce}`}
+            <Toggle
+              checked={s.active}
+              size="sm"
+              ariaLabel={m.fin_col_active()}
+              disabled={!canWrite}
+              onchange={(checked) => toggleActive(s, checked)}
+            />
+          {/key}
         {/if}
-      {:else if col.key === 'unitPrice'}
-        <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
-      {:else if col.key === 'kind'}
-        <Badge variant="semantic" value={s.kind === 'product' ? 'accent' : 'info'}>
-          {s.kind === 'product' ? m.pos_catalog_kind_product() : m.pos_catalog_kind_service()}
-        </Badge>
-      {:else if col.key === 'stockQty'}
-        <span class="tabular-nums"
-          >{s.kind === 'product' && s.stockQty != null ? s.stockQty : '—'}</span
-        >
-      {:else if col.key === 'hasMapping'}
-        <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}
-        ></span>
-      {:else if col.key === 'active'}
-        {#key `${s.productId}-${toggleNonce}`}
-          <Toggle
-            checked={s.active}
-            size="sm"
-            ariaLabel={m.fin_col_active()}
-            disabled={!canWrite}
-            onchange={(checked) => toggleActive(s, checked)}
-          />
-        {/key}
-      {/if}
-    {/snippet}
-  </DataTable>
+      {/snippet}
+    </DataTable>
+  {/if}
 </PageShell>
 
 <!-- Recipe builder (#8): composition is edited per sellable, in POS. Only
@@ -220,12 +357,150 @@
   {stockEnabled}
   stockItems={data.stockItems}
   {categories}
+  {takenCodes}
   consumption={data.consumption}
   editing={editingRow}
   onSaved={() => invalidate('pos:catalog')}
 />
 
 <style>
+  .view-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  /* Same bordered-pill idiom as the /pos/sell view toggle. */
+  .view-toggle {
+    display: flex;
+    gap: var(--space-1);
+    flex-shrink: 0;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: var(--space-0-5);
+    background: var(--color-surface-2);
+  }
+  :global(.view-toggle .vt-btn) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.7rem;
+    height: 1.5rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-secondary);
+  }
+  /* Active = accent-TINTED pill + accent text, never a full accent fill. */
+  :global(.view-toggle .vt-btn.on) {
+    background: color-mix(in oklab, var(--color-accent) 14%, transparent);
+    color: var(--color-accent);
+  }
+
+  /* ── Board ── the page body owns vertical scroll; the board owns horizontal.
+     Columns are fixed-width so a long product name wraps inside its card
+     instead of widening the track. */
+  .board {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: var(--space-3);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: var(--space-2) var(--space-1) var(--space-4);
+  }
+  .bcol {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 0 0 15rem;
+    width: 15rem;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-1);
+  }
+  .bhead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+    /* Sticky needs an OPAQUE surface or the cards scroll through it. */
+    position: sticky;
+    top: 0;
+    background: var(--color-surface-2);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .btitle {
+    font-size: var(--font-size-label);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .bcount {
+    font-size: var(--font-size-caption);
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
+  }
+  .bcards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    overflow-y: auto;
+    min-height: 0;
+  }
+  /* ★ Button renders children inside an inner fixed-height inline-flex row
+     <span>, so `flex-col`/`h-auto` on the Button itself never reach it. The
+     card shape has to be forced through a scoped ancestor + `> span`. */
+  :global(.bcards .bcard) {
+    height: auto;
+    min-height: 0;
+    padding: var(--space-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
+    text-align: left;
+  }
+  :global(.bcards .bcard > span) {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    height: auto;
+    gap: var(--space-1);
+  }
+  :global(.bcards .bcard:hover) {
+    border-color: var(--color-accent);
+  }
+  .bname {
+    font-size: var(--font-size-label);
+    color: var(--color-text-primary);
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .bmeta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .bcode {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-tertiary);
+  }
+  .bprice {
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .bbadges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
   :global(.name-link) {
     justify-content: flex-start;
     color: var(--color-foreground);

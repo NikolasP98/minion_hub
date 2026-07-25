@@ -17,6 +17,7 @@ vite.config.ts.timestamp-*
 # Tauri ships app icons as PNG; whitelist that subtree so they get tracked
 !src-tauri/icons/*.png
 .worktrees/
+.architecture-recon/
 
 # Tauri build artifacts
 src-tauri/target/

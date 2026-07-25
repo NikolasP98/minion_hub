@@ -97,7 +97,7 @@
      bug · notif · search · avatar. -->
 <div
   class="island group hidden md:flex fixed top-[env(safe-area-inset-top,0px)] right-[env(safe-area-inset-right,0px)] z-[var(--layer-navigation,20)] items-center gap-0.5 h-9 pl-2 pr-2 rounded-bl-[var(--radius-xl)]
-         bg-bg2/85 backdrop-blur-xl border-b border-l border-[var(--elevation-3-border)] shadow-sm
+         bg-bg2/85 backdrop-blur-xl border-b border-l border-[var(--elevation-3-border)] shadow-[var(--shadow-notch-inset)]
          transition-[box-shadow,border-color] duration-[var(--duration-normal)] ease-[var(--ease-standard)]"
   role="group"
   aria-label={m.topbar_quickActions()}

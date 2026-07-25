@@ -1,4 +1,15 @@
-import { pgTable, uuid, text, jsonb, numeric, timestamp, boolean, integer, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  jsonb,
+  numeric,
+  timestamp,
+  boolean,
+  integer,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -13,22 +24,22 @@ export const finInvoices = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
-    provider: text('provider').notNull(),           // e.g. 'susii'
-    providerRef: text('provider_ref').notNull(),    // external sale id
-    number: text('number'),                         // human sale number
-    documentId: text('document_id'),                // e.g. 'BE01-2164'
+    provider: text('provider').notNull(), // e.g. 'susii'
+    providerRef: text('provider_ref').notNull(), // external sale id
+    number: text('number'), // human sale number
+    documentId: text('document_id'), // e.g. 'BE01-2164'
     issuedAt: timestamp('issued_at', { withTimezone: true }),
     clientId: uuid('client_id').references(() => finClients.id, { onDelete: 'set null' }),
     clientName: text('client_name'),
     clientDocType: text('client_doc_type'),
-    clientDocNumber: text('client_doc_number'),     // RUC/DNI — the CRM link key
+    clientDocNumber: text('client_doc_number'), // RUC/DNI — the CRM link key
     clientEmail: text('client_email'),
     currency: text('currency'),
     subtotal: numeric('subtotal'),
     tax: numeric('tax'),
     discount: numeric('discount'),
     total: numeric('total'),
-    status: text('status'),                         // 'paid'|'partial'|'pending'|'void'
+    status: text('status'), // 'paid'|'partial'|'pending'|'void'
     seller: text('seller'),
     note: text('note'),
     metadata: jsonb('metadata').notNull().default({}),
@@ -48,7 +59,9 @@ export const finInvoiceItems = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
-    invoiceId: uuid('invoice_id').notNull().references(() => finInvoices.id, { onDelete: 'cascade' }),
+    invoiceId: uuid('invoice_id')
+      .notNull()
+      .references(() => finInvoices.id, { onDelete: 'cascade' }),
     productId: uuid('product_id').references(() => finProducts.id, { onDelete: 'set null' }),
     code: text('code'),
     description: text('description'),
@@ -71,7 +84,9 @@ export const finPayments = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
-    invoiceId: uuid('invoice_id').notNull().references(() => finInvoices.id, { onDelete: 'cascade' }),
+    invoiceId: uuid('invoice_id')
+      .notNull()
+      .references(() => finInvoices.id, { onDelete: 'cascade' }),
     providerRef: text('provider_ref'),
     method: text('method'),
     paidAt: timestamp('paid_at', { withTimezone: true }),
@@ -113,6 +128,16 @@ export const finProducts = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
+    /**
+     * MASTER product identity — see 20260725120000_product_sku_and_aliases.sql.
+     * `id` is ROW identity (8 tables reference it); `sku` is LOGICAL product
+     * identity and may be reassigned so a merge can consolidate rows onto one
+     * surviving product without rewriting any foreign key. Deliberately NOT
+     * unique for that reason.
+     */
+    sku: uuid('sku').notNull().defaultRandom(),
+    /** Short human/import REFERENCE (2-4 alnum). Retired codes live on in
+     *  `metadata.aliases` so the invoice sync keeps resolving them. */
     code: text('code').notNull(),
     name: text('name').notNull(),
     category: text('category'),
@@ -125,16 +150,54 @@ export const finProducts = pgTable(
   (t) => ({ uniq: uniqueIndex('fin_products_org_code_uniq').on(t.orgId, t.code) }),
 );
 
+/**
+ * Product bundles: product → product composition, the layer above services.
+ *
+ * Companion migration: supabase/migrations/20260725030000_fin_product_components.sql.
+ * Sibling of stk_item_components (which composes MATERIALS in stock UOM); this
+ * composes SELLABLES in whole units, so a pure service can be bundled without
+ * first being forced into stk_items.
+ */
+export const finProductComponents = pgTable(
+  'fin_product_components',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    bundleProductId: uuid('bundle_product_id')
+      .notNull()
+      .references(() => finProducts.id, { onDelete: 'cascade' }),
+    /** restrict: a service a bundle still sells must not vanish silently. */
+    childProductId: uuid('child_product_id')
+      .notNull()
+      .references(() => finProducts.id, { onDelete: 'restrict' }),
+    qty: numeric('qty').notNull().default('1'),
+    lineNo: integer('line_no').notNull().default(0),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('fin_product_components_org_id_bundle_product_id_child_product_id_key').on(
+      t.orgId,
+      t.bundleProductId,
+      t.childProductId,
+    ),
+    index('fin_product_components_org_bundle_idx').on(t.orgId, t.bundleProductId),
+    index('fin_product_components_org_child_idx').on(t.orgId, t.childProductId),
+  ],
+);
+export type FinProductComponent = typeof finProductComponents.$inferSelect;
+
 /** Per-org billing connector config + sync watermark. */
 export const finSources = pgTable(
   'fin_sources',
   {
     orgId: text('org_id').notNull(),
     provider: text('provider').notNull(),
-    config: jsonb('config').notNull().default({}),       // e.g. { businessId: 5922 }
+    config: jsonb('config').notNull().default({}), // e.g. { businessId: 5922 }
     secretRefs: jsonb('secret_refs').notNull().default({}), // { username: 'SUSII_USERNAME', ... }
     enabled: boolean('enabled').notNull().default(true),
-    watermark: text('watermark'),                        // last modified_after ISO
+    watermark: text('watermark'), // last modified_after ISO
     lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
     lastStatus: text('last_status'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -150,9 +213,9 @@ export const finSyncJobs = pgTable(
     orgId: text('org_id').notNull(),
     provider: text('provider').notNull(),
     status: text('status').notNull().default('queued'), // queued|running|succeeded|failed|cancelled
-    total: integer('total'),                              // DRF count baseline (null until known)
+    total: integer('total'), // DRF count baseline (null until known)
     processed: integer('processed').notNull().default(0),
-    pageCursor: text('page_cursor'),                      // DRF `next` URL to resume from
+    pageCursor: text('page_cursor'), // DRF `next` URL to resume from
     error: text('error'),
     cancelRequested: boolean('cancel_requested').notNull().default(false),
     startedAt: timestamp('started_at', { withTimezone: true }),
@@ -181,10 +244,10 @@ export const finSettings = pgTable('fin_settings', {
   timezone: text('timezone').notNull().default('America/Lima'),
   fxBase: text('fx_base').notNull().default('USD'),
   fxQuote: text('fx_quote').notNull().default('PEN'),
-  fxMode: text('fx_mode').notNull().default('auto'),      // 'auto' | 'manual'
-  fxManualRate: numeric('fx_manual_rate'),                // override value (quote per 1 base)
-  fxAutoRate: numeric('fx_auto_rate'),                    // last online-fetched value
-  fxSource: text('fx_source'),                            // e.g. 'open.er-api.com'
+  fxMode: text('fx_mode').notNull().default('auto'), // 'auto' | 'manual'
+  fxManualRate: numeric('fx_manual_rate'), // override value (quote per 1 base)
+  fxAutoRate: numeric('fx_auto_rate'), // last online-fetched value
+  fxSource: text('fx_source'), // e.g. 'open.er-api.com'
   fxUpdatedAt: timestamp('fx_updated_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

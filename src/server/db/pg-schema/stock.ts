@@ -30,6 +30,8 @@ export const stkItems = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
+    /** MASTER item identity — see fin_products.sku for the rationale. */
+    sku: uuid('sku').notNull().defaultRandom(),
     code: text('code').notNull(),
     name: text('name').notNull(),
     uom: text('uom').notNull().default('unit'),
@@ -60,6 +62,8 @@ export const stkItems = pgTable(
     valuationMethod: text('valuation_method').notNull().default('moving_avg'),
     /** Soft ref → fin_products (bridge to the SUSII-synced catalog). */
     finProductId: uuid('fin_product_id'),
+    /** `aliases: string[]` — other import sources' codes for this same item. */
+    metadata: jsonb('metadata').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

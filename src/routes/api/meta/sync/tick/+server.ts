@@ -2,12 +2,36 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
-import { enqueueJob, findDueJobs, getLatestSucceededJob } from '$server/services/meta/meta-sync-jobs.service';
-import { defaultSinceDate, listConnectedOrgIds, runJob } from '$server/services/meta/meta-sync.service';
+import {
+  enqueueJob,
+  findDueJobs,
+  getLatestSucceededJob,
+  pruneTerminalTailJobs,
+} from '$server/services/meta/meta-sync-jobs.service';
+import {
+  defaultSinceDate,
+  listConnectedOrgIds,
+  runJob,
+} from '$server/services/meta/meta-sync.service';
 
-const SYNC_KINDS = ['posts', 'ads', 'messages'] as const;
+const SYNC_KINDS = ['posts', 'ads', 'messages', 'messages_tail'] as const;
 const STALE_ENQUEUE_MS = 6 * 60 * 60_000; // spec §6: re-enqueue a kind once its last success is >6h old
-const CLAIM_LIMIT = 3;
+/**
+ * The tail lane is topped up on EVERY tick, so message freshness equals the
+ * scheduler period for this route (netcup crontab in production). Tightening
+ * freshness is a scheduling change, not a code change; no staleness constant
+ * here can beat the scheduler period.
+ */
+const MESSAGE_TAIL_STALE_MS = 0;
+/** Up to one cheap tail slice per org with a non-revoked Meta connection,
+ * capped at 24 orgs per tick.
+ * Backlog slices are orders of magnitude more expensive (up to 150 posts / 100
+ * conversations / 90 ad rows each, run sequentially in this one request), so
+ * that lane stays at a small fixed cap no matter how many orgs connect — it is
+ * catch-up work, not latency-sensitive. */
+const TAIL_CLAIM_MIN = 3;
+const TAIL_CLAIM_MAX = 24;
+const BACKLOG_CLAIM_LIMIT = 3;
 
 /**
  * GET/POST /api/meta/sync/tick — cron entrypoint (Vercel Cron only ever sends
@@ -20,7 +44,7 @@ const CLAIM_LIMIT = 3;
  * Two phases, each per-job/per-org isolated so one failure never 500s the tick:
  * 1. enqueue-if-stale — for every org with a live Meta connection, top up any
  *    sync kind whose last SUCCESS is stale (or has never run).
- * 2. claim + advance up to CLAIM_LIMIT due jobs (queued, or running past the
+ * 2. claim + advance a bounded number of due jobs (queued, or running past the
  *    staleness window) across all orgs, one bounded slice each.
  */
 const handle: RequestHandler = async ({ request }) => {
@@ -35,8 +59,11 @@ const handle: RequestHandler = async ({ request }) => {
     for (const kind of SYNC_KINDS) {
       try {
         const latest = await getLatestSucceededJob(ctx, kind);
-        const ageMs = latest?.finishedAt ? Date.now() - new Date(latest.finishedAt).getTime() : Number.POSITIVE_INFINITY;
-        if (ageMs > STALE_ENQUEUE_MS) {
+        const ageMs = latest?.finishedAt
+          ? Date.now() - new Date(latest.finishedAt).getTime()
+          : Number.POSITIVE_INFINITY;
+        const staleAfter = kind === 'messages_tail' ? MESSAGE_TAIL_STALE_MS : STALE_ENQUEUE_MS;
+        if (ageMs > staleAfter) {
           await enqueueJob(ctx, kind, { since });
           enqueued++;
         }
@@ -46,8 +73,17 @@ const handle: RequestHandler = async ({ request }) => {
     }
   }
 
-  const due = await findDueJobs(CLAIM_LIMIT);
-  const results: Array<{ jobId: string; orgId: string; kind: string; ok: boolean; error?: string }> = [];
+  const due = await findDueJobs(
+    Math.min(TAIL_CLAIM_MAX, Math.max(TAIL_CLAIM_MIN, orgIds.length)),
+    BACKLOG_CLAIM_LIMIT,
+  );
+  const results: Array<{
+    jobId: string;
+    orgId: string;
+    kind: string;
+    ok: boolean;
+    error?: string;
+  }> = [];
   for (const j of due) {
     const ctx = { db: getCoreDb(), tenantId: j.orgId };
     try {
@@ -59,7 +95,13 @@ const handle: RequestHandler = async ({ request }) => {
       results.push({ jobId: j.jobId, orgId: j.orgId, kind: j.kind, ok: false, error: msg });
     }
   }
-  return json({ enqueued, claimed: results.length, results });
+  let pruned = 0;
+  try {
+    pruned = await pruneTerminalTailJobs();
+  } catch (e) {
+    console.error('[meta-sync] tail job retention failed', e);
+  }
+  return json({ enqueued, claimed: results.length, pruned, results });
 };
 
 export const GET = handle;

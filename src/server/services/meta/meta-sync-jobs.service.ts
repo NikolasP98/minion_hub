@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, lt, ne, or, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -47,7 +47,13 @@ export function getLatestSucceededJob(ctx: CoreCtx, kind: string): Promise<MetaS
     const [row] = await tx
       .select()
       .from(metaSyncJobs)
-      .where(and(eq(metaSyncJobs.orgId, ctx.tenantId), eq(metaSyncJobs.kind, kind), eq(metaSyncJobs.status, 'succeeded')))
+      .where(
+        and(
+          eq(metaSyncJobs.orgId, ctx.tenantId),
+          eq(metaSyncJobs.kind, kind),
+          eq(metaSyncJobs.status, 'succeeded'),
+        ),
+      )
       .orderBy(desc(metaSyncJobs.createdAt))
       .limit(1);
     return row ?? null;
@@ -96,7 +102,13 @@ export async function enqueueJob(
     return await withOrgCore(ctx, async (tx) => {
       const [row] = await tx
         .insert(metaSyncJobs)
-        .values({ orgId: ctx.tenantId, kind, status: 'queued', since: opts.since ?? null, until: opts.until ?? null })
+        .values({
+          orgId: ctx.tenantId,
+          kind,
+          status: 'queued',
+          since: opts.since ?? null,
+          until: opts.until ?? null,
+        })
         .returning();
       return row;
     });
@@ -114,16 +126,67 @@ export async function enqueueJob(
  * STALE_MS, across ALL orgs. Runs on the bare bypass-RLS connection BY DESIGN
  * (mirrors finance's findResumableJobs) — the caller builds a per-org CoreCtx
  * and does all real work through withOrgCore.
+ *
+ * The two lanes are drawn under SEPARATE budgets rather than one shared limit,
+ * because they cost wildly different amounts and starve each other in opposite
+ * directions. A tail slice is one Graph page per target; a backlog slice
+ * paginates up to 150 posts / 100 conversations / 90 ad rows with a 55s
+ * per-request timeout. One shared limit either lets the tail lane (re-enqueued
+ * for every org on every tick) freeze posts/ads/messages forever, or lets the
+ * backlog lane blow up the tick's wall clock when it is scaled for tail
+ * coverage. Sizing them independently is what keeps both bounded.
  */
-export async function findDueJobs(limit = 3): Promise<Array<{ jobId: string; orgId: string; kind: string }>> {
+export async function findDueJobs(
+  tailLimit = 3,
+  backlogLimit = 3,
+): Promise<Array<{ jobId: string; orgId: string; kind: string }>> {
   const db = getCoreDb();
-  const rows = await db
-    .select({ jobId: metaSyncJobs.id, orgId: metaSyncJobs.orgId, kind: metaSyncJobs.kind })
-    .from(metaSyncJobs)
-    .where(or(eq(metaSyncJobs.status, 'queued'), and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause))))
-    .orderBy(metaSyncJobs.createdAt)
-    .limit(limit);
-  return rows;
+  const due = or(
+    eq(metaSyncJobs.status, 'queued'),
+    and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause)),
+  );
+  const lane = (tail: boolean, limit: number) =>
+    db
+      .select({ jobId: metaSyncJobs.id, orgId: metaSyncJobs.orgId, kind: metaSyncJobs.kind })
+      .from(metaSyncJobs)
+      .where(
+        and(
+          due,
+          tail ? eq(metaSyncJobs.kind, 'messages_tail') : ne(metaSyncJobs.kind, 'messages_tail'),
+        ),
+      )
+      .orderBy(
+        sql`case when ${metaSyncJobs.kind} = 'messages' then 0 else 1 end`,
+        metaSyncJobs.createdAt,
+      )
+      .limit(Math.max(0, Math.trunc(limit)));
+  const [tail, backlog] = await Promise.all([lane(true, tailLimit), lane(false, backlogLimit)]);
+  return [...tail, ...backlog];
+}
+
+/** Keep the high-frequency freshness lane bounded without touching active
+ * work or the recent audit window. Runs on the bypass-RLS scheduler
+ * connection for the same cross-org reason as findDueJobs. */
+export async function pruneTerminalTailJobs(olderThanDays = 7, limit = 2000): Promise<number> {
+  const days = Math.min(365, Math.max(1, Math.trunc(olderThanDays)));
+  const rowLimit = Math.min(10_000, Math.max(1, Math.trunc(limit)));
+  const db = getCoreDb();
+  const deleted = (await db.execute(sql`
+    with doomed as (
+      select id
+      from meta_sync_jobs
+      where kind = 'messages_tail'
+        and status in ('succeeded', 'failed')
+        and finished_at < now() - (${days} * interval '1 day')
+      order by finished_at
+      limit ${rowLimit}
+    )
+    delete from meta_sync_jobs job
+    using doomed
+    where job.id = doomed.id
+    returning job.id
+  `)) as unknown as Array<{ id: string }>;
+  return deleted.length;
 }
 
 /** Flip queued→running, or re-claim a stuck running job past STALE_MS. */
@@ -136,7 +199,10 @@ export async function claimJob(ctx: CoreCtx, jobId: string): Promise<boolean> {
         and(
           eq(metaSyncJobs.id, jobId),
           eq(metaSyncJobs.orgId, ctx.tenantId),
-          or(eq(metaSyncJobs.status, 'queued'), and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause))),
+          or(
+            eq(metaSyncJobs.status, 'queued'),
+            and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause)),
+          ),
         ),
       )
       .returning({ id: metaSyncJobs.id });

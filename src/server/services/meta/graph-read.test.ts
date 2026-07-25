@@ -23,7 +23,10 @@ import {
   fbPostComments,
 } from './graph-read';
 
-function jsonResponse(body: unknown, init: { ok?: boolean; status?: number; headers?: Record<string, string> } = {}) {
+function jsonResponse(
+  body: unknown,
+  init: { ok?: boolean; status?: number; headers?: Record<string, string> } = {},
+) {
   return {
     ok: init.ok ?? true,
     status: init.status ?? 200,
@@ -41,7 +44,9 @@ function mockFetch(response: Response | ((url: string) => Response)) {
 
 describe('exchangeCodeForToken', () => {
   it('returns the token on success', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ access_token: 'short-lived', token_type: 'bearer', expires_in: 3600 }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ access_token: 'short-lived', token_type: 'bearer', expires_in: 3600 }),
+    );
     const res = await exchangeCodeForToken(
       { appId: 'app1', appSecret: 'secret1', code: 'code1', redirectUri: 'https://hub/cb' },
       { fetchImpl },
@@ -57,8 +62,13 @@ describe('exchangeCodeForToken', () => {
 
 describe('extendUserToken', () => {
   it('exchanges a short token for a long-lived one', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ access_token: 'long-lived', expires_in: 5_184_000 }));
-    const res = await extendUserToken({ appId: 'app1', appSecret: 'secret1', shortToken: 'short' }, { fetchImpl });
+    const fetchImpl = mockFetch(
+      jsonResponse({ access_token: 'long-lived', expires_in: 5_184_000 }),
+    );
+    const res = await extendUserToken(
+      { appId: 'app1', appSecret: 'secret1', shortToken: 'short' },
+      { fetchImpl },
+    );
     expect(res.ok).toBe(true);
     expect(res.data?.access_token).toBe('long-lived');
     const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
@@ -90,8 +100,17 @@ describe('listPagesWithTokens', () => {
   it('returns pages and surfaces the next cursor', async () => {
     const fetchImpl = mockFetch(
       jsonResponse({
-        data: [{ id: 'page1', name: 'FACES', access_token: 'ptok', instagram_business_account: { id: 'ig1' } }],
-        paging: { next: 'https://graph.facebook.com/v23.0/me/accounts?after=xyz&access_token=utok' },
+        data: [
+          {
+            id: 'page1',
+            name: 'FACES',
+            access_token: 'ptok',
+            instagram_business_account: { id: 'ig1' },
+          },
+        ],
+        paging: {
+          next: 'https://graph.facebook.com/v23.0/me/accounts?after=xyz&access_token=utok',
+        },
       }),
     );
     const res = await listPagesWithTokens('utok', { fetchImpl });
@@ -134,9 +153,13 @@ describe('listPagesWithTokens', () => {
 
   it('never surfaces the access token in an error message', async () => {
     const fetchImpl = vi.fn(async () => {
-      throw new Error('network down while fetching https://graph.facebook.com/v23.0/me/accounts?access_token=SECRET');
+      throw new Error(
+        'network down while fetching https://graph.facebook.com/v23.0/me/accounts?access_token=SECRET',
+      );
     });
-    const res = await listPagesWithTokens('SECRET', { fetchImpl: fetchImpl as unknown as typeof fetch });
+    const res = await listPagesWithTokens('SECRET', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
     expect(res.ok).toBe(false);
     expect(res.error).not.toContain('SECRET');
   });
@@ -144,7 +167,9 @@ describe('listPagesWithTokens', () => {
 
 describe('listAdAccounts', () => {
   it('returns the ad account list', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ data: [{ id: 'act_1', name: 'FACES Ads', currency: 'USD' }] }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ data: [{ id: 'act_1', name: 'FACES Ads', currency: 'USD' }] }),
+    );
     const res = await listAdAccounts('utok', { fetchImpl });
     expect(res.ok).toBe(true);
     expect(res.data?.[0]?.currency).toBe('USD');
@@ -181,14 +206,23 @@ describe('postInsights', () => {
     const fetchImpl = mockFetch((url: string) => {
       const metric = new URL(url).searchParams.get('metric') ?? '';
       if (metric.includes(',')) {
-        return jsonResponse({ error: { message: 'Unsupported get request', code: 100 } }, { ok: false, status: 400 });
+        return jsonResponse(
+          { error: { message: 'Unsupported get request', code: 100 } },
+          { ok: false, status: 400 },
+        );
       }
       if (metric === 'bad_metric') {
-        return jsonResponse({ error: { message: 'Unsupported get request', code: 100 } }, { ok: false, status: 400 });
+        return jsonResponse(
+          { error: { message: 'Unsupported get request', code: 100 } },
+          { ok: false, status: 400 },
+        );
       }
       return jsonResponse({ data: [{ name: metric, values: [{ value: 1 }] }] });
     });
-    const res = await postInsights('post1', 'ptok', { metrics: ['post_impressions', 'bad_metric'], fetchImpl });
+    const res = await postInsights('post1', 'ptok', {
+      metrics: ['post_impressions', 'bad_metric'],
+      fetchImpl,
+    });
     expect(res.ok).toBe(true);
     expect(res.data?.map((m) => m.name)).toEqual(['post_impressions']);
     expect(res.failedMetrics).toEqual(['bad_metric']);
@@ -196,7 +230,10 @@ describe('postInsights', () => {
 
   it('fails when every metric fails individually too', async () => {
     const fetchImpl = mockFetch(
-      jsonResponse({ error: { message: 'Unsupported get request', code: 100 } }, { ok: false, status: 400 }),
+      jsonResponse(
+        { error: { message: 'Unsupported get request', code: 100 } },
+        { ok: false, status: 400 },
+      ),
     );
     const res = await postInsights('post1', 'ptok', { metrics: ['a', 'b'], fetchImpl });
     expect(res.ok).toBe(false);
@@ -225,7 +262,9 @@ describe('listIgMedia', () => {
 
 describe('igMediaInsights', () => {
   it('uses the VIDEO metric set (includes views)', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ data: [{ name: 'views', values: [{ value: 10 }] }] }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ data: [{ name: 'views', values: [{ value: 10 }] }] }),
+    );
     await igMediaInsights('media1', 'ptok', 'VIDEO', { fetchImpl });
     const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
     expect(decodeURIComponent(calledUrl)).toContain('views');
@@ -244,7 +283,12 @@ describe('adInsights', () => {
     const fetchImpl = mockFetch(
       jsonResponse({ data: [{ ad_id: 'ad1', spend: '12.34', campaign_name: 'Summer' }] }),
     );
-    const res = await adInsights('123', 'utok', { since: '2026-06-01', until: '2026-06-30' }, { fetchImpl });
+    const res = await adInsights(
+      '123',
+      'utok',
+      { since: '2026-06-01', until: '2026-06-30' },
+      { fetchImpl },
+    );
     expect(res.ok).toBe(true);
     expect(res.data?.[0]?.ad_id).toBe('ad1');
     const calledUrl = decodeURIComponent((fetchImpl.mock.calls[0]?.[0] as string) ?? '');
@@ -254,7 +298,12 @@ describe('adInsights', () => {
 
   it('does not double-prefix an already act_-prefixed id', async () => {
     const fetchImpl = mockFetch(jsonResponse({ data: [] }));
-    await adInsights('act_123', 'utok', { since: '2026-06-01', until: '2026-06-30' }, { fetchImpl });
+    await adInsights(
+      'act_123',
+      'utok',
+      { since: '2026-06-01', until: '2026-06-30' },
+      { fetchImpl },
+    );
     const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
     expect(calledUrl).toContain('/act_123/insights');
     expect(calledUrl).not.toContain('act_act_123');
@@ -266,7 +315,14 @@ describe('listAdsWithStoryIds', () => {
     const fetchImpl = mockFetch(
       jsonResponse({
         data: [
-          { id: 'ad-1', creative: { effective_object_story_id: 'page-1_100', effective_instagram_media_id: 'ig-777', thumbnail_url: 'https://cdn/1.jpg' } },
+          {
+            id: 'ad-1',
+            creative: {
+              effective_object_story_id: 'page-1_100',
+              effective_instagram_media_id: 'ig-777',
+              thumbnail_url: 'https://cdn/1.jpg',
+            },
+          },
           { id: 'ad-2', creative: {} }, // creative present, no story/ig-media/thumbnail — dark post, no preview
           { id: 'ad-3' }, // no creative at all
         ],
@@ -275,13 +331,20 @@ describe('listAdsWithStoryIds', () => {
     const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl });
     expect(res.ok).toBe(true);
     expect(res.data).toEqual([
-      { adId: 'ad-1', storyId: 'page-1_100', igMediaId: 'ig-777', thumbnailUrl: 'https://cdn/1.jpg' },
+      {
+        adId: 'ad-1',
+        storyId: 'page-1_100',
+        igMediaId: 'ig-777',
+        thumbnailUrl: 'https://cdn/1.jpg',
+      },
       { adId: 'ad-2', storyId: null, igMediaId: null, thumbnailUrl: null },
       { adId: 'ad-3', storyId: null, igMediaId: null, thumbnailUrl: null },
     ]);
     const calledUrl = decodeURIComponent((fetchImpl.mock.calls[0]?.[0] as string) ?? '');
     expect(calledUrl).toContain('/act_123/ads');
-    expect(calledUrl).toContain('id,creative{effective_object_story_id,effective_instagram_media_id,thumbnail_url}');
+    expect(calledUrl).toContain(
+      'id,creative{effective_object_story_id,effective_instagram_media_id,thumbnail_url}',
+    );
   });
 
   it('does not double-prefix an already act_-prefixed id', async () => {
@@ -300,14 +363,21 @@ describe('listAdsWithStoryIds', () => {
         // paging.next links do live) — listAdsWithStoryIds must re-derive it.
         const u = new URL(url);
         expect(u.searchParams.get('appsecret_proof')).toBeTruthy();
-        return jsonResponse({ data: [{ id: 'ad-2', creative: { effective_object_story_id: 'page-1_200' } }] });
+        return jsonResponse({
+          data: [{ id: 'ad-2', creative: { effective_object_story_id: 'page-1_200' } }],
+        });
       }
       return jsonResponse({
         data: [{ id: 'ad-1', creative: { effective_object_story_id: 'page-1_100' } }],
-        paging: { next: 'https://graph.facebook.com/v23.0/act_123/ads?after=xyz&access_token=utok' },
+        paging: {
+          next: 'https://graph.facebook.com/v23.0/act_123/ads?after=xyz&access_token=utok',
+        },
       });
     });
-    const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl: fetchImpl as unknown as typeof fetch, appSecret: 'shh' });
+    const res = await listAdsWithStoryIds('123', 'utok', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      appSecret: 'shh',
+    });
     expect(res.ok).toBe(true);
     expect(res.data).toEqual([
       { adId: 'ad-1', storyId: 'page-1_100', igMediaId: null, thumbnailUrl: null },
@@ -319,19 +389,26 @@ describe('listAdsWithStoryIds', () => {
   it('tolerates a mid-pagination failure — returns what was collected so far, not an error', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('after=xyz')) return jsonResponse({ error: { message: 'boom' } }, { ok: false, status: 500 });
+      if (url.includes('after=xyz'))
+        return jsonResponse({ error: { message: 'boom' } }, { ok: false, status: 500 });
       return jsonResponse({
         data: [{ id: 'ad-1', creative: { effective_object_story_id: 'page-1_100' } }],
         paging: { next: 'https://graph.facebook.com/v23.0/act_123/ads?after=xyz' },
       });
     });
-    const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl: fetchImpl as unknown as typeof fetch });
+    const res = await listAdsWithStoryIds('123', 'utok', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
     expect(res.ok).toBe(true);
-    expect(res.data).toEqual([{ adId: 'ad-1', storyId: 'page-1_100', igMediaId: null, thumbnailUrl: null }]);
+    expect(res.data).toEqual([
+      { adId: 'ad-1', storyId: 'page-1_100', igMediaId: null, thumbnailUrl: null },
+    ]);
   });
 
   it('surfaces the first-page failure as an error', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ error: { message: 'nope', code: 1 } }, { ok: false, status: 400 }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ error: { message: 'nope', code: 1 } }, { ok: false, status: 400 }),
+    );
     const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl });
     expect(res.ok).toBe(false);
   });
@@ -353,7 +430,9 @@ describe('listConversations', () => {
 describe('fetchNextPage', () => {
   it('resumes pagination from a raw paging.next URL', async () => {
     const fetchImpl = mockFetch(jsonResponse({ data: [{ id: 'page2' }] }));
-    const res = await fetchNextPage('https://graph.facebook.com/v23.0/me/accounts?after=xyz', { fetchImpl });
+    const res = await fetchNextPage('https://graph.facebook.com/v23.0/me/accounts?after=xyz', {
+      fetchImpl,
+    });
     expect(res.ok).toBe(true);
     expect(res.data).toEqual([{ id: 'page2' }]);
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -361,15 +440,37 @@ describe('fetchNextPage', () => {
       expect.anything(),
     );
   });
+
+  it('restores a token removed from a durable paging cursor', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ data: [{ id: 'page2' }] }));
+    await fetchNextPage('https://graph.facebook.com/v23.0/me/accounts?after=xyz', {
+      fetchImpl,
+      accessToken: 'restored-token',
+      appSecret: 'app-secret',
+    });
+
+    const calledUrl = new URL((fetchImpl.mock.calls[0]?.[0] as string) ?? '');
+    expect(calledUrl.searchParams.get('access_token')).toBe('restored-token');
+    expect(calledUrl.searchParams.get('appsecret_proof')).toMatch(/^[a-f0-9]{64}$/);
+  });
 });
 
 describe('exchangeIgCodeForToken', () => {
   it('POSTs a form-encoded body to api.instagram.com/oauth/access_token (not a GET-with-query-params)', async () => {
     const fetchImpl = vi.fn(async () =>
-      jsonResponse({ access_token: 'ig-short-lived', user_id: '17800000000000000', permissions: ['instagram_business_basic'] }),
+      jsonResponse({
+        access_token: 'ig-short-lived',
+        user_id: '17800000000000000',
+        permissions: ['instagram_business_basic'],
+      }),
     );
     const res = await exchangeIgCodeForToken(
-      { appId: 'ig-app', appSecret: 'ig-secret', code: 'ig-code', redirectUri: 'https://hub/api/meta/ig/callback' },
+      {
+        appId: 'ig-app',
+        appSecret: 'ig-secret',
+        code: 'ig-code',
+        redirectUri: 'https://hub/api/meta/ig/callback',
+      },
       { fetchImpl: fetchImpl as unknown as typeof fetch },
     );
     expect(res.ok).toBe(true);
@@ -388,9 +489,16 @@ describe('exchangeIgCodeForToken', () => {
   });
 
   it('surfaces a failed exchange without throwing', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ error_message: 'Invalid platform app' }, { ok: false, status: 400 }));
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error_message: 'Invalid platform app' }, { ok: false, status: 400 }),
+    );
     const res = await exchangeIgCodeForToken(
-      { appId: 'ig-app', appSecret: 'ig-secret', code: 'bad', redirectUri: 'https://hub/api/meta/ig/callback' },
+      {
+        appId: 'ig-app',
+        appSecret: 'ig-secret',
+        code: 'bad',
+        redirectUri: 'https://hub/api/meta/ig/callback',
+      },
       { fetchImpl: fetchImpl as unknown as typeof fetch },
     );
     expect(res.ok).toBe(false);
@@ -400,8 +508,13 @@ describe('exchangeIgCodeForToken', () => {
 
 describe('exchangeIgLongLivedToken', () => {
   it('GETs graph.instagram.com/access_token, unversioned (no /v23.0/ segment)', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ access_token: 'ig-long-lived', token_type: 'bearer', expires_in: 5_184_000 }));
-    const res = await exchangeIgLongLivedToken({ appSecret: 'ig-secret', shortToken: 'ig-short' }, { fetchImpl });
+    const fetchImpl = mockFetch(
+      jsonResponse({ access_token: 'ig-long-lived', token_type: 'bearer', expires_in: 5_184_000 }),
+    );
+    const res = await exchangeIgLongLivedToken(
+      { appSecret: 'ig-secret', shortToken: 'ig-short' },
+      { fetchImpl },
+    );
     expect(res.ok).toBe(true);
     expect(res.data?.access_token).toBe('ig-long-lived');
     expect(res.data?.expires_in).toBe(5_184_000);
@@ -416,7 +529,9 @@ describe('exchangeIgLongLivedToken', () => {
 
 describe('refreshIgToken', () => {
   it('GETs the DISTINCT /refresh_access_token path, unversioned', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ access_token: 'ig-refreshed', expires_in: 5_184_000 }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ access_token: 'ig-refreshed', expires_in: 5_184_000 }),
+    );
     const res = await refreshIgToken({ token: 'ig-current' }, { fetchImpl });
     expect(res.ok).toBe(true);
     expect(res.data?.access_token).toBe('ig-refreshed');
@@ -439,9 +554,16 @@ describe('refreshIgToken', () => {
 describe('versioned opt — graph.instagram.com is unversioned, graph.facebook.com stays versioned', () => {
   it('listIgMedia against graph.instagram.com with versioned:false has no /v23.0/ segment', async () => {
     const fetchImpl = mockFetch(jsonResponse({ data: [] }));
-    await listIgMedia('ig-user-1', 'ig-token', {}, { fetchImpl, baseUrl: 'https://graph.instagram.com', versioned: false });
+    await listIgMedia(
+      'ig-user-1',
+      'ig-token',
+      {},
+      { fetchImpl, baseUrl: 'https://graph.instagram.com', versioned: false },
+    );
     const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
-    expect(calledUrl).toBe(`https://graph.instagram.com/ig-user-1/media?fields=${encodeURIComponent('id,caption,media_type,permalink,timestamp,like_count,comments_count,media_url,thumbnail_url')}&access_token=ig-token`);
+    expect(calledUrl).toBe(
+      `https://graph.instagram.com/ig-user-1/media?fields=${encodeURIComponent('id,caption,media_type,permalink,timestamp,like_count,comments_count,media_url,thumbnail_url')}&access_token=ig-token`,
+    );
     expect(calledUrl).not.toContain('/v23.0/');
   });
 
@@ -455,15 +577,15 @@ describe('versioned opt — graph.instagram.com is unversioned, graph.facebook.c
 
 describe('pickPreviewUrl', () => {
   it('prefers thumbnail_url for VIDEO', () => {
-    expect(pickPreviewUrl({ media_type: 'VIDEO', media_url: 'video.mp4', thumbnail_url: 'thumb.jpg' })).toBe(
-      'thumb.jpg',
-    );
+    expect(
+      pickPreviewUrl({ media_type: 'VIDEO', media_url: 'video.mp4', thumbnail_url: 'thumb.jpg' }),
+    ).toBe('thumb.jpg');
   });
 
   it('prefers thumbnail_url for REELS', () => {
-    expect(pickPreviewUrl({ media_type: 'REELS', media_url: 'video.mp4', thumbnail_url: 'thumb.jpg' })).toBe(
-      'thumb.jpg',
-    );
+    expect(
+      pickPreviewUrl({ media_type: 'REELS', media_url: 'video.mp4', thumbnail_url: 'thumb.jpg' }),
+    ).toBe('thumb.jpg');
   });
 
   it('falls back to media_url for VIDEO/REELS when no thumbnail_url', () => {
@@ -471,9 +593,9 @@ describe('pickPreviewUrl', () => {
   });
 
   it('uses media_url for IMAGE', () => {
-    expect(pickPreviewUrl({ media_type: 'IMAGE', media_url: 'img.jpg', thumbnail_url: 'ignored.jpg' })).toBe(
-      'img.jpg',
-    );
+    expect(
+      pickPreviewUrl({ media_type: 'IMAGE', media_url: 'img.jpg', thumbnail_url: 'ignored.jpg' }),
+    ).toBe('img.jpg');
   });
 
   it('uses media_url for CAROUSEL_ALBUM', () => {
@@ -491,7 +613,9 @@ describe('pickPreviewUrl', () => {
 
 describe('igMediaDetail', () => {
   it('hits the unversioned IG host with the media/children fields, no appsecret_proof', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ media_type: 'CAROUSEL_ALBUM', children: { data: [] } }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ media_type: 'CAROUSEL_ALBUM', children: { data: [] } }),
+    );
     const res = await igMediaDetail('media-1', 'ig-token', { fetchImpl });
     expect(res.ok).toBe(true);
     const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
@@ -502,7 +626,9 @@ describe('igMediaDetail', () => {
   });
 
   it('surfaces a graph error (e.g. permission denied) as ok:false', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ error: { message: 'denied', code: 10 } }, { ok: false, status: 400 }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ error: { message: 'denied', code: 10 } }, { ok: false, status: 400 }),
+    );
     const res = await igMediaDetail('media-1', 'ig-token', { fetchImpl });
     expect(res.ok).toBe(false);
   });
@@ -528,7 +654,9 @@ describe('fbPostAttachments / fbPostFullPicture', () => {
 
 describe('igMediaComments', () => {
   it('hits the unversioned IG host /comments edge with the reply fields, no appsecret_proof', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ data: [{ id: 'c1', text: 'hi', username: 'a', like_count: 1 }] }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ data: [{ id: 'c1', text: 'hi', username: 'a', like_count: 1 }] }),
+    );
     const res = await igMediaComments('media-1', 'ig-token', { fetchImpl });
     expect(res.ok).toBe(true);
     expect(res.data).toEqual([{ id: 'c1', text: 'hi', username: 'a', like_count: 1 }]);
@@ -540,7 +668,9 @@ describe('igMediaComments', () => {
   });
 
   it('surfaces a graph error (e.g. permission denied) as ok:false', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ error: { message: 'denied', code: 10 } }, { ok: false, status: 400 }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ error: { message: 'denied', code: 10 } }, { ok: false, status: 400 }),
+    );
     const res = await igMediaComments('media-1', 'ig-token', { fetchImpl });
     expect(res.ok).toBe(false);
   });
@@ -548,17 +678,23 @@ describe('igMediaComments', () => {
 
 describe('fbPostComments', () => {
   it('hits the versioned FB host /comments edge with from{name} field', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ data: [{ id: 'c1', message: 'hey', from: { name: 'Dan' } }] }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ data: [{ id: 'c1', message: 'hey', from: { name: 'Dan' } }] }),
+    );
     const res = await fbPostComments('123_456', 'page-token', { fetchImpl });
     expect(res.ok).toBe(true);
     expect(res.data).toEqual([{ id: 'c1', message: 'hey', from: { name: 'Dan' } }]);
     const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
     expect(calledUrl).toContain('/v23.0/123_456/comments');
-    expect(calledUrl).toContain(encodeURIComponent('id,message,from{name},created_time,like_count'));
+    expect(calledUrl).toContain(
+      encodeURIComponent('id,message,from{name},created_time,like_count'),
+    );
   });
 
   it('surfaces a permission denial as ok:false (expected — pages_read_user_content)', async () => {
-    const fetchImpl = mockFetch(jsonResponse({ error: { message: 'denied', code: 10 } }, { ok: false, status: 400 }));
+    const fetchImpl = mockFetch(
+      jsonResponse({ error: { message: 'denied', code: 10 } }, { ok: false, status: 400 }),
+    );
     const res = await fbPostComments('123_456', 'page-token', { fetchImpl });
     expect(res.ok).toBe(false);
   });
@@ -568,10 +704,15 @@ describe('timeout handling', () => {
   it('surfaces an abort as a network error, not a throw', async () => {
     const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
       return new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(new DOMException('timeout', 'TimeoutError')));
+        init?.signal?.addEventListener('abort', () =>
+          reject(new DOMException('timeout', 'TimeoutError')),
+        );
       });
     });
-    const res = await listAdAccounts('utok', { fetchImpl: fetchImpl as unknown as typeof fetch, timeoutMs: 1 });
+    const res = await listAdAccounts('utok', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      timeoutMs: 1,
+    });
     expect(res.ok).toBe(false);
     expect(res.status).toBe(0);
   });

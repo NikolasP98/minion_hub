@@ -5,6 +5,14 @@
   import { Plus, Trash2 } from 'lucide-svelte';
   import { Modal, Button, SegmentedControl, Input } from '$lib/components/ui';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
+  import {
+    CODE_MAX,
+    CODE_PATTERN,
+    codeError,
+    normalizeCode,
+    uniqueCodeFrom,
+    type CodeError,
+  } from '$lib/catalog/code';
 
   // Narrow local shapes (mirrors server types) — avoids importing $server/*
   // runtime modules into a client component (same convention as ShiftBanner.svelte).
@@ -29,7 +37,9 @@
     category: string | null;
     unitPrice: number | null;
     active: boolean;
-    kind: 'product' | 'service';
+    /** Mirrors SellableRow.kind. The wizard does not CREATE bundles (that is
+     *  the bundle editor's job); it must merely not choke on editing one. */
+    kind: 'product' | 'service' | 'bundle';
     itemId: string | null;
   }
 
@@ -40,6 +50,9 @@
     stockItems: StockItemLike[];
     /** Existing categories across the catalog — feeds the free-entry datalist. */
     categories: string[];
+    /** Every code already in use, so the auto-suggestion never proposes a
+     *  collision the server would then reject with `code_taken`. */
+    takenCodes?: string[];
     /** Existing consumption mappings across the catalog — filtered to the
      *  edited product for prefill (see ★ note below). */
     consumption: ConsumptionLike[];
@@ -54,20 +67,22 @@
     stockEnabled,
     stockItems,
     categories,
+    takenCodes = [],
     consumption,
     editing = null,
     onSaved,
   }: Props = $props();
 
-  // ── Server's slugifyCode (pos.service.ts) mirrored client-side — that
-  // module is $server/*-only and can't be imported into a client component. ──
-  function slugify(name: string): string {
-    return name
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  }
+  // Code format is now ONE shared rail ($lib/catalog/code.ts), imported by both
+  // this component and pos.service.ts. It used to be a hand-copied mirror of the
+  // server's slugifyCode, and the two had drifted — which is how `CMSVP` and
+  // `CM-SVP` both ended up in the catalog as separate products.
+  const CODE_ERR_MSG: Record<CodeError, () => string> = {
+    empty: m.catalog_code_err_empty,
+    too_short: m.catalog_code_err_too_short,
+    too_long: m.catalog_code_err_too_long,
+    charset: m.catalog_code_err_charset,
+  };
 
   let name = $state('');
   let code = $state('');
@@ -118,8 +133,12 @@
   // Auto-suggest the code from the name until the user edits it manually.
   $effect(() => {
     if (codeTouched) return;
-    code = slugify(name);
+    code = uniqueCodeFrom(name, takenCodes);
   });
+
+  // Blank while the user is still typing the first character — an "at least 2
+  // characters" error on an empty field the user just opened is noise, not help.
+  const codeErr = $derived(codeTouched && code !== '' ? codeError(code) : null);
 
   function usedElsewhere(idx: number): Set<string> {
     return new Set(rows.filter((_, i) => i !== idx).map((r) => r.itemId));
@@ -140,7 +159,9 @@
 
   const canSubmit = $derived(
     name.trim() !== '' &&
-      code.trim() !== '' &&
+      // Format is a hard gate, not a warning: a malformed code that reaches the
+      // server becomes a permanent business key (see $lib/catalog/code.ts).
+      codeError(code) === null &&
       !busy &&
       // publishing an existing item requires one to be picked
       !(!editing && source === 'existing-item' && !existingItemId),
@@ -222,10 +243,24 @@
     <Input size="sm" label={m.stock_field_name()} bind:value={name} />
     <Input
       size="sm"
-      inputClass="font-mono"
+      inputClass="font-mono uppercase"
       label={m.stock_field_code()}
-      bind:value={code}
-      oninput={() => (codeTouched = true)}
+      helper={m.catalog_code_helper()}
+      error={codeErr ? CODE_ERR_MSG[codeErr]() : undefined}
+      value={code}
+      maxlength={CODE_MAX}
+      pattern={CODE_PATTERN}
+      autocapitalize="characters"
+      spellcheck="false"
+      oninput={(e) => {
+        codeTouched = true;
+        // Normalize in place so a pasted "CM-SVP" visibly becomes "CMSV"
+        // instead of being silently rejected only on submit. Writing back to
+        // the DOM value keeps the caret sane when nothing was stripped.
+        const el = e.currentTarget as HTMLInputElement;
+        code = normalizeCode(el.value);
+        if (el.value !== code) el.value = code;
+      }}
     />
     <Input
       size="sm"

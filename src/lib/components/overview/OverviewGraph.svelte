@@ -12,11 +12,12 @@
   import { Button } from '$lib/components/ui';
   import { onMount } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+  import { theme } from '$lib/state/ui/theme.svelte';
   import type { OrgArea } from '$server/services/org-areas.service';
   import { INTEGRATIONS } from '$lib/types/entities';
   import { buildGraph, RADII, type GraphNode, type NodeKind } from './graph/build-graph';
   import { createSimulation, type Simulation, type SimNode } from './graph/simulation';
-  import { createRenderer, type Renderer } from './graph/renderer';
+  import { createRenderer, themeLabelColors, type Renderer } from './graph/renderer';
 
   interface AgentLike {
     id: string;
@@ -108,6 +109,17 @@
     void [org, areas, agents, members, subscriptions];
     if (!_ready) return;
     rebuild();
+  });
+
+  // Re-resolve label colors from the active theme's CSS tokens whenever the
+  // theme changes — the renderer bakes label fills into Pixi Text objects at
+  // build time, so a plain re-render isn't enough; recolor on switch too.
+  // rAF (not a same-tick read) so applyTheme()'s DOM writes have landed.
+  $effect(() => {
+    void [theme.presetId, theme.accentId];
+    const renderer = _renderer;
+    if (!renderer) return;
+    requestAnimationFrame(() => renderer.updatePresentation({ labelColors: themeLabelColors() }));
   });
 
   // adjacency map — precomputed in rebuild(), never called per-event
@@ -207,7 +219,7 @@
 
     (async () => {
       // createRenderer takes no callback — the shell drives all gestures itself.
-      const renderer = await createRenderer(canvasEl!);
+      const renderer = await createRenderer(canvasEl!, {}, { labelColors: themeLabelColors() });
       if (disposed) {
         renderer.destroy();
         return;
@@ -361,10 +373,12 @@
         const fitZoom = longPx / (RADII.user * 1.5);
         r.animateTo([rr * Math.cos(targetAngle), rr * Math.sin(targetAngle)], fitZoom);
       } else {
-        // Leaf node: camera target must follow the current rotation.
-        const c = Math.cos(_rotation);
-        const s = Math.sin(_rotation);
-        r.animateTo([m.ax * c - m.ay * s, m.ax * s + m.ay * c], 1.55);
+        // Leaf node: center on its LIVE simulated position, not the static
+        // build-time anchor (m.ax/m.ay) — rotation, wander and collision all
+        // drift the rendered position away from that anchor, which previously
+        // sent the camera to empty space for any node that had drifted.
+        const pos = r.nodePosition(id);
+        if (pos) r.animateTo(pos, 1.55);
       }
     }
 
