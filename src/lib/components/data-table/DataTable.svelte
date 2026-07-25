@@ -538,6 +538,9 @@
 		search.trim().length > 0 || columns.some((c) => c.filter && filterSet(c.key).size > 0),
 	);
 
+	// Seed caller-requested defaults once; the effect below handles later key changes
+	// without converting user-controlled expand/collapse state into a derived value.
+	// svelte-ignore state_referenced_locally
 	let expanded = $state<Set<string>>(new Set(initialExpanded ?? []));
 	// Keyed on the joined ids, not the array identity: the caller rebuilds this
 	// array on every derivation, so an identity check would re-seed constantly
