@@ -17,7 +17,7 @@ const reconciliation = readFileSync(
 );
 const receiptVectorRelease = readFileSync(
   new URL(
-    '../../../supabase/migrations/20260725193500_qdrant_ack_receipt_vector_release.sql',
+    '../../../supabase/migrations/20260725195000_qdrant_ack_active_generation_guard.sql',
     import.meta.url,
   ),
   'utf8',
@@ -52,10 +52,12 @@ describe('Qdrant-owned embedding storage migration', () => {
     expect(receiptVectorRelease).toContain('returning o.* into acked');
     expect(receiptVectorRelease).toContain('set vector_indexed_hash = indexed_hash');
     expect(receiptVectorRelease).toContain('vector_indexed_generation = indexed_generation');
+    expect(receiptVectorRelease).toContain('active.is_active');
     expect(receiptVectorRelease).toContain("active.storage_mode = 'qdrant'");
     expect(receiptVectorRelease).toContain('set embedding = null');
     expect(receiptVectorRelease).toContain('embedding_model = null');
     expect(receiptVectorRelease).toContain('chunk.org_id = acked.org_id');
+    expect(receiptVectorRelease).toContain('set local search_path = pg_catalog, public');
   });
 
   it('calls a chunk pending until the ACTIVE generation confirms its current content', () => {
