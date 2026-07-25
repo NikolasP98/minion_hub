@@ -192,17 +192,11 @@ describe('brain corpus all-channel normalization', () => {
         displayName: 'Ada',
         lifecycleOverride: null,
         source: 'instagram',
-        customFields: {},
       },
       party: null,
       identities: [],
       tags: Array.from({ length: 1000 }, (_, index) => `${index}:${'x'.repeat(20)}`),
       activities: [],
-      finance: { invoiceCount: 0, total: 0, lastIssuedAt: null, recentInvoices: [] },
-      bookings: [],
-      salesOrders: [],
-      posTickets: [],
-      memberships: [],
     } satisfies ConversationRelationshipContext;
 
     const rendered = renderConversationRelationshipContext(context);

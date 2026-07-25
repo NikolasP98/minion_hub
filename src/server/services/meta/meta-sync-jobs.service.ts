@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, lt, ne, or, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -126,30 +126,40 @@ export async function enqueueJob(
  * STALE_MS, across ALL orgs. Runs on the bare bypass-RLS connection BY DESIGN
  * (mirrors finance's findResumableJobs) — the caller builds a per-org CoreCtx
  * and does all real work through withOrgCore.
+ *
+ * The tail lane re-enqueues one job per connected org on every tick, so a
+ * single priority ordering would let it own every claim slot once there are
+ * more orgs than slots and freeze posts/ads/messages forever. Each side is
+ * therefore drawn separately: the tail lane leads with half the slots
+ * reserved, backlog lanes take the rest, and whichever side is short gives
+ * its unused capacity to the other.
  */
 export async function findDueJobs(
   limit = 3,
 ): Promise<Array<{ jobId: string; orgId: string; kind: string }>> {
   const db = getCoreDb();
-  const rows = await db
-    .select({ jobId: metaSyncJobs.id, orgId: metaSyncJobs.orgId, kind: metaSyncJobs.kind })
-    .from(metaSyncJobs)
-    .where(
-      or(
-        eq(metaSyncJobs.status, 'queued'),
-        and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause)),
-      ),
-    )
-    .orderBy(
-      sql`case
-        when ${metaSyncJobs.kind} = 'messages_tail' then 0
-        when ${metaSyncJobs.kind} = 'messages' then 1
-        else 2
-      end`,
-      metaSyncJobs.createdAt,
-    )
-    .limit(limit);
-  return rows;
+  const due = or(
+    eq(metaSyncJobs.status, 'queued'),
+    and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause)),
+  );
+  const lane = (tail: boolean) =>
+    db
+      .select({ jobId: metaSyncJobs.id, orgId: metaSyncJobs.orgId, kind: metaSyncJobs.kind })
+      .from(metaSyncJobs)
+      .where(
+        and(
+          due,
+          tail ? eq(metaSyncJobs.kind, 'messages_tail') : ne(metaSyncJobs.kind, 'messages_tail'),
+        ),
+      )
+      .orderBy(
+        sql`case when ${metaSyncJobs.kind} = 'messages' then 0 else 1 end`,
+        metaSyncJobs.createdAt,
+      )
+      .limit(limit);
+  const [tail, backlog] = await Promise.all([lane(true), lane(false)]);
+  const reserved = Math.max(1, Math.floor(limit / 2));
+  return [...tail.slice(0, reserved), ...backlog, ...tail.slice(reserved)].slice(0, limit);
 }
 
 /** Keep the high-frequency freshness lane bounded without touching active

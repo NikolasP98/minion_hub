@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { error } from '@sveltejs/kit';
-import { and, asc, eq, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, or, sql, type SQL } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   brainSources,
@@ -80,6 +80,8 @@ export interface NormalizedWhatsAppDocument {
   chunks: NormalizedKnowledgeChunk[];
 }
 
+/** Exactly what renderConversationRelationshipContext and the document
+ * metadata consume — no PII (phone/email/document) is joined or carried. */
 export interface ConversationRelationshipContext {
   contact: {
     id: string;
@@ -87,62 +89,15 @@ export interface ConversationRelationshipContext {
     displayName: string | null;
     lifecycleOverride: string | null;
     source: string;
-    customFields: Record<string, unknown>;
   } | null;
   party: {
     id: string;
     type: string;
     name: string | null;
-    phone9: string | null;
-    email: string | null;
-    docType: string | null;
-    docNumber: string | null;
-    dob: string | null;
-    dniVerified: boolean;
   } | null;
-  identities: Array<{ channel: string; externalId: string; handle: string | null }>;
+  identities: Array<{ channel: string }>;
   tags: string[];
-  activities: Array<{ kind: string; body: string | null; occurredAt: string }>;
-  finance: {
-    invoiceCount: number;
-    total: number;
-    lastIssuedAt: string | null;
-    recentInvoices: Array<{
-      documentId: string | null;
-      issuedAt: string | null;
-      total: number;
-      currency: string | null;
-      status: string | null;
-      items: string[];
-    }>;
-  };
-  bookings: Array<{
-    startTime: string;
-    status: string;
-    title: string | null;
-    notes: string | null;
-  }>;
-  salesOrders: Array<{
-    humanId: string | null;
-    createdAt: string;
-    status: string;
-    description: string | null;
-    total: number | null;
-    currency: string | null;
-  }>;
-  posTickets: Array<{
-    humanId: string | null;
-    submittedAt: string;
-    status: string;
-    total: number;
-    currency: string;
-  }>;
-  memberships: Array<{
-    planName: string | null;
-    status: string;
-    startedAt: string;
-    nextCycleDate: string;
-  }>;
+  activities: Array<{ kind: string; occurredAt: string }>;
 }
 
 export function whatsappCalendarMonth(value: Date): string {
@@ -685,15 +640,16 @@ export async function discoverConversationSources(ctx: CoreCtx): Promise<Knowled
     return tx
       .select()
       .from(knowledgeSources)
-      .where(eq(knowledgeSources.orgId, ctx.tenantId))
-      .orderBy(asc(knowledgeSources.connector), asc(knowledgeSources.externalKey))
-      .then((sources) =>
-        sources.filter(
-          (source) =>
-            (source.config as { domain?: unknown } | null)?.domain === 'conversations' ||
-            source.connector === WHATSAPP_CONNECTOR,
+      .where(
+        and(
+          eq(knowledgeSources.orgId, ctx.tenantId),
+          or(
+            sql`${knowledgeSources.config}->>'domain' = 'conversations'`,
+            eq(knowledgeSources.connector, WHATSAPP_CONNECTOR),
+          ),
         ),
-      );
+      )
+      .orderBy(asc(knowledgeSources.connector), asc(knowledgeSources.externalKey));
   });
 }
 
@@ -1080,33 +1036,16 @@ async function loadConversationRelationshipContexts(
           'humanId', contact.human_id,
           'displayName', contact.display_name,
           'lifecycleOverride', contact.lifecycle_override,
-          'source', contact.source,
-          'customFields', '{}'::jsonb
+          'source', contact.source
         ),
         'party', case when party.id is null then null else jsonb_build_object(
           'id', party.id::text,
           'type', party.type,
-          'name', party.name,
-          'phone9', null,
-          'email', null,
-          'docType', null,
-          'docNumber', null,
-          'dob', null,
-          'dniVerified', false
+          'name', party.name
         ) end,
         'identities', coalesce(identities.rows, '[]'::jsonb),
         'tags', coalesce(tags.rows, '[]'::jsonb),
-        'activities', coalesce(activities.rows, '[]'::jsonb),
-        'finance', jsonb_build_object(
-          'invoiceCount', 0,
-          'total', 0,
-          'lastIssuedAt', null,
-          'recentInvoices', '[]'::jsonb
-        ),
-        'bookings', '[]'::jsonb,
-        'salesOrders', '[]'::jsonb,
-        'posTickets', '[]'::jsonb,
-        'memberships', '[]'::jsonb
+        'activities', coalesce(activities.rows, '[]'::jsonb)
       ) end as relationship_context
     from requested
     left join crm_contact_identities identity
@@ -1121,11 +1060,7 @@ async function loadConversationRelationshipContexts(
       on party.org_id = current_setting('app.current_org_id', true)
       and party.id = contact.party_id
     left join lateral (
-      select jsonb_agg(jsonb_build_object(
-        'channel', ci.channel,
-        'externalId', '',
-        'handle', null
-      ) order by ci.channel) as rows
+      select jsonb_agg(jsonb_build_object('channel', ci.channel) order by ci.channel) as rows
       from crm_contact_identities ci
       where ci.org_id = current_setting('app.current_org_id', true)
         and ci.contact_id = contact.id
@@ -1142,7 +1077,6 @@ async function loadConversationRelationshipContexts(
     left join lateral (
       select jsonb_agg(jsonb_build_object(
         'kind', activity.kind,
-        'body', null,
         'occurredAt', activity.occurred_at
       ) order by activity.occurred_at desc) as rows
       from (

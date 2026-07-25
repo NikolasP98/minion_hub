@@ -48,7 +48,9 @@ try {
 
   if (apply) {
     if (normalization?.dirty_channel !== 0 || normalization.dirty_account !== 0) {
-      throw new Error('message channel/account normalization gate failed');
+      throw new Error(
+        `message channel/account normalization gate failed: ${JSON.stringify(normalization ?? null)}`,
+      );
     }
     await sql`set lock_timeout = '5s'`;
     await sql`set statement_timeout = '15min'`;
