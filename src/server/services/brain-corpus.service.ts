@@ -15,7 +15,10 @@ import type { AccessPrincipal } from './brains.service';
 
 export const KNOWLEDGE_EMBEDDING_MODEL = 'text-embedding-3-small';
 export const WHATSAPP_CONNECTOR = 'whatsapp';
-export const WHATSAPP_FOCUSED_BRAIN_NAME = 'WhatsApp Conversations';
+export const LEGACY_WHATSAPP_FOCUSED_BRAIN_NAME = 'WhatsApp Conversations';
+export const CONVERSATIONS_FOCUSED_BRAIN_NAME = 'All Conversations';
+/** Backward-compatible export for callers that still import the old symbol. */
+export const WHATSAPP_FOCUSED_BRAIN_NAME = CONVERSATIONS_FOCUSED_BRAIN_NAME;
 const DEFAULT_CONVERSATION_BATCH = 50;
 const DEFAULT_CHUNK_MAX_CHARS = 6000;
 const EMBEDDING_BATCH_SIZE = 64;
@@ -29,6 +32,10 @@ export type BrainKind = 'master' | 'focused';
 export interface WhatsAppConversationCursor {
   accountId: string;
   chatId: string;
+}
+
+export interface ConversationCursor extends WhatsAppConversationCursor {
+  channel: string;
 }
 
 export interface WhatsAppMessageInput {
@@ -66,11 +73,77 @@ export interface NormalizedWhatsAppDocument {
   chunks: NormalizedKnowledgeChunk[];
 }
 
+export interface ConversationRelationshipContext {
+  contact: {
+    id: string;
+    humanId: string | null;
+    displayName: string | null;
+    lifecycleOverride: string | null;
+    source: string;
+    customFields: Record<string, unknown>;
+  } | null;
+  party: {
+    id: string;
+    type: string;
+    name: string | null;
+    phone9: string | null;
+    email: string | null;
+    docType: string | null;
+    docNumber: string | null;
+    dob: string | null;
+    dniVerified: boolean;
+  } | null;
+  identities: Array<{ channel: string; externalId: string; handle: string | null }>;
+  tags: string[];
+  activities: Array<{ kind: string; body: string | null; occurredAt: string }>;
+  finance: {
+    invoiceCount: number;
+    total: number;
+    lastIssuedAt: string | null;
+    recentInvoices: Array<{
+      documentId: string | null;
+      issuedAt: string | null;
+      total: number;
+      currency: string | null;
+      status: string | null;
+      items: string[];
+    }>;
+  };
+  bookings: Array<{
+    startTime: string;
+    status: string;
+    title: string | null;
+    notes: string | null;
+  }>;
+  salesOrders: Array<{
+    humanId: string | null;
+    createdAt: string;
+    status: string;
+    description: string | null;
+    total: number | null;
+    currency: string | null;
+  }>;
+  posTickets: Array<{
+    humanId: string | null;
+    submittedAt: string;
+    status: string;
+    total: number;
+    currency: string;
+  }>;
+  memberships: Array<{
+    planName: string | null;
+    status: string;
+    startedAt: string;
+    nextCycleDate: string;
+  }>;
+}
+
 export function whatsappCalendarMonth(value: Date): string {
   return value.toISOString().slice(0, 7);
 }
 
 export interface WhatsAppConversationKey extends WhatsAppConversationCursor {
+  channel: string;
   sourceId: string;
 }
 
@@ -266,15 +339,117 @@ function splitLongTurn(turn: string, maxChars: number): string[] {
   return out;
 }
 
+function channelLabel(channel: string): string {
+  return channel
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function compactJson(value: unknown, maxChars = 2000): string {
+  const serialized = JSON.stringify(value);
+  return serialized.length <= maxChars ? serialized : `${serialized.slice(0, maxChars)}…`;
+}
+
+export function renderConversationRelationshipContext(
+  context: ConversationRelationshipContext | null,
+): string {
+  if (!context?.contact) return 'CRM contact: not matched';
+  const lines = [
+    `CRM contact: ${context.contact.displayName ?? context.contact.humanId ?? context.contact.id}`,
+    `CRM profile: lifecycle=${context.contact.lifecycleOverride ?? 'derived'}; source=${context.contact.source}; custom=${compactJson(context.contact.customFields)}`,
+  ];
+  if (context.party) {
+    lines.push(
+      `Party: ${context.party.name ?? context.party.id}; type=${context.party.type}; document=${context.party.docType ?? ''} ${context.party.docNumber ?? ''}; verified=${context.party.dniVerified}; phone=${context.party.phone9 ?? ''}; email=${context.party.email ?? ''}`,
+    );
+  }
+  if (context.identities.length > 0) {
+    lines.push(
+      `Channel identities: ${context.identities
+        .map((identity) => `${identity.channel}:${identity.handle ?? identity.externalId}`)
+        .join(', ')}`,
+    );
+  }
+  if (context.tags.length > 0) lines.push(`CRM tags: ${context.tags.join(', ')}`);
+  if (context.activities.length > 0) {
+    lines.push(
+      `Recent CRM activity: ${context.activities
+        .map(
+          (activity) =>
+            `${activity.occurredAt} ${activity.kind}${activity.body ? ` — ${activity.body}` : ''}`,
+        )
+        .join(' | ')}`,
+    );
+  }
+  if (context.finance.invoiceCount > 0) {
+    lines.push(
+      `Finance summary: invoices=${context.finance.invoiceCount}; total=${context.finance.total}; last=${context.finance.lastIssuedAt ?? 'unknown'}`,
+    );
+    lines.push(
+      `Recent invoices: ${context.finance.recentInvoices
+        .map(
+          (invoice) =>
+            `${invoice.issuedAt ?? 'unknown'} ${invoice.documentId ?? ''} ${invoice.status ?? ''} ${invoice.currency ?? ''} ${invoice.total}${invoice.items.length ? ` [${invoice.items.join(', ')}]` : ''}`,
+        )
+        .join(' | ')}`,
+    );
+  }
+  if (context.bookings.length > 0) {
+    lines.push(
+      `Bookings: ${context.bookings
+        .map(
+          (booking) =>
+            `${booking.startTime} ${booking.status} ${booking.title ?? ''}${booking.notes ? ` — ${booking.notes}` : ''}`,
+        )
+        .join(' | ')}`,
+    );
+  }
+  if (context.salesOrders.length > 0) {
+    lines.push(
+      `Sales orders: ${context.salesOrders
+        .map(
+          (order) =>
+            `${order.createdAt} ${order.humanId ?? ''} ${order.status} ${order.description ?? ''} ${order.currency ?? ''} ${order.total ?? ''}`,
+        )
+        .join(' | ')}`,
+    );
+  }
+  if (context.posTickets.length > 0) {
+    lines.push(
+      `POS tickets: ${context.posTickets
+        .map(
+          (ticket) =>
+            `${ticket.submittedAt} ${ticket.humanId ?? ''} ${ticket.status} ${ticket.currency} ${ticket.total}`,
+        )
+        .join(' | ')}`,
+    );
+  }
+  if (context.memberships.length > 0) {
+    lines.push(
+      `Memberships: ${context.memberships
+        .map(
+          (membership) =>
+            `${membership.planName ?? 'plan'} ${membership.status} started=${membership.startedAt} next=${membership.nextCycleDate}`,
+        )
+        .join(' | ')}`,
+    );
+  }
+  return lines.join('\n');
+}
+
 /**
  * Deterministic turn-aware WhatsApp normalizer. SQL removes duplicate stable
  * message IDs before this runs; the defensive map also makes the pure helper
  * safe for callers/tests that pass duplicate rows directly.
  */
-export function normalizeWhatsAppConversation(
+export function normalizeConversation(
+  channel: string,
   accountId: string,
   chatId: string,
   inputRows: WhatsAppMessageInput[],
+  relationshipContext: ConversationRelationshipContext | null = null,
   maxChars = DEFAULT_CHUNK_MAX_CHARS,
 ): NormalizedWhatsAppDocument {
   const rows = [...inputRows]
@@ -283,7 +458,7 @@ export function normalizeWhatsAppConversation(
       if (!row.messageId) return true;
       return all.findIndex((candidate) => candidate.messageId === row.messageId) === index;
     });
-  if (rows.length === 0) throw new Error('cannot normalize an empty WhatsApp conversation');
+  if (rows.length === 0) throw new Error('cannot normalize an empty conversation');
 
   const rawTurns = rows.map((row) => `${roleFor(row.direction)}: ${row.content.trim()}`);
   const normalizedTurns = rows.map(
@@ -295,7 +470,9 @@ export function normalizeWhatsAppConversation(
   if (rows.some((row) => whatsappCalendarMonth(row.occurredAt) !== segmentMonth)) {
     throw new Error('normalizeWhatsAppConversation requires rows from one UTC calendar month');
   }
-  const contextPrefix = `WhatsApp account ${accountId}; conversation ${chatId}; month ${segmentMonth}`;
+  const label = channelLabel(channel);
+  const joinedContext = renderConversationRelationshipContext(relationshipContext);
+  const contextPrefix = `${label} account ${accountId}; conversation ${chatId}; month ${segmentMonth}\n${joinedContext}`;
   const occurredAt = rows.at(-1)!.occurredAt;
   const sourceUpdatedAt = rows.reduce(
     (latest, row) => (row.createdAt > latest ? row.createdAt : latest),
@@ -331,25 +508,27 @@ export function normalizeWhatsAppConversation(
     contentHash: knowledgeContentHash(`${contextPrefix}\n\n${chunkText}`),
     occurredAt,
     metadata: {
-      channel: 'whatsapp',
+      channel,
       accountId,
       chatId,
       segmentMonth,
       messageCount: rows.length,
+      contactId: relationshipContext?.contact?.id ?? null,
+      partyId: relationshipContext?.party?.id ?? null,
     },
   }));
 
   return {
     externalId: `conversation:${accountId}:${chatId}:${segmentMonth}`,
-    title: `WhatsApp · ${chatId} · ${segmentMonth}`,
+    title: `${label} · ${relationshipContext?.contact?.displayName ?? chatId} · ${segmentMonth}`,
     rawText,
-    normalizedText,
-    contentHash: knowledgeContentHash(normalizedText),
-    sourceRevision,
+    normalizedText: `${joinedContext}\n\n${normalizedText}`,
+    contentHash: knowledgeContentHash(`${joinedContext}\n\n${normalizedText}`),
+    sourceRevision: sha256(`${sourceRevision}\u0000${joinedContext}`),
     occurredAt,
     sourceUpdatedAt,
     metadata: {
-      channel: 'whatsapp',
+      channel,
       accountId,
       chatId,
       segmentMonth,
@@ -363,17 +542,31 @@ export function normalizeWhatsAppConversation(
             .filter((v): v is string => Boolean(v)),
         ),
       ),
+      contactId: relationshipContext?.contact?.id ?? null,
+      partyId: relationshipContext?.party?.id ?? null,
+      relationshipContext,
     },
     chunks,
   };
 }
 
-/** Stable UTC-month segments: later or mid-history messages only change their
- * own month and can never renumber/rekey subsequent documents. */
-export function normalizeWhatsAppConversationSegments(
+export function normalizeWhatsAppConversation(
   accountId: string,
   chatId: string,
   inputRows: WhatsAppMessageInput[],
+  maxChars = DEFAULT_CHUNK_MAX_CHARS,
+): NormalizedWhatsAppDocument {
+  return normalizeConversation('whatsapp', accountId, chatId, inputRows, null, maxChars);
+}
+
+/** Stable UTC-month segments: later or mid-history messages only change their
+ * own month and can never renumber/rekey subsequent documents. */
+export function normalizeConversationSegments(
+  channel: string,
+  accountId: string,
+  chatId: string,
+  inputRows: WhatsAppMessageInput[],
+  relationshipContext: ConversationRelationshipContext | null = null,
   maxChars = DEFAULT_CHUNK_MAX_CHARS,
 ): NormalizedWhatsAppDocument[] {
   const byMonth = new Map<string, WhatsAppMessageInput[]>();
@@ -385,7 +578,18 @@ export function normalizeWhatsAppConversationSegments(
   }
   return [...byMonth.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, rows]) => normalizeWhatsAppConversation(accountId, chatId, rows, maxChars));
+    .map(([, rows]) =>
+      normalizeConversation(channel, accountId, chatId, rows, relationshipContext, maxChars),
+    );
+}
+
+export function normalizeWhatsAppConversationSegments(
+  accountId: string,
+  chatId: string,
+  inputRows: WhatsAppMessageInput[],
+  maxChars = DEFAULT_CHUNK_MAX_CHARS,
+): NormalizedWhatsAppDocument[] {
+  return normalizeConversationSegments('whatsapp', accountId, chatId, inputRows, null, maxChars);
 }
 
 export function encodeWhatsAppCursor(cursor: WhatsAppConversationCursor): string {
@@ -406,10 +610,34 @@ export function decodeWhatsAppCursor(cursor?: string | null): WhatsAppConversati
   }
 }
 
+export function encodeConversationCursor(cursor: ConversationCursor): string {
+  return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+}
+
+export function decodeConversationCursor(cursor?: string | null): ConversationCursor | null {
+  if (!cursor) return null;
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Record<
+      string,
+      unknown
+    >;
+    if (
+      typeof value.channel !== 'string' ||
+      typeof value.accountId !== 'string' ||
+      typeof value.chatId !== 'string'
+    ) {
+      return null;
+    }
+    return { channel: value.channel, accountId: value.accountId, chatId: value.chatId };
+  } catch {
+    return null;
+  }
+}
+
 /** One canonical eligibility predicate for discovery, reconciliation, reads,
  * and verified-empty source promotion. Keeping this shared prevents source
  * health from drifting away from the corpus population rules. */
-export function eligibleWhatsAppMessagePredicate(alias: string): SQL {
+export function eligibleConversationMessagePredicate(alias: string): SQL {
   const message = sql.identifier(alias);
   return sql`
     nullif(trim(${message}.chat_id), '') is not null
@@ -418,6 +646,8 @@ export function eligibleWhatsAppMessagePredicate(alias: string): SQL {
     and nullif(trim(${message}.content), '') is not null
   `;
 }
+
+export const eligibleWhatsAppMessagePredicate = eligibleConversationMessagePredicate;
 
 export async function ensureMasterBrain(ctx: CoreCtx, createdBy?: string | null): Promise<Brain> {
   return withOrgCore(ctx, async (tx) => {
@@ -444,32 +674,42 @@ export async function ensureMasterBrain(ctx: CoreCtx, createdBy?: string | null)
   });
 }
 
-/** Discover one deterministic source for each WhatsApp account in the ledger. */
-export async function discoverWhatsAppSources(ctx: CoreCtx): Promise<KnowledgeSource[]> {
+/** Discover one deterministic source for every content-bearing 1:1 chat
+ * channel/account pair in the org-scoped ledger. */
+export async function discoverConversationSources(ctx: CoreCtx): Promise<KnowledgeSource[]> {
   return withOrgCore(ctx, async (tx) => {
     const accounts = (await tx.execute(sql`
-      select trim(message.account_id) as account_id,
+      select lower(trim(message.channel)) as channel,
+        coalesce(nullif(trim(message.account_id), ''), 'default') as account_id,
         count(distinct (
           message.chat_id,
           to_char(coalesce(message.occurred_at, message.created_at) at time zone 'UTC', 'YYYY-MM')
         )) filter (
-          where ${eligibleWhatsAppMessagePredicate('message')}
+          where ${eligibleConversationMessagePredicate('message')}
         )::int as conversation_count
       from messages message
       where message.org_id = current_setting('app.current_org_id', true)
-        and message.channel = 'whatsapp'
-        and nullif(trim(message.account_id), '') is not null
-      group by trim(message.account_id)
-      order by trim(message.account_id)
-    `)) as unknown as Array<{ account_id: string; conversation_count: number }>;
+        and nullif(trim(message.channel), '') is not null
+      group by lower(trim(message.channel)),
+        coalesce(nullif(trim(message.account_id), ''), 'default')
+      having count(*) filter (
+        where ${eligibleConversationMessagePredicate('message')}
+      ) > 0
+      order by lower(trim(message.channel)),
+        coalesce(nullif(trim(message.account_id), ''), 'default')
+    `)) as unknown as Array<{
+      channel: string;
+      account_id: string;
+      conversation_count: number;
+    }>;
     if (accounts.length === 0) return [];
 
     const values = sql.join(
       accounts.map(
-        ({ account_id, conversation_count }) => sql`(
-        current_setting('app.current_org_id', true), ${WHATSAPP_CONNECTOR}, ${account_id},
-        ${`WhatsApp ${account_id}`},
-        ${JSON.stringify({ channel: 'whatsapp', accountId: account_id, domain: 'whatsapp', requiredModule: 'crm', requiredFieldLevel: 1 })}::jsonb,
+        ({ channel, account_id, conversation_count }) => sql`(
+        current_setting('app.current_org_id', true), ${channel}, ${account_id},
+        ${`${channelLabel(channel)} ${account_id}`},
+        ${JSON.stringify({ channel, accountId: account_id, domain: 'conversations', requiredModule: 'crm', requiredFieldLevel: 1 })}::jsonb,
         'discovered', 'incremental', 'event+reconcile',
         ${JSON.stringify({ expectedDocuments: Number(conversation_count) })}::jsonb
       )`,
@@ -501,35 +741,46 @@ export async function discoverWhatsAppSources(ctx: CoreCtx): Promise<KnowledgeSo
     return tx
       .select()
       .from(knowledgeSources)
-      .where(
-        and(
-          eq(knowledgeSources.orgId, ctx.tenantId),
-          eq(knowledgeSources.connector, WHATSAPP_CONNECTOR),
+      .where(eq(knowledgeSources.orgId, ctx.tenantId))
+      .orderBy(asc(knowledgeSources.connector), asc(knowledgeSources.externalKey))
+      .then((sources) =>
+        sources.filter(
+          (source) =>
+            (source.config as { domain?: unknown } | null)?.domain === 'conversations' ||
+            source.connector === WHATSAPP_CONNECTOR,
         ),
-      )
-      .orderBy(asc(knowledgeSources.externalKey));
+      );
   });
 }
 
+export async function discoverWhatsAppSources(ctx: CoreCtx): Promise<KnowledgeSource[]> {
+  return (await discoverConversationSources(ctx)).filter(
+    (source) => source.connector === WHATSAPP_CONNECTOR,
+  );
+}
+
 /** Lightweight event-path ensure: no corpus-wide ledger aggregate. */
-export async function ensureWhatsAppSource(
+export async function ensureConversationSource(
   ctx: CoreCtx,
+  channel: string,
   accountId: string,
 ): Promise<KnowledgeSource> {
+  const normalizedChannel = channel.trim().toLowerCase();
   const normalizedAccountId = accountId.trim();
-  if (!normalizedAccountId) throw new Error('WhatsApp source requires a non-empty accountId');
+  if (!normalizedChannel) throw new Error('conversation source requires a non-empty channel');
+  if (!normalizedAccountId) throw new Error('conversation source requires a non-empty accountId');
   const source = await withOrgCore(ctx, async (tx) => {
     await tx
       .insert(knowledgeSources)
       .values({
         orgId: ctx.tenantId,
-        connector: WHATSAPP_CONNECTOR,
+        connector: normalizedChannel,
         externalKey: normalizedAccountId,
-        name: `WhatsApp ${normalizedAccountId}`,
+        name: `${channelLabel(normalizedChannel)} ${normalizedAccountId}`,
         config: {
-          channel: 'whatsapp',
+          channel: normalizedChannel,
           accountId: normalizedAccountId,
-          domain: 'whatsapp',
+          domain: 'conversations',
           requiredModule: 'crm',
           requiredFieldLevel: 1,
         },
@@ -552,37 +803,57 @@ export async function ensureWhatsAppSource(
       .where(
         and(
           eq(knowledgeSources.orgId, ctx.tenantId),
-          eq(knowledgeSources.connector, WHATSAPP_CONNECTOR),
+          eq(knowledgeSources.connector, normalizedChannel),
           eq(knowledgeSources.externalKey, normalizedAccountId),
         ),
       )
       .limit(1);
-    if (!source) throw new Error(`failed to ensure WhatsApp source ${normalizedAccountId}`);
+    if (!source) {
+      throw new Error(`failed to ensure ${normalizedChannel} source ${normalizedAccountId}`);
+    }
     return source;
   });
-  // Master membership is implicit; the standard WhatsApp focused scope needs
+  // Master membership is implicit; the standard conversations focused scope needs
   // an explicit reference when an account first appears after bootstrap.
   await ensureMasterBrain(ctx);
-  await ensureWhatsAppFocusedBrain(ctx, [source.id]);
+  await ensureConversationsFocusedBrain(ctx, [source.id]);
   return source;
 }
 
-export async function markWhatsAppSourceFailure(
+export function ensureWhatsAppSource(ctx: CoreCtx, accountId: string): Promise<KnowledgeSource> {
+  return ensureConversationSource(ctx, WHATSAPP_CONNECTOR, accountId);
+}
+
+export async function markConversationSourceFailure(
   ctx: CoreCtx,
+  channel: string | null,
   accountId: string | null,
   cause: unknown,
 ): Promise<void> {
   const message = cause instanceof Error ? cause.message : String(cause);
   await withOrgCore(ctx, (tx) => {
+    const channelFilter = channel ? sql`and connector = ${channel}` : sql``;
     const accountFilter = accountId ? sql`and external_key = ${accountId}` : sql``;
     return tx.execute(sql`
       update knowledge_sources
       set status = 'failed', last_error = ${message.slice(0, 1000)}, updated_at = now()
       where org_id = current_setting('app.current_org_id', true)
-        and connector = ${WHATSAPP_CONNECTOR}
+        and (
+          config->>'domain' = 'conversations'
+          or connector = ${WHATSAPP_CONNECTOR}
+        )
+        ${channelFilter}
         ${accountFilter}
     `);
   });
+}
+
+export function markWhatsAppSourceFailure(
+  ctx: CoreCtx,
+  accountId: string | null,
+  cause: unknown,
+): Promise<void> {
+  return markConversationSourceFailure(ctx, WHATSAPP_CONNECTOR, accountId, cause);
 }
 
 const VERIFIED_EMPTY_WHATSAPP_SOURCE_STATUSES = ['discovered', 'queued'] as const;
@@ -596,13 +867,16 @@ export function canPromoteVerifiedEmptyWhatsAppSource(status: string): boolean {
   return (VERIFIED_EMPTY_WHATSAPP_SOURCE_STATUSES as readonly string[]).includes(status);
 }
 
-export async function markVerifiedEmptyWhatsAppSourcesReady(ctx: CoreCtx): Promise<number> {
+export async function markVerifiedEmptyConversationSourcesReady(ctx: CoreCtx): Promise<number> {
   return withOrgCore(ctx, async (tx) => {
     const promoted = (await tx.execute(sql`
       update knowledge_sources source
       set status = 'ready', last_synced_at = now(), last_error = null, updated_at = now()
       where source.org_id = current_setting('app.current_org_id', true)
-        and source.connector = ${WHATSAPP_CONNECTOR}
+        and (
+          source.config->>'domain' = 'conversations'
+          or source.connector = ${WHATSAPP_CONNECTOR}
+        )
         and source.status = any(${textArray([...VERIFIED_EMPTY_WHATSAPP_SOURCE_STATUSES])})
         and coalesce((source.watermark->>'expectedDocuments')::int, 0) = 0
         and not exists (
@@ -614,9 +888,9 @@ export async function markVerifiedEmptyWhatsAppSourcesReady(ctx: CoreCtx): Promi
         and not exists (
           select 1 from messages message
           where message.org_id = source.org_id
-            and message.channel = 'whatsapp'
-            and trim(message.account_id) = source.external_key
-            and ${eligibleWhatsAppMessagePredicate('message')}
+            and lower(trim(message.channel)) = source.connector
+            and coalesce(nullif(trim(message.account_id), ''), 'default') = source.external_key
+            and ${eligibleConversationMessagePredicate('message')}
         )
       returning source.id
     `)) as unknown as Array<{ id: string }>;
@@ -624,7 +898,11 @@ export async function markVerifiedEmptyWhatsAppSourcesReady(ctx: CoreCtx): Promi
   });
 }
 
-export async function ensureWhatsAppFocusedBrain(
+export function markVerifiedEmptyWhatsAppSourcesReady(ctx: CoreCtx): Promise<number> {
+  return markVerifiedEmptyConversationSourcesReady(ctx);
+}
+
+export async function ensureConversationsFocusedBrain(
   ctx: CoreCtx,
   sourceIds: string[],
   createdBy?: string | null,
@@ -638,18 +916,22 @@ export async function ensureWhatsAppFocusedBrain(
         and(
           eq(brains.orgId, ctx.tenantId),
           eq(brains.kind, 'focused'),
-          eq(brains.name, WHATSAPP_FOCUSED_BRAIN_NAME),
+          sql`${brains.name} in (${CONVERSATIONS_FOCUSED_BRAIN_NAME}, ${LEGACY_WHATSAPP_FOCUSED_BRAIN_NAME})`,
         ),
       )
-      .orderBy(asc(brains.createdAt))
+      .orderBy(
+        sql`case when ${brains.name} = ${CONVERSATIONS_FOCUSED_BRAIN_NAME} then 0 else 1 end`,
+        asc(brains.createdAt),
+      )
       .limit(1);
     if (!brain) {
       [brain] = await tx
         .insert(brains)
         .values({
           orgId: ctx.tenantId,
-          name: WHATSAPP_FOCUSED_BRAIN_NAME,
-          description: 'Customer conversations from connected WhatsApp accounts.',
+          name: CONVERSATIONS_FOCUSED_BRAIN_NAME,
+          description:
+            'Org-scoped customer conversations from every connected chat channel, enriched with joined CRM and related business context.',
           icon: 'message-circle',
           visibility: 'org',
           kind: 'focused',
@@ -657,6 +939,18 @@ export async function ensureWhatsAppFocusedBrain(
           createdBy: createdBy ?? null,
         })
         .returning();
+    } else if (brain.name === LEGACY_WHATSAPP_FOCUSED_BRAIN_NAME) {
+      const [renamed] = await tx
+        .update(brains)
+        .set({
+          name: CONVERSATIONS_FOCUSED_BRAIN_NAME,
+          description:
+            'Org-scoped customer conversations from every connected chat channel, enriched with joined CRM and related business context.',
+          updatedAt: new Date(),
+        })
+        .where(and(eq(brains.id, brain.id), eq(brains.orgId, ctx.tenantId)))
+        .returning();
+      if (renamed) brain = renamed;
     }
     await tx
       .insert(brainSources)
@@ -666,35 +960,63 @@ export async function ensureWhatsAppFocusedBrain(
   });
 }
 
-async function scanWhatsAppKeys(
+export function ensureWhatsAppFocusedBrain(
+  ctx: CoreCtx,
+  sourceIds: string[],
+  createdBy?: string | null,
+): Promise<Brain | null> {
+  return ensureConversationsFocusedBrain(ctx, sourceIds, createdBy);
+}
+
+async function scanConversationKeys(
   tx: CoreTx,
-  sourceByAccount: Map<string, string>,
-  cursor: WhatsAppConversationCursor | null,
+  sourceByChannelAccount: Map<string, string>,
+  cursor: ConversationCursor | null,
   limit: number,
 ): Promise<{ keys: WhatsAppConversationKey[]; hasMore: boolean }> {
-  if (sourceByAccount.size === 0) return { keys: [], hasMore: false };
-  const accounts = [...sourceByAccount.keys()];
+  if (sourceByChannelAccount.size === 0) return { keys: [], hasMore: false };
+  const sources = [...sourceByChannelAccount.keys()].map((key) => {
+    const [channel, accountId] = key.split('\u0000');
+    return { channel, accountId };
+  });
+  const sourceValues = sql.join(
+    sources.map(({ channel, accountId }) => sql`(${channel}::text, ${accountId}::text)`),
+    sql`, `,
+  );
   const cursorFilter = cursor
-    ? sql`and (m.account_id, m.chat_id) > (${cursor.accountId}, ${cursor.chatId})`
+    ? sql`and (
+        lower(trim(m.channel)),
+        coalesce(nullif(trim(m.account_id), ''), 'default'),
+        m.chat_id
+      ) > (${cursor.channel}, ${cursor.accountId}, ${cursor.chatId})`
     : sql``;
   const rows = (await tx.execute(sql`
-    select m.account_id, m.chat_id
+    select lower(trim(m.channel)) as channel,
+      coalesce(nullif(trim(m.account_id), ''), 'default') as account_id,
+      m.chat_id
     from messages m
     where m.org_id = current_setting('app.current_org_id', true)
-      and m.channel = 'whatsapp'
-      and m.account_id = any(${textArray(accounts)})
-      and ${eligibleWhatsAppMessagePredicate('m')}
+      and (
+        lower(trim(m.channel)),
+        coalesce(nullif(trim(m.account_id), ''), 'default')
+      ) in (${sourceValues})
+      and ${eligibleConversationMessagePredicate('m')}
       ${cursorFilter}
-    group by m.account_id, m.chat_id
-    order by m.account_id, m.chat_id
+    group by lower(trim(m.channel)),
+      coalesce(nullif(trim(m.account_id), ''), 'default'),
+      m.chat_id
+    order by lower(trim(m.channel)),
+      coalesce(nullif(trim(m.account_id), ''), 'default'),
+      m.chat_id
     limit ${limit + 1}
-  `)) as unknown as Array<{ account_id: string; chat_id: string }>;
+  `)) as unknown as Array<{ channel: string; account_id: string; chat_id: string }>;
   const hasMore = rows.length > limit;
   return {
     keys: rows.slice(0, limit).map((row) => ({
+      channel: row.channel,
       accountId: row.account_id,
       chatId: row.chat_id,
-      sourceId: sourceByAccount.get(row.account_id)!,
+      sourceId: sourceByChannelAccount.get(`${row.channel}\u0000${row.account_id}`)!,
     })),
     hasMore,
   };
@@ -702,7 +1024,7 @@ async function scanWhatsAppKeys(
 
 function keyValues(keys: WhatsAppConversationKey[]) {
   return sql.join(
-    keys.map((key) => sql`(${key.accountId}::text, ${key.chatId}::text)`),
+    keys.map((key) => sql`(${key.channel}::text, ${key.accountId}::text, ${key.chatId}::text)`),
     sql`, `,
   );
 }
@@ -721,7 +1043,7 @@ function uuidArray(values: string[]) {
   )}]::uuid[]`;
 }
 
-async function loadWhatsAppRows(
+async function loadConversationRows(
   tx: CoreTx,
   keys: WhatsAppConversationKey[],
   onlyMonths?: string[],
@@ -732,24 +1054,37 @@ async function loadWhatsAppRows(
     ? sql`where to_char(coalesce(occurred_at, created_at) at time zone 'UTC', 'YYYY-MM') = any(${textArray(onlyMonths)})`
     : sql``;
   const rows = (await tx.execute(sql`
-    select account_id, chat_id, id::text as id, message_id, direction, content,
+    select normalized_channel as channel, normalized_account_id as account_id,
+      chat_id, id::text as id, message_id, direction, content,
       sender_id, sender_name, occurred_at, created_at
     from (
       select distinct on (
-        m.account_id, m.chat_id, coalesce(nullif(m.message_id, ''), 'row:' || m.id::text)
-      ) m.*
+        lower(trim(m.channel)),
+        coalesce(nullif(trim(m.account_id), ''), 'default'),
+        m.chat_id,
+        coalesce(nullif(m.message_id, ''), 'row:' || m.id::text)
+      ) m.*,
+        lower(trim(m.channel)) as normalized_channel,
+        coalesce(nullif(trim(m.account_id), ''), 'default') as normalized_account_id
       from messages m
       where m.org_id = current_setting('app.current_org_id', true)
-        and m.channel = 'whatsapp'
-        and ${eligibleWhatsAppMessagePredicate('m')}
-        and (m.account_id, m.chat_id) in (${keyValues(keys)})
-      order by m.account_id, m.chat_id,
+        and ${eligibleConversationMessagePredicate('m')}
+        and (
+          lower(trim(m.channel)),
+          coalesce(nullif(trim(m.account_id), ''), 'default'),
+          m.chat_id
+        ) in (${keyValues(keys)})
+      order by lower(trim(m.channel)),
+        coalesce(nullif(trim(m.account_id), ''), 'default'),
+        m.chat_id,
         coalesce(nullif(m.message_id, ''), 'row:' || m.id::text),
         coalesce(m.occurred_at, m.created_at), m.id
     ) deduped
     ${monthFilter}
-    order by account_id, chat_id, coalesce(occurred_at, created_at), id
+    order by normalized_channel, normalized_account_id, chat_id,
+      coalesce(occurred_at, created_at), id
   `)) as unknown as Array<{
+    channel: string;
     account_id: string;
     chat_id: string;
     id: string;
@@ -762,7 +1097,7 @@ async function loadWhatsAppRows(
     created_at: Date | string;
   }>;
   for (const row of rows) {
-    const key = `${row.account_id}\u0000${row.chat_id}`;
+    const key = `${row.channel}\u0000${row.account_id}\u0000${row.chat_id}`;
     const values = out.get(key) ?? [];
     const createdAt = asDate(row.created_at);
     values.push({
@@ -780,19 +1115,274 @@ async function loadWhatsAppRows(
   return out;
 }
 
+async function loadConversationRelationshipContexts(
+  tx: CoreTx,
+  keys: WhatsAppConversationKey[],
+): Promise<Map<string, ConversationRelationshipContext | null>> {
+  const out = new Map<string, ConversationRelationshipContext | null>();
+  if (keys.length === 0) return out;
+  const requested = sql.join(
+    [...new Map(keys.map((key) => [`${key.channel}\u0000${key.chatId}`, key])).values()].map(
+      (key) => sql`(${key.channel}::text, ${key.chatId}::text)`,
+    ),
+    sql`, `,
+  );
+  const rows = (await tx.execute(sql`
+    with requested(channel, chat_id) as (values ${requested})
+    select requested.channel, requested.chat_id,
+      case when contact.id is null then null else jsonb_build_object(
+        'contact', jsonb_build_object(
+          'id', contact.id::text,
+          'humanId', contact.human_id,
+          'displayName', contact.display_name,
+          'lifecycleOverride', contact.lifecycle_override,
+          'source', contact.source,
+          'customFields', contact.custom_fields
+        ),
+        'party', case when party.id is null then null else jsonb_build_object(
+          'id', party.id::text,
+          'type', party.type,
+          'name', party.name,
+          'phone9', party.phone9,
+          'email', party.email,
+          'docType', party.doc_type,
+          'docNumber', party.doc_number,
+          'dob', party.dob,
+          'dniVerified', party.dni_verified
+        ) end,
+        'identities', coalesce(identities.rows, '[]'::jsonb),
+        'tags', coalesce(tags.rows, '[]'::jsonb),
+        'activities', coalesce(activities.rows, '[]'::jsonb),
+        'finance', jsonb_build_object(
+          'invoiceCount', coalesce(finance.invoice_count, 0),
+          'total', coalesce(finance.total, 0),
+          'lastIssuedAt', finance.last_issued_at,
+          'recentInvoices', coalesce(recent_invoices.rows, '[]'::jsonb)
+        ),
+        'bookings', coalesce(bookings.rows, '[]'::jsonb),
+        'salesOrders', coalesce(sales_orders.rows, '[]'::jsonb),
+        'posTickets', coalesce(pos_tickets.rows, '[]'::jsonb),
+        'memberships', coalesce(memberships.rows, '[]'::jsonb)
+      ) end as relationship_context
+    from requested
+    left join crm_contact_identities identity
+      on identity.org_id = current_setting('app.current_org_id', true)
+      and identity.channel = requested.channel
+      and identity.external_id = requested.chat_id
+    left join crm_contacts contact
+      on contact.org_id = current_setting('app.current_org_id', true)
+      and contact.id = identity.contact_id
+      and contact.deleted_at is null
+    left join parties party
+      on party.org_id = current_setting('app.current_org_id', true)
+      and party.id = contact.party_id
+    left join lateral (
+      select jsonb_agg(jsonb_build_object(
+        'channel', ci.channel,
+        'externalId', ci.external_id,
+        'handle', ci.handle
+      ) order by ci.channel, ci.external_id) as rows
+      from crm_contact_identities ci
+      where ci.org_id = current_setting('app.current_org_id', true)
+        and ci.contact_id = contact.id
+    ) identities on true
+    left join lateral (
+      select jsonb_agg(tag.name order by tag.position, tag.name) as rows
+      from crm_contact_tags membership
+      join crm_tags tag
+        on tag.org_id = current_setting('app.current_org_id', true)
+        and tag.id = membership.tag_id
+      where membership.org_id = current_setting('app.current_org_id', true)
+        and membership.contact_id = contact.id
+    ) tags on true
+    left join lateral (
+      select jsonb_agg(jsonb_build_object(
+        'kind', activity.kind,
+        'body', activity.body,
+        'occurredAt', activity.occurred_at
+      ) order by activity.occurred_at desc) as rows
+      from (
+        select kind, body, occurred_at
+        from crm_activities
+        where org_id = current_setting('app.current_org_id', true)
+          and contact_id = contact.id
+        order by occurred_at desc
+        limit 10
+      ) activity
+    ) activities on true
+    left join lateral (
+      select count(*)::int as invoice_count,
+        coalesce(sum(coalesce(invoice.total, 0)), 0)::float8 as total,
+        max(invoice.issued_at) as last_issued_at
+      from fin_invoices invoice
+      left join fin_clients client
+        on client.org_id = current_setting('app.current_org_id', true)
+        and client.id = invoice.client_id
+      where invoice.org_id = current_setting('app.current_org_id', true)
+        and contact.id is not null
+        and (
+          (contact.party_id is not null and client.party_id = contact.party_id)
+          or (
+            nullif(trim(contact.custom_fields->>'dni'), '') is not null
+            and regexp_replace(coalesce(invoice.client_doc_number, ''), '[^0-9]', '', 'g')
+              = regexp_replace(contact.custom_fields->>'dni', '[^0-9]', '', 'g')
+          )
+        )
+    ) finance on true
+    left join lateral (
+      select jsonb_agg(jsonb_build_object(
+        'documentId', invoice.document_id,
+        'issuedAt', invoice.issued_at,
+        'total', coalesce(invoice.total, 0)::float8,
+        'currency', invoice.currency,
+        'status', invoice.status,
+        'items', invoice.items
+      ) order by invoice.issued_at desc nulls last) as rows
+      from (
+        select fi.document_id, fi.issued_at, fi.total, fi.currency, fi.status,
+          coalesce((
+            select jsonb_agg(item.description order by item.total desc nulls last)
+            from (
+              select description, total
+              from fin_invoice_items
+              where org_id = current_setting('app.current_org_id', true)
+                and invoice_id = fi.id
+                and description is not null
+              order by total desc nulls last
+              limit 5
+            ) item
+          ), '[]'::jsonb) as items
+        from fin_invoices fi
+        left join fin_clients fc
+          on fc.org_id = current_setting('app.current_org_id', true)
+          and fc.id = fi.client_id
+        where fi.org_id = current_setting('app.current_org_id', true)
+          and contact.id is not null
+          and (
+            (contact.party_id is not null and fc.party_id = contact.party_id)
+            or (
+              nullif(trim(contact.custom_fields->>'dni'), '') is not null
+              and regexp_replace(coalesce(fi.client_doc_number, ''), '[^0-9]', '', 'g')
+                = regexp_replace(contact.custom_fields->>'dni', '[^0-9]', '', 'g')
+            )
+          )
+        order by fi.issued_at desc nulls last
+        limit 10
+      ) invoice
+    ) recent_invoices on true
+    left join lateral (
+      select jsonb_agg(jsonb_build_object(
+        'startTime', booking.start_time,
+        'status', booking.status,
+        'title', booking.title,
+        'notes', booking.notes
+      ) order by booking.start_time desc) as rows
+      from (
+        select start_time, status, title, notes
+        from sched_bookings
+        where org_id = current_setting('app.current_org_id', true)
+          and (
+            crm_contact_id = contact.id
+            or (contact.party_id is not null and party_id = contact.party_id)
+          )
+        order by start_time desc
+        limit 10
+      ) booking
+    ) bookings on true
+    left join lateral (
+      select jsonb_agg(jsonb_build_object(
+        'humanId', sales_order.human_id,
+        'createdAt', sales_order.created_at,
+        'status', sales_order.status,
+        'description', sales_order.description,
+        'total', sales_order.total::float8,
+        'currency', sales_order.currency
+      ) order by sales_order.created_at desc) as rows
+      from (
+        select human_id, created_at, status, description, total, currency
+        from sales_orders
+        where org_id = current_setting('app.current_org_id', true)
+          and (
+            crm_contact_id = contact.id
+            or (contact.party_id is not null and party_id = contact.party_id)
+          )
+        order by created_at desc
+        limit 10
+      ) sales_order
+    ) sales_orders on true
+    left join lateral (
+      select jsonb_agg(jsonb_build_object(
+        'humanId', ticket.human_id,
+        'submittedAt', ticket.submitted_at,
+        'status', ticket.status,
+        'total', ticket.total::float8,
+        'currency', ticket.currency
+      ) order by ticket.submitted_at desc) as rows
+      from (
+        select human_id, submitted_at, status, total, currency
+        from pos_tickets
+        where org_id = current_setting('app.current_org_id', true)
+          and (
+            crm_contact_id = contact.id
+            or (contact.party_id is not null and party_id = contact.party_id)
+          )
+        order by submitted_at desc
+        limit 10
+      ) ticket
+    ) pos_tickets on true
+    left join lateral (
+      select jsonb_agg(jsonb_build_object(
+        'planName', membership.plan_name,
+        'status', membership.status,
+        'startedAt', membership.started_at,
+        'nextCycleDate', membership.next_cycle_date
+      ) order by membership.started_at desc) as rows
+      from (
+        select plan.name as plan_name, member.status, member.started_at, member.next_cycle_date
+        from memberships member
+        left join membership_plans plan
+          on plan.org_id = current_setting('app.current_org_id', true)
+          and plan.id = member.plan_id
+        where member.org_id = current_setting('app.current_org_id', true)
+          and (
+            member.crm_contact_id = contact.id
+            or (contact.party_id is not null and member.party_id = contact.party_id)
+          )
+        order by member.started_at desc
+        limit 10
+      ) membership
+    ) memberships on true
+  `)) as unknown as Array<{
+    channel: string;
+    chat_id: string;
+    relationship_context: ConversationRelationshipContext | null;
+  }>;
+  for (const row of rows) {
+    out.set(`${row.channel}\u0000${row.chat_id}`, row.relationship_context);
+  }
+  return out;
+}
+
 async function prepareConversations(
   tx: CoreTx,
   keys: WhatsAppConversationKey[],
   onlyMonths?: string[],
 ): Promise<PreparedConversation[]> {
-  const rowsByKey = await loadWhatsAppRows(tx, keys, onlyMonths);
+  const [rowsByKey, contextByKey] = await Promise.all([
+    loadConversationRows(tx, keys, onlyMonths),
+    loadConversationRelationshipContexts(tx, keys),
+  ]);
   const normalized = keys
     .flatMap((key) => {
-      const rows = rowsByKey.get(`${key.accountId}\u0000${key.chatId}`) ?? [];
+      const rows = rowsByKey.get(`${key.channel}\u0000${key.accountId}\u0000${key.chatId}`) ?? [];
       return rows.length > 0
-        ? normalizeWhatsAppConversationSegments(key.accountId, key.chatId, rows).map(
-            (document) => ({ key, document }),
-          )
+        ? normalizeConversationSegments(
+            key.channel,
+            key.accountId,
+            key.chatId,
+            rows,
+            contextByKey.get(`${key.channel}\u0000${key.chatId}`) ?? null,
+          ).map((document) => ({ key, document }))
         : [];
     })
     .filter(
@@ -1054,9 +1644,9 @@ async function runPreparedBatch(
  * retrieval. A later reappearance revives the document through the normal
  * upsert path.
  */
-export async function reconcileDeletedWhatsAppDocuments(
+export async function reconcileDeletedConversationDocuments(
   ctx: CoreCtx,
-  only?: { accountId: string; chatId: string; months?: string[] },
+  only?: { channel: string; accountId: string; chatId: string; months?: string[] },
 ): Promise<WhatsAppReconcileResult> {
   return withOrgCore(ctx, async (tx) => {
     const monthScope = only?.months?.length
@@ -1066,7 +1656,8 @@ export async function reconcileDeletedWhatsAppDocuments(
         )`
       : sql``;
     const specific = only
-      ? sql`and source.external_key = ${only.accountId}
+      ? sql`and source.connector = ${only.channel}
+            and source.external_key = ${only.accountId}
             and document.metadata->>'chatId' = ${only.chatId}
             ${monthScope}`
       : sql``;
@@ -1076,7 +1667,10 @@ export async function reconcileDeletedWhatsAppDocuments(
       from knowledge_sources source
       where document.org_id = current_setting('app.current_org_id', true)
         and source.org_id = document.org_id and source.id = document.source_id
-        and source.connector = ${WHATSAPP_CONNECTOR}
+        and (
+          source.config->>'domain' = 'conversations'
+          or source.connector = ${WHATSAPP_CONNECTOR}
+        )
         and document.status <> 'deleted'
         ${specific}
         and (
@@ -1084,14 +1678,14 @@ export async function reconcileDeletedWhatsAppDocuments(
           or not exists (
           select 1 from messages message
           where message.org_id = document.org_id
-            and message.channel = 'whatsapp'
-            and message.account_id = source.external_key
+            and lower(trim(message.channel)) = source.connector
+            and coalesce(nullif(trim(message.account_id), ''), 'default') = source.external_key
             and message.chat_id = document.metadata->>'chatId'
             and to_char(
               coalesce(message.occurred_at, message.created_at) at time zone 'UTC',
               'YYYY-MM'
             ) = document.metadata->>'segmentMonth'
-            and ${eligibleWhatsAppMessagePredicate('message')}
+            and ${eligibleConversationMessagePredicate('message')}
           )
         )
       returning document.id::text
@@ -1108,55 +1702,80 @@ export async function reconcileDeletedWhatsAppDocuments(
   });
 }
 
+export function reconcileDeletedWhatsAppDocuments(
+  ctx: CoreCtx,
+  only?: { accountId: string; chatId: string; months?: string[] },
+): Promise<WhatsAppReconcileResult> {
+  return reconcileDeletedConversationDocuments(
+    ctx,
+    only ? { channel: WHATSAPP_CONNECTOR, ...only } : undefined,
+  );
+}
+
 /** Cursor-driven full/catch-up page. Re-running from the start is idempotent. */
-export async function backfillWhatsAppConversations(
+export async function backfillConversations(
   ctx: CoreCtx,
   opts?: { cursor?: string | null; limit?: number },
 ): Promise<WhatsAppBackfillResult> {
   const limit = Math.max(1, Math.min(500, Math.floor(opts?.limit ?? DEFAULT_CONVERSATION_BATCH)));
   await ensureMasterBrain(ctx);
-  const sources = await discoverWhatsAppSources(ctx);
-  await ensureWhatsAppFocusedBrain(
+  const sources = await discoverConversationSources(ctx);
+  await ensureConversationsFocusedBrain(
     ctx,
     sources.map((source) => source.id),
   );
-  const sourceByAccount = new Map(sources.map((source) => [source.externalKey, source.id]));
-  const cursor = decodeWhatsAppCursor(opts?.cursor);
+  const sourceByChannelAccount = new Map(
+    sources.map((source) => [`${source.connector}\u0000${source.externalKey}`, source.id]),
+  );
+  const cursor = decodeConversationCursor(opts?.cursor);
   const preparedPage = await withOrgCore(ctx, async (tx) => {
-    const page = await scanWhatsAppKeys(tx, sourceByAccount, cursor, limit);
+    const page = await scanConversationKeys(tx, sourceByChannelAccount, cursor, limit);
     return { ...page, prepared: await prepareConversations(tx, page.keys) };
   });
   const counts = await runPreparedBatch(ctx, preparedPage.prepared);
   const last = preparedPage.keys.at(-1) ?? null;
   let reconciled = { deletedDocuments: 0, deletedChunks: 0 };
   if (!preparedPage.hasMore) {
-    reconciled = await reconcileDeletedWhatsAppDocuments(ctx);
-    await markVerifiedEmptyWhatsAppSourcesReady(ctx);
+    reconciled = await reconcileDeletedConversationDocuments(ctx);
+    await markVerifiedEmptyConversationSourcesReady(ctx);
   }
   return {
     ...counts,
     deletedChunks: counts.deletedChunks + reconciled.deletedChunks,
     nextCursor:
       preparedPage.hasMore && last
-        ? encodeWhatsAppCursor({ accountId: last.accountId, chatId: last.chatId })
+        ? encodeConversationCursor({
+            channel: last.channel,
+            accountId: last.accountId,
+            chatId: last.chatId,
+          })
         : null,
     hasMore: preparedPage.hasMore,
   };
 }
 
-/** Event-hook target: rebuild exactly one account-scoped conversation. */
-export async function syncWhatsAppConversation(
+export function backfillWhatsAppConversations(
   ctx: CoreCtx,
+  opts?: { cursor?: string | null; limit?: number },
+): Promise<WhatsAppBackfillResult> {
+  return backfillConversations(ctx, opts);
+}
+
+/** Event-hook target: rebuild exactly one channel/account-scoped conversation. */
+export async function syncConversation(
+  ctx: CoreCtx,
+  channel: string,
   accountId: string,
   chatId: string,
   opts?: { months?: string[] },
 ): Promise<WhatsAppBackfillResult> {
-  const source = await ensureWhatsAppSource(ctx, accountId);
-  const key = { accountId, chatId, sourceId: source.id };
+  const source = await ensureConversationSource(ctx, channel, accountId);
+  const key = { channel, accountId, chatId, sourceId: source.id };
   const months = opts?.months?.filter((month) => /^\d{4}-\d{2}$/.test(month));
   const prepared = await withOrgCore(ctx, (tx) => prepareConversations(tx, [key], months));
   if (prepared.length === 0) {
-    const reconciled = await reconcileDeletedWhatsAppDocuments(ctx, {
+    const reconciled = await reconcileDeletedConversationDocuments(ctx, {
+      channel,
       accountId,
       chatId,
       months,
@@ -1173,13 +1792,27 @@ export async function syncWhatsAppConversation(
     };
   }
   const counts = await runPreparedBatch(ctx, prepared);
-  const reconciled = await reconcileDeletedWhatsAppDocuments(ctx, { accountId, chatId, months });
+  const reconciled = await reconcileDeletedConversationDocuments(ctx, {
+    channel,
+    accountId,
+    chatId,
+    months,
+  });
   return {
     ...counts,
     deletedChunks: counts.deletedChunks + reconciled.deletedChunks,
     nextCursor: null,
     hasMore: false,
   };
+}
+
+export function syncWhatsAppConversation(
+  ctx: CoreCtx,
+  accountId: string,
+  chatId: string,
+  opts?: { months?: string[] },
+): Promise<WhatsAppBackfillResult> {
+  return syncConversation(ctx, WHATSAPP_CONNECTOR, accountId, chatId, opts);
 }
 
 export async function bootstrapBrainCorpus(
@@ -1192,13 +1825,13 @@ export async function bootstrapBrainCorpus(
   backfill: WhatsAppBackfillResult;
 }> {
   const masterBrain = await ensureMasterBrain(ctx, opts?.createdBy);
-  const sources = await discoverWhatsAppSources(ctx);
-  const focusedBrain = await ensureWhatsAppFocusedBrain(
+  const sources = await discoverConversationSources(ctx);
+  const focusedBrain = await ensureConversationsFocusedBrain(
     ctx,
     sources.map((source) => source.id),
     opts?.createdBy,
   );
-  const backfill = await backfillWhatsAppConversations(ctx, {
+  const backfill = await backfillConversations(ctx, {
     cursor: opts?.cursor,
     limit: opts?.limit,
   });

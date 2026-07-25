@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   canPromoteVerifiedEmptyWhatsAppSource,
+  decodeConversationCursor,
   decodeWhatsAppCursor,
+  encodeConversationCursor,
   encodeWhatsAppCursor,
   knowledgeContentHash,
+  normalizeConversation,
   normalizeWhatsAppConversation,
   normalizeWhatsAppConversationSegments,
   preparedConversationNeedsWrite,
@@ -99,6 +102,83 @@ describe('brain corpus WhatsApp normalization', () => {
   });
 });
 
+describe('brain corpus all-channel normalization', () => {
+  it('includes joined CRM and business context in Instagram documents and revision hashes', () => {
+    const relationshipContext = {
+      contact: {
+        id: 'contact-1',
+        humanId: 'CRM-1',
+        displayName: 'Ada Lovelace',
+        lifecycleOverride: 'customer',
+        source: 'instagram',
+        customFields: { distrito: 'Miraflores' },
+      },
+      party: {
+        id: 'party-1',
+        type: 'person',
+        name: 'Ada Lovelace',
+        phone9: '911111111',
+        email: 'ada@example.com',
+        docType: 'DNI',
+        docNumber: '12345678',
+        dob: null,
+        dniVerified: true,
+      },
+      identities: [
+        {
+          channel: 'instagram',
+          externalId: 'ig-ada',
+          handle: 'ada',
+        },
+      ],
+      tags: ['VIP'],
+      activities: [],
+      finance: {
+        invoiceCount: 1,
+        total: 250,
+        lastIssuedAt: '2026-07-20T15:00:00Z',
+        recentInvoices: [],
+      },
+      bookings: [
+        {
+          status: 'confirmed',
+          startTime: '2026-07-24T15:00:00Z',
+          title: 'Follow-up',
+          notes: null,
+        },
+      ],
+      salesOrders: [],
+      posTickets: [],
+      memberships: [],
+    };
+    const first = normalizeConversation(
+      'instagram',
+      'faces',
+      'ig-chat-1',
+      [message('1', 'When is my appointment?')],
+      relationshipContext,
+    );
+    const changed = normalizeConversation(
+      'instagram',
+      'faces',
+      'ig-chat-1',
+      [message('1', 'When is my appointment?')],
+      {
+        ...relationshipContext,
+        finance: { ...relationshipContext.finance, total: 300 },
+      },
+    );
+
+    expect(first.title).toContain('Instagram');
+    expect(first.metadata.channel).toBe('instagram');
+    expect(first.metadata.contactId).toBe('contact-1');
+    expect(first.chunks[0].contextPrefix).toContain('Ada Lovelace');
+    expect(first.chunks[0].contextPrefix).toContain('confirmed');
+    expect(first.contentHash).not.toBe(changed.contentHash);
+    expect(first.sourceRevision).not.toBe(changed.sourceRevision);
+  });
+});
+
 describe('brain corpus WhatsApp cursor', () => {
   it('round-trips the deterministic account/chat tuple', () => {
     const value = { accountId: '+51922286663', chatId: '51911111111@s.whatsapp.net' };
@@ -108,6 +188,13 @@ describe('brain corpus WhatsApp cursor', () => {
   it('fails closed for malformed cursors', () => {
     expect(decodeWhatsAppCursor('not-base64-json')).toBeNull();
     expect(decodeWhatsAppCursor(Buffer.from('{}').toString('base64url'))).toBeNull();
+  });
+});
+
+describe('brain corpus all-channel cursor', () => {
+  it('round-trips the deterministic channel/account/chat tuple', () => {
+    const value = { channel: 'instagram', accountId: 'faces', chatId: 'ig-chat-1' };
+    expect(decodeConversationCursor(encodeConversationCursor(value))).toEqual(value);
   });
 });
 
