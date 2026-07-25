@@ -1,3 +1,4 @@
+// Bun-only: this suite exercises bun:sqlite and must not be discovered by Vitest.
 import { Database } from 'bun:sqlite';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
