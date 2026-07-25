@@ -44,10 +44,12 @@ describe('brain corpus WhatsApp normalization', () => {
     const relinked = normalizeWhatsAppConversation('+51900000000', 'customer-1', rows);
 
     expect(first.externalId).toBe('conversation:+51922286663:customer-1:2026-07');
+    expect(first.title).toContain('WhatsApp');
     expect(first.rawText).toBe('Customer: Hello\nAgent: Hi!');
     expect(repeated).toEqual(first);
     expect(first.chunks[0].chunkKey).toBe('raw:000000');
     expect(first.chunks[0].contentHash).not.toBe(relinked.chunks[0].contentHash);
+    expect(first.chunks[0].contextPrefix).toContain('WhatsApp');
     expect(relinked.chunks[0].contextPrefix).toContain('+51900000000');
   });
 
