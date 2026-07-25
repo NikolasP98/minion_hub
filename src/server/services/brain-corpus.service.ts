@@ -533,6 +533,16 @@ export function decodeConversationCursor(cursor?: string | null): ConversationCu
   }
 }
 
+export function assertConversationSourceCursor(
+  cursor: ConversationCursor | null,
+  channel: string,
+  accountId: string,
+): void {
+  if (cursor && (cursor.channel !== channel || cursor.accountId !== accountId)) {
+    throw new Error('conversation source backfill cursor does not belong to the requested source');
+  }
+}
+
 /** One canonical eligibility predicate for discovery, reconciliation, reads,
  * and verified-empty source promotion. Keeping this shared prevents source
  * health from drifting away from the corpus population rules. */
@@ -922,6 +932,43 @@ async function scanConversationKeys(
   };
 }
 
+async function scanConversationSourceKeys(
+  tx: CoreTx,
+  sourceId: string,
+  channel: string,
+  accountId: string,
+  cursor: ConversationCursor | null,
+  limit: number,
+): Promise<{ keys: WhatsAppConversationKey[]; hasMore: boolean }> {
+  const accountFilter =
+    accountId === 'default'
+      ? sql`coalesce(nullif(trim(m.account_id), ''), 'default') = 'default'`
+      : sql`m.account_id = ${accountId}`;
+  const cursorFilter = cursor ? sql`and m.chat_id > ${cursor.chatId}` : sql``;
+  const rows = (await tx.execute(sql`
+    select m.chat_id
+    from messages m
+    where m.org_id = current_setting('app.current_org_id', true)
+      and m.channel = ${channel}
+      and ${accountFilter}
+      and ${eligibleConversationMessagePredicate('m')}
+      ${cursorFilter}
+    group by m.chat_id
+    order by m.chat_id
+    limit ${limit + 1}
+  `)) as unknown as Array<{ chat_id: string }>;
+  const hasMore = rows.length > limit;
+  return {
+    keys: rows.slice(0, limit).map((row) => ({
+      channel,
+      accountId,
+      chatId: row.chat_id,
+      sourceId,
+    })),
+    hasMore,
+  };
+}
+
 function keyValues(keys: WhatsAppConversationKey[]) {
   return sql.join(
     keys.map((key) => sql`(${key.channel}::text, ${key.accountId}::text, ${key.chatId}::text)`),
@@ -947,12 +994,24 @@ async function loadConversationRows(
   tx: CoreTx,
   keys: WhatsAppConversationKey[],
   onlyMonths?: string[],
+  exactSource = false,
 ): Promise<Map<string, WhatsAppMessageInput[]>> {
   const out = new Map<string, WhatsAppMessageInput[]>();
   if (keys.length === 0) return out;
   const monthFilter = onlyMonths?.length
     ? sql`where to_char(coalesce(occurred_at, created_at) at time zone 'UTC', 'YYYY-MM') = any(${textArray(onlyMonths)})`
     : sql``;
+  const sourceFilter = exactSource
+    ? sql`(
+          m.channel,
+          coalesce(nullif(m.account_id, ''), 'default'),
+          m.chat_id
+        ) in (${keyValues(keys)})`
+    : sql`(
+          lower(trim(m.channel)),
+          coalesce(nullif(trim(m.account_id), ''), 'default'),
+          m.chat_id
+        ) in (${keyValues(keys)})`;
   const rows = (await tx.execute(sql`
     select normalized_channel as channel, normalized_account_id as account_id,
       chat_id, id::text as id, message_id, direction, content,
@@ -969,11 +1028,7 @@ async function loadConversationRows(
       from messages m
       where m.org_id = current_setting('app.current_org_id', true)
         and ${eligibleConversationMessagePredicate('m')}
-        and (
-          lower(trim(m.channel)),
-          coalesce(nullif(trim(m.account_id), ''), 'default'),
-          m.chat_id
-        ) in (${keyValues(keys)})
+        and ${sourceFilter}
       order by lower(trim(m.channel)),
         coalesce(nullif(trim(m.account_id), ''), 'default'),
         m.chat_id,
@@ -1103,9 +1158,10 @@ async function prepareConversations(
   tx: CoreTx,
   keys: WhatsAppConversationKey[],
   onlyMonths?: string[],
+  exactSource = false,
 ): Promise<PreparedConversation[]> {
   const [rowsByKey, contextByKey] = await Promise.all([
-    loadConversationRows(tx, keys, onlyMonths),
+    loadConversationRows(tx, keys, onlyMonths, exactSource),
     loadConversationRelationshipContexts(tx, keys),
   ]);
   const normalized = keys
@@ -1328,30 +1384,45 @@ async function persistConversations(
     }
 
     const sourceIds = Array.from(new Set(prepared.map((item) => item.key.sourceId)));
-    await tx.execute(sql`
-      update knowledge_sources
-      set status = case
-            when coalesce((watermark->>'expectedDocuments')::int, 0) > (
-              select count(*)::int from knowledge_documents document
-              where document.org_id = knowledge_sources.org_id
-                and document.source_id = knowledge_sources.id and document.status <> 'deleted'
-            ) then 'queued'
-            when ${qdrantStorage}
-              then public.brain_vector_app_source_state(knowledge_sources.id)
-            when exists (
-              select 1 from knowledge_chunks chunk
-              where chunk.org_id = knowledge_sources.org_id
-                and chunk.source_id = knowledge_sources.id
-                and chunk.embedding is null
-            ) then 'queued'
-            else 'ready'
-          end,
-          last_synced_at = now(), last_error = null, updated_at = now()
-      where org_id = current_setting('app.current_org_id', true)
-        and id = any(${uuidArray(sourceIds)})
-    `);
+    await refreshConversationSourceStateTx(tx, sourceIds, qdrantStorage);
     return { deletedChunks };
   });
+}
+
+async function refreshConversationSourceStateTx(
+  tx: CoreTx,
+  sourceIds: string[],
+  qdrantStorage: boolean,
+): Promise<void> {
+  if (sourceIds.length === 0) return;
+  await tx.execute(sql`
+    update knowledge_sources
+    set status = case
+          when coalesce((watermark->>'expectedDocuments')::int, 0) > (
+            select count(*)::int from knowledge_documents document
+            where document.org_id = knowledge_sources.org_id
+              and document.source_id = knowledge_sources.id and document.status <> 'deleted'
+          ) then 'queued'
+          when ${qdrantStorage}
+            then public.brain_vector_app_source_state(knowledge_sources.id)
+          when exists (
+            select 1 from knowledge_chunks chunk
+            where chunk.org_id = knowledge_sources.org_id
+              and chunk.source_id = knowledge_sources.id
+              and chunk.embedding is null
+          ) then 'queued'
+          else 'ready'
+        end,
+        last_synced_at = now(), last_error = null, updated_at = now()
+    where org_id = current_setting('app.current_org_id', true)
+      and id = any(${uuidArray(sourceIds)})
+  `);
+}
+
+async function refreshConversationSourceState(ctx: CoreCtx, sourceId: string): Promise<void> {
+  await withOrgCore(ctx, (tx) =>
+    refreshConversationSourceStateTx(tx, [sourceId], qdrantOwnsKnowledgeEmbeddings()),
+  );
 }
 
 async function runPreparedBatch(
@@ -1398,7 +1469,7 @@ async function runPreparedBatch(
  */
 export async function reconcileDeletedConversationDocuments(
   ctx: CoreCtx,
-  only?: { channel: string; accountId: string; chatId: string; months?: string[] },
+  only?: { channel: string; accountId: string; chatId?: string; months?: string[] },
 ): Promise<WhatsAppReconcileResult> {
   return withOrgCore(ctx, async (tx) => {
     const monthScope = only?.months?.length
@@ -1407,10 +1478,11 @@ export async function reconcileDeletedConversationDocuments(
           or document.metadata->>'segmentMonth' = any(${textArray(only.months)})
         )`
       : sql``;
+    const chatScope = only?.chatId ? sql`and document.metadata->>'chatId' = ${only.chatId}` : sql``;
     const specific = only
       ? sql`and source.connector = ${only.channel}
             and source.external_key = ${only.accountId}
-            and document.metadata->>'chatId' = ${only.chatId}
+            ${chatScope}
             ${monthScope}`
       : sql``;
     const tombstones = (await tx.execute(sql`
@@ -1513,6 +1585,64 @@ export function backfillWhatsAppConversations(
   return backfillConversations(ctx, opts);
 }
 
+/**
+ * Cursor-driven backfill for one already-known channel/account source.
+ *
+ * Unlike backfillConversations(), this path intentionally avoids the full
+ * all-channel discovery aggregate on every page. It is the production-safe
+ * repair path for large sources such as an Instagram account: resumable,
+ * idempotent, and bounded by the same page limit.
+ */
+export async function backfillConversationSource(
+  ctx: CoreCtx,
+  channel: string,
+  accountId: string,
+  opts?: { cursor?: string | null; limit?: number },
+): Promise<WhatsAppBackfillResult> {
+  const normalizedChannel = channel.trim().toLowerCase();
+  const normalizedAccountId = accountId.trim();
+  const limit = Math.max(1, Math.min(500, Math.floor(opts?.limit ?? DEFAULT_CONVERSATION_BATCH)));
+  const source = await ensureConversationSource(ctx, normalizedChannel, normalizedAccountId);
+  const cursor = decodeConversationCursor(opts?.cursor);
+  assertConversationSourceCursor(cursor, normalizedChannel, normalizedAccountId);
+  const preparedPage = await withOrgCore(ctx, async (tx) => {
+    const page = await scanConversationSourceKeys(
+      tx,
+      source.id,
+      normalizedChannel,
+      normalizedAccountId,
+      cursor,
+      limit,
+    );
+    return { ...page, prepared: await prepareConversations(tx, page.keys, undefined, true) };
+  });
+  const counts = await runPreparedBatch(ctx, preparedPage.prepared);
+  const last = preparedPage.keys.at(-1) ?? null;
+  let reconciled = { deletedDocuments: 0, deletedChunks: 0 };
+  if (!preparedPage.hasMore) {
+    reconciled = await reconcileDeletedConversationDocuments(ctx, {
+      channel: normalizedChannel,
+      accountId: normalizedAccountId,
+    });
+    // An empty terminal page bypasses persistConversations(), so explicitly
+    // clear the processing state established by ensureConversationSource().
+    await refreshConversationSourceState(ctx, source.id);
+  }
+  return {
+    ...counts,
+    deletedChunks: counts.deletedChunks + reconciled.deletedChunks,
+    nextCursor:
+      preparedPage.hasMore && last
+        ? encodeConversationCursor({
+            channel: last.channel,
+            accountId: last.accountId,
+            chatId: last.chatId,
+          })
+        : null,
+    hasMore: preparedPage.hasMore,
+  };
+}
+
 /** Event-hook target: rebuild exactly one channel/account-scoped conversation. */
 export async function syncConversation(
   ctx: CoreCtx,
@@ -1524,7 +1654,7 @@ export async function syncConversation(
   const source = await ensureConversationSource(ctx, channel, accountId);
   const key = { channel, accountId, chatId, sourceId: source.id };
   const months = opts?.months?.filter((month) => /^\d{4}-\d{2}$/.test(month));
-  const prepared = await withOrgCore(ctx, (tx) => prepareConversations(tx, [key], months));
+  const prepared = await withOrgCore(ctx, (tx) => prepareConversations(tx, [key], months, true));
   if (prepared.length === 0) {
     const reconciled = await reconcileDeletedConversationDocuments(ctx, {
       channel,
