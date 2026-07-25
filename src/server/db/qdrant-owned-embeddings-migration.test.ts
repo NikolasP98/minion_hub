@@ -8,6 +8,13 @@ const migration = readFileSync(
   ),
   'utf8',
 );
+const reconciliation = readFileSync(
+  new URL(
+    '../../../supabase/migrations/20260725183500_qdrant_owned_receipts_reconcile.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 describe('Qdrant-owned embedding storage migration', () => {
   it('defaults existing generations to pgvector and requires an explicit Qdrant cutover', () => {
@@ -17,7 +24,7 @@ describe('Qdrant-owned embedding storage migration', () => {
   });
 
   it('records an ack receipt per chunk so the pending signal both catches and drains', () => {
-    const ack = migration
+    const ack = reconciliation
       .split('create or replace function')
       .find((fn) => fn.includes('public.ack_brain_vector_job'));
     expect(ack).toBeDefined();
@@ -35,7 +42,7 @@ describe('Qdrant-owned embedding storage migration', () => {
   });
 
   it('calls a chunk pending until the ACTIVE generation confirms its current content', () => {
-    const statusFns = migration
+    const statusFns = reconciliation
       .split('create or replace function')
       .filter((fn) => /brain_vector_app_source_(state|pending_count)/u.test(fn));
     expect(statusFns).toHaveLength(2);
@@ -51,11 +58,13 @@ describe('Qdrant-owned embedding storage migration', () => {
   });
 
   it('exposes only org-scoped application status RPCs to app_ledger', () => {
-    expect(migration).toContain('brain_vector_app_generation_mode()');
-    expect(migration).toContain('brain_vector_app_source_state(p_source_id uuid)');
-    expect(migration).toContain('brain_vector_app_source_pending_count(p_source_id uuid)');
-    expect(migration).toContain("chunk.org_id = current_setting('app.current_org_id', true)");
-    expect(migration).toContain(
+    expect(reconciliation).toContain('brain_vector_app_generation_mode()');
+    expect(reconciliation).toContain('brain_vector_app_source_state(p_source_id uuid)');
+    expect(reconciliation).toContain('brain_vector_app_source_pending_count(p_source_id uuid)');
+    expect(reconciliation).toContain(
+      "chunk.org_id = current_setting('app.current_org_id', true)",
+    );
+    expect(reconciliation).toContain(
       'grant execute on function public.brain_vector_app_source_state(uuid) to app_ledger',
     );
   });
