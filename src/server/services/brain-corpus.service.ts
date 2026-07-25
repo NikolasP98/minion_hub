@@ -340,9 +340,9 @@ export function renderConversationRelationshipContext(
 }
 
 /**
- * Deterministic turn-aware WhatsApp normalizer. SQL removes duplicate stable
- * message IDs before this runs; the defensive map also makes the pure helper
- * safe for callers/tests that pass duplicate rows directly.
+ * Deterministic turn-aware normalizer for any 1:1 chat channel. SQL removes
+ * duplicate stable message IDs before this runs; the defensive map also makes
+ * the pure helper safe for callers/tests that pass duplicate rows directly.
  */
 export function normalizeConversation(
   channel: string,
