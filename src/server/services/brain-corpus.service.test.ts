@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertConversationSourceCursor,
   canPromoteVerifiedEmptyWhatsAppSource,
   decodeConversationCursor,
   decodeWhatsAppCursor,
@@ -235,6 +236,21 @@ describe('brain corpus all-channel cursor', () => {
       accountId: '+51922286663',
       chatId: '51911111111@s.whatsapp.net',
     });
+  });
+
+  it('rejects a resume cursor from another channel or account source', () => {
+    const cursor = {
+      channel: 'instagram',
+      accountId: 'faces',
+      chatId: 'ig-chat-1',
+    };
+    expect(() => assertConversationSourceCursor(cursor, 'instagram', 'faces')).not.toThrow();
+    expect(() => assertConversationSourceCursor(cursor, 'instagram', 'another-account')).toThrow(
+      'does not belong to the requested source',
+    );
+    expect(() => assertConversationSourceCursor(cursor, 'whatsapp', 'faces')).toThrow(
+      'does not belong to the requested source',
+    );
   });
 });
 

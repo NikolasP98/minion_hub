@@ -7,6 +7,7 @@
  * are stable, so unchanged chunks are not sent to the embeddings provider.
  *
  *   bun scripts/bootstrap-brain-corpus.ts <orgId> [--batch=50] [--max-rounds=1]
+ *   bun scripts/bootstrap-brain-corpus.ts <orgId> --channel=instagram --account=<id>
  *   bun scripts/bootstrap-brain-corpus.ts --all [--batch=50]
  */
 import './_sveltekit-bun-shim.ts';
@@ -18,12 +19,22 @@ const all = args.includes('--all');
 const orgArg = args.find((arg) => !arg.startsWith('--'));
 const batchArg = args.find((arg) => arg.startsWith('--batch='));
 const maxRoundsArg = args.find((arg) => arg.startsWith('--max-rounds='));
+const channelArg = args.find((arg) => arg.startsWith('--channel='));
+const accountArg = args.find((arg) => arg.startsWith('--account='));
+const channel = channelArg?.slice('--channel='.length).trim().toLowerCase() || null;
+const accountId = accountArg?.slice('--account='.length).trim() || null;
 const batch = Math.max(1, Math.min(500, Number(batchArg?.split('=')[1] ?? 50)));
 const maxRounds = maxRoundsArg
   ? Math.max(1, Math.floor(Number(maxRoundsArg.split('=')[1]) || 1))
   : Number.POSITIVE_INFINITY;
 if (!all && !orgArg) {
   throw new Error('Pass an orgId or --all');
+}
+if ((channel && !accountId) || (!channel && accountId)) {
+  throw new Error('--channel and --account must be passed together');
+}
+if (all && channel) {
+  throw new Error('Targeted --channel/--account backfills require one orgId, not --all');
 }
 
 const url = process.env.SUPABASE_DB_URL?.trim();
@@ -32,7 +43,7 @@ const client = postgres(url, { prepare: false, max: 5 });
 const db = drizzle(client);
 
 async function bootstrapOrg(orgId: string) {
-  const { bootstrapBrainCorpus, backfillConversations } =
+  const { bootstrapBrainCorpus, backfillConversations, backfillConversationSource } =
     await import('../src/server/services/brain-corpus.service.ts');
   const ctx = { db, tenantId: orgId } as unknown as import('../src/server/auth/core-ctx').CoreCtx;
   let cursor: string | null = null;
@@ -41,7 +52,20 @@ async function bootstrapOrg(orgId: string) {
   let changedChunks = 0;
   let embeddedChunks = 0;
 
-  const initial = await bootstrapBrainCorpus(ctx, { cursor, limit: batch });
+  const runPage = channel
+    ? (pageCursor: string | null) =>
+        backfillConversationSource(ctx, channel, accountId!, {
+          cursor: pageCursor,
+          limit: batch,
+        })
+    : (pageCursor: string | null) =>
+        backfillConversations(ctx, { cursor: pageCursor, limit: batch });
+  const initial = channel
+    ? {
+        sources: [{ id: `${channel}:${accountId}` }],
+        backfill: await runPage(cursor),
+      }
+    : await bootstrapBrainCorpus(ctx, { cursor, limit: batch });
   rounds += 1;
   processed += initial.backfill.processed;
   changedChunks += initial.backfill.changedChunks;
@@ -52,7 +76,7 @@ async function bootstrapOrg(orgId: string) {
   );
 
   while (cursor && rounds < maxRounds) {
-    const page = await backfillConversations(ctx, { cursor, limit: batch });
+    const page = await runPage(cursor);
     rounds += 1;
     processed += page.processed;
     changedChunks += page.changedChunks;

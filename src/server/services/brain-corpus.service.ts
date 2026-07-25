@@ -533,6 +533,16 @@ export function decodeConversationCursor(cursor?: string | null): ConversationCu
   }
 }
 
+export function assertConversationSourceCursor(
+  cursor: ConversationCursor | null,
+  channel: string,
+  accountId: string,
+): void {
+  if (cursor && (cursor.channel !== channel || cursor.accountId !== accountId)) {
+    throw new Error('conversation source backfill cursor does not belong to the requested source');
+  }
+}
+
 /** One canonical eligibility predicate for discovery, reconciliation, reads,
  * and verified-empty source promotion. Keeping this shared prevents source
  * health from drifting away from the corpus population rules. */
@@ -1398,7 +1408,7 @@ async function runPreparedBatch(
  */
 export async function reconcileDeletedConversationDocuments(
   ctx: CoreCtx,
-  only?: { channel: string; accountId: string; chatId: string; months?: string[] },
+  only?: { channel: string; accountId: string; chatId?: string; months?: string[] },
 ): Promise<WhatsAppReconcileResult> {
   return withOrgCore(ctx, async (tx) => {
     const monthScope = only?.months?.length
@@ -1407,10 +1417,11 @@ export async function reconcileDeletedConversationDocuments(
           or document.metadata->>'segmentMonth' = any(${textArray(only.months)})
         )`
       : sql``;
+    const chatScope = only?.chatId ? sql`and document.metadata->>'chatId' = ${only.chatId}` : sql``;
     const specific = only
       ? sql`and source.connector = ${only.channel}
             and source.external_key = ${only.accountId}
-            and document.metadata->>'chatId' = ${only.chatId}
+            ${chatScope}
             ${monthScope}`
       : sql``;
     const tombstones = (await tx.execute(sql`
@@ -1511,6 +1522,57 @@ export function backfillWhatsAppConversations(
   opts?: { cursor?: string | null; limit?: number },
 ): Promise<WhatsAppBackfillResult> {
   return backfillConversations(ctx, opts);
+}
+
+/**
+ * Cursor-driven backfill for one already-known channel/account source.
+ *
+ * Unlike backfillConversations(), this path intentionally avoids the full
+ * all-channel discovery aggregate on every page. It is the production-safe
+ * repair path for large sources such as an Instagram account: resumable,
+ * idempotent, and bounded by the same page limit.
+ */
+export async function backfillConversationSource(
+  ctx: CoreCtx,
+  channel: string,
+  accountId: string,
+  opts?: { cursor?: string | null; limit?: number },
+): Promise<WhatsAppBackfillResult> {
+  const normalizedChannel = channel.trim().toLowerCase();
+  const normalizedAccountId = accountId.trim();
+  const limit = Math.max(1, Math.min(500, Math.floor(opts?.limit ?? DEFAULT_CONVERSATION_BATCH)));
+  const source = await ensureConversationSource(ctx, normalizedChannel, normalizedAccountId);
+  const sourceByChannelAccount = new Map([
+    [`${normalizedChannel}\u0000${normalizedAccountId}`, source.id],
+  ]);
+  const cursor = decodeConversationCursor(opts?.cursor);
+  assertConversationSourceCursor(cursor, normalizedChannel, normalizedAccountId);
+  const preparedPage = await withOrgCore(ctx, async (tx) => {
+    const page = await scanConversationKeys(tx, sourceByChannelAccount, cursor, limit);
+    return { ...page, prepared: await prepareConversations(tx, page.keys) };
+  });
+  const counts = await runPreparedBatch(ctx, preparedPage.prepared);
+  const last = preparedPage.keys.at(-1) ?? null;
+  let reconciled = { deletedDocuments: 0, deletedChunks: 0 };
+  if (!preparedPage.hasMore) {
+    reconciled = await reconcileDeletedConversationDocuments(ctx, {
+      channel: normalizedChannel,
+      accountId: normalizedAccountId,
+    });
+  }
+  return {
+    ...counts,
+    deletedChunks: counts.deletedChunks + reconciled.deletedChunks,
+    nextCursor:
+      preparedPage.hasMore && last
+        ? encodeConversationCursor({
+            channel: last.channel,
+            accountId: last.accountId,
+            chatId: last.chatId,
+          })
+        : null,
+    hasMore: preparedPage.hasMore,
+  };
 }
 
 /** Event-hook target: rebuild exactly one channel/account-scoped conversation. */
