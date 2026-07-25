@@ -10,6 +10,10 @@ export interface GraphNode {
   kind: NodeKind;
   label: string;
   color: string;
+  /** Optional semantic outline, used by architecture diagrams to encode C4 level. */
+  strokeColor?: string;
+  /** Optional outline weight. Defaults to no outline for shared nodes. */
+  strokeWidth?: number;
   areaId: string | null;
   areaName?: string;
   role?: string;
@@ -28,7 +32,13 @@ export interface GraphNode {
   logoSize?: number;
   /** Org node is fixed at origin. */
   pinned?: boolean;
+  /** Dark-theme-tuned fallback fill, used when the renderer has no live theme
+   *  presentation (SSR/tests) or the node has no `labelTier`. */
   labelColor: string;
+  /** Semantic emphasis tier — lets the renderer re-resolve the actual fill
+   *  from the active theme's text tokens instead of this baked-in hex, so
+   *  labels stay readable in light themes too. Omit to always use `labelColor`. */
+  labelTier?: 'primary' | 'secondary';
   labelSize: number;
   showLabel: boolean;
 }
@@ -40,6 +50,8 @@ export interface GraphEdge {
   baseOpacity: number;
   width: number;
   dashed?: boolean;
+  /** Draw an arrow at target; C4 runtime/data/event/deploy relationships use this. */
+  directed?: boolean;
 }
 
 export interface BuildInput {
@@ -117,24 +129,42 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
   const looseUsers = personMembers.filter((u) => !claimedUsers.has(u.id));
 
   type AreaBucket = {
-    id: string; name: string; color: string; icon: string;
-    skills: string[]; integrations: string[];
+    id: string;
+    name: string;
+    color: string;
+    icon: string;
+    skills: string[];
+    integrations: string[];
     realAgents: BuildInput['agents'];
     virtualAgents: VirtualAgent[];
     users: BuildInput['members'];
   };
   const buckets: AreaBucket[] = areas.map((ar) => ({
-    id: ar.id, name: ar.name, color: ar.color, icon: ar.icon,
+    id: ar.id,
+    name: ar.name,
+    color: ar.color,
+    icon: ar.icon,
     skills: ar.skillKeys,
     integrations: ar.integrationKeys.filter((k) => INTEGRATIONS[k]),
-    realAgents: ar.agentIds.map((id) => agentById.get(id)).filter((a): a is BuildInput['agents'][number] => !!a),
+    realAgents: ar.agentIds
+      .map((id) => agentById.get(id))
+      .filter((a): a is BuildInput['agents'][number] => !!a),
     virtualAgents: ar.virtualAgents,
-    users: ar.userIds.map((id) => memberById.get(id)).filter((u): u is BuildInput['members'][number] => !!u),
+    users: ar.userIds
+      .map((id) => memberById.get(id))
+      .filter((u): u is BuildInput['members'][number] => !!u),
   }));
   if (looseAgents.length || looseUsers.length || buckets.length === 0) {
     buckets.push({
-      id: '__unassigned__', name: 'Unassigned', color: C.unassigned, icon: 'Boxes',
-      skills: [], integrations: [], realAgents: looseAgents, virtualAgents: [], users: looseUsers,
+      id: '__unassigned__',
+      name: 'Unassigned',
+      color: C.unassigned,
+      icon: 'Boxes',
+      skills: [],
+      integrations: [],
+      realAgents: looseAgents,
+      virtualAgents: [],
+      users: looseUsers,
     });
   }
 
@@ -144,9 +174,20 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
 
   // Center: org
   nodes.push({
-    id: org.id, kind: 'org', label: org.name, color: C.fg, areaId: null,
-    radius: 0, ax: 0, ay: 0, symbolSize: 76, pinned: true,
-    labelColor: C.fg, labelSize: 10, showLabel: true,
+    id: org.id,
+    kind: 'org',
+    label: org.name,
+    color: C.fg,
+    areaId: null,
+    radius: 0,
+    ax: 0,
+    ay: 0,
+    symbolSize: 76,
+    pinned: true,
+    labelColor: C.fg,
+    labelTier: 'primary',
+    labelSize: 10,
+    showLabel: true,
   });
 
   const n = buckets.length;
@@ -160,10 +201,19 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
 
     // ring 1: area
     nodes.push({
-      id: b.id, kind: 'area', label: b.name, color: b.color, areaId: b.id,
-      radius: RADII.area, ...at(RADII.area, center), symbolSize: 54,
+      id: b.id,
+      kind: 'area',
+      label: b.name,
+      color: b.color,
+      areaId: b.id,
+      radius: RADII.area,
+      ...at(RADII.area, center),
+      symbolSize: 54,
       image: areaIconDataUri(b.icon, b.color, shade(b.color, -0.35)),
-      labelColor: C.fg, labelSize: 12, showLabel: true,
+      labelColor: C.fg,
+      labelTier: 'primary',
+      labelSize: 12,
+      showLabel: true,
     });
     edges.push({ source: org.id, target: b.id, color: b.color, baseOpacity: 0.5, width: 1.6 });
 
@@ -171,9 +221,19 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
     b.skills.forEach((sk, j) => {
       const id = `skill:${b.id}:${sk}`;
       nodes.push({
-        id, kind: 'skill', label: prettify(sk), color: b.color, areaId: b.id, areaName,
-        radius: RADII.skill, ...at(RADII.skill, spread(b.skills.length, j)),
-        symbolSize: 16, labelColor: C.dim, labelSize: 9, showLabel: true,
+        id,
+        kind: 'skill',
+        label: prettify(sk),
+        color: b.color,
+        areaId: b.id,
+        areaName,
+        radius: RADII.skill,
+        ...at(RADII.skill, spread(b.skills.length, j)),
+        symbolSize: 16,
+        labelColor: C.dim,
+        labelTier: 'secondary',
+        labelSize: 9,
+        showLabel: true,
       });
       edges.push({ source: b.id, target: id, color: b.color, baseOpacity: 0.32, width: 1 });
     });
@@ -183,10 +243,21 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
       const def = INTEGRATIONS[ik];
       const id = `integration:${b.id}:${ik}`;
       nodes.push({
-        id, kind: 'integration', label: def.name, color: def.color, areaId: b.id, areaName,
-        radius: RADII.integration, ...at(RADII.integration, spread(b.integrations.length, j)),
-        symbolSize: 34, logoSize: 20, logoImage: integrationIconUrl(ik) ?? undefined,
-        labelColor: C.dim, labelSize: 9, showLabel: false,
+        id,
+        kind: 'integration',
+        label: def.name,
+        color: def.color,
+        areaId: b.id,
+        areaName,
+        radius: RADII.integration,
+        ...at(RADII.integration, spread(b.integrations.length, j)),
+        symbolSize: 34,
+        logoSize: 20,
+        logoImage: integrationIconUrl(ik) ?? undefined,
+        labelColor: C.dim,
+        labelTier: 'secondary',
+        labelSize: 9,
+        showLabel: false,
       });
     });
 
@@ -203,7 +274,13 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
     }
     for (const key of skillIntEdges) {
       const [sk, ik] = key.split('→');
-      edges.push({ source: `skill:${b.id}:${sk}`, target: `integration:${b.id}:${ik}`, color: b.color, baseOpacity: 0.28, width: 1 });
+      edges.push({
+        source: `skill:${b.id}:${sk}`,
+        target: `integration:${b.id}:${ik}`,
+        color: b.color,
+        baseOpacity: 0.28,
+        width: 1,
+      });
     }
 
     // ring 4: agents (real first, then virtual)
@@ -211,30 +288,66 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
     b.realAgents.forEach((a, j) => {
       const id = `agent:${b.id}:${a.id}`;
       nodes.push({
-        id, kind: 'agent', label: a.name ?? a.id, color: b.color, areaId: b.id, areaName,
-        role: 'Server agent', radius: RADII.agent, ...at(RADII.agent, spread(agentCount, j)),
-        symbolSize: 40, image: avatar(a.id, b.color, a.archetype),
-        labelColor: '#e4e4e7', labelSize: 10, showLabel: true,
+        id,
+        kind: 'agent',
+        label: a.name ?? a.id,
+        color: b.color,
+        areaId: b.id,
+        areaName,
+        role: 'Server agent',
+        radius: RADII.agent,
+        ...at(RADII.agent, spread(agentCount, j)),
+        symbolSize: 40,
+        image: avatar(a.id, b.color, a.archetype),
+        labelColor: '#e4e4e7',
+        labelTier: 'primary',
+        labelSize: 10,
+        showLabel: true,
       });
       edges.push({ source: b.id, target: id, color: b.color, baseOpacity: 0.28, width: 1 });
     });
     b.virtualAgents.forEach((va, j) => {
       const id = `agent:${b.id}:${va.id}`;
       nodes.push({
-        id, kind: 'agent', label: va.name, color: b.color, areaId: b.id, areaName, role: va.role,
+        id,
+        kind: 'agent',
+        label: va.name,
+        color: b.color,
+        areaId: b.id,
+        areaName,
+        role: va.role,
         skills: va.skillKeys.map(prettify),
-        integrations: va.integrationKeys.filter((k) => INTEGRATIONS[k]).map((k) => INTEGRATIONS[k].name),
-        radius: RADII.agent, ...at(RADII.agent, spread(agentCount, b.realAgents.length + j)),
-        symbolSize: 36, image: avatar(va.id, b.color, 'autonomous'),
-        labelColor: C.dim, labelSize: 9.5, showLabel: true,
+        integrations: va.integrationKeys
+          .filter((k) => INTEGRATIONS[k])
+          .map((k) => INTEGRATIONS[k].name),
+        radius: RADII.agent,
+        ...at(RADII.agent, spread(agentCount, b.realAgents.length + j)),
+        symbolSize: 36,
+        image: avatar(va.id, b.color, 'autonomous'),
+        labelColor: C.dim,
+        labelTier: 'secondary',
+        labelSize: 9.5,
+        showLabel: true,
       });
       const ints = va.integrationKeys.filter((k) => INTEGRATIONS[k] && b.integrations.includes(k));
       if (ints.length) {
         for (const ik of ints)
-          edges.push({ source: `integration:${b.id}:${ik}`, target: id, color: INTEGRATIONS[ik].color, baseOpacity: 0.35, width: 1 });
+          edges.push({
+            source: `integration:${b.id}:${ik}`,
+            target: id,
+            color: INTEGRATIONS[ik].color,
+            baseOpacity: 0.35,
+            width: 1,
+          });
       } else {
         for (const sk of va.skillKeys.filter((s) => b.skills.includes(s)))
-          edges.push({ source: `skill:${b.id}:${sk}`, target: id, color: b.color, baseOpacity: 0.28, width: 1 });
+          edges.push({
+            source: `skill:${b.id}:${sk}`,
+            target: id,
+            color: b.color,
+            baseOpacity: 0.28,
+            width: 1,
+          });
       }
     });
 
@@ -249,11 +362,21 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
       ulist.push(id);
       userNodeIdsByPerson.set(u.id, ulist);
       nodes.push({
-        id, kind: 'user', label: u.displayName ?? u.email ?? 'User', color: b.color,
-        areaId: b.id, areaName, role: 'Team member',
-        radius: RADII.user, ...at(RADII.user, spread(b.users.length, j)),
-        symbolSize: 34, image: avatar(u.id, b.color),
-        labelColor: C.dim, labelSize: 10, showLabel: true,
+        id,
+        kind: 'user',
+        label: u.displayName ?? u.email ?? 'User',
+        color: b.color,
+        areaId: b.id,
+        areaName,
+        role: 'Team member',
+        radius: RADII.user,
+        ...at(RADII.user, spread(b.users.length, j)),
+        symbolSize: 34,
+        image: avatar(u.id, b.color),
+        labelColor: C.dim,
+        labelTier: 'secondary',
+        labelSize: 10,
+        showLabel: true,
       });
       if (sectorAgentIds.length) {
         for (const aId of sectorAgentIds)
@@ -269,11 +392,20 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
     const sharedId = `shared:${sa.id}`;
     const ang = serviceMembers.length === 1 ? -Math.PI / 2 : (TAU * j) / serviceMembers.length;
     nodes.push({
-      id: sharedId, kind: 'shared', label: `${sa.displayName ?? sa.email ?? 'Shared'} (shared)`,
-      color: '#3f3f46', areaId: null, role: 'Shared account',
-      radius: RADII.shared, ...at(RADII.shared, ang), symbolSize: 46,
+      id: sharedId,
+      kind: 'shared',
+      label: `${sa.displayName ?? sa.email ?? 'Shared'} (shared)`,
+      color: '#3f3f46',
+      areaId: null,
+      role: 'Shared account',
+      radius: RADII.shared,
+      ...at(RADII.shared, ang),
+      symbolSize: 46,
       image: areaIconDataUri('Building2', '#a1a1aa', '#52525b'),
-      labelColor: C.dim, labelSize: 10.5, showLabel: true,
+      labelColor: C.dim,
+      labelTier: 'secondary',
+      labelSize: 10.5,
+      showLabel: true,
     });
     edges.push({ source: org.id, target: sharedId, color: C.faint, baseOpacity: 0.25, width: 1 });
   });
@@ -283,7 +415,14 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
     const sharedId = `shared:${sub.ownerProfileId}`;
     if (!sharedIds.has(sharedId)) continue;
     for (const un of userNodeIdsByPerson.get(sub.subscriberProfileId) ?? [])
-      edges.push({ source: sharedId, target: un, color: '#a1a1aa', baseOpacity: 0.4, width: 1, dashed: true });
+      edges.push({
+        source: sharedId,
+        target: un,
+        color: '#a1a1aa',
+        baseOpacity: 0.4,
+        width: 1,
+        dashed: true,
+      });
   }
 
   // ── Degree-aware sizing ──────────────────────────────────────────────────
@@ -294,7 +433,13 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
     degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
   }
   const BASE: Record<NodeKind, number> = {
-    org: 88, area: 66, shared: 56, integration: 46, agent: 50, user: 46, skill: 26,
+    org: 88,
+    area: 66,
+    shared: 56,
+    integration: 46,
+    agent: 50,
+    user: 46,
+    skill: 26,
   };
   for (const nd of nodes) {
     const deg = degree.get(nd.id) ?? 0;

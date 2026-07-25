@@ -32,6 +32,11 @@ interface SimLink extends SimulationLinkDatum<SimNode> {
 
 export interface SimOptions {
   reducedMotion?: boolean;
+  /** Override anchor pull (default 0.08). Grouped layouts (architecture boxes)
+   *  raise this so link forces can't drag members out of their cluster. */
+  anchorStrength?: number;
+  /** Override link pull (default 0.05). */
+  linkStrength?: number;
 }
 
 export interface Simulation {
@@ -39,6 +44,8 @@ export interface Simulation {
   tick(): void;
   drag(id: string, x: number, y: number): void;
   release(id: string): void;
+  /** Rigidly translate the given nodes' anchors AND positions (box dragging). */
+  shiftAnchors(ids: readonly string[], dx: number, dy: number): void;
   reheat(): void;
   /** Absolute instant rigid rotation from the original layout (snaps; for rebuild restore). */
   setRotation(theta: number): void;
@@ -79,6 +86,8 @@ export function createSimulation(
   opts: SimOptions = {},
 ): Simulation {
   const reduced = !!opts.reducedMotion;
+  const anchorStrength = opts.anchorStrength ?? ANCHOR_STRENGTH;
+  const linkStrength = opts.linkStrength ?? LINK_STRENGTH;
 
   const simNodes: SimNode[] = nodes.map((nd, i) => ({
     ...nd,
@@ -106,20 +115,29 @@ export function createSimulation(
   function anchorForce(alpha: number) {
     for (const nd of simNodes) {
       if (nd.pinned || nd.fx != null) continue;
-      nd.vx += (nd.ax - nd.x) * ANCHOR_STRENGTH * alpha;
-      nd.vy += (nd.ay - nd.y) * ANCHOR_STRENGTH * alpha;
+      nd.vx += (nd.ax - nd.x) * anchorStrength * alpha;
+      nd.vy += (nd.ay - nd.y) * anchorStrength * alpha;
     }
   }
 
   const sim: D3Sim<SimNode, SimLink> = forceSimulation<SimNode>(simNodes)
     .force('anchor', anchorForce)
-    .force('collide', forceCollide<SimNode>((d) => collideRadius(d)))
+    .force(
+      'collide',
+      forceCollide<SimNode>((d) => collideRadius(d)),
+    )
     .force('charge', forceManyBody<SimNode>().strength(WEAK_REPULSION))
-    .force('link', forceLink<SimNode, SimLink>(links).id((d) => d.id).distance((l) => {
-      const s = l.source as SimNode;
-      const t = l.target as SimNode;
-      return Math.abs(s.radius - t.radius) || 60;
-    }).strength(LINK_STRENGTH))
+    .force(
+      'link',
+      forceLink<SimNode, SimLink>(links)
+        .id((d) => d.id)
+        .distance((l) => {
+          const s = l.source as SimNode;
+          const t = l.target as SimNode;
+          return Math.abs(s.radius - t.radius) || 60;
+        })
+        .strength(linkStrength),
+    )
     .alphaTarget(reduced ? 0 : BREATHE_ALPHA)
     .stop(); // we own the loop — d3's internal timer must not run
 
@@ -150,6 +168,26 @@ export function createSimulation(
       if (!nd || nd.pinned) return;
       nd.fx = null;
       nd.fy = null;
+      sim.alpha(Math.max(sim.alpha(), DRAG_ALPHA));
+    },
+    shiftAnchors(ids, dx, dy) {
+      // Rigid translate: move every anchor representation (original, base,
+      // live) AND the current position so the group follows the cursor 1:1
+      // instead of spring-chasing it.
+      for (const id of ids) {
+        const nd = byId.get(id);
+        if (!nd) continue;
+        nd.oax += dx;
+        nd.oay += dy;
+        nd.bax += dx;
+        nd.bay += dy;
+        nd.ax += dx;
+        nd.ay += dy;
+        nd.x += dx;
+        nd.y += dy;
+        if (nd.fx != null) nd.fx += dx;
+        if (nd.fy != null) nd.fy += dy;
+      }
       sim.alpha(Math.max(sim.alpha(), DRAG_ALPHA));
     },
     reheat() {
