@@ -15,6 +15,13 @@ const reconciliation = readFileSync(
   ),
   'utf8',
 );
+const receiptVectorRelease = readFileSync(
+  new URL(
+    '../../../supabase/migrations/20260725193500_qdrant_ack_receipt_vector_release.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 describe('Qdrant-owned embedding storage migration', () => {
   it('defaults existing generations to pgvector and requires an explicit Qdrant cutover', () => {
@@ -39,6 +46,16 @@ describe('Qdrant-owned embedding storage migration', () => {
     expect(ack).toContain('vector_indexed_generation = indexed_generation');
     expect(ack).toContain('chunk.org_id = acked.org_id');
     expect(ack).toContain('chunk.vector_indexed_generation is distinct from indexed_generation');
+  });
+
+  it('keeps the receipt and Qdrant-owned vector release in the same ACK', () => {
+    expect(receiptVectorRelease).toContain('returning o.* into acked');
+    expect(receiptVectorRelease).toContain('set vector_indexed_hash = indexed_hash');
+    expect(receiptVectorRelease).toContain('vector_indexed_generation = indexed_generation');
+    expect(receiptVectorRelease).toContain("active.storage_mode = 'qdrant'");
+    expect(receiptVectorRelease).toContain('set embedding = null');
+    expect(receiptVectorRelease).toContain('embedding_model = null');
+    expect(receiptVectorRelease).toContain('chunk.org_id = acked.org_id');
   });
 
   it('calls a chunk pending until the ACTIVE generation confirms its current content', () => {
