@@ -1338,30 +1338,45 @@ async function persistConversations(
     }
 
     const sourceIds = Array.from(new Set(prepared.map((item) => item.key.sourceId)));
-    await tx.execute(sql`
-      update knowledge_sources
-      set status = case
-            when coalesce((watermark->>'expectedDocuments')::int, 0) > (
-              select count(*)::int from knowledge_documents document
-              where document.org_id = knowledge_sources.org_id
-                and document.source_id = knowledge_sources.id and document.status <> 'deleted'
-            ) then 'queued'
-            when ${qdrantStorage}
-              then public.brain_vector_app_source_state(knowledge_sources.id)
-            when exists (
-              select 1 from knowledge_chunks chunk
-              where chunk.org_id = knowledge_sources.org_id
-                and chunk.source_id = knowledge_sources.id
-                and chunk.embedding is null
-            ) then 'queued'
-            else 'ready'
-          end,
-          last_synced_at = now(), last_error = null, updated_at = now()
-      where org_id = current_setting('app.current_org_id', true)
-        and id = any(${uuidArray(sourceIds)})
-    `);
+    await refreshConversationSourceStateTx(tx, sourceIds, qdrantStorage);
     return { deletedChunks };
   });
+}
+
+async function refreshConversationSourceStateTx(
+  tx: CoreTx,
+  sourceIds: string[],
+  qdrantStorage: boolean,
+): Promise<void> {
+  if (sourceIds.length === 0) return;
+  await tx.execute(sql`
+    update knowledge_sources
+    set status = case
+          when coalesce((watermark->>'expectedDocuments')::int, 0) > (
+            select count(*)::int from knowledge_documents document
+            where document.org_id = knowledge_sources.org_id
+              and document.source_id = knowledge_sources.id and document.status <> 'deleted'
+          ) then 'queued'
+          when ${qdrantStorage}
+            then public.brain_vector_app_source_state(knowledge_sources.id)
+          when exists (
+            select 1 from knowledge_chunks chunk
+            where chunk.org_id = knowledge_sources.org_id
+              and chunk.source_id = knowledge_sources.id
+              and chunk.embedding is null
+          ) then 'queued'
+          else 'ready'
+        end,
+        last_synced_at = now(), last_error = null, updated_at = now()
+    where org_id = current_setting('app.current_org_id', true)
+      and id = any(${uuidArray(sourceIds)})
+  `);
+}
+
+async function refreshConversationSourceState(ctx: CoreCtx, sourceId: string): Promise<void> {
+  await withOrgCore(ctx, (tx) =>
+    refreshConversationSourceStateTx(tx, [sourceId], qdrantOwnsKnowledgeEmbeddings()),
+  );
 }
 
 async function runPreparedBatch(
@@ -1559,6 +1574,9 @@ export async function backfillConversationSource(
       channel: normalizedChannel,
       accountId: normalizedAccountId,
     });
+    // An empty terminal page bypasses persistConversations(), so explicitly
+    // clear the processing state established by ensureConversationSource().
+    await refreshConversationSourceState(ctx, source.id);
   }
   return {
     ...counts,
