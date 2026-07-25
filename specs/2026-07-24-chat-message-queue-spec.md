@@ -12,16 +12,16 @@ automatically (FIFO) when the turn completes.
 
 ## Current behavior (grounded)
 
-| Concern | Where | Note |
-|---|---|---|
-| Composer submit | `ChatInput.send` → `onsubmit(composed(text), mode)` (`ChatInput.svelte:67`) | clears its own `value`/`chips` immediately |
-| Page handler | `handleSubmit(text, mode)` (`home/+page.svelte:622`) | sets `chat.inputText = text` then `sendChatMsg(agentId)` |
-| Send + guard | `sendChatMsg` (`chat-rpc.ts:56`) | **`if (!msg \|\| chat.sending \|\| !conn.connected) return;`** — the drop |
-| In-flight turn | `chat.runId !== null` (`types/chat.ts:25`) | authoritative for the **whole** turn; `chat.sending` (`:26`) goes false after the first token |
-| Turn complete | `onChatEvent` `state==='final'` (`gateway.svelte.ts:1194`) | nulls `runId` (`:1208`), then after the smoother commits fires `notifyAgentReplyFinal` (`chat.svelte.ts:39`) |
-| Done pub/sub | `onAgentReplyFinal(cb)` / `notifyAgentReplyFinal` (`chat.svelte.ts:34,39`) | already used by the voice engine — reuse it |
-| Terminal (also) | `state==='aborted'` (`:1222`), `'error'` (`:1243`), send catch (`chat-rpc.ts:95`) | all null `runId` |
-| Transcript | `.thread` list (`home/+page.svelte:993–1099`), live stream turn (`:1101–1132`) | rows keyed by content `rowKey` (`:469`) |
+| Concern         | Where                                                                             | Note                                                                                                         |
+| --------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Composer submit | `ChatInput.send` → `onsubmit(composed(text), mode)` (`ChatInput.svelte:67`)       | clears its own `value`/`chips` immediately                                                                   |
+| Page handler    | `handleSubmit(text, mode)` (`home/+page.svelte:622`)                              | sets `chat.inputText = text` then `sendChatMsg(agentId)`                                                     |
+| Send + guard    | `sendChatMsg` (`chat-rpc.ts:56`)                                                  | **`if (!msg \|\| chat.sending \|\| !conn.connected) return;`** — the drop                                    |
+| In-flight turn  | `chat.runId !== null` (`types/chat.ts:25`)                                        | authoritative for the **whole** turn; `chat.sending` (`:26`) goes false after the first token                |
+| Turn complete   | `onChatEvent` `state==='final'` (`gateway.svelte.ts:1194`)                        | nulls `runId` (`:1208`), then after the smoother commits fires `notifyAgentReplyFinal` (`chat.svelte.ts:39`) |
+| Done pub/sub    | `onAgentReplyFinal(cb)` / `notifyAgentReplyFinal` (`chat.svelte.ts:34,39`)        | already used by the voice engine — reuse it                                                                  |
+| Terminal (also) | `state==='aborted'` (`:1222`), `'error'` (`:1243`), send catch (`chat-rpc.ts:95`) | all null `runId`                                                                                             |
+| Transcript      | `.thread` list (`home/+page.svelte:993–1099`), live stream turn (`:1101–1132`)    | rows keyed by content `rowKey` (`:469`)                                                                      |
 
 There is **no** existing queue, debounce, or pending-message concept in chat state.
 
@@ -33,42 +33,48 @@ it clears on the first delta while the agent keeps streaming.)
 ## Design (minimal — reuse state + the existing done-signal)
 
 ### Data model
+
 Add one field to `AgentChatState` (`src/lib/types/chat.ts`):
 
 ```ts
 /** Messages the user sent while runId != null, awaiting flush (FIFO). */
 queued: QueuedMessage[];
 ```
+
 ```ts
 export interface QueuedMessage {
-  id: string;      // client uuid — React-key + dequeue handle
-  text: string;    // already `composed()` (context blocks folded in)
+  id: string; // client uuid — React-key + dequeue handle
+  text: string; // already `composed()` (context blocks folded in)
   mode: 'ask' | 'capture';
 }
 ```
+
 Initialize `queued: []` in `ensureAgentChat` (`chat.svelte.ts:184`).
 
 > ponytail: no separate store, no generic job runner. It's an array on the state that
 > already exists, flushed by the pub/sub that already exists.
 
 ### Enqueue
+
 One chokepoint: **`sendChatMsg`** (`chat-rpc.ts:56`). Replace the silent drop with an enqueue
-so *every* caller (composer Enter, feed cards, retry/edit, voice) gets queuing for free:
+so _every_ caller (composer Enter, feed cards, retry/edit, voice) gets queuing for free:
 
 ```ts
 if (!msg || !conn.connected) return;
 if (chat.sending || chat.runId !== null) {
-  chat.queued.push({ id: uuid(), text: msg, mode });   // mode from chat.inputMode or param
+  chat.queued.push({ id: uuid(), text: msg, mode }); // mode from chat.inputMode or param
   chat.inputText = '';
   return;
 }
 // …existing send path…
 ```
+
 `ChatInput.send` and `handleSubmit` stay as-is — they already clear the composer optimistically,
 so the message visibly leaves the input and reappears as a queued row. No busy-gating in
 `ChatInput` (recon confirms it has none today).
 
 ### Flush (FIFO, one at a time)
+
 Subscribe once (module init in `chat.svelte.ts`, next to the voice subscriber):
 
 ```ts
@@ -79,7 +85,7 @@ function flushNextQueued(agentId: string) {
   if (!chat || chat.runId !== null || chat.queued.length === 0) return;
   const next = chat.queued.shift()!;
   chat.inputText = next.text;
-  sendChatMsg(agentId);          // its own guard re-queues if somehow still busy
+  sendChatMsg(agentId); // its own guard re-queues if somehow still busy
 }
 ```
 
@@ -93,6 +99,7 @@ Decision: on `aborted`/`error`, **do not auto-flush** — leave the queue intact
 into a just-errored agent would likely re-error the whole queue.
 
 ### Idempotency
+
 Each queued message gets its own `runId`/`idempotencyKey` at actual send time (unchanged —
 `sendChatMsg` mints it at `:70`). The `QueuedMessage.id` is client-only.
 
@@ -119,6 +126,7 @@ Queued messages render as pending rows **after** the live stream turn in `.threa
 All tokens semantic; no raw hex/z-index. Run `bun run lint:design && bun run lint:tokens`.
 
 ### Composer
+
 No disable. Optionally show a one-line hint under the input when `runId !== null` and the
 user is typing: “Will queue — agent is replying.” (caption type role). Enter still enqueues.
 
@@ -126,14 +134,14 @@ user is typing: “Will queue — agent is replying.” (caption type role). Ent
 
 ## Edge cases
 
-| Case | Behavior |
-|---|---|
-| Disconnected (`!conn.connected`) | Do **not** queue — keep today's return (nothing to flush into). Composer keeps the text. |
-| Capture mode (`#`) | `handleSubmit` capture branch is a no-op stub today (`+page.svelte:623`) — queue only `ask`. |
-| New-chat / switch agent mid-queue | Queue is per-agent (`agentChat[agentId]`), so it stays with its agent. Starting a *new* chat on the same agent: **clear** `queued` (the thread reset invalidates pending context). |
-| 2-min send-safety timeout fires (`chat-rpc.ts:84`) | It nulls `sending`/`runId`; treat like a terminal-non-final → paused state, don't auto-flush. |
-| Rapid multi-enqueue | FIFO array; flush pops one per `final`. Cap at e.g. **20** with a toast if exceeded (ponytail: hard cap, raise if anyone hits it). |
-| Reload | `queued` is in-memory `$state` — lost on reload (acceptable v1; persist to the chat draft store only if requested). |
+| Case                                               | Behavior                                                                                                                                                                           |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Disconnected (`!conn.connected`)                   | Do **not** queue — keep today's return (nothing to flush into). Composer keeps the text.                                                                                           |
+| Capture mode (`#`)                                 | `handleSubmit` capture branch is a no-op stub today (`+page.svelte:623`) — queue only `ask`.                                                                                       |
+| New-chat / switch agent mid-queue                  | Queue is per-agent (`agentChat[agentId]`), so it stays with its agent. Starting a _new_ chat on the same agent: **clear** `queued` (the thread reset invalidates pending context). |
+| 2-min send-safety timeout fires (`chat-rpc.ts:84`) | It nulls `sending`/`runId`; treat like a terminal-non-final → paused state, don't auto-flush.                                                                                      |
+| Rapid multi-enqueue                                | FIFO array; flush pops one per `final`. Cap at e.g. **20** with a toast if exceeded (ponytail: hard cap, raise if anyone hits it).                                                 |
+| Reload                                             | `queued` is in-memory `$state` — lost on reload (acceptable v1; persist to the chat draft store only if requested).                                                                |
 
 ---
 

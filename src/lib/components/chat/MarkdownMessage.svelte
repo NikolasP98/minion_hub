@@ -200,7 +200,8 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: color var(--duration-fast) var(--ease-standard),
+    transition:
+      color var(--duration-fast) var(--ease-standard),
       background var(--duration-fast) var(--ease-standard);
   }
   .chat-md :global(.chat-table__toggle:hover) {
