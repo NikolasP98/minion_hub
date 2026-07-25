@@ -302,6 +302,7 @@ function splitLongTurn(turn: string, maxChars: number): string[] {
 }
 
 function channelLabel(channel: string): string {
+  if (channel.toLowerCase() === 'whatsapp') return 'WhatsApp';
   return channel
     .split(/[-_]/g)
     .filter(Boolean)
@@ -1642,7 +1643,11 @@ async function loadSourceAggregates(
         (
           ${
             qdrantOwnsKnowledgeEmbeddings()
-              ? sql`public.brain_vector_app_source_pending_count(source.id)`
+              ? sql`case
+                  when source.config->>'domain' = 'conversations'
+                    then public.brain_vector_app_source_pending_count(source.id)
+                  else count(chunk.id) filter (where chunk.embedding is null)
+                end`
               : sql`count(chunk.id) filter (where chunk.embedding is null)`
           }
           + count(distinct document.id) filter (
