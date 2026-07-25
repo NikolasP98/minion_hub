@@ -30,6 +30,12 @@ as $$
   limit 1;
 $$;
 
+-- A worker ack DELETES the outbox row, so "no outbox row" is ambiguous: it is
+-- either a chunk that has been indexed, or a chunk that was written before the
+-- generation started enqueueing and has therefore never reached Qdrant. Only a
+-- completed reconcile cycle proves the whole corpus was swept, so until the
+-- active generation reports one, a chunk with no outbox row counts as pending
+-- rather than falling through to 'ready'.
 create or replace function public.brain_vector_app_source_state(p_source_id uuid)
 returns text
 language sql
@@ -37,13 +43,27 @@ stable
 security definer
 set search_path = pg_catalog, public
 as $$
+  with active as (
+    select generation.generation, reconcile.last_completed_at
+    from public.brain_vector_generations generation
+    left join public.brain_vector_reconcile_state reconcile
+      on reconcile.collection_generation = generation.generation
+    where generation.is_active and generation.enqueue_enabled
+    limit 1
+  ), swept as (
+    select exists (select 1 from active where active.last_completed_at is not null) as ok
+  )
   select case
     when count(*) filter (where job.status = 'dead') > 0 then 'failed'
     when count(*) filter (where job.status in ('queued', 'running')) > 0 then 'queued'
+    when count(*) filter (where job.chunk_id is null) > 0 and not (select ok from swept)
+      then 'queued'
     else 'ready'
   end
   from public.knowledge_chunks chunk
-  join public.brain_vector_outbox job on job.chunk_id = chunk.id
+  left join public.brain_vector_outbox job
+    on job.chunk_id = chunk.id
+    and job.collection_generation = (select generation from active)
   where chunk.org_id = current_setting('app.current_org_id', true)
     and chunk.source_id = p_source_id;
 $$;
@@ -55,12 +75,27 @@ stable
 security definer
 set search_path = pg_catalog, public
 as $$
+  with active as (
+    select generation.generation, reconcile.last_completed_at
+    from public.brain_vector_generations generation
+    left join public.brain_vector_reconcile_state reconcile
+      on reconcile.collection_generation = generation.generation
+    where generation.is_active and generation.enqueue_enabled
+    limit 1
+  ), swept as (
+    select exists (select 1 from active where active.last_completed_at is not null) as ok
+  )
   select count(*)
   from public.knowledge_chunks chunk
-  join public.brain_vector_outbox job on job.chunk_id = chunk.id
+  left join public.brain_vector_outbox job
+    on job.chunk_id = chunk.id
+    and job.collection_generation = (select generation from active)
   where chunk.org_id = current_setting('app.current_org_id', true)
     and chunk.source_id = p_source_id
-    and job.status in ('queued', 'running', 'dead');
+    and (
+      job.status in ('queued', 'running', 'dead')
+      or (job.chunk_id is null and not (select ok from swept))
+    );
 $$;
 
 revoke all on function public.brain_vector_app_generation_mode()

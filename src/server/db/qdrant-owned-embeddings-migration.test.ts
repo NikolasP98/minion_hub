@@ -16,6 +16,22 @@ describe('Qdrant-owned embedding storage migration', () => {
     expect(migration).not.toMatch(/update\s+public\.brain_vector_generations/iu);
   });
 
+  it('never reports a source ready while its chunks are unproven in the serving index', () => {
+    const statusFns = migration
+      .split('create or replace function')
+      .filter((fn) => /brain_vector_app_source_(state|pending_count)/u.test(fn));
+    expect(statusFns).toHaveLength(2);
+    for (const fn of statusFns) {
+      expect(fn).toContain('left join public.brain_vector_outbox job');
+      expect(fn).toContain('job.collection_generation = (select generation from active)');
+      expect(fn).toContain(
+        'select exists (select 1 from active where active.last_completed_at is not null) as ok',
+      );
+      expect(fn).toContain('job.chunk_id is null');
+      expect(fn).toContain('not (select ok from swept)');
+    }
+  });
+
   it('exposes only org-scoped application status RPCs to app_ledger', () => {
     expect(migration).toContain('brain_vector_app_generation_mode()');
     expect(migration).toContain('brain_vector_app_source_state(p_source_id uuid)');

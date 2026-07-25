@@ -16,8 +16,18 @@ import {
 
 const SYNC_KINDS = ['posts', 'ads', 'messages', 'messages_tail'] as const;
 const STALE_ENQUEUE_MS = 6 * 60 * 60_000; // spec §6: re-enqueue a kind once its last success is >6h old
-const MESSAGE_TAIL_STALE_MS = 5 * 60_000;
-const CLAIM_LIMIT = 6;
+/**
+ * The tail lane is topped up on EVERY tick, so message freshness equals the
+ * cron period of this route — hourly today (src/lib/automations/system-automations.ts,
+ * netcup crontab). Tightening freshness below an hour is a scheduling change,
+ * not a code change; no staleness constant here can beat the cron period.
+ */
+const MESSAGE_TAIL_STALE_MS = 0;
+/** Two slots per connected org so one tick can cover every org's tail job
+ * (findDueJobs reserves half the slots for that lane) without letting a large
+ * tenant list turn one tick into an unbounded run. */
+const CLAIM_LIMIT_MIN = 6;
+const CLAIM_LIMIT_MAX = 24;
 
 /**
  * GET/POST /api/meta/sync/tick — cron entrypoint (Vercel Cron only ever sends
@@ -30,7 +40,7 @@ const CLAIM_LIMIT = 6;
  * Two phases, each per-job/per-org isolated so one failure never 500s the tick:
  * 1. enqueue-if-stale — for every org with a live Meta connection, top up any
  *    sync kind whose last SUCCESS is stale (or has never run).
- * 2. claim + advance up to CLAIM_LIMIT due jobs (queued, or running past the
+ * 2. claim + advance a bounded number of due jobs (queued, or running past the
  *    staleness window) across all orgs, one bounded slice each.
  */
 const handle: RequestHandler = async ({ request }) => {
@@ -59,7 +69,9 @@ const handle: RequestHandler = async ({ request }) => {
     }
   }
 
-  const due = await findDueJobs(CLAIM_LIMIT);
+  const due = await findDueJobs(
+    Math.min(CLAIM_LIMIT_MAX, Math.max(CLAIM_LIMIT_MIN, orgIds.length * 2)),
+  );
   const results: Array<{
     jobId: string;
     orgId: string;
