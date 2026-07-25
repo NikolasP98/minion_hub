@@ -3,14 +3,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock the collaborating services so advanceJob's control flow is isolated.
 const claimJob = vi.fn<() => Promise<boolean>>();
 const getJobById = vi.fn();
-const heartbeat = vi.fn<(c: unknown, id: string, patch: { processed: number; total?: number | null; pageCursor: string | null }) => Promise<void>>(async () => {});
+const heartbeat = vi.fn<
+  (
+    c: unknown,
+    id: string,
+    patch: { processed: number; total?: number | null; pageCursor: string | null },
+  ) => Promise<void>
+>(async () => {});
 const isCancelRequested = vi.fn<() => Promise<boolean>>(async () => false);
-const finishJob = vi.fn<(c: unknown, id: string, status: string, o?: unknown) => Promise<void>>(async () => {});
+const finishJob = vi.fn<(c: unknown, id: string, status: string, o?: unknown) => Promise<void>>(
+  async () => {},
+);
 vi.mock('./finance-sync-jobs.service', () => ({
   STALE_MS: 90_000,
   claimJob: (...a: unknown[]) => claimJob(),
   getJobById: (...a: unknown[]) => getJobById(),
-  heartbeat: (c: unknown, id: string, patch: { processed: number; total?: number | null; pageCursor: string | null }) => heartbeat(c, id, patch),
+  heartbeat: (
+    c: unknown,
+    id: string,
+    patch: { processed: number; total?: number | null; pageCursor: string | null },
+  ) => heartbeat(c, id, patch),
   isCancelRequested: (...a: unknown[]) => isCancelRequested(),
   finishJob: (c: unknown, id: string, status: string, o?: unknown) => finishJob(c, id, status, o),
   enqueueJob: vi.fn(),
@@ -46,7 +58,9 @@ vi.mock('$server/finance/connector', async (orig) => {
         for (const p of pages) yield p;
       },
       async *pull() {},
-      async count() { return 5; },
+      async count() {
+        return 5;
+      },
     }),
   };
 });
@@ -60,12 +74,25 @@ beforeEach(() => {
   pullArgs.length = 0;
   claimJob.mockResolvedValue(true);
   isCancelRequested.mockResolvedValue(false);
-  getSource.mockResolvedValue({ provider: 'fake', enabled: true, watermark: null, config: {}, secretRefs: { ciphertext: 'c', iv: 'i' } });
+  getSource.mockResolvedValue({
+    provider: 'fake',
+    enabled: true,
+    watermark: null,
+    config: {},
+    secretRefs: { ciphertext: 'c', iv: 'i' },
+  });
 });
 
 describe('advanceJob', () => {
   it('drains all pages then marks succeeded and advances the watermark', async () => {
-    getJobById.mockResolvedValue({ id: 'j1', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date() });
+    getJobById.mockResolvedValue({
+      id: 'j1',
+      provider: 'fake',
+      processed: 0,
+      total: null,
+      pageCursor: null,
+      startedAt: new Date(),
+    });
     pages.push({ invoices: [{}, {}], cursor: 'c1' }, { invoices: [{}], cursor: null });
     await advanceJob(ctx, 'j1', { budgetMs: Infinity });
     expect(upsertInvoicesBatch).toHaveBeenCalledTimes(2);
@@ -81,14 +108,36 @@ describe('advanceJob', () => {
   });
 
   it('marks failed with "no credentials configured" when secretRefs is empty', async () => {
-    getJobById.mockResolvedValue({ id: 'j1', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date() });
-    getSource.mockResolvedValue({ provider: 'fake', enabled: true, watermark: null, config: {}, secretRefs: {} });
+    getJobById.mockResolvedValue({
+      id: 'j1',
+      provider: 'fake',
+      processed: 0,
+      total: null,
+      pageCursor: null,
+      startedAt: new Date(),
+    });
+    getSource.mockResolvedValue({
+      provider: 'fake',
+      enabled: true,
+      watermark: null,
+      config: {},
+      secretRefs: {},
+    });
     await advanceJob(ctx, 'j1', { budgetMs: Infinity });
-    expect(finishJob).toHaveBeenCalledWith(ctx, 'j1', 'failed', { error: 'no credentials configured' });
+    expect(finishJob).toHaveBeenCalledWith(ctx, 'j1', 'failed', {
+      error: 'no credentials configured',
+    });
   });
 
   it('cancels mid-stream when cancel is requested', async () => {
-    getJobById.mockResolvedValue({ id: 'j1', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date() });
+    getJobById.mockResolvedValue({
+      id: 'j1',
+      provider: 'fake',
+      processed: 0,
+      total: null,
+      pageCursor: null,
+      startedAt: new Date(),
+    });
     isCancelRequested.mockResolvedValue(true);
     pages.push({ invoices: [{}], cursor: 'c1' });
     await advanceJob(ctx, 'j1', { budgetMs: Infinity });
@@ -97,12 +146,23 @@ describe('advanceJob', () => {
   });
 
   it('budget-exhaustion: persists cursor after first page and does not call finishJob', async () => {
-    getJobById.mockResolvedValue({ id: 'j1', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date() });
+    getJobById.mockResolvedValue({
+      id: 'j1',
+      provider: 'fake',
+      processed: 0,
+      total: null,
+      pageCursor: null,
+      startedAt: new Date(),
+    });
     pages.push({ invoices: [{}], cursor: 'c1' }, { invoices: [{}], cursor: 'c2' });
     // budgetMs: -1 → deadline = Date.now() - 1, guaranteed in the past so the deadline check fires after page 1
     await advanceJob(ctx, 'j1', { budgetMs: -1 });
     // The per-page heartbeat after page 1 must carry pageCursor:'c1'
-    expect(heartbeat).toHaveBeenCalledWith(expect.anything(), 'j1', expect.objectContaining({ pageCursor: 'c1' }));
+    expect(heartbeat).toHaveBeenCalledWith(
+      expect.anything(),
+      'j1',
+      expect.objectContaining({ pageCursor: 'c1' }),
+    );
     // Job left in 'running' state — finishJob must NOT have been called
     expect(finishJob).not.toHaveBeenCalled();
     // Only the first page's batch was upserted (budget expired before page 2)
@@ -110,12 +170,21 @@ describe('advanceJob', () => {
   });
 
   it('batch upsert failure: calls finishJob with status failed', async () => {
-    getJobById.mockResolvedValue({ id: 'j1', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date() });
+    getJobById.mockResolvedValue({
+      id: 'j1',
+      provider: 'fake',
+      processed: 0,
+      total: null,
+      pageCursor: null,
+      startedAt: new Date(),
+    });
     upsertInvoicesBatch.mockRejectedValueOnce(new Error('boom'));
     pages.push({ invoices: [{}, {}, {}, {}, {}], cursor: 'c1' });
     await advanceJob(ctx, 'j1', { budgetMs: Infinity });
     expect(finishJob).toHaveBeenCalledWith(
-      expect.anything(), 'j1', 'failed',
+      expect.anything(),
+      'j1',
+      'failed',
       expect.objectContaining({ error: expect.any(String) }),
     );
   });
@@ -130,8 +199,21 @@ describe('advanceJob — recentWindowMs clamps the nightly sync', () => {
 
   it('clamps to the window when the watermark is OLDER than it', async () => {
     const stale = new Date(Date.now() - 60 * DAY).toISOString(); // 60 days behind
-    getSource.mockResolvedValue({ provider: 'fake', enabled: true, watermark: stale, config: {}, secretRefs: { ciphertext: 'c', iv: 'i' } });
-    getJobById.mockResolvedValue({ id: 'j1', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date().toISOString() });
+    getSource.mockResolvedValue({
+      provider: 'fake',
+      enabled: true,
+      watermark: stale,
+      config: {},
+      secretRefs: { ciphertext: 'c', iv: 'i' },
+    });
+    getJobById.mockResolvedValue({
+      id: 'j1',
+      provider: 'fake',
+      processed: 0,
+      total: null,
+      pageCursor: null,
+      startedAt: new Date().toISOString(),
+    });
     pages.push({ invoices: [], cursor: null });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -148,8 +230,21 @@ describe('advanceJob — recentWindowMs clamps the nightly sync', () => {
 
   it('uses the watermark when it is NEWER than the window — the cheap path', async () => {
     const fresh = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString(); // 9h
-    getSource.mockResolvedValue({ provider: 'fake', enabled: true, watermark: fresh, config: {}, secretRefs: { ciphertext: 'c', iv: 'i' } });
-    getJobById.mockResolvedValue({ id: 'j2', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date().toISOString() });
+    getSource.mockResolvedValue({
+      provider: 'fake',
+      enabled: true,
+      watermark: fresh,
+      config: {},
+      secretRefs: { ciphertext: 'c', iv: 'i' },
+    });
+    getJobById.mockResolvedValue({
+      id: 'j2',
+      provider: 'fake',
+      processed: 0,
+      total: null,
+      pageCursor: null,
+      startedAt: new Date().toISOString(),
+    });
     pages.push({ invoices: [], cursor: null });
 
     await advanceJob(ctx, 'j2', { budgetMs: Infinity, recentWindowMs: WEEK });
@@ -160,8 +255,21 @@ describe('advanceJob — recentWindowMs clamps the nightly sync', () => {
 
   it('leaves the MANUAL path (no window) sweeping from the watermark', async () => {
     const stale = new Date(Date.now() - 60 * DAY).toISOString();
-    getSource.mockResolvedValue({ provider: 'fake', enabled: true, watermark: stale, config: {}, secretRefs: { ciphertext: 'c', iv: 'i' } });
-    getJobById.mockResolvedValue({ id: 'j3', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date().toISOString() });
+    getSource.mockResolvedValue({
+      provider: 'fake',
+      enabled: true,
+      watermark: stale,
+      config: {},
+      secretRefs: { ciphertext: 'c', iv: 'i' },
+    });
+    getJobById.mockResolvedValue({
+      id: 'j3',
+      provider: 'fake',
+      processed: 0,
+      total: null,
+      pageCursor: null,
+      startedAt: new Date().toISOString(),
+    });
     pages.push({ invoices: [], cursor: null });
 
     await advanceJob(ctx, 'j3', { budgetMs: Infinity });

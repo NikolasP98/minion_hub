@@ -2,10 +2,23 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { retryOnPoolDrop } from '$server/db/pg-client';
 import { getConnector } from '$server/finance/connector';
 import '$server/finance/connectors/susii-connector'; // self-registers the 'susii' connector
-import { getSource, upsertInvoicesBatch, loadProductMap, bustFinanceCache, setSourceSync } from './finance.service';
+import {
+  getSource,
+  upsertInvoicesBatch,
+  loadProductMap,
+  bustFinanceCache,
+  setSourceSync,
+} from './finance.service';
 import { decryptCreds } from './finance-secrets';
 import { overlapSince, nowIso } from './finance-sync.helpers';
-import { claimJob, getJobById, heartbeat, isCancelRequested, finishJob, enqueueJob } from './finance-sync-jobs.service';
+import {
+  claimJob,
+  getJobById,
+  heartbeat,
+  isCancelRequested,
+  finishJob,
+  enqueueJob,
+} from './finance-sync-jobs.service';
 import { reconcileParties } from './party.service';
 import { reconcileOrdersToInvoices } from './sales.service';
 
@@ -32,7 +45,9 @@ export async function advanceJob(
   }
   const connector = getConnector(provider);
   if (!connector) {
-    await finishJob(ctx, jobId, 'failed', { error: `no connector registered for provider ${provider}` });
+    await finishJob(ctx, jobId, 'failed', {
+      error: `no connector registered for provider ${provider}`,
+    });
     return;
   }
   const refs = (source.secretRefs ?? {}) as Record<string, unknown>;
@@ -62,7 +77,9 @@ export async function advanceJob(
   // paging, so this only sets the first-page `since`.
   const wmSince = overlapSince(source.watermark);
   const windowSince =
-    opts.recentWindowMs != null ? new Date(Date.now() - opts.recentWindowMs).toISOString() : undefined;
+    opts.recentWindowMs != null
+      ? new Date(Date.now() - opts.recentWindowMs).toISOString()
+      : undefined;
   let since = wmSince;
   if (windowSince != null) {
     since = wmSince && wmSince > windowSince ? wmSince : windowSince;
@@ -96,7 +113,10 @@ export async function advanceJob(
       // ~114 round-trips over a full sync, any one of which was previously fatal.
       // All three are idempotent/atomic, so a retry is safe. ponytail: hot-loop
       // only — a rarer drop on setup/finish self-heals via the cron stale-resume.
-      if (await retryOnPoolDrop(() => isCancelRequested(ctx, jobId))) { await finishJob(ctx, jobId, 'cancelled'); return; }
+      if (await retryOnPoolDrop(() => isCancelRequested(ctx, jobId))) {
+        await finishJob(ctx, jobId, 'cancelled');
+        return;
+      }
       try {
         await retryOnPoolDrop(() => upsertInvoicesBatch(ctx, page.invoices, productMap)); // one tx for the whole page (atomic)
         processed += page.invoices.length;
@@ -118,7 +138,9 @@ export async function advanceJob(
     await bustFinanceCache(ctx);
   } catch (e) {
     await setSourceSync(ctx, provider, { watermark: source.watermark ?? '', status: 'failed' });
-    await finishJob(ctx, jobId, 'failed', { error: e instanceof Error ? e.message : 'sync failed' });
+    await finishJob(ctx, jobId, 'failed', {
+      error: e instanceof Error ? e.message : 'sync failed',
+    });
   }
 }
 

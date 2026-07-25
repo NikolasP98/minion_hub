@@ -693,9 +693,9 @@ describe('updateSellable', () => {
     // sync through fin_products.code, so renaming would NULL their product_id.
     mockExecute(db, [{ n: 231 }]);
 
-    await expect(
-      updateSellable(ctx(db), 'fp-8', { code: 'NASP' }, actor),
-    ).rejects.toMatchObject({ code: 'code_locked' });
+    await expect(updateSellable(ctx(db), 'fp-8', { code: 'NASP' }, actor)).rejects.toMatchObject({
+      code: 'code_locked',
+    });
     expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
   });
 

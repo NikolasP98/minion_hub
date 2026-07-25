@@ -27,9 +27,13 @@ const ORG = '21e0601b-f632-43fd-8414-d644af4271f4';
 
 const url =
   process.env.SUPABASE_DB_URL ??
-  (readFileSync(new URL('../.env.local', import.meta.url), 'utf8').match(
-    /^SUPABASE_DB_URL=(.*)$/m,
-  )?.[1] ?? '').trim().replace(/^["']|["']$/g, '');
+  (
+    readFileSync(new URL('../.env.local', import.meta.url), 'utf8').match(
+      /^SUPABASE_DB_URL=(.*)$/m,
+    )?.[1] ?? ''
+  )
+    .trim()
+    .replace(/^["']|["']$/g, '');
 if (!url) throw new Error('SUPABASE_DB_URL not found');
 
 /** loser code → keeper code. Loser is deactivated + aliased onto the keeper. */
@@ -177,7 +181,10 @@ const CONSUMPTION_SEED: Array<{ product: string; item: string; qty: number; why:
 
 const sql = postgres(url, { prepare: false, max: 1, onnotice: () => {} });
 const log: string[] = [];
-const say = (s: string) => { log.push(s); console.log(s); };
+const say = (s: string) => {
+  log.push(s);
+  console.log(s);
+};
 
 try {
   // Validate the plan BEFORE touching anything: a bad target code would be a
@@ -186,13 +193,16 @@ try {
     .filter(([, e]) => e.newCode && codeError(e.newCode))
     .map(([c, e]) => `${c} → ${e.newCode} (${codeError(e.newCode!)})`);
   const badFaja = FAJA_SIZES.filter((f) => codeError(f.code)).map((f) => f.code);
-  if (bad.length || badFaja.length) throw new Error(`invalid target codes: ${[...bad, ...badFaja].join(', ')}`);
+  if (bad.length || badFaja.length)
+    throw new Error(`invalid target codes: ${[...bad, ...badFaja].join(', ')}`);
 
   const before = await sql`
     select code, name, active, unit_price, category, sku, metadata
     from fin_products where org_id = ${ORG} order by code`;
   const byCode = new Map(before.map((r) => [String(r.code), r]));
-  say(`catalog: ${before.length} products, ${new Set(before.map((r) => String(r.sku))).size} distinct skus\n`);
+  say(
+    `catalog: ${before.length} products, ${new Set(before.map((r) => String(r.sku))).size} distinct skus\n`,
+  );
 
   /*
    * Referential sanity. A plan code counts as PRESENT if it is either still a
@@ -210,13 +220,17 @@ try {
   }
   const named = [
     ...MERGES.flatMap((m) => [m.keeper, ...m.losers]),
-    ...Object.keys(EDITS), ...ACTIVATE, ...RETIRE_AS_SETTING,
+    ...Object.keys(EDITS),
+    ...ACTIVATE,
+    ...RETIRE_AS_SETTING,
   ];
   const seen = [...new Set(named)];
   const done = seen.filter((c) => !byCode.has(c) && aliasOwned.has(c));
   const missing = seen.filter((c) => !byCode.has(c) && !aliasOwned.has(c));
-  if (missing.length) throw new Error(`plan references codes that do not exist: ${missing.join(', ')}`);
-  if (done.length) say(`already applied (code retired/aliased by a previous run): ${done.join(', ')}\n`);
+  if (missing.length)
+    throw new Error(`plan references codes that do not exist: ${missing.join(', ')}`);
+  if (done.length)
+    say(`already applied (code retired/aliased by a previous run): ${done.join(', ')}\n`);
 
   say('── MERGES (loser deactivated + sku repointed + code aliased onto keeper) ──');
   for (const m of MERGES) {
@@ -235,10 +249,15 @@ try {
   }
   say(`\n── ACTIVATE ── ${ACTIVATE.join(', ')}`);
   say(`── RETIRE AS SETTING ── ${RETIRE_AS_SETTING.join(', ')} (→ pos_settings.surcharges)`);
-  say(`── NEW FAJA PRODUCTS ── ${FAJA_SIZES.map((f) => `${f.code} "${f.name}" → item ${f.item}`).join(' · ')}`);
-  say(`── NEW RETAIL STOCK ITEMS ── ${RETAIL_ITEMS.map((r) => `${r.code} for product ${r.product}`).join(' · ')}`);
+  say(
+    `── NEW FAJA PRODUCTS ── ${FAJA_SIZES.map((f) => `${f.code} "${f.name}" → item ${f.item}`).join(' · ')}`,
+  );
+  say(
+    `── NEW RETAIL STOCK ITEMS ── ${RETAIL_ITEMS.map((r) => `${r.code} for product ${r.product}`).join(' · ')}`,
+  );
   say('── CONSUMPTION SEED ──');
-  for (const c of CONSUMPTION_SEED) say(`  ${c.product.padEnd(5)} → item ${c.item} x${c.qty}   (${c.why})`);
+  for (const c of CONSUMPTION_SEED)
+    say(`  ${c.product.padEnd(5)} → item ${c.item} x${c.qty}   (${c.why})`);
 
   if (!APPLY) {
     say('\nDRY RUN — nothing written. Re-run with --apply to execute.');
@@ -323,10 +342,13 @@ try {
     // ── 2. edits (name / code / category). A code change carries the OLD code
     //       into aliases, which is what keeps the SUSII sync resolving it. ────
     for (const [code, e] of Object.entries(EDITS)) {
-      const [row] = await tx`select id, code from fin_products where org_id=${ORG} and code=${code}`;
+      const [row] =
+        await tx`select id, code from fin_products where org_id=${ORG} and code=${code}`;
       if (!row) continue;
-      if (e.name) await tx`update fin_products set name=${e.name}, updated_at=now() where id=${row.id}`;
-      if (e.category) await tx`update fin_products set category=${e.category}, updated_at=now() where id=${row.id}`;
+      if (e.name)
+        await tx`update fin_products set name=${e.name}, updated_at=now() where id=${row.id}`;
+      if (e.category)
+        await tx`update fin_products set category=${e.category}, updated_at=now() where id=${row.id}`;
       if (e.newCode && e.newCode !== code) {
         await tx`update fin_products set updated_at=now(),
                    metadata = jsonb_set(coalesce(metadata,'{}'::jsonb), '{aliases}',
@@ -353,7 +375,8 @@ try {
 
     // ── 5. FAJA sizes as their own sellables, linked to their stock items ───
     for (const f of FAJA_SIZES) {
-      const [item] = await tx`select id, fin_product_id from stk_items where org_id=${ORG} and code=${f.item}`;
+      const [item] =
+        await tx`select id, fin_product_id from stk_items where org_id=${ORG} and code=${f.item}`;
       if (!item) continue;
       if (item.fin_product_id) continue; // already published
       const [p] = await tx`
@@ -368,7 +391,8 @@ try {
     for (const r of RETAIL_ITEMS) {
       const [p] = await tx`select id from fin_products where org_id=${ORG} and code=${r.product}`;
       if (!p) continue;
-      const [linked] = await tx`select id from stk_items where org_id=${ORG} and fin_product_id=${p.id}`;
+      const [linked] =
+        await tx`select id from stk_items where org_id=${ORG} and fin_product_id=${p.id}`;
       if (linked) continue; // already backed
       await tx`
         insert into stk_items (org_id, code, name, uom, item_group, is_stock_item, fin_product_id)

@@ -418,8 +418,7 @@ export function classify(
   const line = inferLine(name, code, mapped, zone);
   // 'mapped' only when the single mapping is what actually produced `line` —
   // a mapping that matched none of LINE_BY_ITEM left us on the name path.
-  const fromMapping =
-    mapped.length === 1 && LINE_BY_ITEM.some(([re]) => re.test(mapped[0]));
+  const fromMapping = mapped.length === 1 && LINE_BY_ITEM.some(([re]) => re.test(mapped[0]));
   return {
     zone,
     line,

@@ -192,7 +192,10 @@ export async function upsertInvoicesBatch(
           refType: 'fin_invoice',
           refId: r.id,
           op: r.inserted ? 'create' : 'update',
-          changes: r.inserted || !inv ? [] : [{ field: 'total', label: 'Total', old: null, new: inv.total }],
+          changes:
+            r.inserted || !inv
+              ? []
+              : [{ field: 'total', label: 'Total', old: null, new: inv.total }],
           actorId: null,
           actorName: `connector:${inv?.provider ?? 'connector'}`,
         };
@@ -416,7 +419,10 @@ export async function getFinSettings(ctx: CoreCtx): Promise<FinSettings> {
   return row ? mapFinSettings(row) : { ...DEFAULT_FIN_SETTINGS };
 }
 
-export async function updateFinSettings(ctx: CoreCtx, patch: Partial<FinSettings>): Promise<FinSettings> {
+export async function updateFinSettings(
+  ctx: CoreCtx,
+  patch: Partial<FinSettings>,
+): Promise<FinSettings> {
   // Validate the fields a user can set. taxRate is a fraction in [0, 1);
   // exchange rates must be positive when provided.
   const set: Record<string, unknown> = { updatedAt: new Date() };
@@ -434,11 +440,13 @@ export async function updateFinSettings(ctx: CoreCtx, patch: Partial<FinSettings
   }
   if (patch.taxRate != null) {
     const t = Number(patch.taxRate);
-    if (!Number.isFinite(t) || t < 0 || t >= 1) throw new Error('taxRate must be a fraction in [0, 1)');
+    if (!Number.isFinite(t) || t < 0 || t >= 1)
+      throw new Error('taxRate must be a fraction in [0, 1)');
     set.taxRate = String(t);
   }
   if (patch.fxMode != null) {
-    if (patch.fxMode !== 'auto' && patch.fxMode !== 'manual') throw new Error('fxMode must be auto|manual');
+    if (patch.fxMode !== 'auto' && patch.fxMode !== 'manual')
+      throw new Error('fxMode must be auto|manual');
     set.fxMode = patch.fxMode;
   }
   if (patch.fxManualRate !== undefined) {
@@ -490,10 +498,21 @@ export async function refreshExchangeRate(ctx: CoreCtx): Promise<FinSettings> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .insert(finSettings)
-      .values({ orgId: ctx.tenantId, fxAutoRate: String(rate), fxSource: source, fxUpdatedAt: new Date(), updatedAt: new Date() })
+      .values({
+        orgId: ctx.tenantId,
+        fxAutoRate: String(rate),
+        fxSource: source,
+        fxUpdatedAt: new Date(),
+        updatedAt: new Date(),
+      })
       .onConflictDoUpdate({
         target: finSettings.orgId,
-        set: { fxAutoRate: String(rate), fxSource: source, fxUpdatedAt: new Date(), updatedAt: new Date() },
+        set: {
+          fxAutoRate: String(rate),
+          fxSource: source,
+          fxUpdatedAt: new Date(),
+          updatedAt: new Date(),
+        },
       })
       .returning(),
   );

@@ -264,9 +264,7 @@
                 <span class="bname">{s.name}</span>
                 <span class="bmeta">
                   <span class="bcode">{s.code}</span>
-                  <span class="bprice"
-                    >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
-                  >
+                  <span class="bprice">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
                 </span>
                 <span class="bbadges">
                   <Badge variant="semantic" value={kindTone(s.kind)} size="sm"
@@ -284,55 +282,55 @@
     </div>
   {:else}
     <DataTable
-    class="flex-1 min-h-0"
-    {columns}
-    data={sellables}
-    getRowId={(s) => s.productId}
-    searchPlaceholder={m.data_table_search()}
-    exportable
-    exportName="pos-catalog"
-    selectable
-    storageKey="pos-catalog"
-    canEdit={canWrite}
-    onSaveRow={saveRow}
-    {expandedContent}
-    addLabel={m.pos_catalog_new()}
-    onAdd={openCreate}
-    addDisabled={!canWrite}
-    emptyMessage={m.pos_catalog_empty()}
-  >
-    {#snippet cell(s: Row, col: DataColumn<Row>)}
-      {#if col.key === 'name'}
-        {#if canWrite}
-          <Button variant="ghost" size="sm" class="name-link" onclick={() => openEdit(s)}
-            >{s.name}</Button
+      class="flex-1 min-h-0"
+      {columns}
+      data={sellables}
+      getRowId={(s) => s.productId}
+      searchPlaceholder={m.data_table_search()}
+      exportable
+      exportName="pos-catalog"
+      selectable
+      storageKey="pos-catalog"
+      canEdit={canWrite}
+      onSaveRow={saveRow}
+      {expandedContent}
+      addLabel={m.pos_catalog_new()}
+      onAdd={openCreate}
+      addDisabled={!canWrite}
+      emptyMessage={m.pos_catalog_empty()}
+    >
+      {#snippet cell(s: Row, col: DataColumn<Row>)}
+        {#if col.key === 'name'}
+          {#if canWrite}
+            <Button variant="ghost" size="sm" class="name-link" onclick={() => openEdit(s)}
+              >{s.name}</Button
+            >
+          {:else}
+            <span class="truncate block max-w-[16rem]">{s.name}</span>
+          {/if}
+        {:else if col.key === 'unitPrice'}
+          <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
+        {:else if col.key === 'kind'}
+          <Badge variant="semantic" value={kindTone(s.kind)}>{kindLabel(s.kind)}</Badge>
+        {:else if col.key === 'stockQty'}
+          <span class="tabular-nums"
+            >{s.kind === 'product' && s.stockQty != null ? s.stockQty : '—'}</span
           >
-        {:else}
-          <span class="truncate block max-w-[16rem]">{s.name}</span>
+        {:else if col.key === 'hasMapping'}
+          <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}
+          ></span>
+        {:else if col.key === 'active'}
+          {#key `${s.productId}-${toggleNonce}`}
+            <Toggle
+              checked={s.active}
+              size="sm"
+              ariaLabel={m.fin_col_active()}
+              disabled={!canWrite}
+              onchange={(checked) => toggleActive(s, checked)}
+            />
+          {/key}
         {/if}
-      {:else if col.key === 'unitPrice'}
-        <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
-      {:else if col.key === 'kind'}
-        <Badge variant="semantic" value={kindTone(s.kind)}>{kindLabel(s.kind)}</Badge>
-      {:else if col.key === 'stockQty'}
-        <span class="tabular-nums"
-          >{s.kind === 'product' && s.stockQty != null ? s.stockQty : '—'}</span
-        >
-      {:else if col.key === 'hasMapping'}
-        <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}
-        ></span>
-      {:else if col.key === 'active'}
-        {#key `${s.productId}-${toggleNonce}`}
-          <Toggle
-            checked={s.active}
-            size="sm"
-            ariaLabel={m.fin_col_active()}
-            disabled={!canWrite}
-            onchange={(checked) => toggleActive(s, checked)}
-          />
-        {/key}
-      {/if}
-    {/snippet}
+      {/snippet}
     </DataTable>
   {/if}
 </PageShell>

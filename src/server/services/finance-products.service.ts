@@ -15,39 +15,68 @@ export async function listProducts(ctx: CoreCtx) {
       group by p.id order by revenue desc, p.name
     `)) as unknown as Array<Record<string, unknown>>;
     return rows.map((r) => ({
-      id: String(r.id), code: String(r.code), name: String(r.name),
+      id: String(r.id),
+      code: String(r.code),
+      name: String(r.name),
       category: r.category != null ? String(r.category) : null,
-      unitPrice: r.unit_price != null ? Number(r.unit_price) : null, active: r.active === true,
-      billed: Number(r.billed), revenue: Number(r.revenue),
+      unitPrice: r.unit_price != null ? Number(r.unit_price) : null,
+      active: r.active === true,
+      billed: Number(r.billed),
+      revenue: Number(r.revenue),
     }));
   });
 }
 
 export async function upsertProduct(
-  ctx: CoreCtx, p: { code: string; name: string; category: string | null; unitPrice: number | null; active: boolean },
+  ctx: CoreCtx,
+  p: {
+    code: string;
+    name: string;
+    category: string | null;
+    unitPrice: number | null;
+    active: boolean;
+  },
 ) {
   await withOrgCore(ctx, (tx) =>
-    tx.insert(finProducts).values({
-      orgId: ctx.tenantId, code: p.code, name: p.name, category: p.category,
-      unitPrice: p.unitPrice == null ? null : String(p.unitPrice), active: p.active, updatedAt: new Date(),
-    }).onConflictDoUpdate({
-      target: [finProducts.orgId, finProducts.code],
-      set: { name: p.name, category: p.category, unitPrice: p.unitPrice == null ? null : String(p.unitPrice), active: p.active, updatedAt: new Date() },
-    }),
+    tx
+      .insert(finProducts)
+      .values({
+        orgId: ctx.tenantId,
+        code: p.code,
+        name: p.name,
+        category: p.category,
+        unitPrice: p.unitPrice == null ? null : String(p.unitPrice),
+        active: p.active,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [finProducts.orgId, finProducts.code],
+        set: {
+          name: p.name,
+          category: p.category,
+          unitPrice: p.unitPrice == null ? null : String(p.unitPrice),
+          active: p.active,
+          updatedAt: new Date(),
+        },
+      }),
   );
   await bustFinanceCache(ctx);
 }
 
 export async function deactivateProduct(ctx: CoreCtx, id: string) {
   await withOrgCore(ctx, (tx) =>
-    tx.update(finProducts).set({ active: false, updatedAt: new Date() })
+    tx
+      .update(finProducts)
+      .set({ active: false, updatedAt: new Date() })
       .where(and(eq(finProducts.id, id), eq(finProducts.orgId, ctx.tenantId))),
   );
   await bustFinanceCache(ctx);
 }
 
 /** Seed the catalog from distinct billed codes (latest description as name); link items. */
-export async function importFromBilling(ctx: CoreCtx): Promise<{ created: number; linked: number }> {
+export async function importFromBilling(
+  ctx: CoreCtx,
+): Promise<{ created: number; linked: number }> {
   return withOrgCore(ctx, async (tx) => {
     const created = (await tx.execute(sql`
       insert into fin_products (org_id, code, name)
@@ -93,7 +122,15 @@ export async function catalogCoverage(ctx: CoreCtx) {
            and not exists (select 1 from fin_products p where p.org_id = i.org_id and p.code = i.code))::int as billed_not_in_catalog,
         (select count(*) from fin_products p where p.org_id = ${ctx.tenantId}
            and not exists (select 1 from fin_invoice_items i where i.org_id = p.org_id and i.code = p.code))::int as catalog_never_billed
-    `)) as unknown as Array<{ cataloged: number; billed_not_in_catalog: number; catalog_never_billed: number }>;
-    return { cataloged: Number(row.cataloged), billedNotInCatalog: Number(row.billed_not_in_catalog), catalogNeverBilled: Number(row.catalog_never_billed) };
+    `)) as unknown as Array<{
+      cataloged: number;
+      billed_not_in_catalog: number;
+      catalog_never_billed: number;
+    }>;
+    return {
+      cataloged: Number(row.cataloged),
+      billedNotInCatalog: Number(row.billed_not_in_catalog),
+      catalogNeverBilled: Number(row.catalog_never_billed),
+    };
   });
 }

@@ -27,8 +27,14 @@ describe('pos schema column sets match their migrations', () => {
   it('pos_settings owns `surcharges` (20260725130000)', () => {
     expect(cols(posSettings)).toEqual(
       [
-        'org_id', 'methods', 'currency', 'surcharges',
-        'require_customer', 'allow_price_override', 'created_at', 'updated_at',
+        'org_id',
+        'methods',
+        'currency',
+        'surcharges',
+        'require_customer',
+        'allow_price_override',
+        'created_at',
+        'updated_at',
       ].sort(),
     );
   });
@@ -38,10 +44,27 @@ describe('pos schema column sets match their migrations', () => {
     expect(c).not.toContain('surcharges');
     expect(c).toEqual(
       [
-        'id', 'org_id', 'human_id', 'shift_id', 'party_id', 'crm_contact_id',
-        'customer_name', 'status', 'subtotal', 'discount', 'total', 'currency',
-        'note', 'stock_entry_id', 'stock_warning', 'invoice_provider_ref',
-        'created_by', 'submitted_at', 'voided_at', 'voided_by', 'metadata',
+        'id',
+        'org_id',
+        'human_id',
+        'shift_id',
+        'party_id',
+        'crm_contact_id',
+        'customer_name',
+        'status',
+        'subtotal',
+        'discount',
+        'total',
+        'currency',
+        'note',
+        'stock_entry_id',
+        'stock_warning',
+        'invoice_provider_ref',
+        'created_by',
+        'submitted_at',
+        'voided_at',
+        'voided_by',
+        'metadata',
       ].sort(),
     );
   });
