@@ -142,6 +142,7 @@ export async function findDueJobs(
     )
     .orderBy(
       sql`case
+        when ${metaSyncJobs.createdAt} < now() - interval '15 minutes' then 0
         when ${metaSyncJobs.kind} = 'messages_tail' then 0
         when ${metaSyncJobs.kind} = 'messages' then 1
         else 2

@@ -21,6 +21,7 @@ export const CONVERSATIONS_FOCUSED_BRAIN_NAME = 'All Conversations';
 export const WHATSAPP_FOCUSED_BRAIN_NAME = CONVERSATIONS_FOCUSED_BRAIN_NAME;
 const DEFAULT_CONVERSATION_BATCH = 50;
 const DEFAULT_CHUNK_MAX_CHARS = 6000;
+const DEFAULT_CONTEXT_MAX_CHARS = 6000;
 const EMBEDDING_BATCH_SIZE = 64;
 const EMBEDDING_BATCH_CONCURRENCY = Math.min(
   8,
@@ -442,7 +443,10 @@ export function renderConversationRelationshipContext(
         .join(' | ')}`,
     );
   }
-  return lines.join('\n');
+  const rendered = lines.join('\n');
+  return rendered.length <= DEFAULT_CONTEXT_MAX_CHARS
+    ? rendered
+    : `${rendered.slice(0, DEFAULT_CONTEXT_MAX_CHARS - 1)}…`;
 }
 
 /**
@@ -1498,6 +1502,20 @@ async function persistConversations(
   if (prepared.length === 0) return { deletedChunks: 0 };
   const qdrantStorage = qdrantOwnsKnowledgeEmbeddings();
   return withOrgCore(ctx, async (tx) => {
+    if (qdrantStorage) {
+      const generations = (await tx.execute(sql`
+        select storage_mode
+        from brain_vector_generations
+        where is_active and enqueue_enabled
+        order by activated_at desc nulls last
+        limit 2
+      `)) as unknown as Array<{ storage_mode: string }>;
+      if (generations.length !== 1 || generations[0].storage_mode !== 'qdrant') {
+        throw new Error(
+          'BRAIN_VECTOR_STORAGE_MODE=qdrant requires one active Qdrant-owned vector generation',
+        );
+      }
+    }
     let deletedChunks = 0;
     for (const conversation of prepared) {
       // A reconcile page can contain hundreds of documents whose hashes and

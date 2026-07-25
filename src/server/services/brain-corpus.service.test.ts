@@ -11,6 +11,8 @@ import {
   normalizeWhatsAppConversationSegments,
   preparedConversationNeedsWrite,
   qdrantOwnsKnowledgeEmbeddings,
+  renderConversationRelationshipContext,
+  type ConversationRelationshipContext,
   type WhatsAppMessageInput,
 } from './brain-corpus.service';
 
@@ -177,6 +179,36 @@ describe('brain corpus all-channel normalization', () => {
     expect(first.chunks[0].contextPrefix).toContain('confirmed');
     expect(first.contentHash).not.toBe(changed.contentHash);
     expect(first.sourceRevision).not.toBe(changed.sourceRevision);
+  });
+
+  it('bounds relationship context before it is sent to either embedding owner', () => {
+    const context = {
+      contact: {
+        id: 'contact-1',
+        humanId: 'CRM-1',
+        displayName: 'Ada',
+        lifecycleOverride: null,
+        source: 'instagram',
+        customFields: {},
+      },
+      party: null,
+      identities: [],
+      tags: [],
+      activities: Array.from({ length: 10 }, (_, index) => ({
+        kind: 'note',
+        body: `${index}:${'x'.repeat(2000)}`,
+        occurredAt: '2026-07-25T00:00:00Z',
+      })),
+      finance: { invoiceCount: 0, total: 0, lastIssuedAt: null, recentInvoices: [] },
+      bookings: [],
+      salesOrders: [],
+      posTickets: [],
+      memberships: [],
+    } satisfies ConversationRelationshipContext;
+
+    const rendered = renderConversationRelationshipContext(context);
+    expect(rendered.length).toBe(6000);
+    expect(rendered.endsWith('…')).toBe(true);
   });
 });
 
