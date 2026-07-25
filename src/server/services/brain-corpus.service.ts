@@ -932,6 +932,43 @@ async function scanConversationKeys(
   };
 }
 
+async function scanConversationSourceKeys(
+  tx: CoreTx,
+  sourceId: string,
+  channel: string,
+  accountId: string,
+  cursor: ConversationCursor | null,
+  limit: number,
+): Promise<{ keys: WhatsAppConversationKey[]; hasMore: boolean }> {
+  const accountFilter =
+    accountId === 'default'
+      ? sql`coalesce(nullif(trim(m.account_id), ''), 'default') = 'default'`
+      : sql`m.account_id = ${accountId}`;
+  const cursorFilter = cursor ? sql`and m.chat_id > ${cursor.chatId}` : sql``;
+  const rows = (await tx.execute(sql`
+    select m.chat_id
+    from messages m
+    where m.org_id = current_setting('app.current_org_id', true)
+      and m.channel = ${channel}
+      and ${accountFilter}
+      and ${eligibleConversationMessagePredicate('m')}
+      ${cursorFilter}
+    group by m.chat_id
+    order by m.chat_id
+    limit ${limit + 1}
+  `)) as unknown as Array<{ chat_id: string }>;
+  const hasMore = rows.length > limit;
+  return {
+    keys: rows.slice(0, limit).map((row) => ({
+      channel,
+      accountId,
+      chatId: row.chat_id,
+      sourceId,
+    })),
+    hasMore,
+  };
+}
+
 function keyValues(keys: WhatsAppConversationKey[]) {
   return sql.join(
     keys.map((key) => sql`(${key.channel}::text, ${key.accountId}::text, ${key.chatId}::text)`),
@@ -957,12 +994,24 @@ async function loadConversationRows(
   tx: CoreTx,
   keys: WhatsAppConversationKey[],
   onlyMonths?: string[],
+  exactSource = false,
 ): Promise<Map<string, WhatsAppMessageInput[]>> {
   const out = new Map<string, WhatsAppMessageInput[]>();
   if (keys.length === 0) return out;
   const monthFilter = onlyMonths?.length
     ? sql`where to_char(coalesce(occurred_at, created_at) at time zone 'UTC', 'YYYY-MM') = any(${textArray(onlyMonths)})`
     : sql``;
+  const sourceFilter = exactSource
+    ? sql`(
+          m.channel,
+          coalesce(nullif(m.account_id, ''), 'default'),
+          m.chat_id
+        ) in (${keyValues(keys)})`
+    : sql`(
+          lower(trim(m.channel)),
+          coalesce(nullif(trim(m.account_id), ''), 'default'),
+          m.chat_id
+        ) in (${keyValues(keys)})`;
   const rows = (await tx.execute(sql`
     select normalized_channel as channel, normalized_account_id as account_id,
       chat_id, id::text as id, message_id, direction, content,
@@ -979,11 +1028,7 @@ async function loadConversationRows(
       from messages m
       where m.org_id = current_setting('app.current_org_id', true)
         and ${eligibleConversationMessagePredicate('m')}
-        and (
-          lower(trim(m.channel)),
-          coalesce(nullif(trim(m.account_id), ''), 'default'),
-          m.chat_id
-        ) in (${keyValues(keys)})
+        and ${sourceFilter}
       order by lower(trim(m.channel)),
         coalesce(nullif(trim(m.account_id), ''), 'default'),
         m.chat_id,
@@ -1113,9 +1158,10 @@ async function prepareConversations(
   tx: CoreTx,
   keys: WhatsAppConversationKey[],
   onlyMonths?: string[],
+  exactSource = false,
 ): Promise<PreparedConversation[]> {
   const [rowsByKey, contextByKey] = await Promise.all([
-    loadConversationRows(tx, keys, onlyMonths),
+    loadConversationRows(tx, keys, onlyMonths, exactSource),
     loadConversationRelationshipContexts(tx, keys),
   ]);
   const normalized = keys
@@ -1557,14 +1603,18 @@ export async function backfillConversationSource(
   const normalizedAccountId = accountId.trim();
   const limit = Math.max(1, Math.min(500, Math.floor(opts?.limit ?? DEFAULT_CONVERSATION_BATCH)));
   const source = await ensureConversationSource(ctx, normalizedChannel, normalizedAccountId);
-  const sourceByChannelAccount = new Map([
-    [`${normalizedChannel}\u0000${normalizedAccountId}`, source.id],
-  ]);
   const cursor = decodeConversationCursor(opts?.cursor);
   assertConversationSourceCursor(cursor, normalizedChannel, normalizedAccountId);
   const preparedPage = await withOrgCore(ctx, async (tx) => {
-    const page = await scanConversationKeys(tx, sourceByChannelAccount, cursor, limit);
-    return { ...page, prepared: await prepareConversations(tx, page.keys) };
+    const page = await scanConversationSourceKeys(
+      tx,
+      source.id,
+      normalizedChannel,
+      normalizedAccountId,
+      cursor,
+      limit,
+    );
+    return { ...page, prepared: await prepareConversations(tx, page.keys, undefined, true) };
   });
   const counts = await runPreparedBatch(ctx, preparedPage.prepared);
   const last = preparedPage.keys.at(-1) ?? null;
@@ -1604,7 +1654,7 @@ export async function syncConversation(
   const source = await ensureConversationSource(ctx, channel, accountId);
   const key = { channel, accountId, chatId, sourceId: source.id };
   const months = opts?.months?.filter((month) => /^\d{4}-\d{2}$/.test(month));
-  const prepared = await withOrgCore(ctx, (tx) => prepareConversations(tx, [key], months));
+  const prepared = await withOrgCore(ctx, (tx) => prepareConversations(tx, [key], months, true));
   if (prepared.length === 0) {
     const reconciled = await reconcileDeletedConversationDocuments(ctx, {
       channel,
