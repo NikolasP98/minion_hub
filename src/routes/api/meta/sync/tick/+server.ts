@@ -23,11 +23,14 @@ const STALE_ENQUEUE_MS = 6 * 60 * 60_000; // spec §6: re-enqueue a kind once it
  * not a code change; no staleness constant here can beat the cron period.
  */
 const MESSAGE_TAIL_STALE_MS = 0;
-/** Two slots per connected org so one tick can cover every org's tail job
- * (findDueJobs reserves half the slots for that lane) without letting a large
- * tenant list turn one tick into an unbounded run. */
-const CLAIM_LIMIT_MIN = 6;
-const CLAIM_LIMIT_MAX = 24;
+/** One cheap tail slice per connected org, so a tick covers every org's
+ * freshness lane. Backlog slices are orders of magnitude more expensive (up to
+ * 150 posts / 100 conversations / 90 ad rows each, run sequentially in this one
+ * request), so that lane stays at a small fixed cap no matter how many orgs
+ * connect — it is catch-up work, not latency-sensitive. */
+const TAIL_CLAIM_MIN = 3;
+const TAIL_CLAIM_MAX = 24;
+const BACKLOG_CLAIM_LIMIT = 3;
 
 /**
  * GET/POST /api/meta/sync/tick — cron entrypoint (Vercel Cron only ever sends
@@ -70,7 +73,8 @@ const handle: RequestHandler = async ({ request }) => {
   }
 
   const due = await findDueJobs(
-    Math.min(CLAIM_LIMIT_MAX, Math.max(CLAIM_LIMIT_MIN, orgIds.length * 2)),
+    Math.min(TAIL_CLAIM_MAX, Math.max(TAIL_CLAIM_MIN, orgIds.length)),
+    BACKLOG_CLAIM_LIMIT,
   );
   const results: Array<{
     jobId: string;

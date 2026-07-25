@@ -127,22 +127,25 @@ export async function enqueueJob(
  * (mirrors finance's findResumableJobs) — the caller builds a per-org CoreCtx
  * and does all real work through withOrgCore.
  *
- * The tail lane re-enqueues one job per connected org on every tick, so a
- * single priority ordering would let it own every claim slot once there are
- * more orgs than slots and freeze posts/ads/messages forever. Each side is
- * therefore drawn separately: the tail lane leads with half the slots
- * reserved, backlog lanes take the rest, and whichever side is short gives
- * its unused capacity to the other.
+ * The two lanes are drawn under SEPARATE budgets rather than one shared limit,
+ * because they cost wildly different amounts and starve each other in opposite
+ * directions. A tail slice is one Graph page per target; a backlog slice
+ * paginates up to 150 posts / 100 conversations / 90 ad rows with a 55s
+ * per-request timeout. One shared limit either lets the tail lane (re-enqueued
+ * for every org on every tick) freeze posts/ads/messages forever, or lets the
+ * backlog lane blow up the tick's wall clock when it is scaled for tail
+ * coverage. Sizing them independently is what keeps both bounded.
  */
 export async function findDueJobs(
-  limit = 3,
+  tailLimit = 3,
+  backlogLimit = 3,
 ): Promise<Array<{ jobId: string; orgId: string; kind: string }>> {
   const db = getCoreDb();
   const due = or(
     eq(metaSyncJobs.status, 'queued'),
     and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause)),
   );
-  const lane = (tail: boolean) =>
+  const lane = (tail: boolean, limit: number) =>
     db
       .select({ jobId: metaSyncJobs.id, orgId: metaSyncJobs.orgId, kind: metaSyncJobs.kind })
       .from(metaSyncJobs)
@@ -156,10 +159,9 @@ export async function findDueJobs(
         sql`case when ${metaSyncJobs.kind} = 'messages' then 0 else 1 end`,
         metaSyncJobs.createdAt,
       )
-      .limit(limit);
-  const [tail, backlog] = await Promise.all([lane(true), lane(false)]);
-  const reserved = Math.max(1, Math.floor(limit / 2));
-  return [...tail.slice(0, reserved), ...backlog, ...tail.slice(reserved)].slice(0, limit);
+      .limit(Math.max(0, Math.trunc(limit)));
+  const [tail, backlog] = await Promise.all([lane(true, tailLimit), lane(false, backlogLimit)]);
+  return [...tail, ...backlog];
 }
 
 /** Keep the high-frequency freshness lane bounded without touching active

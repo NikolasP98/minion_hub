@@ -31,11 +31,12 @@ as $$
 $$;
 
 -- A worker ack DELETES the outbox row, so "no outbox row" is ambiguous: it is
--- either a chunk that has been indexed, or a chunk that was written before the
--- generation started enqueueing and has therefore never reached Qdrant. Only a
--- completed reconcile cycle proves the whole corpus was swept, so until the
--- active generation reports one, a chunk with no outbox row counts as pending
--- rather than falling through to 'ready'.
+-- either a chunk that has been indexed, or a chunk that never reached Qdrant
+-- because nothing enqueued it. The only proof is a reconcile cycle that
+-- completed AFTER the chunk was last written — last_completed_at is monotonic,
+-- so its mere presence proves nothing about later writes. A chunk with no
+-- outbox row newer than the last completed sweep therefore counts as pending
+-- instead of falling through to 'ready'.
 create or replace function public.brain_vector_app_source_state(p_source_id uuid)
 returns text
 language sql
@@ -51,12 +52,12 @@ as $$
     where generation.is_active and generation.enqueue_enabled
     limit 1
   ), swept as (
-    select exists (select 1 from active where active.last_completed_at is not null) as ok
+    select coalesce((select last_completed_at from active), '-infinity'::timestamptz) as at
   )
   select case
     when count(*) filter (where job.status = 'dead') > 0 then 'failed'
     when count(*) filter (where job.status in ('queued', 'running')) > 0 then 'queued'
-    when count(*) filter (where job.chunk_id is null) > 0 and not (select ok from swept)
+    when max(chunk.updated_at) filter (where job.chunk_id is null) > (select at from swept)
       then 'queued'
     else 'ready'
   end
@@ -83,7 +84,7 @@ as $$
     where generation.is_active and generation.enqueue_enabled
     limit 1
   ), swept as (
-    select exists (select 1 from active where active.last_completed_at is not null) as ok
+    select coalesce((select last_completed_at from active), '-infinity'::timestamptz) as at
   )
   select count(*)
   from public.knowledge_chunks chunk
@@ -94,7 +95,7 @@ as $$
     and chunk.source_id = p_source_id
     and (
       job.status in ('queued', 'running', 'dead')
-      or (job.chunk_id is null and not (select ok from swept))
+      or (job.chunk_id is null and chunk.updated_at > (select at from swept))
     );
 $$;
 
