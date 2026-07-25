@@ -103,6 +103,31 @@ describe('all-channel conversation brain dirty jobs', () => {
     ]);
   });
 
+  it('skips a malformed channel without dropping valid rows in the same batch', () => {
+    const rows = [
+      {
+        channel: undefined as never,
+        accountId: 'a1',
+        chatId: 'bad',
+        isGroup: false,
+        isBot: false,
+        content: 'skip',
+      },
+      {
+        channel: 'telegram',
+        accountId: 'a1',
+        chatId: 'good',
+        isGroup: false,
+        isBot: false,
+        content: 'keep',
+      },
+    ];
+
+    expect(collectDirtyConversations(rows)).toEqual([
+      { channel: 'telegram', accountId: 'a1', chatId: 'good', months: [] },
+    ]);
+  });
+
   it('enqueues one durable batch job for distinct conversations', async () => {
     await enqueueConversationBrainChanges('org-1', [
       {

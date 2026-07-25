@@ -21,7 +21,7 @@ import { gatewayHeartbeats } from '@minion-stack/db/schema';
 import { getCoreDb } from '$server/db/pg-client';
 import { getDb } from '$server/db/client';
 import { probeWsUpgrade } from '$server/services/gateway-lease.service';
-import { listGatewaysForAdmin } from '$server/services/gateway.pg.service';
+import { listGatewaysForOrgAdmin } from '$server/services/gateway.pg.service';
 import { C4_MODEL, type C4Model } from './architecture-c4.model';
 
 export type ArchNodeKind =
@@ -434,7 +434,7 @@ function gatewayNodeId(row: { name: string; url: string }): string {
   return 'gateway-default';
 }
 
-async function probeGateways(): Promise<GatewayProbe[]> {
+async function probeGateways(orgId: string): Promise<GatewayProbe[]> {
   let rows: Array<{
     id: string;
     name: string;
@@ -443,7 +443,7 @@ async function probeGateways(): Promise<GatewayProbe[]> {
     legacyServerId?: string | null;
   }> = [];
   try {
-    rows = (await listGatewaysForAdmin()) as typeof rows;
+    rows = (await listGatewaysForOrgAdmin(orgId)) as typeof rows;
   } catch {
     return [];
   }
@@ -505,7 +505,7 @@ function fmtUptime(ms: number): string {
  * groups concurrently; individual failures degrade to `down`/`unknown` per
  * node, never throw.
  */
-export async function probeArchitecture(): Promise<ArchitectureSnapshot> {
+export async function probeArchitecture(orgId: string): Promise<ArchitectureSnapshot> {
   const now = Date.now();
   const [pg, turso, gateways, site, ghcr] = await Promise.all([
     timed(async () => {
@@ -514,7 +514,7 @@ export async function probeArchitecture(): Promise<ArchitectureSnapshot> {
     timed(async () => {
       await getDb().run(sql`select 1`);
     }),
-    probeGateways(),
+    probeGateways(orgId),
     httpProbe('https://minion-ai.org'),
     httpProbe('https://ghcr.io'),
   ]);

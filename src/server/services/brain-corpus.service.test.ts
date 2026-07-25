@@ -224,6 +224,18 @@ describe('brain corpus all-channel cursor', () => {
     const value = { channel: 'instagram', accountId: 'faces', chatId: 'ig-chat-1' };
     expect(decodeConversationCursor(encodeConversationCursor(value))).toEqual(value);
   });
+
+  it('resumes pre-migration WhatsApp cursors without restarting the scan', () => {
+    const legacy = encodeWhatsAppCursor({
+      accountId: '+51922286663',
+      chatId: '51911111111@s.whatsapp.net',
+    });
+    expect(decodeConversationCursor(legacy)).toEqual({
+      channel: 'whatsapp',
+      accountId: '+51922286663',
+      chatId: '51911111111@s.whatsapp.net',
+    });
+  });
 });
 
 describe('brain corpus idempotent persistence', () => {

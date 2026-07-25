@@ -65,7 +65,7 @@ type DirtyIngestRow = Pick<
 export function collectDirtyConversations(rows: DirtyIngestRow[]): DirtyConversation[] {
   const unique = new Map<string, DirtyConversation>();
   for (const row of rows) {
-    const channel = row.channel.trim().toLowerCase();
+    const channel = typeof row.channel === 'string' ? row.channel.trim().toLowerCase() : '';
     if (!channel) continue;
     if (row.isGroup === true || row.isBot === true) continue;
     if (!row.chatId?.trim() || !row.content?.trim()) continue;

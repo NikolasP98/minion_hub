@@ -521,14 +521,13 @@ export function decodeConversationCursor(cursor?: string | null): ConversationCu
       string,
       unknown
     >;
-    if (
-      typeof value.channel !== 'string' ||
-      typeof value.accountId !== 'string' ||
-      typeof value.chatId !== 'string'
-    ) {
+    if (typeof value.accountId !== 'string' || typeof value.chatId !== 'string') {
       return null;
     }
-    return { channel: value.channel, accountId: value.accountId, chatId: value.chatId };
+    // Cursors persisted before the all-channel migration contain only the
+    // WhatsApp account/chat tuple. Preserve that progress across deploys.
+    const channel = typeof value.channel === 'string' ? value.channel : 'whatsapp';
+    return { channel, accountId: value.accountId, chatId: value.chatId };
   } catch {
     return null;
   }
