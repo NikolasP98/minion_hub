@@ -113,12 +113,31 @@ import {
   FULL_HISTORY_SINCE,
   adStoryLinksToRows,
   runJob,
+  sanitizeGraphPagingUrl,
 } from './meta-sync.service';
 
 import { normalizeIgConvo } from './graph-read';
 
 const PAGE_ID = 'page-1';
 const CUSTOMER_ID = 'customer-1';
+
+describe('durable Meta paging cursors', () => {
+  it('removes Graph credentials before a paging URL is persisted', () => {
+    const sanitized = sanitizeGraphPagingUrl(
+      'https://graph.instagram.com/conversations?after=abc&access_token=secret&appsecret_proof=proof&limit=25',
+    );
+    const url = new URL(sanitized!);
+
+    expect(url.searchParams.get('after')).toBe('abc');
+    expect(url.searchParams.get('limit')).toBe('25');
+    expect(url.searchParams.has('access_token')).toBe(false);
+    expect(url.searchParams.has('appsecret_proof')).toBe(false);
+  });
+
+  it('fails closed instead of persisting an unparseable cursor', () => {
+    expect(sanitizeGraphPagingUrl('not a URL')).toBeUndefined();
+  });
+});
 const participants = {
   data: [
     { id: PAGE_ID, name: 'FACES' },

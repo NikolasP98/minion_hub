@@ -8,7 +8,9 @@
  * Resume state across slices is a small JSON blob in `meta_sync_jobs
  * .page_cursor`: `{ i, next? }` — `i` indexes into a deterministic
  * (sorted-by-external-id) target list, `next` is Graph's own pagination
- * cursor for whichever target was mid-page when the slice ended.
+ * cursor for whichever target was mid-page when the slice ended. Secrets are
+ * removed before persistence and restored from the encrypted connection token
+ * only when the next slice issues the request.
  *
  * Connections/assets are read via meta-connections.service.ts (WP4) — this
  * file only WRITES meta_post_insights / meta_ad_insights / messages and the
@@ -164,7 +166,20 @@ export function adTimeWindows(
   }
   return out;
 }
-const serializeResume = (r: Resume): string => JSON.stringify(r);
+export function sanitizeGraphPagingUrl(nextUrl: string | undefined): string | undefined {
+  if (!nextUrl) return undefined;
+  try {
+    const url = new URL(nextUrl);
+    url.searchParams.delete('access_token');
+    url.searchParams.delete('appsecret_proof');
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+const serializeResume = (r: Resume): string =>
+  JSON.stringify({ ...r, next: sanitizeGraphPagingUrl(r.next) });
 
 function decryptOrNull(
   ciphertext: string | null | undefined,
@@ -732,7 +747,7 @@ async function syncPosts(
     const fetchOpts = isIgLogin
       ? { baseUrl: 'https://graph.instagram.com', versioned: false }
       : graphAuthOpts();
-    const pageOpts = isIgLogin ? {} : graphAuthOpts();
+    const pageOpts = { ...(isIgLogin ? {} : graphAuthOpts()), accessToken: token };
 
     // IG-Login (graph.instagram.com) reads the token owner's media at
     // `/me/media` — the OAuth-returned user id is NOT a valid media-node path
@@ -891,7 +906,11 @@ async function syncAds(
     for (let w = w0; w < windows.length; w++) {
       let page =
         resumedAccount && w === w0 && resume.next
-          ? await fetchNextPage<AdInsightRow>(resume.next, { ...graphAuthOpts(), ...adTimeout })
+          ? await fetchNextPage<AdInsightRow>(resume.next, {
+              ...graphAuthOpts(),
+              ...adTimeout,
+              accessToken: userToken,
+            })
           : await adInsights(asset.externalId, userToken, windows[w], {
               ...graphAuthOpts(),
               ...adTimeout,
@@ -934,6 +953,7 @@ async function syncAds(
         page = await fetchNextPage<AdInsightRow>(page.nextCursor, {
           ...graphAuthOpts(),
           ...adTimeout,
+          accessToken: userToken,
         });
       }
       if (accountFailed) break; // skip this account's remaining windows, move to the next account
@@ -979,8 +999,6 @@ async function syncMessages(
   for (let i = resume.i; i < targets.length; i++) {
     const { asset, platform, igLogin } = targets[i];
     const channel = platform === 'messenger' ? 'messenger' : 'instagram';
-    // graph.instagram.com paging.next links are self-contained (no proof/version) — same as media sync.
-    const nextOpts = igLogin ? {} : graphAuthOpts();
 
     let accountId = asset.externalId;
     let pageName = asset.name;
@@ -1014,6 +1032,7 @@ async function syncMessages(
       token = decryptOrNull(asset.pageTokenCiphertext, asset.pageTokenIv);
       if (!token) continue;
     }
+    const nextOpts = { ...(igLogin ? {} : graphAuthOpts()), accessToken: token };
 
     let page =
       i === resume.i && resume.next
