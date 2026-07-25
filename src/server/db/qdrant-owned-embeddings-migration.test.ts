@@ -16,7 +16,20 @@ describe('Qdrant-owned embedding storage migration', () => {
     expect(migration).not.toMatch(/update\s+public\.brain_vector_generations/iu);
   });
 
-  it('only calls a chunk indexed once a reconcile cycle completed after it was written', () => {
+  it('records an ack receipt per chunk so the pending signal both catches and drains', () => {
+    const ack = migration
+      .split('create or replace function')
+      .find((fn) => fn.includes('public.ack_brain_vector_job'));
+    expect(ack).toBeDefined();
+    expect(ack).toContain('returning o.* into acked');
+    expect(ack).toContain(
+      "when acked.desired_operation = 'upsert' then acked.desired_content_hash",
+    );
+    expect(ack).toContain('set vector_indexed_hash = indexed_hash');
+    expect(ack).toContain('chunk.org_id = acked.org_id');
+  });
+
+  it('calls a chunk pending until an ack confirms its current content', () => {
     const statusFns = migration
       .split('create or replace function')
       .filter((fn) => /brain_vector_app_source_(state|pending_count)/u.test(fn));
@@ -24,12 +37,8 @@ describe('Qdrant-owned embedding storage migration', () => {
     for (const fn of statusFns) {
       expect(fn).toContain('left join public.brain_vector_outbox job');
       expect(fn).toContain('job.collection_generation = (select generation from active)');
-      expect(fn).toContain(
-        "select coalesce((select last_completed_at from active), '-infinity'::timestamptz) as at",
-      );
-      expect(fn).toContain('chunk.updated_at');
-      expect(fn).toContain('(select at from swept)');
-      expect(fn).not.toContain('last_completed_at is not null');
+      expect(fn).toContain('chunk.vector_indexed_hash is distinct from chunk.content_hash');
+      expect(fn).not.toContain('last_completed_at');
     }
   });
 
