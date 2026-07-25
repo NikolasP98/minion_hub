@@ -40,6 +40,49 @@
   });
   const rendered = $derived(asyncHtml ?? ssrHtml);
 
+  // Wrap every rendered <table> in a scroll container with a top-right toggle
+  // between side-scroll (default — cells never wrap, avoids the illegible
+  // stacked-word columns on narrow chat panes) and compact (original 100%-width
+  // wrapping). {@html} emits bare <table>, so we enhance imperatively after each
+  // render. ponytail: mode resets to scroll on re-render — only happens while
+  // streaming; a settled message keeps the user's toggle.
+  const ICON_SCROLL =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M3 12h15a3 3 0 1 1 0 6h-4"/><path d="m16 16-2 2 2 2"/><path d="M3 18h7"/></svg>';
+  const ICON_COMPACT =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 8 4 4-4 4"/><path d="M2 12h20"/><path d="m6 8-4 4 4 4"/></svg>';
+  function enhanceTables(root: HTMLElement) {
+    for (const table of root.querySelectorAll<HTMLTableElement>('table')) {
+      if (table.parentElement?.classList.contains('chat-table__scroll')) continue;
+      const wrap = document.createElement('div');
+      wrap.className = 'chat-table';
+      wrap.dataset.mode = 'scroll';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chat-table__toggle';
+      const sync = () => {
+        const scroll = wrap.dataset.mode === 'scroll';
+        btn.innerHTML = scroll ? ICON_SCROLL : ICON_COMPACT;
+        btn.title = scroll ? 'Switch to compact (wrap) view' : 'Switch to side-scroll view';
+        btn.setAttribute('aria-label', btn.title);
+      };
+      btn.addEventListener('click', () => {
+        wrap.dataset.mode = wrap.dataset.mode === 'scroll' ? 'compact' : 'scroll';
+        sync();
+      });
+      sync();
+      const scroller = document.createElement('div');
+      scroller.className = 'chat-table__scroll';
+      table.replaceWith(wrap);
+      scroller.appendChild(table);
+      wrap.append(btn, scroller);
+    }
+  }
+  let body = $state<HTMLElement | null>(null);
+  $effect(() => {
+    void rendered; // re-run after each render replaces innerHTML
+    if (body) enhanceTables(body);
+  });
+
   // Internal links (the assistant cites pages as [label](/path)) navigate within
   // the SPA instead of full-reloading. Event delegation on the wrapper — one
   // listener covers every rendered <a>. External/hash/new-tab links fall through
@@ -57,7 +100,7 @@
   class={`chat-md ${tone === 'user' ? 'chat-md--user' : 'chat-md--assistant'} ${className}`}
   onclick={onLinkClick}
 >
-  <div class="carta-viewer carta-theme__default markdown-body">
+  <div bind:this={body} class="carta-viewer carta-theme__default markdown-body">
     <!-- eslint-disable-next-line svelte/no-at-html-tags — sanitized by carta's DOMPurify sanitizer -->
     {@html rendered}
   </div>
@@ -134,12 +177,52 @@
     font-size: var(--font-size-body);
   }
 
-  /* Tables */
-  .chat-md :global(table) {
+  /* Tables — wrapped in .chat-table (see enhanceTables) with a scroll/compact toggle. */
+  .chat-md :global(.chat-table) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-1);
     margin: var(--space-2) 0;
-    border-collapse: collapse;
+  }
+  .chat-md :global(.chat-table__scroll) {
     width: 100%;
+    overflow-x: auto;
+  }
+  .chat-md :global(.chat-table__toggle) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--control-height-xs);
+    width: var(--control-height-xs);
+    color: var(--color-text-secondary);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-standard),
+      background var(--duration-fast) var(--ease-standard);
+  }
+  .chat-md :global(.chat-table__toggle:hover) {
+    color: var(--color-text-primary);
+    background: var(--color-surface-3);
+  }
+  .chat-md :global(table) {
+    border-collapse: collapse;
     font-size: var(--font-size-body);
+  }
+  /* Side-scroll (default): cells never wrap; table can exceed the pane and scroll. */
+  .chat-md :global(.chat-table[data-mode='scroll'] table) {
+    width: max-content;
+    min-width: 100%;
+  }
+  .chat-md :global(.chat-table[data-mode='scroll'] th),
+  .chat-md :global(.chat-table[data-mode='scroll'] td) {
+    white-space: nowrap;
+  }
+  /* Compact: original full-width wrapping. */
+  .chat-md :global(.chat-table[data-mode='compact'] table) {
+    width: 100%;
   }
   .chat-md :global(th),
   .chat-md :global(td) {
