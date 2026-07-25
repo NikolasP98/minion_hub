@@ -55,7 +55,12 @@ import {
 } from './graph-read';
 import { insertMessages, type IngestRow } from '../messages.service';
 import { claimJob, finishJob, getJobById, recordProgress, requeue } from './meta-sync-jobs.service';
-import { recordPostMedia, claimPendingMedia, markMirrored, markFailed } from './meta-post-media.service';
+import {
+  recordPostMedia,
+  claimPendingMedia,
+  markMirrored,
+  markFailed,
+} from './meta-post-media.service';
 import { upsertAdPosts, type AdPostInsertRow } from './meta-ad-posts.service';
 
 /**
@@ -92,7 +97,7 @@ export function computeAdsUntil(now: Date = new Date()): string {
 // Full-history "Sync now" windows (POST /api/meta/sync/run?full=1)
 // ---------------------------------------------------------------------------
 
-export type SyncKind = 'posts' | 'ads' | 'messages';
+export type SyncKind = 'posts' | 'ads' | 'messages' | 'messages_tail';
 
 /** Facebook's founding year — Graph accepts an arbitrarily old `since`, so this is effectively "everything". */
 export const FULL_HISTORY_SINCE = '2004-01-01';
@@ -141,7 +146,11 @@ function parseResume(pageCursor: string | null): Resume {
  * Meta rejects daily×ad-level insights over long ranges with "Please reduce
  * the amount of data you're asking for" (code 1) — pull quarter-sized windows.
  */
-export function adTimeWindows(since: string, until: string, chunkDays = 90): Array<{ since: string; until: string }> {
+export function adTimeWindows(
+  since: string,
+  until: string,
+  chunkDays = 90,
+): Array<{ since: string; until: string }> {
   const DAY = 86_400_000;
   const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
   const end = Date.parse(`${until}T00:00:00Z`);
@@ -157,7 +166,10 @@ export function adTimeWindows(since: string, until: string, chunkDays = 90): Arr
 }
 const serializeResume = (r: Resume): string => JSON.stringify(r);
 
-function decryptOrNull(ciphertext: string | null | undefined, iv: string | null | undefined): string | null {
+function decryptOrNull(
+  ciphertext: string | null | undefined,
+  iv: string | null | undefined,
+): string | null {
   if (!ciphertext || !iv) return null;
   try {
     return decrypt(ciphertext, iv);
@@ -207,7 +219,9 @@ function extractParticipantNames(participants: unknown): Map<string, string> {
   return map;
 }
 
-type ConvoMessage = NonNullable<Conversation['messages']>['data'] extends Array<infer M> | undefined ? M : never;
+type ConvoMessage = NonNullable<Conversation['messages']>['data'] extends Array<infer M> | undefined
+  ? M
+  : never;
 
 /**
  * `chatId` is always the customer's participant id (both directions — matches
@@ -230,7 +244,9 @@ export function toMetaIngestRow(args: {
   if (!fromId) return null;
   const direction: 'inbound' | 'outbound' = fromId === args.pageExternalId ? 'outbound' : 'inbound';
   const participantIds = extractParticipantIds(args.participants);
-  const customerId = participantIds.find((id) => id !== args.pageExternalId) ?? (direction === 'inbound' ? fromId : null);
+  const customerId =
+    participantIds.find((id) => id !== args.pageExternalId) ??
+    (direction === 'inbound' ? fromId : null);
   if (!customerId) return null; // can't resolve the non-page side (e.g. malformed participants) — skip
   const occurredAt = args.message.created_time ? Date.parse(args.message.created_time) : NaN;
   // Outbound = the page authored it → its catalog name. Inbound = the
@@ -426,7 +442,12 @@ async function upsertPostInsights(ctx: CoreCtx, rows: PostInsightRow[]): Promise
         .insert(metaPostInsights)
         .values(chunk)
         .onConflictDoUpdate({
-          target: [metaPostInsights.orgId, metaPostInsights.postId, metaPostInsights.metric, metaPostInsights.period],
+          target: [
+            metaPostInsights.orgId,
+            metaPostInsights.postId,
+            metaPostInsights.metric,
+            metaPostInsights.period,
+          ],
           set: {
             value: sql`excluded.value`,
             permalink: sql`excluded.permalink`,
@@ -623,12 +644,19 @@ async function collectPromotedStoryIds(
       // that post → flags it 'boosted' via the same is_promoted path as FB story
       // ids. Dark IG creatives (most ads) match no organic post — harmless no-op.
       if (link.igMediaId) storyIds.add(link.igMediaId);
-      if (link.storyId && link.thumbnailUrl) darkPostThumbnails.set(link.storyId, link.thumbnailUrl);
+      if (link.storyId && link.thumbnailUrl)
+        darkPostThumbnails.set(link.storyId, link.thumbnailUrl);
     }
     await upsertAdPosts(ctx, adStoryLinksToRows(ctx.tenantId, links));
   }
   for (const [postId, thumbnailUrl] of darkPostThumbnails) {
-    await recordPostMedia(ctx, { orgId: ctx.tenantId, platform: 'fb', postId, sourceUrl: thumbnailUrl, mediaType: null });
+    await recordPostMedia(ctx, {
+      orgId: ctx.tenantId,
+      platform: 'fb',
+      postId,
+      sourceUrl: thumbnailUrl,
+      mediaType: null,
+    });
   }
   return { storyIds, failed };
 }
@@ -657,7 +685,13 @@ async function syncPosts(
 
   const since = job.since ?? defaultSinceDate();
   const resume = parseResume(job.pageCursor);
-  const counts = { postsProcessed: 0, metricsDenied: 0, metricsSkipped: 0, igSkipped: 0, adStoryFetchFailed: 0 };
+  const counts = {
+    postsProcessed: 0,
+    metricsDenied: 0,
+    metricsSkipped: 0,
+    igSkipped: 0,
+    adStoryFetchFailed: 0,
+  };
   const rowsToUpsert: PostInsightRow[] = [];
 
   // read_insights is permanently unobtainable for this app (spec §10) — the
@@ -678,7 +712,9 @@ async function syncPosts(
     // instagram_business_account) always has parentPageId set.
     const isIgLogin = platform === 'ig' && !asset.parentPageId;
     const parentPage =
-      platform === 'ig' && asset.parentPageId ? pageAssets.find((p) => p.externalId === asset.parentPageId) : undefined;
+      platform === 'ig' && asset.parentPageId
+        ? pageAssets.find((p) => p.externalId === asset.parentPageId)
+        : undefined;
     const token =
       platform === 'fb'
         ? decryptOrNull(asset.pageTokenCiphertext, asset.pageTokenIv)
@@ -693,7 +729,9 @@ async function syncPosts(
     // IG-Login media reads hit graph.instagram.com directly (unversioned, no
     // Page/appsecret_proof in the loop) — see graph-read.ts's `versioned` opt
     // and the spec's §2.6 appsecret_proof caveat (default OFF for this host).
-    const fetchOpts = isIgLogin ? { baseUrl: 'https://graph.instagram.com', versioned: false } : graphAuthOpts();
+    const fetchOpts = isIgLogin
+      ? { baseUrl: 'https://graph.instagram.com', versioned: false }
+      : graphAuthOpts();
     const pageOpts = isIgLogin ? {} : graphAuthOpts();
 
     // IG-Login (graph.instagram.com) reads the token owner's media at
@@ -713,7 +751,12 @@ async function syncPosts(
     for (;;) {
       if (!page.ok) {
         if (page.error === 'token_expired') {
-          return { cursor: null, counts, tokenExpired: true, expiredConnectionId: asset.connectionId };
+          return {
+            cursor: null,
+            counts,
+            tokenExpired: true,
+            expiredConnectionId: asset.connectionId,
+          };
         }
         break; // permission/other error on this asset — tolerate, move to next target
       }
@@ -763,12 +806,20 @@ async function syncPosts(
               : await igMediaInsights(post.id, token, mediaType ?? 'IMAGE', graphAuthOpts());
           if (!insights.ok) {
             if (insights.error === 'token_expired') {
-              return { cursor: null, counts, tokenExpired: true, expiredConnectionId: asset.connectionId };
+              return {
+                cursor: null,
+                counts,
+                tokenExpired: true,
+                expiredConnectionId: asset.connectionId,
+              };
             }
             counts.metricsDenied++;
             insightsDenied = true;
           } else {
-            const { rows } = metricInsightsToRows(insights.data ?? [], { ...postMeta, postId: post.id });
+            const { rows } = metricInsightsToRows(insights.data ?? [], {
+              ...postMeta,
+              postId: post.id,
+            });
             rowsToUpsert.push(...rows);
           }
         }
@@ -802,8 +853,15 @@ async function safeMirrorPendingMedia(ctx: CoreCtx, counts: Record<string, numbe
   }
 }
 
-async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job: MetaSyncJob): Promise<SliceResult> {
-  const targets = assets.filter((a) => a.kind === 'ad_account').sort((a, b) => a.externalId.localeCompare(b.externalId));
+async function syncAds(
+  ctx: CoreCtx,
+  userToken: string,
+  assets: MetaAsset[],
+  job: MetaSyncJob,
+): Promise<SliceResult> {
+  const targets = assets
+    .filter((a) => a.kind === 'ad_account')
+    .sort((a, b) => a.externalId.localeCompare(b.externalId));
   const resume = parseResume(job.pageCursor);
   const counts: { adRowsUpserted: number; accountsSkipped: number; skipErrors?: string[] } = {
     adRowsUpserted: 0,
@@ -834,7 +892,10 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
       let page =
         resumedAccount && w === w0 && resume.next
           ? await fetchNextPage<AdInsightRow>(resume.next, { ...graphAuthOpts(), ...adTimeout })
-          : await adInsights(asset.externalId, userToken, windows[w], { ...graphAuthOpts(), ...adTimeout });
+          : await adInsights(asset.externalId, userToken, windows[w], {
+              ...graphAuthOpts(),
+              ...adTimeout,
+            });
 
       let accountFailed = false;
       for (;;) {
@@ -844,13 +905,19 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
           // Swallowed per-asset errors have twice hidden real regressions — keep
           // the first few (sanitized upstream by graph-read) in the job counts.
           if ((counts.skipErrors ??= []).length < 3) {
-            counts.skipErrors.push(`${asset.externalId} ${windows[w].since}: ${page.error ?? `status ${page.status}`}`);
+            counts.skipErrors.push(
+              `${asset.externalId} ${windows[w].since}: ${page.error ?? `status ${page.status}`}`,
+            );
           }
           accountFailed = true;
           break;
         }
         for (const row of page.data ?? []) {
-          const insertRow = adInsightRowToInsert(row, { orgId: ctx.tenantId, adAccountId: asset.externalId, currency: asset.currency });
+          const insertRow = adInsightRowToInsert(row, {
+            orgId: ctx.tenantId,
+            adAccountId: asset.externalId,
+            currency: asset.currency,
+          });
           if (insertRow) {
             rowsToUpsert.push(insertRow);
             counts.adRowsUpserted++;
@@ -858,10 +925,16 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
         }
         if (counts.adRowsUpserted >= MAX_AD_ROWS_PER_SLICE) {
           await upsertAdInsights(ctx, rowsToUpsert);
-          return { cursor: serializeResume({ i, next: page.nextCursor, cs: windows[w].since }), counts };
+          return {
+            cursor: serializeResume({ i, next: page.nextCursor, cs: windows[w].since }),
+            counts,
+          };
         }
         if (!page.nextCursor) break;
-        page = await fetchNextPage<AdInsightRow>(page.nextCursor, { ...graphAuthOpts(), ...adTimeout });
+        page = await fetchNextPage<AdInsightRow>(page.nextCursor, {
+          ...graphAuthOpts(),
+          ...adTimeout,
+        });
       }
       if (accountFailed) break; // skip this account's remaining windows, move to the next account
     }
@@ -876,6 +949,7 @@ async function syncMessages(
   job: MetaSyncJob,
   tokensByConnection: Map<string, string | null>,
 ): Promise<SliceResult> {
+  const tailOnly = job.kind === 'messages_tail';
   // FB-Login pages carry BOTH Messenger and page-linked-IG conversations; an
   // IG-Login `ig` asset (parentPageId null) carries the account's own IG DMs
   // via graph.instagram.com. `igLogin` flags the latter — its token lives on
@@ -887,8 +961,14 @@ async function syncMessages(
         { asset: a, platform: 'messenger' as const, igLogin: false },
         { asset: a, platform: 'instagram' as const, igLogin: false },
       ]),
-    ...assets.filter((a) => a.kind === 'ig' && !a.parentPageId).map((a) => ({ asset: a, platform: 'instagram' as const, igLogin: true })),
-  ].sort((a, b) => (a.asset.externalId + a.platform + a.igLogin).localeCompare(b.asset.externalId + b.platform + b.igLogin));
+    ...assets
+      .filter((a) => a.kind === 'ig' && !a.parentPageId)
+      .map((a) => ({ asset: a, platform: 'instagram' as const, igLogin: true })),
+  ].sort((a, b) =>
+    (a.asset.externalId + a.platform + a.igLogin).localeCompare(
+      b.asset.externalId + b.platform + b.igLogin,
+    ),
+  );
   const resume = parseResume(job.pageCursor);
   const counts = { conversationsProcessed: 0, messagesInserted: 0, instagramSkipped: 0 };
   // IG-Login self-identity (professional-account id + handle), fetched once per
@@ -915,7 +995,13 @@ async function syncMessages(
       if (!self) {
         const who = await getIgLoginUser(token);
         if (!who.ok || !who.data) {
-          if (who.error === 'token_expired') return { cursor: null, counts, tokenExpired: true, expiredConnectionId: asset.connectionId };
+          if (who.error === 'token_expired')
+            return {
+              cursor: null,
+              counts,
+              tokenExpired: true,
+              expiredConnectionId: asset.connectionId,
+            };
           counts.instagramSkipped++;
           continue;
         }
@@ -939,7 +1025,12 @@ async function syncMessages(
     for (;;) {
       if (!page.ok) {
         if (page.error === 'token_expired') {
-          return { cursor: null, counts, tokenExpired: true, expiredConnectionId: igLogin ? asset.connectionId : undefined };
+          return {
+            cursor: null,
+            counts,
+            tokenExpired: true,
+            expiredConnectionId: igLogin ? asset.connectionId : undefined,
+          };
         }
         // IG conversation read needs manage_messages (until the app is Live +
         // reconnected) — tolerate, Messenger still lands. Any per-target error
@@ -953,7 +1044,9 @@ async function syncMessages(
         // `username` shape; normalize to `name` so toMetaIngestRow resolves the
         // customer handle. Idempotent, so FB-Login convos could pass through too
         // — but they already carry `name`, so only pay it for igLogin.
-        const convo = igLogin ? normalizeIgConvo(rawConvo as Parameters<typeof normalizeIgConvo>[0]) : rawConvo;
+        const convo = igLogin
+          ? normalizeIgConvo(rawConvo as Parameters<typeof normalizeIgConvo>[0])
+          : rawConvo;
         for (const msg of convo.messages?.data ?? []) {
           const row = toMetaIngestRow({
             message: msg,
@@ -966,7 +1059,12 @@ async function syncMessages(
         }
         counts.conversationsProcessed++;
       }
-      if (ingestRows.length > 0) counts.messagesInserted += await insertMessages(ctx.tenantId, null, ingestRows);
+      if (ingestRows.length > 0)
+        counts.messagesInserted += await insertMessages(ctx.tenantId, null, ingestRows);
+      // The freshness lane samples the newest Graph page for every connected
+      // account and finishes. Historical pagination continues independently
+      // in the durable `messages` job.
+      if (tailOnly) break;
       if (counts.conversationsProcessed >= MAX_CONVERSATIONS_PER_SLICE) {
         return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
       }
@@ -1007,7 +1105,11 @@ function classifyExpiry(tokenExpiresAt: Date | null): 'ok' | 'expiring' | 'expir
   return 'ok';
 }
 
-async function markConnectionStatus(ctx: CoreCtx, connectionId: string, status: 'expiring' | 'expired'): Promise<void> {
+async function markConnectionStatus(
+  ctx: CoreCtx,
+  connectionId: string,
+  status: 'expiring' | 'expired',
+): Promise<void> {
   await withOrgCore(ctx, (tx) =>
     tx
       .update(metaConnections)
@@ -1024,7 +1126,10 @@ async function markConnectionStatus(ctx: CoreCtx, connectionId: string, status: 
  * into the existing tick cadence at the `classifyExpiry` "expiring" (<7d)
  * threshold — no new scheduled job (spec §7 "Token refresh hook").
  */
-async function refreshIgConnectionToken(ctx: CoreCtx, connection: MetaConnection): Promise<MetaConnection | null> {
+async function refreshIgConnectionToken(
+  ctx: CoreCtx,
+  connection: MetaConnection,
+): Promise<MetaConnection | null> {
   const token = decryptOrNull(connection.tokenCiphertext, connection.tokenIv);
   if (!token) return null;
   const refreshed = await refreshIgToken({ token });
@@ -1036,16 +1141,30 @@ async function refreshIgConnectionToken(ctx: CoreCtx, connection: MetaConnection
   await withOrgCore(ctx, (tx) =>
     tx
       .update(metaConnections)
-      .set({ tokenCiphertext: ciphertext, tokenIv: iv, tokenExpiresAt, status: 'active', updatedAt: new Date() })
+      .set({
+        tokenCiphertext: ciphertext,
+        tokenIv: iv,
+        tokenExpiresAt,
+        status: 'active',
+        updatedAt: new Date(),
+      })
       .where(and(eq(metaConnections.id, connection.id), eq(metaConnections.orgId, ctx.tenantId))),
   );
-  return { ...connection, tokenCiphertext: ciphertext, tokenIv: iv, tokenExpiresAt, status: 'active' };
+  return {
+    ...connection,
+    tokenCiphertext: ciphertext,
+    tokenIv: iv,
+    tokenExpiresAt,
+    status: 'active',
+  };
 }
 
 /** Cross-org: orgs with a non-revoked Meta connection — feeds the tick's enqueue-if-stale sweep. */
 export async function listConnectedOrgIds(): Promise<string[]> {
   const db = getCoreDb();
-  const rows = (await db.execute(sql`select distinct org_id from meta_connections where status != 'revoked'`)) as unknown as Array<{
+  const rows = (await db.execute(
+    sql`select distinct org_id from meta_connections where status != 'revoked'`,
+  )) as unknown as Array<{
     org_id: string;
   }>;
   return rows.map((r) => r.org_id);
@@ -1078,9 +1197,11 @@ export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
       continue;
     }
     if (expiry === 'expiring') {
-      const refreshed = connection.kind === 'ig_login' ? await refreshIgConnectionToken(ctx, connection) : null;
+      const refreshed =
+        connection.kind === 'ig_login' ? await refreshIgConnectionToken(ctx, connection) : null;
       if (refreshed) connection = refreshed;
-      else if (connection.status !== 'expiring') await markConnectionStatus(ctx, connection.id, 'expiring');
+      else if (connection.status !== 'expiring')
+        await markConnectionStatus(ctx, connection.id, 'expiring');
     }
     usable.push(connection);
   }
@@ -1093,7 +1214,9 @@ export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
   // assets across every usable connection (an FLB page/ig asset AND an
   // IG-Login ig asset can coexist for one org). `listAssets(ctx)` with no
   // connectionId returns every org asset; filter to the connections still in play.
-  const assets = (await listAssets(ctx)).filter((a) => a.enabled && usable.some((c) => c.id === a.connectionId));
+  const assets = (await listAssets(ctx)).filter(
+    (a) => a.enabled && usable.some((c) => c.id === a.connectionId),
+  );
   const tokensByConnection = new Map<string, string | null>();
   for (const c of usable) tokensByConnection.set(c.id, decryptOrNull(c.tokenCiphertext, c.tokenIv));
 
@@ -1113,15 +1236,19 @@ export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
 
   let result: SliceResult;
   try {
-    if (job.kind === 'posts') result = await syncPosts(ctx, job, assets, primaryToken, tokensByConnection);
+    if (job.kind === 'posts')
+      result = await syncPosts(ctx, job, assets, primaryToken, tokensByConnection);
     else if (job.kind === 'ads') result = await syncAds(ctx, primaryToken, assets, job);
-    else if (job.kind === 'messages') result = await syncMessages(ctx, assets, job, tokensByConnection);
+    else if (job.kind === 'messages' || job.kind === 'messages_tail')
+      result = await syncMessages(ctx, assets, job, tokensByConnection);
     else {
       await finishJob(ctx, jobId, 'failed', { error: `unknown job kind: ${job.kind}` });
       return;
     }
   } catch (e) {
-    await finishJob(ctx, jobId, 'failed', { error: e instanceof Error ? e.message : 'sync failed' });
+    await finishJob(ctx, jobId, 'failed', {
+      error: e instanceof Error ? e.message : 'sync failed',
+    });
     return;
   }
 

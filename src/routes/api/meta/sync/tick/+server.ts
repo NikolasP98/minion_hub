@@ -2,12 +2,21 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
-import { enqueueJob, findDueJobs, getLatestSucceededJob } from '$server/services/meta/meta-sync-jobs.service';
-import { defaultSinceDate, listConnectedOrgIds, runJob } from '$server/services/meta/meta-sync.service';
+import {
+  enqueueJob,
+  findDueJobs,
+  getLatestSucceededJob,
+} from '$server/services/meta/meta-sync-jobs.service';
+import {
+  defaultSinceDate,
+  listConnectedOrgIds,
+  runJob,
+} from '$server/services/meta/meta-sync.service';
 
-const SYNC_KINDS = ['posts', 'ads', 'messages'] as const;
+const SYNC_KINDS = ['posts', 'ads', 'messages', 'messages_tail'] as const;
 const STALE_ENQUEUE_MS = 6 * 60 * 60_000; // spec §6: re-enqueue a kind once its last success is >6h old
-const CLAIM_LIMIT = 3;
+const MESSAGE_TAIL_STALE_MS = 5 * 60_000;
+const CLAIM_LIMIT = 6;
 
 /**
  * GET/POST /api/meta/sync/tick — cron entrypoint (Vercel Cron only ever sends
@@ -35,8 +44,11 @@ const handle: RequestHandler = async ({ request }) => {
     for (const kind of SYNC_KINDS) {
       try {
         const latest = await getLatestSucceededJob(ctx, kind);
-        const ageMs = latest?.finishedAt ? Date.now() - new Date(latest.finishedAt).getTime() : Number.POSITIVE_INFINITY;
-        if (ageMs > STALE_ENQUEUE_MS) {
+        const ageMs = latest?.finishedAt
+          ? Date.now() - new Date(latest.finishedAt).getTime()
+          : Number.POSITIVE_INFINITY;
+        const staleAfter = kind === 'messages_tail' ? MESSAGE_TAIL_STALE_MS : STALE_ENQUEUE_MS;
+        if (ageMs > staleAfter) {
           await enqueueJob(ctx, kind, { since });
           enqueued++;
         }
@@ -47,7 +59,13 @@ const handle: RequestHandler = async ({ request }) => {
   }
 
   const due = await findDueJobs(CLAIM_LIMIT);
-  const results: Array<{ jobId: string; orgId: string; kind: string; ok: boolean; error?: string }> = [];
+  const results: Array<{
+    jobId: string;
+    orgId: string;
+    kind: string;
+    ok: boolean;
+    error?: string;
+  }> = [];
   for (const j of due) {
     const ctx = { db: getCoreDb(), tenantId: j.orgId };
     try {

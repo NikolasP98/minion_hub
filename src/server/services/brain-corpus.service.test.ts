@@ -10,6 +10,7 @@ import {
   normalizeWhatsAppConversation,
   normalizeWhatsAppConversationSegments,
   preparedConversationNeedsWrite,
+  qdrantOwnsKnowledgeEmbeddings,
   type WhatsAppMessageInput,
 } from './brain-corpus.service';
 
@@ -199,6 +200,19 @@ describe('brain corpus all-channel cursor', () => {
 });
 
 describe('brain corpus idempotent persistence', () => {
+  it('requires an explicit Qdrant storage ownership flag', () => {
+    const before = process.env.BRAIN_VECTOR_STORAGE_MODE;
+    try {
+      delete process.env.BRAIN_VECTOR_STORAGE_MODE;
+      expect(qdrantOwnsKnowledgeEmbeddings()).toBe(false);
+      process.env.BRAIN_VECTOR_STORAGE_MODE = 'qdrant';
+      expect(qdrantOwnsKnowledgeEmbeddings()).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env.BRAIN_VECTOR_STORAGE_MODE;
+      else process.env.BRAIN_VECTOR_STORAGE_MODE = before;
+    }
+  });
+
   it('skips document and chunk upserts when a prepared conversation is fully current', () => {
     expect(
       preparedConversationNeedsWrite({

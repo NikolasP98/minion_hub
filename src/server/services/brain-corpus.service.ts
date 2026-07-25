@@ -27,6 +27,12 @@ const EMBEDDING_BATCH_CONCURRENCY = Math.min(
   Math.max(1, Number(process.env.BRAIN_EMBEDDING_BATCH_CONCURRENCY) || 4),
 );
 
+/** Qdrant-owned mode keeps canonical text/metadata in Postgres and delegates
+ * vector generation to the durable serving-index worker. */
+export function qdrantOwnsKnowledgeEmbeddings(): boolean {
+  return process.env.BRAIN_VECTOR_STORAGE_MODE === 'qdrant';
+}
+
 export type BrainKind = 'master' | 'focused';
 
 export interface WhatsAppConversationCursor {
@@ -1437,8 +1443,8 @@ async function prepareConversations(
           return (
             !old ||
             old.content_hash !== chunk.contentHash ||
-            !old.has_embedding ||
-            old.embedding_model !== KNOWLEDGE_EMBEDDING_MODEL
+            (!qdrantOwnsKnowledgeEmbeddings() &&
+              (!old.has_embedding || old.embedding_model !== KNOWLEDGE_EMBEDDING_MODEL))
           );
         })
         .map((chunk) => chunk.chunkKey),
@@ -1467,7 +1473,7 @@ async function embedChangedChunks(
       })),
   );
   const out = new Map<string, number[]>();
-  if (changed.length === 0 || !embeddingsEnabled()) return out;
+  if (changed.length === 0 || qdrantOwnsKnowledgeEmbeddings() || !embeddingsEnabled()) return out;
   const batches: Array<typeof changed> = [];
   for (let i = 0; i < changed.length; i += EMBEDDING_BATCH_SIZE) {
     batches.push(changed.slice(i, i + EMBEDDING_BATCH_SIZE));
@@ -1490,6 +1496,7 @@ async function persistConversations(
   vectors: Map<string, number[]>,
 ): Promise<{ deletedChunks: number }> {
   if (prepared.length === 0) return { deletedChunks: 0 };
+  const qdrantStorage = qdrantOwnsKnowledgeEmbeddings();
   return withOrgCore(ctx, async (tx) => {
     let deletedChunks = 0;
     for (const conversation of prepared) {
@@ -1503,7 +1510,9 @@ async function persistConversations(
         vectors.has(`${documentId}\u0000${chunkKey}`),
       );
       const documentStatus =
-        conversation.changedChunkKeys.size > 0 && !allChangedEmbedded ? 'pending' : 'ready';
+        !qdrantStorage && conversation.changedChunkKeys.size > 0 && !allChangedEmbedded
+          ? 'pending'
+          : 'ready';
       await tx.execute(sql`
         insert into knowledge_documents
           (id, org_id, source_id, external_id, title, raw_text, normalized_text,
@@ -1587,10 +1596,28 @@ async function persistConversations(
               where document.org_id = knowledge_sources.org_id
                 and document.source_id = knowledge_sources.id and document.status <> 'deleted'
             ) then 'queued'
+            when ${qdrantStorage} and exists (
+              select 1
+              from knowledge_chunks chunk
+              join brain_vector_outbox vector_job
+                on vector_job.chunk_id = chunk.id
+              where chunk.org_id = knowledge_sources.org_id
+                and chunk.source_id = knowledge_sources.id
+                and vector_job.status = 'dead'
+            ) then 'failed'
             when exists (
               select 1 from knowledge_chunks chunk
               where chunk.org_id = knowledge_sources.org_id
-                and chunk.source_id = knowledge_sources.id and chunk.embedding is null
+                and chunk.source_id = knowledge_sources.id
+                and ${
+                  qdrantStorage
+                    ? sql`exists (
+                        select 1 from brain_vector_outbox vector_job
+                        where vector_job.chunk_id = chunk.id
+                          and vector_job.status in ('queued', 'running')
+                      )`
+                    : sql`chunk.embedding is null`
+                }
             ) then 'queued'
             else 'ready'
           end,
@@ -1888,7 +1915,17 @@ async function loadSourceAggregates(
       select count(distinct document.id)::int as document_count,
         count(chunk.id)::int as chunk_count,
         (
-          count(chunk.id) filter (where chunk.embedding is null)
+          count(chunk.id) filter (
+            where ${
+              qdrantOwnsKnowledgeEmbeddings()
+                ? sql`exists (
+                    select 1 from brain_vector_outbox vector_job
+                    where vector_job.chunk_id = chunk.id
+                      and vector_job.status in ('queued', 'running', 'dead')
+                  )`
+                : sql`chunk.embedding is null`
+            }
+          )
           + count(distinct document.id) filter (
               where document.status in ('pending', 'processing', 'failed') and chunk.id is null
             )

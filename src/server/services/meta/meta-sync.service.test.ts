@@ -35,7 +35,11 @@ const igMediaInsights = vi.fn();
 const listIgMedia = vi.fn();
 const listAdsWithStoryIds =
   vi.fn<
-    (...a: unknown[]) => Promise<GraphResult<Array<{ adId: string; storyId: string | null; thumbnailUrl?: string | null }>>>
+    (
+      ...a: unknown[]
+    ) => Promise<
+      GraphResult<Array<{ adId: string; storyId: string | null; thumbnailUrl?: string | null }>>
+    >
   >();
 const adInsightsMock = vi.fn();
 const listConversations = vi.fn();
@@ -56,7 +60,10 @@ vi.mock('./graph-read', async (orig) => {
 });
 
 vi.mock('../messages.service', () => ({ insertMessages: vi.fn(async () => 0) }));
-vi.mock('$server/auth/crypto', () => ({ decrypt: (ciphertext: string) => ciphertext, encrypt: vi.fn() }));
+vi.mock('$server/auth/crypto', () => ({
+  decrypt: (ciphertext: string) => ciphertext,
+  encrypt: vi.fn(),
+}));
 
 // ---------------------------------------------------------------------------
 // Mocks for the thumbnail-mirror-pass tests (spec
@@ -80,7 +87,10 @@ vi.mock('$server/storage/blob', () => ({
   getStorage: vi.fn(),
 }));
 
-const fetchImageSafely = vi.fn<(...a: unknown[]) => Promise<{ data: Uint8Array; contentType: string; fileName: string }>>();
+const fetchImageSafely =
+  vi.fn<
+    (...a: unknown[]) => Promise<{ data: Uint8Array; contentType: string; fileName: string }>
+  >();
 vi.mock('../ssrf-guard', () => ({
   fetchImageSafely: (...a: unknown[]) => fetchImageSafely(...a),
 }));
@@ -109,12 +119,22 @@ import { normalizeIgConvo } from './graph-read';
 
 const PAGE_ID = 'page-1';
 const CUSTOMER_ID = 'customer-1';
-const participants = { data: [{ id: PAGE_ID, name: 'FACES' }, { id: CUSTOMER_ID, name: 'Customer' }] };
+const participants = {
+  data: [
+    { id: PAGE_ID, name: 'FACES' },
+    { id: CUSTOMER_ID, name: 'Customer' },
+  ],
+};
 
 describe('toMetaIngestRow', () => {
   it('maps an inbound message: chatId/senderId = the customer, direction inbound', () => {
     const row = toMetaIngestRow({
-      message: { id: 'm1', from: { id: CUSTOMER_ID, name: 'Customer' }, created_time: '2026-07-01T10:00:00+0000', message: 'hi' },
+      message: {
+        id: 'm1',
+        from: { id: CUSTOMER_ID, name: 'Customer' },
+        created_time: '2026-07-01T10:00:00+0000',
+        message: 'hi',
+      },
       participants,
       pageExternalId: PAGE_ID,
       channel: 'messenger',
@@ -134,17 +154,32 @@ describe('toMetaIngestRow', () => {
 
   it('maps an outbound message: chatId stays the customer, senderId flips to the page', () => {
     const row = toMetaIngestRow({
-      message: { id: 'm2', from: { id: PAGE_ID }, created_time: '2026-07-01T10:05:00+0000', message: 'thanks for reaching out' },
+      message: {
+        id: 'm2',
+        from: { id: PAGE_ID },
+        created_time: '2026-07-01T10:05:00+0000',
+        message: 'thanks for reaching out',
+      },
       participants,
       pageExternalId: PAGE_ID,
       channel: 'messenger',
     });
-    expect(row).toMatchObject({ direction: 'outbound', chatId: CUSTOMER_ID, senderId: PAGE_ID, accountId: PAGE_ID });
+    expect(row).toMatchObject({
+      direction: 'outbound',
+      chatId: CUSTOMER_ID,
+      senderId: PAGE_ID,
+      accountId: PAGE_ID,
+    });
   });
 
   it('inbound senderName resolves from the participants list', () => {
     const row = toMetaIngestRow({
-      message: { id: 'm1n', from: { id: CUSTOMER_ID }, created_time: '2026-07-01T10:00:00+0000', message: 'hi' },
+      message: {
+        id: 'm1n',
+        from: { id: CUSTOMER_ID },
+        created_time: '2026-07-01T10:00:00+0000',
+        message: 'hi',
+      },
       participants,
       pageExternalId: PAGE_ID,
       channel: 'messenger',
@@ -196,7 +231,12 @@ describe('toMetaIngestRow', () => {
   });
 
   it('skips a message with no resolvable author', () => {
-    const row = toMetaIngestRow({ message: { id: 'm4' }, participants, pageExternalId: PAGE_ID, channel: 'messenger' });
+    const row = toMetaIngestRow({
+      message: { id: 'm4' },
+      participants,
+      pageExternalId: PAGE_ID,
+      channel: 'messenger',
+    });
     expect(row).toBeNull();
   });
 
@@ -227,15 +267,50 @@ describe('toMetaIngestRow', () => {
       },
       messages: {
         data: [
-          { id: 'g1', from: { id: CUST, username: 'tatiana.peralta15' }, message: 'Tengo dudas', created_time: '2026-07-17T02:36:42+0000' },
-          { id: 'g2', from: { id: SELF, username: 'facesculptors' }, message: 'Hola', created_time: '2026-07-17T02:36:44+0000' },
+          {
+            id: 'g1',
+            from: { id: CUST, username: 'tatiana.peralta15' },
+            message: 'Tengo dudas',
+            created_time: '2026-07-17T02:36:42+0000',
+          },
+          {
+            id: 'g2',
+            from: { id: SELF, username: 'facesculptors' },
+            message: 'Hola',
+            created_time: '2026-07-17T02:36:44+0000',
+          },
         ],
       },
     });
-    const inbound = toMetaIngestRow({ message: convo.messages!.data![0], participants: convo.participants, pageExternalId: SELF, channel: 'instagram', pageName: 'facesculptors' });
-    expect(inbound).toMatchObject({ direction: 'inbound', channel: 'instagram', accountId: SELF, chatId: CUST, senderName: 'tatiana.peralta15', content: 'Tengo dudas', clientId: 'meta:instagram:g1' });
-    const outbound = toMetaIngestRow({ message: convo.messages!.data![1], participants: convo.participants, pageExternalId: SELF, channel: 'instagram', pageName: 'facesculptors' });
-    expect(outbound).toMatchObject({ direction: 'outbound', chatId: CUST, senderId: SELF, senderName: 'facesculptors' });
+    const inbound = toMetaIngestRow({
+      message: convo.messages!.data![0],
+      participants: convo.participants,
+      pageExternalId: SELF,
+      channel: 'instagram',
+      pageName: 'facesculptors',
+    });
+    expect(inbound).toMatchObject({
+      direction: 'inbound',
+      channel: 'instagram',
+      accountId: SELF,
+      chatId: CUST,
+      senderName: 'tatiana.peralta15',
+      content: 'Tengo dudas',
+      clientId: 'meta:instagram:g1',
+    });
+    const outbound = toMetaIngestRow({
+      message: convo.messages!.data![1],
+      participants: convo.participants,
+      pageExternalId: SELF,
+      channel: 'instagram',
+      pageName: 'facesculptors',
+    });
+    expect(outbound).toMatchObject({
+      direction: 'outbound',
+      chatId: CUST,
+      senderId: SELF,
+      senderName: 'facesculptors',
+    });
   });
 });
 
@@ -294,7 +369,12 @@ describe('adInsightRowToInsert', () => {
   });
 
   it('returns null when the row is missing the unique-index columns (ad_id/date)', () => {
-    expect(adInsightRowToInsert({ spend: '1' }, { orgId: 'org-1', adAccountId: 'act_1', currency: null })).toBeNull();
+    expect(
+      adInsightRowToInsert(
+        { spend: '1' },
+        { orgId: 'org-1', adAccountId: 'act_1', currency: null },
+      ),
+    ).toBeNull();
   });
 });
 
@@ -382,7 +462,12 @@ describe('fallbackEngagementRows — engagement-count fallback (read_insights un
     expect(rows).toHaveLength(3);
     expect(rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ metric: 'reactions_total', value: '5', postId: 'post-1', period: 'lifetime' }),
+        expect.objectContaining({
+          metric: 'reactions_total',
+          value: '5',
+          postId: 'post-1',
+          period: 'lifetime',
+        }),
         expect.objectContaining({ metric: 'comments_total', value: '2', postId: 'post-1' }),
         expect.objectContaining({ metric: 'shares_total', value: '1', postId: 'post-1' }),
       ]),
@@ -516,9 +601,27 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
       ok: true,
       status: 200,
       data: [
-        { id: 'page-1_100', permalink_url: 'https://fb/1', message: 'promoted', created_time: '2026-07-01T00:00:00+0000', shares: { count: 2 } },
-        { id: 'page-1_200', permalink_url: 'https://fb/2', message: 'organic', created_time: '2026-07-01T00:00:00+0000', shares: { count: 1 } },
-        { id: 'page-1_300', permalink_url: 'https://fb/3', message: 'organic 2', created_time: '2026-07-01T00:00:00+0000', shares: { count: 0 } },
+        {
+          id: 'page-1_100',
+          permalink_url: 'https://fb/1',
+          message: 'promoted',
+          created_time: '2026-07-01T00:00:00+0000',
+          shares: { count: 2 },
+        },
+        {
+          id: 'page-1_200',
+          permalink_url: 'https://fb/2',
+          message: 'organic',
+          created_time: '2026-07-01T00:00:00+0000',
+          shares: { count: 1 },
+        },
+        {
+          id: 'page-1_300',
+          permalink_url: 'https://fb/3',
+          message: 'organic 2',
+          created_time: '2026-07-01T00:00:00+0000',
+          shares: { count: 0 },
+        },
       ],
     });
     postInsights.mockResolvedValue({ ok: false, status: 400, error: 'permission denied' });
@@ -537,7 +640,11 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
       'job-1',
       expect.objectContaining({
         pageCursor: null,
-        countsDelta: expect.objectContaining({ postsProcessed: 3, metricsDenied: 1, metricsSkipped: 2 }),
+        countsDelta: expect.objectContaining({
+          postsProcessed: 3,
+          metricsDenied: 1,
+          metricsSkipped: 2,
+        }),
       }),
     );
     expect(finishJob).toHaveBeenCalledWith(ctx, 'job-1', 'succeeded');
@@ -554,7 +661,11 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
   });
 
   it('never touches meta_ad_posts when no ad has a story id', async () => {
-    listAdsWithStoryIds.mockResolvedValue({ ok: true, status: 200, data: [{ adId: 'ad-2', storyId: null }] });
+    listAdsWithStoryIds.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [{ adId: 'ad-2', storyId: null }],
+    });
     const { db } = createMockDb();
     const ctx = { db: db as never, tenantId: 'org-1' };
 
@@ -565,7 +676,11 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
   });
 
   it('a failed listAdsWithStoryIds fetch degrades exactly as before — no throw, isPromoted stays false, job still succeeds', async () => {
-    listAdsWithStoryIds.mockResolvedValue({ ok: false, status: 500, error: 'graph request failed' });
+    listAdsWithStoryIds.mockResolvedValue({
+      ok: false,
+      status: 500,
+      error: 'graph request failed',
+    });
     const { db } = createMockDb();
     const ctx = { db: db as never, tenantId: 'org-1' };
 
@@ -612,7 +727,10 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
 
     await runJob(ctx, 'job-1');
 
-    expect(recordPostMedia).not.toHaveBeenCalledWith(ctx, expect.objectContaining({ sourceUrl: 'https://cdn/dark.jpg' }));
+    expect(recordPostMedia).not.toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({ sourceUrl: 'https://cdn/dark.jpg' }),
+    );
   });
 
   it('skips recording when thumbnailUrl is null (nothing to mirror)', async () => {
@@ -626,7 +744,10 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
 
     await runJob(ctx, 'job-1');
 
-    expect(recordPostMedia).not.toHaveBeenCalledWith(ctx, expect.objectContaining({ postId: 'page-1_999' }));
+    expect(recordPostMedia).not.toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({ postId: 'page-1_999' }),
+    );
   });
 
   it('dedupes: two ads sharing one story id record that post exactly once', async () => {
@@ -643,7 +764,9 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
 
     await runJob(ctx, 'job-1');
 
-    const darkPostCalls = recordPostMedia.mock.calls.filter((c) => (c[1] as { postId?: string })?.postId === 'page-1_999');
+    const darkPostCalls = recordPostMedia.mock.calls.filter(
+      (c) => (c[1] as { postId?: string })?.postId === 'page-1_999',
+    );
     expect(darkPostCalls).toHaveLength(1);
   });
 });
@@ -754,8 +877,52 @@ describe('runJob — connection-by-kind selection (spec 2026-07-05-instagram-log
     const ctx = { db: db as never, tenantId: 'org-1' };
     await runJob(ctx, 'job-ads');
 
-    expect(adInsightsMock).toHaveBeenCalledWith('act_1', 'user-token', expect.anything(), expect.anything());
+    expect(adInsightsMock).toHaveBeenCalledWith(
+      'act_1',
+      'user-token',
+      expect.anything(),
+      expect.anything(),
+    );
     expect(finishJob).toHaveBeenCalledWith(ctx, 'job-ads', 'succeeded');
+  });
+
+  it('messages_tail samples only the newest page for each channel and finishes', async () => {
+    listConnections.mockResolvedValue([flbConnection]);
+    listAssets.mockResolvedValue([pageAsset]);
+    getJobById.mockResolvedValue({
+      id: 'job-messages-tail',
+      orgId: 'org-1',
+      kind: 'messages_tail',
+      status: 'running',
+      pageCursor: null,
+      since: null,
+      until: null,
+      counts: {},
+      error: null,
+      startedAt: new Date(),
+      finishedAt: null,
+      createdAt: new Date(),
+    } as unknown as MetaSyncJob);
+    listConversations.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [],
+      nextCursor: 'older-page',
+    });
+
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+    await runJob(ctx, 'job-messages-tail');
+
+    expect(listConversations).toHaveBeenCalledTimes(2);
+    expect(fetchNextPage).not.toHaveBeenCalled();
+    expect(recordProgress).toHaveBeenCalledWith(
+      ctx,
+      'job-messages-tail',
+      expect.objectContaining({ pageCursor: null }),
+    );
+    expect(requeue).not.toHaveBeenCalled();
+    expect(finishJob).toHaveBeenCalledWith(ctx, 'job-messages-tail', 'succeeded');
   });
 
   it('posts job: reads the FLB page with its own page token AND the IG-Login asset with its connection token', async () => {
@@ -795,7 +962,12 @@ describe('runJob — connection-by-kind selection (spec 2026-07-05-instagram-log
     const ctx = { db: db as never, tenantId: 'org-1' };
     await runJob(ctx, 'job-posts-both');
 
-    expect(listPagePosts).toHaveBeenCalledWith('page-1', 'page-token', expect.anything(), expect.anything());
+    expect(listPagePosts).toHaveBeenCalledWith(
+      'page-1',
+      'page-token',
+      expect.anything(),
+      expect.anything(),
+    );
     // IG-Login reads /me/media (the OAuth user id is not a valid media-node
     // path on graph.instagram.com) with NO `since` (unsupported there) —
     // live-verified 2026-07-05.
@@ -904,9 +1076,16 @@ describe('syncPosts — thumbnail mirror pass (spec 2026-07-05-meta-post-thumbna
 
     expect(recordPostMedia).toHaveBeenCalledWith(
       ctx,
-      expect.objectContaining({ postId: 'post-with-pic', sourceUrl: 'https://cdn.example/pic.jpg', platform: 'fb' }),
+      expect.objectContaining({
+        postId: 'post-with-pic',
+        sourceUrl: 'https://cdn.example/pic.jpg',
+        platform: 'fb',
+      }),
     );
-    expect(recordPostMedia).toHaveBeenCalledWith(ctx, expect.objectContaining({ postId: 'post-text-only', sourceUrl: null }));
+    expect(recordPostMedia).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({ postId: 'post-text-only', sourceUrl: null }),
+    );
   });
 
   it('no-op mirror pass when storage is not configured — never claims, counts mediaSkipped, never fails the job', async () => {
@@ -961,7 +1140,11 @@ describe('syncPosts — thumbnail mirror pass (spec 2026-07-05-meta-post-thumbna
     fetchImageSafely.mockImplementation(async (...args: unknown[]) => {
       const url = args[0] as string;
       if (url.includes('bad')) throw new Error('upstream 403');
-      return { data: new Uint8Array([1, 2, 3]), contentType: 'image/jpeg', fileName: 'post-ok.jpg' };
+      return {
+        data: new Uint8Array([1, 2, 3]),
+        contentType: 'image/jpeg',
+        fileName: 'post-ok.jpg',
+      };
     });
     uploadFile.mockResolvedValue('file-xyz');
 
@@ -1012,7 +1195,9 @@ describe('adTimeWindows — chunked ad-insights ranges', () => {
   });
 
   it('a short incremental range stays a single window', () => {
-    expect(adTimeWindows('2026-06-01', '2026-07-05')).toEqual([{ since: '2026-06-01', until: '2026-07-05' }]);
+    expect(adTimeWindows('2026-06-01', '2026-07-05')).toEqual([
+      { since: '2026-06-01', until: '2026-07-05' },
+    ]);
   });
 
   it('degrades to the raw pair on unparseable/inverted input', () => {

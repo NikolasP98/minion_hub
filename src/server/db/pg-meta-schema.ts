@@ -1,4 +1,17 @@
-import { pgTable, uuid, text, jsonb, numeric, timestamp, boolean, integer, date, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  jsonb,
+  numeric,
+  timestamp,
+  boolean,
+  integer,
+  date,
+  index,
+  uniqueIndex,
+  primaryKey,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -14,7 +27,7 @@ export const metaConnections = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
-    kind: text('kind').notNull(),                   // 'flb'|'system_user'
+    kind: text('kind').notNull(), // 'flb'|'system_user'
     fbUserId: text('fb_user_id'),
     tokenCiphertext: text('token_ciphertext'),
     tokenIv: text('token_iv'),
@@ -35,14 +48,16 @@ export const metaAssets = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
-    connectionId: uuid('connection_id').notNull().references(() => metaConnections.id, { onDelete: 'cascade' }),
-    kind: text('kind').notNull(),                    // 'page'|'ig'|'ad_account'
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => metaConnections.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(), // 'page'|'ig'|'ad_account'
     externalId: text('external_id').notNull(),
     name: text('name'),
     pageTokenCiphertext: text('page_token_ciphertext'),
     pageTokenIv: text('page_token_iv'),
-    parentPageId: text('parent_page_id'),            // for ig assets
-    currency: text('currency'),                       // for ad_account assets
+    parentPageId: text('parent_page_id'), // for ig assets
+    currency: text('currency'), // for ad_account assets
     enabled: boolean('enabled').notNull().default(true),
     meta: jsonb('meta').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -58,8 +73,10 @@ export const metaPostInsights = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
-    assetId: uuid('asset_id').notNull().references(() => metaAssets.id, { onDelete: 'cascade' }),
-    platform: text('platform').notNull(),            // 'fb'|'ig'
+    assetId: uuid('asset_id')
+      .notNull()
+      .references(() => metaAssets.id, { onDelete: 'cascade' }),
+    platform: text('platform').notNull(), // 'fb'|'ig'
     postId: text('post_id').notNull(),
     permalink: text('permalink'),
     caption: text('caption'),
@@ -74,7 +91,12 @@ export const metaPostInsights = pgTable(
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    uniq: uniqueIndex('meta_post_insights_org_post_metric_period_uniq').on(t.orgId, t.postId, t.metric, t.period),
+    uniq: uniqueIndex('meta_post_insights_org_post_metric_period_uniq').on(
+      t.orgId,
+      t.postId,
+      t.metric,
+      t.period,
+    ),
     assetIdx: index('meta_post_insights_asset_idx').on(t.assetId),
   }),
 );
@@ -114,7 +136,7 @@ export const metaSyncJobs = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
-    kind: text('kind').notNull(),                    // 'posts'|'ads'|'messages'
+    kind: text('kind').notNull(), // 'posts'|'ads'|'messages'|'messages_tail'
     status: text('status').notNull().default('queued'), // queued|running|succeeded|failed|cancelled
     pageCursor: text('page_cursor'),
     since: date('since'),
@@ -144,11 +166,11 @@ export const metaPostMedia = pgTable(
   'meta_post_media',
   {
     orgId: text('org_id').notNull(),
-    platform: text('platform').notNull(),            // 'fb'|'ig'
+    platform: text('platform').notNull(), // 'fb'|'ig'
     postId: text('post_id').notNull(),
-    fileId: text('file_id'),                          // → files.id (null until mirrored)
-    sourceUrl: text('source_url'),                     // last CDN url mirrored from (audit/debug — expires, never re-served)
-    mediaType: text('media_type'),                      // IMAGE|VIDEO|CAROUSEL_ALBUM|REELS (IG) / FB type
+    fileId: text('file_id'), // → files.id (null until mirrored)
+    sourceUrl: text('source_url'), // last CDN url mirrored from (audit/debug — expires, never re-served)
+    mediaType: text('media_type'), // IMAGE|VIDEO|CAROUSEL_ALBUM|REELS (IG) / FB type
     status: text('status').notNull().default('pending'), // pending|mirrored|failed|skipped
     error: text('error'),
     attempts: integer('attempts').notNull().default(0),
@@ -218,7 +240,11 @@ export const metaLeadAttribution = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    leadUniq: uniqueIndex('meta_lead_attribution_org_id_channel_sender_id_key').on(t.orgId, t.channel, t.senderId),
+    leadUniq: uniqueIndex('meta_lead_attribution_org_id_channel_sender_id_key').on(
+      t.orgId,
+      t.channel,
+      t.senderId,
+    ),
     campaignIdx: index('meta_lead_attribution_org_campaign_idx').on(t.orgId, t.campaignId),
     originIdx: index('meta_lead_attribution_org_origin_idx').on(t.orgId, t.origin),
   }),

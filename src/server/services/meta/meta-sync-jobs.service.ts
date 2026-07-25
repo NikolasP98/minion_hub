@@ -47,7 +47,13 @@ export function getLatestSucceededJob(ctx: CoreCtx, kind: string): Promise<MetaS
     const [row] = await tx
       .select()
       .from(metaSyncJobs)
-      .where(and(eq(metaSyncJobs.orgId, ctx.tenantId), eq(metaSyncJobs.kind, kind), eq(metaSyncJobs.status, 'succeeded')))
+      .where(
+        and(
+          eq(metaSyncJobs.orgId, ctx.tenantId),
+          eq(metaSyncJobs.kind, kind),
+          eq(metaSyncJobs.status, 'succeeded'),
+        ),
+      )
       .orderBy(desc(metaSyncJobs.createdAt))
       .limit(1);
     return row ?? null;
@@ -96,7 +102,13 @@ export async function enqueueJob(
     return await withOrgCore(ctx, async (tx) => {
       const [row] = await tx
         .insert(metaSyncJobs)
-        .values({ orgId: ctx.tenantId, kind, status: 'queued', since: opts.since ?? null, until: opts.until ?? null })
+        .values({
+          orgId: ctx.tenantId,
+          kind,
+          status: 'queued',
+          since: opts.since ?? null,
+          until: opts.until ?? null,
+        })
         .returning();
       return row;
     });
@@ -115,13 +127,27 @@ export async function enqueueJob(
  * (mirrors finance's findResumableJobs) — the caller builds a per-org CoreCtx
  * and does all real work through withOrgCore.
  */
-export async function findDueJobs(limit = 3): Promise<Array<{ jobId: string; orgId: string; kind: string }>> {
+export async function findDueJobs(
+  limit = 3,
+): Promise<Array<{ jobId: string; orgId: string; kind: string }>> {
   const db = getCoreDb();
   const rows = await db
     .select({ jobId: metaSyncJobs.id, orgId: metaSyncJobs.orgId, kind: metaSyncJobs.kind })
     .from(metaSyncJobs)
-    .where(or(eq(metaSyncJobs.status, 'queued'), and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause))))
-    .orderBy(metaSyncJobs.createdAt)
+    .where(
+      or(
+        eq(metaSyncJobs.status, 'queued'),
+        and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause)),
+      ),
+    )
+    .orderBy(
+      sql`case
+        when ${metaSyncJobs.kind} = 'messages_tail' then 0
+        when ${metaSyncJobs.kind} = 'messages' then 1
+        else 2
+      end`,
+      metaSyncJobs.createdAt,
+    )
     .limit(limit);
   return rows;
 }
@@ -136,7 +162,10 @@ export async function claimJob(ctx: CoreCtx, jobId: string): Promise<boolean> {
         and(
           eq(metaSyncJobs.id, jobId),
           eq(metaSyncJobs.orgId, ctx.tenantId),
-          or(eq(metaSyncJobs.status, 'queued'), and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause))),
+          or(
+            eq(metaSyncJobs.status, 'queued'),
+            and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause)),
+          ),
         ),
       )
       .returning({ id: metaSyncJobs.id });
