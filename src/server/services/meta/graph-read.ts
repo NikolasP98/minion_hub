@@ -86,7 +86,11 @@ function resolveOpts(opts: GraphOpts): ResolvedOpts {
   };
 }
 
-function buildUrl(path: string, params: Record<string, string | number | undefined>, o: ResolvedOpts): string {
+function buildUrl(
+  path: string,
+  params: Record<string, string | number | undefined>,
+  o: ResolvedOpts,
+): string {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined) qs.set(k, String(v));
@@ -142,7 +146,9 @@ function classifyGraphError(body: unknown): string {
   if (!err) return 'graph request failed';
   if (err.code === 190) return 'token_expired';
   const suffix =
-    err.code != null ? ` (code ${err.code}${err.error_subcode != null ? ` subcode ${err.error_subcode}` : ''})` : '';
+    err.code != null
+      ? ` (code ${err.code}${err.error_subcode != null ? ` subcode ${err.error_subcode}` : ''})`
+      : '';
   return `${err.message ?? 'graph error'}${suffix}`;
 }
 
@@ -162,7 +168,10 @@ function extractUsage(res: Response): unknown {
 
 type RawResult = { ok: boolean; status: number; body?: unknown; error?: string; usage?: unknown };
 
-async function graphRequest(url: string, base: Pick<ResolvedOpts, 'fetchImpl' | 'timeoutMs'>): Promise<RawResult> {
+async function graphRequest(
+  url: string,
+  base: Pick<ResolvedOpts, 'fetchImpl' | 'timeoutMs'>,
+): Promise<RawResult> {
   let res: Response;
   try {
     res = await base.fetchImpl(url, { signal: AbortSignal.timeout(base.timeoutMs) });
@@ -191,18 +200,24 @@ function unwrapList<T>(body: unknown): { data: T[]; nextCursor?: string } {
  */
 export async function fetchNextPage<T = unknown>(
   nextUrl: string,
-  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs' | 'appSecret'> = {},
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs' | 'appSecret'> & {
+    accessToken?: string;
+  } = {},
 ): Promise<GraphResult<T[]>> {
   const base = { fetchImpl: opts.fetchImpl ?? fetch, timeoutMs: opts.timeoutMs ?? 15_000 };
   let url = nextUrl;
-  if (opts.appSecret) {
+  if (opts.accessToken || opts.appSecret) {
     try {
       const u = new URL(nextUrl);
-      const token = u.searchParams.get('access_token');
-      if (token && !u.searchParams.get('appsecret_proof')) {
-        u.searchParams.set('appsecret_proof', createHmac('sha256', opts.appSecret).update(token).digest('hex'));
-        url = u.toString();
+      if (opts.accessToken) u.searchParams.set('access_token', opts.accessToken);
+      const token = opts.accessToken ?? u.searchParams.get('access_token');
+      if (token && opts.appSecret) {
+        u.searchParams.set(
+          'appsecret_proof',
+          createHmac('sha256', opts.appSecret).update(token).digest('hex'),
+        );
       }
+      url = u.toString();
     } catch {
       // unparseable link — send as-is and let Graph report the real problem
     }
@@ -226,7 +241,12 @@ export async function exchangeCodeForToken(
   const o = resolveOpts(opts);
   const url = buildUrl(
     'oauth/access_token',
-    { client_id: params.appId, client_secret: params.appSecret, redirect_uri: params.redirectUri, code: params.code },
+    {
+      client_id: params.appId,
+      client_secret: params.appSecret,
+      redirect_uri: params.redirectUri,
+      code: params.code,
+    },
     o,
   );
   const res = await graphRequest(url, o);
@@ -315,7 +335,11 @@ export async function exchangeIgLongLivedToken(
   const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
   const url = buildUrl(
     'access_token',
-    { grant_type: 'ig_exchange_token', client_secret: params.appSecret, access_token: params.shortToken },
+    {
+      grant_type: 'ig_exchange_token',
+      client_secret: params.appSecret,
+      access_token: params.shortToken,
+    },
     o,
   );
   const res = await graphRequest(url, o);
@@ -334,7 +358,11 @@ export async function refreshIgToken(
   opts: GraphOpts = {},
 ): Promise<GraphResult<IgLongLivedToken>> {
   const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
-  const url = buildUrl('refresh_access_token', { grant_type: 'ig_refresh_token', access_token: params.token }, o);
+  const url = buildUrl(
+    'refresh_access_token',
+    { grant_type: 'ig_refresh_token', access_token: params.token },
+    o,
+  );
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
   return { ok: true, status: res.status, data: res.body as IgLongLivedToken, usage: res.usage };
@@ -358,7 +386,10 @@ export async function listPagesWithTokens(
   const o = resolveOpts(opts);
   const url = buildUrl(
     'me/accounts',
-    { fields: 'id,name,access_token,instagram_business_account{id,username}', access_token: userToken },
+    {
+      fields: 'id,name,access_token,instagram_business_account{id,username}',
+      access_token: userToken,
+    },
     o,
   );
   const res = await graphRequest(url, o);
@@ -369,9 +400,16 @@ export async function listPagesWithTokens(
 
 export type AdAccount = { id: string; name?: string; currency?: string; account_status?: number };
 
-export async function listAdAccounts(userToken: string, opts: GraphOpts = {}): Promise<GraphResult<AdAccount[]>> {
+export async function listAdAccounts(
+  userToken: string,
+  opts: GraphOpts = {},
+): Promise<GraphResult<AdAccount[]>> {
   const o = resolveOpts(opts);
-  const url = buildUrl('me/adaccounts', { fields: 'id,name,currency,account_status', access_token: userToken }, o);
+  const url = buildUrl(
+    'me/adaccounts',
+    { fields: 'id,name,currency,account_status', access_token: userToken },
+    o,
+  );
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
   const { data, nextCursor } = unwrapList<AdAccount>(res.body);
@@ -477,14 +515,24 @@ export async function listPagePosts(
   return { ok: true, status: res.status, data, nextCursor, usage: res.usage };
 }
 
-const DEFAULT_POST_METRICS = ['post_impressions', 'post_impressions_unique', 'post_clicks', 'post_reactions_by_type_total'];
+const DEFAULT_POST_METRICS = [
+  'post_impressions',
+  'post_impressions_unique',
+  'post_clicks',
+  'post_reactions_by_type_total',
+];
 
 export async function postInsights(
   postId: string,
   pageToken: string,
   opts: GraphOpts & { metrics?: string[] } = {},
 ): Promise<GraphResult<MetricInsight[]> & { failedMetrics?: string[] }> {
-  return fetchMetricsWithFallback(`${postId}/insights`, pageToken, opts.metrics ?? DEFAULT_POST_METRICS, opts);
+  return fetchMetricsWithFallback(
+    `${postId}/insights`,
+    pageToken,
+    opts.metrics ?? DEFAULT_POST_METRICS,
+    opts,
+  );
 }
 
 export type IgMedia = {
@@ -502,7 +550,8 @@ export type IgMedia = {
 };
 
 // media_url/thumbnail_url verified live 2026-07-05 under instagram_business_basic, no appsecret_proof (spec §5).
-const IG_MEDIA_FIELDS = 'id,caption,media_type,permalink,timestamp,like_count,comments_count,media_url,thumbnail_url';
+const IG_MEDIA_FIELDS =
+  'id,caption,media_type,permalink,timestamp,like_count,comments_count,media_url,thumbnail_url';
 
 /**
  * Which URL to render as a post's preview thumbnail (spec §5/§7). VIDEO/REELS
@@ -528,7 +577,11 @@ export async function listIgMedia(
   opts: GraphOpts = {},
 ): Promise<GraphResult<IgMedia[]>> {
   const o = resolveOpts(opts);
-  const url = buildUrl(`${igId}/media`, { fields: IG_MEDIA_FIELDS, since: params.since, access_token: pageToken }, o);
+  const url = buildUrl(
+    `${igId}/media`,
+    { fields: IG_MEDIA_FIELDS, since: params.since, access_token: pageToken },
+    o,
+  );
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
   const { data, nextCursor } = unwrapList<IgMedia>(res.body);
@@ -552,7 +605,10 @@ export async function igMediaInsights(
   mediaType: string,
   opts: GraphOpts & { metrics?: string[] } = {},
 ): Promise<GraphResult<MetricInsight[]> & { failedMetrics?: string[] }> {
-  const metrics = opts.metrics ?? IG_MEDIA_METRICS_BY_TYPE[mediaType.toUpperCase()] ?? IG_MEDIA_METRICS_BY_TYPE.IMAGE;
+  const metrics =
+    opts.metrics ??
+    IG_MEDIA_METRICS_BY_TYPE[mediaType.toUpperCase()] ??
+    IG_MEDIA_METRICS_BY_TYPE.IMAGE;
   return fetchMetricsWithFallback(`${mediaId}/insights`, pageToken, metrics, opts);
 }
 
@@ -610,7 +666,11 @@ export async function adInsights(
 
 export type AdWithStory = {
   id?: string;
-  creative?: { effective_object_story_id?: string; effective_instagram_media_id?: string; thumbnail_url?: string };
+  creative?: {
+    effective_object_story_id?: string;
+    effective_instagram_media_id?: string;
+    thumbnail_url?: string;
+  };
 };
 
 export type AdStoryLink = {
@@ -633,7 +693,8 @@ export type AdStoryLink = {
 // expansion like this one vs. only working as a top-level query param on a
 // direct creative-node GET. Plain field, so the default (often small/cropped)
 // thumbnail size — acceptable for 40px table cells, revisit if larger is needed.
-const AD_FIELDS = 'id,creative{effective_object_story_id,effective_instagram_media_id,thumbnail_url}';
+const AD_FIELDS =
+  'id,creative{effective_object_story_id,effective_instagram_media_id,thumbnail_url}';
 
 /**
  * Paginates `act_X/ads` and returns every ad's id alongside its creative's
@@ -652,7 +713,11 @@ export async function listAdsWithStoryIds(
 ): Promise<GraphResult<AdStoryLink[]>> {
   const o = resolveOpts(opts);
   const accountPath = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
-  const url = buildUrl(`${accountPath}/ads`, { fields: AD_FIELDS, limit: 100, access_token: userToken }, o);
+  const url = buildUrl(
+    `${accountPath}/ads`,
+    { fields: AD_FIELDS, limit: 100, access_token: userToken },
+    o,
+  );
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
 
@@ -676,7 +741,11 @@ export async function listAdsWithStoryIds(
     // Some paging.next links don't echo the original appsecret_proof (live-verified
     // on /insights) — re-derive it from the link's own access_token, same as every
     // other fetchNextPage call site in this file.
-    const page = await fetchNextPage<AdWithStory>(nextCursor, { fetchImpl: o.fetchImpl, timeoutMs: o.timeoutMs, appSecret: o.appSecret });
+    const page = await fetchNextPage<AdWithStory>(nextCursor, {
+      fetchImpl: o.fetchImpl,
+      timeoutMs: o.timeoutMs,
+      appSecret: o.appSecret,
+    });
     if (!page.ok) break; // tolerate a mid-pagination failure — return what's collected so far
     for (const ad of page.data ?? []) {
       const link = toLink(ad);
@@ -699,7 +768,8 @@ export type IgMediaDetail = {
   children?: { data?: Array<{ media_type?: string; media_url?: string; thumbnail_url?: string }> };
 };
 
-const IG_MEDIA_DETAIL_FIELDS = 'media_type,media_url,thumbnail_url,children{media_type,media_url,thumbnail_url}';
+const IG_MEDIA_DETAIL_FIELDS =
+  'media_type,media_url,thumbnail_url,children{media_type,media_url,thumbnail_url}';
 
 /** IG media node + carousel children, for the post-detail "rich media" enrichment. Unversioned host, no appsecret_proof (spec §5.3). */
 export async function igMediaDetail(
@@ -715,7 +785,11 @@ export async function igMediaDetail(
 }
 
 export type FbAttachmentMedia = { image?: { src?: string }; source?: string };
-export type FbAttachment = { media_type?: string; media?: FbAttachmentMedia; subattachments?: { data?: FbAttachment[] } };
+export type FbAttachment = {
+  media_type?: string;
+  media?: FbAttachmentMedia;
+  subattachments?: { data?: FbAttachment[] };
+};
 export type FbAttachmentsResponse = { attachments?: { data?: FbAttachment[] } };
 
 /**
@@ -730,10 +804,19 @@ export async function fbPostAttachments(
   opts: GraphOpts = {},
 ): Promise<GraphResult<FbAttachmentsResponse>> {
   const o = resolveOpts(opts);
-  const url = buildUrl(postId, { fields: 'attachments{media,subattachments}', access_token: pageToken }, o);
+  const url = buildUrl(
+    postId,
+    { fields: 'attachments{media,subattachments}', access_token: pageToken },
+    o,
+  );
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
-  return { ok: true, status: res.status, data: res.body as FbAttachmentsResponse, usage: res.usage };
+  return {
+    ok: true,
+    status: res.status,
+    data: res.body as FbAttachmentsResponse,
+    usage: res.usage,
+  };
 }
 
 export type FbFullPicture = { full_picture?: string };
@@ -777,7 +860,11 @@ export async function igMediaComments(
   opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
 ): Promise<GraphResult<IgComment[]>> {
   const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
-  const url = buildUrl(`${mediaId}/comments`, { fields: IG_COMMENT_FIELDS, access_token: token }, o);
+  const url = buildUrl(
+    `${mediaId}/comments`,
+    { fields: IG_COMMENT_FIELDS, access_token: token },
+    o,
+  );
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
   const { data } = unwrapList<IgComment>(res.body);
@@ -806,7 +893,11 @@ export async function fbPostComments(
   opts: GraphOpts = {},
 ): Promise<GraphResult<FbComment[]>> {
   const o = resolveOpts(opts);
-  const url = buildUrl(`${postId}/comments`, { fields: FB_COMMENT_FIELDS, access_token: pageToken }, o);
+  const url = buildUrl(
+    `${postId}/comments`,
+    { fields: FB_COMMENT_FIELDS, access_token: pageToken },
+    o,
+  );
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
   const { data } = unwrapList<FbComment>(res.body);
@@ -822,7 +913,13 @@ export type Conversation = {
   participants?: unknown;
   updated_time?: string;
   messages?: {
-    data?: Array<{ id: string; from?: unknown; to?: unknown; message?: string; created_time?: string }>;
+    data?: Array<{
+      id: string;
+      from?: unknown;
+      to?: unknown;
+      message?: string;
+      created_time?: string;
+    }>;
   };
 };
 
@@ -868,7 +965,12 @@ export async function getIgLoginUser(
   const b = (res.body ?? {}) as { user_id?: unknown; username?: unknown };
   const userId = b.user_id != null ? String(b.user_id) : '';
   if (!userId) return { ok: false, status: res.status, error: 'no user_id', usage: res.usage };
-  return { ok: true, status: res.status, data: { userId, username: b.username != null ? String(b.username) : null }, usage: res.usage };
+  return {
+    ok: true,
+    status: res.status,
+    data: { userId, username: b.username != null ? String(b.username) : null },
+    usage: res.usage,
+  };
 }
 
 type RawIgConvo = {
@@ -876,7 +978,14 @@ type RawIgConvo = {
   updated_time?: string;
   // `name` accepted too so normalizeIgConvo is idempotent (see below).
   participants?: { data?: Array<{ id?: string; username?: string; name?: string }> };
-  messages?: { data?: Array<{ id: string; from?: { id?: string; username?: string; name?: string }; message?: string; created_time?: string }> };
+  messages?: {
+    data?: Array<{
+      id: string;
+      from?: { id?: string; username?: string; name?: string };
+      message?: string;
+      created_time?: string;
+    }>;
+  };
 };
 
 /**
@@ -895,7 +1004,8 @@ export async function listIgLoginConversations(
     'me/conversations',
     {
       platform: 'instagram',
-      fields: 'updated_time,participants{id,username},messages{id,from{id,username},message,created_time}',
+      fields:
+        'updated_time,participants{id,username},messages{id,from{id,username},message,created_time}',
       access_token: token,
     },
     o,
@@ -919,7 +1029,9 @@ export function normalizeIgConvo(c: RawIgConvo): Conversation {
   return {
     id: c.id,
     updated_time: c.updated_time,
-    participants: { data: (c.participants?.data ?? []).map((p) => ({ id: p.id, name: p.name ?? p.username })) },
+    participants: {
+      data: (c.participants?.data ?? []).map((p) => ({ id: p.id, name: p.name ?? p.username })),
+    },
     messages: {
       data: (c.messages?.data ?? []).map((m) => ({
         id: m.id,
