@@ -18,16 +18,17 @@ const SYNC_KINDS = ['posts', 'ads', 'messages', 'messages_tail'] as const;
 const STALE_ENQUEUE_MS = 6 * 60 * 60_000; // spec §6: re-enqueue a kind once its last success is >6h old
 /**
  * The tail lane is topped up on EVERY tick, so message freshness equals the
- * cron period of this route — hourly today (src/lib/automations/system-automations.ts,
- * netcup crontab). Tightening freshness below an hour is a scheduling change,
- * not a code change; no staleness constant here can beat the cron period.
+ * scheduler period for this route (netcup crontab in production). Tightening
+ * freshness is a scheduling change, not a code change; no staleness constant
+ * here can beat the scheduler period.
  */
 const MESSAGE_TAIL_STALE_MS = 0;
-/** One cheap tail slice per connected org, so a tick covers every org's
- * freshness lane. Backlog slices are orders of magnitude more expensive (up to
- * 150 posts / 100 conversations / 90 ad rows each, run sequentially in this one
- * request), so that lane stays at a small fixed cap no matter how many orgs
- * connect — it is catch-up work, not latency-sensitive. */
+/** Up to one cheap tail slice per org with a non-revoked Meta connection,
+ * capped at 24 orgs per tick.
+ * Backlog slices are orders of magnitude more expensive (up to 150 posts / 100
+ * conversations / 90 ad rows each, run sequentially in this one request), so
+ * that lane stays at a small fixed cap no matter how many orgs connect — it is
+ * catch-up work, not latency-sensitive. */
 const TAIL_CLAIM_MIN = 3;
 const TAIL_CLAIM_MAX = 24;
 const BACKLOG_CLAIM_LIMIT = 3;
