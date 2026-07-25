@@ -25,11 +25,16 @@ describe('Qdrant-owned embedding storage migration', () => {
     expect(ack).toContain(
       "when acked.desired_operation = 'upsert' then acked.desired_content_hash",
     );
+    expect(ack).toContain(
+      "when acked.desired_operation = 'upsert' then acked.collection_generation",
+    );
     expect(ack).toContain('set vector_indexed_hash = indexed_hash');
+    expect(ack).toContain('vector_indexed_generation = indexed_generation');
     expect(ack).toContain('chunk.org_id = acked.org_id');
+    expect(ack).toContain('chunk.vector_indexed_generation is distinct from indexed_generation');
   });
 
-  it('calls a chunk pending until an ack confirms its current content', () => {
+  it('calls a chunk pending until the ACTIVE generation confirms its current content', () => {
     const statusFns = migration
       .split('create or replace function')
       .filter((fn) => /brain_vector_app_source_(state|pending_count)/u.test(fn));
@@ -38,6 +43,9 @@ describe('Qdrant-owned embedding storage migration', () => {
       expect(fn).toContain('left join public.brain_vector_outbox job');
       expect(fn).toContain('job.collection_generation = (select generation from active)');
       expect(fn).toContain('chunk.vector_indexed_hash is distinct from chunk.content_hash');
+      expect(fn).toContain(
+        'chunk.vector_indexed_generation is distinct from (select generation from active)',
+      );
       expect(fn).not.toContain('last_completed_at');
     }
   });
