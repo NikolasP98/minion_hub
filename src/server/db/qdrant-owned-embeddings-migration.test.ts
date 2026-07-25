@@ -61,9 +61,7 @@ describe('Qdrant-owned embedding storage migration', () => {
     expect(reconciliation).toContain('brain_vector_app_generation_mode()');
     expect(reconciliation).toContain('brain_vector_app_source_state(p_source_id uuid)');
     expect(reconciliation).toContain('brain_vector_app_source_pending_count(p_source_id uuid)');
-    expect(reconciliation).toContain(
-      "chunk.org_id = current_setting('app.current_org_id', true)",
-    );
+    expect(reconciliation).toContain("chunk.org_id = current_setting('app.current_org_id', true)");
     expect(reconciliation).toContain(
       'grant execute on function public.brain_vector_app_source_state(uuid) to app_ledger',
     );
