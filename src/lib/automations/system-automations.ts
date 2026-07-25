@@ -45,7 +45,7 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
 
   // ── Wired 2026-07-19 (were built + allowlisted but scheduled nowhere) ────
   { path: '/api/crm/dni-validation/tick', key: 'dni', cadence: 'hourly', wiring: 'netcup' },
-  { path: '/api/meta/sync/tick', key: 'meta_sync', cadence: 'hourly', wiring: 'netcup' },
+  { path: '/api/meta/sync/tick', key: 'meta_sync', cadence: 'minute', wiring: 'netcup' },
   { path: '/api/email-ledger/tick', key: 'email_ledger', cadence: 'daily_3am', wiring: 'netcup' },
   { path: '/api/crm/conversations/vectorize/tick', key: 'vectorize', cadence: 'hourly', wiring: 'netcup' },
   { path: '/api/crm/conversations/analyze/tick', key: 'analyze', cadence: 'hourly', wiring: 'netcup' },
