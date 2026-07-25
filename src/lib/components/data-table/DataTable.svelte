@@ -141,6 +141,7 @@
 		getSubRows,
 		expandedContent,
 		isExpandable,
+		initialExpanded,
 		// slots
 		cell,
 		filterOptionIcon,
@@ -182,6 +183,14 @@
 		expandedContent?: Snippet<[T]>;
 		/** Gate the expand affordance (default: has sub-rows, or `expandedContent` is set). */
 		isExpandable?: (row: T) => boolean;
+		/**
+		 * Row ids to start expanded. Re-seeded whenever the SET of ids changes, so
+		 * switching a grouping axis re-opens the new groups instead of leaving the
+		 * user facing a wall of collapsed headers; a manual collapse survives until
+		 * then. Without this, `getSubRows` grouping renders headers only, and at a
+		 * POS that means an extra click before every sale.
+		 */
+		initialExpanded?: string[];
 		cell?: Snippet<[T, DataColumn<T>]>;
 		filterOptionIcon?: Snippet<[string]>;
 		toolbar?: Snippet;
@@ -529,7 +538,18 @@
 		search.trim().length > 0 || columns.some((c) => c.filter && filterSet(c.key).size > 0),
 	);
 
-	let expanded = $state<Set<string>>(new Set());
+	let expanded = $state<Set<string>>(new Set(initialExpanded ?? []));
+	// Keyed on the joined ids, not the array identity: the caller rebuilds this
+	// array on every derivation, so an identity check would re-seed constantly
+	// and stomp the user's manual collapses.
+	const initialExpandedKey = $derived((initialExpanded ?? []).join('\u0000'));
+	$effect(() => {
+		const key = initialExpandedKey;
+		untrack(() => {
+			if (key === '') return;
+			expanded = new Set(key.split('\u0000'));
+		});
+	});
 	function toggleExpand(id: string, e?: Event) {
 		e?.stopPropagation();
 		const next = new Set(expanded);

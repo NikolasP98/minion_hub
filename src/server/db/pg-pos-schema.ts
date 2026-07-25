@@ -29,6 +29,11 @@ export const posSettings = pgTable('pos_settings', {
   orgId: text('org_id').primaryKey(),
   methods: jsonb('methods').notNull().default(['cash', 'card', 'yape', 'plin', 'transfer']),
   currency: text('currency').notNull().default('PEN'),
+  /** Per-payment-method surcharge config, e.g.
+   *  `{ card: { type: 'percent'|'fixed', amount: 3.5, label: '…' } }`.
+   *  Replaces the old "Ajuste por Método de Pago" catalog product — a fee is
+   *  configuration, not something sold. */
+  surcharges: jsonb('surcharges').notNull().default({}),
   requireCustomer: boolean('require_customer').notNull().default(false),
   allowPriceOverride: boolean('allow_price_override').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

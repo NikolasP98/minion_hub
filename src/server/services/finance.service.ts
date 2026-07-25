@@ -26,13 +26,44 @@ export function bustFinanceCache(ctx: CoreCtx) {
   return invalidateTags([...financeCacheTags(ctx.tenantId)]);
 }
 
+/**
+ * code → product id, for resolving invoice lines during sync.
+ *
+ * ★ Resolves ALIASES as well as live codes. `metadata.aliases` holds every code
+ * that must still land on this product: codes retired by a merge, and codes
+ * other import sources use. Without this, merging a duplicate away or renaming
+ * a code makes the next sync of a historical invoice set `product_id → NULL`,
+ * silently detaching that product's billing history.
+ *
+ * A LIVE code always beats an alias (`order by is_alias desc`, so the later
+ * `Map.set` wins), so an alias can never hijack a code a real product still
+ * uses — e.g. if a retired code is later re-issued to a new product.
+ *
+ * ★ The `as a(code)` COLUMN alias in the lateral is mandatory. Writing
+ * `... end) as code` names the lateral TABLE instead, and bare `code` then
+ * silently resolves to `p.code`, so every "alias" row returns the product's own
+ * live code and the whole mechanism becomes a no-op with no error anywhere.
+ * That shipped once; 393 real invoice lines stopped resolving. Guarded by
+ * finance-product-aliases.test.ts.
+ */
 export function loadProductMap(ctx: CoreCtx): Promise<Map<string, string>> {
   return withOrgCore(ctx, async (tx) => {
-    const rows = await tx
-      .select({ code: finProducts.code, id: finProducts.id })
-      .from(finProducts)
-      .where(eq(finProducts.orgId, ctx.tenantId));
-    return new Map(rows.map((r) => [r.code, r.id]));
+    const rows = (await tx.execute(sql`
+      select code, id, is_alias from (
+        -- NOTE the a(code) COLUMN alias is mandatory; see the jsdoc above.
+        -- (No backticks in here: this is inside a JS template literal.)
+        select a.code, p.id, 1 as is_alias
+          from fin_products p,
+               lateral jsonb_array_elements_text(
+                 case when jsonb_typeof(p.metadata -> 'aliases') = 'array'
+                      then p.metadata -> 'aliases' else '[]'::jsonb end) as a(code)
+         where p.org_id = ${ctx.tenantId}
+        union all
+        select code, id, 0 as is_alias
+          from fin_products where org_id = ${ctx.tenantId}
+      ) t
+      order by is_alias desc`)) as unknown as Array<{ code: string; id: string }>;
+    return new Map(rows.map((r) => [String(r.code), String(r.id)]));
   });
 }
 

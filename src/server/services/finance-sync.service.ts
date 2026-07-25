@@ -45,15 +45,35 @@ export async function advanceJob(
   const secrets: Record<string, string> = { username, password };
   const config = (source.config ?? {}) as Record<string, unknown>;
   // Manual sync (no window): watermark-based `since` — an empty watermark means a
-  // full history sweep. Daily cron (recentWindowMs): sync from the OLDER of
-  // (now - window) and the watermark, so it never sweeps full AND never skips a
-  // gap when the watermark is stale. On resume the persisted cursor drives paging,
-  // so this only sets the first-page `since`.
+  // full history sweep. That stays a deliberate, human-triggered action.
+  //
+  // Daily cron (recentWindowMs): `since` is the NEWER of (now - window) and the
+  // watermark, making the window a HARD ceiling on how much the nightly run pulls.
+  //   · healthy watermark (hours old) → syncs only those hours: the cheap path
+  //   · stale watermark (post-outage) → clamps to the window instead of sweeping
+  //     back to the watermark, which is what made a "bounded" nightly able to
+  //     drag in months of history and hog the box.
+  // Taking the OLDER of the two (the previous behaviour) contradicted this
+  // function's own "never does a full history sweep" contract.
+  //
+  // The trade is explicit: clamping SKIPS the range between the watermark and the
+  // window, so it is logged loudly rather than silently swallowed — recover with a
+  // manual sync from /finances/settings. On resume the persisted cursor drives
+  // paging, so this only sets the first-page `since`.
   const wmSince = overlapSince(source.watermark);
   const windowSince =
     opts.recentWindowMs != null ? new Date(Date.now() - opts.recentWindowMs).toISOString() : undefined;
-  const since =
-    windowSince != null ? (wmSince && wmSince < windowSince ? wmSince : windowSince) : wmSince;
+  let since = wmSince;
+  if (windowSince != null) {
+    since = wmSince && wmSince > windowSince ? wmSince : windowSince;
+    if (wmSince && wmSince < windowSince) {
+      console.warn(
+        `[finance-sync] ${provider} org=${ctx.tenantId}: watermark ${wmSince} is older than the ` +
+          `${Math.round(opts.recentWindowMs! / 86_400_000)}d window — clamping to ${windowSince}. ` +
+          `The range ${wmSince} → ${windowSince} is NOT covered by this run; run a manual sync to backfill it.`,
+      );
+    }
+  }
   // Watermark target = when THIS backfill began (advance-only; overlapSince covers the edge).
   const watermarkTarget = job.startedAt ? new Date(job.startedAt).toISOString() : nowIso();
 

@@ -113,6 +113,16 @@ export const finProducts = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
+    /**
+     * MASTER product identity — see 20260725120000_product_sku_and_aliases.sql.
+     * `id` is ROW identity (8 tables reference it); `sku` is LOGICAL product
+     * identity and may be reassigned so a merge can consolidate rows onto one
+     * surviving product without rewriting any foreign key. Deliberately NOT
+     * unique for that reason.
+     */
+    sku: uuid('sku').notNull().defaultRandom(),
+    /** Short human/import REFERENCE (2-4 alnum). Retired codes live on in
+     *  `metadata.aliases` so the invoice sync keeps resolving them. */
     code: text('code').notNull(),
     name: text('name').notNull(),
     category: text('category'),
@@ -124,6 +134,44 @@ export const finProducts = pgTable(
   },
   (t) => ({ uniq: uniqueIndex('fin_products_org_code_uniq').on(t.orgId, t.code) }),
 );
+
+/**
+ * Product bundles: product → product composition, the layer above services.
+ *
+ * Companion migration: supabase/migrations/20260725030000_fin_product_components.sql.
+ * Sibling of stk_item_components (which composes MATERIALS in stock UOM); this
+ * composes SELLABLES in whole units, so a pure service can be bundled without
+ * first being forced into stk_items.
+ */
+export const finProductComponents = pgTable(
+  'fin_product_components',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    bundleProductId: uuid('bundle_product_id')
+      .notNull()
+      .references(() => finProducts.id, { onDelete: 'cascade' }),
+    /** restrict: a service a bundle still sells must not vanish silently. */
+    childProductId: uuid('child_product_id')
+      .notNull()
+      .references(() => finProducts.id, { onDelete: 'restrict' }),
+    qty: numeric('qty').notNull().default('1'),
+    lineNo: integer('line_no').notNull().default(0),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('fin_product_components_org_id_bundle_product_id_child_product_id_key').on(
+      t.orgId,
+      t.bundleProductId,
+      t.childProductId,
+    ),
+    index('fin_product_components_org_bundle_idx').on(t.orgId, t.bundleProductId),
+    index('fin_product_components_org_child_idx').on(t.orgId, t.childProductId),
+  ],
+);
+export type FinProductComponent = typeof finProductComponents.$inferSelect;
 
 /** Per-org billing connector config + sync watermark. */
 export const finSources = pgTable(

@@ -51,15 +51,31 @@ export async function importFromBilling(ctx: CoreCtx): Promise<{ created: number
   return withOrgCore(ctx, async (tx) => {
     const created = (await tx.execute(sql`
       insert into fin_products (org_id, code, name)
-      select org_id, code, (array_agg(description order by id desc))[1]
-      from fin_invoice_items where org_id = ${ctx.tenantId} and code is not null and code <> ''
-      group by org_id, code
+      select i.org_id, i.code, (array_agg(i.description order by i.id desc))[1]
+      from fin_invoice_items i
+      where i.org_id = ${ctx.tenantId} and i.code is not null and i.code <> ''
+        -- ★ Skip codes already claimed as an ALIAS by an existing product.
+        -- Without this, every code retired by a merge is re-created here as a
+        -- fresh product on the next import, silently resurrecting the duplicate
+        -- that was just cleaned up.
+        and not exists (
+          select 1 from fin_products p
+          where p.org_id = i.org_id
+            and jsonb_typeof(p.metadata -> 'aliases') = 'array'
+            and p.metadata -> 'aliases' @> to_jsonb(i.code)
+        )
+      group by i.org_id, i.code
       on conflict (org_id, code) do nothing
       returning id
     `)) as unknown as unknown[];
     const linked = (await tx.execute(sql`
       update fin_invoice_items i set product_id = p.id from fin_products p
-      where i.org_id = ${ctx.tenantId} and p.org_id = i.org_id and p.code = i.code and i.product_id is null
+      where i.org_id = ${ctx.tenantId} and p.org_id = i.org_id and i.product_id is null
+        and (
+          p.code = i.code
+          or (jsonb_typeof(p.metadata -> 'aliases') = 'array'
+              and p.metadata -> 'aliases' @> to_jsonb(i.code))
+        )
       returning i.id
     `)) as unknown as unknown[];
     await bustFinanceCache(ctx);

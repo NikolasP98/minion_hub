@@ -53,10 +53,16 @@ const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 const actor = { id: 'u1', name: 'Test User' };
 
 describe('slugifyCode — pure', () => {
-  it('uppercases and dash-joins non-alnum runs, no leading/trailing dash', () => {
-    expect(slugifyCode('BOTOX 50U')).toBe('BOTOX-50U');
-    expect(slugifyCode('  hydra facial! ')).toBe('HYDRA-FACIAL');
-    expect(slugifyCode('already-CODE')).toBe('ALREADY-CODE');
+  // Contract changed deliberately: codes are now 2–4 uppercase alphanumerics
+  // with NO separator, because the old unbounded hyphenated form is what let
+  // `CM-SVP`/`CMSVP` and `RS-SVP`/`RSSVP` coexist as separate products.
+  it('takes initials, caps at 4 chars, drops every separator', () => {
+    expect(slugifyCode('BOTOX 50U')).toBe('B5');
+    expect(slugifyCode('  hydra facial! ')).toBe('HF');
+    expect(slugifyCode('already-CODE')).toBe('AC');
+    expect(slugifyCode('Malar Saypha Volume Plus')).toBe('MSVP');
+    // Single word → prefix, still capped.
+    expect(slugifyCode('Eudaria')).toBe('EUDA');
   });
 });
 
@@ -113,6 +119,16 @@ describe('listSellables', () => {
         itemId: 'item-1',
         stockQty: 12,
         hasMapping: false,
+        taxonomy: {
+          zone: 'ninguna',
+          line: 'toxina',
+          // A stored fin_products.category is a HUMAN classification and
+          // outranks the derived one ('Toxina' here) — the 2026-07-25 cleanup
+          // set Retail/Prenda explicitly and the board must honour that.
+          category: 'injectables',
+          zoneSource: 'inferred',
+          lineSource: 'inferred',
+        },
       },
       {
         productId: 'fp-2',
@@ -125,6 +141,13 @@ describe('listSellables', () => {
         itemId: null,
         stockQty: null,
         hasMapping: true,
+        taxonomy: {
+          zone: 'ninguna',
+          line: 'ninguno',
+          category: 'Cargo',
+          zoneSource: 'inferred',
+          lineSource: 'inferred',
+        },
       },
       {
         productId: 'fp-3',
@@ -137,8 +160,92 @@ describe('listSellables', () => {
         itemId: 'item-2',
         stockQty: 0,
         hasMapping: false,
+        taxonomy: {
+          zone: 'ninguna',
+          line: 'ninguno',
+          category: 'Cargo',
+          zoneSource: 'inferred',
+          lineSource: 'inferred',
+        },
       },
     ]);
+  });
+
+  // Derived-on-read is the contract: nothing inferred is persisted, so the
+  // grouping axes must appear without any backfill having run.
+  it('derives the taxonomy from name + consumed insumo, and lets metadata override it', async () => {
+    const { db } = createMockDb();
+    mockExecute(db, [
+      {
+        id: 'fp-a',
+        code: 'MSVP',
+        name: 'Malar - Saypha Volume Plus',
+        category: null,
+        unit_price: '1350',
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: true,
+        metadata: {},
+        consumed_item_names: ['HA Saypha Volume Plus (Caja)'],
+      },
+      {
+        id: 'fp-b',
+        code: 'CM',
+        name: 'Contorno Mandibular',
+        category: null,
+        unit_price: '500',
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: false,
+        metadata: { line: 'mifill' }, // a human confirmed the insumo
+        consumed_item_names: [],
+      },
+    ]);
+
+    const [malar, mandibula] = await listSellables(ctx(db));
+
+    // Mapped insumo is authoritative, and provenance says so.
+    expect(malar.taxonomy).toEqual({
+      zone: 'malar',
+      line: 'saypha-volume-plus',
+      category: 'Relleno',
+      zoneSource: 'inferred',
+      lineSource: 'mapped',
+    });
+    // The override replaces the 'por-definir' fallback AND re-derives category.
+    expect(mandibula.taxonomy).toEqual({
+      zone: 'mandibula',
+      line: 'mifill',
+      category: 'Relleno',
+      zoneSource: 'inferred',
+      lineSource: 'manual',
+    });
+  });
+
+  it('ignores an unrecognised metadata value instead of minting a phantom group', async () => {
+    const { db } = createMockDb();
+    mockExecute(db, [
+      {
+        id: 'fp-c',
+        code: 'MSVP',
+        name: 'Malar - Saypha Volume Plus',
+        category: null,
+        unit_price: '1350',
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: false,
+        metadata: { zone: 'mlaar', line: 'typo-line' }, // misspelled
+        consumed_item_names: [],
+      },
+    ]);
+    const [row] = await listSellables(ctx(db));
+    expect(row.taxonomy.zone).toBe('malar');
+    expect(row.taxonomy.zoneSource).toBe('inferred');
+    expect(row.taxonomy.line).toBe('saypha-volume-plus');
+    expect(row.taxonomy.lineSource).toBe('inferred');
   });
 });
 
@@ -163,14 +270,14 @@ describe('createSellable', () => {
 
     const input: SellableInput = {
       name: 'Consulta',
-      code: 'CONSULT',
+      code: 'CONS',
       unitPrice: null,
       kind: 'service',
     };
     const row = await createSellable(ctx(db), input, actor);
 
     expect(upsertProductMock).toHaveBeenCalledWith(expect.anything(), {
-      code: 'CONSULT',
+      code: 'CONS',
       name: 'Consulta',
       category: null,
       unitPrice: null,
@@ -203,7 +310,7 @@ describe('createSellable', () => {
 
     const input: SellableInput = {
       name: 'Botox',
-      code: 'BOTOX',
+      code: 'BTX',
       unitPrice: 250,
       kind: 'product',
       trackStock: true,
@@ -212,7 +319,7 @@ describe('createSellable', () => {
     const row = await createSellable(ctx(db), input, actor);
 
     expect(createItemMock).toHaveBeenCalledWith(expect.anything(), {
-      code: 'BOTOX',
+      code: 'BTX',
       name: 'Botox',
       uom: 'vial',
       finProductId: 'fp-2',
@@ -406,7 +513,7 @@ describe('createSellable', () => {
     );
   });
 
-  it('auto-codes from the name when code is absent: BOTOX 50U → BOTOX-50U', async () => {
+  it('auto-codes from the name when code is absent: BOTOX 50U → B5', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[{ id: 'fp-4' }]]);
     mockExecute(db, [
@@ -429,7 +536,7 @@ describe('createSellable', () => {
 
     expect(upsertProductMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ code: 'BOTOX-50U' }),
+      expect.objectContaining({ code: 'B5' }),
     );
   });
 
@@ -533,6 +640,84 @@ describe('updateSellable', () => {
     resolveSequence([[]]); // load current product → none
     await expect(updateSellable(ctx(db), 'missing', { name: 'X' }, actor)).rejects.toMatchObject({
       code: 'not_found',
+    });
+  });
+
+  // ── regression: a code change must RENAME, never fork ────────────────────
+  // Four duplicate products (`CM-SVP`, `RS-SVP`, `RS-O4`, `RO-I`) were created
+  // in prod on 2026-07-20 within four minutes because this path called
+  // upsertProduct, whose conflict target is (org_id, code): a CHANGED code did
+  // not conflict, so it INSERTED a second product and left the original intact.
+  it('renames in place on a code change — never upserts a second product', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'fp-7', code: 'PEEL', name: 'Peel', category: null, unitPrice: '80', active: true }],
+    ]);
+    // Serves both the billed-lines count (n) and getSellableRow's merge row.
+    mockExecute(db, [
+      {
+        n: 0,
+        id: 'fp-7',
+        code: 'PL',
+        name: 'Peel',
+        category: null,
+        unit_price: '80',
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: false,
+      },
+    ]);
+
+    await updateSellable(ctx(db), 'fp-7', { code: 'PL' }, actor);
+
+    expect(upsertProductMock).not.toHaveBeenCalled();
+    expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).toHaveBeenCalled();
+  });
+
+  it('refuses to rename a code that already has billed invoice lines', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [
+        {
+          id: 'fp-8',
+          code: 'RSSV',
+          name: 'RinoSculpt',
+          category: null,
+          unitPrice: '1350',
+          active: true,
+        },
+      ],
+    ]);
+    // 231 billed lines carry code 'RSSV'; loadProductMap resolves the invoice
+    // sync through fin_products.code, so renaming would NULL their product_id.
+    mockExecute(db, [{ n: 231 }]);
+
+    await expect(
+      updateSellable(ctx(db), 'fp-8', { code: 'NASP' }, actor),
+    ).rejects.toMatchObject({ code: 'code_locked' });
+    expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a code that cannot be salvaged by normalization', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const row = {
+      id: 'fp-9',
+      code: 'PEEL',
+      name: 'Peel',
+      category: null,
+      unitPrice: '80',
+      active: true,
+    };
+    resolveSequence([[row], [row]]); // one slot per updateSellable call below
+    // Note 'CM-SVP' is NOT the case to test: normalizeCode salvages it to
+    // 'CMSV', which is valid on purpose. Only input with fewer than 2 usable
+    // characters is unrecoverable.
+    await expect(updateSellable(ctx(db), 'fp-9', { code: '-' }, actor)).rejects.toMatchObject({
+      code: 'invalid_code',
+    });
+    await expect(updateSellable(ctx(db), 'fp-9', { code: 'A' }, actor)).rejects.toMatchObject({
+      code: 'invalid_code',
     });
   });
 });

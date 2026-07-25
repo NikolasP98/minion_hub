@@ -5,7 +5,21 @@
   import { invalidate } from '$app/navigation';
   import { ShoppingCart, LayoutGrid, List, Receipt, History } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { PageHeader, Badge, Button, EmptyState, Popover } from '$lib/components/ui';
+  import {
+    PageHeader,
+    Badge,
+    Button,
+    EmptyState,
+    Popover,
+    SegmentedControl,
+  } from '$lib/components/ui';
+  import {
+    groupBy,
+    toTreeRows,
+    isGroupRow,
+    type GroupAxis,
+    type TreeRow,
+  } from '$lib/catalog/grouping';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { canAct } from '$lib/access/can.svelte';
   import { createHotkey } from '$lib/hotkeys';
@@ -86,6 +100,28 @@
     if (browser) localStorage.setItem(VIEW_KEY, view);
   });
 
+  // ── Grouping ── DEFAULTS TO FLAT on purpose: this is the till, and a cashier
+  // mid-sale should not have to open a group to reach a product. Grouping is for
+  // browsing ("what do we offer for ojeras?"), so it's opt-in and remembered.
+  const GROUP_KEY = 'pos-sell-group';
+  const GROUP_AXES: GroupAxis[] = ['none', 'zone', 'line', 'category'];
+  function storedAxis(): GroupAxis {
+    if (!browser) return 'none';
+    const raw = localStorage.getItem(GROUP_KEY);
+    return GROUP_AXES.includes(raw as GroupAxis) ? (raw as GroupAxis) : 'none';
+  }
+  // svelte-ignore state_referenced_locally -- seed once from localStorage
+  let groupAxis = $state<GroupAxis>(storedAxis());
+  $effect(() => {
+    if (browser) localStorage.setItem(GROUP_KEY, groupAxis);
+  });
+  const groupItems = $derived([
+    { value: 'none', label: m.catalog_group_none() },
+    { value: 'zone', label: m.catalog_group_zone() },
+    { value: 'line', label: m.catalog_group_line() },
+    { value: 'category', label: m.catalog_group_category() },
+  ]);
+
   createHotkey('/', () => searchEl?.focus(), { meta: { name: m.pos_sell_search_placeholder() } });
 
   const categories = $derived(
@@ -119,7 +155,21 @@
   }
 
   type Sellable = PageData['sellables'][number];
-  const tableColumns = $derived<DataColumn<Sellable>[]>([
+  /** What the grouped table actually renders: products AND synthetic headers. */
+  type TableRow = TreeRow<Sellable>;
+
+  /**
+   * A search is an explicit "I know what I want", so results stay FLAT even when
+   * a grouping axis is selected — otherwise every query would land behind a
+   * collapsed header. Grouping applies to browsing only.
+   */
+  const effectiveAxis = $derived<GroupAxis>(search.trim() ? 'none' : groupAxis);
+  const galleryGroups = $derived(groupBy(filtered, effectiveAxis));
+  const tableRows = $derived(toTreeRows(filtered, effectiveAxis));
+  /** Groups open by default — a cashier must never expand to reach a product. */
+  const expandedGroupIds = $derived(tableRows.filter((r) => r.__group).map((r) => r.productId));
+
+  const tableColumns = $derived<DataColumn<TableRow>[]>([
     { key: 'name', label: m.pos_sell_col_name(), custom: true, accessor: (s) => s.name },
     { key: 'category', label: m.pos_sell_col_category(), accessor: (s) => s.category ?? '—' },
     {
@@ -498,6 +548,13 @@
                 >
               {/each}
             </div>
+            <SegmentedControl
+              class="group-seg"
+              aria-label={m.catalog_group_by()}
+              value={groupAxis}
+              items={groupItems}
+              onValueChange={(v) => (groupAxis = v as GroupAxis)}
+            />
             <div class="view-toggle" role="group" aria-label={m.pos_sell_view_gallery()}>
               <Button
                 variant="ghost"
@@ -532,27 +589,38 @@
             {#if filtered.length === 0}
               <EmptyState title={m.pos_sell_no_results()} compact />
             {:else}
-              <div class="grid">
-                {#each filtered as s (s.productId)}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    type="button"
-                    class="card"
-                    onclick={() => addLine(s)}
-                  >
-                    <span class="cname">{s.name}</span>
-                    <span class="cprice"
-                      >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
+              <!-- Grouped GALLERY sections rather than a collapsible tree: at the
+                   till, one tap must add a product, so nothing is ever hidden
+                   behind an expand. Ungrouped renders a single unlabelled group. -->
+              {#each galleryGroups as g (g.key)}
+                {#if g.label}
+                  <div class="grp-head">
+                    <span class="grp-name">{g.label}</span>
+                    <span class="grp-count">{m.catalog_group_count({ count: g.rows.length })}</span>
+                  </div>
+                {/if}
+                <div class="grid">
+                  {#each g.rows as s (s.productId)}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      type="button"
+                      class="card"
+                      onclick={() => addLine(s)}
                     >
-                    {#if s.kind === 'product' && s.stockQty != null}
-                      <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
-                        >{s.stockQty}</Badge
+                      <span class="cname">{s.name}</span>
+                      <span class="cprice"
+                        >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
                       >
-                    {/if}
-                  </Button>
-                {/each}
-              </div>
+                      {#if s.kind === 'product' && s.stockQty != null}
+                        <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
+                          >{s.stockQty}</Badge
+                        >
+                      {/if}
+                    </Button>
+                  {/each}
+                </div>
+              {/each}
             {/if}
           </div>
         {:else}
@@ -561,18 +629,36 @@
             <DataTable
               class="flex-1 min-h-0"
               columns={tableColumns}
-              data={filtered}
+              data={tableRows}
               getRowId={(s) => s.productId}
+              getSubRows={(s) => s.__children}
+              initialExpanded={expandedGroupIds}
               searchable={false}
               columnMenu={false}
               reorderable={false}
               resizable={false}
-              onRowClick={(s) => addLine(s)}
+              onRowClick={(s) => {
+                // ★ Group headers are the SAME row type as products (DataTable's
+                // getSubRows walks one type), so without this guard clicking
+                // "Labios" would add a fictional product to the ticket.
+                if (!isGroupRow(s)) addLine(s);
+              }}
               emptyMessage={m.pos_sell_no_results()}
             >
-              {#snippet cell(s: Sellable, col: DataColumn<Sellable>)}
+              {#snippet cell(s: TableRow, col: DataColumn<TableRow>)}
                 {#if col.key === 'name'}
-                  <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
+                  {#if s.__group}
+                    <span class="tgroup"
+                      >{s.__group.label}<span class="tcount"
+                        >{m.catalog_group_count({ count: s.__group.count })}</span
+                      ></span
+                    >
+                  {:else}
+                    <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
+                  {/if}
+                {:else if s.__group}
+                  <!-- A header has no price, stock or category of its own. -->
+                  <span></span>
                 {:else if col.key === 'unitPrice'}
                   <span class="tabular-nums"
                     >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
@@ -745,6 +831,35 @@
     gap: var(--space-2, 8px);
     flex: 1;
     min-width: 0;
+  }
+  /* Group header inside the gallery — a quiet label, not a card. */
+  .grp-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-1) var(--space-1);
+  }
+  .grp-name {
+    font-size: var(--font-size-label);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+  .grp-count {
+    font-size: var(--font-size-caption);
+    color: var(--color-text-tertiary);
+  }
+  /* Group header inside the DataTable tree. */
+  .tgroup {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  .tcount {
+    font-size: var(--font-size-caption);
+    font-weight: 400;
+    color: var(--color-text-tertiary);
   }
   .view-toggle {
     display: flex;
