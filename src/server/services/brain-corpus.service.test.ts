@@ -168,7 +168,7 @@ describe('brain corpus all-channel normalization', () => {
       [message('1', 'When is my appointment?')],
       {
         ...relationshipContext,
-        finance: { ...relationshipContext.finance, total: 300 },
+        tags: [...relationshipContext.tags, 'Returning'],
       },
     );
 
@@ -176,7 +176,10 @@ describe('brain corpus all-channel normalization', () => {
     expect(first.metadata.channel).toBe('instagram');
     expect(first.metadata.contactId).toBe('contact-1');
     expect(first.chunks[0].contextPrefix).toContain('Ada Lovelace');
-    expect(first.chunks[0].contextPrefix).toContain('confirmed');
+    expect(first.chunks[0].contextPrefix).toContain('VIP');
+    expect(first.chunks[0].contextPrefix).not.toContain('ada@example.com');
+    expect(first.chunks[0].contextPrefix).not.toContain('12345678');
+    expect(first.chunks[0].contextPrefix).not.toContain('Finance');
     expect(first.contentHash).not.toBe(changed.contentHash);
     expect(first.sourceRevision).not.toBe(changed.sourceRevision);
   });
@@ -193,12 +196,8 @@ describe('brain corpus all-channel normalization', () => {
       },
       party: null,
       identities: [],
-      tags: [],
-      activities: Array.from({ length: 10 }, (_, index) => ({
-        kind: 'note',
-        body: `${index}:${'x'.repeat(2000)}`,
-        occurredAt: '2026-07-25T00:00:00Z',
-      })),
+      tags: Array.from({ length: 1000 }, (_, index) => `${index}:${'x'.repeat(20)}`),
+      activities: [],
       finance: { invoiceCount: 0, total: 0, lastIssuedAt: null, recentInvoices: [] },
       bookings: [],
       salesOrders: [],

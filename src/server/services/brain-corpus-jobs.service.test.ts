@@ -216,6 +216,28 @@ describe('all-channel conversation brain dirty jobs', () => {
     );
   });
 
+  it('drains queued legacy WhatsApp jobs after the all-channel handler deploys', async () => {
+    const legacy = {
+      ...job({
+        kind: 'dirty',
+        conversations: [{ accountId: 'a1', chatId: 'c1', months: ['2026-07'] }],
+        next: 0,
+        failures: [],
+      }),
+      type: 'brain_corpus_whatsapp',
+      refId: 'whatsapp:dirty',
+    };
+
+    await expect(advanceBrainCorpusJob(legacy as never)).resolves.toEqual({ done: true });
+    expect(syncConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'org-1' }),
+      'whatsapp',
+      'a1',
+      'c1',
+      { months: ['2026-07'] },
+    );
+  });
+
   it('isolates a poison conversation and marks only its account source', async () => {
     syncConversation.mockRejectedValueOnce(new Error('provider down'));
     await expect(

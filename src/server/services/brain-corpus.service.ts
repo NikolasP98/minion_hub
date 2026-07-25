@@ -354,92 +354,27 @@ function channelLabel(channel: string): string {
     .join(' ');
 }
 
-function compactJson(value: unknown, maxChars = 2000): string {
-  const serialized = JSON.stringify(value);
-  return serialized.length <= maxChars ? serialized : `${serialized.slice(0, maxChars)}…`;
-}
-
 export function renderConversationRelationshipContext(
   context: ConversationRelationshipContext | null,
 ): string {
   if (!context?.contact) return 'CRM contact: not matched';
   const lines = [
     `CRM contact: ${context.contact.displayName ?? context.contact.humanId ?? context.contact.id}`,
-    `CRM profile: lifecycle=${context.contact.lifecycleOverride ?? 'derived'}; source=${context.contact.source}; custom=${compactJson(context.contact.customFields)}`,
+    `CRM profile: lifecycle=${context.contact.lifecycleOverride ?? 'derived'}; source=${context.contact.source}`,
   ];
   if (context.party) {
-    lines.push(
-      `Party: ${context.party.name ?? context.party.id}; type=${context.party.type}; document=${context.party.docType ?? ''} ${context.party.docNumber ?? ''}; verified=${context.party.dniVerified}; phone=${context.party.phone9 ?? ''}; email=${context.party.email ?? ''}`,
-    );
+    lines.push(`Party: ${context.party.name ?? context.party.id}; type=${context.party.type}`);
   }
   if (context.identities.length > 0) {
     lines.push(
-      `Channel identities: ${context.identities
-        .map((identity) => `${identity.channel}:${identity.handle ?? identity.externalId}`)
-        .join(', ')}`,
+      `Known channels: ${[...new Set(context.identities.map((identity) => identity.channel))].join(', ')}`,
     );
   }
   if (context.tags.length > 0) lines.push(`CRM tags: ${context.tags.join(', ')}`);
   if (context.activities.length > 0) {
     lines.push(
       `Recent CRM activity: ${context.activities
-        .map(
-          (activity) =>
-            `${activity.occurredAt} ${activity.kind}${activity.body ? ` — ${activity.body}` : ''}`,
-        )
-        .join(' | ')}`,
-    );
-  }
-  if (context.finance.invoiceCount > 0) {
-    lines.push(
-      `Finance summary: invoices=${context.finance.invoiceCount}; total=${context.finance.total}; last=${context.finance.lastIssuedAt ?? 'unknown'}`,
-    );
-    lines.push(
-      `Recent invoices: ${context.finance.recentInvoices
-        .map(
-          (invoice) =>
-            `${invoice.issuedAt ?? 'unknown'} ${invoice.documentId ?? ''} ${invoice.status ?? ''} ${invoice.currency ?? ''} ${invoice.total}${invoice.items.length ? ` [${invoice.items.join(', ')}]` : ''}`,
-        )
-        .join(' | ')}`,
-    );
-  }
-  if (context.bookings.length > 0) {
-    lines.push(
-      `Bookings: ${context.bookings
-        .map(
-          (booking) =>
-            `${booking.startTime} ${booking.status} ${booking.title ?? ''}${booking.notes ? ` — ${booking.notes}` : ''}`,
-        )
-        .join(' | ')}`,
-    );
-  }
-  if (context.salesOrders.length > 0) {
-    lines.push(
-      `Sales orders: ${context.salesOrders
-        .map(
-          (order) =>
-            `${order.createdAt} ${order.humanId ?? ''} ${order.status} ${order.description ?? ''} ${order.currency ?? ''} ${order.total ?? ''}`,
-        )
-        .join(' | ')}`,
-    );
-  }
-  if (context.posTickets.length > 0) {
-    lines.push(
-      `POS tickets: ${context.posTickets
-        .map(
-          (ticket) =>
-            `${ticket.submittedAt} ${ticket.humanId ?? ''} ${ticket.status} ${ticket.currency} ${ticket.total}`,
-        )
-        .join(' | ')}`,
-    );
-  }
-  if (context.memberships.length > 0) {
-    lines.push(
-      `Memberships: ${context.memberships
-        .map(
-          (membership) =>
-            `${membership.planName ?? 'plan'} ${membership.status} started=${membership.startedAt} next=${membership.nextCycleDate}`,
-        )
+        .map((activity) => `${activity.occurredAt} ${activity.kind}`)
         .join(' | ')}`,
     );
   }
@@ -554,7 +489,6 @@ export function normalizeConversation(
       ),
       contactId: relationshipContext?.contact?.id ?? null,
       partyId: relationshipContext?.party?.id ?? null,
-      relationshipContext,
     },
     chunks,
   };
@@ -1147,32 +1081,32 @@ async function loadConversationRelationshipContexts(
           'displayName', contact.display_name,
           'lifecycleOverride', contact.lifecycle_override,
           'source', contact.source,
-          'customFields', contact.custom_fields
+          'customFields', '{}'::jsonb
         ),
         'party', case when party.id is null then null else jsonb_build_object(
           'id', party.id::text,
           'type', party.type,
           'name', party.name,
-          'phone9', party.phone9,
-          'email', party.email,
-          'docType', party.doc_type,
-          'docNumber', party.doc_number,
-          'dob', party.dob,
-          'dniVerified', party.dni_verified
+          'phone9', null,
+          'email', null,
+          'docType', null,
+          'docNumber', null,
+          'dob', null,
+          'dniVerified', false
         ) end,
         'identities', coalesce(identities.rows, '[]'::jsonb),
         'tags', coalesce(tags.rows, '[]'::jsonb),
         'activities', coalesce(activities.rows, '[]'::jsonb),
         'finance', jsonb_build_object(
-          'invoiceCount', coalesce(finance.invoice_count, 0),
-          'total', coalesce(finance.total, 0),
-          'lastIssuedAt', finance.last_issued_at,
-          'recentInvoices', coalesce(recent_invoices.rows, '[]'::jsonb)
+          'invoiceCount', 0,
+          'total', 0,
+          'lastIssuedAt', null,
+          'recentInvoices', '[]'::jsonb
         ),
-        'bookings', coalesce(bookings.rows, '[]'::jsonb),
-        'salesOrders', coalesce(sales_orders.rows, '[]'::jsonb),
-        'posTickets', coalesce(pos_tickets.rows, '[]'::jsonb),
-        'memberships', coalesce(memberships.rows, '[]'::jsonb)
+        'bookings', '[]'::jsonb,
+        'salesOrders', '[]'::jsonb,
+        'posTickets', '[]'::jsonb,
+        'memberships', '[]'::jsonb
       ) end as relationship_context
     from requested
     left join crm_contact_identities identity
@@ -1189,9 +1123,9 @@ async function loadConversationRelationshipContexts(
     left join lateral (
       select jsonb_agg(jsonb_build_object(
         'channel', ci.channel,
-        'externalId', ci.external_id,
-        'handle', ci.handle
-      ) order by ci.channel, ci.external_id) as rows
+        'externalId', '',
+        'handle', null
+      ) order by ci.channel) as rows
       from crm_contact_identities ci
       where ci.org_id = current_setting('app.current_org_id', true)
         and ci.contact_id = contact.id
@@ -1208,11 +1142,11 @@ async function loadConversationRelationshipContexts(
     left join lateral (
       select jsonb_agg(jsonb_build_object(
         'kind', activity.kind,
-        'body', activity.body,
+        'body', null,
         'occurredAt', activity.occurred_at
       ) order by activity.occurred_at desc) as rows
       from (
-        select kind, body, occurred_at
+        select kind, occurred_at
         from crm_activities
         where org_id = current_setting('app.current_org_id', true)
           and contact_id = contact.id
@@ -1220,148 +1154,6 @@ async function loadConversationRelationshipContexts(
         limit 10
       ) activity
     ) activities on true
-    left join lateral (
-      select count(*)::int as invoice_count,
-        coalesce(sum(coalesce(invoice.total, 0)), 0)::float8 as total,
-        max(invoice.issued_at) as last_issued_at
-      from fin_invoices invoice
-      left join fin_clients client
-        on client.org_id = current_setting('app.current_org_id', true)
-        and client.id = invoice.client_id
-      where invoice.org_id = current_setting('app.current_org_id', true)
-        and contact.id is not null
-        and (
-          (contact.party_id is not null and client.party_id = contact.party_id)
-          or (
-            nullif(trim(contact.custom_fields->>'dni'), '') is not null
-            and regexp_replace(coalesce(invoice.client_doc_number, ''), '[^0-9]', '', 'g')
-              = regexp_replace(contact.custom_fields->>'dni', '[^0-9]', '', 'g')
-          )
-        )
-    ) finance on true
-    left join lateral (
-      select jsonb_agg(jsonb_build_object(
-        'documentId', invoice.document_id,
-        'issuedAt', invoice.issued_at,
-        'total', coalesce(invoice.total, 0)::float8,
-        'currency', invoice.currency,
-        'status', invoice.status,
-        'items', invoice.items
-      ) order by invoice.issued_at desc nulls last) as rows
-      from (
-        select fi.document_id, fi.issued_at, fi.total, fi.currency, fi.status,
-          coalesce((
-            select jsonb_agg(item.description order by item.total desc nulls last)
-            from (
-              select description, total
-              from fin_invoice_items
-              where org_id = current_setting('app.current_org_id', true)
-                and invoice_id = fi.id
-                and description is not null
-              order by total desc nulls last
-              limit 5
-            ) item
-          ), '[]'::jsonb) as items
-        from fin_invoices fi
-        left join fin_clients fc
-          on fc.org_id = current_setting('app.current_org_id', true)
-          and fc.id = fi.client_id
-        where fi.org_id = current_setting('app.current_org_id', true)
-          and contact.id is not null
-          and (
-            (contact.party_id is not null and fc.party_id = contact.party_id)
-            or (
-              nullif(trim(contact.custom_fields->>'dni'), '') is not null
-              and regexp_replace(coalesce(fi.client_doc_number, ''), '[^0-9]', '', 'g')
-                = regexp_replace(contact.custom_fields->>'dni', '[^0-9]', '', 'g')
-            )
-          )
-        order by fi.issued_at desc nulls last
-        limit 10
-      ) invoice
-    ) recent_invoices on true
-    left join lateral (
-      select jsonb_agg(jsonb_build_object(
-        'startTime', booking.start_time,
-        'status', booking.status,
-        'title', booking.title,
-        'notes', booking.notes
-      ) order by booking.start_time desc) as rows
-      from (
-        select start_time, status, title, notes
-        from sched_bookings
-        where org_id = current_setting('app.current_org_id', true)
-          and (
-            crm_contact_id = contact.id
-            or (contact.party_id is not null and party_id = contact.party_id)
-          )
-        order by start_time desc
-        limit 10
-      ) booking
-    ) bookings on true
-    left join lateral (
-      select jsonb_agg(jsonb_build_object(
-        'humanId', sales_order.human_id,
-        'createdAt', sales_order.created_at,
-        'status', sales_order.status,
-        'description', sales_order.description,
-        'total', sales_order.total::float8,
-        'currency', sales_order.currency
-      ) order by sales_order.created_at desc) as rows
-      from (
-        select human_id, created_at, status, description, total, currency
-        from sales_orders
-        where org_id = current_setting('app.current_org_id', true)
-          and (
-            crm_contact_id = contact.id
-            or (contact.party_id is not null and party_id = contact.party_id)
-          )
-        order by created_at desc
-        limit 10
-      ) sales_order
-    ) sales_orders on true
-    left join lateral (
-      select jsonb_agg(jsonb_build_object(
-        'humanId', ticket.human_id,
-        'submittedAt', ticket.submitted_at,
-        'status', ticket.status,
-        'total', ticket.total::float8,
-        'currency', ticket.currency
-      ) order by ticket.submitted_at desc) as rows
-      from (
-        select human_id, submitted_at, status, total, currency
-        from pos_tickets
-        where org_id = current_setting('app.current_org_id', true)
-          and (
-            crm_contact_id = contact.id
-            or (contact.party_id is not null and party_id = contact.party_id)
-          )
-        order by submitted_at desc
-        limit 10
-      ) ticket
-    ) pos_tickets on true
-    left join lateral (
-      select jsonb_agg(jsonb_build_object(
-        'planName', membership.plan_name,
-        'status', membership.status,
-        'startedAt', membership.started_at,
-        'nextCycleDate', membership.next_cycle_date
-      ) order by membership.started_at desc) as rows
-      from (
-        select plan.name as plan_name, member.status, member.started_at, member.next_cycle_date
-        from memberships member
-        left join membership_plans plan
-          on plan.org_id = current_setting('app.current_org_id', true)
-          and plan.id = member.plan_id
-        where member.org_id = current_setting('app.current_org_id', true)
-          and (
-            member.crm_contact_id = contact.id
-            or (contact.party_id is not null and member.party_id = contact.party_id)
-          )
-        order by member.started_at desc
-        limit 10
-      ) membership
-    ) memberships on true
   `)) as unknown as Array<{
     channel: string;
     chat_id: string;
@@ -1504,13 +1296,9 @@ async function persistConversations(
   return withOrgCore(ctx, async (tx) => {
     if (qdrantStorage) {
       const generations = (await tx.execute(sql`
-        select storage_mode
-        from brain_vector_generations
-        where is_active and enqueue_enabled
-        order by activated_at desc nulls last
-        limit 2
-      `)) as unknown as Array<{ storage_mode: string }>;
-      if (generations.length !== 1 || generations[0].storage_mode !== 'qdrant') {
+        select public.brain_vector_app_generation_mode() as storage_mode
+      `)) as unknown as Array<{ storage_mode: string | null }>;
+      if (generations[0]?.storage_mode !== 'qdrant') {
         throw new Error(
           'BRAIN_VECTOR_STORAGE_MODE=qdrant requires one active Qdrant-owned vector generation',
         );
@@ -1614,28 +1402,13 @@ async function persistConversations(
               where document.org_id = knowledge_sources.org_id
                 and document.source_id = knowledge_sources.id and document.status <> 'deleted'
             ) then 'queued'
-            when ${qdrantStorage} and exists (
-              select 1
-              from knowledge_chunks chunk
-              join brain_vector_outbox vector_job
-                on vector_job.chunk_id = chunk.id
-              where chunk.org_id = knowledge_sources.org_id
-                and chunk.source_id = knowledge_sources.id
-                and vector_job.status = 'dead'
-            ) then 'failed'
+            when ${qdrantStorage}
+              then public.brain_vector_app_source_state(knowledge_sources.id)
             when exists (
               select 1 from knowledge_chunks chunk
               where chunk.org_id = knowledge_sources.org_id
                 and chunk.source_id = knowledge_sources.id
-                and ${
-                  qdrantStorage
-                    ? sql`exists (
-                        select 1 from brain_vector_outbox vector_job
-                        where vector_job.chunk_id = chunk.id
-                          and vector_job.status in ('queued', 'running')
-                      )`
-                    : sql`chunk.embedding is null`
-                }
+                and chunk.embedding is null
             ) then 'queued'
             else 'ready'
           end,
@@ -1933,17 +1706,11 @@ async function loadSourceAggregates(
       select count(distinct document.id)::int as document_count,
         count(chunk.id)::int as chunk_count,
         (
-          count(chunk.id) filter (
-            where ${
-              qdrantOwnsKnowledgeEmbeddings()
-                ? sql`exists (
-                    select 1 from brain_vector_outbox vector_job
-                    where vector_job.chunk_id = chunk.id
-                      and vector_job.status in ('queued', 'running', 'dead')
-                  )`
-                : sql`chunk.embedding is null`
-            }
-          )
+          ${
+            qdrantOwnsKnowledgeEmbeddings()
+              ? sql`public.brain_vector_app_source_pending_count(source.id)`
+              : sql`count(chunk.id) filter (where chunk.embedding is null)`
+          }
           + count(distinct document.id) filter (
               where document.status in ('pending', 'processing', 'failed') and chunk.id is null
             )

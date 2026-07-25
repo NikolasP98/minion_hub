@@ -17,6 +17,7 @@ import {
 } from './brain-corpus.service';
 
 export const BRAIN_CORPUS_JOB_TYPE = 'brain_corpus_conversations';
+export const LEGACY_BRAIN_CORPUS_JOB_TYPE = 'brain_corpus_whatsapp';
 const RECONCILE_REF = 'conversations:reconcile';
 const DIRTY_REF = 'conversations:dirty';
 const RECONCILE_BATCH = 25;
@@ -46,6 +47,15 @@ interface ReconcileCursor {
 }
 
 type BrainCorpusCursor = DirtyCursor | ReconcileCursor;
+type LegacyCompatibleDirtyConversation = Omit<DirtyConversation, 'channel'> & {
+  channel?: string;
+};
+interface ParsedDirtyConversation {
+  channel?: unknown;
+  accountId?: unknown;
+  chatId?: unknown;
+  months?: unknown;
+}
 
 type DirtyIngestRow = Pick<
   IngestRow,
@@ -203,19 +213,28 @@ export async function ensureConversationReconcileJob(
 
 function parseCursor(job: BgJob): BrainCorpusCursor {
   if (!job.cursor) throw new Error('brain corpus job is missing its durable cursor');
-  const value = JSON.parse(job.cursor) as Partial<BrainCorpusCursor>;
+  const value = JSON.parse(job.cursor) as {
+    kind?: unknown;
+    conversations?: ParsedDirtyConversation[];
+    next?: unknown;
+    failures?: unknown;
+    cursor?: unknown;
+    processed?: unknown;
+    changedChunks?: unknown;
+    embeddedChunks?: unknown;
+  };
   if (value.kind === 'dirty' && Array.isArray(value.conversations)) {
     return {
       kind: 'dirty',
       conversations: value.conversations
         .filter(
-          (item): item is DirtyConversation =>
-            typeof item?.channel === 'string' &&
+          (item): item is LegacyCompatibleDirtyConversation =>
+            (typeof item?.channel === 'string' || job.type === LEGACY_BRAIN_CORPUS_JOB_TYPE) &&
             typeof item?.accountId === 'string' &&
             typeof item?.chatId === 'string',
         )
         .map((item) => ({
-          channel: item.channel,
+          channel: item.channel ?? 'whatsapp',
           accountId: item.accountId,
           chatId: item.chatId,
           months: Array.isArray(item.months)
@@ -318,6 +337,7 @@ export async function advanceBrainCorpusJob(job: BgJob): Promise<AdvanceResult> 
 }
 
 registerJobHandler({ type: BRAIN_CORPUS_JOB_TYPE, advance: advanceBrainCorpusJob });
+registerJobHandler({ type: LEGACY_BRAIN_CORPUS_JOB_TYPE, advance: advanceBrainCorpusJob });
 
 /** Optional on-demand kick after enqueue; the cron remains authoritative. */
 export async function advanceBrainCorpusJobNow(jobId: string): Promise<void> {

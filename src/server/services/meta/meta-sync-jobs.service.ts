@@ -142,7 +142,6 @@ export async function findDueJobs(
     )
     .orderBy(
       sql`case
-        when ${metaSyncJobs.createdAt} < now() - interval '15 minutes' then 0
         when ${metaSyncJobs.kind} = 'messages_tail' then 0
         when ${metaSyncJobs.kind} = 'messages' then 1
         else 2
@@ -151,6 +150,31 @@ export async function findDueJobs(
     )
     .limit(limit);
   return rows;
+}
+
+/** Keep the high-frequency freshness lane bounded without touching active
+ * work or the recent audit window. Runs on the bypass-RLS scheduler
+ * connection for the same cross-org reason as findDueJobs. */
+export async function pruneTerminalTailJobs(olderThanDays = 7, limit = 2000): Promise<number> {
+  const days = Math.min(365, Math.max(1, Math.trunc(olderThanDays)));
+  const rowLimit = Math.min(10_000, Math.max(1, Math.trunc(limit)));
+  const db = getCoreDb();
+  const deleted = (await db.execute(sql`
+    with doomed as (
+      select id
+      from meta_sync_jobs
+      where kind = 'messages_tail'
+        and status in ('succeeded', 'failed')
+        and finished_at < now() - (${days} * interval '1 day')
+      order by finished_at
+      limit ${rowLimit}
+    )
+    delete from meta_sync_jobs job
+    using doomed
+    where job.id = doomed.id
+    returning job.id
+  `)) as unknown as Array<{ id: string }>;
+  return deleted.length;
 }
 
 /** Flip queued→running, or re-claim a stuck running job past STALE_MS. */

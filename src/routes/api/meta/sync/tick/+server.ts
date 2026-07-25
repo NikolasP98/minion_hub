@@ -6,6 +6,7 @@ import {
   enqueueJob,
   findDueJobs,
   getLatestSucceededJob,
+  pruneTerminalTailJobs,
 } from '$server/services/meta/meta-sync-jobs.service';
 import {
   defaultSinceDate,
@@ -77,7 +78,13 @@ const handle: RequestHandler = async ({ request }) => {
       results.push({ jobId: j.jobId, orgId: j.orgId, kind: j.kind, ok: false, error: msg });
     }
   }
-  return json({ enqueued, claimed: results.length, results });
+  let pruned = 0;
+  try {
+    pruned = await pruneTerminalTailJobs();
+  } catch (e) {
+    console.error('[meta-sync] tail job retention failed', e);
+  }
+  return json({ enqueued, claimed: results.length, pruned, results });
 };
 
 export const GET = handle;
