@@ -2,7 +2,7 @@ import { and, eq, gte, lte, desc, sql, type SQL } from 'drizzle-orm';
 import { messages } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrg } from '$server/db/pg-ledger-client';
-import { enqueueWhatsAppBrainChanges } from './brain-corpus-jobs.service';
+import { enqueueConversationBrainChanges } from './brain-corpus-jobs.service';
 
 /** Cache tags for message-ledger reads (omnichat conversations/threads). */
 const messageTags = (orgId: string) => tags.tenantDomain(orgId, 'messages');
@@ -127,7 +127,10 @@ async function enqueueBrainChangesAfterCommit(
   acceptedClientIds: string[],
 ): Promise<string | null> {
   try {
-    return await enqueueWhatsAppBrainChanges(orgId, acceptedIngestRows(rows, acceptedClientIds));
+    return await enqueueConversationBrainChanges(
+      orgId,
+      acceptedIngestRows(rows, acceptedClientIds),
+    );
   } catch (cause) {
     // The ledger commit already succeeded. Never return a false ingest failure
     // to the gateway (which would replay the batch); durable reconciliation is

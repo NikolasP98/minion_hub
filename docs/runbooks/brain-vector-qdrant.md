@@ -1,8 +1,13 @@
 # Brain vector serving-index rollout
 
-Supabase is canonical; Qdrant is a rebuildable serving index. The migration
-installs the generation with `enqueue_enabled = false`. Do not enable enqueue
-until the vector API and worker are healthy and the checks below pass.
+Supabase is canonical for chunk text and outbox state; Qdrant is the serving
+index. Each generation declares who owns the vectors themselves through
+`brain_vector_generations.storage_mode` — `pgvector` (default) keeps them in
+Supabase and Qdrant stays rebuildable from Postgres alone; `qdrant` keeps only
+text and outbox metadata in Postgres, so the vectors are rebuilt by re-embedding
+rather than by copying (see §4). The migration installs the generation with
+`enqueue_enabled = false`. Do not enable enqueue until the vector API and worker
+are healthy and the checks below pass.
 
 ## 1. Disposable migration proof
 
@@ -146,3 +151,55 @@ order by generation;
 Every row must report `enqueue_enabled = false`. Only the controlled deployment
 step may enable the active generation after the real worker has passed health,
 Qdrant collection/alias checks, and this canary.
+
+## 4. Qdrant-owned vectors (`storage_mode = 'qdrant'`)
+
+In this mode Hub stops calling the embeddings provider for conversation-corpus
+chunks: it writes the canonical text and the worker produces the vectors.
+`knowledge_chunks.embedding` therefore stays null by design — "is the chunk
+served?" is answered by the ack receipt (`vector_indexed_hash` +
+`vector_indexed_generation`), not by the embedding column and not by an empty
+outbox. A receipt earned under a retired generation does not count, so a
+collection rotation reads as pending until its backfill reaches each chunk.
+
+Prerequisite: the outbox trigger installed by
+`20260723010000_brain_vector_outbox.sql` deliberately refuses to enqueue a
+null-embedding chunk (an incomplete pgvector chunk has no valid serving-index
+state). The worker deployment ships the trigger/RPC upgrade that makes a
+null embedding the _expected_ state for a Qdrant-owned generation. Do not flip
+`storage_mode` before that upgrade is applied, or newly written chunks will
+never reach Qdrant and every source will sit at `queued`.
+
+Two switches must then agree, and Hub enforces it: conversation-corpus writes
+abort with `BRAIN_VECTOR_STORAGE_MODE=qdrant requires one active Qdrant-owned
+vector generation` unless `public.brain_vector_app_generation_mode()` returns
+`qdrant`. Cut over database-first, revert app-first:
+
+1. As owner, set the active generation's mode and enable enqueue:
+
+   ```sql
+   update public.brain_vector_generations
+   set storage_mode = 'qdrant', enqueue_enabled = true
+   where generation = 'openai_te3s_1536_g1' and is_active;
+
+   select public.brain_vector_app_generation_mode();  -- must return 'qdrant'
+   ```
+
+2. Only then deploy Hub with `BRAIN_VECTOR_STORAGE_MODE=qdrant`.
+
+The business corpus (`brain-business-corpus.service.ts`) does not read this
+flag: it keeps embedding into Supabase regardless, so the pgvector lane stays
+live for those sources.
+
+To roll back, remove the env var (or set it to `pgvector`) and redeploy first,
+then move the generation back to `storage_mode = 'pgvector'` — the reverse order
+leaves the app failing every conversation-corpus write in between. Rolling back
+does not restore vectors: chunks written while Qdrant owned them have no
+Postgres embedding, so the pgvector lane must re-embed them.
+
+Brain source health in this mode comes from
+`public.brain_vector_app_source_state(source_id)` and
+`public.brain_vector_app_source_pending_count(source_id)` (both SECURITY
+DEFINER, `app_ledger`-only, org-scoped by the `app.current_org_id` GUC) rather
+than from counting null embeddings. A source that reports `queued` with a
+non-zero pending count is waiting on the worker, not on Hub.
