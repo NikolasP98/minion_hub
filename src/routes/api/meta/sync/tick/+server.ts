@@ -23,7 +23,8 @@ const STALE_ENQUEUE_MS = 6 * 60 * 60_000; // spec §6: re-enqueue a kind once it
  * here can beat the scheduler period.
  */
 const MESSAGE_TAIL_STALE_MS = 0;
-/** Up to one cheap tail slice per connected org, capped at 24 orgs per tick.
+/** Up to one cheap tail slice per org with a non-revoked Meta connection,
+ * capped at 24 orgs per tick.
  * Backlog slices are orders of magnitude more expensive (up to 150 posts / 100
  * conversations / 90 ad rows each, run sequentially in this one request), so
  * that lane stays at a small fixed cap no matter how many orgs connect — it is
