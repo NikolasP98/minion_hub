@@ -193,7 +193,10 @@ function requestedBaseRef(args) {
   if (index >= 0) return args[index + 1];
   if (process.env.DESIGN_LINT_BASE_REF) return process.env.DESIGN_LINT_BASE_REF;
   if (process.env.GITHUB_BASE_REF) return `origin/${process.env.GITHUB_BASE_REF}`;
-  return 'origin/dev';
+  // `dev` was merged into master and deleted (PR #83). Fall back rather than
+  // resolve to a missing ref — a missing base silently SKIPS the per-file debt
+  // ratchet, which reads as "no debt added" instead of "not checked".
+  return ['origin/dev', 'origin/master', 'origin/main'].find(refExists) ?? 'origin/master';
 }
 
 function refExists(ref) {
