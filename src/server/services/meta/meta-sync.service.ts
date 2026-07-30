@@ -57,6 +57,7 @@ import {
 } from './graph-read';
 import { insertMessages, type IngestRow } from '../messages.service';
 import { claimJob, finishJob, getJobById, recordProgress, requeue } from './meta-sync-jobs.service';
+import { runBackfill } from './attribution-backfill.service';
 import {
   recordPostMedia,
   claimPendingMedia,
@@ -1280,4 +1281,18 @@ export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
   await recordProgress(ctx, jobId, { pageCursor: result.cursor, countsDelta: result.counts });
   if (result.cursor) await requeue(ctx, jobId);
   else await finishJob(ctx, jobId, 'succeeded');
+
+  // Lead-origin attribution used to be a one-shot Jul-17 backfill, so any
+  // conversation synced afterwards had no origin. Refresh it after every
+  // messages sync instead. runBackfill is a webhook-wins upsert, so webhook
+  // rows are never overwritten. Best-effort — attribution must not fail sync.
+  // Deliberately NOT on 'messages_tail': that lane samples the newest page on
+  // every tick, and a full backfill per tick would be far too expensive.
+  if (job.kind === 'messages') {
+    try {
+      await runBackfill(ctx, { dryRun: false });
+    } catch (e) {
+      console.error('[meta-sync] attribution refresh failed', ctx.tenantId, e);
+    }
+  }
 }
