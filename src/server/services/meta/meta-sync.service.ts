@@ -131,17 +131,22 @@ export function computeAdsSince(lastSyncedDate: string | null, now: Date = new D
   return new Date(Math.max(restated, floor)).toISOString().slice(0, 10);
 }
 
-/** `cs` = the ads sync's current time-window since-date (chunked pulls only). */
-type Resume = { i: number; next?: string; cs?: string };
+/** `cs` = the ads sync's current time-window since-date (chunked pulls only);
+ *  `f` = consecutive failed attempts at that window (parked-for-retry). */
+type Resume = { i: number; next?: string; cs?: string; f?: number };
 function parseResume(pageCursor: string | null): Resume {
   if (!pageCursor) return { i: 0 };
   try {
     const p = JSON.parse(pageCursor) as Partial<Resume>;
-    return typeof p.i === 'number' ? { i: p.i, next: p.next, cs: p.cs } : { i: 0 };
+    return typeof p.i === 'number' ? { i: p.i, next: p.next, cs: p.cs, f: p.f } : { i: 0 };
   } catch {
     return { i: 0 };
   }
 }
+
+/** Total tries per ads time-window before it's skipped (transient Graph
+ *  failures — rate limits, 5xx — park the job and retry on a later tick). */
+const MAX_WINDOW_ATTEMPTS = 3;
 
 /**
  * Split [since, until] into consecutive ≤chunkDays windows (inclusive dates).
@@ -916,10 +921,23 @@ async function syncAds(
               ...adTimeout,
             });
 
-      let accountFailed = false;
       for (;;) {
         if (!page.ok) {
           if (page.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
+          const priorFails =
+            resumedAccount && resume.cs === windows[w].since ? (resume.f ?? 0) : 0;
+          if (priorFails + 1 < MAX_WINDOW_ATTEMPTS) {
+            // Transient Graph failure (rate limit, 5xx): park the job at this
+            // window and let a later tick retry it. Skipping ahead on first
+            // failure is what silently dropped 18 months of history on the
+            // 2026-07-05 full sync (rate-limited at the 2024-09-27 window,
+            // every later window discarded, job still "succeeded").
+            await upsertAdInsights(ctx, rowsToUpsert);
+            return {
+              cursor: serializeResume({ i, cs: windows[w].since, f: priorFails + 1 }),
+              counts,
+            };
+          }
           counts.accountsSkipped++;
           // Swallowed per-asset errors have twice hidden real regressions — keep
           // the first few (sanitized upstream by graph-read) in the job counts.
@@ -928,8 +946,7 @@ async function syncAds(
               `${asset.externalId} ${windows[w].since}: ${page.error ?? `status ${page.status}`}`,
             );
           }
-          accountFailed = true;
-          break;
+          break; // give up on THIS window only — remaining windows still run
         }
         for (const row of page.data ?? []) {
           const insertRow = adInsightRowToInsert(row, {
@@ -956,7 +973,6 @@ async function syncAds(
           accessToken: userToken,
         });
       }
-      if (accountFailed) break; // skip this account's remaining windows, move to the next account
     }
   }
   await upsertAdInsights(ctx, rowsToUpsert);
