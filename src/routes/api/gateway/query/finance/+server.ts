@@ -22,8 +22,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const maskCost = capabilities.fieldLevel('finance') < SENSITIVE_FIELD_LEVEL;
 
 	const [rawSummary, series, products, clients] = await Promise.all([
-		financeSummary(ctx, period),
-		revenueSeries(ctx, period),
+		financeSummary(ctx, period, locals.orgKind, locals.moduleStates),
+		revenueSeries(ctx, period, locals.orgKind, locals.moduleStates),
 		topProducts(ctx, period, { limit: 15 }),
 		topClients(ctx, period, { limit: 10 }),
 	]);

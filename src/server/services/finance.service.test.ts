@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 vi.mock('@minion-stack/cache', () => ({
@@ -143,6 +144,62 @@ describe('financeSummary', () => {
     expect(result.netRevenue).toBe(0);
     expect(result.currency).toBe('PEN');
   });
+
+  // S3/WP1 R6: stock is kind-hidden for personal orgs — COGS must be 0
+  // WITHOUT even issuing the COGS query (not just zeroed after the fact).
+  it('kind=personal: COGS forced to 0, COGS query skipped entirely', async () => {
+    const { financeSummary } = await import('./finance.service');
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { net: '100', gross: '100', discount: '0', invoices: '1', tax: '0', clients: '1', voids: '0', currency: 'PEN' },
+      ])
+      .mockResolvedValueOnce([{ n: '1' }]); // no COGS call in between
+    useExecMock(execute);
+
+    const result = await financeSummary(ctx(), { from: null, to: null, bucket: 'month' }, 'personal');
+    expect(result.totalCogs).toBe(0);
+    expect(result.netRevenue).toBe(100); // no COGS/tax deducted
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  // Same gate applies to a business org that toggled stock off explicitly —
+  // effectiveModuleEnabled composes BOTH kind and the app_modules toggle.
+  it('kind=business with stock toggled off: COGS forced to 0, query skipped', async () => {
+    const { financeSummary } = await import('./finance.service');
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { net: '100', gross: '100', discount: '0', invoices: '1', tax: '0', clients: '1', voids: '0', currency: 'PEN' },
+      ])
+      .mockResolvedValueOnce([{ n: '1' }]);
+    useExecMock(execute);
+
+    const result = await financeSummary(
+      ctx(),
+      { from: null, to: null, bucket: 'month' },
+      'business',
+      { stock: false },
+    );
+    expect(result.totalCogs).toBe(0);
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('kind omitted (2-arg call): unchanged — COGS query still runs (business behavior identical)', async () => {
+    const { financeSummary } = await import('./finance.service');
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { net: '100', gross: '100', discount: '0', invoices: '1', tax: '0', clients: '1', voids: '0', currency: 'PEN' },
+      ])
+      .mockResolvedValueOnce([{ cogs: '20' }])
+      .mockResolvedValueOnce([{ n: '1' }]);
+    useExecMock(execute);
+
+    const result = await financeSummary(ctx(), { from: null, to: null, bucket: 'month' });
+    expect(result.totalCogs).toBe(20);
+    expect(execute).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe('revenueSeries', () => {
@@ -158,6 +215,30 @@ describe('revenueSeries', () => {
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({ bucket: '2026-01-01', invoices: 5, revenue: 590.0, discount: 10.0, gross: 600.0, voided: 20.0, tax: 90.0, opCost: 50.0 });
     expect(result[1].revenue).toBe(354.0);
+  });
+
+  // S3/WP1 R6: personal orgs never see stk_ledger rows in op_cost — asserted
+  // at the SQL level since the `cost` CTE is a single combined query (can't
+  // skip a whole tx.execute() call the way financeSummary's separate COGS
+  // query can).
+  it('kind=personal: the cost CTE is forced empty (no stock rows leak into op_cost)', async () => {
+    const { revenueSeries } = await import('./finance.service');
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await revenueSeries(ctx(), { from: null, to: null, bucket: 'month' }, 'personal');
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain('and false');
+  });
+
+  it('kind=business (or omitted): the cost CTE has no forced-false clause', async () => {
+    const { revenueSeries } = await import('./finance.service');
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await revenueSeries(ctx(), { from: null, to: null, bucket: 'month' }, 'business');
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).not.toContain('and false');
   });
 
   it('respects period params without error', async () => {
