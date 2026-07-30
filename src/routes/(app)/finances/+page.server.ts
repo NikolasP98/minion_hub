@@ -1,7 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { requireCoreCtx } from '$server/auth/core-ctx';
-import { isModuleEnabled } from '$server/services/modules.service';
 import {
   financeSummary,
   maskFinanceSummary,
@@ -16,7 +15,6 @@ import { parsePeriod, resolvePeriodWindow } from '$lib/finance/period';
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const ctx = await requireCoreCtx(locals);
-  if (!(await isModuleEnabled(ctx, 'finances'))) throw error(404, 'Finances module disabled');
   depends('finances:data');
   // A calendar day is LOCAL. Resolve the picked days to instants in the org's
   // business timezone so an evening sale isn't reported on the next day.
@@ -34,8 +32,8 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   // instantly with skeletons instead of blocking on this.
   async function computeData() {
     const [rawSummary, series, products, clients] = await Promise.all([
-      financeSummary(ctx, period),
-      revenueSeries(ctx, period),
+      financeSummary(ctx, period, locals.orgKind, locals.moduleStates),
+      revenueSeries(ctx, period, locals.orgKind, locals.moduleStates),
       topProducts(ctx, period, { limit: 15 }),
       topClients(ctx, period, { limit: 10 }),
     ]);

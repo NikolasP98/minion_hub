@@ -18,12 +18,7 @@
   } from 'lucide-svelte';
   import NavIcon from './NavIcon.svelte';
   import { Button, Tooltip } from '$lib/components/ui';
-  import {
-    getSections,
-    getDynamicPluginsSections,
-    type Section,
-    type SectionItem,
-  } from './sections';
+  import { getNavSections, type Section, type SectionItem } from './sections';
   import { readNavOrder, bySavedOrder, type NavOrder } from './nav-order';
   import MinionLogo from './MinionLogo.svelte';
   import OrgPicker from './OrgPicker.svelte';
@@ -39,17 +34,13 @@
   // brand. Relocated from the agents-sidebar footer.
   const serverVersion = $derived(gw.hello?.server?.version ?? null);
 
-  const staticSections = $derived(getSections());
   // Pass per-org enabled map so the derive re-runs when a plugin is toggled —
   // disabled-for-org plugin items render dimmed, reactively, with no reload.
-  const pluginsSections = $derived(
-    getDynamicPluginsSections(
-      pluginNavState.controlCenters,
-      pluginNavState.enabledByPluginId,
-      page.data.activeOrgKind,
-    ),
+  // getNavSections composes static + dynamic sections kind-aware (personal
+  // orgs get the R2 regrouping); Topbar's mobile hamburger uses the same call.
+  const navSections = $derived<Section[]>(
+    getNavSections(page.data.activeOrgKind, pluginNavState.controlCenters, pluginNavState.enabledByPluginId),
   );
-  const navSections = $derived<Section[]>([...staticSections, ...pluginsSections]);
 
   const showReliability = $derived(canViewPath('/reliability'));
   const showCloud = $derived(canViewPath('/cloud'));

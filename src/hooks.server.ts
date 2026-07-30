@@ -5,7 +5,7 @@ import '$server/env-hoist';
 
 import { sequence } from '@sveltejs/kit/hooks';
 import * as Sentry from '@sentry/sveltekit';
-import type { Handle } from '@sveltejs/kit';
+import { error, type Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
 import { canonicalPath } from '$lib/canonical-path';
 import { getPostHogClient } from '$lib/server/posthog';
@@ -14,7 +14,6 @@ import { getDb } from '$server/db/client';
 import { supabaseAdmin } from '$server/supabase';
 import { resolveIdentity } from '$server/auth/resolve-identity';
 import { env } from '$env/dynamic/private';
-import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
 import { trustedWorkforceViewerRoleKeys } from '$lib/server/workforce-viewer';
 import { canonicalizeWorkforceRoleKeys } from '$lib/server/workforce-role-keys';
@@ -24,6 +23,8 @@ import { getCoreDb } from '$server/db/pg-client';
 import { getUserPreferences } from '$server/services/user-preferences.service';
 import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
 import { apiWriteCapability, hasOrgCapability } from '$server/services/rbac.service';
+import { listModuleStates } from '$server/services/modules.service';
+import { isAppPageRequest, isAppRouteBlocked } from '$lib/modules/route-guard';
 import {
   proxyRequestHeaders,
   proxyResponseHeaders,
@@ -170,10 +171,38 @@ const appHandle: Handle = async ({ event, resolve }) => {
     if (canonicalPath(event.url.pathname) === '/') {
       return new Response(null, { status: 307, headers: { location: '/home' } });
     }
+    // Bypass covers AUTHENTICATION only — module/kind availability still
+    // applies, or auth-disabled dev reaches routes prod 404s (the per-route
+    // guards this hook replaced are gone). isAppPageRequest keeps the
+    // /api/metrics bearer bypass (no user / no (app) route id) out of it.
+    await applyModuleAvailabilityGuard(event);
     return resolve(event);
   }
   return finishApp({ event, resolve });
 };
+
+/**
+ * Module-availability guard for authenticated `(app)` page requests
+ * (routing-simplification spec S2). Populates locals.moduleStates as a
+ * per-request snapshot (one cached listModuleStates read — R3) that
+ * data-bearing route loads also consume, then 404s if the resolved module is
+ * kind-restricted or toggled off for this org.
+ */
+async function applyModuleAvailabilityGuard(event: Parameters<Handle>[0]['event']): Promise<void> {
+  if (!isAppPageRequest(Boolean(event.locals.user), event.route.id)) return;
+  const tenantId = event.locals.tenantCtx?.tenantId;
+  const moduleStates = tenantId
+    ? await listModuleStates({
+        db: getCoreDb(),
+        tenantId,
+        profileId: event.locals.user?.supabaseId,
+      })
+    : {};
+  event.locals.moduleStates = moduleStates;
+  if (isAppRouteBlocked(canonicalPath(event.url.pathname), { kind: event.locals.orgKind, moduleStates })) {
+    throw error(404, 'Not found');
+  }
+}
 
 /**
  * Shared tail for appHandle — runs after locals.user/tenantCtx have been set
@@ -246,6 +275,7 @@ const finishApp: Handle = async ({ event, resolve }) => {
       path === '/api/crm/dni-validation/tick' ||
       path === '/api/crm/conversations/vectorize/tick' ||
       path === '/api/crm/conversations/analyze/tick' ||
+      path === '/api/crm/relationship/tick' ||
       path === '/api/reliability/retention/tick'
     ) {
       return resolve(event);
@@ -292,6 +322,14 @@ const finishApp: Handle = async ({ event, resolve }) => {
     const location = await resolveLandingPage(event.locals.user.supabaseId);
     return new Response(null, { status: 307, headers: { location } });
   }
+
+  // Module-availability guard (routing-simplification spec S2). Server-token/
+  // cron requests never reach here (resolve-identity.ts's server-token
+  // provider sets bypassGate:true — the AUTH_DISABLED bypass branch runs this
+  // same guard itself); isAppPageRequest is defense in depth on top of that.
+  // Existing per-route pulse guards stay in place until this hook has soaked
+  // (belt-and-suspenders).
+  await applyModuleAvailabilityGuard(event);
 
   // Central RBAC write guard: business-data + org-config mutating API calls
   // (/api/crm|finances|sales|scheduling|support|memberships|projects|work|
@@ -465,8 +503,6 @@ const serverErrorHandler: HandleServerError = ({ error, event, status, message }
 // Wrap so exceptions also reach Sentry (no-op without a DSN); the PostHog
 // capture inside stays as the product-analytics record.
 export const handleError = Sentry.handleErrorWithSentry(serverErrorHandler);
-
-startBackupScheduler();
 
 // One-time cache initialization.
 void initCache().catch((err) => console.error('[cache] init failed', err));

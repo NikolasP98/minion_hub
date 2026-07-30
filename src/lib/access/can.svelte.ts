@@ -1,10 +1,13 @@
 import { page } from '$app/state';
 import { can } from './policy';
 import { canAccessRoute, type RouteAccessContext } from '$lib/routes/route-access-policies';
+import { resolveModuleForPath } from '$lib/modules/availability';
+import { isModuleVisibleForKind, type OrgKind } from '$lib/org-kind';
 
 interface ClientAccessData {
   user?: { role?: 'user' | 'admin' } | null;
   permissions?: { permissions?: string[] } | null;
+  activeOrgKind?: OrgKind | null;
 }
 
 function accessData(): ClientAccessData {
@@ -43,7 +46,18 @@ export function canAct(module: string, action: string): boolean {
 /**
  * Evaluate a live href through the same route policy registry the server layout,
  * design manifest, global navigation, and command palette consult.
+ *
+ * Also applies org-kind visibility (S3/WP1 R2/R6): the command palette, nav
+ * hotkey chords (GNav.svelte), and SettingsNav all route through this one
+ * function, so kind-hidden modules (Team/Stock/POS/Workforce/… for personal
+ * orgs) stop being offered client-side without duplicating the check at each
+ * call site. Kind-only (no moduleStates) — the toggle-state gate stays
+ * server-side via `locals.moduleStates`/the hook guard; this is a UI-offer
+ * check, not the enforcement boundary.
  */
 export function canViewPath(path: string): boolean {
+  const kind = accessData().activeOrgKind;
+  const match = resolveModuleForPath(path.split(/[?#]/, 1)[0] || '/');
+  if (match && !isModuleVisibleForKind(match.moduleId, kind)) return false;
   return canAccessRoute(path, routeAccessContext());
 }

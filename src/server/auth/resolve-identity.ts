@@ -27,7 +27,10 @@ import { env } from '$env/dynamic/private';
 export { resolveUserTenant } from '$server/auth/tenant';
 
 /** The subset of `App.Locals` that an identity provider populates. */
-type LocalsPatch = Pick<App.Locals, 'user' | 'session' | 'orgId' | 'tenantCtx' | 'serverId'>;
+type LocalsPatch = Pick<
+  App.Locals,
+  'user' | 'session' | 'orgId' | 'tenantCtx' | 'serverId' | 'orgKind'
+>;
 
 export interface IdentityResolution {
   /** Fields to assign onto `event.locals`. */
@@ -171,11 +174,19 @@ export async function resolveServerTokenAuth(
 
 /** AUTH_DISABLED dev mode: fabricate a local admin and grab the first org. */
 async function resolveAuthDisabled(): Promise<IdentityResolution> {
-  const { data } = await supabaseAdmin().from('organizations').select('id').limit(1).maybeSingle();
-  const tenantCtx = data ? { db: getDb(), tenantId: (data as { id: string }).id } : undefined;
+  const { data } = await supabaseAdmin()
+    .from('organizations')
+    .select('id, kind')
+    .limit(1)
+    .maybeSingle();
+  const row = data as { id: string; kind?: string | null } | null;
+  const tenantCtx = row ? { db: getDb(), tenantId: row.id } : undefined;
   return {
     locals: {
       tenantCtx,
+      // Real kind so the module-availability guard behaves like prod in dev
+      // (bypassGate only skips authentication, not availability).
+      orgKind: row?.kind === 'personal' ? 'personal' : row ? 'business' : undefined,
       user: { id: 'local', email: 'local@dev', displayName: 'Local Dev', role: 'admin' },
     },
     bypassGate: true,
@@ -218,13 +229,19 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
   // user with no Supabase membership row still resolves exactly as before.
   // resolveSupabaseTenant only honors preferredOrgId if the user is actually a
   // member, else it falls back to the alphabetical-first org (its default).
-  const supaOrgId = bridged.supabaseId
-    ? (await resolveSupabaseTenant(bridged.supabaseId, preferredOrgId))?.orgId
-    : undefined;
+  const supaTenant = bridged.supabaseId
+    ? await resolveSupabaseTenant(bridged.supabaseId, preferredOrgId)
+    : null;
   const orgId =
-    supaOrgId ??
+    supaTenant?.orgId ??
     (await resolveUserTenant(db, { userId: bridged.id, fallbackToMembership: true }))?.orgId;
   const tenantCtx = orgId ? { db, tenantId: orgId } : undefined;
+  // kind is only known when Supabase resolved the org directly (same query,
+  // no extra round trip — routing-simplification spec S2/R2). The legacy
+  // Turso fallback path below doesn't carry a kind column, so this stays
+  // undefined for it — the (app) route hook guard fails closed on an unknown
+  // kind for kind-restricted modules rather than guessing.
+  const orgKind = supaTenant && supaTenant.orgId === orgId ? supaTenant.kind : undefined;
 
   const resolution: IdentityResolution = {
     locals: {
@@ -240,6 +257,7 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
       },
       orgId,
       tenantCtx,
+      orgKind,
     },
     bypassGate: false,
   };

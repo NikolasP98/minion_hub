@@ -7,6 +7,7 @@ import '$server/services/groupchat.service';
 import '$server/services/brains.service';
 import '$server/services/brain-corpus-jobs.service';
 import '$server/services/brain-business-corpus-jobs.service';
+import '$server/services/finance-statements.service';
 
 /**
  * GET /api/jobs/tick — cron entrypoint for the GLOBAL background-job runtime.

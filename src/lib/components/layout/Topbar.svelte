@@ -7,7 +7,7 @@
     import NotificationsPopup from "./NotificationsPopup.svelte";
     import MinionLogo from "./MinionLogo.svelte";
     import CompanySwitcher from "./CompanySwitcher.svelte";
-    import { getSections, getDynamicPluginsSections, type Section, type SectionItem } from "./sections";
+    import { getNavSections, type Section, type SectionItem } from "./sections";
     import { readNavOrder, orderSections, orderItems } from "./nav-order";
     import { pluginNavState } from "$lib/state/plugin-nav.svelte";
     import { canViewPath } from "$lib/access/can.svelte";
@@ -21,14 +21,12 @@
     import { userState, logout } from "$lib/state/features/user.svelte";
     import { Button } from '$lib/components/ui';
 
-    const allSections = $derived<Section[]>([
-        ...getSections(),
-        ...getDynamicPluginsSections(
-            pluginNavState.controlCenters,
-            pluginNavState.enabledByPluginId,
-            page.data.activeOrgKind,
-        ),
-    ]);
+    // Same call as Sidebar's desktop nav (mobile-parity: R2) — getNavSections
+    // composes static + dynamic sections kind-aware, merging Pulse/My Work
+    // into the "My Space" group for personal orgs.
+    const allSections = $derived<Section[]>(
+        getNavSections(page.data.activeOrgKind, pluginNavState.controlCenters, pluginNavState.enabledByPluginId),
+    );
     // Honor the user's drag-reordered sidebar order here too (same prefs source),
     // so desktop nav and the mobile hamburger stay consistent.
     const navOrder = $derived(readNavOrder(page.data));

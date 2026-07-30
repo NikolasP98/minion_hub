@@ -7,7 +7,19 @@ export type OrgKind = 'business' | 'personal';
 
 export const ORG_KIND_POLICY = {
   business: { hiddenModules: new Set<string>(['pulse']), label: 'Business' },
-  personal: { hiddenModules: new Set<string>(['pos', 'stock', 'workforce']), label: 'Personal' },
+  personal: {
+    hiddenModules: new Set<string>([
+      'pos',
+      'stock',
+      'workforce',
+      'support',
+      'memberships',
+      'sales',
+      'ads',
+      'team',
+    ]),
+    label: 'Personal',
+  },
 } as const;
 
 /** Unknown/undefined kind degrades to 'business' — matches the DB default. */

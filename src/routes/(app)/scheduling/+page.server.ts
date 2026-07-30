@@ -1,7 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { isModuleEnabled } from '$server/services/modules.service';
 import { schedulingSummary, utilizationHeatmap, revenueByResource } from '$server/services/scheduling-analytics.service';
 
 const DAY = 86_400_000;
@@ -9,7 +8,6 @@ const DAY = 86_400_000;
 export const load: PageServerLoad = async ({ locals, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(404, 'Scheduling module disabled');
   depends('scheduling:data');
 
   // A 4-week window centred near "now": last 7 days + next 21 days.
