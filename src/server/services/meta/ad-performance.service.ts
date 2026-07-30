@@ -58,7 +58,7 @@ async function rollup(tx: Tx, orgId: string, r: DateRange, level: 'campaign' | '
              where a->>'action_type' = ${CONVO_ACTION}
            )), 0)::float8 conversations_started
     from meta_ad_insights mai
-    where mai.org_id = ${orgId} and mai.date >= ${r.from} and mai.date < ${r.to}
+    where mai.org_id = ${orgId} and mai.date >= ${r.from} and mai.date <= ${r.to}
     group by ${groupBy}
     order by conversations_started desc, spend desc
     limit 500
