@@ -37,3 +37,27 @@ export function funnelStageLabel(stage: string): string {
       return stage;
   }
 }
+
+/** Localize a relationship category id (see crm-relationship.ts RELATIONSHIP_CATEGORIES). */
+export function relationshipCategoryLabel(category: string): string {
+  switch (category) {
+    case 'family':
+      return m.crm_relationship_category_family();
+    case 'romantic_partner':
+      return m.crm_relationship_category_romantic_partner();
+    case 'friend':
+      return m.crm_relationship_category_friend();
+    case 'work':
+      return m.crm_relationship_category_work();
+    case 'acquaintance':
+      return m.crm_relationship_category_acquaintance();
+    case 'service':
+      return m.crm_relationship_category_service();
+    case 'other':
+      return m.crm_relationship_category_other();
+    case 'unknown':
+      return m.crm_relationship_category_unknown();
+    default:
+      return category;
+  }
+}

@@ -2,6 +2,8 @@ import { sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { maskPii, sanitizeContactFields } from '$lib/pii';
+import { isReservedMetaKey } from '$lib/components/crm/crm-meta';
 import { proposeName, nameKey, isUnnamed, type NameIssue } from './crm-standardize';
 
 /**
@@ -28,11 +30,20 @@ export function scanStandardizationCached(ctx: CoreCtx): Promise<NameFix[]> {
   );
 }
 
-export function findDuplicatesCached(ctx: CoreCtx): Promise<DupGroup[]> {
+export function findDuplicatesCached(
+  ctx: CoreCtx,
+  opts: { ownerId?: string; maskSensitive?: boolean } = {},
+): Promise<DupGroup[]> {
+  const { ownerId, maskSensitive = false } = opts;
   return cached(
-    keys.hub('crm-duplicates', { t: ctx.tenantId }),
+    // Fold owner + mask into the tenant key (same as listContactsCached) — an
+    // if-owner-scoped or PII-masked caller must never read/poison the
+    // org-wide cached payload, which would leak `_relationship` + full PII.
+    keys.hub('crm-duplicates', {
+      t: `${ctx.tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`,
+    }),
     { ttl: '2m', swr: '30s', tags: [...tags.tenantDomain(ctx.tenantId, 'crm')] },
-    () => findDuplicates(ctx),
+    () => findDuplicates(ctx, opts),
   );
 }
 
@@ -199,7 +210,14 @@ function nameGroupConfidence(key: string, contacts: DupContact[]): number {
  * secondary = identical normalized name. Groups are deduped (a pair sharing both
  * DNI and name reports once, under DNI) and sorted most-confident first.
  */
-export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
+export async function findDuplicates(
+  ctx: CoreCtx,
+  opts: { ownerId?: string; maskSensitive?: boolean } = {},
+): Promise<DupGroup[]> {
+  const { ownerId, maskSensitive = false } = opts;
+  // Record-level (if-owner) scope, same as rankContacts/getContact — a scoped
+  // caller must only see duplicate groups among contacts they own.
+  const ownerClause = ownerId ? sql`and c.owner_id = ${ownerId}` : sql``;
   const rows = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       with msgs as (
@@ -221,7 +239,7 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
         from crm_contact_identities i
         where i.org_id = c.org_id and i.contact_id = c.id
       ) ids on true
-      where c.org_id = ${ctx.tenantId} and c.deleted_at is null
+      where c.org_id = ${ctx.tenantId} and c.deleted_at is null ${ownerClause}
     `),
   )) as unknown as Array<{
     id: string;
@@ -233,15 +251,26 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
     identities: ContactIdentity[] | null;
   }>;
 
+  // Field-level (Phase 4): a masked caller gets redacted PII (dni/phone/
+  // identities) AND loses `_relationship`/`_relationshipClaim` in
+  // customFields entirely — this hygiene view must never leak what the
+  // roster/detail page hide (F1b).
   const mk = (r: (typeof rows)[number]): DupContact => ({
     id: r.id,
     name: r.display_name,
-    dni: r.dni,
-    phone: r.phone,
+    dni: maskSensitive ? maskPii(r.dni) || null : r.dni,
+    phone: maskSensitive ? maskPii(r.phone) || null : r.phone,
     score: 0,
     messages: Number(r.messages) || 0,
-    identities: (Array.isArray(r.identities) ? r.identities : []).filter((i) => i && i.value),
-    customFields: r.custom_fields && typeof r.custom_fields === 'object' ? r.custom_fields : {},
+    identities: (Array.isArray(r.identities) ? r.identities : [])
+      .filter((i) => i && i.value)
+      .map((i) =>
+        maskSensitive ? { ...i, value: maskPii(i.value), externalId: maskPii(i.externalId) } : i,
+      ),
+    customFields: sanitizeContactFields(
+      r.custom_fields && typeof r.custom_fields === 'object' ? r.custom_fields : {},
+      maskSensitive,
+    ),
   });
 
   const byDni = new Map<string, DupContact[]>();
@@ -395,13 +424,19 @@ export async function mergeContacts(
       where s.id = ${survivorId} and s.org_id = ${org}
     `);
     // 5b. Apply the user's conflict-resolver choices — these OVERRIDE the survivor
-    //     (jsonb `||` right-operand wins; untouched keys survive).
+    //     (jsonb `||` right-operand wins; untouched keys survive). Same
+    //     client-input guard as customFieldsMergeSql (crm-contacts.service):
+    //     a client-supplied `_`-reserved key must never overwrite the
+    //     system-owned one via this merge either.
     if (overrides) {
       const sets: ReturnType<typeof sql>[] = [];
       if (overrides.displayName != null && overrides.displayName !== '')
         sets.push(sql`display_name = ${overrides.displayName}`);
-      if (overrides.customFields && Object.keys(overrides.customFields).length > 0)
-        sets.push(sql`custom_fields = coalesce(custom_fields, '{}'::jsonb) || ${JSON.stringify(overrides.customFields)}::jsonb`);
+      const customFieldsOverride = overrides.customFields
+        ? Object.fromEntries(Object.entries(overrides.customFields).filter(([k]) => !isReservedMetaKey(k)))
+        : undefined;
+      if (customFieldsOverride && Object.keys(customFieldsOverride).length > 0)
+        sets.push(sql`custom_fields = coalesce(custom_fields, '{}'::jsonb) || ${JSON.stringify(customFieldsOverride)}::jsonb`);
       if (sets.length)
         await tx.execute(sql`
           update crm_contacts set ${sql.join(sets, sql`, `)}

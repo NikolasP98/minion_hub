@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
+import { sanitizeContactFields } from '$lib/pii';
 import {
   getContact,
   getContactTimeline,
@@ -43,6 +44,7 @@ const patchSchema = z.object({
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
+  const maskSensitive = await shouldMaskSensitive(locals, 'crm');
   const body = await parseBody(request, patchSchema);
   try {
     const contact = await updateContact(
@@ -58,9 +60,26 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
       body.expectedUpdatedAt,
     );
     if (!contact) throw error(404, 'Contact not found');
-    return json({ contact });
+    // Same principal-aware sanitizer as GET/getContact — a masked/unowned
+    // caller must not recover `_relationship` (or `_relationshipClaim`, for
+    // any caller) via the mutation response (F1c).
+    return json({
+      contact: {
+        ...contact,
+        customFields: sanitizeContactFields(contact.customFields as Record<string, unknown>, maskSensitive),
+      },
+    });
   } catch (e) {
-    if (e instanceof StaleWriteError) return json({ error: 'stale', current: e.current }, { status: 409 });
+    if (e instanceof StaleWriteError) {
+      const current = e.current as Record<string, unknown> & { customFields?: Record<string, unknown> | null };
+      return json(
+        {
+          error: 'stale',
+          current: { ...current, customFields: sanitizeContactFields(current.customFields, maskSensitive) },
+        },
+        { status: 409 },
+      );
+    }
     throw e;
   }
 };

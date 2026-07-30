@@ -177,6 +177,54 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
   });
 }
 
+export interface ContactCashflow {
+  /** money-strings (numeric column cast to text) — route through formatMoney, never Number(). */
+  inflow: string;
+  outflow: string;
+  net: string;
+  transactions: number;
+  lastTransactionAt: string | null;
+}
+
+/**
+ * Personal-org cashflow summary for a contact, from `fin_transactions`
+ * (bank-statement imports, WP4) joined on the party spine — the personal-org
+ * counterpart to `contactFinanceSummary`'s business `ContactFinance`. Kept
+ * fully separate: does NOT touch fin_invoices or the ContactFinance shape
+ * above. Always returns a zero-valued object (never null) when the contact
+ * has no party or no linked transactions, so the caller can render an empty
+ * state without a null-check.
+ */
+export async function contactCashflow(ctx: CoreCtx, contactId: string): Promise<ContactCashflow | null> {
+  if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
+  const ZERO: ContactCashflow = { inflow: '0', outflow: '0', net: '0', transactions: 0, lastTransactionAt: null };
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = (await tx.execute(sql`
+      with cparty as (
+        select party_id from crm_contacts
+        where id = ${contactId} and org_id = current_setting('app.current_org_id', true) and party_id is not null
+      )
+      select
+        coalesce(sum(case when ft.signed_amount > 0 then ft.signed_amount else 0 end), 0)::text as inflow,
+        coalesce(sum(case when ft.signed_amount < 0 then -ft.signed_amount else 0 end), 0)::text as outflow,
+        coalesce(sum(ft.signed_amount), 0)::text as net,
+        count(*)::int as transactions,
+        max(ft.posted_on) as last
+      from fin_transactions ft
+      where ft.org_id = current_setting('app.current_org_id', true)
+        and ft.party_id = (select party_id from cparty)
+    `)) as unknown as Array<{ inflow: string; outflow: string; net: string; transactions: number; last: string | null }>;
+    if (!row || Number(row.transactions) === 0) return ZERO;
+    return {
+      inflow: row.inflow,
+      outflow: row.outflow,
+      net: row.net,
+      transactions: Number(row.transactions),
+      lastTransactionAt: row.last != null ? String(row.last) : null,
+    };
+  });
+}
+
 export interface TopCustomer {
   contactId: string;
   name: string | null;

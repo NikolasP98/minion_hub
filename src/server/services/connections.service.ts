@@ -7,6 +7,8 @@ import { issueCountForContact } from './support.service';
 import { orderCountForContact } from './sales.service';
 import { linkTo } from '$lib/nav/prefill';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { effectiveModuleEnabled } from '$lib/modules/availability';
+import type { OrgKind } from '$lib/org-kind';
 
 /**
  * The cross-module "Connections" panel — Minion's port of ERPNext's declarative
@@ -20,8 +22,9 @@ import type { CoreCtx } from '$server/auth/core-ctx';
  *
  * ponytail: one resolver + one config array beats a per-entity dashboard
  * component. Add a new linked type = one count branch. Modules default to
- * ENABLED when absent (listModuleStates only returns explicit rows), so each
- * group gates on `!== false`, never on truthiness.
+ * ENABLED when absent (listModuleStates only returns explicit rows) AND
+ * default to available when the caller passes no `kind` — each group gates
+ * through `effectiveModuleEnabled` (S3/WP1 R6), never on raw truthiness.
  */
 
 export interface ConnItem {
@@ -43,11 +46,19 @@ export interface ConnGroup {
 
 /**
  * Build the Connections groups for a CRM contact. Groups whose module is
- * explicitly disabled (app_modules row enabled=false) are dropped.
+ * explicitly disabled (app_modules row enabled=false) OR kind-hidden for the
+ * acting org (S3/WP1 R6 `effectiveModuleEnabled`) are dropped — Stock/Sales/
+ * Support all became business-only kind-gated modules alongside the
+ * pre-existing toggle check.
  */
-export async function contactConnections(ctx: CoreCtx, contactId: string): Promise<ConnGroup[]> {
+export async function contactConnections(
+  ctx: CoreCtx,
+  contactId: string,
+  kind?: OrgKind | null,
+): Promise<ConnGroup[]> {
   const modules = await listModuleStates(ctx);
   const groups: ConnGroup[] = [];
+  const enabled = (featureId: string) => effectiveModuleEnabled(kind, modules, featureId);
 
   await withOrgCore(ctx, async (tx) => {
     // ── Engagement (CRM is implicit — we're on its page) ───────────────────
@@ -70,7 +81,7 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
     });
 
     // ── Scheduling ─────────────────────────────────────────────────────────
-    if (modules.scheduling !== false) {
+    if (enabled('scheduling')) {
       const [bk] = (await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(schedBookings)
@@ -92,7 +103,7 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
     }
 
     // ── Stock (via the party spine — entries linked to this contact's party) ─
-    if (modules.stock !== false) {
+    if (enabled('stock')) {
       const [stk] = (await tx.execute(sql`
         select c.party_id as party_id, count(e.id)::int entries
         from crm_contacts c
@@ -115,7 +126,7 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
     }
 
     // ── Finance (via the party spine) ───────────────────────────────────────
-    if (modules.finances !== false) {
+    if (enabled('finances')) {
       // Count this contact's invoices through the party spine (contact.party_id =
       // fin_clients.party_id), matching crm-finance.service's rollup. The legacy
       // WhatsApp-phone bridge undercounted finance-only payers (showed 0 here
@@ -143,7 +154,7 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
   });
 
   // ── Sales (open orders for this contact) ─────────────────────────────────
-  if (modules.sales !== false) {
+  if (enabled('sales')) {
     const orders = await orderCountForContact(ctx, contactId);
     groups.push({
       label: 'Sales',
@@ -159,7 +170,7 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
   }
 
   // ── Support (open tickets for this contact) ──────────────────────────────
-  if (modules.support !== false) {
+  if (enabled('support')) {
     const tickets = await issueCountForContact(ctx, contactId);
     groups.push({
       label: 'Support',

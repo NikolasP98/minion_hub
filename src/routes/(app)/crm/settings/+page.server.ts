@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listTags } from '$server/services/crm-contacts.service';
 import { getAccountScopeLive } from '$server/services/crm-channels.service';
+import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import {
   scanStandardizationCached,
   findDuplicatesCached,
@@ -25,9 +26,19 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const scope = getAccountScopeLive(ctx).catch(
     () => ({ added: [], available: [], legacy: true }) as Awaited<ReturnType<typeof getAccountScopeLive>>,
   );
+  // Record-level (if-owner) + field-level (PII/`_relationship`) scope for the
+  // duplicates scan — same as the roster/detail page (F1b).
+  const [ownerId, maskSensitive] = await Promise.all([
+    ownerFilter(locals, 'crm'),
+    shouldMaskSensitive(locals, 'crm'),
+  ]);
   // `cleanup` feeds the non-default "Hygiene" tab and runs two cached scans;
   // STREAM it too (unawaited promise) so it never blocks the default Tags tab.
-  const cleanup = Promise.all([scanStandardizationCached(ctx), findDuplicatesCached(ctx), findBlanksCached(ctx)])
+  const cleanup = Promise.all([
+    scanStandardizationCached(ctx),
+    findDuplicatesCached(ctx, { ownerId, maskSensitive }),
+    findBlanksCached(ctx),
+  ])
     .then(([fixes, groups, blanks]) => ({ fixes, groups, blanks }))
     .catch(() => ({ fixes: [], groups: [], blanks: [] }) as { fixes: never[]; groups: never[]; blanks: never[] });
   return { tags, scope, cleanup };

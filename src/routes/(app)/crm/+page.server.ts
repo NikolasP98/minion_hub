@@ -3,7 +3,12 @@ import { requireCoreCtx } from '$server/auth/core-ctx';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import { listContactsCached } from '$server/services/crm-contacts.service';
 import { crmRevenueSummary, contactFinanceMap } from '$server/services/crm-finance.service';
-import { FUNNEL_ORDER, effectiveFunnelStage, maxFunnelStage, financeFloorStage } from '$lib/components/crm/crm-funnel';
+import {
+  FUNNEL_ORDER,
+  effectiveFunnelStage,
+  maxFunnelStage,
+  financeFloorStage,
+} from '$lib/components/crm/crm-funnel';
 import { temperatureOf } from '$lib/components/crm/crm-format';
 import { fromTimestamps } from '$lib/components/dashboard/date-range/url';
 
@@ -18,23 +23,34 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * ('7d'|'30d'|'90d'|'365d') count back from now; 'custom' reads from/to
  * (YYYY-MM-DD, inclusive); anything else ('all' / unknown) means no window.
  */
-function resolveRange(params: URLSearchParams, now: number): { range: string; fromTs: number; toTs: number } {
+function resolveRange(
+  params: URLSearchParams,
+  now: number,
+): { range: string; fromTs: number; toTs: number } {
   const range = params.get('range') ?? 'all';
   if (range === 'custom') {
     const from = params.get('from');
     const to = params.get('to');
     const fromTs = from ? Date.parse(`${from}T00:00:00`) : -Infinity;
     const toTs = to ? Date.parse(`${to}T23:59:59`) : now;
-    return { range, fromTs: Number.isFinite(fromTs) ? fromTs : -Infinity, toTs: Number.isFinite(toTs) ? toTs : now };
+    return {
+      range,
+      fromTs: Number.isFinite(fromTs) ? fromTs : -Infinity,
+      toTs: Number.isFinite(toTs) ? toTs : now,
+    };
   }
   const days = RANGE_DAYS[range];
   if (days) return { range, fromTs: now - days * DAY_MS, toTs: now };
   return { range: 'all', fromTs: -Infinity, toTs: Infinity };
 }
 
-export const load: PageServerLoad = async ({ locals, url, depends }) => {
+export const load: PageServerLoad = async ({ locals, url, depends, parent }) => {
   const ctx = await requireCoreCtx(locals);
   depends('crm:contacts');
+  // Personal orgs de-emphasize the sales funnel (WP2) — skip computing the
+  // funnel/revenue payloads the dashboard won't render for them.
+  const { activeOrgKind } = await parent();
+  const isPersonal = activeOrgKind === 'personal';
 
   // RBAC gates stay synchronous — an unauthorized/masked request must never
   // fall through to the streamed body below.
@@ -86,11 +102,18 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
 
     // Marketing-funnel breakdown (drives the dashboard ribbon). Counts the
     // effective stage per contact (stored _funnel else baseline lead).
-    const funnelCounts: Record<string, number> = Object.fromEntries(FUNNEL_ORDER.map((s) => [s, 0]));
+    const funnelCounts: Record<string, number> = Object.fromEntries(
+      FUNNEL_ORDER.map((s) => [s, 0]),
+    );
 
     // Engagement temperature split (hot/warm/cold) derived from the RFM score —
     // the dashboard's at-a-glance "who's worth chasing right now".
     const temperature = { hot: 0, warm: 0, cold: 0 };
+
+    // Lead origin (Meta attribution, IG today): paid-ad vs organic first
+    // contact; contacts with no attribution row (e.g. WhatsApp) are untracked.
+    const leadOrigin = { ad: 0, organic: 0, untracked: 0 };
+    const campaignMix: Record<string, number> = {};
 
     // Per-contact billing classification (empty unless CRM + Finances both on) so
     // the funnel counts reflect real purchases, not just chat sentiment.
@@ -120,7 +143,7 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
         effectiveFunnelStage(c.custom_fields, { inbound: c.inbound_msgs }),
         financeFloorStage(fin),
       );
-      if (fs) funnelCounts[fs]++;
+      if (fs && !isPersonal) funnelCounts[fs]++;
       if (c.inbound_msgs > 0) {
         inboundContacts++;
         if (c.awaiting_reply) {
@@ -130,7 +153,16 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
       }
       if (fin) booked++;
       if (fin?.purchased) bought++;
+      if (c.lead_origin === 'ad') {
+        leadOrigin.ad++;
+        if (c.lead_campaign) campaignMix[c.lead_campaign] = (campaignMix[c.lead_campaign] ?? 0) + 1;
+      } else if (c.lead_origin === 'organic') leadOrigin.organic++;
+      else leadOrigin.untracked++;
     }
+    const campaigns = Object.entries(campaignMix)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
 
     // B5 response stats. answered = inbound contacts we've replied to most recently.
     const answered = inboundContacts - awaiting;
@@ -157,7 +189,8 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
 
     // Addressable revenue inside the CRM (null unless both CRM + Finances are
     // enabled). The bridge keeps the two modules decoupled — purely additive.
-    const revenue = await crmRevenueSummary(ctx);
+    // Personal orgs never render the revenue card — skip the query.
+    const revenue = isPersonal ? null : await crmRevenueSummary(ctx);
 
     return {
       total,
@@ -173,6 +206,8 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
       revenue,
       response,
       conversion,
+      leadOrigin,
+      campaigns,
     };
   }
 
