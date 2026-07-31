@@ -145,10 +145,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
 
   const activeOrgId = organizations.activeOrgId;
   const activeTenant = activeOrgId
-    ? await traceLayoutLoad(
-        'active-tenant-kind',
-        getTenant({ db: getDb(), tenantId: activeOrgId }),
-      )
+    ? await traceLayoutLoad('active-tenant-kind', getTenant({ db: getDb(), tenantId: activeOrgId }))
     : null;
 
   // Central route-policy guard. The serializable policy registry also drives
