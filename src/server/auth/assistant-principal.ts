@@ -8,21 +8,20 @@ import { resolveCapabilities, type Capabilities } from '$server/services/rbac.se
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Managing-agent id pattern for AI-Brains agents (`deriveBrainAgentId` in
  *  brain-agents.service.ts) — `brain-<brainUuid>`. */
-const BRAIN_AGENT_RE =
-	/^brain-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const BRAIN_AGENT_RE = /^brain-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
 export interface AssistantPrincipal {
-	/** Supabase profile uuid of the agent's owner, or (for a brain agent) the
-	 *  brain agent's own gateway agentId — see `resolveBrainAgentPrincipal`. */
-	principalId: string;
-	/** Resolved org to scope to (membership-checked for personal agents; the
-	 *  brain's own org for brain agents). */
-	orgId: string;
-	/** The principal's legacy org role ('admin' | 'owner' | 'member' | …), or
-	 *  'agent' for a brain agent (never a real org role — can't collide). */
-	role: string | null;
-	/** Effective RBAC capabilities in that org — what the agent is allowed to do. */
-	capabilities: Capabilities;
+  /** Supabase profile uuid of the agent's owner, or (for a brain agent) the
+   *  brain agent's own gateway agentId — see `resolveBrainAgentPrincipal`. */
+  principalId: string;
+  /** Resolved org to scope to (membership-checked for personal agents; the
+   *  brain's own org for brain agents). */
+  orgId: string;
+  /** The principal's legacy org role ('admin' | 'owner' | 'member' | …), or
+   *  'agent' for a brain agent (never a real org role — can't collide). */
+  role: string | null;
+  /** Effective RBAC capabilities in that org — what the agent is allowed to do. */
+  capabilities: Capabilities;
 }
 
 /**
@@ -35,14 +34,14 @@ export interface AssistantPrincipal {
  * `brains` is itself a BUSINESS_MODULES entry), no comms/scheduling actions.
  */
 function brainAgentCapabilities(): Capabilities {
-	return {
-		roles: [],
-		can: (module, action) => module === 'brains' && (action === 'view' || action === 'edit'),
-		canRunAnalytics: () => false,
-		visibleModules: () => ['brains'],
-		ownerScoped: () => false,
-		fieldLevel: () => 0,
-	};
+  return {
+    roles: [],
+    can: (module, action) => module === 'brains' && (action === 'view' || action === 'edit'),
+    canRunAnalytics: () => false,
+    visibleModules: () => ['brains'],
+    ownerScoped: () => false,
+    fieldLevel: () => 0,
+  };
 }
 
 /**
@@ -53,25 +52,30 @@ function brainAgentCapabilities(): Capabilities {
  * unknown personal agent id.
  */
 async function resolveBrainAgentPrincipal(
-	locals: App.Locals,
-	agentId: string,
+  locals: App.Locals,
+  agentId: string,
 ): Promise<AssistantPrincipal> {
-	const [row] = await getCoreDb()
-		.select({ orgId: brains.orgId })
-		.from(brains)
-		.where(eq(brains.agentId, agentId))
-		.limit(1);
-	if (!row) throw error(400, 'unresolvable principal');
+  const [row] = await getCoreDb()
+    .select({ orgId: brains.orgId })
+    .from(brains)
+    .where(eq(brains.agentId, agentId))
+    .limit(1);
+  if (!row) throw error(400, 'unresolvable principal');
 
-	const isGateway = Boolean(locals.serverId);
-	if (!isGateway) {
-		if (!locals.user) throw error(401, 'Authentication required');
-		if (locals.user.role !== 'admin' && locals.user.supabaseId !== agentId) {
-			throw error(403, 'forbidden');
-		}
-	}
+  const isGateway = Boolean(locals.serverId);
+  if (!isGateway) {
+    if (!locals.user) throw error(401, 'Authentication required');
+    if (locals.user.role !== 'admin' && locals.user.supabaseId !== agentId) {
+      throw error(403, 'forbidden');
+    }
+  }
 
-	return { principalId: agentId, orgId: row.orgId, role: 'agent', capabilities: brainAgentCapabilities() };
+  return {
+    principalId: agentId,
+    orgId: row.orgId,
+    role: 'agent',
+    capabilities: brainAgentCapabilities(),
+  };
 }
 
 /**
@@ -90,49 +94,71 @@ async function resolveBrainAgentPrincipal(
  * primary org. They can never reach an org they don't belong to.
  */
 export async function resolveAssistantPrincipal(
-	locals: App.Locals,
-	url: URL,
+  locals: App.Locals,
+  url: URL,
 ): Promise<AssistantPrincipal> {
-	const agentId = url.searchParams.get('agentId');
-	const userIdParam = url.searchParams.get('userId');
-	if (!agentId && !userIdParam) throw error(400, 'agentId or userId query param required');
+  const agentId = url.searchParams.get('agentId');
+  const userIdParam = url.searchParams.get('userId');
+  if (!agentId && !userIdParam) throw error(400, 'agentId or userId query param required');
 
-	if (agentId && BRAIN_AGENT_RE.test(agentId)) {
-		return resolveBrainAgentPrincipal(locals, agentId);
-	}
+  if (agentId && BRAIN_AGENT_RE.test(agentId)) {
+    return resolveBrainAgentPrincipal(locals, agentId);
+  }
 
-	const admin = supabaseAdmin();
+  const admin = supabaseAdmin();
 
-	let principalId: string | null = null;
-	if (agentId) {
-		const { data } = await admin
-			.from('profiles')
-			.select('id')
-			.eq('personal_agent_id', agentId)
-			.maybeSingle();
-		principalId = (data as { id: string } | null)?.id ?? null;
-	} else if (userIdParam && UUID_RE.test(userIdParam)) {
-		principalId = userIdParam;
-	}
-	if (!principalId) throw error(400, 'unresolvable principal');
+  let principalId: string | null = null;
+  if (agentId) {
+    const { data } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('personal_agent_id', agentId)
+      .maybeSingle();
+    principalId = (data as { id: string } | null)?.id ?? null;
+    if (!principalId) {
+      // Fallback: the denormalized profiles pointer can be missing or stale
+      // (seen in prod: agent provisioned pre-GoTrue under a mixed-case legacy
+      // id, pointer never written → every tool call 400'd). `personal_agents`
+      // is the authoritative mapping; match case-insensitively because the
+      // gateway lowercases agent ids while legacy rows kept the original case.
+      const { data: paRow } = await admin
+        .from('personal_agents')
+        .select('profile_id')
+        .ilike('agent_id', agentId)
+        .maybeSingle();
+      principalId = (paRow as { profile_id: string } | null)?.profile_id ?? null;
+      if (principalId) {
+        // Self-heal the pointer (with the id the gateway actually sends) so
+        // the fast path works next time. Best-effort.
+        await admin
+          .from('profiles')
+          .update({ personal_agent_id: agentId })
+          .eq('id', principalId)
+          .then(() => undefined);
+      }
+    }
+  } else if (userIdParam && UUID_RE.test(userIdParam)) {
+    principalId = userIdParam;
+  }
+  if (!principalId) throw error(400, 'unresolvable principal');
 
-	const isGateway = Boolean(locals.serverId);
-	if (!isGateway) {
-		if (!locals.user) throw error(401, 'Authentication required');
-		if (locals.user.role !== 'admin' && locals.user.supabaseId !== principalId) {
-			throw error(403, 'forbidden');
-		}
-	}
+  const isGateway = Boolean(locals.serverId);
+  if (!isGateway) {
+    if (!locals.user) throw error(401, 'Authentication required');
+    if (locals.user.role !== 'admin' && locals.user.supabaseId !== principalId) {
+      throw error(403, 'forbidden');
+    }
+  }
 
-	const { data: mems } = await admin
-		.from('organization_members')
-		.select('organization_id, role')
-		.eq('profile_id', principalId);
-	const rows = (mems ?? []) as Array<{ organization_id: string; role: string | null }>;
-	if (rows.length === 0) throw error(404, 'no organization for user');
+  const { data: mems } = await admin
+    .from('organization_members')
+    .select('organization_id, role')
+    .eq('profile_id', principalId);
+  const rows = (mems ?? []) as Array<{ organization_id: string; role: string | null }>;
+  if (rows.length === 0) throw error(404, 'no organization for user');
 
-	const requested = url.searchParams.get('orgId');
-	const chosen = (requested && rows.find((r) => r.organization_id === requested)) || rows[0];
-	const capabilities = await resolveCapabilities(chosen.organization_id, principalId);
-	return { principalId, orgId: chosen.organization_id, role: chosen.role, capabilities };
+  const requested = url.searchParams.get('orgId');
+  const chosen = (requested && rows.find((r) => r.organization_id === requested)) || rows[0];
+  const capabilities = await resolveCapabilities(chosen.organization_id, principalId);
+  return { principalId, orgId: chosen.organization_id, role: chosen.role, capabilities };
 }
