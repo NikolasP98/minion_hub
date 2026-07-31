@@ -111,6 +111,28 @@ export async function resolveAssistantPrincipal(
 			.eq('personal_agent_id', agentId)
 			.maybeSingle();
 		principalId = (data as { id: string } | null)?.id ?? null;
+		if (!principalId) {
+			// Fallback: the denormalized profiles pointer can be missing or stale
+			// (seen in prod: agent provisioned pre-GoTrue under a mixed-case legacy
+			// id, pointer never written → every tool call 400'd). `personal_agents`
+			// is the authoritative mapping; match case-insensitively because the
+			// gateway lowercases agent ids while legacy rows kept the original case.
+			const { data: paRow } = await admin
+				.from('personal_agents')
+				.select('profile_id')
+				.ilike('agent_id', agentId)
+				.maybeSingle();
+			principalId = (paRow as { profile_id: string } | null)?.profile_id ?? null;
+			if (principalId) {
+				// Self-heal the pointer (with the id the gateway actually sends) so
+				// the fast path works next time. Best-effort.
+				await admin
+					.from('profiles')
+					.update({ personal_agent_id: agentId })
+					.eq('id', principalId)
+					.then(() => undefined);
+			}
+		}
 	} else if (userIdParam && UUID_RE.test(userIdParam)) {
 		principalId = userIdParam;
 	}

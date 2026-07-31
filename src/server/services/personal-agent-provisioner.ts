@@ -1,5 +1,10 @@
 import type { PersonalAgentRow } from './personal-agent.service';
-import { getPersonalAgent, updateProvisioningStatus } from './personal-agent.service';
+import {
+  getPersonalAgent,
+  provisionPersonalAgent,
+  updateProvisioningStatus,
+} from './personal-agent.service';
+import { gatewayCall } from '$lib/server/gateway-rpc';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 const MAX_RETRIES = 5;
@@ -76,4 +81,57 @@ export async function markActive(ctx: CoreCtx, userId: string): Promise<void> {
  */
 export async function markError(ctx: CoreCtx, userId: string, error: string): Promise<void> {
   await updateProvisioningStatus(ctx, userId, 'error', error);
+}
+
+/**
+ * Guarantee the user has an ACTIVE personal agent, provisioning it server-side
+ * if needed. Personal-agent provisioning is a mandatory part of user creation —
+ * a signed-in user must never dead-end on a "not provisioned yet" screen, so
+ * the (app) layout calls this instead of bouncing straight to /onboarding.
+ *
+ * Steps (all idempotent): ensure the personal_agents row + profiles pointer
+ * exist (`provisionPersonalAgent`), then create the gateway agent with the
+ * system credentials (same privileged path as /api/personal-agent/create and
+ * brain-agents), then mark active. Identity/personality stay unconfigured —
+ * the user can personalize later in settings; that's cosmetic, not blocking.
+ *
+ * Returns true when the agent is (now) active. Returns false — WITHOUT
+ * throwing — when provisioning failed or is inside the retry backoff window,
+ * so the caller can fall back to /onboarding's manual retry UI.
+ */
+export async function ensureActivePersonalAgent(
+  ctx: CoreCtx,
+  params: { userId: string; email: string },
+): Promise<boolean> {
+  let agent = await getPersonalAgent(ctx, params.userId);
+  if (!agent) {
+    try {
+      agent = await provisionPersonalAgent(ctx, {
+        userId: params.userId,
+        email: params.email,
+        serverId: '',
+      });
+    } catch (err) {
+      console.error('[personal-agent] ensureActive: row provisioning failed', err);
+      return false;
+    }
+  }
+  if (agent.provisioningStatus === 'active') return true;
+  if (!shouldRetryAgent(agent)) return false; // backoff/max-retries — don't hammer the gateway
+
+  await markProvisioning(ctx, params.userId);
+  try {
+    try {
+      await gatewayCall('agents.create', getProvisioningPayload(agent));
+    } catch (err) {
+      if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
+    }
+    await markActive(ctx, params.userId);
+    return true;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[personal-agent] ensureActive: gateway provisioning failed', message);
+    await markError(ctx, params.userId, message);
+    return false;
+  }
 }
