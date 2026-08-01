@@ -3,13 +3,19 @@ import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
+import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import { findDuplicates, mergeContacts } from '$server/services/crm-cleanup.service';
 
 /** GET /api/crm/cleanup/duplicates — likely-duplicate groups (by DNI / name). */
 export const GET: RequestHandler = async ({ locals }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  return json({ groups: await findDuplicates(ctx) });
+  // Same record-level + field-level scope as the /crm/settings page load.
+  const [ownerId, maskSensitive] = await Promise.all([
+    ownerFilter(locals, 'crm'),
+    shouldMaskSensitive(locals, 'crm'),
+  ]);
+  return json({ groups: await findDuplicates(ctx, { ownerId, maskSensitive }) });
 };
 
 const postSchema = z.object({
