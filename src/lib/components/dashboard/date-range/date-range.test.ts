@@ -14,6 +14,7 @@ import {
   toSearchParams,
   fromSearchParams,
   toTimestamps,
+  parseInclusiveEnd,
   fromTimestamps,
   defaultRangeConfig,
   toggleRangeVisible,
@@ -197,5 +198,23 @@ describe('business-timezone day windows', () => {
     expect(w.from!.toISOString()).toBe('2026-06-01T05:00:00.000Z');
     expect(w.to!.toISOString()).toBe('2026-07-01T05:00:00.000Z');
     expect(zonedDayWindow('', '', 'America/Lima')).toEqual({ from: null, to: null });
+  });
+})
+
+describe('parseInclusiveEnd', () => {
+  it('widens a date-only bound to the end of that day', () => {
+    // The bug it prevents: `new Date('2026-06-01')` is midnight, so a `<= to`
+    // filter returns nothing for a same-day range.
+    const naive = new Date('2026-06-01');
+    const sale = new Date('2026-06-01T19:30:00.000Z');
+    expect(sale.getTime()).toBeGreaterThan(naive.getTime()); // dropped by the naive bound
+    expect(sale.getTime()).toBeLessThanOrEqual(parseInclusiveEnd('2026-06-01')!.getTime());
+  });
+
+  it('passes a datetime bound through and treats missing/garbage as open', () => {
+    expect(parseInclusiveEnd('2026-06-01T08:00:00.000Z')!.toISOString()).toBe('2026-06-01T08:00:00.000Z');
+    expect(parseInclusiveEnd(null)).toBeUndefined();
+    expect(parseInclusiveEnd('')).toBeUndefined();
+    expect(parseInclusiveEnd('not-a-date')).toBeUndefined();
   });
 })

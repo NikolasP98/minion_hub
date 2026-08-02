@@ -52,6 +52,7 @@ export {
   fromSearchParams,
   toSearchParams,
   toTimestamps,
+  parseInclusiveEnd,
   fromTimestamps,
   zonedStartOfDay,
   zonedDayWindow,
