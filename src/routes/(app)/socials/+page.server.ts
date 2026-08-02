@@ -5,13 +5,15 @@ import {
   adDataExtent,
   adKpis,
   adSpendSeries,
-  campaignBreakdown,
   extentToRange,
   postPerformance,
   listConnections,
+  syncJobHistory,
   type DataExtent,
   type DateRange,
 } from '$server/services/meta/meta-insights.service';
+import { adPerformanceByCampaign } from '$server/services/meta/ad-performance.service';
+import { ALL_PERIODS, type Period } from '$lib/components/dashboard/date-range';
 
 const THIRTY_DAYS_MS = 30 * 86_400_000;
 
@@ -31,6 +33,14 @@ function resolveRange(url: URL, extent: DataExtent): DateRange {
     : defaultRange;
 }
 
+/** Chart granularity. Bucketing itself happens client-side over the daily
+ *  series (already loaded) — the server only echoes a validated selection so
+ *  the choice survives a reload / shared link. */
+function resolvePeriod(url: URL): Period {
+  const p = url.searchParams.get('period');
+  return (ALL_PERIODS as string[]).includes(p ?? '') ? (p as Period) : 'day';
+}
+
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
@@ -40,17 +50,38 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const hasConnection = connections.some((c) => c.status !== 'revoked');
   const extent: DataExtent = hasConnection ? await adDataExtent(ctx) : { minDate: null, maxDate: null };
   const range = resolveRange(url, extent);
+  const period = resolvePeriod(url);
 
   if (!hasConnection) {
-    return { range, hasConnection, extent, kpis: null, series: [], campaigns: [], posts: [] };
+    return { range, period, hasConnection, extent, kpis: null, series: [], campaigns: [], conversations: 0, posts: [], lastSync: null };
   }
 
-  const [kpis, series, campaigns, posts] = await Promise.all([
+  // `performance` (campaign rollup + conversations) carries the spend the
+  // by-campaign chart needs, so there's no separate campaignBreakdown query.
+  const [kpis, series, performance, posts, syncJobs] = await Promise.all([
     adKpis(ctx, range),
     adSpendSeries(ctx, range),
-    campaignBreakdown(ctx, range, 'campaign'),
+    adPerformanceByCampaign(ctx, range),
     postPerformance(ctx, { limit: 5, orderBy: 'score' }),
+    syncJobHistory(ctx, { limit: 50 }),
   ]);
 
-  return { range, hasConnection, extent, kpis, series, campaigns: campaigns.slice(0, 10), posts };
+  // Freshness strip: the newest ads sync that actually finished.
+  const lastSync = syncJobs.find((j) => j.kind === 'ads' && j.finishedAt != null) ?? null;
+  // Conversations total covers EVERY campaign; only the top spenders are shipped
+  // for the chart/table.
+  const conversations = performance.reduce((n, r) => n + r.conversationsStarted, 0);
+
+  return {
+    range,
+    period,
+    hasConnection,
+    extent,
+    kpis,
+    series,
+    campaigns: [...performance].sort((a, b) => b.spend - a.spend).slice(0, 10),
+    conversations,
+    posts,
+    lastSync: lastSync && { finishedAt: lastSync.finishedAt, status: lastSync.status },
+  };
 };

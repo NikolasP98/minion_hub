@@ -71,6 +71,21 @@ export function enabledPeriods(
 }
 
 /**
+ * Bucket label for a 'YYYY-MM-DD' date at `p` — the key a client-side rollup
+ * groups daily rows by when a dashboard already holds the daily series and
+ * doesn't need a re-query per granularity. Week snaps to its ISO Monday.
+ */
+export function bucketKey(date: string, p: Period): string {
+  if (p === 'day' || p === 'hour') return date;
+  if (p === 'month') return date.slice(0, 7);
+  if (p === 'year') return date.slice(0, 4);
+  const d = new Date(`${date.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return date;
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * Keep `current` if it is still viewable, else fall back to the COARSEST period
  * that is. Call this whenever the window changes so a now-unsuitable selection
  * snaps instead of rendering one bar (or ten thousand).

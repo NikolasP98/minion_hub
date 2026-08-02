@@ -24,6 +24,7 @@ export {
   periodEnabled,
   enabledPeriods,
   coercePeriod,
+  bucketKey,
 } from './periods';
 
 export {

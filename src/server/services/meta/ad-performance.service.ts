@@ -84,6 +84,12 @@ async function rollup(tx: Tx, orgId: string, r: DateRange, level: 'campaign' | '
   });
 }
 
+/** Campaign-level rollup only — for surfaces (the /socials dashboard) that never
+ *  drill into ads and shouldn't pay for the ad-level query. */
+export function adPerformanceByCampaign(ctx: CoreCtx, range: DateRange): Promise<AdPerformanceRow[]> {
+  return withOrgCore(ctx, (tx) => rollup(tx, ctx.tenantId, range, 'campaign'));
+}
+
 /** Per-campaign AND per-ad performance rollup for `range`, both sorted by
  *  conversations_started desc. One withOrgCore transaction, two grouped queries. */
 export function adPerformance(ctx: CoreCtx, range: DateRange): Promise<AdPerformance> {

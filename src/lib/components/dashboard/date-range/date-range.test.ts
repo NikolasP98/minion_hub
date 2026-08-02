@@ -8,6 +8,7 @@ import {
   periodEnabled,
   enabledPeriods,
   coercePeriod,
+  bucketKey,
   resolveRange,
   matchRange,
   orderRangeIds,
@@ -46,6 +47,16 @@ describe('periods', () => {
     expect(coercePeriod('day', '2026-07-04', '2026-07-19')).toBe('day');
     // respects the allowed subset (finances has no year bucket)
     expect(coercePeriod('year', '2020-01-01', '2026-07-19', ['day', 'week', 'month'])).toBe('month');
+  });
+
+  it('buckets a date by granularity — week snaps back to its ISO Monday', () => {
+    expect(bucketKey('2026-07-19', 'day')).toBe('2026-07-19');
+    expect(bucketKey('2026-07-19', 'month')).toBe('2026-07');
+    expect(bucketKey('2026-07-19', 'year')).toBe('2026');
+    // Sunday Jul 19 and Monday Jul 13 land in the SAME week bucket.
+    expect(bucketKey('2026-07-19', 'week')).toBe('2026-07-13');
+    expect(bucketKey('2026-07-13', 'week')).toBe('2026-07-13');
+    expect(bucketKey('2026-07-20', 'week')).toBe('2026-07-20');
   });
 });
 
