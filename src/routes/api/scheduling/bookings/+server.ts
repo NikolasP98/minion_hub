@@ -7,6 +7,7 @@ import { parseBody } from '$server/api/validate';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listBookings, createBooking, SlotUnavailableError } from '$server/services/scheduling-bookings.service';
+import { parseInclusiveEnd } from '$lib/components/dashboard/date-range/url';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
   const ctx = await getCoreCtx(locals);
@@ -18,7 +19,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const resourceId = url.searchParams.get('resourceId');
   const bookings = await listBookings(ctx, {
     from: from ? new Date(from) : undefined,
-    to: to ? new Date(to) : undefined,
+    // `to` is INCLUSIVE of the whole day — listBookings compares with `<=`, so a
+    // date-only bound must be widened past midnight or that day vanishes.
+    to: parseInclusiveEnd(to),
     status: status ? status.split(',') : undefined,
     resourceId: resourceId ?? undefined,
     maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),

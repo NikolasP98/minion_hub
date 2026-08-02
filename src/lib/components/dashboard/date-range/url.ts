@@ -88,6 +88,19 @@ export function toTimestamps(range: DateRange): { fromTs: number; toTs: number }
 }
 
 /**
+ * Parse a `?to=`-style query bound into an INCLUSIVE end `Date` for an API that
+ * compares with `<=`. A date-only value is widened to the end of that day —
+ * `new Date('2026-05-31')` is midnight, so `<= that` drops the whole day.
+ * Datetime values pass through. Returns undefined for missing/unparseable input
+ * (an open bound), matching how the range API routes treat a bad param.
+ */
+export function parseInclusiveEnd(v: string | null | undefined): Date | undefined {
+  if (!v) return undefined;
+  const d = new Date(hasTime(v) ? v : `${v}${END_OF_DAY}`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+/**
  * Inverse of toTimestamps. `withTime` emits local 'YYYY-MM-DDTHH:mm' (what a
  * time-of-day surface round-trips); otherwise plain 'YYYY-MM-DD'. '' when open.
  */

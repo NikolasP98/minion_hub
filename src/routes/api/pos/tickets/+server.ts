@@ -6,6 +6,7 @@ import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listTickets, submitTicket } from '$server/services/pos.service';
 import { handlePosError } from '../_errors';
+import { parseInclusiveEnd } from '$lib/components/dashboard/date-range/url';
 
 const lineSchema = z.object({
   kind: z.enum(['service', 'product']),
@@ -41,14 +42,15 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const limitParam = url.searchParams.get('limit');
   const limit = limitParam ? Number(limitParam) : undefined;
   const fromParam = url.searchParams.get('from');
-  const toParam = url.searchParams.get('to');
   const fromDate = fromParam ? new Date(fromParam) : undefined;
-  const toDate = toParam ? new Date(toParam) : undefined;
+  // `to` is INCLUSIVE of the whole day — listTickets compares with `<=`, so a
+  // date-only bound must be widened past midnight or that day vanishes.
+  const toDate = parseInclusiveEnd(url.searchParams.get('to'));
   return json(
     await listTickets(ctx, {
       shiftId: url.searchParams.get('shiftId') ?? undefined,
       from: fromDate && !Number.isNaN(fromDate.getTime()) ? fromDate : undefined,
-      to: toDate && !Number.isNaN(toDate.getTime()) ? toDate : undefined,
+      to: toDate,
       limit: limit && Number.isFinite(limit) ? Math.min(limit, 500) : undefined,
     }),
   );

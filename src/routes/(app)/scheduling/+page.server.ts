@@ -12,11 +12,14 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(404, 'Scheduling module disabled');
   depends('scheduling:data');
 
-  // A 4-week window centred near "now": last 7 days + next 21 days.
+  // A 4-week window centred near "now": last 7 days + next 21 days, INCLUSIVE of
+  // both end days. The analytics take a half-open [from, to), so `to` is the start
+  // of the day AFTER the last covered one — at +21 it was a midnight bound, which
+  // left the heatmap's final column permanently empty.
   const now = new Date();
   const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const from = new Date(todayStart.getTime() - 7 * DAY);
-  const to = new Date(todayStart.getTime() + 21 * DAY);
+  const to = new Date(todayStart.getTime() + 22 * DAY);
 
   // Each analytic degrades independently: a slow/failed optional panel (e.g. the
   // revenue overlay's cross-module join hitting a statement timeout) must never
