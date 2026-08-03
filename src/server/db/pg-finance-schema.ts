@@ -7,8 +7,10 @@ import {
   timestamp,
   boolean,
   integer,
+  date,
   index,
   uniqueIndex,
+  foreignKey,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -252,6 +254,82 @@ export const finSettings = pgTable('fin_settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Personal-finance statement imports (WP4, R4/R5 of the personal-org spec).
+ * NEW tables — deliberately separate from fin_invoices (a sales document, not
+ * a bank-statement transaction). One row per uploaded/pasted statement.
+ * Idempotency: UNIQUE(org_id, content_sha256) — re-submitting identical bytes
+ * returns the existing import instead of duplicating. `next_chunk` is the
+ * resumable cursor the `statement_ingest` bg-runtime handler advances.
+ */
+export const finStatementImports = pgTable(
+  'fin_statement_imports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    fileId: text('file_id'), // bridges to files.id (cuid2 text, not uuid)
+    sourceKind: text('source_kind').notNull(), // 'csv' | 'text'
+    contentSha256: text('content_sha256').notNull(),
+    parserVersion: integer('parser_version').notNull(),
+    status: text('status').notNull().default('queued'), // queued|parsing|done|failed|undone
+    nextChunk: integer('next_chunk').notNull().default(0),
+    rowCount: integer('row_count'),
+    insertedCount: integer('inserted_count'),
+    rejectedCount: integer('rejected_count'),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    createdBy: uuid('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => ({
+    uniq: uniqueIndex('fin_statement_imports_org_sha_uniq').on(t.orgId, t.contentSha256),
+    orgIdx: index('fin_statement_imports_org_idx').on(t.orgId, t.createdAt),
+    // Composite FK target: lets fin_transactions enforce same-org parentage.
+    orgIdUniq: uniqueIndex('fin_statement_imports_org_id_uniq').on(t.orgId, t.id),
+  }),
+);
+
+/**
+ * Parsed bank-statement rows. `signedAmount` carries direction via sign (no
+ * separate direction column). `partyId` is a soft bridge to the party spine
+ * (no FK — same pattern as fin_clients.partyId), populated later by CRM
+ * cashflow matching (out of scope for this wave).
+ */
+export const finTransactions = pgTable(
+  'fin_transactions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    importId: uuid('import_id').notNull(),
+    sourceRow: integer('source_row').notNull(),
+    postedOn: date('posted_on').notNull(),
+    description: text('description').notNull(),
+    signedAmount: numeric('signed_amount', { precision: 18, scale: 2 }).notNull(),
+    currency: text('currency'),
+    counterparty: text('counterparty'),
+    category: text('category'),
+    reference: text('reference'),
+    partyId: uuid('party_id'),
+    confidence: numeric('confidence'),
+    warnings: jsonb('warnings').notNull().default([]),
+    raw: jsonb('raw').notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniq: uniqueIndex('fin_transactions_import_row_uniq').on(t.importId, t.sourceRow),
+    orgPostedIdx: index('fin_transactions_org_posted_idx').on(t.orgId, t.postedOn),
+    partyIdx: index('fin_transactions_party_idx').on(t.partyId),
+    // (org_id, import_id) → (org_id, id): a transaction cannot reference
+    // another org's import (RLS alone only checks the transaction's org_id).
+    orgImportFk: foreignKey({
+      name: 'fin_transactions_org_import_fk',
+      columns: [t.orgId, t.importId],
+      foreignColumns: [finStatementImports.orgId, finStatementImports.id],
+    }).onDelete('cascade'),
+  }),
+);
+
 export type FinInvoice = typeof finInvoices.$inferSelect;
 export type FinInvoiceItem = typeof finInvoiceItems.$inferSelect;
 export type FinPayment = typeof finPayments.$inferSelect;
@@ -260,3 +338,5 @@ export type FinProduct = typeof finProducts.$inferSelect;
 export type FinSource = typeof finSources.$inferSelect;
 export type FinSyncJob = typeof finSyncJobs.$inferSelect;
 export type FinSettingsRow = typeof finSettings.$inferSelect;
+export type FinStatementImport = typeof finStatementImports.$inferSelect;
+export type FinTransaction = typeof finTransactions.$inferSelect;
