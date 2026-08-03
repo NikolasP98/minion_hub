@@ -21,7 +21,37 @@ export const POST: RequestHandler = async (event) => {
     kind?: unknown;
     ownerProfileId?: unknown;
     existingWorkforceCompanyId?: unknown;
+    organizationId?: unknown;
   };
+
+  // Heal mode: re-run provisioning for an EXISTING org. Name/kind/owner come
+  // from the DB so a page refresh (or a different admin) can always retry.
+  if (b.organizationId !== undefined && b.organizationId !== null && b.organizationId !== '') {
+    if (typeof b.organizationId !== 'string' || !UUID_RE.test(b.organizationId)) {
+      throw error(400, 'organizationId must be a valid UUID');
+    }
+    const admin = supabaseAdmin();
+    const [{ data: org, error: orgError }, { data: owner }] = await Promise.all([
+      admin
+        .from('organizations')
+        .select('id, name, kind')
+        .eq('id', b.organizationId)
+        .maybeSingle(),
+      admin
+        .from('member_roles')
+        .select('profile_id')
+        .eq('org_id', b.organizationId)
+        .eq('role_key', 'owner')
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    if (orgError) throw error(502, `Organization lookup failed: ${orgError.message}`);
+    if (!org) throw error(404, 'Organization not found');
+    b.name = (org as { name: string }).name;
+    b.kind = (org as { kind: string | null }).kind ?? 'business';
+    b.ownerProfileId =
+      (owner as { profile_id: string } | null)?.profile_id ?? b.ownerProfileId ?? undefined;
+  }
 
   // An admin may provision on behalf of another profile; default is themselves.
   let ownerProfileId = user.supabaseId;

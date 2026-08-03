@@ -19,7 +19,8 @@ export type OrganizationProvisionStepId =
 
 export interface OrganizationProvisionStep {
   id: OrganizationProvisionStepId;
-  status: 'complete' | 'failed' | 'skipped';
+  /** `warning` = an OPTIONAL dependency failed; the org is still usable. */
+  status: 'complete' | 'failed' | 'skipped' | 'warning';
   durationMs: number;
   detail: string;
 }
@@ -254,7 +255,12 @@ export async function provisionOrganization(
     id: OrganizationProvisionStepId,
     detail: string,
     operation: () => Promise<void>,
-    opts: { dependsOn?: OrganizationProvisionStepId[]; skipReason?: string } = {},
+    opts: {
+      dependsOn?: OrganizationProvisionStepId[];
+      skipReason?: string;
+      /** Failure degrades to `warning` instead of failing the run. */
+      optional?: boolean;
+    } = {},
   ): Promise<void> {
     if (opts.skipReason) {
       steps.push({ id, status: 'skipped', durationMs: 0, detail: opts.skipReason });
@@ -277,9 +283,11 @@ export async function provisionOrganization(
     } catch (error) {
       steps.push({
         id,
-        status: 'failed',
+        status: opts.optional ? 'warning' : 'failed',
         durationMs: Math.round(performance.now() - start),
-        detail: safeMessage(error),
+        detail: opts.optional
+          ? `Optional dependency unavailable: ${safeMessage(error)}`
+          : safeMessage(error),
       });
     }
   }
@@ -332,7 +340,9 @@ export async function provisionOrganization(
       if (!organization) throw new Error('Organization was not created');
       await ensureProvisionedWorkforceCompany(event, organization.id, name);
     },
-    { dependsOn: ['organization'], skipReason: personalSkip },
+    // Optional: the Workforce control plane may not be deployed. The org is
+    // fully usable without it and a later re-run heals this step.
+    { dependsOn: ['organization'], skipReason: personalSkip, optional: true },
   );
   await step(
     'gateway',
@@ -429,11 +439,32 @@ export async function provisionOrganization(
     },
   );
 
-  return {
+  const result: OrganizationProvisionResult = {
     ok: !steps.some((s) => s.status === 'failed'),
     organization,
     steps,
     startedAt,
     completedAt: new Date().toISOString(),
   };
+
+  // Persist the latest run per org so the admin page shows onboarding health
+  // across refreshes. Non-fatal: a trace write must never fail the provision.
+  if (organization !== null) {
+    const org = organization as OrganizationRow;
+    await supabaseAdmin()
+      .from('org_provision_runs')
+      .upsert(
+        {
+          org_id: org.id,
+          ok: result.ok,
+          steps: result.steps,
+          started_at: result.startedAt,
+          completed_at: result.completedAt,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'org_id' },
+      );
+  }
+
+  return result;
 }

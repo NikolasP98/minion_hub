@@ -78,17 +78,33 @@ export async function listAllOrganizations(): Promise<OrgSummary[]> {
  * Supabase `organizations` + `organization_members`.
  */
 export async function listAllOrganizationsWithMemberCounts(): Promise<
-  Array<OrgSummary & { members: number }>
+  Array<OrgSummary & { members: number; kind: string; ownerProfileId: string | null }>
 > {
   const admin = supabaseAdmin();
-  const { data: orgs, error: orgErr } = await admin.from('organizations').select('id, name, slug');
+  const { data: orgs, error: orgErr } = await admin
+    .from('organizations')
+    .select('id, name, slug, kind');
   if (orgErr || !orgs) return [];
-  const { data: mems } = await admin.from('organization_members').select('organization_id');
+  const [{ data: mems }, { data: owners }] = await Promise.all([
+    admin.from('organization_members').select('organization_id'),
+    admin.from('member_roles').select('org_id, profile_id').eq('role_key', 'owner'),
+  ]);
   const counts = new Map<string, number>();
   for (const m of (mems ?? []) as Array<{ organization_id: string }>) {
     counts.set(m.organization_id, (counts.get(m.organization_id) ?? 0) + 1);
   }
-  return (orgs as OrgSummary[])
-    .map((o) => ({ id: o.id, name: o.name, slug: o.slug, members: counts.get(o.id) ?? 0 }))
+  const ownerByOrg = new Map<string, string>();
+  for (const o of (owners ?? []) as Array<{ org_id: string; profile_id: string }>) {
+    if (!ownerByOrg.has(o.org_id)) ownerByOrg.set(o.org_id, o.profile_id);
+  }
+  return (orgs as Array<OrgSummary & { kind: string }>)
+    .map((o) => ({
+      id: o.id,
+      name: o.name,
+      slug: o.slug,
+      kind: o.kind ?? 'business',
+      members: counts.get(o.id) ?? 0,
+      ownerProfileId: ownerByOrg.get(o.id) ?? null,
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
