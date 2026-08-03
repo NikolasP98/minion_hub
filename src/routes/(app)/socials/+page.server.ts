@@ -46,9 +46,12 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   if (!ctx) throw error(401, 'Authentication required');
   depends('ads:data');
 
-  const connections = await listConnections(ctx);
+  // Fetched together — extent on an unconnected org is a cheap empty-table
+  // read, and serializing these two costs a full RLS-txn round-trip each
+  // against a remote pooler.
+  const [connections, extentRaw] = await Promise.all([listConnections(ctx), adDataExtent(ctx)]);
   const hasConnection = connections.some((c) => c.status !== 'revoked');
-  const extent: DataExtent = hasConnection ? await adDataExtent(ctx) : { minDate: null, maxDate: null };
+  const extent: DataExtent = hasConnection ? extentRaw : { minDate: null, maxDate: null };
   const range = resolveRange(url, extent);
   const period = resolvePeriod(url);
 

@@ -1,3 +1,4 @@
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import {
   listGatewayHostsForUser,
   listOrgChannels,
@@ -57,6 +58,31 @@ export async function loadHostsForUser(
   const locals = ctx as App.Locals;
   const profileId = locals.user?.supabaseId ?? null;
   const orgId = locals.orgId ?? locals.tenantCtx?.tenantId ?? null;
+  // Runs on the (app) layout for EVERY navigation, but the answer only changes
+  // on gateway assignment / lease flips (lease TTL is 300s). Short-cache it so
+  // a nav costs a cache hit instead of 4-6 queries (host list + channels +
+  // lease read + conditional lease upsert). Mutation paths bust via
+  // bustHostsCache(orgId).
+  return cached(
+    keys.hub('hosts-bundle', { t: orgId ?? '', u: profileId ?? '', d: { a: isAdmin ? 1 : 0 } }),
+    { ttl: '45s', swr: '10m', tags: orgId ? [...hostsTags(orgId)] : [] },
+    () => computeHostsForUser(profileId, isAdmin, orgId),
+  );
+}
+
+const hostsTags = (orgId: string) => tags.tenantDomain(orgId, 'gateway-hosts');
+
+/** Bust an org's cached hosts/channel-endpoint bundle (call after gateway
+ *  assignment changes or a lease failover). */
+export function bustHostsCache(orgId: string) {
+  return invalidateTags([...hostsTags(orgId)]);
+}
+
+async function computeHostsForUser(
+  profileId: string | null,
+  isAdmin: boolean,
+  orgId: string | null,
+): Promise<HostsLoadResult> {
   const servers = await listGatewayHostsForUser(profileId, isAdmin, orgId);
   // Active org → assigned gateway (if it's among the user's visible hosts).
   const orgAssignedHostId = orgId ? (servers.find((s) => s.orgId === orgId)?.id ?? null) : null;

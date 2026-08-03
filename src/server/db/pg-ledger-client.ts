@@ -28,8 +28,11 @@ function getLedgerDb(): LedgerDb {
 export function withOrg<T>(orgId: string, fn: (tx: LedgerTx) => Promise<T>): Promise<T> {
   if (!orgId) throw new Error('withOrg requires a non-empty orgId');
   return getLedgerDb().transaction(async (tx) => {
-    await tx.execute(sql`set local role app_ledger`);
-    await tx.execute(sql`select set_config('app.current_org_id', ${orgId}, true)`);
+    // Single round-trip: set_config(..., true) === SET LOCAL, including `role`.
+    await tx.execute(
+      sql`select set_config('role', 'app_ledger', true),
+                 set_config('app.current_org_id', ${orgId}, true)`,
+    );
     return fn(tx);
   });
 }

@@ -314,11 +314,18 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     const limit = Math.min(f.limit ?? 100, f.maxLimit ?? 5000);
     const offset = f.offset ?? 0;
 
-    // When scoring a single contact (detail page), push its id into the agg CTE
-    // so we aggregate only that contact's conversation — not the whole roster.
-    const aggWhere = f.contactId
-      ? sql`where m.is_bot is not true and ci.contact_id = ${f.contactId}`
+    // Roster path: aggregate the org's messages ONCE per (channel, chat) and
+    // join the compact rollup to identities. The old identity→messages join
+    // made the planner nested-loop 16k index probes into messages (~70s at
+    // 550k rows, IO-bound); one pass + hash join runs in a few seconds.
+    // Single-contact path (detail page) keeps the targeted index probes: only
+    // that contact's chats are touched.
+    const msgWhere = f.contactId
+      ? sql`where m.is_bot is not true and (m.org_id, m.channel, m.chat_id) in (
+            select ci0.org_id, ci0.channel, ci0.external_id
+            from crm_contact_identities ci0 where ci0.contact_id = ${f.contactId})`
       : sql`where m.is_bot is not true`;
+    const aggIdentWhere = f.contactId ? sql`where ci.contact_id = ${f.contactId}` : sql``;
 
     // Finance bridge: a contact's purchase history (via the PARTY SPINE — same
     // CONTACT_PARTY map as crm-finance.service) gives a TRUE first/last
@@ -342,18 +349,29 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     const rows = await tx.execute(sql`
       with agg as (
         select ci.contact_id,
-               max(coalesce(m.occurred_at, m.created_at)) as last_contact_at,
-               min(coalesce(m.occurred_at, m.created_at)) as first_contact_at,
-               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'inbound') as last_inbound_at,
-               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'outbound') as last_outbound_at,
-               count(*) as total_msgs,
-               count(*) filter (where m.direction = 'inbound') as inbound_msgs,
-               count(distinct m.channel) as channels_used
+               max(pm.last_at) as last_contact_at,
+               min(pm.first_at) as first_contact_at,
+               max(pm.last_inbound_at) as last_inbound_at,
+               max(pm.last_outbound_at) as last_outbound_at,
+               sum(pm.total_msgs)::bigint as total_msgs,
+               sum(pm.inbound_msgs)::bigint as inbound_msgs,
+               count(distinct pm.channel) as channels_used
         from crm_contact_identities ci
-        join messages m
+        join (
+          select m.org_id, m.channel, m.chat_id,
+                 max(coalesce(m.occurred_at, m.created_at)) as last_at,
+                 min(coalesce(m.occurred_at, m.created_at)) as first_at,
+                 max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'inbound') as last_inbound_at,
+                 max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'outbound') as last_outbound_at,
+                 count(*) as total_msgs,
+                 count(*) filter (where m.direction = 'inbound') as inbound_msgs
+          from messages m
+          ${msgWhere}
+          group by m.org_id, m.channel, m.chat_id
+        ) pm
           -- match the whole conversation (chat_id), not just msgs the contact sent
-          on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
-        ${aggWhere}
+          on pm.org_id = ci.org_id and pm.channel = ci.channel and pm.chat_id = ci.external_id
+        ${aggIdentWhere}
         group by ci.contact_id
       ),
       ${withFinance ? sql`${CONTACT_PARTY},` : sql``}
@@ -523,7 +541,12 @@ export function listContactsCached(
     keys.hub('crm-contacts', {
       t: `${ctx.tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`,
     }),
-    { ttl: '2m', swr: '30s', tags: [...crmListTags(ctx.tenantId)] },
+    // Recomputing this roster takes tens of seconds at current scale. The
+    // 2m ttl keeps the freshness cadence, but the long swr window means an
+    // expired entry serves instantly (stale) while refreshing in the
+    // background — nobody's navigation blocks on the recompute. Mutations
+    // still bust immediately via tags.
+    { ttl: '2m', swr: '1h', tags: [...crmListTags(ctx.tenantId)] },
     () => rankContacts(ctx, { limit: ROSTER_CAP, maxLimit: ROSTER_CAP, ownerId, maskSensitive }),
   );
 }

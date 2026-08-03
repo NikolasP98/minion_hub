@@ -75,8 +75,11 @@ export function adDataExtent(ctx: CoreCtx): Promise<DataExtent> {
   return withOrgCore(ctx, async (tx) => {
     const [row] = (await tx.execute(sql`
       select min(date)::text as min_date, max(date)::text as max_date,
-             -- one distinct currency ⇒ safe to label; mixed ⇒ null (don't guess)
-             case when count(distinct currency) = 1 then min(currency) end as currency
+             -- one distinct currency ⇒ safe to label; mixed ⇒ null (don't guess).
+             -- min=max is equivalent to count(distinct)=1 here (both ignore
+             -- nulls) and avoids the distinct aggregate's full sort — this runs
+             -- on every /socials nav and count(distinct) cost ~1.5s at 30k rows.
+             case when min(currency) = max(currency) then min(currency) end as currency
       from meta_ad_insights
       where org_id = ${ctx.tenantId}
     `)) as unknown as Array<{ min_date: string | null; max_date: string | null; currency: string | null }>;
