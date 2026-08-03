@@ -1,9 +1,11 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { Bell, ArrowRight, Download } from 'lucide-svelte';
+  import { Bell, ArrowRight, Download, Check, X } from 'lucide-svelte';
   import { scale } from 'svelte/transition';
   import { updateState } from '$lib/state/gateway/update-state.svelte';
-  import { Button } from '$lib/components/ui';
+  import { Button, iconSizes } from '$lib/components/ui';
+  import { pulse } from '$lib/state/features/pulse.svelte';
+  import type { PulseProposalRow } from '$server/db/pg-schema/pulse';
 
   interface PendingRequest {
     id: string;
@@ -16,6 +18,9 @@
 
   let requests = $state<PendingRequest[]>([]);
   let loading = $state(false);
+  let pulseBusyId = $state<string | null>(null);
+
+  const pulseItems = $derived(pulse.items as unknown as PulseProposalRow[]);
 
   async function fetchRequests() {
     loading = true;
@@ -32,8 +37,23 @@
     }
   }
 
+  async function pulseAct(id: string, action: 'approve' | 'dismiss') {
+    pulseBusyId = id;
+    try {
+      // pulse.act() already re-fetches items + count internally, and
+      // notifications.badgeCount reads pulse.pendingCount reactively — the
+      // bell badge updates on its own, no extra refresh call needed.
+      await (action === 'approve' ? pulse.approve(id) : pulse.dismiss(id));
+    } finally {
+      pulseBusyId = null;
+    }
+  }
+
   $effect(() => {
-    if (open) fetchRequests();
+    if (open) {
+      fetchRequests();
+      pulse.refresh();
+    }
   });
 
   function close() {
@@ -67,9 +87,9 @@
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)]">
       <h3 class="text-sm font-semibold text-foreground">{m.notificationsPopup_title()}</h3>
-      {#if requests.length > 0}
+      {#if requests.length + pulseItems.length > 0}
         <span class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent">
-          {requests.length}
+          {requests.length + pulseItems.length}
         </span>
       {/if}
     </div>
@@ -92,12 +112,49 @@
         <div class="flex items-center justify-center py-8">
           <div class="w-5 h-5 border-2 border-muted-foreground/30 border-t-accent rounded-full animate-spin"></div>
         </div>
-      {:else if requests.length === 0}
+      {:else if requests.length === 0 && pulseItems.length === 0}
         <div class="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
           <Bell size={24} class="opacity-40" />
           <p class="text-xs">{m.notificationsPopup_noPending()}</p>
         </div>
       {:else}
+        {#if pulseItems.length > 0}
+          <a
+            href="/pulse"
+            onclick={close}
+            class="flex items-center justify-between px-4 py-1.5 border-b border-[var(--hairline)] text-[length:var(--font-size-telemetry)] font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground no-underline"
+          >
+            {m.nav_pulse()}
+          </a>
+          {#each pulseItems as p (p.id)}
+            <div class="flex flex-col px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)]">
+              <span class="text-sm font-medium text-foreground truncate">{p.title}</span>
+              {#if p.summary}
+                <p class="text-xs text-muted mt-0.5 line-clamp-2">{p.summary}</p>
+              {/if}
+              <div class="flex items-center gap-2 mt-1.5">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  disabled={pulseBusyId === p.id}
+                  onclick={() => pulseAct(p.id, 'approve')}
+                >
+                  <Check size={iconSizes.xs} />
+                  {m.notif_approve()}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  disabled={pulseBusyId === p.id}
+                  onclick={() => pulseAct(p.id, 'dismiss')}
+                >
+                  <X size={iconSizes.xs} />
+                  {m.common_dismiss()}
+                </Button>
+              </div>
+            </div>
+          {/each}
+        {/if}
         {#each requests as req (req.id)}
           <div class="flex flex-col px-4 py-3 border-b border-[var(--hairline)] last:border-b-0 hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)]">
             <div class="flex items-start justify-between gap-2">

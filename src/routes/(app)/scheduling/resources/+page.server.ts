@@ -2,7 +2,6 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
-import { isModuleEnabled } from '$server/services/modules.service';
 import { listResources, getResourceSchedule, listEventTypes } from '$server/services/scheduling.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { listUsers } from '$server/services/user.service';
@@ -18,7 +17,6 @@ function dayOffset(n: number): Date {
 export const load: PageServerLoad = async ({ locals, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(404, 'Scheduling module disabled');
   depends('scheduling:data');
 
   // 7-day window centred on today: 3 days behind + today + 3 ahead.

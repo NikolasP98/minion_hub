@@ -10,8 +10,13 @@
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
+  import { page } from '$app/state';
 
   let { data }: { data: PageData } = $props();
+
+  // Sales orders are business-only kind-gated (S3/WP1 R6) — hide the
+  // per-booking "Create sales order" action for personal orgs.
+  const isPersonal = $derived(page.data.activeOrgKind === 'personal');
 
   const resourceName = (id: string) => data.resources.find((r) => r.id === id)?.name ?? '—';
   const eventTitle = (id: string) => data.eventTypes.find((e) => e.id === id)?.title ?? '—';
@@ -408,7 +413,7 @@
                     <X size={15} />
                   </Button>
                 {/if}
-                {#if b.status !== 'cancelled' && b.status !== 'rejected'}
+                {#if !isPersonal && b.status !== 'cancelled' && b.status !== 'rejected'}
                   <Button
                     variant="ghost"
                     size="sm"

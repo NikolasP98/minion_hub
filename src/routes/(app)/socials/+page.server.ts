@@ -1,7 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { isModuleEnabled } from '$server/services/modules.service';
 import {
   adDataExtent,
   adKpis,
@@ -35,7 +34,6 @@ function resolveRange(url: URL, extent: DataExtent): DateRange {
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
-  if (!(await isModuleEnabled(ctx, 'ads'))) throw error(404, 'Ads module disabled');
   depends('ads:data');
 
   const connections = await listConnections(ctx);

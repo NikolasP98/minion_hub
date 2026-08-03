@@ -4,6 +4,14 @@ import type { RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseServer, supabaseAdmin } from '$server/supabase';
 import { mapProfileToUser, type BridgedUser, type ProfileRow } from './supabase-bridge.js';
+import type { OrgKind } from '$lib/org-kind';
+
+/** DB `organizations.kind` is free-text; only the two known values normalize
+ *  — anything else (or null/unset) is "unresolvable", not a silent default
+ *  (routing-simplification spec S2: the caller fails closed on this). */
+function normalizeOrgKind(value: string | null | undefined): OrgKind | null {
+  return value === 'personal' || value === 'business' ? value : null;
+}
 
 export type { BridgedUser } from './supabase-bridge.js';
 
@@ -105,16 +113,16 @@ export async function resolveSupabaseUser(
 export async function resolveSupabaseTenant(
   supabaseId: string,
   preferredOrgId?: string | null,
-): Promise<{ orgId: string } | null> {
+): Promise<{ orgId: string; kind: OrgKind | null } | null> {
   try {
     const admin = supabaseAdmin();
     const { data, error } = await admin
       .from('organization_members')
-      .select('organizations(id, name)')
+      .select('organizations(id, name, kind)')
       .eq('profile_id', supabaseId);
     if (error || !data) return null;
 
-    type OrgRow = { id: string; name: string | null };
+    type OrgRow = { id: string; name: string | null; kind: string | null };
     type MemRow = { organizations: OrgRow | OrgRow[] | null };
     const orgs = (data as unknown as MemRow[])
       .map((row) => (Array.isArray(row.organizations) ? row.organizations[0] : row.organizations))
@@ -122,10 +130,11 @@ export async function resolveSupabaseTenant(
       .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 
     if (orgs.length === 0) return null;
-    if (preferredOrgId && orgs.some((o) => o.id === preferredOrgId)) {
-      return { orgId: preferredOrgId };
+    if (preferredOrgId) {
+      const preferred = orgs.find((o) => o.id === preferredOrgId);
+      if (preferred) return { orgId: preferred.id, kind: normalizeOrgKind(preferred.kind) };
     }
-    return { orgId: orgs[0].id };
+    return { orgId: orgs[0].id, kind: normalizeOrgKind(orgs[0].kind) };
   } catch {
     return null;
   }

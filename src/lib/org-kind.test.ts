@@ -24,4 +24,13 @@ describe('isModuleVisibleForKind', () => {
     expect(isModuleVisibleForKind('crm', 'business')).toBe(true);
     expect(isModuleVisibleForKind('crm', 'personal')).toBe(true);
   });
+
+  // S3/WP1 (specs/2026-07-22-personal-org-differentiation-spec.md R1): DELIBERATE
+  // expansion — personal orgs additionally lose support/memberships/sales/ads/team.
+  test('support/memberships/sales/ads/team hidden for personal, visible for business', () => {
+    for (const moduleId of ['support', 'memberships', 'sales', 'ads', 'team']) {
+      expect(isModuleVisibleForKind(moduleId, 'personal')).toBe(false);
+      expect(isModuleVisibleForKind(moduleId, 'business')).toBe(true);
+    }
+  });
 });

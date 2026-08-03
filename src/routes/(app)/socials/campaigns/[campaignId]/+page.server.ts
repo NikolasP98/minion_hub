@@ -1,7 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { isModuleEnabled } from '$server/services/modules.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 import {
   adDataExtent,
@@ -16,7 +15,6 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
   uuidParamOr404(params.campaignId);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
-  if (!(await isModuleEnabled(ctx, 'ads'))) throw error(404, 'Ads module disabled');
   depends('ads:data');
 
   // Same range semantics as the campaigns list page: explicit ?from=&to= wins,

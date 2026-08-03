@@ -2,14 +2,12 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
-import { isModuleEnabled } from '$server/services/modules.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
 
 export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(404, 'Scheduling module disabled');
   depends('scheduling:data');
 
   // Default "today" in the ORG's timezone (resources carry it; the server runs
