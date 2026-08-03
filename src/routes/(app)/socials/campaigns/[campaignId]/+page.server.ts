@@ -10,6 +10,7 @@ import {
   type DataExtent,
   type DateRange,
 } from '$server/services/meta/meta-insights.service';
+import { listCampaignLeads } from '$server/services/meta/attribution.service';
 
 export const load: PageServerLoad = async ({ locals, params, url, depends }) => {
   uuidParamOr404(params.campaignId);
@@ -30,5 +31,10 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
   const campaign = await getCampaignDetail(ctx, params.campaignId, range);
   if (!campaign) throw error(404, 'Campaign not found');
 
-  return { campaign, range, currency: extent.currency };
+  // CRM leads attributed to this campaign's ads (webhook referral + icebreaker
+  // heuristic) — all-time, not range-scoped: a lead acquired by the ad stays a
+  // lead of the campaign regardless of the metrics window above.
+  const leads = await listCampaignLeads(ctx, params.campaignId);
+
+  return { campaign, leads, range, currency: extent.currency };
 };

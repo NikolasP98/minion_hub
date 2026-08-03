@@ -509,7 +509,6 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     fixtureId: 'social-campaign-detail',
     states: MUTATING_DETAIL_STATES,
   }),
-  screen('/socials/ad-performance', 'Ad performance', 'socials', 'collection'),
   screen('/socials/posts', 'Posts', 'socials', 'collection'),
   screen('/socials/posts/[postId]', 'Post', 'socials', 'record-detail', {
     fixtureId: 'social-post-detail',

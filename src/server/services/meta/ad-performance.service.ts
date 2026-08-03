@@ -9,10 +9,7 @@
 import { sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { calcCtr, type DateRange } from './meta-insights.service';
-
-/** Meta action_type whose value is "conversations started via messaging (7d)". */
-const CONVO_ACTION = 'onsite_conversion.messaging_conversation_started_7d';
+import { calcCtr, CONVO_ACTION, type DateRange } from './meta-insights.service';
 
 export interface AdPerformanceRow {
   campaignId: string | null;
