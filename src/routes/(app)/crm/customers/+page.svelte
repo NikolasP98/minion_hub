@@ -48,9 +48,23 @@
   } from '$lib/components/crm/crm-merge';
 
   let { data }: { data: PageData } = $props();
-  const contacts = $derived(data.contacts);
+  // The roster is STREAMED (10MB+ at 15k contacts) so navigation paints the
+  // shell instantly; resolve it into state when it lands. The promise identity
+  // guard drops out-of-order resolutions across invalidations.
+  type Roster = Awaited<PageData['streamed']['roster']>;
+  let roster = $state<Roster | null>(null);
+  $effect(() => {
+    const pending = data.streamed.roster;
+    roster = null;
+    pending.then((r) => {
+      if (pending === data.streamed.roster) roster = r;
+    });
+  });
+  const contacts = $derived(roster?.contacts ?? []);
+  const financeEnabled = $derived(roster?.financeEnabled ?? false);
+  const rosterLoading = $derived(roster === null);
   const tags = $derived(data.tags);
-  type Row = (typeof contacts)[number];
+  type Row = Roster['contacts'][number];
 
   // Personal orgs de-emphasize the sales funnel (WP2) — no funnel column.
   const isPersonal = $derived(page.data.activeOrgKind === 'personal');
@@ -249,7 +263,7 @@
         defaultHidden: true,
         accessor: (c) => metaDisplay(k, c.custom_fields?.[k]),
       });
-    if (data.financeEnabled) {
+    if (financeEnabled) {
       cols.push({
         key: 'revenue',
         money: true,
@@ -538,7 +552,7 @@
     addLabel={m.crm_new_contact()}
     onAdd={newContact}
     addDisabled={creating || !canAct('crm', 'edit')}
-    emptyMessage={m.crm_empty_title()}
+    emptyMessage={rosterLoading ? m.common_loading() : m.crm_empty_title()}
   >
     {#snippet toolbar()}
       <Select
@@ -548,7 +562,7 @@
         <option value="">{m.crm_all_tags()}</option>
         {#each tags as tg (tg.id)}<option value={tg.id}>{tg.name}</option>{/each}
       </Select>
-      {#if data.financeEnabled}
+      {#if financeEnabled}
         <Button
           variant="ghost"
           size="sm"
