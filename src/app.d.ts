@@ -1,4 +1,6 @@
 import type { TenantContext } from '$server/services/base';
+import type { OrgKind } from '$lib/org-kind';
+import type { ModuleStates } from '$lib/modules/availability';
 
 declare global {
   interface ImportMetaEnv {
@@ -31,6 +33,25 @@ declare global {
       tenantCtx?: TenantContext;
       // serverId is set for metrics Bearer-token auth
       serverId?: string;
+      /**
+       * Org kind resolved once during identity resolution (the same
+       * organization_members query that already resolves orgId — no extra
+       * getTenant round trip, routing-simplification spec S2/R2).
+       * Undefined/null = unresolved. The `(app)` route hook guard
+       * ($lib/modules/route-guard.ts) FAILS CLOSED on this for
+       * kind-restricted modules — do NOT treat it as "business" the way
+       * org-kind.ts's UI-only default does.
+       */
+      orgKind?: OrgKind | null;
+      /**
+       * Per-org module-toggle snapshot (modules.service.ts's
+       * listModuleStates, cached 5-min TTL + SWR), loaded once per request in
+       * hooks.server.ts's finishApp for authenticated `(app)` page requests.
+       * Consumed by the route hook guard and by data-bearing route loads
+       * that used to call isModuleEnabled directly (routing-simplification
+       * spec S2/R3/R5).
+       */
+      moduleStates?: ModuleStates;
       // workforceIdentity is minted per-request by workforceIdentityHandle in hooks.server.ts
       workforceIdentity?: {
         token: string;

@@ -3,14 +3,26 @@
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import { refreshNotifications } from '$lib/state/features/notifications.svelte';
+  import { pulse } from '$lib/state/features/pulse.svelte';
   import { toastPromise } from '$lib/state/ui/toast.svelte';
   import { Bell, Check, X } from 'lucide-svelte';
-  import { Badge, Button, PageHeader } from '$lib/components/ui';
+  import { Badge, Button, PageHeader, iconSizes } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
 
   let { data }: { data: PageData } = $props();
 
   let reviewing = $state<string | null>(null);
+  let pulseBusyId = $state<string | null>(null);
+
+  async function decidePulse(id: string, action: 'approve' | 'dismiss') {
+    pulseBusyId = id;
+    try {
+      await (action === 'approve' ? pulse.approve(id) : pulse.dismiss(id));
+      await invalidate('app:notifications');
+    } finally {
+      pulseBusyId = null;
+    }
+  }
 
   async function review(id: string, status: 'approved' | 'denied') {
     reviewing = id;
@@ -59,7 +71,7 @@
 
   <PageBody width="content">
     <AsyncBoundary
-      state={data.requests.length === 0
+      state={data.requests.length === 0 && data.pulseProposals.length === 0
         ? {
             kind: 'empty',
             title: m.notif_noNotifications(),
@@ -68,6 +80,39 @@
         : { kind: 'ready' }}
     >
       <div class="notification-list" aria-live="polite">
+        {#each data.pulseProposals as p (p.id)}
+          <article class="notification-card">
+            <div class="notification-copy">
+              <div class="notification-title-row">
+                <strong>{p.title}</strong>
+              </div>
+              {#if p.summary}
+                <p>{p.summary}</p>
+              {/if}
+              <Badge variant="neutral" size="sm">{m.nav_pulse()}</Badge>
+            </div>
+            <div class="notification-actions">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={pulseBusyId === p.id}
+                onclick={() => decidePulse(p.id, 'approve')}
+              >
+                <Check size={iconSizes.sm} />
+                {m.notif_approve()}
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={pulseBusyId === p.id}
+                onclick={() => decidePulse(p.id, 'dismiss')}
+              >
+                <X size={iconSizes.sm} />
+                {m.common_dismiss()}
+              </Button>
+            </div>
+          </article>
+        {/each}
         {#each data.requests as req (req.id)}
           <article class="notification-card">
             <div class="notification-copy">

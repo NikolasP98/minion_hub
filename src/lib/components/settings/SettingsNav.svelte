@@ -3,6 +3,7 @@
   import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks, Bell, Workflow, Building2, Activity } from "lucide-svelte";
   import { page } from "$app/state";
   import { isAdmin } from "$lib/state/features/user.svelte";
+  import { canViewPath } from "$lib/access/can.svelte";
   import { TABS } from "$lib/utils/config-schema";
   import * as m from "$lib/paraglide/messages";
   import {
@@ -62,9 +63,16 @@
     return id === 'ai';
   }
 
+  // Gateway config tabs have no /settings/<id> route (they live on ?s=<id>,
+  // outside MODULE_MANIFEST) so canViewPath's kind check is a no-op for them —
+  // the Hub/Team tabs below DO have real routes, so filter through the same
+  // predicate GNav's hotkey chords use (R2/R6: one seam, stop offering
+  // kind-hidden settings tabs — e.g. /settings/team for personal orgs).
   const visibleGatewayTabs = $derived(isAdmin.value ? gatewayTabs : []);
-  const visibleHubTabs = $derived(isAdmin.value ? HUB_TABS : HUB_TABS.filter((t) => !t.adminOnly));
-  const visibleTeamTabs = $derived(isAdmin.value ? TEAM_TABS : []);
+  const visibleHubTabs = $derived(
+    (isAdmin.value ? HUB_TABS : HUB_TABS.filter((t) => !t.adminOnly)).filter((t) => canViewPath(t.href)),
+  );
+  const visibleTeamTabs = $derived((isAdmin.value ? TEAM_TABS : []).filter((t) => canViewPath(t.href)));
 
   function hubItem(t: HubTab): SectionNavItem {
     return { id: t.id, label: t.label, icon: ICON_MAP[t.icon], href: t.href };
@@ -73,7 +81,11 @@
   // Build grouped sections; SideNav handles search filtering + empty-group culling.
   const groups = $derived.by<SectionNavGroup[]>(() => {
     const out: SectionNavGroup[] = [];
-    out.push({ id: 'general', label: m.settings_nav_group_general(), items: GENERAL_TABS.map(hubItem) });
+    out.push({
+      id: 'general',
+      label: m.settings_nav_group_general(),
+      items: GENERAL_TABS.filter((t) => canViewPath(t.href)).map(hubItem),
+    });
     if (visibleGatewayTabs.length) {
       out.push({
         id: 'server',

@@ -16,6 +16,8 @@ import type { CanonicalInvoice } from '$server/finance/connector';
 import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
 import type { Period } from '$lib/finance/period';
 import { emitHubEvent } from '$server/events/emit';
+import { effectiveModuleEnabled, type ModuleStates } from '$lib/modules/availability';
+import type { OrgKind } from '$lib/org-kind';
 
 const numStr = (n: number | null) => (n == null ? null : String(n));
 
@@ -663,7 +665,21 @@ export function financeDataSpan(ctx: CoreCtx, tz = 'UTC') {
   );
 }
 
-export function financeSummary(ctx: CoreCtx, p: Period) {
+/**
+ * `kind`/`moduleStates` are optional and default to "stock effectively
+ * enabled" (business-fallback kind + no toggle row) — existing 2-arg callers
+ * are unaffected (S3/WP1 R6: keep business behavior identical). Pass the
+ * caller's resolved org kind (`locals.orgKind`/`locals.moduleStates`) so
+ * personal orgs — where stock is kind-hidden — don't pay for or report a
+ * COGS figure sourced from a module they can't see.
+ */
+export function financeSummary(
+  ctx: CoreCtx,
+  p: Period,
+  kind?: OrgKind | null,
+  moduleStates: ModuleStates = {},
+) {
+  const stockEnabled = effectiveModuleEnabled(kind, moduleStates, 'stock');
   return cached(
     ck(ctx.tenantId, 'summary', p),
     { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) },
@@ -679,14 +695,17 @@ export function financeSummary(ctx: CoreCtx, p: Period) {
         from fin_invoices where ${periodWhere(p)}
       `)) as unknown as Array<Record<string, unknown>>;
         // COGS = value of inventory consumed (issue-type ledger), same source as the
-        // revenue chart's op-cost band, scoped to the period by posted_at.
-        const [cg] = (await tx.execute(sql`
+        // revenue chart's op-cost band, scoped to the period by posted_at. Skipped
+        // entirely when stock isn't effectively enabled for this org.
+        const [cg] = stockEnabled
+          ? ((await tx.execute(sql`
         select coalesce(-sum(l.value_delta::numeric),0)::float8 cogs
         from stk_ledger l join stk_entries e on e.id = l.entry_id
         where e.type = 'issue' and l.org_id = current_setting('app.current_org_id', true)
           ${p.from ? sql`and l.posted_at >= ${p.from}` : sql``}
           ${p.to ? sql`and l.posted_at < ${p.to}` : sql``}
-      `)) as unknown as Array<{ cogs: number }>;
+      `)) as unknown as Array<{ cogs: number }>)
+          : [{ cogs: 0 }];
         const net = Number(r.net),
           gross = Number(r.gross),
           discount = Number(r.discount),
@@ -753,7 +772,18 @@ export function maskFinanceSummary(s: FinanceSummary): FinanceSummary {
   };
 }
 
-export function revenueSeries(ctx: CoreCtx, p: Period) {
+/**
+ * See `financeSummary` for the `kind`/`moduleStates` contract (S3/WP1 R6) —
+ * op_cost (COGS) is forced to zero, not just omitted, when stock isn't
+ * effectively enabled for this org.
+ */
+export function revenueSeries(
+  ctx: CoreCtx,
+  p: Period,
+  kind?: OrgKind | null,
+  moduleStates: ModuleStates = {},
+) {
+  const stockEnabled = effectiveModuleEnabled(kind, moduleStates, 'stock');
   return cached(
     ck(ctx.tenantId, 'series', p),
     { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) },
@@ -763,6 +793,7 @@ export function revenueSeries(ctx: CoreCtx, p: Period) {
         // inventory consumption cost (issue-type ledger value, by posted_at). FULL
         // JOIN so a bucket with only one of the two still appears. op_cost: issue
         // value_delta is stored negative (stock leaving) → negate to a positive cost.
+        // `cost` yields no rows at all when stock isn't effectively enabled.
         const rows = (await tx.execute(sql`
         with inv as (
           select date_trunc(${p.bucket}, issued_at) b,
@@ -783,6 +814,7 @@ export function revenueSeries(ctx: CoreCtx, p: Period) {
             and l.org_id = current_setting('app.current_org_id', true)
             ${p.from ? sql`and l.posted_at >= ${p.from}` : sql``}
             ${p.to ? sql`and l.posted_at < ${p.to}` : sql``}
+            ${stockEnabled ? sql`` : sql`and false`}
           group by 1
         )
         select to_char(coalesce(inv.b, cost.b), 'YYYY-MM-DD') bucket,

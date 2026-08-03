@@ -92,10 +92,13 @@ function archetypeItem(archetype: AgentArchetype, label: string, icon: LucideIco
 
 /**
  * Build the static core nav sections (always present): Organization (Home,
- * Overview, Team) and Agents (Copilots / AI Brains / Autonomous archetype
- * filters, then Capabilities / Agent Builder / Prompt authoring tools).
+ * Overview, Team — Team drops for personal orgs, R1/kind matrix) and Agents
+ * (Copilots / AI Brains / Autonomous archetype filters, then Capabilities /
+ * Agent Builder / Prompt authoring tools). `orgKind` defaults to business
+ * (matches `isModuleVisibleForKind`'s unknown-kind fallback), so existing
+ * no-arg callers are unaffected.
  */
-export function getSections(): Section[] {
+export function getSections(orgKind?: "business" | "personal"): Section[] {
     const agentItems: SectionItem[] = [
         archetypeItem("copilot", m.nav_copilots(), UserRound),
         {
@@ -112,12 +115,19 @@ export function getSections(): Section[] {
         },
         ...routeItems("agents"),
     ];
+    const isPersonal = orgKind === "personal";
+    // Same moduleId-derivation + isModuleVisibleForKind gate the dynamic
+    // plugin items use below (R2: one seam for nav kind-filtering) — drops
+    // /team for personal via ORG_KIND_POLICY, no separate branch needed.
+    const organizationItems = routeItems("organization").filter((it) =>
+        isModuleVisibleForKind(it.href.replace(/^\//, "").split("/")[0], orgKind),
+    );
     return [
         {
             id: "organization",
-            label: SECTION_META.organization.label(),
+            label: isPersonal ? m.nav_mySpace() : SECTION_META.organization.label(),
             tone: SECTION_META.organization.tone,
-            items: routeItems("organization"),
+            items: organizationItems,
         },
         {
             id: "agents",
@@ -132,8 +142,22 @@ export function findActiveSection(sections: Section[], pathname: string): Sectio
     return sections.find((s) => s.items.some((it) => it.matcher(pathname))) ?? null;
 }
 
-/** Plugin manifest taxonomy → business-domain nav buckets. */
-type PluginNavCategory = "marketing" | "operations" | "finance" | "creative" | "customer-support" | "channel" | "tool";
+/**
+ * Plugin manifest taxonomy → business-domain nav buckets. `my-space` and
+ * `relationships` are PERSONAL-ONLY display buckets (R2) — they never appear
+ * for business orgs and are resolved purely by category overrides in
+ * `getDynamicPluginsSections`, not by any gateway plugin manifest category.
+ */
+type PluginNavCategory =
+    | "marketing"
+    | "operations"
+    | "finance"
+    | "creative"
+    | "customer-support"
+    | "channel"
+    | "tool"
+    | "my-space"
+    | "relationships";
 
 /**
  * Built-in plugin entries surfaced regardless of which gateway plugins are
@@ -269,6 +293,36 @@ const PLUGIN_NAV_GROUPS: ReadonlyArray<{ category: PluginNavCategory; label: () 
 ];
 
 /**
+ * Personal-org nav groups (R2). `my-space` merges into the static
+ * "organization" section (Home/Overview) by `getNavSections` below — it is
+ * NOT rendered as its own section here (excluded from this list on purpose).
+ * `relationships` replaces marketing/customer-support; `finance` is relabeled
+ * "Money"; `tool` stays the catch-all for whatever plugins remain permitted.
+ */
+const PLUGIN_NAV_GROUPS_PERSONAL: ReadonlyArray<{ category: PluginNavCategory; label: () => string }> = [
+    { category: "relationships", label: () => m.nav_relationships() },
+    { category: "finance", label: () => m.nav_money() },
+    { category: "tool", label: () => m.nav_tools_group() },
+];
+
+/**
+ * Personal-only display placement overrides (R2). Business plugin/manifest
+ * categories are untouched — this is purely a hub-side nav-grouping map,
+ * keyed by the same moduleId/pluginId the business-category resolution
+ * already uses. `pulse`/`work` land in `my-space` (merged into the
+ * "organization"/My Space section by `getNavSections`); `crm`/`scheduling`
+ * and the voice-call plugin land in `relationships` alongside Channels.
+ */
+const PERSONAL_CATEGORY_OVERRIDES: Record<string, PluginNavCategory> = {
+    pulse: "my-space",
+    work: "my-space",
+    crm: "relationships",
+    scheduling: "relationships",
+    "voice-call": "relationships",
+    voicecall: "relationships",
+};
+
+/**
  * First-party plugin → category overrides. The running gateway may predate the
  * business-domain manifest categories (it would then report "tool"/"automation"/
  * "channel"), so we pin known first-party plugins to their intended group here.
@@ -340,13 +394,29 @@ export function getDynamicPluginsSections(
         byCategory.set(category, list);
     };
 
+    const isPersonal = orgKind === "personal";
+    // Personal has no Marketing/Operations/Branding/Customer-Support groups
+    // (PLUGIN_NAV_GROUPS_PERSONAL) — anything not explicitly placed in
+    // my-space/relationships/finance collapses into the Tools catch-all.
+    // "channel" is exempt — `place()` special-cases it into channelItems
+    // before any category bucketing happens, for both kinds.
+    const PERSONAL_KEPT_CATEGORIES = new Set<PluginNavCategory>(["my-space", "relationships", "finance", "channel"]);
+    const personalize = (id: string, category: PluginNavCategory): PluginNavCategory => {
+        if (!isPersonal) return category;
+        if (PERSONAL_CATEGORY_OVERRIDES[id]) return PERSONAL_CATEGORY_OVERRIDES[id];
+        return PERSONAL_KEPT_CATEGORIES.has(category) ? category : "tool";
+    };
+
     for (const { category, item } of BUILTIN_PLUGIN_ITEMS) {
         // 'crm' | 'finances' | 'workforce' | ... — falls back to the href's
         // first segment unless the item overrides it (e.g. /socials -> 'ads').
         const moduleId = item.moduleId ?? item.href.replace(/^\//, "").split("/")[0];
         if (enabledByPluginId[moduleId] === false) continue; // per-org module gate
         if (!isModuleVisibleForKind(moduleId, orgKind)) continue;
-        place(category, item);
+        // Personal-only relabel: the CRM item reads "People" (R2) — data-only,
+        // the underlying route/module is unchanged.
+        const effectiveItem = isPersonal && moduleId === "crm" ? { ...item, label: m.nav_people() } : item;
+        place(personalize(moduleId, category), effectiveItem);
     }
     for (const e of entries) {
         // Per-org gate: a plugin disabled for the acting org is removed from the
@@ -354,8 +424,13 @@ export function getDynamicPluginsSections(
         // updates pluginNavState.enabledByPluginId, so the link appears/vanishes
         // with no reload.
         if (enabledByPluginId[e.pluginId] === false) continue;
+        // Kind gate (R2/R6: sections.ts:351 gap) — installed plugins go through
+        // the same isModuleVisibleForKind predicate as builtins. No installed
+        // plugin id is in ORG_KIND_POLICY today, so this is a no-op unless a
+        // future plugin id collides with a hidden module id — safety net.
+        if (!isModuleVisibleForKind(e.pluginId, orgKind)) continue;
         const category = PLUGIN_CATEGORY_OVERRIDES[e.pluginId] ?? normalizePluginCategory(e.category);
-        place(category, {
+        place(personalize(e.pluginId, category), {
             href: `/plugins/${e.pluginId}`,
             label: e.title,
             icon: resolvePluginIcon(e.icon),
@@ -363,21 +438,23 @@ export function getDynamicPluginsSections(
         });
     }
 
-    // Channels collapse into a single "Channels" link under Customer Support;
-    // the enabled channels themselves live on the /channels secondary side-menu.
+    // Channels collapse into a single "Channels" link — under Customer Support
+    // for business, folded into Relationships for personal (R2); the enabled
+    // channels themselves live on the /channels secondary side-menu.
     if (channelItems.length) {
-        const cs = byCategory.get("customer-support") ?? [];
-        cs.push({
+        const target = isPersonal ? "relationships" : "customer-support";
+        const list = byCategory.get(target) ?? [];
+        list.push({
             href: "/channels",
             label: m.nav_channels(),
             icon: MessagesSquare,
             matcher: (p: string) => p.startsWith("/channels"),
         });
-        byCategory.set("customer-support", cs);
+        byCategory.set(target, list);
     }
 
     const sections: Section[] = [];
-    for (const group of PLUGIN_NAV_GROUPS) {
+    for (const group of isPersonal ? PLUGIN_NAV_GROUPS_PERSONAL : PLUGIN_NAV_GROUPS) {
         const items = byCategory.get(group.category) ?? [];
         if (items.length === 0) continue;
         sections.push({
@@ -387,5 +464,42 @@ export function getDynamicPluginsSections(
             items,
         });
     }
+    // "my-space" is personal-only and merges into the static organization
+    // section (getNavSections) — never surfaced as its own section here.
+    if (isPersonal) {
+        const myItems = byCategory.get("my-space") ?? [];
+        if (myItems.length) {
+            sections.unshift({ id: "plugins:my-space", label: m.nav_mySpace(), tone: "accent", items: myItems });
+        }
+    }
     return sections;
+}
+
+/**
+ * Compose the static core sections and the dynamic plugin sections into the
+ * final nav list, kind-aware. For personal orgs the "my-space" plugin bucket
+ * (Pulse, My Work) is folded into the static "organization"/My Space section
+ * so Home/Overview/Pulse/My Work render as ONE group — same "insert after
+ * assembly" pattern the Channels→Customer Support fold already uses inside
+ * `getDynamicPluginsSections`. Business orgs are a plain concat, unchanged.
+ * Single call site for Sidebar/Topbar so both stay in lockstep (R2 mobile
+ * parity: they share this + `nav-order.ts`).
+ */
+export function getNavSections(
+    orgKind: "business" | "personal" | undefined,
+    entries: PluginUiManifestOccupant[],
+    enabledByPluginId: Record<string, boolean> = {},
+): Section[] {
+    const staticSections = getSections(orgKind);
+    const pluginSections = getDynamicPluginsSections(entries, enabledByPluginId, orgKind);
+    if (orgKind !== "personal") return [...staticSections, ...pluginSections];
+
+    const myPlugins = pluginSections.find((s) => s.id === "plugins:my-space");
+    const rest = pluginSections.filter((s) => s.id !== "plugins:my-space");
+    if (!myPlugins) return [...staticSections, ...rest];
+
+    const merged = staticSections.map((s) =>
+        s.id === "organization" ? { ...s, items: [...s.items, ...myPlugins.items] } : s,
+    );
+    return [...merged, ...rest];
 }

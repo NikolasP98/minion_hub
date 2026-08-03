@@ -51,3 +51,7 @@ package-lock.json
 
 # SDD process artifacts (subagent-driven-development reports)
 sdd/
+
+# generated review/test artifacts
+/.lavish/
+/.playwright-cli/

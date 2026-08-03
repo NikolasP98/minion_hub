@@ -1,14 +1,12 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { isModuleEnabled } from '$server/services/modules.service';
 import { listEntries, listItems } from '$server/services/stock.service';
 import { getParty } from '$server/services/party.service';
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
-  if (!(await isModuleEnabled(ctx, 'stock'))) throw error(404, 'Stock module disabled');
   depends('stock:entries');
 
   const partyId = url.searchParams.get('party') ?? undefined;

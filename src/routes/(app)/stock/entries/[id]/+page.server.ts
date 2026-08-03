@@ -1,7 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { isModuleEnabled } from '$server/services/modules.service';
 import { getEntry, listItems, listWarehouses } from '$server/services/stock.service';
 import { getParty } from '$server/services/party.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
@@ -10,7 +9,6 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   uuidParamOr404(params.id);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
-  if (!(await isModuleEnabled(ctx, 'stock'))) throw error(404, 'Stock module disabled');
   depends('stock:entry-detail');
 
   const [result, items, warehouses] = await Promise.all([getEntry(ctx, params.id), listItems(ctx), listWarehouses(ctx)]);

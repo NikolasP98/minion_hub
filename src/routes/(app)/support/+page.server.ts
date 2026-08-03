@@ -2,14 +2,12 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { ownerFilter } from '$server/services/rbac.service';
-import { isModuleEnabled } from '$server/services/modules.service';
 import { listIssues, issueStats, agreementStatus } from '$server/services/support.service';
 import { getContact } from '$server/services/crm-contacts.service';
 
 export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
-  if (!(await isModuleEnabled(ctx, 'support'))) throw error(404, 'Support module disabled');
   depends('support:list');
 
   // Cross-module nav: ?contact= filters to one contact's tickets (Connections

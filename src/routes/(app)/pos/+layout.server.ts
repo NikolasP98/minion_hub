@@ -1,22 +1,25 @@
 import { error } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { isModuleEnabled } from '$server/services/modules.service';
 import { getPosSettings, getOpenShift } from '$server/services/pos.service';
 import { getUser } from '$server/services/user.service';
 import type { TenantContext } from '$server/services/base';
 
-/** Gate the whole /pos subtree on the per-org module toggle; feed shift + settings state to PosNav/ShiftBanner. */
+/** Auth guard for the whole /pos subtree; feed shift + settings state to
+ *  PosNav/ShiftBanner. The module-toggle/kind 404 is enforced centrally by
+ *  the (app) route hook guard now (routing-simplification spec S2); the
+ *  stock/scheduling flags below are data-bearing (shape the returned UI
+ *  state, not a gate) so they stay here, reading the hook's per-request
+ *  module-state snapshot instead of re-querying (R5). */
 export const load: LayoutServerLoad = async ({ locals, depends }) => {
   depends('pos:shift');
 
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
-  if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404, 'POS module disabled');
 
-  const [stockEnabled, schedulingEnabled, posSettings, openShift] = await Promise.all([
-    isModuleEnabled(ctx, 'stock'),
-    isModuleEnabled(ctx, 'scheduling'),
+  const stockEnabled = locals.moduleStates?.stock ?? true;
+  const schedulingEnabled = locals.moduleStates?.scheduling ?? true;
+  const [posSettings, openShift] = await Promise.all([
     getPosSettings(ctx),
     getOpenShift(ctx).catch(() => null),
   ]);
