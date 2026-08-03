@@ -144,6 +144,27 @@
     padding: 0;
   }
 
+  html {
+    /* 85% of the browser default — a percentage, so a user who raised their
+       default to 20px still gets a proportionally larger UI. */
+    font-size: 85%;
+
+    /* EXPERIMENT (2026-08-02): the contract ships --font-size-* as PIXELS, so
+       every surface reading them (feed cards, tables, chat) ignored the root
+       scale above and only rem-based `.t-*` text moved — the change looked like
+       it did nothing on half the app. Same values re-expressed in rem so the one
+       knob reaches everything. If this survives, fold it into
+       packages/design-tokens/contract.json rather than leaving it here. */
+    --font-size-display: 1.75rem; /* was 28px */
+    --font-size-page-title: 1.125rem; /* was 18px */
+    --font-size-section-title: 0.875rem; /* was 14px */
+    --font-size-body: 0.875rem; /* was 14px */
+    --font-size-label: 0.75rem; /* was 12px */
+    --font-size-caption: 0.75rem; /* was 12px */
+    --font-size-mono: 0.75rem; /* was 12px */
+    --font-size-telemetry: 0.625rem; /* was 10px */
+  }
+
   html,
   body {
     height: 100%;

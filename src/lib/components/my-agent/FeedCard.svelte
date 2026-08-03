@@ -93,8 +93,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    min-height: var(--control-height-touch, 56px);
-    padding: var(--space-3, 12px) var(--space-4, 16px);
+    min-height: var(--control-height-sm, 28px);
+    padding: var(--space-0-5, 2px) var(--space-2, 8px);
     border-radius: var(--radius-lg);
     background: transparent;
     border: 1px solid transparent;
@@ -106,7 +106,7 @@
   .body {
     display: flex;
     align-items: center;
-    gap: var(--space-3, 12px);
+    gap: var(--space-2, 8px);
     min-width: 0;
     flex: 1;
   }

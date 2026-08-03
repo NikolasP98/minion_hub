@@ -107,7 +107,7 @@
 
 <style>
   .feed-section {
-    margin-bottom: var(--space-6);
+    margin-bottom: var(--space-3);
   }
 
   /* Collapsed: the summary is short — drop the trailing margin so the shared
@@ -128,8 +128,8 @@
     display: flex;
     align-items: center;
     gap: var(--space-1);
-    margin: 0 0 8px;
-    padding: 0 4px;
+    margin: 0 0 var(--space-1);
+    padding: 0 var(--space-1);
   }
 
   :global(.toggle) {
@@ -212,7 +212,7 @@
   .items {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: 0;
   }
 
   /* The 28vh clamp is present in BOTH states (expanded + collapsed). Keeping it
