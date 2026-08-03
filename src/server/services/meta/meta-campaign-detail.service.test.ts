@@ -111,7 +111,7 @@ describe('getCampaignDetail', () => {
       { adsetId: 's1', adsetName: 'Set 1', spend: 20, impressions: 200, reach: 150, clicks: 10, ctr: 5, cpc: 2 },
     ]);
     expect(result?.ads).toEqual([
-      { adId: 'a1', adName: 'Ad 1', spend: 20, impressions: 200, reach: 150, clicks: 10, ctr: 5, cpc: 2, postId: '1_2', thumbFileId: 'file-1' },
+      { adId: 'a1', adName: 'Ad 1', spend: 20, impressions: 200, reach: 150, clicks: 10, ctr: 5, cpc: 2, conversationsStarted: 0, costPerConversation: null, postId: '1_2', thumbFileId: 'file-1' },
     ]);
     // spendSeries shape: [{date, spend}], in whatever order the query returned
     // (the service doesn't re-sort in JS — `order by date` is the DB's job).

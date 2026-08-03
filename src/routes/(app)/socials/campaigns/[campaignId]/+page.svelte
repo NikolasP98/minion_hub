@@ -16,7 +16,9 @@
   let { data }: { data: PageData } = $props();
   const back = createBackNav('/socials/campaigns', m.ads_nav_campaigns);
   const campaign = $derived(data.campaign);
+  const leads = $derived(data.leads);
   type AdRow = (typeof campaign.ads)[number];
+  type LeadRow = (typeof leads)[number];
 
   const c = $derived(chartColors());
 
@@ -40,6 +42,12 @@
     { id: 'clicks', label: m.ads_kpi_clicks(), value: fmtInt(campaign.totals.clicks) },
     { id: 'ctr', label: m.ads_kpi_ctr(), value: `${campaign.totals.ctr.toFixed(2)}%` },
     { id: 'cpc', label: m.ads_kpi_cpc(), value: fmtMoney(campaign.totals.cpc) },
+    { id: 'conversations', label: m.ads_kpi_conversations(), value: fmtInt(campaign.totals.conversationsStarted) },
+    {
+      id: 'costPerConversation',
+      label: m.ads_kpi_cost_per_convo(),
+      value: campaign.totals.costPerConversation == null ? '—' : fmtMoney(campaign.totals.costPerConversation),
+    },
   ]);
 
   const spendOpts = $derived({
@@ -139,6 +147,60 @@
       sortFn: (a, b) => a.cpc - b.cpc,
       width: 100,
     },
+    {
+      key: 'conversations',
+      label: m.ads_col_conversations(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => r.conversationsStarted,
+      sortFn: (a, b) => a.conversationsStarted - b.conversationsStarted,
+      width: 130,
+    },
+  ];
+
+  // ── Attributed CRM leads (webhook referral + icebreaker heuristic) ─────────
+  const leadName = (r: LeadRow) => r.displayName ?? r.senderId;
+  function leadRowClick(r: LeadRow) {
+    if (r.contactId) goto(`/crm/${encodeURIComponent(r.contactId)}`);
+  }
+  function fmtDate(iso: string | null): string {
+    return iso ? new Date(iso).toLocaleDateString() : '—';
+  }
+  const leadColumns: DataColumn<LeadRow>[] = [
+    {
+      key: 'contact',
+      label: m.ads_leads_col_contact(),
+      custom: true,
+      accessor: leadName,
+      exportValue: leadName,
+      sortFn: (a, b) => leadName(a).localeCompare(leadName(b)),
+      width: 260,
+    },
+    {
+      key: 'firstContact',
+      label: m.ads_leads_col_first_contact(),
+      custom: true,
+      accessor: (r) => r.firstContactAt ?? '',
+      sortFn: (a, b) => (a.firstContactAt ?? '').localeCompare(b.firstContactAt ?? ''),
+      width: 140,
+    },
+    {
+      key: 'ad',
+      label: m.ads_leads_col_ad(),
+      custom: true,
+      accessor: (r) => r.adTitle ?? r.adId ?? '',
+      sortFn: (a, b) => (a.adTitle ?? '').localeCompare(b.adTitle ?? ''),
+      width: 240,
+    },
+    {
+      key: 'confidence',
+      label: m.ads_leads_col_confidence(),
+      custom: true,
+      accessor: (r) => r.confidence,
+      sortFn: (a, b) => a.confidence.localeCompare(b.confidence),
+      width: 110,
+    },
   ];
 </script>
 
@@ -219,6 +281,39 @@
             <span class="tabular-nums">{r.ctr.toFixed(2)}%</span>
           {:else if col.key === 'cpc'}
             <span class="tabular-nums">{fmtMoney(r.cpc)}</span>
+          {:else if col.key === 'conversations'}
+            <span class="tabular-nums">{fmtInt(r.conversationsStarted)}</span>
+          {/if}
+        {/snippet}
+      </DataTable>
+    </div>
+
+    <div class="card">
+      <div class="card-h">{m.ads_campaign_leads_title()} · {fmtInt(leads.length)}</div>
+      <p class="card-sub">{m.ads_campaign_leads_desc()}</p>
+      <DataTable
+        class="leads-table"
+        columns={leadColumns}
+        data={leads}
+        getRowId={(r) => `${r.channel}:${r.senderId}`}
+        searchable={false}
+        storageKey="ads-campaign-detail-leads"
+        emptyMessage={m.ads_leads_empty()}
+        onRowClick={leadRowClick}
+      >
+        {#snippet cell(r: LeadRow, col: DataColumn<LeadRow>)}
+          {#if col.key === 'contact'}
+            {#if r.contactId}
+              <span class="truncate block font-medium">{leadName(r)}</span>
+            {:else}
+              <span class="truncate block lead-unmatched">{r.senderId} · {m.ads_leads_unmatched()}</span>
+            {/if}
+          {:else if col.key === 'firstContact'}
+            <span class="tabular-nums">{fmtDate(r.firstContactAt)}</span>
+          {:else if col.key === 'ad'}
+            <span class="truncate block">{r.adTitle ?? r.adId ?? '—'}</span>
+          {:else if col.key === 'confidence'}
+            <span class="lead-confidence">{r.confidence}</span>
           {/if}
         {/snippet}
       </DataTable>
@@ -265,8 +360,21 @@
     color: var(--color-muted-foreground);
     margin-bottom: var(--space-3, 12px);
   }
-  :global(.ads-table) {
+  :global(.ads-table),
+  :global(.leads-table) {
     height: 24rem;
+  }
+  .card-sub {
+    font-size: var(--font-size-caption, 12px);
+    color: var(--color-muted-foreground);
+    margin: calc(-1 * var(--space-2, 8px)) 0 var(--space-3, 12px);
+  }
+  .lead-unmatched {
+    color: var(--color-text-secondary);
+  }
+  .lead-confidence {
+    text-transform: capitalize;
+    color: var(--color-text-secondary);
   }
   .row-thumb {
     width: 40px;
