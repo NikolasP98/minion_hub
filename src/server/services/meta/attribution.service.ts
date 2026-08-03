@@ -164,3 +164,56 @@ export function upsertLeadAttribution(ctx: CoreCtx, a: LeadAttribution): Promise
     `);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Reads (campaign detail page)
+// ---------------------------------------------------------------------------
+
+export interface CampaignLead {
+  /** CRM contact id when the attributed sender resolved to a contact, else null. */
+  contactId: string | null;
+  /** Contact display name (null for unresolved senders). */
+  displayName: string | null;
+  channel: string;
+  senderId: string;
+  firstContactAt: string | null;
+  adId: string | null;
+  adTitle: string | null;
+  confidence: string;
+  provenance: string;
+}
+
+/**
+ * CRM leads attributed to one campaign's ads (webhook + heuristic rows), newest
+ * first, joined to the CRM contact via the ledger identity (channel, sender_id)
+ * — same join the roster's lead-origin lateral uses. Unresolved senders (no
+ * crm_contact_identities row yet) still appear with contactId null so the count
+ * matches the attribution table, not just the harvested subset.
+ */
+export function listCampaignLeads(ctx: CoreCtx, campaignId: string, limit = 500): Promise<CampaignLead[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`
+      select la.channel, la.sender_id, la.first_contact_at, la.ad_id, la.ad_title,
+             la.confidence, la.provenance,
+             ci.contact_id, c.display_name
+      from meta_lead_attribution la
+      left join crm_contact_identities ci
+        on ci.org_id = la.org_id and ci.channel = la.channel and ci.external_id = la.sender_id
+      left join crm_contacts c on c.id = ci.contact_id
+      where la.org_id = ${ctx.tenantId} and la.campaign_id = ${campaignId} and la.origin = 'ad'
+      order by la.first_contact_at desc nulls last
+      limit ${limit}
+    `)) as unknown as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      contactId: r.contact_id != null ? String(r.contact_id) : null,
+      displayName: r.display_name != null ? String(r.display_name) : null,
+      channel: String(r.channel),
+      senderId: String(r.sender_id),
+      firstContactAt: r.first_contact_at != null ? new Date(String(r.first_contact_at)).toISOString() : null,
+      adId: r.ad_id != null ? String(r.ad_id) : null,
+      adTitle: r.ad_title != null ? String(r.ad_title) : null,
+      confidence: String(r.confidence),
+      provenance: String(r.provenance),
+    }));
+  });
+}

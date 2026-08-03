@@ -45,6 +45,18 @@ export function calcCpc(spend: number, clicks: number): number {
   return clicks > 0 ? spend / clicks : 0;
 }
 
+/** Meta action_type whose value is "conversations started via messaging (7d)".
+ *  Lives here (not ad-performance.service) so both rollups share it without a
+ *  circular import. */
+export const CONVO_ACTION = 'onsite_conversion.messaging_conversation_started_7d';
+
+/** SQL fragment: sum of the messaging-conversation action inside actions[] jsonb. */
+const convoSum = sql`coalesce(sum((
+  select sum((a->>'value')::numeric)
+  from jsonb_array_elements(mai.actions) a
+  where a->>'action_type' = ${CONVO_ACTION}
+)), 0)::float8 conversations_started`;
+
 // ── Data extent (campaigns/dashboard "default to full history" logic) ──────
 
 export interface DataExtent {
@@ -186,6 +198,10 @@ export interface CampaignRow {
   clicks: number;
   ctr: number;
   cpc: number;
+  /** Messaging conversations started (Meta 7d attribution action). */
+  conversationsStarted: number;
+  /** spend / conversationsStarted, or null when no conversations (avoids ÷0). */
+  costPerConversation: number | null;
   /** Linked organic post id (ad level only — via meta_ad_posts). Null at
    *  campaign/adset level, or when the ad has no linked post (dark post). */
   postId: string | null;
@@ -223,7 +239,8 @@ export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: Campaig
              coalesce(sum(mai.spend), 0)::float8 spend,
              coalesce(sum(mai.impressions), 0)::bigint impressions,
              coalesce(sum(mai.reach), 0)::bigint reach,
-             coalesce(sum(mai.clicks), 0)::bigint clicks
+             coalesce(sum(mai.clicks), 0)::bigint clicks,
+             ${convoSum}
              ${selectPost}
       from meta_ad_insights mai
       ${postJoin}
@@ -236,6 +253,7 @@ export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: Campaig
       const spend = Number(r.spend ?? 0);
       const impressions = Number(r.impressions ?? 0);
       const clicks = Number(r.clicks ?? 0);
+      const conversationsStarted = Number(r.conversations_started ?? 0);
       return {
         campaignId: r.campaign_id != null ? String(r.campaign_id) : null,
         campaignName: r.campaign_name != null ? String(r.campaign_name) : null,
@@ -249,6 +267,8 @@ export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: Campaig
         clicks,
         ctr: calcCtr(clicks, impressions),
         cpc: calcCpc(spend, clicks),
+        conversationsStarted,
+        costPerConversation: conversationsStarted > 0 ? spend / conversationsStarted : null,
         postId: r.post_id != null ? String(r.post_id) : null,
         thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
       };
@@ -625,6 +645,8 @@ export interface CampaignDetailAd {
   clicks: number;
   ctr: number;
   cpc: number;
+  conversationsStarted: number;
+  costPerConversation: number | null;
   postId: string | null;
   thumbFileId: string | null;
 }
@@ -637,7 +659,7 @@ export interface CampaignSpendPoint {
 export interface CampaignDetail {
   campaignId: string;
   campaignName: string | null;
-  totals: AdKpiTotals;
+  totals: AdKpiTotals & { conversationsStarted: number; costPerConversation: number | null };
   adsets: CampaignDetailAdset[];
   ads: CampaignDetailAd[];
   spendSeries: CampaignSpendPoint[];
@@ -661,15 +683,17 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
       select coalesce(sum(spend), 0)::float8 spend,
              coalesce(sum(impressions), 0)::bigint impressions,
              coalesce(sum(reach), 0)::bigint reach,
-             coalesce(sum(clicks), 0)::bigint clicks
-      from meta_ad_insights
+             coalesce(sum(clicks), 0)::bigint clicks,
+             ${convoSum}
+      from meta_ad_insights mai
       where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
         and date >= ${range.from} and date <= ${range.to}
-    `)) as unknown as Array<{ spend: number; impressions: number; reach: number; clicks: number }>;
+    `)) as unknown as Array<{ spend: number; impressions: number; reach: number; clicks: number; conversations_started: number }>;
     const spend = Number(totalsRow?.spend ?? 0);
     const impressions = Number(totalsRow?.impressions ?? 0);
     const reach = Number(totalsRow?.reach ?? 0);
     const clicks = Number(totalsRow?.clicks ?? 0);
+    const conversationsStarted = Number(totalsRow?.conversations_started ?? 0);
 
     const adsetRows = (await tx.execute(sql`
       select adset_id, max(adset_name) as adset_name,
@@ -693,6 +717,7 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
              coalesce(sum(mai.impressions), 0)::bigint impressions,
              coalesce(sum(mai.reach), 0)::bigint reach,
              coalesce(sum(mai.clicks), 0)::bigint clicks,
+             ${convoSum},
              max(map.post_id) as post_id,
              max(mm.file_id) filter (where mm.status = 'mirrored') as thumb_file_id
       from meta_ad_insights mai
@@ -716,7 +741,16 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
     return {
       campaignId,
       campaignName: existsRow.campaign_name,
-      totals: { spend, impressions, reach, clicks, ctr: calcCtr(clicks, impressions), cpc: calcCpc(spend, clicks) },
+      totals: {
+        spend,
+        impressions,
+        reach,
+        clicks,
+        ctr: calcCtr(clicks, impressions),
+        cpc: calcCpc(spend, clicks),
+        conversationsStarted,
+        costPerConversation: conversationsStarted > 0 ? spend / conversationsStarted : null,
+      },
       adsets: adsetRows.map((r) => {
         const s = Number(r.spend ?? 0);
         const i = Number(r.impressions ?? 0);
@@ -736,6 +770,7 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
         const s = Number(r.spend ?? 0);
         const i = Number(r.impressions ?? 0);
         const c = Number(r.clicks ?? 0);
+        const convos = Number(r.conversations_started ?? 0);
         return {
           adId: String(r.ad_id),
           adName: r.ad_name != null ? String(r.ad_name) : null,
@@ -745,6 +780,8 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
           clicks: c,
           ctr: calcCtr(c, i),
           cpc: calcCpc(s, c),
+          conversationsStarted: convos,
+          costPerConversation: convos > 0 ? s / convos : null,
           postId: r.post_id != null ? String(r.post_id) : null,
           thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
         };

@@ -67,6 +67,8 @@
 		{ key: 'clicks', label: m.ads_col_clicks(), align: 'right', numeric: true, custom: true, accessor: (r) => r.clicks, sortFn: (a, b) => a.clicks - b.clicks, width: 100 },
 		{ key: 'ctr', label: m.ads_col_ctr(), align: 'right', numeric: true, custom: true, accessor: (r) => r.ctr, sortFn: (a, b) => a.ctr - b.ctr, width: 90 },
 		{ key: 'cpc', money: true, label: m.ads_col_cpc(), align: 'right', numeric: true, custom: true, accessor: (r) => r.cpc, sortFn: (a, b) => a.cpc - b.cpc, width: 100 },
+		{ key: 'conversations', label: m.ads_col_conversations(), align: 'right', numeric: true, custom: true, accessor: (r) => r.conversationsStarted, sortFn: (a, b) => a.conversationsStarted - b.conversationsStarted, width: 130 },
+		{ key: 'costPerConversation', money: true, label: m.ads_col_cost_per_convo(), align: 'right', numeric: true, custom: true, accessor: (r) => r.costPerConversation ?? Infinity, sortFn: (a, b) => (a.costPerConversation ?? Infinity) - (b.costPerConversation ?? Infinity), width: 130 },
 	];
 
 	function navigateRange(f: string, t: string) {
@@ -156,6 +158,10 @@
 					<span class="tabular-nums">{r.ctr.toFixed(2)}%</span>
 				{:else if col.key === 'cpc'}
 					<span class="tabular-nums">{fmtMoney(r.cpc)}</span>
+				{:else if col.key === 'conversations'}
+					<span class="tabular-nums">{fmtInt(r.conversationsStarted)}</span>
+				{:else if col.key === 'costPerConversation'}
+					<span class="tabular-nums">{r.costPerConversation == null ? '—' : fmtMoney(r.costPerConversation)}</span>
 				{/if}
 			{/snippet}
 		</DataTable>
