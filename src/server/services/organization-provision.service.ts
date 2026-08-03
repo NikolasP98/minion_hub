@@ -6,6 +6,7 @@ import { ensureDefaultGatewayForUser } from '$server/services/gateway.pg.service
 import { gatewayCallAsUser } from '$lib/server/gateway-rpc';
 import { issueGatewayJwt } from '$server/services/gateway-jwt.service';
 import { getDb } from '$server/db/client';
+import { ORG_KIND_POLICY, type OrgKind } from '$lib/org-kind';
 
 export type OrganizationProvisionStepId =
   | 'organization'
@@ -25,7 +26,7 @@ export interface OrganizationProvisionStep {
 
 export interface OrganizationProvisionResult {
   ok: boolean;
-  organization: { id: string; name: string; slug: string } | null;
+  organization: { id: string; name: string; slug: string; kind: OrgKind } | null;
   steps: OrganizationProvisionStep[];
   startedAt: string;
   completedAt: string;
@@ -35,6 +36,7 @@ interface OrganizationRow {
   id: string;
   name: string;
   slug: string;
+  kind: OrgKind;
 }
 
 export function normalizeOrganizationName(value: unknown): string {
@@ -59,6 +61,12 @@ export function organizationSlug(name: string): string {
   return slug;
 }
 
+export function resolveOrgKind(value: unknown): OrgKind {
+  if (value === undefined || value === null || value === '') return 'business';
+  if (value === 'business' || value === 'personal') return value;
+  throw new Error(`Organization kind must be one of: ${Object.keys(ORG_KIND_POLICY).join(', ')}`);
+}
+
 function safeMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : 'Unknown provisioning error';
   return message.replace(/(token|secret|password|authorization)=[^\s,;]+/gi, '$1=[redacted]');
@@ -67,7 +75,7 @@ function safeMessage(error: unknown): string {
 async function findOrganization(slug: string): Promise<OrganizationRow | null> {
   const { data, error } = await supabaseAdmin()
     .from('organizations')
-    .select('id, name, slug')
+    .select('id, name, slug, kind')
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw new Error(`Organization lookup failed: ${error.message}`);
@@ -85,12 +93,16 @@ function optionalOrganizationId(value: unknown): string | null {
 async function ensureOrganization(
   name: string,
   slug: string,
+  kind: OrgKind,
   existingWorkforceCompanyId: string | null,
 ): Promise<OrganizationRow> {
   const existing = await findOrganization(slug);
   if (existing) {
     if (existingWorkforceCompanyId && existing.id !== existingWorkforceCompanyId) {
       throw new Error('Organization slug already exists with a different Workforce company ID');
+    }
+    if (existing.kind !== kind) {
+      throw new Error(`Organization slug already exists as a ${existing.kind} organization`);
     }
     return existing;
   }
@@ -99,6 +111,7 @@ async function ensureOrganization(
     id: existingWorkforceCompanyId ?? crypto.randomUUID(),
     name,
     slug,
+    kind,
     ...(existingWorkforceCompanyId
       ? { paperclip_company_id: existingWorkforceCompanyId }
       : {}),
@@ -217,23 +230,44 @@ async function verifyTerminalAccess(url: string, token?: string): Promise<void> 
  */
 export async function provisionOrganization(
   event: RequestEvent,
-  params: { name: string; profileId: string; existingWorkforceCompanyId?: string | null },
+  params: {
+    name: string;
+    profileId: string;
+    kind?: unknown;
+    existingWorkforceCompanyId?: string | null;
+  },
 ): Promise<OrganizationProvisionResult> {
   const startedAt = new Date().toISOString();
   const steps: OrganizationProvisionStep[] = [];
   const name = normalizeOrganizationName(params.name);
   const slug = organizationSlug(name);
+  const kind = resolveOrgKind(params.kind);
   const existingWorkforceCompanyId = optionalOrganizationId(params.existingWorkforceCompanyId);
   let organization: OrganizationRow | null = null;
-  let failed = false;
 
+  const statusOf = (id: OrganizationProvisionStepId) => steps.find((s) => s.id === id)?.status;
+
+  // Each step declares what it needs instead of a global first-failure
+  // cascade — a Workforce hiccup no longer skips the independent gateway step,
+  // so a retry only re-runs what actually failed.
   async function step(
     id: OrganizationProvisionStepId,
     detail: string,
     operation: () => Promise<void>,
+    opts: { dependsOn?: OrganizationProvisionStepId[]; skipReason?: string } = {},
   ): Promise<void> {
-    if (failed) {
-      steps.push({ id, status: 'skipped', durationMs: 0, detail: 'Skipped after an earlier failure' });
+    if (opts.skipReason) {
+      steps.push({ id, status: 'skipped', durationMs: 0, detail: opts.skipReason });
+      return;
+    }
+    const blocked = (opts.dependsOn ?? []).filter((dep) => statusOf(dep) !== 'complete');
+    if (blocked.length > 0) {
+      steps.push({
+        id,
+        status: 'skipped',
+        durationMs: 0,
+        detail: `Skipped: requires ${blocked.join(', ')} to complete`,
+      });
       return;
     }
     const start = performance.now();
@@ -241,7 +275,6 @@ export async function provisionOrganization(
       await operation();
       steps.push({ id, status: 'complete', durationMs: Math.round(performance.now() - start), detail });
     } catch (error) {
-      failed = true;
       steps.push({
         id,
         status: 'failed',
@@ -251,114 +284,153 @@ export async function provisionOrganization(
     }
   }
 
+  const personalSkip =
+    kind === 'personal' ? 'Not applicable to personal organizations' : undefined;
+
   await step('organization', `Organization ${slug} is registered`, async () => {
-    organization = await ensureOrganization(name, slug, existingWorkforceCompanyId);
+    organization = await ensureOrganization(name, slug, kind, existingWorkforceCompanyId);
   });
-  await step('membership', 'Provisioning admin is an organization owner', async () => {
-    if (!organization) throw new Error('Organization was not created');
-    const { error } = await supabaseAdmin().from('organization_members').upsert(
-      {
-        organization_id: organization.id,
-        profile_id: params.profileId,
-        role: 'owner',
-      },
-      { onConflict: 'organization_id,profile_id' },
-    );
-    if (error) throw new Error(`Owner membership failed: ${error.message}`);
-  });
-  await step('rbac', 'Owner role and full organization capabilities are active', async () => {
-    if (!organization) throw new Error('Organization was not created');
-    const { error } = await supabaseAdmin().from('member_roles').upsert(
-      {
-        org_id: organization.id,
-        profile_id: params.profileId,
-        role_key: 'owner',
-        granted_by: params.profileId,
-      },
-      { onConflict: 'org_id,profile_id,role_key' },
-    );
-    if (error) throw new Error(`Owner role assignment failed: ${error.message}`);
-  });
-  await step('workforce', 'Workforce workspace is ready', async () => {
-    if (!organization) throw new Error('Organization was not created');
-    await ensureProvisionedWorkforceCompany(event, organization.id, name);
-  });
-  await step('gateway', 'Provisioning admin has a default gateway route', async () => {
-    if (!organization) throw new Error('Organization was not created');
-    await ensureDefaultGatewayForUser(params.profileId, organization.id);
-  });
-  await step('workstation', 'Default cloud workstation is provisioned', async () => {
-    if (!organization) throw new Error('Organization was not created');
-    // The gateway's shells.* RPCs no longer trust a caller-supplied `orgId`
-    // param (that let any admin-scoped session provision into an arbitrary
-    // org — see minion's shells.ts requireOrgScope). Membership + RBAC for
-    // `organization.id`/`params.profileId` were already verified by the
-    // 'membership'/'rbac' steps above, so this JWT asserts a claim the
-    // gateway can actually validate (signed, org-scoped), instead of a bare
-    // unauthenticated param.
-    const jwt = await mintOrgGatewayJwt(organization.id, params.profileId);
-    await gatewayCallAsUser(
-      'shells.provision',
-      {
-        displayName: `${name} Workspace`,
-        harness: 'hermes',
-        runtimes: ['hermes'],
-        blueprint: 'minion-workstation-v1',
-        image: 'minion-workstation-v1',
-        cpu: 2,
-        memoryMB: 8192,
-        diskGB: 100,
-        archiveIdleMs: null,
-        backupCadence: 'daily',
-        isDefault: true,
-      },
-      params.profileId,
-      { orgId: organization.id, timeoutMs: 180_000, jwt },
-    );
-  });
-  await step('readiness', 'Organization, owner membership, and RBAC access verified', async () => {
-    if (!organization) throw new Error('Organization was not created');
-    await verifyOrganization(organization.id, params.profileId);
-    const jwt = await mintOrgGatewayJwt(organization.id, params.profileId);
-    const listed = await gatewayCallAsUser<{ shells?: Array<{ orgId?: string; isDefault?: boolean }> }>(
-      'shells.list',
-      {},
-      params.profileId,
-      { orgId: organization.id, timeoutMs: 30_000, jwt },
-    );
-    const defaultShell = listed.shells?.find(
-      (shell) => shell.orgId === organization?.id && shell.isDefault,
-    ) as { shellId?: string } | undefined;
-    if (!defaultShell?.shellId) {
-      throw new Error('Readiness check failed: default workstation was not found');
-    }
-    const [desktop, terminal] = await Promise.all([
-      gatewayCallAsUser<{ url: string }>(
-        'shells.access',
-        { shellId: defaultShell.shellId, kind: 'desktop' },
+  await step(
+    'membership',
+    'Owner membership is registered',
+    async () => {
+      if (!organization) throw new Error('Organization was not created');
+      const { error } = await supabaseAdmin().from('organization_members').upsert(
+        {
+          organization_id: organization.id,
+          profile_id: params.profileId,
+          role: 'owner',
+        },
+        { onConflict: 'organization_id,profile_id' },
+      );
+      if (error) throw new Error(`Owner membership failed: ${error.message}`);
+    },
+    { dependsOn: ['organization'] },
+  );
+  await step(
+    'rbac',
+    'Owner role and full organization capabilities are active',
+    async () => {
+      if (!organization) throw new Error('Organization was not created');
+      const { error } = await supabaseAdmin().from('member_roles').upsert(
+        {
+          org_id: organization.id,
+          profile_id: params.profileId,
+          role_key: 'owner',
+          granted_by: params.profileId,
+        },
+        { onConflict: 'org_id,profile_id,role_key' },
+      );
+      if (error) throw new Error(`Owner role assignment failed: ${error.message}`);
+    },
+    { dependsOn: ['organization'] },
+  );
+  await step(
+    'workforce',
+    'Workforce workspace is ready',
+    async () => {
+      if (!organization) throw new Error('Organization was not created');
+      await ensureProvisionedWorkforceCompany(event, organization.id, name);
+    },
+    { dependsOn: ['organization'], skipReason: personalSkip },
+  );
+  await step(
+    'gateway',
+    'Owner has a default gateway route',
+    async () => {
+      if (!organization) throw new Error('Organization was not created');
+      await ensureDefaultGatewayForUser(params.profileId, organization.id);
+    },
+    { dependsOn: ['organization'] },
+  );
+  await step(
+    'workstation',
+    'Default cloud workstation is provisioned',
+    async () => {
+      if (!organization) throw new Error('Organization was not created');
+      // The gateway's shells.* RPCs no longer trust a caller-supplied `orgId`
+      // param (that let any admin-scoped session provision into an arbitrary
+      // org — see minion's shells.ts requireOrgScope). Membership + RBAC for
+      // `organization.id`/`params.profileId` were already verified by the
+      // 'membership'/'rbac' steps above, so this JWT asserts a claim the
+      // gateway can actually validate (signed, org-scoped), instead of a bare
+      // unauthenticated param.
+      const jwt = await mintOrgGatewayJwt(organization.id, params.profileId);
+      await gatewayCallAsUser(
+        'shells.provision',
+        {
+          displayName: `${name} Workspace`,
+          harness: 'hermes',
+          runtimes: ['hermes'],
+          blueprint: 'minion-workstation-v1',
+          image: 'minion-workstation-v1',
+          cpu: 2,
+          memoryMB: 8192,
+          diskGB: 100,
+          archiveIdleMs: null,
+          backupCadence: 'daily',
+          isDefault: true,
+        },
+        params.profileId,
+        { orgId: organization.id, timeoutMs: 180_000, jwt },
+      );
+    },
+    { dependsOn: ['organization', 'gateway'], skipReason: personalSkip },
+  );
+  await step(
+    'readiness',
+    'Organization, owner membership, and RBAC access verified',
+    async () => {
+      if (!organization) throw new Error('Organization was not created');
+      await verifyOrganization(organization.id, params.profileId);
+      if (kind === 'personal') return; // no workstation to probe
+      const jwt = await mintOrgGatewayJwt(organization.id, params.profileId);
+      const listed = await gatewayCallAsUser<{ shells?: Array<{ orgId?: string; isDefault?: boolean }> }>(
+        'shells.list',
+        {},
         params.profileId,
         { orgId: organization.id, timeoutMs: 30_000, jwt },
-      ),
-      gatewayCallAsUser<{ url: string; token?: string }>(
-        'shells.access',
-        { shellId: defaultShell.shellId, kind: 'terminal' },
-        params.profileId,
-        { orgId: organization.id, timeoutMs: 30_000, jwt },
-      ),
-    ]);
-    const desktopResponse = await fetch(desktop.url, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(15_000),
-    });
-    const desktopBody = await desktopResponse.text();
-    if (!desktopResponse.ok || /invalid or missing authentication|shell access expired/i.test(desktopBody)) {
-      throw new Error(`Desktop access relay rejected the capability (HTTP ${desktopResponse.status})`);
-    }
-    await verifyTerminalAccess(terminal.url, terminal.token);
-  });
+      );
+      const defaultShell = listed.shells?.find(
+        (shell) => shell.orgId === organization?.id && shell.isDefault,
+      ) as { shellId?: string } | undefined;
+      if (!defaultShell?.shellId) {
+        throw new Error('Readiness check failed: default workstation was not found');
+      }
+      const [desktop, terminal] = await Promise.all([
+        gatewayCallAsUser<{ url: string }>(
+          'shells.access',
+          { shellId: defaultShell.shellId, kind: 'desktop' },
+          params.profileId,
+          { orgId: organization.id, timeoutMs: 30_000, jwt },
+        ),
+        gatewayCallAsUser<{ url: string; token?: string }>(
+          'shells.access',
+          { shellId: defaultShell.shellId, kind: 'terminal' },
+          params.profileId,
+          { orgId: organization.id, timeoutMs: 30_000, jwt },
+        ),
+      ]);
+      const desktopResponse = await fetch(desktop.url, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15_000),
+      });
+      const desktopBody = await desktopResponse.text();
+      if (!desktopResponse.ok || /invalid or missing authentication|shell access expired/i.test(desktopBody)) {
+        throw new Error(`Desktop access relay rejected the capability (HTTP ${desktopResponse.status})`);
+      }
+      await verifyTerminalAccess(terminal.url, terminal.token);
+    },
+    {
+      dependsOn:
+        kind === 'personal'
+          ? ['membership', 'rbac']
+          : ['membership', 'rbac', 'workstation'],
+    },
+  );
 
   return {
-    ok: !failed,
+    ok: !steps.some((s) => s.status === 'failed'),
     organization,
     steps,
     startedAt,

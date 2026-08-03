@@ -1,6 +1,16 @@
 <script lang="ts">
-  import { Building2, CheckCircle2, RotateCcw } from 'lucide-svelte';
-  import { Button, Card, Input, PageHeader, Spinner, StatusDot, iconSizes } from '$lib/components/ui';
+  import { Building2, CheckCircle2, Link2, RotateCcw } from 'lucide-svelte';
+  import {
+    Button,
+    Card,
+    Input,
+    PageHeader,
+    SegmentedControl,
+    Select,
+    Spinner,
+    StatusDot,
+    iconSizes,
+  } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
 
@@ -12,7 +22,7 @@
   };
   type ProvisionResult = {
     ok: boolean;
-    organization: { id: string; name: string; slug: string } | null;
+    organization: { id: string; name: string; slug: string; kind: string } | null;
     steps: ProvisionStep[];
     startedAt: string;
     completedAt: string;
@@ -23,10 +33,28 @@
   // svelte-ignore state_referenced_locally
   let organizations = $state(data.organizations);
   let name = $state('');
+  let kind = $state('business');
+  let ownerProfileId = $state<string | number>('');
   let existingWorkforceCompanyId = $state('');
   let submitting = $state(false);
   let result = $state<ProvisionResult | null>(null);
   let requestError = $state<string | null>(null);
+  let inviteUrl = $state<string | null>(null);
+  let inviting = $state(false);
+  let inviteError = $state<string | null>(null);
+  let inviteCopied = $state(false);
+
+  const kindItems = [
+    { value: 'business', label: m.orgProvision_kindBusiness() },
+    { value: 'personal', label: m.orgProvision_kindPersonal() },
+  ];
+  const ownerOptions = $derived([
+    { value: '', label: m.orgProvision_ownerSelf() },
+    ...data.profiles.map((profile) => ({
+      value: profile.id,
+      label: profile.display_name ?? profile.email ?? profile.id,
+    })),
+  ]);
 
   const stepLabels: Record<string, string> = {
     organization: m.orgProvision_stepOrganization(),
@@ -44,12 +72,17 @@
     submitting = true;
     requestError = null;
     result = null;
+    inviteUrl = null;
+    inviteError = null;
+    inviteCopied = false;
     try {
       const response = await fetch('/api/organizations/provision', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
+          kind,
+          ownerProfileId: ownerProfileId || undefined,
           existingWorkforceCompanyId: existingWorkforceCompanyId.trim() || undefined,
         }),
       });
@@ -66,6 +99,33 @@
     } finally {
       submitting = false;
     }
+  }
+
+  async function createInvite(): Promise<void> {
+    if (!result?.organization || inviting) return;
+    inviting = true;
+    inviteError = null;
+    try {
+      const response = await fetch('/api/join-links', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ organizationId: result.organization.id, role: 'member' }),
+      });
+      const payload = (await response.json()) as { url?: string; message?: string };
+      if (!payload.url) throw new Error(payload.message ?? m.orgProvision_unknownError());
+      inviteUrl = payload.url;
+    } catch (error) {
+      inviteError = error instanceof Error ? error.message : m.orgProvision_unknownError();
+    } finally {
+      inviting = false;
+    }
+  }
+
+  async function copyInvite(): Promise<void> {
+    if (!inviteUrl) return;
+    await navigator.clipboard.writeText(inviteUrl);
+    inviteCopied = true;
+    setTimeout(() => (inviteCopied = false), 2000);
   }
 </script>
 
@@ -94,6 +154,23 @@
             required
             maxlength={80}
             autocomplete="organization"
+            disabled={submitting}
+          />
+          <div class="kind-field">
+            <span class="t-label" id="organization-kind-label">{m.orgProvision_kindLabel()}</span>
+            <SegmentedControl
+              items={kindItems}
+              bind:value={kind}
+              size="md"
+              aria-label={m.orgProvision_kindLabel()}
+            />
+          </div>
+          <Select
+            id="organization-owner"
+            label={m.orgProvision_ownerLabel()}
+            helper={m.orgProvision_ownerHelper()}
+            options={ownerOptions}
+            bind:value={ownerProfileId}
             disabled={submitting}
           />
           <Input
@@ -146,6 +223,28 @@
           </ol>
         {:else}
           <p class="empty-trace t-body">{m.orgProvision_traceEmpty()}</p>
+        {/if}
+        {#if result?.ok && result.organization}
+          <div class="invite-block">
+            <div>
+              <h3 class="t-label">{m.orgProvision_inviteTitle()}</h3>
+              <p class="t-caption form-copy">{m.orgProvision_inviteDescription()}</p>
+            </div>
+            {#if inviteUrl}
+              <div class="invite-url">
+                <span class="t-mono invite-link">{inviteUrl}</span>
+                <Button variant="outline" size="sm" onclick={copyInvite}>
+                  {inviteCopied ? m.orgProvision_inviteCopied() : m.orgProvision_inviteCopy()}
+                </Button>
+              </div>
+            {:else}
+              <Button variant="outline" size="sm" disabled={inviting} onclick={createInvite}>
+                {#if inviting}<Spinner size="xs" />{:else}<Link2 size={iconSizes.sm} />{/if}
+                {m.orgProvision_inviteAction()}
+              </Button>
+            {/if}
+            {#if inviteError}<p class="error-message" role="alert">{inviteError}</p>{/if}
+          </div>
         {/if}
       </Card>
     </div>
@@ -223,6 +322,33 @@
   .empty-trace {
     padding: var(--space-8) var(--space-4);
     text-align: center;
+  }
+  .kind-field {
+    display: grid;
+    gap: var(--space-2);
+    justify-items: start;
+  }
+  .invite-block {
+    display: grid;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+    justify-items: start;
+  }
+  .invite-url {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    max-width: 100%;
+  }
+  .invite-link {
+    color: var(--color-text-secondary);
+    overflow-wrap: anywhere;
+    min-width: 0;
   }
   .error-message {
     padding: var(--space-3);
