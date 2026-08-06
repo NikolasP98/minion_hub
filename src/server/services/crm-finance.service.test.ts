@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
 const bothEnabled = vi.fn(async () => true);
 vi.mock('./modules.service', () => ({ bothEnabled: (...a: unknown[]) => bothEnabled() }));
-import { contactFinanceMap } from './crm-finance.service';
+import { contactFinanceMap, contactCashflow } from './crm-finance.service';
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
 describe('contactFinanceMap', () => {
@@ -22,5 +22,37 @@ describe('contactFinanceMap', () => {
     resolve([{ contact_id: 'c2', revenue: 50, invoices: 1, last: '2026-02-01T00:00:00Z', purchased: false, has_reserva: true, proc_dates: 0 }]);
     const map = await contactFinanceMap(ctx(db));
     expect(map['c2']).toMatchObject({ purchased: false, reservedOnly: true, loyal: false });
+  });
+});
+
+describe('contactCashflow', () => {
+  it('returns null when bothEnabled is false', async () => {
+    bothEnabled.mockResolvedValueOnce(false);
+    const { db } = createMockDb();
+    expect(await contactCashflow(ctx(db), 'c1')).toBeNull();
+  });
+  it('returns the zero-valued object for a contact with no linked transactions', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ inflow: '0', outflow: '0', net: '0', transactions: 0, last: null }]);
+    expect(await contactCashflow(ctx(db), 'c1')).toEqual({
+      inflow: '0',
+      outflow: '0',
+      net: '0',
+      transactions: 0,
+      lastTransactionAt: null,
+    });
+  });
+  it('sums signed_amount into inflow/outflow/net as money-strings', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([
+      { inflow: '500.00', outflow: '120.50', net: '379.50', transactions: 4, last: '2026-07-20' },
+    ]);
+    expect(await contactCashflow(ctx(db), 'c2')).toEqual({
+      inflow: '500.00',
+      outflow: '120.50',
+      net: '379.50',
+      transactions: 4,
+      lastTransactionAt: '2026-07-20',
+    });
   });
 });

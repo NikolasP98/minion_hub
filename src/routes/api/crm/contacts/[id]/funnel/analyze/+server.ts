@@ -11,6 +11,7 @@ import {
 } from '$server/services/crm-contacts.service';
 import { coerceFunnelStage, type FunnelStage } from '$lib/components/crm/crm-funnel';
 import { getOpenRouterModel } from '$server/llm';
+import { getTenant } from '$server/services/tenant.service';
 
 const funnelResultSchema = z.object({
   stage: z.string().optional(),
@@ -33,6 +34,11 @@ const MAX_MSGS = 20;
 export const POST: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
+  // The marketing funnel is a business-CRM concept — personal orgs shouldn't
+  // even learn the route exists (404, not 403). Same getTenant-by-tenantId
+  // pattern as the /pulse kind guard.
+  const tenant = await getTenant({ tenantId: ctx.tenantId } as Parameters<typeof getTenant>[0]);
+  if (tenant?.kind === 'personal') throw error(404, 'Not found');
   const id = params.id!;
 
   // Billing-derived Loyal takes precedence when known (stub returns 0 today).

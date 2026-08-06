@@ -69,6 +69,19 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
     cadence: 'hourly',
     wiring: 'netcup',
   },
+
+  // ── Built + allowlisted, NOT yet in `crontab -l` ─────────────────────────
+  // The relationship-inference kernel. Its route and its hooks.server.ts
+  // allowlist entry exist, but no crontab line does — so it runs only when
+  // invoked by hand. Listed as `unscheduled` on purpose: claiming `netcup`
+  // for a tick that isn't scheduled is exactly the drift this manifest exists
+  // to surface. Add the crontab line, then flip this to `netcup`.
+  {
+    path: '/api/crm/relationship/tick',
+    key: 'crm_relationship',
+    cadence: 'hourly',
+    wiring: 'unscheduled',
+  },
 ];
 
 /** Scheduled first, unscheduled last — the gaps are what need attention. */

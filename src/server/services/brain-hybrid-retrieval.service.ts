@@ -60,6 +60,12 @@ export interface BrainHybridSearchOptions {
   neighborRadius?: number;
   /** Test/diagnostic override. Ranking is deterministic for a fixed clock. */
   now?: Date;
+  /** `false` skips the vector lane entirely — no embedding request, no cosine
+   *  scan (spec 2026-07-23 R1). Default `true` preserves existing behavior
+   *  exactly. Proper-name / entity-token discovery (e.g. relationship-graph
+   *  corroboration) wants lexical+fuzzy only: a semantic-only vector hit for a
+   *  common first name is exactly the false-positive this option avoids. */
+  vector?: boolean;
 }
 
 export interface BrainEvidenceNeighbor {
@@ -1450,8 +1456,11 @@ export async function searchBrainHybrid(
   const warnings: string[] = [];
   const searchableModules = principal.searchableModules ?? [];
   const fieldLevels = principal.fieldLevels ?? {};
+  const vectorLaneEnabled = options.vector !== false;
   const [vectorResult, lexicalResult, fuzzyResult] = await Promise.allSettled([
-    retrieveVector(ctx, brainId, q, options, searchableModules, fieldLevels, candidateCap),
+    vectorLaneEnabled
+      ? retrieveVector(ctx, brainId, q, options, searchableModules, fieldLevels, candidateCap)
+      : Promise.resolve<VectorRetrievalResult>({ candidates: [], warnings: [] }),
     retrieveLexical(ctx, brainId, q, options, searchableModules, fieldLevels, candidateCap),
     retrieveFuzzy(ctx, brainId, q, options, searchableModules, fieldLevels, candidateCap),
   ]);

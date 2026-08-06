@@ -284,6 +284,8 @@
   "automation_cadence_hourly": "Hourly",
   "automation_cadence_minute": "Every minute",
   "automation_cadence_semimonthly": "1st & 15th, 4am",
+  "automation_crm_relationship_desc": "Infers real-world relationship labels for personal-org contacts from conversation history. Built and allowlisted, but not yet on a schedule.",
+  "automation_crm_relationship_title": "CRM relationship inference",
   "automation_dni_desc": "Validates pending 8-digit DNIs against the PERUDEVS registry. Drains every pending record per run.",
   "automation_dni_title": "DNI validation",
   "automation_email_ledger_desc": "Deletes email-ledger rows past their retention horizon (GDPR storage limitation). Purge only — it does not fetch mail.",

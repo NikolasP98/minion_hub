@@ -13,8 +13,9 @@
     Info,
     Flame,
     Wallet,
+    Megaphone,
   } from 'lucide-svelte';
-  import { PageHeader, Skeleton, EmptyState } from '$lib/components/ui';
+  import { PageHeader, Skeleton, EmptyState, iconSizes } from '$lib/components/ui';
   import { formatMoney } from '$lib/utils/format';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import StagePill from '$lib/components/crm/StagePill.svelte';
@@ -32,10 +33,13 @@
 
   const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'];
 
+  // Personal orgs de-emphasize the sales funnel (WP2) — no funnel ribbon card.
+  const isPersonal = $derived(page.data.activeOrgKind === 'personal');
+
   // Derived widgets depend on the resolved (streamed) stats — built once per
   // `{:then stats}` render rather than as top-level $derived (the raw promise
   // isn't a value to derive from).
-  function buildView(s: Stats) {
+  function buildView(s: Stats, personal: boolean) {
     const funnelMax = Math.max(1, ...STAGES.map((st) => s.stageCounts[st] ?? 0));
     const bucketMax = Math.max(1, ...s.scoreBuckets);
     const channelTotal = s.channels.reduce((acc, c) => acc + c.count, 0);
@@ -84,6 +88,33 @@
     }));
     const tempTotal = s.temperature.hot + s.temperature.warm + s.temperature.cold;
 
+    // Lead origin (Meta attribution): paid ad vs organic first contact.
+    // Untracked = no attribution row (e.g. WhatsApp — no ad referral data).
+    const originRows = [
+      {
+        key: 'ad',
+        label: m.crm_origin_ad(),
+        count: s.leadOrigin.ad,
+        color: 'var(--color-info-fg)',
+        href: originHref('ad'),
+      },
+      {
+        key: 'organic',
+        label: m.crm_origin_organic(),
+        count: s.leadOrigin.organic,
+        color: 'var(--color-success-fg)',
+        href: originHref('organic'),
+      },
+      {
+        key: 'untracked',
+        label: m.crm_origin_untracked(),
+        count: s.leadOrigin.untracked,
+        color: 'var(--color-neutral)',
+        href: C,
+      },
+    ];
+    const originTotal = s.leadOrigin.ad + s.leadOrigin.organic + s.leadOrigin.untracked;
+
     const convRows = [
       {
         key: 'leads',
@@ -114,17 +145,30 @@
     // spans reproduce the original 4-up KPIs + 2-up cards layout.
     const items = [
       ...kpis.map((k) => ({ id: k.id, w: 3, h: 2 })),
-      { id: 'funnel', w: 12, h: 2 },
+      ...(personal ? [] : [{ id: 'funnel', w: 12, h: 2 }]),
       { id: 'stage', w: 6, h: 4 },
       { id: 'score', w: 6, h: 4 },
       { id: 'channels', w: 6, h: 4 },
+      ...(personal ? [] : [{ id: 'leadOrigin', w: 6, h: 4 }]),
       { id: 'temp', w: 6, h: 4 },
       ...(s.revenue ? [{ id: 'revenue', w: 6, h: 4 }] : []),
       { id: 'response', w: 6, h: 4 },
       { id: 'conversion', w: 6, h: 4 },
     ];
 
-    return { s, kpiById, tempRows, tempTotal, convRows, funnelMax, bucketMax, channelTotal, items };
+    return {
+      s,
+      kpiById,
+      tempRows,
+      tempTotal,
+      convRows,
+      originRows,
+      originTotal,
+      funnelMax,
+      bucketMax,
+      channelTotal,
+      items,
+    };
   }
   type View = ReturnType<typeof buildView>;
 
@@ -135,6 +179,7 @@
   const funnelHref = (f: string) => `${C}?funnel=${encodeURIComponent(f)}`;
   const channelHref = (ch: string) => `${C}?channel=${encodeURIComponent(ch)}`;
   const tempHref = (t: string) => `${C}?temp=${encodeURIComponent(t)}`;
+  const originHref = (o: string) => `${C}?origin=${encodeURIComponent(o)}`;
   const bucketHref = (i: number) => `${C}?scoreMin=${i * 10}&scoreMax=${i * 10 + 9}`;
 
   // Per-stage definition tooltips (transparency: "what makes someone Active?").
@@ -177,7 +222,18 @@
 
 <!-- One snippet keyed by item id — EditableGrid renders each cell by id. -->
 {#snippet cellBody(id: string, view: View)}
-  {@const { s, kpiById, tempRows, tempTotal, convRows, funnelMax, bucketMax, channelTotal } = view}
+  {@const {
+    s,
+    kpiById,
+    tempRows,
+    tempTotal,
+    convRows,
+    originRows,
+    originTotal,
+    funnelMax,
+    bucketMax,
+    channelTotal,
+  } = view}
   {#if id.startsWith('k-')}
     {@const k = kpiById.get(id)}
     {#if k}
@@ -259,6 +315,42 @@
               <span class="ch-pct">{pct}%</span>
               <span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`}></span></span>
             </a>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  {:else if id === 'leadOrigin'}
+    <section class="card">
+      <header class="card-h">
+        <span class="flex items-center gap-1.5"
+          ><Megaphone size={iconSizes.xs} /> {m.crm_dash_lead_origin()}</span
+        >
+        <span class="kpi-help" title={m.crm_dash_lead_origin_help()}
+          ><Info size={iconSizes.xs} /></span
+        >
+      </header>
+      <div class="chmix">
+        {#each originRows as r (r.key)}
+          {@const pct = originTotal ? Math.round((r.count / originTotal) * 100) : 0}
+          <a class="chrow" href={r.href}>
+            <span class="temp-dot" style:background={r.color}></span>
+            <span class="ch-name">{r.label}</span>
+            <span class="ch-n">{r.count.toLocaleString()}</span>
+            <span class="ch-pct">{pct}%</span>
+            <span class="ch-bar-wrap"
+              ><span class="ch-bar" style:width={`${pct}%`} style:background={r.color}></span></span
+            >
+          </a>
+        {/each}
+      </div>
+      {#if s.campaigns.length > 0}
+        <div class="camp-list">
+          <span class="camp-h">{m.crm_dash_top_campaigns()}</span>
+          {#each s.campaigns as cp (cp.name)}
+            <span class="camp-row">
+              <span class="camp-name" title={cp.name}>{cp.name}</span>
+              <span class="camp-n">{cp.count.toLocaleString()}</span>
+            </span>
           {/each}
         </div>
       {/if}
@@ -404,7 +496,7 @@
         {/each}
       </div>
     {:then stats}
-      {@const view = buildView(stats)}
+      {@const view = buildView(stats, isPersonal)}
       <EditableGrid
         id="crm-dashboard-v2"
         items={view.items}
@@ -650,6 +742,38 @@
     color: var(--color-muted-foreground);
     min-width: 2.5rem;
     text-align: right;
+  }
+
+  /* Top campaigns (lead-origin card): compact name | count rows. */
+  .camp-list {
+    margin-top: var(--space-3, 12px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 4px);
+  }
+  .camp-h {
+    font-size: var(--font-size-caption, 12px);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-muted-foreground);
+  }
+  .camp-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2, 8px);
+    font-size: var(--font-size-caption, 12px);
+  }
+  .camp-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .camp-n {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-muted-foreground);
   }
 
   /* date-range segmented control */

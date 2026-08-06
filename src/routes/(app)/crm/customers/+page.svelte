@@ -5,7 +5,17 @@
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
-  import { Contact, RefreshCw, ArrowUp, ArrowDown, X, CircleCheck, Circle } from 'lucide-svelte';
+  import {
+    Contact,
+    RefreshCw,
+    ArrowUp,
+    ArrowDown,
+    X,
+    CircleCheck,
+    Circle,
+    Megaphone,
+    Sprout,
+  } from 'lucide-svelte';
   import { PageHeader, Button, Modal, Select, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import ScoreCell from '$lib/components/crm/ScoreCell.svelte';
@@ -42,6 +52,9 @@
   const tags = $derived(data.tags);
   type Row = (typeof contacts)[number];
 
+  // Personal orgs de-emphasize the sales funnel (WP2) — no funnel column.
+  const isPersonal = $derived(page.data.activeOrgKind === 'personal');
+
   // ── Finance bridge (present only when CRM + Finances are both enabled) ──────
   type ContactFin = {
     revenue: number;
@@ -73,6 +86,20 @@
     { value: 'M', label: m.crm_sex_m() },
     { value: 'F', label: m.crm_sex_f() },
   ];
+  // Meta lead attribution (IG today): 'ad' | 'organic'; anything else = untracked.
+  const originOptions = [
+    { value: 'ad', label: m.crm_origin_ad() },
+    { value: 'organic', label: m.crm_origin_organic() },
+    { value: '', label: m.crm_origin_untracked() },
+  ];
+  const originOf = (c: Row) =>
+    c.lead_origin === 'ad' || c.lead_origin === 'organic' ? c.lead_origin : '';
+  const originLabel = (c: Row) =>
+    originOf(c) === 'ad'
+      ? m.crm_origin_ad()
+      : originOf(c) === 'organic'
+        ? m.crm_origin_organic()
+        : '';
   // Canonical M/F from the DNI registry localizes here; fall back to the legacy
   // Spanish custom_fields.sexo for rows that were never DNI-verified.
   const sexLabel = (c: Row) =>
@@ -109,6 +136,7 @@
     stage: qpArr('stage'),
     funnel: qpArr('funnel'),
     channel: qpArr('channel'),
+    origin: qpArr('origin'),
   };
 
   const filtered = $derived.by(() => {
@@ -162,20 +190,24 @@
         exportValue: (c) => stageLabel(c.stage),
         filter: { options: () => stageOptions, match: (c) => c.stage },
       },
-      {
-        key: 'funnel',
-        label: m.crm_funnel_col(),
-        custom: true,
-        accessor: (c) => {
-          const f = funnelOf(c);
-          return f ? funnelStageLabel(f) : '';
-        },
-        exportValue: (c) => {
-          const f = funnelOf(c);
-          return f ? funnelStageLabel(f) : '';
-        },
-        filter: { options: () => funnelOptions, match: (c) => funnelOf(c) ?? '' },
-      },
+      ...(isPersonal
+        ? []
+        : [
+            {
+              key: 'funnel',
+              label: m.crm_funnel_col(),
+              custom: true,
+              accessor: (c: Row) => {
+                const f = funnelOf(c);
+                return f ? funnelStageLabel(f) : '';
+              },
+              exportValue: (c: Row) => {
+                const f = funnelOf(c);
+                return f ? funnelStageLabel(f) : '';
+              },
+              filter: { options: () => funnelOptions, match: (c: Row) => funnelOf(c) ?? '' },
+            } satisfies DataColumn<Row>,
+          ]),
       {
         key: 'verified',
         label: m.crm_col_verified(),
@@ -195,6 +227,19 @@
         filter: { options: () => sexOptions, match: (c) => c.sex ?? '' },
         width: 96,
       },
+      ...(isPersonal
+        ? []
+        : [
+            {
+              key: 'origin',
+              label: m.crm_col_origin(),
+              custom: true,
+              accessor: (c: Row) => originLabel(c),
+              exportValue: (c: Row) => originOf(c),
+              filter: { options: () => originOptions, match: (c: Row) => originOf(c) },
+              width: 110,
+            } satisfies DataColumn<Row>,
+          ]),
     ];
     for (const k of metaKeys)
       cols.push({
@@ -207,7 +252,7 @@
     if (data.financeEnabled) {
       cols.push({
         key: 'revenue',
-      money: true,
+        money: true,
         label: m.crm_col_revenue(),
         align: 'right',
         custom: true,
@@ -602,6 +647,18 @@
             <Circle size={iconSizes.md} class="verify-icon-off" />
           {/if}
         </Button>
+      {:else if col.key === 'origin'}
+        {#if c.lead_origin === 'ad'}
+          <span class="origin-pill origin-ad" title={c.lead_campaign ?? m.crm_origin_ad()}
+            ><Megaphone size={iconSizes.xs} /> {m.crm_origin_ad()}</span
+          >
+        {:else if c.lead_origin === 'organic'}
+          <span class="origin-pill origin-organic"
+            ><Sprout size={iconSizes.xs} /> {m.crm_origin_organic()}</span
+          >
+        {:else}
+          <span class="t-caption">—</span>
+        {/if}
       {:else if col.key.startsWith('meta:')}
         {@const v = metaDisplay(col.key.slice(5), c.custom_fields?.[col.key.slice(5)])}
         <span class="meta-cell" title={v}>{v || '—'}</span>
@@ -711,6 +768,27 @@
     color: var(--color-warning);
     background: color-mix(in srgb, var(--color-warning) 15%, transparent);
     white-space: nowrap;
+  }
+  /* Lead-origin pills (Meta attribution): paid ad vs organic first contact. */
+  .origin-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1, 4px);
+    padding: var(--space-0-5, 2px) var(--space-2, 8px);
+    font-size: var(--font-size-caption, 12px);
+    font-weight: 600;
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+  }
+  .origin-ad {
+    color: var(--color-info-fg);
+    background: var(--color-info-surface);
+    border: 1px solid var(--color-info-border);
+  }
+  .origin-organic {
+    color: var(--color-success-fg);
+    background: var(--color-success-surface);
+    border: 1px solid var(--color-success-border);
   }
   :global(.crm-customers-surface .await-toggle) {
     display: inline-flex;

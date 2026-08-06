@@ -458,13 +458,14 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     states: MUTATING_DETAIL_STATES,
   }),
 
-  // CRM, finance, sales, support and work (15)
+  // CRM, finance, sales, support and work (16)
   screen('/crm', 'CRM', 'business-operations', 'dashboard'),
   screen('/crm/[contactId]', 'Contact', 'business-operations', 'record-detail', {
     fixtureId: 'crm-contact-detail',
     states: OWNER_DESTRUCTIVE_DETAIL_STATES,
   }),
   screen('/crm/customers', 'Customers', 'business-operations', 'collection'),
+  screen('/crm/graph', 'CRM relationship graph', 'business-operations', 'canvas-kanban'),
   screen('/crm/insights', 'CRM insights', 'business-operations', 'dashboard'),
   screen('/crm/settings', 'CRM settings', 'business-operations', 'form-settings'),
   screen('/finances', 'Finances', 'business-operations', 'dashboard'),

@@ -284,6 +284,8 @@
   "automation_cadence_hourly": "Cada hora",
   "automation_cadence_minute": "Cada minuto",
   "automation_cadence_semimonthly": "Dia 1 y 15, 4am",
+  "automation_crm_relationship_desc": "Infiere etiquetas de relaciones reales para contactos de organizaciones personales a partir del historial de conversaciones. Creado y permitido, pero aun sin programar.",
+  "automation_crm_relationship_title": "Inferencia de relaciones CRM",
   "automation_dni_desc": "Valida los DNI de 8 digitos pendientes contra el registro PERUDEVS. Procesa todos los pendientes en cada ejecucion.",
   "automation_dni_title": "Validacion de DNI",
   "automation_email_ledger_desc": "Elimina las filas del ledger de correo que superaron su horizonte de retencion (limitacion de almacenamiento GDPR). Solo purga: no descarga correo.",

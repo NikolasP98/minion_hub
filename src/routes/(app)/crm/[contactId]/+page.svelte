@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { goto, invalidate } from '$lib/navigation';
+  import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import {
     ArrowLeft,
@@ -61,6 +62,11 @@
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { toastWarning } from '$lib/state/ui/toast.svelte';
   import { canAct } from '$lib/access/can.svelte';
+  import {
+    subscribeMessageCommitted,
+    type MessageCommittedEvent,
+    type OrgRealtimeStatus,
+  } from '$lib/realtime/org-events';
 
   let { data }: { data: PageData } = $props();
   const back = createBackNav('/crm/customers', m.crm_back_to_contacts);
@@ -356,26 +362,83 @@
     timeline.filter((r) => r.kind === 'message' && r.channel === channelTab),
   );
 
-  // Near-realtime: refresh the contact timeline while the page is open and visible.
-  // ponytail: 12s poll over Supabase realtime/WS — simplest live-update that needs no new infra.
+  const REALTIME_COALESCE_MS = 100;
+  const FALLBACK_REFRESH_MS = 5 * 60_000;
+  let scheduledContactRefresh: ReturnType<typeof setTimeout> | null = null;
+  let realtimeStatus = $state<OrgRealtimeStatus>('CLOSED');
+
+  function messageBelongsToContact(event: MessageCommittedEvent): boolean {
+    if (!event.chatId) return false;
+    return data.identities.some(
+      (identity) =>
+        identity.channel === event.channel && identity.externalId === event.chatId,
+    );
+  }
+
+  function scheduleContactRefresh() {
+    if (scheduledContactRefresh) return;
+    scheduledContactRefresh = setTimeout(() => {
+      scheduledContactRefresh = null;
+      void invalidate('crm:contact');
+    }, REALTIME_COALESCE_MS);
+  }
+
+  // Database-originated Broadcast is a change signal only. The canonical
+  // SvelteKit load still applies owner scope, field masking, and timeline
+  // pagination. Exact channel/chat identity filtering prevents every message in
+  // a busy org from refetching every open contact page.
   $effect(() => {
-    const iv = setInterval(() => {
+    const orgId = page.data.activeOrgId;
+    if (!orgId) return;
+    const unsubscribe = subscribeMessageCommitted(
+      orgId,
+      (event) => {
+        if (messageBelongsToContact(event)) scheduleContactRefresh();
+      },
+      (status) => {
+        realtimeStatus = status;
+        if (status === 'SUBSCRIBED') scheduleContactRefresh();
+      },
+    );
+    return () => {
+      unsubscribe();
+      realtimeStatus = 'CLOSED';
+      if (scheduledContactRefresh) clearTimeout(scheduledContactRefresh);
+      scheduledContactRefresh = null;
+    };
+  });
+
+  // Slow self-heal for Realtime outages/missed events. Visibility regain
+  // refreshes immediately; the old twelve-second foreground poll is removed.
+  $effect(() => {
+    const refreshVisible = () => {
       if (!document.hidden) invalidate('crm:contact');
-    }, 12000);
-    return () => clearInterval(iv);
+    };
+    const onVisibilityChange = () => refreshVisible();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const fallbackMs = realtimeStatus === 'SUBSCRIBED' ? FALLBACK_REFRESH_MS : 12_000;
+    const iv = setInterval(refreshVisible, fallbackMs);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   });
 
   // ── Left-column layout (EditableGrid; one shared layout for the detail page) ─
   // Default widths exploit the wider (2:1) left column: details spans full,
   // the rest default to half (2 subcolumns). Users can re-layout per-card.
+  // Personal orgs de-emphasize the sales funnel (WP2): no funnel card, and the
+  // finance card is the cashflow bridge (fin_transactions) instead.
+  const isPersonal = $derived(page.data.activeOrgKind === 'personal');
   const gridItems = $derived(
     [
       { id: 'details', w: 4, h: 4 },
       data.connections?.length ? { id: 'connections', w: 2, h: 2 } : null,
       { id: 'score', w: 2, h: 2 },
       { id: 'lifecycle', w: 2, h: 2 },
-      { id: 'funnel', w: 2, h: 3 },
+      isPersonal ? null : { id: 'funnel', w: 2, h: 3 },
       { id: 'identities', w: 2, h: 1 },
+      isPersonal && data.cashflow ? { id: 'cashflow', w: 2, h: 2 } : null,
       data.finance ? { id: 'financials', w: 2, h: 2 } : null,
       data.finance ? { id: 'wins', w: 2, h: 2 } : null,
     ].filter((x): x is { id: string; w: number; h: number } => x !== null),
@@ -700,6 +763,37 @@
           <li class="t-caption">{m.crm_no_identities()}</li>
         {/each}
       </ul>
+    </section>
+  {:else if idv === 'cashflow'}
+    <section class="card">
+      <header class="card-h"><span>{m.crm_cashflow_title()}</span></header>
+      {#if data.cashflow && data.cashflow.transactions > 0}
+        <dl class="kv">
+          <div>
+            <dt>{m.crm_cashflow_in()}</dt>
+            <dd>{formatMoney(data.cashflow.inflow)}</dd>
+          </div>
+          <div>
+            <dt>{m.crm_cashflow_out()}</dt>
+            <dd>{formatMoney(data.cashflow.outflow)}</dd>
+          </div>
+          <div>
+            <dt>{m.crm_cashflow_net()}</dt>
+            <dd>{formatMoney(data.cashflow.net)}</dd>
+          </div>
+          <div>
+            <dt>{m.crm_cashflow_last()}</dt>
+            <dd
+              >{data.cashflow.lastTransactionAt
+                ? relativeTime(data.cashflow.lastTransactionAt)
+                : '—'}</dd
+            >
+          </div>
+        </dl>
+        <p class="fin-recent-h">{m.crm_cashflow_count({ n: data.cashflow.transactions })}</p>
+      {:else}
+        <p class="t-caption">{m.crm_cashflow_empty()}</p>
+      {/if}
     </section>
   {:else if idv === 'financials'}
     {#if data.finance}

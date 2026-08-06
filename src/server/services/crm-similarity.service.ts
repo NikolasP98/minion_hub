@@ -11,35 +11,66 @@ import { buildConversationText, isThin } from '$lib/components/crm/crm-similarit
 import { getOpenRouterModel } from '$server/llm';
 
 const winAnalysisResultSchema = z.object({
-  wins: z.array(z.object({ point: z.string(), repeat: z.string() })).optional(),
-  improvements: z.array(z.object({ area: z.string(), suggestions: z.array(z.string()).optional() })).optional(),
+  wins: z
+    .array(
+      z.object({
+        point: z.string(),
+        repeat: z.string(),
+        /** Evidence refs (e.g. "c3") into the excerpt list offered in the prompt. */
+        evidence: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
+  improvements: z
+    .array(z.object({ area: z.string(), suggestions: z.array(z.string()).optional() }))
+    .optional(),
 });
 
 const WIN_MODEL =
-  env.CRM_FUNNEL_MODEL || env.CRM_SENTIMENT_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
+  env.CRM_FUNNEL_MODEL ||
+  env.CRM_SENTIMENT_MODEL ||
+  env.NOTES_POLISH_MODEL ||
+  'google/gemini-2.5-flash';
+
+/** A conversation excerpt (Master-Brain corpus chunk) that justifies a win point. */
+export interface WinSource {
+  contactId: string;
+  name: string | null;
+  occurredAt: string | null;
+}
 
 /** AI breakdown of winning conversations — persisted in crm_settings.winAnalysis. */
 export interface WinAnalysis {
   /** What worked + how to repeat it with other customers. */
-  wins: { point: string; repeat: string }[];
+  wins: { point: string; repeat: string; sources?: WinSource[] }[];
   /** Where to improve + concrete suggestions. */
   improvements: { area: string; suggestions: string[] }[];
   builtAt: string;
   basedOn: number;
+  /** True when the analysis was grounded in the Master-Brain vector corpus. */
+  fromCorpus?: boolean;
 }
 
-const IS_PROCEDURE = sql.raw(`(ii.description is not null and ii.description not ilike '%reserva%')`);
+const IS_PROCEDURE = sql.raw(
+  `(ii.description is not null and ii.description not ilike '%reserva%')`,
+);
 
 /** Bind a JS string[] as a real Postgres text[] (each element parameterized). */
 function textArray(arr: string[]) {
   if (arr.length === 0) return sql`array[]::text[]`;
-  return sql`array[${sql.join(arr.map((x) => sql`${x}`), sql`, `)}]::text[]`;
+  return sql`array[${sql.join(
+    arr.map((x) => sql`${x}`),
+    sql`, `,
+  )}]::text[]`;
 }
 
 /** Bind a JS string[] of uuids as a real Postgres uuid[] (each element parameterized). */
 function uuidArray(arr: string[]) {
   if (arr.length === 0) return sql`array[]::uuid[]`;
-  return sql`array[${sql.join(arr.map((x) => sql`${x}::uuid`), sql`, `)}]::uuid[]`;
+  return sql`array[${sql.join(
+    arr.map((x) => sql`${x}::uuid`),
+    sql`, `,
+  )}]::uuid[]`;
 }
 
 /** Split an array into chunks of at most `size` — caps embedding-request and VALUES-list size. */
@@ -63,7 +94,10 @@ async function enabled(ctx: CoreCtx): Promise<boolean> {
 }
 
 /** Load a contact's conversation text (chronological, inbound/outbound). */
-async function conversationText(ctx: CoreCtx, contactId: string): Promise<{ text: string; count: number }> {
+async function conversationText(
+  ctx: CoreCtx,
+  contactId: string,
+): Promise<{ text: string; count: number }> {
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
       select m.direction, m.content
@@ -105,16 +139,31 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> 
       group by c.id
       having bool_or(${IS_PROCEDURE})
     `)) as unknown as Array<{ id: string; bought: string[] | null }>;
-    if (buyerRows.length === 0) return { buyers: buyerRows, messages: [] as Array<{ contact_id: string; direction: string; content: string | null }> };
+    if (buyerRows.length === 0)
+      return {
+        buyers: buyerRows,
+        messages: [] as Array<{
+          contact_id: string;
+          direction: string;
+          content: string | null;
+          at: string | null;
+        }>,
+      };
     const buyerIds = buyerRows.map((b) => b.id);
     const msgRows = (await tx.execute(sql`
-      select ci.contact_id::text contact_id, m.direction, m.content
+      select ci.contact_id::text contact_id, m.direction, m.content,
+             coalesce(m.occurred_at, m.created_at) as at
       from crm_contact_identities ci
       join messages m on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
       where ci.org_id = current_setting('app.current_org_id', true) and ci.contact_id = any(${uuidArray(buyerIds)})
         and m.is_bot is not true
       order by ci.contact_id, coalesce(m.occurred_at, m.created_at) asc
-    `)) as unknown as Array<{ contact_id: string; direction: string; content: string | null }>;
+    `)) as unknown as Array<{
+      contact_id: string;
+      direction: string;
+      content: string | null;
+      at: string | null;
+    }>;
     return { buyers: buyerRows, messages: msgRows };
   });
   if (buyers.length === 0) return { indexed: 0 };
@@ -122,17 +171,31 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> 
   // Group messages by contact_id (merges e.g. WA + IG identities of the same
   // contact into one conversation doc), then map each buyer to its conversation.
   const byContact = new Map<string, Array<{ direction: string; content: string | null }>>();
+  const lastAt = new Map<string, string>();
   for (const m of messages) {
     const arr = byContact.get(m.contact_id) ?? [];
     arr.push({ direction: m.direction, content: m.content });
     byContact.set(m.contact_id, arr);
+    if (m.at) lastAt.set(m.contact_id, m.at); // rows arrive chronological — last write wins
   }
-  const docs: { id: string; text: string; count: number; bought: string[] }[] = [];
+  const docs: {
+    id: string;
+    text: string;
+    count: number;
+    bought: string[];
+    lastAt: string | null;
+  }[] = [];
   for (const b of buyers) {
     const rows = byContact.get(b.id) ?? [];
     const text = buildConversationText(rows);
     if (!text) continue;
-    docs.push({ id: b.id, text, count: rows.length, bought: (b.bought ?? []).filter(Boolean) });
+    docs.push({
+      id: b.id,
+      text,
+      count: rows.length,
+      bought: (b.bought ?? []).filter(Boolean),
+      lastAt: lastAt.get(b.id) ?? null,
+    });
   }
   if (docs.length === 0) return { indexed: 0 };
 
@@ -174,35 +237,128 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> 
   // Generate + persist the AI breakdown of these winning conversations. Stored in
   // crm_settings (the last analysis is kept until the next rebuild, so the page
   // shows it instantly without re-calling the model). Best-effort.
-  const analysis = await analyzeWins(docs);
+  const analysis = await analyzeWins(ctx, docs);
   if (analysis) await persistWinAnalysis(ctx, analysis);
 
   return { indexed: docs.length };
 }
 
-/** Ask the model to distill winning conversations into wins + improvements. */
+interface WinExcerpt {
+  ref: string; // "c1", "c2", … — what the model cites
+  contactId: string;
+  name: string | null;
+  occurredAt: string | null;
+  text: string;
+  bought: string[];
+}
+
+/**
+ * Load winning-conversation excerpts from the Master-Brain corpus
+ * (`knowledge_documents`/`knowledge_chunks` — the org's canonical all-source
+ * vector store; Master Brain membership is implicit) for the given buyer
+ * contacts, most recent first. Conversation documents carry the chat id in
+ * their metadata (chunk metadata does not, reliably), so the join goes
+ * contact identity → document → chunks. Capped per contact so one long chat
+ * can't crowd others out.
+ */
+async function loadWinExcerpts(
+  ctx: CoreCtx,
+  buyers: { id: string; bought: string[] }[],
+): Promise<WinExcerpt[]> {
+  const ids = buyers.map((b) => b.id);
+  const rows = await withOrgCore(ctx, async (tx) => {
+    return (await tx.execute(sql`
+      select ci.contact_id::text contact_id, c.display_name, k.chunk_text,
+             to_char(k.occurred_at, 'YYYY-MM-DD') occurred_at
+      from crm_contact_identities ci
+      join crm_contacts c on c.id = ci.contact_id
+      join knowledge_documents d on d.org_id = ci.org_id and d.metadata->>'chatId' = ci.external_id
+      join knowledge_chunks k on k.org_id = d.org_id and k.document_id = d.id
+      where ci.org_id = current_setting('app.current_org_id', true)
+        and ci.contact_id = any(${uuidArray(ids)})
+      order by k.occurred_at desc nulls last
+      limit 150
+    `)) as unknown as Array<{
+      contact_id: string;
+      display_name: string | null;
+      chunk_text: string;
+      occurred_at: string | null;
+    }>;
+  });
+
+  const boughtBy = new Map(buyers.map((b) => [b.id, b.bought]));
+  const perContact = new Map<string, number>();
+  const excerpts: WinExcerpt[] = [];
+  for (const r of rows) {
+    const used = perContact.get(r.contact_id) ?? 0;
+    if (used >= 2) continue; // ponytail: 2 chunks/contact keeps the prompt broad, not deep
+    perContact.set(r.contact_id, used + 1);
+    excerpts.push({
+      ref: `c${excerpts.length + 1}`,
+      contactId: r.contact_id,
+      name: r.display_name != null ? String(r.display_name) : null,
+      occurredAt: r.occurred_at != null ? String(r.occurred_at) : null,
+      text: String(r.chunk_text),
+      bought: boughtBy.get(r.contact_id) ?? [],
+    });
+    if (excerpts.length >= 40) break;
+  }
+  return excerpts;
+}
+
+/**
+ * Ask the model to distill winning conversations into wins + improvements.
+ * Grounded in the Master-Brain corpus: excerpts are the most recent vectorized
+ * chat chunks of buyer conversations, each carrying a ref the model must cite
+ * as evidence — cited refs become clickable sources on the insights page.
+ * Falls back to raw message-table transcripts (recency-sorted, no sources)
+ * when the corpus has no chunks for these buyers yet.
+ */
 async function analyzeWins(
-  docs: { text: string; bought: string[] }[],
+  ctx: CoreCtx,
+  docs: { id: string; text: string; bought: string[]; lastAt: string | null }[],
 ): Promise<WinAnalysis | null> {
   const apiKey = env.OPENROUTER_API_KEY;
   if (!apiKey || docs.length === 0) return null;
 
-  const sample = docs
-    .slice(0, 20)
-    .map((d, i) => {
-      const bought = d.bought.length ? ` [purchased: ${d.bought.join(', ')}]` : '';
-      return `### Conversation ${i + 1}${bought}\n${d.text.slice(0, 800).replace(/\s+/g, ' ').trim()}`;
-    })
-    .join('\n\n');
+  // Most recently active buyers first — recent wins reflect the current playbook.
+  const recent = [...docs].sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? ''));
 
+  let excerpts: WinExcerpt[] = [];
+  try {
+    excerpts = await loadWinExcerpts(ctx, recent.slice(0, 25));
+  } catch {
+    excerpts = []; // corpus unavailable — fall back below
+  }
+  const fromCorpus = excerpts.length > 0;
+
+  const sample = fromCorpus
+    ? excerpts
+        .map((e) => {
+          const bought = e.bought.length ? ` [purchased: ${e.bought.join(', ')}]` : '';
+          const when = e.occurredAt ? ` (${e.occurredAt})` : '';
+          return `### [${e.ref}]${when}${bought}\n${e.text.slice(0, 700).replace(/\s+/g, ' ').trim()}`;
+        })
+        .join('\n\n')
+    : recent
+        .slice(0, 20)
+        .map((d, i) => {
+          const bought = d.bought.length ? ` [purchased: ${d.bought.join(', ')}]` : '';
+          return `### Conversation ${i + 1}${bought}\n${d.text.slice(0, 800).replace(/\s+/g, ' ').trim()}`;
+        })
+        .join('\n\n');
+
+  const evidenceInstruction = fromCorpus
+    ? `Each excerpt has an id like [c3]. For every "win", include "evidence": the ids of the excerpts (1-3) that best justify it — only ids from the list, prefer the most recent.`
+    : '';
   const prompt = `You analyze WON sales conversations from a Peruvian aesthetics clinic (mostly Spanish): in each, the customer ended up purchasing a procedure. Across these winning conversations, identify the patterns that led to the sale.
 
 Return ONLY a JSON object (no prose, no markdown fences):
 {
-  "wins": [{ "point": "what the clinic did well that drove the sale", "repeat": "how to repeat this with other customers" }],
+  "wins": [{ "point": "what the clinic did well that drove the sale", "repeat": "how to repeat this with other customers", "evidence": ["c1"] }],
   "improvements": [{ "area": "what could be better", "suggestions": ["concrete suggestion", "..."] }]
 }
-Give 3-5 "wins" and 2-4 "improvements" (each with 2-3 suggestions). Be specific and actionable. Write the content in Spanish (the clinic operates in Spanish).
+Give 3-5 "wins" and 2-4 "improvements" (each with 2-3 suggestions). Be specific and actionable. ${evidenceInstruction} Write the content in Spanish (the clinic operates in Spanish).
 
 Winning conversations:
 ${sample}`;
@@ -215,8 +371,22 @@ ${sample}`;
       temperature: 0.3,
     });
     const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const byRef = new Map(excerpts.map((e) => [e.ref, e]));
     const wins = (object.wins ?? [])
-      .map((w) => ({ point: str(w.point), repeat: str(w.repeat) }))
+      .map((w) => {
+        // Clamp citations to refs actually offered (rejects invented ids), then
+        // dedupe by contact so one win never links the same customer twice.
+        const seen = new Set<string>();
+        const sources: WinSource[] = [];
+        for (const ref of w.evidence ?? []) {
+          const e = byRef.get(str(ref));
+          if (!e || seen.has(e.contactId)) continue;
+          seen.add(e.contactId);
+          sources.push({ contactId: e.contactId, name: e.name, occurredAt: e.occurredAt });
+          if (sources.length >= 3) break;
+        }
+        return { point: str(w.point), repeat: str(w.repeat), sources };
+      })
       .filter((w) => w.point)
       .slice(0, 6);
     const improvements = (object.improvements ?? [])
@@ -227,7 +397,13 @@ ${sample}`;
       .filter((im) => im.area)
       .slice(0, 5);
     if (wins.length === 0 && improvements.length === 0) return null;
-    return { wins, improvements, builtAt: new Date().toISOString(), basedOn: docs.length };
+    return {
+      wins,
+      improvements,
+      builtAt: new Date().toISOString(),
+      basedOn: docs.length,
+      fromCorpus,
+    };
   } catch {
     return null; // leave the previous analysis in place
   }
@@ -242,7 +418,10 @@ async function persistWinAnalysis(ctx: CoreCtx, analysis: WinAnalysis): Promise<
       .values({ orgId: ctx.tenantId, value: { winAnalysis: analysis } })
       .onConflictDoUpdate({
         target: crmSettings.orgId,
-        set: { value: sql`coalesce(${crmSettings.value}, '{}'::jsonb) || ${patch}::jsonb`, updatedAt: new Date() },
+        set: {
+          value: sql`coalesce(${crmSettings.value}, '{}'::jsonb) || ${patch}::jsonb`,
+          updatedAt: new Date(),
+        },
       }),
   );
 }
