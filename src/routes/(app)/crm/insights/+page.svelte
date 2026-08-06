@@ -4,7 +4,7 @@
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { Sparkles, RefreshCw, Trophy, Brain } from 'lucide-svelte';
-  import { PageHeader, Button, EmptyState, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Button, EmptyState, SegmentedControl, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import CrmWordCloud from '$lib/components/crm/CrmWordCloud.svelte';
   import CrmSentimentTrend from '$lib/components/crm/CrmSentimentTrend.svelte';
@@ -25,11 +25,24 @@
     { id: '365d', label: () => m.crm_insights_range_365d() },
     { id: 'all', label: () => m.crm_insights_range_all() },
   ];
-  function setRange(r: string) {
+  function setParam(key: string, value: string) {
     const url = new URL(page.url);
-    url.searchParams.set('range', r);
+    url.searchParams.set(key, value);
     goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
   }
+  const setRange = (r: string) => setParam('range', r);
+
+  const GRANULARITIES = $derived([
+    { value: 'day', label: m.crm_insights_gran_day() },
+    { value: 'week', label: m.crm_insights_gran_week() },
+    { value: 'month', label: m.crm_insights_gran_month() },
+  ]);
+  const fmtSourceDate = (iso: string) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    });
 
   let analyzing = $state(false);
   // Incremental scoring on first view (one capped batch), like the funnel auto-analyze.
@@ -111,6 +124,17 @@
                     {#if w.repeat}<span class="wa-repeat"
                         >{m.crm_wins_analysis_repeat()} {w.repeat}</span
                       >{/if}
+                    {#if w.sources?.length}
+                      <span class="wa-sources">
+                        {#each w.sources as s (s.contactId)}
+                          <a class="wa-source" href={`/crm/${s.contactId}`}
+                            >{s.name ?? m.crm_wins_source_unknown()}{#if s.occurredAt}<span
+                                class="wa-source-date">· {fmtSourceDate(s.occurredAt)}</span
+                              >{/if}</a
+                          >
+                        {/each}
+                      </span>
+                    {/if}
                   </li>
                 {/each}
               </ul>
@@ -140,7 +164,9 @@
            analyzed conversation corpus (crm_conversation_analysis). -->
       <section class="card">
         <header class="card-h">
-          <span class="flex items-center gap-1.5"><Brain size={iconSizes.sm} /> {m.crm_themes_title()}</span>
+          <span class="flex items-center gap-1.5"
+            ><Brain size={iconSizes.sm} /> {m.crm_themes_title()}</span
+          >
         </header>
         {#if data.themes.overAnswered.total === 0}
           <EmptyState
@@ -158,7 +184,8 @@
                     <span class="bars-label">{p.point}</span>
                     <span class="bars-n">{p.count}</span>
                     <span class="bars-wrap"
-                      ><span class="bars-fill" style:width={`${barPct(p.count, maxPain)}%`}></span></span
+                      ><span class="bars-fill" style:width={`${barPct(p.count, maxPain)}%`}
+                      ></span></span
                     >
                   </div>
                 {/each}
@@ -172,7 +199,8 @@
                     <span class="bars-label">{it.intent}</span>
                     <span class="bars-n">{it.count}</span>
                     <span class="bars-wrap"
-                      ><span class="bars-fill" style:width={`${barPct(it.count, maxIntent)}%`}></span></span
+                      ><span class="bars-fill" style:width={`${barPct(it.count, maxIntent)}%`}
+                      ></span></span
                     >
                   </div>
                 {/each}
@@ -194,16 +222,28 @@
         {/if}
       </section>
 
-      <!-- Historic sentiment (daily, anchored to message dates) -->
+      <!-- Historic sentiment (chat-day scored, bucketed by day/week/month) -->
       <section class="card">
         <header class="card-h">
           <span>{m.crm_insights_sentiment_title()}</span>
-          <Button variant="outline" size="sm" onclick={analyze} disabled={analyzing}>
-            <RefreshCw size={14} class={analyzing ? 'animate-spin' : ''} />
-            {analyzing ? m.crm_insights_analyzing() : m.crm_insights_analyze()}
-          </Button>
+          <span class="flex items-center gap-2">
+            <SegmentedControl
+              items={GRANULARITIES}
+              value={data.sentGranularity}
+              aria-label={m.crm_insights_sentiment_title()}
+              onValueChange={(v) => setParam('sent', v)}
+            />
+            <Button variant="outline" size="sm" onclick={analyze} disabled={analyzing}>
+              <RefreshCw size={14} class={analyzing ? 'animate-spin' : ''} />
+              {analyzing ? m.crm_insights_analyzing() : m.crm_insights_analyze()}
+            </Button>
+          </span>
         </header>
-        <CrmSentimentTrend points={data.sentiment} current={data.current} />
+        <CrmSentimentTrend
+          points={data.sentiment}
+          current={data.current}
+          granularity={data.sentGranularity}
+        />
       </section>
 
       <!-- Word cloud -->
@@ -334,6 +374,34 @@
   }
   .wa-sublist > li {
     list-style: disc;
+  }
+  /* Mini source links — Master-Brain excerpts justifying a win point. */
+  .wa-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1, 4px);
+    margin-top: var(--space-1, 4px);
+  }
+  .wa-source {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-0-5, 2px);
+    padding: 0 var(--space-2, 8px);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-caption, 12px);
+    color: var(--color-accent);
+    text-decoration: none;
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .wa-source:hover {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+  .wa-source-date {
+    color: var(--color-text-tertiary);
   }
 
   /* Conversation intelligence — pain points / intent / over-answered */

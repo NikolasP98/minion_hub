@@ -58,8 +58,8 @@ describe('route design contracts', () => {
     }, {});
     // B lost one when /pos/refills was removed — stock operations live only in
     // the stock module now. /socials/ad-performance merged into /socials/campaigns
-    // (conversations columns) and its route removed.
-    expect(counts).toEqual({ A: 32, B: 67, C: 17, D: 23, E: 10 });
+    // (conversations columns) and its route removed; /crm/graph added one back.
+    expect(counts).toEqual({ A: 32, B: 68, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

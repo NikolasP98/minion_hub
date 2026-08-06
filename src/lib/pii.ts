@@ -18,13 +18,29 @@ export function maskPii(value: string | null | undefined): string {
  * phone/email key sets in `crm-meta.ts` plus the common id variants.
  */
 export const CRM_PII_FIELD_KEYS = new Set([
-  'telefono', 'phone', 'celular', 'movil', 'whatsapp', 'tel',
-  'email', 'correo', 'mail',
-  'dni', 'documento', 'document', 'doc', 'cedula', 'ruc', 'pasaporte', 'passport',
+  'telefono',
+  'phone',
+  'celular',
+  'movil',
+  'whatsapp',
+  'tel',
+  'email',
+  'correo',
+  'mail',
+  'dni',
+  'documento',
+  'document',
+  'doc',
+  'cedula',
+  'ruc',
+  'pasaporte',
+  'passport',
 ]);
 
 /** Redact PII values inside a contact's custom_fields jsonb (non-PII keys untouched). */
-export function maskContactFields<T extends Record<string, unknown> | null | undefined>(fields: T): T {
+export function maskContactFields<T extends Record<string, unknown> | null | undefined>(
+  fields: T,
+): T {
   if (!fields || typeof fields !== 'object') return fields;
   const out = { ...fields } as Record<string, unknown>;
   for (const k of Object.keys(out)) {
@@ -33,5 +49,35 @@ export function maskContactFields<T extends Record<string, unknown> | null | und
       out[k] = maskPii(String(v));
     }
   }
+  // `_relationship` (CRM relationship graph, spec R6) may carry AI-inferred
+  // evidence about a contact's real-world relationships — strip the WHOLE
+  // object for a masked principal, unlike `_funnel` (a stage id, not
+  // sensitive) which passes through untouched below.
+  delete out['_relationship'];
+  // `_relationshipClaim` is an internal AI-inference lease lock (token +
+  // expiry) — never user-facing data, so it's stripped here too (belt and
+  // braces; `sanitizeContactFields` below also strips it unconditionally,
+  // including for an UNMASKED caller, which this function alone can't cover).
+  delete out['_relationshipClaim'];
+  return out as T;
+}
+
+/**
+ * The ONE gate every contact-serialization path (roster, detail, hygiene
+ * scans, PATCH responses) must run a contact's `custom_fields` through before
+ * it reaches the wire. `_relationshipClaim` (AI-inference lease lock —
+ * operational state, never user-facing) is stripped for EVERY principal,
+ * masked or not. `_relationship` additionally never reaches a masked
+ * principal, and PII values get redacted — both via `maskContactFields`.
+ */
+export function sanitizeContactFields<T extends Record<string, unknown> | null | undefined>(
+  fields: T,
+  maskSensitive: boolean,
+): T {
+  if (!fields || typeof fields !== 'object') return fields;
+  if (maskSensitive) return maskContactFields(fields);
+  if (!('_relationshipClaim' in fields)) return fields;
+  const out = { ...fields } as Record<string, unknown>;
+  delete out['_relationshipClaim'];
   return out as T;
 }

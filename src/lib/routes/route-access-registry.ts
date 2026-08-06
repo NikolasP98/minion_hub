@@ -29,6 +29,7 @@ export interface SubResource {
 export const MODULE_SUBRESOURCES: Readonly<Record<string, readonly SubResource[]>> = {
   crm: [
     { key: 'crm.insights', label: 'Insights', route: '/crm/insights' },
+    { key: 'crm.graph', label: 'Graph', route: '/crm/graph' },
     { key: 'crm.cleanup', label: 'Data Cleanup', route: '/crm/cleanup' },
     { key: 'crm.settings', label: 'Settings', route: '/crm/settings' },
   ],

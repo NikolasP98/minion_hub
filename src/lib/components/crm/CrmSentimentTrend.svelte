@@ -7,18 +7,21 @@
   let {
     points,
     current,
+    granularity = 'day',
   }: {
     points: { day: string; avg: number; n: number }[];
     current: { avg: number; n: number } | null;
+    granularity?: 'day' | 'week' | 'month';
   } = $props();
 
   const fmtScore = (v: number) => (v > 0 ? '+' : '') + v.toFixed(2);
   const fmtDay = (iso: string) =>
-    new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'UTC',
-    });
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString(
+      undefined,
+      granularity === 'month'
+        ? { month: 'short', year: '2-digit', timeZone: 'UTC' }
+        : { month: 'short', day: 'numeric', timeZone: 'UTC' },
+    );
 
   const byDay = $derived(new Map(points.map((p) => [p.day, p])));
   const c = $derived(chartColors());

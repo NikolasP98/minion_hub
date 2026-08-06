@@ -10,16 +10,20 @@ import {
   listTags,
 } from '$server/services/crm-contacts.service';
 import { evaluateTagRule } from '$server/services/crm-scoring';
-import { contactFinanceSummary } from '$server/services/crm-finance.service';
+import { contactFinanceSummary, contactCashflow } from '$server/services/crm-finance.service';
 import { contactConnections } from '$server/services/connections.service';
 import { contactJourney } from '$server/services/crm-journey.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 
-export const load: PageServerLoad = async ({ locals, params, depends }) => {
+export const load: PageServerLoad = async ({ locals, params, depends, parent }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('crm:contact');
   const id = uuidParamOr404(params.contactId);
+  // Personal orgs get the ContactCashflow bridge (fin_transactions) instead of
+  // the business ContactFinance summary (fin_invoices) — WP2.
+  const { activeOrgKind } = await parent();
+  const isPersonal = activeOrgKind === 'personal';
 
   // Record-level (if-owner) scope: a scoped caller can only open contacts they
   // own — a non-owned id 404s rather than leaking existence. Field-level scope
@@ -35,7 +39,10 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     getContactTimeline(ctx, id, 200),
     getContactTags(ctx, id),
     listTags(ctx),
-    rankContacts(ctx, { contactId: id, limit: 1 }),
+    // Same principal scope as `getContact` above — an unscoped/masked `score`
+    // row here would leak `_relationship` back to a masked caller even though
+    // `getContact` correctly hid it (F1a).
+    rankContacts(ctx, { contactId: id, limit: 1, ownerId, maskSensitive: maskPii }),
   ]);
 
   // Auto-tags are derived live from the scored row (never stored as contact_tags).
@@ -46,9 +53,10 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
       )
     : [];
 
-  const [finance, connections, journey] = await Promise.all([
-    contactFinanceSummary(ctx, id),
-    contactConnections(ctx, id),
+  const [finance, cashflow, connections, journey] = await Promise.all([
+    isPersonal ? Promise.resolve(null) : contactFinanceSummary(ctx, id),
+    isPersonal ? contactCashflow(ctx, id) : Promise.resolve(null),
+    contactConnections(ctx, id, activeOrgKind),
     contactJourney(ctx, id),
   ]);
 
@@ -65,6 +73,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     allTags,
     autoTags,
     finance,
+    cashflow,
     connections,
     journey,
   };

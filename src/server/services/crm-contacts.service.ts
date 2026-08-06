@@ -1,7 +1,7 @@
 import { and, eq, desc, sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
-import { maskPii, maskContactFields } from '$lib/pii';
+import { maskPii, sanitizeContactFields } from '$lib/pii';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   crmContacts,
@@ -18,6 +18,11 @@ import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
 import { recordAudit } from './activity.service';
 import { isFunnelStage, readFunnelMeta, funnelStageIndex } from '$lib/components/crm/crm-funnel';
+import { isReservedMetaKey } from '$lib/components/crm/crm-meta';
+import {
+  parseRelationshipValue,
+  type RelationshipCategory,
+} from '$lib/components/crm/crm-relationship';
 import { StaleWriteError, staleGuard } from './errors';
 
 /**
@@ -231,6 +236,10 @@ export interface RankedContact {
   is_buyer: boolean;
   /** true when the latest message is inbound with no later reply — we owe them. */
   awaiting_reply: boolean;
+  /** Meta lead attribution: 'ad' | 'organic' | 'unknown' | null (no attribution row). */
+  lead_origin: string | null;
+  /** Campaign name when lead_origin = 'ad' (null otherwise/unresolved). */
+  lead_campaign: string | null;
   last_days: number;
   reciprocity: number;
   r_score: number;
@@ -380,6 +389,8 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                least(a.first_contact_at, fn.first_purchase_at) as first_contact_at,
                greatest(a.last_contact_at, fn.last_purchase_at) as last_contact_at,
                (fn.first_purchase_at is not null) as is_buyer,
+               attr.origin as lead_origin,
+               attr.campaign_name as lead_campaign,
                (a.last_inbound_at is not null and (a.last_outbound_at is null or a.last_inbound_at > a.last_outbound_at)) as awaiting_reply,
                -- message-only recency drives the RFM score (engagement is a messaging axis)
                coalesce(extract(epoch from (now() - a.last_contact_at)) / 86400.0, 1e9) as last_days,
@@ -391,6 +402,17 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
         left join parties p on p.id = c.party_id
         left join agg a on a.contact_id = c.id
         left join fin fn on fn.contact_id = c.id
+        -- Meta lead attribution (IG today): earliest attribution row across the
+        -- contact's identities decides the acquisition origin (ad vs organic).
+        left join lateral (
+          select la.origin, la.campaign_name
+          from crm_contact_identities ci
+          join meta_lead_attribution la
+            on la.org_id = ci.org_id and la.channel = ci.channel and la.sender_id = ci.external_id
+          where ci.contact_id = c.id
+          order by la.first_contact_at asc nulls last
+          limit 1
+        ) attr on true
         where ${and(...conds)}
       ),
       scored as (
@@ -398,6 +420,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
                party_id, dni_verified, age, dob, sex,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
+               lead_origin, lead_campaign,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
                round(${F_EXPR}::numeric, 1) as f_score,
@@ -446,12 +469,17 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     out = out.map((r) =>
       r.age == null ? r : { ...r, custom_fields: { ...r.custom_fields, edad: r.age } },
     );
-    // Field-level (Phase 4): redact PII in custom_fields (phone/email/dni) — the
-    // Customers list renders these as Phone/ID columns.
+    // `_relationshipClaim` (AI-inference lease lock) is internal-only — strip
+    // it for every caller, masked or not. Field-level (Phase 4): redact PII +
+    // `_relationship` in custom_fields (phone/email/dni) for a masked
+    // principal — the Customers list renders these as Phone/ID columns.
+    out = out.map((r) => ({
+      ...r,
+      custom_fields: sanitizeContactFields(r.custom_fields, f.maskSensitive ?? false),
+    }));
     if (!f.maskSensitive) return out;
     return out.map((r) => ({
       ...r,
-      custom_fields: maskContactFields(r.custom_fields),
       identities: r.identities.map((i) => ({ ...i, externalId: maskPii(i.externalId) })),
     }));
   });
@@ -461,8 +489,10 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
 function crmListTags(tenantId: string) {
   return tags.tenantDomain(tenantId, 'crm');
 }
-/** Invalidate the cached ranked list (call after any mutation that changes it). */
-function bustCrmList(tenantId: string) {
+/** Invalidate the cached ranked list (call after any mutation that changes it).
+ *  Exported for sibling services that write `crm_contacts.custom_fields`
+ *  outside this file (e.g. crm-relationship.service.ts). */
+export function bustCrmList(tenantId: string) {
   return invalidateTags([...crmListTags(tenantId)]);
 }
 
@@ -498,9 +528,99 @@ export function listContactsCached(
   );
 }
 
+// ── Relationship graph (spec v2 WP1) ────────────────────────────────────────
+
+export interface ContactGraphRow {
+  contactId: string;
+  label: string;
+  messageCount: number;
+  lastAt: string | null;
+  /** null when unset OR the caller is PII-masked (spec R6 — no relationship
+   *  data at all for a masked principal). */
+  relationship: {
+    label: string | null;
+    category: RelationshipCategory;
+    source: 'ai' | 'user';
+  } | null;
+}
+
+/** Contacts ranked into the graph — a UI concern, not the roster; separate from
+ *  GRAPH_CONTACT_CAP below. */
+const GRAPH_CONTACT_CAP = 60;
+
+/**
+ * Graph data for /crm/graph: the org's `GRAPH_CONTACT_CAP` most-recently-active
+ * contacts (ties broken by message volume), ONE row per contact (spec v2 §C1
+ * — the per-channel split from v1 is gone; a contact's messages are summed
+ * across every channel identity, mirroring the `agg` join in `rankContacts`).
+ * `group by c.id` relies on Postgres' primary-key functional-dependency rule
+ * to select `c.display_name`/`c.custom_fields` without listing them in the
+ * GROUP BY. Cheap indexed join bounded to 60 contacts — no cache needed.
+ *
+ * Record-level (if-owner) + field-level (PII) RBAC scoping mirrors
+ * `listContactsCached`/`getContact`: an owner-scoped caller only sees their
+ * own contacts (`c.owner_id`), and a masked caller gets redacted labels AND
+ * no relationship data — the graph must never leak what the roster hides.
+ */
+export async function getContactGraph(
+  ctx: CoreCtx,
+  opts: { ownerId?: string; maskSensitive?: boolean } = {},
+): Promise<ContactGraphRow[]> {
+  const { ownerId, maskSensitive = false } = opts;
+  return withOrgCore(ctx, async (tx) => {
+    const ownerClause = ownerId ? sql`and c.owner_id = ${ownerId}` : sql``;
+    const rows = await tx.execute(sql`
+      with agg as (
+        select c.id as contact_id,
+               coalesce(c.display_name, 'Unknown') as label,
+               c.custom_fields,
+               count(m.id)::int as message_count,
+               max(coalesce(m.occurred_at, m.created_at)) as last_at
+        from crm_contacts c
+        join crm_contact_identities ci on ci.contact_id = c.id and ci.org_id = c.org_id
+        join messages m
+          on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
+        where c.org_id = ${ctx.tenantId}
+          and c.deleted_at is null
+          and m.is_bot is not true
+          ${ownerClause}
+        group by c.id
+      )
+      select contact_id, label, message_count, last_at,
+             custom_fields->'_relationship' as relationship
+      from agg
+      order by last_at desc nulls last, message_count desc
+      limit ${GRAPH_CONTACT_CAP}
+    `);
+    const out = rows as unknown as Array<{
+      contact_id: string;
+      label: string;
+      message_count: number | string;
+      last_at: string | null;
+      relationship: unknown;
+    }>;
+    // pg returns bigint/numeric aggregates as strings — coerce (see rankContacts).
+    return out.map((r) => {
+      const rel = maskSensitive ? undefined : parseRelationshipValue(r.relationship);
+      return {
+        contactId: r.contact_id,
+        label: maskSensitive ? maskPii(r.label) : r.label,
+        messageCount: Number(r.message_count) || 0,
+        lastAt: r.last_at,
+        relationship: rel ? { label: rel.label, category: rel.category, source: rel.source } : null,
+      };
+    });
+  });
+}
+
 // ── Single contact + journey ──────────────────────────────────────────────────
 
-export async function getContact(ctx: CoreCtx, id: string, ownerId?: string, maskSensitive = false) {
+export async function getContact(
+  ctx: CoreCtx,
+  id: string,
+  ownerId?: string,
+  maskSensitive = false,
+) {
   return withOrgCore(ctx, async (tx) => {
     const [contact] = await tx
       .select()
@@ -527,9 +647,16 @@ export async function getContact(ctx: CoreCtx, id: string, ownerId?: string, mas
     const identities = maskSensitive
       ? identitiesRaw.map((i) => ({ ...i, externalId: maskPii(i.externalId), masked: true }))
       : identitiesRaw;
-    const maskedContact = maskSensitive
-      ? { ...contact, customFields: maskContactFields(contact.customFields as Record<string, unknown>) }
-      : contact;
+    // sanitizeContactFields always strips `_relationshipClaim` (internal
+    // lease lock, no principal should ever see it) and additionally strips
+    // `_relationship` + masks PII when the caller is field-level masked.
+    const maskedContact = {
+      ...contact,
+      customFields: sanitizeContactFields(
+        contact.customFields as Record<string, unknown>,
+        maskSensitive,
+      ),
+    };
     const [stats] = (await tx.execute(sql`
       select message_count, inbound_count, channels_used, first_contact_at, last_contact_at
       from crm_contact_stats where contact_id = ${id}
@@ -587,7 +714,9 @@ export async function getContactPrefill(
     const [wa] = await tx
       .select({ externalId: crmContactIdentities.externalId })
       .from(crmContactIdentities)
-      .where(and(eq(crmContactIdentities.contactId, id), eq(crmContactIdentities.channel, 'whatsapp')))
+      .where(
+        and(eq(crmContactIdentities.contactId, id), eq(crmContactIdentities.channel, 'whatsapp')),
+      )
       .limit(1);
     // WhatsApp external_id is the phone (often `51999...@s.whatsapp.net`) — keep digits.
     const phone = wa?.externalId ? wa.externalId.replace(/\D/g, '') || null : null;
@@ -645,6 +774,27 @@ export async function createContact(
   return row;
 }
 
+/**
+ * Client-writable `custom_fields` merge for PATCH (root cause fix, spec R6):
+ * a client sending `customFields` used to replace the WHOLE jsonb object,
+ * letting it silently delete or forge a `_`-reserved key (`_relationship`,
+ * `_relationshipClaim`, `_funnel`, …) that is system-owned. Strips any
+ * client-supplied `_`-prefixed key, then merges over whatever reserved keys
+ * are already stored on the row — `||`'s right operand wins, and referencing
+ * `crmContacts.customFields` inside an UPDATE's SET expression reads the
+ * PRE-update row (same trick `atomicSetRelationship` uses), so this is one
+ * atomic statement with no pre-image read.
+ */
+export function customFieldsMergeSql(clientFields: Record<string, unknown>) {
+  const stripped = Object.fromEntries(
+    Object.entries(clientFields).filter(([k]) => !isReservedMetaKey(k)),
+  );
+  return sql`coalesce(${JSON.stringify(stripped)}::jsonb, '{}'::jsonb) || coalesce(
+    (select jsonb_object_agg(key, value) from jsonb_each(coalesce(${crmContacts.customFields}, '{}'::jsonb)) where left(key, 1) = '_'),
+    '{}'::jsonb
+  )`;
+}
+
 export async function updateContact(
   ctx: CoreCtx,
   id: string,
@@ -665,7 +815,7 @@ export async function updateContact(
   if (data.displayName !== undefined) set.displayName = data.displayName;
   if (data.ownerId !== undefined) set.ownerId = data.ownerId;
   if (data.lifecycleOverride !== undefined) set.lifecycleOverride = data.lifecycleOverride;
-  if (data.customFields !== undefined) set.customFields = data.customFields;
+  if (data.customFields !== undefined) set.customFields = customFieldsMergeSql(data.customFields);
   const row = await withOrgCore(ctx, async (tx) => {
     const [r] = await tx
       .update(crmContacts)
@@ -690,10 +840,17 @@ export async function updateContact(
       return null;
     }
     // No pre-image SELECT on this path (would be an extra round-trip per write) —
-    // log the new values only, not a before/after diff.
+    // log the new values only, not a before/after diff. `customFields` in `set`
+    // is a SQL merge expression (customFieldsMergeSql), not plain data — log
+    // the client-submitted value instead so the audit trail stays readable.
     const auditChanges = Object.entries(set)
       .filter(([field]) => field !== 'updatedAt')
-      .map(([field, value]) => ({ field, label: field, old: null, new: value }));
+      .map(([field, value]) => ({
+        field,
+        label: field,
+        old: null,
+        new: field === 'customFields' ? data.customFields : value,
+      }));
     if (auditChanges.length) {
       await recordAudit(ctx, {
         refType: 'crm_contact',
@@ -1321,7 +1478,10 @@ async function persistConfigs(ctx: CoreCtx, accounts: AccountConfig[]): Promise<
       .values({ orgId: ctx.tenantId, value })
       .onConflictDoUpdate({
         target: crmSettings.orgId,
-        set: { value: sql`coalesce(${crmSettings.value}, '{}'::jsonb) || ${JSON.stringify(value)}::jsonb`, updatedAt: new Date() },
+        set: {
+          value: sql`coalesce(${crmSettings.value}, '{}'::jsonb) || ${JSON.stringify(value)}::jsonb`,
+          updatedAt: new Date(),
+        },
       }),
   );
   await bustCrmList(ctx.tenantId);

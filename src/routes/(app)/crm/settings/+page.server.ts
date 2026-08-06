@@ -29,9 +29,10 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
         ReturnType<typeof getAccountScopeLive>
       >,
   );
-  // Record-level (if-owner) + field-level (PII) scope for BOTH hygiene scans —
-  // dup groups and blank contacts expose dni/phone/identities, so a masked or
-  // owner-scoped caller must get a scoped (separately cached) payload.
+  // Record-level (if-owner) + field-level (PII/`_relationship`) scope for BOTH
+  // hygiene scans — dup groups and blank contacts expose dni/phone/identities
+  // and `_relationship`, so a masked or owner-scoped caller must get a scoped
+  // (separately cached) payload. Same as the roster/detail page (F1b).
   const [ownerId, maskSensitive] = await Promise.all([
     ownerFilter(locals, 'crm'),
     shouldMaskSensitive(locals, 'crm'),

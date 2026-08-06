@@ -3,7 +3,19 @@ import { INTEGRATIONS, integrationIconUrl } from '$lib/types/entities';
 import { areaIconDataUri } from '$lib/utils/lucide-svg';
 import { ARCHETYPE_AVATAR_STYLE } from '$lib/utils/avatar';
 
-export type NodeKind = 'org' | 'area' | 'skill' | 'integration' | 'agent' | 'user' | 'shared';
+// 'contact'/'channel' are consumed by the CRM relationship graph
+// (`$lib/components/crm/graph/build-crm-graph.ts`), which reuses this shared
+// node/edge shape + the simulation/renderer stack rather than forking them.
+export type NodeKind =
+  | 'org'
+  | 'area'
+  | 'skill'
+  | 'integration'
+  | 'agent'
+  | 'user'
+  | 'shared'
+  | 'contact'
+  | 'channel';
 
 export interface GraphNode {
   id: string;
@@ -440,6 +452,10 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
     agent: 50,
     user: 46,
     skill: 26,
+    // CRM relationship-graph kinds. This builder never emits them (it builds the
+    // /overview graph), but the map is exhaustive over NodeKind, which they share.
+    contact: 34,
+    channel: 30,
   };
   for (const nd of nodes) {
     const deg = degree.get(nd.id) ?? 0;

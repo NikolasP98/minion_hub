@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { maskPii, maskContactFields } from '$lib/pii';
+import { maskPii, sanitizeContactFields } from '$lib/pii';
+import { isReservedMetaKey } from '$lib/components/crm/crm-meta';
 import { proposeName, nameKey, isUnnamed, type NameIssue } from './crm-standardize';
 
 /**
@@ -37,7 +38,8 @@ export interface CleanupScanScope {
 
 /** Fold owner + mask into the tenant key — an if-owner-scoped or PII-masked
  *  caller must never read/poison the org-wide cached payload (full dni/phone/
- *  identities). The org-level invalidation tag still busts all variants. */
+ *  identities, and `_relationship`). The org-level invalidation tag still busts
+ *  all variants. */
 function scopedTenantKey(tenantId: string, { ownerId, maskSensitive }: CleanupScanScope): string {
   return `${tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`;
 }
@@ -228,8 +230,8 @@ export async function findDuplicates(
   scope: CleanupScanScope = {},
 ): Promise<DupGroup[]> {
   const { ownerId, maskSensitive = false } = scope;
-  // Record-level (if-owner) scope, same as rankContacts — a scoped caller must
-  // only see duplicate groups among contacts they own.
+  // Record-level (if-owner) scope, same as rankContacts/getContact — a scoped
+  // caller must only see duplicate groups among contacts they own.
   const ownerClause = ownerId ? sql`and c.owner_id = ${ownerId}` : sql``;
   const rows = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
@@ -264,9 +266,10 @@ export async function findDuplicates(
     identities: ContactIdentity[] | null;
   }>;
 
-  // Field-level: a masked caller gets redacted dni/phone/identities and
-  // PII-masked customFields — this hygiene view must never leak what the
-  // roster/detail page hide.
+  // Field-level (Phase 4): a masked caller gets redacted PII (dni/phone/
+  // identities) AND loses `_relationship`/`_relationshipClaim` in
+  // customFields entirely — this hygiene view must never leak what the
+  // roster/detail page hide (F1b).
   const mk = (r: (typeof rows)[number]): DupContact => ({
     id: r.id,
     name: r.display_name,
@@ -278,13 +281,13 @@ export async function findDuplicates(
       (Array.isArray(r.identities) ? r.identities : []).filter((i) => i && i.value),
       maskSensitive,
     ),
-    customFields: maskSensitive
-      ? maskContactFields(
-          r.custom_fields && typeof r.custom_fields === 'object' ? r.custom_fields : {},
-        )
-      : r.custom_fields && typeof r.custom_fields === 'object'
-        ? r.custom_fields
-        : {},
+    // sanitizeContactFields (not maskContactFields): it ALWAYS strips the
+    // internal `_relationshipClaim` lease — including for an unmasked caller —
+    // and drops `_relationship` entirely when masked.
+    customFields: sanitizeContactFields(
+      r.custom_fields && typeof r.custom_fields === 'object' ? r.custom_fields : {},
+      maskSensitive,
+    ),
   });
 
   const byDni = new Map<string, DupContact[]>();
@@ -469,14 +472,24 @@ export async function mergeContacts(
       where s.id = ${survivorId} and s.org_id = ${org}
     `);
     // 5b. Apply the user's conflict-resolver choices — these OVERRIDE the survivor
-    //     (jsonb `||` right-operand wins; untouched keys survive).
+    //     (jsonb `||` right-operand wins; untouched keys survive). Same
+    //     client-input guard as customFieldsMergeSql (crm-contacts.service):
+    //     a client-supplied `_`-reserved key must never overwrite the
+    //     system-owned one via this merge either.
     if (overrides) {
       const sets: ReturnType<typeof sql>[] = [];
       if (overrides.displayName != null && overrides.displayName !== '')
         sets.push(sql`display_name = ${overrides.displayName}`);
-      if (overrides.customFields && Object.keys(overrides.customFields).length > 0)
+      // Reserved meta keys (`_funnel`, `_relationship`, `_relationshipClaim`) are
+      // server-owned — a client-supplied merge override must never write them.
+      const customFieldsOverride = overrides.customFields
+        ? Object.fromEntries(
+            Object.entries(overrides.customFields).filter(([k]) => !isReservedMetaKey(k)),
+          )
+        : undefined;
+      if (customFieldsOverride && Object.keys(customFieldsOverride).length > 0)
         sets.push(
-          sql`custom_fields = coalesce(custom_fields, '{}'::jsonb) || ${JSON.stringify(overrides.customFields)}::jsonb`,
+          sql`custom_fields = coalesce(custom_fields, '{}'::jsonb) || ${JSON.stringify(customFieldsOverride)}::jsonb`,
         );
       if (sets.length)
         await tx.execute(sql`

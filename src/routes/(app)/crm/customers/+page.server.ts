@@ -6,10 +6,15 @@ import { listContactsCached, listTags } from '$server/services/crm-contacts.serv
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
 import { contactFinanceMap } from '$server/services/crm-finance.service';
 
-export const load: PageServerLoad = async ({ locals, depends }) => {
+export const load: PageServerLoad = async ({ locals, depends, parent }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('crm:contacts');
+  // Personal orgs de-emphasize the sales funnel (WP2) — the revenue-ranked
+  // finance columns (revenue/invoices/lastPurchase) aren't rendered for them,
+  // so skip the finance-map query entirely.
+  const { activeOrgKind } = await parent();
+  const isPersonal = activeOrgKind === 'personal';
 
   // The full roster is loaded ONCE (Valkey-cached) and all search/stage/tag/sort
   // filtering happens client-side — instant, no Apply button, no per-keystroke
@@ -32,8 +37,9 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     : cached;
 
   // Finance map is fetched AFTER the cached roster so the Valkey roster cache
-  // stays finance-free. Returns {} when either 'crm' or 'finances' module is off.
-  const financeMap = await contactFinanceMap(ctx);
+  // stays finance-free. Returns {} when either 'crm' or 'finances' module is off,
+  // or (WP2) when the org is personal — the revenue-ranked columns never render.
+  const financeMap = isPersonal ? {} : await contactFinanceMap(ctx);
   const financeEnabled = Object.keys(financeMap).length > 0;
   const contacts = financeEnabled
     ? withAutoTags.map((c) => ({ ...c, finance: financeMap[c.contact_id] ?? null }))
