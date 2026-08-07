@@ -54,6 +54,7 @@ export {
   toSearchParams,
   toTimestamps,
   fromTimestamps,
+  parseInclusiveEnd,
   zonedStartOfDay,
   zonedDayWindow,
 } from './url';

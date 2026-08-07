@@ -10,7 +10,7 @@ import {
   financeFloorStage,
 } from '$lib/components/crm/crm-funnel';
 import { temperatureOf } from '$lib/components/crm/crm-format';
-import { fromTimestamps } from '$lib/components/dashboard/date-range/url';
+import { fromTimestamps, toTimestamps } from '$lib/components/dashboard/date-range/url';
 
 const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'] as const;
 
@@ -31,8 +31,9 @@ function resolveRange(
   if (range === 'custom') {
     const from = params.get('from');
     const to = params.get('to');
-    const fromTs = from ? Date.parse(`${from}T00:00:00`) : -Infinity;
-    const toTs = to ? Date.parse(`${to}T23:59:59`) : now;
+    // Bounds come from the shared adapter so the `to` day is whole (…T23:59:59.999);
+    // a hand-rolled T23:59:59 silently dropped that final second's records.
+    const { fromTs, toTs } = toTimestamps({ from: from ?? '', to: to ?? '' });
     return {
       range,
       fromTs: Number.isFinite(fromTs) ? fromTs : -Infinity,

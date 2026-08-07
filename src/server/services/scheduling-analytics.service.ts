@@ -1,4 +1,4 @@
-import { and, eq, inArray, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, inArray, gte, lt, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -35,7 +35,10 @@ export interface ResourceUtilization {
   days: UtilizationDay[];
 }
 
-/** Per-staff utilization across [from, to], with a per-day breakdown for the heatmap. */
+/** Per-staff utilization across the HALF-OPEN window [from, to), with a per-day
+ *  breakdown for the heatmap. `to` is the exclusive end instant — to cover a whole
+ *  calendar day, pass the start of the NEXT day (a midnight `to` compared with `<=`
+ *  yields a day column that can only ever hold 00:00:00.000 bookings). */
 export async function utilizationHeatmap(ctx: CoreCtx, from: Date, to: Date): Promise<ResourceUtilization[]> {
   return withOrgCore(ctx, async (tx) => {
     const resources = await tx
@@ -72,7 +75,7 @@ export async function utilizationHeatmap(ctx: CoreCtx, from: Date, to: Date): Pr
           eq(schedBookings.orgId, ctx.tenantId),
           inArray(schedBookings.status, ['accepted', 'completed']),
           gte(schedBookings.startTime, from),
-          lte(schedBookings.startTime, to),
+          lt(schedBookings.startTime, to),
         ),
       );
     const bookedByResource = new Map<string, typeof bookings>();
@@ -84,7 +87,7 @@ export async function utilizationHeatmap(ctx: CoreCtx, from: Date, to: Date): Pr
 
     // Day buckets across the range.
     const dayKeys: string[] = [];
-    for (let t = Date.parse(from.toISOString().slice(0, 10) + 'T00:00:00Z'); t <= to.getTime(); t += MS_PER_DAY) {
+    for (let t = Date.parse(from.toISOString().slice(0, 10) + 'T00:00:00Z'); t < to.getTime(); t += MS_PER_DAY) {
       dayKeys.push(new Date(t).toISOString().slice(0, 10));
     }
 
@@ -142,9 +145,9 @@ export async function schedulingSummary(ctx: CoreCtx, from: Date, to: Date): Pro
     const [row] = (await tx.execute(sql`
       select
         count(*) filter (where status in ('accepted','pending') and start_time >= now()) as upcoming,
-        count(*) filter (where status in ('accepted','completed') and start_time >= ${f}::timestamptz and start_time <= ${t}::timestamptz) as booked,
-        count(*) filter (where status = 'cancelled' and start_time >= ${f}::timestamptz and start_time <= ${t}::timestamptz) as cancelled,
-        count(*) filter (where status = 'no_show' and start_time >= ${f}::timestamptz and start_time <= ${t}::timestamptz) as no_show
+        count(*) filter (where status in ('accepted','completed') and start_time >= ${f}::timestamptz and start_time < ${t}::timestamptz) as booked,
+        count(*) filter (where status = 'cancelled' and start_time >= ${f}::timestamptz and start_time < ${t}::timestamptz) as cancelled,
+        count(*) filter (where status = 'no_show' and start_time >= ${f}::timestamptz and start_time < ${t}::timestamptz) as no_show
       from sched_bookings where org_id = ${ctx.tenantId}
     `)) as unknown as Array<Record<string, unknown>>;
     const [counts] = (await tx.execute(sql`
@@ -173,7 +176,7 @@ export interface ResourceRevenue {
 
 /**
  * Revenue/CRM overlay: for each staff, sum finance revenue of invoices belonging
- * to the CRM contacts they've seen in [from, to]. Soft-joins sched_bookings →
+ * to the CRM contacts they've seen in the half-open window [from, to). Soft-joins sched_bookings →
  * crm_contacts (crm_contact_id) → crm_contact_identities (phone) → fin_invoices
  * (last-9-digit phone match, the established crm-finance bridge). Returns [] if
  * the CRM/finance tables aren't present.
@@ -187,7 +190,7 @@ export async function revenueByResource(ctx: CoreCtx, from: Date, to: Date): Pro
     // entirely. This keeps the dashboard fast when scheduling is fresh/empty.
     const gate = (await tx.execute(sql`
       select count(*)::int as n from sched_bookings
-      where org_id = ${ctx.tenantId} and start_time >= ${f}::timestamptz and start_time <= ${t}::timestamptz
+      where org_id = ${ctx.tenantId} and start_time >= ${f}::timestamptz and start_time < ${t}::timestamptz
         and status in ('accepted','completed') and crm_contact_id is not null
     `)) as unknown as Array<{ n: number }>;
     if (!gate.length || Number(gate[0].n) === 0) return [];
@@ -199,7 +202,7 @@ export async function revenueByResource(ctx: CoreCtx, from: Date, to: Date): Pro
       with seen as (
         select b.resource_id, b.crm_contact_id, count(*)::int as bookings
         from sched_bookings b
-        where b.org_id = ${ctx.tenantId} and b.start_time >= ${f}::timestamptz and b.start_time <= ${t}::timestamptz
+        where b.org_id = ${ctx.tenantId} and b.start_time >= ${f}::timestamptz and b.start_time < ${t}::timestamptz
           and b.status in ('accepted','completed') and b.crm_contact_id is not null
         group by b.resource_id, b.crm_contact_id
       ),
