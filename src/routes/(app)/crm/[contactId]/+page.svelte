@@ -80,6 +80,10 @@
   );
 
   const fields = $derived((c.customFields ?? {}) as Record<string, unknown>);
+  // Canonical registry sex ('M' | 'F'); null when this party was never enriched.
+  const partySex = $derived(
+    data.party?.sex === 'M' || data.party?.sex === 'F' ? data.party.sex : null,
+  );
 
   // ── Standard details ───────────────────────────────────────────────────────
   // A fixed set of core fields shown for EVERY customer (even when empty) so hub
@@ -91,7 +95,7 @@
     id: string;
     label: () => string;
     icon: typeof User;
-    kind: 'name' | 'phone' | 'cf' | 'dni' | 'dob';
+    kind: 'name' | 'phone' | 'cf' | 'dni' | 'dob' | 'sex';
     keys: string[];
   };
   const STD: StdField[] = [
@@ -115,7 +119,7 @@
       kind: 'dob',
       keys: ['edad', 'fecha_nacimiento'],
     },
-    { id: 'sexo', label: m.crm_std_sex, icon: User, kind: 'cf', keys: ['sexo'] },
+    { id: 'sexo', label: m.crm_std_sex, icon: User, kind: 'sex', keys: ['sexo'] },
     { id: 'distrito', label: m.crm_std_district, icon: MapPin, kind: 'cf', keys: ['distrito'] },
     { id: 'motivo', label: m.crm_std_reason, icon: Stethoscope, kind: 'cf', keys: ['motivo'] },
     {
@@ -142,6 +146,10 @@
     // sync (208 contacts read as dni_verified with a blank custom_fields.dni).
     if (f.kind === 'dni') return data.party?.docNumber ?? cfValue(f.keys);
     if (f.kind === 'dob') return data.party?.dob ?? '';
+    // Sex is canonical 'M'/'F' on the party (registry data), localized here.
+    // The legacy Spanish custom_fields.sexo is only the fallback for contacts
+    // whose party was never enriched — never a place to WRITE a display label.
+    if (f.kind === 'sex') return sexLabel(partySex) || cfValue(f.keys);
     if (f.kind === 'phone') {
       const wa = data.identities.find((i) => i.channel === 'whatsapp');
       if (wa) return identityValue(wa.externalId, wa.handle);
@@ -177,9 +185,12 @@
     // we keep, write canonical standard keys, then the edited additional rows.
     const next: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(fields)) if (isReservedMetaKey(k)) next[k] = v;
-    // standard cf fields → canonical key (clear stale aliases by simply not copying them)
+    // standard cf fields → canonical key (clear stale aliases by simply not copying them).
+    // 'sex' is only writable as a custom field while the party carries no registry
+    // sex — once it does, that canonical M/F is the value and the form shows it
+    // read-only, so a localized label can never be persisted over it.
     for (const f of STD) {
-      if (f.kind === 'cf') {
+      if (f.kind === 'cf' || (f.kind === 'sex' && !partySex)) {
         const val = (stdDraft[f.id] ?? '').trim();
         if (val) next[f.keys[0]] = val;
       }
@@ -203,6 +214,12 @@
     const name = (stdDraft.name ?? '').trim();
     if (name !== (c.displayName ?? '')) body.displayName = name || null;
     await patch(body);
+    // The DNI is a PARTY column — `customFields` can't carry it, so a typed-but-
+    // never-looked-up document has to be committed through its own writer or it
+    // silently disappears on save. Runs after the patch so the registry's
+    // official name wins over whatever was in the name draft.
+    const dni = (stdDraft.dni ?? '').trim();
+    if (/^\d{8}$/.test(dni) && dni !== (data.party?.docNumber ?? '')) await applyDni(dni);
     editingDetails = false;
   }
   function removeAddRow(i: number) {
@@ -210,7 +227,13 @@
   }
 
   // ── DNI registry lookup (offer to fill name/sex/age) ────────────────────────
-  type DniHit = { found: true; name: string | null; sex: 'M' | 'F' | null; age: number | null };
+  type DniHit = {
+    found: true;
+    name: string | null;
+    sex: 'M' | 'F' | null;
+    dob: string | null;
+    age: number | null;
+  };
   type DniLookup =
     | { state: 'idle' }
     | { state: 'loading' }
@@ -233,9 +256,24 @@
         dniLookup = { state: 'error' };
         return;
       }
-      const data = (await res.json()) as { found: boolean; name?: string | null; sex?: 'M' | 'F' | null; age?: number | null };
-      dniLookup = data.found
-        ? { state: 'hit', hit: { found: true, name: data.name ?? null, sex: data.sex ?? null, age: data.age ?? null } }
+      const hit = (await res.json()) as {
+        found: boolean;
+        name?: string | null;
+        sex?: 'M' | 'F' | null;
+        dob?: string | null;
+        age?: number | null;
+      };
+      dniLookup = hit.found
+        ? {
+            state: 'hit',
+            hit: {
+              found: true,
+              name: hit.name ?? null,
+              sex: hit.sex ?? null,
+              dob: hit.dob ?? null,
+              age: hit.age ?? null,
+            },
+          }
         : { state: 'miss' };
     } catch {
       dniLookup = { state: 'error' };
@@ -246,10 +284,42 @@
     return sex === 'M' ? m.crm_sex_m() : sex === 'F' ? m.crm_sex_f() : '';
   }
 
-  // Apply the registry match into the edit draft — the user reviews before saving.
-  function applyDniHit(hit: DniHit) {
-    if (hit.name) stdDraft.name = hit.name;
-    if (hit.sex) stdDraft.sexo = sexLabel(hit.sex);
+  /**
+   * Commit a DNI onto the contact's PARTY SPINE (doc_number + dob + registry
+   * name/sex + verification). Identity does NOT live in custom_fields, so the
+   * old client-side "fill the drafts" apply lost the DNI and the date of birth
+   * on save and wrote sex as a localized label. The server re-queries the
+   * registry itself — the browser never gets to assert what the registry said.
+   */
+  async function applyDni(dni: string): Promise<boolean> {
+    busy = true;
+    try {
+      const res = await fetch('/api/crm/dni-lookup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dni, contactId: c.id }),
+      });
+      if (!res.ok) {
+        toastWarning(res.status === 409 ? m.crm_dni_conflict() : m.crm_dni_error());
+        return false;
+      }
+      await invalidate('crm:contact');
+      return true;
+    } catch {
+      toastWarning(m.crm_dni_error());
+      return false;
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function applyDniHit() {
+    if (!(await applyDni(stdDraft.dni.trim()))) return;
+    // Re-seed the drafts from the refreshed record so the open form shows the
+    // registry values instead of the pre-lookup ones.
+    stdDraft.name = c.displayName ?? '';
+    stdDraft.sexo = stdValue(STD.find((f) => f.id === 'sexo')!);
+    stdDraft.dob = data.party?.dob ?? '';
     dniLookup = { state: 'idle' };
   }
 
@@ -370,8 +440,7 @@
   function messageBelongsToContact(event: MessageCommittedEvent): boolean {
     if (!event.chatId) return false;
     return data.identities.some(
-      (identity) =>
-        identity.channel === event.channel && identity.externalId === event.chatId,
+      (identity) => identity.channel === event.channel && identity.externalId === event.chatId,
     );
   }
 
@@ -540,6 +609,12 @@
                     >{m.crm_age_years({ n: data.party.age })}</span
                   >{/if}
               </span>
+            {:else if f.kind === 'sex' && partySex}
+              <!-- Registry sex, like the date of birth: read-only, because
+                 hand-editing it would contradict the verified identity. -->
+              <span class="meta-val dob-ro" title={m.crm_dob_registry_hint()}>
+                {stdDraft[f.id] || m.crm_field_empty()}
+              </span>
             {:else}
               <input
                 id={`std-${f.id}`}
@@ -559,14 +634,16 @@
                     {[
                       hit.name,
                       sexLabel(hit.sex),
+                      hit.dob,
                       hit.age != null ? m.crm_dni_age({ n: hit.age }) : '',
                     ]
                       .filter(Boolean)
                       .join(' · ')}
                   </span>
                 </div>
-                <Button variant="primary" size="sm" onclick={() => applyDniHit(hit)}>
-                  <Check size={iconSizes.sm} /> {m.crm_dni_apply()}
+                <Button variant="primary" size="sm" onclick={applyDniHit} disabled={busy}>
+                  <Check size={iconSizes.sm} />
+                  {m.crm_dni_apply()}
                 </Button>
               {:else if dniLookup.state === 'miss'}
                 <span class="dni-msg">{m.crm_dni_not_found()}</span>
@@ -783,11 +860,11 @@
           </div>
           <div>
             <dt>{m.crm_cashflow_last()}</dt>
-            <dd
-              >{data.cashflow.lastTransactionAt
+            <dd>
+              {data.cashflow.lastTransactionAt
                 ? relativeTime(data.cashflow.lastTransactionAt)
-                : '—'}</dd
-            >
+                : '—'}
+            </dd>
           </div>
         </dl>
         <p class="fin-recent-h">{m.crm_cashflow_count({ n: data.cashflow.transactions })}</p>
@@ -1577,11 +1654,7 @@
     color: var(--color-warning);
   }
   .fin-status[data-status='void'] {
-    background: color-mix(
-      in srgb,
-      var(--color-destructive) 14%,
-      transparent
-    );
+    background: color-mix(in srgb, var(--color-destructive) 14%, transparent);
     color: var(--color-destructive);
   }
 </style>
