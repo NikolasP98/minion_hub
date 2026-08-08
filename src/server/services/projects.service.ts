@@ -341,6 +341,59 @@ export function workforceProjectIdOf(p: Pick<ProjProject, 'metadata'>): string |
   return typeof m.workforceProjectId === 'string' ? m.workforceProjectId : null;
 }
 
+/** The GitHub repo a project's code lives in. Stored in metadata, exactly like
+ *  the workforce link — the repo is a POINTER, not project data, so it needs no
+ *  column and no migration. */
+export type GithubRepoLink = { owner: string; repo: string; defaultBranch?: string | null };
+
+export function githubRepoOf(p: Pick<ProjProject, 'metadata'>): GithubRepoLink | null {
+  const m = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : {};
+  const gh = m.github;
+  if (!gh || typeof gh !== 'object') return null;
+  const { owner, repo, defaultBranch } = gh as Record<string, unknown>;
+  if (typeof owner !== 'string' || typeof repo !== 'string' || !owner || !repo) return null;
+  return { owner, repo, defaultBranch: typeof defaultBranch === 'string' ? defaultBranch : null };
+}
+
+/** Link or unlink (null) a project's GitHub repo. Audited like every other write. */
+export function setGithubRepo(
+  ctx: CoreCtx,
+  id: string,
+  link: GithubRepoLink | null,
+  actor: Actor,
+): Promise<ProjProject | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [cur] = await tx
+      .select()
+      .from(projProjects)
+      .where(and(eq(projProjects.id, id), eq(projProjects.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!cur) return null;
+    const meta = cur.metadata && typeof cur.metadata === 'object' ? (cur.metadata as Record<string, unknown>) : {};
+    const old = githubRepoOf(cur);
+    const oldLabel = old ? `${old.owner}/${old.repo}` : null;
+    const newLabel = link ? `${link.owner}/${link.repo}` : null;
+    if (oldLabel === newLabel) return cur;
+    const next = { ...meta };
+    if (link) next.github = { owner: link.owner, repo: link.repo, defaultBranch: link.defaultBranch ?? null };
+    else delete next.github;
+    const [row] = await tx
+      .update(projProjects)
+      .set({ metadata: next, updatedAt: new Date() })
+      .where(and(eq(projProjects.id, id), eq(projProjects.orgId, ctx.tenantId)))
+      .returning();
+    if (!row) return null;
+    await recordAudit(ctx, {
+      refType: 'proj_project',
+      refId: id,
+      op: link ? 'link' : 'unlink',
+      changes: [{ field: 'githubRepo', label: 'GitHub repo', old: oldLabel, new: newLabel }],
+      actor,
+    });
+    return row;
+  });
+}
+
 export function createProject(ctx: CoreCtx, data: NewProjectInput, actor: Actor): Promise<ProjProject> {
   return withOrgCore(ctx, async (tx) => {
     const humanId = await nextSerialId(tx, ctx.tenantId, 'PRJ-.YYYY.-', new Date());

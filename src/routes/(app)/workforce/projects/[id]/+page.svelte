@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
-	import { PageHeader, Button, Select } from '$lib/components/ui';
-	import { Flag, Plus, Clock, Boxes, Link2, Unlink, Workflow } from 'lucide-svelte';
+	import { PageHeader, Button, Select, iconSizes } from '$lib/components/ui';
+	import { Flag, Plus, Clock, Boxes, Link2, Unlink, Workflow, GitBranch } from 'lucide-svelte';
 	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -124,7 +124,16 @@
 <svelte:head><title>{data.project.name}</title></svelte:head>
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
-	<PageHeader title={data.project.name} subtitle={data.project.humanId ?? undefined} />
+	<PageHeader title={data.project.name} subtitle={data.project.humanId ?? undefined}>
+		{#snippet actions()}
+			<!-- Repo is independent of workforce: a project can have code without an
+			     execution layer, so this link is never gated on workforceAvailable. -->
+			<a class="btn ghost sm" href={`/workforce/projects/${data.project.id}/repo`}>
+				<GitBranch size={iconSizes.sm} />
+				{m.repo_title()}
+			</a>
+		{/snippet}
+	</PageHeader>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
 		<!-- summary -->
@@ -151,7 +160,7 @@
 
 		<!-- milestones -->
 		<section class="card ms">
-			<header class="ms-head"><Flag size={14} /> Milestones</header>
+			<header class="ms-head"><Flag size={iconSizes.sm} /> Milestones</header>
 			<div class="ms-list">
 				{#each milestones as m (m.id)}
 					<span class="ms-chip" class:done={m.status === 'done'}>{m.title}</span>
@@ -175,7 +184,7 @@
 				disabled={busy || !newTaskTitle.trim() || !canAct('projects', 'edit')}
 				title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 				onclick={() => addTask(true)}
-			><Flag size={14} /> Milestone</Button>
+			><Flag size={iconSizes.sm} /> Milestone</Button>
 		</div>
 
 		<!-- board -->
@@ -223,22 +232,22 @@
 		<!-- execution layer (paperclip / workforce) -->
 		<section class="card exec" class:offline={!data.workforceAvailable}>
 			<header class="exec-head">
-				<span><Boxes size={14} /> Execution (workforce)</span>
+				<span><Boxes size={iconSizes.sm} /> Execution (workforce)</span>
 				{#if data.workforceProjectId}
 					<span>
 						{#if data.workforceAvailable}
 							<a class="btn ghost sm" href={`/workforce/projects/${data.project.id}/pipelines`}>
-								<Workflow size={13} /> {m.workforce_pipelines_title()}
+								<Workflow size={iconSizes.sm} /> {m.workforce_pipelines_title()}
 							</a>
 						{:else}
-							<span class="btn ghost sm disabled" aria-disabled="true"><Workflow size={13} /> {m.workforce_pipelines_title()}</span>
+							<span class="btn ghost sm disabled" aria-disabled="true"><Workflow size={iconSizes.sm} /> {m.workforce_pipelines_title()}</span>
 						{/if}
 						<Button variant="ghost"
 							class="btn ghost sm"
 							disabled={busy || !data.workforceAvailable || !canAct('projects', 'edit')}
 							title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 							onclick={() => patchProject({ workforceProjectId: null })}
-						><Unlink size={13} /> Unlink</Button>
+						><Unlink size={iconSizes.sm} /> Unlink</Button>
 					</span>
 				{/if}
 			</header>
@@ -359,7 +368,7 @@
 						disabled={busy || !linkChoice || !canAct('projects', 'edit')}
 						title={canAct('projects', 'edit') ? undefined : m.no_permission()}
 						onclick={() => patchProject({ workforceProjectId: linkChoice })}
-					><Link2 size={13} /> Link</Button>
+					><Link2 size={iconSizes.sm} /> Link</Button>
 				</div>
 				{#if data.linkable.length === 0}
 					<p class="t-caption empty">No workforce projects available to link.</p>
@@ -369,7 +378,7 @@
 
 		<!-- timesheets -->
 		<section class="card ts">
-			<header class="ts-head"><Clock size={14} /> Timesheets</header>
+			<header class="ts-head"><Clock size={iconSizes.sm} /> Timesheets</header>
 			<div class="ts-add">
 				<input class="in date" type="date" bind:value={tsDate} />
 				<input class="in mins" type="number" min="1" bind:value={tsMinutes} title="Minutes" />
@@ -393,7 +402,7 @@
 
 		<!-- activity + audit -->
 		<section class="card">
-			<header class="ts-head"><Clock size={14} /> Activity</header>
+			<header class="ts-head"><Clock size={iconSizes.sm} /> Activity</header>
 			<DocTimeline items={data.timeline} onComment={postComment} />
 		</section>
 	</div>

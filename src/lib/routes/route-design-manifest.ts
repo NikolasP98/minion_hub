@@ -599,6 +599,11 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
       fixtureId: 'project-pipelines',
     },
   ),
+  // Reuses the project-detail fixture: same [id], and the repo tab is a view of
+  // that project — no second fixture to keep in sync.
+  screen('/workforce/projects/[id]/repo', 'Project repository', 'workforce', 'record-detail', {
+    fixtureId: 'project-detail',
+  }),
   screen('/workforce/reliability', 'Workforce reliability', 'workforce', 'dashboard'),
   screen('/workforce/settings', 'Workforce settings', 'workforce', 'form-settings'),
   screen('/workforce/settings/agents', 'Workforce agent settings', 'workforce', 'form-settings'),
