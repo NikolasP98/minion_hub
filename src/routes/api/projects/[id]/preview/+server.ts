@@ -4,7 +4,11 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { getProject, githubRepoOf } from '$server/services/projects.service';
-import { startPreview, stopPreview } from '$server/services/preview-runner.service';
+import {
+  startPreview,
+  stopPreview,
+  previewsForRepo,
+} from '$server/services/preview-runner.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
 
 /**
@@ -62,8 +66,19 @@ export const DELETE: RequestHandler = async ({ locals, params, request }) => {
   if (!ctx) throw error(401);
   const project = await getProject(ctx, params.id!);
   if (!project) throw error(404);
+  const ref = githubRepoOf(project);
+  if (!ref) throw error(409, 'This project has no linked repository');
 
   const body = await parseBody(request, stopSchema);
+
+  // The preview id is a runner-global handle, NOT scoped to this project — so
+  // it must be proved to belong to THIS project's repo before we act on it.
+  // Without this, any member of any org could stop another org's preview by id.
+  // 404 (not 403) so a wrong id leaks nothing about what exists.
+  const owned = await previewsForRepo(`${ref.owner}/${ref.repo}`);
+  if (!owned.available) failure(owned.reason ?? 'error');
+  if (!owned.previews.some((p) => p.id === body.previewId)) throw error(404);
+
   const res = await stopPreview(body.previewId);
   if (!res.ok) failure(res.reason, res.detail);
   return json({ ok: true });
