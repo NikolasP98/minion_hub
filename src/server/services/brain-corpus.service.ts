@@ -587,6 +587,11 @@ export async function ensureMasterBrain(ctx: CoreCtx, createdBy?: string | null)
  * channel/account pair in the org-scoped ledger. */
 export async function discoverConversationSources(ctx: CoreCtx): Promise<KnowledgeSource[]> {
   return withOrgCore(ctx, async (tx) => {
+    // The composite count(distinct (chat_id, month)) below sorts the org's
+    // whole eligible ledger; at the server default work_mem (2MB) that sort
+    // spilled ~88GB of temp file I/O per reconcile tick (2026-07 IO alert).
+    // SET LOCAL keeps the bump scoped to this txn.
+    await tx.execute(sql`select set_config('work_mem', '128MB', true)`);
     const accounts = (await tx.execute(sql`
       select lower(trim(message.channel)) as channel,
         coalesce(nullif(trim(message.account_id), ''), 'default') as account_id,
