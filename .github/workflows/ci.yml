@@ -28,6 +28,7 @@ jobs:
         run: |
           cp .env.example .env
           bun run i18n:compile
+          bunx svelte-kit sync
 
       - name: Unit tests
         # --retry=2 absorbs known parallel-load flakes (timeouts that pass in isolation)
