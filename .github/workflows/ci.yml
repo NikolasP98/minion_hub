@@ -10,11 +10,15 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      PUBLIC_DEFAULT_ORG_SLUG: ci
+      # No PUBLIC_DEFAULT_ORG_SLUG override here: agent-org.ts derives its org
+      # regex from it, and tests expect the .env.example default (faces-sculptors).
       PUBLIC_POSTHOG_HOST: https://posthog.invalid
       PUBLIC_POSTHOG_KEY: ci
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: ui-audit-inventory resolves its pinned baseline commit.
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
