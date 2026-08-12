@@ -18,10 +18,12 @@ const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
  * than relying on a throw, so it stays correct if that swallow ever changes.
  *
  * Delivery reuses the same `channels.send` primitive notif.service uses, but
- * deliberately NOT the notif_rules engine: that needs a rule row, an org with
- * rules enabled, and the /api/notifications/tick crontab line — which is not
- * currently scheduled on netcup. An alert that depends on unscheduled cron is
- * the bug it is meant to catch.
+ * deliberately NOT the notif_rules engine: that path only fires if a rule row
+ * exists AND the org has rules enabled AND /api/notifications/tick is actually
+ * scheduled. `notif_rules` is empty in prod (checked 2026-08-12) and that tick
+ * is netcup-wired rather than a vercel.json cron, so it has more ways to be
+ * silently off than the failure it would report. This route is itself a
+ * vercel.json cron and ran every day right through the outage.
  *
  * ponytail: no dedup — a broken money pipeline earns one message per day until
  * it is fixed. Add state only if a real incident proves that is noise.
