@@ -61,7 +61,14 @@ export class SusiiClient {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ username: this.creds.username, password: this.creds.password }),
     });
-    if (!res.ok) throw new Error(`susii login failed: ${res.status}`);
+    if (!res.ok) {
+      // Carry SUSII's reason, not just the status. A bare `400` cost 14 days of
+      // silent staleness in Aug 2026 because nothing distinguished "password
+      // rotated" (DRF non_field_errors) from a transport/shape problem. DRF
+      // never echoes the submitted password, so the body is safe to surface.
+      const detail = await res.text().catch(() => '');
+      throw new Error(`susii login failed: ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ''}`);
+    }
     const { key } = (await res.json()) as { key: string };
     this.token = key;
   }
