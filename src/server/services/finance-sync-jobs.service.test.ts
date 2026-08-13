@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { enqueueJob, getActiveJob, claimJob, requestCancel, isCancelRequested } from './finance-sync-jobs.service';
+import { enqueueJob, getActiveJob, claimJob, requestCancel, isCancelRequested, isJobStale, STALE_MS } from './finance-sync-jobs.service';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
@@ -61,5 +61,30 @@ describe('cancel', () => {
     const { db, resolve } = createMockDb();
     resolve([{ cancelRequested: true }]);
     expect(await isCancelRequested(ctx(db), 'job-1')).toBe(true);
+  });
+});
+
+describe('isJobStale', () => {
+  const NOW = Date.UTC(2026, 7, 13, 7, 30, 0);
+  const at = (msAgo: number) => new Date(NOW - msAgo);
+
+  it('treats a running job with a fresh heartbeat as alive', () => {
+    expect(isJobStale({ status: 'running', heartbeatAt: at(60_000) }, NOW)).toBe(false);
+  });
+
+  it('treats a running job past STALE_MS as dead — the frozen-worker case', () => {
+    // Aug 2026: worker died 2m into a run, row stayed `running` forever and the
+    // UI disabled the Sync button that would have resumed it.
+    expect(isJobStale({ status: 'running', heartbeatAt: at(STALE_MS + 1) }, NOW)).toBe(true);
+  });
+
+  it('treats a running job with no heartbeat as dead', () => {
+    expect(isJobStale({ status: 'running', heartbeatAt: null }, NOW)).toBe(true);
+  });
+
+  it('never calls a terminal job stale, however old', () => {
+    for (const status of ['succeeded', 'failed', 'cancelled', 'queued'] as const) {
+      expect(isJobStale({ status, heartbeatAt: at(864_000_000) }, NOW)).toBe(false);
+    }
   });
 });

@@ -8,6 +8,23 @@ export const STALE_MS = 5 * 60_000; // 5min — wide enough that a slow page (pe
 const ACTIVE = ['queued', 'running'];
 const staleClause = sql`now() - interval '5 minutes'`;
 
+/**
+ * Is this `running` row a corpse? Same rule `claimJob`/`findResumableJobs`
+ * already apply in SQL, exposed so callers outside this module stop inventing
+ * a third answer. A dead worker leaves `running` behind forever (nothing
+ * rewrites the row), so anything that asks "is a sync happening right now"
+ * MUST consult the heartbeat — status alone lies.
+ *
+ * Aug 2026: /sync/status didn't, so a frozen job disabled the Sync button
+ * permanently — the one control that would have recovered it, since claimJob
+ * re-claims exactly this state.
+ */
+export function isJobStale(job: Pick<FinSyncJob, 'status' | 'heartbeatAt'>, now = Date.now()): boolean {
+  if (job.status !== 'running') return false;
+  if (!job.heartbeatAt) return true; // running with no heartbeat = never claimed
+  return now - new Date(job.heartbeatAt).getTime() > STALE_MS;
+}
+
 export function getActiveJob(ctx: CoreCtx, provider: string): Promise<FinSyncJob | null> {
   return withOrgCore(ctx, async (tx) => {
     const [row] = await tx.select().from(finSyncJobs)
