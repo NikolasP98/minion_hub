@@ -61,11 +61,14 @@ describe('PUT /api/finances/sources credential handling', () => {
     expect(mockUpsertSource).not.toHaveBeenCalled();
   });
 
-  it('stores credentials the provider accepts', async () => {
+  it('stores credentials the provider accepts and reports verified:true', async () => {
     const res = await call({ username: 'u', password: 'good' });
     expect(res.status).toBe(200);
     expect(mockEncryptCreds).toHaveBeenCalledWith({ username: 'u', password: 'good' });
     expect(mockUpsertSource).toHaveBeenCalled();
+    // The UI shows "credentials verified" off this flag; `last_status` still
+    // says 'failed' until the next sync, so without it a good save looks broken.
+    expect(await res.json()).toMatchObject({ ok: true, verified: true });
   });
 
   it('keeps the stored credentials when BOTH fields are blank (config-only edit)', async () => {

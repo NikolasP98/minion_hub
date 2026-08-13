@@ -46,6 +46,13 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     throw error(400, 'provide BOTH username and password, or leave both blank to keep the current credentials');
   }
 
+  // null = no probe ran (nothing to verify). true = the provider accepted these
+  // credentials just now. Returned so the UI can confirm auth immediately
+  // instead of leaving the user staring at `last_status`, which describes the
+  // last SYNC and stays 'failed' until the next run — the exact confusion that
+  // made a working credential look broken (Aug 2026).
+  let verified: boolean | null = null;
+
   let secretRefs: Record<string, unknown>;
   if (username && password) {
     // Verify before storing: `count()` performs the provider login, so a bad
@@ -55,6 +62,7 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     if (connector?.count) {
       try {
         await connector.count({ config: (body.config ?? {}) as Record<string, unknown>, secrets: { username, password } });
+        verified = true;
       } catch (e) {
         throw error(400, `provider rejected these credentials: ${e instanceof Error ? e.message : String(e)}`);
       }
@@ -71,5 +79,5 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     secretRefs,
     enabled: body.enabled !== false,
   });
-  return json({ ok: true });
+  return json({ ok: true, verified });
 };

@@ -2076,6 +2076,7 @@
   "fin_connector_saved": "Saved",
   "fin_connector_secret_password": "SUSII Password",
   "fin_connector_secret_username": "SUSII Username",
+  "fin_connector_verified": "Saved — credentials verified with the provider",
   "fin_connector_watermark": "Watermark",
   "fin_cost_partial_hint": "Cost incomplete — some materials have no stock valuation yet",
   "fin_dashboard_subtitle": "Revenue overview",

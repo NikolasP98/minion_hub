@@ -46,9 +46,18 @@
           enabled: connectorEnabled,
         }),
       });
+      // The server probes the provider before storing, so a 200 with
+      // verified:true means auth is confirmed RIGHT NOW. Say so — `Last status`
+      // below describes the last SYNC and stays 'failed' until the next run,
+      // which otherwise reads as "the credentials I just saved are broken".
+      const body = (await res.json().catch(() => null)) as
+        | { verified?: boolean | null; message?: string }
+        | null;
       connectorMsg = res.ok
-        ? { ok: true, text: m.fin_connector_saved() }
-        : { ok: false, text: m.fin_connector_error() };
+        ? { ok: true, text: body?.verified ? m.fin_connector_verified() : m.fin_connector_saved() }
+        : // Surface the provider's own rejection reason rather than a generic
+          // "Save failed" — that message is the whole point of probing.
+          { ok: false, text: body?.message || m.fin_connector_error() };
     } catch {
       connectorMsg = { ok: false, text: m.fin_connector_error() };
     } finally {

@@ -2076,6 +2076,7 @@
   "fin_connector_saved": "Guardado",
   "fin_connector_secret_password": "Contraseña SUSII",
   "fin_connector_secret_username": "Usuario SUSII",
+  "fin_connector_verified": "Guardado — credenciales verificadas con el proveedor",
   "fin_connector_watermark": "Marca de agua",
   "fin_cost_partial_hint": "Costo incompleto — algunos insumos aún no tienen valorización de stock",
   "fin_dashboard_subtitle": "Resumen de ingresos",
