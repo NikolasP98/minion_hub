@@ -1,4 +1,5 @@
 import type { CanonicalInvoice, CanonicalLineItem, CanonicalPayment, CanonicalClient } from '../connector';
+import { SUSII_METHOD_NAMES } from './susii-method-names';
 
 const PROVIDER = 'susii';
 const str = (v: unknown): string | null => (v == null ? null : String(v));
@@ -46,9 +47,12 @@ function mapItem(raw: Record<string, unknown>): CanonicalLineItem {
   };
 }
 function mapPayment(raw: Record<string, unknown>): CanonicalPayment {
+  // SUSII's own `method` field is null in practice; the real signal is the
+  // `business_payment_method` id, resolved via the static catalog.
+  const bpm = num(raw.business_payment_method);
   return {
     providerRef: str(raw.id),
-    method: str(raw.method),
+    method: str(raw.method) ?? (bpm != null ? (SUSII_METHOD_NAMES[bpm] ?? null) : null),
     paidAt: str(raw.date),
     amount: num(raw.amount),
     status: raw.is_paid === true ? 'paid' : raw.is_paid === false ? 'pending' : null,

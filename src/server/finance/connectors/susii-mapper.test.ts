@@ -79,3 +79,55 @@ describe('docless sale totals (SUSII sends no sale.total)', () => {
     expect(mapSusiiSale({ ...docless, items: [] }).total).toBeNull();
   });
 });
+
+describe('payment method resolution (business_payment_method catalog)', () => {
+  const sale = (payment: Record<string, unknown>) => ({
+    id: 1, date: '2026-08-13T10:00:00Z', number: 1, business: 5922,
+    items: [], payments: [payment],
+  });
+
+  it('resolves the id via the static catalog when SUSII method is null', () => {
+    const inv = mapSusiiSale(sale({ id: 9, date: '2026-08-13T10:00:00Z', method: null, business_payment_method: 15941, amount: '450', is_paid: true }));
+    expect(inv.payments[0].method).toBe('Tarjeta de Crédito');
+  });
+
+  it('keeps a SUSII-provided method string over the catalog', () => {
+    const inv = mapSusiiSale(sale({ id: 9, date: '2026-08-13T10:00:00Z', method: 'Custom', business_payment_method: 15941, amount: '450', is_paid: true }));
+    expect(inv.payments[0].method).toBe('Custom');
+  });
+
+  it('falls back to null on an unknown id (pre-map behavior)', () => {
+    const inv = mapSusiiSale(sale({ id: 9, date: '2026-08-13T10:00:00Z', method: null, business_payment_method: 99999, amount: '450', is_paid: true }));
+    expect(inv.payments[0].method).toBeNull();
+  });
+
+  it('falls back to null when the id is absent entirely', () => {
+    const inv = mapSusiiSale(sale({ id: 9, date: '2026-08-13T10:00:00Z', method: null, amount: '450', is_paid: true }));
+    expect(inv.payments[0].method).toBeNull();
+  });
+it('resolves method from business_payment_method when SUSII method is null (prod shape)', () => {
+    const inv = mapSusiiSale({
+      ...SALE,
+      payments: [{ id: 9, date: '2026-06-16T17:54:00Z', method: null, business_payment_method: 15941, amount: '450', is_paid: true }],
+    });
+    expect(inv.payments[0].method).toBe('Tarjeta de Crédito');
+  });
+
+  it('keeps an explicit SUSII method string over the id map, and unknown/absent ids stay null', () => {
+    const explicit = mapSusiiSale({
+      ...SALE,
+      payments: [{ id: 9, method: 'Yape QR', business_payment_method: 15941, amount: '450', is_paid: true }],
+    });
+    expect(explicit.payments[0].method).toBe('Yape QR');
+    const unknown = mapSusiiSale({
+      ...SALE,
+      payments: [{ id: 9, method: null, business_payment_method: 99999, amount: '450', is_paid: true }],
+    });
+    expect(unknown.payments[0].method).toBeNull();
+    const absent = mapSusiiSale({
+      ...SALE,
+      payments: [{ id: 9, method: null, amount: '450', is_paid: true }],
+    });
+    expect(absent.payments[0].method).toBeNull();
+  });
+});
