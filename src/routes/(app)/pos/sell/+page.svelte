@@ -242,6 +242,14 @@
     }
   }
 
+  // Only enabled methods are offered at the register; disabling one in
+  // /pos/settings removes it here without touching historical tickets.
+  const paymentMethods = $derived(
+    data.posSettings.methods
+      .filter((mth) => mth.enabled)
+      .map((mth) => ({ id: mth.id, label: mth.label, takesTendered: mth.takesTendered })),
+  );
+
   const totalCents = $derived(lines.reduce((s, l) => s + lineCents(l), 0));
   const total = $derived(totalCents / 100);
   const anyPriceless = $derived(lines.some((l) => l.unitPrice == null || l.unitPrice <= 0));
@@ -250,7 +258,7 @@
   const tenderOk = $derived(
     payments.every(
       (p) =>
-        p.method !== 'cash' ||
+        !p.takesTendered ||
         p.tendered == null ||
         Math.round(p.tendered * 100) >= Math.round(p.amount * 100),
     ),
@@ -308,7 +316,7 @@
               payments: payments.map((p) => ({
                 method: p.method,
                 amount: p.amount,
-                tendered: p.method === 'cash' ? (p.tendered ?? p.amount) : null,
+                tendered: p.takesTendered ? (p.tendered ?? p.amount) : null,
               })),
               partyId,
               customerName,
@@ -700,7 +708,7 @@
           />
         </div>
         <div class="charge-bar">
-          <PaymentPanel {total} methods={data.posSettings.methods} bind:payments />
+          <PaymentPanel {total} methods={paymentMethods} bind:payments />
           <div class="total-row">
             <span>{m.pos_sell_total()}</span>
             <span class="total">{formatMoney(total)}</span>

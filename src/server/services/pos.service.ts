@@ -73,17 +73,73 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // ---- settings ----
 
+/**
+ * A configurable POS payment method. `id` is the stable key persisted on
+ * `pos_payments.method` — renaming `label` never touches historical tickets.
+ * `takesTendered` replaces the old `method === 'cash'` special-case (spec
+ * 2026-08-14-pos-payment-methods-config-spec).
+ */
+export interface PaymentMethod {
+  id: string;
+  label: string;
+  enabled: boolean;
+  takesTendered: boolean;
+  surcharge?: { type: 'percent' | 'fixed'; amount: number };
+  documentDefault?: '03' | '01' | null;
+}
+
 export interface PosSettings {
-  methods: string[];
+  methods: PaymentMethod[];
   currency: string;
   requireCustomer: boolean;
   allowPriceOverride: boolean;
 }
 
-// Frozen (incl. the methods array) so a stray in-place mutation throws instead
-// of silently corrupting defaults for every org in the process.
+function capitalize(s: string): string {
+  return s.length ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+/**
+ * Accepts either shape a `pos_settings.methods` jsonb value may hold: the
+ * legacy `string[]` (pre-2026-08-14 rows) or the current `PaymentMethod[]`.
+ * A bare string `s` is upgraded to an object, guessing `takesTendered` from
+ * the one legacy special-case — `'cash'` may appear as a literal HERE ONLY,
+ * a one-time migration guess, never as branching logic elsewhere.
+ */
+export function normalizeMethods(raw: unknown): PaymentMethod[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((m) =>
+    typeof m === 'string'
+      ? {
+          id: m,
+          label: capitalize(m),
+          enabled: true,
+          takesTendered: m === 'cash',
+          documentDefault: null,
+        }
+      : (m as PaymentMethod),
+  );
+}
+
+// Frozen (incl. the methods array, and each method object) so a stray
+// in-place mutation throws instead of silently corrupting defaults for every
+// org in the process.
 export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
-  methods: Object.freeze(['cash', 'card', 'yape', 'plin', 'transfer']) as string[],
+  methods: Object.freeze(
+    [
+      { id: 'cash', label: 'Efectivo', enabled: true, takesTendered: true, documentDefault: null },
+      { id: 'card', label: 'Tarjeta', enabled: true, takesTendered: false, documentDefault: null },
+      { id: 'yape', label: 'Yape', enabled: true, takesTendered: false, documentDefault: null },
+      { id: 'plin', label: 'Plin', enabled: true, takesTendered: false, documentDefault: null },
+      {
+        id: 'transfer',
+        label: 'Transferencia',
+        enabled: true,
+        takesTendered: false,
+        documentDefault: null,
+      },
+    ].map((m) => Object.freeze(m)),
+  ) as PaymentMethod[],
   currency: 'PEN',
   requireCustomer: false,
   allowPriceOverride: true,
@@ -94,13 +150,36 @@ export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
     tx.select().from(posSettings).where(eq(posSettings.orgId, ctx.tenantId)).limit(1),
   );
   // Defensive copy — callers get a mutable object, never the shared singleton.
-  if (!row) return { ...DEFAULT_POS_SETTINGS, methods: [...DEFAULT_POS_SETTINGS.methods] };
+  if (!row)
+    return { ...DEFAULT_POS_SETTINGS, methods: DEFAULT_POS_SETTINGS.methods.map((m) => ({ ...m })) };
   return {
-    methods: row.methods as string[],
+    methods: normalizeMethods(row.methods),
     currency: row.currency,
     requireCustomer: row.requireCustomer,
     allowPriceOverride: row.allowPriceOverride,
   };
+}
+
+/** ids unique + non-empty lowercase, at least one enabled, surcharge >= 0. */
+function validateMethods(methods: PaymentMethod[]): void {
+  if (!Array.isArray(methods) || methods.length === 0) {
+    throw new PosError('methods must be a non-empty array', 'invalid_methods');
+  }
+  const seen = new Set<string>();
+  let anyEnabled = false;
+  for (const m of methods) {
+    const id = (m as Partial<PaymentMethod> | null)?.id;
+    if (typeof id !== 'string' || id.length === 0 || id !== id.toLowerCase()) {
+      throw new PosError('method id must be a non-empty lowercase string', 'invalid_methods');
+    }
+    if (seen.has(id)) throw new PosError(`duplicate method id ${id}`, 'duplicate_method_id');
+    seen.add(id);
+    if (m.enabled) anyEnabled = true;
+    if (m.surcharge && !(m.surcharge.amount >= 0)) {
+      throw new PosError('surcharge amount must be >= 0', 'invalid_surcharge');
+    }
+  }
+  if (!anyEnabled) throw new PosError('at least one method must be enabled', 'invalid_methods');
 }
 
 export async function updatePosSettings(
@@ -109,16 +188,7 @@ export async function updatePosSettings(
 ): Promise<PosSettings> {
   const current = await getPosSettings(ctx);
   const next: PosSettings = { ...current, ...patch };
-  if (
-    !Array.isArray(next.methods) ||
-    next.methods.length === 0 ||
-    next.methods.some((m) => typeof m !== 'string' || m !== m.toLowerCase() || m.length === 0)
-  ) {
-    throw new PosError(
-      'methods must be a non-empty array of non-empty lowercase strings',
-      'invalid_methods',
-    );
-  }
+  validateMethods(next.methods);
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .insert(posSettings)
@@ -127,7 +197,7 @@ export async function updatePosSettings(
       .returning(),
   );
   return {
-    methods: row.methods as string[],
+    methods: normalizeMethods(row.methods),
     currency: row.currency,
     requireCustomer: row.requireCustomer,
     allowPriceOverride: row.allowPriceOverride,
@@ -147,16 +217,21 @@ const NON_VOID = ne(posTickets.status, 'void');
 
 /**
  * Expected drawer amounts at close: per-method payment sums, plus the opening
- * float folded into cash ONLY (per the brief — the physical drawer starts with
- * a float; electronic methods have no starting balance to reconcile).
+ * float folded into whichever method(s) are `takesTendered` (per the brief —
+ * the physical drawer starts with a float; electronic methods have no
+ * starting balance to reconcile; cash stays the float method in practice).
  * Pure, so the math is unit-testable without a db.
  */
 export function computeExpected(
   byMethod: Record<string, number>,
   openingFloat: Record<string, number>,
+  methods: PaymentMethod[],
 ): Record<string, number> {
   const expected = { ...byMethod };
-  expected.cash = round2((expected.cash ?? 0) + Number(openingFloat.cash ?? 0));
+  for (const m of methods) {
+    if (!m.takesTendered) continue;
+    expected[m.id] = round2((expected[m.id] ?? 0) + Number(openingFloat[m.id] ?? 0));
+  }
   return expected;
 }
 
@@ -217,6 +292,9 @@ export async function closeShift(
   ctx: CoreCtx,
   input: { counted: Record<string, number>; note?: string | null; actor: Actor },
 ): Promise<PosShift> {
+  // withOrgCore doesn't nest (same reason as the accrual hook in
+  // stock-accruals.service.ts) — fetch settings outside the tx block.
+  const settings = await getPosSettings(ctx);
   return withOrgCore(ctx, async (tx) => {
     const [open] = await tx
       .select()
@@ -226,7 +304,11 @@ export async function closeShift(
     if (!open) throw new PosError('no open shift for this org', 'no_open_shift');
 
     const byMethod = await paymentsByMethod(tx, ctx.tenantId, open.id);
-    const expected = computeExpected(byMethod, (open.openingFloat as Record<string, number>) ?? {});
+    const expected = computeExpected(
+      byMethod,
+      (open.openingFloat as Record<string, number>) ?? {},
+      settings.methods,
+    );
 
     const [closed] = await tx
       .update(posShifts)
@@ -613,11 +695,11 @@ export async function submitTicket(
   }
   for (const p of input.payments) {
     if (p.amount < 0) throw new PosError('payment amount must be >= 0', 'invalid_amount');
-    if (!settings.methods.includes(p.method))
-      throw new PosError(`unknown method ${p.method}`, 'invalid_method');
-    if (p.method !== 'cash' && p.tendered != null)
+    const method = settings.methods.find((m) => m.id === p.method);
+    if (!method) throw new PosError(`unknown method ${p.method}`, 'invalid_method');
+    if (!method.takesTendered && p.tendered != null)
       throw new PosError('tendered is cash-only', 'invalid_tender');
-    if (p.method === 'cash' && p.tendered != null && p.tendered < p.amount)
+    if (method.takesTendered && p.tendered != null && p.tendered < p.amount)
       throw new PosError('tendered below amount', 'invalid_tender');
   }
   const { lineTotals, subtotal, discount, total } = computeTicketTotals(

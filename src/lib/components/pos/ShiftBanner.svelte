@@ -20,7 +20,7 @@
     return () => clearInterval(id);
   });
 
-  const settings = $derived(page.data.posSettings as { methods: string[] });
+  const settings = $derived(page.data.posSettings as { methods: PosMethodLike[] });
   const openShift = $derived(
     page.data.openShift as { shift: PosShiftLike; summary: ShiftSummaryLike } | null,
   );
@@ -39,6 +39,16 @@
     gross: number;
     byMethod: Record<string, number>;
   }
+  interface PosMethodLike {
+    id: string;
+    label: string;
+    enabled: boolean;
+    takesTendered: boolean;
+  }
+
+  // Only enabled methods get an opening-float / counted input at shift
+  // open/close — a disabled method has nothing to reconcile.
+  const enabledMethods = $derived(settings.methods.filter((mth) => mth.enabled));
 
   const isStale = $derived(
     openShift ? now - new Date(openShift.shift.openedAt).getTime() > STALE_MS : false,
@@ -48,7 +58,7 @@
   );
 
   function zeroedByMethod(): Record<string, number> {
-    return Object.fromEntries(settings.methods.map((mth) => [mth, 0]));
+    return Object.fromEntries(enabledMethods.map((mth) => [mth.id, 0]));
   }
 
   // ---- open shift ----
@@ -117,7 +127,10 @@
     const byMethod = data.summary.byMethod ?? {};
     const float = data.shift.openingFloat ?? {};
     expected = { ...byMethod };
-    expected.cash = (expected.cash ?? 0) + Number(float.cash ?? 0);
+    for (const mth of settings.methods) {
+      if (!mth.takesTendered) continue;
+      expected[mth.id] = (expected[mth.id] ?? 0) + Number(float[mth.id] ?? 0);
+    }
   }
 
   function difference(mth: string): number {
@@ -218,10 +231,10 @@
 
 <Modal bind:open={openModal} title={m.pos_shift_open_cta()} size="sm">
   <div class="form">
-    {#each settings.methods as mth (mth)}
+    {#each enabledMethods as mth (mth.id)}
       <label class="field">
-        <span class="lbl">{m.pos_shift_float()} · {mth}</span>
-        <input type="number" step="0.01" bind:value={openingFloat[mth]} />
+        <span class="lbl">{m.pos_shift_float()} · {mth.label}</span>
+        <input type="number" step="0.01" bind:value={openingFloat[mth.id]} />
       </label>
     {/each}
   </div>
@@ -232,16 +245,16 @@
 
 <Modal bind:open={closeModal} title={m.pos_shift_close_cta()} size="sm">
   <div class="form">
-    {#each settings.methods as mth (mth)}
+    {#each enabledMethods as mth (mth.id)}
       <div class="close-row">
-        <span class="lbl">{mth}</span>
-        <span class="expected">{m.pos_shift_expected()}: {formatMoney(expected[mth] ?? 0)}</span>
+        <span class="lbl">{mth.label}</span>
+        <span class="expected">{m.pos_shift_expected()}: {formatMoney(expected[mth.id] ?? 0)}</span>
         <label class="field">
           <span class="lbl">{m.pos_shift_counted()}</span>
-          <input type="number" step="0.01" bind:value={counted[mth]} />
+          <input type="number" step="0.01" bind:value={counted[mth.id]} />
         </label>
-        <span class="diff" class:neg={difference(mth) < 0} class:pos={difference(mth) > 0}>
-          {m.pos_shift_difference()}: {formatMoney(difference(mth))}
+        <span class="diff" class:neg={difference(mth.id) < 0} class:pos={difference(mth.id) > 0}>
+          {m.pos_shift_difference()}: {formatMoney(difference(mth.id))}
         </span>
       </div>
     {/each}
