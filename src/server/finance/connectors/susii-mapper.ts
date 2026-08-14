@@ -88,7 +88,14 @@ export function mapSusiiSale(sale: Record<string, unknown>): CanonicalInvoice {
     provider: PROVIDER,
     providerRef: String(sale.id ?? ''),
     number: str(sale.number),
-    documentId: str((arr(sale.document_set)[0] ?? {}).serial) ?? str(sale.number),
+    // SUSII changed shape: `serial` used to BE the serie-número string
+    // ('BE01-2105') but is now a numeric serie id (38173); the human
+    // 'BE01-2368' moved to `document_name`. Prefer it, keep the old
+    // fallbacks so pre-change payloads still map.
+    documentId:
+      str((arr(sale.document_set)[0] ?? {}).document_name) ??
+      str((arr(sale.document_set)[0] ?? {}).serial) ??
+      str(sale.number),
     issuedAt: str(sale.date),
     clientName: client?.name ?? str(sale.client_name),
     clientDocType: client?.docType ?? null,
