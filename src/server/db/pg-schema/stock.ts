@@ -233,7 +233,7 @@ export const stkAccruals = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
-    /** 'booking' today; 'order' later. Legacy /stock/consume issues never accrue. */
+    /** 'booking' today; 'order' later. Plain 'service' issues never accrue. */
     source: text('source').notNull(),
     sourceId: uuid('source_id').notNull(),
     /** Soft ref → fin_products (the sold service that drove the accrual). */

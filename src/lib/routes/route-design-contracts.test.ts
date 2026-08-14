@@ -60,7 +60,9 @@ describe('route design contracts', () => {
     // the stock module now. /crm/graph (WP3) added one back; /socials/ad-performance
     // merged into /socials/campaigns (conversations columns) and its route removed.
     // +1 in B: /workforce/projects/[id]/repo (GitHub link + factory gates).
-    expect(counts).toEqual({ A: 32, B: 69, C: 17, D: 23, E: 10 });
+    // -1 in B: /stock/consume removed — service consumption is recorded by
+    // /pos (ticket close) and /scheduling (booking complete), not by hand.
+    expect(counts).toEqual({ A: 32, B: 68, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

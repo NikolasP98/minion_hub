@@ -33,7 +33,7 @@ export function socialsRouteShell(pathname: string): BusinessRouteShell {
 export function stockRouteShell(pathname: string): BusinessRouteShell {
   const path = normalized(pathname);
   if (path === '/stock') return shell('dashboard');
-  if (path === '/stock/consume' || path === '/stock/entries/new') return shell('form');
+  if (path === '/stock/entries/new') return shell('form');
   if (path.startsWith('/stock/entries/') || path.startsWith('/stock/items/')) {
     return shell('record-detail');
   }

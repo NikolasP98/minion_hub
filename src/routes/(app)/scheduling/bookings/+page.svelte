@@ -122,7 +122,11 @@
   async function createOrder(id: string) {
     orderBusy = id;
     try {
-      const res = await fetch(`/api/scheduling/bookings/${id}/order`, { method: 'POST' });
+      const res = await fetch('/api/sales/orders/from-booking', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ bookingId: id }),
+      });
       if (res.ok) await goto('/sales');
     } finally {
       orderBusy = null;
@@ -418,8 +422,8 @@
                     variant="ghost"
                     size="sm"
                     class="act"
-                    title={canAct('scheduling', 'edit') ? 'Create sales order' : m.no_permission()}
-                    disabled={orderBusy === b.id || !canAct('scheduling', 'edit')}
+                    title={canAct('sales', 'create') ? 'Create sales order' : m.no_permission()}
+                    disabled={orderBusy === b.id || !canAct('sales', 'create')}
                     onclick={() => createOrder(b.id)}
                   >
                     <ClipboardList size={15} />

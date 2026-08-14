@@ -188,7 +188,16 @@
   // is no separate server-side `pos:create`. Gating "add" on `pos:create`
   // would enable a button whose POST then 403s for a create-but-not-edit
   // role, so both gates use `pos:edit` (defaultCaps grant staff both anyway).
-  const canWrite = $derived(canAct('pos', 'edit'));
+  //
+  // ★★ A sellable is a `fin_products` row (+ optional `stk_items`/`stk_consumption`),
+  // so the API now requires the OWNING module's capability on top of pos —
+  // see routes/api/pos/sellables/_owning-modules.ts. Mirror that here or the
+  // buttons render for roles whose write 403s.
+  const canWrite = $derived(canAct('pos', 'edit') && canAct('finance', 'edit'));
+  // The wizard always posts `consumption` when stock is on, and RecipeEditor
+  // writes /api/stock/items/:id/components directly — both need stock:edit.
+  const canWriteStock = $derived(canWrite && canAct('stock', 'edit'));
+  const canOpenWizard = $derived(stockEnabled ? canWriteStock : canWrite);
 </script>
 
 <svelte:head><title>{m.pos_catalog_title()} — {m.pos_nav_catalog()}</title></svelte:head>
@@ -258,7 +267,7 @@
                 size="sm"
                 type="button"
                 class="bcard"
-                disabled={!canWrite}
+                disabled={!canOpenWizard}
                 onclick={() => openEdit(s)}
               >
                 <span class="bname">{s.name}</span>
@@ -296,12 +305,12 @@
       {expandedContent}
       addLabel={m.pos_catalog_new()}
       onAdd={openCreate}
-      addDisabled={!canWrite}
+      addDisabled={!canOpenWizard}
       emptyMessage={m.pos_catalog_empty()}
     >
       {#snippet cell(s: Row, col: DataColumn<Row>)}
         {#if col.key === 'name'}
-          {#if canWrite}
+          {#if canOpenWizard}
             <Button variant="ghost" size="sm" class="name-link" onclick={() => openEdit(s)}
               >{s.name}</Button
             >
@@ -344,7 +353,7 @@
       itemId={s.itemId}
       items={data.stockItems}
       edges={data.componentEdges}
-      canEdit={canWrite}
+      canEdit={canWriteStock}
       onChanged={() => invalidate('pos:catalog')}
     />
   {:else}

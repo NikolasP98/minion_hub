@@ -517,10 +517,9 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   }),
   screen('/socials/settings', 'Social settings', 'socials', 'form-settings'),
 
-  // Stock (10)
+  // Stock (9)
   screen('/stock', 'Stock', 'stock', 'dashboard'),
   screen('/stock/commitments', 'Stock commitments', 'stock', 'collection'),
-  screen('/stock/consume', 'Consume stock', 'stock', 'form-settings'),
   screen('/stock/consumption', 'Consumption', 'stock', 'collection'),
   screen('/stock/entries', 'Stock entries', 'stock', 'collection'),
   screen('/stock/entries/[id]', 'Stock entry', 'stock', 'record-detail', {
