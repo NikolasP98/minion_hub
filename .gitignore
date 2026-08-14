@@ -55,3 +55,6 @@ sdd/
 # generated review/test artifacts
 /.lavish/
 /.playwright-cli/
+
+# SUNAT beta self-signed test cert/key — never commit key material
+/.beta-cert/
