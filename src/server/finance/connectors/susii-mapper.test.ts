@@ -65,6 +65,16 @@ describe('docless sale totals (SUSII sends no sale.total)', () => {
     expect(mapSusiiSale(withDoc).total).toBe(1200);
   });
 
+  it('reads documentId from document_name; numeric serial is a serie ID, not a doc number', () => {
+    // Current SUSII payload shape (verified against prod 2026-08-14): serial is
+    // a numeric serie id, the human serie-número lives in document_name.
+    const current = { ...docless, document_set: [{ serial: 38173, document_name: 'BE01-2368', total: 1200 }] };
+    expect(mapSusiiSale(current).documentId).toBe('BE01-2368');
+    // Pre-change payloads (serial WAS the string) still map via the fallback.
+    const legacy = { ...docless, document_set: [{ serial: 'BE01-2105', total: 1200 }] };
+    expect(mapSusiiSale(legacy).documentId).toBe('BE01-2105');
+  });
+
   it('leaves the total unknown rather than inventing 0 when there are no lines', () => {
     expect(mapSusiiSale({ ...docless, items: [] }).total).toBeNull();
   });
