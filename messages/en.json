@@ -5221,5 +5221,19 @@
   "pos_settings_document_factura": "Factura",
   "pos_settings_save": "Save methods",
   "pos_settings_saved": "Payment methods saved",
-  "pos_settings_error": "Could not save payment methods"
+  "pos_settings_error": "Could not save payment methods",
+  "pos_settings_emission_card": "Emission (shadow)",
+  "pos_settings_emission_subtitle": "Sends every ticket to SUNAT's beta sandbox for pipeline validation — zero legal effect, invisible to the cashier.",
+  "pos_settings_emission_mode": "Mode",
+  "pos_settings_emission_mode_off": "Off",
+  "pos_settings_emission_mode_shadow": "Shadow",
+  "pos_settings_emission_doc_type_default": "Default document",
+  "pos_settings_emission_series_card": "Document series",
+  "pos_settings_emission_series_empty": "No series yet — enable shadow mode to auto-seed the beta series.",
+  "pos_settings_emission_series_doc_type": "Type",
+  "pos_settings_emission_series_serie": "Serie",
+  "pos_settings_emission_series_next": "Next number",
+  "pos_settings_emission_series_environment": "Environment",
+  "pos_settings_emission_saved": "Emission settings saved",
+  "pos_settings_emission_error": "Could not save emission settings"
 }

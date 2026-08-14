@@ -1,5 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
+
+// ── pos-emission.service mock (seedShadowSeries / triggerShadowEmission /
+// listEmissionsForTicket) — updatePosSettings calls seedShadowSeries when
+// emission mode turns 'shadow'; this file only needs to assert THAT it's
+// called, not re-verify the SQL (pos-emission.service.test.ts owns that). ──
+const seedShadowSeriesMock = vi.fn<(tx: unknown, orgId: string) => Promise<void>>();
+vi.mock('./pos-emission.service', () => ({
+  seedShadowSeries: (tx: unknown, orgId: string) => seedShadowSeriesMock(tx, orgId),
+  triggerShadowEmission: vi.fn(),
+  listEmissionsForTicket: vi.fn(async () => []),
+}));
+
 import {
   getPosSettings,
   updatePosSettings,
@@ -13,6 +25,7 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  seedShadowSeriesMock.mockResolvedValue(undefined);
 });
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
@@ -99,6 +112,67 @@ describe('getPosSettings / updatePosSettings', () => {
         ],
       }),
     ).rejects.toMatchObject({ code: 'invalid_surcharge' });
+  });
+
+  it("rejects emission mode 'prod' — that value does not exist yet", async () => {
+    const { db } = createMockDb();
+    await expect(
+      updatePosSettings(ctx(db), {
+        emission: { mode: 'prod' as never, docTypeDefault: '03' },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_emission_mode' });
+  });
+
+  it('rejects an unrecognised emission docTypeDefault', async () => {
+    const { db } = createMockDb();
+    await expect(
+      updatePosSettings(ctx(db), {
+        emission: { mode: 'off', docTypeDefault: '99' as never },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_emission_doctype' });
+  });
+
+  it('enabling shadow mode seeds the beta series inside the same transaction', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const savedRow = {
+      orgId: 'org-1',
+      methods: DEFAULT_POS_SETTINGS.methods,
+      currency: 'PEN',
+      requireCustomer: false,
+      allowPriceOverride: true,
+      emission: { mode: 'shadow', docTypeDefault: '03' },
+    };
+    resolveSequence([[], [savedRow]]); // getPosSettings (no row) -> upsert returning
+    const result = await updatePosSettings(ctx(db), {
+      emission: { mode: 'shadow', docTypeDefault: '03' },
+    });
+    expect(result.emission).toEqual({ mode: 'shadow', docTypeDefault: '03' });
+    expect(seedShadowSeriesMock).toHaveBeenCalledTimes(1);
+    expect(seedShadowSeriesMock).toHaveBeenCalledWith(expect.anything(), 'org-1');
+  });
+
+  it('leaving emission off never seeds the beta series', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const savedRow = {
+      orgId: 'org-1',
+      methods: DEFAULT_POS_SETTINGS.methods,
+      currency: 'PEN',
+      requireCustomer: true,
+      allowPriceOverride: true,
+      emission: { mode: 'off', docTypeDefault: '03' },
+    };
+    resolveSequence([[], [savedRow]]);
+    await updatePosSettings(ctx(db), { requireCustomer: true });
+    expect(seedShadowSeriesMock).not.toHaveBeenCalled();
+  });
+
+  it('defaults emission to mode:off when no row exists', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]);
+    expect((await getPosSettings(ctx(db))).emission).toEqual({
+      mode: 'off',
+      docTypeDefault: '03',
+    });
   });
 
   it('hands out a defensive copy — mutating the result never corrupts the defaults', async () => {

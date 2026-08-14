@@ -17,11 +17,20 @@ const paymentMethodSchema = z.object({
   documentDefault: z.enum(['03', '01']).nullable().optional(),
 });
 
+// 'prod' is deliberately NOT in this enum (spec 2026-08-14-pos-shadow-
+// emission-spec.md §1) — the value doesn't exist yet, zod rejects it before
+// it ever reaches pos.service's validateEmission.
+const emissionSchema = z.object({
+  mode: z.enum(['off', 'shadow']),
+  docTypeDefault: z.enum(['03', '01']),
+});
+
 const putSchema = z.object({
   methods: z.array(paymentMethodSchema).min(1).optional(),
   currency: z.string().min(1).max(10).optional(),
   requireCustomer: z.boolean().optional(),
   allowPriceOverride: z.boolean().optional(),
+  emission: emissionSchema.optional(),
 });
 
 /** GET /api/pos/settings */
