@@ -8,8 +8,17 @@ import { requireOrgCapability } from '$server/services/rbac.service';
 import { getPosSettings, updatePosSettings } from '$server/services/pos.service';
 import { handlePosError } from '../_errors';
 
+const paymentMethodSchema = z.object({
+  id: z.string().min(1).max(40),
+  label: z.string().min(1).max(60),
+  enabled: z.boolean(),
+  takesTendered: z.boolean(),
+  surcharge: z.object({ type: z.enum(['percent', 'fixed']), amount: z.number() }).optional(),
+  documentDefault: z.enum(['03', '01']).nullable().optional(),
+});
+
 const putSchema = z.object({
-  methods: z.array(z.string().min(1).max(40)).min(1).optional(),
+  methods: z.array(paymentMethodSchema).min(1).optional(),
   currency: z.string().min(1).max(10).optional(),
   requireCustomer: z.boolean().optional(),
   allowPriceOverride: z.boolean().optional(),

@@ -500,6 +500,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/pos/appointments', 'POS appointments', 'scheduling-pos', 'workspace-editor'),
   screen('/pos/catalog', 'POS catalog', 'scheduling-pos', 'collection'),
   screen('/pos/sell', 'Point of sale', 'scheduling-pos', 'workspace-editor'),
+  screen('/pos/settings', 'POS settings', 'scheduling-pos', 'form-settings'),
 
   screen('/pulse', 'Pulse', 'business-operations', 'collection'),
 

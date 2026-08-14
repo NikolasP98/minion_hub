@@ -1,10 +1,21 @@
 <script module lang="ts">
+  /** Narrow local shape (mirrors the server's PaymentMethod) — avoids
+   *  importing $server/* runtime modules into a client component. */
+  export interface PaymentMethodOption {
+    id: string;
+    label: string;
+    takesTendered: boolean;
+  }
+
   export interface PaymentRow {
     /** Stable render key — index keys mis-associate input state on row removal. */
     id?: string;
     method: string;
     amount: number;
     tendered?: number | null;
+    /** Frozen at add-time from the method's config, so a row's tendered/change
+     *  UI never flips mid-transaction if settings change elsewhere. */
+    takesTendered: boolean;
   }
 </script>
 
@@ -17,7 +28,7 @@
 
   interface Props {
     total: number;
-    methods: string[];
+    methods: PaymentMethodOption[];
     payments: PaymentRow[];
   }
 
@@ -27,11 +38,17 @@
   const paidCents = $derived(payments.reduce((s, p) => s + Math.round(p.amount * 100), 0));
   const remainingCents = $derived(totalCents - paidCents);
 
-  function addMethod(method: string) {
+  function addMethod(mth: PaymentMethodOption) {
     const amount = Math.max(0, remainingCents) / 100;
     payments = [
       ...payments,
-      { id: crypto.randomUUID(), method, amount, tendered: method === 'cash' ? amount : null },
+      {
+        id: crypto.randomUUID(),
+        method: mth.id,
+        amount,
+        tendered: mth.takesTendered ? amount : null,
+        takesTendered: mth.takesTendered,
+      },
     ];
   }
 
@@ -47,7 +64,7 @@
       maxCents,
     );
     payments[i].amount = cents / 100;
-    if (payments[i].method === 'cash' && Math.round((payments[i].tendered ?? 0) * 100) < cents) {
+    if (payments[i].takesTendered && Math.round((payments[i].tendered ?? 0) * 100) < cents) {
       payments[i].tendered = payments[i].amount;
     }
   }
@@ -61,23 +78,25 @@
   }
 
   function change(p: PaymentRow): number {
-    if (p.method !== 'cash' || p.tendered == null) return 0;
+    if (!p.takesTendered || p.tendered == null) return 0;
     return Math.max(0, Math.round(p.tendered * 100) - Math.round(p.amount * 100)) / 100;
   }
 
   function tenderInvalid(p: PaymentRow): boolean {
     return (
-      p.method === 'cash' &&
-      p.tendered != null &&
-      Math.round(p.tendered * 100) < Math.round(p.amount * 100)
+      p.takesTendered && p.tendered != null && Math.round(p.tendered * 100) < Math.round(p.amount * 100)
     );
+  }
+
+  function labelFor(id: string): string {
+    return methods.find((mth) => mth.id === id)?.label ?? id;
   }
 </script>
 
 <div class="panel">
   <div class="methods">
-    {#each methods as mth (mth)}
-      <Button type="button" class="mbtn" onclick={() => addMethod(mth)}>{mth}</Button>
+    {#each methods as mth (mth.id)}
+      <Button type="button" class="mbtn" onclick={() => addMethod(mth)}>{mth.label}</Button>
     {/each}
   </div>
 
@@ -86,7 +105,7 @@
     <div class="rows">
       {#each payments as p, i (p.id ?? i)}
         <div class="row" class:invalid={tenderInvalid(p)}>
-          <span class="mname">{p.method}</span>
+          <span class="mname">{labelFor(p.method)}</span>
           <label class="fld">
             <span class="lbl">{m.pos_sell_price()}</span>
             <input
@@ -98,7 +117,7 @@
               oninput={(e) => setAmount(i, Number((e.currentTarget as HTMLInputElement).value))}
             />
           </label>
-          {#if p.method === 'cash'}
+          {#if p.takesTendered}
             <label class="fld">
               <span class="lbl">{m.pos_sell_tendered()}</span>
               <input
@@ -139,7 +158,6 @@
     background: var(--color-bg3);
     color: var(--color-foreground);
     font-size: var(--font-size-caption);
-    text-transform: capitalize;
     cursor: pointer;
   }
   .panel :global(.mbtn):hover {
@@ -168,7 +186,6 @@
   }
   .mname {
     font-size: var(--font-size-caption);
-    text-transform: capitalize;
     min-width: 3.5rem;
     padding-bottom: var(--space-1);
   }
