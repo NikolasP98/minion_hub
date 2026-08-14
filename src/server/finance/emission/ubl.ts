@@ -1,4 +1,5 @@
 import type { EmissionInvoice, EmissionLine } from './types';
+import { EXTENSION_PLACEHOLDER_XML, escapeXml, signatureBlockXml } from './ubl-common';
 
 /** FACES reality: IGV is always 18%, prices are always tax-inclusive. */
 const IGV_RATE = 0.18;
@@ -8,14 +9,6 @@ const IGV_RATE = 0.18;
 function round(n: number, decimals: number): number {
   const f = 10 ** decimals;
   return Math.round((n + Number.EPSILON) * f) / f;
-}
-
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 interface LineTotals {
@@ -175,11 +168,7 @@ export function buildInvoiceXml(inv: EmissionInvoice): string {
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">
-<ext:UBLExtensions>
-<ext:UBLExtension>
-<ext:ExtensionContent/>
-</ext:UBLExtension>
-</ext:UBLExtensions>
+${EXTENSION_PLACEHOLDER_XML}
 <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
 <cbc:CustomizationID>2.0</cbc:CustomizationID>
 <cbc:ID>${escapeXml(id)}</cbc:ID>
@@ -187,22 +176,7 @@ export function buildInvoiceXml(inv: EmissionInvoice): string {
 <cbc:InvoiceTypeCode listID="0101">${inv.docType}</cbc:InvoiceTypeCode>
 <cbc:Note languageLocaleID="1000">${amountInWords(totals.payableAmount)}</cbc:Note>
 <cbc:DocumentCurrencyCode>${inv.currency}</cbc:DocumentCurrencyCode>
-<cac:Signature>
-<cbc:ID>${escapeXml(inv.emitter.ruc)}</cbc:ID>
-<cac:SignatoryParty>
-<cac:PartyIdentification>
-<cbc:ID>${escapeXml(inv.emitter.ruc)}</cbc:ID>
-</cac:PartyIdentification>
-<cac:PartyName>
-<cbc:Name>${escapeXml(inv.emitter.razonSocial)}</cbc:Name>
-</cac:PartyName>
-</cac:SignatoryParty>
-<cac:DigitalSignatureAttachment>
-<cac:ExternalReference>
-<cbc:URI>#SignatureSP</cbc:URI>
-</cac:ExternalReference>
-</cac:DigitalSignatureAttachment>
-</cac:Signature>
+${signatureBlockXml(inv.emitter.ruc, inv.emitter.razonSocial)}
 <cac:AccountingSupplierParty>
 <cac:Party>
 <cac:PartyIdentification>
