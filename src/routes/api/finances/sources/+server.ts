@@ -23,6 +23,7 @@ const putSchema = z.object({
   provider: z.string().max(200).optional(),
   username: z.string().max(500).optional(),
   password: z.string().max(500).optional(),
+  clientSecret: z.string().max(500).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   enabled: z.boolean().optional(),
 });
@@ -35,10 +36,11 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   const provider = typeof body.provider === 'string' ? body.provider : 'susii';
   const username = typeof body.username === 'string' ? body.username.trim() : '';
   const password = typeof body.password === 'string' ? body.password.trim() : '';
+  const clientSecret = typeof body.clientSecret === 'string' ? body.clientSecret.trim() : '';
 
   let secretRefs: Record<string, unknown>;
   if (username && password) {
-    secretRefs = encryptCreds({ username, password });
+    secretRefs = encryptCreds({ username, password, ...(clientSecret ? { clientSecret } : {}) });
   } else {
     // Preserve existing credentials when the user left the fields blank.
     const existing = await getSource(ctx, provider);

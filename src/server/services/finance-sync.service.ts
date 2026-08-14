@@ -2,6 +2,7 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { retryOnPoolDrop } from '$server/db/pg-client';
 import { getConnector } from '$server/finance/connector';
 import '$server/finance/connectors/susii-connector'; // self-registers the 'susii' connector
+import '$server/finance/connectors/sunat-sire-connector'; // self-registers the 'sunat-sire' connector
 import {
   getSource,
   upsertInvoicesBatch,
@@ -56,8 +57,9 @@ export async function advanceJob(
     await finishJob(ctx, jobId, 'failed', { error: 'no credentials configured' });
     return;
   }
-  const { username, password } = decryptCreds(String(refs.ciphertext), String(refs.iv));
-  const secrets: Record<string, string> = { username, password };
+  const creds = decryptCreds(String(refs.ciphertext), String(refs.iv));
+  const secrets: Record<string, string> = { username: creds.username, password: creds.password };
+  if (creds.clientSecret) secrets.clientSecret = creds.clientSecret;
   const config = (source.config ?? {}) as Record<string, unknown>;
   // Manual sync (no window): watermark-based `since` — an empty watermark means a
   // full history sweep. That stays a deliberate, human-triggered action.
