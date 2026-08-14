@@ -36,6 +36,10 @@ export const posSettings = pgTable('pos_settings', {
   surcharges: jsonb('surcharges').notNull().default({}),
   requireCustomer: boolean('require_customer').notNull().default(false),
   allowPriceOverride: boolean('allow_price_override').notNull().default(true),
+  /** `{ mode: 'off'|'shadow', docTypeDefault: '03'|'01' }` — see
+   *  pos-emission.service.ts and spec 2026-08-14-pos-shadow-emission-spec.md.
+   *  `'prod'` is REJECTED by pos.service validation — it doesn't exist yet. */
+  emission: jsonb('emission').notNull().default({ mode: 'off', docTypeDefault: '03' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -151,3 +155,76 @@ export const posPayments = pgTable(
   }),
 );
 export type PosPayment = typeof posPayments.$inferSelect;
+
+/**
+ * SUNAT document number allocator — one active serie per (org, doc_type,
+ * environment), enforced by a partial unique index. `next_number` is bumped by
+ * a single atomic `UPDATE … RETURNING` (pos-emission.service.ts
+ * `allocateNumber`), never read-then-written, so two concurrent allocations
+ * can never hand out the same correlativo. Spec
+ * 2026-08-14-pos-shadow-emission-spec.md §1/§2. Companion migration
+ * supabase/migrations/20260814040000_pos_shadow_emission.sql.
+ */
+export const posSeries = pgTable(
+  'pos_series',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    /** '01' factura | '03' boleta. */
+    docType: text('doc_type').notNull(),
+    /** 4-char SUNAT series, e.g. 'B999' (shadow) or 'B101' (prod, future). */
+    serie: text('serie').notNull(),
+    nextNumber: integer('next_number').notNull().default(1),
+    /** 'beta' | 'prod' — a prod serie must never be consumed by shadow. */
+    environment: text('environment').notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgDocSerieUniq: uniqueIndex('pos_series_org_doc_serie_uniq').on(t.orgId, t.docType, t.serie),
+    oneActivePerEnv: uniqueIndex('pos_series_one_active_per_env')
+      .on(t.orgId, t.docType, t.environment)
+      .where(sql.raw(`active`)),
+  }),
+);
+export type PosSeries = typeof posSeries.$inferSelect;
+
+/**
+ * One row per emission attempt (shadow now; prod later — out of scope this
+ * slice). `xmlHash` is a sha256 audit trail; the signed XML itself is never
+ * persisted. Spec 2026-08-14-pos-shadow-emission-spec.md §1/§4.
+ */
+export const posEmissions = pgTable(
+  'pos_emissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    ticketId: uuid('ticket_id').notNull(),
+    docType: text('doc_type').notNull(),
+    serie: text('serie').notNull(),
+    correlativo: integer('correlativo').notNull(),
+    /** 'beta' | 'prod'. */
+    environment: text('environment').notNull(),
+    /** 'pending' -> 'accepted' | 'rejected' | 'error'. */
+    status: text('status').notNull().default('pending'),
+    responseCode: text('response_code'),
+    responseDescription: text('response_description'),
+    xmlHash: text('xml_hash'),
+    total: numeric('total'),
+    clientDocType: text('client_doc_type'),
+    clientDocNumber: text('client_doc_number'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgDocSerieCorrelativoUniq: uniqueIndex('pos_emissions_org_doc_serie_correlativo_uniq').on(
+      t.orgId,
+      t.docType,
+      t.serie,
+      t.correlativo,
+    ),
+    orgTicketIdx: index('pos_emissions_org_ticket_idx').on(t.orgId, t.ticketId),
+  }),
+);
+export type PosEmission = typeof posEmissions.$inferSelect;

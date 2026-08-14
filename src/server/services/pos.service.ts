@@ -7,11 +7,14 @@ import {
   posTickets,
   posTicketLines,
   posPayments,
+  posEmissions,
   type PosShift,
   type PosTicket,
   type PosTicketLine,
   type PosPayment,
+  type PosEmission,
 } from '$server/db/pg-pos-schema';
+import type { EmissionDocType } from '$server/finance/emission';
 import { nextSerialId } from './naming-series';
 import { isModuleEnabled } from './modules.service';
 import { resolveDefaultWarehouse } from './stock-accruals.service';
@@ -42,6 +45,11 @@ import { finProducts } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
 import { bustFinanceCache } from './finance.service';
 import { emitHubEvent } from '$server/events/emit';
+// Deliberate circular import: pos-emission.service.ts imports PosError/
+// PosSettings (types + a class, never touched at module-eval time) back from
+// here. Safe under ESM — neither module reads the other's export until a
+// function actually runs, well after both have finished initializing.
+import { triggerShadowEmission, seedShadowSeries, listEmissionsForTicket } from './pos-emission.service';
 // The ONE code-format rail, shared with the client wizard. Pure module, no
 // runtime deps — see the drift note in $lib/catalog/code.ts for why it is not
 // duplicated here the way the old slugifyCode/slugify pair was.
@@ -88,11 +96,24 @@ export interface PaymentMethod {
   documentDefault?: '03' | '01' | null;
 }
 
+/**
+ * `mode: 'shadow'` fires a real (zero-legal-effect) emission to SUNAT's beta
+ * sandbox on every ticket, for pipeline validation ahead of a production
+ * cutover. `'prod'` is DELIBERATELY not a member of this union — the value
+ * doesn't exist yet (spec 2026-08-14-pos-shadow-emission-spec.md §1); a raw
+ * string outside `EmissionSettings` is rejected by `validateEmission`.
+ */
+export interface EmissionSettings {
+  mode: 'off' | 'shadow';
+  docTypeDefault: EmissionDocType;
+}
+
 export interface PosSettings {
   methods: PaymentMethod[];
   currency: string;
   requireCustomer: boolean;
   allowPriceOverride: boolean;
+  emission: EmissionSettings;
 }
 
 function capitalize(s: string): string {
@@ -143,7 +164,19 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
   currency: 'PEN',
   requireCustomer: false,
   allowPriceOverride: true,
+  emission: Object.freeze({ mode: 'off', docTypeDefault: '03' }) as EmissionSettings,
 });
+
+/** Tolerant of a row whose `emission` column predates this slice's migration
+ *  default (shouldn't happen post-migration, but a stray legacy row or a hand
+ *  edit is cheap to guard against). */
+function normalizeEmission(raw: unknown): EmissionSettings {
+  const r = raw as Partial<EmissionSettings> | null | undefined;
+  return {
+    mode: r?.mode === 'shadow' ? 'shadow' : 'off',
+    docTypeDefault: r?.docTypeDefault === '01' ? '01' : '03',
+  };
+}
 
 export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
   const [row] = await withOrgCore(ctx, (tx) =>
@@ -151,12 +184,17 @@ export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
   );
   // Defensive copy — callers get a mutable object, never the shared singleton.
   if (!row)
-    return { ...DEFAULT_POS_SETTINGS, methods: DEFAULT_POS_SETTINGS.methods.map((m) => ({ ...m })) };
+    return {
+      ...DEFAULT_POS_SETTINGS,
+      methods: DEFAULT_POS_SETTINGS.methods.map((m) => ({ ...m })),
+      emission: { ...DEFAULT_POS_SETTINGS.emission },
+    };
   return {
     methods: normalizeMethods(row.methods),
     currency: row.currency,
     requireCustomer: row.requireCustomer,
     allowPriceOverride: row.allowPriceOverride,
+    emission: normalizeEmission(row.emission),
   };
 }
 
@@ -182,6 +220,20 @@ function validateMethods(methods: PaymentMethod[]): void {
   if (!anyEnabled) throw new PosError('at least one method must be enabled', 'invalid_methods');
 }
 
+/** `'prod'` (or anything else) is REJECTED here by construction — it's simply
+ *  not one of the two branches, same as an unrecognised docTypeDefault. */
+function validateEmission(emission: EmissionSettings): void {
+  if (emission.mode !== 'off' && emission.mode !== 'shadow') {
+    throw new PosError(`invalid emission mode ${String(emission.mode)}`, 'invalid_emission_mode');
+  }
+  if (emission.docTypeDefault !== '03' && emission.docTypeDefault !== '01') {
+    throw new PosError(
+      `invalid emission docTypeDefault ${String(emission.docTypeDefault)}`,
+      'invalid_emission_doctype',
+    );
+  }
+}
+
 export async function updatePosSettings(
   ctx: CoreCtx,
   patch: Partial<PosSettings>,
@@ -189,18 +241,24 @@ export async function updatePosSettings(
   const current = await getPosSettings(ctx);
   const next: PosSettings = { ...current, ...patch };
   validateMethods(next.methods);
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  validateEmission(next.emission);
+  const [row] = await withOrgCore(ctx, async (tx) => {
+    const [updated] = await tx
       .insert(posSettings)
       .values({ orgId: ctx.tenantId, ...next })
       .onConflictDoUpdate({ target: posSettings.orgId, set: { ...next, updatedAt: new Date() } })
-      .returning(),
-  );
+      .returning();
+    // Enabling shadow mode auto-seeds the beta series if absent (spec §2),
+    // idempotently, in the SAME transaction as the settings write.
+    if (next.emission.mode === 'shadow') await seedShadowSeries(tx, ctx.tenantId);
+    return [updated];
+  });
   return {
     methods: normalizeMethods(row.methods),
     currency: row.currency,
     requireCustomer: row.requireCustomer,
     allowPriceOverride: row.allowPriceOverride,
+    emission: normalizeEmission(row.emission),
   };
 }
 
@@ -796,6 +854,13 @@ export async function submitTicket(
       message: e instanceof Error ? e.message : String(e),
     };
   }
+
+  // ---- POST-COMMIT shadow emission, fail-soft (spec 2026-08-14-pos-shadow-
+  // emission-spec.md §4) — invisible to the cashier, never blocks checkout.
+  if (settings.emission.mode === 'shadow') {
+    await triggerShadowEmission(ctx, ticket, settings);
+  }
+
   return { ticket, stockWarning };
 }
 
@@ -867,8 +932,13 @@ export function listTickets(
 export async function getTicket(
   ctx: CoreCtx,
   id: string,
-): Promise<{ ticket: PosTicket; lines: PosTicketLine[]; payments: PosPayment[] } | null> {
-  return withOrgCore(ctx, async (tx) => {
+): Promise<{
+  ticket: PosTicket;
+  lines: PosTicketLine[];
+  payments: PosPayment[];
+  emissions: PosEmission[];
+} | null> {
+  const found = await withOrgCore(ctx, async (tx) => {
     const [ticket] = await tx
       .select()
       .from(posTickets)
@@ -887,6 +957,11 @@ export async function getTicket(
       .orderBy(asc(posPayments.paidAt));
     return { ticket, lines, payments };
   });
+  if (!found) return null;
+  // Rows stuck 'pending' here are the shadow-emission loss measure (spec §4
+  // step 3 — a frozen/crashed runtime never got to update the row).
+  const emissions = await listEmissionsForTicket(ctx, id);
+  return { ...found, emissions };
 }
 
 // ---- sellables ----
