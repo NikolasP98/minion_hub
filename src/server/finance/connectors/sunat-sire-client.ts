@@ -19,6 +19,12 @@ export interface SirePage {
   totales?: Record<string, unknown>;
 }
 
+/** One row of consultaestadotickets — the async export-ticket poll response. */
+export interface TicketStatus {
+  desEstadoProceso?: string;
+  archivoReporte?: Array<{ codTipoAchivoReporte: string; nomArchivoReporte: string }>;
+}
+
 export interface SireCreds {
   /** RUC of the taxpayer (11 digits). */
   ruc: string;
@@ -116,13 +122,80 @@ export class SunatSireClient {
   /**
    * All periods SUNAT knows for this RUC, newest first, flattened across
    * ejercicios. `codEstado`/`desEstado` distinguish presented ('Presentado')
-   * from still-open ('No Presentado') periods.
+   * from still-open ('No Presentado') periods. `codLibro` selects the book:
+   * 140000 = RVIE (ventas), 080000 = RCE (compras) — same response shape.
    */
-  async periodos(): Promise<Array<{ perTributario: string; codEstado: string; desEstado: string }>> {
-    const res = await this.authedGet(`${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/padron/web/omisos/140000/periodos`);
+  async periodos(
+    codLibro: '140000' | '080000' = '140000',
+  ): Promise<Array<{ perTributario: string; codEstado: string; desEstado: string }>> {
+    const res = await this.authedGet(`${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/padron/web/omisos/${codLibro}/periodos`);
     if (!res.ok) throw new Error(`sunat periodos fetch failed: ${res.status}`);
     const body = (await res.json()) as Array<{ lisPeriodos?: Array<{ perTributario: string; codEstado: string; desEstado: string }> }>;
     return (Array.isArray(body) ? body : []).flatMap((e) => e.lisPeriodos ?? []);
+  }
+
+  /** RCE periods — codLibro 080000. Convenience wrapper over periodos(). */
+  async periodosRce(): Promise<Array<{ perTributario: string; codEstado: string; desEstado: string }>> {
+    return this.periodos('080000');
+  }
+
+  /**
+   * Synchronous CSV resumen (per-doc-type aggregates) for one RCE period.
+   * tipoResumen: 1=propuesta, 4=registro. tipoArchivo: 0=… (SUNAT's own enum,
+   * undocumented beyond "0 works"). This is the row-level fallback source
+   * (see the sunat-rce-client quirk note in the purchases spec §1) — SUNAT
+   * has no paged-JSON comprobantes endpoint for RCE, only this aggregate CSV
+   * and the broken async file export below.
+   */
+  async resumenComprobantes(periodo: string, tipoResumen = '1', tipoArchivo = '0'): Promise<string> {
+    const res = await this.authedGet(
+      `${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/resumen/web/resumencomprobantes/${periodo}/${tipoResumen}/${tipoArchivo}/exporta?codLibro=080000`,
+    );
+    if (!res.ok) throw new Error(`sunat resumen fetch failed (${periodo}): ${res.status}`);
+    return res.text();
+  }
+
+  /** Kicks off the async RCE propuesta row-level export; returns the ticket id. */
+  async exportarPropuestaRce(periodo: string): Promise<string> {
+    const res = await this.authedGet(
+      `${API_BASE}/v1/contribuyente/migeigv/libros/rce/propuesta/web/propuesta/${periodo}/exportacioncomprobantepropuesta?codTipoArchivo=0&codOrigenEnvio=2`,
+    );
+    if (!res.ok) throw new Error(`sunat rce export ticket failed (${periodo}): ${res.status}`);
+    const body = (await res.json()) as { numTicket: string };
+    return body.numTicket;
+  }
+
+  /** Polls the status of an export ticket; `archivoReporte[].nomArchivoReporte`
+   *  is the generated file name once `desEstadoProceso` is 'Terminado'. */
+  async consultaEstadoTicket(perIni: string, perFin: string, numTicket: string): Promise<TicketStatus | null> {
+    const u = new URL(`${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/gestionprocesosmasivos/web/masivo/consultaestadotickets`);
+    u.searchParams.set('perIni', perIni);
+    u.searchParams.set('perFin', perFin);
+    u.searchParams.set('page', '1');
+    u.searchParams.set('perPage', '20');
+    u.searchParams.set('numTicket', numTicket);
+    const res = await this.authedGet(u.toString());
+    if (!res.ok) throw new Error(`sunat ticket status failed (${numTicket}): ${res.status}`);
+    const body = (await res.json()) as { registros?: TicketStatus[] };
+    return body.registros?.[0] ?? null;
+  }
+
+  /**
+   * ⚠️ Verified broken on SUNAT's own API gateway (2026-08-14): every request
+   * shape tried (default UA, browser UA + HTTP/1.1, codTipoArchivoReporte
+   * '00'/'01'/omitted, +numTicket/perIni/perFin, the misspelled
+   * `codTipoAchivoReporte` key, both the .zip and inner .txt file names)
+   * returns the SAME HTTP 500 whose body names an internal path with a stray
+   * `/e/` segment (`.../rvierce/gestionprocesosmasivos/web/e/masivo/archivoreporte`)
+   * that appears in NO documented endpoint — a server-side routing bug, not a
+   * client header/param issue. Kept for when SUNAT fixes it; purchases.service
+   * does not call this — it uses resumenComprobantes() instead (see spec §1).
+   */
+  async descargarArchivoReporte(nomArchivoReporte: string, codTipoArchivoReporte = '00'): Promise<Response> {
+    const u = new URL(`${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/gestionprocesosmasivos/web/masivo/archivoreporte`);
+    u.searchParams.set('nomArchivoReporte', nomArchivoReporte);
+    u.searchParams.set('codTipoArchivoReporte', codTipoArchivoReporte);
+    return this.authedGet(u.toString());
   }
 
   /**

@@ -35,6 +35,7 @@ export const MODULE_SUBRESOURCES: Readonly<Record<string, readonly SubResource[]
   ],
   finance: [
     { key: 'finance.products', label: 'Products', route: '/finances/products' },
+    { key: 'finance.purchases', label: 'Purchases', route: '/finances/purchases' },
     { key: 'finance.settings', label: 'Settings', route: '/finances/settings' },
   ],
   scheduling: [
