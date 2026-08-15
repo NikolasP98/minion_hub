@@ -24,10 +24,15 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   // resilient (never rejects) so a slow/down gateway degrades, not errors.
   const tags = await listTags(ctx);
   const scope = getAccountScopeLive(ctx).catch(
-    () => ({ added: [], available: [], legacy: true }) as Awaited<ReturnType<typeof getAccountScopeLive>>,
+    () =>
+      ({ added: [], available: [], legacy: true }) as Awaited<
+        ReturnType<typeof getAccountScopeLive>
+      >,
   );
-  // Record-level (if-owner) + field-level (PII/`_relationship`) scope for the
-  // duplicates scan — same as the roster/detail page (F1b).
+  // Record-level (if-owner) + field-level (PII/`_relationship`) scope for BOTH
+  // hygiene scans — dup groups and blank contacts expose dni/phone/identities
+  // and `_relationship`, so a masked or owner-scoped caller must get a scoped
+  // (separately cached) payload. Same as the roster/detail page (F1b).
   const [ownerId, maskSensitive] = await Promise.all([
     ownerFilter(locals, 'crm'),
     shouldMaskSensitive(locals, 'crm'),
@@ -37,9 +42,16 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const cleanup = Promise.all([
     scanStandardizationCached(ctx),
     findDuplicatesCached(ctx, { ownerId, maskSensitive }),
-    findBlanksCached(ctx),
+    findBlanksCached(ctx, { ownerId, maskSensitive }),
   ])
     .then(([fixes, groups, blanks]) => ({ fixes, groups, blanks }))
-    .catch(() => ({ fixes: [], groups: [], blanks: [] }) as { fixes: never[]; groups: never[]; blanks: never[] });
+    .catch(
+      () =>
+        ({ fixes: [], groups: [], blanks: [] }) as {
+          fixes: never[];
+          groups: never[];
+          blanks: never[];
+        },
+    );
   return { tags, scope, cleanup };
 };

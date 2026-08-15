@@ -62,7 +62,8 @@ describe('route design contracts', () => {
     // +1 in B: /workforce/projects/[id]/repo (GitHub link + factory gates).
     // -1 in B: /stock/consume removed — service consumption is recorded by
     // /pos (ticket close) and /scheduling (booking complete), not by hand.
-    expect(counts).toEqual({ A: 32, B: 68, C: 17, D: 23, E: 10 });
+    // +2 in B: /pos/settings (payment methods) and /finances/purchases (RCE).
+    expect(counts).toEqual({ A: 32, B: 70, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

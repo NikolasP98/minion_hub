@@ -7,6 +7,7 @@ import { canonicalPath } from '$lib/canonical-path';
 import { loadWorkspacesForUser } from '$server/services/workspaces.service';
 import { loadOrganizationsForUser } from '$server/services/organizations.service';
 import { loadPersonalAgentForUser } from '$server/services/personal-agent.service';
+import { ensureActivePersonalAgent } from '$server/services/personal-agent-provisioner';
 import { loadHostsForUser } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
@@ -166,12 +167,31 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
     );
   }
 
-  // Redirect to onboarding if user hasn't completed it yet
+  // Personal-agent guarantee: provisioning is a MANDATORY part of user
+  // creation, so an authenticated user must never dead-end on a "not
+  // provisioned yet" screen. When the agent is missing or not yet active,
+  // self-heal inline (server-side gateway provisioning — same privileged path
+  // as /api/personal-agent/create); only if that fails do we fall back to the
+  // /onboarding manual-retry UI. Rare path: runs only while non-active.
+  let personalAgentBundle = personalAgent;
   if (
     !canonicalPath(url.pathname).startsWith('/onboarding') &&
     (!personalAgent.agent || personalAgent.agent.provisioningStatus !== 'active')
   ) {
-    throw redirect(303, '/onboarding');
+    const coreCtx = await getCoreCtx(locals);
+    const healed = coreCtx
+      ? await traceLayoutLoad(
+          'personal-agent-self-heal',
+          ensureActivePersonalAgent(coreCtx, { userId: user.id, email: user.email ?? '' }).catch(
+            (err) => {
+              console.error('[app-layout] personal-agent self-heal failed', err);
+              return false;
+            },
+          ),
+        )
+      : false;
+    if (!healed) throw redirect(303, '/onboarding');
+    personalAgentBundle = await loadPersonalAgentForUser(locals, user.id, user.supabaseId);
   }
 
   const loadMs = Date.now() - loadStartedAt;
@@ -186,7 +206,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
     organizations: organizations.organizations,
     activeOrgId: organizations.activeOrgId,
     activeOrgKind,
-    personalAgent,
+    personalAgent: personalAgentBundle,
     hosts,
     preferences,
     brainAgentIds,

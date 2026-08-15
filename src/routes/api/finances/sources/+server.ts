@@ -25,6 +25,7 @@ const putSchema = z.object({
   provider: z.string().max(200).optional(),
   username: z.string().max(500).optional(),
   password: z.string().max(500).optional(),
+  clientSecret: z.string().max(500).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   enabled: z.boolean().optional(),
 });
@@ -37,6 +38,7 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   const provider = typeof body.provider === 'string' ? body.provider : 'susii';
   const username = typeof body.username === 'string' ? body.username.trim() : '';
   const password = typeof body.password === 'string' ? body.password.trim() : '';
+  const clientSecret = typeof body.clientSecret === 'string' ? body.clientSecret.trim() : '';
 
   // Both-or-neither. A half-filled form used to fall into the "preserve
   // existing" branch and return ok:true having changed nothing — so "I updated
@@ -58,16 +60,17 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     // Verify before storing: `count()` performs the provider login, so a bad
     // credential fails here with the provider's own reason instead of being
     // written and only surfacing as a failed job at 08:00 the next morning.
+    const secrets: Record<string, string> = { username, password, ...(clientSecret ? { clientSecret } : {}) };
     const connector = getConnector(provider);
     if (connector?.count) {
       try {
-        await connector.count({ config: (body.config ?? {}) as Record<string, unknown>, secrets: { username, password } });
+        await connector.count({ config: (body.config ?? {}) as Record<string, unknown>, secrets });
         verified = true;
       } catch (e) {
         throw error(400, `provider rejected these credentials: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
-    secretRefs = encryptCreds({ username, password });
+    secretRefs = encryptCreds({ username, password, ...(clientSecret ? { clientSecret } : {}) });
   } else {
     // Both blank — deliberate "keep what's stored" (editing config/enabled only).
     const existing = await getSource(ctx, provider);

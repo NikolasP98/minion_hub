@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
-  import { LayoutDashboard, FileText, Package, Settings } from 'lucide-svelte';
+  import { LayoutDashboard, FileText, Package, Receipt, Settings } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
@@ -12,6 +12,7 @@
     [
       { id: 'dashboard', label: m.nav_finance(), icon: LayoutDashboard, href: '/finances' },
       { id: 'invoices', label: m.fin_nav_invoices(), icon: FileText, href: '/finances/invoices' },
+      { id: 'purchases', label: m.fin_nav_purchases(), icon: Receipt, href: '/finances/purchases' },
       { id: 'products', label: m.fin_nav_products(), icon: Package, href: '/finances/products' },
       { id: 'settings', label: m.nav_settings(), icon: Settings, href: '/finances/settings' },
     ].filter((i) => canViewPath(i.href)),

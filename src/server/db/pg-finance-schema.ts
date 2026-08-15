@@ -330,6 +330,73 @@ export const finTransactions = pgTable(
   }),
 );
 
+/**
+ * Purchase invoices (supplier facturas) — SUNAT's Registro de Compras (RCE),
+ * mirrored one-way (SUNAT → minion) per specs/2026-08-14-purchases-rce-module-spec.md.
+ * `sync_state` is the hook for a future push-to-SUNAT leg (deliberately not
+ * built here): 'synced' rows mirror SUNAT untouched, 'local' rows are
+ * minion-only manual entries, 'diverged' rows were synced then user-edited —
+ * the sync must never silently overwrite a diverged row.
+ */
+export const finPurchases = pgTable(
+  'fin_purchases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    source: text('source').notNull(), // 'sunat' | 'manual'
+    // sunat rows: codCar, or a synthetic {ruc}-{tipo}-{serie}-{numero} key.
+    // null for manual entries (no external identity to dedupe against).
+    providerRef: text('provider_ref'),
+    period: text('period').notNull(), // YYYYMM tributario
+    supplierRuc: text('supplier_ruc'),
+    supplierName: text('supplier_name'),
+    docType: text('doc_type'), // tipo 01/03/30…
+    serie: text('serie'),
+    numero: text('numero'),
+    issuedAt: date('issued_at'),
+    currency: text('currency'),
+    baseGravada: numeric('base_gravada'),
+    igv: numeric('igv'),
+    total: numeric('total'),
+    // Denormalised from fin_purchase_periods at sync/write time — the locking
+    // source of truth stays the period row; this column is what makes a list
+    // query cheap without a join, refreshed whenever the period status changes.
+    periodStatus: text('period_status').notNull().default('open'), // 'open' | 'closed'
+    syncState: text('sync_state').notNull().default('local'), // 'synced' | 'local' | 'diverged'
+    metadata: jsonb('metadata').notNull().default({}), // raw SIRE row / CSV line
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    providerRefUniq: uniqueIndex('fin_purchases_org_provider_ref_uniq')
+      .on(t.orgId, t.providerRef)
+      .where(sql`provider_ref is not null`),
+    periodIdx: index('fin_purchases_org_period_idx').on(t.orgId, t.period),
+  }),
+);
+
+/** One row per org+period — the open/closed locking source of truth and the
+ *  period header's totals (doc count, base, igv, total from the resumen). */
+export const finPurchasePeriods = pgTable(
+  'fin_purchase_periods',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    period: text('period').notNull(),
+    status: text('status').notNull().default('open'), // 'open' | 'closed'
+    docCount: integer('doc_count').notNull().default(0),
+    baseGravada: numeric('base_gravada'),
+    igv: numeric('igv'),
+    total: numeric('total'),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniq: uniqueIndex('fin_purchase_periods_org_period_uniq').on(t.orgId, t.period),
+  }),
+);
+
 export type FinInvoice = typeof finInvoices.$inferSelect;
 export type FinInvoiceItem = typeof finInvoiceItems.$inferSelect;
 export type FinPayment = typeof finPayments.$inferSelect;
@@ -340,3 +407,5 @@ export type FinSyncJob = typeof finSyncJobs.$inferSelect;
 export type FinSettingsRow = typeof finSettings.$inferSelect;
 export type FinStatementImport = typeof finStatementImports.$inferSelect;
 export type FinTransaction = typeof finTransactions.$inferSelect;
+export type FinPurchase = typeof finPurchases.$inferSelect;
+export type FinPurchasePeriod = typeof finPurchasePeriods.$inferSelect;

@@ -1,6 +1,7 @@
 import { encrypt, decrypt } from '../auth/crypto';
 
-export type FinanceCreds = { username: string; password: string };
+// clientSecret rides along for OAuth-style providers (sunat-sire); JSON round-trip keeps it.
+export type FinanceCreds = { username: string; password: string; clientSecret?: string };
 
 export function encryptCreds(c: FinanceCreds): { ciphertext: string; iv: string } {
   return encrypt(JSON.stringify(c));

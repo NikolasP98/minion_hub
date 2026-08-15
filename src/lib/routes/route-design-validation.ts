@@ -12,8 +12,9 @@ import {
 } from './route-design-manifest';
 
 export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
-  endpoints: 150,
-  screens: 140,
+  // /finances/purchases added one screen+endpoint (purchases-rce module spec).
+  endpoints: 152,
+  screens: 142,
   redirects: 10,
   fixtures: 27,
   viewports: ['compact', 'medium', 'wide'] as const,

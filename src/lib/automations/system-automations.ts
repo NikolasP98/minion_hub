@@ -68,6 +68,16 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
   { path: '/api/crm/conversations/analyze/tick', key: 'analyze', cadence: 'hourly', wiring: 'unscheduled' },
   { path: '/api/email-ledger/tick', key: 'email_ledger', cadence: 'daily_3am', wiring: 'unscheduled' },
   { path: '/api/reliability/retention/tick', key: 'retention', cadence: 'semimonthly', wiring: 'unscheduled' },
+
+  // ── Built + allowlisted, NOT yet in `crontab -l` ─────────────────────────
+  // The relationship-inference kernel. Route + hooks.server.ts allowlist exist,
+  // but no crontab line — runs only when invoked by hand.
+  {
+    path: '/api/crm/relationship/tick',
+    key: 'crm_relationship',
+    cadence: 'hourly',
+    wiring: 'unscheduled',
+  },
 ];
 
 /** Scheduled first, unscheduled last — the gaps are what need attention. */

@@ -10,6 +10,7 @@ import { findDuplicates, mergeContacts } from '$server/services/crm-cleanup.serv
 export const GET: RequestHandler = async ({ locals }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
+  // Same record-level + field-level scope as the /crm/settings page load.
   const [ownerId, maskSensitive] = await Promise.all([
     ownerFilter(locals, 'crm'),
     shouldMaskSensitive(locals, 'crm'),

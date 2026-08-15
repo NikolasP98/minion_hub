@@ -7,11 +7,14 @@ import {
   posTickets,
   posTicketLines,
   posPayments,
+  posEmissions,
   type PosShift,
   type PosTicket,
   type PosTicketLine,
   type PosPayment,
+  type PosEmission,
 } from '$server/db/pg-pos-schema';
+import type { EmissionDocType } from '$server/finance/emission';
 import { nextSerialId } from './naming-series';
 import { isModuleEnabled } from './modules.service';
 import { resolveDefaultWarehouse } from './stock-accruals.service';
@@ -42,6 +45,11 @@ import { finProducts } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
 import { bustFinanceCache } from './finance.service';
 import { emitHubEvent } from '$server/events/emit';
+// Deliberate circular import: pos-emission.service.ts imports PosError/
+// PosSettings (types + a class, never touched at module-eval time) back from
+// here. Safe under ESM — neither module reads the other's export until a
+// function actually runs, well after both have finished initializing.
+import { triggerShadowEmission, seedShadowSeries, listEmissionsForTicket } from './pos-emission.service';
 // The ONE code-format rail, shared with the client wizard. Pure module, no
 // runtime deps — see the drift note in $lib/catalog/code.ts for why it is not
 // duplicated here the way the old slugifyCode/slugify pair was.
@@ -73,34 +81,157 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // ---- settings ----
 
+/**
+ * A configurable POS payment method. `id` is the stable key persisted on
+ * `pos_payments.method` — renaming `label` never touches historical tickets.
+ * `takesTendered` replaces the old `method === 'cash'` special-case (spec
+ * 2026-08-14-pos-payment-methods-config-spec).
+ */
+export interface PaymentMethod {
+  id: string;
+  label: string;
+  enabled: boolean;
+  takesTendered: boolean;
+  surcharge?: { type: 'percent' | 'fixed'; amount: number };
+  documentDefault?: '03' | '01' | null;
+}
+
+/**
+ * `mode: 'shadow'` fires a real (zero-legal-effect) emission to SUNAT's beta
+ * sandbox on every ticket, for pipeline validation ahead of a production
+ * cutover. `'prod'` is DELIBERATELY not a member of this union — the value
+ * doesn't exist yet (spec 2026-08-14-pos-shadow-emission-spec.md §1); a raw
+ * string outside `EmissionSettings` is rejected by `validateEmission`.
+ */
+export interface EmissionSettings {
+  mode: 'off' | 'shadow';
+  docTypeDefault: EmissionDocType;
+}
+
 export interface PosSettings {
-  methods: string[];
+  methods: PaymentMethod[];
   currency: string;
   requireCustomer: boolean;
   allowPriceOverride: boolean;
+  emission: EmissionSettings;
 }
 
-// Frozen (incl. the methods array) so a stray in-place mutation throws instead
-// of silently corrupting defaults for every org in the process.
+function capitalize(s: string): string {
+  return s.length ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+/**
+ * Accepts either shape a `pos_settings.methods` jsonb value may hold: the
+ * legacy `string[]` (pre-2026-08-14 rows) or the current `PaymentMethod[]`.
+ * A bare string `s` is upgraded to an object, guessing `takesTendered` from
+ * the one legacy special-case — `'cash'` may appear as a literal HERE ONLY,
+ * a one-time migration guess, never as branching logic elsewhere.
+ */
+export function normalizeMethods(raw: unknown): PaymentMethod[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((m) =>
+    typeof m === 'string'
+      ? {
+          id: m,
+          label: capitalize(m),
+          enabled: true,
+          takesTendered: m === 'cash',
+          documentDefault: null,
+        }
+      : (m as PaymentMethod),
+  );
+}
+
+// Frozen (incl. the methods array, and each method object) so a stray
+// in-place mutation throws instead of silently corrupting defaults for every
+// org in the process.
 export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
-  methods: Object.freeze(['cash', 'card', 'yape', 'plin', 'transfer']) as string[],
+  methods: Object.freeze(
+    [
+      { id: 'cash', label: 'Efectivo', enabled: true, takesTendered: true, documentDefault: null },
+      { id: 'card', label: 'Tarjeta', enabled: true, takesTendered: false, documentDefault: null },
+      { id: 'yape', label: 'Yape', enabled: true, takesTendered: false, documentDefault: null },
+      { id: 'plin', label: 'Plin', enabled: true, takesTendered: false, documentDefault: null },
+      {
+        id: 'transfer',
+        label: 'Transferencia',
+        enabled: true,
+        takesTendered: false,
+        documentDefault: null,
+      },
+    ].map((m) => Object.freeze(m)),
+  ) as PaymentMethod[],
   currency: 'PEN',
   requireCustomer: false,
   allowPriceOverride: true,
+  emission: Object.freeze({ mode: 'off', docTypeDefault: '03' }) as EmissionSettings,
 });
+
+/** Tolerant of a row whose `emission` column predates this slice's migration
+ *  default (shouldn't happen post-migration, but a stray legacy row or a hand
+ *  edit is cheap to guard against). */
+function normalizeEmission(raw: unknown): EmissionSettings {
+  const r = raw as Partial<EmissionSettings> | null | undefined;
+  return {
+    mode: r?.mode === 'shadow' ? 'shadow' : 'off',
+    docTypeDefault: r?.docTypeDefault === '01' ? '01' : '03',
+  };
+}
 
 export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx.select().from(posSettings).where(eq(posSettings.orgId, ctx.tenantId)).limit(1),
   );
   // Defensive copy — callers get a mutable object, never the shared singleton.
-  if (!row) return { ...DEFAULT_POS_SETTINGS, methods: [...DEFAULT_POS_SETTINGS.methods] };
+  if (!row)
+    return {
+      ...DEFAULT_POS_SETTINGS,
+      methods: DEFAULT_POS_SETTINGS.methods.map((m) => ({ ...m })),
+      emission: { ...DEFAULT_POS_SETTINGS.emission },
+    };
   return {
-    methods: row.methods as string[],
+    methods: normalizeMethods(row.methods),
     currency: row.currency,
     requireCustomer: row.requireCustomer,
     allowPriceOverride: row.allowPriceOverride,
+    emission: normalizeEmission(row.emission),
   };
+}
+
+/** ids unique + non-empty lowercase, at least one enabled, surcharge >= 0. */
+function validateMethods(methods: PaymentMethod[]): void {
+  if (!Array.isArray(methods) || methods.length === 0) {
+    throw new PosError('methods must be a non-empty array', 'invalid_methods');
+  }
+  const seen = new Set<string>();
+  let anyEnabled = false;
+  for (const m of methods) {
+    const id = (m as Partial<PaymentMethod> | null)?.id;
+    if (typeof id !== 'string' || id.length === 0 || id !== id.toLowerCase()) {
+      throw new PosError('method id must be a non-empty lowercase string', 'invalid_methods');
+    }
+    if (seen.has(id)) throw new PosError(`duplicate method id ${id}`, 'duplicate_method_id');
+    seen.add(id);
+    if (m.enabled) anyEnabled = true;
+    if (m.surcharge && !(m.surcharge.amount >= 0)) {
+      throw new PosError('surcharge amount must be >= 0', 'invalid_surcharge');
+    }
+  }
+  if (!anyEnabled) throw new PosError('at least one method must be enabled', 'invalid_methods');
+}
+
+/** `'prod'` (or anything else) is REJECTED here by construction — it's simply
+ *  not one of the two branches, same as an unrecognised docTypeDefault. */
+function validateEmission(emission: EmissionSettings): void {
+  if (emission.mode !== 'off' && emission.mode !== 'shadow') {
+    throw new PosError(`invalid emission mode ${String(emission.mode)}`, 'invalid_emission_mode');
+  }
+  if (emission.docTypeDefault !== '03' && emission.docTypeDefault !== '01') {
+    throw new PosError(
+      `invalid emission docTypeDefault ${String(emission.docTypeDefault)}`,
+      'invalid_emission_doctype',
+    );
+  }
 }
 
 export async function updatePosSettings(
@@ -109,28 +240,25 @@ export async function updatePosSettings(
 ): Promise<PosSettings> {
   const current = await getPosSettings(ctx);
   const next: PosSettings = { ...current, ...patch };
-  if (
-    !Array.isArray(next.methods) ||
-    next.methods.length === 0 ||
-    next.methods.some((m) => typeof m !== 'string' || m !== m.toLowerCase() || m.length === 0)
-  ) {
-    throw new PosError(
-      'methods must be a non-empty array of non-empty lowercase strings',
-      'invalid_methods',
-    );
-  }
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  validateMethods(next.methods);
+  validateEmission(next.emission);
+  const [row] = await withOrgCore(ctx, async (tx) => {
+    const [updated] = await tx
       .insert(posSettings)
       .values({ orgId: ctx.tenantId, ...next })
       .onConflictDoUpdate({ target: posSettings.orgId, set: { ...next, updatedAt: new Date() } })
-      .returning(),
-  );
+      .returning();
+    // Enabling shadow mode auto-seeds the beta series if absent (spec §2),
+    // idempotently, in the SAME transaction as the settings write.
+    if (next.emission.mode === 'shadow') await seedShadowSeries(tx, ctx.tenantId);
+    return [updated];
+  });
   return {
-    methods: row.methods as string[],
+    methods: normalizeMethods(row.methods),
     currency: row.currency,
     requireCustomer: row.requireCustomer,
     allowPriceOverride: row.allowPriceOverride,
+    emission: normalizeEmission(row.emission),
   };
 }
 
@@ -147,16 +275,21 @@ const NON_VOID = ne(posTickets.status, 'void');
 
 /**
  * Expected drawer amounts at close: per-method payment sums, plus the opening
- * float folded into cash ONLY (per the brief — the physical drawer starts with
- * a float; electronic methods have no starting balance to reconcile).
+ * float folded into whichever method(s) are `takesTendered` (per the brief —
+ * the physical drawer starts with a float; electronic methods have no
+ * starting balance to reconcile; cash stays the float method in practice).
  * Pure, so the math is unit-testable without a db.
  */
 export function computeExpected(
   byMethod: Record<string, number>,
   openingFloat: Record<string, number>,
+  methods: PaymentMethod[],
 ): Record<string, number> {
   const expected = { ...byMethod };
-  expected.cash = round2((expected.cash ?? 0) + Number(openingFloat.cash ?? 0));
+  for (const m of methods) {
+    if (!m.takesTendered) continue;
+    expected[m.id] = round2((expected[m.id] ?? 0) + Number(openingFloat[m.id] ?? 0));
+  }
   return expected;
 }
 
@@ -217,6 +350,9 @@ export async function closeShift(
   ctx: CoreCtx,
   input: { counted: Record<string, number>; note?: string | null; actor: Actor },
 ): Promise<PosShift> {
+  // withOrgCore doesn't nest (same reason as the accrual hook in
+  // stock-accruals.service.ts) — fetch settings outside the tx block.
+  const settings = await getPosSettings(ctx);
   return withOrgCore(ctx, async (tx) => {
     const [open] = await tx
       .select()
@@ -226,7 +362,11 @@ export async function closeShift(
     if (!open) throw new PosError('no open shift for this org', 'no_open_shift');
 
     const byMethod = await paymentsByMethod(tx, ctx.tenantId, open.id);
-    const expected = computeExpected(byMethod, (open.openingFloat as Record<string, number>) ?? {});
+    const expected = computeExpected(
+      byMethod,
+      (open.openingFloat as Record<string, number>) ?? {},
+      settings.methods,
+    );
 
     const [closed] = await tx
       .update(posShifts)
@@ -613,11 +753,11 @@ export async function submitTicket(
   }
   for (const p of input.payments) {
     if (p.amount < 0) throw new PosError('payment amount must be >= 0', 'invalid_amount');
-    if (!settings.methods.includes(p.method))
-      throw new PosError(`unknown method ${p.method}`, 'invalid_method');
-    if (p.method !== 'cash' && p.tendered != null)
+    const method = settings.methods.find((m) => m.id === p.method);
+    if (!method) throw new PosError(`unknown method ${p.method}`, 'invalid_method');
+    if (!method.takesTendered && p.tendered != null)
       throw new PosError('tendered is cash-only', 'invalid_tender');
-    if (p.method === 'cash' && p.tendered != null && p.tendered < p.amount)
+    if (method.takesTendered && p.tendered != null && p.tendered < p.amount)
       throw new PosError('tendered below amount', 'invalid_tender');
   }
   const { lineTotals, subtotal, discount, total } = computeTicketTotals(
@@ -714,6 +854,13 @@ export async function submitTicket(
       message: e instanceof Error ? e.message : String(e),
     };
   }
+
+  // ---- POST-COMMIT shadow emission, fail-soft (spec 2026-08-14-pos-shadow-
+  // emission-spec.md §4) — invisible to the cashier, never blocks checkout.
+  if (settings.emission.mode === 'shadow') {
+    await triggerShadowEmission(ctx, ticket, settings);
+  }
+
   return { ticket, stockWarning };
 }
 
@@ -785,8 +932,13 @@ export function listTickets(
 export async function getTicket(
   ctx: CoreCtx,
   id: string,
-): Promise<{ ticket: PosTicket; lines: PosTicketLine[]; payments: PosPayment[] } | null> {
-  return withOrgCore(ctx, async (tx) => {
+): Promise<{
+  ticket: PosTicket;
+  lines: PosTicketLine[];
+  payments: PosPayment[];
+  emissions: PosEmission[];
+} | null> {
+  const found = await withOrgCore(ctx, async (tx) => {
     const [ticket] = await tx
       .select()
       .from(posTickets)
@@ -805,6 +957,11 @@ export async function getTicket(
       .orderBy(asc(posPayments.paidAt));
     return { ticket, lines, payments };
   });
+  if (!found) return null;
+  // Rows stuck 'pending' here are the shadow-emission loss measure (spec §4
+  // step 3 — a frozen/crashed runtime never got to update the row).
+  const emissions = await listEmissionsForTicket(ctx, id);
+  return { ...found, emissions };
 }
 
 // ---- sellables ----

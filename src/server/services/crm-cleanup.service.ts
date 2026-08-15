@@ -30,28 +30,39 @@ export function scanStandardizationCached(ctx: CoreCtx): Promise<NameFix[]> {
   );
 }
 
+/** Record-level (if-owner) + field-level (PII) RBAC scope for the hygiene scans. */
+export interface CleanupScanScope {
+  ownerId?: string;
+  maskSensitive?: boolean;
+}
+
+/** Fold owner + mask into the tenant key — an if-owner-scoped or PII-masked
+ *  caller must never read/poison the org-wide cached payload (full dni/phone/
+ *  identities, and `_relationship`). The org-level invalidation tag still busts
+ *  all variants. */
+function scopedTenantKey(tenantId: string, { ownerId, maskSensitive }: CleanupScanScope): string {
+  return `${tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`;
+}
+
 export function findDuplicatesCached(
   ctx: CoreCtx,
-  opts: { ownerId?: string; maskSensitive?: boolean } = {},
+  scope: CleanupScanScope = {},
 ): Promise<DupGroup[]> {
-  const { ownerId, maskSensitive = false } = opts;
   return cached(
-    // Fold owner + mask into the tenant key (same as listContactsCached) — an
-    // if-owner-scoped or PII-masked caller must never read/poison the
-    // org-wide cached payload, which would leak `_relationship` + full PII.
-    keys.hub('crm-duplicates', {
-      t: `${ctx.tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`,
-    }),
+    keys.hub('crm-duplicates', { t: scopedTenantKey(ctx.tenantId, scope) }),
     { ttl: '2m', swr: '30s', tags: [...tags.tenantDomain(ctx.tenantId, 'crm')] },
-    () => findDuplicates(ctx, opts),
+    () => findDuplicates(ctx, scope),
   );
 }
 
-export function findBlanksCached(ctx: CoreCtx): Promise<BlankContact[]> {
+export function findBlanksCached(
+  ctx: CoreCtx,
+  scope: CleanupScanScope = {},
+): Promise<BlankContact[]> {
   return cached(
-    keys.hub('crm-blanks', { t: ctx.tenantId }),
+    keys.hub('crm-blanks', { t: scopedTenantKey(ctx.tenantId, scope) }),
     { ttl: '2m', swr: '30s', tags: [...tags.tenantDomain(ctx.tenantId, 'crm')] },
-    () => findBlanks(ctx),
+    () => findBlanks(ctx, scope),
   );
 }
 
@@ -129,7 +140,8 @@ export async function applyStandardization(
         insert into crm_activities (org_id, contact_id, kind, data)
         values ${sql.join(
           examples.map(
-            (e) => sql`(${ctx.tenantId}, ${e.id}::uuid, 'name_fix', ${JSON.stringify({ before: e.before, after: e.name })}::jsonb)`,
+            (e) =>
+              sql`(${ctx.tenantId}, ${e.id}::uuid, 'name_fix', ${JSON.stringify({ before: e.before, after: e.name })}::jsonb)`,
           ),
           sql`, `,
         )}
@@ -141,7 +153,10 @@ export async function applyStandardization(
 }
 
 /** Recent accepted before→after name fixes for this org — few-shot examples for AI review. */
-export async function recentNameFixes(ctx: CoreCtx, limit = 40): Promise<Array<{ before: string; after: string }>> {
+export async function recentNameFixes(
+  ctx: CoreCtx,
+  limit = 40,
+): Promise<Array<{ before: string; after: string }>> {
   const rows = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       select distinct on (data->>'before') data->>'before' as before, data->>'after' as after
@@ -212,9 +227,9 @@ function nameGroupConfidence(key: string, contacts: DupContact[]): number {
  */
 export async function findDuplicates(
   ctx: CoreCtx,
-  opts: { ownerId?: string; maskSensitive?: boolean } = {},
+  scope: CleanupScanScope = {},
 ): Promise<DupGroup[]> {
-  const { ownerId, maskSensitive = false } = opts;
+  const { ownerId, maskSensitive = false } = scope;
   // Record-level (if-owner) scope, same as rankContacts/getContact — a scoped
   // caller must only see duplicate groups among contacts they own.
   const ownerClause = ownerId ? sql`and c.owner_id = ${ownerId}` : sql``;
@@ -262,11 +277,13 @@ export async function findDuplicates(
     phone: maskSensitive ? maskPii(r.phone) || null : r.phone,
     score: 0,
     messages: Number(r.messages) || 0,
-    identities: (Array.isArray(r.identities) ? r.identities : [])
-      .filter((i) => i && i.value)
-      .map((i) =>
-        maskSensitive ? { ...i, value: maskPii(i.value), externalId: maskPii(i.externalId) } : i,
-      ),
+    identities: maskIdentities(
+      (Array.isArray(r.identities) ? r.identities : []).filter((i) => i && i.value),
+      maskSensitive,
+    ),
+    // sanitizeContactFields (not maskContactFields): it ALWAYS strips the
+    // internal `_relationshipClaim` lease — including for an unmasked caller —
+    // and drops `_relationship` entirely when masked.
     customFields: sanitizeContactFields(
       r.custom_fields && typeof r.custom_fields === 'object' ? r.custom_fields : {},
       maskSensitive,
@@ -285,14 +302,25 @@ export async function findDuplicates(
   const seen = new Set<string>(); // contact ids already grouped under DNI
   for (const [key, contacts] of byDni) {
     if (contacts.length > 1) {
-      groups.push({ reason: 'dni', key, contacts, confidence: 0.9 });
+      // The group key IS the shared DNI — redact it for a masked caller.
+      groups.push({
+        reason: 'dni',
+        key: maskSensitive ? maskPii(key) : key,
+        contacts,
+        confidence: 0.9,
+      });
       contacts.forEach((c) => seen.add(c.id));
     }
   }
   for (const [key, contacts] of byName) {
     const fresh = contacts.filter((c) => !seen.has(c.id));
     if (fresh.length > 1) {
-      groups.push({ reason: 'name', key, contacts: fresh, confidence: nameGroupConfidence(key, fresh) });
+      groups.push({
+        reason: 'name',
+        key,
+        contacts: fresh,
+        confidence: nameGroupConfidence(key, fresh),
+      });
     }
   }
   // Most-confident first; tie-break on bigger groups.
@@ -316,7 +344,12 @@ export interface BlankContact {
  * emoji-only) — un-auto-fixable, surfaced for MANUAL naming with cross-reference
  * metadata (phone/DNI/channel identities). Most-active first.
  */
-export async function findBlanks(ctx: CoreCtx): Promise<BlankContact[]> {
+export async function findBlanks(
+  ctx: CoreCtx,
+  scope: CleanupScanScope = {},
+): Promise<BlankContact[]> {
+  const { ownerId, maskSensitive = false } = scope;
+  const ownerClause = ownerId ? sql`and c.owner_id = ${ownerId}` : sql``;
   const rows = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       with msgs as (
@@ -337,7 +370,7 @@ export async function findBlanks(ctx: CoreCtx): Promise<BlankContact[]> {
         from crm_contact_identities i
         where i.org_id = c.org_id and i.contact_id = c.id
       ) ids on true
-      where c.org_id = ${ctx.tenantId} and c.deleted_at is null
+      where c.org_id = ${ctx.tenantId} and c.deleted_at is null ${ownerClause}
         and char_length(regexp_replace(coalesce(c.display_name, ''), '[^[:alnum:]]+', '', 'g')) <= 1
       order by coalesce(mm.n, 0) desc
     `),
@@ -353,10 +386,25 @@ export async function findBlanks(ctx: CoreCtx): Promise<BlankContact[]> {
   return rows.map((r) => ({
     id: r.id,
     name: r.display_name,
-    dni: r.dni,
-    phone: r.phone,
+    dni: maskSensitive ? maskPii(r.dni) || null : r.dni,
+    phone: maskSensitive ? maskPii(r.phone) || null : r.phone,
     messages: Number(r.messages) || 0,
-    identities: (Array.isArray(r.identities) ? r.identities : []).filter((i) => i && i.value),
+    identities: maskIdentities(
+      (Array.isArray(r.identities) ? r.identities : []).filter((i) => i && i.value),
+      maskSensitive,
+    ),
+  }));
+}
+
+/** Redact every channel identity field (value, externalId, handle) for a
+ *  PII-masked caller — identity handles ARE phone numbers on WhatsApp. */
+function maskIdentities(identities: ContactIdentity[], maskSensitive: boolean): ContactIdentity[] {
+  if (!maskSensitive) return identities;
+  return identities.map((i) => ({
+    ...i,
+    value: maskPii(i.value),
+    externalId: i.externalId ? maskPii(i.externalId) : i.externalId,
+    handle: i.handle ? maskPii(i.handle) : i.handle,
   }));
 }
 
@@ -432,11 +480,17 @@ export async function mergeContacts(
       const sets: ReturnType<typeof sql>[] = [];
       if (overrides.displayName != null && overrides.displayName !== '')
         sets.push(sql`display_name = ${overrides.displayName}`);
+      // Reserved meta keys (`_funnel`, `_relationship`, `_relationshipClaim`) are
+      // server-owned — a client-supplied merge override must never write them.
       const customFieldsOverride = overrides.customFields
-        ? Object.fromEntries(Object.entries(overrides.customFields).filter(([k]) => !isReservedMetaKey(k)))
+        ? Object.fromEntries(
+            Object.entries(overrides.customFields).filter(([k]) => !isReservedMetaKey(k)),
+          )
         : undefined;
       if (customFieldsOverride && Object.keys(customFieldsOverride).length > 0)
-        sets.push(sql`custom_fields = coalesce(custom_fields, '{}'::jsonb) || ${JSON.stringify(customFieldsOverride)}::jsonb`);
+        sets.push(
+          sql`custom_fields = coalesce(custom_fields, '{}'::jsonb) || ${JSON.stringify(customFieldsOverride)}::jsonb`,
+        );
       if (sets.length)
         await tx.execute(sql`
           update crm_contacts set ${sql.join(sets, sql`, `)}

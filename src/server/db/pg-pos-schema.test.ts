@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
-import { posSettings, posTickets, posTicketLines, posPayments, posShifts } from './pg-pos-schema';
+import {
+  posSettings,
+  posTickets,
+  posTicketLines,
+  posPayments,
+  posShifts,
+  posSeries,
+  posEmissions,
+} from './pg-pos-schema';
 
 /**
  * Column-set guards for the POS tables.
@@ -24,7 +32,7 @@ const cols = (t: Parameters<typeof getTableColumns>[0]) =>
     .sort();
 
 describe('pos schema column sets match their migrations', () => {
-  it('pos_settings owns `surcharges` (20260725130000)', () => {
+  it('pos_settings owns `surcharges` (20260725130000) and `emission` (20260814040000)', () => {
     expect(cols(posSettings)).toEqual(
       [
         'org_id',
@@ -33,6 +41,43 @@ describe('pos schema column sets match their migrations', () => {
         'surcharges',
         'require_customer',
         'allow_price_override',
+        'emission',
+        'created_at',
+        'updated_at',
+      ].sort(),
+    );
+  });
+
+  it('pos_series / pos_emissions match their migration (20260814040000)', () => {
+    expect(cols(posSeries)).toEqual(
+      [
+        'id',
+        'org_id',
+        'doc_type',
+        'serie',
+        'next_number',
+        'environment',
+        'active',
+        'created_at',
+        'updated_at',
+      ].sort(),
+    );
+    expect(cols(posEmissions)).toEqual(
+      [
+        'id',
+        'org_id',
+        'ticket_id',
+        'doc_type',
+        'serie',
+        'correlativo',
+        'environment',
+        'status',
+        'response_code',
+        'response_description',
+        'xml_hash',
+        'total',
+        'client_doc_type',
+        'client_doc_number',
         'created_at',
         'updated_at',
       ].sort(),

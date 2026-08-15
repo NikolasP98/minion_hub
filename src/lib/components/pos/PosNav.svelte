@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
-  import { ShoppingCart, CalendarDays, LayoutGrid } from 'lucide-svelte';
+  import { ShoppingCart, CalendarDays, LayoutGrid, Settings2 } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
@@ -30,6 +30,7 @@
       // No refills tab: manual stock operations live ONLY in the stock module
       // (/stock/entries). POS owns recipes + commerce, and posts its own
       // sourced stock issues on ticket close.
+      { id: 'settings', label: m.pos_nav_settings(), icon: Settings2, href: '/pos/settings' },
     ].filter((i) => canViewPath(i.href)),
   );
 
