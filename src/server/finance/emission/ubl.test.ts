@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { amountInWords, buildInvoiceXml, computeTotals } from './ubl';
 import type { EmissionInvoice } from './types';
@@ -8,6 +10,7 @@ const base: EmissionInvoice = {
   correlativo: '1',
   issueDate: '2026-08-14',
   currency: 'PEN',
+  igvRate: 0.18,
   emitter: { ruc: '20611172967', razonSocial: 'FACES BETA SAC', ubigeo: '150101', address: 'AV BETA 123' },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA' },
   lines: [
@@ -75,5 +78,48 @@ describe('buildInvoiceXml', () => {
     const xml = buildInvoiceXml({ ...base, client: { ...base.client, name: 'CLIENTE "A" & <B>' } });
     expect(xml).toContain('<cbc:RegistrationName>CLIENTE &quot;A&quot; &amp; &lt;B&gt;</cbc:RegistrationName>');
     expect(xml).not.toContain('CDATA');
+  });
+});
+
+describe('igvRate (S1 — required input, no module-level default)', () => {
+  // Captured from the pre-S1 code (module-level `const IGV_RATE = 0.18`) on
+  // this exact `base` fixture — proves the signature change is behavior-
+  // neutral at 18%. Regenerate only if `base` itself changes.
+  const golden = readFileSync(join(import.meta.dirname, '__fixtures__/invoice-18pct-golden.xml'), 'utf8');
+
+  it('GOLDEN PARITY: igvRate 0.18 is byte-identical to the pre-change output', () => {
+    expect(buildInvoiceXml(base)).toBe(golden);
+  });
+
+  it('a non-0.18 rate on the same fixture changes IGV, valorVenta, and cbc:Percent', () => {
+    const at18 = computeTotals(base);
+    const at10 = computeTotals({ ...base, igvRate: 0.1 });
+
+    expect(at10.igvAmount).not.toBe(at18.igvAmount);
+    expect(at10.lineExtensionAmount).not.toBe(at18.lineExtensionAmount);
+
+    const xml18 = buildInvoiceXml(base);
+    const xml10 = buildInvoiceXml({ ...base, igvRate: 0.1 });
+    expect(xml10).not.toBe(xml18);
+    expect(xml18).toContain('<cbc:Percent>18</cbc:Percent>');
+    expect(xml10).toContain('<cbc:Percent>10</cbc:Percent>');
+    expect(xml10).not.toContain('<cbc:Percent>18</cbc:Percent>');
+  });
+
+  it.each([0.18, 0.1, 0.08])('cbc:Percent == igvRate * 100 for rate %s', (igvRate) => {
+    const xml = buildInvoiceXml({ ...base, igvRate });
+    const expectedPercent = String(igvRate * 100);
+    const matches = xml.match(/<cbc:Percent>([^<]+)<\/cbc:Percent>/g) ?? [];
+    expect(matches.length).toBeGreaterThan(0);
+    for (const m of matches) {
+      expect(m).toBe(`<cbc:Percent>${expectedPercent}</cbc:Percent>`);
+    }
+  });
+
+  it('omitting igvRate is a compile-time error', () => {
+    const { igvRate: _igvRate, ...rest } = base;
+    // @ts-expect-error igvRate is required on EmissionInvoice — no default, no fallback
+    const invoice: EmissionInvoice = { ...rest };
+    void invoice;
   });
 });

@@ -8,6 +8,7 @@ const boleta: EmissionInvoice = {
   correlativo: '1',
   issueDate: '2026-08-14',
   currency: 'PEN',
+  igvRate: 0.18,
   emitter: { ruc: '20611172967', razonSocial: 'FACES BETA SAC', ubigeo: '150101', address: 'AV BETA 123' },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA' },
   lines: [{ description: 'Servicio de prueba', quantity: 1, unitPriceInclTax: 118 }],

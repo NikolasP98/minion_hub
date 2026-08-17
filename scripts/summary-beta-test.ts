@@ -28,6 +28,7 @@ const boleta1: EmissionInvoice = {
   correlativo: '1',
   issueDate: today,
   currency: 'PEN',
+  igvRate: 0.18,
   emitter: { ...emitter, ubigeo: '150101', address: 'AV BETA 123, LIMA' },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA UNO' },
   lines: [{ description: 'Servicio de prueba resumen 1', quantity: 1, unitPriceInclTax: 118 }],
