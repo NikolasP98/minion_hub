@@ -214,11 +214,10 @@ Checklist when adding a surface (do ALL that apply):
    reads (`get*` should 404 a non-owned id, not 403 — no existence leak).
 5. **Field-level (sensitive fields).** If the read exposes PII / cost / margin and the
    module is in `FIELD_LEVEL_MODULES`, mask those fields via `shouldMaskSensitive(locals,
-   module)` (use `maskPii` from `$lib/pii` for phone/email).
+module)` (use `maskPii` from `$lib/pii` for phone/email).
 
 Rule of thumb: if you wrote a `+page.server.ts` / `+server.ts` and it reads or writes
 org data without touching `rbac.service`, you are not done. Memory: `rbac-erpnext-framework`.
-
 
 ## Honesty & Accuracy Rules
 
