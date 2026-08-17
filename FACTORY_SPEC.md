@@ -359,16 +359,16 @@ bun run check
 | File | Slices | Nature |
 |---|---|---|
 | `src/server/services/crm-contacts.service.ts` | S1, S2, S3 | paged query, total, filters, funnel CASE, meta keys |
-| `src/server/services/crm-contacts.test.ts` | S1, S2 | new cases |
+| `src/server/services/crm-contacts.service.test.ts` | S1, S2 | new cases (Slice 0: the file carries `.service`) |
 | `src/server/services/crm-funnel-parity.test.ts` | S2 | new |
-| `src/lib/crm/crm-funnel.ts` | S2 | export pure helpers for the parity test |
+| `src/lib/components/crm/crm-funnel.ts` | S2 | export pure helpers for the parity test (Slice 0: file is under `components/`) |
 | `src/routes/api/crm/contacts/+server.ts` | S3 | `{ contacts, total }`, page decoration, `fields=id` |
 | `src/routes/api/crm/contacts/export.csv/+server.ts` | S6 | new endpoint |
 | `src/lib/components/data-table/DataTable.svelte` | S4, S6 | opt-in `server` prop, export branch |
 | `src/lib/components/data-table/DataTable.test.ts` | S4 | new |
 | `src/routes/(app)/crm/customers/+page.server.ts` | S5 | first page, drop streamed roster |
 | `src/routes/(app)/crm/customers/+page.svelte` | S5, S6 | request manager, URL sync, bulk select |
-| `supabase/migrations/<ts>_crm_contacts_search_indexes.sql` | S1 | additive indexes only (see A1) |
+| `supabase/migrations/20260817120000_crm_contacts_search_indexes.sql` | S1 | additive indexes only (see A1) |
 
 All paths relative to `minion_hub/`. Nothing outside `minion_hub/` is edited — see §5.
 
@@ -380,8 +380,12 @@ The proposal puts schema changes out of scope. Indexes are not schema changes in
 ```sql
 -- supabase/migrations/<YYYYMMDDHHMMSS>_crm_contacts_search_indexes.sql
 create extension if not exists pg_trgm;
+-- Slice 0 correction: index `display_name`, NOT `lower(display_name)`. The query
+-- uses `display_name ilike '%q%'`; pg_trgm serves ILIKE straight from a
+-- `gin (display_name gin_trgm_ops)` index, whereas a `lower(...)` expression index
+-- only matches a `lower(display_name) like …` predicate and would sit unused.
 create index if not exists crm_contacts_display_name_trgm
-  on crm_contacts using gin (lower(display_name) gin_trgm_ops);
+  on crm_contacts using gin (display_name gin_trgm_ops);
 create index if not exists crm_contacts_org_deleted_idx
   on crm_contacts (org_id) where deleted_at is null;
 ```
@@ -421,6 +425,26 @@ Mitigation, in order of preference:
    truthful. Document the manual step in the PR.
 
 Slice 0 verifies the transaction claim before either path is chosen.
+
+**Slice 0 result (2026-08-17, run 47b0ac58) — verified in this checkout:**
+
+| Claim | Verdict |
+|---|---|
+| `GET /api/crm/contacts` returns `{ contacts }` | ✅ true (`return json({ contacts })`). The sole in-repo GET consumer is `/scheduling/bookings` and it reads `.contacts`. `total` is additive → **A2 path 1**. |
+| `scripts/db-migrate.ts` applies each file in ONE transaction under `pg_advisory_xact_lock` | ✅ true (`sql.begin` + `pg_advisory_xact_lock(826744)` + `tx.unsafe(body)`) → **A1 mitigation 1**: plain, non-concurrent `create index`. |
+| `src/lib/crm/crm-funnel.ts` | ❌ moved → `src/lib/components/crm/crm-funnel.ts` |
+| `src/server/services/crm-contacts.test.ts` | ❌ named `crm-contacts.service.test.ts` |
+| `/crm/customers/+page.server.ts` streams the roster | ❌ no `streamed` anywhere — it awaits `listContactsCached` directly. S5's "delete the streamed path" = delete the `listContactsCached` call. |
+| ~11 `DataTable` consumer routes | ✅ 13 files under `src/routes` reference it |
+| `DataTable` has a pager whose label/pages can read `server.total` | ❌ **there is no pager** — the table row-virtualizes the whole `view`. S4 must ADD pagination UI, gated on the `server` prop so client mode is untouched. |
+| A new `+server.ts` moves the route-contract counts (S6) | ❌ `discoverPageEndpoints` only walks `+page.*` files; API endpoints are absent from `ROUTE_CONTRACT_EXPECTATIONS`. No count edit is needed or possible. |
+| `_funnel` value domain | closed: `lead \| opportunity \| customer \| loyal`, with legacy `interest`/`consideration`/`intent` remapped to `opportunity` on read (`normalizeStage`). |
+
+**Environment limits (recorded, not worked around):** this checkout has no Postgres, no
+`psql`, no docker and no dev org. The S1 `except`-diff equivalence proof, the S3/S8
+`curl "$HUB/…"` probes and the S5/S8 browser probes are **not executable here** and were
+not run. DB-facing behavior is covered the way the rest of this repo covers it: emitted-SQL
+assertions through `PgDialect().sqlToQuery` over `createMockDb`, plus row post-processing tests.
 
 ### 🚨 A2 — response-shape compatibility of `/api/crm/contacts`
 

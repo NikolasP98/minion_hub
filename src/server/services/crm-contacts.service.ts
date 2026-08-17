@@ -175,6 +175,24 @@ export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> 
 
 // ── Ranking (spec §6): on-read RFM over the ledger ───────────────────────────
 
+/** Every server-side sort key the Customers list can ask for. */
+export type RankSort =
+  | 'score'
+  | 'recent'
+  | 'frequency'
+  | 'name'
+  | 'revenue'
+  | 'invoices'
+  | 'lastPurchase'
+  | 'icp'
+  | 'stage'
+  | 'verified'
+  | 'sex'
+  | 'origin'
+  | 'inbound'
+  | 'outbound'
+  | 'channels';
+
 export interface RankFilters {
   stage?: string;
   channel?: string;
@@ -186,7 +204,11 @@ export interface RankFilters {
   /** auto-tag rule jsonb (compiled to a live SQL predicate) */
   ruleJson?: unknown;
   search?: string;
-  sort?: 'score' | 'recent' | 'frequency' | 'name';
+  /** Sort key. See SORT_EXPR for the SQL each one maps to; every sortable column
+   *  on the Customers list has an entry so server mode never loses a sort. */
+  sort?: RankSort;
+  /** Sort direction. Omitted ⇒ the key's natural default (see SORT_EXPR). */
+  sortDir?: 'asc' | 'desc';
   limit?: number;
   /** Upper bound on `limit`. Defaults to 5000 (the list-page payload cap). The
    *  dashboard raises it so its COUNTS reflect every contact, not a truncated
@@ -271,14 +293,77 @@ const M_EXPR = sql`(100 * (0.60 * least(1, ln(1 + total_msgs) / ln(1 + ${lit(VS)
                         + 0.15 * reciprocity))`;
 
 /**
+ * ICP fit score, read out of the reserved `custom_fields._icp` blob owned by
+ * 2026-08-03-crm-icp-score-spec. Guarded by a numeric regex: `_icp.score` is
+ * user-writable jsonb, and a bare `::numeric` cast on a non-numeric string
+ * aborts the WHOLE query with 22P02 rather than skipping the row. Rows without a
+ * usable score yield NULL and therefore sort LAST (never as 0) and fall outside
+ * any `minIcp`/`maxIcp` range.
+ */
+const ICP_EXPR = sql`(case when (custom_fields->'_icp'->>'score') ~ '^-?[0-9]+(\.[0-9]+)?$'
+                        then (custom_fields->'_icp'->>'score')::numeric end)`;
+
+/**
+ * `sort` key → (outer-select expression, natural direction). Every sortable
+ * column on /crm/customers is here: in server mode the table renders rows as-is,
+ * so a key with no entry would silently lose its sort.
+ */
+const SORT_EXPR = new Map<RankSort, { expr: SQL; dir: 'asc' | 'desc' }>([
+  ['score', { expr: sql`score`, dir: 'desc' }],
+  ['recent', { expr: sql`last_contact_at`, dir: 'desc' }],
+  ['frequency', { expr: sql`total_msgs`, dir: 'desc' }],
+  ['name', { expr: sql`display_name`, dir: 'asc' }],
+  ['revenue', { expr: sql`fin_revenue`, dir: 'desc' }],
+  ['invoices', { expr: sql`fin_invoices`, dir: 'desc' }],
+  ['lastPurchase', { expr: sql`last_purchase_at`, dir: 'desc' }],
+  ['icp', { expr: ICP_EXPR, dir: 'desc' }],
+  ['stage', { expr: sql`stage`, dir: 'asc' }],
+  ['verified', { expr: sql`dni_verified`, dir: 'asc' }],
+  ['sex', { expr: sql`sex`, dir: 'asc' }],
+  ['origin', { expr: sql`lead_origin`, dir: 'asc' }],
+  ['inbound', { expr: sql`inbound_msgs`, dir: 'desc' }],
+  ['outbound', { expr: sql`(total_msgs - inbound_msgs)`, dir: 'desc' }],
+  ['channels', { expr: sql`channels_used`, dir: 'desc' }],
+]);
+
+/** Columns the paged query carries only to sort/filter by — never part of the
+ *  public RankedContact shape, so they are stripped before the rows are returned. */
+const INTERNAL_COLS = ['total_rows', 'fin_revenue', 'fin_invoices', 'last_purchase_at'] as const;
+
+/** Escape LIKE metacharacters so a user typing `%` searches for a literal `%`. */
+const likePrefix = (q: string) => `${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+
+/** One page of ranked contacts plus the total row count for the SAME filters. */
+export interface RankedPage {
+  rows: RankedContact[];
+  /** Rows matching the filters with `limit`/`offset` removed. Stable across pages. */
+  total: number;
+}
+
+/**
  * Ranked contact list. Builds: agg (ledger rollups) → base (contact + derived
  * stats + stage) → scored (RFM columns) → filtered/sorted outer select. The
  * stage CASE here is the authoritative list stage; it MUST mirror
  * deriveLifecycleStage() in crm-scoring.ts. Lifecycle recency uses the EFFECTIVE
  * anchors (messages bridged with finance purchases), so a long-time buyer who
  * only messaged recently is not mislabelled "New".
+ *
+ * Thin wrapper over {@link rankContactsPage} that drops the total — the shape
+ * every pre-pagination caller (contact detail score, /crm/cleanup, the dashboard
+ * via listContactsCached) already expects.
  */
 export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedContact[]> {
+  return (await rankContactsPage(ctx, f)).rows;
+}
+
+/**
+ * One page of {@link rankContacts} PLUS the filtered total, in one round-trip.
+ * The total comes from a `count(*) over ()` window evaluated before LIMIT, so it
+ * is identical on every page. An offset past the end returns zero rows and hence
+ * no window value; that (and only that) case costs a second, rows-free count
+ * query rather than reporting a bogus total of 0.
+ */
+export async function rankContactsPage(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedPage> {
   return withOrgCore(ctx, async (tx) => {
     const ruleSql = f.ruleJson != null ? tryCompileTagRule(f.ruleJson) : null;
 
@@ -286,7 +371,23 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     // Record-level (if-owner) scoping: only the caller's own contacts.
     if (f.ownerId) conds.push(sql`c.owner_id = ${f.ownerId}`);
     if (f.contactId) conds.push(sql`c.id = ${f.contactId}`);
-    if (f.search) conds.push(sql`c.display_name ilike ${'%' + f.search + '%'}`);
+    if (f.search) {
+      // Name stays a substring match; telefono/dni are EXACT PREFIXES (mirrors
+      // the gateway `crm_search` tool) so "999" finds 999-numbers instead of
+      // every number containing 999. dni reads the party spine first, matching
+      // the doc_number overlay `base` puts on custom_fields.
+      // A PII-masked principal gets the name term ONLY: prefix-probing a phone
+      // or document a digit at a time would defeat the field-level redaction
+      // this same call applies to the rows it returns.
+      const like = sql`ilike ${'%' + f.search + '%'}`;
+      conds.push(
+        f.maskSensitive
+          ? sql`c.display_name ${like}`
+          : sql`(c.display_name ${like}
+              or c.custom_fields->>'telefono' like ${likePrefix(f.search)}
+              or coalesce(nullif(trim(p.doc_number), ''), c.custom_fields->>'dni') like ${likePrefix(f.search)})`,
+      );
+    }
     if (f.tagId)
       conds.push(
         sql`exists (select 1 from crm_contact_tags ct where ct.contact_id = c.id and ct.tag_id = ${f.tagId})`,
@@ -302,14 +403,14 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     if (typeof f.maxScore === 'number') outer.push(sql`score <= ${f.maxScore}`);
     if (ruleSql) outer.push(sql.raw(ruleSql)); // vetted: whitelisted columns only
 
+    // `sort` arrives from a URL param, so resolve it through the Map (unknown
+    // keys fall back to 'score') and never interpolate the direction verbatim.
+    const sortSpec = SORT_EXPR.get(f.sort as RankSort) ?? SORT_EXPR.get('score')!;
+    const dir = sql.raw(f.sortDir === 'asc' || f.sortDir === 'desc' ? f.sortDir : sortSpec.dir);
     const orderBy =
-      f.sort === 'recent'
-        ? sql`last_contact_at desc nulls last, display_name asc nulls last`
-        : f.sort === 'frequency'
-          ? sql`total_msgs desc, display_name asc nulls last`
-          : f.sort === 'name'
-            ? sql`display_name asc nulls last`
-            : sql`score desc, display_name asc nulls last`;
+      f.sort === 'name'
+        ? sql`display_name ${dir} nulls last`
+        : sql`${sortSpec.expr} ${dir} nulls last, display_name asc nulls last`;
 
     const limit = Math.min(f.limit ?? 100, f.maxLimit ?? 5000);
     const offset = f.offset ?? 0;
@@ -328,18 +429,26 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     // lifecycle degrades cleanly to message-only signals.
     const withFinance = await bothEnabled(ctx, 'crm', 'finances');
     const finCte = withFinance
-      ? sql`fin as (
+      ? // revenue/invoice rollups mirror contactFinanceMap's (sum of fin_invoices.total,
+        // one row per invoice) so a server sort on the money columns orders by the
+        // very numbers the list renders.
+        sql`fin as (
           select cp.contact_id,
                  min(fi.issued_at) as first_purchase_at,
-                 max(fi.issued_at) as last_purchase_at
+                 max(fi.issued_at) as last_purchase_at,
+                 coalesce(sum(fi.total), 0)::float8 as revenue,
+                 count(*)::int as invoices
           from contact_party cp
           join fin_clients fc on fc.org_id = ${ctx.tenantId} and fc.party_id = cp.party_id
           join fin_invoices fi on fi.client_id = fc.id
           group by cp.contact_id
         )`
-      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at where false)`;
+      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at, 0::float8 as revenue, 0::int as invoices where false)`;
 
-    const rows = await tx.execute(sql`
+    // The CTE chain is built once and spliced into BOTH the page query and (only
+    // when the page comes back empty) the fallback count — so no predicate can
+    // drift between the rows and the total that describes them.
+    const cteChain = sql`
       with agg as (
         select ci.contact_id,
                max(coalesce(m.occurred_at, m.created_at)) as last_contact_at,
@@ -389,6 +498,11 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                least(a.first_contact_at, fn.first_purchase_at) as first_contact_at,
                greatest(a.last_contact_at, fn.last_purchase_at) as last_contact_at,
                (fn.first_purchase_at is not null) as is_buyer,
+               -- finance rollups, carried for server-side sorting only (stripped
+               -- from the returned rows — the page decorates from contactFinanceMap)
+               coalesce(fn.revenue, 0) as fin_revenue,
+               coalesce(fn.invoices, 0) as fin_invoices,
+               fn.last_purchase_at,
                attr.origin as lead_origin,
                attr.campaign_name as lead_campaign,
                (a.last_inbound_at is not null and (a.last_outbound_at is null or a.last_inbound_at > a.last_outbound_at)) as awaiting_reply,
@@ -420,6 +534,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
                party_id, dni_verified, age, dob, sex,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
+               fin_revenue, fin_invoices, last_purchase_at,
                lead_origin, lead_campaign,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
