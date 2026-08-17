@@ -6,6 +6,7 @@ import { enqueueJob, getJobById, listEnabledSources } from '$server/services/fin
 import { advanceJob } from '$server/services/finance-sync.service';
 import { reconcileParties } from '$server/services/party.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
+import { hubBaseUrl } from '$server/config/urls';
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -33,16 +34,49 @@ async function alertSyncFailure(orgId: string, provider: string, reason: string)
   const channel = env.FINANCE_ALERT_CHANNEL;
   if (!to || !channel) {
     console.error('[finance-sync] daily FAILED and no alert configured', { orgId, provider, reason });
-    return;
+  } else {
+    try {
+      await gatewayCall('channels.send', {
+        channel,
+        to,
+        text: `⚠️ Finance sync failed — org ${orgId}, provider ${provider}\n${reason}\n\nFinance data is now stale. Check /finances/settings.`,
+      });
+    } catch (e) {
+      console.error('[finance-sync] daily alert delivery failed', orgId, e);
+    }
   }
+  await postFactoryMonitor(orgId, provider, reason);
+}
+
+/**
+ * Mirror the same failure to the factory's `/hooks/monitor` intake so a dead
+ * money sync files a maintenance-lane proposal, not just a channel message
+ * nobody's watching. Independent of the channels.send path above — both fire
+ * on every failure when configured. Inert (no-op) unless both
+ * FINANCE_ALERT_WEBHOOK_URL and FINANCE_ALERT_WEBHOOK_TOKEN are set, so
+ * current behavior is unchanged for any deployment that hasn't opted in.
+ */
+async function postFactoryMonitor(orgId: string, provider: string, reason: string): Promise<void> {
+  const url = env.FINANCE_ALERT_WEBHOOK_URL;
+  const token = env.FINANCE_ALERT_WEBHOOK_TOKEN;
+  if (!url || !token) return;
   try {
-    await gatewayCall('channels.send', {
-      channel,
-      to,
-      text: `⚠️ Finance sync failed — org ${orgId}, provider ${provider}\n${reason}\n\nFinance data is now stale. Check /finances/settings.`,
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        source: 'finance-sync',
+        title: `Finance sync failed — org ${orgId}, provider ${provider}`,
+        fingerprint: `finance-sync:${orgId}:${provider}`,
+        url: `${hubBaseUrl()}/finances/settings`,
+        detail: reason,
+      }),
     });
+    if (!res.ok) {
+      console.error('[finance-sync] factory monitor webhook rejected', orgId, provider, res.status);
+    }
   } catch (e) {
-    console.error('[finance-sync] daily alert delivery failed', orgId, e);
+    console.error('[finance-sync] factory monitor webhook failed', orgId, provider, e);
   }
 }
 
