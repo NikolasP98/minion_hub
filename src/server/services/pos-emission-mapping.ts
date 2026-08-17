@@ -109,12 +109,16 @@ export function ticketToEmission(
     };
   });
 
+  // TODO(handoff): igvRate is still a literal here — S2 of
+  // 2026-08-17-hub-igv-rate-from-org-config-spec resolves it from
+  // fin_settings.tax_rate via resolveIgvRate() and passes it in.
   const invoice: EmissionInvoice = {
     docType,
     serie: allocation.serie,
     correlativo: String(allocation.correlativo),
     issueDate: new Date().toISOString().slice(0, 10),
     currency: 'PEN',
+    igvRate: 0.18,
     emitter,
     client,
     lines: emissionLines,

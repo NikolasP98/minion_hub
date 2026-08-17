@@ -16,12 +16,17 @@ const keyPem = readFileSync(join(certDir, 'key.pem'), 'utf8');
 
 const today = new Date().toISOString().slice(0, 10);
 
+/** IGV rate these synthetic payloads declare (fraction). Synthetic harness with
+ *  no org behind it, so it is stated here rather than read from fin_settings. */
+const RATE = 0.18;
+
 const boleta: EmissionInvoice = {
   docType: '03',
   serie: 'B999',
   correlativo: '1',
   issueDate: today,
   currency: 'PEN',
+  igvRate: RATE,
   emitter: {
     ruc: '20611172967',
     razonSocial: 'FACES BETA SAC',

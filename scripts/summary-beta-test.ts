@@ -22,12 +22,17 @@ const keyPem = readFileSync(join(certDir, 'key.pem'), 'utf8');
 const today = new Date().toISOString().slice(0, 10);
 const emitter = { ruc: '20611172967', razonSocial: 'FACES BETA SAC' };
 
+/** IGV rate these synthetic payloads declare (fraction). Synthetic harness with
+ *  no org behind it, so it is stated here rather than read from fin_settings. */
+const RATE = 0.18;
+
 const boleta1: EmissionInvoice = {
   docType: '03',
   serie: 'B998',
   correlativo: '1',
   issueDate: today,
   currency: 'PEN',
+  igvRate: RATE,
   emitter: { ...emitter, ubigeo: '150101', address: 'AV BETA 123, LIMA' },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA UNO' },
   lines: [{ description: 'Servicio de prueba resumen 1', quantity: 1, unitPriceInclTax: 118 }],
