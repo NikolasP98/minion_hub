@@ -7,6 +7,8 @@ import { posEmissions, posSeries, posTicketLines, type PosEmission, type PosSeri
 import { parties } from '$server/db/pg-party-schema';
 import { emitToBeta } from '$server/finance/emission';
 import type { EmissionDocType, EmissionInvoice } from '$server/finance/emission';
+import { resolveIgvRate } from '$server/finance/tax';
+import { getFinSettings } from './finance.service';
 import { PosError, type PosSettings } from './pos.service';
 // The ticket->EmissionInvoice mapping is a PURE module (no $env/db/@vercel
 // imports) so scripts/shadow-emit-test.ts can import it under plain `bun run`
@@ -198,7 +200,7 @@ export async function triggerShadowEmission(
   settings: PosSettings,
 ): Promise<void> {
   try {
-    const [lines, partyRows] = await Promise.all([
+    const [lines, partyRows, finSettings] = await Promise.all([
       withOrgCore(ctx, (tx) =>
         tx
           .select({
@@ -218,14 +220,27 @@ export async function triggerShadowEmission(
               .limit(1),
           )
         : Promise.resolve([]),
+      // The org's configured IGV rate — same request, in parallel with the two
+      // reads above, so threading it costs no extra checkout latency.
+      getFinSettings(ctx),
     ]);
     const customer: PartyDocInfo | null = partyRows[0] ?? null;
     const emitter = resolveEmitter();
     const docType = resolveEmissionDocType(customer, settings.emission.docTypeDefault);
+    // Single normalization/validation boundary (finance/tax.ts). Throws
+    // PosError('invalid_tax_rate') for a rate SUNAT cannot accept (including 0
+    // — an exonerated operation is a different UBL document); the catch below
+    // keeps that off the cashier's request.
+    // TODO(handoff): an unusable rate fails BEFORE the pos_emissions insert, so
+    // it is only logged — there is no row to degrade to status='error', unlike
+    // every other emission failure. Making it visible needs either a
+    // rate-independent row insert or a serie-less error row; see
+    // docs/handoff/2026-08-17-igv-rate-open-items.md (A2).
+    const igvRate = resolveIgvRate(finSettings);
 
     const { id: emissionId, invoice, docRequired } = await withOrgCore(ctx, async (tx) => {
       const allocation = await allocateNumber(tx, ctx.tenantId, docType, 'beta');
-      const mapped = ticketToEmission(ticket, lines, customer, settings, allocation, emitter);
+      const mapped = ticketToEmission(ticket, lines, customer, settings, allocation, emitter, igvRate);
       const [row] = await tx
         .insert(posEmissions)
         .values({

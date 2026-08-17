@@ -15,6 +15,11 @@ import {
   type PartyDocInfo,
   type EmitterConfig,
 } from '../src/server/services/pos-emission-mapping.ts';
+import { parseRateArg } from './_emission-rate-arg.ts';
+
+// In production this rate comes from the org's fin_settings via
+// resolveIgvRate(); this harness has no org, so `--rate 0.10` stands in.
+const RATE = parseRateArg();
 
 const certDir = join(import.meta.dirname, '..', '.beta-cert');
 const certPem = readFileSync(join(certDir, 'cert.pem'), 'utf8');
@@ -46,9 +51,13 @@ const { invoice, docRequired } = ticketToEmission(
   settings,
   allocation,
   emitter,
+  RATE,
 );
 
-console.log(`--- emitting ${invoice.docType} ${invoice.serie}-${invoice.correlativo} (docRequired=${docRequired}) ---`);
+console.log(
+  `--- emitting ${invoice.docType} ${invoice.serie}-${invoice.correlativo} ` +
+    `(docRequired=${docRequired}, igvRate=${invoice.igvRate}) ---`,
+);
 const cdr = await emitToBeta(invoice, certPem, keyPem);
 
 const accepted = cdr.responseCode === '0';

@@ -82,8 +82,16 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  * totals are exactly what `submitTicket`/`computeTicketTotals` wrote, so this
  * reuses the authoritative numbers instead of recomputing discount math.
  * `unitPriceInclTax` is IGV-inclusive; the emission library derives IGV from
- * it (`quantity * unitPriceInclTax`, see ubl.ts computeTotals) — never pass a
- * separately-discounted amount here, it would double-apply the discount.
+ * it (`quantity * unitPriceInclTax` and `igvRate`, see ubl.ts computeTotals) —
+ * never pass a separately-discounted amount here, it would double-apply the
+ * discount.
+ *
+ * `igvRate` is a resolved FRACTION, taken as a parameter rather than read here:
+ * this module is deliberately pure (no `$env`/db imports) so the beta scripts
+ * can import it under plain `bun run`, and `resolveIgvRate()` — the single
+ * normalization/validation boundary — belongs to the settings layer
+ * (`$server/finance/tax`). The caller (`triggerShadowEmission`) resolves it
+ * inside the org fin-settings read it already performs.
  */
 export function ticketToEmission(
   ticket: TicketEmissionTotals,
@@ -92,6 +100,7 @@ export function ticketToEmission(
   settings: EmissionSettingsInput,
   allocation: { serie: string; correlativo: number },
   emitter: EmitterConfig,
+  igvRate: number,
 ): { invoice: EmissionInvoice; docRequired: boolean } {
   const docType = resolveEmissionDocType(customer, settings.emission.docTypeDefault);
   const client = resolveClient(customer);
@@ -109,16 +118,13 @@ export function ticketToEmission(
     };
   });
 
-  // TODO(handoff): igvRate is still a literal here — S2 of
-  // 2026-08-17-hub-igv-rate-from-org-config-spec resolves it from
-  // fin_settings.tax_rate via resolveIgvRate() and passes it in.
   const invoice: EmissionInvoice = {
     docType,
     serie: allocation.serie,
     correlativo: String(allocation.correlativo),
     issueDate: new Date().toISOString().slice(0, 10),
     currency: 'PEN',
-    igvRate: 0.18,
+    igvRate,
     emitter,
     client,
     lines: emissionLines,

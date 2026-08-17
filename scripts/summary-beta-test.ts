@@ -14,6 +14,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { emitToBeta, submitBaja, submitResumen, type EmissionInvoice } from '../src/server/finance/emission/index.ts';
+import { parseRateArg } from './_emission-rate-arg.ts';
 
 const certDir = join(import.meta.dirname, '..', '.beta-cert');
 const certPem = readFileSync(join(certDir, 'cert.pem'), 'utf8');
@@ -22,9 +23,7 @@ const keyPem = readFileSync(join(certDir, 'key.pem'), 'utf8');
 const today = new Date().toISOString().slice(0, 10);
 const emitter = { ruc: '20611172967', razonSocial: 'FACES BETA SAC' };
 
-/** IGV rate these synthetic payloads declare (fraction). Synthetic harness with
- *  no org behind it, so it is stated here rather than read from fin_settings. */
-const RATE = 0.18;
+const RATE = parseRateArg();
 
 const boleta1: EmissionInvoice = {
   docType: '03',
