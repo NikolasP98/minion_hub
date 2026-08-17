@@ -14,8 +14,12 @@ vi.mock('$server/services/finance-sync-jobs.service', () => ({
   enqueueJob: (...a: unknown[]) => enqueueJob(...a),
   getJobById: (...a: unknown[]) => getJobById(...a),
 }));
-vi.mock('$server/services/finance-sync.service', () => ({ advanceJob: (...a: unknown[]) => advanceJob(...a) }));
-vi.mock('$server/services/party.service', () => ({ reconcileParties: (...a: unknown[]) => reconcileParties(...a) }));
+vi.mock('$server/services/finance-sync.service', () => ({
+  advanceJob: (...a: unknown[]) => advanceJob(...a),
+}));
+vi.mock('$server/services/party.service', () => ({
+  reconcileParties: (...a: unknown[]) => reconcileParties(...a),
+}));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: () => ({}) }));
 vi.mock('$lib/server/gateway-rpc', () => ({ gatewayCall: (...a: unknown[]) => gatewayCall(...a) }));
 vi.mock('$env/dynamic/private', () => ({ env: testEnv }));
@@ -23,7 +27,11 @@ vi.mock('$env/dynamic/private', () => ({ env: testEnv }));
 import { GET } from './+server';
 
 function req() {
-  return { request: new Request('http://x/api/finances/sync/daily', { headers: { authorization: 'Bearer sekret' } }) } as never;
+  return {
+    request: new Request('http://x/api/finances/sync/daily', {
+      headers: { authorization: 'Bearer sekret' },
+    }),
+  } as never;
 }
 
 beforeEach(() => {
@@ -48,7 +56,9 @@ describe('GET /api/finances/sync/daily — factory monitor webhook', () => {
     testEnv.FINANCE_ALERT_WEBHOOK_URL = 'https://factory.minion-ai.org/hooks/monitor';
     testEnv.FINANCE_ALERT_WEBHOOK_TOKEN = 'hook-token';
     getJobById.mockResolvedValue({ status: 'failed', error: 'susii login failed: 400' });
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
 
     await GET(req());
 
@@ -66,6 +76,24 @@ describe('GET /api/finances/sync/daily — factory monitor webhook', () => {
     });
   });
 
+  it('bounds the webhook POST with an AbortSignal so a non-settling monitor cannot hang the cron', async () => {
+    testEnv.FINANCE_ALERT_WEBHOOK_URL = 'https://factory.minion-ai.org/hooks/monitor';
+    testEnv.FINANCE_ALERT_WEBHOOK_TOKEN = 'hook-token';
+    getJobById.mockResolvedValue({ status: 'failed', error: 'susii login failed: 400' });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
+
+    const res = await GET(req());
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [, init] = fetchSpy.mock.calls[0];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    // The rejection must be swallowed here, not surfaced to the caller — that's
+    // what keeps a dead monitor endpoint from stalling the per-org sync loop.
+    expect(await res.json()).toEqual({ started: 0, failed: 1 });
+  });
+
   it('still calls channels.send when FINANCE_ALERT_TO/CHANNEL are set, independent of the webhook', async () => {
     testEnv.FINANCE_ALERT_TO = '#finance';
     testEnv.FINANCE_ALERT_CHANNEL = 'slack';
@@ -74,7 +102,10 @@ describe('GET /api/finances/sync/daily — factory monitor webhook', () => {
 
     await GET(req());
 
-    expect(gatewayCall).toHaveBeenCalledWith('channels.send', expect.objectContaining({ channel: 'slack', to: '#finance' }));
+    expect(gatewayCall).toHaveBeenCalledWith(
+      'channels.send',
+      expect.objectContaining({ channel: 'slack', to: '#finance' }),
+    );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

@@ -2,13 +2,18 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
-import { enqueueJob, getJobById, listEnabledSources } from '$server/services/finance-sync-jobs.service';
+import {
+  enqueueJob,
+  getJobById,
+  listEnabledSources,
+} from '$server/services/finance-sync-jobs.service';
 import { advanceJob } from '$server/services/finance-sync.service';
 import { reconcileParties } from '$server/services/party.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
 import { hubBaseUrl } from '$server/config/urls';
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const MONITOR_WEBHOOK_TIMEOUT_MS = 5_000;
 
 /**
  * Shout when the daily money sync fails. `advanceJob` deliberately swallows its
@@ -33,7 +38,11 @@ async function alertSyncFailure(orgId: string, provider: string, reason: string)
   const to = env.FINANCE_ALERT_TO;
   const channel = env.FINANCE_ALERT_CHANNEL;
   if (!to || !channel) {
-    console.error('[finance-sync] daily FAILED and no alert configured', { orgId, provider, reason });
+    console.error('[finance-sync] daily FAILED and no alert configured', {
+      orgId,
+      provider,
+      reason,
+    });
   } else {
     try {
       await gatewayCall('channels.send', {
@@ -55,6 +64,10 @@ async function alertSyncFailure(orgId: string, provider: string, reason: string)
  * on every failure when configured. Inert (no-op) unless both
  * FINANCE_ALERT_WEBHOOK_URL and FINANCE_ALERT_WEBHOOK_TOKEN are set, so
  * current behavior is unchanged for any deployment that hasn't opted in.
+ *
+ * Alert delivery is best-effort and must never hold up the cron: bounded with
+ * AbortSignal.timeout so an unresponsive monitor endpoint can't stall this
+ * serial per-org loop until Vercel kills the function.
  */
 async function postFactoryMonitor(orgId: string, provider: string, reason: string): Promise<void> {
   const url = env.FINANCE_ALERT_WEBHOOK_URL;
@@ -71,6 +84,7 @@ async function postFactoryMonitor(orgId: string, provider: string, reason: strin
         url: `${hubBaseUrl()}/finances/settings`,
         detail: reason,
       }),
+      signal: AbortSignal.timeout(MONITOR_WEBHOOK_TIMEOUT_MS),
     });
     if (!res.ok) {
       console.error('[finance-sync] factory monitor webhook rejected', orgId, provider, res.status);

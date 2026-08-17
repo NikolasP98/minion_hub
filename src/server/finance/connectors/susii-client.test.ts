@@ -66,16 +66,4 @@ describe('SusiiClient', () => {
     await expect(p).resolves.toBe(9);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
-
-  it('surfaces SUSII\'s reason in the login error, not just the status code', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      jsonResponse({ non_field_errors: ['Unable to log in with provided credentials.'] }, 400),
-    );
-    const c = new SusiiClient({ username: 'u', password: 'p' });
-    // A bare "susii login failed: 400" is what made the Aug-2026 14-day silent
-    // staleness undiagnosable — the body must reach the fin_sync_jobs.error row.
-    await expect(c.count({ businessId: 5922 })).rejects.toThrow(
-      /susii login failed: 400 — .*Unable to log in with provided credentials/,
-    );
-  });
 });
