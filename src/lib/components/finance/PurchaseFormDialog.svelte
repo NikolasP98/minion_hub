@@ -24,7 +24,12 @@
     period,
     purchase = null,
     onclose,
-  }: { open?: boolean; period: string; purchase?: Purchase | null; onclose?: () => void } = $props();
+  }: {
+    open?: boolean;
+    period: string;
+    purchase?: Purchase | null;
+    onclose?: () => void;
+  } = $props();
 
   function close() {
     open = false;
@@ -108,22 +113,81 @@
   }
 </script>
 
-<Dialog bind:open title={isEdit ? m.fin_purchases_edit_title() : m.fin_purchases_add_title()} size="md" onclose={() => onclose?.()}>
+<Dialog
+  bind:open
+  title={isEdit ? m.fin_purchases_edit_title() : m.fin_purchases_add_title()}
+  size="md"
+  onclose={() => onclose?.()}
+>
   <div class="purchase-form">
     <div class="identity-fields">
-      <Input id="pur-ruc" label={m.fin_purchases_field_ruc()} bind:value={supplierRuc} maxlength="20" autocomplete="off" />
-      <Input id="pur-name" label={m.fin_purchases_field_supplier()} bind:value={supplierName} autocomplete="off" />
+      <Input
+        id="pur-ruc"
+        label={m.fin_purchases_field_ruc()}
+        bind:value={supplierRuc}
+        maxlength="20"
+        autocomplete="off"
+      />
+      <Input
+        id="pur-name"
+        label={m.fin_purchases_field_supplier()}
+        bind:value={supplierName}
+        autocomplete="off"
+      />
     </div>
     <div class="doc-fields">
-      <Input id="pur-doctype" label={m.fin_purchases_field_doctype()} bind:value={docType} maxlength="10" autocomplete="off" />
-      <Input id="pur-serie" label={m.fin_purchases_field_serie()} bind:value={serie} maxlength="20" autocomplete="off" />
-      <Input id="pur-numero" label={m.fin_purchases_field_numero()} bind:value={numero} maxlength="20" autocomplete="off" />
+      <Input
+        id="pur-doctype"
+        label={m.fin_purchases_field_doctype()}
+        bind:value={docType}
+        maxlength="10"
+        autocomplete="off"
+      />
+      <Input
+        id="pur-serie"
+        label={m.fin_purchases_field_serie()}
+        bind:value={serie}
+        maxlength="20"
+        autocomplete="off"
+      />
+      <Input
+        id="pur-numero"
+        label={m.fin_purchases_field_numero()}
+        bind:value={numero}
+        maxlength="20"
+        autocomplete="off"
+      />
     </div>
-    <Input id="pur-issued" label={m.fin_purchases_field_date()} type="text" placeholder="YYYY-MM-DD" bind:value={issuedAt} autocomplete="off" />
+    <Input
+      id="pur-issued"
+      label={m.fin_purchases_field_date()}
+      type="text"
+      placeholder="YYYY-MM-DD"
+      bind:value={issuedAt}
+      autocomplete="off"
+    />
     <div class="amount-fields">
-      <Input id="pur-base" label={m.fin_purchases_field_base()} type="number" bind:value={baseGravada} autocomplete="off" />
-      <Input id="pur-igv" label={m.fin_purchases_field_igv()} type="number" bind:value={igv} autocomplete="off" />
-      <Input id="pur-total" label={m.fin_purchases_field_total()} type="number" bind:value={total} autocomplete="off" />
+      <Input
+        id="pur-base"
+        label={m.fin_purchases_field_base()}
+        type="number"
+        bind:value={baseGravada}
+        autocomplete="off"
+      />
+      <Input
+        id="pur-igv"
+        label={m.fin_purchases_field_igv()}
+        type="number"
+        bind:value={igv}
+        autocomplete="off"
+      />
+      <Input
+        id="pur-total"
+        label={m.fin_purchases_field_total()}
+        type="number"
+        bind:value={total}
+        autocomplete="off"
+      />
     </div>
 
     {#if submitError}
@@ -135,7 +199,13 @@
     <Button variant="ghost" size="sm" disabled={saving} onclick={close}>
       {m.common_cancel()}
     </Button>
-    <Button variant="primary" size="sm" disabled={!canSubmit || saving} loading={saving} onclick={submit}>
+    <Button
+      variant="primary"
+      size="sm"
+      disabled={!canSubmit || saving}
+      loading={saving}
+      onclick={submit}
+    >
       {isEdit ? m.common_save() : m.fin_purchases_add_title()}
     </Button>
   {/snippet}

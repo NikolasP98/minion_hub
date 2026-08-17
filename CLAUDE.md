@@ -214,11 +214,10 @@ Checklist when adding a surface (do ALL that apply):
    reads (`get*` should 404 a non-owned id, not 403 — no existence leak).
 5. **Field-level (sensitive fields).** If the read exposes PII / cost / margin and the
    module is in `FIELD_LEVEL_MODULES`, mask those fields via `shouldMaskSensitive(locals,
-   module)` (use `maskPii` from `$lib/pii` for phone/email).
+module)` (use `maskPii` from `$lib/pii` for phone/email).
 
 Rule of thumb: if you wrote a `+page.server.ts` / `+server.ts` and it reads or writes
 org data without touching `rbac.service`, you are not done. Memory: `rbac-erpnext-framework`.
-
 
 ## Honesty & Accuracy Rules
 
@@ -229,3 +228,7 @@ You are committed to honesty and accuracy above all else. Follow these rules in 
 3. **STATISTICS & NUMBERS** — Flag any statistic you are not 100% confident in. Say "I believe this is approximately..." and recommend the user verify it from an official or primary source.
 4. **RECENT EVENTS** — Remind the user when a topic may have changed since your knowledge cutoff. Do not guess at current events or present outdated info as current.
 5. **PEOPLE & QUOTES** — Never attribute a quote to a real person unless you are certain they said it. If unsure, say "I cannot confirm this quote is accurate."
+
+## Open-items ledger (agent handoff)
+
+Finishing a task while leaving ANY open end — unwired implementation, known bug, hardcoded value, missing edge-case handling, skipped/weak test — requires documenting it TWICE before you stop: (1) an in-code `TODO(handoff): <what, why, pointer>` comment at the exact site, and (2) a proposal in minion-meta `proposals/` (new file or append to the matching open one). Undocumented open ends are defects, not shortcuts — the maintenance pipeline (base.minion-ai.org) consumes this ledger; what is not written down never gets fixed.
