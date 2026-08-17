@@ -2,6 +2,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { wrapLanguageModel, type LanguageModelMiddleware } from 'ai';
 import { env } from '$env/dynamic/private';
 import { recordAiUsage, type ProviderUsage } from '$server/ai-usage';
+import { estimateCostUsd } from '$lib/utils/model-pricing';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -118,26 +119,14 @@ export function getOpenRouterModel(modelId: string) {
 }
 
 /**
- * Per-1M-token pricing for the builder AI cost estimate.
+ * Cost estimate for the builder AI endpoints.
  *
- * @deprecated Use `estimateCostUsd` from `$lib/utils/model-pricing`, which is the
- * single price table. This copy exists only for the two builder endpoints that
- * still import `estimateCost`; it went stale (no Claude 5 / Gemini 2.5 entries)
- * precisely because a second table has no reason to be kept current. Delete once
- * those call sites move over.
+ * This used to carry its OWN price table, which is how it ended up with exactly
+ * four entries — none of them a model the hub still calls. A second price table
+ * has no reason to be kept current, so it silently went stale and every estimate
+ * it produced was zero. It now delegates to `$lib/utils/model-pricing`, the one
+ * table, which also gets `:batch` and cache-read handling for free.
  */
-export const MODEL_PRICE_TABLE: Record<string, { inputPerMillion: number; outputPerMillion: number }> = {
-  'anthropic/claude-sonnet-4': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
-  'anthropic/claude-haiku-3': { inputPerMillion: 0.25, outputPerMillion: 1.25 },
-  'openai/gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
-  'openai/gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
-};
-
 export function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
-  const prices = MODEL_PRICE_TABLE[model];
-  if (!prices) return 0;
-  return (
-    (promptTokens / 1_000_000) * prices.inputPerMillion +
-    (completionTokens / 1_000_000) * prices.outputPerMillion
-  );
+  return estimateCostUsd(model, promptTokens, completionTokens);
 }

@@ -91,7 +91,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     }),
   };
 
-  const model = env.FLOW_COPILOT_MODEL || env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-3.7-sonnet';
+  const model = env.FLOW_COPILOT_MODEL || env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-sonnet-5';
   let text: string;
   try {
     const res = await generateText({
