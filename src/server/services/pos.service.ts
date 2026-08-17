@@ -1151,7 +1151,7 @@ export async function deriveSellableFacts(
   ctx: CoreCtx,
   finProductId: string,
 ): Promise<{
-  kind: 'service' | 'product';
+  kind: 'service' | 'product' | 'bundle';
   trackStock: boolean;
   uom: string | null;
   itemId: string | null;
@@ -1168,11 +1168,12 @@ export async function deriveSellableFacts(
     uom = uomRows[0]?.uom ?? null;
   }
   return {
-    // `kind` is only ever settable as 'product' | 'service' (SellableInput.kind
-    // has no 'bundle' variant) — a bundle folds into 'service' here so a
-    // kind-change attempt on one still compares against something and refuses
-    // correctly rather than throwing on an unhandled case.
-    kind: row.kind === 'product' ? 'product' : 'service',
+    // The true derived kind, bundle included. `SellableInput.kind` (what a
+    // PATCH can submit) has no 'bundle' variant, so a bundle can never equal
+    // patch.kind below — every kind patch on a bundle refuses with
+    // 'kind_derived' instead of a same-as-service patch (e.g. kind: 'service')
+    // comparing equal-by-coincidence and silently passing through as a no-op.
+    kind: row.kind,
     trackStock: itemId != null,
     uom,
     itemId,

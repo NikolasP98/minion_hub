@@ -758,6 +758,16 @@ describe('updateSellable', () => {
         },
       ]);
 
+      // The mocked execute() readback below is fixed data, independent of what
+      // gets written — asserting only `row.unitPrice` / `update` called-ness
+      // would still pass if the `.set()` payload dropped `unitPrice` entirely.
+      // Spy on `.set()` directly so the test proves the write, not just the
+      // (separately mocked) read.
+      const setSpy = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+      (db as unknown as { update: ReturnType<typeof vi.fn> }).update = vi
+        .fn()
+        .mockReturnValue({ set: setSpy });
+
       const row = await updateSellable(
         ctx(db),
         'fp-10',
@@ -765,8 +775,8 @@ describe('updateSellable', () => {
         actor,
       );
 
+      expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ unitPrice: '999' }));
       expect(row.unitPrice).toBe(999);
-      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).toHaveBeenCalled();
     });
 
     it('uom resubmitted with different case/whitespace only → treated as unchanged → 200', async () => {
@@ -834,6 +844,46 @@ describe('updateSellable', () => {
 
       await expect(
         updateSellable(ctx(db), 'fp-12', { kind: 'product' }, actor),
+      ).rejects.toMatchObject({ code: 'kind_derived' });
+      expect(
+        (db as unknown as { update: ReturnType<typeof vi.fn> }).update,
+      ).not.toHaveBeenCalled();
+    });
+
+    it("kind: 'service' on a bundle throws PosError code 'kind_derived' instead of comparing equal-by-coincidence, mutates nothing", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-12b',
+            code: 'PACK',
+            name: 'Combo Pack',
+            category: null,
+            unitPrice: '100',
+            active: true,
+          },
+        ],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-12b',
+          code: 'PACK',
+          name: 'Combo Pack',
+          category: null,
+          unit_price: '100',
+          active: true,
+          item_id: null,
+          stock_qty: null,
+          has_mapping: false,
+          is_bundle: true,
+        },
+      ]);
+
+      // A bundle has no linked item, so it derives the same as a plain service
+      // ('kind: service' resubmitted) UNLESS the true 'bundle' kind is preserved
+      // for the comparison — this is the accept-and-drop defect this test guards.
+      await expect(
+        updateSellable(ctx(db), 'fp-12b', { kind: 'service' }, actor),
       ).rejects.toMatchObject({ code: 'kind_derived' });
       expect(
         (db as unknown as { update: ReturnType<typeof vi.fn> }).update,
