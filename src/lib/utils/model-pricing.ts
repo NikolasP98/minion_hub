@@ -19,10 +19,27 @@ export type ModelPricing = {
 
 /** Key format: lowercase bare model id (no provider prefix). Local models = no entry (cost 0). */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-	// Anthropic
+	// Anthropic — verified 2026-08-16 against the live OpenRouter /models catalog.
+	// NB the Claude 5 generation is CHEAPER than Claude 4, not more expensive:
+	// Opus 5 is $5/$25 against Opus 4's $15/$75. Do not assume newer = pricier.
+	'claude-opus-5': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+	// The `-fast` variants are a separate, 2x-priced SKU — they need their own
+	// keys or longest-prefix matching silently bills them at the base rate.
+	'claude-opus-5-fast': { inputPerMillion: 10.0, outputPerMillion: 50.0 },
+	'claude-sonnet-5': { inputPerMillion: 2.0, outputPerMillion: 10.0 },
 	'claude-opus-4': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
+	'claude-opus-4.1': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
+	'claude-opus-4.5': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+	'claude-opus-4.6': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+	'claude-opus-4.7': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+	'claude-opus-4.7-fast': { inputPerMillion: 30.0, outputPerMillion: 150.0 },
+	'claude-opus-4.8': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+	'claude-opus-4.8-fast': { inputPerMillion: 10.0, outputPerMillion: 50.0 },
 	'claude-sonnet-4': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
+	'claude-sonnet-4.5': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
+	'claude-sonnet-4.6': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
 	'claude-haiku-4': { inputPerMillion: 1.0, outputPerMillion: 5.0 },
+	'claude-haiku-4.5': { inputPerMillion: 1.0, outputPerMillion: 5.0 },
 	'claude-haiku-3.5': { inputPerMillion: 0.8, outputPerMillion: 4.0 },
 	'claude-3.5-sonnet': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
 	'claude-3-opus': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
@@ -40,14 +57,25 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 	'o3-mini': { inputPerMillion: 1.1, outputPerMillion: 4.4 },
 	'o4-mini': { inputPerMillion: 1.1, outputPerMillion: 4.4 },
 
-	// Google
-	'gemini-3.1-pro': { inputPerMillion: 2.5, outputPerMillion: 15.0 },
+	// Google — verified 2026-08-16 against the live OpenRouter /models catalog.
+	// `gemini-2.5-flash` is the hub's actual default model and was understated
+	// 4.2x on output ($0.60 vs the real $2.50), so every cost figure the
+	// dashboards have ever shown for the default path was far too low.
+	'gemini-3.5-flash': { inputPerMillion: 1.5, outputPerMillion: 9.0 },
+	'gemini-3.1-pro': { inputPerMillion: 2.0, outputPerMillion: 12.0 },
+	'gemini-3.1-flash-lite': { inputPerMillion: 0.25, outputPerMillion: 1.5 },
 	'gemini-2.5-pro': { inputPerMillion: 1.25, outputPerMillion: 10.0 },
-	'gemini-2.5-flash-lite': { inputPerMillion: 0.05, outputPerMillion: 0.2 },
-	'gemini-2.5-flash': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
+	'gemini-2.5-flash-lite': { inputPerMillion: 0.1, outputPerMillion: 0.4 },
+	'gemini-2.5-flash': { inputPerMillion: 0.3, outputPerMillion: 2.5 },
 	'gemini-2.0-flash': { inputPerMillion: 0.1, outputPerMillion: 0.4 },
 	'gemini-1.5-pro': { inputPerMillion: 1.25, outputPerMillion: 5.0 },
 	'gemini-1.5-flash': { inputPerMillion: 0.075, outputPerMillion: 0.3 },
+
+	// Embeddings — priced per input token, no output. Cheap per call but the
+	// vectorize/brain-reconcile pipelines run them in bulk, so an unpriced entry
+	// here would report two whole pipelines as free.
+	'text-embedding-3-small': { inputPerMillion: 0.02, outputPerMillion: 0 },
+	'text-embedding-3-large': { inputPerMillion: 0.13, outputPerMillion: 0 },
 
 	// Groq / Mistral / DeepSeek / xAI
 	'mixtral-8x7b': { inputPerMillion: 0.24, outputPerMillion: 0.24 },
@@ -65,6 +93,14 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 const CACHE_READ_DISCOUNT = 0.1;
 
 /**
+ * OpenRouter's `:batch` model variants run asynchronously for exactly half the
+ * interactive price (verified across the Anthropic and Google catalogs on
+ * 2026-08-16 — e.g. `google/gemini-2.5-flash` $0.30/$2.50 vs
+ * `google/gemini-2.5-flash:batch` $0.15/$1.25).
+ */
+const BATCH_DISCOUNT = 0.5;
+
+/**
  * Look up pricing for a model id. Strips any `provider/` prefix, then tries an
  * exact match followed by a longest-prefix match (so `claude-opus-4-8` →
  * `claude-opus-4`). Returns undefined for unknown/local models (cost = 0).
@@ -76,6 +112,25 @@ export function getModelPricing(modelId: string): ModelPricing | undefined {
 	const slash = lower.lastIndexOf('/');
 	if (slash >= 0) lower = lower.slice(slash + 1);
 
+	// OpenRouter exposes async batch execution as a `:batch` model suffix priced
+	// at half the interactive rate. Without this the suffix would fall through to
+	// a longest-prefix match on the base model and bill batch work at full price —
+	// i.e. the one lever that halves pipeline COGS would be invisible in the data.
+	let multiplier = 1;
+	if (lower.endsWith(':batch')) {
+		lower = lower.slice(0, -':batch'.length);
+		multiplier = BATCH_DISCOUNT;
+	}
+
+	const base = lookupBasePricing(lower);
+	if (!base || multiplier === 1) return base;
+	return {
+		inputPerMillion: base.inputPerMillion * multiplier,
+		outputPerMillion: base.outputPerMillion * multiplier,
+	};
+}
+
+function lookupBasePricing(lower: string): ModelPricing | undefined {
 	const exact = MODEL_PRICING[lower];
 	if (exact) return exact;
 
