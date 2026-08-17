@@ -9,9 +9,9 @@ function rawSqlDb(...queryResults: unknown[]) {
   const tx = {
     execute: async () => {
       executeCount += 1;
-      // withOrgCore's four SET LOCAL / set_config statements precede service queries.
-      if (executeCount <= 4) return undefined;
-      return queryResults[executeCount - 5] ?? [];
+      // withOrgCore issues ONE combined set_config statement before service queries.
+      if (executeCount <= 1) return undefined;
+      return queryResults[executeCount - 2] ?? [];
     },
   };
   return {
