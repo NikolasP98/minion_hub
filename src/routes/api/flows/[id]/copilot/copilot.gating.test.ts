@@ -4,6 +4,8 @@ vi.mock('ai', () => ({
   generateText: vi.fn(async () => ({ text: 'done', steps: [] })),
   tool: (def: unknown) => def,
   stepCountIs: () => ({}),
+  // `$server/llm` now wraps every model in usage-recording middleware.
+  wrapLanguageModel: ({ model }: { model: unknown }) => model,
 }));
 vi.mock('@ai-sdk/openai', () => ({ createOpenAI: () => () => ({}) }));
 vi.mock('$env/dynamic/private', () => ({ env: { OPENROUTER_API_KEY: 'k' } }));
