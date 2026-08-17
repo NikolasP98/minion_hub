@@ -162,3 +162,63 @@ describe('igvRate is threaded, not assumed', () => {
     void noRate;
   });
 });
+
+// ---- SUNAT's consistency invariant, at every supported rate ----
+// A document whose lines do not sum to its own totals is rejected ("totales no
+// consistentes"). At 18% the arithmetic was proven by a live ResponseCode 0;
+// nothing proved it survives 10% or 8%, where totalIncl / (1 + rate) lands on
+// different half-cent boundaries. This table is that proof, and it is what makes
+// a configurable rate safe to emit rather than merely configurable.
+const cents = (n: number) => Math.round(n * 100);
+
+const LINE_SETS: Array<{ name: string; lines: EmissionInvoice['lines'] }> = [
+  { name: '1 line', lines: [{ description: 'One', quantity: 1, unitPriceInclTax: 118 }] },
+  {
+    name: '3 lines, odd céntimos',
+    lines: [
+      { description: 'Line 1', quantity: 3, unitPriceInclTax: 10.33 },
+      { description: 'Line 2', quantity: 1, unitPriceInclTax: 7.77 },
+      { description: 'Line 3', quantity: 2, unitPriceInclTax: 4.45 },
+    ],
+  },
+  { name: '1 line x quantity 7', lines: [{ description: 'Seven', quantity: 7, unitPriceInclTax: 3.33 }] },
+  {
+    name: 'inclusive price an exact multiple of the divisor',
+    lines: [
+      { description: 'Exact 18%', quantity: 1, unitPriceInclTax: 236 }, // 200 * 1.18
+      { description: 'Exact 10%', quantity: 1, unitPriceInclTax: 110 }, // 100 * 1.10
+      { description: 'Exact 8%', quantity: 1, unitPriceInclTax: 54 }, //   50 * 1.08
+      { description: 'Exact 5%', quantity: 1, unitPriceInclTax: 105 }, // 100 * 1.05
+    ],
+  },
+];
+
+describe.each([0.18, 0.1, 0.08, 0.05])('totals consistency at rate %f', (igvRate) => {
+  it.each(LINE_SETS)('$name: lines sum to the document totals exactly', ({ lines }) => {
+    const totals = computeTotals({ ...base, igvRate, lines });
+
+    // 1. sum(line valorVenta) === document valorVenta  (exact, in céntimos)
+    expect(totals.lines.reduce((s, l) => s + cents(l.totalExclTax), 0)).toBe(
+      cents(totals.lineExtensionAmount),
+    );
+    // 2. sum(line IGV) === document IGV
+    expect(totals.lines.reduce((s, l) => s + cents(l.igv), 0)).toBe(cents(totals.igvAmount));
+    // 3. valorVenta + IGV === total inclusive, per line AND for the document
+    for (const l of totals.lines) {
+      expect(cents(l.totalExclTax) + cents(l.igv)).toBe(cents(l.totalInclTax));
+    }
+    expect(cents(totals.lineExtensionAmount) + cents(totals.igvAmount)).toBe(
+      cents(totals.taxInclusiveAmount),
+    );
+    expect(cents(totals.payableAmount)).toBe(cents(totals.taxInclusiveAmount));
+
+    // 4. the XML carries those same figures (no second rounding path in the writer)
+    const xml = buildInvoiceXml({ ...base, igvRate, lines });
+    expect(xml).toContain(
+      `<cbc:TaxInclusiveAmount currencyID="PEN">${totals.taxInclusiveAmount.toFixed(2)}</cbc:TaxInclusiveAmount>`,
+    );
+    expect(xml).toContain(
+      `<cbc:LineExtensionAmount currencyID="PEN">${totals.lineExtensionAmount.toFixed(2)}</cbc:LineExtensionAmount>`,
+    );
+  });
+});

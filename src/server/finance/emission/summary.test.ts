@@ -123,3 +123,53 @@ describe('buildBajaXml', () => {
     ).toThrow(/facturas \(01\) only/);
   });
 });
+
+describe('buildResumenXml carries the boleta\'s own igvRate', () => {
+  // The resumen re-derives per-boleta gravada/IGV through computeTotals(), so it
+  // inherits the threaded rate — there is deliberately no second divisor here.
+  const at = (igvRate: number) =>
+    buildResumenXml({
+      emitter,
+      correlativo: '1',
+      referenceDate: '2026-08-14',
+      issueDate: '2026-08-14',
+      lines: [{ invoice: { ...boleta, igvRate }, estado: '1' }],
+    });
+
+  it('a non-statutory rate changes per-boleta gravada and IGV', () => {
+    const xml18 = at(0.18);
+    const xml10 = at(0.1);
+    expect(xml18).toContain('<cbc:PaidAmount currencyID="PEN">100.00</cbc:PaidAmount>');
+    expect(xml18).toContain('<cbc:TaxAmount currencyID="PEN">18.00</cbc:TaxAmount>');
+    // 118 incl @10% => 107.27 gravada + 10.73 IGV
+    expect(xml10).toContain('<cbc:PaidAmount currencyID="PEN">107.27</cbc:PaidAmount>');
+    expect(xml10).toContain('<cbc:TaxAmount currencyID="PEN">10.73</cbc:TaxAmount>');
+    expect(xml10).not.toContain('<cbc:PaidAmount currencyID="PEN">100.00</cbc:PaidAmount>');
+  });
+
+  it('each boleta line stays self-consistent: gravada + IGV === its TotalAmount', () => {
+    for (const rate of [0.18, 0.1, 0.08, 0.05]) {
+      const xml = at(rate);
+      const gravada = Number(/<cbc:PaidAmount currencyID="PEN">([\d.]+)</.exec(xml)?.[1]);
+      const igv = Number(/<cbc:TaxAmount currencyID="PEN">([\d.]+)</.exec(xml)?.[1]);
+      const total = Number(/<sac:TotalAmount currencyID="PEN">([\d.]+)</.exec(xml)?.[1]);
+      expect(Math.round(gravada * 100) + Math.round(igv * 100)).toBe(Math.round(total * 100));
+      expect(total).toBe(118); // the inclusive amount is the source, whatever the rate
+    }
+  });
+
+  it('a mixed-rate resumen keeps each boleta on its own rate', () => {
+    const xml = buildResumenXml({
+      emitter,
+      correlativo: '1',
+      referenceDate: '2026-08-14',
+      issueDate: '2026-08-14',
+      lines: [
+        { invoice: { ...boleta, igvRate: 0.18 }, estado: '1' },
+        { invoice: { ...boleta, correlativo: '2', igvRate: 0.1 }, estado: '1' },
+      ],
+    });
+    expect(xml).toContain('<cbc:PaidAmount currencyID="PEN">100.00</cbc:PaidAmount>');
+    expect(xml).toContain('<cbc:PaidAmount currencyID="PEN">107.27</cbc:PaidAmount>');
+  });
+});
