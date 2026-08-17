@@ -729,7 +729,7 @@ describe('updateSellable', () => {
   // under normalization) or refuse with a typed PosError; never both accept
   // AND drop.
   describe('kind/trackStock/uom — apply or refuse, never silently drop', () => {
-    it('full-object resubmit with UNCHANGED kind/trackStock/uom + a changed price → 200, price applied (the wizard\'s normal save)', async () => {
+    it("full-object resubmit with UNCHANGED kind/trackStock/uom + a changed price → 200, price applied (the wizard's normal save)", async () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([
         [
@@ -845,9 +845,7 @@ describe('updateSellable', () => {
       await expect(
         updateSellable(ctx(db), 'fp-12', { kind: 'product' }, actor),
       ).rejects.toMatchObject({ code: 'kind_derived' });
-      expect(
-        (db as unknown as { update: ReturnType<typeof vi.fn> }).update,
-      ).not.toHaveBeenCalled();
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
     it("kind: 'service' on a bundle throws PosError code 'kind_derived' instead of comparing equal-by-coincidence, mutates nothing", async () => {
@@ -885,9 +883,7 @@ describe('updateSellable', () => {
       await expect(
         updateSellable(ctx(db), 'fp-12b', { kind: 'service' }, actor),
       ).rejects.toMatchObject({ code: 'kind_derived' });
-      expect(
-        (db as unknown as { update: ReturnType<typeof vi.fn> }).update,
-      ).not.toHaveBeenCalled();
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
     it("trackStock false→true throws PosError code 'stock_tracking_immutable', mutates nothing", async () => {
@@ -921,9 +917,7 @@ describe('updateSellable', () => {
       await expect(
         updateSellable(ctx(db), 'fp-13', { trackStock: true }, actor),
       ).rejects.toMatchObject({ code: 'stock_tracking_immutable' });
-      expect(
-        (db as unknown as { update: ReturnType<typeof vi.fn> }).update,
-      ).not.toHaveBeenCalled();
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
     it("uom 'Unidad'→'mL' throws PosError code 'uom_immutable', mutates nothing", async () => {
@@ -958,9 +952,7 @@ describe('updateSellable', () => {
       await expect(updateSellable(ctx(db), 'fp-14', { uom: 'mL' }, actor)).rejects.toMatchObject({
         code: 'uom_immutable',
       });
-      expect(
-        (db as unknown as { update: ReturnType<typeof vi.fn> }).update,
-      ).not.toHaveBeenCalled();
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
     it('uom submitted on a service sellable with no linked item is a change from "not tracked" → refused, not silently accepted', async () => {
@@ -991,9 +983,9 @@ describe('updateSellable', () => {
         },
       ]);
 
-      await expect(
-        updateSellable(ctx(db), 'fp-15', { uom: 'unit' }, actor),
-      ).rejects.toMatchObject({ code: 'uom_immutable' });
+      await expect(updateSellable(ctx(db), 'fp-15', { uom: 'unit' }, actor)).rejects.toMatchObject({
+        code: 'uom_immutable',
+      });
     });
   });
 });

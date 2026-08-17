@@ -49,7 +49,11 @@ import { emitHubEvent } from '$server/events/emit';
 // PosSettings (types + a class, never touched at module-eval time) back from
 // here. Safe under ESM — neither module reads the other's export until a
 // function actually runs, well after both have finished initializing.
-import { triggerShadowEmission, seedShadowSeries, listEmissionsForTicket } from './pos-emission.service';
+import {
+  triggerShadowEmission,
+  seedShadowSeries,
+  listEmissionsForTicket,
+} from './pos-emission.service';
 // The ONE code-format rail, shared with the client wizard. Pure module, no
 // runtime deps — see the drift note in $lib/catalog/code.ts for why it is not
 // duplicated here the way the old slugifyCode/slugify pair was.
@@ -1161,9 +1165,7 @@ export async function deriveSellableFacts(
   let uom: string | null = null;
   if (itemId) {
     const uomRows = (await withOrgCore(ctx, (tx) =>
-      tx.execute(
-        sql`select uom from stk_items where id = ${itemId} and org_id = ${ctx.tenantId}`,
-      ),
+      tx.execute(sql`select uom from stk_items where id = ${itemId} and org_id = ${ctx.tenantId}`),
     )) as unknown as Array<{ uom: string | null }>;
     uom = uomRows[0]?.uom ?? null;
   }
