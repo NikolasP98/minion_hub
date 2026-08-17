@@ -1140,6 +1140,51 @@ async function getSellableRow(ctx: CoreCtx, productId: string): Promise<Sellable
   return mapSellableRow(rows[0]);
 }
 
+/**
+ * Single source of truth for "is this a product, is it stock-tracked, what
+ * uom is it in" — reuses getSellableRow's `kind`/`itemId` derivation (see the
+ * doc comment on `SellableRow.kind`) rather than redefining it; only the uom
+ * lookup is new, since SellableRow doesn't carry it. Used by both the read
+ * path (implicitly, via getSellableRow) and updateSellable's write-guard.
+ */
+export async function deriveSellableFacts(
+  ctx: CoreCtx,
+  finProductId: string,
+): Promise<{
+  kind: 'service' | 'product';
+  trackStock: boolean;
+  uom: string | null;
+  itemId: string | null;
+}> {
+  const row = await getSellableRow(ctx, finProductId);
+  const itemId = row.itemId;
+  let uom: string | null = null;
+  if (itemId) {
+    const uomRows = (await withOrgCore(ctx, (tx) =>
+      tx.execute(
+        sql`select uom from stk_items where id = ${itemId} and org_id = ${ctx.tenantId}`,
+      ),
+    )) as unknown as Array<{ uom: string | null }>;
+    uom = uomRows[0]?.uom ?? null;
+  }
+  return {
+    // `kind` is only ever settable as 'product' | 'service' (SellableInput.kind
+    // has no 'bundle' variant) — a bundle folds into 'service' here so a
+    // kind-change attempt on one still compares against something and refuses
+    // correctly rather than throwing on an unhandled case.
+    kind: row.kind === 'product' ? 'product' : 'service',
+    trackStock: itemId != null,
+    uom,
+    itemId,
+  };
+}
+
+/** trim + case-fold for uom comparison; null/undefined both normalize to ''
+ *  so "not tracked" only ever compares equal to another "not tracked". */
+function normalizeUomForCompare(v: string | null | undefined): string {
+  return (v ?? '').trim().toLowerCase();
+}
+
 /** Translate a raw pg unique-violation into the domain error — same
  *  convention as enqueueJob in finance-sync-jobs.service.ts. */
 function isUniqueViolation(e: unknown): boolean {
@@ -1318,6 +1363,51 @@ export async function updateSellable(
       throw new PosError(
         `code ${current.code} has ${billedCount} billed invoice lines and cannot be renamed`,
         'code_locked',
+      );
+    }
+  }
+
+  // Stop the silent drop: kind/trackStock/uom are all projections of the
+  // linked stk_items row, not columns on fin_products, so a naive .set()
+  // below would accept these fields and discard them (operator sees a green
+  // save, reopens, the old value is back). An unchanged resubmit — the
+  // wizard's normal full-object save — stays a 200 no-op; a real change is
+  // refused with a typed 400 rather than silently lost. Only derive facts
+  // when one of the three is actually submitted, so a plain price/name edit
+  // costs nothing extra.
+  if (patch.kind !== undefined || patch.trackStock !== undefined || patch.uom !== undefined) {
+    const facts = await deriveSellableFacts(ctx, productId);
+    if (patch.kind !== undefined && patch.kind !== facts.kind) {
+      // `kind` is derived by design and is never a directly settable field in
+      // any slice of this fix — refusing a direct write is the permanent,
+      // correct behavior, not deferred work.
+      throw new PosError(
+        'kind follows the linked stock item; publish or unlink an item to change it',
+        'kind_derived',
+      );
+    }
+    if (patch.trackStock !== undefined && patch.trackStock !== facts.trackStock) {
+      // TODO(handoff): apply the safe trackStock transitions (false→true:
+      // create the link; true→false on a pristine item: unlink) instead of
+      // refusing unconditionally — S2/S3 of
+      // 2026-08-17-hub-updatesellable-silent-drop-spec. Refusing is safe
+      // (never silently dropped) but not yet the preferred branch.
+      throw new PosError(
+        'stock tracking cannot be changed on an existing sellable yet',
+        'stock_tracking_immutable',
+      );
+    }
+    if (
+      patch.uom !== undefined &&
+      normalizeUomForCompare(patch.uom) !== normalizeUomForCompare(facts.uom)
+    ) {
+      // TODO(handoff): apply a uom change when the linked item is pristine
+      // (no ledger history) instead of refusing unconditionally — S2/S3 of
+      // 2026-08-17-hub-updatesellable-silent-drop-spec. Refusing is safe
+      // (never silently dropped) but not yet the preferred branch.
+      throw new PosError(
+        'unit of measure cannot be changed on an existing sellable yet',
+        'uom_immutable',
       );
     }
   }
