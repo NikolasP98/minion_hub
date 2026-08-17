@@ -69,9 +69,6 @@
   // Personal orgs de-emphasize the sales funnel (WP2) — no funnel column.
   const isPersonal = $derived(page.data.activeOrgKind === 'personal');
 
-  // Personal orgs de-emphasize the sales funnel (WP2) — no funnel column.
-  const isPersonal = $derived(page.data.activeOrgKind === 'personal');
-
   // ── Finance bridge (present only when CRM + Finances are both enabled) ──────
   type ContactFin = {
     revenue: number;
