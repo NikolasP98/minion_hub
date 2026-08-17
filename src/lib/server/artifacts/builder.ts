@@ -16,7 +16,7 @@ export type BuildProgress = { phase: 'generating' | 'repairing'; attempt: number
 export type OnProgress = (p: BuildProgress) => void;
 
 async function runBuildLoop(basePrompt: string, onProgress?: OnProgress): Promise<string> {
-  const BUILDER_MODEL = env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-3.7-sonnet';
+  const BUILDER_MODEL = env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-sonnet-5';
 
   const attempt = async (p: string): Promise<string> => {
     const res = await generateText({ model: getOpenRouterModel(BUILDER_MODEL), prompt: p, temperature: 0.3 });
