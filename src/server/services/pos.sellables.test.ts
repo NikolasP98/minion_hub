@@ -35,6 +35,7 @@ import {
   listSellables,
   createSellable,
   updateSellable,
+  deriveSellableFacts,
   slugifyCode,
   type SellableInput,
 } from './pos.service';
@@ -719,5 +720,129 @@ describe('updateSellable', () => {
     await expect(updateSellable(ctx(db), 'fp-9', { code: 'A' }, actor)).rejects.toMatchObject({
       code: 'invalid_code',
     });
+  });
+});
+
+// ── S1 (2026-08-17-hub-updatesellable-silent-drop-spec): kind/trackStock/uom
+// used to be accepted in the PATCH body and silently discarded — .set() never
+// read them. Now each is either a no-op (matches the DERIVED current value)
+// or a typed 400; nothing is ever dropped silently. ──
+describe('updateSellable — kind/trackStock/uom: no-op on equal, 400 on changed', () => {
+  it('full-object resubmit with UNCHANGED kind/trackStock/uom + a changed price → 200, price applied (the wizard normal save)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      // 1st select: load current product
+      [{ id: 'fp-10', code: 'BTX', name: 'Botox', category: null, unitPrice: '250', active: true }],
+      // 2nd select: deriveSellableFacts' linked stk_items lookup — item exists, uom 'Unidad'
+      [{ id: 'item-1', uom: 'Unidad' }],
+    ]);
+    mockExecute(db, [
+      {
+        id: 'fp-10',
+        code: 'BTX',
+        name: 'Botox',
+        category: null,
+        unit_price: '300',
+        active: true,
+        item_id: 'item-1',
+        stock_qty: '5',
+        has_mapping: false,
+      },
+    ]);
+
+    const row = await updateSellable(
+      ctx(db),
+      'fp-10',
+      { kind: 'product', trackStock: true, uom: 'Unidad', unitPrice: 300 },
+      actor,
+    );
+
+    expect(row.unitPrice).toBe(300);
+    expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).toHaveBeenCalled();
+  });
+
+  it('uom resubmitted with only case/whitespace differences is treated as unchanged → 200', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'fp-11', code: 'BTX', name: 'Botox', category: null, unitPrice: '250', active: true }],
+      [{ id: 'item-1', uom: 'Unidad' }],
+    ]);
+    mockExecute(db, [
+      {
+        id: 'fp-11',
+        code: 'BTX',
+        name: 'Botox',
+        category: null,
+        unit_price: '250',
+        active: true,
+        item_id: 'item-1',
+        stock_qty: '5',
+        has_mapping: false,
+      },
+    ]);
+
+    const row = await updateSellable(ctx(db), 'fp-11', { uom: '  UNIDAD  ' }, actor);
+
+    expect(row.itemId).toBe('item-1');
+    expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).toHaveBeenCalled();
+  });
+
+  it("kind 'service'→'product' is refused: kind is derived, never directly settable", async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'fp-12', code: 'CONSULT', name: 'Consulta', category: null, unitPrice: null, active: true }],
+      [], // no linked stk_items row → currently 'service'
+    ]);
+
+    await expect(
+      updateSellable(ctx(db), 'fp-12', { kind: 'product' }, actor),
+    ).rejects.toMatchObject({ code: 'kind_derived' });
+    expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+  });
+
+  it('trackStock false→true is refused in S1 (S2 applies this transition) — no row mutated', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'fp-13', code: 'CONSULT', name: 'Consulta', category: null, unitPrice: null, active: true }],
+      [], // no linked item → trackStock currently false
+    ]);
+
+    await expect(
+      updateSellable(ctx(db), 'fp-13', { trackStock: true }, actor),
+    ).rejects.toMatchObject({ code: 'stock_tracking_immutable' });
+    expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+  });
+
+  it("uom 'Unidad'→'mL' is refused in S1 (S2/S3 apply/lock this transition) — no row mutated", async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'fp-14', code: 'BTX', name: 'Botox', category: null, unitPrice: '250', active: true }],
+      [{ id: 'item-1', uom: 'Unidad' }],
+    ]);
+
+    await expect(updateSellable(ctx(db), 'fp-14', { uom: 'mL' }, actor)).rejects.toMatchObject({
+      code: 'uom_immutable',
+    });
+    expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+  });
+});
+
+describe('deriveSellableFacts', () => {
+  it('no linked stk_items row ⇒ service / trackStock false / uom null', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]);
+
+    const facts = await deriveSellableFacts(ctx(db), 'fp-20');
+
+    expect(facts).toEqual({ kind: 'service', trackStock: false, uom: null, itemId: null });
+  });
+
+  it('a linked stk_items row ⇒ product / trackStock true / its uom', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ id: 'item-77', uom: 'Caja' }]]);
+
+    const facts = await deriveSellableFacts(ctx(db), 'fp-21');
+
+    expect(facts).toEqual({ kind: 'product', trackStock: true, uom: 'Caja', itemId: 'item-77' });
   });
 });

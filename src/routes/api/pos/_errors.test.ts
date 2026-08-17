@@ -10,6 +10,15 @@ describe('handlePosError', () => {
     expect(await res.json()).toEqual({ error: 'x', code: 'payment_mismatch' });
   });
 
+  // updateSellable's kind/trackStock/uom refusals (2026-08-17-hub-updatesellable-
+  // silent-drop-spec §S1) rely on the default 400 mapping, not a special case.
+  it.each(['kind_derived', 'stock_tracking_immutable', 'uom_immutable'])(
+    'returns 400 for the sellable-edit refusal code %s',
+    (code) => {
+      expect(handlePosError(new PosError('x', code)).status).toBe(400);
+    },
+  );
+
   it('returns 409 for conflict codes', async () => {
     const res = handlePosError(new PosError('open first', 'no_open_shift'));
     expect(res.status).toBe(409);

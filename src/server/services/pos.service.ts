@@ -1066,11 +1066,20 @@ function applyTaxonomyOverrides(
   return withCategory(out);
 }
 
+/** The ONE definition of "is this a product": a stk_items row links back to
+ *  the fin_product via finProductId. Shared by mapSellableRow's read path and
+ *  deriveSellableFacts' write-side refusal check — `kind` is never derived a
+ *  second way (see the SellableRow.kind doc comment above). */
+function kindFromItemId(itemId: string | null): 'product' | 'service' {
+  return itemId != null ? 'product' : 'service';
+}
+
 function mapSellableRow(r: SellableSqlRow): SellableRow {
   const name = String(r.name);
   const code = String(r.code);
   const consumed = Array.isArray(r.consumed_item_names) ? r.consumed_item_names : [];
   const isBundle = r.is_bundle === true;
+  const itemId = r.item_id != null ? String(r.item_id) : null;
   return {
     productId: String(r.id),
     code,
@@ -1078,9 +1087,9 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
     category: r.category != null ? String(r.category) : null,
     unitPrice: r.unit_price != null ? Number(r.unit_price) : null,
     active: r.active === true,
-    kind: isBundle ? 'bundle' : r.item_id != null ? 'product' : 'service',
-    itemId: r.item_id != null ? String(r.item_id) : null,
-    stockQty: r.item_id != null ? Number(r.stock_qty ?? 0) : null,
+    kind: isBundle ? 'bundle' : kindFromItemId(itemId),
+    itemId,
+    stockQty: itemId != null ? Number(r.stock_qty ?? 0) : null,
     hasMapping: r.has_mapping === true,
     taxonomy: applyTaxonomyOverrides(
       classify(name, code, consumed, isBundle),
@@ -1138,6 +1147,47 @@ async function getSellableRow(ctx: CoreCtx, productId: string): Promise<Sellable
   )) as unknown as SellableSqlRow[];
   if (!rows[0]) throw new PosError('sellable not found', 'not_found');
   return mapSellableRow(rows[0]);
+}
+
+export interface SellableFacts {
+  kind: 'product' | 'service';
+  trackStock: boolean;
+  uom: string | null;
+  itemId: string | null;
+}
+
+/**
+ * The current derived truth for the three fields `updateSellable` must never
+ * silently drop. `kind` and `trackStock` both follow the same linked
+ * `stk_items` row — see `kindFromItemId`, the single definition — and `uom`
+ * is read off that row (it lives on `stk_items`, never on `fin_products`).
+ * No linked item ⇒ service, trackStock false, uom null.
+ */
+export async function deriveSellableFacts(
+  ctx: CoreCtx,
+  finProductId: string,
+): Promise<SellableFacts> {
+  const [item] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: stkItems.id, uom: stkItems.uom })
+      .from(stkItems)
+      .where(and(eq(stkItems.finProductId, finProductId), eq(stkItems.orgId, ctx.tenantId)))
+      .limit(1),
+  );
+  const itemId = item?.id ?? null;
+  return {
+    kind: kindFromItemId(itemId),
+    trackStock: itemId != null,
+    uom: item?.uom ?? null,
+    itemId,
+  };
+}
+
+/** trim + case-fold, and treat "not submitted" (undefined/null) as empty —
+ *  the normalization documented in S1: a resubmit of the SAME uom in a
+ *  different case/whitespace must compare equal, never a false 400. */
+function normalizeUom(v: string | null | undefined): string {
+  return (v ?? '').trim().toLowerCase();
 }
 
 /** Translate a raw pg unique-violation into the domain error — same
@@ -1273,6 +1323,44 @@ export async function updateSellable(
       .limit(1),
   );
   if (!current) throw new PosError('sellable not found', 'not_found');
+
+  // `kind`/`trackStock`/`uom` are projections of the linked stk_items row
+  // (see SellableRow.kind), never columns on fin_products — a naive .set()
+  // here would silently discard an operator's edit to any of them (the bug
+  // this slice fixes). SellableWizard resubmits the full object on every
+  // save, so "field present" alone can't mean "change requested" or every
+  // price-only edit would 400 — only refuse when the submitted value differs
+  // from the currently DERIVED one.
+  if (patch.kind != null || patch.trackStock != null || patch.uom != null) {
+    const facts = await deriveSellableFacts(ctx, productId);
+    if (patch.kind != null && patch.kind !== facts.kind) {
+      // Not a TODO(handoff): kind is derived by design (never a directly
+      // settable field, in this or any future slice) — refusing a direct
+      // write to it is the permanent, correct behavior.
+      throw new PosError(
+        'kind follows the linked stock item; publish or unlink an item to change it',
+        'kind_derived',
+      );
+    }
+    if (patch.trackStock != null && patch.trackStock !== facts.trackStock) {
+      // TODO(handoff): trackStock transitions (false→true create, true→false
+      // unlink-with-history-guard) are refused wholesale until S2/S3 of
+      // 2026-08-17-hub-updatesellable-silent-drop-spec land.
+      throw new PosError(
+        'stock tracking cannot be changed here yet; this is coming in a follow-up',
+        'stock_tracking_immutable',
+      );
+    }
+    if (patch.uom != null && normalizeUom(patch.uom) !== normalizeUom(facts.uom)) {
+      // TODO(handoff): uom changes (pristine-item apply, history-locked
+      // refusal) are refused wholesale until S2/S3 of
+      // 2026-08-17-hub-updatesellable-silent-drop-spec land.
+      throw new PosError(
+        'unit of measure cannot be changed here yet; this is coming in a follow-up',
+        'uom_immutable',
+      );
+    }
+  }
 
   const code = patch.code ? normalizeCode(patch.code) : current.code;
   const name = patch.name ?? current.name;
