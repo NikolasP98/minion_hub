@@ -39,6 +39,7 @@ const boleta: EmissionInvoice = {
   emitter: { ruc: '20611172967', razonSocial: 'FACES BETA SAC' },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA' },
   lines: [{ description: 'Servicio', quantity: 1, unitPriceInclTax: 118 }],
+  igvRate: 0.18,
 };
 
 const resumenOpts: ResumenOptions = {

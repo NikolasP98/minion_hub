@@ -1,5 +1,5 @@
 /**
- * SUNAT beta emission — shared shapes. Totals/IGV are always DERIVED (18%,
+ * SUNAT beta emission — shared shapes. Totals/IGV are always DERIVED (rate ×
  * tax-inclusive line prices) — never accept them as input, that's how a caller
  * ends up submitting an invoice whose lines don't sum to its own totals.
  */
@@ -38,6 +38,11 @@ export interface EmissionInvoice {
     name: string;
   };
   lines: EmissionLine[];
+  /** IGV rate as a fraction of 1 (e.g. ten percent is 0.10), NOT a whole-number
+   *  percent — required, no default or fallback inside this library.
+   *  Normalized/validated by `resolveIgvRate` (finance settings layer, S2 of
+   *  2026-08-17-hub-igv-rate-from-org-config-spec). */
+  igvRate: number;
 }
 
 /** Parsed SUNAT CDR (Constancia de Recepción). `responseCode === '0'` = accepted. */

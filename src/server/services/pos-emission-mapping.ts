@@ -118,6 +118,9 @@ export function ticketToEmission(
     emitter,
     client,
     lines: emissionLines,
+    // TODO(handoff): rate is still a literal here — S2 of
+    // 2026-08-17-hub-igv-rate-from-org-config-spec reads it from fin_settings
+    igvRate: 0.18,
   };
 
   // "Never block checkout" (spec §3) — docRequired is a data-quality FLAG on

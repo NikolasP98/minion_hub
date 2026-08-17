@@ -11,6 +11,7 @@ const boleta: EmissionInvoice = {
   emitter: { ruc: '20611172967', razonSocial: 'FACES BETA SAC', ubigeo: '150101', address: 'AV BETA 123' },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA' },
   lines: [{ description: 'Servicio de prueba', quantity: 1, unitPriceInclTax: 118 }],
+  igvRate: 0.18,
 };
 
 const emitter = { ruc: '20611172967', razonSocial: 'FACES BETA SAC' };

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { amountInWords, buildInvoiceXml, computeTotals } from './ubl';
 import type { EmissionInvoice } from './types';
@@ -15,6 +17,7 @@ const base: EmissionInvoice = {
     { description: 'Line 2', quantity: 1, unitPriceInclTax: 7.77 },
     { description: 'Line 3', quantity: 2, unitPriceInclTax: 4.45 },
   ],
+  igvRate: 0.18,
 };
 
 describe('computeTotals', () => {
@@ -75,5 +78,41 @@ describe('buildInvoiceXml', () => {
     const xml = buildInvoiceXml({ ...base, client: { ...base.client, name: 'CLIENTE "A" & <B>' } });
     expect(xml).toContain('<cbc:RegistrationName>CLIENTE &quot;A&quot; &amp; &lt;B&gt;</cbc:RegistrationName>');
     expect(xml).not.toContain('CDATA');
+  });
+
+  it('GOLDEN PARITY: at igvRate 0.18 the output is byte-equal to the pre-change snapshot', () => {
+    const golden = readFileSync(join(import.meta.dirname, '__fixtures__/golden-invoice-18.xml'), 'utf8');
+    expect(buildInvoiceXml(base)).toBe(golden);
+  });
+
+  it('a non-0.18 igvRate changes total IGV, valorVenta (lineExtensionAmount) and cbc:Percent', () => {
+    const at18 = computeTotals(base);
+    const at10 = computeTotals({ ...base, igvRate: 0.1 });
+    expect(at10.igvAmount).not.toBe(at18.igvAmount);
+    expect(at10.lineExtensionAmount).not.toBe(at18.lineExtensionAmount);
+
+    const xml18 = buildInvoiceXml(base);
+    const xml10 = buildInvoiceXml({ ...base, igvRate: 0.1 });
+    expect(xml10).not.toBe(xml18);
+    expect(xml18).toContain('<cbc:Percent>18</cbc:Percent>');
+    expect(xml10).toContain('<cbc:Percent>10</cbc:Percent>');
+    expect(xml10).not.toContain('<cbc:Percent>18</cbc:Percent>');
+  });
+
+  it.each([0.18, 0.1, 0.08])('declares cbc:Percent == igvRate * 100 for rate %s', (igvRate) => {
+    const xml = buildInvoiceXml({ ...base, igvRate });
+    const expectedPercent = String(igvRate * 100);
+    const percentMatches = xml.match(/<cbc:Percent>([^<]+)<\/cbc:Percent>/g) ?? [];
+    expect(percentMatches.length).toBeGreaterThan(0);
+    for (const m of percentMatches) {
+      expect(m).toBe(`<cbc:Percent>${expectedPercent}</cbc:Percent>`);
+    }
+  });
+
+  it('omitting igvRate is a compile-time type error', () => {
+    const { igvRate: _igvRate, ...withoutRate } = base;
+    // @ts-expect-error igvRate is required on EmissionInvoice — omitting it must not typecheck
+    const missingRate: EmissionInvoice = withoutRate;
+    expect(missingRate).toBeDefined();
   });
 });

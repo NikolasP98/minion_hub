@@ -33,6 +33,7 @@ const boleta: EmissionInvoice = {
     { description: 'Servicio de prueba 1', quantity: 1, unitPriceInclTax: 118 },
     { description: 'Servicio de prueba 2', quantity: 2, unitPriceInclTax: 59.9 },
   ],
+  igvRate: 0.18,
 };
 
 const factura: EmissionInvoice = {

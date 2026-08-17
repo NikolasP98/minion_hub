@@ -31,6 +31,7 @@ const boleta1: EmissionInvoice = {
   emitter: { ...emitter, ubigeo: '150101', address: 'AV BETA 123, LIMA' },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA UNO' },
   lines: [{ description: 'Servicio de prueba resumen 1', quantity: 1, unitPriceInclTax: 118 }],
+  igvRate: 0.18,
 };
 
 const boleta2: EmissionInvoice = {
