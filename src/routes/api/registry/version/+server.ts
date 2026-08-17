@@ -3,8 +3,11 @@ import { json } from '@sveltejs/kit';
 import { readFile } from 'node:fs/promises';
 import { cached, keys, tags } from '@minion-stack/cache';
 import { assertSafeUrl } from '$server/services/ssrf-guard';
+import { getStorage, isStorageConfigured } from '$server/storage/blob';
 
-const B2_INDEX_URL = 'https://s3.us-east-005.backblazeb2.com/minion-db/registry/index.json';
+/** Object key of the registry index. Read through authenticated storage — see
+ *  the catalog endpoint for why this is no longer a public URL. */
+const INDEX_KEY = 'registry/index.json';
 
 // Global (not tenant-scoped) + Valkey-backed in prod, so it survives Vercel cold
 // starts (the old module-level `let cached` did not). Shares the 'registry' tag
@@ -23,10 +26,19 @@ async function fetchIndex(): Promise<unknown> {
         return { schemaVersion: 3, hash, builtAt: new Date().toISOString() };
       }
 
-      const indexUrl = process.env.REGISTRY_INDEX_URL ?? B2_INDEX_URL;
-      await assertSafeUrl(indexUrl, 'REGISTRY_INDEX_URL');
-      const res = await fetch(indexUrl);
-      if (!res.ok) throw new Error(`B2 fetch failed: HTTP ${res.status}`);
+      if (process.env.REGISTRY_INDEX_URL) {
+        const indexUrl = process.env.REGISTRY_INDEX_URL;
+        await assertSafeUrl(indexUrl, 'REGISTRY_INDEX_URL');
+        const res = await fetch(indexUrl);
+        if (!res.ok) throw new Error(`Registry fetch failed: HTTP ${res.status}`);
+        return res.json();
+      }
+      if (!isStorageConfigured()) {
+        throw new Error('Registry index unavailable: blob storage is not configured');
+      }
+      const signed = await getStorage().getSignedUrl(INDEX_KEY, 300);
+      const res = await fetch(signed);
+      if (!res.ok) throw new Error(`Registry fetch failed: HTTP ${res.status}`);
       return res.json();
     },
   );
