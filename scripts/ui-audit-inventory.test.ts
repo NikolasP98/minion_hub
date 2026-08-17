@@ -7,19 +7,6 @@ import { buildRouteInventory } from './ui-audit-inventory.mjs';
 import baseline from '../tests/ui-audit/current-baseline.json';
 
 describe('UI audit route inventory', () => {
-  // TODO(handoff): this test is red on master (verified on a clean checkout of
-  // origin/master@2093b8e, unrelated to any branch work) — tests/ui-audit/current-baseline.json
-  // pins sourceCommit=857a94b7b… which no longer exists as a commit object (likely pruned by a
-  // history rewrite), so buildRouteInventory's `git cat-file -e` check fails and it silently
-  // falls back to HEAD, returning live counts (152/142/10) against this test's stale literal
-  // (142/135/7). PR #102 (e547103) added routes and updated the OTHER summary assertion in this
-  // file (line ~79, now 152/142/10, matching route-design-validation.ts's
-  // ROUTE_CONTRACT_EXPECTATIONS and frontend-contract-scanner.test.ts's report.pages=152) but
-  // missed regenerating this clean-baseline snapshot. Fix: regenerate via
-  // `node scripts/ui-audit-inventory.mjs --out=tests/ui-audit/current-baseline.json --clean-baseline --baseline-ref=HEAD`
-  // (run from a master checkout) and update this literal to match. Left undone here to keep this
-  // finance-alert PR's diff scoped to its own review findings (see PR #122 review, which
-  // penalized unrelated changes as scope creep).
   it('locks the complete endpoint ledger at 135 screens and 7 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
