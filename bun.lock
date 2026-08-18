@@ -401,11 +401,11 @@
 
     "@minion-stack/cache": ["@minion-stack/cache@0.3.0", "", { "dependencies": { "ioredis": "^5.4.1" } }, "sha512-2uSWAj4wk9Urt/eiyWP0h0dzPgxcbTNJ4uYWq5C4BzIyCtC33t7EE7waCbaNE53485ok+Sdgt7weiYsHTW9rZw=="],
 
-    "@minion-stack/crm-sdk": ["@minion-stack/crm-sdk@deps/minion-stack-crm-sdk-0.1.0-776d8c49.tgz", { "peerDependencies": { "postgres": "^3.4.0" } }, "sha512-6xW/MJhyJQSfSAUUkpwrUOyNAXCT5qwAxIf/H/K7MvvEAhuW8B12P89eDuJ18qLc1OKezun1FwoLEccgH71tzA=="],
+    "@minion-stack/crm-sdk": ["@minion-stack/crm-sdk@deps/minion-stack-crm-sdk-0.1.0-776d8c49.tgz", { "peerDependencies": { "postgres": "^3.4.0" } }],
 
-    "@minion-stack/db": ["@minion-stack/db@deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }, "sha512-cyqpnOzNWTew9B7MRyV7TYbevJHvu9UWADfZ+L1q5SmC0f2qITfrWBj+sKKdalxqezFAjZU8ptkape+HGAGdLQ=="],
+    "@minion-stack/db": ["@minion-stack/db@deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }],
 
-    "@minion-stack/design-tokens": ["@minion-stack/design-tokens@deps/minion-stack-design-tokens-0.1.0-onaccent-3344a63.tgz", {}, "sha512-CbxFJtaFbhyJ1dEsTp3t/DmPgM2IbDJZWSldhegFADxkP0P8aa5wQLSOT3rTaxfraJtsbpfIKrLksE1zU+qINQ=="],
+    "@minion-stack/design-tokens": ["@minion-stack/design-tokens@deps/minion-stack-design-tokens-0.1.0-onaccent-3344a63.tgz", {}],
 
     "@minion-stack/lint-config": ["@minion-stack/lint-config@0.1.2", "", { "peerDependencies": { "@eslint/js": ">=9.0.0", "eslint": ">=9.0.0", "oxlint": ">=0.15.0", "prettier": ">=3.0.0", "typescript-eslint": ">=8.0.0" }, "optionalPeers": ["@eslint/js", "eslint", "oxlint", "prettier", "typescript-eslint"] }, "sha512-68UnBGAn0xbrsL50CX2JQApmFiELDbRfz5RZKTvy52I12TrnZzvqJ+U1jjSG6un4RvWEu0hBcIm5ymCz2FFrKg=="],
 
@@ -413,7 +413,7 @@
 
     "@minion-stack/tsconfig": ["@minion-stack/tsconfig@0.1.0", "", {}, "sha512-Luq2w1k9b7WuJkrAiowFMLcUnNhqo2kct4u+eYXqq8nmjMIs2P9FRtz/XLD+UWkJgx16tQUUWBR+DZjD3TVgfw=="],
 
-    "@minion-stack/ui": ["@minion-stack/ui@deps/minion-stack-ui-0.1.0-ui-coherence-6b21ce0e.tgz", { "peerDependencies": { "lucide-svelte": ">=0.400.0", "svelte": "^5.0.0" } }, "sha512-qopNGzg/2lvqnjo6ZorjeigIgXW+lc1zijqZX+lvgA9vIz5mSczd+XA3gbEjo6xpzouvNB3spFsRCj4F75Oitw=="],
+    "@minion-stack/ui": ["@minion-stack/ui@deps/minion-stack-ui-0.1.0-ui-coherence-6b21ce0e.tgz", { "peerDependencies": { "lucide-svelte": ">=0.400.0", "svelte": "^5.0.0" } }],
 
     "@minion-stack/workforce-client": ["@minion-stack/workforce-client@0.3.0", "", { "dependencies": { "jose": "^5.9.6" } }, "sha512-6lOD60XIXDM4ykyzp7erMLhooCGFje92o/V3Sqv5ocjfU1NJkCw7kJpC75JvvkL9XG48+lH1BPsbl6+EQU0trA=="],
 
