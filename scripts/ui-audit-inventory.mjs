@@ -96,29 +96,19 @@ function isUnconditionalServerRedirect(source) {
   return /^\s*throw\s+redirect\s*\(/.test(loadBody[1]);
 }
 
-async function recordedBaseline(root) {
+async function recordedBaselineRef(root) {
   try {
     const ledger = JSON.parse(
       await readFile(path.join(root, 'tests/ui-audit/current-baseline.json'), 'utf8'),
     );
     if (typeof ledger.sourceCommit === 'string' && /^[0-9a-f]{40}$/.test(ledger.sourceCommit)) {
-      try {
-        git(root, 'cat-file', '-e', `${ledger.sourceCommit}^{commit}`);
-      } catch {
-        // Shallow factory checkouts may not carry the pinned baseline commit's
-        // git object at all, and this script must stay a read-only inventory
-        // (no network fetch to resurrect it). The ledger already recorded the
-        // exact inventory that commit produced, so replay that frozen
-        // snapshot instead of silently substituting today's tree for "clean
-        // baseline".
-        return { ref: ledger.sourceCommit, frozen: ledger };
-      }
-      return { ref: ledger.sourceCommit, frozen: null };
+      git(root, 'cat-file', '-e', `${ledger.sourceCommit}^{commit}`);
+      return ledger.sourceCommit;
     }
   } catch {
     // A new repository has no ledger yet; its current commit becomes baseline.
   }
-  return { ref: 'HEAD', frozen: null };
+  return 'HEAD';
 }
 
 /**
@@ -134,16 +124,7 @@ export async function buildRouteInventory({
   const root = path.resolve(repositoryRoot);
   const routeRoot = path.join(root, 'src/routes');
   const headCommit = git(root, 'rev-parse', 'HEAD');
-  let frozen = null;
-  let cleanSourceRef = baselineRef;
-  if (cleanSourceRef === undefined) {
-    const recorded = await recordedBaseline(root);
-    cleanSourceRef = recorded.ref;
-    frozen = recorded.frozen;
-  }
-  if (cleanBaseline && frozen) {
-    return { ...frozen, baseCommit: headCommit };
-  }
+  const cleanSourceRef = baselineRef ?? (await recordedBaselineRef(root));
   const sourceCommit = cleanBaseline ? git(root, 'rev-parse', cleanSourceRef) : headCommit;
   const sourceRef = cleanBaseline ? cleanSourceRef : 'WORKTREE';
   const trackedRouteFiles = cleanBaseline
