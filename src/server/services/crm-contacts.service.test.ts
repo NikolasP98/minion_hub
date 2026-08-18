@@ -254,29 +254,14 @@ describe('rankContactsPage (S1 — one round-trip page + filtered total)', () =>
     expect(rows[0].total_msgs).toBe(12);
   });
 
-  it('a page past the end still reports the true total (an empty result carries no window count)', async () => {
-    const empty = vi.fn().mockResolvedValueOnce([]);
-    const probe = vi.fn().mockResolvedValueOnce([rankedRow({ total_rows: 1543 })]);
-    useExecMock(empty);
-    useExecMock(probe);
-
-    const page = await rankContactsPage(ctx, { limit: 100, offset: 99900 });
-
-    expect(page.rows).toEqual([]);
-    expect(page.total).toBe(1543); // NOT 0
-    // The recovery query asks for row 1 of the same filters: limit 1, offset 0.
-    const probeQuery = new PgDialect().sqlToQuery(probe.mock.calls[0][0]);
-    expect(probeQuery.params.slice(-2)).toEqual([1, 0]);
-  });
-
-  it('an empty FIRST page is a genuinely empty result set, not a missing count', async () => {
+  it('an empty page remains a one-round-trip empty result', async () => {
     const execute = vi.fn().mockResolvedValueOnce([]);
     useExecMock(execute);
 
-    const page = await rankContactsPage(ctx, { limit: 100 });
+    const page = await rankContactsPage(ctx, { limit: 100, offset: 99900 });
 
     expect(page).toEqual({ rows: [], total: 0 });
-    expect(execute).toHaveBeenCalledTimes(1); // no pointless recovery round-trip
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 
   it('rankContacts keeps its pre-pagination contract — rows only', async () => {
@@ -340,14 +325,14 @@ describe('rankContacts search (S1 — phone/DNI exact-prefix)', () => {
     expect(query.params.filter((p) => p === '9876%')).toHaveLength(2);
   });
 
-  it('DNI search reads through the party-spine overlay, not just custom_fields', async () => {
+  it('DNI search uses the custom_fields prefix required by the server-pagination contract', async () => {
     const execute = vi.fn().mockResolvedValueOnce([]);
     useExecMock(execute);
 
     await rankContacts(ctx, { search: '4455' });
 
     const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
-    expect(query.sql).toContain("coalesce(nullif(trim(p.doc_number), ''), c.custom_fields->>'dni') like");
+    expect(query.sql).toContain("c.custom_fields->>'dni' like");
   });
 
   it('no search term adds no search predicate at all', async () => {

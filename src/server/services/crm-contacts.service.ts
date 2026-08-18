@@ -295,15 +295,7 @@ const M_EXPR = sql`(100 * (0.60 * least(1, ln(1 + total_msgs) / ln(1 + ${lit(VS)
  * only messaged recently is not mislabelled "New".
  */
 export async function rankContactsPage(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedPage> {
-  const page = await runRankQuery(ctx, f);
-  // A page past the end comes back empty, and an empty result set carries no
-  // window count — re-ask for row 1 only so `total` stays the filtered total
-  // instead of collapsing to 0. Costs a second round-trip on that page alone.
-  if (page.rows.length === 0 && (f.offset ?? 0) > 0) {
-    const { total } = await runRankQuery(ctx, { ...f, offset: 0, limit: 1 });
-    return { rows: [], total };
-  }
-  return page;
+  return runRankQuery(ctx, f);
 }
 
 /** Rows only — the shape every pre-pagination caller (contact-detail score,
@@ -322,12 +314,11 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
     if (f.contactId) conds.push(sql`c.id = ${f.contactId}`);
     // display_name stays a substring match; phone + DNI are EXACT-PREFIX (mirrors
     // the gateway `crm_search` tool — a mid-number substring is never what the
-    // operator meant). DNI reads through the party-spine overlay so a verified
-    // document is findable even when custom_fields.dni is blank import residue.
+    // operator meant).
     if (f.search)
       conds.push(sql`(c.display_name ilike ${'%' + f.search + '%'}
         or c.custom_fields->>'telefono' like ${f.search + '%'}
-        or coalesce(nullif(trim(p.doc_number), ''), c.custom_fields->>'dni') like ${f.search + '%'})`);
+        or c.custom_fields->>'dni' like ${f.search + '%'})`);
     if (f.tagId)
       conds.push(
         sql`exists (select 1 from crm_contact_tags ct where ct.contact_id = c.id and ct.tag_id = ${f.tagId})`,
