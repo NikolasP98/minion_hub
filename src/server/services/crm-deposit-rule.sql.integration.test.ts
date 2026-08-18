@@ -36,7 +36,7 @@ const dialect = new PgDialect();
 async function evalPredicate(
   client: ReturnType<typeof postgres>,
   frag: SQL,
-  text: string,
+  text: string | null,
 ): Promise<boolean> {
   const { sql: whereSql, params } = dialect.sqlToQuery(frag);
   const bound = [...params, text] as never[];

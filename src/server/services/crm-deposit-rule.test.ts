@@ -32,26 +32,28 @@ describe('escapeLikePattern', () => {
 });
 
 describe('depositMatchSql / notDepositMatchSql', () => {
-  it('single-keyword rule renders one bound ILIKE clause', () => {
+  it('single-keyword rule renders one bound ILIKE clause, coalesced to a total boolean', () => {
     const { sql, params } = render(depositMatchSql('ii.description', DEFAULT_DEPOSIT_RULE));
-    expect(sql).toBe('(ii.description ilike $1)');
+    expect(sql).toBe('coalesce((ii.description ilike $1), false)');
     expect(params).toEqual(['%reserva%']);
   });
 
-  it('notDepositMatchSql renders the negated, bound clause', () => {
+  it('notDepositMatchSql renders the negated, bound clause, coalesced to a total boolean', () => {
     const { sql, params } = render(notDepositMatchSql('ii.description', DEFAULT_DEPOSIT_RULE));
-    expect(sql).toBe('(ii.description not ilike $1)');
+    expect(sql).toBe('coalesce((ii.description not ilike $1), true)');
     expect(params).toEqual(['%reserva%']);
   });
 
   it('multi-keyword rule ORs deposit matches and ANDs non-matches', () => {
     const rule: DepositRule = { keywords: ['adelanto', 'seña'], label: 'Adelanto' };
     const pos = render(depositMatchSql('ii.description', rule));
-    expect(pos.sql).toBe('(ii.description ilike $1 or ii.description ilike $2)');
+    expect(pos.sql).toBe('coalesce((ii.description ilike $1 or ii.description ilike $2), false)');
     expect(pos.params).toEqual(['%adelanto%', '%seña%']);
 
     const neg = render(notDepositMatchSql('ii.description', rule));
-    expect(neg.sql).toBe('(ii.description not ilike $1 and ii.description not ilike $2)');
+    expect(neg.sql).toBe(
+      'coalesce((ii.description not ilike $1 and ii.description not ilike $2), true)',
+    );
     expect(neg.params).toEqual(['%adelanto%', '%seña%']);
   });
 
@@ -77,7 +79,7 @@ describe('isDepositText', () => {
     expect(isDepositText(text, rule)).toBe(expected);
   });
 
-  it('treats null/undefined as non-deposit (no ILIKE analogue — a NULL column is not "false")', () => {
+  it('treats null/undefined as non-deposit — the same total-boolean contract depositMatchSql/notDepositMatchSql coalesce a NULL column to (see crm-deposit-rule.sql.integration.test.ts for the real-Postgres agreement)', () => {
     expect(isDepositText(null, rule)).toBe(false);
     expect(isDepositText(undefined, rule)).toBe(false);
   });

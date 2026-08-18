@@ -58,7 +58,7 @@ describe('contactFinanceMap', () => {
         ),
         inv as (
           select cp.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
-                 bool_or((ii.description ilike $1)) has_deposit, bool_or((ii.description is not null and (ii.description not ilike $2))) has_proc
+                 bool_or(coalesce((ii.description ilike $1), false)) has_deposit, bool_or((ii.description is not null and coalesce((ii.description not ilike $2), true))) has_proc
           from contact_party cp
           join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
           join fin_invoices fi on fi.client_id = fc.id
@@ -92,7 +92,7 @@ describe('contactFinanceSummary', () => {
         select fi.id, fi.document_id, fi.issued_at, coalesce(fi.total,0)::float8 total, fi.status,
                -- the "what was done": a representative line, procedures first (deposit lines last), priciest first.
                (select ii.description from fin_invoice_items ii where ii.invoice_id = fi.id and ii.description is not null
-                  order by (ii.description ilike $2) asc, ii.total desc nulls last limit 1) as item
+                  order by coalesce((ii.description ilike $2), false) asc, ii.total desc nulls last limit 1) as item
         from fin_invoices fi
         join fin_clients fc on fc.id = fi.client_id
         where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
@@ -108,7 +108,7 @@ describe('contactFinanceSummary', () => {
           where id = $1 and org_id = current_setting('app.current_org_id', true) and party_id is not null),
         inv as (
           select fi.id, coalesce(fi.total,0)::float8 total, fi.issued_at,
-                 bool_or((ii.description ilike $2)) has_deposit, bool_or((ii.description is not null and (ii.description not ilike $3))) has_proc
+                 bool_or(coalesce((ii.description ilike $2), false)) has_deposit, bool_or((ii.description is not null and coalesce((ii.description not ilike $3), true))) has_proc
           from fin_invoices fi join fin_clients fc on fc.id = fi.client_id
           left join fin_invoice_items ii on ii.invoice_id = fi.id
           where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)

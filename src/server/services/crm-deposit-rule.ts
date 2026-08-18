@@ -46,6 +46,13 @@ function patterns(rule: DepositRule): string[] {
  * `'ii.description'`) — never pass user input here, only keywords are
  * operator-supplied and those are always bound as query parameters.
  *
+ * Total boolean: coalesced to `false` for a `NULL` column, matching
+ * `isDepositText(null, rule) === false` — bare `ILIKE` returns SQL `NULL` for
+ * a `NULL` column, which is neither true nor false and would let the SQL and
+ * TS twins disagree for any caller that doesn't separately guard `is not
+ * null` (the shared 10-case table in `crm-deposit-rule.fixtures.ts` asserts
+ * this against real PostgreSQL).
+ *
  * Empty keywords ⇒ `sql\`false\`` — never `undefined`. A dropped predicate in
  * an `and(...)`/`or(...)` chain would silently widen the result set, which is
  * the failure mode this module exists to prevent.
@@ -54,10 +61,11 @@ export function depositMatchSql(column: string, rule: DepositRule): SQL {
   const pats = patterns(rule);
   if (pats.length === 0) return sql`false`;
   const col = sql.raw(column);
-  return sql`(${sql.join(
+  const disjunction = sql.join(
     pats.map((p) => sql`${col} ilike ${p}`),
     sql` or `,
-  )})`;
+  );
+  return sql`coalesce((${disjunction}), false)`;
 }
 
 /**
@@ -66,6 +74,10 @@ export function depositMatchSql(column: string, rule: DepositRule): SQL {
  * name and never wrap the other one in an ad-hoc `not()`, so a flipped
  * polarity is a review-visible word rather than a punctuation change.
  *
+ * Total boolean: coalesced to `true` for a `NULL` column, matching
+ * `!isDepositText(null, rule) === true` — see `depositMatchSql` for why a
+ * bare `NOT ILIKE` (SQL `NULL`) would silently diverge from the TS twin.
+ *
  * Empty keywords ⇒ `sql\`true\`` — never `undefined`, mirroring
  * `depositMatchSql`.
  */
@@ -73,17 +85,20 @@ export function notDepositMatchSql(column: string, rule: DepositRule): SQL {
   const pats = patterns(rule);
   if (pats.length === 0) return sql`true`;
   const col = sql.raw(column);
-  return sql`(${sql.join(
+  const conjunction = sql.join(
     pats.map((p) => sql`${col} not ilike ${p}`),
     sql` and `,
-  )})`;
+  );
+  return sql`coalesce((${conjunction}), true)`;
 }
 
 /**
  * TS-side twin of `depositMatchSql`, for sites that classify rows already in
  * memory. Same casefold semantics as ILIKE: lowercase both sides, substring
- * match — asserted against `depositMatchSql`/`notDepositMatchSql` on a shared
- * test table so the SQL and TS answers can never diverge.
+ * match, `null`/`undefined` ⇒ `false` (the same total-boolean contract as the
+ * coalesced SQL predicates above) — asserted against
+ * `depositMatchSql`/`notDepositMatchSql` on a shared test table so the SQL
+ * and TS answers can never diverge.
  */
 export function isDepositText(text: string | null | undefined, rule: DepositRule): boolean {
   if (text == null) return false;

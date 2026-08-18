@@ -5,7 +5,7 @@
  * DB-side decision paths are asserted against the exact same inputs and can
  * never silently diverge.
  */
-export const DEPOSIT_TEXT_CASES: Array<[string, boolean]> = [
+export const DEPOSIT_TEXT_CASES: Array<[string | null, boolean]> = [
   ['Reserva de Consulta', true], // display casing
   ['RESERVA', true], // upper case
   ['reserva', true], // exact
@@ -14,4 +14,5 @@ export const DEPOSIT_TEXT_CASES: Array<[string, boolean]> = [
   ['reservó', false], // accents-as-typed: no accent folding, é != a
   ['adelanto', false], // different word entirely
   ['', false], // empty string
+  [null, false], // null column — coalesced to false/true, same total-boolean contract as isDepositText
 ];
