@@ -39,14 +39,14 @@ describe('buildWinIndex', () => {
     expect(normalizeSql(sql)).toBe(
       normalizeSql(
         `select c.id::text id,
-               array_agg(distinct ii.description) filter (where (ii.description is not null and (ii.description not ilike $1))) bought
+               array_agg(distinct ii.description) filter (where (ii.description is not null and coalesce((ii.description not ilike $1), true))) bought
         from crm_contacts c
         join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = c.party_id
         join fin_invoices fi on fi.client_id = fc.id
         join fin_invoice_items ii on ii.invoice_id = fi.id
         where c.org_id = current_setting('app.current_org_id', true) and c.party_id is not null
         group by c.id
-        having bool_or((ii.description is not null and (ii.description not ilike $2)))`,
+        having bool_or((ii.description is not null and coalesce((ii.description not ilike $2), true)))`,
       ),
     );
     expect(params).toEqual(['%reserva%', '%reserva%']);

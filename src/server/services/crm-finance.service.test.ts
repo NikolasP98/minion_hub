@@ -158,7 +158,7 @@ describe('rankCustomers', () => {
                   join fin_invoices fi on fi.id = ii.invoice_id
                   join fin_clients fc on fc.id = fi.client_id and fc.party_id = a.party_id
                   where fc.org_id = current_setting('app.current_org_id', true)
-                    and ii.description is not null and (ii.description not ilike $1)
+                    and ii.description is not null and coalesce((ii.description not ilike $1), true)
                   group by ii.description order by sum(coalesce(ii.total,0)) desc nulls last limit 1) as top_product
         from agg a
         left join crm_contacts c on c.id = a.contact_id
@@ -201,7 +201,7 @@ describe('rankCustomers', () => {
                   join fin_invoices fi on fi.id = ii.invoice_id
                   join fin_clients fc on fc.id = fi.client_id and fc.party_id = a.party_id
                   where fc.org_id = current_setting('app.current_org_id', true)
-                    and ii.description is not null and (ii.description not ilike $1)
+                    and ii.description is not null and coalesce((ii.description not ilike $1), true)
                   group by ii.description order by sum(coalesce(ii.total,0)) desc nulls last limit 1) as top_product
         from agg a
         left join crm_contacts c on c.id = a.contact_id

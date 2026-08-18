@@ -31,22 +31,23 @@ describe('deterministicMilestones (via contactJourney)', () => {
     expect(normalizeSql(sql)).toBe(
       normalizeSql(
         `select fi.id::text id, fi.issued_at at, coalesce(fi.total,0)::float8 amount,
-               bool_or(ii.description is not null and (ii.description not ilike $1)) has_proc,
+               bool_or(coalesce((ii.description ilike $1), false)) only_reserva_flag,
+               bool_or(ii.description is not null and coalesce((ii.description not ilike $2), true)) has_proc,
                (select ii2.description from fin_invoice_items ii2
                   where ii2.invoice_id = fi.id and ii2.description is not null
-                  order by (ii2.description ilike $2) asc, ii2.total desc nulls last limit 1) item
+                  order by coalesce((ii2.description ilike $3), false) asc, ii2.total desc nulls last limit 1) item
         from crm_contacts c
         join fin_clients fc on fc.party_id = c.party_id and c.party_id is not null
           and fc.org_id = current_setting('app.current_org_id', true)
         join fin_invoices fi on fi.client_id = fc.id and fi.status is distinct from 'void'
         left join fin_invoice_items ii on ii.invoice_id = fi.id
-        where c.id = $3 and c.org_id = current_setting('app.current_org_id', true)
+        where c.id = $4 and c.org_id = current_setting('app.current_org_id', true)
         group by fi.id, fi.issued_at, fi.total
         order by fi.issued_at desc nulls last
         limit 40`,
       ),
     );
-    expect(params).toEqual(['%reserva%', '%reserva%', 'c1']);
+    expect(params).toEqual(['%reserva%', '%reserva%', '%reserva%', 'c1']);
   });
 
   // MAPPING, not classification: has_proc is injected directly by the mock, so

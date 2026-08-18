@@ -49,6 +49,7 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
     if (finance) {
       const rows = (await tx.execute(sql`
         select fi.id::text id, fi.issued_at at, coalesce(fi.total,0)::float8 amount,
+               bool_or(${depositMatchSql('ii.description', DEPOSIT_RULE)}) only_reserva_flag,
                bool_or(ii.description is not null and ${notDepositMatchSql('ii.description', DEPOSIT_RULE)}) has_proc,
                (select ii2.description from fin_invoice_items ii2
                   where ii2.invoice_id = fi.id and ii2.description is not null

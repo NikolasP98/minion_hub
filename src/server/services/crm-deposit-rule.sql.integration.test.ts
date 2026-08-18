@@ -25,6 +25,15 @@ import { DEPOSIT_TEXT_CASES } from './crm-deposit-rule.fixtures';
  * only cover the JS-side row→field mapping, not this SQL semantics.
  */
 
+// TODO(handoff): CI leaves SUPABASE_DB_URL empty (.env.example:141, no override in
+// .github/workflows/ci.yml) so this suite is always skipped in the enforced gate. This file
+// only needs a bare `postgres` service (VALUES-probe queries, no app schema), so it is safe to
+// wire independently of the documented full-schema-not-reproducible blocker (see hub memory
+// hub-supabase-schema-not-reproducible.md) — but SUPABASE_DB_URL is also read by
+// brain-business-corpus.sql.integration.test.ts, pg-client.test.ts, pg-pool.test.ts,
+// brain-business-persistence.service.test.ts and layout.server.test.ts, some of which DO expect
+// the full prod schema, so turning the env var on globally would need those checked first. Add
+// a job-scoped service + isolated env instead of a blanket CI env var.
 const databaseUrl =
   process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
 
