@@ -14,12 +14,15 @@ import {
 // working. getContactGraph tests override it via useExecMock to hand back a
 // bare `{ execute }` tx (avoids typing tx.execute onto the tenant-DB mock).
 const mockWithOrgCore = vi.fn(
-  (scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } }, fn: (tx: unknown) => unknown) =>
-    scope.db.transaction((tx: unknown) => fn(tx)),
+  (
+    scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } },
+    fn: (tx: unknown) => unknown,
+  ) => scope.db.transaction((tx: unknown) => fn(tx)),
 );
 
 vi.mock('$server/db/with-org-core', () => ({
-  withOrgCore: (scope: unknown, fn: (tx: unknown) => unknown) => mockWithOrgCore(scope as never, fn),
+  withOrgCore: (scope: unknown, fn: (tx: unknown) => unknown) =>
+    mockWithOrgCore(scope as never, fn),
 }));
 
 // rankContacts asks whether crm+finances are BOTH enabled before shaping the
@@ -76,7 +79,12 @@ describe('getContactGraph', () => {
     label: 'John Smith',
     message_count: '5',
     last_at: '2026-07-01T00:00:00Z',
-    relationship: { label: 'mamá', category: 'family', source: 'ai', updatedAt: '2026-07-01T00:00:00Z' },
+    relationship: {
+      label: 'mamá',
+      category: 'family',
+      source: 'ai',
+      updatedAt: '2026-07-01T00:00:00Z',
+    },
   };
   const ctx = { db: {} as never, tenantId: 'org-1' };
 
@@ -177,7 +185,9 @@ describe('customFieldsMergeSql (spec F3b — client cannot forge/delete reserved
   });
 
   it('non-reserved keys pass through untouched', () => {
-    const query = new PgDialect().sqlToQuery(customFieldsMergeSql({ distrito: 'Miraflores', edad: '34' }));
+    const query = new PgDialect().sqlToQuery(
+      customFieldsMergeSql({ distrito: 'Miraflores', edad: '34' }),
+    );
     const jsonParam = query.params.find((p) => typeof p === 'string' && p.includes('distrito'));
     expect(jsonParam).toBe(JSON.stringify({ distrito: 'Miraflores', edad: '34' }));
   });
