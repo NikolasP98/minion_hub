@@ -5,14 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * of the two independent implementations (`/scheduling/bookings` and
  * `/pos/appointments`) before Slices 2-3 extract a shared `BookingsView`.
  *
- * Red-state proof (run once, then reverted — see PR body): the `stockEnabled`
- * assertion for `/pos/appointments` was first written expecting
- * `effectiveModuleEnabled`-style gating (`false` for a personal-kind org with
- * stock toggled on) and failed, because the POS load actually reads
- * `locals.moduleStates?.stock ?? true` directly — a real drift from the
- * scheduling side, not a copy-paste artifact. The assertion below pins what
- * ships today, not what the two sides "should" do (fixing the drift is out of
- * scope per the spec's personal-org kind-leak carve-out).
+ * Differential matrix, branch decision (view), and red-state proof:
+ * docs/superpowers/specs/2026-08-17-hub-pos-appointments-fork-slice1-audit.md.
+ *
+ * Red-state proof summary: the `stockEnabled` assertion for `/pos/appointments`
+ * was first written expecting `effectiveModuleEnabled`-style gating (`false`
+ * for a personal-kind org with stock toggled on) and failed, because the POS
+ * load actually reads `locals.moduleStates?.stock ?? true` directly — a real
+ * drift from the scheduling side, not a copy-paste artifact. The assertion
+ * below pins what ships today, not what the two sides "should" do (fixing the
+ * drift is out of scope per the spec's personal-org kind-leak carve-out).
  */
 
 const mocks = vi.hoisted(() => ({
