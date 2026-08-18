@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, iconSizes } from '$lib/components/ui';
   import { browser } from '$app/environment';
+  import { flip } from 'svelte/animate';
+  import { cubicOut } from 'svelte/easing';
   import { Pencil, Check, RotateCcw, GripVertical, Pin } from 'lucide-svelte';
   import type { Snippet } from 'svelte';
   import * as m from '$lib/paraglide/messages';
@@ -42,6 +44,7 @@
   let saved = $state<GridLayout | null>(null);
   let serverDefault = $state<GridLayout | null>(null);
   let layout = $derived(mergeLayout(defaults, saved ?? serverDefault, cols));
+  const visibleOrder = $derived(layout.order.filter((id) => byId.has(id)));
   let editing = $state(false);
   let savingDefault = $state(false);
   let savedDefaultAt = $state(0); // bump to flash a "saved" tick
@@ -94,9 +97,20 @@
   let gridEl: HTMLElement | undefined;
   let dragId = $state<string | null>(null);
 
+  // Reorder/reflow animation. app.css neutralises CSS transitions under
+  // prefers-reduced-motion, but FLIP is JS-driven — it has to opt out itself.
+  const reduceMotion = browser && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Off until the user actually grabs something: the stored/org-default layout
+  // resolves in an effect AFTER first paint, and animating THAT makes every card
+  // fly across the screen on page load.
+  let animate = $state(false);
+  // ponytail: literal ms — this is a JS animation param, not a CSS motion token.
+  const flipIn = $derived({ duration: animate && !reduceMotion ? 180 : 0, easing: cubicOut });
+
   // ── Reorder (drag the grip handle; live insert before the cell under pointer) ─
   function startDrag(e: PointerEvent, itemId: string) {
     if (!editing) return;
+    animate = true;
     e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     dragId = itemId;
@@ -117,6 +131,7 @@
   let resizeId: string | null = null;
   let start = { x: 0, y: 0, w: 1, h: 1 };
   function startResize(e: PointerEvent, itemId: string) {
+    animate = true;
     e.preventDefault();
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -145,7 +160,7 @@
   <div class="eg-actions">
     {#if editing}
       <Button variant="ghost" class="eg-btn" onclick={reset} title={m.dash_layout_reset()}
-        ><RotateCcw size={13} /> {m.dash_layout_reset()}</Button
+        ><RotateCcw size={iconSizes.sm} /> {m.dash_layout_reset()}</Button
       >
       {#if canSetDefault}
         <Button
@@ -155,7 +170,9 @@
           disabled={savingDefault}
           title={m.dash_layout_save_default_hint()}
         >
-          {#if savedDefaultAt > 0 && !savingDefault}<Check size={13} />{:else}<Pin size={13} />{/if}
+          {#if savedDefaultAt > 0 && !savingDefault}<Check size={iconSizes.sm} />{:else}<Pin
+              size={iconSizes.sm}
+            />{/if}
           {m.dash_layout_save_default()}
         </Button>
       {/if}
@@ -166,7 +183,9 @@
         class="eg-btn {editing ? 'on' : ''}"
         onclick={() => (editing = !editing)}
       >
-        {#if editing}<Check size={13} /> {m.dash_layout_done()}{:else}<Pencil size={13} />
+        {#if editing}<Check size={iconSizes.sm} /> {m.dash_layout_done()}{:else}<Pencil
+            size={iconSizes.sm}
+          />
           {m.dash_layout_edit()}{/if}
       </Button>
     {/if}
@@ -191,37 +210,37 @@
       endResize(e);
     }}
   >
-    {#each layout.order as itemId (itemId)}
-      {#if byId.has(itemId)}
-        {@const span = layout.span[itemId]}
-        <div
-          class="eg-cell"
-          class:dragging={dragId === itemId}
-          data-grid-id={itemId}
-          style:grid-column={`span ${span.w}`}
-          style:grid-row={`span ${span.h}`}
-        >
-          {@render cell(itemId)}
-          {#if editing}
-            <!-- shield: swallow clicks so the card's own nav doesn't fire while editing -->
-            <div class="eg-shield"></div>
-            <Button
-              variant="ghost"
-              class="eg-grip"
-              title={m.dash_layout_drag()}
-              onpointerdown={(e: PointerEvent) => startDrag(e, itemId)}
-              ><GripVertical size={14} /></Button
-            >
-            <Button
-              variant="ghost"
-              class="eg-resize"
-              title={m.dash_layout_resize()}
-              aria-label={m.dash_layout_resize()}
-              onpointerdown={(e: PointerEvent) => startResize(e, itemId)}
-            ></Button>
-          {/if}
-        </div>
-      {/if}
+    <!-- Filtered BEFORE the each (not an inner {#if}) — `animate:` requires the
+         element to be the only child of the keyed block. -->
+    {#each visibleOrder as itemId (itemId)}
+      <div
+        class="eg-cell"
+        class:dragging={dragId === itemId}
+        data-grid-id={itemId}
+        style:grid-column={`span ${layout.span[itemId].w}`}
+        style:grid-row={`span ${layout.span[itemId].h}`}
+        animate:flip={flipIn}
+      >
+        {@render cell(itemId)}
+        {#if editing}
+          <!-- shield: swallow clicks so the card's own nav doesn't fire while editing -->
+          <div class="eg-shield"></div>
+          <Button
+            variant="ghost"
+            class="eg-grip"
+            title={m.dash_layout_drag()}
+            onpointerdown={(e: PointerEvent) => startDrag(e, itemId)}
+            ><GripVertical size={iconSizes.sm} /></Button
+          >
+          <Button
+            variant="ghost"
+            class="eg-resize"
+            title={m.dash_layout_resize()}
+            aria-label={m.dash_layout_resize()}
+            onpointerdown={(e: PointerEvent) => startResize(e, itemId)}
+          ></Button>
+        {/if}
+      </div>
     {/each}
   </div>
 </div>
@@ -302,6 +321,17 @@
     min-width: 0;
     min-height: 0;
   }
+  /* The lift rides on the CARD, not the cell — `animate:flip` owns the cell's
+     own transform while a reorder is settling. */
+  .eg-cell > :global(:first-child) {
+    transition:
+      transform var(--duration-fast) var(--ease-standard),
+      box-shadow var(--duration-fast) var(--ease-standard);
+  }
+  .eg-cell.dragging > :global(:first-child) {
+    transform: scale(1.02);
+    box-shadow: var(--shadow-overlay);
+  }
   /* The cell's child (the card) fills the spanned area so resizing is visible.
 	   overflow:hidden (not auto) — rows grow to fit content, so a scrollbar would
 	   only appear on a deliberate resize-too-small; clip quietly instead. */
@@ -315,7 +345,7 @@
     border-radius: var(--radius-lg);
   }
   .eg-cell.dragging {
-    opacity: 0.55;
+    opacity: 0.9;
     z-index: var(--layer-sticky);
   }
   .eg-shield {
@@ -324,41 +354,86 @@
     z-index: var(--layer-base);
     cursor: grab;
   }
+  .eg-cell.dragging .eg-shield {
+    cursor: grabbing;
+  }
   :global(.eg-grip) {
     position: absolute;
-    top: 6px;
-    left: 6px;
-    z-index: var(--layer-base);
+    top: 0;
+    left: 0;
+    /* Straddles the corner: chrome that frames the card instead of covering the
+       first line of its content (a card header used to render under it). */
+    transform: translate(-45%, -45%);
+    z-index: var(--layer-sticky);
     display: grid;
     place-items: center;
-    width: 1.4rem;
-    height: 1.4rem;
-    border-radius: var(--radius-sm);
-    color: var(--color-muted-foreground);
-    background: color-mix(in srgb, var(--color-card) 85%, transparent);
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: var(--radius-full);
+    color: var(--color-text-secondary);
+    background: var(--color-overlay);
     border: 1px solid var(--hairline);
+    box-shadow: var(--shadow-sm);
     cursor: grab;
     touch-action: none;
+    opacity: 0;
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard),
+      border-color var(--duration-fast) var(--ease-standard);
+  }
+  :global(.eg-grip:hover) {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
   }
   :global(.eg-grip:active) {
     cursor: grabbing;
   }
   :global(.eg-resize) {
     position: absolute;
-    right: 2px;
-    bottom: 2px;
-    z-index: var(--layer-base);
-    width: 1.1rem;
-    height: 1.1rem;
+    right: 0;
+    bottom: 0;
+    transform: translate(45%, 45%);
+    z-index: var(--layer-sticky);
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: var(--radius-full);
+    color: var(--color-text-secondary);
+    background: var(--color-overlay);
+    border: 1px solid var(--hairline);
+    box-shadow: var(--shadow-sm);
     cursor: nwse-resize;
     touch-action: none;
-    background: linear-gradient(
-      135deg,
-      transparent 0 45%,
-      color-mix(in srgb, var(--color-accent) 70%, transparent) 45% 55%,
-      transparent 55% 70%,
-      color-mix(in srgb, var(--color-accent) 70%, transparent) 70% 80%,
-      transparent 80%
-    );
+    opacity: 0;
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard),
+      border-color var(--duration-fast) var(--ease-standard);
+  }
+  /* Corner chevron drawn from borders — no icon, no hatched-gradient artifact. */
+  :global(.eg-resize)::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0.4rem;
+    height: 0.4rem;
+    transform: translate(-60%, -60%);
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+  }
+  :global(.eg-resize:hover) {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+
+  /* Reveal on cell hover — plus keyboard focus and the in-flight drag, which
+     have no pointer over the cell to keep them visible. */
+  .eg-cell:hover :global(.eg-grip),
+  .eg-cell:hover :global(.eg-resize),
+  .eg-cell.dragging :global(.eg-grip),
+  :global(.eg-grip:focus-visible),
+  :global(.eg-resize:focus-visible) {
+    opacity: 1;
   }
 </style>

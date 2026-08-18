@@ -1,6 +1,8 @@
 import { env } from '$env/dynamic/private';
+import { githubFetch } from './github-api';
 
-const GITHUB_API = 'https://api.github.com';
+/** One GitHub client for the whole hub — see github-api.ts. */
+const fetchGitHub = githubFetch;
 
 interface CreateIssueInput {
   title: string;
@@ -12,36 +14,6 @@ interface GitHubIssueResult {
   id: number;
   number: number;
   html_url: string;
-}
-
-async function fetchGitHub(
-  path: string,
-  options: { method?: string; body?: string } = {},
-): Promise<unknown> {
-  const token = env.GITHUB_TOKEN;
-  if (!token) throw new Error('GITHUB_TOKEN not configured');
-
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github.v3+json',
-    'User-Agent': 'minion-hub',
-    Authorization: `Bearer ${token}`,
-  };
-  if (options.body) {
-    headers['Content-Type'] = 'application/json';
-  }
-
-  const res = await fetch(`${GITHUB_API}/${path}`, {
-    method: options.method ?? 'GET',
-    headers,
-    body: options.body,
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`GitHub ${res.status}: ${path} — ${text}`);
-  }
-
-  return res.json();
 }
 
 const SEVERITY_EMOJI: Record<string, string> = {

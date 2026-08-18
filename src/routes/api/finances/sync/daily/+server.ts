@@ -2,11 +2,57 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
-import { enqueueJob, listEnabledSources } from '$server/services/finance-sync-jobs.service';
+import {
+  enqueueJob,
+  getJobById,
+  listEnabledSources,
+} from '$server/services/finance-sync-jobs.service';
 import { advanceJob } from '$server/services/finance-sync.service';
 import { reconcileParties } from '$server/services/party.service';
+import { gatewayCall } from '$lib/server/gateway-rpc';
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Shout when the daily money sync fails. `advanceJob` deliberately swallows its
+ * error (finance-sync.service.ts — catch → finishJob('failed')), so a broken
+ * provider only ever lands in a `fin_sync_jobs` row nobody reads: in Aug 2026
+ * SUSII rejected our login for 14 consecutive days and the finances screens
+ * served stale money data the whole time, unnoticed. Reads the job back rather
+ * than relying on a throw, so it stays correct if that swallow ever changes.
+ *
+ * Delivery reuses the same `channels.send` primitive notif.service uses, but
+ * deliberately NOT the notif_rules engine: that path only fires if a rule row
+ * exists AND the org has rules enabled AND /api/notifications/tick is actually
+ * scheduled. `notif_rules` is empty in prod (checked 2026-08-12) and that tick
+ * is netcup-wired rather than a vercel.json cron, so it has more ways to be
+ * silently off than the failure it would report. This route is itself a
+ * vercel.json cron and ran every day right through the outage.
+ *
+ * ponytail: no dedup — a broken money pipeline earns one message per day until
+ * it is fixed. Add state only if a real incident proves that is noise.
+ */
+async function alertSyncFailure(orgId: string, provider: string, reason: string): Promise<void> {
+  const to = env.FINANCE_ALERT_TO;
+  const channel = env.FINANCE_ALERT_CHANNEL;
+  if (!to || !channel) {
+    console.error('[finance-sync] daily FAILED and no alert configured', {
+      orgId,
+      provider,
+      reason,
+    });
+    return;
+  }
+  try {
+    await gatewayCall('channels.send', {
+      channel,
+      to,
+      text: `⚠️ Finance sync failed — org ${orgId}, provider ${provider}\n${reason}\n\nFinance data is now stale. Check /finances/settings.`,
+    });
+  } catch (e) {
+    console.error('[finance-sync] daily alert delivery failed', orgId, e);
+  }
+}
 
 /**
  * GET /api/finances/sync/daily — external-scheduler entrypoint (run once/day, 3am).
@@ -22,11 +68,18 @@ export const GET: RequestHandler = async ({ request }) => {
 
   const sources = await listEnabledSources('susii');
   let started = 0;
+  let failed = 0;
   for (const s of sources) {
     const ctx = { db: getCoreDb(), tenantId: s.orgId };
     try {
       const job = await enqueueJob(ctx, s.provider);
       await advanceJob(ctx, job.id, { budgetMs: 50_000, recentWindowMs: ONE_WEEK_MS });
+      const finished = await getJobById(ctx, job.id);
+      if (finished?.status === 'failed') {
+        failed++;
+        await alertSyncFailure(s.orgId, s.provider, finished.error ?? 'unknown error');
+        continue; // don't count a failed sync as started, and skip reconcile
+      }
       // Freshly-synced payers need their party + CRM contact minted, or they
       // sit in finances but in nobody's CRM. `syncSource` does this for manual
       // runs; this cron path calls advanceJob directly, so without it every
@@ -41,7 +94,9 @@ export const GET: RequestHandler = async ({ request }) => {
       started++;
     } catch (e) {
       console.error('[finance-sync] daily advanceJob failed', s.orgId, s.provider, e);
+      failed++;
+      await alertSyncFailure(s.orgId, s.provider, e instanceof Error ? e.message : String(e));
     }
   }
-  return json({ started });
+  return json({ started, failed });
 };

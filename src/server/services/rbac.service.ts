@@ -1108,6 +1108,12 @@ const CREATE_COLLECTION_ENDPOINTS = new Set([
   '/api/builder/skills',
   '/api/builder/tools',
   '/api/crm/parties',
+  '/api/pos/sellables',
+  // Creates a Sales Order from a booking. Deliberately NOT under
+  // /api/scheduling — the prefix decides the module, so the old
+  // /api/scheduling/bookings/:id/order path gated a sales write on
+  // `scheduling:edit`.
+  '/api/sales/orders/from-booking',
 ]);
 
 export function apiWriteCapability(

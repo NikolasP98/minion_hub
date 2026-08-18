@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { previousRange, deltaPct, calcCtr, calcCpc, extentToRange, getPostDetail } from './meta-insights.service';
+import {
+  previousRange,
+  deltaPct,
+  calcCtr,
+  calcCpc,
+  extentToRange,
+  getPostDetail,
+} from './meta-insights.service';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
@@ -9,9 +16,9 @@ function rawSqlDb(...queryResults: unknown[]) {
   const tx = {
     execute: async () => {
       executeCount += 1;
-      // withOrgCore's four SET LOCAL / set_config statements precede service queries.
-      if (executeCount <= 4) return undefined;
-      return queryResults[executeCount - 5] ?? [];
+      // withOrgCore issues ONE combined set_config statement before service queries.
+      if (executeCount <= 1) return undefined;
+      return queryResults[executeCount - 2] ?? [];
     },
   };
   return {
@@ -147,24 +154,27 @@ describe('getPostDetail', () => {
   });
 
   it('falls back to linked ad aggregates for a dark post', async () => {
-    const db = rawSqlDb([], [
-      {
-        post_id: 'dark-post-1',
-        platform: 'fb',
-        promoted_by_ad_ids: 'ad-1,ad-2',
-        spend: 75.5,
-        impressions: 5000,
-        reach: 4200,
-        clicks: 125,
-        campaign_id: 'campaign-1',
-        campaign_name: 'Winter launch',
-        ad_names: ['Dark creative A', 'Dark creative B'],
-        first_date: '2026-06-01',
-        last_date: '2026-06-10',
-        thumb_file_id: 'file-dark-1',
-        thumb_status: 'mirrored',
-      },
-    ]);
+    const db = rawSqlDb(
+      [],
+      [
+        {
+          post_id: 'dark-post-1',
+          platform: 'fb',
+          promoted_by_ad_ids: 'ad-1,ad-2',
+          spend: 75.5,
+          impressions: 5000,
+          reach: 4200,
+          clicks: 125,
+          campaign_id: 'campaign-1',
+          campaign_name: 'Winter launch',
+          ad_names: ['Dark creative A', 'Dark creative B'],
+          first_date: '2026-06-01',
+          last_date: '2026-06-10',
+          thumb_file_id: 'file-dark-1',
+          thumb_status: 'mirrored',
+        },
+      ],
+    );
 
     const detail = await getPostDetail(ctx(db), 'dark-post-1');
 

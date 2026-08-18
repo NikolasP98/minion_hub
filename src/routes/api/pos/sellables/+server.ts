@@ -6,6 +6,7 @@ import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listSellables, createSellable } from '$server/services/pos.service';
 import { handlePosError } from '../_errors';
+import { requireSellableFieldCapabilities } from './_owning-modules';
 
 const consumptionSchema = z.object({
   itemId: z.string().min(1),
@@ -40,6 +41,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
   const body = await parseBody(request, postSchema);
+  await requireSellableFieldCapabilities(locals, body, 'create');
   const actor = {
     id: ctx.profileId ?? null,
     name: locals.user?.displayName ?? locals.user?.email ?? null,

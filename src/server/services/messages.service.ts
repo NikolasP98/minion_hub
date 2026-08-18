@@ -314,7 +314,10 @@ export async function listRecentConversations(
 ): Promise<RecentConversation[]> {
   return cached(
     keys.hub('omnichat-convos', { t: orgId, d: { n: limit, o: offset } }),
-    { ttl: '2m', swr: '30s', tags: [...messageTags(orgId)] },
+    // Long swr: an expired entry serves stale instantly and refreshes in the
+    // background — a cold recompute must never block a navigation. Ingest/send
+    // still bust the tag for immediate freshness.
+    { ttl: '2m', swr: '1h', tags: [...messageTags(orgId)] },
     () => loadRecentConversations(orgId, limit, offset),
   );
 }
@@ -411,7 +414,10 @@ export async function listThreadMessages(
 ): Promise<LedgerMessage[]> {
   return cached(
     keys.hub('omnichat-thread', { t: orgId, d: { c: channel, id: chatId, n: limit } }),
-    { ttl: '2m', swr: '30s', tags: [...messageTags(orgId)] },
+    // Long swr: an expired entry serves stale instantly and refreshes in the
+    // background — a cold recompute must never block a navigation. Ingest/send
+    // still bust the tag for immediate freshness.
+    { ttl: '2m', swr: '1h', tags: [...messageTags(orgId)] },
     () => listMessages(orgId, { channel, chatId, limit }),
   );
 }

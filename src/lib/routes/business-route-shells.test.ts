@@ -36,7 +36,7 @@ describe('Wave B business route shells', () => {
     expect(count).toBe(6);
   });
 
-  it('assigns all ten Stock screens to their intended archetypes', () => {
+  it('assigns all nine Stock screens to their intended archetypes', () => {
     const count = expectRoutes(stockRouteShell, {
       dashboard: ['/stock'],
       collection: [
@@ -47,14 +47,14 @@ describe('Wave B business route shells', () => {
         '/stock/warehouses',
       ],
       'record-detail': ['/stock/entries/entry-1', '/stock/items/item-1'],
-      form: ['/stock/consume', '/stock/entries/new'],
+      form: ['/stock/entries/new'],
       'master-detail': [],
       workspace: [],
       canvas: [],
       terminal: [],
       public: [],
     });
-    expect(count).toBe(10);
+    expect(count).toBe(9);
   });
 
   it('assigns all nineteen Workforce screens to their intended archetypes', () => {

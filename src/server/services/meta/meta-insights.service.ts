@@ -75,11 +75,18 @@ export function adDataExtent(ctx: CoreCtx): Promise<DataExtent> {
   return withOrgCore(ctx, async (tx) => {
     const [row] = (await tx.execute(sql`
       select min(date)::text as min_date, max(date)::text as max_date,
-             -- one distinct currency ⇒ safe to label; mixed ⇒ null (don't guess)
-             case when count(distinct currency) = 1 then min(currency) end as currency
+             -- one distinct currency ⇒ safe to label; mixed ⇒ null (don't guess).
+             -- min=max is equivalent to count(distinct)=1 here (both ignore
+             -- nulls) and avoids the distinct aggregate's full sort — this runs
+             -- on every /socials nav and count(distinct) cost ~1.5s at 30k rows.
+             case when min(currency) = max(currency) then min(currency) end as currency
       from meta_ad_insights
       where org_id = ${ctx.tenantId}
-    `)) as unknown as Array<{ min_date: string | null; max_date: string | null; currency: string | null }>;
+    `)) as unknown as Array<{
+      min_date: string | null;
+      max_date: string | null;
+      currency: string | null;
+    }>;
     return {
       minDate: row?.min_date ?? null,
       maxDate: row?.max_date ?? null,
@@ -91,7 +98,11 @@ export function adDataExtent(ctx: CoreCtx): Promise<DataExtent> {
 /** Full-history DateRange from an extent (`to` exclusive, so maxDate+1 day).
  *  Falls back to the last `fallbackDays` ending today when there's no data yet
  *  (fresh/unsynced org) — same shape as the old hardcoded "last 30d" default. */
-export function extentToRange(extent: DataExtent, now: Date = new Date(), fallbackDays = 30): DateRange {
+export function extentToRange(
+  extent: DataExtent,
+  now: Date = new Date(),
+  fallbackDays = 30,
+): DateRange {
   if (!extent.minDate || !extent.maxDate) {
     const to = now.toISOString().slice(0, 10);
     const from = new Date(now);
@@ -117,7 +128,11 @@ export interface AdKpis extends AdKpiTotals {
   deltaPct: Record<'spend' | 'impressions' | 'reach' | 'clicks' | 'ctr' | 'cpc', number | null>;
 }
 
-async function kpiAgg(tx: Parameters<Parameters<CoreCtx['db']['transaction']>[0]>[0], orgId: string, r: DateRange): Promise<AdKpiTotals> {
+async function kpiAgg(
+  tx: Parameters<Parameters<CoreCtx['db']['transaction']>[0]>[0],
+  orgId: string,
+  r: DateRange,
+): Promise<AdKpiTotals> {
   const [row] = (await tx.execute(sql`
     select coalesce(sum(spend), 0)::float8 spend,
            coalesce(sum(impressions), 0)::bigint impressions,
@@ -130,7 +145,14 @@ async function kpiAgg(tx: Parameters<Parameters<CoreCtx['db']['transaction']>[0]
   const impressions = Number(row?.impressions ?? 0);
   const reach = Number(row?.reach ?? 0); // ponytail: summed across ad×day rows, not deduped unique reach
   const clicks = Number(row?.clicks ?? 0);
-  return { spend, impressions, reach, clicks, ctr: calcCtr(clicks, impressions), cpc: calcCpc(spend, clicks) };
+  return {
+    spend,
+    impressions,
+    reach,
+    clicks,
+    ctr: calcCtr(clicks, impressions),
+    cpc: calcCpc(spend, clicks),
+  };
 }
 
 /** KPI ribbon: spend/impressions/reach/clicks/ctr/cpc for `range`, plus the same
@@ -177,7 +199,12 @@ export function adSpendSeries(ctx: CoreCtx, range: DateRange): Promise<AdSpendPo
       group by date
       order by date
     `)) as unknown as Array<{ date: string; spend: number; impressions: number; clicks: number }>;
-    return rows.map((r) => ({ date: r.date, spend: Number(r.spend), impressions: Number(r.impressions), clicks: Number(r.clicks) }));
+    return rows.map((r) => ({
+      date: r.date,
+      spend: Number(r.spend),
+      impressions: Number(r.impressions),
+      clicks: Number(r.clicks),
+    }));
   });
 }
 
@@ -214,12 +241,26 @@ export interface CampaignRow {
  *  already-small grouped result, never raw daily rows. Ad level additionally
  *  joins meta_ad_posts → meta_post_media so each ad row carries its linked
  *  post id + mirrored thumbnail (spec 2026-07-05 §4). */
-export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: CampaignLevel = 'ad'): Promise<CampaignRow[]> {
+export function campaignBreakdown(
+  ctx: CoreCtx,
+  range: DateRange,
+  level: CampaignLevel = 'ad',
+): Promise<CampaignRow[]> {
   // Fixed 3-way enum, not user SQL — safe to splice as raw fragments.
-  const selectAdset = level === 'campaign' ? sql`null::text as adset_id, null::text as adset_name,` : sql`mai.adset_id, max(mai.adset_name) as adset_name,`;
-  const selectAd = level === 'ad' ? sql`mai.ad_id, max(mai.ad_name) as ad_name,` : sql`null::text as ad_id, null::text as ad_name,`;
+  const selectAdset =
+    level === 'campaign'
+      ? sql`null::text as adset_id, null::text as adset_name,`
+      : sql`mai.adset_id, max(mai.adset_name) as adset_name,`;
+  const selectAd =
+    level === 'ad'
+      ? sql`mai.ad_id, max(mai.ad_name) as ad_name,`
+      : sql`null::text as ad_id, null::text as ad_name,`;
   const groupBy =
-    level === 'campaign' ? sql`mai.campaign_id` : level === 'adset' ? sql`mai.campaign_id, mai.adset_id` : sql`mai.campaign_id, mai.adset_id, mai.ad_id`;
+    level === 'campaign'
+      ? sql`mai.campaign_id`
+      : level === 'adset'
+        ? sql`mai.campaign_id, mai.adset_id`
+        : sql`mai.campaign_id, mai.adset_id, mai.ad_id`;
   // Ad-level only: the post/thumbnail join keys (org_id, ad_id) / (org_id,
   // platform, post_id) are functionally dependent on the ad_id group — safe
   // to max() like postPerformance does for its media join.
@@ -230,7 +271,10 @@ export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: Campaig
           left join meta_post_media mm on mm.org_id = map.org_id and mm.platform = map.platform and mm.post_id = map.post_id
         `
       : sql``;
-  const selectPost = level === 'ad' ? sql`, max(map.post_id) as post_id, max(mm.file_id) filter (where mm.status = 'mirrored') as thumb_file_id` : sql``;
+  const selectPost =
+    level === 'ad'
+      ? sql`, max(map.post_id) as post_id, max(mm.file_id) filter (where mm.status = 'mirrored') as thumb_file_id`
+      : sql``;
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
       select mai.campaign_id, max(mai.campaign_name) as campaign_name,
@@ -308,12 +352,19 @@ export interface PostRow {
  */
 export function postPerformance(
   ctx: CoreCtx,
-  opts: { limit?: number; orderBy?: 'recent' | 'score'; platform?: 'fb' | 'ig'; promoted?: boolean } = {},
+  opts: {
+    limit?: number;
+    orderBy?: 'recent' | 'score';
+    platform?: 'fb' | 'ig';
+    promoted?: boolean;
+  } = {},
 ): Promise<PostRow[]> {
   const limit = Math.min(opts.limit ?? 200, 500);
   const platformCond = opts.platform ? sql` and mi.platform = ${opts.platform}` : sql``;
-  const promotedCond = opts.promoted === undefined ? sql`` : sql` and mi.is_promoted = ${opts.promoted}`;
-  const orderClause = opts.orderBy === 'recent' ? sql`posted_at desc nulls last` : sql`score desc nulls last`;
+  const promotedCond =
+    opts.promoted === undefined ? sql`` : sql` and mi.is_promoted = ${opts.promoted}`;
+  const orderClause =
+    opts.orderBy === 'recent' ? sql`posted_at desc nulls last` : sql`score desc nulls last`;
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
       select mi.post_id,
@@ -343,7 +394,10 @@ export function postPerformance(
       mediaType: r.media_type != null ? String(r.media_type) : null,
       isPromoted: Boolean(r.is_promoted),
       metrics: Object.fromEntries(
-        Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [k, Number(v)]),
+        Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [
+          k,
+          Number(v),
+        ]),
       ),
       thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
     }));
@@ -499,7 +553,10 @@ export function getPostDetail(ctx: CoreCtx, postId: string): Promise<PostDetail 
       postedAt: r.posted_at != null ? String(r.posted_at) : null,
       isPromoted: Boolean(r.is_promoted),
       metrics: Object.fromEntries(
-        Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [k, Number(v)]),
+        Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [
+          k,
+          Number(v),
+        ]),
       ),
       thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
       thumbStatus: r.thumb_status != null ? String(r.thumb_status) : null,
@@ -669,7 +726,11 @@ export interface CampaignDetail {
  *  per-ad breakdown (ads carry the §4 post/thumbnail join), and a daily spend
  *  series for the trend chart. Null when the campaign has no rows at all for
  *  this org (any date) — a real 404, not merely an empty range. */
-export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateRange): Promise<CampaignDetail | null> {
+export function getCampaignDetail(
+  ctx: CoreCtx,
+  campaignId: string,
+  range: DateRange,
+): Promise<CampaignDetail | null> {
   return withOrgCore(ctx, async (tx) => {
     const [existsRow] = (await tx.execute(sql`
       select campaign_name
@@ -688,7 +749,13 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
       from meta_ad_insights mai
       where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
         and date >= ${range.from} and date <= ${range.to}
-    `)) as unknown as Array<{ spend: number; impressions: number; reach: number; clicks: number; conversations_started: number }>;
+    `)) as unknown as Array<{
+      spend: number;
+      impressions: number;
+      reach: number;
+      clicks: number;
+      conversations_started: number;
+    }>;
     const spend = Number(totalsRow?.spend ?? 0);
     const impressions = Number(totalsRow?.impressions ?? 0);
     const reach = Number(totalsRow?.reach ?? 0);

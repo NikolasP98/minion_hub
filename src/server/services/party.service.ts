@@ -1,6 +1,12 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { invalidateTags, tags } from '@minion-stack/cache';
-import { canonicalSex, dniNameMatches, formatRegistryName, lookupDni, parseDob } from '@minion-stack/crm-sdk';
+import {
+  canonicalSex,
+  dniNameMatches,
+  formatRegistryName,
+  lookupDni,
+  parseDob,
+} from '@minion-stack/crm-sdk';
 import { withOrgCore } from '$server/db/with-org-core';
 import { parties, type Party } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
@@ -302,7 +308,14 @@ export async function searchParties(
       );
     }
     return tx
-      .select({ id: parties.id, name: parties.name, type: parties.type, email: parties.email, docNumber: parties.docNumber, phone9: parties.phone9 })
+      .select({
+        id: parties.id,
+        name: parties.name,
+        type: parties.type,
+        email: parties.email,
+        docNumber: parties.docNumber,
+        phone9: parties.phone9,
+      })
       .from(parties)
       .where(and(...conds))
       .orderBy(asc(parties.name))
@@ -380,6 +393,90 @@ export async function setPartyDniVerified(
 }
 
 /**
+ * Set a contact's DNI and fill its identity from the registry — the write half
+ * of the CRM detail page's "look up this ID" affordance.
+ *
+ * ★The identity fields (doc_number, dob, sex, official name) live on the PARTY
+ * SPINE, which the details form's custom_fields PATCH cannot reach. Before this
+ * existed the UI "applied" a hit into client-side drafts, so the DNI was dropped
+ * on save, the date of birth was never written at all, and sex was persisted as
+ * a LOCALIZED display string ("Male") into custom_fields.sexo instead of the
+ * canonical M/F the rest of the app reads. Everything now goes through the same
+ * writers the validation tick uses.
+ *
+ * Registry hit → dob + name/sex enrichment + dni_verified (an operator accepted
+ * an identity the registry returned for this exact document; enrichment then
+ * overwrites the name with the registry's, so the row cannot disagree with it).
+ * No hit → the document is still stored, unverified, and left unattempted so the
+ * validation tick retries it.
+ */
+export async function applyContactDni(
+  ctx: CoreCtx,
+  contactId: string,
+  dni: string,
+  apiKey: string,
+): Promise<
+  { ok: true; verified: boolean } | { ok: false; reason: 'not_found' | 'conflict' | 'error' }
+> {
+  const contact = await withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ partyId: crmContacts.partyId, name: crmContacts.displayName })
+      .from(crmContacts)
+      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)))
+      .limit(1);
+    return row;
+  });
+  if (!contact) return { ok: false, reason: 'not_found' };
+
+  // doc_number is partial-UNIQUE per org (it IS the identity), so refuse rather
+  // than 500 when the document already belongs to somebody else.
+  const taken = await withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({ id: parties.id })
+      .from(parties)
+      .where(and(eq(parties.orgId, ctx.tenantId), eq(parties.docNumber, dni)))
+      .limit(1);
+    return rows[0]?.id ?? null;
+  });
+  if (taken && taken !== contact.partyId) return { ok: false, reason: 'conflict' };
+
+  const partyId =
+    contact.partyId ??
+    (
+      await ensurePartyForContact(ctx, contactId, {
+        name: contact.name,
+        docNumber: dni,
+        docType: 'DNI',
+      })
+    ).id;
+
+  const result = await lookupDni(dni, apiKey);
+  if (result.status === 'error') return { ok: false, reason: 'error' };
+  const verified = result.status === 'found';
+  const dob = result.status === 'found' ? parseDob(result.person.fecha_nacimiento) : null;
+
+  await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`
+      update parties set
+        doc_number = ${dni},
+        doc_type = coalesce(doc_type, 'DNI'),
+        dob = coalesce(${dob}::date, dob),
+        dni_verified = ${verified},
+        metadata = case when ${verified}::boolean
+          then metadata || jsonb_build_object('dni_validation',
+            jsonb_build_object('status', 'verified', 'checked_at', now(), 'api', 'perudevs', 'manual', true))
+          -- Not in the registry: leave dni_validation absent so validatePendingDnis
+          -- still claims the row later (it only skips already-attempted parties).
+          else metadata - 'dni_validation' end,
+        updated_at = now()
+      where id = ${partyId} and org_id = ${ctx.tenantId}`),
+  );
+  if (result.status === 'found') await applyRegistryEnrichment(ctx, partyId, result.person);
+  await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'crm')]);
+  return { ok: true, verified };
+}
+
+/**
  * Validate pending 8-digit DNIs against the PERUDEVS registry (the ongoing
  * mechanism behind /api/crm/dni-validation/tick; the historical bulk was
  * backfilled 2026-07-15). verified → dni_verified=true + dob (age derives from
@@ -391,7 +488,13 @@ export async function validatePendingDnis(
   ctx: CoreCtx,
   apiKey: string,
   limit = 25,
-): Promise<{ claimed: number; verified: number; mismatch: number; not_found: number; error: number }> {
+): Promise<{
+  claimed: number;
+  verified: number;
+  mismatch: number;
+  not_found: number;
+  error: number;
+}> {
   const claimed = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       update parties set

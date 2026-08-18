@@ -446,6 +446,18 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
       action: 'edit',
     });
   });
+  test('booking → sales order is a SALES write, not a scheduling one', () => {
+    // Regression: while this lived at /api/scheduling/bookings/:id/order the
+    // prefix match handed a sales-order creation `scheduling:edit`.
+    expect(apiWriteCapability('/api/sales/orders/from-booking', 'POST')).toEqual({
+      module: 'sales',
+      action: 'create',
+    });
+    expect(apiWriteCapability('/api/scheduling/bookings/abc/complete', 'POST')).toEqual({
+      module: 'scheduling',
+      action: 'edit',
+    });
+  });
   test('work + workforce map to projects (no /api/work ↔ /api/workforce collision)', () => {
     expect(apiWriteCapability('/api/work/reassign', 'PATCH')).toEqual({
       module: 'projects',

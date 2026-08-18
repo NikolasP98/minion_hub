@@ -468,8 +468,8 @@
       <div class="px-3 py-2 flex flex-col gap-1.5">
         <div class="flex items-center gap-1.5">
           <span
-            class="px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] font-medium text-foreground capitalize"
-            style="background-color: {selected.color}">{selected.kind}</span
+            class="px-1.5 py-0.5 rounded bg-bg1 border border-border text-[length:var(--font-size-telemetry)] font-medium text-foreground capitalize"
+            >{selected.kind}</span
           >
           {#if selected.areaName}<span class="text-muted">{selected.areaName}</span>{/if}
         </div>

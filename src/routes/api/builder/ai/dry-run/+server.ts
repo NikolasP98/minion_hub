@@ -6,7 +6,7 @@ import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { getOpenRouterModel } from '$server/llm';
 
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
+const DEFAULT_MODEL = 'anthropic/claude-sonnet-5';
 
 /**
  * Simulates executing a single skill chapter.

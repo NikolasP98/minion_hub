@@ -6,7 +6,6 @@
     Warehouse,
     ArrowLeftRight,
     Boxes,
-    Stethoscope,
     CalendarClock,
   } from 'lucide-svelte';
   import { page } from '$app/state';
@@ -34,9 +33,6 @@
         icon: Boxes,
         href: '/stock/consumption',
       },
-      // NOTE: keep 'consume' after 'consumption' — isActive uses startsWith and
-      // '/stock/consumption' is a prefix-sibling of '/stock/consume'; first match wins.
-      { id: 'consume', label: m.stock_nav_consume(), icon: Stethoscope, href: '/stock/consume' },
       {
         id: 'commitments',
         label: m.stock_nav_commitments(),

@@ -3,6 +3,7 @@ import { json } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { isGatewayChannel } from '$server/services/gateway.pg.service';
 import { revalidateChannelLease } from '$server/services/gateway-lease.service';
+import { bustHostsCache } from '$server/services/hosts.service';
 
 /**
  * Re-probe and (if needed) flip the `(org, channel)` lease — spec §F2/§F4.
@@ -35,6 +36,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
   const endpoint = await revalidateChannelLease(orgId, body.channel);
   if (!endpoint) return json({ error: 'Not found' }, { status: 404 });
+  // The lease (or its health verdict) may have just changed — drop the cached
+  // hosts/channel bundle so the next layout load reflects it immediately.
+  await bustHostsCache(orgId);
   // `url`/`name` are intentionally omitted: the client keys by serverId and
   // fetches the URL from its host list, and the token still comes only from
   // /api/servers/[id]/token.

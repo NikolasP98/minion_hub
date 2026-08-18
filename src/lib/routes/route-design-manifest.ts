@@ -519,10 +519,9 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   }),
   screen('/socials/settings', 'Social settings', 'socials', 'form-settings'),
 
-  // Stock (10)
+  // Stock (9)
   screen('/stock', 'Stock', 'stock', 'dashboard'),
   screen('/stock/commitments', 'Stock commitments', 'stock', 'collection'),
-  screen('/stock/consume', 'Consume stock', 'stock', 'form-settings'),
   screen('/stock/consumption', 'Consumption', 'stock', 'collection'),
   screen('/stock/entries', 'Stock entries', 'stock', 'collection'),
   screen('/stock/entries/[id]', 'Stock entry', 'stock', 'record-detail', {
@@ -601,6 +600,11 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
       fixtureId: 'project-pipelines',
     },
   ),
+  // Reuses the project-detail fixture: same [id], and the repo tab is a view of
+  // that project — no second fixture to keep in sync.
+  screen('/workforce/projects/[id]/repo', 'Project repository', 'workforce', 'record-detail', {
+    fixtureId: 'project-detail',
+  }),
   screen('/workforce/reliability', 'Workforce reliability', 'workforce', 'dashboard'),
   screen('/workforce/settings', 'Workforce settings', 'workforce', 'form-settings'),
   screen('/workforce/settings/agents', 'Workforce agent settings', 'workforce', 'form-settings'),

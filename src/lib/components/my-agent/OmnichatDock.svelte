@@ -37,6 +37,12 @@
     settleOptimisticMessage,
     type OmnichatThreadMessage,
   } from './omnichat-thread-cache';
+  import { page } from '$app/state';
+  import {
+    subscribeMessageCommitted,
+    type MessageCommittedEvent,
+    type OrgRealtimeStatus,
+  } from '$lib/realtime/org-events';
 
   interface Props {
     /** Render as the slim collapsed rail (used when the panel is collapsed). */
@@ -164,6 +170,42 @@
     draft = '';
   }
 
+  const REALTIME_COALESCE_MS = 100;
+  const FALLBACK_REFRESH_MS = 5 * 60_000;
+  let realtimeStatus = $state<OrgRealtimeStatus>('CLOSED');
+  let scheduledListRefresh: ReturnType<typeof setTimeout> | null = null;
+  let scheduledThreadRefresh: ReturnType<typeof setTimeout> | null = null;
+
+  function cancelScheduledRefreshes() {
+    if (scheduledListRefresh) clearTimeout(scheduledListRefresh);
+    if (scheduledThreadRefresh) clearTimeout(scheduledThreadRefresh);
+    scheduledListRefresh = null;
+    scheduledThreadRefresh = null;
+  }
+
+  function scheduleListRefresh() {
+    if (scheduledListRefresh) return;
+    scheduledListRefresh = setTimeout(() => {
+      scheduledListRefresh = null;
+      void refresh();
+    }, REALTIME_COALESCE_MS);
+  }
+
+  function scheduleThreadRefresh(c: RecentConversation) {
+    if (scheduledThreadRefresh) return;
+    scheduledThreadRefresh = setTimeout(() => {
+      scheduledThreadRefresh = null;
+      if (selected && threadKey(selected) === threadKey(c)) void refreshThread(c);
+    }, REALTIME_COALESCE_MS);
+  }
+
+  function messageBelongsToConversation(
+    event: MessageCommittedEvent,
+    conversation: RecentConversation,
+  ): boolean {
+    return event.channel === conversation.channel && event.chatId === conversation.chatId;
+  }
+
   async function sendReply() {
     const c = selected;
     const text = draft.trim();
@@ -200,18 +242,66 @@
     }
   }
 
-  // List poll (60s) on the list view; thread poll (15s) while a conversation is
-  // open. ponytail: polling — no WS push exists for ledger messages.
+  // The gateway WebSocket is the control plane; the message ledger is committed
+  // in Supabase. Listen to the org's shared private Broadcast channel and treat
+  // events as invalidation signals, then refetch through the existing RBAC API.
+  // One org channel is shared by every subscriber in this tab.
+  $effect(() => {
+    const orgId = page.data.activeOrgId;
+    if (rail || !notesState.open || !orgId) return;
+    const unsubscribe = subscribeMessageCommitted(
+      orgId,
+      (event) => {
+        const conversation = selected;
+        if (conversation) {
+          if (messageBelongsToConversation(event, conversation)) {
+            scheduleThreadRefresh(conversation);
+          }
+        } else {
+          scheduleListRefresh();
+        }
+      },
+      (status) => {
+        realtimeStatus = status;
+        if (status === 'SUBSCRIBED') {
+          const conversation = selected;
+          if (conversation) scheduleThreadRefresh(conversation);
+          else scheduleListRefresh();
+        }
+      },
+    );
+    return () => {
+      unsubscribe();
+      realtimeStatus = 'CLOSED';
+      cancelScheduledRefreshes();
+    };
+  });
+
+  // Realtime is the fast path, not the durability boundary. Initial load,
+  // visibility regain, and a slow five-minute backstop recover missed events or
+  // a temporarily unavailable Realtime connection without recreating the old
+  // 12/15/60-second database pressure.
   $effect(() => {
     if (rail || !notesState.open) return;
-    if (selected) {
-      const c = selected;
-      const id = setInterval(() => void refreshThread(c), 15_000);
-      return () => clearInterval(id);
-    }
-    void refresh();
-    const id = setInterval(() => void refresh(), 60_000);
-    return () => clearInterval(id);
+    const refreshVisible = () => {
+      const conversation = selected;
+      if (conversation) void refreshThread(conversation);
+      else void refresh();
+    };
+    const fallbackMs =
+      realtimeStatus === 'SUBSCRIBED' ? FALLBACK_REFRESH_MS : selected ? 15_000 : 60_000;
+    const onVisibilityChange = () => {
+      if (!document.hidden) refreshVisible();
+    };
+    refreshVisible();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const id = setInterval(() => {
+      if (!document.hidden) refreshVisible();
+    }, fallbackMs);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   });
 
   // Pin the thread scroll to the newest message.

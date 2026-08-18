@@ -18,15 +18,19 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   depends('finances:data');
   // A calendar day is LOCAL. Resolve the picked days to instants in the org's
   // business timezone so an evening sale isn't reported on the next day.
-  const settings = await getFinSettings(ctx);
+  // Settings and the RBAC mask check are independent — fetch together (each is
+  // its own org-scoped txn; serializing them costs a full round-trip chain).
+  const [settings, maskCost] = await Promise.all([
+    getFinSettings(ctx),
+    // Field-level (Phase 4): hide cost/margin (discount, gross) below the
+    // finance sensitive field level. RBAC gate stays synchronous.
+    shouldMaskSensitive(locals, 'finance'),
+  ]);
   const picked = parsePeriod(url);
   const period = resolvePeriodWindow(picked, settings.timezone);
   // Full data span (min/max invoice date) — cheap + non-streamed so the date
   // controls can show real dates for "All time".
   const dataSpan = await financeDataSpan(ctx, settings.timezone);
-  // Field-level (Phase 4): hide cost/margin (discount, gross) below the finance
-  // sensitive field level. RBAC gate stays synchronous.
-  const maskCost = await shouldMaskSensitive(locals, 'finance');
 
   // Heavy body: the four aggregate queries. Streamed so the page shell paints
   // instantly with skeletons instead of blocking on this.

@@ -3,6 +3,7 @@ import { error, json } from '@sveltejs/kit';
 import { sql } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
+import { withAiUsageOrg } from '$server/ai-usage';
 import {
   advanceBrainCorpusJobNow,
   ensureWhatsAppReconcileJob,
@@ -35,22 +36,26 @@ export const GET: RequestHandler = async ({ request }) => {
     errors: 0,
   };
   for (const { id: orgId } of orgs) {
-    try {
-      const whatsappJob = await ensureWhatsAppReconcileJob(orgId);
-      if (whatsappJob.created) totals.created += 1;
-      else totals.resumed += 1;
-      await advanceBrainCorpusJobNow(whatsappJob.jobId);
-      totals.advanced += 1;
+    // Per-org AI usage scope — cron has no `locals.tenantCtx`, so without this
+    // the ledger cannot attribute this pipeline's embedding spend to anyone.
+    await withAiUsageOrg(orgId, 'brains.reconcile', async () => {
+      try {
+        const whatsappJob = await ensureWhatsAppReconcileJob(orgId);
+        if (whatsappJob.created) totals.created += 1;
+        else totals.resumed += 1;
+        await advanceBrainCorpusJobNow(whatsappJob.jobId);
+        totals.advanced += 1;
 
-      const businessJob = await ensureBusinessReconcileJob(orgId);
-      if (businessJob.created) totals.businessCreated += 1;
-      else totals.businessResumed += 1;
-      await advanceBusinessCorpusJobNow(businessJob.jobId);
-      totals.businessAdvanced += 1;
-    } catch (cause) {
-      totals.errors += 1;
-      console.error('[brain-corpus/reconcile] failed for org', orgId, cause);
-    }
+        const businessJob = await ensureBusinessReconcileJob(orgId);
+        if (businessJob.created) totals.businessCreated += 1;
+        else totals.businessResumed += 1;
+        await advanceBusinessCorpusJobNow(businessJob.jobId);
+        totals.businessAdvanced += 1;
+      } catch (cause) {
+        totals.errors += 1;
+        console.error('[brain-corpus/reconcile] failed for org', orgId, cause);
+      }
+    });
   }
   return json({ ok: true, ...totals });
 };

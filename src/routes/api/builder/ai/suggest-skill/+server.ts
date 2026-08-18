@@ -64,7 +64,9 @@ const edgeSchema = z.object({
     .enum(['Yes', 'No'])
     .nullable()
     .optional()
-    .describe('Branch label for condition edges (Yes/No for condition nodes, null for regular edges)'),
+    .describe(
+      'Branch label for condition edges (Yes/No for condition nodes, null for regular edges)',
+    ),
 });
 
 const skillPipelineSchema = z.object({
@@ -72,7 +74,7 @@ const skillPipelineSchema = z.object({
   edges: z.array(edgeSchema),
 });
 
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
+const DEFAULT_MODEL = 'anthropic/claude-sonnet-5';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getOrCreateTenantCtx(locals);

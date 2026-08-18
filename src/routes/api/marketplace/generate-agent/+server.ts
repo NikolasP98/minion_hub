@@ -9,7 +9,7 @@ import { getOpenRouterModel } from '$server/llm';
 // the shared OpenRouter factory (no ANTHROPIC_API_KEY-specific requirement, and
 // no @ai-sdk/anthropic dependency needed) — same model family as the original
 // hardcoded 'claude-sonnet-4-6'.
-const DEFAULT_MODEL = env.MARKETPLACE_GENERATE_AGENT_MODEL || 'anthropic/claude-sonnet-4';
+const DEFAULT_MODEL = env.MARKETPLACE_GENERATE_AGENT_MODEL || 'anthropic/claude-sonnet-5';
 
 const agentPersonaSchema = z.object({
   soulMd: z.string(),

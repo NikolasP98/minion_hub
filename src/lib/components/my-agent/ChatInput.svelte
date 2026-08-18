@@ -553,8 +553,11 @@
   textarea {
     flex: 1;
     min-width: 120px;
-    min-height: 21px;
-    max-height: 96px;
+    /* One line, DERIVED from the type — a hardcoded 21px (14px body × 1.5 from
+       when the scale was px) leaves the box taller than its own line, so the
+       centred row put the text above the prompt glyph instead of level with it. */
+    min-height: calc(var(--font-size-body) * 1.5);
+    max-height: calc(var(--font-size-body) * 1.5 * 6);
     resize: none;
     background: transparent;
     border: none;

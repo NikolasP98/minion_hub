@@ -1,4 +1,5 @@
 import { sql, eq, and } from 'drizzle-orm';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -37,6 +38,9 @@ export async function upsertProposals(ctx: CoreCtx, cards: ProposalInput[]) {
       .onConflictDoNothing({ target: [pulseProposals.orgId, pulseProposals.dedupKey] })
       .returning({ id: pulseProposals.id });
     return { inserted: res.length, skipped: cards.length - res.length };
+  }).then(async (r) => {
+    if (r.inserted > 0) await bustPulse(ctx.tenantId);
+    return r;
   });
 }
 
@@ -50,39 +54,56 @@ export async function listPending(ctx: CoreCtx): Promise<PulseProposalRow[]> {
   );
 }
 
+const pulseTags = (orgId: string) => tags.tenantDomain(orgId, 'pulse');
+const bustPulse = (orgId: string) => invalidateTags([...pulseTags(orgId)]);
+
+/** Badge count, polled by every open tab — cached so a poll costs a cache hit
+ *  instead of a full org txn on the small RLS pool. Mutations bust the tag. */
 export async function countPending(ctx: CoreCtx): Promise<number> {
-  const rows = await withOrgCore(ctx, (tx) =>
-    tx
-      .select({ n: sql<number>`count(*)::int` })
-      .from(pulseProposals)
-      .where(and(eq(pulseProposals.orgId, ctx.tenantId), eq(pulseProposals.status, 'pending'))),
+  return cached(
+    keys.hub('pulse-pending-count', { t: ctx.tenantId }),
+    { ttl: '30s', swr: '5m', tags: [...pulseTags(ctx.tenantId)] },
+    async () => {
+      const rows = await withOrgCore(ctx, (tx) =>
+        tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(pulseProposals)
+          .where(and(eq(pulseProposals.orgId, ctx.tenantId), eq(pulseProposals.status, 'pending'))),
+      );
+      return rows[0]?.n ?? 0;
+    },
   );
-  return rows[0]?.n ?? 0;
 }
 
 export async function markApproved(ctx: CoreCtx, id: string, by: string) {
-  return withOrgCore(ctx, (tx) =>
+  const res = await withOrgCore(ctx, (tx) =>
     tx
       .update(pulseProposals)
       .set({ status: 'approved', decidedBy: by })
       .where(and(eq(pulseProposals.orgId, ctx.tenantId), eq(pulseProposals.id, id))),
   );
+  await bustPulse(ctx.tenantId);
+  return res;
 }
 
 export async function dismiss(ctx: CoreCtx, id: string, by: string) {
-  return withOrgCore(ctx, (tx) =>
+  const res = await withOrgCore(ctx, (tx) =>
     tx
       .update(pulseProposals)
       .set({ status: 'dismissed', decidedBy: by })
       .where(and(eq(pulseProposals.orgId, ctx.tenantId), eq(pulseProposals.id, id))),
   );
+  await bustPulse(ctx.tenantId);
+  return res;
 }
 
 export async function editPayload(ctx: CoreCtx, id: string, args: Record<string, unknown>) {
   return withOrgCore(ctx, (tx) =>
     tx
       .update(pulseProposals)
-      .set({ payload: sql`jsonb_set(${pulseProposals.payload}, '{args}', ${JSON.stringify(args)}::jsonb)` })
+      .set({
+        payload: sql`jsonb_set(${pulseProposals.payload}, '{args}', ${JSON.stringify(args)}::jsonb)`,
+      })
       .where(and(eq(pulseProposals.orgId, ctx.tenantId), eq(pulseProposals.id, id))),
   );
 }
@@ -111,7 +132,10 @@ export async function getSettings(ctx: CoreCtx): Promise<PulseSettingsRow> {
   const rows = await withOrgCore(ctx, (tx) =>
     tx.select().from(pulseSettings).where(eq(pulseSettings.orgId, ctx.tenantId)).limit(1),
   );
-  return rows[0] ?? ({ orgId: ctx.tenantId, ...DEFAULT_SETTINGS, updatedAt: new Date() } as PulseSettingsRow);
+  return (
+    rows[0] ??
+    ({ orgId: ctx.tenantId, ...DEFAULT_SETTINGS, updatedAt: new Date() } as PulseSettingsRow)
+  );
 }
 
 export async function saveSettings(ctx: CoreCtx, patch: Partial<typeof DEFAULT_SETTINGS>) {
@@ -119,6 +143,9 @@ export async function saveSettings(ctx: CoreCtx, patch: Partial<typeof DEFAULT_S
     tx
       .insert(pulseSettings)
       .values({ orgId: ctx.tenantId, ...DEFAULT_SETTINGS, ...patch, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: pulseSettings.orgId, set: { ...patch, updatedAt: new Date() } }),
+      .onConflictDoUpdate({
+        target: pulseSettings.orgId,
+        set: { ...patch, updatedAt: new Date() },
+      }),
   );
 }

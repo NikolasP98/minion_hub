@@ -8,7 +8,6 @@ import { loadWorkspacesForUser } from '$server/services/workspaces.service';
 import { loadOrganizationsForUser } from '$server/services/organizations.service';
 import { loadPersonalAgentForUser } from '$server/services/personal-agent.service';
 import { ensureActivePersonalAgent } from '$server/services/personal-agent-provisioner';
-import { getTenant } from '$server/services/tenant.service';
 import { loadHostsForUser } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
@@ -143,10 +142,12 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
   ]);
   const [workspaces, personalAgent, hosts, preferences, brainAgentIds] = coreBundle;
 
+  // Org kind comes from the organizations bundle above — the membership query
+  // already selects each org's `kind`, so a separate getTenant round-trip per
+  // navigation was pure duplicate work.
   const activeOrgId = organizations.activeOrgId;
-  const activeTenant = activeOrgId
-    ? await traceLayoutLoad('active-tenant-kind', getTenant({ db: getDb(), tenantId: activeOrgId }))
-    : null;
+  const activeOrgKind =
+    organizations.organizations.find((o) => o.id === activeOrgId)?.kind ?? 'business';
 
   // Central route-policy guard. The serializable policy registry also drives
   // the route design manifest and client navigation visibility. Reuse the
@@ -204,7 +205,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
     workspaces,
     organizations: organizations.organizations,
     activeOrgId: organizations.activeOrgId,
-    activeOrgKind: activeTenant?.kind ?? 'business',
+    activeOrgKind,
     personalAgent: personalAgentBundle,
     hosts,
     preferences,

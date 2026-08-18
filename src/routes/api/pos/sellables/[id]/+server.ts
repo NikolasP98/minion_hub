@@ -6,6 +6,7 @@ import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { updateSellable } from '$server/services/pos.service';
 import { handlePosError } from '../../_errors';
+import { requireSellableFieldCapabilities } from '../_owning-modules';
 
 const consumptionSchema = z.object({
   itemId: z.string().min(1),
@@ -30,7 +31,11 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
   const body = await parseBody(request, patchSchema);
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  await requireSellableFieldCapabilities(locals, body, 'edit');
+  const actor = {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
   try {
     const sellable = await updateSellable(ctx, params.id!, body, actor);
     return json({ ok: true, sellable });

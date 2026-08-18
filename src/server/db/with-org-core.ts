@@ -42,17 +42,22 @@ export function withOrgCore<T>(scope: OrgScope, fn: (tx: CoreTx) => Promise<T>):
   if (!scope.tenantId) throw new Error('withOrgCore requires a non-empty tenantId');
   const transactionDb = getOrgTransactionDb(scope.db);
   return transactionDb.transaction(async (tx) => {
-    // Wedge guard: a load that opens this txn and then stalls (e.g. starved
-    // waiting for another pool slot) would pin its pooled connection for the
-    // whole serverless maxDuration (300s) and starve every org-scoped page.
-    // SET LOCAL scopes the kill-switch to this txn only.
-    await tx.execute(sql`set local idle_in_transaction_session_timeout = '20s'`);
-    await tx.execute(sql`set local role app_ledger`);
-    await tx.execute(sql`select set_config('app.current_org_id', ${scope.tenantId}, true)`);
-    // Record-level scoping basis (if-owner). Always set (empty when unknown) so a
-    // pooled connection never inherits a previous request's profile id.
+    // One round-trip for the whole session setup — this txn wrapper runs on
+    // every org-scoped read, and against a remote pooler each extra statement
+    // costs a full WAN RTT (4 serial statements ≈ 600-800ms of pure setup).
+    // set_config(..., true) === SET LOCAL for GUCs, including `role`.
+    //   - idle_in_transaction_session_timeout: wedge guard — a load that opens
+    //     this txn and then stalls would pin its pooled connection for the
+    //     whole serverless maxDuration (300s) and starve every org-scoped page.
+    //   - role app_ledger: non-bypass role so RLS policies are enforced.
+    //   - app.current_profile_id: record-level scoping basis (if-owner). Always
+    //     set (empty when unknown) so a pooled connection never inherits a
+    //     previous request's profile id.
     await tx.execute(
-      sql`select set_config('app.current_profile_id', ${scope.profileId ?? ''}, true)`,
+      sql`select set_config('idle_in_transaction_session_timeout', '20s', true),
+                 set_config('role', 'app_ledger', true),
+                 set_config('app.current_org_id', ${scope.tenantId}, true),
+                 set_config('app.current_profile_id', ${scope.profileId ?? ''}, true)`,
     );
     return fn(tx);
   });

@@ -57,10 +57,12 @@ describe('route design contracts', () => {
       return output;
     }, {});
     // B lost one when /pos/refills was removed — stock operations live only in
-    // the stock module now. /socials/ad-performance merged into /socials/campaigns
-    // (conversations columns) and its route removed; /crm/graph added one back.
-    // /pos/settings (payment-methods config) added one more. /finances/purchases
-    // (purchases-rce module spec) added one more.
+    // the stock module now. /crm/graph (WP3) added one back; /socials/ad-performance
+    // merged into /socials/campaigns (conversations columns) and its route removed.
+    // +1 in B: /workforce/projects/[id]/repo (GitHub link + factory gates).
+    // -1 in B: /stock/consume removed — service consumption is recorded by
+    // /pos (ticket close) and /scheduling (booking complete), not by hand.
+    // +2 in B: /pos/settings (payment methods) and /finances/purchases (RCE).
     expect(counts).toEqual({ A: 32, B: 70, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,

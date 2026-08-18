@@ -124,9 +124,9 @@
   .email-card {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-3);
-    min-height: 50px;
-    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+    gap: var(--space-2);
+    min-height: var(--control-height-sm);
+    padding: var(--space-0-5) var(--space-2);
     border-radius: var(--radius-lg);
     border: 1px solid transparent;
     cursor: pointer;

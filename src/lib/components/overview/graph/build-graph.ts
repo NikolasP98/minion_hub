@@ -7,15 +7,7 @@ import { ARCHETYPE_AVATAR_STYLE } from '$lib/utils/avatar';
 // (`$lib/components/crm/graph/build-crm-graph.ts`), which reuses this shared
 // node/edge shape + the simulation/renderer stack rather than forking them.
 export type NodeKind =
-  | 'org'
-  | 'area'
-  | 'skill'
-  | 'integration'
-  | 'agent'
-  | 'user'
-  | 'shared'
-  | 'contact'
-  | 'channel';
+  'org' | 'area' | 'skill' | 'integration' | 'agent' | 'user' | 'shared' | 'contact' | 'channel';
 
 export interface GraphNode {
   id: string;
@@ -452,8 +444,8 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
     agent: 50,
     user: 46,
     skill: 26,
-    // CRM relationship-graph kinds. This builder never emits them (it builds the
-    // /overview graph), but the map is exhaustive over NodeKind, which they share.
+    // Unused by this builder (buildCrmGraph sets symbolSize directly) — present
+    // only so this Record<NodeKind, …> stays exhaustive.
     contact: 34,
     channel: 30,
   };

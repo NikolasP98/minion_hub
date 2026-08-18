@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { error } from '@sveltejs/kit';
+import { cached, keys, tags } from '@minion-stack/cache';
 import { and, asc, eq, or, sql, type SQL } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -1741,6 +1742,28 @@ async function loadSourceAggregates(
   requested: Brain[],
 ): Promise<SourceAggregateRow[]> {
   if (requested.length === 0) return [];
+  // Display stats over ~100k documents/chunks (~1GB heap) — the recompute is
+  // tens of seconds on the shared instance and the numbers only move on
+  // ingest. Serve cached/stale instantly and refresh in the background;
+  // per-brain membership changes are captured by the key.
+  const requestedKey = requested
+    .map((brain) => `${brain.id}:${brain.includeAllSources ? 1 : 0}`)
+    .sort()
+    .join(',');
+  return cached(
+    keys.hub('brain-source-aggregates', {
+      t: ctx.tenantId,
+      d: { r: createHash('sha256').update(requestedKey).digest('hex').slice(0, 16) },
+    }),
+    { ttl: '2m', swr: '1h', tags: [...tags.tenantDomain(ctx.tenantId, 'brains')] },
+    () => computeSourceAggregates(ctx, requested),
+  );
+}
+
+async function computeSourceAggregates(
+  ctx: CoreCtx,
+  requested: Brain[],
+): Promise<SourceAggregateRow[]> {
   const values = sql.join(
     requested.map((brain) => sql`(${brain.id}::uuid, ${brain.includeAllSources}::boolean)`),
     sql`, `,
@@ -1749,51 +1772,64 @@ async function loadSourceAggregates(
     ctx,
     async (tx) =>
       (await tx.execute(sql`
-    with requested(brain_id, include_all_sources) as (values ${values})
-    select requested.brain_id::text,
-      source.id::text as source_id, source.name, source.connector,
-      source.external_key, source.config as source_config,
-      source.status, source.sync_mode, source.cadence,
-      source.last_synced_at, source.last_error, membership.weight,
-      (requested.include_all_sources or membership.source_id is not null) as member,
-      coalesce(counts.document_count, 0)::int as document_count,
-      coalesce(counts.chunk_count, 0)::int as chunk_count,
-      (
-        coalesce(counts.pending_count, 0)
-        + greatest(
-            coalesce((source.watermark->>'expectedDocuments')::int, 0)
-              - coalesce(counts.document_count, 0),
-            0
-          )
-      )::int as pending_count
-    from requested
-    cross join knowledge_sources source
-    left join brain_sources membership
-      on membership.org_id = current_setting('app.current_org_id', true)
-      and membership.brain_id = requested.brain_id and membership.source_id = source.id
-    left join lateral (
-      select count(distinct document.id)::int as document_count,
+    with requested(brain_id, include_all_sources) as (values ${values}),
+    -- Counts depend ONLY on the source, but the old shape computed them in a
+    -- lateral under a cross join with requested — every additional brain
+    -- re-scanned documents+chunks for every source (N brains x M sources heavy
+    -- aggregates; /brains took 15s+). One grouped pass per org instead.
+    doc_counts as (
+      select document.source_id,
+        count(distinct document.id)::int as document_count,
         count(chunk.id)::int as chunk_count,
+        (count(chunk.id) filter (where chunk.embedding is null))::int as unembedded_chunk_count,
+        (count(distinct document.id) filter (
+          where document.status in ('pending', 'processing', 'failed') and chunk.id is null
+        ))::int as pending_document_count
+      from knowledge_documents document
+      left join knowledge_chunks chunk
+        on chunk.org_id = document.org_id and chunk.document_id = document.id
+      where document.org_id = current_setting('app.current_org_id', true)
+        and document.status <> 'deleted'
+      group by document.source_id
+    ),
+    source_stats as (
+      select source.id as source_id,
+        coalesce(dc.document_count, 0) as document_count,
+        coalesce(dc.chunk_count, 0) as chunk_count,
         (
           ${
             qdrantOwnsKnowledgeEmbeddings()
               ? sql`case
                   when source.config->>'domain' = 'conversations'
                     then public.brain_vector_app_source_pending_count(source.id)
-                  else count(chunk.id) filter (where chunk.embedding is null)
+                  else coalesce(dc.unembedded_chunk_count, 0)
                 end`
-              : sql`count(chunk.id) filter (where chunk.embedding is null)`
+              : sql`coalesce(dc.unembedded_chunk_count, 0)`
           }
-          + count(distinct document.id) filter (
-              where document.status in ('pending', 'processing', 'failed') and chunk.id is null
+          + coalesce(dc.pending_document_count, 0)
+          + greatest(
+              coalesce((source.watermark->>'expectedDocuments')::int, 0)
+                - coalesce(dc.document_count, 0),
+              0
             )
         )::int as pending_count
-      from knowledge_documents document
-      left join knowledge_chunks chunk
-        on chunk.org_id = document.org_id and chunk.document_id = document.id
-      where document.org_id = current_setting('app.current_org_id', true)
-        and document.source_id = source.id and document.status <> 'deleted'
-    ) counts on true
+      from knowledge_sources source
+      left join doc_counts dc on dc.source_id = source.id
+      where source.org_id = current_setting('app.current_org_id', true)
+    )
+    select requested.brain_id::text,
+      source.id::text as source_id, source.name, source.connector,
+      source.external_key, source.config as source_config,
+      source.status, source.sync_mode, source.cadence,
+      source.last_synced_at, source.last_error, membership.weight,
+      (requested.include_all_sources or membership.source_id is not null) as member,
+      stats.document_count, stats.chunk_count, stats.pending_count
+    from requested
+    cross join knowledge_sources source
+    left join brain_sources membership
+      on membership.org_id = current_setting('app.current_org_id', true)
+      and membership.brain_id = requested.brain_id and membership.source_id = source.id
+    join source_stats stats on stats.source_id = source.id
     where source.org_id = current_setting('app.current_org_id', true)
     order by requested.brain_id, source.connector, source.name, source.id
   `)) as unknown as SourceAggregateRow[],

@@ -53,9 +53,11 @@ describe('getPgClient', () => {
       expect.objectContaining({
         prepare: false,
         max: 3,
-        idle_timeout: 20,
+        // dev keeps connections warm (remote pooler ≈1.3s/connect); prod
+        // stays at idle_timeout 20s / max_lifetime 10min for serverless.
+        idle_timeout: 600,
         connect_timeout: 10,
-        max_lifetime: 600,
+        max_lifetime: 3600,
       }),
     );
   });
