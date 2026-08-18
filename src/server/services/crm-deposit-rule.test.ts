@@ -8,32 +8,10 @@ import {
   isDepositText,
   type DepositRule,
 } from './crm-deposit-rule';
+import { DEPOSIT_TEXT_CASES } from './crm-deposit-rule.fixtures';
 
 const dialect = new PgDialect();
 const render = (frag: ReturnType<typeof depositMatchSql>) => dialect.sqlToQuery(frag);
-
-/** Evaluates a SQL LIKE/ILIKE pattern (as produced by escapeLikePattern) against
- *  text, case-insensitively — a minimal reimplementation used only to prove
- *  isDepositText (the TS side) agrees with what the generated SQL pattern
- *  (the DB side) would actually match. */
-function likeMatches(text: string, pattern: string): boolean {
-  let re = '';
-  for (let i = 0; i < pattern.length; i++) {
-    const c = pattern[i];
-    if (c === '\\') {
-      const next = pattern[i + 1] ?? '';
-      re += next.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      i++;
-    } else if (c === '%') {
-      re += '.*';
-    } else if (c === '_') {
-      re += '.';
-    } else {
-      re += c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-  }
-  return new RegExp(`^${re}$`, 'is').test(text);
-}
 
 describe('DEFAULT_DEPOSIT_RULE', () => {
   it('is the FACES-era default — the only occurrence of "reserva" outside this module/tests', () => {
@@ -50,13 +28,6 @@ describe('escapeLikePattern', () => {
     expect(escapeLikePattern('100%')).toBe('%100\\%%');
     expect(escapeLikePattern('a_b')).toBe('%a\\_b%');
     expect(escapeLikePattern('a\\b')).toBe('%a\\\\b%');
-  });
-
-  it("an escaped '100%' pattern does not match an unrelated row", () => {
-    const pattern = escapeLikePattern('100%');
-    expect(likeMatches('anything', pattern)).toBe(false);
-    expect(likeMatches('this costs 100% today', pattern)).toBe(true);
-    expect(likeMatches('this costs 100 today', pattern)).toBe(false);
   });
 });
 
@@ -95,26 +66,20 @@ describe('depositMatchSql / notDepositMatchSql', () => {
   });
 });
 
-describe('isDepositText / depositMatchSql agreement (shared table)', () => {
+describe('isDepositText', () => {
   const rule = DEFAULT_DEPOSIT_RULE;
-  const pattern = escapeLikePattern(rule.keywords[0]);
 
-  const cases: Array<[string | null | undefined, boolean]> = [
-    ['Reserva de Consulta', true], // display casing
-    ['RESERVA', true], // upper case
-    ['reserva', true], // exact
-    ['una reserva por cita', true], // substring-in-sentence
-    ['prereserva', true], // substring-in-word
-    ['reservó', false], // accents-as-typed: no accent folding, é != a
-    ['adelanto', false], // different word entirely
-    ['', false], // empty string
-    [null, false], // null
-    [undefined, false], // undefined
-  ];
-
-  it.each(cases)('isDepositText(%j) → %s, agrees with the ILIKE pattern', (text, expected) => {
+  // Same cases as crm-deposit-rule.sql.integration.test.ts, which evaluates
+  // depositMatchSql/notDepositMatchSql against real PostgreSQL ILIKE for this
+  // exact table — that test is where isDepositText's agreement with the SQL
+  // side is actually established; this one only proves the TS function itself.
+  it.each(DEPOSIT_TEXT_CASES)('isDepositText(%j) → %s', (text, expected) => {
     expect(isDepositText(text, rule)).toBe(expected);
-    if (text != null) expect(likeMatches(text, pattern)).toBe(expected);
+  });
+
+  it('treats null/undefined as non-deposit (no ILIKE analogue — a NULL column is not "false")', () => {
+    expect(isDepositText(null, rule)).toBe(false);
+    expect(isDepositText(undefined, rule)).toBe(false);
   });
 });
 
