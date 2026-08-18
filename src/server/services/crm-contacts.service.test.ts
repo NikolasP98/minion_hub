@@ -1,14 +1,50 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import { PGlite } from '@electric-sql/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
+import { eq } from 'drizzle-orm';
 import { createMockDb } from '$server/test-utils/mock-db';
+import { crmContacts } from '$server/db/pg-crm-schema';
 import {
   ensureAccountInScope,
   getContactGraph,
   customFieldsMergeSql,
   contactCustomFieldSetSql,
+  assertJsonValue,
   setContactCustomField,
   setFunnelStage,
 } from './crm-contacts.service';
+
+/**
+ * A real Postgres engine (WASM-embedded, via pglite) rather than a mock —
+ * for the cross-org isolation case a mock can only replay the row count it
+ * was configured to return, which proves nothing about whether
+ * `setContactCustomField`'s own `eq(orgId, ...)` predicate actually excludes
+ * a mismatched org. Only `crm_contacts`' columns are created (the setter
+ * touches none of the CRM tables' foreign relations).
+ */
+async function createRealCrmContactsDb() {
+  const client = new PGlite();
+  const db = drizzle(client);
+  await client.exec(`
+    create table crm_contacts (
+      id uuid primary key,
+      org_id text not null,
+      human_id text,
+      display_name text,
+      profile_id uuid,
+      owner_id uuid,
+      party_id uuid,
+      lifecycle_override text,
+      source text not null default 'harvested',
+      custom_fields jsonb not null default '{}'::jsonb,
+      deleted_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+  `);
+  return { client, db };
+}
 
 // Default passthrough mirrors the real withOrgCore's `db.transaction(cb => cb(db))`
 // shape (see mock-db.ts) — keeps ensureAccountInScope's select/insert chains
@@ -243,13 +279,78 @@ describe('setContactCustomField (S1 — shared atomic setter)', () => {
     expect(db.update).toHaveBeenCalledTimes(1);
   });
 
-  it('reports not applied when 0 rows matched (e.g. a different org context) — no existence leak, no write effect', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([]); // id+orgId predicate excluded the row
+  it('cross-org isolation on a real Postgres engine: same contact id under a different org updates zero rows and leaves org-A\'s row unchanged', async () => {
+    const { client, db } = await createRealCrmContactsDb();
+    try {
+      const contactId = crypto.randomUUID();
+      await db.insert(crmContacts).values({
+        id: contactId,
+        orgId: 'org-A',
+        customFields: { _funnel: { stage: 'lead' } },
+      });
 
-    const applied = await setContactCustomField(db as never, 'org-2', 'c1', '_funnel', { stage: 'lead' });
+      const applied = await db.transaction((tx) =>
+        setContactCustomField(tx as never, 'org-B', contactId, '_funnel', { stage: 'customer' }),
+      );
+      expect(applied).toBe(false);
 
-    expect(applied).toBe(false);
+      const [row] = await db.select().from(crmContacts).where(eq(crmContacts.id, contactId));
+      expect(row.orgId).toBe('org-A');
+      expect(row.customFields).toEqual({ _funnel: { stage: 'lead' } }); // unchanged
+
+      // Sanity: the same write through the OWNING org does apply and does persist —
+      // proves the zero-rows result above is the org predicate, not a broken statement.
+      const appliedSameOrg = await db.transaction((tx) =>
+        setContactCustomField(tx as never, 'org-A', contactId, '_funnel', { stage: 'customer' }),
+      );
+      expect(appliedSameOrg).toBe(true);
+
+      const [rowAfter] = await db.select().from(crmContacts).where(eq(crmContacts.id, contactId));
+      expect(rowAfter.customFields).toEqual({ _funnel: { stage: 'customer' } });
+    } finally {
+      await client.close();
+    }
+  });
+});
+
+describe('assertJsonValue (S1 — reject non-JSON values before they reach SQL)', () => {
+  it('accepts plain JSON-shaped values (string/number/boolean/null/array/nested object)', () => {
+    expect(() =>
+      assertJsonValue({ a: 1, b: 'x', c: true, d: null, e: [1, 2, { f: 'g' }] }),
+    ).not.toThrow();
+  });
+
+  it('rejects undefined', () => {
+    expect(() => assertJsonValue(undefined)).toThrow();
+  });
+
+  it('rejects undefined nested inside an object', () => {
+    expect(() => assertJsonValue({ a: undefined })).toThrow();
+  });
+
+  it('rejects NaN', () => {
+    expect(() => assertJsonValue(Number.NaN)).toThrow();
+  });
+
+  it('rejects Infinity and -Infinity', () => {
+    expect(() => assertJsonValue(Number.POSITIVE_INFINITY)).toThrow();
+    expect(() => assertJsonValue(Number.NEGATIVE_INFINITY)).toThrow();
+  });
+
+  it('rejects a circular reference instead of hanging or throwing an opaque stack overflow', () => {
+    const obj: Record<string, unknown> = { a: 1 };
+    obj.self = obj;
+    expect(() => assertJsonValue(obj)).toThrow();
+  });
+
+  it('rejects functions and other non-JSON types', () => {
+    expect(() => assertJsonValue(() => {})).toThrow();
+    expect(() => assertJsonValue(Symbol('x'))).toThrow();
+    expect(() => assertJsonValue(10n)).toThrow();
+  });
+
+  it('contactCustomFieldSetSql rejects an invalid value before building SQL', () => {
+    expect(() => contactCustomFieldSetSql('_funnel', { stage: Number.NaN } as never)).toThrow();
   });
 });
 

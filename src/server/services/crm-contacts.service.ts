@@ -485,6 +485,43 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
   });
 }
 
+/** A value that round-trips through `JSON.stringify`/`JSON.parse` unchanged. */
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+/**
+ * Runtime boundary check for `contactCustomFieldSetSql`/`setContactCustomField`.
+ * `JsonValue` at the type level doesn't stop `NaN`/`Infinity` (still `number`)
+ * or a value that only *looks* like `JsonValue` because it arrived as `any`
+ * from an untyped caller — this walks the actual value and throws before any
+ * SQL gets built, instead of letting `JSON.stringify` silently coerce
+ * `NaN`/`Infinity` to `null`, silently drop `undefined` (producing no JSON
+ * text at all), or throw deep inside `JSON.stringify` on a cyclic reference
+ * with no context about which custom-field write caused it.
+ */
+export function assertJsonValue(value: unknown, seen = new Set<unknown>()): asserts value is JsonValue {
+  if (value === null) return;
+  const t = typeof value;
+  if (t === 'string' || t === 'boolean') return;
+  if (t === 'number') {
+    if (!Number.isFinite(value as number)) {
+      throw new Error(`custom field value is not a finite JSON number: ${String(value)}`);
+    }
+    return;
+  }
+  if (t !== 'object') {
+    throw new Error(`custom field value is not JSON-serializable (${t})`);
+  }
+  if (seen.has(value)) {
+    throw new Error('custom field value is not JSON-serializable (circular reference)');
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) assertJsonValue(item, seen);
+    return;
+  }
+  for (const v of Object.values(value as Record<string, unknown>)) assertJsonValue(v, seen);
+}
+
 /**
  * Pure SQL fragment for the per-key `jsonb_set` merge, split out from
  * `setContactCustomField` so its shape (no `SELECT … custom_fields`, bound
@@ -492,7 +529,8 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
  * the same way `customFieldsMergeSql` is — inspect the fragment directly via
  * `PgDialect().sqlToQuery(...)` instead of digging through a mocked chain.
  */
-export function contactCustomFieldSetSql(key: string, value: unknown) {
+export function contactCustomFieldSetSql(key: string, value: JsonValue) {
+  assertJsonValue(value);
   return sql`jsonb_set(coalesce(${crmContacts.customFields}, '{}'::jsonb), ARRAY[${key}]::text[], ${JSON.stringify(value)}::jsonb, true)`;
 }
 
@@ -516,7 +554,7 @@ export async function setContactCustomField(
   orgId: string,
   contactId: string,
   key: string,
-  value: unknown,
+  value: JsonValue,
   guard?: ReturnType<typeof sql>,
 ): Promise<boolean> {
   const rows = await tx
