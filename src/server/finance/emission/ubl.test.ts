@@ -11,7 +11,12 @@ const base: EmissionInvoice = {
   issueDate: '2026-08-14',
   currency: 'PEN',
   igvRate: 0.18,
-  emitter: { ruc: '20611172967', razonSocial: 'FACES BETA SAC', ubigeo: '150101', address: 'AV BETA 123' },
+  emitter: {
+    ruc: '20611172967',
+    razonSocial: 'FACES BETA SAC',
+    ubigeo: '150101',
+    address: 'AV BETA 123',
+  },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA' },
   lines: [
     { description: 'Line 1', quantity: 3, unitPriceInclTax: 10.33 },
@@ -70,13 +75,19 @@ describe('buildInvoiceXml', () => {
   it('reports document totals consistent with LegalMonetaryTotal', () => {
     const totals = computeTotals(base);
     const xml = buildInvoiceXml(base);
-    expect(xml).toContain(`<cbc:PayableAmount currencyID="PEN">${totals.payableAmount.toFixed(2)}</cbc:PayableAmount>`);
-    expect(xml).toContain(`<cbc:LineExtensionAmount currencyID="PEN">${totals.lineExtensionAmount.toFixed(2)}</cbc:LineExtensionAmount>`);
+    expect(xml).toContain(
+      `<cbc:PayableAmount currencyID="PEN">${totals.payableAmount.toFixed(2)}</cbc:PayableAmount>`,
+    );
+    expect(xml).toContain(
+      `<cbc:LineExtensionAmount currencyID="PEN">${totals.lineExtensionAmount.toFixed(2)}</cbc:LineExtensionAmount>`,
+    );
   });
 
   it('escapes XML-special characters in free-text fields (no CDATA — plain escaped text)', () => {
     const xml = buildInvoiceXml({ ...base, client: { ...base.client, name: 'CLIENTE "A" & <B>' } });
-    expect(xml).toContain('<cbc:RegistrationName>CLIENTE &quot;A&quot; &amp; &lt;B&gt;</cbc:RegistrationName>');
+    expect(xml).toContain(
+      '<cbc:RegistrationName>CLIENTE &quot;A&quot; &amp; &lt;B&gt;</cbc:RegistrationName>',
+    );
     expect(xml).not.toContain('CDATA');
   });
 });
@@ -85,7 +96,10 @@ describe('igvRate (S1 — required input, no module-level default)', () => {
   // Captured from the pre-S1 code (module-level `const IGV_RATE = 0.18`) on
   // this exact `base` fixture — proves the signature change is behavior-
   // neutral at 18%. Regenerate only if `base` itself changes.
-  const golden = readFileSync(join(import.meta.dirname, '__fixtures__/invoice-18pct-golden.xml'), 'utf8');
+  const golden = readFileSync(
+    join(import.meta.dirname, '__fixtures__/invoice-18pct-golden.xml'),
+    'utf8',
+  );
 
   it('GOLDEN PARITY: igvRate 0.18 is byte-identical to the pre-change output', () => {
     expect(buildInvoiceXml(base)).toBe(golden);

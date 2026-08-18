@@ -41,25 +41,75 @@ export function computeTotals(inv: EmissionInvoice): InvoiceTotals {
     const unitPriceExclTax = round(totalExclTax / line.quantity, 6);
     return { line, totalInclTax, totalExclTax, igv, unitPriceExclTax };
   });
-  const lineExtensionAmount = round(lines.reduce((s, l) => s + l.totalExclTax, 0), 2);
-  const igvAmount = round(lines.reduce((s, l) => s + l.igv, 0), 2);
-  const taxInclusiveAmount = round(lines.reduce((s, l) => s + l.totalInclTax, 0), 2);
-  return { lines, lineExtensionAmount, igvAmount, taxInclusiveAmount, payableAmount: taxInclusiveAmount };
+  const lineExtensionAmount = round(
+    lines.reduce((s, l) => s + l.totalExclTax, 0),
+    2,
+  );
+  const igvAmount = round(
+    lines.reduce((s, l) => s + l.igv, 0),
+    2,
+  );
+  const taxInclusiveAmount = round(
+    lines.reduce((s, l) => s + l.totalInclTax, 0),
+    2,
+  );
+  return {
+    lines,
+    lineExtensionAmount,
+    igvAmount,
+    taxInclusiveAmount,
+    payableAmount: taxInclusiveAmount,
+  };
 }
 
 const UNITS = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
 const TEENS = [
-  'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE',
-  'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE',
+  'DIEZ',
+  'ONCE',
+  'DOCE',
+  'TRECE',
+  'CATORCE',
+  'QUINCE',
+  'DIECISEIS',
+  'DIECISIETE',
+  'DIECIOCHO',
+  'DIECINUEVE',
 ];
 const TWENTIES = [
-  'VEINTE', 'VEINTIUNO', 'VEINTIDOS', 'VEINTITRES', 'VEINTICUATRO',
-  'VEINTICINCO', 'VEINTISEIS', 'VEINTISIETE', 'VEINTIOCHO', 'VEINTINUEVE',
+  'VEINTE',
+  'VEINTIUNO',
+  'VEINTIDOS',
+  'VEINTITRES',
+  'VEINTICUATRO',
+  'VEINTICINCO',
+  'VEINTISEIS',
+  'VEINTISIETE',
+  'VEINTIOCHO',
+  'VEINTINUEVE',
 ];
-const TENS = ['', '', '', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+const TENS = [
+  '',
+  '',
+  '',
+  'TREINTA',
+  'CUARENTA',
+  'CINCUENTA',
+  'SESENTA',
+  'SETENTA',
+  'OCHENTA',
+  'NOVENTA',
+];
 const HUNDREDS = [
-  '', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS',
-  'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS',
+  '',
+  'CIENTO',
+  'DOSCIENTOS',
+  'TRESCIENTOS',
+  'CUATROCIENTOS',
+  'QUINIENTOS',
+  'SEISCIENTOS',
+  'SETECIENTOS',
+  'OCHOCIENTOS',
+  'NOVECIENTOS',
 ];
 
 function twoDigits(n: number): string {
@@ -104,7 +154,8 @@ export function amountInWords(amount: number): string {
 }
 
 function supplierAddress(inv: EmissionInvoice): string {
-  if (!inv.emitter.ubigeo) return '<cac:Country><cbc:IdentificationCode>PE</cbc:IdentificationCode></cac:Country>';
+  if (!inv.emitter.ubigeo)
+    return '<cac:Country><cbc:IdentificationCode>PE</cbc:IdentificationCode></cac:Country>';
   const line = inv.emitter.address
     ? `<cac:AddressLine><cbc:Line>${escapeXml(inv.emitter.address)}</cbc:Line></cac:AddressLine>`
     : '';

@@ -13,7 +13,12 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { emitToBeta, submitBaja, submitResumen, type EmissionInvoice } from '../src/server/finance/emission/index.ts';
+import {
+  emitToBeta,
+  submitBaja,
+  submitResumen,
+  type EmissionInvoice,
+} from '../src/server/finance/emission/index.ts';
 
 const certDir = join(import.meta.dirname, '..', '.beta-cert');
 const certPem = readFileSync(join(certDir, 'cert.pem'), 'utf8');
@@ -105,7 +110,9 @@ await step('submitBaja RA-1: F998-1', () =>
       correlativo: '1',
       referenceDate: today,
       issueDate: today,
-      lines: [{ docType: '01', serie: 'F998', correlativo: '1', motivo: 'ERROR EN EL COMPROBANTE' }],
+      lines: [
+        { docType: '01', serie: 'F998', correlativo: '1', motivo: 'ERROR EN EL COMPROBANTE' },
+      ],
     },
     certPem,
     keyPem,

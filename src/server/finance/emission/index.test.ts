@@ -87,7 +87,10 @@ describe('submitResumen', () => {
 
   it('surfaces statusCode 99 (error) by returning its CDR rather than throwing', async () => {
     sendSummaryMock.mockResolvedValueOnce({ ticket: 'T2' });
-    getStatusMock.mockResolvedValueOnce({ statusCode: '99', cdrZip: cdrZip('2800', 'Resumen rechazado') });
+    getStatusMock.mockResolvedValueOnce({
+      statusCode: '99',
+      cdrZip: cdrZip('2800', 'Resumen rechazado'),
+    });
 
     const promise = submitResumen(resumenOpts, 'cert', 'key');
     await vi.runAllTimersAsync();
