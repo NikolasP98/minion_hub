@@ -1058,6 +1058,7 @@ export async function setFunnelStage(
       .select({ customFields: crmContacts.customFields })
       .from(crmContacts)
       .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)))
+      .for('update')
       .limit(1);
     if (!row) return null;
 
@@ -1083,10 +1084,9 @@ export async function setFunnelStage(
       updatedAt: nowIso,
     };
 
-    // The forward-only/manual-pin decision above still needs the pre-image
-    // read (funnel semantics, unchanged) — but the write itself only ever
-    // touches the `_funnel` key now, via the shared atomic setter, instead
-    // of spreading the whole column into JS and writing it back whole.
+    // The row is locked by the read above until this transaction commits, so
+    // no competing funnel writer can change the stage/manual pin between the
+    // decision and this write. The write itself only touches `_funnel`.
     await setContactCustomField(tx, ctx.tenantId, contactId, '_funnel', nextMeta);
 
     await tx.insert(crmActivities).values({

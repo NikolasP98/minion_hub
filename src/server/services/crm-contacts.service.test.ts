@@ -77,6 +77,7 @@ function useExecMock(execute: ReturnType<typeof vi.fn>) {
 function makeFunnelTx(sequence: unknown[]) {
   let cursor = 0;
   const setCalls: Array<{ customFields: unknown }> = [];
+  const lockCalls: string[] = [];
   function next() {
     return Promise.resolve(sequence[cursor++] ?? []);
   }
@@ -84,6 +85,10 @@ function makeFunnelTx(sequence: unknown[]) {
     return {
       from: () => chain(),
       where: () => chain(),
+      for: (strength: string) => {
+        lockCalls.push(strength);
+        return chain();
+      },
       limit: () => next(),
       set: (v: { customFields: unknown }) => {
         setCalls.push(v);
@@ -98,7 +103,7 @@ function makeFunnelTx(sequence: unknown[]) {
     update: () => chain(),
     insert: () => chain(),
   };
-  return { tx, setCalls };
+  return { tx, setCalls, lockCalls };
 }
 
 describe('ensureAccountInScope', () => {
@@ -393,6 +398,22 @@ describe('assertJsonValue (S1 — reject non-JSON values before they reach SQL)'
 });
 
 describe('setFunnelStage (S1 — converted off whole-column read-modify-write)', () => {
+  it('locks the contact row before deciding and holds the lock through the write/activity transaction', async () => {
+    const { tx, lockCalls } = makeFunnelTx([
+      [{ customFields: { _funnel: { stage: 'lead', auto: true } } }],
+      [{ id: 'c1' }],
+      [{}],
+    ]);
+    mockWithOrgCore.mockImplementationOnce((_scope, fn) => fn(tx));
+
+    const result = await setFunnelStage({ db: {} as never, tenantId: 'org-1' }, 'c1', 'customer', {
+      by: 'auto',
+    });
+
+    expect(result).toEqual({ applied: true, stage: 'customer' });
+    expect(lockCalls).toEqual(['update']);
+  });
+
   it('writes via ONE atomic jsonb_set targeting only `_funnel` — not a whole-object merge back over the column', async () => {
     // The stored row carries two OTHER reserved/user keys the old RMW write
     // would have silently reproduced only by accident (spread order) — the
