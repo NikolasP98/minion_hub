@@ -486,7 +486,8 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
 }
 
 /** A value that round-trips through `JSON.stringify`/`JSON.parse` unchanged. */
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 /**
  * Runtime boundary check for `contactCustomFieldSetSql`/`setContactCustomField`.
@@ -498,7 +499,10 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
  * text at all), or throw deep inside `JSON.stringify` on a cyclic reference
  * with no context about which custom-field write caused it.
  */
-export function assertJsonValue(value: unknown, seen = new Set<unknown>()): asserts value is JsonValue {
+export function assertJsonValue(
+  value: unknown,
+  seen = new Set<unknown>(),
+): asserts value is JsonValue {
   if (value === null) return;
   const t = typeof value;
   if (t === 'string' || t === 'boolean') return;

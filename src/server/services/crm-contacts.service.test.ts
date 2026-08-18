@@ -51,12 +51,15 @@ async function createRealCrmContactsDb() {
 // working. getContactGraph tests override it via useExecMock to hand back a
 // bare `{ execute }` tx (avoids typing tx.execute onto the tenant-DB mock).
 const mockWithOrgCore = vi.fn(
-  (scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } }, fn: (tx: unknown) => unknown) =>
-    scope.db.transaction((tx: unknown) => fn(tx)),
+  (
+    scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } },
+    fn: (tx: unknown) => unknown,
+  ) => scope.db.transaction((tx: unknown) => fn(tx)),
 );
 
 vi.mock('$server/db/with-org-core', () => ({
-  withOrgCore: (scope: unknown, fn: (tx: unknown) => unknown) => mockWithOrgCore(scope as never, fn),
+  withOrgCore: (scope: unknown, fn: (tx: unknown) => unknown) =>
+    mockWithOrgCore(scope as never, fn),
 }));
 
 function useExecMock(execute: ReturnType<typeof vi.fn>) {
@@ -139,7 +142,12 @@ describe('getContactGraph', () => {
     label: 'John Smith',
     message_count: '5',
     last_at: '2026-07-01T00:00:00Z',
-    relationship: { label: 'mamá', category: 'family', source: 'ai', updatedAt: '2026-07-01T00:00:00Z' },
+    relationship: {
+      label: 'mamá',
+      category: 'family',
+      source: 'ai',
+      updatedAt: '2026-07-01T00:00:00Z',
+    },
   };
   const ctx = { db: {} as never, tenantId: 'org-1' };
 
@@ -240,7 +248,9 @@ describe('customFieldsMergeSql (spec F3b — client cannot forge/delete reserved
   });
 
   it('non-reserved keys pass through untouched', () => {
-    const query = new PgDialect().sqlToQuery(customFieldsMergeSql({ distrito: 'Miraflores', edad: '34' }));
+    const query = new PgDialect().sqlToQuery(
+      customFieldsMergeSql({ distrito: 'Miraflores', edad: '34' }),
+    );
     const jsonParam = query.params.find((p) => typeof p === 'string' && p.includes('distrito'));
     expect(jsonParam).toBe(JSON.stringify({ distrito: 'Miraflores', edad: '34' }));
   });
@@ -248,23 +258,31 @@ describe('customFieldsMergeSql (spec F3b — client cannot forge/delete reserved
 
 describe('contactCustomFieldSetSql (spec hub-funnel-atomic-write S1 — atomic per-key write)', () => {
   it('is a single jsonb_set targeting one key, never a SELECT of the column', () => {
-    const query = new PgDialect().sqlToQuery(contactCustomFieldSetSql('_funnel', { stage: 'opportunity' }));
+    const query = new PgDialect().sqlToQuery(
+      contactCustomFieldSetSql('_funnel', { stage: 'opportunity' }),
+    );
     expect(query.sql).toContain('jsonb_set');
     expect(query.sql.toLowerCase()).not.toMatch(/\bselect\b/);
   });
 
   it('binds the key and value as params, never string-interpolated into the SQL text', () => {
-    const query = new PgDialect().sqlToQuery(contactCustomFieldSetSql('_funnel', { stage: 'opportunity' }));
+    const query = new PgDialect().sqlToQuery(
+      contactCustomFieldSetSql('_funnel', { stage: 'opportunity' }),
+    );
     expect(query.sql).not.toContain('_funnel');
     expect(query.sql).not.toContain('opportunity');
     expect(query.params).toContain('_funnel');
     expect(query.params).toContain(JSON.stringify({ stage: 'opportunity' }));
   });
 
-  it('a fragment for one key never carries another key\'s value as a param — the statement cannot clobber it', () => {
-    const query = new PgDialect().sqlToQuery(contactCustomFieldSetSql('_relationship', { label: 'mamá' }));
+  it("a fragment for one key never carries another key's value as a param — the statement cannot clobber it", () => {
+    const query = new PgDialect().sqlToQuery(
+      contactCustomFieldSetSql('_relationship', { label: 'mamá' }),
+    );
     expect(query.params).not.toContain('_funnel');
-    expect(query.params.some((p) => typeof p === 'string' && p.includes('opportunity'))).toBe(false);
+    expect(query.params.some((p) => typeof p === 'string' && p.includes('opportunity'))).toBe(
+      false,
+    );
   });
 });
 
@@ -273,13 +291,15 @@ describe('setContactCustomField (S1 — shared atomic setter)', () => {
     const { db, resolve } = createMockDb();
     resolve([{ id: 'c1' }]);
 
-    const applied = await setContactCustomField(db as never, 'org-1', 'c1', '_funnel', { stage: 'lead' });
+    const applied = await setContactCustomField(db as never, 'org-1', 'c1', '_funnel', {
+      stage: 'lead',
+    });
 
     expect(applied).toBe(true);
     expect(db.update).toHaveBeenCalledTimes(1);
   });
 
-  it('cross-org isolation on a real Postgres engine: same contact id under a different org updates zero rows and leaves org-A\'s row unchanged', async () => {
+  it("cross-org isolation on a real Postgres engine: same contact id under a different org updates zero rows and leaves org-A's row unchanged", async () => {
     const { client, db } = await createRealCrmContactsDb();
     try {
       const contactId = crypto.randomUUID();
@@ -378,7 +398,12 @@ describe('setFunnelStage (S1 — converted off whole-column read-modify-write)',
     // would have silently reproduced only by accident (spread order) — the
     // fixed writer never even reads them into the outgoing statement.
     const existing = {
-      _relationship: { label: 'mamá', category: 'family', source: 'ai', updatedAt: '2026-08-01T00:00:00Z' },
+      _relationship: {
+        label: 'mamá',
+        category: 'family',
+        source: 'ai',
+        updatedAt: '2026-08-01T00:00:00Z',
+      },
       someUserField: 'x',
     };
     const { tx, setCalls } = makeFunnelTx([
@@ -393,7 +418,9 @@ describe('setFunnelStage (S1 — converted off whole-column read-modify-write)',
 
     expect(result.applied).toBe(true);
     expect(setCalls).toHaveLength(1); // exactly one write statement
-    const query = new PgDialect().sqlToQuery(setCalls[0].customFields as Parameters<typeof PgDialect.prototype.sqlToQuery>[0]);
+    const query = new PgDialect().sqlToQuery(
+      setCalls[0].customFields as Parameters<typeof PgDialect.prototype.sqlToQuery>[0],
+    );
     expect(query.sql).toContain('jsonb_set');
     expect(query.sql.toLowerCase()).not.toMatch(/\bselect\b/);
     expect(query.params).toContain('_funnel');
@@ -401,8 +428,12 @@ describe('setFunnelStage (S1 — converted off whole-column read-modify-write)',
     // into this statement — jsonb_set's path targets `_funnel` only, so a
     // concurrent writer of `_relationship` or `someUserField` can never be
     // clobbered by this one, regardless of commit order.
-    expect(query.params.some((p) => typeof p === 'string' && p.includes('someUserField'))).toBe(false);
-    expect(query.params.some((p) => typeof p === 'string' && p.includes('"label":"mamá"'))).toBe(false);
+    expect(query.params.some((p) => typeof p === 'string' && p.includes('someUserField'))).toBe(
+      false,
+    );
+    expect(query.params.some((p) => typeof p === 'string' && p.includes('"label":"mamá"'))).toBe(
+      false,
+    );
   });
 
   it('auto/agent writes are skipped when a human has pinned the stage — unchanged business logic (parity)', async () => {

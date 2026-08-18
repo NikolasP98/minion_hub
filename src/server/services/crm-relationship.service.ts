@@ -2,7 +2,11 @@ import { and, eq, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { crmContacts } from '$server/db/pg-crm-schema';
-import { relationshipSchema, type Relationship, type RelationshipCategory } from '$lib/components/crm/crm-relationship';
+import {
+  relationshipSchema,
+  type Relationship,
+  type RelationshipCategory,
+} from '$lib/components/crm/crm-relationship';
 import { bustCrmList, setContactCustomField } from './crm-contacts.service';
 
 /**
