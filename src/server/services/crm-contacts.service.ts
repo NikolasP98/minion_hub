@@ -514,12 +514,22 @@ export function assertJsonValue(value: unknown, seen = new Set<unknown>()): asse
   if (seen.has(value)) {
     throw new Error('custom field value is not JSON-serializable (circular reference)');
   }
-  seen.add(value);
-  if (Array.isArray(value)) {
-    for (const item of value) assertJsonValue(item, seen);
-    return;
+  if (!Array.isArray(value)) {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) {
+      throw new Error('custom field value is not a plain JSON object (unsupported object type)');
+    }
   }
-  for (const v of Object.values(value as Record<string, unknown>)) assertJsonValue(v, seen);
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      for (const item of value) assertJsonValue(item, seen);
+      return;
+    }
+    for (const v of Object.values(value as Record<string, unknown>)) assertJsonValue(v, seen);
+  } finally {
+    seen.delete(value);
+  }
 }
 
 /**

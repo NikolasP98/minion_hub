@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "baseCommit": "857a94b7b6d4af5479c1a5481d1675f6519963fb",
-  "sourceRef": "857a94b7b6d4af5479c1a5481d1675f6519963fb",
-  "sourceCommit": "857a94b7b6d4af5479c1a5481d1675f6519963fb",
-  "sourceTreeSha": "b29f91eb6fb50cac73f22e7e82e771fe9cd7e94b",
-  "workingTreeFingerprint": "git:857a94b7b6d4af5479c1a5481d1675f6519963fb:b29f91eb6fb50cac73f22e7e82e771fe9cd7e94b",
+  "baseCommit": "f6b1790a7e3586e81e17052e4c9fcf2de11daf8e",
+  "sourceRef": "HEAD",
+  "sourceCommit": "f6b1790a7e3586e81e17052e4c9fcf2de11daf8e",
+  "sourceTreeSha": "c1d951909e7cda0b25106e2f5b9b6e6d611915fd",
+  "workingTreeFingerprint": "git:f6b1790a7e3586e81e17052e4c9fcf2de11daf8e:c1d951909e7cda0b25106e2f5b9b6e6d611915fd",
   "summary": {
-    "endpoints": 142,
-    "screens": 135,
-    "redirects": 7,
-    "dynamicScreens": 28,
-    "appScreens": 125,
+    "endpoints": 152,
+    "screens": 142,
+    "redirects": 10,
+    "dynamicScreens": 27,
+    "appScreens": 132,
     "publicScreens": 10
   },
   "knownBaselineFailures": [
@@ -40,8 +40,8 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
-        "explicitResponsiveRule": true,
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
@@ -55,8 +55,8 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
-        "explicitResponsiveRule": true,
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
@@ -70,8 +70,8 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
-        "explicitResponsiveRule": true,
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
@@ -136,8 +136,8 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
-        "explicitResponsiveRule": false,
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
@@ -151,7 +151,7 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 0,
@@ -166,9 +166,9 @@
       "kind": "screen",
       "dynamic": true,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 2,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -181,7 +181,7 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
@@ -197,10 +197,10 @@
       "dynamic": true,
       "observations": {
         "pageHeader": false,
-        "explicitResponsiveRule": false,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 0,
-        "fetchSites": 7
+        "fetchSites": 0
       }
     },
     {
@@ -211,9 +211,9 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 2,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -303,9 +303,9 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
-        "fetchSites": 2
+        "fetchSites": 0
       }
     },
     {
@@ -318,6 +318,21 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "brains.settings",
+      "pattern": "/brains/settings",
+      "source": "src/routes/(app)/brains/settings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 1
@@ -371,7 +386,7 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
@@ -418,9 +433,69 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 4,
+        "nativeButtons": 0,
         "nativeInputs": 1,
         "fetchSites": 4
+      }
+    },
+    {
+      "id": "cloud",
+      "pattern": "/cloud",
+      "source": "src/routes/(app)/cloud/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "cloud.gui",
+      "pattern": "/cloud/gui",
+      "source": "src/routes/(app)/cloud/gui/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "cloud.settings",
+      "pattern": "/cloud/settings",
+      "source": "src/routes/(app)/cloud/settings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "cloud.terminal",
+      "pattern": "/cloud/terminal",
+      "source": "src/routes/(app)/cloud/terminal/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
       }
     },
     {
@@ -431,9 +506,9 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -448,7 +523,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -463,9 +538,9 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 9,
-        "nativeInputs": 6,
-        "fetchSites": 6
+        "nativeButtons": 0,
+        "nativeInputs": 7,
+        "fetchSites": 7
       }
     },
     {
@@ -503,9 +578,24 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 4,
+        "nativeButtons": 0,
         "nativeInputs": 0,
-        "fetchSites": 3
+        "fetchSites": 4
+      }
+    },
+    {
+      "id": "crm.graph",
+      "pattern": "/crm/graph",
+      "source": "src/routes/(app)/crm/graph/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
       }
     },
     {
@@ -518,7 +608,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 2
       }
@@ -533,7 +623,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 11,
+        "nativeButtons": 0,
         "nativeInputs": 3,
         "fetchSites": 6
       }
@@ -548,8 +638,8 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 9,
-        "nativeInputs": 2,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
         "fetchSites": 0
       }
     },
@@ -563,7 +653,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 3,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -578,7 +668,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 2,
         "fetchSites": 2
       }
@@ -593,9 +683,24 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
-        "fetchSites": 2
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "finances.purchases",
+      "pattern": "/finances/purchases",
+      "source": "src/routes/(app)/finances/purchases/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
       }
     },
     {
@@ -609,8 +714,8 @@
         "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
-        "nativeInputs": 5,
-        "fetchSites": 3
+        "nativeInputs": 11,
+        "fetchSites": 4
       }
     },
     {
@@ -621,11 +726,11 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
-        "fetchSites": 8
+        "fetchSites": 0
       }
     },
     {
@@ -636,11 +741,11 @@
       "kind": "screen",
       "dynamic": true,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 6,
-        "nativeInputs": 1,
-        "fetchSites": 2
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
       }
     },
     {
@@ -651,9 +756,9 @@
       "kind": "screen",
       "dynamic": true,
       "observations": {
-        "pageHeader": false,
-        "explicitResponsiveRule": true,
-        "nativeButtons": 1,
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -667,7 +772,7 @@
       "dynamic": true,
       "observations": {
         "pageHeader": false,
-        "explicitResponsiveRule": false,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
@@ -683,7 +788,7 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": true,
-        "nativeButtons": 9,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 1
       }
@@ -696,9 +801,9 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 4,
+        "nativeButtons": 0,
         "nativeInputs": 2,
         "fetchSites": 0
       }
@@ -713,7 +818,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -741,10 +846,10 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 6,
-        "nativeInputs": 1,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
         "fetchSites": 0
       }
     },
@@ -758,7 +863,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 3,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -771,7 +876,7 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
@@ -786,7 +891,7 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
@@ -803,7 +908,7 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": true,
-        "nativeButtons": 8,
+        "nativeButtons": 0,
         "nativeInputs": 1,
         "fetchSites": 0
       }
@@ -816,7 +921,7 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
@@ -832,10 +937,10 @@
       "dynamic": false,
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 5,
-        "fetchSites": 4
+        "fetchSites": 0
       }
     },
     {
@@ -847,8 +952,8 @@
       "dynamic": false,
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 2,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 1
       }
@@ -861,7 +966,7 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
@@ -876,10 +981,10 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 6,
-        "nativeInputs": 3,
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 2,
         "fetchSites": 1
       }
     },
@@ -940,9 +1045,9 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 8,
-        "nativeInputs": 8,
-        "fetchSites": 8
+        "nativeButtons": 0,
+        "nativeInputs": 5,
+        "fetchSites": 6
       }
     },
     {
@@ -955,23 +1060,8 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
-        "nativeInputs": 0,
-        "fetchSites": 2
-      }
-    },
-    {
-      "id": "pos.refills",
-      "pattern": "/pos/refills",
-      "source": "src/routes/(app)/pos/refills/+page.svelte",
-      "family": "app",
-      "kind": "screen",
-      "dynamic": false,
-      "observations": {
-        "pageHeader": true,
-        "explicitResponsiveRule": false,
         "nativeButtons": 0,
-        "nativeInputs": 2,
+        "nativeInputs": 0,
         "fetchSites": 2
       }
     },
@@ -985,9 +1075,24 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 6,
+        "nativeButtons": 0,
         "nativeInputs": 1,
         "fetchSites": 3
+      }
+    },
+    {
+      "id": "pos.settings",
+      "pattern": "/pos/settings",
+      "source": "src/routes/(app)/pos/settings/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 1
       }
     },
     {
@@ -998,11 +1103,26 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
+      }
+    },
+    {
+      "id": "pulse",
+      "pattern": "/pulse",
+      "source": "src/routes/(app)/pulse/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 1
       }
     },
     {
@@ -1014,8 +1134,8 @@
       "dynamic": false,
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 3,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -1029,7 +1149,7 @@
       "dynamic": false,
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 1
@@ -1045,7 +1165,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 3
       }
@@ -1059,7 +1179,7 @@
       "dynamic": false,
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": true,
+        "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
@@ -1075,7 +1195,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 7,
+        "nativeButtons": 0,
         "nativeInputs": 6,
         "fetchSites": 9
       }
@@ -1090,7 +1210,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 2,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -1105,7 +1225,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 2,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 1
       }
@@ -1120,7 +1240,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 3,
+        "nativeButtons": 0,
         "nativeInputs": 1,
         "fetchSites": 2
       }
@@ -1135,7 +1255,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 4,
+        "nativeButtons": 0,
         "nativeInputs": 2,
         "fetchSites": 2
       }
@@ -1150,9 +1270,9 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 3,
+        "nativeButtons": 0,
         "nativeInputs": 0,
-        "fetchSites": 4
+        "fetchSites": 0
       }
     },
     {
@@ -1178,11 +1298,11 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
-        "explicitResponsiveRule": false,
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 0,
-        "fetchSites": 1
+        "fetchSites": 0
       }
     },
     {
@@ -1195,8 +1315,8 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 1,
-        "nativeInputs": 1,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
         "fetchSites": 0
       }
     },
@@ -1210,7 +1330,7 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -1225,7 +1345,7 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": true,
-        "nativeButtons": 5,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -1255,8 +1375,8 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": false,
-        "nativeButtons": 8,
-        "nativeInputs": 6,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
         "fetchSites": 3
       }
     },
@@ -1284,10 +1404,25 @@
       "dynamic": false,
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 4,
-        "fetchSites": 3
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "settings.organizations",
+      "pattern": "/settings/organizations",
+      "source": "src/routes/(app)/settings/organizations/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 1
       }
     },
     {
@@ -1300,7 +1435,7 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": true,
-        "nativeButtons": 5,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 1
       }
@@ -1313,10 +1448,25 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 5,
+        "nativeButtons": 0,
         "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "settings.pulse",
+      "pattern": "/settings/pulse",
+      "source": "src/routes/(app)/settings/pulse/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 1,
         "fetchSites": 0
       }
     },
@@ -1359,10 +1509,10 @@
       "dynamic": false,
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 3,
-        "fetchSites": 2
+        "fetchSites": 0
       }
     },
     {
@@ -1370,12 +1520,23 @@
       "pattern": "/shells",
       "source": "src/routes/(app)/shells/+page.svelte",
       "family": "app",
-      "kind": "screen",
+      "kind": "redirect",
       "dynamic": false,
+      "redirectContract": {
+        "probePath": "/shells?source=ui-audit",
+        "statuses": [
+          307
+        ],
+        "location": "/cloud?source=ui-audit",
+        "outcomes": [
+          "preserves-query",
+          "legacy-route"
+        ]
+      },
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -1385,12 +1546,23 @@
       "pattern": "/shells/[shellId]",
       "source": "src/routes/(app)/shells/[shellId]/+page.svelte",
       "family": "app",
-      "kind": "screen",
+      "kind": "redirect",
       "dynamic": true,
+      "redirectContract": {
+        "probePath": "/shells/ui-audit-shell",
+        "statuses": [
+          307
+        ],
+        "location": "/cloud?server=ui-audit-shell",
+        "outcomes": [
+          "preserves-parameter",
+          "legacy-route"
+        ]
+      },
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 4,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -1405,8 +1577,8 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 2,
-        "nativeInputs": 2,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
         "fetchSites": 0
       }
     },
@@ -1420,7 +1592,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 2,
+        "nativeButtons": 0,
         "nativeInputs": 2,
         "fetchSites": 0
       }
@@ -1465,7 +1637,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 2,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 2
       }
@@ -1525,7 +1697,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 2,
         "fetchSites": 2
       }
@@ -1540,7 +1712,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 5,
+        "nativeButtons": 0,
         "nativeInputs": 5,
         "fetchSites": 3
       }
@@ -1555,7 +1727,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 1
       }
@@ -1585,7 +1757,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 2,
+        "nativeButtons": 0,
         "nativeInputs": 2,
         "fetchSites": 3
       }
@@ -1601,7 +1773,7 @@
         "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
-        "nativeInputs": 3,
+        "nativeInputs": 0,
         "fetchSites": 2
       }
     },
@@ -1614,9 +1786,9 @@
       "dynamic": true,
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
-        "nativeInputs": 7,
+        "nativeInputs": 0,
         "fetchSites": 1
       }
     },
@@ -1630,7 +1802,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 2,
+        "nativeButtons": 0,
         "nativeInputs": 1,
         "fetchSites": 2
       }
@@ -1644,8 +1816,8 @@
       "dynamic": false,
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
         "nativeInputs": 1,
         "fetchSites": 1
       }
@@ -1660,7 +1832,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": true,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 3
       }
@@ -1673,7 +1845,7 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
@@ -1685,10 +1857,21 @@
       "pattern": "/terminal",
       "source": "src/routes/(app)/terminal/+page.svelte",
       "family": "app",
-      "kind": "screen",
+      "kind": "redirect",
       "dynamic": false,
+      "redirectContract": {
+        "probePath": "/terminal?server=ui-audit-shell",
+        "statuses": [
+          307
+        ],
+        "location": "/cloud/terminal?server=ui-audit-shell",
+        "outcomes": [
+          "preserves-query",
+          "legacy-route"
+        ]
+      },
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
@@ -1729,10 +1912,10 @@
       "dynamic": true,
       "observations": {
         "pageHeader": false,
-        "explicitResponsiveRule": false,
+        "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 0,
-        "fetchSites": 5
+        "fetchSites": 3
       }
     },
     {
@@ -1743,9 +1926,9 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
+        "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -1758,9 +1941,9 @@
       "kind": "screen",
       "dynamic": false,
       "observations": {
-        "pageHeader": false,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 4,
+        "pageHeader": true,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 4
       }
@@ -1775,9 +1958,9 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 1,
-        "fetchSites": 4
+        "fetchSites": 0
       }
     },
     {
@@ -1880,7 +2063,7 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": false,
-        "nativeButtons": 2,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -1940,7 +2123,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 1,
         "fetchSites": 1
       }
@@ -1970,7 +2153,7 @@
       "observations": {
         "pageHeader": true,
         "explicitResponsiveRule": false,
-        "nativeButtons": 3,
+        "nativeButtons": 0,
         "nativeInputs": 2,
         "fetchSites": 3
       }
@@ -1984,8 +2167,8 @@
       "dynamic": true,
       "observations": {
         "pageHeader": true,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 5,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
         "nativeInputs": 4,
         "fetchSites": 5
       }
@@ -2000,7 +2183,7 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": true,
-        "nativeButtons": 10,
+        "nativeButtons": 0,
         "nativeInputs": 8,
         "fetchSites": 3
       }
@@ -2060,7 +2243,7 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -2100,8 +2283,8 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
-        "nativeInputs": 2,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
         "fetchSites": 1
       }
     },
@@ -2114,9 +2297,9 @@
       "dynamic": true,
       "observations": {
         "pageHeader": false,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 7,
-        "nativeInputs": 4,
+        "explicitResponsiveRule": true,
+        "nativeButtons": 0,
+        "nativeInputs": 1,
         "fetchSites": 3
       }
     },
@@ -2145,7 +2328,7 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": false,
-        "nativeButtons": 2,
+        "nativeButtons": 0,
         "nativeInputs": 1,
         "fetchSites": 0
       }
@@ -2175,7 +2358,7 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
+        "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
       }
@@ -2190,8 +2373,8 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": false,
-        "nativeButtons": 3,
-        "nativeInputs": 4,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
         "fetchSites": 1
       }
     },
@@ -2205,8 +2388,8 @@
       "observations": {
         "pageHeader": false,
         "explicitResponsiveRule": false,
-        "nativeButtons": 1,
-        "nativeInputs": 1,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
         "fetchSites": 1
       }
     },

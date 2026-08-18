@@ -349,6 +349,24 @@ describe('assertJsonValue (S1 — reject non-JSON values before they reach SQL)'
     expect(() => assertJsonValue(10n)).toThrow();
   });
 
+  it('rejects a Map instead of silently round-tripping to `{}`', () => {
+    expect(() => assertJsonValue(new Map([['stage', 'customer']]))).toThrow();
+  });
+
+  it('rejects a Date instead of silently round-tripping to a string', () => {
+    expect(() => assertJsonValue(new Date())).toThrow();
+  });
+
+  it('accepts an acyclic value that references the same child object from two properties', () => {
+    const shared = { x: 1 };
+    expect(() => assertJsonValue({ a: shared, b: shared })).not.toThrow();
+  });
+
+  it('accepts the same array value repeated as siblings, not just as a cycle', () => {
+    const shared = [1, 2, 3];
+    expect(() => assertJsonValue([shared, shared])).not.toThrow();
+  });
+
   it('contactCustomFieldSetSql rejects an invalid value before building SQL', () => {
     expect(() => contactCustomFieldSetSql('_funnel', { stage: Number.NaN } as never)).toThrow();
   });
