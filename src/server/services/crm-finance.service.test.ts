@@ -5,7 +5,12 @@ import { createMockDb } from '$server/test-utils/mock-db';
 import { normalizeSql } from '$server/test-utils/normalize-sql';
 const bothEnabled = vi.fn(async () => true);
 vi.mock('./modules.service', () => ({ bothEnabled: (...a: unknown[]) => bothEnabled() }));
-import { contactFinanceMap, contactCashflow, contactFinanceSummary, rankCustomers } from './crm-finance.service';
+import {
+  contactFinanceMap,
+  contactCashflow,
+  contactFinanceSummary,
+  rankCustomers,
+} from './crm-finance.service';
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
 const dialect = new PgDialect();
@@ -31,20 +36,57 @@ describe('contactFinanceMap', () => {
   });
   it('MAPPING: keys aggregates by contact_id and derives loyal from proc_dates — JS-side row→field logic only, has_deposit/has_proc are pre-classified inputs here, not derived by this test. Real deposit/procedure classification of invoice-item text is verified against PostgreSQL in crm-deposit-rule.sql.integration.test.ts.', async () => {
     const { db, resolve } = createMockDb();
-    resolve([{ contact_id: 'c1', revenue: 500, invoices: 3, last: '2026-01-01T00:00:00Z', purchased: true, has_deposit: true, proc_dates: 2 }]);
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: 500,
+        invoices: 3,
+        last: '2026-01-01T00:00:00Z',
+        purchased: true,
+        has_deposit: true,
+        proc_dates: 2,
+      },
+    ]);
     const map = await contactFinanceMap(ctx(db));
-    expect(map['c1']).toEqual({ revenue: 500, invoices: 3, lastPurchaseAt: '2026-01-01T00:00:00Z', purchased: true, reservedOnly: false, loyal: true });
+    expect(map['c1']).toEqual({
+      revenue: 500,
+      invoices: 3,
+      lastPurchaseAt: '2026-01-01T00:00:00Z',
+      purchased: true,
+      reservedOnly: false,
+      loyal: true,
+    });
   });
   it('MAPPING: has_deposit true + purchased false ⇒ reservedOnly true (same caveat as above — the aggregate row is injected, not classified by this test)', async () => {
     const { db, resolve } = createMockDb();
-    resolve([{ contact_id: 'c2', revenue: 50, invoices: 1, last: '2026-02-01T00:00:00Z', purchased: false, has_deposit: true, proc_dates: 0 }]);
+    resolve([
+      {
+        contact_id: 'c2',
+        revenue: 50,
+        invoices: 1,
+        last: '2026-02-01T00:00:00Z',
+        purchased: false,
+        has_deposit: true,
+        proc_dates: 0,
+      },
+    ]);
     const map = await contactFinanceMap(ctx(db));
     expect(map['c2']).toMatchObject({ purchased: false, reservedOnly: true, loyal: false });
   });
 
   it('PARITY: the full compiled query matches the shipped shape, with the deposit rule bound as a parameter', async () => {
     const { db, resolve } = createMockDb();
-    resolve([{ contact_id: 'c1', revenue: 0, invoices: 0, last: null, purchased: false, has_deposit: false, proc_dates: 0 }]);
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: 0,
+        invoices: 0,
+        last: null,
+        purchased: false,
+        has_deposit: false,
+        proc_dates: 0,
+      },
+    ]);
     await contactFinanceMap(ctx(db));
     const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
     expect(normalizeSql(sql)).toBe(
@@ -79,7 +121,9 @@ describe('contactFinanceMap', () => {
 describe('contactFinanceSummary', () => {
   it('PARITY: both compiled queries (representative item + aggregate) match the shipped shape', async () => {
     const { db, resolve } = createMockDb();
-    resolve([{ id: 'inv1', document_id: 'd1', issued_at: null, total: 0, status: 's', item: null }]);
+    resolve([
+      { id: 'inv1', document_id: 'd1', issued_at: null, total: 0, status: 's', item: null },
+    ]);
     await contactFinanceSummary(ctx(db), 'c1');
 
     const itemQuery = dialect.sqlToQuery(executedSqlContaining(db, 'as item'));

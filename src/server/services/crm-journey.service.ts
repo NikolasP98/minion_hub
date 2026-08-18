@@ -35,7 +35,10 @@ export interface Milestone {
 }
 
 const JOURNEY_MODEL =
-  env.CRM_JOURNEY_MODEL || env.CRM_FUNNEL_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
+  env.CRM_JOURNEY_MODEL ||
+  env.CRM_FUNNEL_MODEL ||
+  env.NOTES_POLISH_MODEL ||
+  'google/gemini-2.5-flash';
 
 // TODO(handoff): rule is the module default here — S2 of 2026-08-17-hub-reserva-keyword-config-spec reads it from crm_settings
 const DEPOSIT_RULE = DEFAULT_DEPOSIT_RULE;
@@ -63,7 +66,13 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
         group by fi.id, fi.issued_at, fi.total
         order by fi.issued_at desc nulls last
         limit 40
-      `)) as unknown as Array<{ id: string; at: string | null; amount: number; has_proc: boolean; item: string | null }>;
+      `)) as unknown as Array<{
+        id: string;
+        at: string | null;
+        amount: number;
+        has_proc: boolean;
+        item: string | null;
+      }>;
       for (const r of rows) {
         const proc = Boolean(r.has_proc);
         out.push({
@@ -87,7 +96,13 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
       limit 20
     `)) as unknown as Array<{ id: string; at: string | null; label: string; status: string }>;
     for (const b of bookings)
-      out.push({ id: `bk:${b.id}`, type: 'booking', label: b.label, at: b.at ? String(b.at) : null, detail: b.status });
+      out.push({
+        id: `bk:${b.id}`,
+        type: 'booking',
+        label: b.label,
+        at: b.at ? String(b.at) : null,
+        detail: b.status,
+      });
 
     // First contact (acquisition) from the ledger stats.
     const [stat] = (await tx.execute(sql`
@@ -105,7 +120,11 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
         and ci.org_id = current_setting('app.current_org_id', true)
       order by la.first_contact_at asc nulls last
       limit 1
-    `)) as unknown as Array<{ origin: string | null; campaign_name: string | null; first_contact_at: string | null }>;
+    `)) as unknown as Array<{
+      origin: string | null;
+      campaign_name: string | null;
+      first_contact_at: string | null;
+    }>;
 
     const firstContactAt = stat?.first_contact_at ?? attr?.first_contact_at ?? null;
     if (firstContactAt) {
@@ -180,7 +199,10 @@ export async function analyzeJourney(ctx: CoreCtx, contactId: string): Promise<M
   const convo = msgs
     .slice()
     .reverse()
-    .map((m) => `${(m.at ?? '').slice(0, 10)} ${m.direction === 'inbound' ? 'CLIENT' : 'CLINIC'}: ${m.content.replace(/\n/g, ' ')}`)
+    .map(
+      (m) =>
+        `${(m.at ?? '').slice(0, 10)} ${m.direction === 'inbound' ? 'CLIENT' : 'CLINIC'}: ${m.content.replace(/\n/g, ' ')}`,
+    )
     .join('\n');
 
   const prompt = `You build a CUSTOMER JOURNEY for a Peruvian aesthetics clinic (messages mostly Spanish). From the conversation, extract up to 6 concrete MILESTONES that are NOT already in the known events — things like an inquiry about a treatment, a price negotiation, a no-show, a visit, a complaint, or strong purchase intent. Each milestone: a short ENGLISH label (≤5 words) and the ISO date (YYYY-MM-DD) it happened.
@@ -209,7 +231,10 @@ Return ONLY a JSON array: [{"label":"Asked about Botox","at":"2026-05-01","detai
         id: `ai:${p.at ?? 'x'}:${i}:${p.label.slice(0, 20)}`,
         type: 'ai' as const,
         label: p.label.slice(0, 60),
-        at: typeof p.at === 'string' && /^\d{4}-\d{2}-\d{2}/.test(p.at) ? `${p.at.slice(0, 10)}T00:00:00Z` : null,
+        at:
+          typeof p.at === 'string' && /^\d{4}-\d{2}-\d{2}/.test(p.at)
+            ? `${p.at.slice(0, 10)}T00:00:00Z`
+            : null,
         detail: typeof p.detail === 'string' ? p.detail.slice(0, 80) : null,
       }));
   } catch {

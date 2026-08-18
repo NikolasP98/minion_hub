@@ -63,7 +63,9 @@ describe('deterministicMilestones (via contactJourney)', () => {
   // (undefined fields) and don't affect the assertions below.
   it('MAPPING: has_proc true is labelled from the item, not "Reserved a consult"', async () => {
     const { db, resolve } = createMockDb();
-    resolve([{ id: 'inv1', at: '2026-01-01T00:00:00Z', amount: 100, has_proc: true, item: 'Botox' }]);
+    resolve([
+      { id: 'inv1', at: '2026-01-01T00:00:00Z', amount: 100, has_proc: true, item: 'Botox' },
+    ]);
     const journey = await contactJourney(ctx(db), 'c1');
     const inv = journey.find((m) => m.id === 'inv:inv1');
     expect(inv).toMatchObject({ type: 'purchase', label: 'Botox' });

@@ -25,17 +25,21 @@ import { DEPOSIT_TEXT_CASES } from './crm-deposit-rule.fixtures';
  * only cover the JS-side row→field mapping, not this SQL semantics.
  */
 
-// TODO(handoff): CI leaves SUPABASE_DB_URL empty (.env.example:141, no override in
-// .github/workflows/ci.yml) so this suite is always skipped in the enforced gate. This file
-// only needs a bare `postgres` service (VALUES-probe queries, no app schema), so it is safe to
-// wire independently of the documented full-schema-not-reproducible blocker (see hub memory
-// hub-supabase-schema-not-reproducible.md) — but SUPABASE_DB_URL is also read by
-// brain-business-corpus.sql.integration.test.ts, pg-client.test.ts, pg-pool.test.ts,
-// brain-business-persistence.service.test.ts and layout.server.test.ts, some of which DO expect
-// the full prod schema, so turning the env var on globally would need those checked first. Add
-// a job-scoped service + isolated env instead of a blanket CI env var.
+// Run by the dedicated `crm-deposit-rule-postgres` CI job (.github/workflows/ci.yml), which
+// spins up a bare `postgres` service (VALUES-probe queries only, no app schema) and sets
+// SUPABASE_DB_URL + REQUIRE_DEPOSIT_RULE_POSTGRES as job-scoped env — not the blanket CI env,
+// since SUPABASE_DB_URL is also read by brain-business-corpus.sql.integration.test.ts,
+// pg-client.test.ts, pg-pool.test.ts, brain-business-persistence.service.test.ts and
+// layout.server.test.ts, which expect the full prod schema (hub-supabase-schema-not-reproducible.md).
 const databaseUrl =
   process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
+
+if (process.env.REQUIRE_DEPOSIT_RULE_POSTGRES && !databaseUrl) {
+  throw new Error(
+    'REQUIRE_DEPOSIT_RULE_POSTGRES is set but SUPABASE_DB_URL is empty — the dedicated ' +
+      'crm-deposit-rule-postgres CI job must provide a database URL for this suite to run.',
+  );
+}
 
 const dialect = new PgDialect();
 
@@ -60,11 +64,13 @@ async function evalPredicate(
 /** Runs `bool_or(frag)` (built against column `probe.text`) over several seeded
  *  rows, mirroring how the services aggregate per-invoice/per-contact line
  *  items — the exact shape `IS_DEPOSIT`/`IS_PROCEDURE` are used in. */
-async function evalBoolOr(client: ReturnType<typeof postgres>, frag: SQL, texts: (string | null)[]): Promise<boolean> {
+async function evalBoolOr(
+  client: ReturnType<typeof postgres>,
+  frag: SQL,
+  texts: (string | null)[],
+): Promise<boolean> {
   const { sql: whereSql, params } = dialect.sqlToQuery(frag);
-  const rowsSql = texts
-    .map((_, i) => `($${params.length + i + 1}::text)`)
-    .join(', ');
+  const rowsSql = texts.map((_, i) => `($${params.length + i + 1}::text)`).join(', ');
   const rows = await client.unsafe<{ result: boolean }[]>(
     `select bool_or(${whereSql}) as result from (values ${rowsSql}) as probe(text)`,
     [...params, ...texts] as never[],
@@ -74,14 +80,30 @@ async function evalBoolOr(client: ReturnType<typeof postgres>, frag: SQL, texts:
 
 describe.runIf(Boolean(databaseUrl))('crm-deposit-rule against PostgreSQL', () => {
   it('isDepositText agrees with depositMatchSql/notDepositMatchSql for every case in the shared table', async () => {
-    const client = postgres(databaseUrl!, { max: 1, prepare: false, idle_timeout: 5, connect_timeout: 10 });
+    const client = postgres(databaseUrl!, {
+      max: 1,
+      prepare: false,
+      idle_timeout: 5,
+      connect_timeout: 10,
+    });
     try {
       for (const [text, expected] of DEPOSIT_TEXT_CASES) {
-        const isMatch = await evalPredicate(client, depositMatchSql('probe.text', DEFAULT_DEPOSIT_RULE), text);
-        const isNotMatch = await evalPredicate(client, notDepositMatchSql('probe.text', DEFAULT_DEPOSIT_RULE), text);
+        const isMatch = await evalPredicate(
+          client,
+          depositMatchSql('probe.text', DEFAULT_DEPOSIT_RULE),
+          text,
+        );
+        const isNotMatch = await evalPredicate(
+          client,
+          notDepositMatchSql('probe.text', DEFAULT_DEPOSIT_RULE),
+          text,
+        );
         expect(isMatch, `depositMatchSql(${JSON.stringify(text)})`).toBe(expected);
         expect(isNotMatch, `notDepositMatchSql(${JSON.stringify(text)})`).toBe(!expected);
-        expect(isDepositText(text, DEFAULT_DEPOSIT_RULE), `isDepositText(${JSON.stringify(text)})`).toBe(expected);
+        expect(
+          isDepositText(text, DEFAULT_DEPOSIT_RULE),
+          `isDepositText(${JSON.stringify(text)})`,
+        ).toBe(expected);
       }
     } finally {
       await client.end({ timeout: 5 });
@@ -89,7 +111,12 @@ describe.runIf(Boolean(databaseUrl))('crm-deposit-rule against PostgreSQL', () =
   }, 30_000);
 
   it('multi-keyword rule: PostgreSQL OR/AND semantics agree with isDepositText for every keyword', async () => {
-    const client = postgres(databaseUrl!, { max: 1, prepare: false, idle_timeout: 5, connect_timeout: 10 });
+    const client = postgres(databaseUrl!, {
+      max: 1,
+      prepare: false,
+      idle_timeout: 5,
+      connect_timeout: 10,
+    });
     const rule: DepositRule = { keywords: ['adelanto', 'seña', 'abono'], label: 'Adelanto' };
     const cases: Array<[string, boolean]> = [
       ['ADELANTO 50%', true],
@@ -110,12 +137,23 @@ describe.runIf(Boolean(databaseUrl))('crm-deposit-rule against PostgreSQL', () =
   }, 30_000);
 
   it("escapeLikePattern('100%') does not let an operator keyword widen into a wildcard", async () => {
-    const client = postgres(databaseUrl!, { max: 1, prepare: false, idle_timeout: 5, connect_timeout: 10 });
+    const client = postgres(databaseUrl!, {
+      max: 1,
+      prepare: false,
+      idle_timeout: 5,
+      connect_timeout: 10,
+    });
     const rule: DepositRule = { keywords: ['100%'], label: '100%' };
     try {
-      expect(await evalPredicate(client, depositMatchSql('probe.text', rule), 'anything')).toBe(false);
-      expect(await evalPredicate(client, depositMatchSql('probe.text', rule), 'this costs 100% today')).toBe(true);
-      expect(await evalPredicate(client, depositMatchSql('probe.text', rule), 'this costs 100 today')).toBe(false);
+      expect(await evalPredicate(client, depositMatchSql('probe.text', rule), 'anything')).toBe(
+        false,
+      );
+      expect(
+        await evalPredicate(client, depositMatchSql('probe.text', rule), 'this costs 100% today'),
+      ).toBe(true);
+      expect(
+        await evalPredicate(client, depositMatchSql('probe.text', rule), 'this costs 100 today'),
+      ).toBe(false);
       // escapeLikePattern itself agrees on the rendered pattern text
       expect(escapeLikePattern('100%')).toBe('%100\\%%');
     } finally {
@@ -124,7 +162,12 @@ describe.runIf(Boolean(databaseUrl))('crm-deposit-rule against PostgreSQL', () =
   }, 30_000);
 
   it('classifies a deposit-worded row and a procedure-worded row on opposite sides of IS_DEPOSIT/IS_PROCEDURE — the predicate crm-finance/crm-journey/crm-similarity share', async () => {
-    const client = postgres(databaseUrl!, { max: 1, prepare: false, idle_timeout: 5, connect_timeout: 10 });
+    const client = postgres(databaseUrl!, {
+      max: 1,
+      prepare: false,
+      idle_timeout: 5,
+      connect_timeout: 10,
+    });
     const rule = DEFAULT_DEPOSIT_RULE;
     try {
       // A contact whose only line item is a deposit: bool_or(IS_DEPOSIT) is true,
@@ -134,18 +177,18 @@ describe.runIf(Boolean(databaseUrl))('crm-deposit-rule against PostgreSQL', () =
       // buyer filter all key off.
       const depositOnly = ['Reserva de Consulta'];
       expect(await evalBoolOr(client, depositMatchSql('probe.text', rule), depositOnly)).toBe(true);
-      expect(
-        await evalBoolOr(
-          client,
-          notDepositMatchSql('probe.text', rule),
-          depositOnly,
-        ),
-      ).toBe(false);
+      expect(await evalBoolOr(client, notDepositMatchSql('probe.text', rule), depositOnly)).toBe(
+        false,
+      );
 
       // A contact with a real procedure line: the reverse.
       const procedureOnly = ['Botox completo'];
-      expect(await evalBoolOr(client, depositMatchSql('probe.text', rule), procedureOnly)).toBe(false);
-      expect(await evalBoolOr(client, notDepositMatchSql('probe.text', rule), procedureOnly)).toBe(true);
+      expect(await evalBoolOr(client, depositMatchSql('probe.text', rule), procedureOnly)).toBe(
+        false,
+      );
+      expect(await evalBoolOr(client, notDepositMatchSql('probe.text', rule), procedureOnly)).toBe(
+        true,
+      );
 
       // A contact with both: bool_or means "has at least one" — both flags true,
       // which is what lets a procedure line override reservedOnly downstream.
@@ -158,7 +201,12 @@ describe.runIf(Boolean(databaseUrl))('crm-deposit-rule against PostgreSQL', () =
   }, 30_000);
 
   it('contactFinanceSummary/contactJourney representative-item ORDER BY puts the procedure line before the deposit line at equal price', async () => {
-    const client = postgres(databaseUrl!, { max: 1, prepare: false, idle_timeout: 5, connect_timeout: 10 });
+    const client = postgres(databaseUrl!, {
+      max: 1,
+      prepare: false,
+      idle_timeout: 5,
+      connect_timeout: 10,
+    });
     const rule = DEFAULT_DEPOSIT_RULE;
     const { sql: whereSql, params } = dialect.sqlToQuery(depositMatchSql('probe.text', rule));
     try {

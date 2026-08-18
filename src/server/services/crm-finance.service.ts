@@ -52,7 +52,10 @@ export async function contactFinanceMap(ctx: CoreCtx): Promise<Record<string, Co
     {
       ttl: '2m',
       swr: '30s',
-      tags: [...tags.tenantDomain(ctx.tenantId, 'crm'), ...tags.tenantDomain(ctx.tenantId, 'finances')],
+      tags: [
+        ...tags.tenantDomain(ctx.tenantId, 'crm'),
+        ...tags.tenantDomain(ctx.tenantId, 'finances'),
+      ],
     },
     () => loadContactFinanceMap(ctx),
   );
@@ -76,7 +79,15 @@ async function loadContactFinanceMap(ctx: CoreCtx): Promise<Record<string, Conta
              bool_or(has_proc) purchased, bool_or(has_deposit) has_deposit,
              count(distinct case when has_proc then issued_at::date end)::int proc_dates
       from inv group by contact_id
-    `)) as unknown as Array<{ contact_id: string; revenue: number; invoices: number; last: string | null; purchased: boolean; has_deposit: boolean; proc_dates: number }>;
+    `)) as unknown as Array<{
+      contact_id: string;
+      revenue: number;
+      invoices: number;
+      last: string | null;
+      purchased: boolean;
+      has_deposit: boolean;
+      proc_dates: number;
+    }>;
     const out: Record<string, ContactFinance> = {};
     for (const r of rows) {
       const purchased = Boolean(r.purchased);
@@ -99,9 +110,15 @@ async function loadContactFinanceMap(ctx: CoreCtx): Promise<Record<string, Conta
  * phone bridge). Powers the dashboard's Revenue summary widget. Returns null
  * when either module is disabled so the widget stays hidden.
  */
-export async function crmRevenueSummary(
-  ctx: CoreCtx,
-): Promise<{ revenue: number; invoices: number; buyers: number; avgTicket: number; customers: number; reserved: number; loyal: number } | null> {
+export async function crmRevenueSummary(ctx: CoreCtx): Promise<{
+  revenue: number;
+  invoices: number;
+  buyers: number;
+  avgTicket: number;
+  customers: number;
+  reserved: number;
+  loyal: number;
+} | null> {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
   // Pure aggregation over the (cached) per-contact map — it used to re-run the
   // exact same CONTACT_PARTY/inv CTE as contactFinanceMap in a second query.
@@ -149,9 +166,14 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
       order by fi.issued_at desc nulls last limit 10
     `)) as unknown as Array<Record<string, unknown>>;
     if (invoices.length === 0) return null;
-    const all = invoices.map((r) => ({ id: String(r.id), documentId: r.document_id != null ? String(r.document_id) : null,
-      issuedAt: r.issued_at != null ? String(r.issued_at) : null, total: Number(r.total), status: r.status != null ? String(r.status) : null,
-      item: r.item != null ? String(r.item) : null }));
+    const all = invoices.map((r) => ({
+      id: String(r.id),
+      documentId: r.document_id != null ? String(r.document_id) : null,
+      issuedAt: r.issued_at != null ? String(r.issued_at) : null,
+      total: Number(r.total),
+      status: r.status != null ? String(r.status) : null,
+      item: r.item != null ? String(r.item) : null,
+    }));
     const [agg] = (await tx.execute(sql`
       with cparty as (select party_id from crm_contacts
         where id = ${contactId} and org_id = current_setting('app.current_org_id', true) and party_id is not null),
@@ -167,7 +189,14 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
              bool_or(has_proc) purchased, bool_or(has_deposit) has_deposit,
              count(distinct case when has_proc then issued_at::date end)::int proc_dates
       from inv
-    `)) as unknown as Array<{ revenue: number; invoices: number; last: string | null; purchased: boolean; has_deposit: boolean; proc_dates: number }>;
+    `)) as unknown as Array<{
+      revenue: number;
+      invoices: number;
+      last: string | null;
+      purchased: boolean;
+      has_deposit: boolean;
+      proc_dates: number;
+    }>;
     const purchased = Boolean(agg?.purchased);
     return {
       revenue: Number(agg?.revenue ?? 0),
@@ -199,9 +228,18 @@ export interface ContactCashflow {
  * has no party or no linked transactions, so the caller can render an empty
  * state without a null-check.
  */
-export async function contactCashflow(ctx: CoreCtx, contactId: string): Promise<ContactCashflow | null> {
+export async function contactCashflow(
+  ctx: CoreCtx,
+  contactId: string,
+): Promise<ContactCashflow | null> {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
-  const ZERO: ContactCashflow = { inflow: '0', outflow: '0', net: '0', transactions: 0, lastTransactionAt: null };
+  const ZERO: ContactCashflow = {
+    inflow: '0',
+    outflow: '0',
+    net: '0',
+    transactions: 0,
+    lastTransactionAt: null,
+  };
   return withOrgCore(ctx, async (tx) => {
     const [row] = (await tx.execute(sql`
       with cparty as (
@@ -217,7 +255,13 @@ export async function contactCashflow(ctx: CoreCtx, contactId: string): Promise<
       from fin_transactions ft
       where ft.org_id = current_setting('app.current_org_id', true)
         and ft.party_id = (select party_id from cparty)
-    `)) as unknown as Array<{ inflow: string; outflow: string; net: string; transactions: number; last: string | null }>;
+    `)) as unknown as Array<{
+      inflow: string;
+      outflow: string;
+      net: string;
+      transactions: number;
+      last: string | null;
+    }>;
     if (!row || Number(row.transactions) === 0) return ZERO;
     return {
       inflow: row.inflow,
