@@ -12,11 +12,30 @@ import {
   loadPersonalAgentForUser,
 } from './personal-agent.service';
 import { createMockDb } from '$server/test-utils/mock-db';
+import { personalAgents } from '@minion-stack/db/pg';
 import type { LoadCtx } from './types';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+// The mock db's chain proxy (mock-db.ts) mints a fresh vi.fn() on every
+// property access, so `.where(...)` can't be captured for later assertion.
+// Spying on drizzle-orm's `eq` (still delegating to the real implementation)
+// is what makes the exact query predicate observable — used below to prove
+// the precise value `loadPersonalAgentForUser` forwards as `supabaseId`
+// reaches getPersonalAgent's query, not just that "a" select happened.
+const { eqSpy } = vi.hoisted(() => ({ eqSpy: vi.fn() }));
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>();
+  return {
+    ...actual,
+    eq: (...args: Parameters<typeof actual.eq>) => {
+      eqSpy(...args);
+      return actual.eq(...args);
+    },
+  };
 });
 
 // loadPersonalAgentForUser dynamically imports getCoreCtx (see the source
@@ -305,7 +324,11 @@ describe('loadPersonalAgentForUser', () => {
     const resolvedCtx = ctx(db);
     mockGetCoreCtx.mockResolvedValue(resolvedCtx as never);
 
-    const result = await loadPersonalAgentForUser(locals, 'entrypoint-user', 'entrypoint-profile-1');
+    const result = await loadPersonalAgentForUser(
+      locals,
+      'entrypoint-user',
+      'entrypoint-profile-1',
+    );
 
     expect(result).toEqual({
       agent: {
@@ -335,5 +358,13 @@ describe('loadPersonalAgentForUser', () => {
     // delegate: if it were dropped, a second select (profiles lookup by
     // userId) would fire first.
     expect(db.select).toHaveBeenCalledTimes(1);
+    // The mock db's chain proxy can't be asserted on directly (see the
+    // eqSpy comment above), so the exact predicate value is observed via the
+    // real `eq` call it makes: `eq(personalAgents.profileId, profileId)`.
+    // This is the assertion that actually kills a wrong-argument regression
+    // (e.g. getPersonalAgent(ctx, userId, someOtherTruthyConstant)) — the
+    // db.select count alone can't, since the mock returns its configured
+    // row regardless of which value the predicate carries.
+    expect(eqSpy).toHaveBeenCalledWith(personalAgents.profileId, 'entrypoint-profile-1');
   });
 });
