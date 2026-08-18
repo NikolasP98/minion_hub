@@ -14,9 +14,13 @@ vi.mock('$server/db/with-org-core', () => ({
 }));
 
 const mockBustCrmList = vi.fn<(tenantId: string) => Promise<unknown>>();
-vi.mock('./crm-contacts.service', () => ({
-  bustCrmList: (t: string) => mockBustCrmList(t),
-}));
+vi.mock('./crm-contacts.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./crm-contacts.service')>();
+  return {
+    ...actual,
+    bustCrmList: (t: string) => mockBustCrmList(t),
+  };
+});
 
 import { setUserRelationship, setAiRelationship, resumeAiSuggestions } from './crm-relationship.service';
 
