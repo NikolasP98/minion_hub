@@ -334,7 +334,7 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
     if (typeof f.maxScore === 'number') outer.push(sql`score <= ${f.maxScore}`);
     if (ruleSql) outer.push(sql.raw(ruleSql)); // vetted: whitelisted columns only
 
-    const orderBy =
+    const sortOrder =
       f.sort === 'recent'
         ? sql`last_contact_at desc nulls last, display_name asc nulls last`
         : f.sort === 'frequency'
@@ -346,6 +346,7 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
               : f.sort === 'icp'
                 ? sql`${ICP_SCORE_EXPR} desc nulls last, display_name asc nulls last`
                 : sql`score desc, display_name asc nulls last`;
+    const orderBy = sql`${sortOrder}, contact_id asc`;
 
     const limit = Math.min(f.limit ?? 100, f.maxLimit ?? 5000);
     const offset = f.offset ?? 0;
@@ -482,26 +483,41 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
                    else 'Dormant'
                  end) as stage
         from base
+      ),
+      filtered as (
+        select * from scored where ${and(...outer)}
+      ),
+      requested_page as (
+        select *, row_number() over (order by ${orderBy}) as page_position
+        from filtered
+        order by ${orderBy}
+        limit ${limit} offset ${offset}
+      ),
+      filtered_total as (
+        select count(*)::int as total_rows from filtered
       )
-      select *, (count(*) over ())::int as total_rows from scored
-      where ${and(...outer)}
-      order by ${orderBy}
-      limit ${limit} offset ${offset}
+      select requested_page.*, filtered_total.total_rows
+      from filtered_total
+      left join requested_page on true
+      order by requested_page.page_position
     `);
-    // `total_rows` (the window count) and `revenue` (order-by fuel) ride on every
-    // row but are not part of the RankedContact contract — read the total off the
-    // first row, then drop both so callers see exactly today's shape.
+    // The left join returns one sentinel row when the requested page is empty,
+    // preserving the filtered count without a second database round-trip.
     const raw = rows as unknown as (RankedContact & {
       total_rows?: number;
       revenue?: number | null;
+      page_position?: number;
     })[];
-    const total = raw.length > 0 ? Number(raw[0].total_rows) || 0 : 0;
-    let out: RankedContact[] = raw.map((r) => {
-      const rest = { ...r };
-      delete rest.total_rows;
-      delete rest.revenue;
-      return rest as RankedContact;
-    });
+    const total = Number(raw[0]?.total_rows) || 0;
+    let out: RankedContact[] = raw
+      .filter((r) => r.contact_id != null)
+      .map((r) => {
+        const rest = { ...r };
+        delete rest.total_rows;
+        delete rest.revenue;
+        delete rest.page_position;
+        return rest as RankedContact;
+      });
     // pg returns numeric/bigint columns as STRINGS; coerce here so no consumer
     // ever does arithmetic on a digit-string (scoreSum += "50" concatenated its
     // way to avgScore = Infinity on the dashboard).

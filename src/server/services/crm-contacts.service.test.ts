@@ -218,6 +218,7 @@ function rankedRow(over: Record<string, unknown> = {}) {
     score: '65',
     stage: 'Engaged',
     revenue: 1200,
+    page_position: 1,
     total_rows: 1543,
     ...over,
   };
@@ -226,17 +227,14 @@ function rankedRow(over: Record<string, unknown> = {}) {
 describe('rankContactsPage (S1 — one round-trip page + filtered total)', () => {
   const ctx = { db: {} as never, tenantId: 'org-1' };
 
-  it('reads the total off a window count in the OUTER select — computed after the filters, before limit/offset', async () => {
+  it('reads the total from the filtered set before limit/offset', async () => {
     const execute = vi.fn().mockResolvedValueOnce([rankedRow(), rankedRow({ contact_id: 'c2' })]);
     useExecMock(execute);
 
     const page = await rankContactsPage(ctx, { limit: 2 });
 
     const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
-    // The count rides the same statement as the rows, and sits in the outer
-    // select over `scored` — so it counts the filtered set, not the page.
-    expect(query.sql).toContain('(count(*) over ())::int as total_rows');
-    expect(query.sql.indexOf('count(*) over ()')).toBeGreaterThan(query.sql.indexOf('scored as ('));
+    expect(query.sql).toContain('select count(*)::int as total_rows from filtered');
     expect(page.rows).toHaveLength(2);
     expect(page.total).toBe(1543); // ≫ the 2 rows on this page
   });
@@ -249,18 +247,21 @@ describe('rankContactsPage (S1 — one round-trip page + filtered total)', () =>
 
     expect(rows[0]).not.toHaveProperty('total_rows');
     expect(rows[0]).not.toHaveProperty('revenue');
+    expect(rows[0]).not.toHaveProperty('page_position');
     // …and the numeric coercion still applies to what remains.
     expect(rows[0].score).toBe(65);
     expect(rows[0].total_msgs).toBe(12);
   });
 
-  it('an empty page remains a one-round-trip empty result', async () => {
-    const execute = vi.fn().mockResolvedValueOnce([]);
+  it('an out-of-range page preserves the nonzero filtered total in one round trip', async () => {
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([{ contact_id: null, total_rows: 25, page_position: null }]);
     useExecMock(execute);
 
     const page = await rankContactsPage(ctx, { limit: 100, offset: 99900 });
 
-    expect(page).toEqual({ rows: [], total: 0 });
+    expect(page).toEqual({ rows: [], total: 25 });
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
@@ -301,11 +302,22 @@ describe('rankContacts sorting (S1 — server-side ICP + revenue)', () => {
     expect(sqlText).toMatch(/order by\s*\n?\s*revenue desc nulls last/);
   });
 
-  it('the default sort is untouched (score desc) — existing callers do not move', async () => {
+  it('the default sort keeps score/name precedence and ends with a unique contact id', async () => {
     const sqlText = await sqlFor({});
 
-    expect(sqlText).toMatch(/order by\s*\n?\s*score desc, display_name asc nulls last/);
+    expect(sqlText).toMatch(
+      /order by\s*\n?\s*score desc, display_name asc nulls last, contact_id asc/,
+    );
   });
+
+  it.each(['recent', 'frequency', 'name', 'revenue', 'icp'] as const)(
+    "sort '%s' ends with contact_id so tied rows have one stable page order",
+    async (sort) => {
+      const sqlText = await sqlFor({ sort });
+
+      expect(sqlText).toMatch(/order by[\s\S]*contact_id asc/);
+    },
+  );
 });
 
 describe('rankContacts search (S1 — phone/DNI exact-prefix)', () => {
