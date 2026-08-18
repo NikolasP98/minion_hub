@@ -102,17 +102,7 @@ async function recordedBaselineRef(root) {
       await readFile(path.join(root, 'tests/ui-audit/current-baseline.json'), 'utf8'),
     );
     if (typeof ledger.sourceCommit === 'string' && /^[0-9a-f]{40}$/.test(ledger.sourceCommit)) {
-      try {
-        git(root, 'cat-file', '-e', `${ledger.sourceCommit}^{commit}`);
-      } catch {
-        // Shallow clones (CI/factory sandboxes) may not carry the pinned
-        // baseline commit locally even though it exists on origin. Fetch
-        // just that object before falling back to HEAD, so a shallow
-        // checkout can't silently compare "clean baseline" against today's
-        // tree instead of the frozen one.
-        git(root, 'fetch', '--quiet', '--depth=1', 'origin', ledger.sourceCommit);
-        git(root, 'cat-file', '-e', `${ledger.sourceCommit}^{commit}`);
-      }
+      git(root, 'cat-file', '-e', `${ledger.sourceCommit}^{commit}`);
       return ledger.sourceCommit;
     }
   } catch {
