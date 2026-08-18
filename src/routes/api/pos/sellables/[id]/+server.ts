@@ -32,7 +32,10 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
   const body = await parseBody(request, patchSchema);
   await requireSellableFieldCapabilities(locals, body, 'edit');
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const actor = {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
   try {
     const sellable = await updateSellable(ctx, params.id!, body, actor);
     return json({ ok: true, sellable });

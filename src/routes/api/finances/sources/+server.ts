@@ -17,7 +17,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const source = await getSource(ctx, provider);
   // Never return the raw secret blob to the client.
   return json({
-    source: source ? { ...source, secretRefs: undefined, hasCredentials: sourceHasCredentials(source) } : null,
+    source: source
+      ? { ...source, secretRefs: undefined, hasCredentials: sourceHasCredentials(source) }
+      : null,
   });
 };
 
@@ -45,7 +47,10 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   // the password" silently no-op'd and the sync kept failing with the old
   // credential (Aug 2026). Typing one field is always a mistake, never intent.
   if (Boolean(username) !== Boolean(password)) {
-    throw error(400, 'provide BOTH username and password, or leave both blank to keep the current credentials');
+    throw error(
+      400,
+      'provide BOTH username and password, or leave both blank to keep the current credentials',
+    );
   }
 
   // null = no probe ran (nothing to verify). true = the provider accepted these
@@ -60,14 +65,21 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     // Verify before storing: `count()` performs the provider login, so a bad
     // credential fails here with the provider's own reason instead of being
     // written and only surfacing as a failed job at 08:00 the next morning.
-    const secrets: Record<string, string> = { username, password, ...(clientSecret ? { clientSecret } : {}) };
+    const secrets: Record<string, string> = {
+      username,
+      password,
+      ...(clientSecret ? { clientSecret } : {}),
+    };
     const connector = getConnector(provider);
     if (connector?.count) {
       try {
         await connector.count({ config: (body.config ?? {}) as Record<string, unknown>, secrets });
         verified = true;
       } catch (e) {
-        throw error(400, `provider rejected these credentials: ${e instanceof Error ? e.message : String(e)}`);
+        throw error(
+          400,
+          `provider rejected these credentials: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
     }
     secretRefs = encryptCreds({ username, password, ...(clientSecret ? { clientSecret } : {}) });

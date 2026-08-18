@@ -10,7 +10,14 @@ type SyncState = {
   stalled: boolean;
 };
 
-let s = $state<SyncState>({ active: false, status: null, total: null, processed: 0, error: null, stalled: false });
+let s = $state<SyncState>({
+  active: false,
+  status: null,
+  total: null,
+  processed: 0,
+  error: null,
+  stalled: false,
+});
 let timer: ReturnType<typeof setTimeout> | null = null;
 let polling = false;
 
@@ -46,22 +53,42 @@ function schedule(provider: string): void {
 
 function stop(): void {
   polling = false;
-  if (timer) { clearTimeout(timer); timer = null; }
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
 }
 
 export const financeSync = {
-  get active() { return s.active; },
-  get status() { return s.status; },
-  get total() { return s.total; },
-  get processed() { return s.processed; },
-  get error() { return s.error; },
-  get stalled() { return s.stalled; },
-  get percent() { return s.total && s.total > 0 ? Math.round((s.processed / s.total) * 100) : 0; },
+  get active() {
+    return s.active;
+  },
+  get status() {
+    return s.status;
+  },
+  get total() {
+    return s.total;
+  },
+  get processed() {
+    return s.processed;
+  },
+  get error() {
+    return s.error;
+  },
+  get stalled() {
+    return s.stalled;
+  },
+  get percent() {
+    return s.total && s.total > 0 ? Math.round((s.processed / s.total) * 100) : 0;
+  },
 
   /** One-shot status read (e.g. on app load to detect an in-flight sync). Starts polling if active. */
   async refresh(provider = 'susii') {
     await fetchStatus(provider);
-    if (s.active && !polling) { polling = true; schedule(provider); }
+    if (s.active && !polling) {
+      polling = true;
+      schedule(provider);
+    }
   },
 
   /** Trigger a sync and begin polling. */
@@ -69,11 +96,17 @@ export const financeSync = {
     s.error = null;
     try {
       await fetchJson<{ ok?: boolean }>('/api/finances/sync', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ provider }),
       });
-      s.active = true; s.status = 'running'; s.stalled = false;
-      if (!polling) { polling = true; schedule(provider); }
+      s.active = true;
+      s.status = 'running';
+      s.stalled = false;
+      if (!polling) {
+        polling = true;
+        schedule(provider);
+      }
       await fetchStatus(provider);
     } catch (cause) {
       stop();
@@ -86,7 +119,8 @@ export const financeSync = {
   async cancel(provider = 'susii') {
     try {
       await fetchJson<{ ok?: boolean }>('/api/finances/sync/cancel', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ provider }),
       });
       await fetchStatus(provider);

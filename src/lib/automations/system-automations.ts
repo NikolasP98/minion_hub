@@ -51,23 +51,68 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
   { path: '/api/jobs/tick', key: 'jobs', cadence: 'ten_minute', wiring: 'netcup' },
 
   // ── Scheduled by Vercel (vercel.json crons) ──────────────────────────────
-  { path: '/api/finances/sync/daily', key: 'finance_daily', cadence: 'daily_3am', wiring: 'vercel' },
-  { path: '/api/brains/reconcile/tick', key: 'brains_reconcile', cadence: 'daily_3am', wiring: 'vercel' },
+  {
+    path: '/api/finances/sync/daily',
+    key: 'finance_daily',
+    cadence: 'daily_3am',
+    wiring: 'vercel',
+  },
+  {
+    path: '/api/brains/reconcile/tick',
+    key: 'brains_reconcile',
+    cadence: 'daily_3am',
+    wiring: 'vercel',
+  },
 
   // ── NOT in the crontab. Previously claimed 'netcup' — they never ran. ────
   // finance_sync is the one that bit us: without it a Vercel-frozen sync job
   // has no resumer, so it only advances when the daily cron happens to
   // re-claim it (once/day, 50s at a time).
-  { path: '/api/finances/sync/tick', key: 'finance_sync', cadence: 'minute', wiring: 'unscheduled' },
-  { path: '/api/scheduling/reminders/tick', key: 'reminders', cadence: 'minute', wiring: 'unscheduled' },
-  { path: '/api/notifications/tick', key: 'notifications', cadence: 'minute', wiring: 'unscheduled' },
+  {
+    path: '/api/finances/sync/tick',
+    key: 'finance_sync',
+    cadence: 'minute',
+    wiring: 'unscheduled',
+  },
+  {
+    path: '/api/scheduling/reminders/tick',
+    key: 'reminders',
+    cadence: 'minute',
+    wiring: 'unscheduled',
+  },
+  {
+    path: '/api/notifications/tick',
+    key: 'notifications',
+    cadence: 'minute',
+    wiring: 'unscheduled',
+  },
   { path: '/api/org-config/tick', key: 'org_config', cadence: 'hourly', wiring: 'unscheduled' },
   { path: '/api/memberships/tick', key: 'memberships', cadence: 'hourly', wiring: 'unscheduled' },
   { path: '/api/crm/dni-validation/tick', key: 'dni', cadence: 'hourly', wiring: 'unscheduled' },
-  { path: '/api/crm/conversations/vectorize/tick', key: 'vectorize', cadence: 'hourly', wiring: 'unscheduled' },
-  { path: '/api/crm/conversations/analyze/tick', key: 'analyze', cadence: 'hourly', wiring: 'unscheduled' },
-  { path: '/api/email-ledger/tick', key: 'email_ledger', cadence: 'daily_3am', wiring: 'unscheduled' },
-  { path: '/api/reliability/retention/tick', key: 'retention', cadence: 'semimonthly', wiring: 'unscheduled' },
+  {
+    path: '/api/crm/conversations/vectorize/tick',
+    key: 'vectorize',
+    cadence: 'hourly',
+    wiring: 'unscheduled',
+  },
+  {
+    path: '/api/crm/conversations/analyze/tick',
+    key: 'analyze',
+    cadence: 'hourly',
+    wiring: 'unscheduled',
+  },
+  {
+    path: '/api/email-ledger/tick',
+    key: 'email_ledger',
+    cadence: 'daily_3am',
+    wiring: 'unscheduled',
+  },
+  {
+    path: '/api/reliability/retention/tick',
+    key: 'retention',
+    cadence: 'semimonthly',
+    wiring: 'unscheduled',
+  },
 
   // ── Built + allowlisted, NOT yet in `crontab -l` ─────────────────────────
   // The relationship-inference kernel. Route + hooks.server.ts allowlist exist,

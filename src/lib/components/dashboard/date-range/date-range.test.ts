@@ -47,7 +47,9 @@ describe('periods', () => {
     expect(coercePeriod('month', '2026-07-04', '2026-07-19')).toBe('week');
     expect(coercePeriod('day', '2026-07-04', '2026-07-19')).toBe('day');
     // respects the allowed subset (finances has no year bucket)
-    expect(coercePeriod('year', '2020-01-01', '2026-07-19', ['day', 'week', 'month'])).toBe('month');
+    expect(coercePeriod('year', '2020-01-01', '2026-07-19', ['day', 'week', 'month'])).toBe(
+      'month',
+    );
   });
 
   it('buckets a date by granularity — week snaps back to its ISO Monday', () => {
@@ -87,7 +89,10 @@ describe('ranges', () => {
 
 describe('url adapters', () => {
   it('round-trips a window through search params', () => {
-    const p = toSearchParams({ from: '2026-01-01', to: '2026-07-19', period: 'month' }, { periodKey: 'bucket' });
+    const p = toSearchParams(
+      { from: '2026-01-01', to: '2026-07-19', period: 'month' },
+      { periodKey: 'bucket' },
+    );
     expect(p.get('from')).toBe('2026-01-01');
     expect(p.get('bucket')).toBe('month');
     expect(fromSearchParams(p, { periodKey: 'bucket' })).toEqual({
@@ -210,7 +215,7 @@ describe('business-timezone day windows', () => {
     expect(w.to!.toISOString()).toBe('2026-07-01T05:00:00.000Z');
     expect(zonedDayWindow('', '', 'America/Lima')).toEqual({ from: null, to: null });
   });
-})
+});
 
 describe('parseInclusiveEnd', () => {
   it('widens a date-only bound to the end of that day', () => {
@@ -223,9 +228,11 @@ describe('parseInclusiveEnd', () => {
   });
 
   it('passes a datetime bound through and treats missing/garbage as open', () => {
-    expect(parseInclusiveEnd('2026-06-01T08:00:00.000Z')!.toISOString()).toBe('2026-06-01T08:00:00.000Z');
+    expect(parseInclusiveEnd('2026-06-01T08:00:00.000Z')!.toISOString()).toBe(
+      '2026-06-01T08:00:00.000Z',
+    );
     expect(parseInclusiveEnd(null)).toBeUndefined();
     expect(parseInclusiveEnd('')).toBeUndefined();
     expect(parseInclusiveEnd('not-a-date')).toBeUndefined();
   });
-})
+});

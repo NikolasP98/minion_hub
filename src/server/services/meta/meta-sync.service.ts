@@ -925,8 +925,7 @@ async function syncAds(
       for (;;) {
         if (!page.ok) {
           if (page.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
-          const priorFails =
-            resumedAccount && resume.cs === windows[w].since ? (resume.f ?? 0) : 0;
+          const priorFails = resumedAccount && resume.cs === windows[w].since ? (resume.f ?? 0) : 0;
           if (priorFails + 1 < MAX_WINDOW_ATTEMPTS) {
             // Transient Graph failure (rate limit, 5xx): park the job at this
             // window and let a later tick retry it. Skipping ahead on first

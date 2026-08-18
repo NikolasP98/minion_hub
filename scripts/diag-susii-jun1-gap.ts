@@ -15,7 +15,10 @@ const url = process.env.SUPABASE_DB_URL?.trim();
 if (!url) throw new Error('SUPABASE_DB_URL not set (check .env.local)');
 const client = postgres(url, { prepare: false, max: 2 });
 
-async function withOrg<T>(orgId: string, fn: (sql: postgres.TransactionSql) => Promise<T>): Promise<T> {
+async function withOrg<T>(
+  orgId: string,
+  fn: (sql: postgres.TransactionSql) => Promise<T>,
+): Promise<T> {
   return client.begin(async (tx) => {
     await tx`set local role app_ledger`;
     await tx`select set_config('app.current_org_id', ${orgId}, true)`;
@@ -40,7 +43,9 @@ async function main() {
       where issued_at >= '2026-05-31' and issued_at < '2026-06-04'
       order by issued_at asc
     `;
-    console.log('| ref | number | doc | status | total | raw issued_at | UTC date | Lima date | client |');
+    console.log(
+      '| ref | number | doc | status | total | raw issued_at | UTC date | Lima date | client |',
+    );
     console.log('|---|---|---|---|--:|---|---|---|---|');
     for (const r of rows) {
       console.log(

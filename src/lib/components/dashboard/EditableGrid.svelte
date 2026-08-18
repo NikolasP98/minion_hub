@@ -170,7 +170,9 @@
           disabled={savingDefault}
           title={m.dash_layout_save_default_hint()}
         >
-          {#if savedDefaultAt > 0 && !savingDefault}<Check size={iconSizes.sm} />{:else}<Pin size={iconSizes.sm} />{/if}
+          {#if savedDefaultAt > 0 && !savingDefault}<Check size={iconSizes.sm} />{:else}<Pin
+              size={iconSizes.sm}
+            />{/if}
           {m.dash_layout_save_default()}
         </Button>
       {/if}
@@ -181,7 +183,9 @@
         class="eg-btn {editing ? 'on' : ''}"
         onclick={() => (editing = !editing)}
       >
-        {#if editing}<Check size={iconSizes.sm} /> {m.dash_layout_done()}{:else}<Pencil size={iconSizes.sm} />
+        {#if editing}<Check size={iconSizes.sm} /> {m.dash_layout_done()}{:else}<Pencil
+            size={iconSizes.sm}
+          />
           {m.dash_layout_edit()}{/if}
       </Button>
     {/if}
@@ -209,34 +213,34 @@
     <!-- Filtered BEFORE the each (not an inner {#if}) — `animate:` requires the
          element to be the only child of the keyed block. -->
     {#each visibleOrder as itemId (itemId)}
-        <div
-          class="eg-cell"
-          class:dragging={dragId === itemId}
-          data-grid-id={itemId}
-          style:grid-column={`span ${layout.span[itemId].w}`}
-          style:grid-row={`span ${layout.span[itemId].h}`}
-          animate:flip={flipIn}
-        >
-          {@render cell(itemId)}
-          {#if editing}
-            <!-- shield: swallow clicks so the card's own nav doesn't fire while editing -->
-            <div class="eg-shield"></div>
-            <Button
-              variant="ghost"
-              class="eg-grip"
-              title={m.dash_layout_drag()}
-              onpointerdown={(e: PointerEvent) => startDrag(e, itemId)}
-              ><GripVertical size={iconSizes.sm} /></Button
-            >
-            <Button
-              variant="ghost"
-              class="eg-resize"
-              title={m.dash_layout_resize()}
-              aria-label={m.dash_layout_resize()}
-              onpointerdown={(e: PointerEvent) => startResize(e, itemId)}
-            ></Button>
-          {/if}
-        </div>
+      <div
+        class="eg-cell"
+        class:dragging={dragId === itemId}
+        data-grid-id={itemId}
+        style:grid-column={`span ${layout.span[itemId].w}`}
+        style:grid-row={`span ${layout.span[itemId].h}`}
+        animate:flip={flipIn}
+      >
+        {@render cell(itemId)}
+        {#if editing}
+          <!-- shield: swallow clicks so the card's own nav doesn't fire while editing -->
+          <div class="eg-shield"></div>
+          <Button
+            variant="ghost"
+            class="eg-grip"
+            title={m.dash_layout_drag()}
+            onpointerdown={(e: PointerEvent) => startDrag(e, itemId)}
+            ><GripVertical size={iconSizes.sm} /></Button
+          >
+          <Button
+            variant="ghost"
+            class="eg-resize"
+            title={m.dash_layout_resize()}
+            aria-label={m.dash_layout_resize()}
+            onpointerdown={(e: PointerEvent) => startResize(e, itemId)}
+          ></Button>
+        {/if}
+      </div>
     {/each}
   </div>
 </div>

@@ -15,7 +15,10 @@ const url = process.env.SUPABASE_DB_URL?.trim();
 if (!url) throw new Error('SUPABASE_DB_URL not set');
 const client = postgres(url, { prepare: false, max: 2 });
 
-async function withOrg<T>(orgId: string, fn: (sql: postgres.TransactionSql) => Promise<T>): Promise<T> {
+async function withOrg<T>(
+  orgId: string,
+  fn: (sql: postgres.TransactionSql) => Promise<T>,
+): Promise<T> {
   return client.begin(async (tx) => {
     await tx`set local role app_ledger`;
     await tx`select set_config('app.current_org_id', ${orgId}, true)`;
@@ -34,7 +37,9 @@ async function main() {
   const orgId = process.argv.slice(2).find((x) => !x.startsWith('--')) ?? FACES_ORG;
   await withOrg(orgId, async (tx) => {
     console.log('# SUSII null-total backfill — DRY RUN (no writes)\n');
-    console.log(`org: \`${orgId}\`  ·  formula: \`items + tax − discount + other_charges + rounding\`\n`);
+    console.log(
+      `org: \`${orgId}\`  ·  formula: \`items + tax − discount + other_charges + rounding\`\n`,
+    );
 
     // Guard: the formula must still reproduce every KNOWN total exactly.
     const [cal] = await tx.unsafe(`
@@ -42,7 +47,9 @@ async function main() {
              count(*) filter (where abs(v.total - round((${DERIVED})::numeric,2)) >= 0.02)::int as mismatches
       from fin_invoices v where v.total is not null`);
     console.log(`## Calibration guard\n`);
-    console.log(`Formula re-checked against **${cal.n}** invoices whose total is already known: **${cal.mismatches} mismatches**.\n`);
+    console.log(
+      `Formula re-checked against **${cal.n}** invoices whose total is already known: **${cal.mismatches} mismatches**.\n`,
+    );
 
     const [sum] = await tx.unsafe(`
       select count(*)::int as rows,
@@ -74,7 +81,9 @@ async function main() {
       from fin_invoices v where v.total is null
       order by (${DERIVED}) desc limit 25`);
     for (const r of top) {
-      console.log(`| ${r.number ?? '—'} | ${r.lima ?? '—'} | ${String(r.client_name ?? '').slice(0, 30)} | NULL | ${r.after} |`);
+      console.log(
+        `| ${r.number ?? '—'} | ${r.lima ?? '—'} | ${String(r.client_name ?? '').slice(0, 30)} | NULL | ${r.after} |`,
+      );
     }
 
     console.log('\n## Rows that would stay NULL (no line items to price)\n');
@@ -86,9 +95,15 @@ async function main() {
     if (none.length === 0) console.log('_none — every null-total invoice has line items._');
     else {
       console.log('| number | date (Lima) | client |\n|---|---|---|');
-      for (const r of none) console.log(`| ${r.number ?? '—'} | ${r.lima ?? '—'} | ${String(r.client_name ?? '').slice(0, 30)} |`);
+      for (const r of none)
+        console.log(
+          `| ${r.number ?? '—'} | ${r.lima ?? '—'} | ${String(r.client_name ?? '').slice(0, 30)} |`,
+        );
     }
   });
   await client.end();
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

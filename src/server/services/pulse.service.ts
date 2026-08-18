@@ -101,7 +101,9 @@ export async function editPayload(ctx: CoreCtx, id: string, args: Record<string,
   return withOrgCore(ctx, (tx) =>
     tx
       .update(pulseProposals)
-      .set({ payload: sql`jsonb_set(${pulseProposals.payload}, '{args}', ${JSON.stringify(args)}::jsonb)` })
+      .set({
+        payload: sql`jsonb_set(${pulseProposals.payload}, '{args}', ${JSON.stringify(args)}::jsonb)`,
+      })
       .where(and(eq(pulseProposals.orgId, ctx.tenantId), eq(pulseProposals.id, id))),
   );
 }
@@ -130,7 +132,10 @@ export async function getSettings(ctx: CoreCtx): Promise<PulseSettingsRow> {
   const rows = await withOrgCore(ctx, (tx) =>
     tx.select().from(pulseSettings).where(eq(pulseSettings.orgId, ctx.tenantId)).limit(1),
   );
-  return rows[0] ?? ({ orgId: ctx.tenantId, ...DEFAULT_SETTINGS, updatedAt: new Date() } as PulseSettingsRow);
+  return (
+    rows[0] ??
+    ({ orgId: ctx.tenantId, ...DEFAULT_SETTINGS, updatedAt: new Date() } as PulseSettingsRow)
+  );
 }
 
 export async function saveSettings(ctx: CoreCtx, patch: Partial<typeof DEFAULT_SETTINGS>) {
@@ -138,6 +143,9 @@ export async function saveSettings(ctx: CoreCtx, patch: Partial<typeof DEFAULT_S
     tx
       .insert(pulseSettings)
       .values({ orgId: ctx.tenantId, ...DEFAULT_SETTINGS, ...patch, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: pulseSettings.orgId, set: { ...patch, updatedAt: new Date() } }),
+      .onConflictDoUpdate({
+        target: pulseSettings.orgId,
+        set: { ...patch, updatedAt: new Date() },
+      }),
   );
 }

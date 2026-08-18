@@ -10,10 +10,13 @@ Fetch details: get_observations([IDs]) | Search: mem-search skill
 Stats: 25 obs (10,123t read) | 681,202t work | 99% savings
 
 ### Jun 20, 2026
+
 S4936 Commit and push CRM hygiene overhaul to dev, then resolve post-rebase TypeScript errors (Jun 20, 1:28 AM)
 S4937 Document stale-paraglide-after-rebase gotcha in project memory after resolving post-push TypeScript errors (Jun 20, 1:30 AM)
 S6557 Adversarial implementation review of embeddings retry/backoff, bounded concurrency, and CLI table-targeting flags (Jun 20, 1:33 AM)
+
 ### Jul 22, 2026
+
 31819 1:17a 🔵 Consumption UOM conversion infrastructure present but incomplete for Hialuronidasa
 31820 " 🔵 Issue path precedence and modifiers already handle recipe-vs-bridge correctly
 31832 1:18a 🔵 Hialuronidasa consumption UOM mismatch discovered in POS-stock bridge
@@ -36,7 +39,9 @@ S6562 pgvector rollout review — analysis complete; durable findings archived t
 32004 12:30p ⚖️ Pre-deployment review of unified Brain knowledge architecture changes
 32005 " 🔵 Focused Brain source-membership implementation review initiated
 S6564 Read-only production blocker review of Focused Brain source-membership implementation across eight files (Jul 22, 12:36 PM)
+
 ### Jul 23, 2026
+
 32261 12:00a 🔄 Centralized module-availability route guard
 32262 " 🟣 Module availability manifest system
 32263 " 🟣 Org kind resolved during identity resolution

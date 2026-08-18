@@ -89,10 +89,9 @@
     traces = { ...traces, [org.id]: payload };
     expandedId = org.id;
     if (!organizations.some((row) => row.id === org.id)) {
-      organizations = [
-        ...organizations,
-        { ...org, members: 1, ownerProfileId: null },
-      ].sort((a, b) => a.name.localeCompare(b.name));
+      organizations = [...organizations, { ...org, members: 1, ownerProfileId: null }].sort(
+        (a, b) => a.name.localeCompare(b.name),
+      );
     }
   }
 
@@ -184,176 +183,180 @@
 
   <PageBody width="content">
     <div class="stack">
-    <Card elevation={2} padding="lg">
-      <form class="provision-form" onsubmit={submit}>
-        <div>
-          <h2 class="t-title">{m.orgProvision_formTitle()}</h2>
-          <p class="t-body form-copy">{m.orgProvision_formDescription()}</p>
-        </div>
-        <div class="form-row">
-          <Input
-            id="organization-name"
-            label={m.orgProvision_nameLabel()}
-            placeholder={m.orgProvision_namePlaceholder()}
-            bind:value={name}
-            required
-            maxlength={80}
-            autocomplete="organization"
-            disabled={submitting}
-          />
-          <div class="kind-field">
-            <span class="t-label">{m.orgProvision_kindLabel()}</span>
-            <SegmentedControl
-              items={kindItems}
-              bind:value={kind}
-              size="md"
-              aria-label={m.orgProvision_kindLabel()}
-            />
+      <Card elevation={2} padding="lg">
+        <form class="provision-form" onsubmit={submit}>
+          <div>
+            <h2 class="t-title">{m.orgProvision_formTitle()}</h2>
+            <p class="t-body form-copy">{m.orgProvision_formDescription()}</p>
           </div>
-        </div>
-        <Select
-          id="organization-owner"
-          label={m.orgProvision_ownerLabel()}
-          helper={m.orgProvision_ownerHelper()}
-          options={ownerOptions}
-          bind:value={ownerProfileId}
-          disabled={submitting}
-        />
-        <details class="advanced">
-          <summary class="t-label">{m.orgProvision_advanced()}</summary>
-          <div class="advanced-body">
+          <div class="form-row">
             <Input
-              id="workforce-company-id"
-              label={m.orgProvision_workforceIdLabel()}
-              helper={m.orgProvision_workforceIdHelper()}
-              placeholder="00000000-0000-0000-0000-000000000000"
-              bind:value={existingWorkforceCompanyId}
+              id="organization-name"
+              label={m.orgProvision_nameLabel()}
+              placeholder={m.orgProvision_namePlaceholder()}
+              bind:value={name}
+              required
+              maxlength={80}
+              autocomplete="organization"
               disabled={submitting}
             />
+            <div class="kind-field">
+              <span class="t-label">{m.orgProvision_kindLabel()}</span>
+              <SegmentedControl
+                items={kindItems}
+                bind:value={kind}
+                size="md"
+                aria-label={m.orgProvision_kindLabel()}
+              />
+            </div>
           </div>
-        </details>
-        {#if requestError}<p class="error-message" role="alert">{requestError}</p>{/if}
-        <div class="submit-row">
-          <Button type="submit" variant="primary" disabled={submitting || !name.trim()}>
-            {#if submitting}
-              <Spinner size="xs" />
-              {m.orgProvision_running()}
-            {:else}
-              <Building2 size={iconSizes.sm} />
-              {m.orgProvision_action()}
-            {/if}
-          </Button>
-        </div>
-      </form>
-    </Card>
-
-    <Card elevation={1} padding="lg">
-      <h2 class="t-title">{m.orgProvision_orgsTitle()}</h2>
-      <p class="t-body form-copy">{m.orgProvision_orgsDescription()}</p>
-      <ul class="organization-list" aria-label={m.orgProvision_orgsTitle()}>
-        {#each organizations as organization (organization.id)}
-          {@const trace = traces[organization.id]}
-          {@const open = expandedId === organization.id}
-          <li class="org-item" class:open>
-            <Button
-              variant="ghost"
-              class="org-row"
-              aria-expanded={open}
-              onclick={() => toggle(organization.id)}
-            >
-              {#if organization.kind === 'personal'}
-                <User size={iconSizes.sm} aria-label={m.orgProvision_kindPersonal()} role="img" />
+          <Select
+            id="organization-owner"
+            label={m.orgProvision_ownerLabel()}
+            helper={m.orgProvision_ownerHelper()}
+            options={ownerOptions}
+            bind:value={ownerProfileId}
+            disabled={submitting}
+          />
+          <details class="advanced">
+            <summary class="t-label">{m.orgProvision_advanced()}</summary>
+            <div class="advanced-body">
+              <Input
+                id="workforce-company-id"
+                label={m.orgProvision_workforceIdLabel()}
+                helper={m.orgProvision_workforceIdHelper()}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                bind:value={existingWorkforceCompanyId}
+                disabled={submitting}
+              />
+            </div>
+          </details>
+          {#if requestError}<p class="error-message" role="alert">{requestError}</p>{/if}
+          <div class="submit-row">
+            <Button type="submit" variant="primary" disabled={submitting || !name.trim()}>
+              {#if submitting}
+                <Spinner size="xs" />
+                {m.orgProvision_running()}
               {:else}
-                <Building2
-                  size={iconSizes.sm}
-                  aria-label={m.orgProvision_kindBusiness()}
-                  role="img"
-                />
+                <Building2 size={iconSizes.sm} />
+                {m.orgProvision_action()}
               {/if}
-              <span class="t-label org-name">{organization.name}</span>
-              <span class="t-caption org-meta">
-                {organization.slug} · {organization.members}
-                {m.orgProvision_members()}
-              </span>
-              {#if trace}
-                <Chip status={trace.ok ? 'success' : 'warning'}>
-                  {trace.ok ? m.orgProvision_healthy() : m.orgProvision_needsAttention()}
-                </Chip>
-              {/if}
-              <ChevronDown size={iconSizes.sm} class="chevron" aria-hidden="true" />
             </Button>
-            {#if open}
-              <div class="org-detail">
-                {#if trace}
-                  <ol class="trace-list" aria-label={m.orgProvision_traceTitle()}>
-                    {#each trace.steps as step (step.id)}
-                      <li class="trace-step">
-                        <StatusDot
-                          status={step.status === 'complete'
-                            ? 'running'
-                            : step.status === 'failed'
-                              ? 'aborted'
-                              : 'idle'}
-                          size="sm"
-                        />
-                        <span class="trace-copy">
-                          <strong class="t-label">{stepLabels[step.id] ?? step.id}</strong>
-                          <span class="t-caption">{step.detail}</span>
-                        </span>
-                        <span class="t-mono trace-time">{step.durationMs} ms</span>
-                      </li>
-                    {/each}
-                  </ol>
+          </div>
+        </form>
+      </Card>
+
+      <Card elevation={1} padding="lg">
+        <h2 class="t-title">{m.orgProvision_orgsTitle()}</h2>
+        <p class="t-body form-copy">{m.orgProvision_orgsDescription()}</p>
+        <ul class="organization-list" aria-label={m.orgProvision_orgsTitle()}>
+          {#each organizations as organization (organization.id)}
+            {@const trace = traces[organization.id]}
+            {@const open = expandedId === organization.id}
+            <li class="org-item" class:open>
+              <Button
+                variant="ghost"
+                class="org-row"
+                aria-expanded={open}
+                onclick={() => toggle(organization.id)}
+              >
+                {#if organization.kind === 'personal'}
+                  <User size={iconSizes.sm} aria-label={m.orgProvision_kindPersonal()} role="img" />
                 {:else}
-                  <p class="t-caption form-copy">{m.orgProvision_notChecked()}</p>
+                  <Building2
+                    size={iconSizes.sm}
+                    aria-label={m.orgProvision_kindBusiness()}
+                    role="img"
+                  />
                 {/if}
-                <div class="org-actions">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={healingId !== null}
-                    onclick={() => heal(organization.id)}
-                  >
-                    {#if healingId === organization.id}
-                      <Spinner size="xs" />
-                      {m.orgProvision_running()}
-                    {:else}
-                      <RotateCcw size={iconSizes.sm} />
-                      {m.orgProvision_rerun()}
-                    {/if}
-                  </Button>
-                  {#if inviteUrls[organization.id]}
-                    <span class="t-mono invite-link">{inviteUrls[organization.id]}</span>
-                    <Button variant="outline" size="sm" onclick={() => copyInvite(organization.id)}>
-                      {copiedId === organization.id
-                        ? m.orgProvision_inviteCopied()
-                        : m.orgProvision_inviteCopy()}
-                    </Button>
+                <span class="t-label org-name">{organization.name}</span>
+                <span class="t-caption org-meta">
+                  {organization.slug} · {organization.members}
+                  {m.orgProvision_members()}
+                </span>
+                {#if trace}
+                  <Chip status={trace.ok ? 'success' : 'warning'}>
+                    {trace.ok ? m.orgProvision_healthy() : m.orgProvision_needsAttention()}
+                  </Chip>
+                {/if}
+                <ChevronDown size={iconSizes.sm} class="chevron" aria-hidden="true" />
+              </Button>
+              {#if open}
+                <div class="org-detail">
+                  {#if trace}
+                    <ol class="trace-list" aria-label={m.orgProvision_traceTitle()}>
+                      {#each trace.steps as step (step.id)}
+                        <li class="trace-step">
+                          <StatusDot
+                            status={step.status === 'complete'
+                              ? 'running'
+                              : step.status === 'failed'
+                                ? 'aborted'
+                                : 'idle'}
+                            size="sm"
+                          />
+                          <span class="trace-copy">
+                            <strong class="t-label">{stepLabels[step.id] ?? step.id}</strong>
+                            <span class="t-caption">{step.detail}</span>
+                          </span>
+                          <span class="t-mono trace-time">{step.durationMs} ms</span>
+                        </li>
+                      {/each}
+                    </ol>
                   {:else}
+                    <p class="t-caption form-copy">{m.orgProvision_notChecked()}</p>
+                  {/if}
+                  <div class="org-actions">
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={invitingId !== null}
-                      onclick={() => createInvite(organization.id)}
+                      disabled={healingId !== null}
+                      onclick={() => heal(organization.id)}
                     >
-                      {#if invitingId === organization.id}
+                      {#if healingId === organization.id}
                         <Spinner size="xs" />
+                        {m.orgProvision_running()}
                       {:else}
-                        <Link2 size={iconSizes.sm} />
+                        <RotateCcw size={iconSizes.sm} />
+                        {m.orgProvision_rerun()}
                       {/if}
-                      {m.orgProvision_inviteAction()}
                     </Button>
+                    {#if inviteUrls[organization.id]}
+                      <span class="t-mono invite-link">{inviteUrls[organization.id]}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onclick={() => copyInvite(organization.id)}
+                      >
+                        {copiedId === organization.id
+                          ? m.orgProvision_inviteCopied()
+                          : m.orgProvision_inviteCopy()}
+                      </Button>
+                    {:else}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={invitingId !== null}
+                        onclick={() => createInvite(organization.id)}
+                      >
+                        {#if invitingId === organization.id}
+                          <Spinner size="xs" />
+                        {:else}
+                          <Link2 size={iconSizes.sm} />
+                        {/if}
+                        {m.orgProvision_inviteAction()}
+                      </Button>
+                    {/if}
+                  </div>
+                  {#if inviteError && (invitingId === null || invitingId === organization.id)}
+                    <p class="error-message" role="alert">{inviteError}</p>
                   {/if}
                 </div>
-                {#if inviteError && (invitingId === null || invitingId === organization.id)}
-                  <p class="error-message" role="alert">{inviteError}</p>
-                {/if}
-              </div>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    </Card>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </Card>
     </div>
   </PageBody>
 </PageShell>

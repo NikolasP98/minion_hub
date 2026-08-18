@@ -76,7 +76,10 @@ describe('buildUsageRow', () => {
   it('does not double-count reasoning tokens inside output', () => {
     const row = buildUsageRow({
       model: 'anthropic/claude-opus-5',
-      usage: { inputTokens: { noCache: 0 }, outputTokens: { total: 1_000_000, reasoning: 400_000 } },
+      usage: {
+        inputTokens: { noCache: 0 },
+        outputTokens: { total: 1_000_000, reasoning: 400_000 },
+      },
     });
     expect(row.costUsd).toBeCloseTo(25.0, 6);
   });

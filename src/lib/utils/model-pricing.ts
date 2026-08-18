@@ -11,82 +11,82 @@
  */
 
 export type ModelPricing = {
-	/** USD per 1M input tokens. */
-	inputPerMillion: number;
-	/** USD per 1M output tokens. */
-	outputPerMillion: number;
+  /** USD per 1M input tokens. */
+  inputPerMillion: number;
+  /** USD per 1M output tokens. */
+  outputPerMillion: number;
 };
 
 /** Key format: lowercase bare model id (no provider prefix). Local models = no entry (cost 0). */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-	// Anthropic — verified 2026-08-16 against the live OpenRouter /models catalog.
-	// NB the Claude 5 generation is CHEAPER than Claude 4, not more expensive:
-	// Opus 5 is $5/$25 against Opus 4's $15/$75. Do not assume newer = pricier.
-	'claude-opus-5': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
-	// The `-fast` variants are a separate, 2x-priced SKU — they need their own
-	// keys or longest-prefix matching silently bills them at the base rate.
-	'claude-opus-5-fast': { inputPerMillion: 10.0, outputPerMillion: 50.0 },
-	'claude-sonnet-5': { inputPerMillion: 2.0, outputPerMillion: 10.0 },
-	'claude-opus-4': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
-	'claude-opus-4.1': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
-	'claude-opus-4.5': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
-	'claude-opus-4.6': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
-	'claude-opus-4.7': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
-	'claude-opus-4.7-fast': { inputPerMillion: 30.0, outputPerMillion: 150.0 },
-	'claude-opus-4.8': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
-	'claude-opus-4.8-fast': { inputPerMillion: 10.0, outputPerMillion: 50.0 },
-	'claude-sonnet-4': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
-	'claude-sonnet-4.5': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
-	'claude-sonnet-4.6': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
-	'claude-haiku-4': { inputPerMillion: 1.0, outputPerMillion: 5.0 },
-	'claude-haiku-4.5': { inputPerMillion: 1.0, outputPerMillion: 5.0 },
-	'claude-haiku-3.5': { inputPerMillion: 0.8, outputPerMillion: 4.0 },
-	'claude-3.5-sonnet': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
-	'claude-3-opus': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
-	'claude-3-haiku': { inputPerMillion: 0.25, outputPerMillion: 1.25 },
+  // Anthropic — verified 2026-08-16 against the live OpenRouter /models catalog.
+  // NB the Claude 5 generation is CHEAPER than Claude 4, not more expensive:
+  // Opus 5 is $5/$25 against Opus 4's $15/$75. Do not assume newer = pricier.
+  'claude-opus-5': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+  // The `-fast` variants are a separate, 2x-priced SKU — they need their own
+  // keys or longest-prefix matching silently bills them at the base rate.
+  'claude-opus-5-fast': { inputPerMillion: 10.0, outputPerMillion: 50.0 },
+  'claude-sonnet-5': { inputPerMillion: 2.0, outputPerMillion: 10.0 },
+  'claude-opus-4': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
+  'claude-opus-4.1': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
+  'claude-opus-4.5': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+  'claude-opus-4.6': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+  'claude-opus-4.7': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+  'claude-opus-4.7-fast': { inputPerMillion: 30.0, outputPerMillion: 150.0 },
+  'claude-opus-4.8': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+  'claude-opus-4.8-fast': { inputPerMillion: 10.0, outputPerMillion: 50.0 },
+  'claude-sonnet-4': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
+  'claude-sonnet-4.5': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
+  'claude-sonnet-4.6': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
+  'claude-haiku-4': { inputPerMillion: 1.0, outputPerMillion: 5.0 },
+  'claude-haiku-4.5': { inputPerMillion: 1.0, outputPerMillion: 5.0 },
+  'claude-haiku-3.5': { inputPerMillion: 0.8, outputPerMillion: 4.0 },
+  'claude-3.5-sonnet': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
+  'claude-3-opus': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
+  'claude-3-haiku': { inputPerMillion: 0.25, outputPerMillion: 1.25 },
 
-	// OpenAI
-	'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
-	'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
-	'gpt-4-turbo': { inputPerMillion: 10.0, outputPerMillion: 30.0 },
-	'gpt-4': { inputPerMillion: 30.0, outputPerMillion: 60.0 },
-	'gpt-5.2': { inputPerMillion: 10.0, outputPerMillion: 30.0 },
-	o1: { inputPerMillion: 15.0, outputPerMillion: 60.0 },
-	'o1-mini': { inputPerMillion: 3.0, outputPerMillion: 12.0 },
-	o3: { inputPerMillion: 10.0, outputPerMillion: 40.0 },
-	'o3-mini': { inputPerMillion: 1.1, outputPerMillion: 4.4 },
-	'o4-mini': { inputPerMillion: 1.1, outputPerMillion: 4.4 },
+  // OpenAI
+  'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
+  'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
+  'gpt-4-turbo': { inputPerMillion: 10.0, outputPerMillion: 30.0 },
+  'gpt-4': { inputPerMillion: 30.0, outputPerMillion: 60.0 },
+  'gpt-5.2': { inputPerMillion: 10.0, outputPerMillion: 30.0 },
+  o1: { inputPerMillion: 15.0, outputPerMillion: 60.0 },
+  'o1-mini': { inputPerMillion: 3.0, outputPerMillion: 12.0 },
+  o3: { inputPerMillion: 10.0, outputPerMillion: 40.0 },
+  'o3-mini': { inputPerMillion: 1.1, outputPerMillion: 4.4 },
+  'o4-mini': { inputPerMillion: 1.1, outputPerMillion: 4.4 },
 
-	// Google — verified 2026-08-16 against the live OpenRouter /models catalog.
-	// `gemini-2.5-flash` is the hub's actual default model and was understated
-	// 4.2x on output ($0.60 vs the real $2.50), so every cost figure the
-	// dashboards have ever shown for the default path was far too low.
-	'gemini-3.5-flash': { inputPerMillion: 1.5, outputPerMillion: 9.0 },
-	'gemini-3.1-pro': { inputPerMillion: 2.0, outputPerMillion: 12.0 },
-	'gemini-3.1-flash-lite': { inputPerMillion: 0.25, outputPerMillion: 1.5 },
-	'gemini-2.5-pro': { inputPerMillion: 1.25, outputPerMillion: 10.0 },
-	'gemini-2.5-flash-lite': { inputPerMillion: 0.1, outputPerMillion: 0.4 },
-	'gemini-2.5-flash': { inputPerMillion: 0.3, outputPerMillion: 2.5 },
-	'gemini-2.0-flash': { inputPerMillion: 0.1, outputPerMillion: 0.4 },
-	'gemini-1.5-pro': { inputPerMillion: 1.25, outputPerMillion: 5.0 },
-	'gemini-1.5-flash': { inputPerMillion: 0.075, outputPerMillion: 0.3 },
+  // Google — verified 2026-08-16 against the live OpenRouter /models catalog.
+  // `gemini-2.5-flash` is the hub's actual default model and was understated
+  // 4.2x on output ($0.60 vs the real $2.50), so every cost figure the
+  // dashboards have ever shown for the default path was far too low.
+  'gemini-3.5-flash': { inputPerMillion: 1.5, outputPerMillion: 9.0 },
+  'gemini-3.1-pro': { inputPerMillion: 2.0, outputPerMillion: 12.0 },
+  'gemini-3.1-flash-lite': { inputPerMillion: 0.25, outputPerMillion: 1.5 },
+  'gemini-2.5-pro': { inputPerMillion: 1.25, outputPerMillion: 10.0 },
+  'gemini-2.5-flash-lite': { inputPerMillion: 0.1, outputPerMillion: 0.4 },
+  'gemini-2.5-flash': { inputPerMillion: 0.3, outputPerMillion: 2.5 },
+  'gemini-2.0-flash': { inputPerMillion: 0.1, outputPerMillion: 0.4 },
+  'gemini-1.5-pro': { inputPerMillion: 1.25, outputPerMillion: 5.0 },
+  'gemini-1.5-flash': { inputPerMillion: 0.075, outputPerMillion: 0.3 },
 
-	// Embeddings — priced per input token, no output. Cheap per call but the
-	// vectorize/brain-reconcile pipelines run them in bulk, so an unpriced entry
-	// here would report two whole pipelines as free.
-	'text-embedding-3-small': { inputPerMillion: 0.02, outputPerMillion: 0 },
-	'text-embedding-3-large': { inputPerMillion: 0.13, outputPerMillion: 0 },
+  // Embeddings — priced per input token, no output. Cheap per call but the
+  // vectorize/brain-reconcile pipelines run them in bulk, so an unpriced entry
+  // here would report two whole pipelines as free.
+  'text-embedding-3-small': { inputPerMillion: 0.02, outputPerMillion: 0 },
+  'text-embedding-3-large': { inputPerMillion: 0.13, outputPerMillion: 0 },
 
-	// Groq / Mistral / DeepSeek / xAI
-	'mixtral-8x7b': { inputPerMillion: 0.24, outputPerMillion: 0.24 },
-	'mistral-large': { inputPerMillion: 2.0, outputPerMillion: 6.0 },
-	codestral: { inputPerMillion: 0.3, outputPerMillion: 0.9 },
-	'pixtral-large': { inputPerMillion: 2.0, outputPerMillion: 6.0 },
-	'deepseek-chat': { inputPerMillion: 0.14, outputPerMillion: 0.28 },
-	'deepseek-coder': { inputPerMillion: 0.14, outputPerMillion: 0.28 },
-	'deepseek-r1': { inputPerMillion: 0.55, outputPerMillion: 2.19 },
-	'grok-2': { inputPerMillion: 2.0, outputPerMillion: 10.0 },
-	'grok-3': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
+  // Groq / Mistral / DeepSeek / xAI
+  'mixtral-8x7b': { inputPerMillion: 0.24, outputPerMillion: 0.24 },
+  'mistral-large': { inputPerMillion: 2.0, outputPerMillion: 6.0 },
+  codestral: { inputPerMillion: 0.3, outputPerMillion: 0.9 },
+  'pixtral-large': { inputPerMillion: 2.0, outputPerMillion: 6.0 },
+  'deepseek-chat': { inputPerMillion: 0.14, outputPerMillion: 0.28 },
+  'deepseek-coder': { inputPerMillion: 0.14, outputPerMillion: 0.28 },
+  'deepseek-r1': { inputPerMillion: 0.55, outputPerMillion: 2.19 },
+  'grok-2': { inputPerMillion: 2.0, outputPerMillion: 10.0 },
+  'grok-3': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
 };
 
 /** Cache-read tokens bill at a fraction of base input (~0.1× for Anthropic prompt caching). */
@@ -106,49 +106,49 @@ const BATCH_DISCOUNT = 0.5;
  * `claude-opus-4`). Returns undefined for unknown/local models (cost = 0).
  */
 export function getModelPricing(modelId: string): ModelPricing | undefined {
-	if (!modelId) return undefined;
-	let lower = modelId.toLowerCase();
-	// Drop provider prefix (e.g. "anthropic/claude-sonnet-4" → "claude-sonnet-4").
-	const slash = lower.lastIndexOf('/');
-	if (slash >= 0) lower = lower.slice(slash + 1);
+  if (!modelId) return undefined;
+  let lower = modelId.toLowerCase();
+  // Drop provider prefix (e.g. "anthropic/claude-sonnet-4" → "claude-sonnet-4").
+  const slash = lower.lastIndexOf('/');
+  if (slash >= 0) lower = lower.slice(slash + 1);
 
-	// OpenRouter exposes async batch execution as a `:batch` model suffix priced
-	// at half the interactive rate. Without this the suffix would fall through to
-	// a longest-prefix match on the base model and bill batch work at full price —
-	// i.e. the one lever that halves pipeline COGS would be invisible in the data.
-	let multiplier = 1;
-	if (lower.endsWith(':batch')) {
-		lower = lower.slice(0, -':batch'.length);
-		multiplier = BATCH_DISCOUNT;
-	}
+  // OpenRouter exposes async batch execution as a `:batch` model suffix priced
+  // at half the interactive rate. Without this the suffix would fall through to
+  // a longest-prefix match on the base model and bill batch work at full price —
+  // i.e. the one lever that halves pipeline COGS would be invisible in the data.
+  let multiplier = 1;
+  if (lower.endsWith(':batch')) {
+    lower = lower.slice(0, -':batch'.length);
+    multiplier = BATCH_DISCOUNT;
+  }
 
-	const base = lookupBasePricing(lower);
-	if (!base || multiplier === 1) return base;
-	return {
-		inputPerMillion: base.inputPerMillion * multiplier,
-		outputPerMillion: base.outputPerMillion * multiplier,
-	};
+  const base = lookupBasePricing(lower);
+  if (!base || multiplier === 1) return base;
+  return {
+    inputPerMillion: base.inputPerMillion * multiplier,
+    outputPerMillion: base.outputPerMillion * multiplier,
+  };
 }
 
 function lookupBasePricing(lower: string): ModelPricing | undefined {
-	const exact = MODEL_PRICING[lower];
-	if (exact) return exact;
+  const exact = MODEL_PRICING[lower];
+  if (exact) return exact;
 
-	// Longest-prefix match — pick the most specific key that prefixes the id.
-	let best: ModelPricing | undefined;
-	let bestLen = 0;
-	for (const [key, value] of Object.entries(MODEL_PRICING)) {
-		if (lower.startsWith(key) && key.length > bestLen) {
-			best = value;
-			bestLen = key.length;
-		}
-	}
-	return best;
+  // Longest-prefix match — pick the most specific key that prefixes the id.
+  let best: ModelPricing | undefined;
+  let bestLen = 0;
+  for (const [key, value] of Object.entries(MODEL_PRICING)) {
+    if (lower.startsWith(key) && key.length > bestLen) {
+      best = value;
+      bestLen = key.length;
+    }
+  }
+  return best;
 }
 
 /** True when we have a price for this model (vs. an unpriced/local model). */
 export function isModelPriced(modelId: string): boolean {
-	return getModelPricing(modelId) !== undefined;
+  return getModelPricing(modelId) !== undefined;
 }
 
 /**
@@ -157,28 +157,28 @@ export function isModelPriced(modelId: string): boolean {
  * Returns 0 for unknown/local models.
  */
 export function estimateCostUsd(
-	modelId: string,
-	inputTokens: number,
-	outputTokens: number,
-	cacheReadTokens = 0,
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number,
+  cacheReadTokens = 0,
 ): number {
-	const pricing = getModelPricing(modelId);
-	if (!pricing) return 0;
-	return (
-		(inputTokens / 1_000_000) * pricing.inputPerMillion +
-		(outputTokens / 1_000_000) * pricing.outputPerMillion +
-		(cacheReadTokens / 1_000_000) * pricing.inputPerMillion * CACHE_READ_DISCOUNT
-	);
+  const pricing = getModelPricing(modelId);
+  if (!pricing) return 0;
+  return (
+    (inputTokens / 1_000_000) * pricing.inputPerMillion +
+    (outputTokens / 1_000_000) * pricing.outputPerMillion +
+    (cacheReadTokens / 1_000_000) * pricing.inputPerMillion * CACHE_READ_DISCOUNT
+  );
 }
 
 /** Format a USD cost for compact dashboard display ($1.2k / $3.40 / 12.3¢ / <0.1¢). */
 export function formatUsd(usd: number): string {
-	if (usd <= 0) return '$0';
-	if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
-	if (usd >= 1) return `$${usd.toFixed(2)}`;
-	const cents = usd * 100;
-	if (cents >= 0.1) return `${cents.toFixed(1)}¢`;
-	return '<0.1¢';
+  if (usd <= 0) return '$0';
+  if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
+  if (usd >= 1) return `$${usd.toFixed(2)}`;
+  const cents = usd * 100;
+  if (cents >= 0.1) return `${cents.toFixed(1)}¢`;
+  return '<0.1¢';
 }
 
 /**
@@ -188,21 +188,21 @@ export function formatUsd(usd: number): string {
 export type MoneyUnit = 'usd' | 'cents';
 
 export function pickMoneyUnit(maxUsd: number): MoneyUnit {
-	return maxUsd >= 1 ? 'usd' : 'cents';
+  return maxUsd >= 1 ? 'usd' : 'cents';
 }
 
 /** Format a USD value in a FIXED unit (no auto-switching) — for axis ticks/labels. */
 export function formatMoney(usd: number, unit: MoneyUnit): string {
-	if (unit === 'usd') {
-		if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
-		return `$${usd.toFixed(2)}`;
-	}
-	const cents = usd * 100;
-	if (cents > 0 && cents < 0.1) return '<0.1¢';
-	return `${cents.toFixed(1)}¢`;
+  if (unit === 'usd') {
+    if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
+    return `$${usd.toFixed(2)}`;
+  }
+  const cents = usd * 100;
+  if (cents > 0 && cents < 0.1) return '<0.1¢';
+  return `${cents.toFixed(1)}¢`;
 }
 
 /** Human label for the chosen unit, e.g. for an axis title. */
 export function moneyUnitLabel(unit: MoneyUnit): string {
-	return unit === 'usd' ? 'USD ($)' : 'cents (¢)';
+  return unit === 'usd' ? 'USD ($)' : 'cents (¢)';
 }

@@ -23,7 +23,10 @@ const url = process.env.SUPABASE_DB_URL?.trim();
 if (!url) throw new Error('SUPABASE_DB_URL not set (check .env.local)');
 const client = postgres(url, { prepare: false, max: 2 });
 
-async function withOrg<T>(orgId: string, fn: (sql: postgres.TransactionSql) => Promise<T>): Promise<T> {
+async function withOrg<T>(
+  orgId: string,
+  fn: (sql: postgres.TransactionSql) => Promise<T>,
+): Promise<T> {
   return client.begin(async (tx) => {
     await tx`set local role app_ledger`;
     await tx`select set_config('app.current_org_id', ${orgId}, true)`;
@@ -37,7 +40,9 @@ async function main() {
   const orgs = await client`select id, name from organizations order by created_at asc`;
   console.log(`# Conversation corpus audit — org \`${orgId}\``);
   console.log('');
-  console.log(`(${orgs.length} org(s) in DB: ${orgs.map((o) => `${o.name}(${String(o.id).slice(0, 8)})`).join(', ')})`);
+  console.log(
+    `(${orgs.length} org(s) in DB: ${orgs.map((o) => `${o.name}(${String(o.id).slice(0, 8)})`).join(', ')})`,
+  );
   console.log('');
 
   await withOrg(orgId, async (tx) => {
@@ -62,7 +67,9 @@ async function main() {
     // (b) corpus size + (c) content coverage, per channel
     console.log('## (b)+(c) corpus size & content coverage (all directions)');
     console.log('');
-    console.log('| channel | total rows | non-bot w/ content | inbound rows | inbound w/ content | content coverage % | distinct (channel,chat_id) |');
+    console.log(
+      '| channel | total rows | non-bot w/ content | inbound rows | inbound w/ content | content coverage % | distinct (channel,chat_id) |',
+    );
     console.log('|---|--:|--:|--:|--:|--:|--:|');
     let totalConvos = 0;
     for (const ch of CHANNELS) {
@@ -78,7 +85,8 @@ async function main() {
       `;
       const inboundRows = Number(row.inbound_rows);
       const inboundWithContent = Number(row.inbound_with_content);
-      const coverage = inboundRows > 0 ? ((inboundWithContent / inboundRows) * 100).toFixed(1) : 'n/a';
+      const coverage =
+        inboundRows > 0 ? ((inboundWithContent / inboundRows) * 100).toFixed(1) : 'n/a';
       totalConvos += Number(row.distinct_chats);
       console.log(
         `| ${ch} | ${row.total_rows} | ${row.content_rows} | ${inboundRows} | ${inboundWithContent} | ${coverage}% | ${row.distinct_chats} |`,
@@ -88,7 +96,9 @@ async function main() {
       select count(distinct (channel, chat_id)) as n from messages where channel = any(${CHANNELS as unknown as string[]})
     `;
     console.log('');
-    console.log(`Distinct \`(channel, chat_id)\` conversations across the 3 channels: **${allChats.n}** (sum-of-per-channel was ${totalConvos} — should match since chat_id is not shared cross-channel).`);
+    console.log(
+      `Distinct \`(channel, chat_id)\` conversations across the 3 channels: **${allChats.n}** (sum-of-per-channel was ${totalConvos} — should match since chat_id is not shared cross-channel).`,
+    );
     console.log('');
 
     // (d) rough embedding cost
@@ -102,10 +112,16 @@ async function main() {
     const totalChars = Number(charsRow.total_chars);
     const estTokens = totalChars / 4;
     const estCostUsd = (estTokens / 1000) * 0.00002;
-    console.log(`Rows counted: ${charsRow.n}. Total content chars: ${totalChars.toLocaleString()}.`);
+    console.log(
+      `Rows counted: ${charsRow.n}. Total content chars: ${totalChars.toLocaleString()}.`,
+    );
     console.log(`Est. tokens (chars/4): ${Math.round(estTokens).toLocaleString()}.`);
-    console.log(`Est. embedding cost @ $0.00002/1k tok (text-embedding-3-small): **$${estCostUsd.toFixed(4)}**.`);
-    console.log('(Real backfill will chunk to ~1500 tok/conversation, not per-message — this is a raw content-volume upper bound, not the exact chunk count.)');
+    console.log(
+      `Est. embedding cost @ $0.00002/1k tok (text-embedding-3-small): **$${estCostUsd.toFixed(4)}**.`,
+    );
+    console.log(
+      '(Real backfill will chunk to ~1500 tok/conversation, not per-message — this is a raw content-volume upper bound, not the exact chunk count.)',
+    );
     console.log('');
   });
 

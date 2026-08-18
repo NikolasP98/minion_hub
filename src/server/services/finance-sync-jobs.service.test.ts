@@ -1,6 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { enqueueJob, getActiveJob, claimJob, requestCancel, isCancelRequested, isJobStale, STALE_MS } from './finance-sync-jobs.service';
+import {
+  enqueueJob,
+  getActiveJob,
+  claimJob,
+  requestCancel,
+  isCancelRequested,
+  isJobStale,
+  STALE_MS,
+} from './finance-sync-jobs.service';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
@@ -16,7 +24,7 @@ describe('enqueueJob', () => {
   it('inserts a queued job when none is active', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
-      [],                                                            // getActiveJob → none
+      [], // getActiveJob → none
       [{ id: 'job-new', orgId: 'org-1', provider: 'susii', status: 'queued' }], // insert().returning()
     ]);
     const job = await enqueueJob(ctx(db), 'susii');
@@ -31,7 +39,9 @@ describe('enqueueJob', () => {
     // Sequence: [] for the initial getActiveJob select, [raceJob] for the catch-path getActiveJob select
     resolveSequence([[], [raceJob]]);
     const uniqueViolation = Object.assign(new Error('unique violation'), { code: '23505' });
-    (db.insert as ReturnType<typeof vi.fn>).mockImplementation(() => { throw uniqueViolation; });
+    (db.insert as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw uniqueViolation;
+    });
     const job = await enqueueJob(ctx(db), 'susii');
     expect(job.id).toBe('job-race');
   });

@@ -35,16 +35,16 @@ The missing pieces are operational wiring and UI fanout:
 
 ## Protocol fit: what Realtime replaces—and what it does not
 
-| Existing path | Current responsibility | Decision | Why |
-|---|---|---|---|
-| Browser ↔ gateway custom WebSocket (`req` / `res` / `event`) | Gateway RPC, agents, sessions, presence, pairing, tool streams, restart/update progress | **Keep** | It is the live control plane for state owned by the gateway, not Supabase. |
-| Hub server → gateway request-scoped WebSockets | Server-side gateway RPC and long-running update orchestration | **Keep** | Private server/gateway transport; browser Realtime does not provide RPC. |
-| PTY / remote terminal WebSockets | Interactive binary terminal streams | **Keep** | Stream semantics cannot be replaced by database change signals. |
-| Hub cache HTTP broadcaster | Hub write → gateway cache invalidation | **Keep** | Server-to-gateway coherence, not browser freshness. |
-| NATS JetStream worker plane | Durable queued work, leases, retries, global/per-org concurrency | **Orthogonal** | JetStream isolates background work; it does not directly refresh authenticated browsers. |
-| Omnichat 15/60-second polling | Detect newly committed ledger messages | **Replace when subscribed** | Database Broadcast becomes the fast invalidation signal; the existing API remains canonical. |
-| CRM contact 12-second polling | Detect new messages for the open contact | **Replace when subscribed** | Exact channel/chat filtering avoids org-wide refetch fanout. |
-| Five-minute visibility-aware poll | Missed-event and outage recovery | **Keep** | Realtime is an optimization, never the only consistency path. |
+| Existing path                                                | Current responsibility                                                                  | Decision                    | Why                                                                                          |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------- |
+| Browser ↔ gateway custom WebSocket (`req` / `res` / `event`) | Gateway RPC, agents, sessions, presence, pairing, tool streams, restart/update progress | **Keep**                    | It is the live control plane for state owned by the gateway, not Supabase.                   |
+| Hub server → gateway request-scoped WebSockets               | Server-side gateway RPC and long-running update orchestration                           | **Keep**                    | Private server/gateway transport; browser Realtime does not provide RPC.                     |
+| PTY / remote terminal WebSockets                             | Interactive binary terminal streams                                                     | **Keep**                    | Stream semantics cannot be replaced by database change signals.                              |
+| Hub cache HTTP broadcaster                                   | Hub write → gateway cache invalidation                                                  | **Keep**                    | Server-to-gateway coherence, not browser freshness.                                          |
+| NATS JetStream worker plane                                  | Durable queued work, leases, retries, global/per-org concurrency                        | **Orthogonal**              | JetStream isolates background work; it does not directly refresh authenticated browsers.     |
+| Omnichat 15/60-second polling                                | Detect newly committed ledger messages                                                  | **Replace when subscribed** | Database Broadcast becomes the fast invalidation signal; the existing API remains canonical. |
+| CRM contact 12-second polling                                | Detect new messages for the open contact                                                | **Replace when subscribed** | Exact channel/chat filtering avoids org-wide refetch fanout.                                 |
+| Five-minute visibility-aware poll                            | Missed-event and outage recovery                                                        | **Keep**                    | Realtime is an optimization, never the only consistency path.                                |
 
 The implementation uses one singleton Supabase client and one shared private
 `org:<orgId>:events` channel per browser tab. Event names (`message.committed`,
@@ -59,21 +59,21 @@ fail-safe.
 
 ## What is exact, and what remains unknown
 
-| Item | Current evidence | Confidence |
-|---|---:|---|
-| Production Hub general app pool | `SUPABASE_DB_POOL_SIZE=3` | Exact, pulled from current Vercel production env |
-| Production Hub RLS pool | `SUPABASE_DB_RLS_POOL_SIZE=1` | Exact, pulled from current Vercel production env |
-| Production Hub on-demand pooler slot cap per isolate | `3 + 1 = 4` | Exact |
-| Local Hub general / critical / RLS caps | `8 + 4 + 5 = 17` | Exact, current local env and pool code |
-| Hub connection mode | Shared Supavisor transaction mode, port `6543` | Exact |
-| Current failure | `ECHECKOUTTIMEOUT` after 15 seconds in transaction mode | Exact, local and production logs |
-| Session-mode availability | Also returns `ECHECKOUTTIMEOUT` after 15 seconds on port `5432` | Exact, read-only live probe |
-| Last directly measured Postgres use | `21 / 60` sessions; 1 active | Exact as of 2026-07-12, not current |
-| Current Postgres `max_connections` | Unknown; live SQL cannot check out a connection | Explicitly unverified |
-| Current Supabase compute tier | Unknown | Explicitly unverified |
-| Current Supavisor backend pool size | Unknown; dashboard setting not available through the checked interfaces | Explicitly unverified |
-| Nano/Micro documented limits | 60 Postgres connections, 200 pooler clients | Current official Supabase defaults; tier match unverified |
-| Managed Supabase baseline by role | Exists, but current exact role counts are unavailable during saturation | Partially verified |
+| Item                                                 |                                                        Current evidence | Confidence                                                |
+| ---------------------------------------------------- | ----------------------------------------------------------------------: | --------------------------------------------------------- |
+| Production Hub general app pool                      |                                               `SUPABASE_DB_POOL_SIZE=3` | Exact, pulled from current Vercel production env          |
+| Production Hub RLS pool                              |                                           `SUPABASE_DB_RLS_POOL_SIZE=1` | Exact, pulled from current Vercel production env          |
+| Production Hub on-demand pooler slot cap per isolate |                                                             `3 + 1 = 4` | Exact                                                     |
+| Local Hub general / critical / RLS caps              |                                                        `8 + 4 + 5 = 17` | Exact, current local env and pool code                    |
+| Hub connection mode                                  |                          Shared Supavisor transaction mode, port `6543` | Exact                                                     |
+| Current failure                                      |                 `ECHECKOUTTIMEOUT` after 15 seconds in transaction mode | Exact, local and production logs                          |
+| Session-mode availability                            |         Also returns `ECHECKOUTTIMEOUT` after 15 seconds on port `5432` | Exact, read-only live probe                               |
+| Last directly measured Postgres use                  |                                            `21 / 60` sessions; 1 active | Exact as of 2026-07-12, not current                       |
+| Current Postgres `max_connections`                   |                         Unknown; live SQL cannot check out a connection | Explicitly unverified                                     |
+| Current Supabase compute tier                        |                                                                 Unknown | Explicitly unverified                                     |
+| Current Supavisor backend pool size                  | Unknown; dashboard setting not available through the checked interfaces | Explicitly unverified                                     |
+| Nano/Micro documented limits                         |                             60 Postgres connections, 200 pooler clients | Current official Supabase defaults; tier match unverified |
+| Managed Supabase baseline by role                    | Exists, but current exact role counts are unavailable during saturation | Partially verified                                        |
 
 The distinction between **pooler client slots** and **Postgres backend connections** matters:
 
@@ -102,14 +102,14 @@ Hub Supavisor client ceiling = warm Vercel isolates × 4
 
 Illustrative ceilings if the requests land on distinct isolates:
 
-| Concurrent warm isolates | Potential Hub clients |
-|---:|---:|
-| 1 | 4 |
-| 5 distinct isolates serving synchronized minute routes | 20 |
-| 5 distinct overlapping Meta isolates + 4 other route isolates | 36 |
-| Previous scenario + 2 top-of-hour route isolates | 44 |
-| 20 isolates under user/cron load | 80 |
-| 50 isolates | 200 |
+|                                      Concurrent warm isolates | Potential Hub clients |
+| ------------------------------------------------------------: | --------------------: |
+|                                                             1 |                     4 |
+|        5 distinct isolates serving synchronized minute routes |                    20 |
+| 5 distinct overlapping Meta isolates + 4 other route isolates |                    36 |
+|              Previous scenario + 2 top-of-hour route isolates |                    44 |
+|                              20 isolates under user/cron load |                    80 |
+|                                                   50 isolates |                   200 |
 
 These are scenario ceilings, not an observed isolate count or proof that every pool slot is open simultaneously. Vercel can reuse an isolate, and postgres-js opens physical pooler connections on demand and closes idle clients after 20 seconds. However, the minute herd, initialization reads, long request lifetimes, and per-isolate scheduler create enough demand that the multiplier must be bounded and measured.
 
@@ -185,10 +185,10 @@ up to at least 6N RLS discovery/enqueue transactions when all three kinds are st
 These partial counts exclude the global org/job queries, unique-conflict recovery reads, initialization work, claimed job work, and any multiplication from overlapping tick invocations.
 
 | Connected orgs | Discovery tx per invocation | All-stale discovery/enqueue tx per invocation |
-|---:|---:|---:|
-| 10 | 30 | 60 |
-| 100 | 300 | 600 |
-| 1,000 | 3,000 | 6,000 |
+| -------------: | --------------------------: | --------------------------------------------: |
+|             10 |                          30 |                                            60 |
+|            100 |                         300 |                                           600 |
+|          1,000 |                       3,000 |                                         6,000 |
 
 The jobs are only considered stale after six hours. Invoking this discovery scan every minute performs 360 checks per six-hour window for each org/kind before it is eligible again.
 
@@ -282,11 +282,11 @@ Both production gateway containers currently have:
 
 Their aggregate outbox states were:
 
-| Gateway | Channel | Total rows | Pending | Acknowledged |
-|---|---|---:|---:|---:|
-| faces | WhatsApp | 59,205 | 0 | 59,205 |
-| default | WhatsApp | 14,719 | 0 | 14,719 |
-| default | Telegram | 19 | 0 | 19 |
+| Gateway | Channel  | Total rows | Pending | Acknowledged |
+| ------- | -------- | ---------: | ------: | -----------: |
+| faces   | WhatsApp |     59,205 |       0 |       59,205 |
+| default | WhatsApp |     14,719 |       0 |       14,719 |
+| default | Telegram |         19 |       0 |           19 |
 
 No Instagram or Messenger rows were present.
 
@@ -382,13 +382,13 @@ Valkey should carry job coordination, not become the message source of truth.
 
 ## Option comparison
 
-| Option | Latency | Durability | Database effect | Multi-org scaling | Verdict |
-|---|---|---|---|---|---|
-| One-minute Graph polling | 0–60s, often worse | DB job rows | Repeated cross-org scans and long functions | Poor without sharding | Reconciliation only |
-| Direct gateway WebSocket event to browser | Very low | Requires replay design | Low | Complex across gateways/reconnects | Useful supplemental path |
-| Supabase Postgres Changes | Low | DB is source | Per-subscriber authorization and single-thread ordering | Moderate | Avoid as primary |
-| Supabase private database Broadcast | Low | Message + Broadcast record commit together; short replay optimization | One broadcast event, managed fanout | Strong | Recommended browser plane |
-| External NATS/Valkey broker end-to-end | Very low | Depends on stream config | Low direct DB fanout | Strongest | Later-stage complexity |
+| Option                                    | Latency            | Durability                                                            | Database effect                                         | Multi-org scaling                  | Verdict                   |
+| ----------------------------------------- | ------------------ | --------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------- | ------------------------- |
+| One-minute Graph polling                  | 0–60s, often worse | DB job rows                                                           | Repeated cross-org scans and long functions             | Poor without sharding              | Reconciliation only       |
+| Direct gateway WebSocket event to browser | Very low           | Requires replay design                                                | Low                                                     | Complex across gateways/reconnects | Useful supplemental path  |
+| Supabase Postgres Changes                 | Low                | DB is source                                                          | Per-subscriber authorization and single-thread ordering | Moderate                           | Avoid as primary          |
+| Supabase private database Broadcast       | Low                | Message + Broadcast record commit together; short replay optimization | One broadcast event, managed fanout                     | Strong                             | Recommended browser plane |
+| External NATS/Valkey broker end-to-end    | Very low           | Depends on stream config                                              | Low direct DB fanout                                    | Strongest                          | Later-stage complexity    |
 
 ## Pool and connection strategy
 

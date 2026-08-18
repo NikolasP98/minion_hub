@@ -26,10 +26,15 @@ function resolveRange(url: URL, extent: DataExtent): DateRange {
   const hasExplicitRange = url.searchParams.has('from') || url.searchParams.has('to');
   const now = new Date();
   const last30 = extentToRange({ minDate: null, maxDate: null }, now);
-  const newestIsStale = extent.maxDate != null && now.getTime() - new Date(`${extent.maxDate}T00:00:00Z`).getTime() > THIRTY_DAYS_MS;
+  const newestIsStale =
+    extent.maxDate != null &&
+    now.getTime() - new Date(`${extent.maxDate}T00:00:00Z`).getTime() > THIRTY_DAYS_MS;
   const defaultRange = newestIsStale ? extentToRange(extent, now) : last30;
   return hasExplicitRange
-    ? { from: url.searchParams.get('from') || defaultRange.from, to: url.searchParams.get('to') || defaultRange.to }
+    ? {
+        from: url.searchParams.get('from') || defaultRange.from,
+        to: url.searchParams.get('to') || defaultRange.to,
+      }
     : defaultRange;
 }
 
@@ -56,7 +61,18 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const period = resolvePeriod(url);
 
   if (!hasConnection) {
-    return { range, period, hasConnection, extent, kpis: null, series: [], campaigns: [], conversations: 0, posts: [], lastSync: null };
+    return {
+      range,
+      period,
+      hasConnection,
+      extent,
+      kpis: null,
+      series: [],
+      campaigns: [],
+      conversations: 0,
+      posts: [],
+      lastSync: null,
+    };
   }
 
   // `performance` (campaign rollup + conversations) carries the spend the

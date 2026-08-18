@@ -7,12 +7,12 @@
 
 ## Validation results
 
-| Outcome | Count |
-|---|---|
-| **Validated (identity confirmed)** | **2026** |
-| Wrong DNI (queried ID does not match the customer's data) | 42 |
-| Not found in the public registry | 20 |
-| **Total 8-digit DNIs processed** | **2088** |
+| Outcome                                                   | Count    |
+| --------------------------------------------------------- | -------- |
+| **Validated (identity confirmed)**                        | **2026** |
+| Wrong DNI (queried ID does not match the customer's data) | 42       |
+| Not found in the public registry                          | 20       |
+| **Total 8-digit DNIs processed**                          | **2088** |
 
 Validated = the registry returned a person AND their name matched the CRM record (order-insensitive, accent/Ñ-folded). Those parties carry `dni_verified = true`.
 
@@ -20,11 +20,11 @@ Validated = the registry returned a person AND their name matched the CRM record
 
 Every one of the 2026 validated parties had its registry data written back:
 
-| Field | Coverage | Notes |
-|---|---|---|
-| **Date of birth** | 2019 / 2026 | Stored as a real `date`; age is derived from it live. The 7 without a DOB have an empty birth date in the registry itself. |
-| **Sex** | 2026 / 2026 (221 M, 1805 F) | Stored canonical `M`/`F`; the UI localizes to Hombre/Mujer. |
-| **Full name** | 2026 / 2026 | Rebuilt from the registry's structured parts as `nombres apellido_paterno apellido_materno`, overwriting both the party name and the CRM display name. |
+| Field             | Coverage                    | Notes                                                                                                                                                  |
+| ----------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Date of birth** | 2019 / 2026                 | Stored as a real `date`; age is derived from it live. The 7 without a DOB have an empty birth date in the registry itself.                             |
+| **Sex**           | 2026 / 2026 (221 M, 1805 F) | Stored canonical `M`/`F`; the UI localizes to Hombre/Mujer.                                                                                            |
+| **Full name**     | 2026 / 2026                 | Rebuilt from the registry's structured parts as `nombres apellido_paterno apellido_materno`, overwriting both the party name and the CRM display name. |
 
 The raw registry payload (names, sex, verification code) is retained in `metadata.dni_registry` as an audit trail, so the name can be re-ordered later without re-querying.
 

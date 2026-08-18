@@ -6,13 +6,17 @@ const mockEncryptCreds = vi.fn((_c: unknown) => ({ ciphertext: 'CT', iv: 'IV' })
 const mockCount = vi.fn<() => Promise<number | null>>();
 
 vi.mock('$server/auth/authorize', () => ({ requireAdmin: () => {} }));
-vi.mock('$server/auth/core-ctx', () => ({ getCoreCtx: async () => ({ db: {}, tenantId: 'org-1' }) }));
+vi.mock('$server/auth/core-ctx', () => ({
+  getCoreCtx: async () => ({ db: {}, tenantId: 'org-1' }),
+}));
 vi.mock('$server/services/finance.service', () => ({
   getSource: (...a: unknown[]) => mockGetSource(...a),
   upsertSource: (...a: unknown[]) => mockUpsertSource(...a),
   sourceHasCredentials: (..._a: unknown[]) => true,
 }));
-vi.mock('$server/services/finance-secrets', () => ({ encryptCreds: (c: unknown) => mockEncryptCreds(c) }));
+vi.mock('$server/services/finance-secrets', () => ({
+  encryptCreds: (c: unknown) => mockEncryptCreds(c),
+}));
 vi.mock('$server/finance/connector', () => ({
   getConnector: () => ({ provider: 'susii', count: () => mockCount() }),
 }));

@@ -9,7 +9,9 @@ vi.mock('ai', () => ({
 vi.mock('@ai-sdk/openai', () => ({ createOpenAI: () => () => ({}) }));
 
 const envObj: Record<string, string> = { OPENROUTER_API_KEY: 'test-key' };
-vi.mock('$env/dynamic/private', () => ({ env: new Proxy(envObj, { get: (t, p) => t[p as string] }) }));
+vi.mock('$env/dynamic/private', () => ({
+  env: new Proxy(envObj, { get: (t, p) => t[p as string] }),
+}));
 
 function makeLocals(auth = true): App.Locals {
   return {

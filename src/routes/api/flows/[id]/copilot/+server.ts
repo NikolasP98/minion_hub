@@ -40,7 +40,11 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   const tools = {
     addNode: tool({
       description: 'Add a node. Returns the new node id.',
-      inputSchema: z.object({ type: z.string(), label: z.string(), data: z.record(z.string(), z.unknown()).optional() }),
+      inputSchema: z.object({
+        type: z.string(),
+        label: z.string(),
+        data: z.record(z.string(), z.unknown()).optional(),
+      }),
       execute: async (a) => {
         const r = ops.addNode(work, a);
         work = r.flow;

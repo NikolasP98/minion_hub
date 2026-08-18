@@ -64,7 +64,9 @@ const edgeSchema = z.object({
     .enum(['Yes', 'No'])
     .nullable()
     .optional()
-    .describe('Branch label for condition edges (Yes/No for condition nodes, null for regular edges)'),
+    .describe(
+      'Branch label for condition edges (Yes/No for condition nodes, null for regular edges)',
+    ),
 });
 
 const skillPipelineSchema = z.object({

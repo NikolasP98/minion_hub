@@ -1,7 +1,15 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { Settings2, RefreshCw, Plug, Coins } from 'lucide-svelte';
-  import { PageHeader, Button, Select, Toggle, ProgressBar, Spinner, iconSizes } from '$lib/components/ui';
+  import {
+    PageHeader,
+    Button,
+    Select,
+    Toggle,
+    ProgressBar,
+    Spinner,
+    iconSizes,
+  } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { financeSync } from '$lib/state/features/finance-sync.svelte';
@@ -50,9 +58,10 @@
       // verified:true means auth is confirmed RIGHT NOW. Say so — `Last status`
       // below describes the last SYNC and stays 'failed' until the next run,
       // which otherwise reads as "the credentials I just saved are broken".
-      const body = (await res.json().catch(() => null)) as
-        | { verified?: boolean | null; message?: string }
-        | null;
+      const body = (await res.json().catch(() => null)) as {
+        verified?: boolean | null;
+        message?: string;
+      } | null;
       connectorMsg = res.ok
         ? { ok: true, text: body?.verified ? m.fin_connector_verified() : m.fin_connector_saved() }
         : // Surface the provider's own rejection reason rather than a generic
@@ -167,7 +176,9 @@
   }
 
   const sunatSyncPercent = $derived(
-    sunatSync.total && sunatSync.total > 0 ? Math.round((sunatSync.processed / sunatSync.total) * 100) : 0,
+    sunatSync.total && sunatSync.total > 0
+      ? Math.round((sunatSync.processed / sunatSync.total) * 100)
+      : 0,
   );
 
   async function startSunatSync() {
@@ -544,7 +555,9 @@
             {sunatSync.active ? m.fin_sync_running() : m.fin_sync_now()}
           </Button>
           {#if sunatSync.active}
-            <Button variant="ghost" size="sm" onclick={cancelSunatSync}>{m.fin_sync_cancel()}</Button>
+            <Button variant="ghost" size="sm" onclick={cancelSunatSync}
+              >{m.fin_sync_cancel()}</Button
+            >
           {/if}
         </div>
       </section>

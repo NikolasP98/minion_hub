@@ -42,13 +42,19 @@ export class SusiiClient {
         const res = await this.fetchOnce(url, init);
         if (res.status === 429 || res.status >= 500) {
           lastErr = new Error(`susii ${res.status}`);
-          if (attempt < RETRY_BACKOFF_MS.length) { await sleep(RETRY_BACKOFF_MS[attempt]); continue; }
+          if (attempt < RETRY_BACKOFF_MS.length) {
+            await sleep(RETRY_BACKOFF_MS[attempt]);
+            continue;
+          }
           return res; // exhausted — let the caller treat as a failure
         }
         return res;
       } catch (e) {
         lastErr = e; // timeout (AbortError) or network failure
-        if (attempt < RETRY_BACKOFF_MS.length) { await sleep(RETRY_BACKOFF_MS[attempt]); continue; }
+        if (attempt < RETRY_BACKOFF_MS.length) {
+          await sleep(RETRY_BACKOFF_MS[attempt]);
+          continue;
+        }
         throw lastErr instanceof Error ? lastErr : new Error('susii request failed');
       }
     }
@@ -67,7 +73,9 @@ export class SusiiClient {
       // rotated" (DRF non_field_errors) from a transport/shape problem. DRF
       // never echoes the submitted password, so the body is safe to surface.
       const detail = await res.text().catch(() => '');
-      throw new Error(`susii login failed: ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ''}`);
+      throw new Error(
+        `susii login failed: ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ''}`,
+      );
     }
     const { key } = (await res.json()) as { key: string };
     this.token = key;
@@ -91,9 +99,12 @@ export class SusiiClient {
     return u.toString();
   }
 
-  async *salesPages(
-    opts: { businessId: number; since?: string; pageSize?: number; cursor?: string | null },
-  ): AsyncIterable<{ results: unknown[]; next: string | null }> {
+  async *salesPages(opts: {
+    businessId: number;
+    since?: string;
+    pageSize?: number;
+    cursor?: string | null;
+  }): AsyncIterable<{ results: unknown[]; next: string | null }> {
     let next: string | null = opts.cursor ?? this.buildSalesUrl(opts);
     let first = true;
     while (next) {

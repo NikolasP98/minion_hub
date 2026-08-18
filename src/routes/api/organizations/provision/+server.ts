@@ -32,11 +32,7 @@ export const POST: RequestHandler = async (event) => {
     }
     const admin = supabaseAdmin();
     const [{ data: org, error: orgError }, { data: owner }] = await Promise.all([
-      admin
-        .from('organizations')
-        .select('id, name, kind')
-        .eq('id', b.organizationId)
-        .maybeSingle(),
+      admin.from('organizations').select('id, name, kind').eq('id', b.organizationId).maybeSingle(),
       admin
         .from('member_roles')
         .select('profile_id')

@@ -2,7 +2,11 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
-import { enqueueJob, getJobById, listEnabledSources } from '$server/services/finance-sync-jobs.service';
+import {
+  enqueueJob,
+  getJobById,
+  listEnabledSources,
+} from '$server/services/finance-sync-jobs.service';
 import { advanceJob } from '$server/services/finance-sync.service';
 import { reconcileParties } from '$server/services/party.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
@@ -32,7 +36,11 @@ async function alertSyncFailure(orgId: string, provider: string, reason: string)
   const to = env.FINANCE_ALERT_TO;
   const channel = env.FINANCE_ALERT_CHANNEL;
   if (!to || !channel) {
-    console.error('[finance-sync] daily FAILED and no alert configured', { orgId, provider, reason });
+    console.error('[finance-sync] daily FAILED and no alert configured', {
+      orgId,
+      provider,
+      reason,
+    });
     return;
   }
   try {

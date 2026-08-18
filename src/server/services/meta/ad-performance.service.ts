@@ -39,8 +39,16 @@ type Tx = Parameters<Parameters<CoreCtx['db']['transaction']>[0]>[0];
 /** Rollup over meta_ad_insights grouped at the requested level. conversations_started
  *  sums the numeric `value` of the messaging-conversation action inside each row's
  *  actions[] jsonb (subquery per row, then summed by the group). */
-async function rollup(tx: Tx, orgId: string, r: DateRange, level: 'campaign' | 'ad'): Promise<AdPerformanceRow[]> {
-  const selectAd = level === 'ad' ? sql`mai.ad_id, max(mai.ad_name) as ad_name,` : sql`null::text as ad_id, null::text as ad_name,`;
+async function rollup(
+  tx: Tx,
+  orgId: string,
+  r: DateRange,
+  level: 'campaign' | 'ad',
+): Promise<AdPerformanceRow[]> {
+  const selectAd =
+    level === 'ad'
+      ? sql`mai.ad_id, max(mai.ad_name) as ad_name,`
+      : sql`null::text as ad_id, null::text as ad_name,`;
   const groupBy = level === 'ad' ? sql`mai.campaign_id, mai.ad_id` : sql`mai.campaign_id`;
   const rows = (await tx.execute(sql`
     select mai.campaign_id, max(mai.campaign_name) as campaign_name,
@@ -83,7 +91,10 @@ async function rollup(tx: Tx, orgId: string, r: DateRange, level: 'campaign' | '
 
 /** Campaign-level rollup only — for surfaces (the /socials dashboard) that never
  *  drill into ads and shouldn't pay for the ad-level query. */
-export function adPerformanceByCampaign(ctx: CoreCtx, range: DateRange): Promise<AdPerformanceRow[]> {
+export function adPerformanceByCampaign(
+  ctx: CoreCtx,
+  range: DateRange,
+): Promise<AdPerformanceRow[]> {
   return withOrgCore(ctx, (tx) => rollup(tx, ctx.tenantId, range, 'campaign'));
 }
 

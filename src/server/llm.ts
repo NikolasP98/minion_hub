@@ -97,7 +97,12 @@ const usageMiddleware: LanguageModelMiddleware = {
         controller.enqueue(chunk);
       },
       flush() {
-        recordAiUsage({ model: model.modelId, usage, durationMs: Date.now() - startedAt, ok: true });
+        recordAiUsage({
+          model: model.modelId,
+          usage,
+          durationMs: Date.now() - startedAt,
+          ok: true,
+        });
       },
     });
 
@@ -127,6 +132,10 @@ export function getOpenRouterModel(modelId: string) {
  * it produced was zero. It now delegates to `$lib/utils/model-pricing`, the one
  * table, which also gets `:batch` and cache-read handling for free.
  */
-export function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
+export function estimateCost(
+  model: string,
+  promptTokens: number,
+  completionTokens: number,
+): number {
   return estimateCostUsd(model, promptTokens, completionTokens);
 }

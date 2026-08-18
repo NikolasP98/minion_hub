@@ -19,8 +19,7 @@ import type { PermAction } from '$server/services/rbac.service';
 const FINANCE_FIELDS = ['name', 'code', 'category', 'unitPrice', 'active'] as const;
 const STOCK_FIELDS = ['consumption', 'itemId', 'trackStock', 'uom'] as const;
 
-const touches = (body: object, fields: readonly string[]): boolean =>
-  fields.some((f) => f in body);
+const touches = (body: object, fields: readonly string[]): boolean => fields.some((f) => f in body);
 
 export async function requireSellableFieldCapabilities(
   locals: App.Locals,

@@ -20,9 +20,24 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { StaleWriteError, staleGuard } from './errors';
 
 export type ProjectStatus = 'open' | 'active' | 'on_hold' | 'completed' | 'cancelled';
-export const PROJECT_STATUSES: ProjectStatus[] = ['open', 'active', 'on_hold', 'completed', 'cancelled'];
-export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked' | 'cancelled';
-export const TASK_STATUSES: TaskStatus[] = ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
+export const PROJECT_STATUSES: ProjectStatus[] = [
+  'open',
+  'active',
+  'on_hold',
+  'completed',
+  'cancelled',
+];
+export type TaskStatus =
+  'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked' | 'cancelled';
+export const TASK_STATUSES: TaskStatus[] = [
+  'backlog',
+  'todo',
+  'in_progress',
+  'in_review',
+  'done',
+  'blocked',
+  'cancelled',
+];
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 type Actor = { id: string | null; name: string | null; email?: string | null };
@@ -33,7 +48,11 @@ type Actor = { id: string | null; name: string | null; email?: string | null };
  * agent_id). Idempotent via the partial-unique (org_id, agent_id) index — the
  * same raw-upsert shape as naming-series so the insert and the bump race safely.
  */
-export async function ensureAgentParty(ctx: CoreCtx, agentId: string, name?: string | null): Promise<string> {
+export async function ensureAgentParty(
+  ctx: CoreCtx,
+  agentId: string,
+  name?: string | null,
+): Promise<string> {
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
       insert into parties (org_id, type, name, agent_id)
@@ -90,14 +109,21 @@ export async function ensureSelfParty(
 const agentPartySyncAt = new Map<string, number>();
 const AGENT_PARTY_SYNC_TTL_MS = 5 * 60_000;
 
-export async function syncAgentParties(ctx: CoreCtx, actor: Actor = { id: null, name: null }): Promise<number> {
+export async function syncAgentParties(
+  ctx: CoreCtx,
+  actor: Actor = { id: null, name: null },
+): Promise<number> {
   // ponytail: per-agent upserts to cloud PG cost ~1s each — at tens of agents the
   // sync dominates page load, so skip when this org synced within the TTL.
   const last = agentPartySyncAt.get(ctx.tenantId);
   if (last && Date.now() - last < AGENT_PARTY_SYNC_TTL_MS) return 0;
   try {
     const client = await workforceClientForOrg(ctx.tenantId, actor);
-    const agents = (await client.agents.list(ctx.tenantId)) as Array<{ id: string; name?: string | null; status?: string }>;
+    const agents = (await client.agents.list(ctx.tenantId)) as Array<{
+      id: string;
+      name?: string | null;
+      status?: string;
+    }>;
     let n = 0;
     for (const a of agents) {
       if (!a?.id || a.status === 'terminated') continue;
@@ -130,7 +156,9 @@ export interface AgentDispatchClient {
     create(companyId: string, data: Record<string, unknown>): Promise<{ id: string }>;
     update(id: string, data: Record<string, unknown>): Promise<unknown>;
   };
-  agents: { wakeup(id: string, data: Record<string, unknown>, companyId?: string): Promise<unknown> };
+  agents: {
+    wakeup(id: string, data: Record<string, unknown>, companyId?: string): Promise<unknown>;
+  };
 }
 
 /**
@@ -159,7 +187,15 @@ export async function performAgentDispatch(
   if (!issue?.id) return null;
   await client.issues.update(issue.id, { assigneeAgentId: agentId }).catch(() => null);
   await client.agents
-    .wakeup(agentId, { source: 'assignment', triggerDetail: 'system', reason: `Projects task ${task.humanId ?? task.id}` }, orgId)
+    .wakeup(
+      agentId,
+      {
+        source: 'assignment',
+        triggerDetail: 'system',
+        reason: `Projects task ${task.humanId ?? task.id}`,
+      },
+      orgId,
+    )
     .catch(() => null);
   return issue.id;
 }
@@ -236,7 +272,14 @@ async function dispatchTaskToAgent(
       projectName = proj.name;
     }
   }
-  const { issueId, wfProjectId } = await dispatchToAgent(ctx, task, agentId, actor, wfProjectIdIn, projectName);
+  const { issueId, wfProjectId } = await dispatchToAgent(
+    ctx,
+    task,
+    agentId,
+    actor,
+    wfProjectIdIn,
+    projectName,
+  );
   // Persist a newly-provisioned project link back onto the proj_project.
   if (task.projectId && wfProjectId && wfProjectId !== wfProjectIdIn) {
     const [proj] = await tx
@@ -245,7 +288,10 @@ async function dispatchTaskToAgent(
       .where(and(eq(projProjects.id, task.projectId), eq(projProjects.orgId, ctx.tenantId)))
       .limit(1);
     if (proj) {
-      const meta = proj.metadata && typeof proj.metadata === 'object' ? (proj.metadata as Record<string, unknown>) : {};
+      const meta =
+        proj.metadata && typeof proj.metadata === 'object'
+          ? (proj.metadata as Record<string, unknown>)
+          : {};
       await tx
         .update(projProjects)
         .set({ metadata: { ...meta, workforceProjectId: wfProjectId }, updatedAt: new Date() })
@@ -261,7 +307,10 @@ async function dispatchTaskToAgent(
 
 /** Merge the dispatched workforce issue id onto the task within the caller's tx. */
 function linkWorkforceIssue(tx: CoreTx, orgId: string, task: ProjTask, issueId: string) {
-  const meta = task.metadata && typeof task.metadata === 'object' ? (task.metadata as Record<string, unknown>) : {};
+  const meta =
+    task.metadata && typeof task.metadata === 'object'
+      ? (task.metadata as Record<string, unknown>)
+      : {};
   return tx
     .update(projTasks)
     .set({ metadata: { ...meta, workforceIssueId: issueId }, updatedAt: new Date() })
@@ -337,7 +386,8 @@ export type NewProjectInput = {
 
 /** Read the linked paperclip/workforce project id off a project's jsonb metadata. */
 export function workforceProjectIdOf(p: Pick<ProjProject, 'metadata'>): string | null {
-  const m = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : {};
+  const m =
+    p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : {};
   return typeof m.workforceProjectId === 'string' ? m.workforceProjectId : null;
 }
 
@@ -347,7 +397,8 @@ export function workforceProjectIdOf(p: Pick<ProjProject, 'metadata'>): string |
 export type GithubRepoLink = { owner: string; repo: string; defaultBranch?: string | null };
 
 export function githubRepoOf(p: Pick<ProjProject, 'metadata'>): GithubRepoLink | null {
-  const m = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : {};
+  const m =
+    p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : {};
   const gh = m.github;
   if (!gh || typeof gh !== 'object') return null;
   const { owner, repo, defaultBranch } = gh as Record<string, unknown>;
@@ -369,13 +420,21 @@ export function setGithubRepo(
       .where(and(eq(projProjects.id, id), eq(projProjects.orgId, ctx.tenantId)))
       .limit(1);
     if (!cur) return null;
-    const meta = cur.metadata && typeof cur.metadata === 'object' ? (cur.metadata as Record<string, unknown>) : {};
+    const meta =
+      cur.metadata && typeof cur.metadata === 'object'
+        ? (cur.metadata as Record<string, unknown>)
+        : {};
     const old = githubRepoOf(cur);
     const oldLabel = old ? `${old.owner}/${old.repo}` : null;
     const newLabel = link ? `${link.owner}/${link.repo}` : null;
     if (oldLabel === newLabel) return cur;
     const next = { ...meta };
-    if (link) next.github = { owner: link.owner, repo: link.repo, defaultBranch: link.defaultBranch ?? null };
+    if (link)
+      next.github = {
+        owner: link.owner,
+        repo: link.repo,
+        defaultBranch: link.defaultBranch ?? null,
+      };
     else delete next.github;
     const [row] = await tx
       .update(projProjects)
@@ -394,7 +453,11 @@ export function setGithubRepo(
   });
 }
 
-export function createProject(ctx: CoreCtx, data: NewProjectInput, actor: Actor): Promise<ProjProject> {
+export function createProject(
+  ctx: CoreCtx,
+  data: NewProjectInput,
+  actor: Actor,
+): Promise<ProjProject> {
   return withOrgCore(ctx, async (tx) => {
     const humanId = await nextSerialId(tx, ctx.tenantId, 'PRJ-.YYYY.-', new Date());
     const [row] = await tx
@@ -439,19 +502,36 @@ export function updateProject(
       .limit(1);
     if (!cur) return null;
     const set: Record<string, unknown> = { updatedAt: new Date() };
-    const changes = diffFields(cur as Record<string, unknown>, patch, ['name', 'description', 'status', 'customerPartyId', 'leadPartyId', 'targetDate', 'color', 'icon']);
+    const changes = diffFields(cur as Record<string, unknown>, patch, [
+      'name',
+      'description',
+      'status',
+      'customerPartyId',
+      'leadPartyId',
+      'targetDate',
+      'color',
+      'icon',
+    ]);
     for (const c of changes) set[c.field] = (patch as Record<string, unknown>)[c.field];
     if (patch.status === 'completed' && cur.status !== 'completed') set.completedAt = new Date();
     // Link/unlink the paperclip execution layer (stored in metadata, not a column).
     if (patch.workforceProjectId !== undefined) {
-      const meta = cur.metadata && typeof cur.metadata === 'object' ? (cur.metadata as Record<string, unknown>) : {};
+      const meta =
+        cur.metadata && typeof cur.metadata === 'object'
+          ? (cur.metadata as Record<string, unknown>)
+          : {};
       const old = typeof meta.workforceProjectId === 'string' ? meta.workforceProjectId : null;
       if (old !== (patch.workforceProjectId ?? null)) {
         const next = { ...meta };
         if (patch.workforceProjectId) next.workforceProjectId = patch.workforceProjectId;
         else delete next.workforceProjectId;
         set.metadata = next;
-        changes.push({ field: 'workforceProjectId', label: 'Workforce link', old, new: patch.workforceProjectId ?? null });
+        changes.push({
+          field: 'workforceProjectId',
+          label: 'Workforce link',
+          old,
+          new: patch.workforceProjectId ?? null,
+        });
       }
     }
     const [row] = await tx
@@ -469,7 +549,8 @@ export function updateProject(
       if (expectedUpdatedAt) throw new StaleWriteError(cur);
       return null;
     }
-    if (changes.length) await recordAudit(ctx, { refType: 'proj_project', refId: id, changes, actor });
+    if (changes.length)
+      await recordAudit(ctx, { refType: 'proj_project', refId: id, changes, actor });
     return row;
   });
 }
@@ -477,7 +558,12 @@ export function updateProject(
 // ── tasks ────────────────────────────────────────────────────────────────────
 export function listTasks(
   ctx: CoreCtx,
-  f: { projectId?: string; assigneePartyId?: string; status?: TaskStatus; includeMilestones?: boolean } = {},
+  f: {
+    projectId?: string;
+    assigneePartyId?: string;
+    status?: TaskStatus;
+    includeMilestones?: boolean;
+  } = {},
 ): Promise<ProjTask[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(projTasks.orgId, ctx.tenantId)];
@@ -558,7 +644,17 @@ export function updateTask(
       .limit(1);
     if (!cur) return null;
     const set: Record<string, unknown> = { updatedAt: new Date() };
-    const changes = diffFields(cur as Record<string, unknown>, patch, ['title', 'description', 'status', 'priority', 'assigneePartyId', 'parentId', 'milestoneId', 'estMinutes', 'sortOrder']);
+    const changes = diffFields(cur as Record<string, unknown>, patch, [
+      'title',
+      'description',
+      'status',
+      'priority',
+      'assigneePartyId',
+      'parentId',
+      'milestoneId',
+      'estMinutes',
+      'sortOrder',
+    ]);
     for (const c of changes) set[c.field] = (patch as Record<string, unknown>)[c.field];
     // Status lifecycle side-effects.
     if (patch.status && patch.status !== cur.status) {
@@ -659,7 +755,12 @@ export function createTemplate(
   return withOrgCore(ctx, async (tx) => {
     const [row] = await tx
       .insert(projTemplates)
-      .values({ orgId: ctx.tenantId, name: data.name, description: data.description ?? null, spec: data.spec })
+      .values({
+        orgId: ctx.tenantId,
+        name: data.name,
+        description: data.description ?? null,
+        spec: data.spec,
+      })
       .returning();
     return row;
   });
@@ -674,7 +775,12 @@ export function createTemplate(
 export async function instantiateTemplate(
   ctx: CoreCtx,
   templateId: string,
-  opts: { name?: string; customerPartyId?: string | null; leadPartyId?: string | null; baseDate?: string | null },
+  opts: {
+    name?: string;
+    customerPartyId?: string | null;
+    leadPartyId?: string | null;
+    baseDate?: string | null;
+  },
   actor: Actor,
 ): Promise<{ project: ProjProject; warnings: string[] } | null> {
   return withOrgCore(ctx, async (tx) => {
@@ -734,8 +840,8 @@ export async function instantiateTemplate(
           description: t.description,
           priority: t.priority,
           estMinutes: t.estMinutes,
-          milestoneId: t.milestoneKey ? milestoneId.get(t.milestoneKey) ?? null : null,
-          parentId: t.parentRef ? taskId.get(t.parentRef) ?? null : null,
+          milestoneId: t.milestoneKey ? (milestoneId.get(t.milestoneKey) ?? null) : null,
+          parentId: t.parentRef ? (taskId.get(t.parentRef) ?? null) : null,
         })
         .returning({ id: projTasks.id });
       if (t.tempRef) taskId.set(t.tempRef, row.id);
@@ -745,7 +851,9 @@ export async function instantiateTemplate(
       refType: 'proj_project',
       refId: project.id,
       op: 'create',
-      changes: [{ field: 'template', label: 'Instantiated from template', old: null, new: tpl.name }],
+      changes: [
+        { field: 'template', label: 'Instantiated from template', old: null, new: tpl.name },
+      ],
       actor,
     });
     return { project, warnings: plan.warnings };
@@ -791,13 +899,18 @@ export function getProjectGantt(ctx: CoreCtx, projectId: string) {
 // ── helpers ──────────────────────────────────────────────────────────────────
 type FieldChange = { field: string; label: string; old: unknown; new: unknown };
 /** Build an audit diff for the keys present in `patch` that actually changed. */
-function diffFields(cur: Record<string, unknown>, patch: Record<string, unknown>, keys: string[]): FieldChange[] {
+function diffFields(
+  cur: Record<string, unknown>,
+  patch: Record<string, unknown>,
+  keys: string[],
+): FieldChange[] {
   const out: FieldChange[] = [];
   for (const field of keys) {
     if (!(field in patch)) continue;
     const next = patch[field];
     if (next === undefined) continue;
-    if (cur[field] !== next) out.push({ field, label: field, old: cur[field] ?? null, new: next ?? null });
+    if (cur[field] !== next)
+      out.push({ field, label: field, old: cur[field] ?? null, new: next ?? null });
   }
   return out;
 }

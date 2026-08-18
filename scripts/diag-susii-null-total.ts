@@ -8,7 +8,10 @@ const url = process.env.SUPABASE_DB_URL?.trim();
 if (!url) throw new Error('SUPABASE_DB_URL not set');
 const client = postgres(url, { prepare: false, max: 2 });
 
-async function withOrg<T>(orgId: string, fn: (sql: postgres.TransactionSql) => Promise<T>): Promise<T> {
+async function withOrg<T>(
+  orgId: string,
+  fn: (sql: postgres.TransactionSql) => Promise<T>,
+): Promise<T> {
   return client.begin(async (tx) => {
     await tx`set local role app_ledger`;
     await tx`select set_config('app.current_org_id', ${orgId}, true)`;
@@ -73,4 +76,7 @@ async function main() {
   });
   await client.end();
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
