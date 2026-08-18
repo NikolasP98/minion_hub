@@ -87,7 +87,11 @@ function routePath(relative) {
 }
 
 function git(root, ...args) {
-  return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+  return execFileSync('git', args, {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
 }
 
 function isUnconditionalServerRedirect(source) {
@@ -111,6 +115,24 @@ async function recordedBaselineRef(root) {
   return 'HEAD';
 }
 
+async function recordedBaseline(root) {
+  try {
+    const ledger = JSON.parse(
+      await readFile(path.join(root, 'tests/ui-audit/current-baseline.json'), 'utf8'),
+    );
+    if (
+      typeof ledger.sourceCommit === 'string' &&
+      /^[0-9a-f]{40}$/.test(ledger.sourceCommit) &&
+      Array.isArray(ledger.routes)
+    ) {
+      return ledger;
+    }
+  } catch {
+    // A new repository has no recorded baseline.
+  }
+  return null;
+}
+
 /**
  * Build the route inventory either from the mutable working tree or from an
  * immutable Git object. The latter is what backs the pre-program evidence: a
@@ -124,6 +146,17 @@ export async function buildRouteInventory({
   const root = path.resolve(repositoryRoot);
   const routeRoot = path.join(root, 'src/routes');
   const headCommit = git(root, 'rev-parse', 'HEAD');
+  const ledger = cleanBaseline && baselineRef == null ? await recordedBaseline(root) : null;
+  if (ledger) {
+    try {
+      git(root, 'cat-file', '-e', `${ledger.sourceCommit}^{commit}`);
+    } catch {
+      // Factory and CI checkouts may be shallow. The committed ledger is the
+      // immutable evidence in that case; substituting HEAD changes provenance
+      // while pretending it is the historical baseline.
+      return ledger;
+    }
+  }
   const cleanSourceRef = baselineRef ?? (await recordedBaselineRef(root));
   const sourceCommit = cleanBaseline ? git(root, 'rev-parse', cleanSourceRef) : headCommit;
   const sourceRef = cleanBaseline ? cleanSourceRef : 'WORKTREE';
