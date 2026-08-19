@@ -9,6 +9,9 @@ import {
   auditTenantScope,
   collectCanonicalOrgIds,
   formatAuditCounters,
+  REQUIRED_AUDIT_ENVIRONMENTS,
+  rekeyReadinessGateFailures,
+  updateServerIsTenantScoped,
 } from './audit-server-tenant-scope.lib';
 
 const AUDIT_SCRIPT = path.resolve(import.meta.dirname, 'audit-server-tenant-scope.ts');
@@ -299,4 +302,116 @@ describe('server tenant-scope audit rehearsal (local stand-ins, not spec evidenc
       },
     );
   }, 60_000);
+});
+
+// The gate that keeps the parked predicate parked. These fixtures are what
+// makes it more than a comment: they prove it actually reds when the predicate
+// lands without evidence, which is a state the repository is never in on this
+// branch and so would otherwise never be exercised.
+describe('re-key readiness gate rules', () => {
+  const passingRun = (environment: string) => ({
+    environment,
+    recordedAt: '2026-08-20T09:00:00Z',
+    recordedBy: 'credential-holder',
+    command: 'bun run audit:server-tenant-scope',
+    tursoServerRows: 7,
+    nullTenantIds: 0,
+    unmatchedTenantIds: 0,
+  });
+  const completeEvidence = () => ({
+    schemaVersion: 1,
+    runs: REQUIRED_AUDIT_ENVIRONMENTS.map(passingRun),
+    rekeyRecord: {
+      identifier: '20260812_rekey_servers_tenant_id',
+      appliedAt: '2026-08-12T00:00:00Z',
+      applyEvidence: 'https://example.invalid/deployment/1234',
+      rollbackNote: 'Restore from the pre-apply Turso snapshot; see the re-key owner.',
+    },
+  });
+
+  it('passes with no evidence while updateServer carries no tenant predicate', () => {
+    expect(
+      rekeyReadinessGateFailures({ predicateIsTenantScoped: false, evidence: undefined }),
+    ).toEqual([]);
+  });
+
+  it('blocks a tenant-scoped predicate that ships with no evidence at all', () => {
+    const failures = rekeyReadinessGateFailures({
+      predicateIsTenantScoped: true,
+      evidence: undefined,
+    });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain('no re-key readiness evidence is recorded');
+  });
+
+  it('accepts a tenant-scoped predicate backed by both audits and the re-key record', () => {
+    expect(
+      rekeyReadinessGateFailures({ predicateIsTenantScoped: true, evidence: completeEvidence() }),
+    ).toEqual([]);
+  });
+
+  it('blocks when only one environment was audited', () => {
+    const evidence = completeEvidence();
+    evidence.runs = evidence.runs.filter((run) => run.environment !== 'production');
+    expect(rekeyReadinessGateFailures({ predicateIsTenantScoped: true, evidence })).toEqual([
+      'no recorded audit run for the production environment',
+    ]);
+  });
+
+  it('blocks a recorded run that inspected zero rows, matching the audit fail-closed rule', () => {
+    const evidence = completeEvidence();
+    evidence.runs[0].tursoServerRows = 0;
+    expect(rekeyReadinessGateFailures({ predicateIsTenantScoped: true, evidence })).toEqual([
+      'non-production audit run must record a non-zero turso_server_rows (it proves nothing otherwise)',
+    ]);
+  });
+
+  it('blocks a recorded run with a non-zero mismatch counter', () => {
+    const evidence = completeEvidence();
+    evidence.runs[1].unmatchedTenantIds = 3;
+    expect(rekeyReadinessGateFailures({ predicateIsTenantScoped: true, evidence })).toEqual([
+      'production audit run must record unmatched_tenant_ids=0, got 3',
+    ]);
+  });
+
+  it('blocks passing audits that carry no concrete re-key record', () => {
+    const evidence = completeEvidence();
+    evidence.rekeyRecord.identifier = '';
+    evidence.rekeyRecord.rollbackNote = '   ';
+    expect(rekeyReadinessGateFailures({ predicateIsTenantScoped: true, evidence })).toEqual([
+      'rekeyRecord is missing identifier',
+      'rekeyRecord is missing rollbackNote',
+    ]);
+  });
+});
+
+describe('updateServerIsTenantScoped', () => {
+  const scoped = `
+export async function updateServer(ctx: TenantContext, id: string) {
+  await ctx.db.update(servers).set({}).where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));
+}
+export async function upsertServer() {}
+`;
+  const unscoped = `
+export async function updateServer(ctx: TenantContext, id: string) {
+  await ctx.db.update(servers).set({}).where(eq(servers.id, id));
+}
+export async function upsertServer(ctx: TenantContext) {
+  await ctx.db.insert(servers).values({ tenantId: ctx.tenantId });
+}
+`;
+
+  it('detects the tenant predicate inside updateServer', () => {
+    expect(updateServerIsTenantScoped(scoped)).toBe(true);
+  });
+
+  it('is not fooled by a sibling service that legitimately writes servers.tenantId', () => {
+    expect(updateServerIsTenantScoped(unscoped)).toBe(false);
+  });
+
+  it('throws rather than silently passing when updateServer moves out of the file', () => {
+    expect(() => updateServerIsTenantScoped('export const nothing = 1;\n')).toThrow(
+      /anchored to a symbol that moved/,
+    );
+  });
 });

@@ -2,8 +2,13 @@
 
 **Status: BLOCKED — awaiting a credential holder.** No agent can clear this gate. The audit
 command, its comparison rules and its wiring are checked in and covered by tests; what is missing
-is the four evidence artifacts in [Evidence to attach](#evidence-to-attach-to-pr-130), which can
-only be produced by someone holding real non-production and production credentials.
+is the four evidence artifacts in [Evidence to record](#evidence-to-record), which can only be
+produced by someone holding real non-production and production credentials.
+
+The block is enforced, not merely documented: `scripts/rekey-readiness-gate.test.ts` reads the
+shipped `updateServer` source, and the moment it carries a `servers.tenantId` predicate the suite
+fails unless `tests/rekey-readiness/evidence.json` records both passing audits and the re-key
+deployment. Slice 2 therefore cannot land ahead of its evidence by accident.
 
 **Owner:** whoever holds the hub's Turso and Supabase service-role credentials.
 **Spec:** `FACTORY_SPEC.md` (`specs/2026-08-18-hub-updateserver-tenant-scope-spec.md`), Slice 1
@@ -26,12 +31,12 @@ separately and compares exact strings in memory. It issues `SELECT`s only, and n
 
 Read-only access is sufficient for both sources, in **each** environment you audit:
 
-| Variable | Source | Used for |
-| --- | --- | --- |
-| `TURSO_DB_URL` | Turso database for that environment (`libsql://…`) | `SELECT id, tenant_id FROM servers` |
-| `TURSO_DB_AUTH_TOKEN` | Turso token for that database | authenticates the read |
-| `PUBLIC_SUPABASE_URL` | Supabase project for that environment | canonical organization ids |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key for that project | reads `organizations.id` past RLS |
+| Variable                    | Source                                             | Used for                            |
+| --------------------------- | -------------------------------------------------- | ----------------------------------- |
+| `TURSO_DB_URL`              | Turso database for that environment (`libsql://…`) | `SELECT id, tenant_id FROM servers` |
+| `TURSO_DB_AUTH_TOKEN`       | Turso token for that database                      | authenticates the read              |
+| `PUBLIC_SUPABASE_URL`       | Supabase project for that environment              | canonical organization ids          |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key for that project         | reads `organizations.id` past RLS   |
 
 Confirm each pair points at the environment you intend before running. A hub environment has
 historically had `SUPABASE_DB_URL` on localhost while `PUBLIC_SUPABASE_URL` pointed at prod
@@ -73,14 +78,14 @@ turso_server_rows=<n> null_tenant_ids=0 unmatched_tenant_ids=0
 `<n>` must be non-zero. The audit fails closed, so it also exits 1 on the degenerate cases where it
 proves nothing:
 
-| Output | Meaning | Action |
-| --- | --- | --- |
-| exit 0, non-zero `turso_server_rows`, both error counts 0 | readiness proven for that environment | record the output; both environments must pass |
-| `inspected 0 Turso servers rows` | empty or wrong database | fix the credentials and re-run; this is not a pass |
-| `read 0 canonical Supabase organizations` | empty or wrong project | fix the credentials and re-run; this is not a pass |
-| `null_tenant_ids` > 0 | rows never carried a tenant key | park Slice 2; hand to data repair, which is out of this spec's scope |
-| `unmatched_tenant_ids` > 0 | rows still carry a pre-re-key key; the sampled `servers.id` values are printed | park Slice 2; the re-key is incomplete |
-| `TURSO_DB_URL and TURSO_DB_AUTH_TOKEN must be set` | a credential is missing | supply all four; do not let it fall through to a local file |
+| Output                                                    | Meaning                                                                        | Action                                                               |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| exit 0, non-zero `turso_server_rows`, both error counts 0 | readiness proven for that environment                                          | record the output; both environments must pass                       |
+| `inspected 0 Turso servers rows`                          | empty or wrong database                                                        | fix the credentials and re-run; this is not a pass                   |
+| `read 0 canonical Supabase organizations`                 | empty or wrong project                                                         | fix the credentials and re-run; this is not a pass                   |
+| `null_tenant_ids` > 0                                     | rows never carried a tenant key                                                | park Slice 2; hand to data repair, which is out of this spec's scope |
+| `unmatched_tenant_ids` > 0                                | rows still carry a pre-re-key key; the sampled `servers.id` values are printed | park Slice 2; the re-key is incomplete                               |
+| `TURSO_DB_URL and TURSO_DB_AUTH_TOKEN must be set`        | a credential is missing                                                        | supply all four; do not let it fall through to a local file          |
 
 Do not mutate either database to make the audit pass.
 
@@ -96,7 +101,7 @@ and route the mismatch to whoever owns the Turso→Supabase re-key. Attach that 
 re-run record for the re-key deployment here once it exists. Slice 1 ships only tests and this
 read-only command, so there is nothing in this branch to revert if the audit fails.
 
-## Evidence to attach to PR #130
+## Evidence to record
 
 All four are required before Slice 1 is accepted and before any Slice 2 work starts. None of them
 is present yet.
@@ -111,7 +116,47 @@ is present yet.
    are plans, one of them superseded; neither is apply evidence.
 4. **Rollback/recovery note for that re-key** — from its owner.
 
-Paste template:
+Record them in `tests/rekey-readiness/evidence.json` (create the file; it is deliberately absent
+while the work is parked) and paste the same two outputs into the PR thread. The JSON is what the
+gate checks; the PR paste is what a human reviewer reads.
+
+```json
+{
+  "schemaVersion": 1,
+  "runs": [
+    {
+      "environment": "non-production",
+      "recordedAt": "<ISO 8601 timestamp of the run>",
+      "recordedBy": "<who ran it>",
+      "command": "bun run audit:server-tenant-scope",
+      "tursoServerRows": 0,
+      "nullTenantIds": 0,
+      "unmatchedTenantIds": 0
+    },
+    {
+      "environment": "production",
+      "recordedAt": "<ISO 8601 timestamp of the run>",
+      "recordedBy": "<who ran it>",
+      "command": "bun run audit:server-tenant-scope",
+      "tursoServerRows": 0,
+      "nullTenantIds": 0,
+      "unmatchedTenantIds": 0
+    }
+  ],
+  "rekeyRecord": {
+    "identifier": "<migration or deployment id that re-keyed servers.tenant_id>",
+    "appliedAt": "<ISO 8601 timestamp it was applied>",
+    "applyEvidence": "<link or reference proving it ran>",
+    "rollbackNote": "<rollback/recovery procedure from the re-key owner>"
+  }
+}
+```
+
+Transcribe `tursoServerRows` from each run's real `turso_server_rows=<n>`; the gate rejects a zero,
+for the same fail-closed reason the audit itself does. It also rejects an audit run for only one
+environment, a non-zero mismatch counter, and an empty field in `rekeyRecord`.
+
+PR paste template:
 
 ```text
 ### Slice 1 re-key readiness evidence
@@ -137,5 +182,7 @@ comparison rules against fixtures (matching keys, several servers per tenant, nu
 keys, legacy keys with sampling, the ten-id sample cap, and both fail-closed empty-source cases),
 the paginated organization read at its page boundaries, and the command's refusal to start when a
 credential is missing even with a repository dotenv file present. It also rehearses the whole
-command end-to-end against local stand-ins. That rehearsal exercises the wiring; it is **not**
+command end-to-end against local stand-ins, and covers the gate's own rules — that it stays quiet
+while the predicate is parked, and reds on a missing environment, a zero-row run, a non-zero
+mismatch counter, or an incomplete re-key record. That rehearsal exercises the wiring; it is **not**
 evidence about any real environment and does not substitute for the two runs above.

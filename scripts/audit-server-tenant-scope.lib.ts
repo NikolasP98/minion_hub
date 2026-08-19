@@ -116,3 +116,140 @@ export async function collectCanonicalOrgIds(
   }
   return orgIds;
 }
+
+/**
+ * One environment's recorded audit run, transcribed from a real
+ * `bun run audit:server-tenant-scope` output by the credential holder.
+ */
+export interface RecordedAuditRun {
+  environment: string;
+  recordedAt: string;
+  recordedBy: string;
+  command: string;
+  tursoServerRows: number;
+  nullTenantIds: number;
+  unmatchedTenantIds: number;
+}
+
+/** The re-key deployment this branch's parked predicate change waits on. */
+export interface RecordedRekeyRecord {
+  identifier: string;
+  appliedAt: string;
+  applyEvidence: string;
+  rollbackNote: string;
+}
+
+export interface RekeyReadinessEvidence {
+  schemaVersion: number;
+  runs: RecordedAuditRun[];
+  rekeyRecord: RecordedRekeyRecord;
+}
+
+/** Environments the spec requires an audit run for, in the order it names them. */
+export const REQUIRED_AUDIT_ENVIRONMENTS = ['non-production', 'production'] as const;
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function runFailures(environment: string, run: unknown): string[] {
+  if (run === undefined) {
+    return [`no recorded audit run for the ${environment} environment`];
+  }
+  if (typeof run !== 'object' || run === null) {
+    return [`${environment} audit run is not an object`];
+  }
+  const r = run as Record<string, unknown>;
+  const failures: string[] = [];
+  for (const field of ['recordedAt', 'recordedBy', 'command'] as const) {
+    if (!isNonEmptyString(r[field])) failures.push(`${environment} audit run is missing ${field}`);
+  }
+  if (typeof r.tursoServerRows !== 'number' || r.tursoServerRows <= 0) {
+    failures.push(
+      `${environment} audit run must record a non-zero turso_server_rows (it proves nothing otherwise)`,
+    );
+  }
+  for (const [field, counter] of [
+    ['null_tenant_ids', r.nullTenantIds],
+    ['unmatched_tenant_ids', r.unmatchedTenantIds],
+  ] as const) {
+    if (counter !== 0)
+      failures.push(`${environment} audit run must record ${field}=0, got ${String(counter)}`);
+  }
+  return failures;
+}
+
+/**
+ * Executable form of the spec's Slice 1 stop rule.
+ *
+ * The tenant predicate may only exist in `updateServer` once a credential holder
+ * has recorded a passing audit for both environments plus the concrete re-key
+ * record. While the predicate is absent the gate passes with no evidence: the
+ * parked state is the correct state, and demanding evidence for it would just
+ * red the suite for work nobody has done yet.
+ *
+ * `predicateIsTenantScoped` comes from reading the shipped service source, so
+ * this cannot be satisfied by editing the evidence file alone, nor bypassed by
+ * editing the service alone.
+ */
+export function rekeyReadinessGateFailures(input: {
+  predicateIsTenantScoped: boolean;
+  evidence: unknown;
+}): string[] {
+  if (!input.predicateIsTenantScoped) return [];
+
+  if (input.evidence === undefined) {
+    return [
+      'updateServer is tenant-scoped but no re-key readiness evidence is recorded — see docs/runbooks/server-tenant-scope-rekey-readiness.md',
+    ];
+  }
+  if (typeof input.evidence !== 'object' || input.evidence === null) {
+    return ['re-key readiness evidence is not an object'];
+  }
+
+  const evidence = input.evidence as Record<string, unknown>;
+  const failures: string[] = [];
+
+  const runs = Array.isArray(evidence.runs) ? (evidence.runs as unknown[]) : [];
+  if (!Array.isArray(evidence.runs)) failures.push('re-key readiness evidence has no `runs` array');
+  for (const environment of REQUIRED_AUDIT_ENVIRONMENTS) {
+    const run = runs.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        (candidate as Record<string, unknown>).environment === environment,
+    );
+    failures.push(...runFailures(environment, run));
+  }
+
+  const record = evidence.rekeyRecord;
+  if (typeof record !== 'object' || record === null) {
+    failures.push('re-key readiness evidence has no `rekeyRecord`');
+  } else {
+    const r = record as Record<string, unknown>;
+    for (const field of ['identifier', 'appliedAt', 'applyEvidence', 'rollbackNote'] as const) {
+      if (!isNonEmptyString(r[field])) failures.push(`rekeyRecord is missing ${field}`);
+    }
+  }
+
+  return failures;
+}
+
+/**
+ * Whether `updateServer`'s body constrains the mutation by tenant.
+ *
+ * Reads the shipped service source rather than a copy: the gate must track the
+ * file that actually runs in production. Scoped to `updateServer` alone, since
+ * sibling services in the same file legitimately reference `servers.tenantId`.
+ */
+export function updateServerIsTenantScoped(serviceSource: string): boolean {
+  const start = serviceSource.indexOf('export async function updateServer(');
+  if (start === -1) {
+    throw new Error(
+      'updateServer was not found in server.service.ts — the re-key readiness gate is anchored to a symbol that moved',
+    );
+  }
+  const nextExport = serviceSource.indexOf('\nexport ', start + 1);
+  const body = serviceSource.slice(start, nextExport === -1 ? undefined : nextExport);
+  return /servers\.tenantId/.test(body);
+}

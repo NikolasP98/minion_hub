@@ -24,26 +24,18 @@
  * covered by fixtures in `./audit-server-tenant-scope.test.ts`; this file is
  * only credential handling and read-only I/O.
  *
- * TODO(handoff): this script has NOT been executed against non-production or
- * production — this sandbox has no TURSO_DB_URL/TURSO_DB_AUTH_TOKEN/
- * PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY for either environment, and an
- * agent must never fabricate or guess at those values or their output. This is
- * a hard, unresolved BLOCKER on Slice 1: per spec Slice 1 work items 3-4 and
- * the DELTA table's Slice 1 row, a human holding real credentials must run this
- * script against non-production, then production, and attach all of the
- * following to the PR before Slice 1 is accepted and before any Slice 2 work
- * starts:
- *   1. the exact non-production command + output (`null_tenant_ids=0
- *      unmatched_tenant_ids=0`, and a non-zero `turso_server_rows`);
- *   2. the exact production command + output, same counters;
- *   3. the concrete re-key migration/deployment identifier and apply evidence
- *      (a planning-spec status alone is insufficient);
- *   4. the rollback/recovery note for that re-key.
- * The exact procedure, the pass/fail decision table, the rollback/recovery
- * statement and the PR evidence template are in
- * `docs/runbooks/server-tenant-scope-rekey-readiness.md`, so the credential
- * holder's remaining step is mechanical.
- * Pointer: specs/2026-08-18-hub-updateserver-tenant-scope-spec.md (this repo's
+ * TODO(handoff): this script has NOT been run against any real environment —
+ * this sandbox holds no non-production or production credentials, and an agent
+ * must never fabricate their output. A credential holder must run it against
+ * non-production, then production, and record both results plus the concrete
+ * re-key migration/deployment identifier, its apply evidence, and its
+ * rollback/recovery note in `tests/rekey-readiness/evidence.json`. That file is
+ * not optional paperwork: `scripts/rekey-readiness-gate.test.ts` reds the suite
+ * if `updateServer` ever gains its tenant predicate without it, which is the
+ * spec's Slice 1 stop rule made executable.
+ * Pointer: docs/runbooks/server-tenant-scope-rekey-readiness.md (procedure,
+ * decision table, evidence template) and
+ * specs/2026-08-18-hub-updateserver-tenant-scope-spec.md (this repo's
  * FACTORY_SPEC.md), Slice 1 Definition of done.
  */
 import { drizzle } from 'drizzle-orm/libsql';
