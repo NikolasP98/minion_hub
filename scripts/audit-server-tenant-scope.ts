@@ -20,12 +20,17 @@
  * is proven. Any other exit code (or nonzero counts) means Slice 2 must not
  * proceed until the underlying re-key/data issue is resolved.
  *
- * TODO(handoff): this script has not been executed against non-production or
- * production — this sandbox has no TURSO_DB_URL/SUPABASE_SERVICE_ROLE_KEY for
- * either environment. Per spec Slice 1 work items 3-4, a human must run this
- * against non-production then production and attach both outputs, plus the
- * concrete re-key migration/deployment record, to the PR before Slice 2 can
- * start. Pointer: specs/2026-08-18-hub-updateserver-tenant-scope-spec.md
+ * TODO(handoff): this script has NOT been executed against non-production or
+ * production — this sandbox has no TURSO_DB_URL/TURSO_DB_AUTH_TOKEN/
+ * PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY for either environment, and an
+ * agent must never fabricate or guess at those values or their output. This is
+ * a hard, unresolved BLOCKER on Slice 1: per spec Slice 1 work items 3-4 and
+ * the DELTA table's Slice 1 row, a human holding real credentials must run this
+ * script against non-production, then production, and attach both command
+ * outputs (each must print `null_tenant_ids=0 unmatched_tenant_ids=0`), plus
+ * the concrete re-key migration/deployment apply evidence and a rollback/
+ * recovery note, to the PR before Slice 1 is accepted and before any Slice 2
+ * work starts. Pointer: specs/2026-08-18-hub-updateserver-tenant-scope-spec.md
  * (this repo's FACTORY_SPEC.md), Slice 1 Definition of done.
  */
 import { drizzle } from 'drizzle-orm/libsql';
@@ -34,8 +39,14 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { servers } from '@minion-stack/db/schema';
 
 async function main() {
-  const tursoUrl = process.env.TURSO_DB_URL ?? 'file:./data/minion_hub.db';
+  // No fallback to the app's dev-default `file:./data/minion_hub.db` — this is a
+  // production-proof command. A missing/mistyped TURSO_DB_URL must abort, not
+  // silently audit an empty local sqlite file and report a false PASS.
+  const tursoUrl = process.env.TURSO_DB_URL;
   const tursoAuthToken = process.env.TURSO_DB_AUTH_TOKEN;
+  if (!tursoUrl || !tursoAuthToken) {
+    throw new Error('TURSO_DB_URL and TURSO_DB_AUTH_TOKEN must be set');
+  }
   const libsqlClient = createLibsqlClient({ url: tursoUrl, authToken: tursoAuthToken });
   const db = drizzle(libsqlClient, { schema: { servers } });
 
