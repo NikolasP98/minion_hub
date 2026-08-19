@@ -40,7 +40,11 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   const tools = {
     addNode: tool({
       description: 'Add a node. Returns the new node id.',
-      inputSchema: z.object({ type: z.string(), label: z.string(), data: z.record(z.string(), z.unknown()).optional() }),
+      inputSchema: z.object({
+        type: z.string(),
+        label: z.string(),
+        data: z.record(z.string(), z.unknown()).optional(),
+      }),
       execute: async (a) => {
         const r = ops.addNode(work, a);
         work = r.flow;
@@ -91,7 +95,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     }),
   };
 
-  const model = env.FLOW_COPILOT_MODEL || env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-3.7-sonnet';
+  const model = env.FLOW_COPILOT_MODEL || env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-sonnet-5';
   let text: string;
   try {
     const res = await generateText({

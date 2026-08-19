@@ -13,7 +13,12 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { emitToBeta, submitBaja, submitResumen, type EmissionInvoice } from '../src/server/finance/emission/index.ts';
+import {
+  emitToBeta,
+  submitBaja,
+  submitResumen,
+  type EmissionInvoice,
+} from '../src/server/finance/emission/index.ts';
 
 const certDir = join(import.meta.dirname, '..', '.beta-cert');
 const certPem = readFileSync(join(certDir, 'cert.pem'), 'utf8');
@@ -28,6 +33,7 @@ const boleta1: EmissionInvoice = {
   correlativo: '1',
   issueDate: today,
   currency: 'PEN',
+  igvRate: 0.18,
   emitter: { ...emitter, ubigeo: '150101', address: 'AV BETA 123, LIMA' },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA UNO' },
   lines: [{ description: 'Servicio de prueba resumen 1', quantity: 1, unitPriceInclTax: 118 }],
@@ -104,7 +110,9 @@ await step('submitBaja RA-1: F998-1', () =>
       correlativo: '1',
       referenceDate: today,
       issueDate: today,
-      lines: [{ docType: '01', serie: 'F998', correlativo: '1', motivo: 'ERROR EN EL COMPROBANTE' }],
+      lines: [
+        { docType: '01', serie: 'F998', correlativo: '1', motivo: 'ERROR EN EL COMPROBANTE' },
+      ],
     },
     certPem,
     keyPem,

@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const generateText = vi.fn<() => Promise<{ text: string }>>();
-vi.mock('ai', () => ({ generateText: () => generateText() }));
+vi.mock('ai', () => ({
+  generateText: () => generateText(),
+  // `$server/llm` now wraps every model in usage-recording middleware.
+  wrapLanguageModel: ({ model }: { model: unknown }) => model,
+}));
 vi.mock('@ai-sdk/openai', () => ({ createOpenAI: () => () => ({}) }));
 
 const envObj: Record<string, string> = { OPENROUTER_API_KEY: 'test-key' };
-vi.mock('$env/dynamic/private', () => ({ env: new Proxy(envObj, { get: (t, p) => t[p as string] }) }));
+vi.mock('$env/dynamic/private', () => ({
+  env: new Proxy(envObj, { get: (t, p) => t[p as string] }),
+}));
 
 function makeLocals(auth = true): App.Locals {
   return {
