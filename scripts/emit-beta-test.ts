@@ -22,6 +22,7 @@ const boleta: EmissionInvoice = {
   correlativo: '1',
   issueDate: today,
   currency: 'PEN',
+  igvRate: 0.18,
   emitter: {
     ruc: '20611172967',
     razonSocial: 'FACES BETA SAC',
