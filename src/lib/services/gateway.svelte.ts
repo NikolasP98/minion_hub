@@ -368,6 +368,18 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       };
     },
 
+    // TODO(handoff): pass `onEventError` here once a published
+    // @minion-stack/shared declares it, then drop this comment. The hook exists
+    // only on minion-meta's `dev` (PR #29); `main` and npm's latest (0.10.0)
+    // do not carry it, so the S0 publish gate of
+    // 2026-08-19-gateway-client-error-hook-consumer-adoption-spec is red and
+    // hub cannot bump. Hub's recorded posture is accepted-default (console.error,
+    // no wiring) because hub has no generic non-connection error sink — full
+    // recon, gate evidence and re-check commands:
+    // docs/2026-08-19-gateway-onevent-error-hook-s1-adoption-record.md.
+    // Until then a throw from `handleEvent` below is unreported: it escapes this
+    // callback into the socket's message listener (0.9.0 discards async
+    // rejections outright) — see event-dispatch-contract.test.ts in ./gateway/.
     onEvent(frame: EventFrame) {
       // Fence: a client that's been replaced (cutover, or an eager recreate)
       // must never mutate shared event-sequence/handler state.
