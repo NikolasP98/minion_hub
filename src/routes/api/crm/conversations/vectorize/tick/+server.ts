@@ -28,7 +28,9 @@ export const GET: RequestHandler = async ({ request, url }) => {
   const offsetParam = url.searchParams.get('offset');
   const offset = offsetParam ? Math.max(0, Number(offsetParam) || 0) : undefined;
 
-  const orgs = (await getCoreDb().execute(sql`select id from organizations`)) as unknown as { id: string }[];
+  const orgs = (await getCoreDb().execute(sql`select id from organizations`)) as unknown as {
+    id: string;
+  }[];
 
   const totals = { orgs: 0, processed: 0, dirty: 0, remaining: 0, skippedLocked: 0, errors: 0 };
   for (const { id: orgId } of orgs) {

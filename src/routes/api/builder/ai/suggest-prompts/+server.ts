@@ -70,7 +70,10 @@ Each prompt needs a short 2-4 word label for a pill button.`;
       system:
         'You generate realistic test prompts for AI skill pipelines. Return exactly 3 prompts via the tool call.',
       prompt: userMessage,
-      headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub Builder - Prompt Suggestions' },
+      headers: {
+        'HTTP-Referer': hubBaseUrl(),
+        'X-Title': 'Minion Hub Builder - Prompt Suggestions',
+      },
     });
     return json({ prompts: object.prompts.slice(0, 3) });
   } catch {

@@ -200,7 +200,12 @@ async function applyModuleAvailabilityGuard(event: Parameters<Handle>[0]['event'
       })
     : {};
   event.locals.moduleStates = moduleStates;
-  if (isAppRouteBlocked(canonicalPath(event.url.pathname), { kind: event.locals.orgKind, moduleStates })) {
+  if (
+    isAppRouteBlocked(canonicalPath(event.url.pathname), {
+      kind: event.locals.orgKind,
+      moduleStates,
+    })
+  ) {
     throw error(404, 'Not found');
   }
 }

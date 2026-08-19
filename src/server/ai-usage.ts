@@ -46,7 +46,10 @@ export function setAiUsageOrg(orgId: string): void {
  */
 export function withAiUsageFeature<T>(feature: string, fn: () => T): T {
   const parent = scopeContext.getStore();
-  return scopeContext.run({ orgId: parent?.orgId ?? null, route: parent?.route ?? null, feature }, fn);
+  return scopeContext.run(
+    { orgId: parent?.orgId ?? null, route: parent?.route ?? null, feature },
+    fn,
+  );
 }
 
 /**
@@ -134,7 +137,12 @@ export function buildUsageRow(entry: RecordedUsage, scope?: AiUsageScope) {
     ...tokens,
     // Reasoning tokens are already counted inside `outputTokens.total`, so they
     // are NOT added again here — doing so would double-bill every reasoning model.
-    costUsd: estimateCostUsd(entry.model, tokens.inputTokens, tokens.outputTokens, tokens.cacheReadTokens),
+    costUsd: estimateCostUsd(
+      entry.model,
+      tokens.inputTokens,
+      tokens.outputTokens,
+      tokens.cacheReadTokens,
+    ),
     providerCostUsd: extractProviderCost(entry.usage?.raw),
     durationMs: entry.durationMs ?? null,
     ok: entry.ok ?? true,

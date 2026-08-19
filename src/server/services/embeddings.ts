@@ -97,7 +97,12 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
       // from showing up as free in the ledger.
       recordAiUsage({
         model: provider.model,
-        usage: { inputTokens: { total: json.usage?.prompt_tokens ?? 0, noCache: json.usage?.prompt_tokens ?? 0 } },
+        usage: {
+          inputTokens: {
+            total: json.usage?.prompt_tokens ?? 0,
+            noCache: json.usage?.prompt_tokens ?? 0,
+          },
+        },
       });
       if (!Array.isArray(json.data) || json.data.length !== texts.length) {
         throw new Error(
