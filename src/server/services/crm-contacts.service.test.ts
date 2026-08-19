@@ -1,19 +1,37 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { ensureAccountInScope, getContactGraph, customFieldsMergeSql } from './crm-contacts.service';
+import {
+  ensureAccountInScope,
+  getContactGraph,
+  customFieldsMergeSql,
+  rankContacts,
+  rankContactsPage,
+} from './crm-contacts.service';
 
 // Default passthrough mirrors the real withOrgCore's `db.transaction(cb => cb(db))`
 // shape (see mock-db.ts) — keeps ensureAccountInScope's select/insert chains
 // working. getContactGraph tests override it via useExecMock to hand back a
 // bare `{ execute }` tx (avoids typing tx.execute onto the tenant-DB mock).
 const mockWithOrgCore = vi.fn(
-  (scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } }, fn: (tx: unknown) => unknown) =>
-    scope.db.transaction((tx: unknown) => fn(tx)),
+  (
+    scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } },
+    fn: (tx: unknown) => unknown,
+  ) => scope.db.transaction((tx: unknown) => fn(tx)),
 );
 
 vi.mock('$server/db/with-org-core', () => ({
-  withOrgCore: (scope: unknown, fn: (tx: unknown) => unknown) => mockWithOrgCore(scope as never, fn),
+  withOrgCore: (scope: unknown, fn: (tx: unknown) => unknown) =>
+    mockWithOrgCore(scope as never, fn),
+}));
+
+// rankContacts asks whether crm+finances are BOTH enabled before shaping the
+// finance CTE, and that check runs its own withOrgCore round-trip — left real it
+// would eat the exec mock queued for the ranking query itself.
+const { mockBothEnabled } = vi.hoisted(() => ({ mockBothEnabled: vi.fn(async () => false) }));
+vi.mock('./modules.service', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  bothEnabled: () => mockBothEnabled(),
 }));
 
 function useExecMock(execute: ReturnType<typeof vi.fn>) {
@@ -61,7 +79,12 @@ describe('getContactGraph', () => {
     label: 'John Smith',
     message_count: '5',
     last_at: '2026-07-01T00:00:00Z',
-    relationship: { label: 'mamá', category: 'family', source: 'ai', updatedAt: '2026-07-01T00:00:00Z' },
+    relationship: {
+      label: 'mamá',
+      category: 'family',
+      source: 'ai',
+      updatedAt: '2026-07-01T00:00:00Z',
+    },
   };
   const ctx = { db: {} as never, tenantId: 'org-1' };
 
@@ -162,8 +185,226 @@ describe('customFieldsMergeSql (spec F3b — client cannot forge/delete reserved
   });
 
   it('non-reserved keys pass through untouched', () => {
-    const query = new PgDialect().sqlToQuery(customFieldsMergeSql({ distrito: 'Miraflores', edad: '34' }));
+    const query = new PgDialect().sqlToQuery(
+      customFieldsMergeSql({ distrito: 'Miraflores', edad: '34' }),
+    );
     const jsonParam = query.params.find((p) => typeof p === 'string' && p.includes('distrito'));
     expect(jsonParam).toBe(JSON.stringify({ distrito: 'Miraflores', edad: '34' }));
+  });
+});
+
+// ── S1: paged query with total (rankContactsPage) ────────────────────────────
+
+/** Minimal shape the post-query mapping in runRankQuery touches. */
+function rankedRow(over: Record<string, unknown> = {}) {
+  return {
+    contact_id: 'c1',
+    display_name: 'Marisol',
+    owner_id: null,
+    source: 'ledger',
+    total_msgs: '12',
+    inbound_msgs: '7',
+    channels_used: '2',
+    channels: ['whatsapp'],
+    identities: [{ channel: 'whatsapp', externalId: '51987654321', handle: null }],
+    tag_ids: [],
+    custom_fields: { telefono: '51987654321' },
+    party_id: null,
+    dni_verified: false,
+    age: null,
+    dob: null,
+    sex: null,
+    first_contact_at: null,
+    last_contact_at: null,
+    is_buyer: false,
+    awaiting_reply: false,
+    lead_origin: null,
+    lead_campaign: null,
+    last_days: '3.0',
+    reciprocity: '0.5',
+    r_score: '80',
+    f_score: '60',
+    m_score: '40',
+    score: '65',
+    stage: 'Engaged',
+    revenue: 1200,
+    page_position: 1,
+    total_rows: 1543,
+    ...over,
+  };
+}
+
+describe('rankContactsPage (S1 — one round-trip page + filtered total)', () => {
+  const ctx = { db: {} as never, tenantId: 'org-1' };
+
+  it('reads the total from the filtered set before limit/offset', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([rankedRow(), rankedRow({ contact_id: 'c2' })]);
+    useExecMock(execute);
+
+    const page = await rankContactsPage(ctx, { limit: 2 });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain('select count(*)::int as total_rows from filtered');
+    expect(page.rows).toHaveLength(2);
+    expect(page.total).toBe(1543); // ≫ the 2 rows on this page
+  });
+
+  it('strips the helper columns — a page row is exactly a RankedContact', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([rankedRow()]);
+    useExecMock(execute);
+
+    const { rows } = await rankContactsPage(ctx, {});
+
+    expect(rows[0]).not.toHaveProperty('total_rows');
+    expect(rows[0]).not.toHaveProperty('revenue');
+    expect(rows[0]).not.toHaveProperty('page_position');
+    // …and the numeric coercion still applies to what remains.
+    expect(rows[0].score).toBe(65);
+    expect(rows[0].total_msgs).toBe(12);
+  });
+
+  it('an out-of-range page preserves the nonzero filtered total in one round trip', async () => {
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([{ contact_id: null, total_rows: 25, page_position: null }]);
+    useExecMock(execute);
+
+    const page = await rankContactsPage(ctx, { limit: 100, offset: 99900 });
+
+    expect(page).toEqual({ rows: [], total: 25 });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('rankContacts keeps its pre-pagination contract — rows only', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([rankedRow()]);
+    useExecMock(execute);
+
+    const out = await rankContacts(ctx, {});
+
+    expect(Array.isArray(out)).toBe(true);
+    expect(out[0].contact_id).toBe('c1');
+    expect(out[0]).not.toHaveProperty('total_rows');
+  });
+});
+
+describe('rankContacts sorting (S1 — server-side ICP + revenue)', () => {
+  const ctx = { db: {} as never, tenantId: 'org-1' };
+
+  async function sqlFor(f: Parameters<typeof rankContacts>[1]) {
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+    await rankContacts(ctx, f);
+    return new PgDialect().sqlToQuery(execute.mock.calls[0][0]).sql;
+  }
+
+  it("sort:'icp' orders by the stored _icp score with unscored rows LAST, never as 0", async () => {
+    const sqlText = await sqlFor({ sort: 'icp' });
+
+    expect(sqlText).toContain("(custom_fields->'_icp'->>'score')::numeric");
+    // A missing/typeless _icp yields NULL (not 0) and `nulls last` sinks it.
+    expect(sqlText).toContain("jsonb_typeof(custom_fields->'_icp'->'score') = 'number'");
+    expect(sqlText).toMatch(/order by[\s\S]*end\)\s*desc nulls last/);
+  });
+
+  it("sort:'revenue' orders by the finance-bridge revenue sum, nulls last", async () => {
+    const sqlText = await sqlFor({ sort: 'revenue' });
+
+    expect(sqlText).toMatch(/order by\s*\n?\s*revenue desc nulls last/);
+  });
+
+  it('the default sort keeps score/name precedence and ends with a unique contact id', async () => {
+    const sqlText = await sqlFor({});
+
+    expect(sqlText).toMatch(
+      /order by\s*\n?\s*score desc, display_name asc nulls last, contact_id asc/,
+    );
+  });
+
+  it.each(['recent', 'frequency', 'name', 'revenue', 'icp'] as const)(
+    "sort '%s' ends with contact_id so tied rows have one stable page order",
+    async (sort) => {
+      const sqlText = await sqlFor({ sort });
+
+      expect(sqlText).toMatch(/order by[\s\S]*contact_id asc/);
+    },
+  );
+});
+
+describe('rankContacts search (S1 — phone/DNI exact-prefix)', () => {
+  const ctx = { db: {} as never, tenantId: 'org-1' };
+
+  it('matches display_name mid-string but telefono/dni only as a PREFIX', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, { search: '9876' });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain("c.custom_fields->>'telefono' like");
+    // name = substring; phone + dni = prefix. A mid-string phone match would
+    // need a leading '%', and there is exactly one of those (the name).
+    expect(query.params.filter((p) => p === '%9876%')).toHaveLength(1);
+    expect(query.params.filter((p) => p === '9876%')).toHaveLength(2);
+  });
+
+  it('DNI search uses the custom_fields prefix required by the server-pagination contract', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, { search: '4455' });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain("c.custom_fields->>'dni' like");
+  });
+
+  it('a field-level-masked principal never searches the raw phone/DNI it cannot read', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, { search: '5198', maskSensitive: true });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    // Masked callers receive `•••••4321`; matching the raw column would let them
+    // recover the hidden digits by lengthening the prefix one probe at a time.
+    expect(query.sql).not.toContain("c.custom_fields->>'telefono' like");
+    expect(query.sql).not.toContain("c.custom_fields->>'dni' like");
+    expect(query.sql).toContain('c.display_name ilike');
+    expect(query.params).not.toContain('5198%');
+    expect(query.params).toContain('%5198%');
+  });
+
+  it('no search term adds no search predicate at all', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, {});
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).not.toContain("c.custom_fields->>'telefono' like");
+    expect(query.sql).not.toContain('display_name ilike');
+  });
+});
+
+describe('rankContacts revenue column (S1 — order-by fuel, not part of the payload)', () => {
+  const ctx = { db: {} as never, tenantId: 'org-1' };
+
+  async function sqlWithFinance(enabled: boolean) {
+    mockBothEnabled.mockResolvedValueOnce(enabled);
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+    await rankContacts(ctx, { sort: 'revenue' });
+    return new PgDialect().sqlToQuery(execute.mock.calls[0][0]).sql;
+  }
+
+  it('crm+finances on: the finance CTE sums invoice totals per contact', async () => {
+    expect(await sqlWithFinance(true)).toContain('sum(coalesce(fi.total, 0))::float8 as revenue');
+  });
+
+  it('finances off: the stub CTE still declares revenue, so sort:revenue degrades instead of erroring', async () => {
+    const sqlText = await sqlWithFinance(false);
+
+    expect(sqlText).not.toContain('sum(coalesce(fi.total, 0))');
+    expect(sqlText).toContain('null::float8 as revenue');
+    expect(sqlText).toContain('revenue desc nulls last');
   });
 });

@@ -2,9 +2,32 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildRouteInventory } from './ui-audit-inventory.mjs';
 import baseline from '../tests/ui-audit/current-baseline.json';
+
+const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
+
+/**
+ * The pinned baseline commit is a real Git object in a full clone (CI checks out
+ * with `fetch-depth: 0`) but is absent from a SHALLOW checkout — which is what
+ * factory workers and any `--depth` clone get. `buildRouteInventory` then falls
+ * back to HEAD, so the route ledger below is still certified against committed
+ * sources; only the provenance identity is unverifiable. Skip that assertion
+ * loudly instead of handing back the recorded ledger and comparing it to itself.
+ */
+const pinnedBaselineIsReachable = (() => {
+  try {
+    execFileSync('git', ['cat-file', '-e', `${baseline.sourceCommit}^{commit}`], {
+      cwd: repositoryRoot,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 describe('UI audit route inventory', () => {
   it('locks the complete endpoint ledger at 142 screens and 10 redirects', async () => {
@@ -31,10 +54,18 @@ describe('UI audit route inventory', () => {
         .filter((route) => route.kind === 'redirect')
         .every((route) => route.redirectContract),
     ).toBe(true);
-    expect(inventory.sourceRef).toBe(baseline.sourceRef);
-    expect(inventory.sourceCommit).toBe(baseline.sourceCommit);
-    expect(inventory.workingTreeFingerprint).toBe(baseline.workingTreeFingerprint);
   });
+
+  it.runIf(pinnedBaselineIsReachable)(
+    'certifies that ledger against the pinned baseline commit, not the working tree',
+    async () => {
+      const inventory = await buildRouteInventory({ cleanBaseline: true });
+
+      expect(inventory.sourceRef).toBe(baseline.sourceRef);
+      expect(inventory.sourceCommit).toBe(baseline.sourceCommit);
+      expect(inventory.workingTreeFingerprint).toBe(baseline.workingTreeFingerprint);
+    },
+  );
 
   it('reads clean baseline evidence from the recorded Git object, not dirty route files', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'minion-ui-inventory-'));
