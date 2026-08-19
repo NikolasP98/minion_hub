@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { recordAiUsage } from '$server/ai-usage';
 
 /**
  * Text embeddings for the agent-memory corpus. Uses the OpenAI-compatible REST
@@ -89,7 +90,20 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
     }
 
     try {
-      const json = (await res.json()) as { data?: unknown };
+      const json = (await res.json()) as { data?: unknown; usage?: { prompt_tokens?: number } };
+      // Embeddings never touch the AI SDK (raw REST, no provider object), so the
+      // usage middleware in `$server/llm` cannot see them. Recording here keeps
+      // the vectorize and brain-reconcile pipelines — both embedding-dominated —
+      // from showing up as free in the ledger.
+      recordAiUsage({
+        model: provider.model,
+        usage: {
+          inputTokens: {
+            total: json.usage?.prompt_tokens ?? 0,
+            noCache: json.usage?.prompt_tokens ?? 0,
+          },
+        },
+      });
       if (!Array.isArray(json.data) || json.data.length !== texts.length) {
         throw new Error(
           `Embeddings returned ${Array.isArray(json.data) ? json.data.length : 0} vectors for ${texts.length} inputs`,

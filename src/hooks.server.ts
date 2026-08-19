@@ -20,6 +20,7 @@ import { canonicalizeWorkforceRoleKeys } from '$lib/server/workforce-role-keys';
 import { needsWorkforceIdentity } from '$lib/server/workforce-route';
 import { initCache } from '$lib/server/cache';
 import { getCoreDb } from '$server/db/pg-client';
+import { runWithAiUsageScope } from '$server/ai-usage';
 import { getUserPreferences } from '$server/services/user-preferences.service';
 import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
 import { apiWriteCapability, hasOrgCapability } from '$server/services/rbac.service';
@@ -199,7 +200,12 @@ async function applyModuleAvailabilityGuard(event: Parameters<Handle>[0]['event'
       })
     : {};
   event.locals.moduleStates = moduleStates;
-  if (isAppRouteBlocked(canonicalPath(event.url.pathname), { kind: event.locals.orgKind, moduleStates })) {
+  if (
+    isAppRouteBlocked(canonicalPath(event.url.pathname), {
+      kind: event.locals.orgKind,
+      moduleStates,
+    })
+  ) {
     throw error(404, 'Not found');
   }
 }
@@ -461,7 +467,18 @@ Sentry.init({
   environment: env.PUBLIC_VERCEL_ENV ?? env.NODE_ENV ?? 'development',
 });
 
+/**
+ * Opens the AI usage scope for the request. Must sit at the FRONT of the
+ * sequence: the scope has to exist before any downstream handle or endpoint can
+ * resolve a tenant into it, and before any LLM call can read it. The org id is
+ * still null here — authentication has not run yet — and gets filled in later by
+ * `getTenantCtx`. See `$server/ai-usage`.
+ */
+const aiUsageScopeHandle: Handle = ({ event, resolve }) =>
+  runWithAiUsageScope({ orgId: null, route: event.route.id, feature: null }, () => resolve(event));
+
 export const handle = sequence(
+  aiUsageScopeHandle,
   Sentry.sentryHandle(),
   i18n.handle(),
   cloudPasskeyHandle,
