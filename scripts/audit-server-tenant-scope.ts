@@ -14,7 +14,7 @@
  * Run (non-production, then production — attach both outputs to the PR):
  *   TURSO_DB_URL=... TURSO_DB_AUTH_TOKEN=... \
  *   PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
- *   bun scripts/audit-server-tenant-scope.ts
+ *   bun --no-env-file scripts/audit-server-tenant-scope.ts
  *
  * Exit 0 + `null_tenant_ids=0 unmatched_tenant_ids=0` means re-key readiness
  * is proven. Any other exit code (or nonzero counts) means Slice 2 must not

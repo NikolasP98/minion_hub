@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "baseCommit": "67dfa696c7e3b676e106d32fee4010130b117cd2",
-  "sourceRef": "67dfa696c7e3b676e106d32fee4010130b117cd2",
+  "sourceRef": "HEAD",
   "sourceCommit": "67dfa696c7e3b676e106d32fee4010130b117cd2",
   "sourceTreeSha": "bf0dccd58ffe77e8b98a3df8eb55223b1791e43a",
-  "workingTreeFingerprint": "git:67dfa696c7e3b676e106d32fee4010130b117cd2:bf0dccd58ffe77e8b98a3df8eb55223b1791e43a",
+  "workingTreeFingerprint": "git-tree:bf0dccd58ffe77e8b98a3df8eb55223b1791e43a",
   "summary": {
     "endpoints": 152,
     "screens": 142,
