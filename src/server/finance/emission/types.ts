@@ -1,7 +1,8 @@
 /**
- * SUNAT beta emission — shared shapes. Totals/IGV are always DERIVED (18%,
- * tax-inclusive line prices) — never accept them as input, that's how a caller
- * ends up submitting an invoice whose lines don't sum to its own totals.
+ * SUNAT beta emission — shared shapes. Totals/IGV are always DERIVED (from
+ * `igvRate` and tax-inclusive line prices) — never accept them as input,
+ * that's how a caller ends up submitting an invoice whose lines don't sum to
+ * its own totals.
  */
 
 /** '01' = factura, '03' = boleta (SUNAT InvoiceTypeCode, listID 0101). */
@@ -25,6 +26,11 @@ export interface EmissionInvoice {
   /** YYYY-MM-DD. */
   issueDate: string;
   currency: 'PEN';
+  /** IGV rate as a FRACTION (e.g. eighteen percent is expressed as a
+   *  fraction, never as a whole-number percent) — normalized once at the
+   *  settings boundary by `resolveIgvRate` (finance/tax.ts, added in S2 of
+   *  2026-08-17-hub-igv-rate-from-org-config-spec), never inside this library. */
+  igvRate: number;
   emitter: {
     ruc: string;
     razonSocial: string;
