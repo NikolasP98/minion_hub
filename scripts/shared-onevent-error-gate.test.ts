@@ -32,9 +32,11 @@ const read = (relativePath: string): string =>
 
 const RECORD_PATH = 'docs/2026-08-19-gateway-onevent-error-hook-adoption.md';
 
-const installedVersion = (JSON.parse(read('node_modules/@minion-stack/shared/package.json')) as {
-  version: string;
-}).version;
+const installedVersion = (
+  JSON.parse(read('node_modules/@minion-stack/shared/package.json')) as {
+    version: string;
+  }
+).version;
 const hookDeclared = /\bonEventError\b/.test(
   read('node_modules/@minion-stack/shared/dist/gateway/client.d.ts'),
 );
