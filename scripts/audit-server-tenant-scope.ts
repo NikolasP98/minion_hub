@@ -39,6 +39,10 @@
  *   3. the concrete re-key migration/deployment identifier and apply evidence
  *      (a planning-spec status alone is insufficient);
  *   4. the rollback/recovery note for that re-key.
+ * The exact procedure, the pass/fail decision table, the rollback/recovery
+ * statement and the PR evidence template are in
+ * `docs/runbooks/server-tenant-scope-rekey-readiness.md`, so the credential
+ * holder's remaining step is mechanical.
  * Pointer: specs/2026-08-18-hub-updateserver-tenant-scope-spec.md (this repo's
  * FACTORY_SPEC.md), Slice 1 Definition of done.
  */
@@ -110,6 +114,7 @@ async function main() {
   if (!result.pass) {
     for (const reason of result.failReasons) console.error(`[audit] ${reason}`);
     console.error('[audit] FAIL — re-key readiness not proven; Slice 2 must not proceed');
+    console.error('[audit] next steps: docs/runbooks/server-tenant-scope-rekey-readiness.md');
     process.exit(1);
   }
   console.log(
