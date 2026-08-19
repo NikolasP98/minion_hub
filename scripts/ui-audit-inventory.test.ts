@@ -6,6 +6,28 @@ import { describe, expect, it } from 'vitest';
 import { buildRouteInventory } from './ui-audit-inventory.mjs';
 import baseline from '../tests/ui-audit/current-baseline.json';
 
+type LedgerRoute = {
+  id: string;
+  pattern: string;
+  source: string;
+  family: string;
+  kind: string;
+  dynamic: boolean;
+  redirectContract?: Record<string, unknown>;
+};
+
+/** Every field of a route that is a contract, with the audit metrics dropped. */
+const endpointSurface = (routes: readonly LedgerRoute[]) =>
+  routes.map(({ id, pattern, source, family, kind, dynamic, redirectContract }) => ({
+    id,
+    pattern,
+    source,
+    family,
+    kind,
+    dynamic,
+    redirectContract: redirectContract ?? null,
+  }));
+
 describe('UI audit route inventory', () => {
   it('locks the complete endpoint ledger at 142 screens and 10 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
@@ -31,12 +53,25 @@ describe('UI audit route inventory', () => {
         .filter((route) => route.kind === 'redirect')
         .every((route) => route.redirectContract),
     ).toBe(true);
-    expect(inventory.sourceRef).toBe(baseline.sourceRef);
-    expect(inventory.sourceCommit).toBe(baseline.sourceCommit);
-    expect(inventory.workingTreeFingerprint).toBe(baseline.workingTreeFingerprint);
+    // The ledger locks the ENDPOINT SURFACE, not the commit it happened to be
+    // generated on. `sourceCommit` / `sourceRef` / `workingTreeFingerprint` are
+    // provenance: a squash-merge deletes the branch commit a regeneration
+    // recorded and a shallow clone never had it, so asserting equality on those
+    // ids failed on every unrelated PR — and on the rare clone where the id did
+    // resolve, it passed vacuously by rebuilding the inventory from the very
+    // commit the ledger was written from. `observations` are audit metrics
+    // (button/input/fetch counts) that legitimately move when route markup is
+    // edited, so they are regenerated rather than locked.
+    expect(endpointSurface(inventory.routes)).toEqual(
+      endpointSurface(baseline.routes as unknown as LedgerRoute[]),
+    );
+    expect(inventory.summary).toEqual(baseline.summary);
+    expect(inventory.workingTreeFingerprint).toBe(
+      `git:${inventory.sourceCommit}:${inventory.sourceTreeSha}`,
+    );
   });
 
-  it('reads clean baseline evidence from the recorded Git object, not dirty route files', async () => {
+  it('reads clean baseline evidence from the committed Git object, not dirty route files', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'minion-ui-inventory-'));
     const routeFile = path.join(root, 'src/routes/example/+page.svelte');
     try {

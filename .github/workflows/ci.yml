@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history: ui-audit-inventory resolves its pinned baseline commit.
+          # Full history: the design-lint ratchet diffs changed files against the base ref.
           fetch-depth: 0
 
       - name: Setup Bun

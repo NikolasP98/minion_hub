@@ -96,25 +96,19 @@ function isUnconditionalServerRedirect(source) {
   return /^\s*throw\s+redirect\s*\(/.test(loadBody[1]);
 }
 
-async function recordedBaselineRef(root) {
-  try {
-    const ledger = JSON.parse(
-      await readFile(path.join(root, 'tests/ui-audit/current-baseline.json'), 'utf8'),
-    );
-    if (typeof ledger.sourceCommit === 'string' && /^[0-9a-f]{40}$/.test(ledger.sourceCommit)) {
-      git(root, 'cat-file', '-e', `${ledger.sourceCommit}^{commit}`);
-      return ledger.sourceCommit;
-    }
-  } catch {
-    // A new repository has no ledger yet; its current commit becomes baseline.
-  }
-  return 'HEAD';
-}
-
 /**
  * Build the route inventory either from the mutable working tree or from an
  * immutable Git object. The latter is what backs the pre-program evidence: a
  * dirty route file must never be able to rewrite what we call the baseline.
+ *
+ * A clean baseline reads `HEAD` unless an explicit `baselineRef` asks for a
+ * historical audit. It deliberately does NOT re-read the commit recorded in
+ * `tests/ui-audit/current-baseline.json`: that commit is provenance, not an
+ * anchor. Squash-merging deletes the branch commit a ledger was generated on
+ * within minutes, and a shallow clone never had it — so anchoring to it either
+ * made the ledger compare against itself (vacuously green) or resolved a
+ * dangling id. The ledger's contract is the endpoint surface, and the
+ * comparison that enforces it lives in `ui-audit-inventory.test.ts`.
  */
 export async function buildRouteInventory({
   cleanBaseline = false,
@@ -124,7 +118,7 @@ export async function buildRouteInventory({
   const root = path.resolve(repositoryRoot);
   const routeRoot = path.join(root, 'src/routes');
   const headCommit = git(root, 'rev-parse', 'HEAD');
-  const cleanSourceRef = baselineRef ?? (await recordedBaselineRef(root));
+  const cleanSourceRef = baselineRef ?? 'HEAD';
   const sourceCommit = cleanBaseline ? git(root, 'rev-parse', cleanSourceRef) : headCommit;
   const sourceRef = cleanBaseline ? cleanSourceRef : 'WORKTREE';
   const trackedRouteFiles = cleanBaseline

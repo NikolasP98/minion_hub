@@ -113,4 +113,14 @@ persona, route/state/scenario key, preparation method or blocker, screenshot, ru
 diagnostics, certification evidence, and captured/blocked/failed totals.
 
 `tests/ui-audit/current-baseline.json` is the immutable pre-program endpoint ledger; regenerate
-it only when the route surface intentionally changes.
+it only when the route surface intentionally changes:
+
+```bash
+node scripts/ui-audit-inventory.mjs --clean-baseline --out=tests/ui-audit/current-baseline.json
+bunx prettier --write tests/ui-audit/current-baseline.json   # the generator emits raw JSON.stringify
+```
+
+Its `sourceCommit` / `sourceRef` / `workingTreeFingerprint` fields are provenance only — a
+squash-merge deletes the branch commit a regeneration recorded — so
+`scripts/ui-audit-inventory.test.ts` locks the endpoint surface (`summary` plus each route's
+pattern/source/family/kind/redirect contract) instead of those ids.
