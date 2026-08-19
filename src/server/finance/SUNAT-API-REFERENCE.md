@@ -107,3 +107,20 @@ Base `https://api-sire.sunat.gob.pe/v1/contribuyente/migeigv/libros`. Book code:
   is the hook for the eventual push leg.
 - Production emission: needs the real certificate + fresh series (keep BE01/etc.
   for SUSII history; new emitter gets its own serie).
+
+## Production certificate (Certificado Digital Tributario — CDT)
+
+Free from SUNAT, 3-yr validity, program open until 31-Dec-2027, and explicitly
+valid for **SEE Del Contribuyente** (our emission path). SOL path (likely needs
+the PRINCIPAL Clave SOL): **Empresas → Comprobantes de Pago → Certificado
+Digital Tributario - CDT → Solicitar Certificado Digital Tributario** → accept
+terms → set an 8+ char alphanumeric private-key password (unrecoverable) →
+download `certificado.p12` from the Buzón message "Emisión de Certificado
+Digital Tributario". Convert: `openssl pkcs12 -in certificado.p12 -clcerts
+-nokeys -out cert.pem` and `... -nocerts -nodes -out key.pem`; store as the prod
+equivalents of `POS_EMISSION_BETA_CERT/KEY` env vars (never commit).
+Eligibility caveats to verify: 2019 net income ≤ S/ 1,260,000 (regulation pins
+to FY2019); no existing valid CDT (max 2 ever) — FACES may already hold one via
+SUSII that could be reused. Fallback: commercial INDECOPI-accredited CA (~S/
+80-200/yr). Docs: https://cpe.sunat.gob.pe/certificado-digital ·
+https://www.gob.pe/26725-obtener-certificado-digital-tributario
