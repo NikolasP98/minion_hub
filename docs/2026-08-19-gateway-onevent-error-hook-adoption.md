@@ -22,6 +22,11 @@ The dependency bump that S1 asks for cannot be made: no published `@minion-stack
 | `npm view @minion-stack/shared versions --prefer-online` | `… 0.8.1, 0.9.0, 0.10.0` — 0.10.0 is latest |
 | registry tarball of `@minion-stack/shared@0.10.0` → `package/dist/gateway/client.d.ts` | declares `onEvent?:` only; **no `onEventError`** |
 
+The spec calls S0 "a polling gate, not a one-shot check", so it was re-run in full on 2026-08-19
+(this branch's second attempt): `main` still has no `onEventError`, `npm view … versions
+--prefer-online` still ends at `0.10.0`, and that release's registry tarball still declares
+`onEvent?:` at `package/dist/gateway/client.d.ts:19` and nothing else. Gate unchanged: RED.
+
 Per the spec's §5 S0 ("If the Version-Packages PR is absent … **stop** — S1–S3 do not start") and §7
 ("S1–S3 must not route around it with a git/tarball dependency"), the bump is deferred. Note that
 this repo does vendor other meta-repo packages as `file:deps/*.tgz` (`@minion-stack/db`,
@@ -34,7 +39,7 @@ forbidden for this hook, so it was not used.
 | --- | --- |
 | Version pinned? | `package.json:24` → `"@minion-stack/shared": "^0.9.0"`; `bun.lock:412` resolves `0.9.0`; `node_modules/@minion-stack/shared/dist/gateway/client.d.ts:19` has `onEvent?:` and no `onEventError` |
 | Where is the client built? | `src/lib/services/gateway.svelte.ts:302` `buildGatewayClient()` — the single `new GatewayClient({…})` site, shared by `wsConnect` and the cutover backup client |
-| Is hub's `onEvent` wrapped in its own `try`/`catch`? | **No.** `gateway.svelte.ts:371-380` fences on `getClient() !== client`, stamps `gw.lastSeq`, then calls `handleEvent(frame)` unguarded (the spec recorded this as unverified) |
+| Is hub's `onEvent` wrapped in its own `try`/`catch`? | **No.** `gateway.svelte.ts:381-390` fences on `getClient() !== client`, stamps `gw.lastSeq`, then calls `handleEvent(frame)` unguarded (the spec recorded this as unverified) |
 | What happens to a throw today? | Installed `0.9.0` dispatches with `void Promise.resolve(this.opts.onEvent?.(frame)).catch(() => {})`. A **synchronous** throw escapes before the promise wrapper and surfaces as an uncaught error on the socket message handler; an **async** rejection is swallowed silently by the empty `catch` |
 | Is `gateway-errors.ts` a valid sink? | **No.** `describeGatewayError` maps WS close/connect reasons to `{title, hint, raw, cta}` for the connection status UI. Routing handler failures there would violate the spec's invariant 5 (a handler failure is not a disconnection) |
 | Is there a generic sink? | **Yes.** `src/lib/utils/console-interceptor.ts` — `installInterceptor()` patches `console.log/warn/error/info` into a 100-entry ring buffer; installed app-wide in `src/routes/+layout.svelte:58` (`onMount`), drained by `src/lib/state/ui/bug-reporter.svelte.ts:62` into bug reports |
