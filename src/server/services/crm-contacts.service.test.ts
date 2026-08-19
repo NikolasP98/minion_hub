@@ -357,6 +357,22 @@ describe('rankContacts search (S1 — phone/DNI exact-prefix)', () => {
     expect(query.sql).toContain("c.custom_fields->>'dni' like");
   });
 
+  it('a field-level-masked principal never searches the raw phone/DNI it cannot read', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, { search: '5198', maskSensitive: true });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    // Masked callers receive `•••••4321`; matching the raw column would let them
+    // recover the hidden digits by lengthening the prefix one probe at a time.
+    expect(query.sql).not.toContain("c.custom_fields->>'telefono' like");
+    expect(query.sql).not.toContain("c.custom_fields->>'dni' like");
+    expect(query.sql).toContain('c.display_name ilike');
+    expect(query.params).not.toContain('5198%');
+    expect(query.params).toContain('%5198%');
+  });
+
   it('no search term adds no search predicate at all', async () => {
     const execute = vi.fn().mockResolvedValueOnce([]);
     useExecMock(execute);

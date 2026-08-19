@@ -28,9 +28,12 @@ vi.mock('$server/db/with-org-core', () => ({
       },
     }),
 }));
+// The finance bridge (and with it the revenue column `sort:'revenue'` orders by)
+// is only built when BOTH modules are on, so the flag has to be switchable here.
+let financeOn = false;
 vi.mock('./modules.service', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  bothEnabled: async () => false,
+  bothEnabled: async () => financeOn,
 }));
 
 import { rankContactsPage } from './crm-contacts.service';
@@ -43,6 +46,10 @@ const ids = {
   dni: '00000000-0000-4000-8000-000000000005',
   unscored: '00000000-0000-4000-8000-000000000006',
 };
+const org = '00000000-0000-4000-8000-0000000000aa';
+const party = '00000000-0000-4000-8000-0000000000bb';
+const finClient = '00000000-0000-4000-8000-0000000000cc';
+const invoice = '00000000-0000-4000-8000-0000000000dd';
 
 describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () => {
   beforeAll(async () => {
@@ -52,7 +59,8 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
       create table crm_contacts (
         id uuid primary key, display_name text, owner_id uuid, source text,
         lifecycle_override text, custom_fields jsonb not null default '{}',
-        party_id uuid, deleted_at timestamptz
+        party_id uuid, deleted_at timestamptz, org_id text,
+        created_at timestamptz not null default now()
       );
       create table crm_contact_identities (
         contact_id uuid, org_id uuid, channel text, external_id text, handle text
@@ -70,6 +78,10 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
         org_id uuid, channel text, sender_id text, origin text,
         campaign_name text, first_contact_at timestamptz
       );
+      create table fin_clients (id uuid primary key, org_id uuid, party_id uuid);
+      create table fin_invoices (
+        id uuid primary key, client_id uuid, issued_at timestamptz, total numeric
+      );
     `);
     await client!.unsafe(
       `insert into crm_contacts (id, display_name, custom_fields) values
@@ -80,6 +92,29 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
        ($5, 'DNI', '{"dni":"44556677","_icp":{"score":50}}'),
        ($6, 'No score', '{}')`,
       [ids.ana1, ids.ana2, ids.bea, ids.phone, ids.dni, ids.unscored],
+    );
+    // Only "No score" carries a party, so it is the only contact the finance
+    // bridge can attach revenue to — which makes it the expected head of
+    // `sort:'revenue'` even though it sits LAST on every other axis.
+    await client!.unsafe(`update crm_contacts set org_id = $1`, [org]);
+    await client!.unsafe(`select set_config('app.current_org_id', $1, false)`, [org]);
+    await client!.unsafe(`update crm_contacts set party_id = $1 where id = $2`, [
+      party,
+      ids.unscored,
+    ]);
+    await client!.unsafe(
+      `insert into parties (id, doc_number, dni_verified) values ($1, '99887766', true)`,
+      [party],
+    );
+    await client!.unsafe(`insert into fin_clients (id, org_id, party_id) values ($1, $2, $3)`, [
+      finClient,
+      org,
+      party,
+    ]);
+    await client!.unsafe(
+      `insert into fin_invoices (id, client_id, issued_at, total)
+       values ($1, $2, now() - interval '10 days', 500)`,
+      [invoice, finClient],
     );
   });
 
@@ -93,9 +128,9 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     const [{ count }] = await client!.unsafe<{ count: number }[]>(
       'select count(*)::int as count from crm_contacts where deleted_at is null',
     );
-    const first = await rankContactsPage({ db: {} as never, tenantId: ids.ana1 }, { limit: 2 });
+    const first = await rankContactsPage({ db: {} as never, tenantId: org }, { limit: 2 });
     const empty = await rankContactsPage(
-      { db: {} as never, tenantId: ids.ana1 },
+      { db: {} as never, tenantId: org },
       { limit: 2, offset: 100 },
     );
     expect(first.total).toBe(count);
@@ -107,7 +142,7 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     const seen: string[] = [];
     for (const offset of [0, 2, 4]) {
       const page = await rankContactsPage(
-        { db: {} as never, tenantId: ids.ana1 },
+        { db: {} as never, tenantId: org },
         { sort: 'icp', limit: 2, offset },
       );
       seen.push(...page.rows.map((row) => row.contact_id));
@@ -122,18 +157,38 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     ['5198', ids.phone],
     ['4455', ids.dni],
   ])('matches exact phone/DNI prefix %s', async (search, expectedId) => {
-    const page = await rankContactsPage(
-      { db: {} as never, tenantId: ids.ana1 },
-      { search, limit: 20 },
-    );
+    const page = await rankContactsPage({ db: {} as never, tenantId: org }, { search, limit: 20 });
     expect(page.rows.map((row) => row.contact_id)).toEqual([expectedId]);
   });
 
-  it.each(['8765', '5566'])('does not match phone/DNI mid-string %s', async (search) => {
+  it("sort:'revenue' ranks by the finance bridge and never leaks the helper column", async () => {
+    financeOn = true;
+    try {
+      const page = await rankContactsPage(
+        { db: {} as never, tenantId: org },
+        { sort: 'revenue', limit: 10 },
+      );
+
+      expect(page.total).toBe(6);
+      expect(page.rows[0].contact_id).toBe(ids.unscored);
+      expect(page.rows[0]).not.toHaveProperty('revenue');
+      expect(page.rows[0]).not.toHaveProperty('total_rows');
+      expect(page.rows[0]).not.toHaveProperty('page_position');
+    } finally {
+      financeOn = false;
+    }
+  });
+
+  it('a masked principal cannot probe the phone/DNI digits the mask hides', async () => {
     const page = await rankContactsPage(
-      { db: {} as never, tenantId: ids.ana1 },
-      { search, limit: 20 },
+      { db: {} as never, tenantId: org },
+      { search: '5198', limit: 20, maskSensitive: true },
     );
+    expect(page).toEqual({ rows: [], total: 0 });
+  });
+
+  it.each(['8765', '5566'])('does not match phone/DNI mid-string %s', async (search) => {
+    const page = await rankContactsPage({ db: {} as never, tenantId: org }, { search, limit: 20 });
     expect(page).toEqual({ rows: [], total: 0 });
   });
 });

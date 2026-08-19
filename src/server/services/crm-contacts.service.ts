@@ -315,10 +315,28 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
     // display_name stays a substring match; phone + DNI are EXACT-PREFIX (mirrors
     // the gateway `crm_search` tool — a mid-number substring is never what the
     // operator meant).
+    //
+    // Field-level (Phase 4): a masked principal only ever RECEIVES `•••••4321`,
+    // so matching the RAW phone/DNI would hand back exactly the digits the mask
+    // hides — `?search=5`, `51`, `519`… narrows until one row survives and the
+    // surviving prefix spells the number out. Masked callers therefore keep the
+    // pre-pagination display_name-only predicate.
+    //
+    // TODO(handoff): DNI search reads `crm_contacts.custom_fields->>'dni'`, the
+    // RAW column — the `base` CTE below overlays `parties.doc_number` for
+    // DISPLAY, so a contact whose document lives only on the party spine renders
+    // a DNI the roster cannot find. Slice 1 of
+    // 2026-08-13-crm-customers-server-pagination-spec names the custom_fields
+    // prefix, so widening the predicate to `p.doc_number` belongs to the slice
+    // that owns party-spine search, not here.
     if (f.search)
-      conds.push(sql`(c.display_name ilike ${'%' + f.search + '%'}
+      conds.push(
+        f.maskSensitive
+          ? sql`c.display_name ilike ${'%' + f.search + '%'}`
+          : sql`(c.display_name ilike ${'%' + f.search + '%'}
         or c.custom_fields->>'telefono' like ${f.search + '%'}
-        or c.custom_fields->>'dni' like ${f.search + '%'})`);
+        or c.custom_fields->>'dni' like ${f.search + '%'})`,
+      );
     if (f.tagId)
       conds.push(
         sql`exists (select 1 from crm_contact_tags ct where ct.contact_id = c.id and ct.tag_id = ${f.tagId})`,
