@@ -9,20 +9,20 @@ revises the manuals (v22 as of this writing).**
 
 ## Official documentation (authoritative)
 
-| Doc | URL |
-|---|---|
-| SIRE — formas de acceso / API credentials | https://cpe.sunat.gob.pe/node/158 |
-| SIRE **Ventas** (RVIE) Web API manual v22 | https://cpe.sunat.gob.pe/sites/default/files/inline-files/Manual%20de%20servicios%20Web%20Api%20Ventas%20v22_Parte%20I.pdf |
-| SIRE **Compras** (RCE) Web API manual v22 — Parte I | https://cpe.sunat.gob.pe/sites/default/files/inline-files/Manual%20de%20servicios%20Web%20Api%20-%20SIRE_Compras%20v22.pdf |
-| …RCE Parte II (ajustes posteriores) | https://cpe.sunat.gob.pe/sites/default/files/inline-files/Manual%20de%20servicios%20Web%20Api%20-%20SIRE_Compras%20v22_Parte%20II.pdf |
-| …RCE Parte III (FV0621 etc.) | https://cpe.sunat.gob.pe/sites/default/files/inline-files/Manual%20de%20servicios%20Web%20Api%20-%20SIRE_Compras%20v22_Parte%20III.pdf |
-| UBL 2.1 XML guide — **Factura** | https://cpe.sunat.gob.pe/sites/default/files/inline-files/guia+xml+factura+version%202-1+1+0%20(2)_0%20(2).pdf |
-| UBL 2.1 XML guide — **Boleta** | https://cpe.sunat.gob.pe/sites/default/files/inline-files/guia+xml+boleta+version%202-1+1+0_0_0%20(2).pdf |
-| UBL 2.1 XML guide — **Nota de Crédito** | https://cpe.sunat.gob.pe/sites/default/files/inline-files/guia+xml+nota%20de%20cr%C3%A9dito+version%202-1+1+0_0_0%20(2).pdf |
-| UBL 2.1 XML guide — **Nota de Débito** | https://cpe.sunat.gob.pe/sites/default/files/inline-files/guia+xml+nota%20de%20d%C3%A9bito+version%202-1+1+0_0_0%20(2).pdf |
-| Beta test service notice (UBL 2.1) | https://cpe.sunat.gob.pe/noticias/servicio-beta-para-realizar-pruebas-ubl-21 |
-| SOAP web services overview (Greenter, community) | https://fe-primer.greenter.dev/docs/webservices/ |
-| Reference impl for UBL shapes (Greenter, PHP) | https://greenter.dev/ · https://github.com/thegreenter/xml |
+| Doc                                                 | URL                                                                                                                                    |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| SIRE — formas de acceso / API credentials           | https://cpe.sunat.gob.pe/node/158                                                                                                      |
+| SIRE **Ventas** (RVIE) Web API manual v22           | https://cpe.sunat.gob.pe/sites/default/files/inline-files/Manual%20de%20servicios%20Web%20Api%20Ventas%20v22_Parte%20I.pdf             |
+| SIRE **Compras** (RCE) Web API manual v22 — Parte I | https://cpe.sunat.gob.pe/sites/default/files/inline-files/Manual%20de%20servicios%20Web%20Api%20-%20SIRE_Compras%20v22.pdf             |
+| …RCE Parte II (ajustes posteriores)                 | https://cpe.sunat.gob.pe/sites/default/files/inline-files/Manual%20de%20servicios%20Web%20Api%20-%20SIRE_Compras%20v22_Parte%20II.pdf  |
+| …RCE Parte III (FV0621 etc.)                        | https://cpe.sunat.gob.pe/sites/default/files/inline-files/Manual%20de%20servicios%20Web%20Api%20-%20SIRE_Compras%20v22_Parte%20III.pdf |
+| UBL 2.1 XML guide — **Factura**                     | https://cpe.sunat.gob.pe/sites/default/files/inline-files/guia+xml+factura+version%202-1+1+0%20(2)_0%20(2).pdf                         |
+| UBL 2.1 XML guide — **Boleta**                      | https://cpe.sunat.gob.pe/sites/default/files/inline-files/guia+xml+boleta+version%202-1+1+0_0_0%20(2).pdf                              |
+| UBL 2.1 XML guide — **Nota de Crédito**             | https://cpe.sunat.gob.pe/sites/default/files/inline-files/guia+xml+nota%20de%20cr%C3%A9dito+version%202-1+1+0_0_0%20(2).pdf            |
+| UBL 2.1 XML guide — **Nota de Débito**              | https://cpe.sunat.gob.pe/sites/default/files/inline-files/guia+xml+nota%20de%20d%C3%A9bito+version%202-1+1+0_0_0%20(2).pdf             |
+| Beta test service notice (UBL 2.1)                  | https://cpe.sunat.gob.pe/noticias/servicio-beta-para-realizar-pruebas-ubl-21                                                           |
+| SOAP web services overview (Greenter, community)    | https://fe-primer.greenter.dev/docs/webservices/                                                                                       |
+| Reference impl for UBL shapes (Greenter, PHP)       | https://greenter.dev/ · https://github.com/thegreenter/xml                                                                             |
 
 Local copy of the RCE Compras manual (read with the Read tool, `pages:`):
 `~/.claude/projects/-home-nikolas-Documents-CODE-MINION/e34f11ab-6b62-44b6-a367-057b7e076ba7/tool-results/webfetch-1786740239447-x7yop3.pdf`
@@ -40,8 +40,9 @@ grant_type=password & scope=https://api-sire.sunat.gob.pe
   & username=<RUC><SOL_USER>   (concatenated, e.g. 20611172967NIKO1998)
   & password=<SOL_clave>
 ```
+
 Returns `{access_token, expires_in}` (~3600s JWT). Bearer it on every call.
-**client_id/secret** come from SOL → *Credenciales de API SUNAT → Gestión* —
+**client_id/secret** come from SOL → _Credenciales de API SUNAT → Gestión_ —
 there is **ONE app per RUC**; FACES reuses the accountant's "STARSOFT" app
 (never regenerate its clave). Secret has a lowercase L, not a capital I.
 
@@ -62,6 +63,7 @@ Base `https://api-sire.sunat.gob.pe/v1/contribuyente/migeigv/libros`. Book code:
   → `archivoReporte[].nomArchivoReporte`; download `GET /rvierce/gestionprocesosmasivos/web/masivo/archivoreporte?nomArchivoReporte=&codTipoArchivoReporte=`.
 
 ### ⚠️ Known SUNAT-side quirks (learned the hard way)
+
 - **`api-sire` fileserver is user-agent-gated**: default curl / HeadlessChrome →
   500 or TCP reset; send a browser `User-Agent` + `--http1.1`.
 - **RCE `archivoreporte` download is broken server-side**: every request rewrites
@@ -69,7 +71,7 @@ Base `https://api-sire.sunat.gob.pe/v1/contribuyente/migeigv/libros`. Book code:
   (`.../gestionprocesosmasivos/web/e/masivo/archivoreporte`) and 500s. The public
   API cannot currently return RCE row files. Workaround in use: parse the resumen
   CSV (per-doc-type aggregates). **Row-level detail is reachable only via the SIRE
-  *web app's* own backend** — a separate host `e-factura.sunat.gob.pe/app/contribuyentems/servicio/librocompras/mige/...`,
+  _web app's_ own backend** — a separate host `e-factura.sunat.gob.pe/app/contribuyentems/servicio/librocompras/mige/...`,
   NOT `api-sire`. Capturing that endpoint (cross-origin iframe, needs CDP target
   auto-attach) is the open follow-up.
 - There is **no** paged-JSON `comprobantes` endpoint for RCE (RVIE-only).
@@ -88,6 +90,7 @@ Base `https://api-sire.sunat.gob.pe/v1/contribuyente/migeigv/libros`. Book code:
   **Comunicación de baja window = 7 calendar days** from the CDR.
 
 ### Emission quirks
+
 - RSA-SHA1 digest/signature accepted (SHA256 not required in beta).
 - Beta gateway rate-limits back-to-back calls → plain nginx **401** (not a SOAP
   fault); space calls ~3s.
@@ -97,6 +100,7 @@ Base `https://api-sire.sunat.gob.pe/v1/contribuyente/migeigv/libros`. Book code:
 - `SOAPAction: ''` (empty) is accepted.
 
 ## Not yet built / deferred
+
 - RCE **write** endpoints (aceptar/reemplazar/registrar preliminar, ajustes
   posteriores — manual §5.2–5.29): they mutate the accountant's live workspace.
   Deferred pending accountant coordination; `fin_purchases.sync_state='diverged'`
