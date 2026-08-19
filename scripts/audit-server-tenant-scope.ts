@@ -20,88 +20,95 @@
  * is proven. Any other exit code (or nonzero counts) means Slice 2 must not
  * proceed until the underlying re-key/data issue is resolved.
  *
+ * The comparison rules live in `./audit-server-tenant-scope.lib.ts` and are
+ * covered by fixtures in `./audit-server-tenant-scope.test.ts`; this file is
+ * only credential handling and read-only I/O.
+ *
  * TODO(handoff): this script has NOT been executed against non-production or
  * production — this sandbox has no TURSO_DB_URL/TURSO_DB_AUTH_TOKEN/
  * PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY for either environment, and an
  * agent must never fabricate or guess at those values or their output. This is
  * a hard, unresolved BLOCKER on Slice 1: per spec Slice 1 work items 3-4 and
  * the DELTA table's Slice 1 row, a human holding real credentials must run this
- * script against non-production, then production, and attach both command
- * outputs (each must print `null_tenant_ids=0 unmatched_tenant_ids=0`), plus
- * the concrete re-key migration/deployment apply evidence and a rollback/
- * recovery note, to the PR before Slice 1 is accepted and before any Slice 2
- * work starts. Pointer: specs/2026-08-18-hub-updateserver-tenant-scope-spec.md
- * (this repo's FACTORY_SPEC.md), Slice 1 Definition of done.
+ * script against non-production, then production, and attach all of the
+ * following to the PR before Slice 1 is accepted and before any Slice 2 work
+ * starts:
+ *   1. the exact non-production command + output (`null_tenant_ids=0
+ *      unmatched_tenant_ids=0`, and a non-zero `turso_server_rows`);
+ *   2. the exact production command + output, same counters;
+ *   3. the concrete re-key migration/deployment identifier and apply evidence
+ *      (a planning-spec status alone is insufficient);
+ *   4. the rollback/recovery note for that re-key.
+ * Pointer: specs/2026-08-18-hub-updateserver-tenant-scope-spec.md (this repo's
+ * FACTORY_SPEC.md), Slice 1 Definition of done.
  */
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient as createLibsqlClient } from '@libsql/client';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { servers } from '@minion-stack/db/schema';
+import {
+  auditTenantScope,
+  collectCanonicalOrgIds,
+  formatAuditCounters,
+} from './audit-server-tenant-scope.lib';
+
+function requireEnv(...names: string[]): string[] {
+  const missing = names.filter((name) => !process.env[name]);
+  if (missing.length > 0) throw new Error(`${names.join(' and ')} must be set`);
+  return names.map((name) => process.env[name] as string);
+}
 
 async function main() {
-  // No fallback to the app's dev-default `file:./data/minion_hub.db` — this is a
-  // production-proof command. A missing/mistyped TURSO_DB_URL must abort, not
-  // silently audit an empty local sqlite file and report a false PASS.
-  const tursoUrl = process.env.TURSO_DB_URL;
-  const tursoAuthToken = process.env.TURSO_DB_AUTH_TOKEN;
-  if (!tursoUrl || !tursoAuthToken) {
-    throw new Error('TURSO_DB_URL and TURSO_DB_AUTH_TOKEN must be set');
-  }
-  const libsqlClient = createLibsqlClient({ url: tursoUrl, authToken: tursoAuthToken });
-  const db = drizzle(libsqlClient, { schema: { servers } });
-
-  const supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error('PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
-  }
-  const supabase = createSupabaseClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  // Source 1: every Turso servers row, read-only, unfiltered.
-  const serverRows = await db.select({ id: servers.id, tenantId: servers.tenantId }).from(servers);
-
-  // Source 2: every canonical Supabase organization id, read-only, paginated.
-  const orgIds = new Set<string>();
-  const PAGE_SIZE = 1000;
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('organizations')
-      .select('id')
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`Supabase organizations read failed: ${error.message}`);
-    if (!data || data.length === 0) break;
-    for (const row of data as Array<{ id: string }>) orgIds.add(row.id);
-    if (data.length < PAGE_SIZE) break;
-  }
-
-  let nullTenantIds = 0;
-  let unmatchedTenantIds = 0;
-  const unmatchedSample: string[] = [];
-  for (const row of serverRows) {
-    if (row.tenantId == null || row.tenantId === '') {
-      nullTenantIds++;
-      continue;
-    }
-    // Multiple servers sharing a tenant id is valid and not counted here —
-    // this only flags tenant ids absent from the canonical Supabase set.
-    if (!orgIds.has(row.tenantId)) {
-      unmatchedTenantIds++;
-      if (unmatchedSample.length < 10) unmatchedSample.push(row.id);
-    }
-  }
-
-  console.log(
-    `turso_server_rows=${serverRows.length} null_tenant_ids=${nullTenantIds} unmatched_tenant_ids=${unmatchedTenantIds}`,
+  // Every credential is validated before any connection is opened. There is no
+  // fallback to the app's dev-default `file:./data/minion_hub.db` — this is a
+  // production-proof command, and a missing/mistyped TURSO_DB_URL must abort
+  // rather than silently audit an empty local sqlite file.
+  const [tursoUrl, tursoAuthToken] = requireEnv('TURSO_DB_URL', 'TURSO_DB_AUTH_TOKEN');
+  const [supabaseUrl, supabaseServiceRoleKey] = requireEnv(
+    'PUBLIC_SUPABASE_URL',
+    'SUPABASE_SERVICE_ROLE_KEY',
   );
-  if (unmatchedSample.length > 0) {
-    console.log(`[audit] sample unmatched server ids: ${unmatchedSample.join(', ')}`);
+
+  const libsqlClient = createLibsqlClient({ url: tursoUrl, authToken: tursoAuthToken });
+  let result;
+  try {
+    const db = drizzle(libsqlClient, { schema: { servers } });
+
+    // Source 1: every Turso servers row, read-only, unfiltered.
+    const serverRows = await db
+      .select({ id: servers.id, tenantId: servers.tenantId })
+      .from(servers);
+
+    const supabase = createSupabaseClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // Source 2: every canonical Supabase organization id, read-only, paginated.
+    // `.order('id')` is required: an unordered range scan may repeat or SKIP
+    // rows across pages, and a skipped organization id would be reported as a
+    // false `unmatched_tenant_ids` hit.
+    const orgIds = await collectCanonicalOrgIds(async (offset, limit) => {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('id')
+        .order('id', { ascending: true })
+        .range(offset, offset + limit - 1);
+      if (error) throw new Error(`Supabase organizations read failed: ${error.message}`);
+      return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+    });
+
+    result = auditTenantScope({ serverRows, orgIds });
+  } finally {
+    libsqlClient.close();
   }
 
-  libsqlClient.close();
+  console.log(formatAuditCounters(result));
+  if (result.unmatchedSample.length > 0) {
+    console.log(`[audit] sample unmatched server ids: ${result.unmatchedSample.join(', ')}`);
+  }
 
-  if (nullTenantIds > 0 || unmatchedTenantIds > 0) {
+  if (!result.pass) {
+    for (const reason of result.failReasons) console.error(`[audit] ${reason}`);
     console.error('[audit] FAIL — re-key readiness not proven; Slice 2 must not proceed');
     process.exit(1);
   }
