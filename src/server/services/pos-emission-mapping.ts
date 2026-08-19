@@ -115,6 +115,9 @@ export function ticketToEmission(
     correlativo: String(allocation.correlativo),
     issueDate: new Date().toISOString().slice(0, 10),
     currency: 'PEN',
+    // TODO(handoff): rate is still a literal here — S2 of
+    // 2026-08-17-hub-igv-rate-from-org-config-spec reads it from fin_settings
+    igvRate: 0.18,
     emitter,
     client,
     lines: emissionLines,

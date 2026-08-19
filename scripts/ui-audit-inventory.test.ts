@@ -7,11 +7,11 @@ import { buildRouteInventory } from './ui-audit-inventory.mjs';
 import baseline from '../tests/ui-audit/current-baseline.json';
 
 describe('UI audit route inventory', () => {
-  it('locks the complete endpoint ledger at 135 screens and 7 redirects', async () => {
+  it('locks the complete endpoint ledger at 142 screens and 10 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
-    expect(inventory.summary).toMatchObject({ endpoints: 142, screens: 135, redirects: 7 });
-    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(142);
+    expect(inventory.summary).toMatchObject({ endpoints: 152, screens: 142, redirects: 10 });
+    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(152);
     expect(
       inventory.routes.filter((route) => route.kind === 'redirect').map((route) => route.pattern),
     ).toEqual([
@@ -20,6 +20,9 @@ describe('UI audit route inventory', () => {
       '/builder',
       '/crm/cleanup',
       '/pos',
+      '/shells',
+      '/shells/[shellId]',
+      '/terminal',
       '/tools',
       '/workshop/[...path]',
     ]);

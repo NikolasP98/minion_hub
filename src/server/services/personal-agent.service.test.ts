@@ -9,12 +9,41 @@ import {
   listPendingAgents,
   deletePersonalAgent,
   listOrgPersonalAgents,
+  loadPersonalAgentForUser,
 } from './personal-agent.service';
 import { createMockDb } from '$server/test-utils/mock-db';
+import { personalAgents } from '@minion-stack/db/pg';
+import type { LoadCtx } from './types';
+import type { CoreCtx } from '$server/auth/core-ctx';
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+// The mock db's chain proxy (mock-db.ts) mints a fresh vi.fn() on every
+// property access, so `.where(...)` can't be captured for later assertion.
+// Spying on drizzle-orm's `eq` (still delegating to the real implementation)
+// is what makes the exact query predicate observable — used below to prove
+// the precise value `loadPersonalAgentForUser` forwards as `supabaseId`
+// reaches getPersonalAgent's query, not just that "a" select happened.
+const { eqSpy } = vi.hoisted(() => ({ eqSpy: vi.fn() }));
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>();
+  return {
+    ...actual,
+    eq: (...args: Parameters<typeof actual.eq>) => {
+      eqSpy(...args);
+      return actual.eq(...args);
+    },
+  };
+});
+
+// loadPersonalAgentForUser dynamically imports getCoreCtx (see the source
+// comment: kept dynamic so the top-level import surface here stays unchanged).
+const mockGetCoreCtx = vi.fn<(locals: LoadCtx) => Promise<CoreCtx | null>>();
+vi.mock('$server/auth/core-ctx', () => ({
+  getCoreCtx: (locals: LoadCtx) => mockGetCoreCtx(locals),
+}));
 
 vi.mock('$server/db/utils', () => ({
   newId: () => 'mock-pa-id-000000000001',
@@ -254,5 +283,88 @@ describe('listOrgPersonalAgents', () => {
     const result = await listOrgPersonalAgents({ db: { select }, tenantId: 't1' } as never);
     expect(result).toEqual(rows);
     expect(select).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('loadPersonalAgentForUser', () => {
+  const locals = {} as LoadCtx;
+
+  it('rejects with 401 and never reaches getPersonalAgent when getCoreCtx resolves no tenant context', async () => {
+    mockGetCoreCtx.mockResolvedValue(null);
+
+    // A real getPersonalAgent call against a null ctx would throw a TypeError
+    // (reading `.db` off null), not an HttpError shaped { status: 401 }. Getting
+    // exactly the 401 shape below is only possible via the `if (!ctx) throw ...`
+    // guard firing first, so this doubles as "delegate not called" evidence —
+    // getPersonalAgent can't be spied on directly (see note in the happy-path
+    // case below on same-module call interception).
+    await expect(loadPersonalAgentForUser(locals, 'user-1')).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(mockGetCoreCtx).toHaveBeenCalledTimes(1);
+    expect(mockGetCoreCtx).toHaveBeenCalledWith(locals);
+  });
+
+  it('delegates to getPersonalAgent(ctx, userId, supabaseId) and returns its result as { agent }', async () => {
+    // Vitest/vite-node here does not rewrite intra-module references, so
+    // vi.spyOn on this module's own getPersonalAgent export does not intercept
+    // the internal call made from inside loadPersonalAgentForUser (verified
+    // empirically — the call bypasses the spied binding entirely). Delegation
+    // is instead observed through the real getPersonalAgent's DB behavior:
+    // a distinctive row from the mocked db, echoed straight through.
+    const { db, resolve } = createMockDb();
+    resolve([
+      pgRow({
+        id: 'entrypoint-sentinel-id',
+        agentId: 'entrypoint-sentinel-agent',
+        displayName: 'Entrypoint Sentinel',
+        provisioningStatus: 'active',
+      }),
+    ]);
+    const resolvedCtx = ctx(db);
+    mockGetCoreCtx.mockResolvedValue(resolvedCtx as never);
+
+    const result = await loadPersonalAgentForUser(
+      locals,
+      'entrypoint-user',
+      'entrypoint-profile-1',
+    );
+
+    expect(result).toEqual({
+      agent: {
+        id: 'entrypoint-sentinel-id',
+        userId: 'entrypoint-user', // echoed by reshape() — proves userId reached the delegate
+        agentId: 'entrypoint-sentinel-agent',
+        serverId: 'srv-1',
+        displayName: 'Entrypoint Sentinel',
+        conversationName: null,
+        avatarUrl: null,
+        personalityPreset: null,
+        personalityText: null,
+        personalityConfigured: false,
+        provisioningStatus: 'active',
+        provisioningError: null,
+        lastRetryAt: null,
+        retryCount: 0,
+        createdAt: TS.getTime(),
+        updatedAt: TS.getTime(),
+      },
+    });
+    expect(mockGetCoreCtx).toHaveBeenCalledTimes(1);
+    expect(mockGetCoreCtx).toHaveBeenCalledWith(locals);
+    // resolveProfileId(ctx, userId, supabaseId) short-circuits on a truthy
+    // supabaseId (returns it directly, no profiles lookup). Exactly one
+    // db.select — the personalAgents query — proves supabaseId reached the
+    // delegate: if it were dropped, a second select (profiles lookup by
+    // userId) would fire first.
+    expect(db.select).toHaveBeenCalledTimes(1);
+    // The mock db's chain proxy can't be asserted on directly (see the
+    // eqSpy comment above), so the exact predicate value is observed via the
+    // real `eq` call it makes: `eq(personalAgents.profileId, profileId)`.
+    // This is the assertion that actually kills a wrong-argument regression
+    // (e.g. getPersonalAgent(ctx, userId, someOtherTruthyConstant)) — the
+    // db.select count alone can't, since the mock returns its configured
+    // row regardless of which value the predicate carries.
+    expect(eqSpy).toHaveBeenCalledWith(personalAgents.profileId, 'entrypoint-profile-1');
   });
 });

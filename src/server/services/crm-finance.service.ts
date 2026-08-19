@@ -3,12 +3,16 @@ import { cached, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
+import { DEFAULT_DEPOSIT_RULE, depositMatchSql, notDepositMatchSql } from './crm-deposit-rule';
 
-// A line item is a "reservation deposit" (the 50-soles "Reserva de Consulta")
-// rather than an actual procedure — the signal that splits "reservó pero no
-// compró" from real buyers.
-const IS_RESERVA = sql.raw(`ii.description ilike '%reserva%'`);
-const IS_PROCEDURE = sql.raw(`(ii.description is not null and ii.description not ilike '%reserva%')`);
+// A line item may be a booking deposit rather than an actual procedure — the
+// signal that splits "reservó pero no compró" from real buyers. Which words
+// count as a deposit is org-configurable (crm-deposit-rule.ts); this file
+// only consumes DEFAULT_DEPOSIT_RULE until S2 wires per-org config.
+// TODO(handoff): rule is the module default here — S2 of 2026-08-17-hub-reserva-keyword-config-spec reads it from crm_settings
+const DEPOSIT_RULE = DEFAULT_DEPOSIT_RULE;
+const IS_DEPOSIT = depositMatchSql('ii.description', DEPOSIT_RULE);
+const IS_PROCEDURE = sql`(ii.description is not null and ${notDepositMatchSql('ii.description', DEPOSIT_RULE)})`;
 
 /**
  * Canonical contact↔invoice bridge via the PARTY SPINE (contact.party_id =
@@ -32,9 +36,9 @@ export interface ContactFinance {
   revenue: number;
   invoices: number;
   lastPurchaseAt: string | null;
-  /** has ≥1 procedure (non-reservation) line item */
+  /** has ≥1 procedure (non-deposit) line item */
   purchased: boolean;
-  /** has invoices but ALL are reservation deposits — the re-contact segment */
+  /** has invoices but ALL are booking deposits — the re-contact segment */
   reservedOnly: boolean;
   /** repeat procedure buyer (≥2 distinct procedure dates) */
   loyal: boolean;
@@ -48,7 +52,10 @@ export async function contactFinanceMap(ctx: CoreCtx): Promise<Record<string, Co
     {
       ttl: '2m',
       swr: '30s',
-      tags: [...tags.tenantDomain(ctx.tenantId, 'crm'), ...tags.tenantDomain(ctx.tenantId, 'finances')],
+      tags: [
+        ...tags.tenantDomain(ctx.tenantId, 'crm'),
+        ...tags.tenantDomain(ctx.tenantId, 'finances'),
+      ],
     },
     () => loadContactFinanceMap(ctx),
   );
@@ -60,7 +67,7 @@ async function loadContactFinanceMap(ctx: CoreCtx): Promise<Record<string, Conta
       with ${CONTACT_PARTY},
       inv as (
         select cp.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
-               bool_or(${IS_RESERVA}) has_reserva, bool_or(${IS_PROCEDURE}) has_proc
+               bool_or(${IS_DEPOSIT}) has_deposit, bool_or(${IS_PROCEDURE}) has_proc
         from contact_party cp
         join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
         join fin_invoices fi on fi.client_id = fc.id
@@ -69,10 +76,18 @@ async function loadContactFinanceMap(ctx: CoreCtx): Promise<Record<string, Conta
       )
       select contact_id,
              coalesce(sum(total),0)::float8 revenue, count(*)::int invoices, max(issued_at) last,
-             bool_or(has_proc) purchased, bool_or(has_reserva) has_reserva,
+             bool_or(has_proc) purchased, bool_or(has_deposit) has_deposit,
              count(distinct case when has_proc then issued_at::date end)::int proc_dates
       from inv group by contact_id
-    `)) as unknown as Array<{ contact_id: string; revenue: number; invoices: number; last: string | null; purchased: boolean; has_reserva: boolean; proc_dates: number }>;
+    `)) as unknown as Array<{
+      contact_id: string;
+      revenue: number;
+      invoices: number;
+      last: string | null;
+      purchased: boolean;
+      has_deposit: boolean;
+      proc_dates: number;
+    }>;
     const out: Record<string, ContactFinance> = {};
     for (const r of rows) {
       const purchased = Boolean(r.purchased);
@@ -81,7 +96,7 @@ async function loadContactFinanceMap(ctx: CoreCtx): Promise<Record<string, Conta
         invoices: Number(r.invoices),
         lastPurchaseAt: r.last != null ? String(r.last) : null,
         purchased,
-        reservedOnly: !purchased && Boolean(r.has_reserva),
+        reservedOnly: !purchased && Boolean(r.has_deposit),
         loyal: Number(r.proc_dates) >= 2,
       };
     }
@@ -95,9 +110,15 @@ async function loadContactFinanceMap(ctx: CoreCtx): Promise<Record<string, Conta
  * phone bridge). Powers the dashboard's Revenue summary widget. Returns null
  * when either module is disabled so the widget stays hidden.
  */
-export async function crmRevenueSummary(
-  ctx: CoreCtx,
-): Promise<{ revenue: number; invoices: number; buyers: number; avgTicket: number; customers: number; reserved: number; loyal: number } | null> {
+export async function crmRevenueSummary(ctx: CoreCtx): Promise<{
+  revenue: number;
+  invoices: number;
+  buyers: number;
+  avgTicket: number;
+  customers: number;
+  reserved: number;
+  loyal: number;
+} | null> {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
   // Pure aggregation over the (cached) per-contact map — it used to re-run the
   // exact same CONTACT_PARTY/inv CTE as contactFinanceMap in a second query.
@@ -136,41 +157,53 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
         where id = ${contactId} and org_id = current_setting('app.current_org_id', true) and party_id is not null
       )
       select fi.id, fi.document_id, fi.issued_at, coalesce(fi.total,0)::float8 total, fi.status,
-             -- the "what was done": a representative line, procedures first (reserva last), priciest first.
+             -- the "what was done": a representative line, procedures first (deposit lines last), priciest first.
              (select ii.description from fin_invoice_items ii where ii.invoice_id = fi.id and ii.description is not null
-                order by (ii.description ilike '%reserva%') asc, ii.total desc nulls last limit 1) as item
+                order by ${depositMatchSql('ii.description', DEPOSIT_RULE)} asc, ii.total desc nulls last limit 1) as item
       from fin_invoices fi
       join fin_clients fc on fc.id = fi.client_id
       where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
       order by fi.issued_at desc nulls last limit 10
     `)) as unknown as Array<Record<string, unknown>>;
     if (invoices.length === 0) return null;
-    const all = invoices.map((r) => ({ id: String(r.id), documentId: r.document_id != null ? String(r.document_id) : null,
-      issuedAt: r.issued_at != null ? String(r.issued_at) : null, total: Number(r.total), status: r.status != null ? String(r.status) : null,
-      item: r.item != null ? String(r.item) : null }));
+    const all = invoices.map((r) => ({
+      id: String(r.id),
+      documentId: r.document_id != null ? String(r.document_id) : null,
+      issuedAt: r.issued_at != null ? String(r.issued_at) : null,
+      total: Number(r.total),
+      status: r.status != null ? String(r.status) : null,
+      item: r.item != null ? String(r.item) : null,
+    }));
     const [agg] = (await tx.execute(sql`
       with cparty as (select party_id from crm_contacts
         where id = ${contactId} and org_id = current_setting('app.current_org_id', true) and party_id is not null),
       inv as (
         select fi.id, coalesce(fi.total,0)::float8 total, fi.issued_at,
-               bool_or(${IS_RESERVA}) has_reserva, bool_or(${IS_PROCEDURE}) has_proc
+               bool_or(${IS_DEPOSIT}) has_deposit, bool_or(${IS_PROCEDURE}) has_proc
         from fin_invoices fi join fin_clients fc on fc.id = fi.client_id
         left join fin_invoice_items ii on ii.invoice_id = fi.id
         where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
         group by fi.id, fi.total, fi.issued_at
       )
       select coalesce(sum(total),0)::float8 revenue, count(*)::int invoices, max(issued_at) last,
-             bool_or(has_proc) purchased, bool_or(has_reserva) has_reserva,
+             bool_or(has_proc) purchased, bool_or(has_deposit) has_deposit,
              count(distinct case when has_proc then issued_at::date end)::int proc_dates
       from inv
-    `)) as unknown as Array<{ revenue: number; invoices: number; last: string | null; purchased: boolean; has_reserva: boolean; proc_dates: number }>;
+    `)) as unknown as Array<{
+      revenue: number;
+      invoices: number;
+      last: string | null;
+      purchased: boolean;
+      has_deposit: boolean;
+      proc_dates: number;
+    }>;
     const purchased = Boolean(agg?.purchased);
     return {
       revenue: Number(agg?.revenue ?? 0),
       invoices: Number(agg?.invoices ?? 0),
       lastPurchaseAt: agg?.last != null ? String(agg.last) : null,
       purchased,
-      reservedOnly: !purchased && Boolean(agg?.has_reserva),
+      reservedOnly: !purchased && Boolean(agg?.has_deposit),
       loyal: Number(agg?.proc_dates ?? 0) >= 2,
       recentInvoices: all,
     };
@@ -195,9 +228,18 @@ export interface ContactCashflow {
  * has no party or no linked transactions, so the caller can render an empty
  * state without a null-check.
  */
-export async function contactCashflow(ctx: CoreCtx, contactId: string): Promise<ContactCashflow | null> {
+export async function contactCashflow(
+  ctx: CoreCtx,
+  contactId: string,
+): Promise<ContactCashflow | null> {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
-  const ZERO: ContactCashflow = { inflow: '0', outflow: '0', net: '0', transactions: 0, lastTransactionAt: null };
+  const ZERO: ContactCashflow = {
+    inflow: '0',
+    outflow: '0',
+    net: '0',
+    transactions: 0,
+    lastTransactionAt: null,
+  };
   return withOrgCore(ctx, async (tx) => {
     const [row] = (await tx.execute(sql`
       with cparty as (
@@ -213,7 +255,13 @@ export async function contactCashflow(ctx: CoreCtx, contactId: string): Promise<
       from fin_transactions ft
       where ft.org_id = current_setting('app.current_org_id', true)
         and ft.party_id = (select party_id from cparty)
-    `)) as unknown as Array<{ inflow: string; outflow: string; net: string; transactions: number; last: string | null }>;
+    `)) as unknown as Array<{
+      inflow: string;
+      outflow: string;
+      net: string;
+      transactions: number;
+      last: string | null;
+    }>;
     if (!row || Number(row.transactions) === 0) return ZERO;
     return {
       inflow: row.inflow,
@@ -230,7 +278,7 @@ export interface TopCustomer {
   name: string | null;
   revenue: number;
   invoices: number;
-  /** Best-selling procedure for this customer (excludes reservation deposits). */
+  /** Best-selling procedure for this customer (excludes booking deposits). */
   topProduct: string | null;
   firstPurchaseAt: string | null;
   lastPurchaseAt: string | null;
@@ -281,7 +329,7 @@ export async function rankCustomers(
                 join fin_invoices fi on fi.id = ii.invoice_id
                 join fin_clients fc on fc.id = fi.client_id and fc.party_id = a.party_id
                 where fc.org_id = current_setting('app.current_org_id', true)
-                  and ii.description is not null and ii.description not ilike '%reserva%'
+                  and ii.description is not null and ${notDepositMatchSql('ii.description', DEPOSIT_RULE)}
                 group by ii.description order by sum(coalesce(ii.total,0)) desc nulls last limit 1) as top_product
       from agg a
       left join crm_contacts c on c.id = a.contact_id
