@@ -368,16 +368,6 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       };
     },
 
-    // TODO(handoff): bump `@minion-stack/shared` once a published build declares
-    // `onEventError` — today's pinned 0.9.0 dispatches events as
-    // `void Promise.resolve(onEvent(frame)).catch(() => {})`, so a sync throw out of
-    // `handleEvent` below escapes onto the socket message handler and an async
-    // rejection is swallowed outright. Hub's recorded posture is accepted-default
-    // (the shared client's own `console.error` is captured by
-    // `$lib/utils/console-interceptor`), so completing the adoption is the dependency
-    // bump plus a status flip — this callback stays as-is. Gate + rationale:
-    // docs/2026-08-19-gateway-onevent-error-hook-adoption.md,
-    // scripts/shared-onevent-error-gate.test.ts.
     onEvent(frame: EventFrame) {
       // Fence: a client that's been replaced (cutover, or an eager recreate)
       // must never mutate shared event-sequence/handler state.

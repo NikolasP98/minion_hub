@@ -11,6 +11,17 @@
 // Failure here means: the installed client build changed. Update
 // docs/2026-08-19-gateway-onevent-error-hook-adoption.md's `Status:` line
 // (`blocked-on-publish` → `adopted`) as part of that bump.
+//
+// TODO(handoff): Slice 1's dependency adoption is NOT done — `package.json`
+// still pins `@minion-stack/shared` at `^0.9.0` and no published build declares
+// `onEventError` (registry re-polled 2026-08-19: latest is 0.10.0 and its
+// `dist/gateway/client.d.ts` has `onEvent?:` only). It cannot be done from this
+// repo: it waits on an external publish from minion-meta. This gate is the
+// enforcement site because `package.json` cannot carry a comment; the exact
+// remaining steps, evidence, and ledger pointer are in
+// docs/2026-08-19-gateway-onevent-error-hook-adoption.md §1, whose open-items
+// ledger is minion-meta
+// `proposals/2026-08-17-gateway-client-error-hook-consumer-adoption.md`.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -51,6 +62,8 @@ describe('@minion-stack/shared onEventError adoption gate', () => {
 
     // `onEventError` is not an option on the installed build, so passing it
     // would be an excess-property type error rather than a working report path.
+    // The accepted-default posture also requires no source change at all, so the
+    // event dispatch site stays byte-identical to master while the gate is red.
     expect(gatewaySource).not.toMatch(/onEventError\s*[:(]/);
   });
 });

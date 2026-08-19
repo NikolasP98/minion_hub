@@ -5,6 +5,12 @@
 // docs/2026-08-19-gateway-onevent-error-hook-adoption.md) precisely because the
 // interceptor captures it into the buffer the bug reporter attaches. These tests
 // pin that mechanism — capture, error stacks, and the ring-buffer cap.
+//
+// Scope limit: they prove the SINK, not the source. No installed or published
+// `@minion-stack/shared` build emits the fallback yet, so the message below is a
+// hand-written stand-in for its shape; that a real hook-bearing client produces
+// exactly one such report is unproved and must be checked against the client
+// itself when the dependency bump lands.
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { getConsoleBuffer, installInterceptor } from './console-interceptor';
@@ -23,7 +29,7 @@ afterAll(() => {
 });
 
 describe('console-interceptor', () => {
-  it('captures a gateway-shaped error report with its message text intact', () => {
+  it('captures an error report, message text and stack intact', () => {
     const before = getConsoleBuffer().length;
 
     console.error('[gateway] onEvent handler failed', new Error('handler exploded'));
