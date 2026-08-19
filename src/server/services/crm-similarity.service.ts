@@ -9,6 +9,7 @@ import { bothEnabled } from './modules.service';
 import { embedText, embedTexts, embeddingsEnabled, toVectorLiteral } from './embeddings';
 import { buildConversationText, isThin } from '$lib/components/crm/crm-similarity';
 import { getOpenRouterModel } from '$server/llm';
+import { DEFAULT_DEPOSIT_RULE, notDepositMatchSql } from './crm-deposit-rule';
 
 const winAnalysisResultSchema = z.object({
   wins: z
@@ -51,9 +52,9 @@ export interface WinAnalysis {
   fromCorpus?: boolean;
 }
 
-const IS_PROCEDURE = sql.raw(
-  `(ii.description is not null and ii.description not ilike '%reserva%')`,
-);
+// TODO(handoff): rule is the module default here — S2 of 2026-08-17-hub-reserva-keyword-config-spec reads it from crm_settings
+const DEPOSIT_RULE = DEFAULT_DEPOSIT_RULE;
+const IS_PROCEDURE = sql`(ii.description is not null and ${notDepositMatchSql('ii.description', DEPOSIT_RULE)})`;
 
 /** Bind a JS string[] as a real Postgres text[] (each element parameterized). */
 function textArray(arr: string[]) {

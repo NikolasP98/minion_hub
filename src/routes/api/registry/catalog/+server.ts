@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { cached, keys, tags } from '@minion-stack/cache';
 import { assertSafeUrl } from '$server/services/ssrf-guard';
+import { getStorage, isStorageConfigured } from '$server/storage/blob';
 
 interface CachedCatalog {
   agents: unknown[];
@@ -11,7 +12,19 @@ interface CachedCatalog {
   fetchedAt: number;
 }
 
-const B2_PUBLIC_URL = 'https://s3.us-east-005.backblazeb2.com/minion-db/registry/catalog.json';
+/**
+ * Object key of the catalog inside the storage bucket.
+ *
+ * Read through the authenticated storage driver rather than a hardcoded public
+ * URL. The bucket held per-tenant content (mirrored Meta creative, note
+ * attachments) and encrypted brain snapshots alongside this registry, and a
+ * public-read bucket made every one of those objects fetchable by anyone who
+ * knew the key — which also made the presigned URLs elsewhere in the app
+ * pointless. B2 bucket visibility is all-or-nothing with no per-prefix ACL, so
+ * the registry had to stop depending on anonymous reads before the bucket could
+ * be closed.
+ */
+const CATALOG_KEY = 'registry/catalog.json';
 
 // Global (not tenant-scoped): the registry is the same for every tenant. Backed
 // by Valkey in prod (CACHE_BACKEND=valkey), so it survives Vercel cold starts —
@@ -30,11 +43,24 @@ async function fetchCatalog(): Promise<CachedCatalog> {
         } catch {
           throw new Error(`Local catalog not found: ${localPath}`);
         }
-      } else {
-        const url = process.env.REGISTRY_CATALOG_URL ?? B2_PUBLIC_URL;
+      } else if (process.env.REGISTRY_CATALOG_URL) {
+        // Explicit override still wins — an operator pointing at a mirror or a
+        // CDN should not be forced through our bucket credentials.
+        const url = process.env.REGISTRY_CATALOG_URL;
         await assertSafeUrl(url, 'REGISTRY_CATALOG_URL');
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`B2 fetch failed: HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`Registry fetch failed: HTTP ${res.status}`);
+        raw = await res.text();
+      } else {
+        if (!isStorageConfigured()) {
+          throw new Error('Registry catalog unavailable: blob storage is not configured');
+        }
+        // Presign, then fetch. The driver only exposes a signed URL (no getObject),
+        // and signing keeps the credentials server-side — the browser never sees
+        // this URL, so a short expiry is fine.
+        const signed = await getStorage().getSignedUrl(CATALOG_KEY, 300);
+        const res = await fetch(signed);
+        if (!res.ok) throw new Error(`Registry fetch failed: HTTP ${res.status}`);
         raw = await res.text();
       }
 

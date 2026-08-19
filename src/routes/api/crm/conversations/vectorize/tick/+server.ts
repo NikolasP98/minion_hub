@@ -5,6 +5,7 @@ import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { vectorizeTick } from '$server/services/crm-conversation-vectors.service';
+import { withAiUsageOrg } from '$server/ai-usage';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -27,26 +28,32 @@ export const GET: RequestHandler = async ({ request, url }) => {
   const offsetParam = url.searchParams.get('offset');
   const offset = offsetParam ? Math.max(0, Number(offsetParam) || 0) : undefined;
 
-  const orgs = (await getCoreDb().execute(sql`select id from organizations`)) as unknown as { id: string }[];
+  const orgs = (await getCoreDb().execute(sql`select id from organizations`)) as unknown as {
+    id: string;
+  }[];
 
   const totals = { orgs: 0, processed: 0, dirty: 0, remaining: 0, skippedLocked: 0, errors: 0 };
   for (const { id: orgId } of orgs) {
-    const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId };
-    try {
-      if (!(await isModuleEnabled(ctx, 'crm'))) continue;
-      totals.orgs += 1;
-      const r = await vectorizeTick(ctx, { full, batch, offset });
-      if (r.skipped === 'locked') {
-        totals.skippedLocked += 1;
-        continue;
+    // Per-org AI usage scope — cron has no `locals.tenantCtx`, so without this
+    // the ledger cannot attribute this pipeline's embedding spend to anyone.
+    await withAiUsageOrg(orgId, 'crm.conversations.vectorize', async () => {
+      const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId };
+      try {
+        if (!(await isModuleEnabled(ctx, 'crm'))) return;
+        totals.orgs += 1;
+        const r = await vectorizeTick(ctx, { full, batch, offset });
+        if (r.skipped === 'locked') {
+          totals.skippedLocked += 1;
+          return;
+        }
+        totals.processed += r.processed;
+        totals.dirty += r.dirty;
+        totals.remaining += r.remaining;
+      } catch (e) {
+        totals.errors += 1;
+        console.error('[crm-conversations/vectorize/tick] failed for org', orgId, e);
       }
-      totals.processed += r.processed;
-      totals.dirty += r.dirty;
-      totals.remaining += r.remaining;
-    } catch (e) {
-      totals.errors += 1;
-      console.error('[crm-conversations/vectorize/tick] failed for org', orgId, e);
-    }
+    });
   }
   return json({ ok: true, full, ...totals });
 };
