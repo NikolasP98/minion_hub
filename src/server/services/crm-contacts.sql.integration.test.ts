@@ -37,6 +37,7 @@ vi.mock('./modules.service', async (importOriginal) => ({
 }));
 
 import { rankContactsPage } from './crm-contacts.service';
+import { contactFinanceMap } from './crm-finance.service';
 
 const ids = {
   ana1: '00000000-0000-4000-8000-000000000001',
@@ -46,10 +47,16 @@ const ids = {
   dni: '00000000-0000-4000-8000-000000000005',
   unscored: '00000000-0000-4000-8000-000000000006',
 };
+const ctx = { db: {} as never, tenantId: '00000000-0000-4000-8000-0000000000aa' };
 const org = '00000000-0000-4000-8000-0000000000aa';
 const party = '00000000-0000-4000-8000-0000000000bb';
 const finClient = '00000000-0000-4000-8000-0000000000cc';
 const invoice = '00000000-0000-4000-8000-0000000000dd';
+// Second party/client/invoice: the "reservó pero no compró" fixture — one
+// invoice whose only line is a booking deposit.
+const depositParty = '00000000-0000-4000-8000-0000000000ee';
+const depositClient = '00000000-0000-4000-8000-0000000000ef';
+const depositInvoice = '00000000-0000-4000-8000-0000000000f0';
 
 describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () => {
   beforeAll(async () => {
@@ -62,11 +69,15 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
         party_id uuid, deleted_at timestamptz, org_id text,
         created_at timestamptz not null default now()
       );
+      -- org_id is TEXT in production on every table below (pg-crm-schema,
+      -- pg-finance-schema); typing it uuid here breaks any predicate that
+      -- compares it to current_setting('app.current_org_id') instead of a
+      -- bound parameter ("operator does not exist: uuid = text").
       create table crm_contact_identities (
-        contact_id uuid, org_id uuid, channel text, external_id text, handle text
+        contact_id uuid, org_id text, channel text, external_id text, handle text
       );
       create table messages (
-        org_id uuid, channel text, chat_id text, occurred_at timestamptz,
+        org_id text, channel text, chat_id text, occurred_at timestamptz,
         created_at timestamptz, direction text, is_bot boolean
       );
       create table parties (
@@ -75,13 +86,14 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
       );
       create table crm_contact_tags (contact_id uuid, tag_id uuid);
       create table meta_lead_attribution (
-        org_id uuid, channel text, sender_id text, origin text,
+        org_id text, channel text, sender_id text, origin text,
         campaign_name text, first_contact_at timestamptz
       );
-      create table fin_clients (id uuid primary key, org_id uuid, party_id uuid);
+      create table fin_clients (id uuid primary key, org_id text, party_id uuid);
       create table fin_invoices (
         id uuid primary key, client_id uuid, issued_at timestamptz, total numeric
       );
+      create table fin_invoice_items (invoice_id uuid, description text, total numeric);
     `);
     await client!.unsafe(
       `insert into crm_contacts (id, display_name, custom_fields) values
@@ -115,6 +127,42 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
       `insert into fin_invoices (id, client_id, issued_at, total)
        values ($1, $2, now() - interval '10 days', 500)`,
       [invoice, finClient],
+    );
+
+    // Awaiting-reply fixture: Bea's last message is inbound (we owe her a
+    // reply); Phone answered afterwards, so she is NOT awaiting.
+    await client!.unsafe(
+      `insert into crm_contact_identities (contact_id, org_id, channel, external_id) values
+       ($1, $3, 'whatsapp', 'wa-bea'), ($2, $3, 'whatsapp', 'wa-phone')`,
+      [ids.bea, ids.phone, org],
+    );
+    await client!.unsafe(
+      `insert into messages (org_id, channel, chat_id, occurred_at, created_at, direction, is_bot) values
+       ($1, 'whatsapp', 'wa-bea', now() - interval '2 days', now(), 'inbound', false),
+       ($1, 'whatsapp', 'wa-phone', now() - interval '3 days', now(), 'inbound', false),
+       ($1, 'whatsapp', 'wa-phone', now() - interval '1 day', now(), 'outbound', false)`,
+      [org],
+    );
+
+    // Reserved-only fixture: DNI booked (deposit line) but never purchased.
+    await client!.unsafe(`update crm_contacts set party_id = $1 where id = $2`, [
+      depositParty,
+      ids.dni,
+    ]);
+    await client!.unsafe(`insert into parties (id) values ($1)`, [depositParty]);
+    await client!.unsafe(`insert into fin_clients (id, org_id, party_id) values ($1, $2, $3)`, [
+      depositClient,
+      org,
+      depositParty,
+    ]);
+    await client!.unsafe(
+      `insert into fin_invoices (id, client_id, issued_at, total)
+       values ($1, $2, now() - interval '5 days', 50)`,
+      [depositInvoice, depositClient],
+    );
+    await client!.unsafe(
+      `insert into fin_invoice_items (invoice_id, description, total) values ($1, 'Reserva de cita', 50)`,
+      [depositInvoice],
     );
   });
 
@@ -190,5 +238,81 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
   it.each(['8765', '5566'])('does not match phone/DNI mid-string %s', async (search) => {
     const page = await rankContactsPage({ db: {} as never, tenantId: org }, { search, limit: 20 });
     expect(page).toEqual({ rows: [], total: 0 });
+  });
+
+  // ── Slice 2: filters the Customers page used to apply over the FULL roster ──
+  // Each asserts SET equality against the client-side predicate it replaces,
+  // evaluated over the whole fixture roster (order is the sort's business).
+  const roster = () => rankContactsPage(ctx, { limit: 100 });
+  const idsOf = (rows: { contact_id: string }[]) => new Set(rows.map((r) => r.contact_id));
+
+  it('awaitingReply selects exactly the rows the client predicate kept', async () => {
+    const all = await roster();
+    const expected = all.rows.filter((r) => r.awaiting_reply);
+    // non-vacuous: the roster must contain BOTH classes, or the filter is untested
+    expect(expected.length).toBeGreaterThan(0);
+    expect(expected.length).toBeLessThan(all.rows.length);
+
+    const page = await rankContactsPage(ctx, { awaitingReply: true, limit: 100 });
+    expect(idsOf(page.rows)).toEqual(idsOf(expected));
+    expect(page.total).toBe(expected.length);
+  });
+
+  it('buyerOnly selects exactly the contacts with a purchase history', async () => {
+    financeOn = true;
+    try {
+      const all = await roster();
+      const expected = all.rows.filter((r) => r.is_buyer);
+      expect(expected.length).toBeGreaterThan(0);
+      expect(expected.length).toBeLessThan(all.rows.length);
+
+      const page = await rankContactsPage(ctx, { buyerOnly: true, limit: 100 });
+      expect(idsOf(page.rows)).toEqual(idsOf(expected));
+      expect(page.total).toBe(expected.length);
+    } finally {
+      financeOn = false;
+    }
+  });
+
+  it("reservedOnly mirrors the list's reserved toggle (finance.reservedOnly), not is_buyer", async () => {
+    financeOn = true;
+    try {
+      const all = await roster();
+      const fin = await contactFinanceMap(ctx);
+      // The shipped client predicate: `finOf(c)?.reservedOnly === true`.
+      const expected = all.rows.filter((r) => fin[r.contact_id]?.reservedOnly === true);
+      expect(expected.map((r) => r.contact_id)).toEqual([ids.dni]);
+
+      const page = await rankContactsPage(ctx, { reservedOnly: true, limit: 100 });
+      expect(idsOf(page.rows)).toEqual(idsOf(expected));
+      expect(page.total).toBe(expected.length);
+      // The distinction that matters: the invoice-carrying non-deposit buyer is
+      // a buyer but NOT reserved-only.
+      const buyers = await rankContactsPage(ctx, { buyerOnly: true, limit: 100 });
+      expect(idsOf(buyers.rows).has(ids.unscored)).toBe(true);
+      expect(idsOf(page.rows).has(ids.unscored)).toBe(false);
+    } finally {
+      financeOn = false;
+    }
+  });
+
+  it('minIcp/maxIcp are inclusive at both endpoints and drop unscored rows', async () => {
+    const all = await roster();
+    const icpOf = (r: (typeof all.rows)[number]) => {
+      const raw = (r.custom_fields?._icp as { score?: unknown } | undefined)?.score;
+      return typeof raw === 'number' ? raw : null;
+    };
+    const inRange = (min: number, max: number) =>
+      idsOf(all.rows.filter((r) => icpOf(r) != null && icpOf(r)! >= min && icpOf(r)! <= max));
+
+    const page = await rankContactsPage(ctx, { minIcp: 60, maxIcp: 90, limit: 100 });
+    expect(idsOf(page.rows)).toEqual(inRange(60, 90));
+    expect(page.total).toBe(inRange(60, 90).size);
+    // endpoints are IN the range: 60 (Phone) and 90 (both Anas) survive…
+    expect(idsOf(page.rows)).toEqual(new Set([ids.ana1, ids.ana2, ids.bea, ids.phone]));
+    // …and the row with no _icp is never swept in as a 0.
+    expect(idsOf(page.rows).has(ids.unscored)).toBe(false);
+    const unbounded = await rankContactsPage(ctx, { minIcp: 0, limit: 100 });
+    expect(idsOf(unbounded.rows).has(ids.unscored)).toBe(false);
   });
 });

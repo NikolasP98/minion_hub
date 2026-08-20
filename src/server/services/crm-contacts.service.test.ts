@@ -397,13 +397,20 @@ describe('rankContacts revenue column (S1 — order-by fuel, not part of the pay
   }
 
   it('crm+finances on: the finance CTE sums invoice totals per contact', async () => {
-    expect(await sqlWithFinance(true)).toContain('sum(coalesce(fi.total, 0))::float8 as revenue');
+    const sqlText = await sqlWithFinance(true);
+
+    // S2 folded this CTE onto the shared per-invoice classification rows
+    // (CONTACT_INVOICE_CLASS) so the funnel floor and ContactFinance cannot
+    // drift; revenue is still the same sum of invoice totals.
+    expect(sqlText).toContain('coalesce(fi.total,0)::float8 total');
+    expect(sqlText).toContain('sum(total)::float8 as revenue');
+    expect(sqlText).toContain('from contact_invoice_class');
   });
 
   it('finances off: the stub CTE still declares revenue, so sort:revenue degrades instead of erroring', async () => {
     const sqlText = await sqlWithFinance(false);
 
-    expect(sqlText).not.toContain('sum(coalesce(fi.total, 0))');
+    expect(sqlText).not.toContain('contact_invoice_class');
     expect(sqlText).toContain('null::float8 as revenue');
     expect(sqlText).toContain('revenue desc nulls last');
   });

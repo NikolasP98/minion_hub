@@ -22,9 +22,23 @@ export type FunnelStage = 'lead' | 'opportunity' | 'customer' | 'loyal';
 /** Ordered stage ids — index == funnel depth. */
 export const FUNNEL_ORDER: FunnelStage[] = ['lead', 'opportunity', 'customer', 'loyal'];
 
+/**
+ * Legacy (6-stage) ids and the current stage each remaps to. Exported because the
+ * SQL `funnel_stage` CASE in crm-contacts.service.ts is BUILT from this map plus
+ * FUNNEL_ORDER — the server-side funnel filter and this client derivation must
+ * agree on a closed, finite value domain (proved by the parity suite,
+ * crm-funnel-parity.sql.integration.test.ts).
+ */
+export const FUNNEL_LEGACY_ALIASES: Record<string, FunnelStage> = {
+  interest: 'opportunity',
+  consideration: 'opportunity',
+  intent: 'opportunity',
+};
+
 /** Map a (possibly legacy 6-stage) id to the current funnel vocabulary. */
 function normalizeStage(id: string): FunnelStage | null {
-  if (id === 'interest' || id === 'consideration' || id === 'intent') return 'opportunity';
+  const alias = FUNNEL_LEGACY_ALIASES[id];
+  if (alias) return alias;
   return (FUNNEL_ORDER as string[]).includes(id) ? (id as FunnelStage) : null;
 }
 
