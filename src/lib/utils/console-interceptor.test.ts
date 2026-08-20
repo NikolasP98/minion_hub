@@ -1,16 +1,18 @@
 // @vitest-environment happy-dom
 
-// This module is the sink hub's `onEventError` posture rests on: hub accepts the
-// shared GatewayClient's `console.error` fallback (see
-// docs/2026-08-19-gateway-onevent-error-hook-adoption.md) precisely because the
-// interceptor captures it into the buffer the bug reporter attaches. These tests
-// pin that mechanism — capture, error stacks, and the ring-buffer cap.
+// This module is the sink hub's gateway error-reporting posture rests on (see
+// docs/2026-08-19-gateway-onevent-error-hook-adoption.md): hub's own event
+// containment and, later, the shared GatewayClient's `console.error` fallback
+// both report here, because the interceptor captures every `console.error` into
+// the buffer the bug reporter attaches. These tests pin that mechanism — capture,
+// error stacks, the ring-buffer cap, and idempotent install.
 //
-// Scope limit: they prove the SINK, not the source. No installed or published
-// `@minion-stack/shared` build emits the fallback yet, so the message below is a
-// hand-written stand-in for its shape; that a real hook-bearing client produces
-// exactly one such report is unproved and must be checked against the client
-// itself when the dependency bump lands.
+// Scope limit: they prove the SINK in isolation. The source→sink path for hub's
+// own containment is proved end-to-end in
+// `src/lib/services/gateway/event-dispatch.test.ts`; the message below is only a
+// shape stand-in. How a real hook-bearing `@minion-stack/shared` client behaves
+// remains unproved — no such build is published — and must be checked against the
+// client itself when the dependency bump lands.
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { getConsoleBuffer, installInterceptor } from './console-interceptor';
