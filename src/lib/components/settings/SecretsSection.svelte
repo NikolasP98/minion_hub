@@ -8,7 +8,7 @@
     type SecretsProbeResult,
     type SecretsProbeScopedResult,
     type SecretsProbeStatus,
-  } from '$lib/types/secrets';
+  } from '@minion-stack/shared';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { toastAsync, toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
