@@ -99,9 +99,24 @@ create index if not exists crm_contacts_profile_idx on public.crm_contacts (prof
 create index if not exists crm_contacts_party_idx on public.crm_contacts (party_id);
 
 -- ── crm_activities ──────────────────────────────────────────────────────────
+-- `id` is deliberately NOT declared `primary key` (and so not `not null`).
+-- The extraction records `crm_contacts.id` as `uuid NOT NULL default
+-- gen_random_uuid()` but `crm_activities.id` as `uuid default
+-- gen_random_uuid()` with no NOT NULL — an asymmetry that is only worth
+-- recording if it is real, so it is reproduced here rather than quietly
+-- "corrected". A `primary key` implicitly adds NOT NULL (plus a unique index)
+-- and would prove the suite against a stricter contract than production has,
+-- which is exactly the prod-parity gap this fixture exists to close. Nothing in
+-- the suite needs it: every insert lets the default generate the id, and no
+-- query joins, upserts or `on conflict`s on `crm_activities.id`. Re-add it only
+-- if a fresh live catalog extraction shows prod carries it.
 create table if not exists public.crm_activities (
-  id uuid not null default gen_random_uuid() primary key,
+  id uuid default gen_random_uuid(),
   org_id text not null,
+  -- The FK/cascade is convention-derived (`pg-crm-schema.ts`), NOT from the
+  -- extraction, which covered column definitions only. It is kept because the
+  -- suite cleans up by deleting its contact row and relies on the cascade; the
+  -- extracted part (`contact_id uuid NOT NULL`) is what the assertions check.
   contact_id uuid not null references public.crm_contacts (id) on delete cascade,
   kind text not null,
   body text,
@@ -224,5 +239,56 @@ begin
                   where id = '00000000-0000-0000-0000-000000000001') then
     raise exception 'ci-fixture: deterministic organizations seed row is missing';
   end if;
+end
+$$;
+
+-- ── Executable column-shape assertions ──────────────────────────────────────
+-- The block above proves the RLS wiring; this one proves the columns the
+-- extraction actually recorded still match, one row per extracted fact. It is
+-- what keeps the asymmetry between `crm_contacts.id` (NOT NULL) and
+-- `crm_activities.id` (nullable) honest: re-adding a `primary key`, a stray
+-- `not null`, or a changed default to either table now fails on apply instead
+-- of silently gating the suite on a schema contract production does not have.
+-- Only the columns Slice 0 extracted are listed — asserting an unextracted
+-- column would be reconstruction, which is the thing this fixture refuses.
+do $$
+declare
+  bad record;
+begin
+  for bad in
+    with extracted(tbl, col, data_type, is_nullable, col_default) as (
+      values
+        ('crm_contacts'::text,   'id'::text,         'uuid'::text, 'NO'::text,  'gen_random_uuid()'::text),
+        ('crm_contacts',         'org_id',           'text',       'NO',        null),
+        ('crm_activities',       'id',               'uuid',       'YES',       'gen_random_uuid()'),
+        ('crm_activities',       'org_id',           'text',       'NO',        null),
+        ('crm_activities',       'contact_id',       'uuid',       'NO',        null),
+        ('organizations',        'id',               'uuid',       'NO',        'gen_random_uuid()')
+    )
+    select e.tbl, e.col,
+           e.data_type   as want_type,
+           e.is_nullable as want_nullable,
+           e.col_default as want_default,
+           c.data_type      as got_type,
+           c.is_nullable    as got_nullable,
+           c.column_default as got_default
+      from extracted e
+      left join information_schema.columns c
+        on c.table_schema = 'public'
+       and c.table_name   = e.tbl
+       and c.column_name  = e.col
+     where c.column_name is null
+        or c.data_type      is distinct from e.data_type
+        or c.is_nullable    is distinct from e.is_nullable
+        or c.column_default is distinct from e.col_default
+  loop
+    raise exception
+      'ci-fixture: %.% is (type=%, nullable=%, default=%), prod extraction says (type=%, nullable=%, default=%)',
+      bad.tbl, bad.col,
+      coalesce(bad.got_type, '<column missing>'),
+      coalesce(bad.got_nullable, '<column missing>'),
+      coalesce(bad.got_default, '<none>'),
+      bad.want_type, bad.want_nullable, coalesce(bad.want_default, '<none>');
+  end loop;
 end
 $$;

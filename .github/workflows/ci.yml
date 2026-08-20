@@ -148,10 +148,14 @@ jobs:
 
       # The fixture ends with executable catalog assertions (RLS enabled + forced,
       # exactly one `*_org_guc` policy per table with the recorded roles/cmd/
-      # predicates, app_ledger grants, seed org row). With ON_ERROR_STOP those
-      # assertions ARE this step: a fixture that drifts from the recorded prod
-      # snapshot fails here rather than producing a green run against a shape
-      # production does not have.
+      # predicates, app_ledger grants, seed org row) followed by column-shape
+      # assertions over information_schema.columns — type, nullability and
+      # default for every column Slice 0 actually extracted, including the
+      # deliberate `crm_contacts.id` NOT NULL vs `crm_activities.id` nullable
+      # asymmetry. With ON_ERROR_STOP those assertions ARE this step: a fixture
+      # that drifts from the recorded prod snapshot (in either direction — a
+      # LOOSER or a STRICTER shape) fails here rather than producing a green run
+      # against a schema contract production does not have.
       - name: Apply CI-only CRM schema fixture
         run: psql -v ON_ERROR_STOP=1 "$FUNNEL_DB_URL" -f supabase/ci-fixtures/crm-funnel-concurrent.sql
 
