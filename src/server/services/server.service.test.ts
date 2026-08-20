@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { upsertServer, listServers, deleteServer, updateServer } from './server.service';
+import {
+  upsertServer,
+  listServers,
+  deleteServer,
+  getServerToken,
+  updateServer,
+} from './server.service';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 beforeEach(() => {
@@ -74,9 +80,7 @@ describe('listServers', () => {
 
   it('returns rows without token fields for admin', async () => {
     const { db, resolve } = createMockDb();
-    const mockServers = [
-      { id: 's1', name: 'test', url: 'http://x', lastConnectedAt: null },
-    ];
+    const mockServers = [{ id: 's1', name: 'test', url: 'http://x', lastConnectedAt: null }];
     resolve(mockServers);
     const result = await listServers({ db, tenantId: 't1' }, undefined, 'admin');
     expect(result).toEqual(mockServers);
@@ -185,10 +189,114 @@ describe('updateServer — Slice 1 baseline (pre tenant-scope)', () => {
     expect(b).toEqual(seedRows()[1]);
   });
 
+  // The live defect Slice 2 closes, pinned rather than described: today the id
+  // alone decides, so a caller whose tenant context is tenant-a patches
+  // tenant-b's row and gets no error back. The route's assertOwnsOrAdmin()
+  // returns true for ANY admin, so an admin of tenant-a reaches this.
+  it('cross-tenant update: patches another tenant’s row and reports no error', async () => {
+    await updateServer(updateServerCtxFor('tenant-a'), 'server-b', { name: 'Renamed by A' });
+
+    const b = updateServerRows.find((r) => r.id === 'server-b');
+    expect(b?.name).toBe('Renamed by A');
+    expect(b?.tenantId).toBe('tenant-b');
+  });
+
   it('unknown id: resolves undefined (no not-found signal) and mutates nothing', async () => {
     await expect(
       updateServer(updateServerCtxFor('tenant-a'), 'does-not-exist', { name: 'X' }),
     ).resolves.toBeUndefined();
     expect(updateServerRows).toEqual(seedRows());
+  });
+});
+
+// Slice 1 readiness evidence that needs no credentials.
+//
+// The remaining Slice 1 blocker is a fact about live data — is every Turso
+// `servers.tenant_id` already the canonical Supabase organization id? — and only
+// a credential holder can answer it (docs/runbooks/server-tenant-scope-rekey-readiness.md).
+// What is answerable here is the blast radius if the answer were "no": which
+// shipped read paths already depend on that same equality, and therefore which
+// server ids `updateServer` can actually be reached with.
+//
+// These cases exercise the shipped service against an in-memory `servers` table
+// that really applies the `.where()` predicate the service builds (the drizzle
+// `eq`/`and` mock at the top of this file turns it into a row predicate). The
+// `innerJoin` below is performed by the harness on `userServers.serverId ===
+// servers.id`; what is under test is the tenant filter the service adds, not the
+// join condition.
+let readRows: ServerRow[];
+
+function makeReadDb(links: Array<{ userId: string; serverId: string }> = []) {
+  const project = (columns: Record<string, string>, row: Record<string, unknown>) =>
+    Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column]]));
+
+  const chain = (source: Array<Record<string, unknown>>, columns: Record<string, string>) => ({
+    innerJoin: () =>
+      chain(
+        source.flatMap((row) =>
+          links.filter((link) => link.serverId === row.id).map((link) => ({ ...row, ...link })),
+        ),
+        columns,
+      ),
+    where: (predicate: (row: Record<string, unknown>) => boolean) => {
+      const matched = source.filter(predicate);
+      const projected = () => matched.map((row) => project(columns, row));
+      return { orderBy: projected, limit: (n: number) => projected().slice(0, n) };
+    },
+  });
+
+  return {
+    select: (columns: Record<string, string>) => ({
+      from: () => chain(readRows as unknown as Array<Record<string, unknown>>, columns),
+    }),
+    delete: () => ({
+      where: (predicate: (row: Record<string, unknown>) => boolean) => {
+        readRows = readRows.filter((row) => !predicate(row as unknown as Record<string, unknown>));
+        return Promise.resolve(undefined);
+      },
+    }),
+  };
+}
+
+const readCtxFor = (tenantId: string, links?: Array<{ userId: string; serverId: string }>) => ({
+  db: makeReadDb(links) as never,
+  tenantId,
+});
+
+describe('server reads already depend on the re-key fact (Slice 1 readiness evidence)', () => {
+  beforeEach(() => {
+    readRows = seedRows();
+  });
+
+  it('listServers hands an admin only their own tenant’s server ids', async () => {
+    const rows = await listServers(readCtxFor('tenant-a'), undefined, 'admin');
+
+    expect(rows.map((row) => row.id)).toEqual(['server-a']);
+  });
+
+  it('listServers does not let a user_servers link widen tenancy', async () => {
+    const links = [
+      { userId: 'user-1', serverId: 'server-a' },
+      { userId: 'user-1', serverId: 'server-b' },
+    ];
+
+    const rows = await listServers(readCtxFor('tenant-a', links), 'user-1', 'user');
+
+    expect(rows.map((row) => row.id)).toEqual(['server-a']);
+  });
+
+  it('getServerToken returns null for a server id outside the caller’s tenant', async () => {
+    readRows = readRows.map((row) => ({ ...row, token: `${row.id}-token` }));
+
+    await expect(getServerToken(readCtxFor('tenant-a'), 'server-a')).resolves.toBe(
+      'server-a-token',
+    );
+    await expect(getServerToken(readCtxFor('tenant-a'), 'server-b')).resolves.toBeNull();
+  });
+
+  it('deleteServer leaves another tenant’s row untouched', async () => {
+    await deleteServer(readCtxFor('tenant-a'), 'server-b');
+
+    expect(readRows.map((row) => row.id)).toEqual(['server-a', 'server-b']);
   });
 });
