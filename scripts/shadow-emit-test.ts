@@ -76,7 +76,9 @@ const emissionResult = {
 console.log(emissionResult);
 
 if (!accepted) {
-  console.error(`DoD NOT met: expected status=accepted ResponseCode=0, got ResponseCode=${cdr.responseCode}`);
+  console.error(
+    `DoD NOT met: expected status=accepted ResponseCode=0, got ResponseCode=${cdr.responseCode}`,
+  );
   process.exit(1);
 }
 console.log('DoD met: status=accepted ResponseCode=0');

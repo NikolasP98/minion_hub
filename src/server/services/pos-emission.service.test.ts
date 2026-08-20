@@ -20,7 +20,9 @@ const fakeTx = {
       });
     },
   }),
-  update: () => ({ set: (row: Record<string, unknown>) => ({ where: async () => updated.push(row) }) }),
+  update: () => ({
+    set: (row: Record<string, unknown>) => ({ where: async () => updated.push(row) }),
+  }),
 };
 const txSelectRows = () =>
   Object.assign(Promise.resolve(ticketLineRows), { limit: async () => ticketLineRows });

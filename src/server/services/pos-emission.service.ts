@@ -3,7 +3,14 @@ import { waitUntil } from '@vercel/functions';
 import { env } from '$env/dynamic/private';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
-import { posEmissions, posSeries, posTicketLines, type PosEmission, type PosSeries, type PosTicket } from '$server/db/pg-pos-schema';
+import {
+  posEmissions,
+  posSeries,
+  posTicketLines,
+  type PosEmission,
+  type PosSeries,
+  type PosTicket,
+} from '$server/db/pg-pos-schema';
 import { parties } from '$server/db/pg-party-schema';
 import { emitToBeta } from '$server/finance/emission';
 import type { EmissionDocType, EmissionInvoice } from '$server/finance/emission';
@@ -102,7 +109,10 @@ export function resolveEmitter(): EmitterConfig {
   const ruc = env.POS_EMISSION_EMITTER_RUC;
   const razonSocial = env.POS_EMISSION_EMITTER_NAME;
   if (!ruc || !razonSocial) {
-    throw new PosError('POS_EMISSION_EMITTER_RUC/POS_EMISSION_EMITTER_NAME not configured', 'no_emitter');
+    throw new PosError(
+      'POS_EMISSION_EMITTER_RUC/POS_EMISSION_EMITTER_NAME not configured',
+      'no_emitter',
+    );
   }
   return {
     ruc,
@@ -149,7 +159,8 @@ async function runBetaEmission(
 ): Promise<void> {
   try {
     const cert = loadBetaCert();
-    if (!cert) throw new PosError('POS_EMISSION_BETA_CERT/POS_EMISSION_BETA_KEY not configured', 'no_cert');
+    if (!cert)
+      throw new PosError('POS_EMISSION_BETA_CERT/POS_EMISSION_BETA_KEY not configured', 'no_cert');
     await betaRateLimit();
     const result = await emitToBeta(invoice, cert.certPem, cert.keyPem);
     const accepted = result.responseCode === '0';
@@ -174,7 +185,9 @@ async function runBetaEmission(
         .update(posEmissions)
         .set({ status: 'error', responseDescription: message.slice(0, 500), updatedAt: new Date() })
         .where(and(eq(posEmissions.id, emissionId), eq(posEmissions.orgId, ctx.tenantId))),
-    ).catch((updateErr) => console.error('[pos-emission] failed to record error status', emissionId, updateErr));
+    ).catch((updateErr) =>
+      console.error('[pos-emission] failed to record error status', emissionId, updateErr),
+    );
   }
 }
 
@@ -209,12 +222,18 @@ export async function triggerShadowEmission(
             total: posTicketLines.total,
           })
           .from(posTicketLines)
-          .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticket.id))),
+          .where(
+            and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticket.id)),
+          ),
       ),
       ticket.partyId
         ? withOrgCore(ctx, (tx) =>
             tx
-              .select({ docType: parties.docType, docNumber: parties.docNumber, name: parties.name })
+              .select({
+                docType: parties.docType,
+                docNumber: parties.docNumber,
+                name: parties.name,
+              })
               .from(parties)
               .where(and(eq(parties.id, ticket.partyId as string), eq(parties.orgId, ctx.tenantId)))
               .limit(1),
@@ -237,7 +256,11 @@ export async function triggerShadowEmission(
       return;
     }
 
-    const { id: emissionId, invoice, docRequired } = await withOrgCore(ctx, async (tx) => {
+    const {
+      id: emissionId,
+      invoice,
+      docRequired,
+    } = await withOrgCore(ctx, async (tx) => {
       const allocation = await allocateNumber(tx, ctx.tenantId, docType, 'beta');
       const mapped = ticketToEmission(
         ticket,
@@ -322,7 +345,10 @@ async function recordUnemittableTicket(
   });
 }
 
-export async function listEmissionsForTicket(ctx: CoreCtx, ticketId: string): Promise<PosEmission[]> {
+export async function listEmissionsForTicket(
+  ctx: CoreCtx,
+  ticketId: string,
+): Promise<PosEmission[]> {
   return withOrgCore(ctx, (tx) =>
     tx
       .select()
