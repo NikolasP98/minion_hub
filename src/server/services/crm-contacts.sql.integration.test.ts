@@ -358,11 +358,18 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
       ]);
       const finEmpty = await contactFinanceMap(ctx);
       expect(finEmpty[ids.dni]).toMatchObject({ purchased: true, reservedOnly: false });
+      const pageEmptyReserved = await rankContactsPage(ctx, { reservedOnly: true, limit: 100 });
+      expect(idsOf(pageEmptyReserved.rows).has(ids.dni)).toBe(false);
+      const pageEmptyBuyer = await rankContactsPage(ctx, { buyerOnly: true, limit: 100 });
+      expect(idsOf(pageEmptyBuyer.rows).has(ids.dni)).toBe(true);
 
-      // Back to an absent deposit key: parity with the original default.
+      // Back to an absent deposit key: parity with the original default, and
+      // rankContactsPage agrees with contactFinanceMap again too.
       await client!.unsafe(`update crm_settings set value = '{}'::jsonb where org_id = $1`, [org]);
       const finBack = await contactFinanceMap(ctx);
       expect(finBack[ids.dni]).toMatchObject({ purchased: false, reservedOnly: true });
+      const pageBackReserved = await rankContactsPage(ctx, { reservedOnly: true, limit: 100 });
+      expect(idsOf(pageBackReserved.rows).has(ids.dni)).toBe(true);
 
       // Invoice totals/counts never move across any of these rule changes —
       // only classification and item selection do.

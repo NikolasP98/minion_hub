@@ -273,6 +273,46 @@ describe('contactFinanceSummary', () => {
     );
     expect(aggQuery.params).toEqual(['c1', '%reserva%', '%reserva%']);
   });
+
+  it('PARITY: a custom resolved rule binds its own escaped keywords in both compiled queries, never %reserva%', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto', 'seña'], label: 'Adelanto' });
+    resolve([
+      { id: 'inv1', document_id: 'd1', issued_at: null, total: 0, status: 's', item: null },
+    ]);
+    await contactFinanceSummary(ctx(db), 'c1');
+
+    const itemQuery = dialect.sqlToQuery(executedSqlContaining(db, 'as item'));
+    expect(itemQuery.params).toEqual(['c1', '%adelanto%', '%seña%']);
+    expect(itemQuery.params).not.toContain('%reserva%');
+
+    const aggQuery = dialect.sqlToQuery(executedSqlContaining(db, 'proc_dates'));
+    expect(aggQuery.params).toEqual(['c1', '%adelanto%', '%seña%', '%adelanto%', '%seña%']);
+    expect(aggQuery.params).not.toContain('%reserva%');
+  });
+
+  it('PARITY: an explicitly empty keyword set compiles to literal false/true — no dropped predicate, no bound pattern, invoice arithmetic untouched', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    resolve([
+      { id: 'inv1', document_id: 'd1', issued_at: null, total: 500, status: 's', item: 'Cualquier cosa' },
+    ]);
+    const summary = await contactFinanceSummary(ctx(db), 'c1');
+
+    const itemQuery = dialect.sqlToQuery(executedSqlContaining(db, 'as item'));
+    expect(normalizeSql(itemQuery.sql)).toContain(normalizeSql('order by false asc'));
+    expect(itemQuery.params).toEqual(['c1']);
+
+    const aggQuery = dialect.sqlToQuery(executedSqlContaining(db, 'proc_dates'));
+    expect(normalizeSql(aggQuery.sql)).toContain(normalizeSql('bool_or(false) has_deposit'));
+    expect(normalizeSql(aggQuery.sql)).toContain(
+      normalizeSql('bool_or((ii.description is not null and true)) has_proc'),
+    );
+    expect(aggQuery.params).toEqual(['c1']);
+    // A zero-keyword rule matches nothing ⇒ every line item is a procedure —
+    // this contact is a purchaser, and totals/counts come from the same row.
+    expect(summary?.recentInvoices[0].item).toBe('Cualquier cosa');
+  });
 });
 
 describe('rankCustomers', () => {
