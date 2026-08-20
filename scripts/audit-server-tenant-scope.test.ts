@@ -342,6 +342,26 @@ describe('re-key readiness gate rules', () => {
     ).toEqual([]);
   });
 
+  it('stays quiet on a partially recorded file while the predicate is parked', () => {
+    const partial = completeEvidence();
+    partial.runs = [partial.runs[0]];
+    expect(
+      rekeyReadinessGateFailures({ predicateIsTenantScoped: false, evidence: partial }),
+    ).toEqual([]);
+  });
+
+  // The converse of the stop rule. A one-way gate goes permanently quiet the
+  // moment the evidence lands, and would then report "fine" for the very
+  // cross-tenant write the evidence was gathered in order to close.
+  it('blocks complete evidence that ships with an unscoped mutation', () => {
+    const failures = rekeyReadinessGateFailures({
+      predicateIsTenantScoped: false,
+      evidence: completeEvidence(),
+    });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain('still mutates by servers.id alone');
+  });
+
   it('blocks a tenant-scoped predicate that ships with no evidence at all', () => {
     const failures = rekeyReadinessGateFailures({
       predicateIsTenantScoped: true,
@@ -395,33 +415,155 @@ describe('re-key readiness gate rules', () => {
   });
 });
 
+/**
+ * `updateServerIsTenantScoped` answers one question — does the UPDATE that
+ * `updateServer` issues filter on `servers.tenantId`? — and the expensive way to
+ * get it wrong is a false *positive*: certifying a mutation as tenant-scoped
+ * when the column is only mentioned nearby. Every case below that expects
+ * `false` while containing the literal text `servers.tenantId` is a regression
+ * against exactly that, because each one leaves the cross-tenant write live.
+ */
 describe('updateServerIsTenantScoped', () => {
-  const scoped = `
+  const wrap = (body: string) => `
 export async function updateServer(ctx: TenantContext, id: string) {
-  await ctx.db.update(servers).set({}).where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));
-}
-export async function upsertServer() {}
-`;
-  const unscoped = `
-export async function updateServer(ctx: TenantContext, id: string) {
-  await ctx.db.update(servers).set({}).where(eq(servers.id, id));
+${body}
 }
 export async function upsertServer(ctx: TenantContext) {
   await ctx.db.insert(servers).values({ tenantId: ctx.tenantId });
 }
 `;
 
-  it('detects the tenant predicate inside updateServer', () => {
-    expect(updateServerIsTenantScoped(scoped)).toBe(true);
+  it('detects the tenant predicate in the update’s where clause', () => {
+    expect(
+      updateServerIsTenantScoped(
+        wrap(
+          '  await ctx.db.update(servers).set({}).where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));',
+        ),
+      ),
+    ).toBe(true);
   });
 
-  it('is not fooled by a sibling service that legitimately writes servers.tenantId', () => {
-    expect(updateServerIsTenantScoped(unscoped)).toBe(false);
+  it('detects it through a formatter-broken multi-line chain', () => {
+    expect(
+      updateServerIsTenantScoped(
+        wrap(`  await ctx.db
+    .update( servers )
+    .set({})
+    .where(
+      and(eq(servers.id, id), eq(servers . tenantId, ctx.tenantId)),
+    );`),
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects an update filtered by id alone', () => {
+    expect(
+      updateServerIsTenantScoped(
+        wrap('  await ctx.db.update(servers).set({}).where(eq(servers.id, id));'),
+      ),
+    ).toBe(false);
+  });
+
+  it('scopes its answer to updateServer, not to its tenant-scoped siblings', () => {
+    const source = `
+export async function deleteServer(ctx: TenantContext, id: string) {
+  await ctx.db.delete(servers).where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));
+}
+export async function updateServer(ctx: TenantContext, id: string) {
+  await ctx.db.update(servers).set({}).where(eq(servers.id, id));
+}
+export async function touchServer(ctx: TenantContext, id: string) {
+  await ctx.db.update(servers).set({}).where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));
+}
+`;
+    expect(updateServerIsTenantScoped(source)).toBe(false);
+  });
+
+  // The four false-positive shapes a whole-body text search cannot tell apart
+  // from the predicate itself. Each ships the same id-only UPDATE.
+  it('is not fooled by a comment naming the predicate that was never added', () => {
+    expect(
+      updateServerIsTenantScoped(
+        wrap(`  // TODO: add eq(servers.tenantId, ctx.tenantId) once the rows are re-keyed.
+  /* see servers.tenantId in the runbook */
+  await ctx.db.update(servers).set({}).where(eq(servers.id, id));`),
+      ),
+    ).toBe(false);
+  });
+
+  it('is not fooled by a string literal or a log line mentioning the column', () => {
+    expect(
+      updateServerIsTenantScoped(
+        wrap(`  const scopeColumn = 'servers.tenantId';
+  console.log(\`scoping on \${scopeColumn} is pending\`, servers.tenantId);
+  await ctx.db.update(servers).set({}).where(eq(servers.id, id));`),
+      ),
+    ).toBe(false);
+  });
+
+  it('is not fooled by an assignment that carries the column into the set object', () => {
+    expect(
+      updateServerIsTenantScoped(
+        wrap(`  const set: Record<string, unknown> = { tenantId: servers.tenantId };
+  await ctx.db.update(servers).set(set).where(eq(servers.id, id));`),
+      ),
+    ).toBe(false);
+  });
+
+  it('is not fooled by a tenant-scoped read sitting above an unscoped update', () => {
+    expect(
+      updateServerIsTenantScoped(
+        wrap(`  const [row] = await ctx.db
+    .select({ id: servers.id })
+    .from(servers)
+    .where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));
+  if (!row) return;
+  await ctx.db.update(servers).set({}).where(eq(servers.id, id));`),
+      ),
+    ).toBe(false);
+  });
+
+  it('is not fooled by another table’s tenant-scoped update in the same body', () => {
+    expect(
+      updateServerIsTenantScoped(
+        wrap(`  await ctx.db.update(userServers).set({}).where(eq(servers.tenantId, ctx.tenantId));
+  await ctx.db.update(servers).set({}).where(eq(servers.id, id));`),
+      ),
+    ).toBe(false);
+  });
+
+  // Fail-closed shapes: nothing here says "tenant-scoped", so nothing may.
+  it('rejects an update with no where clause at all', () => {
+    expect(updateServerIsTenantScoped(wrap('  await ctx.db.update(servers).set({});'))).toBe(false);
+  });
+
+  it('rejects a chain whose where clause is applied through a separate binding', () => {
+    expect(
+      updateServerIsTenantScoped(
+        wrap(`  const query = ctx.db.update(servers).set({});
+  await query.where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));`),
+      ),
+    ).toBe(false);
+  });
+
+  it('requires every update(servers) in the body to be scoped, not just one', () => {
+    expect(
+      updateServerIsTenantScoped(
+        wrap(`  await ctx.db.update(servers).set({}).where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));
+  await ctx.db.update(servers).set({ updatedAt: 1 }).where(eq(servers.id, id));`),
+      ),
+    ).toBe(false);
   });
 
   it('throws rather than silently passing when updateServer moves out of the file', () => {
     expect(() => updateServerIsTenantScoped('export const nothing = 1;\n')).toThrow(
       /anchored to a symbol that moved/,
+    );
+  });
+
+  it('throws rather than silently passing when the update(servers) itself moves out', () => {
+    expect(() => updateServerIsTenantScoped(wrap('  await updateServerRow(ctx, id);'))).toThrow(
+      /anchored to a shape that moved/,
     );
   });
 });

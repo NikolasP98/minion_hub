@@ -9,16 +9,25 @@ import {
 
 /**
  * Executable Slice 1 stop rule for
- * specs/2026-08-18-hub-updateserver-tenant-scope-spec.md.
+ * specs/2026-08-18-hub-updateserver-tenant-scope-spec.md, checked over the
+ * shipped service's source shape.
  *
  * The spec parks the `eq(servers.tenantId, ctx.tenantId)` predicate behind a
  * two-environment readiness audit plus the concrete re-key record, and until now
  * that rule lived only in prose — a comment nobody's build enforces. This binds
- * the two together: the moment `updateServer` gains a tenant predicate, the
- * suite reds unless `tests/rekey-readiness/evidence.json` records both passing
- * audits and the re-key deployment. Today the predicate is absent, the evidence
+ * the two together in both directions: a tenant-scoped mutation reds the suite
+ * unless `tests/rekey-readiness/evidence.json` records both passing audits and
+ * the re-key deployment, and complete evidence reds it while the mutation is
+ * still keyed on `servers.id` alone. Today the predicate is absent, the evidence
  * file is absent, and the gate is green — that is the parked state, asserted
  * rather than assumed.
+ *
+ * This file is the cheap half. The gate's primary input is the *observed*
+ * behaviour of `updateServer` — `src/server/services/server.service.test.ts`
+ * ("updateServer tenant scope") runs it against a two-tenant table and derives
+ * the same boolean from which rows actually moved, then pins the source-shape
+ * answer here against it. A source scan alone can be talked into a false yes by
+ * a comment or a nearby read; running the function cannot.
  */
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
 const SERVICE_PATH = path.join(REPO_ROOT, 'src/server/services/server.service.ts');

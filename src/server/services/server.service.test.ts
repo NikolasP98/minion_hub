@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   upsertServer,
@@ -6,7 +8,16 @@ import {
   getServerToken,
   updateServer,
 } from './server.service';
+import {
+  EVIDENCE_RELATIVE_PATH,
+  rekeyReadinessGateFailures,
+  rekeyReadinessReport,
+  updateServerIsTenantScoped,
+} from '../../../scripts/audit-server-tenant-scope.lib';
 import { createMockDb } from '$server/test-utils/mock-db';
+
+const REPO_ROOT = path.resolve(import.meta.dirname, '../../..');
+const EVIDENCE_PATH = path.join(REPO_ROOT, EVIDENCE_RELATIVE_PATH);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -174,31 +185,103 @@ function makeUpdateServerDb() {
 
 const updateServerCtxFor = (tenantId: string) => ({ db: makeUpdateServerDb() as never, tenantId });
 
-describe('updateServer — Slice 1 baseline (pre tenant-scope)', () => {
+/**
+ * Drive the shipped `updateServer` twice against the two-tenant table and report
+ * which rows actually moved.
+ *
+ * This is the gate's primary input, and it is deliberately not a source scan.
+ * "Is the mutation tenant-scoped?" answered by searching `updateServer`'s text
+ * for `servers.tenantId` says yes to a comment, a log line, an assignment into
+ * the `set` object, or a tenant-scoped read that happens to sit above an UPDATE
+ * still keyed on `servers.id` alone — every one of which leaves the cross-tenant
+ * write reachable. Running the function and looking at the rows cannot be
+ * fooled that way: the fake `db` here applies the real predicate the service
+ * builds (the `drizzle-orm` `eq`/`and` mock at the top of this file turns it
+ * into a row predicate), so what is observed is what the database would do.
+ */
+async function probeUpdateServerTenantScope(): Promise<{
+  sameTenantPatched: boolean;
+  crossTenantPatched: boolean;
+  bystanderRow: ServerRow | undefined;
+}> {
+  updateServerRows = seedRows();
+  await updateServer(updateServerCtxFor('tenant-a'), 'server-a', { name: 'Renamed A' });
+  const own = updateServerRows.find((r) => r.id === 'server-a');
+  const bystanderRow = updateServerRows.find((r) => r.id === 'server-b');
+
+  updateServerRows = seedRows();
+  await updateServer(updateServerCtxFor('tenant-a'), 'server-b', { name: 'Renamed by A' });
+  const foreign = updateServerRows.find((r) => r.id === 'server-b');
+
+  return {
+    sameTenantPatched: own?.name === 'Renamed A' && own?.updatedAt === 1_700_000_000_000,
+    crossTenantPatched: foreign?.name === 'Renamed by A',
+    bystanderRow,
+  };
+}
+
+const SERVICE_SOURCE_PATH = path.join(REPO_ROOT, 'src/server/services/server.service.ts');
+
+function recordedEvidence(): unknown {
+  return existsSync(EVIDENCE_PATH) ? JSON.parse(readFileSync(EVIDENCE_PATH, 'utf8')) : undefined;
+}
+
+describe('updateServer tenant scope (specs/2026-08-18-hub-updateserver-tenant-scope-spec.md)', () => {
   beforeEach(() => {
     updateServerRows = seedRows();
   });
 
-  it('same-tenant update: patches the caller tenant’s own server row', async () => {
-    await updateServer(updateServerCtxFor('tenant-a'), 'server-a', { name: 'Renamed A' });
+  it('always lets a caller patch their own tenant’s server row', async () => {
+    const observed = await probeUpdateServerTenantScope();
 
-    const a = updateServerRows.find((r) => r.id === 'server-a');
-    const b = updateServerRows.find((r) => r.id === 'server-b');
-    expect(a?.name).toBe('Renamed A');
-    expect(a?.updatedAt).toBe(1_700_000_000_000);
-    expect(b).toEqual(seedRows()[1]);
+    // Not conditional on anything: whatever Slice 2 does to the predicate, a
+    // tenant updating its own host must keep working. This is the assertion
+    // that catches the failure mode the spec parked Slice 2 over — a predicate
+    // that matches nothing and silently no-ops every legitimate update.
+    expect(observed.sameTenantPatched).toBe(true);
+    expect(observed.bystanderRow).toEqual(seedRows()[1]);
   });
 
-  // The live defect Slice 2 closes, pinned rather than described: today the id
-  // alone decides, so a caller whose tenant context is tenant-a patches
-  // tenant-b's row and gets no error back. The route's assertOwnsOrAdmin()
-  // returns true for ANY admin, so an admin of tenant-a reaches this.
-  it('cross-tenant update: patches another tenant’s row and reports no error', async () => {
-    await updateServer(updateServerCtxFor('tenant-a'), 'server-b', { name: 'Renamed by A' });
+  /**
+   * The stop rule, asserted against behaviour.
+   *
+   * While `tests/rekey-readiness/evidence.json` is incomplete the cross-tenant
+   * write is expected to still land — that is the parked defect, pinned rather
+   * than described: `updateServer` matches on `servers.id` alone and
+   * `assertOwnsOrAdmin()` in `src/routes/api/servers/[id]/+server.ts` returns
+   * true for ANY admin, so an admin of tenant-a who supplies tenant-b's server
+   * id patches that row and receives `ok`.
+   *
+   * The moment a credential holder records both passing audits and the re-key
+   * record, this same assertion flips and demands the opposite: complete
+   * evidence with a mutation that still writes across tenants is a failure, so
+   * the evidence landing cannot leave the defect quietly open.
+   */
+  it('allows a cross-tenant write exactly while the re-key evidence is incomplete', async () => {
+    const evidence = recordedEvidence();
+    const observed = await probeUpdateServerTenantScope();
 
-    const b = updateServerRows.find((r) => r.id === 'server-b');
-    expect(b?.name).toBe('Renamed by A');
-    expect(b?.tenantId).toBe('tenant-b');
+    expect(
+      rekeyReadinessGateFailures({
+        predicateIsTenantScoped: !observed.crossTenantPatched,
+        evidence,
+      }),
+    ).toEqual([]);
+
+    // The same statement spelled out, so a red here reads as a sentence rather
+    // than an empty-array diff.
+    expect(observed.crossTenantPatched).toBe(rekeyReadinessReport(evidence).status === 'BLOCKED');
+  });
+
+  it('is described by the source-shape guard the same way it behaves', async () => {
+    const observed = await probeUpdateServerTenantScope();
+
+    // `updateServerIsTenantScoped` is the cheap guard the scripts-side gate
+    // uses; pinning it against the observed mutation is what stops the two from
+    // drifting, in either direction.
+    expect(updateServerIsTenantScoped(readFileSync(SERVICE_SOURCE_PATH, 'utf8'))).toBe(
+      !observed.crossTenantPatched,
+    );
   });
 
   it('unknown id: resolves undefined (no not-found signal) and mutates nothing', async () => {

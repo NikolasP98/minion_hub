@@ -180,24 +180,40 @@ function runFailures(environment: string, run: unknown): string[] {
 }
 
 /**
- * Executable form of the spec's Slice 1 stop rule.
+ * Executable form of the spec's Slice 1 stop rule, in both directions.
  *
- * The tenant predicate may only exist in `updateServer` once a credential holder
- * has recorded a passing audit for both environments plus the concrete re-key
- * record. While the predicate is absent the gate passes with no evidence: the
- * parked state is the correct state, and demanding evidence for it would just
- * red the suite for work nobody has done yet.
+ * The rule the spec writes down is one-way — no tenant predicate in
+ * `updateServer` until a credential holder has recorded a passing audit for both
+ * environments plus the concrete re-key record — and the gate enforces it: a
+ * scoped mutation with incomplete evidence fails, naming every missing artifact.
  *
- * `predicateIsTenantScoped` comes from reading the shipped service source, so
- * this cannot be satisfied by editing the evidence file alone, nor bypassed by
- * editing the service alone.
+ * The converse matters just as much and is easier to miss. Once the evidence is
+ * complete, a one-way gate goes permanently quiet: it would report "fine" for a
+ * `updateServer` that still matches on `servers.id` alone, i.e. for exactly the
+ * cross-tenant write the evidence was gathered to let us close. So complete
+ * evidence plus an unscoped mutation is also a failure — the gate then says
+ * Slice 2 is owed, rather than saying nothing.
+ *
+ * Neither half can be satisfied by editing one file: `predicateIsTenantScoped`
+ * describes the shipped mutation (observed behaviour first, source shape as
+ * defence in depth), and `evidence` is what a human recorded.
  */
 export function rekeyReadinessGateFailures(input: {
   predicateIsTenantScoped: boolean;
   evidence: unknown;
 }): string[] {
-  if (!input.predicateIsTenantScoped) return [];
-  return evidenceFailures(input.evidence);
+  const owed = evidenceFailures(input.evidence);
+  if (input.predicateIsTenantScoped) return owed;
+  if (owed.length === 0) {
+    return [
+      'the recorded re-key readiness evidence is complete, but the shipped updateServer still ' +
+        'mutates by servers.id alone — Slice 2 owes it eq(servers.tenantId, ctx.tenantId); see ' +
+        'docs/runbooks/server-tenant-scope-rekey-readiness.md',
+    ];
+  }
+  // Parked: no predicate, no complete evidence. That is the correct state and
+  // demanding evidence for work nobody has started would just red the suite.
+  return [];
 }
 
 /**
@@ -249,23 +265,163 @@ function evidenceFailures(evidence: unknown): string[] {
   return failures;
 }
 
+/** `servers.tenantId`, tolerating the whitespace a formatter may introduce. */
+const TENANT_COLUMN_REFERENCE = /\bservers\s*\.\s*tenantId\b/;
+
 /**
- * Whether `updateServer`'s body constrains the mutation by tenant.
+ * Blank out comment bodies and string/template contents so a source scan sees
+ * code only.
  *
- * Reads the shipped service source rather than a copy: the gate must track the
- * file that actually runs in production. Scoped to `updateServer` alone, since
- * sibling services in the same file legitimately reference `servers.tenantId`.
+ * The gate's whole job is to answer "does the shipped mutation filter by
+ * tenant?", and prose is the cheapest way to fake a yes: a `// TODO: add
+ * eq(servers.tenantId, …)` comment reads identically to the predicate itself
+ * under a plain text search. Quotes are kept (as an empty pair) so what is left
+ * still has the same expression shape.
  */
-export function updateServerIsTenantScoped(serviceSource: string): boolean {
-  const start = serviceSource.indexOf('export async function updateServer(');
+function stripCommentsAndStrings(source: string): string {
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (char === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') i++;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      i += 2;
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      i++;
+      while (i < source.length && source[i] !== char) {
+        if (source[i] === '\\') i++;
+        i++;
+      }
+      i++;
+      // A template literal's `${…}` interpolations go with it. Dropping code is
+      // fail-closed here: it can only remove a tenant reference, never add one.
+      out += char + char;
+      continue;
+    }
+    out += char;
+    i++;
+  }
+  return out;
+}
+
+/** Index of the `)`/`}` closing the bracket at `open`, or -1 if unbalanced. */
+function matchingBracket(source: string, open: number, openChar: '(' | '{'): number {
+  const closeChar = openChar === '(' ? ')' : '}';
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === openChar) depth++;
+    else if (source[i] === closeChar) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** `updateServer`'s body, braces included, from comment/string-stripped source. */
+function updateServerBody(strippedSource: string): string {
+  const start = strippedSource.indexOf('export async function updateServer(');
   if (start === -1) {
     throw new Error(
       'updateServer was not found in server.service.ts — the re-key readiness gate is anchored to a symbol that moved',
     );
   }
-  const nextExport = serviceSource.indexOf('\nexport ', start + 1);
-  const body = serviceSource.slice(start, nextExport === -1 ? undefined : nextExport);
-  return /servers\.tenantId/.test(body);
+  const paramsOpen = strippedSource.indexOf('(', start);
+  const paramsClose = matchingBracket(strippedSource, paramsOpen, '(');
+  // The signature carries no object-typed return annotation today, so the first
+  // `{` after the parameter list opens the body. If that ever changes, the brace
+  // balancing below throws rather than answering from a partial body.
+  const bodyOpen = paramsClose === -1 ? -1 : strippedSource.indexOf('{', paramsClose);
+  const bodyClose = bodyOpen === -1 ? -1 : matchingBracket(strippedSource, bodyOpen, '{');
+  if (bodyClose === -1) {
+    throw new Error(
+      'updateServer’s body could not be delimited — the re-key readiness gate is anchored to a shape that moved',
+    );
+  }
+  return strippedSource.slice(bodyOpen, bodyClose + 1);
+}
+
+/**
+ * The `.where(…)` argument of every `update(servers)` chain in `body`, in source
+ * order. `null` means that chain ends with no `.where(…)` attached — an
+ * unfiltered mutation, which is the least tenant-scoped shape there is.
+ *
+ * Walking the chain (rather than scanning the statement) is what makes the gate
+ * answer about the predicate: `.set(…)`, a preceding `.select(…).where(…)` read
+ * and any argument-nested call are stepped over by bracket balancing, so what
+ * comes back is only the expression the database filters the UPDATE on.
+ */
+function updateWhereArguments(body: string): Array<string | null> {
+  const whereArguments: Array<string | null> = [];
+  const updateCall = /\.update\s*\(/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = updateCall.exec(body)) !== null) {
+    const argsOpen = match.index + match[0].length - 1;
+    const argsClose = matchingBracket(body, argsOpen, '(');
+    if (argsClose === -1) break;
+    // `.update(someOtherTable)` in the same body is not this gate's business.
+    if (body.slice(argsOpen + 1, argsClose).trim() !== 'servers') continue;
+
+    let cursor = argsClose + 1;
+    let whereArgument: string | null = null;
+    for (;;) {
+      const step = /^\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/.exec(body.slice(cursor));
+      if (!step) break;
+      const stepOpen = cursor + step[0].length - 1;
+      const stepClose = matchingBracket(body, stepOpen, '(');
+      if (stepClose === -1) break;
+      if (step[1] === 'where') whereArgument = body.slice(stepOpen + 1, stepClose);
+      cursor = stepClose + 1;
+    }
+
+    whereArguments.push(whereArgument);
+    updateCall.lastIndex = cursor;
+  }
+
+  return whereArguments;
+}
+
+/**
+ * Whether the UPDATE `updateServer` issues is filtered by tenant.
+ *
+ * Reads the shipped service source rather than a copy: the gate must track the
+ * file that actually runs in production. It answers about the mutation's
+ * `.where(…)` expression specifically — not about the text of the function —
+ * because everything else in scope can mention `servers.tenantId` without
+ * constraining a single row: a comment, a `console.log`, an assignment into the
+ * `set` object, a preceding tenant-scoped *read*. Under a whole-body text
+ * search every one of those reads as "scoped", which would let the gate certify
+ * a mutation that still matches on `servers.id` alone.
+ *
+ * Fail-closed on every ambiguity: a chain with no `.where(…)` is unscoped, and
+ * if several `update(servers)` chains exist they must *all* be tenant-filtered.
+ * A missing symbol, or an `update(servers)` that has disappeared, throws — so a
+ * refactor that moves the mutation cannot quietly answer "scoped".
+ *
+ * This is defence in depth over the source. The gate's primary input is the
+ * *observed* behaviour of the shipped `updateServer` — see
+ * `src/server/services/server.service.test.ts`, "updateServer tenant scope".
+ */
+export function updateServerIsTenantScoped(serviceSource: string): boolean {
+  const body = updateServerBody(stripCommentsAndStrings(serviceSource));
+  const whereArguments = updateWhereArguments(body);
+  if (whereArguments.length === 0) {
+    throw new Error(
+      'updateServer no longer issues an update(servers) — the re-key readiness gate is anchored to a shape that moved',
+    );
+  }
+  return whereArguments.every(
+    (argument) => argument !== null && TENANT_COLUMN_REFERENCE.test(argument),
+  );
 }
 
 /** Where a credential holder's recorded evidence lives, relative to the repo root. */
