@@ -1,9 +1,22 @@
 # Slice 0 recon result: BLOCKED (stop-ship) — CRM funnel concurrency CI gate
 
+> **RESOLVED 2026-08-20 — this document is a historical record, not the current state.**
+> The stop-ship below was lifted when the authoritative schema arrived: the RLS policy
+> text, the `relrowsecurity`/`relforcerowsecurity` flags and the key column definitions
+> for `crm_contacts` / `crm_activities` / `organizations.id` were LIVE-EXTRACTED from the
+> provisioned Supabase project's catalog (`pg_policies` / `information_schema`) — path 1
+> of "What unblocks Slice 1" below. Slices 1 and 2 are now implemented:
+> `supabase/ci-fixtures/crm-funnel-concurrent.sql` (the fixture, with the extracted values
+> recorded in its header and asserted executably at apply time) and the
+> `crm-funnel-concurrent-postgres` job in `.github/workflows/ci.yml`. The
+> `TODO(handoff):` marker referenced in "Open end (ledger)" at the foot of this file has
+> been removed. Everything below is preserved as written, so the reasoning that produced
+> the stop-ship stays auditable.
+
 **Spec:** `2026-08-20-handoff-minion-hub-3530856808-spec` — "Wire
 `crm-funnel.concurrent.integration.test.ts` into a real CI gate".
 **Stage:** dev, Slice 0 (recon) — run `0eb02565`, 2026-08-20.
-**Outcome:** Slice 0 could not be closed. Slice 1 (the CI-only schema fixture) and Slice 2
+**Outcome (as of that run — superseded, see the banner above):** Slice 0 could not be closed. Slice 1 (the CI-only schema fixture) and Slice 2
 (the CI job + `TODO(handoff)` marker removal) are **not** implemented, deliberately.
 
 ## Why this file exists instead of a fixture
@@ -72,9 +85,17 @@ With those in hand, Slice 1's fixture DDL and its exact catalog assertions must 
 match them literally (policy name/count, `permissive`, exact role set, `cmd`, `qual`,
 `with_check`), rejecting any missing or extra policy.
 
-## Open end (ledger)
+## Open end (ledger) — CLOSED 2026-08-20
 
-The `TODO(handoff):` marker at
+~~The `TODO(handoff):` marker at
 `src/server/services/crm-funnel.concurrent.integration.test.ts:21` is intentionally left in
 place: its open end — the concurrency proof executes on no automated gate — is still open, and
-removing the marker while it is open is precisely what Slice 2 forbids until the gate is green.
+removing the marker while it is open is precisely what Slice 2 forbids until the gate is green.~~
+
+The gate now exists (`crm-funnel-concurrent-postgres`) and the marker is gone. One residual
+risk is carried forward deliberately, per spec §5 A2 and §6: the fixture is a point-in-time
+snapshot of the extracted prod shape, and nothing re-checks it against prod on a schedule. If
+prod's CRM RLS or column shape drifts, the fixture's own catalog assertions will keep passing
+against the stale snapshot. A scheduled fixture-vs-prod drift detector is explicitly out of
+scope for this spec and belongs in its own proposal; the risk is recorded in the fixture's
+header comment so whoever debugs a mystery failure reads it first.
