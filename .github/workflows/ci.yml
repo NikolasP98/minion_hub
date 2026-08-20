@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history: the design-lint ratchet diffs changed files against the base ref.
+          # Full history: ui-audit-inventory resolves its pinned baseline commit.
           fetch-depth: 0
 
       - name: Setup Bun
@@ -88,6 +88,16 @@ jobs:
           SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/crm_deposit_rule_test
           REQUIRE_DEPOSIT_RULE_POSTGRES: '1'
         run: bunx vitest run --retry=2 src/server/services/crm-deposit-rule.sql.integration.test.ts
+
+      - name: Real-PostgreSQL CRM pagination suite
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/crm_deposit_rule_test
+          REQUIRE_CRM_CONTACTS_POSTGRES: '1'
+          REQUIRE_CRM_FUNNEL_PARITY_POSTGRES: '1'
+        run: |
+          bunx vitest run --retry=2 \
+            src/server/services/crm-contacts.sql.integration.test.ts \
+            src/server/services/crm-funnel-parity.sql.integration.test.ts
 
   check-and-build:
     runs-on: ubuntu-latest

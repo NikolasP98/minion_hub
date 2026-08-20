@@ -34,7 +34,7 @@ describe('contactFinanceMap', () => {
     const { db } = createMockDb();
     expect(await contactFinanceMap(ctx(db))).toEqual({});
   });
-  it('MAPPING: keys aggregates by contact_id and derives loyal from proc_dates — JS-side row→field logic only, has_deposit/has_proc are pre-classified inputs here, not derived by this test. Real deposit/procedure classification of invoice-item text is verified against PostgreSQL in crm-deposit-rule.sql.integration.test.ts.', async () => {
+  it('MAPPING: keys aggregates by contact_id and coerces the SQL classification flags — JS-side row→field logic only, has_deposit/has_proc are pre-classified inputs here, not derived by this test. Real deposit/procedure classification of invoice-item text is verified against PostgreSQL in crm-deposit-rule.sql.integration.test.ts.', async () => {
     const { db, resolve } = createMockDb();
     resolve([
       {
@@ -43,8 +43,8 @@ describe('contactFinanceMap', () => {
         invoices: 3,
         last: '2026-01-01T00:00:00Z',
         purchased: true,
-        has_deposit: true,
-        proc_dates: 2,
+        reserved_only: false,
+        loyal: true,
       },
     ]);
     const map = await contactFinanceMap(ctx(db));
@@ -57,7 +57,7 @@ describe('contactFinanceMap', () => {
       loyal: true,
     });
   });
-  it('MAPPING: has_deposit true + purchased false ⇒ reservedOnly true (same caveat as above — the aggregate row is injected, not classified by this test)', async () => {
+  it('MAPPING: reserved_only true ⇒ reservedOnly true (same caveat as above — the aggregate row is injected, not classified by this test)', async () => {
     const { db, resolve } = createMockDb();
     resolve([
       {
@@ -66,8 +66,8 @@ describe('contactFinanceMap', () => {
         invoices: 1,
         last: '2026-02-01T00:00:00Z',
         purchased: false,
-        has_deposit: true,
-        proc_dates: 0,
+        reserved_only: true,
+        loyal: false,
       },
     ]);
     const map = await contactFinanceMap(ctx(db));
@@ -83,8 +83,8 @@ describe('contactFinanceMap', () => {
         invoices: 0,
         last: null,
         purchased: false,
-        has_deposit: false,
-        proc_dates: 0,
+        reserved_only: false,
+        loyal: false,
       },
     ]);
     await contactFinanceMap(ctx(db));
@@ -98,7 +98,7 @@ describe('contactFinanceMap', () => {
             and c.party_id is not null and c.deleted_at is null
           order by c.party_id, c.created_at asc
         ),
-        inv as (
+        contact_invoice_class as (
           select cp.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
                  bool_or(coalesce((ii.description ilike $1), false)) has_deposit, bool_or((ii.description is not null and coalesce((ii.description not ilike $2), true))) has_proc
           from contact_party cp
@@ -109,9 +109,8 @@ describe('contactFinanceMap', () => {
         )
         select contact_id,
                coalesce(sum(total),0)::float8 revenue, count(*)::int invoices, max(issued_at) last,
-               bool_or(has_proc) purchased, bool_or(has_deposit) has_deposit,
-               count(distinct case when has_proc then issued_at::date end)::int proc_dates
-        from inv group by contact_id`,
+               coalesce(bool_or(has_proc), false) purchased, (not coalesce(bool_or(has_proc), false) and coalesce(bool_or(has_deposit), false)) reserved_only, (count(distinct case when has_proc then issued_at::date end) >= 2) loyal
+        from contact_invoice_class group by contact_id`,
       ),
     );
     expect(params).toEqual(['%reserva%', '%reserva%']);

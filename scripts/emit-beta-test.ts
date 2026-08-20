@@ -9,12 +9,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { emitToBeta, type EmissionInvoice } from '../src/server/finance/emission/index.ts';
+import { rateArg } from './_rate-arg.ts';
 
 const certDir = join(import.meta.dirname, '..', '.beta-cert');
 const certPem = readFileSync(join(certDir, 'cert.pem'), 'utf8');
 const keyPem = readFileSync(join(certDir, 'key.pem'), 'utf8');
 
 const today = new Date().toISOString().slice(0, 10);
+const igvRate = rateArg(); // `--rate 0.10` to exercise a non-statutory rate against SUNAT
 
 const boleta: EmissionInvoice = {
   docType: '03',
@@ -22,6 +24,7 @@ const boleta: EmissionInvoice = {
   correlativo: '1',
   issueDate: today,
   currency: 'PEN',
+  igvRate,
   emitter: {
     ruc: '20611172967',
     razonSocial: 'FACES BETA SAC',
@@ -46,7 +49,9 @@ for (const [label, inv] of [
   ['boleta', boleta],
   ['factura', factura],
 ] as const) {
-  console.log(`\n--- emitting ${label} ${inv.serie}-${inv.correlativo} ---`);
+  console.log(
+    `\n--- emitting ${label} ${inv.serie}-${inv.correlativo} at IGV ${igvRate * 100}% ---`,
+  );
   try {
     const cdr = await emitToBeta(inv, certPem, keyPem);
     console.log(cdr);

@@ -84,6 +84,10 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  * `unitPriceInclTax` is IGV-inclusive; the emission library derives IGV from
  * it (`quantity * unitPriceInclTax`, see ubl.ts computeTotals) — never pass a
  * separately-discounted amount here, it would double-apply the discount.
+ * `igvRate` is a FRACTION and arrives already normalized/validated by
+ * `resolveIgvRate` (`$server/finance/tax`) — resolved by the caller rather
+ * than read here so this module stays pure (no db/$env), which is what lets
+ * `scripts/shadow-emit-test.ts` import it under plain `bun run`.
  */
 export function ticketToEmission(
   ticket: TicketEmissionTotals,
@@ -92,6 +96,7 @@ export function ticketToEmission(
   settings: EmissionSettingsInput,
   allocation: { serie: string; correlativo: number },
   emitter: EmitterConfig,
+  igvRate: number,
 ): { invoice: EmissionInvoice; docRequired: boolean } {
   const docType = resolveEmissionDocType(customer, settings.emission.docTypeDefault);
   const client = resolveClient(customer);
@@ -115,6 +120,7 @@ export function ticketToEmission(
     correlativo: String(allocation.correlativo),
     issueDate: new Date().toISOString().slice(0, 10),
     currency: 'PEN',
+    igvRate,
     emitter,
     client,
     lines: emissionLines,

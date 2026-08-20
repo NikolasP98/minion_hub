@@ -1,13 +1,64 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import type { CoreCtx } from '$server/auth/core-ctx';
+import type { PosTicket } from '$server/db/pg-pos-schema';
+import type { PosSettings } from './pos.service';
+
+// --- doubles for triggerShadowEmission's I/O edges (the pure-function suites
+// below are untouched by them). The DB double is a hand-rolled tx whose
+// builder chain matches what the service actually calls; every assertion is
+// on what the SERVICE decided to write, never on a mock echoing its own
+// configuration.
+const fakeTx = {
+  select: () => ({ from: () => ({ where: () => txSelectRows() }) }),
+  execute: vi.fn(async () => [{ serie: 'B999', correlativo: 5 }]),
+  insert: () => ({
+    values: (row: Record<string, unknown>) => {
+      inserted.push(row);
+      return Object.assign(Promise.resolve([{ id: 'emission-1' }]), {
+        returning: async () => [{ id: 'emission-1' }],
+      });
+    },
+  }),
+  update: () => ({
+    set: (row: Record<string, unknown>) => ({ where: async () => updated.push(row) }),
+  }),
+};
+const txSelectRows = () =>
+  Object.assign(Promise.resolve(ticketLineRows), { limit: async () => ticketLineRows });
+let ticketLineRows: Array<Record<string, unknown>> = [];
+let inserted: Array<Record<string, unknown>> = [];
+let updated: Array<Record<string, unknown>> = [];
+const detached: Array<Promise<unknown>> = [];
+
+vi.mock('$server/db/with-org-core', () => ({
+  withOrgCore: (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(fakeTx),
+}));
+vi.mock('./finance.service', () => ({ getFinSettings: vi.fn() }));
+vi.mock('$server/finance/emission', () => ({ emitToBeta: vi.fn() }));
+vi.mock('@vercel/functions', () => ({ waitUntil: (p: Promise<unknown>) => detached.push(p) }));
+vi.mock('$env/dynamic/private', () => ({
+  env: {
+    POS_EMISSION_EMITTER_RUC: '20611172967',
+    POS_EMISSION_EMITTER_NAME: 'FACES BETA SAC',
+    POS_EMISSION_BETA_CERT: 'CERT-PEM',
+    POS_EMISSION_BETA_KEY: 'KEY-PEM',
+  },
+}));
+
 import {
   allocateNumber,
   seedShadowSeries,
   ticketToEmission,
   resolveEmissionDocType,
+  triggerShadowEmission,
   type PartyDocInfo,
 } from './pos-emission.service';
+import { getFinSettings } from './finance.service';
+import { emitToBeta } from '$server/finance/emission';
 import type { CoreTx } from '$server/db/with-org-core';
+import { DEFAULT_IGV_RATE, resolveIgvRate } from '$server/finance/tax';
+import { buildInvoiceXml, computeTotals } from '$server/finance/emission/ubl';
 
 const dialect = new PgDialect();
 function renderedSql(call: unknown[]): { sql: string; params: unknown[] } {
@@ -116,6 +167,7 @@ describe('ticketToEmission', () => {
       settings,
       allocation,
       emitter,
+      DEFAULT_IGV_RATE,
     );
     expect(invoice.docType).toBe('03');
     expect(invoice.client).toEqual({ docType: '1', docNumber: '00000000', name: 'CLIENTE VARIOS' });
@@ -131,6 +183,7 @@ describe('ticketToEmission', () => {
       settings,
       allocation,
       emitter,
+      DEFAULT_IGV_RATE,
     );
     expect(invoice.docType).toBe('01');
     expect(invoice.client).toEqual({ docType: '6', docNumber: '20611172967', name: 'ACME SAC' });
@@ -148,6 +201,7 @@ describe('ticketToEmission', () => {
       settings,
       allocation,
       emitter,
+      DEFAULT_IGV_RATE,
     );
     expect(invoice.lines).toEqual([
       { description: 'Línea A', quantity: 2, unitPriceInclTax: 45 },
@@ -166,6 +220,7 @@ describe('ticketToEmission', () => {
       settings,
       allocation,
       emitter,
+      DEFAULT_IGV_RATE,
     );
     expect(docRequired).toBe(true);
     expect(invoice.client.docNumber).toBe('00000000'); // still emits — never blocks checkout
@@ -180,7 +235,137 @@ describe('ticketToEmission', () => {
       settings,
       allocation,
       emitter,
+      DEFAULT_IGV_RATE,
     );
     expect(docRequired).toBe(false);
+  });
+});
+
+// S2 of specs/2026-08-17-hub-igv-rate-from-org-config-spec.md: the rate an org
+// configured is the rate its documents carry. These compose the REAL boundary
+// (`resolveIgvRate`) with the REAL mapping and the REAL XML builder — nothing
+// mocked — so a break anywhere along that path fails here.
+describe('ticketToEmission — org IGV rate', () => {
+  const allocation = { serie: 'B999', correlativo: 7 };
+  const settings = { emission: { mode: 'shadow' as const, docTypeDefault: '03' as const } };
+  // One S/118 line: at 18% that is exactly 100.00 + 18.00, at 10% it is
+  // 107.27 + 10.73 — different in both buckets, so a stuck rate can't pass.
+  const ticket = { subtotal: '118', total: '118' };
+  const lines = [{ description: 'Servicio', qty: '1', total: '118' }];
+
+  function emit(finSettings: { taxRate?: number | null }) {
+    const { invoice } = ticketToEmission(
+      ticket,
+      lines,
+      null,
+      settings,
+      allocation,
+      emitter,
+      resolveIgvRate(finSettings),
+    );
+    return { invoice, totals: computeTotals(invoice), xml: buildInvoiceXml(invoice) };
+  }
+
+  it('a non-18% configured rate drives igvRate, the totals AND the declared cbc:Percent', () => {
+    const { invoice, totals, xml } = emit({ taxRate: 0.1 });
+    expect(invoice.igvRate).toBe(0.1);
+    expect(totals.lineExtensionAmount).toBe(107.27);
+    expect(totals.igvAmount).toBe(10.73);
+    expect(totals.lineExtensionAmount + totals.igvAmount).toBe(118);
+    expect(xml).toContain('<cbc:Percent>10</cbc:Percent>');
+    expect(xml).not.toContain('<cbc:Percent>18</cbc:Percent>');
+    // The whole spec in one assertion: IGV == total * rate / (1 + rate).
+    expect(totals.igvAmount).toBe(Math.round(((118 * 0.1) / 1.1) * 100) / 100);
+  });
+
+  it('an org that never configured a rate still emits at the statutory 18% (zero regression)', () => {
+    const configured = emit({ taxRate: 0.18 });
+    for (const absent of [{ taxRate: null }, {}]) {
+      const { invoice, totals, xml } = emit(absent);
+      expect(invoice.igvRate).toBe(DEFAULT_IGV_RATE);
+      expect(totals.lineExtensionAmount).toBe(100);
+      expect(totals.igvAmount).toBe(18);
+      expect(xml).toContain('<cbc:Percent>18</cbc:Percent>');
+      expect(xml).toBe(configured.xml); // byte-identical to an explicitly-18% org
+    }
+  });
+
+  it('an unusable configured rate is refused before anything is emitted', () => {
+    // A2 + the range guard — the emitter never sees a 0%/percent-unit rate.
+    for (const taxRate of [0, 18, -0.1]) {
+      expect(() => emit({ taxRate })).toThrowError(
+        expect.objectContaining({ name: 'PosError', code: 'invalid_tax_rate' }),
+      );
+    }
+  });
+});
+
+// ⚠️ A2 of specs/2026-08-17-hub-igv-rate-from-org-config-spec.md: an org with an
+// unusable configured rate gets a hard refusal — and that refusal has to be
+// AUDITABLE. It is raised before the document insert, so without a row of its
+// own it would live only in the server log and the ticket-detail read
+// (`listEmissionsForTicket`) would show a checkout that silently emitted
+// nothing.
+describe('triggerShadowEmission — an unusable configured rate is recorded, not swallowed', () => {
+  const ctx = { tenantId: 'org-1' } as unknown as CoreCtx;
+  const ticket = {
+    id: 'ticket-1',
+    partyId: null,
+    subtotal: '118',
+    total: '118',
+  } as unknown as PosTicket;
+  const settings = {
+    emission: { mode: 'shadow', docTypeDefault: '03' },
+  } as unknown as PosSettings;
+
+  beforeEach(() => {
+    ticketLineRows = [{ description: 'Servicio', qty: '1', total: '118' }];
+    inserted = [];
+    updated = [];
+    detached.length = 0;
+    vi.mocked(emitToBeta).mockReset();
+    vi.mocked(emitToBeta).mockResolvedValue({
+      responseCode: '0',
+      description: 'ACEPTADA',
+      xmlHash: 'hash-1',
+    } as Awaited<ReturnType<typeof emitToBeta>>);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('writes a status=error emission row and never reaches SUNAT', async () => {
+    vi.mocked(getFinSettings).mockResolvedValue({
+      taxRate: 0,
+    } as Awaited<ReturnType<typeof getFinSettings>>);
+
+    await expect(triggerShadowEmission(ctx, ticket, settings)).resolves.toBeUndefined();
+
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toMatchObject({
+      orgId: 'org-1',
+      ticketId: 'ticket-1',
+      docType: '03',
+      serie: 'B999',
+      correlativo: 5,
+      environment: 'beta',
+      status: 'error',
+      total: '118',
+    });
+    expect(String(inserted[0].responseDescription)).toContain('tax rate');
+    expect(emitToBeta).not.toHaveBeenCalled(); // refused before anything is built
+  });
+
+  it('a usable rate still emits normally, at the rate the org configured', async () => {
+    vi.mocked(getFinSettings).mockResolvedValue({
+      taxRate: 0.1,
+    } as Awaited<ReturnType<typeof getFinSettings>>);
+
+    await triggerShadowEmission(ctx, ticket, settings);
+    await Promise.all(detached); // the beta call is fire-and-forget
+
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0].status).toBe('pending'); // awaiting the beta round-trip
+    expect(emitToBeta).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(emitToBeta).mock.calls[0][0]).toMatchObject({ igvRate: 0.1 });
+    expect(updated[0]).toMatchObject({ status: 'accepted', responseCode: '0' });
   });
 });

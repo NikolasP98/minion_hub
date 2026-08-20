@@ -6,19 +6,30 @@ import { createMockDb } from '$server/test-utils/mock-db';
 // existing db.update/.returning() chain + resolve()/resolveSequence() keep
 // working transparently.
 const mockWithOrgCore = vi.fn(
-  (scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } }, fn: (tx: unknown) => unknown) =>
-    scope.db.transaction((tx: unknown) => fn(tx)),
+  (
+    scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } },
+    fn: (tx: unknown) => unknown,
+  ) => scope.db.transaction((tx: unknown) => fn(tx)),
 );
 vi.mock('$server/db/with-org-core', () => ({
-  withOrgCore: (scope: unknown, fn: (tx: unknown) => unknown) => mockWithOrgCore(scope as never, fn),
+  withOrgCore: (scope: unknown, fn: (tx: unknown) => unknown) =>
+    mockWithOrgCore(scope as never, fn),
 }));
 
 const mockBustCrmList = vi.fn<(tenantId: string) => Promise<unknown>>();
-vi.mock('./crm-contacts.service', () => ({
-  bustCrmList: (t: string) => mockBustCrmList(t),
-}));
+vi.mock('./crm-contacts.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./crm-contacts.service')>();
+  return {
+    ...actual,
+    bustCrmList: (t: string) => mockBustCrmList(t),
+  };
+});
 
-import { setUserRelationship, setAiRelationship, resumeAiSuggestions } from './crm-relationship.service';
+import {
+  setUserRelationship,
+  setAiRelationship,
+  resumeAiSuggestions,
+} from './crm-relationship.service';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -30,7 +41,10 @@ describe('setUserRelationship', () => {
     resolve([{ id: 'c1' }]); // .returning() → one row → applied
     const ctx = { db: db as never, tenantId: 'org-1' };
 
-    const result = await setUserRelationship(ctx, 'c1', { label: 'amiga del trabajo', category: 'friend' });
+    const result = await setUserRelationship(ctx, 'c1', {
+      label: 'amiga del trabajo',
+      category: 'friend',
+    });
 
     expect(result.applied).toBe(true);
     expect(db.update).toHaveBeenCalledTimes(1);
@@ -52,7 +66,12 @@ describe('setUserRelationship', () => {
     resolve([{ id: 'c1' }]);
     const ctx = { db: db as never, tenantId: 'org-1' };
 
-    const result = await setUserRelationship(ctx, 'c1', { label: 'amiga', category: 'friend' }, 'profile-1');
+    const result = await setUserRelationship(
+      ctx,
+      'c1',
+      { label: 'amiga', category: 'friend' },
+      'profile-1',
+    );
 
     expect(result.applied).toBe(true);
     expect(mockBustCrmList).toHaveBeenCalledWith('org-1');
@@ -63,7 +82,12 @@ describe('setUserRelationship', () => {
     resolve([]); // not owned by this profile → WHERE guard excludes it
     const ctx = { db: db as never, tenantId: 'org-1' };
 
-    const result = await setUserRelationship(ctx, 'c1', { label: 'amiga', category: 'friend' }, 'profile-1');
+    const result = await setUserRelationship(
+      ctx,
+      'c1',
+      { label: 'amiga', category: 'friend' },
+      'profile-1',
+    );
 
     expect(result.applied).toBe(false);
     expect(mockBustCrmList).not.toHaveBeenCalled();
@@ -76,7 +100,12 @@ describe('setAiRelationship', () => {
     resolve([{ id: 'c1' }]);
     const ctx = { db: db as never, tenantId: 'org-1' };
 
-    const result = await setAiRelationship(ctx, 'c1', { label: 'mamá', category: 'family', confidence: 0.9 }, 'token-1');
+    const result = await setAiRelationship(
+      ctx,
+      'c1',
+      { label: 'mamá', category: 'family', confidence: 0.9 },
+      'token-1',
+    );
 
     expect(result.applied).toBe(true);
     expect(mockBustCrmList).toHaveBeenCalledWith('org-1');
@@ -87,7 +116,12 @@ describe('setAiRelationship', () => {
     resolve([]); // guard clause filtered the row out → 0 rows returned
     const ctx = { db: db as never, tenantId: 'org-1' };
 
-    const result = await setAiRelationship(ctx, 'c1', { label: 'mamá', category: 'family' }, 'token-1');
+    const result = await setAiRelationship(
+      ctx,
+      'c1',
+      { label: 'mamá', category: 'family' },
+      'token-1',
+    );
 
     expect(result.applied).toBe(false);
     expect(mockBustCrmList).not.toHaveBeenCalled();
@@ -98,7 +132,12 @@ describe('setAiRelationship', () => {
     resolve([]); // token mismatch → WHERE guard excludes the row
     const ctx = { db: db as never, tenantId: 'org-1' };
 
-    const result = await setAiRelationship(ctx, 'c1', { label: 'mamá', category: 'family' }, 'stale-token');
+    const result = await setAiRelationship(
+      ctx,
+      'c1',
+      { label: 'mamá', category: 'family' },
+      'stale-token',
+    );
 
     expect(result.applied).toBe(false);
     expect(mockBustCrmList).not.toHaveBeenCalled();

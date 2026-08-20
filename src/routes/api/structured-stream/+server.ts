@@ -7,7 +7,7 @@ import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { SCHEMA_MAP, type SchemaType } from '$lib/schemas/structured-response';
 import { getOpenRouterModel } from '$server/llm';
 
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
+const DEFAULT_MODEL = 'anthropic/claude-sonnet-5';
 
 /**
  * POST /api/structured-stream

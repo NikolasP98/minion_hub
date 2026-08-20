@@ -5,6 +5,7 @@ import { getCoreDb } from '$server/db/pg-client';
 import { listEnabledReminderOrgs } from '$server/services/reminder-config.service';
 import { processOrgReminders, scanConfirmationReplies } from '$server/services/reminders.service';
 import { isModuleEnabled } from '$server/services/modules.service';
+import { withAiUsageOrg } from '$server/ai-usage';
 
 /**
  * GET /api/scheduling/reminders/tick — Vercel Cron entrypoint (every minute).
@@ -25,20 +26,24 @@ export const GET: RequestHandler = async ({ request }) => {
   let confirmed = 0;
   let declined = 0;
   for (const orgId of orgIds) {
-    const ctx = { db: getCoreDb(), tenantId: orgId };
-    try {
-      if (!(await isModuleEnabled(ctx, 'scheduling'))) continue;
-      const r = await processOrgReminders(ctx, now);
-      sent += r.sent;
-      failed += r.failed;
-      skipped += r.skipped;
-      // Second pass: read replies to pending confirmations and flip their status.
-      const c = await scanConfirmationReplies(ctx, now);
-      confirmed += c.confirmed;
-      declined += c.declined;
-    } catch (e) {
-      console.error('[reminders] tick failed for org', orgId, e);
-    }
+    // Per-org AI usage scope — cron has no `locals.tenantCtx`, so without this
+    // the reminder composer's tokens record against no organization at all.
+    await withAiUsageOrg(orgId, 'scheduling.reminders', async () => {
+      const ctx = { db: getCoreDb(), tenantId: orgId };
+      try {
+        if (!(await isModuleEnabled(ctx, 'scheduling'))) return;
+        const r = await processOrgReminders(ctx, now);
+        sent += r.sent;
+        failed += r.failed;
+        skipped += r.skipped;
+        // Second pass: read replies to pending confirmations and flip their status.
+        const c = await scanConfirmationReplies(ctx, now);
+        confirmed += c.confirmed;
+        declined += c.declined;
+      } catch (e) {
+        console.error('[reminders] tick failed for org', orgId, e);
+      }
+    });
   }
   return json({ orgs: orgIds.length, sent, failed, skipped, confirmed, declined });
 };

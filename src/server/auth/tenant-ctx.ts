@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { getDb } from '$server/db/client';
 import { supabaseAdmin } from '$server/supabase';
+import { setAiUsageOrg } from '$server/ai-usage';
 import type { TenantContext } from '$server/services/base';
 
 /**
@@ -11,10 +12,18 @@ import type { TenantContext } from '$server/services/base';
  * tenantId needs to be the canonical Supabase org id.
  */
 export async function getTenantCtx(locals: App.Locals): Promise<TenantContext | null> {
-  if (locals.tenantCtx) return locals.tenantCtx;
+  if (locals.tenantCtx) {
+    // Every tenant-scoped request funnels through here, which makes it the one
+    // place that always knows the org — so it is where the AI usage ledger picks
+    // up its attribution. See `$server/ai-usage`.
+    setAiUsageOrg(locals.tenantCtx.tenantId);
+    return locals.tenantCtx;
+  }
   const { data } = await supabaseAdmin().from('organizations').select('id').limit(1).maybeSingle();
   if (!data) return null;
-  return { db: getDb(), tenantId: (data as { id: string }).id };
+  const tenantId = (data as { id: string }).id;
+  setAiUsageOrg(tenantId);
+  return { db: getDb(), tenantId };
 }
 
 /**

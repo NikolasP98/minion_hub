@@ -36,6 +36,7 @@ const boleta: EmissionInvoice = {
   correlativo: '1',
   issueDate: '2026-08-14',
   currency: 'PEN',
+  igvRate: 0.18,
   emitter: { ruc: '20611172967', razonSocial: 'FACES BETA SAC' },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA' },
   lines: [{ description: 'Servicio', quantity: 1, unitPriceInclTax: 118 }],
@@ -86,7 +87,10 @@ describe('submitResumen', () => {
 
   it('surfaces statusCode 99 (error) by returning its CDR rather than throwing', async () => {
     sendSummaryMock.mockResolvedValueOnce({ ticket: 'T2' });
-    getStatusMock.mockResolvedValueOnce({ statusCode: '99', cdrZip: cdrZip('2800', 'Resumen rechazado') });
+    getStatusMock.mockResolvedValueOnce({
+      statusCode: '99',
+      cdrZip: cdrZip('2800', 'Resumen rechazado'),
+    });
 
     const promise = submitResumen(resumenOpts, 'cert', 'key');
     await vi.runAllTimersAsync();
