@@ -8,6 +8,8 @@ import {
   type PartyDocInfo,
 } from './pos-emission.service';
 import type { CoreTx } from '$server/db/with-org-core';
+import { DEFAULT_IGV_RATE, resolveIgvRate } from '$server/finance/tax';
+import { buildInvoiceXml, computeTotals } from '$server/finance/emission/ubl';
 
 const dialect = new PgDialect();
 function renderedSql(call: unknown[]): { sql: string; params: unknown[] } {
@@ -116,6 +118,7 @@ describe('ticketToEmission', () => {
       settings,
       allocation,
       emitter,
+      DEFAULT_IGV_RATE,
     );
     expect(invoice.docType).toBe('03');
     expect(invoice.client).toEqual({ docType: '1', docNumber: '00000000', name: 'CLIENTE VARIOS' });
@@ -131,6 +134,7 @@ describe('ticketToEmission', () => {
       settings,
       allocation,
       emitter,
+      DEFAULT_IGV_RATE,
     );
     expect(invoice.docType).toBe('01');
     expect(invoice.client).toEqual({ docType: '6', docNumber: '20611172967', name: 'ACME SAC' });
@@ -148,6 +152,7 @@ describe('ticketToEmission', () => {
       settings,
       allocation,
       emitter,
+      DEFAULT_IGV_RATE,
     );
     expect(invoice.lines).toEqual([
       { description: 'Línea A', quantity: 2, unitPriceInclTax: 45 },
@@ -166,6 +171,7 @@ describe('ticketToEmission', () => {
       settings,
       allocation,
       emitter,
+      DEFAULT_IGV_RATE,
     );
     expect(docRequired).toBe(true);
     expect(invoice.client.docNumber).toBe('00000000'); // still emits — never blocks checkout
@@ -180,7 +186,67 @@ describe('ticketToEmission', () => {
       settings,
       allocation,
       emitter,
+      DEFAULT_IGV_RATE,
     );
     expect(docRequired).toBe(false);
+  });
+});
+
+// S2 of specs/2026-08-17-hub-igv-rate-from-org-config-spec.md: the rate an org
+// configured is the rate its documents carry. These compose the REAL boundary
+// (`resolveIgvRate`) with the REAL mapping and the REAL XML builder — nothing
+// mocked — so a break anywhere along that path fails here.
+describe('ticketToEmission — org IGV rate', () => {
+  const allocation = { serie: 'B999', correlativo: 7 };
+  const settings = { emission: { mode: 'shadow' as const, docTypeDefault: '03' as const } };
+  // One S/118 line: at 18% that is exactly 100.00 + 18.00, at 10% it is
+  // 107.27 + 10.73 — different in both buckets, so a stuck rate can't pass.
+  const ticket = { subtotal: '118', total: '118' };
+  const lines = [{ description: 'Servicio', qty: '1', total: '118' }];
+
+  function emit(finSettings: { taxRate?: number | null }) {
+    const { invoice } = ticketToEmission(
+      ticket,
+      lines,
+      null,
+      settings,
+      allocation,
+      emitter,
+      resolveIgvRate(finSettings),
+    );
+    return { invoice, totals: computeTotals(invoice), xml: buildInvoiceXml(invoice) };
+  }
+
+  it('a non-18% configured rate drives igvRate, the totals AND the declared cbc:Percent', () => {
+    const { invoice, totals, xml } = emit({ taxRate: 0.1 });
+    expect(invoice.igvRate).toBe(0.1);
+    expect(totals.lineExtensionAmount).toBe(107.27);
+    expect(totals.igvAmount).toBe(10.73);
+    expect(totals.lineExtensionAmount + totals.igvAmount).toBe(118);
+    expect(xml).toContain('<cbc:Percent>10</cbc:Percent>');
+    expect(xml).not.toContain('<cbc:Percent>18</cbc:Percent>');
+    // The whole spec in one assertion: IGV == total * rate / (1 + rate).
+    expect(totals.igvAmount).toBe(Math.round(((118 * 0.1) / 1.1) * 100) / 100);
+  });
+
+  it('an org that never configured a rate still emits at the statutory 18% (zero regression)', () => {
+    const configured = emit({ taxRate: 0.18 });
+    for (const absent of [{ taxRate: null }, {}]) {
+      const { invoice, totals, xml } = emit(absent);
+      expect(invoice.igvRate).toBe(DEFAULT_IGV_RATE);
+      expect(totals.lineExtensionAmount).toBe(100);
+      expect(totals.igvAmount).toBe(18);
+      expect(xml).toContain('<cbc:Percent>18</cbc:Percent>');
+      expect(xml).toBe(configured.xml); // byte-identical to an explicitly-18% org
+    }
+  });
+
+  it('an unusable configured rate is refused before anything is emitted', () => {
+    // A2 + the range guard — the emitter never sees a 0%/percent-unit rate.
+    for (const taxRate of [0, 18, -0.1]) {
+      expect(() => emit({ taxRate })).toThrowError(
+        expect.objectContaining({ name: 'PosError', code: 'invalid_tax_rate' }),
+      );
+    }
   });
 });

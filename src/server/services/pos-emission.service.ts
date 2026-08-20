@@ -8,6 +8,8 @@ import { parties } from '$server/db/pg-party-schema';
 import { emitToBeta } from '$server/finance/emission';
 import type { EmissionDocType, EmissionInvoice } from '$server/finance/emission';
 import { PosError, type PosSettings } from './pos.service';
+import { getFinSettings } from './finance.service';
+import { resolveIgvRate } from '$server/finance/tax';
 // The ticket->EmissionInvoice mapping is a PURE module (no $env/db/@vercel
 // imports) so scripts/shadow-emit-test.ts can import it under plain `bun run`
 // without a SvelteKit runtime. Re-exported here for existing callers/tests.
@@ -198,7 +200,7 @@ export async function triggerShadowEmission(
   settings: PosSettings,
 ): Promise<void> {
   try {
-    const [lines, partyRows] = await Promise.all([
+    const [lines, partyRows, finSettings] = await Promise.all([
       withOrgCore(ctx, (tx) =>
         tx
           .select({
@@ -218,14 +220,27 @@ export async function triggerShadowEmission(
               .limit(1),
           )
         : Promise.resolve([]),
+      getFinSettings(ctx),
     ]);
     const customer: PartyDocInfo | null = partyRows[0] ?? null;
     const emitter = resolveEmitter();
+    // Resolved BEFORE the transaction on purpose: an unusable configured rate
+    // must not burn a correlativo out of pos_series (allocateNumber is a
+    // committed counter bump, there is no giving one back).
+    const igvRate = resolveIgvRate(finSettings);
     const docType = resolveEmissionDocType(customer, settings.emission.docTypeDefault);
 
     const { id: emissionId, invoice, docRequired } = await withOrgCore(ctx, async (tx) => {
       const allocation = await allocateNumber(tx, ctx.tenantId, docType, 'beta');
-      const mapped = ticketToEmission(ticket, lines, customer, settings, allocation, emitter);
+      const mapped = ticketToEmission(
+        ticket,
+        lines,
+        customer,
+        settings,
+        allocation,
+        emitter,
+        igvRate,
+      );
       const [row] = await tx
         .insert(posEmissions)
         .values({
@@ -245,8 +260,18 @@ export async function triggerShadowEmission(
     });
     fireAndForget(runBetaEmission(ctx, emissionId, invoice, docRequired));
   } catch (e) {
-    // no_serie / no_emitter / a transient DB error — log and move on, this
-    // must never surface to the cashier (spec §4: shadow is invisible).
+    // no_serie / no_emitter / invalid_tax_rate / a transient DB error — log and
+    // move on, this must never surface to the cashier (spec §4: shadow is
+    // invisible). Verified for ⚠️ A2 of the igv-rate spec: a misconfigured rate
+    // cannot reach the cashier's response, submitTicket only awaits this
+    // never-throwing function.
+    // TODO(handoff): a failure BEFORE the pos_emissions insert (no_serie /
+    // no_emitter / invalid_tax_rate) leaves no row at all, only this log — so
+    // it is invisible in the ticket-detail UI, unlike the post-insert failures
+    // runBetaEmission degrades to status='error'. Pre-existing for
+    // no_serie/no_emitter; invalid_tax_rate joins the same class. Needs an
+    // observability proposal (insert an error row, or surface the log) — see
+    // 2026-08-17-hub-igv-rate-from-org-config-spec ⚠️ A2.
     console.error('[pos-emission] shadow emission trigger failed', ticket.id, e);
   }
 }

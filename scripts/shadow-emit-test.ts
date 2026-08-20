@@ -15,6 +15,7 @@ import {
   type PartyDocInfo,
   type EmitterConfig,
 } from '../src/server/services/pos-emission-mapping.ts';
+import { rateArg } from './_rate-arg.ts';
 
 const certDir = join(import.meta.dirname, '..', '.beta-cert');
 const certPem = readFileSync(join(certDir, 'cert.pem'), 'utf8');
@@ -38,6 +39,9 @@ const lines = [
 const customer: PartyDocInfo | null = null;
 const settings = { emission: { mode: 'shadow' as const, docTypeDefault: '03' as const } };
 const allocation = { serie: 'B999', correlativo: 1 };
+// No org behind a synthetic ticket, so the rate is explicit here — `--rate
+// 0.10` puts a non-statutory document in front of SUNAT's real validator.
+const igvRate = rateArg();
 
 const { invoice, docRequired } = ticketToEmission(
   ticket,
@@ -46,9 +50,12 @@ const { invoice, docRequired } = ticketToEmission(
   settings,
   allocation,
   emitter,
+  igvRate,
 );
 
-console.log(`--- emitting ${invoice.docType} ${invoice.serie}-${invoice.correlativo} (docRequired=${docRequired}) ---`);
+console.log(
+  `--- emitting ${invoice.docType} ${invoice.serie}-${invoice.correlativo} at IGV ${igvRate * 100}% (docRequired=${docRequired}) ---`,
+);
 const cdr = await emitToBeta(invoice, certPem, keyPem);
 
 const accepted = cdr.responseCode === '0';
