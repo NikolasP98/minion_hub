@@ -7,7 +7,13 @@ import { getMasterFlow, flowExportedSpecs } from '$lib/flows/master-flows';
 import { flowVariableSchema } from '$lib/flows/flow-variables';
 import { listExportToggles } from '$lib/server/flows/exports-store';
 import overviewHtml from '$lib/artifacts/builtin/overview/index.html?raw';
-import { buildBuilderPrompt, buildRegeneratePrompt, buildRepairPrompt, extractHtml, validateBundle } from './builder-prompt';
+import {
+  buildBuilderPrompt,
+  buildRegeneratePrompt,
+  buildRepairPrompt,
+  extractHtml,
+  validateBundle,
+} from './builder-prompt';
 import { getArtifactRow } from './store';
 
 const MAX_ATTEMPTS = 3;
@@ -16,10 +22,14 @@ export type BuildProgress = { phase: 'generating' | 'repairing'; attempt: number
 export type OnProgress = (p: BuildProgress) => void;
 
 async function runBuildLoop(basePrompt: string, onProgress?: OnProgress): Promise<string> {
-  const BUILDER_MODEL = env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-3.7-sonnet';
+  const BUILDER_MODEL = env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-sonnet-5';
 
   const attempt = async (p: string): Promise<string> => {
-    const res = await generateText({ model: getOpenRouterModel(BUILDER_MODEL), prompt: p, temperature: 0.3 });
+    const res = await generateText({
+      model: getOpenRouterModel(BUILDER_MODEL),
+      prompt: p,
+      temperature: 0.3,
+    });
     return extractHtml(res.text);
   };
 
@@ -27,7 +37,11 @@ async function runBuildLoop(basePrompt: string, onProgress?: OnProgress): Promis
   let last = '';
   let lastErr: Error | null = null;
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    onProgress?.({ phase: lastErr ? 'repairing' : 'generating', attempt: i + 1, max: MAX_ATTEMPTS });
+    onProgress?.({
+      phase: lastErr ? 'repairing' : 'generating',
+      attempt: i + 1,
+      max: MAX_ATTEMPTS,
+    });
     last = await attempt(current);
     try {
       validateBundle(last);
@@ -81,8 +95,15 @@ export async function regenerateArtifactHtml(
   const toggles = desc?.flowId ? await listExportToggles(ctx, desc.flowId).catch(() => ({})) : {};
   const schema = flowVariableSchema(specs, toggles);
   const base = buildRegeneratePrompt({
-    agent: { name: desc?.name ?? row.agentId, role: desc?.role ?? '', trigger: desc?.trigger ?? '' },
-    schema, currentHtml: row.html, refinement: args.refinement, reference: overviewHtml,
+    agent: {
+      name: desc?.name ?? row.agentId,
+      role: desc?.role ?? '',
+      trigger: desc?.trigger ?? '',
+    },
+    schema,
+    currentHtml: row.html,
+    refinement: args.refinement,
+    reference: overviewHtml,
   });
   const html = await runBuildLoop(base, onProgress);
   return { html, agentId: row.agentId };

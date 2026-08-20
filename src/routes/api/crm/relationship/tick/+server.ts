@@ -9,6 +9,7 @@ import {
   GLOBAL_CAP,
   WALL_CLOCK_BUDGET_MS,
 } from '$server/services/crm-relationship-inference.service';
+import { withAiUsageOrg } from '$server/ai-usage';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -47,22 +48,26 @@ export const GET: RequestHandler = async ({ request }) => {
   let remainingBudget = GLOBAL_CAP;
   for (const { id: orgId } of orgs) {
     if (remainingBudget <= 0 || Date.now() >= deadline) break;
-    const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId };
-    try {
-      if (!(await isModuleEnabled(ctx, 'crm'))) continue;
-      totals.orgs += 1;
-      const r = await relationshipInferenceTick(ctx, { remainingBudget, deadline });
-      totals.claimed += r.claimed;
-      totals.processed += r.processed;
-      totals.skippedPinned += r.skippedPinned;
-      totals.skippedCollision += r.skippedCollision;
-      totals.unknown += r.unknown;
-      totals.failed += r.failed;
-      remainingBudget -= r.claimed;
-    } catch (e) {
-      totals.errors += 1;
-      console.error('[crm-relationship/tick] failed for org', orgId, e);
-    }
+    // Per-org AI usage scope — cron has no `locals.tenantCtx`, so without this
+    // the ledger cannot attribute this pipeline's tokens to anyone.
+    await withAiUsageOrg(orgId, 'crm.relationship', async () => {
+      const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId };
+      try {
+        if (!(await isModuleEnabled(ctx, 'crm'))) return;
+        totals.orgs += 1;
+        const r = await relationshipInferenceTick(ctx, { remainingBudget, deadline });
+        totals.claimed += r.claimed;
+        totals.processed += r.processed;
+        totals.skippedPinned += r.skippedPinned;
+        totals.skippedCollision += r.skippedCollision;
+        totals.unknown += r.unknown;
+        totals.failed += r.failed;
+        remainingBudget -= r.claimed;
+      } catch (e) {
+        totals.errors += 1;
+        console.error('[crm-relationship/tick] failed for org', orgId, e);
+      }
+    });
   }
   return json({ ok: true, ...totals });
 };

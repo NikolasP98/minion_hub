@@ -5,6 +5,7 @@ import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { analyzeConversationsTick } from '$server/services/crm-conversation-analysis.service';
+import { withAiUsageOrg } from '$server/ai-usage';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -24,28 +25,45 @@ export const GET: RequestHandler = async ({ request, url }) => {
   const offsetParam = url.searchParams.get('offset');
   const offset = offsetParam ? Math.max(0, Number(offsetParam) || 0) : undefined;
 
-  const orgs = (await getCoreDb().execute(sql`select id from organizations`)) as unknown as { id: string }[];
+  const orgs = (await getCoreDb().execute(sql`select id from organizations`)) as unknown as {
+    id: string;
+  }[];
 
-  const totals = { orgs: 0, processed: 0, dirty: 0, analyzed: 0, failed: 0, remaining: 0, skippedLocked: 0, errors: 0 };
+  const totals = {
+    orgs: 0,
+    processed: 0,
+    dirty: 0,
+    analyzed: 0,
+    failed: 0,
+    remaining: 0,
+    skippedLocked: 0,
+    errors: 0,
+  };
   for (const { id: orgId } of orgs) {
-    const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId };
-    try {
-      if (!(await isModuleEnabled(ctx, 'crm'))) continue;
-      totals.orgs += 1;
-      const r = await analyzeConversationsTick(ctx, { full, limit, offset });
-      if (r.skipped === 'locked') {
-        totals.skippedLocked += 1;
-        continue;
+    // Cron auth means there is no `locals.tenantCtx`, so the request-level AI
+    // usage scope has a null org. Without this per-iteration scope every token
+    // this pipeline burns — the bulk of platform COGS — would land in the ledger
+    // unattributed. `continue` became `return` because the body is now a callback.
+    await withAiUsageOrg(orgId, 'crm.conversations.analyze', async () => {
+      const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId };
+      try {
+        if (!(await isModuleEnabled(ctx, 'crm'))) return;
+        totals.orgs += 1;
+        const r = await analyzeConversationsTick(ctx, { full, limit, offset });
+        if (r.skipped === 'locked') {
+          totals.skippedLocked += 1;
+          return;
+        }
+        totals.processed += r.processed;
+        totals.dirty += r.dirty;
+        totals.analyzed += r.analyzed;
+        totals.failed += r.failed;
+        totals.remaining += r.remaining;
+      } catch (e) {
+        totals.errors += 1;
+        console.error('[crm-conversations/analyze/tick] failed for org', orgId, e);
       }
-      totals.processed += r.processed;
-      totals.dirty += r.dirty;
-      totals.analyzed += r.analyzed;
-      totals.failed += r.failed;
-      totals.remaining += r.remaining;
-    } catch (e) {
-      totals.errors += 1;
-      console.error('[crm-conversations/analyze/tick] failed for org', orgId, e);
-    }
+    });
   }
   return json({ ok: true, full, ...totals });
 };

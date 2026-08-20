@@ -186,7 +186,7 @@ export interface RankFilters {
   /** auto-tag rule jsonb (compiled to a live SQL predicate) */
   ruleJson?: unknown;
   search?: string;
-  sort?: 'score' | 'recent' | 'frequency' | 'name';
+  sort?: 'score' | 'recent' | 'frequency' | 'name' | 'revenue' | 'icp';
   limit?: number;
   /** Upper bound on `limit`. Defaults to 5000 (the list-page payload cap). The
    *  dashboard raises it so its COUNTS reflect every contact, not a truncated
@@ -251,6 +251,22 @@ export interface RankedContact {
   auto_tag_ids?: string[];
 }
 
+/** One page of ranked contacts plus the total number of rows the SAME filters
+ *  match with limit/offset removed — the pager needs both, and the window count
+ *  in the outer select gets them in a single round-trip. */
+export interface RankedPage {
+  rows: RankedContact[];
+  total: number;
+}
+
+// ICP fit is stored at `custom_fields._icp.score` (written by the ICP scoring
+// pipeline — spec 2026-08-03-crm-icp-score). The jsonb_typeof guard means a
+// malformed value degrades to NULL instead of aborting the whole query with a
+// numeric cast error, and "no ICP data" stays NULL — so `nulls last` sinks
+// unscored rows to the bottom rather than ranking them alongside a genuine 0.
+const ICP_SCORE_EXPR = sql`(case when jsonb_typeof(custom_fields->'_icp'->'score') = 'number'
+                                 then (custom_fields->'_icp'->>'score')::numeric end)`;
+
 // RFM expressions, parameterised by the shared weights/constants so SQL and the
 // UI explainability tooltip stay in lockstep. The constants MUST be inlined as
 // SQL literals via `lit()` (sql.raw), NOT interpolated as `${HL}` — Drizzle turns
@@ -278,7 +294,17 @@ const M_EXPR = sql`(100 * (0.60 * least(1, ln(1 + total_msgs) / ln(1 + ${lit(VS)
  * anchors (messages bridged with finance purchases), so a long-time buyer who
  * only messaged recently is not mislabelled "New".
  */
+export async function rankContactsPage(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedPage> {
+  return runRankQuery(ctx, f);
+}
+
+/** Rows only — the shape every pre-pagination caller (contact-detail score,
+ *  /crm/cleanup, the dashboard via listContactsCached) already consumes. */
 export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedContact[]> {
+  return (await rankContactsPage(ctx, f)).rows;
+}
+
+async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
   return withOrgCore(ctx, async (tx) => {
     const ruleSql = f.ruleJson != null ? tryCompileTagRule(f.ruleJson) : null;
 
@@ -286,7 +312,31 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     // Record-level (if-owner) scoping: only the caller's own contacts.
     if (f.ownerId) conds.push(sql`c.owner_id = ${f.ownerId}`);
     if (f.contactId) conds.push(sql`c.id = ${f.contactId}`);
-    if (f.search) conds.push(sql`c.display_name ilike ${'%' + f.search + '%'}`);
+    // display_name stays a substring match; phone + DNI are EXACT-PREFIX (mirrors
+    // the gateway `crm_search` tool — a mid-number substring is never what the
+    // operator meant).
+    //
+    // Field-level (Phase 4): a masked principal only ever RECEIVES `•••••4321`,
+    // so matching the RAW phone/DNI would hand back exactly the digits the mask
+    // hides — `?search=5`, `51`, `519`… narrows until one row survives and the
+    // surviving prefix spells the number out. Masked callers therefore keep the
+    // pre-pagination display_name-only predicate.
+    //
+    // TODO(handoff): DNI search reads `crm_contacts.custom_fields->>'dni'`, the
+    // RAW column — the `base` CTE below overlays `parties.doc_number` for
+    // DISPLAY, so a contact whose document lives only on the party spine renders
+    // a DNI the roster cannot find. Slice 1 of
+    // 2026-08-13-crm-customers-server-pagination-spec names the custom_fields
+    // prefix, so widening the predicate to `p.doc_number` belongs to the slice
+    // that owns party-spine search, not here.
+    if (f.search)
+      conds.push(
+        f.maskSensitive
+          ? sql`c.display_name ilike ${'%' + f.search + '%'}`
+          : sql`(c.display_name ilike ${'%' + f.search + '%'}
+        or c.custom_fields->>'telefono' like ${f.search + '%'}
+        or c.custom_fields->>'dni' like ${f.search + '%'})`,
+      );
     if (f.tagId)
       conds.push(
         sql`exists (select 1 from crm_contact_tags ct where ct.contact_id = c.id and ct.tag_id = ${f.tagId})`,
@@ -302,14 +352,19 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     if (typeof f.maxScore === 'number') outer.push(sql`score <= ${f.maxScore}`);
     if (ruleSql) outer.push(sql.raw(ruleSql)); // vetted: whitelisted columns only
 
-    const orderBy =
+    const sortOrder =
       f.sort === 'recent'
         ? sql`last_contact_at desc nulls last, display_name asc nulls last`
         : f.sort === 'frequency'
           ? sql`total_msgs desc, display_name asc nulls last`
           : f.sort === 'name'
             ? sql`display_name asc nulls last`
-            : sql`score desc, display_name asc nulls last`;
+            : f.sort === 'revenue'
+              ? sql`revenue desc nulls last, display_name asc nulls last`
+              : f.sort === 'icp'
+                ? sql`${ICP_SCORE_EXPR} desc nulls last, display_name asc nulls last`
+                : sql`score desc, display_name asc nulls last`;
+    const orderBy = sql`${sortOrder}, contact_id asc`;
 
     const limit = Math.min(f.limit ?? 100, f.maxLimit ?? 5000);
     const offset = f.offset ?? 0;
@@ -331,13 +386,16 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       ? sql`fin as (
           select cp.contact_id,
                  min(fi.issued_at) as first_purchase_at,
-                 max(fi.issued_at) as last_purchase_at
+                 max(fi.issued_at) as last_purchase_at,
+                 -- same revenue definition as contactFinanceMap; exists only so
+                 -- sort:'revenue' is orderable, and is stripped from the rows below.
+                 sum(coalesce(fi.total, 0))::float8 as revenue
           from contact_party cp
           join fin_clients fc on fc.org_id = ${ctx.tenantId} and fc.party_id = cp.party_id
           join fin_invoices fi on fi.client_id = fc.id
           group by cp.contact_id
         )`
-      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at where false)`;
+      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at, null::float8 as revenue where false)`;
 
     const rows = await tx.execute(sql`
       with agg as (
@@ -389,6 +447,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                least(a.first_contact_at, fn.first_purchase_at) as first_contact_at,
                greatest(a.last_contact_at, fn.last_purchase_at) as last_contact_at,
                (fn.first_purchase_at is not null) as is_buyer,
+               fn.revenue,
                attr.origin as lead_origin,
                attr.campaign_name as lead_campaign,
                (a.last_inbound_at is not null and (a.last_outbound_at is null or a.last_inbound_at > a.last_outbound_at)) as awaiting_reply,
@@ -420,7 +479,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
                party_id, dni_verified, age, dob, sex,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
-               lead_origin, lead_campaign,
+               lead_origin, lead_campaign, revenue,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
                round(${F_EXPR}::numeric, 1) as f_score,
@@ -442,13 +501,41 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                    else 'Dormant'
                  end) as stage
         from base
+      ),
+      filtered as (
+        select * from scored where ${and(...outer)}
+      ),
+      requested_page as (
+        select *, row_number() over (order by ${orderBy}) as page_position
+        from filtered
+        order by ${orderBy}
+        limit ${limit} offset ${offset}
+      ),
+      filtered_total as (
+        select count(*)::int as total_rows from filtered
       )
-      select * from scored
-      where ${and(...outer)}
-      order by ${orderBy}
-      limit ${limit} offset ${offset}
+      select requested_page.*, filtered_total.total_rows
+      from filtered_total
+      left join requested_page on true
+      order by requested_page.page_position
     `);
-    let out = rows as unknown as RankedContact[];
+    // The left join returns one sentinel row when the requested page is empty,
+    // preserving the filtered count without a second database round-trip.
+    const raw = rows as unknown as (RankedContact & {
+      total_rows?: number;
+      revenue?: number | null;
+      page_position?: number;
+    })[];
+    const total = Number(raw[0]?.total_rows) || 0;
+    let out: RankedContact[] = raw
+      .filter((r) => r.contact_id != null)
+      .map((r) => {
+        const rest = { ...r };
+        delete rest.total_rows;
+        delete rest.revenue;
+        delete rest.page_position;
+        return rest as RankedContact;
+      });
     // pg returns numeric/bigint columns as STRINGS; coerce here so no consumer
     // ever does arithmetic on a digit-string (scoreSum += "50" concatenated its
     // way to avgScore = Infinity on the dashboard).
@@ -477,11 +564,12 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       ...r,
       custom_fields: sanitizeContactFields(r.custom_fields, f.maskSensitive ?? false),
     }));
-    if (!f.maskSensitive) return out;
-    return out.map((r) => ({
-      ...r,
-      identities: r.identities.map((i) => ({ ...i, externalId: maskPii(i.externalId) })),
-    }));
+    if (f.maskSensitive)
+      out = out.map((r) => ({
+        ...r,
+        identities: r.identities.map((i) => ({ ...i, externalId: maskPii(i.externalId) })),
+      }));
+    return { rows: out, total };
   });
 }
 

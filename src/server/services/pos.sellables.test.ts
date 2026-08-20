@@ -36,6 +36,7 @@ import {
   createSellable,
   updateSellable,
   slugifyCode,
+  deriveSellableFacts,
   type SellableInput,
 } from './pos.service';
 
@@ -719,5 +720,317 @@ describe('updateSellable', () => {
     await expect(updateSellable(ctx(db), 'fp-9', { code: 'A' }, actor)).rejects.toMatchObject({
       code: 'invalid_code',
     });
+  });
+
+  // ── silent-drop fix (2026-08-17-hub-updatesellable-silent-drop-spec, S1) ──
+  // kind/trackStock/uom are projections of the linked stk_items row, not
+  // fin_products columns — the old .set() accepted these fields and silently
+  // discarded them. Every changed value must now either no-op (unchanged,
+  // under normalization) or refuse with a typed PosError; never both accept
+  // AND drop.
+  describe('kind/trackStock/uom — apply or refuse, never silently drop', () => {
+    it("full-object resubmit with UNCHANGED kind/trackStock/uom + a changed price → 200, price applied (the wizard's normal save)", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-10',
+            code: 'BTX',
+            name: 'Botox',
+            category: null,
+            unitPrice: '250',
+            active: true,
+          },
+        ],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-10',
+          code: 'BTX',
+          name: 'Botox',
+          category: null,
+          unit_price: '999',
+          active: true,
+          item_id: 'item-10',
+          stock_qty: '5',
+          has_mapping: false,
+          uom: 'Unidad',
+        },
+      ]);
+
+      // The mocked execute() readback below is fixed data, independent of what
+      // gets written — asserting only `row.unitPrice` / `update` called-ness
+      // would still pass if the `.set()` payload dropped `unitPrice` entirely.
+      // Spy on `.set()` directly so the test proves the write, not just the
+      // (separately mocked) read.
+      const setSpy = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+      (db as unknown as { update: ReturnType<typeof vi.fn> }).update = vi
+        .fn()
+        .mockReturnValue({ set: setSpy });
+
+      const row = await updateSellable(
+        ctx(db),
+        'fp-10',
+        { kind: 'product', trackStock: true, uom: 'Unidad', unitPrice: 999 },
+        actor,
+      );
+
+      expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ unitPrice: '999' }));
+      expect(row.unitPrice).toBe(999);
+    });
+
+    it('uom resubmitted with different case/whitespace only → treated as unchanged → 200', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-11',
+            code: 'BTX',
+            name: 'Botox',
+            category: null,
+            unitPrice: '250',
+            active: true,
+          },
+        ],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-11',
+          code: 'BTX',
+          name: 'Botox',
+          category: null,
+          unit_price: '250',
+          active: true,
+          item_id: 'item-11',
+          stock_qty: '0',
+          has_mapping: false,
+          uom: 'Unidad',
+        },
+      ]);
+
+      await expect(
+        updateSellable(ctx(db), 'fp-11', { uom: '  UNIDAD  ' }, actor),
+      ).resolves.toMatchObject({ code: 'BTX' });
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).toHaveBeenCalled();
+    });
+
+    it("kind 'service'→'product' throws PosError code 'kind_derived', mutates nothing", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-12',
+            code: 'CONS',
+            name: 'Consulta',
+            category: null,
+            unitPrice: null,
+            active: true,
+          },
+        ],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-12',
+          code: 'CONS',
+          name: 'Consulta',
+          category: null,
+          unit_price: null,
+          active: true,
+          item_id: null,
+          stock_qty: null,
+          has_mapping: false,
+        },
+      ]);
+
+      await expect(
+        updateSellable(ctx(db), 'fp-12', { kind: 'product' }, actor),
+      ).rejects.toMatchObject({ code: 'kind_derived' });
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+    });
+
+    it("kind: 'service' on a bundle throws PosError code 'kind_derived' instead of comparing equal-by-coincidence, mutates nothing", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-12b',
+            code: 'PACK',
+            name: 'Combo Pack',
+            category: null,
+            unitPrice: '100',
+            active: true,
+          },
+        ],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-12b',
+          code: 'PACK',
+          name: 'Combo Pack',
+          category: null,
+          unit_price: '100',
+          active: true,
+          item_id: null,
+          stock_qty: null,
+          has_mapping: false,
+          is_bundle: true,
+        },
+      ]);
+
+      // A bundle has no linked item, so it derives the same as a plain service
+      // ('kind: service' resubmitted) UNLESS the true 'bundle' kind is preserved
+      // for the comparison — this is the accept-and-drop defect this test guards.
+      await expect(
+        updateSellable(ctx(db), 'fp-12b', { kind: 'service' }, actor),
+      ).rejects.toMatchObject({ code: 'kind_derived' });
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+    });
+
+    it("trackStock false→true throws PosError code 'stock_tracking_immutable', mutates nothing", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-13',
+            code: 'CONS',
+            name: 'Consulta',
+            category: null,
+            unitPrice: null,
+            active: true,
+          },
+        ],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-13',
+          code: 'CONS',
+          name: 'Consulta',
+          category: null,
+          unit_price: null,
+          active: true,
+          item_id: null,
+          stock_qty: null,
+          has_mapping: false,
+        },
+      ]);
+
+      await expect(
+        updateSellable(ctx(db), 'fp-13', { trackStock: true }, actor),
+      ).rejects.toMatchObject({ code: 'stock_tracking_immutable' });
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+    });
+
+    it("uom 'Unidad'→'mL' throws PosError code 'uom_immutable', mutates nothing", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-14',
+            code: 'BTX',
+            name: 'Botox',
+            category: null,
+            unitPrice: '250',
+            active: true,
+          },
+        ],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-14',
+          code: 'BTX',
+          name: 'Botox',
+          category: null,
+          unit_price: '250',
+          active: true,
+          item_id: 'item-14',
+          stock_qty: '3',
+          has_mapping: false,
+          uom: 'Unidad',
+        },
+      ]);
+
+      await expect(updateSellable(ctx(db), 'fp-14', { uom: 'mL' }, actor)).rejects.toMatchObject({
+        code: 'uom_immutable',
+      });
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+    });
+
+    it('uom submitted on a service sellable with no linked item is a change from "not tracked" → refused, not silently accepted', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-15',
+            code: 'CONS',
+            name: 'Consulta',
+            category: null,
+            unitPrice: null,
+            active: true,
+          },
+        ],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-15',
+          code: 'CONS',
+          name: 'Consulta',
+          category: null,
+          unit_price: null,
+          active: true,
+          item_id: null,
+          stock_qty: null,
+          has_mapping: false,
+        },
+      ]);
+
+      await expect(updateSellable(ctx(db), 'fp-15', { uom: 'unit' }, actor)).rejects.toMatchObject({
+        code: 'uom_immutable',
+      });
+    });
+  });
+});
+
+describe('deriveSellableFacts', () => {
+  it('derives product/trackStock/uom from the linked stk_items row', async () => {
+    const { db } = createMockDb();
+    mockExecute(db, [
+      {
+        id: 'fp-16',
+        code: 'BTX',
+        name: 'Botox',
+        category: null,
+        unit_price: '250',
+        active: true,
+        item_id: 'item-16',
+        stock_qty: '2',
+        has_mapping: false,
+        uom: 'vial',
+      },
+    ]);
+
+    const facts = await deriveSellableFacts(ctx(db), 'fp-16');
+
+    expect(facts).toEqual({ kind: 'product', trackStock: true, uom: 'vial', itemId: 'item-16' });
+  });
+
+  it('derives service/no-tracking/null-uom when no item is linked', async () => {
+    const { db } = createMockDb();
+    mockExecute(db, [
+      {
+        id: 'fp-17',
+        code: 'CONS',
+        name: 'Consulta',
+        category: null,
+        unit_price: null,
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: false,
+      },
+    ]);
+
+    const facts = await deriveSellableFacts(ctx(db), 'fp-17');
+
+    expect(facts).toEqual({ kind: 'service', trackStock: false, uom: null, itemId: null });
   });
 });

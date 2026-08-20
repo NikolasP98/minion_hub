@@ -1,4 +1,9 @@
-import type { CanonicalInvoice, CanonicalLineItem, CanonicalPayment, CanonicalClient } from '../connector';
+import type {
+  CanonicalInvoice,
+  CanonicalLineItem,
+  CanonicalPayment,
+  CanonicalClient,
+} from '../connector';
 import { SUSII_METHOD_NAMES } from './susii-method-names';
 
 const PROVIDER = 'susii';
@@ -8,8 +13,10 @@ const num = (v: unknown): number | null => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
-const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
-const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
+const obj = (v: unknown): Record<string, unknown> =>
+  v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+const arr = (v: unknown): Record<string, unknown>[] =>
+  Array.isArray(v) ? (v as Record<string, unknown>[]) : [];
 // SUSII sends an all-same-digit sentinel (e.g. "00000000") when a client has no
 // real document. That is NOT a DNI — normalise it to null so it never collapses
 // distinct docless clients nor displays as a fake ID. ponytail: all-same-DIGIT
@@ -42,7 +49,11 @@ function mapItem(raw: Record<string, unknown>): CanonicalLineItem {
     unitPrice: num(raw.price),
     discount: num(raw.discount),
     tax: num(raw.tax),
-    total: num(raw.total) ?? (num(raw.price) != null && num(raw.quantity) != null ? Number(raw.price) * Number(raw.quantity) : null),
+    total:
+      num(raw.total) ??
+      (num(raw.price) != null && num(raw.quantity) != null
+        ? Number(raw.price) * Number(raw.quantity)
+        : null),
     metadata: raw,
   };
 }
