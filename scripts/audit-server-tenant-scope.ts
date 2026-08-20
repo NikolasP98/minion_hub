@@ -164,6 +164,9 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('[audit] failed:', err);
+  // Message, not stack: every throw here is an operator-facing condition (a
+  // missing credential, a bad --record name, an unreachable source), and a
+  // source-context dump buries it.
+  console.error('[audit] failed:', err instanceof Error ? err.message : err);
   process.exit(1);
 });

@@ -51,6 +51,6 @@ function main(): void {
 try {
   main();
 } catch (err) {
-  console.error('[readiness] failed:', err);
+  console.error('[readiness] failed:', err instanceof Error ? err.message : err);
   process.exit(1);
 }
