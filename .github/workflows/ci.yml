@@ -99,6 +99,131 @@ jobs:
             src/server/services/crm-contacts.sql.integration.test.ts \
             src/server/services/crm-funnel-parity.sql.integration.test.ts
 
+  # Isolated from `crm-deposit-rule-postgres` on purpose: that job's Postgres is a
+  # BARE service container, while this one is seeded with a CI-only reproduction of
+  # the prod CRM schema (organizations + crm_activities + app_ledger + org-GUC RLS).
+  # `SUPABASE_DB_URL` is read by every *.sql.integration.test.ts / *.service.test.ts
+  # in the repo, and most of them expect one shape or the other — sharing a single
+  # job would leak the wrong assumption into whichever set does not match. Each job
+  # therefore names its files explicitly and scopes the URL to its own steps.
+  crm-funnel-concurrent-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crm_funnel_concurrent_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PUBLIC_POSTHOG_HOST: https://posthog.invalid
+      PUBLIC_POSTHOG_KEY: ci
+      # Single source for the connection string every step below shares.
+      FUNNEL_DB_URL: postgresql://postgres:postgres@localhost:5432/crm_funnel_concurrent_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Svelte environment and translations
+        run: |
+          cp .env.example .env
+          bun run i18n:compile
+          bunx svelte-kit sync
+
+      # The fixture ends with executable catalog assertions (RLS enabled + forced,
+      # exactly one `*_org_guc` policy per table with the recorded roles/cmd/
+      # predicates, app_ledger grants, seed org row) followed by column-shape
+      # assertions over information_schema.columns — type, nullability and
+      # default for every column Slice 0 actually extracted, including the
+      # deliberate `crm_contacts.id` NOT NULL vs `crm_activities.id` nullable
+      # asymmetry. With ON_ERROR_STOP those assertions ARE this step: a fixture
+      # that drifts from the recorded prod snapshot (in either direction — a
+      # LOOSER or a STRICTER shape) fails here rather than producing a green run
+      # against a schema contract production does not have.
+      - name: Apply CI-only CRM schema fixture
+        run: psql -v ON_ERROR_STOP=1 "$FUNNEL_DB_URL" -f supabase/ci-fixtures/crm-funnel-concurrent.sql
+
+      # Behavioural counterpart to the catalog assertions: proves rows really are
+      # invisible across orgs under `app_ledger`, not merely that the policies are
+      # spelled correctly. One explicit transaction because `set_config(..., true)`
+      # and `set local role` are transaction-local — as separate autocommit
+      # statements the GUC would reset between them and the check would be vacuous.
+      - name: Cross-org RLS negative control
+        run: |
+          psql -v ON_ERROR_STOP=1 "$FUNNEL_DB_URL" <<'SQL'
+          begin;
+          set local role app_ledger;
+          select set_config('app.current_org_id', '00000000-0000-0000-0000-000000000001', true);
+          insert into crm_contacts (id, org_id, source, custom_fields)
+          values ('00000000-0000-0000-0000-000000000010',
+                  '00000000-0000-0000-0000-000000000001', 'manual', '{}');
+          insert into crm_activities (id, org_id, contact_id, kind)
+          values ('00000000-0000-0000-0000-000000000011',
+                  '00000000-0000-0000-0000-000000000001',
+                  '00000000-0000-0000-0000-000000000010', 'manual');
+          select set_config('app.current_org_id', '00000000-0000-0000-0000-000000000002', true);
+          do $$
+          begin
+            if exists (select 1 from crm_contacts where id = '00000000-0000-0000-0000-000000000010')
+               or exists (select 1 from crm_activities where id = '00000000-0000-0000-0000-000000000011') then
+              raise exception 'cross-org CRM rows are visible under app_ledger';
+            end if;
+          end $$;
+          rollback;
+          SQL
+
+      # A JSON report, not just the exit code: `describe.runIf(...)` makes "0 failed"
+      # equally true when nothing ran, so the gate asserts three PASSED and zero
+      # PENDING. REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES additionally makes the suite
+      # throw if the URL ever goes missing, so a broken service container cannot
+      # degrade this job into a silent skip.
+      - name: Real-PostgreSQL funnel concurrency suite
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/crm_funnel_concurrent_test
+          REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES: '1'
+        run: |
+          mkdir -p test-results
+          bunx vitest run --retry=2 \
+            --reporter=default --reporter=json \
+            --outputFile.json=test-results/crm-funnel-concurrent.json \
+            src/server/services/crm-funnel.concurrent.integration.test.ts
+
+      - name: Assert the suite actually ran (3 passed, 0 skipped)
+        if: always()
+        run: |
+          test -f test-results/crm-funnel-concurrent.json \
+            || { echo 'no vitest JSON report — the suite never produced one'; exit 1; }
+          jq -e '.numTotalTests == 3 and .numPassedTests == 3
+                 and .numFailedTests == 0 and .numPendingTests == 0' \
+            test-results/crm-funnel-concurrent.json > /dev/null \
+            || { jq '{numTotalTests, numPassedTests, numFailedTests, numPendingTests}' \
+                   test-results/crm-funnel-concurrent.json; exit 1; }
+
+      # Raw job logs expire; the artifact is the durable pass/fail evidence.
+      - name: Upload concurrency-suite report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crm-funnel-concurrent-report
+          path: test-results/crm-funnel-concurrent.json
+          if-no-files-found: warn
+
   check-and-build:
     runs-on: ubuntu-latest
     env:
