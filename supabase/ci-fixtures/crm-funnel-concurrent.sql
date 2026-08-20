@@ -57,12 +57,40 @@
 -- This is strong, converging, checked-in evidence — not a bare "_org_guc
 -- naming-convention guess" — but it is still reconstruction, not a live
 -- `pg_policies`/`information_schema` read against the provisioned project.
--- TODO(handoff): before trusting Slice 2's CI job as the spec's DoD requires
--- ("verified equivalent to prod"), a human/ops operator with prod (or a
--- verified schema-clone, per hub-local-qa-stack-recipe.md) read access
--- should run the four queries in spec §Slice 0 against the real project and
--- confirm they match what's encoded here — see spec A1. If they don't
--- match, this file must be corrected before Slice 2 is trusted as proof.
+-- A repo-wide grep for `app.current_org_id` (2026-08-20 review-fix round)
+-- turned up the identical `for all using (...) with check (...)` — no `TO`
+-- clause, separate `grant ... to app_ledger` — pattern in every other
+-- org_guc migration checked into `supabase/migrations/` (e.g.
+-- `20260709133000_email_ledger.sql`, `20260814050000_fin_purchases.sql`,
+-- `20260717170000_meta_lead_attribution.sql`), not just the one sibling
+-- named above: this is the repo's single established, prod-applied
+-- convention, not an isolated guess.
+--
+-- 5. The exact Postgres catalog shape this DDL produces (role list when no
+--    `TO` clause is given, and the canonical deparsed `qual`/`with_check`
+--    text) was captured by actually running this fixture's own
+--    `CREATE POLICY` statement through a real Postgres engine
+--    (`@electric-sql/pglite`, already a repo devDependency) and reading back
+--    `pg_policies` — not guessed. Result: `roles = {public}` (Postgres
+--    assigns PUBLIC to a policy with no `TO` clause; table access stays
+--    scoped to `app_ledger` via the separate `grant` statements below, which
+--    is the same shape every migration above uses), and
+--    `qual = with_check = (org_id = current_setting('app.current_org_id'::text, true))`.
+--
+-- TODO(handoff): none of the above is a live query against the *actual*
+-- `crm_contacts`/`crm_activities` policies in the provisioned Supabase
+-- project — it is still reconstruction from checked-in evidence, confirmed
+-- only self-consistent (matches what this exact DDL produces on a real
+-- Postgres engine), not verified-equivalent-to-prod. Review round 1
+-- (2026-08-20) flagged this as a High-severity stop-ship gap per spec §5 A1:
+-- Slice 2 (wiring this fixture into a real CI job) MUST NOT proceed until a
+-- human/ops operator with prod (or a verified schema-clone, per
+-- hub-local-qa-stack-recipe.md) read access runs the four queries in spec
+-- §Slice 0 against the real project and confirms they match what's encoded
+-- here. This sandboxed agent has no prod/Supabase credential and no
+-- meta-repo checkout in this round either — that gate remains genuinely
+-- open, not merely undocumented. If the live queries don't match, this file
+-- must be corrected before Slice 2 is trusted as proof.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -169,18 +197,23 @@ grant select, insert, update, delete on public.crm_activities to app_ledger;
 -- ---------------------------------------------------------------------------
 -- 5. Catalog assertions — executable, not a review comment (spec invariant:
 --    "a broken fixture must fail loud, not pass empty"). Raises if either
---    table lacks ENABLEd+FORCEd RLS, or lacks an app_ledger-granted policy
---    referencing org_id + the app.current_org_id GUC.
+--    table lacks ENABLEd+FORCEd RLS, has other than exactly one policy, or
+--    that one policy's role/cmd/predicate/permissive shape isn't an exact
+--    match for what this fixture's own DDL is expected to produce.
 --
---    Deliberately pattern-matches the policy predicate (org_id / GUC name /
---    current_setting present) rather than asserting exact deparsed `qual`/
---    `with_check` text: Postgres's ruleutils pretty-printer is free to
---    reformat stored expressions (e.g. explicit casts on string literals),
---    and this fixture was authored without a live Postgres instance to
---    confirm the exact deparse form against (see provenance note above).
---    What actually closes the "app_ledger isn't the table owner so a
---    behavioral check alone can't detect a missing FORCE" gap is the
---    boolean relforcerowsecurity check, which IS asserted exactly.
+--    Asserts the exact deparsed `qual`/`with_check` text (not a substring
+--    pattern match) and the exact policy count and role set — see the
+--    provenance note above for how the expected values were captured
+--    (running this exact DDL through a real Postgres engine). A regex like
+--    `!~ 'org_id'` would accept `true OR org_id = current_setting(...)`,
+--    which is a materially different, cross-org-leaking predicate; a
+--    role-containment check (`roles @> {app_ledger}`) can never be satisfied
+--    by a `TO`-less policy (roles = {public} literally, not one row per
+--    grantee reachable via that role) and would make this DO block always
+--    raise. An exact policy-count check additionally catches a stray extra
+--    permissive policy (e.g. `USING (true)`), which Postgres ORs together
+--    with the named org_guc policy — a shape the named-policy check alone
+--    can never see.
 -- ---------------------------------------------------------------------------
 do $$
 declare
@@ -188,6 +221,9 @@ declare
   priv text;
   rel record;
   pol record;
+  pol_count integer;
+  expected_predicate constant text :=
+    $qual$(org_id = current_setting('app.current_org_id'::text, true))$qual$;
 begin
   foreach tbl in array array['crm_contacts', 'crm_activities']
   loop
@@ -213,7 +249,17 @@ begin
         'would not detect this)', tbl;
     end if;
 
-    select roles, cmd, qual, with_check
+    select count(*) into pol_count
+      from pg_policies
+      where schemaname = 'public' and tablename = tbl;
+
+    if pol_count != 1 then
+      raise exception 'fixture assertion failed: % has % pg_policies rows (expected exactly 1 — '
+        'an extra policy would silently widen access, since Postgres ORs permissive policies '
+        'together)', tbl, pol_count;
+    end if;
+
+    select policyname, permissive, roles, cmd, qual, with_check
       into pol
       from pg_policies
       where schemaname = 'public'
@@ -224,29 +270,34 @@ begin
       raise exception 'fixture assertion failed: % has no policy named %_org_guc', tbl, tbl;
     end if;
 
-    if not (pol.roles @> array['app_ledger']::name[]) then
-      raise exception 'fixture assertion failed: %_org_guc does not apply to app_ledger (roles=%)',
-        tbl, pol.roles;
+    if pol.permissive is distinct from 'PERMISSIVE' then
+      raise exception 'fixture assertion failed: %_org_guc is % (expected PERMISSIVE — a '
+        'RESTRICTIVE policy combines with AND instead of OR and changes the effective access '
+        'rule entirely)', tbl, pol.permissive;
+    end if;
+
+    -- Exact role-set assertion, not containment: `for all` with no `TO`
+    -- clause assigns the policy to PUBLIC — the repo-wide convention for
+    -- every org_guc policy checked into supabase/migrations/ (see
+    -- provenance note above), not a bug. Table-level access stays scoped to
+    -- app_ledger via the separate `grant` statements checked below.
+    if pol.roles is distinct from array['public']::name[] then
+      raise exception 'fixture assertion failed: %_org_guc roles = % (expected exactly {public} '
+        '— no TO clause was specified, so Postgres assigns PUBLIC)', tbl, pol.roles;
     end if;
 
     if pol.cmd is distinct from 'ALL' then
       raise exception 'fixture assertion failed: %_org_guc cmd is % (expected ALL)', tbl, pol.cmd;
     end if;
 
-    if pol.qual is null
-       or pol.qual !~ 'org_id'
-       or pol.qual !~ 'current_setting'
-       or pol.qual !~ 'app\.current_org_id' then
-      raise exception 'fixture assertion failed: %_org_guc USING expression does not reference '
-        'org_id + the app.current_org_id GUC (got: %)', tbl, pol.qual;
+    if pol.qual is distinct from expected_predicate then
+      raise exception 'fixture assertion failed: %_org_guc USING expression is %, expected %',
+        tbl, pol.qual, expected_predicate;
     end if;
 
-    if pol.with_check is null
-       or pol.with_check !~ 'org_id'
-       or pol.with_check !~ 'current_setting'
-       or pol.with_check !~ 'app\.current_org_id' then
-      raise exception 'fixture assertion failed: %_org_guc WITH CHECK expression does not '
-        'reference org_id + the app.current_org_id GUC (got: %)', tbl, pol.with_check;
+    if pol.with_check is distinct from expected_predicate then
+      raise exception 'fixture assertion failed: %_org_guc WITH CHECK expression is %, expected %',
+        tbl, pol.with_check, expected_predicate;
     end if;
 
     foreach priv in array array['SELECT', 'INSERT', 'UPDATE', 'DELETE']
