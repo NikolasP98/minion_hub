@@ -24,8 +24,6 @@ import {
   submitEntry,
   cancelEntry,
   StockError,
-  createItem,
-  updateItem,
   setConsumption,
   deleteConsumption,
   listConsumption,
@@ -1215,14 +1213,88 @@ export interface SellableInput {
 }
 
 /**
+ * The ONE place that creates or links the stk_items row backing a sellable —
+ * extracted from createSellable's original inline item-sync so updateSellable's
+ * trackStock false→true transition (S2 of
+ * 2026-08-17-hub-updatesellable-silent-drop-spec) observes identical
+ * defaulting/validation instead of drifting from create's behavior. Takes the
+ * caller's already-open `tx` (not ctx) so a failed item write rolls back
+ * together with whatever fin_products change the caller makes in the same
+ * transaction — createSellable and updateSellable each wrap their own call in
+ * their own withOrgCore.
+ */
+async function syncSellableItem(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  finProductId: string,
+  desired: {
+    trackStock: boolean;
+    uom?: string | null;
+    itemId?: string;
+    code: string;
+    name: string;
+  },
+): Promise<{ itemId: string | null }> {
+  if (desired.itemId) {
+    // Publish an existing raw material. The partial unique index
+    // (stk_items_org_fin_product_uniq) is the real guard against two items
+    // claiming one product; catching it here just turns 23505 into a usable
+    // error instead of a 500.
+    const [cur] = await tx
+      .select({ id: stkItems.id })
+      .from(stkItems)
+      .where(and(eq(stkItems.id, desired.itemId), eq(stkItems.orgId, ctx.tenantId)));
+    if (!cur) throw new PosError('stock item not found', 'item_not_found');
+    try {
+      const [row] = await tx
+        .update(stkItems)
+        .set({ finProductId, updatedAt: new Date() })
+        .where(and(eq(stkItems.id, desired.itemId), eq(stkItems.orgId, ctx.tenantId)))
+        .returning({ id: stkItems.id });
+      return { itemId: row?.id ?? null };
+    } catch (e) {
+      if (isUniqueViolation(e))
+        throw new PosError('that item is already published as a sellable', 'item_taken');
+      throw e;
+    }
+  }
+
+  if (!desired.trackStock) return { itemId: null };
+
+  try {
+    const [row] = await tx
+      .insert(stkItems)
+      .values({
+        orgId: ctx.tenantId,
+        code: desired.code,
+        name: desired.name,
+        uom: desired.uom ?? 'unit',
+        finProductId,
+      })
+      .returning({ id: stkItems.id });
+    return { itemId: row?.id ?? null };
+  } catch (e) {
+    // Two concurrent false→true PATCHes both pass the "not yet tracked"
+    // guard and race to insert; the partial unique index lets only one
+    // through — the loser gets a typed conflict, never a partial write.
+    if (isUniqueViolation(e))
+      throw new PosError(
+        'stock tracking was just applied to this sellable by another request',
+        'stock_tracking_conflict',
+      );
+    throw e;
+  }
+}
+
+/**
  * Cross-module create wizard: product (upsertProduct — idempotent on code, so
  * a retried call after a partial failure is safe), then — for a product-kind
- * sellable with trackStock — a linked stk_items row (finProductId passed
- * straight through NewItemInput, no separate updateItem link-up needed), then
- * consumption mapping rows. SEQUENTIAL ctx-level calls, NOT one giant tx:
- * withOrgCore doesn't nest (same reason as the accrual hook in
- * stock-accruals.service.ts) — a failed item/consumption write after the
- * product commits is acceptable, re-running with the same input heals it.
+ * sellable with trackStock, or one publishing an existing item — a linked
+ * stk_items row via syncSellableItem, then consumption mapping rows.
+ * SEQUENTIAL ctx-level calls, NOT one giant tx: withOrgCore doesn't nest
+ * (same reason as the accrual hook in stock-accruals.service.ts) — a failed
+ * item/consumption write after the product commits is acceptable, re-running
+ * with the same input heals it.
  */
 export async function createSellable(
   ctx: CoreCtx,
@@ -1264,26 +1336,17 @@ export async function createSellable(
   );
   if (!product) throw new PosError('product write did not persist', 'write_failed');
 
-  if (input.itemId) {
-    // Publish an existing raw material. The partial unique index
-    // (stk_items_org_fin_product_uniq) is the real guard against two items
-    // claiming one product; catching it here just turns 23505 into a usable
-    // error instead of a 500.
-    try {
-      const linked = await updateItem(ctx, input.itemId, { finProductId: product.id });
-      if (!linked) throw new PosError('stock item not found', 'item_not_found');
-    } catch (e) {
-      if (isUniqueViolation(e))
-        throw new PosError('that item is already published as a sellable', 'item_taken');
-      throw e;
-    }
-  } else if (input.kind === 'product' && input.trackStock) {
-    await createItem(ctx, {
-      code,
-      name: input.name,
-      uom: input.uom ?? 'unit',
-      finProductId: product.id,
-    });
+  if (input.itemId || (input.kind === 'product' && input.trackStock)) {
+    // itemId wins when both are sent — syncSellableItem checks it first.
+    await withOrgCore(ctx, (tx) =>
+      syncSellableItem(tx, ctx, product.id, {
+        trackStock: !!input.trackStock,
+        uom: input.uom,
+        itemId: input.itemId,
+        code,
+        name: input.name,
+      }),
+    );
   }
 
   if (input.consumption?.length) {
@@ -1378,29 +1441,49 @@ export async function updateSellable(
   // refused with a typed 400 rather than silently lost. Only derive facts
   // when one of the three is actually submitted, so a plain price/name edit
   // costs nothing extra.
+  // Set when this PATCH performs the safe trackStock false→true transition
+  // (S2 of 2026-08-17-hub-updatesellable-silent-drop-spec) — applied inside
+  // the same transaction as the fin_products write below, via
+  // syncSellableItem, rather than refused.
+  let trackStockTransition: { uom?: string } | null = null;
+
   if (patch.kind !== undefined || patch.trackStock !== undefined || patch.uom !== undefined) {
     const facts = await deriveSellableFacts(ctx, productId);
-    if (patch.kind !== undefined && patch.kind !== facts.kind) {
-      // `kind` is derived by design and is never a directly settable field in
-      // any slice of this fix — refusing a direct write is the permanent,
-      // correct behavior, not deferred work.
+
+    if (patch.trackStock !== undefined && patch.trackStock !== facts.trackStock) {
+      if (patch.trackStock === true) {
+        trackStockTransition = { uom: patch.uom };
+      } else {
+        // true→false (untrack) stays refused — S3 of the sibling spec, out of
+        // scope here; unlinking a possibly-historied item needs its own
+        // dedicated code and unlink path.
+        throw new PosError(
+          'stock tracking cannot be changed on an existing sellable yet',
+          'stock_tracking_immutable',
+        );
+      }
+    }
+
+    // `kind` is derived by design and is never a directly settable field in
+    // any slice of this fix — refusing a direct write is the permanent,
+    // correct behavior, not deferred work. Checked against the state that
+    // will exist AFTER a supported trackStock transition, not just the
+    // pre-update derived state, so a coupled `{kind:'product',trackStock:true}`
+    // PATCH (the wizard's full-object shape) is accepted.
+    const effectiveKind = trackStockTransition ? 'product' : facts.kind;
+    if (patch.kind !== undefined && patch.kind !== effectiveKind) {
       throw new PosError(
         'kind follows the linked stock item; publish or unlink an item to change it',
         'kind_derived',
       );
     }
-    if (patch.trackStock !== undefined && patch.trackStock !== facts.trackStock) {
-      // TODO(handoff): apply the safe trackStock transitions (false→true:
-      // create the link; true→false on a pristine item: unlink) instead of
-      // refusing unconditionally — S2/S3 of
-      // 2026-08-17-hub-updatesellable-silent-drop-spec. Refusing is safe
-      // (never silently dropped) but not yet the preferred branch.
-      throw new PosError(
-        'stock tracking cannot be changed on an existing sellable yet',
-        'stock_tracking_immutable',
-      );
-    }
+
+    // The trackStock transition's uom is the create-parity value for the
+    // NEW link (handled by syncSellableItem below), not a change against the
+    // previous — nonexistent — tracked uom, so this guard only applies when
+    // no transition is in play.
     if (
+      !trackStockTransition &&
       patch.uom !== undefined &&
       normalizeUomForCompare(patch.uom) !== normalizeUomForCompare(facts.uom)
     ) {
@@ -1416,8 +1499,8 @@ export async function updateSellable(
   }
 
   try {
-    await withOrgCore(ctx, (tx) =>
-      tx
+    await withOrgCore(ctx, async (tx) => {
+      await tx
         .update(finProducts)
         .set({
           code,
@@ -1427,8 +1510,19 @@ export async function updateSellable(
           active,
           updatedAt: new Date(),
         })
-        .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId))),
-    );
+        .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId)));
+      // Same transaction as the fin_products write above: a failed item
+      // insert rolls back the update instead of leaving a product that
+      // claims trackStock with no linked stk_items row.
+      if (trackStockTransition) {
+        await syncSellableItem(tx, ctx, productId, {
+          trackStock: true,
+          uom: trackStockTransition.uom,
+          code,
+          name,
+        });
+      }
+    });
     await bustFinanceCache(ctx);
   } catch (e) {
     if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
