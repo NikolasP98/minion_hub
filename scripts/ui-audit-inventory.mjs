@@ -87,7 +87,11 @@ function routePath(relative) {
 }
 
 function git(root, ...args) {
-  return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+  return execFileSync('git', args, {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
 }
 
 function isUnconditionalServerRedirect(source) {

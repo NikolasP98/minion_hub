@@ -34,7 +34,7 @@ const chapterSuggestionSchema = z.object({
   successCriteria: z.string().optional().describe('Completion criteria'),
 });
 
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
+const DEFAULT_MODEL = 'anthropic/claude-sonnet-5';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getOrCreateTenantCtx(locals);

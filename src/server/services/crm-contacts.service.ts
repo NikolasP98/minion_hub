@@ -1,6 +1,6 @@
 import { and, eq, desc, sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
-import { withOrgCore } from '$server/db/with-org-core';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { maskPii, sanitizeContactFields } from '$lib/pii';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -13,11 +13,23 @@ import {
 } from '$server/db/pg-crm-schema';
 import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
 import { reconcileParties } from './party.service';
-import { CONTACT_PARTY } from './crm-finance.service';
+import {
+  CONTACT_PARTY,
+  CONTACT_INVOICE_CLASS,
+  FIN_PURCHASED,
+  FIN_RESERVED_ONLY,
+  FIN_LOYAL,
+} from './crm-finance.service';
 import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
 import { recordAudit } from './activity.service';
-import { isFunnelStage, readFunnelMeta, funnelStageIndex } from '$lib/components/crm/crm-funnel';
+import {
+  isFunnelStage,
+  readFunnelMeta,
+  funnelStageIndex,
+  FUNNEL_ORDER,
+  FUNNEL_LEGACY_ALIASES,
+} from '$lib/components/crm/crm-funnel';
 import { isReservedMetaKey } from '$lib/components/crm/crm-meta';
 import {
   parseRelationshipValue,
@@ -186,7 +198,7 @@ export interface RankFilters {
   /** auto-tag rule jsonb (compiled to a live SQL predicate) */
   ruleJson?: unknown;
   search?: string;
-  sort?: 'score' | 'recent' | 'frequency' | 'name';
+  sort?: 'score' | 'recent' | 'frequency' | 'name' | 'revenue' | 'icp';
   limit?: number;
   /** Upper bound on `limit`. Defaults to 5000 (the list-page payload cap). The
    *  dashboard raises it so its COUNTS reflect every contact, not a truncated
@@ -197,6 +209,26 @@ export interface RankFilters {
   ownerId?: string;
   /** Field-level: redact PII in custom_fields (phone/email/dni) for low field level. */
   maskSensitive?: boolean;
+  // TODO(handoff): S2 ships these five filters on the SERVICE only — nothing
+  // parses them from the query string yet, so /crm/customers still filters the
+  // full roster client-side. S3 of FACTORY_SPEC.md (§S3, "Parse the S2 filters")
+  // wires them into GET /api/crm/contacts; S5 points the page at them (and must
+  // map the "reserved" toggle to `reservedOnly`, NOT `buyerOnly`).
+  /** Only contacts whose last message is inbound with no later reply. */
+  awaitingReply?: boolean;
+  /** Only contacts with a purchase history (any finance invoice). */
+  buyerOnly?: boolean;
+  /** Only contacts whose invoices are ALL booking deposits — the "reservó pero
+   *  no compró" segment. This (NOT buyerOnly) is the server twin of the list's
+   *  "reserved" toggle, whose client predicate is `finance.reservedOnly`. */
+  reservedOnly?: boolean;
+  /** Acquisition-funnel stage — matched against the derived `funnel_stage`
+   *  column (chat-derived stage raised by the finance floor). */
+  funnelStage?: string;
+  /** ICP fit range over custom_fields._icp.score, INCLUSIVE at both endpoints.
+   *  Unscored rows carry a NULL score and are excluded while a bound is set. */
+  minIcp?: number;
+  maxIcp?: number;
 }
 
 export interface RankedContact {
@@ -247,9 +279,67 @@ export interface RankedContact {
   m_score: number;
   score: number;
   stage: string;
+  /** Acquisition-funnel stage, derived in SQL: the stored `custom_fields._funnel`
+   *  stage (legacy ids remapped) or `lead` once there is inbound, raised by the
+   *  finance floor. The server twin of maxFunnelStage(effectiveFunnelStage(),
+   *  financeFloorStage()) — null when nothing has been reached yet. */
+  funnel_stage: string | null;
   /** Auto-tag ids whose rule matches this row (computed in the page load, not SQL). */
   auto_tag_ids?: string[];
 }
+
+/** One page of ranked contacts plus the total number of rows the SAME filters
+ *  match with limit/offset removed — the pager needs both, and the window count
+ *  in the outer select gets them in a single round-trip. */
+export interface RankedPage {
+  rows: RankedContact[];
+  total: number;
+}
+
+// ICP fit is stored at `custom_fields._icp.score` (written by the ICP scoring
+// pipeline — spec 2026-08-03-crm-icp-score). The jsonb_typeof guard means a
+// malformed value degrades to NULL instead of aborting the whole query with a
+// numeric cast error, and "no ICP data" stays NULL — so `nulls last` sinks
+// unscored rows to the bottom rather than ranking them alongside a genuine 0.
+const ICP_SCORE_EXPR = sql`(case when jsonb_typeof(custom_fields->'_icp'->'score') = 'number'
+                                 then (custom_fields->'_icp'->>'score')::numeric end)`;
+
+// Acquisition funnel, ported into SQL so a page of rows can be filtered by it
+// (the client used to derive it per row over the full roster). Built FROM
+// FUNNEL_ORDER + FUNNEL_LEGACY_ALIASES so the value domain is the SAME closed set
+// the TS helpers use — crm-funnel-parity.sql.integration.test.ts pins them equal.
+//
+//   chat index  = stored _funnel stage (legacy ids remapped), else 0 ("lead")
+//                 once the contact has inbound, else NULL  → effectiveFunnelStage
+//   floor index = loyal 3 / purchased 2 / reserved-only 1   → financeFloorStage
+//   funnel      = FUNNEL_ORDER[greatest(chat, floor)]       → maxFunnelStage
+//
+// greatest() ignores NULLs (returning NULL only when both are), which is exactly
+// maxFunnelStage's null handling. The jsonb_typeof guard mirrors readFunnelMeta's
+// `typeof raw !== 'object'` rejection, so a scalar or missing _funnel degrades to
+// the inbound baseline instead of erroring.
+const funnelWhens = sql.join(
+  [
+    ...FUNNEL_ORDER.map((id, i) => sql`when ${id} then ${sql.raw(String(i))}`),
+    ...Object.entries(FUNNEL_LEGACY_ALIASES).map(
+      ([legacy, id]) => sql`when ${legacy} then ${sql.raw(String(FUNNEL_ORDER.indexOf(id)))}`,
+    ),
+  ],
+  sql` `,
+);
+const FUNNEL_ORDER_SQL = sql`(array[${sql.join(
+  FUNNEL_ORDER.map((id) => sql`${id}::text`),
+  sql`, `,
+)}])`;
+const CHAT_FUNNEL_IDX = sql`coalesce(
+  case when jsonb_typeof(custom_fields->'_funnel') = 'object'
+       then case custom_fields->'_funnel'->>'stage' ${funnelWhens} else null end end,
+  case when inbound_msgs > 0 then 0 end)`;
+const FIN_FUNNEL_IDX = sql`(case when fin_loyal then ${sql.raw(String(FUNNEL_ORDER.indexOf('loyal')))}
+                                 when fin_purchased then ${sql.raw(String(FUNNEL_ORDER.indexOf('customer')))}
+                                 when fin_reserved_only then ${sql.raw(String(FUNNEL_ORDER.indexOf('opportunity')))}
+                            end)`;
+const FUNNEL_STAGE_EXPR = sql`${FUNNEL_ORDER_SQL}[greatest(${CHAT_FUNNEL_IDX}, ${FIN_FUNNEL_IDX}) + 1]`;
 
 // RFM expressions, parameterised by the shared weights/constants so SQL and the
 // UI explainability tooltip stay in lockstep. The constants MUST be inlined as
@@ -278,7 +368,17 @@ const M_EXPR = sql`(100 * (0.60 * least(1, ln(1 + total_msgs) / ln(1 + ${lit(VS)
  * anchors (messages bridged with finance purchases), so a long-time buyer who
  * only messaged recently is not mislabelled "New".
  */
+export async function rankContactsPage(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedPage> {
+  return runRankQuery(ctx, f);
+}
+
+/** Rows only — the shape every pre-pagination caller (contact-detail score,
+ *  /crm/cleanup, the dashboard via listContactsCached) already consumes. */
 export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedContact[]> {
+  return (await rankContactsPage(ctx, f)).rows;
+}
+
+async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
   return withOrgCore(ctx, async (tx) => {
     const ruleSql = f.ruleJson != null ? tryCompileTagRule(f.ruleJson) : null;
 
@@ -286,7 +386,31 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     // Record-level (if-owner) scoping: only the caller's own contacts.
     if (f.ownerId) conds.push(sql`c.owner_id = ${f.ownerId}`);
     if (f.contactId) conds.push(sql`c.id = ${f.contactId}`);
-    if (f.search) conds.push(sql`c.display_name ilike ${'%' + f.search + '%'}`);
+    // display_name stays a substring match; phone + DNI are EXACT-PREFIX (mirrors
+    // the gateway `crm_search` tool — a mid-number substring is never what the
+    // operator meant).
+    //
+    // Field-level (Phase 4): a masked principal only ever RECEIVES `•••••4321`,
+    // so matching the RAW phone/DNI would hand back exactly the digits the mask
+    // hides — `?search=5`, `51`, `519`… narrows until one row survives and the
+    // surviving prefix spells the number out. Masked callers therefore keep the
+    // pre-pagination display_name-only predicate.
+    //
+    // TODO(handoff): DNI search reads `crm_contacts.custom_fields->>'dni'`, the
+    // RAW column — the `base` CTE below overlays `parties.doc_number` for
+    // DISPLAY, so a contact whose document lives only on the party spine renders
+    // a DNI the roster cannot find. Slice 1 of
+    // 2026-08-13-crm-customers-server-pagination-spec names the custom_fields
+    // prefix, so widening the predicate to `p.doc_number` belongs to the slice
+    // that owns party-spine search, not here.
+    if (f.search)
+      conds.push(
+        f.maskSensitive
+          ? sql`c.display_name ilike ${'%' + f.search + '%'}`
+          : sql`(c.display_name ilike ${'%' + f.search + '%'}
+        or c.custom_fields->>'telefono' like ${f.search + '%'}
+        or c.custom_fields->>'dni' like ${f.search + '%'})`,
+      );
     if (f.tagId)
       conds.push(
         sql`exists (select 1 from crm_contact_tags ct where ct.contact_id = c.id and ct.tag_id = ${f.tagId})`,
@@ -300,16 +424,30 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       );
     if (typeof f.minScore === 'number') outer.push(sql`score >= ${f.minScore}`);
     if (typeof f.maxScore === 'number') outer.push(sql`score <= ${f.maxScore}`);
+    // Filters ported from the client's full-roster predicates (a page of rows is
+    // only sufficient once the server applies them).
+    if (f.awaitingReply) outer.push(sql`awaiting_reply`);
+    if (f.buyerOnly) outer.push(sql`is_buyer`);
+    if (f.reservedOnly) outer.push(sql`fin_reserved_only`);
+    if (f.funnelStage) outer.push(sql`funnel_stage = ${f.funnelStage}`);
+    // Range filters are INCLUSIVE at both endpoints (standing governance rule).
+    if (typeof f.minIcp === 'number') outer.push(sql`${ICP_SCORE_EXPR} >= ${f.minIcp}`);
+    if (typeof f.maxIcp === 'number') outer.push(sql`${ICP_SCORE_EXPR} <= ${f.maxIcp}`);
     if (ruleSql) outer.push(sql.raw(ruleSql)); // vetted: whitelisted columns only
 
-    const orderBy =
+    const sortOrder =
       f.sort === 'recent'
         ? sql`last_contact_at desc nulls last, display_name asc nulls last`
         : f.sort === 'frequency'
           ? sql`total_msgs desc, display_name asc nulls last`
           : f.sort === 'name'
             ? sql`display_name asc nulls last`
-            : sql`score desc, display_name asc nulls last`;
+            : f.sort === 'revenue'
+              ? sql`revenue desc nulls last, display_name asc nulls last`
+              : f.sort === 'icp'
+                ? sql`${ICP_SCORE_EXPR} desc nulls last, display_name asc nulls last`
+                : sql`score desc, display_name asc nulls last`;
+    const orderBy = sql`${sortOrder}, contact_id asc`;
 
     const limit = Math.min(f.limit ?? 100, f.maxLimit ?? 5000);
     const offset = f.offset ?? 0;
@@ -327,17 +465,25 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     // Only joined when both CRM + Finances are on; otherwise an empty CTE so the
     // lifecycle degrades cleanly to message-only signals.
     const withFinance = await bothEnabled(ctx, 'crm', 'finances');
+    // CONTACT_INVOICE_CLASS is the SAME per-invoice deposit/procedure split
+    // contactFinanceMap aggregates, so the funnel floor computed here can never
+    // drift from the ContactFinance flags the detail page renders.
     const finCte = withFinance
-      ? sql`fin as (
-          select cp.contact_id,
-                 min(fi.issued_at) as first_purchase_at,
-                 max(fi.issued_at) as last_purchase_at
-          from contact_party cp
-          join fin_clients fc on fc.org_id = ${ctx.tenantId} and fc.party_id = cp.party_id
-          join fin_invoices fi on fi.client_id = fc.id
-          group by cp.contact_id
+      ? sql`${CONTACT_INVOICE_CLASS},
+        fin as (
+          select contact_id,
+                 min(issued_at) as first_purchase_at,
+                 max(issued_at) as last_purchase_at,
+                 -- same revenue definition as contactFinanceMap; exists only so
+                 -- sort:'revenue' is orderable, and is stripped from the rows below.
+                 sum(total)::float8 as revenue,
+                 ${FIN_PURCHASED} as fin_purchased,
+                 ${FIN_RESERVED_ONLY} as fin_reserved_only,
+                 ${FIN_LOYAL} as fin_loyal
+          from contact_invoice_class
+          group by contact_id
         )`
-      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at where false)`;
+      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at, null::float8 as revenue, false as fin_purchased, false as fin_reserved_only, false as fin_loyal where false)`;
 
     const rows = await tx.execute(sql`
       with agg as (
@@ -389,6 +535,10 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                least(a.first_contact_at, fn.first_purchase_at) as first_contact_at,
                greatest(a.last_contact_at, fn.last_purchase_at) as last_contact_at,
                (fn.first_purchase_at is not null) as is_buyer,
+               fn.revenue,
+               coalesce(fn.fin_purchased, false) as fin_purchased,
+               coalesce(fn.fin_reserved_only, false) as fin_reserved_only,
+               coalesce(fn.fin_loyal, false) as fin_loyal,
                attr.origin as lead_origin,
                attr.campaign_name as lead_campaign,
                (a.last_inbound_at is not null and (a.last_outbound_at is null or a.last_inbound_at > a.last_outbound_at)) as awaiting_reply,
@@ -420,7 +570,9 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
                party_id, dni_verified, age, dob, sex,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
-               lead_origin, lead_campaign,
+               lead_origin, lead_campaign, revenue,
+               fin_reserved_only,
+               ${FUNNEL_STAGE_EXPR} as funnel_stage,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
                round(${F_EXPR}::numeric, 1) as f_score,
@@ -442,13 +594,43 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                    else 'Dormant'
                  end) as stage
         from base
+      ),
+      filtered as (
+        select * from scored where ${and(...outer)}
+      ),
+      requested_page as (
+        select *, row_number() over (order by ${orderBy}) as page_position
+        from filtered
+        order by ${orderBy}
+        limit ${limit} offset ${offset}
+      ),
+      filtered_total as (
+        select count(*)::int as total_rows from filtered
       )
-      select * from scored
-      where ${and(...outer)}
-      order by ${orderBy}
-      limit ${limit} offset ${offset}
+      select requested_page.*, filtered_total.total_rows
+      from filtered_total
+      left join requested_page on true
+      order by requested_page.page_position
     `);
-    let out = rows as unknown as RankedContact[];
+    // The left join returns one sentinel row when the requested page is empty,
+    // preserving the filtered count without a second database round-trip.
+    const raw = rows as unknown as (RankedContact & {
+      total_rows?: number;
+      revenue?: number | null;
+      fin_reserved_only?: boolean;
+      page_position?: number;
+    })[];
+    const total = Number(raw[0]?.total_rows) || 0;
+    let out: RankedContact[] = raw
+      .filter((r) => r.contact_id != null)
+      .map((r) => {
+        const rest = { ...r };
+        delete rest.total_rows;
+        delete rest.revenue;
+        delete rest.fin_reserved_only;
+        delete rest.page_position;
+        return rest as RankedContact;
+      });
     // pg returns numeric/bigint columns as STRINGS; coerce here so no consumer
     // ever does arithmetic on a digit-string (scoreSum += "50" concatenated its
     // way to avgScore = Infinity on the dashboard).
@@ -477,12 +659,112 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       ...r,
       custom_fields: sanitizeContactFields(r.custom_fields, f.maskSensitive ?? false),
     }));
-    if (!f.maskSensitive) return out;
-    return out.map((r) => ({
-      ...r,
-      identities: r.identities.map((i) => ({ ...i, externalId: maskPii(i.externalId) })),
-    }));
+    if (f.maskSensitive)
+      out = out.map((r) => ({
+        ...r,
+        identities: r.identities.map((i) => ({ ...i, externalId: maskPii(i.externalId) })),
+      }));
+    return { rows: out, total };
   });
+}
+
+/** A value that round-trips through `JSON.stringify`/`JSON.parse` unchanged. */
+export type JsonValue =
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+/**
+ * Runtime boundary check for `contactCustomFieldSetSql`/`setContactCustomField`.
+ * `JsonValue` at the type level doesn't stop `NaN`/`Infinity` (still `number`)
+ * or a value that only *looks* like `JsonValue` because it arrived as `any`
+ * from an untyped caller — this walks the actual value and throws before any
+ * SQL gets built, instead of letting `JSON.stringify` silently coerce
+ * `NaN`/`Infinity` to `null`, silently drop `undefined` (producing no JSON
+ * text at all), or throw deep inside `JSON.stringify` on a cyclic reference
+ * with no context about which custom-field write caused it.
+ */
+export function assertJsonValue(
+  value: unknown,
+  seen = new Set<unknown>(),
+): asserts value is JsonValue {
+  if (value === null) return;
+  const t = typeof value;
+  if (t === 'string' || t === 'boolean') return;
+  if (t === 'number') {
+    if (!Number.isFinite(value as number)) {
+      throw new Error(`custom field value is not a finite JSON number: ${String(value)}`);
+    }
+    return;
+  }
+  if (t !== 'object') {
+    throw new Error(`custom field value is not JSON-serializable (${t})`);
+  }
+  if (seen.has(value)) {
+    throw new Error('custom field value is not JSON-serializable (circular reference)');
+  }
+  if (!Array.isArray(value)) {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) {
+      throw new Error('custom field value is not a plain JSON object (unsupported object type)');
+    }
+  }
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      for (const item of value) assertJsonValue(item, seen);
+      return;
+    }
+    for (const v of Object.values(value as Record<string, unknown>)) assertJsonValue(v, seen);
+  } finally {
+    seen.delete(value);
+  }
+}
+
+/**
+ * Pure SQL fragment for the per-key `jsonb_set` merge, split out from
+ * `setContactCustomField` so its shape (no `SELECT … custom_fields`, bound
+ * path/value params, never `sql.raw`/string interpolation) is unit-testable
+ * the same way `customFieldsMergeSql` is — inspect the fragment directly via
+ * `PgDialect().sqlToQuery(...)` instead of digging through a mocked chain.
+ */
+export function contactCustomFieldSetSql(key: string, value: JsonValue) {
+  assertJsonValue(value);
+  return sql`jsonb_set(coalesce(${crmContacts.customFields}, '{}'::jsonb), ARRAY[${key}]::text[], ${JSON.stringify(value)}::jsonb, true)`;
+}
+
+/**
+ * Atomic single-key `jsonb_set` on `custom_fields` — the shared primitive
+ * behind every reserved-key writer (`_funnel`, `_relationship`, and any
+ * future `_icp`). Never reads the column first: this asks Postgres to merge
+ * one top-level key in a single statement, so a concurrent writer targeting
+ * a different key can never observe or clobber this one, regardless of
+ * commit order (the bug this replaces read the whole column into JS, spread
+ * it, and wrote the merged object back over the whole column). Takes the
+ * caller's own `tx` rather than opening a nested `withOrgCore` transaction,
+ * so a writer that also needs a preceding read in the same transaction
+ * (e.g. `_funnel`'s forward-only/manual-pin guard) stays one round trip for
+ * the write. `guard` (optional) folds an extra WHERE predicate into the same
+ * statement so a conditional write ("only if not user-pinned") never needs a
+ * separate read either.
+ */
+export async function setContactCustomField(
+  tx: CoreTx,
+  orgId: string,
+  contactId: string,
+  key: string,
+  value: JsonValue,
+  guard?: ReturnType<typeof sql>,
+): Promise<boolean> {
+  const rows = await tx
+    .update(crmContacts)
+    .set({
+      customFields: contactCustomFieldSetSql(key, value),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, orgId), ...(guard ? [guard] : [])),
+    )
+    .returning({ id: crmContacts.id });
+  return rows.length > 0;
 }
 
 /** Cache tag for an org's CRM contact list — bust on any contact/tag mutation. */
@@ -959,6 +1241,7 @@ export async function setFunnelStage(
       .select({ customFields: crmContacts.customFields })
       .from(crmContacts)
       .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)))
+      .for('update')
       .limit(1);
     if (!row) return null;
 
@@ -983,12 +1266,11 @@ export async function setFunnelStage(
       ...(opts.by !== 'user' ? { analyzedAt: nowIso } : {}),
       updatedAt: nowIso,
     };
-    const nextFields = { ...fields, _funnel: nextMeta };
 
-    await tx
-      .update(crmContacts)
-      .set({ customFields: nextFields, updatedAt: new Date() })
-      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)));
+    // The row is locked by the read above until this transaction commits, so
+    // no competing funnel writer can change the stage/manual pin between the
+    // decision and this write. The write itself only touches `_funnel`.
+    await setContactCustomField(tx, ctx.tenantId, contactId, '_funnel', nextMeta);
 
     await tx.insert(crmActivities).values({
       orgId: ctx.tenantId,
