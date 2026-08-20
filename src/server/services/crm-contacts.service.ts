@@ -1077,6 +1077,31 @@ export function customFieldsMergeSql(clientFields: Record<string, unknown>) {
   )`;
 }
 
+/**
+ * PARTIAL `custom_fields` merge (spec 2026-08-18-hub-funnel-atomic-write, S2) —
+ * the sibling of `customFieldsMergeSql` for callers that mean "set these keys,
+ * leave every other key alone" rather than "this is the whole user-editable
+ * namespace". `||`'s right operand wins for the submitted keys; every key the
+ * caller did NOT send (user fields and `_`-reserved keys alike) passes through
+ * untouched, because the left operand is the PRE-update row read inside the
+ * UPDATE's own SET expression — one atomic statement, no application-side read.
+ *
+ * This exists to close the last whole-column read-modify-write in the repo (the
+ * gateway `contact-update` action used to `getContact` → spread the whole
+ * object in JS → hand it back as a whole-namespace write, so a user key written
+ * concurrently between its read and its write was silently dropped: the loser's
+ * key was never in the winner's snapshot). Reserved keys are stripped from the
+ * caller's patch for the same reason `customFieldsMergeSql` strips them — a
+ * client or agent may not forge `_funnel`/`_relationship`; those are written
+ * only through `setContactCustomField`.
+ */
+export function customFieldsPatchSql(clientFields: Record<string, unknown>) {
+  const stripped = Object.fromEntries(
+    Object.entries(clientFields).filter(([k]) => !isReservedMetaKey(k)),
+  );
+  return sql`coalesce(${crmContacts.customFields}, '{}'::jsonb) || coalesce(${JSON.stringify(stripped)}::jsonb, '{}'::jsonb)`;
+}
+
 export async function updateContact(
   ctx: CoreCtx,
   id: string,
@@ -1084,7 +1109,14 @@ export async function updateContact(
     displayName?: string | null;
     ownerId?: string | null;
     lifecycleOverride?: string | null;
+    /** WHOLE user-editable namespace (the contact-detail editor's contract):
+     *  keys the client omits are removed; stored `_`-reserved keys survive. */
     customFields?: Record<string, unknown>;
+    /** PARTIAL patch: set these keys, leave every other key alone. Mutually
+     *  exclusive with `customFields` — a caller that means "just this one key"
+     *  must never round-trip the whole object through JS (that read-modify-write
+     *  is the lost-update bug this spec removes). */
+    customFieldsPatch?: Record<string, unknown>;
     /** Standard "phone" field: mirrored to a `phone` channel identity so an
      *  edited number shows up in the Identities list. '' / null removes it.
      *  Does NOT touch the WhatsApp identity (its external_id is the message
@@ -1097,7 +1129,14 @@ export async function updateContact(
   if (data.displayName !== undefined) set.displayName = data.displayName;
   if (data.ownerId !== undefined) set.ownerId = data.ownerId;
   if (data.lifecycleOverride !== undefined) set.lifecycleOverride = data.lifecycleOverride;
+  if (data.customFields !== undefined && data.customFieldsPatch !== undefined) {
+    throw new Error(
+      'updateContact: pass either customFields (whole namespace) or customFieldsPatch (partial), not both',
+    );
+  }
   if (data.customFields !== undefined) set.customFields = customFieldsMergeSql(data.customFields);
+  if (data.customFieldsPatch !== undefined)
+    set.customFields = customFieldsPatchSql(data.customFieldsPatch);
   const row = await withOrgCore(ctx, async (tx) => {
     const [r] = await tx
       .update(crmContacts)
@@ -1131,7 +1170,7 @@ export async function updateContact(
         field,
         label: field,
         old: null,
-        new: field === 'customFields' ? data.customFields : value,
+        new: field === 'customFields' ? (data.customFields ?? data.customFieldsPatch) : value,
       }));
     if (auditChanges.length) {
       await recordAudit(ctx, {
