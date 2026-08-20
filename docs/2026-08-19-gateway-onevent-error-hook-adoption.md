@@ -124,3 +124,24 @@ git/tarball pin, and introduces no new reporting subsystem — it reuses hub's o
 while this record still says `blocked-on-publish`, and separately if the dispatch site drops its
 containment, so steps 3 and 4 cannot be half-done silently. Ledger entry: the parent proposal named
 above.
+
+## 5. Review findings → what changed
+
+Three consecutive reviews of this branch returned FAIL. Their findings and this round's response:
+
+| Finding (latest review)                                                                                                                        | Response                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _"Slice 1 still leaves hub on the pre-hook gateway client"_ — the event path keeps escaping synchronous throws and swallowing async rejections | The dependency half is genuinely impossible from this repo and stays deferred (§1 re-polled 2026-08-20, still red). The behavioural half is now delivered hub-side by §3a, so the impact the finding names — unreported handler failures on the production event path — is gone on the installed client. This is the conservative fail-closed option under a blocked prerequisite: contain and report, never rethrow, never touch connection state |
+| _"The ui-audit inventory/workflow/baseline changes are outside S1 and should travel separately"_                                               | Dropped. `master` has since landed its own fix for the same ledger problem (skip the provenance assertion when the pinned commit is unreachable), so merging `master` in resolved those files to `master`'s versions. The branch diff is now S1-only                                                                                                                                                                                               |
+| _"The changed-file Prettier gate fails"_ (round 3)                                                                                             | Fixed in `748e661`; the gate is re-run and clean on every file this branch touches                                                                                                                                                                                                                                                                                                                                                                 |
+| _"expected 'HEAD' to be '0a7bf5ac…'"_ self-test failure                                                                                        | Resolved by the same `master` merge — `master`'s `scripts/ui-audit-inventory.test.ts` skips the provenance assertion in a shallow clone. Full suite: 360 files / 2,912 tests pass                                                                                                                                                                                                                                                                  |
+
+### Decision point for the human reviewer
+
+Reviews 1–3 asked for this branch to be held rather than completed, because S1 as written _is_ the
+dependency bump. That bump is still blocked and is not claimed here. What changed is the scope of
+what ships alongside the blocker: rather than waiting on an external publish with the event path
+unguarded, hub now owns its own containment (§3a). If the intended reading of S1 is "the dependency
+line and nothing else", §3a can be reviewed as a standalone hardening change and the dependency bump
+tracked by §4's `TODO(handoff)`; the two are independent and §3a does not pre-empt or complicate the
+bump.
