@@ -32,6 +32,35 @@ export const CONTACT_PARTY = sql`contact_party as (
   order by c.party_id, c.created_at asc
 )`;
 
+/**
+ * Per-invoice classification rows for every CRM-linked contact — one row per
+ * (contact, invoice) carrying whether that invoice contains a booking deposit
+ * line and/or a real procedure line. Splice into a `with` that already declares
+ * CONTACT_PARTY, inside withOrgCore (org GUC set).
+ *
+ * Shared so the deposit-vs-procedure split has exactly ONE definition: this file
+ * aggregates it into ContactFinance, and crm-contacts.service.ts aggregates the
+ * same rows into the SQL funnel floor (financeFloorStage's server twin). A second
+ * hand-written copy would drift the moment the deposit rule becomes per-org.
+ */
+export const CONTACT_INVOICE_CLASS = sql`contact_invoice_class as (
+  select cp.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
+         bool_or(${IS_DEPOSIT}) has_deposit, bool_or(${IS_PROCEDURE}) has_proc
+  from contact_party cp
+  join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
+  join fin_invoices fi on fi.client_id = fc.id
+  left join fin_invoice_items ii on ii.invoice_id = fi.id
+  group by cp.contact_id, fi.id, fi.total, fi.issued_at
+)`;
+
+/** Aggregates over CONTACT_INVOICE_CLASS rows grouped by contact — the SQL twin
+ *  of the ContactFinance purchased/reservedOnly/loyal fields below. `coalesce`
+ *  mirrors the TS `Boolean(...)` coercion: an invoice with no line items yields
+ *  a NULL bool_or, which is false, not unknown. */
+export const FIN_PURCHASED = sql`coalesce(bool_or(has_proc), false)`;
+export const FIN_RESERVED_ONLY = sql`(not coalesce(bool_or(has_proc), false) and coalesce(bool_or(has_deposit), false))`;
+export const FIN_LOYAL = sql`(count(distinct case when has_proc then issued_at::date end) >= 2)`;
+
 export interface ContactFinance {
   revenue: number;
   invoices: number;
@@ -64,40 +93,29 @@ export async function contactFinanceMap(ctx: CoreCtx): Promise<Record<string, Co
 async function loadContactFinanceMap(ctx: CoreCtx): Promise<Record<string, ContactFinance>> {
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
-      with ${CONTACT_PARTY},
-      inv as (
-        select cp.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
-               bool_or(${IS_DEPOSIT}) has_deposit, bool_or(${IS_PROCEDURE}) has_proc
-        from contact_party cp
-        join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
-        join fin_invoices fi on fi.client_id = fc.id
-        left join fin_invoice_items ii on ii.invoice_id = fi.id
-        group by cp.contact_id, fi.id, fi.total, fi.issued_at
-      )
+      with ${CONTACT_PARTY}, ${CONTACT_INVOICE_CLASS}
       select contact_id,
              coalesce(sum(total),0)::float8 revenue, count(*)::int invoices, max(issued_at) last,
-             bool_or(has_proc) purchased, bool_or(has_deposit) has_deposit,
-             count(distinct case when has_proc then issued_at::date end)::int proc_dates
-      from inv group by contact_id
+             ${FIN_PURCHASED} purchased, ${FIN_RESERVED_ONLY} reserved_only, ${FIN_LOYAL} loyal
+      from contact_invoice_class group by contact_id
     `)) as unknown as Array<{
       contact_id: string;
       revenue: number;
       invoices: number;
       last: string | null;
       purchased: boolean;
-      has_deposit: boolean;
-      proc_dates: number;
+      reserved_only: boolean;
+      loyal: boolean;
     }>;
     const out: Record<string, ContactFinance> = {};
     for (const r of rows) {
-      const purchased = Boolean(r.purchased);
       out[String(r.contact_id)] = {
         revenue: Number(r.revenue),
         invoices: Number(r.invoices),
         lastPurchaseAt: r.last != null ? String(r.last) : null,
-        purchased,
-        reservedOnly: !purchased && Boolean(r.has_deposit),
-        loyal: Number(r.proc_dates) >= 2,
+        purchased: Boolean(r.purchased),
+        reservedOnly: Boolean(r.reserved_only),
+        loyal: Boolean(r.loyal),
       };
     }
     return out;

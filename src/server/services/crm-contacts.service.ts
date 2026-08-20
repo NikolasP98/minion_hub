@@ -13,11 +13,23 @@ import {
 } from '$server/db/pg-crm-schema';
 import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
 import { reconcileParties } from './party.service';
-import { CONTACT_PARTY } from './crm-finance.service';
+import {
+  CONTACT_PARTY,
+  CONTACT_INVOICE_CLASS,
+  FIN_PURCHASED,
+  FIN_RESERVED_ONLY,
+  FIN_LOYAL,
+} from './crm-finance.service';
 import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
 import { recordAudit } from './activity.service';
-import { isFunnelStage, readFunnelMeta, funnelStageIndex } from '$lib/components/crm/crm-funnel';
+import {
+  isFunnelStage,
+  readFunnelMeta,
+  funnelStageIndex,
+  FUNNEL_ORDER,
+  FUNNEL_LEGACY_ALIASES,
+} from '$lib/components/crm/crm-funnel';
 import { isReservedMetaKey } from '$lib/components/crm/crm-meta';
 import {
   parseRelationshipValue,
@@ -197,6 +209,26 @@ export interface RankFilters {
   ownerId?: string;
   /** Field-level: redact PII in custom_fields (phone/email/dni) for low field level. */
   maskSensitive?: boolean;
+  // TODO(handoff): S2 ships these five filters on the SERVICE only — nothing
+  // parses them from the query string yet, so /crm/customers still filters the
+  // full roster client-side. S3 of FACTORY_SPEC.md (§S3, "Parse the S2 filters")
+  // wires them into GET /api/crm/contacts; S5 points the page at them (and must
+  // map the "reserved" toggle to `reservedOnly`, NOT `buyerOnly`).
+  /** Only contacts whose last message is inbound with no later reply. */
+  awaitingReply?: boolean;
+  /** Only contacts with a purchase history (any finance invoice). */
+  buyerOnly?: boolean;
+  /** Only contacts whose invoices are ALL booking deposits — the "reservó pero
+   *  no compró" segment. This (NOT buyerOnly) is the server twin of the list's
+   *  "reserved" toggle, whose client predicate is `finance.reservedOnly`. */
+  reservedOnly?: boolean;
+  /** Acquisition-funnel stage — matched against the derived `funnel_stage`
+   *  column (chat-derived stage raised by the finance floor). */
+  funnelStage?: string;
+  /** ICP fit range over custom_fields._icp.score, INCLUSIVE at both endpoints.
+   *  Unscored rows carry a NULL score and are excluded while a bound is set. */
+  minIcp?: number;
+  maxIcp?: number;
 }
 
 export interface RankedContact {
@@ -247,6 +279,11 @@ export interface RankedContact {
   m_score: number;
   score: number;
   stage: string;
+  /** Acquisition-funnel stage, derived in SQL: the stored `custom_fields._funnel`
+   *  stage (legacy ids remapped) or `lead` once there is inbound, raised by the
+   *  finance floor. The server twin of maxFunnelStage(effectiveFunnelStage(),
+   *  financeFloorStage()) — null when nothing has been reached yet. */
+  funnel_stage: string | null;
   /** Auto-tag ids whose rule matches this row (computed in the page load, not SQL). */
   auto_tag_ids?: string[];
 }
@@ -266,6 +303,43 @@ export interface RankedPage {
 // unscored rows to the bottom rather than ranking them alongside a genuine 0.
 const ICP_SCORE_EXPR = sql`(case when jsonb_typeof(custom_fields->'_icp'->'score') = 'number'
                                  then (custom_fields->'_icp'->>'score')::numeric end)`;
+
+// Acquisition funnel, ported into SQL so a page of rows can be filtered by it
+// (the client used to derive it per row over the full roster). Built FROM
+// FUNNEL_ORDER + FUNNEL_LEGACY_ALIASES so the value domain is the SAME closed set
+// the TS helpers use — crm-funnel-parity.sql.integration.test.ts pins them equal.
+//
+//   chat index  = stored _funnel stage (legacy ids remapped), else 0 ("lead")
+//                 once the contact has inbound, else NULL  → effectiveFunnelStage
+//   floor index = loyal 3 / purchased 2 / reserved-only 1   → financeFloorStage
+//   funnel      = FUNNEL_ORDER[greatest(chat, floor)]       → maxFunnelStage
+//
+// greatest() ignores NULLs (returning NULL only when both are), which is exactly
+// maxFunnelStage's null handling. The jsonb_typeof guard mirrors readFunnelMeta's
+// `typeof raw !== 'object'` rejection, so a scalar or missing _funnel degrades to
+// the inbound baseline instead of erroring.
+const funnelWhens = sql.join(
+  [
+    ...FUNNEL_ORDER.map((id, i) => sql`when ${id} then ${sql.raw(String(i))}`),
+    ...Object.entries(FUNNEL_LEGACY_ALIASES).map(
+      ([legacy, id]) => sql`when ${legacy} then ${sql.raw(String(FUNNEL_ORDER.indexOf(id)))}`,
+    ),
+  ],
+  sql` `,
+);
+const FUNNEL_ORDER_SQL = sql`(array[${sql.join(
+  FUNNEL_ORDER.map((id) => sql`${id}::text`),
+  sql`, `,
+)}])`;
+const CHAT_FUNNEL_IDX = sql`coalesce(
+  case when jsonb_typeof(custom_fields->'_funnel') = 'object'
+       then case custom_fields->'_funnel'->>'stage' ${funnelWhens} else null end end,
+  case when inbound_msgs > 0 then 0 end)`;
+const FIN_FUNNEL_IDX = sql`(case when fin_loyal then ${sql.raw(String(FUNNEL_ORDER.indexOf('loyal')))}
+                                 when fin_purchased then ${sql.raw(String(FUNNEL_ORDER.indexOf('customer')))}
+                                 when fin_reserved_only then ${sql.raw(String(FUNNEL_ORDER.indexOf('opportunity')))}
+                            end)`;
+const FUNNEL_STAGE_EXPR = sql`${FUNNEL_ORDER_SQL}[greatest(${CHAT_FUNNEL_IDX}, ${FIN_FUNNEL_IDX}) + 1]`;
 
 // RFM expressions, parameterised by the shared weights/constants so SQL and the
 // UI explainability tooltip stay in lockstep. The constants MUST be inlined as
@@ -350,6 +424,15 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
       );
     if (typeof f.minScore === 'number') outer.push(sql`score >= ${f.minScore}`);
     if (typeof f.maxScore === 'number') outer.push(sql`score <= ${f.maxScore}`);
+    // Filters ported from the client's full-roster predicates (a page of rows is
+    // only sufficient once the server applies them).
+    if (f.awaitingReply) outer.push(sql`awaiting_reply`);
+    if (f.buyerOnly) outer.push(sql`is_buyer`);
+    if (f.reservedOnly) outer.push(sql`fin_reserved_only`);
+    if (f.funnelStage) outer.push(sql`funnel_stage = ${f.funnelStage}`);
+    // Range filters are INCLUSIVE at both endpoints (standing governance rule).
+    if (typeof f.minIcp === 'number') outer.push(sql`${ICP_SCORE_EXPR} >= ${f.minIcp}`);
+    if (typeof f.maxIcp === 'number') outer.push(sql`${ICP_SCORE_EXPR} <= ${f.maxIcp}`);
     if (ruleSql) outer.push(sql.raw(ruleSql)); // vetted: whitelisted columns only
 
     const sortOrder =
@@ -382,20 +465,25 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
     // Only joined when both CRM + Finances are on; otherwise an empty CTE so the
     // lifecycle degrades cleanly to message-only signals.
     const withFinance = await bothEnabled(ctx, 'crm', 'finances');
+    // CONTACT_INVOICE_CLASS is the SAME per-invoice deposit/procedure split
+    // contactFinanceMap aggregates, so the funnel floor computed here can never
+    // drift from the ContactFinance flags the detail page renders.
     const finCte = withFinance
-      ? sql`fin as (
-          select cp.contact_id,
-                 min(fi.issued_at) as first_purchase_at,
-                 max(fi.issued_at) as last_purchase_at,
+      ? sql`${CONTACT_INVOICE_CLASS},
+        fin as (
+          select contact_id,
+                 min(issued_at) as first_purchase_at,
+                 max(issued_at) as last_purchase_at,
                  -- same revenue definition as contactFinanceMap; exists only so
                  -- sort:'revenue' is orderable, and is stripped from the rows below.
-                 sum(coalesce(fi.total, 0))::float8 as revenue
-          from contact_party cp
-          join fin_clients fc on fc.org_id = ${ctx.tenantId} and fc.party_id = cp.party_id
-          join fin_invoices fi on fi.client_id = fc.id
-          group by cp.contact_id
+                 sum(total)::float8 as revenue,
+                 ${FIN_PURCHASED} as fin_purchased,
+                 ${FIN_RESERVED_ONLY} as fin_reserved_only,
+                 ${FIN_LOYAL} as fin_loyal
+          from contact_invoice_class
+          group by contact_id
         )`
-      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at, null::float8 as revenue where false)`;
+      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at, null::float8 as revenue, false as fin_purchased, false as fin_reserved_only, false as fin_loyal where false)`;
 
     const rows = await tx.execute(sql`
       with agg as (
@@ -448,6 +536,9 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
                greatest(a.last_contact_at, fn.last_purchase_at) as last_contact_at,
                (fn.first_purchase_at is not null) as is_buyer,
                fn.revenue,
+               coalesce(fn.fin_purchased, false) as fin_purchased,
+               coalesce(fn.fin_reserved_only, false) as fin_reserved_only,
+               coalesce(fn.fin_loyal, false) as fin_loyal,
                attr.origin as lead_origin,
                attr.campaign_name as lead_campaign,
                (a.last_inbound_at is not null and (a.last_outbound_at is null or a.last_inbound_at > a.last_outbound_at)) as awaiting_reply,
@@ -480,6 +571,8 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
                party_id, dni_verified, age, dob, sex,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
                lead_origin, lead_campaign, revenue,
+               fin_reserved_only,
+               ${FUNNEL_STAGE_EXPR} as funnel_stage,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
                round(${F_EXPR}::numeric, 1) as f_score,
@@ -524,6 +617,7 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
     const raw = rows as unknown as (RankedContact & {
       total_rows?: number;
       revenue?: number | null;
+      fin_reserved_only?: boolean;
       page_position?: number;
     })[];
     const total = Number(raw[0]?.total_rows) || 0;
@@ -533,6 +627,7 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
         const rest = { ...r };
         delete rest.total_rows;
         delete rest.revenue;
+        delete rest.fin_reserved_only;
         delete rest.page_position;
         return rest as RankedContact;
       });
