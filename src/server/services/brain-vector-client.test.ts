@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { exportPKCS8, generateKeyPair, jwtVerify } from 'jose';
+import { isBrainVectorSearchRequestV1 } from '@minion-stack/shared';
 
 vi.mock('$env/dynamic/private', () => ({ env: {} }));
 
@@ -288,19 +289,6 @@ describe('brain vector API client', () => {
   });
 
   it('makes org_all unrepresentable at the request-construction boundary', async () => {
-    // TODO(handoff): this test cannot import `isBrainVectorSearchRequestV1` from
-    // `@minion-stack/shared` and assert the built source_list request against it, because
-    // the Hub's pinned @minion-stack/shared@0.9.0 has no brain-vector export at all —
-    // `node_modules/@minion-stack/shared/dist/index.d.ts` re-exports only gateway/utils/
-    // prompt-sections (confirmed by reading the installed dist output). Bumping the
-    // dependency to @0.10.0 (which does publish the validator) is out of this slice's
-    // approved scope per FACTORY_SPEC.md §3/§4 (diff confined to the brain-vector client,
-    // its test, and a directly related boundary re-export — not the shared dependency
-    // range). A hand-copied reimplementation of the validator would not test the shipped
-    // module and was rejected for the same reason in review. Needs a minion-meta proposal
-    // (not reachable from this checkout — see 2026-08-17-hub-brain-org-all-scope-spec)
-    // authorizing the @minion-stack/shared@0.10.0 bump before this assertion can be added.
-    // See src/server/services/brain-vector-client.ts.
     const buildRequest = (filters: BrainVectorSearchFilters) => ({
       orgId: 'org-1',
       brainId: '22222222-2222-4222-8222-222222222222',
@@ -310,9 +298,10 @@ describe('brain vector API client', () => {
       filters,
     });
 
-    // @ts-expect-error scopeMode is narrowed to the literal 'source_list'; 'org_all' must
-    // not type-check at the request-construction boundary until §8.1 policy proof exists.
-    buildRequest({ scopeMode: 'org_all' });
+    // @ts-expect-error scopeMode is narrowed to the literal 'source_list'; 'org_all' must not
+    // type-check at the request-construction boundary until the architecture §8.1 policy proof
+    // exists. Everything else here is valid, so removing this directive fails only on scopeMode.
+    buildRequest({ scopeMode: 'org_all', sourceIds: ['source-a'] });
 
     const fetchImpl = vi.fn(async () =>
       Response.json({
@@ -331,6 +320,49 @@ describe('brain vector API client', () => {
       ),
     ).resolves.toMatchObject({ candidates: [] });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits a source_list request that the frozen shared v1 validator accepts', async () => {
+    let emitted: unknown;
+    const fetchImpl = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
+      emitted = JSON.parse(String(init?.body));
+      return Response.json({
+        contractVersion: BRAIN_VECTOR_CONTRACT_VERSION,
+        generation: config.generation,
+        collection: brainVectorCollectionName(config.generation),
+        tookMs: 1,
+        candidates: [],
+      });
+    });
+    await searchBrainVectorApi(
+      config,
+      {
+        orgId: 'org-1',
+        brainId: '22222222-2222-4222-8222-222222222222',
+        subject: 'profile-1',
+        vector: Array.from({ length: 1536 }, () => 0),
+        limit: 20,
+        filters: {
+          scopeMode: 'source_list',
+          sourceIds: ['source-b', 'source-a'],
+          kinds: ['note'],
+          occurredAfter: '2026-01-31T23:59:59Z',
+        },
+      },
+      fetchImpl as typeof fetch,
+    );
+
+    // The Hub redeclares the v1 request shape locally, so this asserts the body it actually
+    // puts on the wire against the frozen contract's own validator rather than a local mirror.
+    expect(isBrainVectorSearchRequestV1(emitted)).toBe(true);
+    // Negative control: the same validator must reject a body whose scope was tampered with,
+    // proving the assertion above is discriminating rather than vacuously true.
+    expect(
+      isBrainVectorSearchRequestV1({
+        ...(emitted as Record<string, unknown>),
+        filters: { scopeMode: 'source_list', sourceIds: [] },
+      }),
+    ).toBe(false);
   });
 });
 
