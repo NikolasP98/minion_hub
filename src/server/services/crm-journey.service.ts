@@ -9,7 +9,7 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
 import { setContactCustomField, type JsonValue } from './crm-contacts.service';
 import { getOpenRouterModel } from '$server/llm';
-import { depositSortKeySql, notDepositMatchSql } from './crm-deposit-rule';
+import { depositMatchSql, depositSortKeySql, notDepositMatchSql } from './crm-deposit-rule';
 import { resolveDepositRule } from './crm-settings.service';
 
 const milestoneItemSchema = z.object({
@@ -45,17 +45,34 @@ const JOURNEY_MODEL =
 /** Deterministic milestones from structured events (no model). Newest first. */
 async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise<Milestone[]> {
   const finance = await bothEnabled(ctx, 'crm', 'finances');
-  // Resolved once per call, before withOrgCore opens its transaction (see the
-  // transaction-discipline note on crm-settings.service.ts — resolveDepositRule
-  // opens its OWN withOrgCore and the RLS pool is single-connection), then
-  // reused for every predicate and for the reserve mapping below.
+  // ONE settings read per call, and only when the finance branch below will
+  // actually use it — a journey on an org with finances off costs no settings
+  // query, so `rule != null` doubles as "finance is on".
+  //
+  // Resolved BEFORE withOrgCore opens its transaction: resolveDepositRule opens
+  // its OWN withOrgCore and the RLS pool is single-connection (see the
+  // transaction-discipline note on crm-settings.service.ts), so nesting the
+  // read inside the callback below would deadlock.
+  //
+  // `rule` carries BOTH halves of the org's deposit config and they are used
+  // separately: `keywords` MATCHES the invoice-line text in SQL, `label` is
+  // the caption RENDERED for a deposits-only invoice. A match rule and a
+  // display string are different things — an org configuring
+  // keywords: ['deposit'] must not get a Spanish milestone caption.
   const rule = finance ? await resolveDepositRule(ctx) : null;
   return withOrgCore(ctx, async (tx) => {
     const out: Milestone[] = [];
 
     if (rule) {
+      // The representative-item ORDER BY goes through `depositSortKeySql`, not
+      // the bare `depositMatchSql` predicate: now that the rule is per-org it
+      // can legitimately have ZERO keywords, and that predicate compiles to the
+      // literal `false`, which PostgreSQL rejects as a sort key (42601,
+      // "non-integer constant in ORDER BY"). The CASE wrapper keeps the same
+      // ordering — procedures (0) before deposits (1).
       const rows = (await tx.execute(sql`
         select fi.id::text id, fi.issued_at at, coalesce(fi.total,0)::float8 amount,
+               bool_or(${depositMatchSql('ii.description', rule)}) only_deposit_flag,
                bool_or(ii.description is not null and ${notDepositMatchSql('ii.description', rule)}) has_proc,
                (select ii2.description from fin_invoice_items ii2
                   where ii2.invoice_id = fi.id and ii2.description is not null
@@ -73,11 +90,23 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
         id: string;
         at: string | null;
         amount: number;
+        only_deposit_flag: boolean | null;
         has_proc: boolean;
         item: string | null;
       }>;
       for (const r of rows) {
         const proc = Boolean(r.has_proc);
+        // Only an EXPLICITLY empty rule (`keywords: []`, "this org has no
+        // deposit concept") withholds the caption for an unclassifiable
+        // invoice (`!proc`, and `only_deposit_flag` is always false when
+        // there are no keywords to match). Every other rule — including
+        // `DEFAULT_DEPOSIT_RULE` for an org with no `crm_settings` row —
+        // keeps the legacy `!proc ⇒ reserve` mapping unconditionally, so an
+        // invoice whose lines carry no usable description still gets the
+        // same 'reserve' milestone it always has. That byte-identical
+        // default is required by S2 (FACTORY_SPEC.md) and is what
+        // distinguishes this from checking `only_deposit_flag` directly.
+        if (!proc && rule.keywords.length === 0) continue;
         out.push({
           id: `inv:${r.id}`,
           type: proc ? 'purchase' : 'reserve',

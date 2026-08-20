@@ -140,6 +140,17 @@ describe('normalizeDepositRule', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it('ignores sibling keys it does not own — including the updatedAt the write path stamps', () => {
+    // `crm_settings.value.deposit` is written by a strict schema that owns
+    // `updatedAt`; the read side must not choke on it, nor on a key added by a
+    // later slice, nor let either leak into the rule the SQL binds.
+    const warn = warnSpy();
+    expect(
+      normalizeDepositRule({ keywords: ['adelanto'], updatedAt: '2026-08-20T00:00:00Z', next: 1 }),
+    ).toEqual({ keywords: ['adelanto'], label: DEFAULT_DEPOSIT_RULE.label });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('falls back to the default label when the stored label is missing or blank', () => {
     expect(normalizeDepositRule({ keywords: ['adelanto'] }).label).toBe(DEFAULT_DEPOSIT_RULE.label);
     expect(normalizeDepositRule({ keywords: ['adelanto'], label: '  ' }).label).toBe(

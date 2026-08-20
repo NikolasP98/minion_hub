@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import {
   DEFAULT_DEPOSIT_RULE,
+  DEPOSIT_KEYWORDS_MAX,
+  DEPOSIT_KEYWORD_MAX_LENGTH,
   depositMatchSql,
+  depositSortKeySql,
+  depositWriteSchema,
   notDepositMatchSql,
   escapeLikePattern,
   isDepositText,
@@ -15,7 +19,13 @@ const render = (frag: ReturnType<typeof depositMatchSql>) => dialect.sqlToQuery(
 
 describe('DEFAULT_DEPOSIT_RULE', () => {
   it('is the FACES-era default — the only occurrence of "reserva" outside this module/tests', () => {
-    expect(DEFAULT_DEPOSIT_RULE).toEqual({ keywords: ['reserva'], label: 'Reserved a consult' });
+    expect(DEFAULT_DEPOSIT_RULE).toEqual({
+      keywords: ['reserva'],
+      // The exact caption crm-journey.service.ts hardcoded before the rule
+      // existed, so an org with no crm_settings.value.deposit row keeps
+      // byte-identical output (S2 zero-regression clause).
+      label: 'Reserved a consult',
+    });
   });
 });
 
@@ -68,6 +78,27 @@ describe('depositMatchSql / notDepositMatchSql', () => {
   });
 });
 
+describe('depositSortKeySql', () => {
+  it('wraps the predicate in a CASE so a keyword rule sorts procedures (0) before deposits (1)', () => {
+    const { sql, params } = render(depositSortKeySql('ii.description', DEFAULT_DEPOSIT_RULE));
+    expect(sql).toBe('(case when coalesce((ii.description ilike $1), false) then 1 else 0 end)');
+    expect(params).toEqual(['%reserva%']);
+  });
+
+  it('stays a CASE for a ZERO-keyword rule — `order by false` is a PostgreSQL 42601', () => {
+    // This is the whole reason the helper exists: depositMatchSql compiles an
+    // empty rule to the literal `false`, which PostgreSQL rejects as a sort
+    // key ("non-integer constant in ORDER BY"). Every ORDER BY on deposit-ness
+    // goes through here, so an org that configured `keywords: []` still gets a
+    // query that runs.
+    const { sql, params } = render(
+      depositSortKeySql('ii.description', { keywords: [], label: 'x' }),
+    );
+    expect(sql).toBe('(case when false then 1 else 0 end)');
+    expect(params).toEqual([]);
+  });
+});
+
 describe('isDepositText', () => {
   const rule = DEFAULT_DEPOSIT_RULE;
 
@@ -91,5 +122,35 @@ describe('isDepositText with multiple keywords', () => {
     expect(isDepositText('ADELANTO 50%', rule)).toBe(true);
     expect(isDepositText('dejó una seña', rule)).toBe(true);
     expect(isDepositText('Reserva de Consulta', rule)).toBe(false);
+  });
+});
+
+describe('depositWriteSchema (the WRITE boundary — strict, rejects instead of clamping)', () => {
+  it('accepts a valid rule, including an explicitly empty keyword list', () => {
+    expect(
+      depositWriteSchema.safeParse({ keywords: ['adelanto'], label: 'Adelanto' }).success,
+    ).toBe(true);
+    expect(depositWriteSchema.safeParse({ keywords: [] }).success).toBe(true);
+  });
+
+  it(`REJECTS (does not truncate) a keyword longer than ${DEPOSIT_KEYWORD_MAX_LENGTH} characters`, () => {
+    expect(depositWriteSchema.safeParse({ keywords: ['x'.repeat(80)] }).success).toBe(false);
+  });
+
+  it(`REJECTS (does not cap) more than ${DEPOSIT_KEYWORDS_MAX} keywords`, () => {
+    const tooMany = Array.from({ length: DEPOSIT_KEYWORDS_MAX + 1 }, (_, i) => `kw${i}`);
+    expect(depositWriteSchema.safeParse({ keywords: tooMany }).success).toBe(false);
+  });
+
+  it('rejects unknown keys, and refuses a client-supplied updatedAt (the handler stamps it)', () => {
+    expect(depositWriteSchema.safeParse({ keywords: ['ok'], surprise: 1 }).success).toBe(false);
+    expect(
+      depositWriteSchema.safeParse({ keywords: ['ok'], updatedAt: '2026-08-20T00:00:00Z' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects blank and non-string keywords', () => {
+    expect(depositWriteSchema.safeParse({ keywords: ['  '] }).success).toBe(false);
+    expect(depositWriteSchema.safeParse({ keywords: [1] }).success).toBe(false);
   });
 });

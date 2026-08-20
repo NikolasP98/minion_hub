@@ -5,11 +5,14 @@
  * goods/services. Pure logic, no DB access — mirrors the `crm-scoring.ts`
  * precedent (SQL does the ranking, TS owns the rule).
  *
- * S2 (2026-08-17-hub-reserva-keyword-config-spec) adds `resolveDepositRule`
- * in the CRM settings layer, reading a per-org `DepositRule` from
- * `crm_settings.value.deposit`; this module stays DB-free.
+ * Per-org configuration (S2 of 2026-08-17-hub-reserva-keyword-config-spec):
+ * `resolveDepositRule` in `crm-settings.service.ts` reads the org's rule from
+ * `crm_settings.value.deposit`, normalizes it there, and hands it to every
+ * function here. This module owns the rule SHAPE and the WRITE schema; it
+ * never touches the DB.
  */
 import { sql, type SQL } from 'drizzle-orm';
+import { z } from 'zod';
 
 export interface DepositRule {
   keywords: string[];
@@ -19,16 +22,21 @@ export interface DepositRule {
 /**
  * FACES-era default kept for behavioral compatibility — NOT a universal
  * truth. This is the only occurrence of the word "reserva" in `src/server/`;
- * every call site resolves a `DepositRule` (this default until S2 wires
- * `crm_settings.value.deposit`) rather than hardcoding the keyword again.
+ * every call site resolves a `DepositRule` (from `crm_settings.value.deposit`
+ * when the org has one, this default otherwise) rather than hardcoding the
+ * keyword again.
  *
- * `label` is `'Reserved a consult'`, not `'Reserva'`: `crm-journey.service.ts`
- * is the only consumer that reads `label` (finance/similarity classify but
- * never surface it), and its shipped absent-config copy has always been
- * `'Reserved a consult'`. Since this default also backs the normalized
- * omitted-label fallback in `crm-settings.service.ts`, changing it here is
- * what lets journey use `rule.label` directly instead of hardcoding its own
- * string — see 2026-08-20-handoff-minion-hub-2131866440-spec §3.
+ * `label` is the milestone caption `crm-journey.service.ts` renders for an
+ * invoice that is deposits-only — the only consumer that reads `label` at all
+ * (finance/similarity classify but never surface it). The default is the exact
+ * string that call site hardcoded before this rule existed, so an org with no
+ * `crm_settings.value.deposit` row keeps byte-identical output. (The spec
+ * carried `'Reserva'` as the presumed default from a checkout where hub was
+ * not available; S0 recon found the real rendered string — see the
+ * "S0 actuals" amendment in FACTORY_SPEC.md.) Because this default also backs
+ * the omitted-label fallback in `crm-settings.service.ts`'s normalizer, it is
+ * what lets journey render `rule.label` directly instead of hardcoding its
+ * own string — see 2026-08-20-handoff-minion-hub-2131866440-spec §3.
  */
 export const DEFAULT_DEPOSIT_RULE: DepositRule = {
   keywords: ['reserva'],
@@ -146,3 +154,40 @@ export function isDepositText(text: string | null | undefined, rule: DepositRule
   const lower = text.toLowerCase();
   return rule.keywords.some((k) => lower.includes(k.toLowerCase()));
 }
+
+// ── Per-org configuration (S2) ───────────────────────────────────────────────
+// `crm_settings.value.deposit` holds the org's own deposit vocabulary. The
+// caps below bound BOTH directions and are the single source of truth for
+// them: `crm-settings.service.ts` imports them for its READ normalizer
+// (`normalizeDepositRule`, which clamps a stored blob) and the strict WRITE
+// schema below rejects over-cap input outright. There is deliberately no read
+// schema here — reading is lenient by contract and belongs with the query.
+
+/** Max characters kept per keyword (and for the label) after trimming. */
+export const DEPOSIT_KEYWORD_MAX_LENGTH = 40;
+/** Max keywords kept. N keywords multiply the per-row ILIKE cost on an
+ *  unindexed `fin_invoice_items.description`, so the list is capped. */
+export const DEPOSIT_KEYWORDS_MAX = 20;
+
+/**
+ * WRITE boundary — STRICT. Unknown keys are rejected, `updatedAt` is not
+ * client-supplyable (the handler stamps it), and over-cap input is REJECTED
+ * rather than silently truncated, so an operator who types 21 keywords is
+ * told, not quietly given 20.
+ *
+ * TODO(handoff): defined and unit-tested here but not yet wired to an HTTP
+ * handler — S3 of 2026-08-17-hub-reserva-keyword-config-spec adds the
+ * `/api/crm/settings` write path (strict parse + key-level jsonb merge +
+ * `staleDerived` disclosure) that consumes it.
+ */
+export const depositWriteSchema = z
+  .object({
+    keywords: z
+      .array(z.string().trim().min(1).max(DEPOSIT_KEYWORD_MAX_LENGTH))
+      .max(DEPOSIT_KEYWORDS_MAX),
+    label: z.string().trim().min(1).max(DEPOSIT_KEYWORD_MAX_LENGTH).optional(),
+  })
+  .strict();
+
+/** The stored shape of `crm_settings.value.deposit`. */
+export type DepositConfig = z.infer<typeof depositWriteSchema> & { updatedAt?: string };

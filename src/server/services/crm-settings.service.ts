@@ -2,7 +2,12 @@ import { eq } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { crmSettings } from '$server/db/pg-crm-schema';
-import { DEFAULT_DEPOSIT_RULE, type DepositRule } from './crm-deposit-rule';
+import {
+  DEFAULT_DEPOSIT_RULE,
+  DEPOSIT_KEYWORDS_MAX,
+  DEPOSIT_KEYWORD_MAX_LENGTH,
+  type DepositRule,
+} from './crm-deposit-rule';
 
 /**
  * The CRM settings boundary — the ONE place `crm_settings.value` is read.
@@ -47,11 +52,13 @@ export async function readCrmSettingsValue(ctx: CoreCtx): Promise<Record<string,
 /** Upper bound on stored keywords. Each becomes a bound ILIKE/NOT ILIKE clause
  *  in every finance/contacts predicate and a component of the finance and
  *  roster cache keys, so an unbounded array would grow SQL and cache-key size
- *  without limit. */
-const MAX_DEPOSIT_KEYWORDS = 20;
+ *  without limit. Shared with the strict write schema (`depositWriteSchema`)
+ *  so the read clamp and the write rejection cannot drift apart — an operator
+ *  can never store a rule that this reader would silently truncate. */
+const MAX_DEPOSIT_KEYWORDS = DEPOSIT_KEYWORDS_MAX;
 /** Upper bound on a single keyword or the label, for the same reason: one
  *  arbitrarily long string is an arbitrarily long SQL parameter. */
-const MAX_VALUE_LENGTH = 40;
+const MAX_VALUE_LENGTH = DEPOSIT_KEYWORD_MAX_LENGTH;
 
 function warnAndDefault(reason: string): DepositRule {
   console.warn(

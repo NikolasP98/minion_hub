@@ -165,6 +165,20 @@ describe('contactFinanceMap', () => {
   });
 });
 
+describe('contactFinanceMap settings-read discipline', () => {
+  it('resolves the rule ONCE per call, not once per query fragment', async () => {
+    // resolveDepositRule opens its OWN withOrgCore transaction and the RLS pool
+    // defaults to a single connection, so a second resolve inside this call's
+    // transaction is a self-deadlock, not a slow query (see the transaction
+    // discipline note in crm-settings.service.ts). One call, one read.
+    resolveDepositRule.mockClear();
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await contactFinanceMap(ctx(db, 'org-resolve-once'));
+    expect(resolveDepositRule).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('contactFinanceMap cache freshness on a same-tenant rule change', () => {
   it('a changed resolved rule is visible on the very next call, and each rule keeps its own cache entry', async () => {
     const { configureCache, MemoryBackend } = await import('@minion-stack/cache');

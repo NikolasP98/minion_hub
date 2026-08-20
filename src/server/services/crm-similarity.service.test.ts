@@ -7,6 +7,14 @@ import { normalizeSql } from '$server/test-utils/normalize-sql';
 const bothEnabled = vi.fn(async () => true);
 vi.mock('./modules.service', () => ({ bothEnabled: (...a: unknown[]) => bothEnabled() }));
 
+// The org's deposit rule is resolved from crm_settings by the settings layer
+// (proven there, against real blobs, in crm-settings.service.test.ts). Mocked
+// here so each test can state WHICH org's vocabulary the service is threading.
+const resolveDepositRule = vi.fn<() => Promise<DepositRule>>(async () => DEFAULT_DEPOSIT_RULE);
+vi.mock('./crm-settings.service', () => ({ resolveDepositRule: () => resolveDepositRule() }));
+
+import { DEFAULT_DEPOSIT_RULE, type DepositRule } from './crm-deposit-rule';
+
 const embeddingsEnabled = vi.fn(() => true);
 vi.mock('./embeddings', () => ({
   embeddingsEnabled: () => embeddingsEnabled(),
@@ -63,5 +71,40 @@ describe('buildWinIndex', () => {
     resolve([]);
     const result = await buildWinIndex(ctx(db));
     expect(result).toEqual({ indexed: 0 });
+  });
+});
+
+describe('per-org deposit rule (S2 — crm_settings.value.deposit decides what counts as "bought")', () => {
+  it('the org’s vocabulary is bound into both the filter and the HAVING clause', async () => {
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto', 'seña'], label: 'Adelanto' });
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await buildWinIndex(ctx(db));
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    expect(sql).toContain(
+      'filter (where (ii.description is not null and coalesce((ii.description not ilike $1 and ii.description not ilike $2), true)))',
+    );
+    expect(sql).toContain(
+      'having bool_or((ii.description is not null and coalesce((ii.description not ilike $3 and ii.description not ilike $4), true)))',
+    );
+    expect(params).toEqual(['%adelanto%', '%seña%', '%adelanto%', '%seña%']);
+  });
+
+  it('an org with NO deposit concept (keywords: []) treats every described line as bought', async () => {
+    resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'x' });
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await buildWinIndex(ctx(db));
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    expect(sql).toContain('filter (where (ii.description is not null and true))');
+    expect(params).toEqual([]);
+  });
+
+  it('the rule is resolved ONCE per rebuild — not once per buyer', async () => {
+    resolveDepositRule.mockClear();
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await buildWinIndex(ctx(db));
+    expect(resolveDepositRule).toHaveBeenCalledTimes(1);
   });
 });
