@@ -3,16 +3,28 @@ import { cached, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
-import { DEFAULT_DEPOSIT_RULE, depositMatchSql, notDepositMatchSql } from './crm-deposit-rule';
+import {
+  depositMatchSql,
+  depositSortKeySql,
+  depositRuleFingerprint,
+  notDepositMatchSql,
+  type DepositRule,
+} from './crm-deposit-rule';
+import { resolveDepositRule } from './crm-settings.service';
+import { scopeData } from './base';
 
 // A line item may be a booking deposit rather than an actual procedure — the
 // signal that splits "reservó pero no compró" from real buyers. Which words
-// count as a deposit is org-configurable (crm-deposit-rule.ts); this file
-// only consumes DEFAULT_DEPOSIT_RULE until S2 wires per-org config.
-// TODO(handoff): rule is the module default here — S2 of 2026-08-17-hub-reserva-keyword-config-spec reads it from crm_settings
-const DEPOSIT_RULE = DEFAULT_DEPOSIT_RULE;
-const IS_DEPOSIT = depositMatchSql('ii.description', DEPOSIT_RULE);
-const IS_PROCEDURE = sql`(ii.description is not null and ${notDepositMatchSql('ii.description', DEPOSIT_RULE)})`;
+// count as a deposit is org-configurable (crm-deposit-rule.ts), resolved
+// per-org by crm-settings.service.ts's resolveDepositRule. Every
+// predicate below is built call-time from a rule resolved once per public
+// function invocation — never frozen at module load.
+function isDepositSql(rule: DepositRule) {
+  return depositMatchSql('ii.description', rule);
+}
+function isProcedureSql(rule: DepositRule) {
+  return sql`(ii.description is not null and ${notDepositMatchSql('ii.description', rule)})`;
+}
 
 /**
  * Canonical contact↔invoice bridge via the PARTY SPINE (contact.party_id =
@@ -43,15 +55,17 @@ export const CONTACT_PARTY = sql`contact_party as (
  * same rows into the SQL funnel floor (financeFloorStage's server twin). A second
  * hand-written copy would drift the moment the deposit rule becomes per-org.
  */
-export const CONTACT_INVOICE_CLASS = sql`contact_invoice_class as (
+export function contactInvoiceClassSql(rule: DepositRule) {
+  return sql`contact_invoice_class as (
   select cp.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
-         bool_or(${IS_DEPOSIT}) has_deposit, bool_or(${IS_PROCEDURE}) has_proc
+         bool_or(${isDepositSql(rule)}) has_deposit, bool_or(${isProcedureSql(rule)}) has_proc
   from contact_party cp
   join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
   join fin_invoices fi on fi.client_id = fc.id
   left join fin_invoice_items ii on ii.invoice_id = fi.id
   group by cp.contact_id, fi.id, fi.total, fi.issued_at
 )`;
+}
 
 /** Aggregates over CONTACT_INVOICE_CLASS rows grouped by contact — the SQL twin
  *  of the ContactFinance purchased/reservedOnly/loyal fields below. `coalesce`
@@ -75,8 +89,12 @@ export interface ContactFinance {
 
 export async function contactFinanceMap(ctx: CoreCtx): Promise<Record<string, ContactFinance>> {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return {};
+  const rule = await resolveDepositRule(ctx);
   return cached(
-    keys.hub('crm-fin-map', { t: ctx.tenantId }),
+    keys.hub('crm-fin-map', {
+      t: ctx.tenantId,
+      d: scopeData({ rule: depositRuleFingerprint(rule) }),
+    }),
     // crm×finances intersection: either domain's invalidation busts it.
     {
       ttl: '2m',
@@ -86,14 +104,17 @@ export async function contactFinanceMap(ctx: CoreCtx): Promise<Record<string, Co
         ...tags.tenantDomain(ctx.tenantId, 'finances'),
       ],
     },
-    () => loadContactFinanceMap(ctx),
+    () => loadContactFinanceMap(ctx, rule),
   );
 }
 
-async function loadContactFinanceMap(ctx: CoreCtx): Promise<Record<string, ContactFinance>> {
+async function loadContactFinanceMap(
+  ctx: CoreCtx,
+  rule: DepositRule,
+): Promise<Record<string, ContactFinance>> {
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
-      with ${CONTACT_PARTY}, ${CONTACT_INVOICE_CLASS}
+      with ${CONTACT_PARTY}, ${contactInvoiceClassSql(rule)}
       select contact_id,
              coalesce(sum(total),0)::float8 revenue, count(*)::int invoices, max(issued_at) last,
              ${FIN_PURCHASED} purchased, ${FIN_RESERVED_ONLY} reserved_only, ${FIN_LOYAL} loyal
@@ -168,6 +189,7 @@ export async function crmRevenueSummary(ctx: CoreCtx): Promise<{
 
 export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
+  const rule = await resolveDepositRule(ctx);
   return withOrgCore(ctx, async (tx) => {
     const invoices = (await tx.execute(sql`
       with cparty as (
@@ -177,7 +199,7 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
       select fi.id, fi.document_id, fi.issued_at, coalesce(fi.total,0)::float8 total, fi.status,
              -- the "what was done": a representative line, procedures first (deposit lines last), priciest first.
              (select ii.description from fin_invoice_items ii where ii.invoice_id = fi.id and ii.description is not null
-                order by ${depositMatchSql('ii.description', DEPOSIT_RULE)} asc, ii.total desc nulls last limit 1) as item
+                order by ${depositSortKeySql('ii.description', rule)} asc, ii.total desc nulls last limit 1) as item
       from fin_invoices fi
       join fin_clients fc on fc.id = fi.client_id
       where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
@@ -197,7 +219,7 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
         where id = ${contactId} and org_id = current_setting('app.current_org_id', true) and party_id is not null),
       inv as (
         select fi.id, coalesce(fi.total,0)::float8 total, fi.issued_at,
-               bool_or(${IS_DEPOSIT}) has_deposit, bool_or(${IS_PROCEDURE}) has_proc
+               bool_or(${isDepositSql(rule)}) has_deposit, bool_or(${isProcedureSql(rule)}) has_proc
         from fin_invoices fi join fin_clients fc on fc.id = fi.client_id
         left join fin_invoice_items ii on ii.invoice_id = fi.id
         where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
@@ -320,6 +342,7 @@ export async function rankCustomers(
   limit = 5,
 ): Promise<TopCustomer[]> {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return [];
+  const rule = await resolveDepositRule(ctx);
   const lim = Math.min(20, Math.max(1, Math.floor(limit)));
   // `by` is a controlled enum (never raw user input), so these column choices
   // are safe to inline.
@@ -347,7 +370,7 @@ export async function rankCustomers(
                 join fin_invoices fi on fi.id = ii.invoice_id
                 join fin_clients fc on fc.id = fi.client_id and fc.party_id = a.party_id
                 where fc.org_id = current_setting('app.current_org_id', true)
-                  and ii.description is not null and ${notDepositMatchSql('ii.description', DEPOSIT_RULE)}
+                  and ii.description is not null and ${notDepositMatchSql('ii.description', rule)}
                 group by ii.description order by sum(coalesce(ii.total,0)) desc nulls last limit 1) as top_product
       from agg a
       left join crm_contacts c on c.id = a.contact_id

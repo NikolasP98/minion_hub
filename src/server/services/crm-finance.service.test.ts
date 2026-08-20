@@ -3,15 +3,20 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 import { createMockDb } from '$server/test-utils/mock-db';
 import { normalizeSql } from '$server/test-utils/normalize-sql';
+import { DEFAULT_DEPOSIT_RULE, type DepositRule } from './crm-deposit-rule';
 const bothEnabled = vi.fn(async () => true);
 vi.mock('./modules.service', () => ({ bothEnabled: (...a: unknown[]) => bothEnabled() }));
+const resolveDepositRule = vi.fn(async (): Promise<DepositRule> => DEFAULT_DEPOSIT_RULE);
+vi.mock('./crm-settings.service', () => ({
+  resolveDepositRule: (...a: unknown[]) => resolveDepositRule(...(a as [])),
+}));
 import {
   contactFinanceMap,
   contactCashflow,
   contactFinanceSummary,
   rankCustomers,
 } from './crm-finance.service';
-const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
+const ctx = (db: unknown, tenantId = 'org-1') => ({ db: db as never, tenantId });
 
 const dialect = new PgDialect();
 /** Last SQL fragment handed to `tx.execute` — the data query, after withOrgCore's setup calls. */
@@ -115,6 +120,109 @@ describe('contactFinanceMap', () => {
     );
     expect(params).toEqual(['%reserva%', '%reserva%']);
   });
+
+  it('PARITY: a custom resolved rule binds its own escaped keywords, never %reserva%', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto', 'seña'], label: 'Adelanto' });
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: 0,
+        invoices: 0,
+        last: null,
+        purchased: false,
+        reserved_only: false,
+        loyal: false,
+      },
+    ]);
+    await contactFinanceMap(ctx(db));
+    const { params } = dialect.sqlToQuery(lastExecutedSql(db));
+    expect(params).toEqual(['%adelanto%', '%seña%', '%adelanto%', '%seña%']);
+    expect(params).not.toContain('%reserva%');
+  });
+
+  it('PARITY: an explicitly empty keyword set compiles to literal false/true — no dropped predicate, no bound pattern', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: 0,
+        invoices: 0,
+        last: null,
+        purchased: false,
+        reserved_only: false,
+        loyal: false,
+      },
+    ]);
+    await contactFinanceMap(ctx(db));
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    expect(normalizeSql(sql)).toContain(normalizeSql('bool_or(false) has_deposit'));
+    expect(normalizeSql(sql)).toContain(
+      normalizeSql('bool_or((ii.description is not null and true)) has_proc'),
+    );
+    expect(params).toEqual([]);
+  });
+});
+
+describe('contactFinanceMap cache freshness on a same-tenant rule change', () => {
+  it('a changed resolved rule is visible on the very next call, and each rule keeps its own cache entry', async () => {
+    const { configureCache, MemoryBackend } = await import('@minion-stack/cache');
+    configureCache({ backend: new MemoryBackend(), namespace: 'crm-finance-test' });
+
+    const tenant = 'org-deposit-fingerprint';
+    const { db, resolve } = createMockDb();
+
+    resolveDepositRule.mockResolvedValueOnce(DEFAULT_DEPOSIT_RULE);
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: 100,
+        invoices: 1,
+        last: null,
+        purchased: true,
+        reserved_only: false,
+        loyal: false,
+      },
+    ]);
+    const first = await contactFinanceMap(ctx(db, tenant));
+    expect(first['c1']).toMatchObject({ revenue: 100, purchased: true });
+
+    // Same tenant, DIFFERENT resolved rule + different underlying data — the
+    // previous rule's cached result must not leak into this call.
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto'], label: 'Adelanto' });
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: 999,
+        invoices: 2,
+        last: null,
+        purchased: false,
+        reserved_only: true,
+        loyal: false,
+      },
+    ]);
+    const second = await contactFinanceMap(ctx(db, tenant));
+    expect(second['c1']).toMatchObject({ revenue: 999, reservedOnly: true });
+
+    // Back to the default rule: its own cache entry is still fresh (TTL not
+    // expired), so this is a cache HIT — the loader's new (stale-marker) rows
+    // must NOT be what's returned.
+    resolveDepositRule.mockResolvedValueOnce(DEFAULT_DEPOSIT_RULE);
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: -1,
+        invoices: -1,
+        last: null,
+        purchased: false,
+        reserved_only: false,
+        loyal: false,
+      },
+    ]);
+    const third = await contactFinanceMap(ctx(db, tenant));
+    expect(third['c1']).toMatchObject({ revenue: 100, purchased: true });
+  });
 });
 
 describe('contactFinanceSummary', () => {
@@ -135,7 +243,7 @@ describe('contactFinanceSummary', () => {
         select fi.id, fi.document_id, fi.issued_at, coalesce(fi.total,0)::float8 total, fi.status,
                -- the "what was done": a representative line, procedures first (deposit lines last), priciest first.
                (select ii.description from fin_invoice_items ii where ii.invoice_id = fi.id and ii.description is not null
-                  order by coalesce((ii.description ilike $2), false) asc, ii.total desc nulls last limit 1) as item
+                  order by (case when coalesce((ii.description ilike $2), false) then 1 else 0 end) asc, ii.total desc nulls last limit 1) as item
         from fin_invoices fi
         join fin_clients fc on fc.id = fi.client_id
         where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
@@ -164,6 +272,55 @@ describe('contactFinanceSummary', () => {
       ),
     );
     expect(aggQuery.params).toEqual(['c1', '%reserva%', '%reserva%']);
+  });
+
+  it('PARITY: a custom resolved rule binds its own escaped keywords in both compiled queries, never %reserva%', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto', 'seña'], label: 'Adelanto' });
+    resolve([
+      { id: 'inv1', document_id: 'd1', issued_at: null, total: 0, status: 's', item: null },
+    ]);
+    await contactFinanceSummary(ctx(db), 'c1');
+
+    const itemQuery = dialect.sqlToQuery(executedSqlContaining(db, 'as item'));
+    expect(itemQuery.params).toEqual(['c1', '%adelanto%', '%seña%']);
+    expect(itemQuery.params).not.toContain('%reserva%');
+
+    const aggQuery = dialect.sqlToQuery(executedSqlContaining(db, 'proc_dates'));
+    expect(aggQuery.params).toEqual(['c1', '%adelanto%', '%seña%', '%adelanto%', '%seña%']);
+    expect(aggQuery.params).not.toContain('%reserva%');
+  });
+
+  it('PARITY: an explicitly empty keyword set compiles to literal false/true — no dropped predicate, no bound pattern, invoice arithmetic untouched', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    resolve([
+      {
+        id: 'inv1',
+        document_id: 'd1',
+        issued_at: null,
+        total: 500,
+        status: 's',
+        item: 'Cualquier cosa',
+      },
+    ]);
+    const summary = await contactFinanceSummary(ctx(db), 'c1');
+
+    const itemQuery = dialect.sqlToQuery(executedSqlContaining(db, 'as item'));
+    expect(normalizeSql(itemQuery.sql)).toContain(
+      normalizeSql('order by (case when false then 1 else 0 end) asc'),
+    );
+    expect(itemQuery.params).toEqual(['c1']);
+
+    const aggQuery = dialect.sqlToQuery(executedSqlContaining(db, 'proc_dates'));
+    expect(normalizeSql(aggQuery.sql)).toContain(normalizeSql('bool_or(false) has_deposit'));
+    expect(normalizeSql(aggQuery.sql)).toContain(
+      normalizeSql('bool_or((ii.description is not null and true)) has_proc'),
+    );
+    expect(aggQuery.params).toEqual(['c1']);
+    // A zero-keyword rule matches nothing ⇒ every line item is a procedure —
+    // this contact is a purchaser, and totals/counts come from the same row.
+    expect(summary?.recentInvoices[0].item).toBe('Cualquier cosa');
   });
 });
 
@@ -252,6 +409,62 @@ describe('rankCustomers', () => {
       ),
     );
     expect(params).toEqual(['%reserva%']);
+  });
+
+  it('PARITY: a custom resolved rule binds its own escaped keywords in the top_product predicate, never %reserva%', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto', 'seña'], label: 'Adelanto' });
+    resolve([]);
+    await rankCustomers(ctx(db), 'revenue', 5);
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    // NOT-deposit polarity: the top product is the priciest line that matches
+    // NONE of the configured keywords, so each keyword contributes its own
+    // `not ilike` conjunct.
+    expect(normalizeSql(sql)).toContain(
+      normalizeSql('coalesce((ii.description not ilike $1 and ii.description not ilike $2), true)'),
+    );
+    expect(params).toEqual(['%adelanto%', '%seña%']);
+    expect(params).not.toContain('%reserva%');
+  });
+
+  it('PARITY: an explicitly empty keyword set compiles top_product to a literal true — no dropped predicate, no bound pattern', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    resolve([]);
+    await rankCustomers(ctx(db), 'revenue', 5);
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    // A dropped predicate would leave `and ii.description is not null group by`
+    // — the widened match this module exists to prevent.
+    expect(normalizeSql(sql)).toContain(normalizeSql('and ii.description is not null and true'));
+    expect(params).toEqual([]);
+  });
+
+  it('the rule changes only top_product — revenue/invoice arithmetic comes from the same aggregate either way', async () => {
+    const row = {
+      contact_id: 'c1',
+      name: 'Ana',
+      revenue: 500,
+      invoices: 2,
+      first_at: '2026-01-01T00:00:00Z',
+      last_at: '2026-03-01T00:00:00Z',
+    };
+    const { db: defaultDb, resolve: resolveDefault } = createMockDb();
+    resolveDefault([{ ...row, top_product: 'Botox facial' }]);
+    const underDefault = await rankCustomers(ctx(defaultDb), 'revenue', 5);
+
+    const { db: customDb, resolve: resolveCustom } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto'], label: 'Adelanto' });
+    // Under a rule that does not name "reserva", the deposit line stops being
+    // excluded and (being the priciest) becomes the top product.
+    resolveCustom([{ ...row, top_product: 'Reserva de cita' }]);
+    const underCustom = await rankCustomers(ctx(customDb), 'revenue', 5);
+
+    expect(underDefault[0].topProduct).toBe('Botox facial');
+    expect(underCustom[0].topProduct).toBe('Reserva de cita');
+    expect(underCustom[0].revenue).toBe(underDefault[0].revenue);
+    expect(underCustom[0].invoices).toBe(underDefault[0].invoices);
+    expect(underCustom[0].firstPurchaseAt).toBe(underDefault[0].firstPurchaseAt);
+    expect(underCustom[0].lastPurchaseAt).toBe(underDefault[0].lastPurchaseAt);
   });
 });
 

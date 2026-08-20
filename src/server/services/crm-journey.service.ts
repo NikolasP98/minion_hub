@@ -51,6 +51,12 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
     const out: Milestone[] = [];
 
     if (finance) {
+      // The representative-item ORDER BY below interpolates depositMatchSql
+      // directly, which is safe ONLY because DEPOSIT_RULE still has keywords: a
+      // zero-keyword rule compiles that predicate to the literal `false`, and
+      // PostgreSQL rejects a bare constant as a sort key. Whoever makes this
+      // call site org-configurable must switch to `depositSortKeySql`
+      // (crm-deposit-rule.ts), as crm-finance.service.ts already has.
       const rows = (await tx.execute(sql`
         select fi.id::text id, fi.issued_at at, coalesce(fi.total,0)::float8 amount,
                bool_or(${depositMatchSql('ii.description', DEPOSIT_RULE)}) only_reserva_flag,
