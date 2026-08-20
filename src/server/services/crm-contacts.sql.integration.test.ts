@@ -235,6 +235,8 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
   it.each([
     ['5198', ids.phone],
     ['4455', ids.dni],
+    // Party-spine DNI: "No score" has no custom_fields.dni, only party doc_number 99887766.
+    ['9988', ids.unscored],
   ])('matches exact phone/DNI prefix %s', async (search, expectedId) => {
     const page = await rankContactsPage({ db: {} as never, tenantId: org }, { search, limit: 20 });
     expect(page.rows.map((row) => row.contact_id)).toEqual([expectedId]);
@@ -258,15 +260,18 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     }
   });
 
-  it('a masked principal cannot probe the phone/DNI digits the mask hides', async () => {
-    const page = await rankContactsPage(
-      { db: {} as never, tenantId: org },
-      { search: '5198', limit: 20, maskSensitive: true },
-    );
-    expect(page).toEqual({ rows: [], total: 0 });
-  });
+  it.each(['5198', '9988'])(
+    'a masked principal cannot probe the phone/DNI/doc_number digits the mask hides %s',
+    async (search) => {
+      const page = await rankContactsPage(
+        { db: {} as never, tenantId: org },
+        { search, limit: 20, maskSensitive: true },
+      );
+      expect(page).toEqual({ rows: [], total: 0 });
+    },
+  );
 
-  it.each(['8765', '5566'])('does not match phone/DNI mid-string %s', async (search) => {
+  it.each(['8765', '5566', '8877'])('does not match phone/DNI mid-string %s', async (search) => {
     const page = await rankContactsPage({ db: {} as never, tenantId: org }, { search, limit: 20 });
     expect(page).toEqual({ rows: [], total: 0 });
   });
