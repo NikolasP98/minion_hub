@@ -5,10 +5,21 @@ command, its comparison rules and its wiring are checked in and covered by tests
 is the four evidence artifacts in [Evidence to record](#evidence-to-record), which can only be
 produced by someone holding real non-production and production credentials.
 
-The block is enforced, not merely documented: `scripts/rekey-readiness-gate.test.ts` reads the
-shipped `updateServer` source, and the moment it carries a `servers.tenantId` predicate the suite
-fails unless `tests/rekey-readiness/evidence.json` records both passing audits and the re-key
-deployment. Slice 2 therefore cannot land ahead of its evidence by accident.
+Check the current state in one command — it needs no credentials and reads only a file:
+
+```bash
+bun run rekey:readiness      # exits 1 and lists every missing artifact while blocked
+```
+
+The block is enforced, not merely documented, from two directions:
+
+- `bun run rekey:readiness` exits 1 until all four artifacts are recorded and passing. It asks the
+  question unconditionally, so "nobody has done the human half yet" is a visible, non-zero exit
+  rather than silence.
+- `scripts/rekey-readiness-gate.test.ts` reads the shipped `updateServer` source, and the moment it
+  carries a `servers.tenantId` predicate the suite fails unless `tests/rekey-readiness/evidence.json`
+  records both passing audits and the re-key deployment. Slice 2 cannot land ahead of its evidence
+  by accident.
 
 **Owner:** whoever holds the hub's Turso and Supabase service-role credentials.
 **Spec:** `FACTORY_SPEC.md` (`specs/2026-08-18-hub-updateserver-tenant-scope-spec.md`), Slice 1
@@ -51,8 +62,15 @@ TURSO_DB_URL=<nonprod libsql url> \
 TURSO_DB_AUTH_TOKEN=<nonprod turso token> \
 PUBLIC_SUPABASE_URL=<nonprod supabase url> \
 SUPABASE_SERVICE_ROLE_KEY=<nonprod service role key> \
-bun run audit:server-tenant-scope
+REKEY_RECORDED_BY="<your name>" \
+bun run audit:server-tenant-scope -- --record non-production
 ```
+
+`--record` writes the counters this run actually produced into
+`tests/rekey-readiness/evidence.json`, and only on a PASS — it refuses to record a run the gate
+would reject, so a written entry always means that environment passed. Drop the flag if you only
+want to look. `REKEY_RECORDED_BY` is optional; without it the entry records the login name, which
+on a shared operator box is not an accountable identity.
 
 ## Step 2 — production
 
@@ -63,7 +81,8 @@ TURSO_DB_URL=<prod libsql url> \
 TURSO_DB_AUTH_TOKEN=<prod turso token> \
 PUBLIC_SUPABASE_URL=<prod supabase url> \
 SUPABASE_SERVICE_ROLE_KEY=<prod service role key> \
-bun run audit:server-tenant-scope
+REKEY_RECORDED_BY="<your name>" \
+bun run audit:server-tenant-scope -- --record production
 ```
 
 ## Reading the result
@@ -116,9 +135,20 @@ is present yet.
    are plans, one of them superseded; neither is apply evidence.
 4. **Rollback/recovery note for that re-key** — from its owner.
 
-Record them in `tests/rekey-readiness/evidence.json` (create the file; it is deliberately absent
-while the work is parked) and paste the same two outputs into the PR thread. The JSON is what the
-gate checks; the PR paste is what a human reviewer reads.
+Artifacts 1 and 2 are written for you by `--record` (Steps 1 and 2); artifacts 3 and 4 are typed in
+by hand, because only the re-key's owner has them. The file lives at
+`tests/rekey-readiness/evidence.json` and is deliberately absent while the work is parked — the
+first `--record` run creates it, with a blank `rekeyRecord` showing what is still owed. Paste the
+same two outputs into the PR thread as well: the JSON is what the gate checks, the PR paste is what
+a human reviewer reads.
+
+After filling in `rekeyRecord`, confirm with:
+
+```bash
+bun run rekey:readiness      # exits 0 and prints rekey_readiness=READY missing=0 when complete
+```
+
+The finished file looks like this:
 
 ```json
 {
@@ -128,7 +158,7 @@ gate checks; the PR paste is what a human reviewer reads.
       "environment": "non-production",
       "recordedAt": "<ISO 8601 timestamp of the run>",
       "recordedBy": "<who ran it>",
-      "command": "bun run audit:server-tenant-scope",
+      "command": "bun run audit:server-tenant-scope -- --record non-production",
       "tursoServerRows": 0,
       "nullTenantIds": 0,
       "unmatchedTenantIds": 0
@@ -137,7 +167,7 @@ gate checks; the PR paste is what a human reviewer reads.
       "environment": "production",
       "recordedAt": "<ISO 8601 timestamp of the run>",
       "recordedBy": "<who ran it>",
-      "command": "bun run audit:server-tenant-scope",
+      "command": "bun run audit:server-tenant-scope -- --record production",
       "tursoServerRows": 0,
       "nullTenantIds": 0,
       "unmatchedTenantIds": 0
@@ -152,9 +182,10 @@ gate checks; the PR paste is what a human reviewer reads.
 }
 ```
 
-Transcribe `tursoServerRows` from each run's real `turso_server_rows=<n>`; the gate rejects a zero,
-for the same fail-closed reason the audit itself does. It also rejects an audit run for only one
-environment, a non-zero mismatch counter, and an empty field in `rekeyRecord`.
+`tursoServerRows` is copied from the run's real `turso_server_rows=<n>` by `--record`. Hand-editing
+it is possible but pointless: the gate rejects a zero, for the same fail-closed reason the audit
+itself does, and also rejects an audit run for only one environment, a non-zero mismatch counter,
+and an empty field in `rekeyRecord`.
 
 PR paste template:
 
@@ -164,7 +195,7 @@ PR paste template:
 **Non-production** (`<environment name>`, `<date>`)
 $ TURSO_DB_URL=<redacted> TURSO_DB_AUTH_TOKEN=<redacted> \
   PUBLIC_SUPABASE_URL=<redacted> SUPABASE_SERVICE_ROLE_KEY=<redacted> \
-  bun run audit:server-tenant-scope
+  bun run audit:server-tenant-scope -- --record non-production
 <paste full output>
 
 **Production** (`<date>`)
@@ -175,14 +206,57 @@ $ <same command with production credentials, redacted>
 **Rollback/recovery note:** <link or text>
 ```
 
+## Decision point for the human merge gate
+
+Slice 1 cannot be closed by any agent, so the call belongs to a human. Both options have a cost,
+and the cheaper-looking one is not free — that is what this section exists to say out loud.
+
+**Option A — keep Slice 2 parked until the evidence exists (what this branch implements).**
+Fail-closed with respect to the _data_: no predicate is added while it is unknown whether a live
+row would be silently denied by it. The cost is that the defect Slice 2 closes stays open in
+production for as long as the evidence takes. That defect is real and pinned by a test
+(`src/server/services/server.service.test.ts`, "cross-tenant update"): `updateServer` matches on
+`servers.id` alone, and `assertOwnsOrAdmin()` in `src/routes/api/servers/[id]/+server.ts` returns
+true for **any** admin, so an admin of one organization who supplies another organization's server
+id patches that row — name, url, gateway token — and receives `ok`. Parking is a decision to accept
+that exposure for the duration, not a neutral hold.
+
+**Option B — ship the predicate now, before the evidence.** Fail-closed with respect to
+_authorization_, at the risk the spec parked it for: if any live row still carries a pre-re-key
+tenant key, its legitimate owner's updates start no-op'ing silently. The branch does not take this
+option, for two reasons. The spec makes the audit a prerequisite of the predicate, not advice; and
+a slice whose prerequisite gate is unmet is not the place to override that gate — that is the
+human's call to make explicitly, with the residual risk in [What is already proven without
+credentials](#what-is-already-proven-without-credentials) in front of them.
+
+If the decision is Option B, say so on the PR and record it in the evidence file's history: the
+gate will red until `tests/rekey-readiness/evidence.json` is complete, and it should — an override
+ought to be visible, not silent.
+
 ## What is already proven without credentials
 
-So a reviewer does not have to re-derive it: `scripts/audit-server-tenant-scope.test.ts` covers the
+**About the live risk.** `src/server/services/server.service.test.ts` runs the shipped service
+against an in-memory `servers` table that really applies the predicates the service builds, and
+shows that `listServers` (both the admin branch and the `user_servers`-linked branch),
+`getServerToken` and `deleteServer` **already** require `servers.tenantId === ctx.tenantId`. So a
+row carrying a pre-re-key key is, today, already unlistable, untokenable and undeletable for its
+tenant: the equality Slice 2 would add to `updateServer` is load-bearing on every other server read
+path in the file. Two honest limits on that: it bounds the _consequence_ of a mismatch, it does not
+show that no mismatched row exists — only the two real runs above can — and `assertOwnsOrAdmin()`
+can authorize a server id that did not come from `listServers` (it also consults Supabase
+`user_gateway` and the Turso `user_servers` link), so "unreachable through the hub's own reads" is
+not the same as "unreachable".
+
+**About the tooling.** So a reviewer does not have to re-derive it:
+`scripts/audit-server-tenant-scope.test.ts` covers the
 comparison rules against fixtures (matching keys, several servers per tenant, null and empty-string
 keys, legacy keys with sampling, the ten-id sample cap, and both fail-closed empty-source cases),
 the paginated organization read at its page boundaries, and the command's refusal to start when a
 credential is missing even with a repository dotenv file present. It also rehearses the whole
 command end-to-end against local stand-ins, and covers the gate's own rules — that it stays quiet
 while the predicate is parked, and reds on a missing environment, a zero-row run, a non-zero
-mismatch counter, or an incomplete re-key record. That rehearsal exercises the wiring; it is **not**
-evidence about any real environment and does not substitute for the two runs above.
+mismatch counter, or an incomplete re-key record. It also covers `--record` (it writes the counters
+a real run produced, refuses an unknown environment name, refuses a run the gate would reject, and
+preserves the other environment's entry and any hand-written `rekeyRecord`) and both exit codes of
+`bun run rekey:readiness`. That rehearsal exercises the wiring; it is **not** evidence about any
+real environment and does not substitute for the two runs above.
