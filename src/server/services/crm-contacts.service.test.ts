@@ -73,6 +73,21 @@ vi.mock('./modules.service', async (importOriginal) => ({
   bothEnabled: () => mockBothEnabled(),
 }));
 
+// runRankQuery resolves the org's deposit rule BEFORE opening its txn (the
+// finance funnel floor must use the same vocabulary ContactFinance does). Only
+// that resolution is mocked — readCrmSettingsValue stays REAL so the harvest-scope
+// tests above keep exercising the actual crm_settings read.
+const { mockResolveDepositRule } = vi.hoisted(() => ({
+  mockResolveDepositRule: vi.fn(async () => ({
+    keywords: ['reserva'],
+    label: 'Reserved a consult',
+  })),
+}));
+vi.mock('./crm-settings.service', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveDepositRule: () => mockResolveDepositRule(),
+}));
+
 function useExecMock(execute: ReturnType<typeof vi.fn>) {
   mockWithOrgCore.mockImplementationOnce((_scope, fn) => fn({ execute } as never));
 }
@@ -726,5 +741,36 @@ describe('rankContacts revenue column (S1 — order-by fuel, not part of the pay
     expect(sqlText).not.toContain('contact_invoice_class');
     expect(sqlText).toContain('null::float8 as revenue');
     expect(sqlText).toContain('revenue desc nulls last');
+  });
+});
+
+describe('rankContacts finance funnel floor (S2 — per-org deposit rule)', () => {
+  const ctx = { db: {} as never, tenantId: 'org-1' };
+
+  it('binds the ORG’s deposit vocabulary into the shared classification CTE', async () => {
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto'], label: 'Adelanto' });
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, { sort: 'revenue' });
+
+    const { sql, params } = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(sql).toContain('bool_or(coalesce((ii.description ilike $1), false)) has_deposit');
+    expect(params.slice(0, 2)).toEqual(['%adelanto%', '%adelanto%']);
+  });
+
+  it('resolves the rule once per call, and skips the CTE entirely when finances are off', async () => {
+    mockBothEnabled.mockResolvedValueOnce(false);
+    mockResolveDepositRule.mockClear();
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, {});
+
+    expect(mockResolveDepositRule).toHaveBeenCalledTimes(1);
+    expect(new PgDialect().sqlToQuery(execute.mock.calls[0][0]).sql).not.toContain(
+      'contact_invoice_class',
+    );
   });
 });

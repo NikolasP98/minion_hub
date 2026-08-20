@@ -15,11 +15,12 @@ import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
 import { reconcileParties } from './party.service';
 import {
   CONTACT_PARTY,
-  CONTACT_INVOICE_CLASS,
+  contactInvoiceClass,
   FIN_PURCHASED,
   FIN_RESERVED_ONLY,
   FIN_LOYAL,
 } from './crm-finance.service';
+import { readCrmSettingsValue, resolveDepositRule } from './crm-settings.service';
 import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
 import { recordAudit } from './activity.service';
@@ -379,6 +380,10 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
 }
 
 async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
+  // Resolved ONCE per call, BEFORE the txn opens (a nested withOrgCore would
+  // open a pointless savepoint): the org's deposit vocabulary, which decides
+  // the finance funnel floor below exactly as it decides ContactFinance.
+  const rule = await resolveDepositRule(ctx);
   return withOrgCore(ctx, async (tx) => {
     const ruleSql = f.ruleJson != null ? tryCompileTagRule(f.ruleJson) : null;
 
@@ -465,11 +470,12 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
     // Only joined when both CRM + Finances are on; otherwise an empty CTE so the
     // lifecycle degrades cleanly to message-only signals.
     const withFinance = await bothEnabled(ctx, 'crm', 'finances');
-    // CONTACT_INVOICE_CLASS is the SAME per-invoice deposit/procedure split
-    // contactFinanceMap aggregates, so the funnel floor computed here can never
-    // drift from the ContactFinance flags the detail page renders.
+    // contactInvoiceClass() is the SAME per-invoice deposit/procedure split
+    // contactFinanceMap aggregates, under the SAME resolved rule, so the funnel
+    // floor computed here can never drift from the ContactFinance flags the
+    // detail page renders.
     const finCte = withFinance
-      ? sql`${CONTACT_INVOICE_CLASS},
+      ? sql`${contactInvoiceClass(rule)},
         fin as (
           select contact_id,
                  min(issued_at) as first_purchase_at,
@@ -1527,19 +1533,13 @@ export interface AccountConfig extends AccountRef {
  * migration applies.
  */
 export async function getCrmSettings(ctx: CoreCtx): Promise<CrmSettings> {
-  try {
-    const value = await withOrgCore(ctx, async (tx) => {
-      const [row] = await tx
-        .select({ value: crmSettings.value })
-        .from(crmSettings)
-        .where(eq(crmSettings.orgId, ctx.tenantId))
-        .limit(1);
-      return (row?.value ?? {}) as Record<string, unknown>;
-    });
-    return { accounts: parseAccountConfigs(value.accounts) };
-  } catch {
-    return { accounts: null };
-  }
+  // readCrmSettingsValue owns the query AND the graceful default (missing
+  // table/row/read failure ⇒ {}), so the deposit rule and the harvest scope
+  // read `crm_settings` through one code path, not two. `{}` here yields
+  // `accounts: null` — the same legacy 'all linked accounts' answer this
+  // function's own catch used to return.
+  const value = await readCrmSettingsValue(ctx);
+  return { accounts: parseAccountConfigs(value.accounts) };
 }
 
 /**

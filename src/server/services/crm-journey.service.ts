@@ -9,7 +9,8 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
 import { setContactCustomField, type JsonValue } from './crm-contacts.service';
 import { getOpenRouterModel } from '$server/llm';
-import { DEFAULT_DEPOSIT_RULE, depositMatchSql, notDepositMatchSql } from './crm-deposit-rule';
+import { depositMatchSql, notDepositMatchSql } from './crm-deposit-rule';
+import { resolveDepositRule } from './crm-settings.service';
 
 const milestoneItemSchema = z.object({
   label: z.string(),
@@ -41,23 +42,30 @@ const JOURNEY_MODEL =
   env.NOTES_POLISH_MODEL ||
   'google/gemini-2.5-flash';
 
-// TODO(handoff): rule is the module default here — S2 of 2026-08-17-hub-reserva-keyword-config-spec reads it from crm_settings
-const DEPOSIT_RULE = DEFAULT_DEPOSIT_RULE;
-
 /** Deterministic milestones from structured events (no model). Newest first. */
 async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise<Milestone[]> {
   const finance = await bothEnabled(ctx, 'crm', 'finances');
+  // ONE settings read per call, and only when the finance branch below will
+  // actually use it — a journey on an org with finances off costs no settings
+  // query, so `rule != null` doubles as "finance is on".
+  //
+  // `rule` carries BOTH halves of the org's deposit config and they are used
+  // separately: `keywords` MATCHES the invoice-line text in SQL, `label` is
+  // the caption RENDERED for a deposits-only invoice. A match rule and a
+  // display string are different things — an org configuring
+  // keywords: ['deposit'] must not get a Spanish milestone caption.
+  const rule = finance ? await resolveDepositRule(ctx) : null;
   return withOrgCore(ctx, async (tx) => {
     const out: Milestone[] = [];
 
-    if (finance) {
+    if (rule) {
       const rows = (await tx.execute(sql`
         select fi.id::text id, fi.issued_at at, coalesce(fi.total,0)::float8 amount,
-               bool_or(${depositMatchSql('ii.description', DEPOSIT_RULE)}) only_reserva_flag,
-               bool_or(ii.description is not null and ${notDepositMatchSql('ii.description', DEPOSIT_RULE)}) has_proc,
+               bool_or(${depositMatchSql('ii.description', rule)}) only_deposit_flag,
+               bool_or(ii.description is not null and ${notDepositMatchSql('ii.description', rule)}) has_proc,
                (select ii2.description from fin_invoice_items ii2
                   where ii2.invoice_id = fi.id and ii2.description is not null
-                  order by ${depositMatchSql('ii2.description', DEPOSIT_RULE)} asc, ii2.total desc nulls last limit 1) item
+                  order by ${depositMatchSql('ii2.description', rule)} asc, ii2.total desc nulls last limit 1) item
         from crm_contacts c
         join fin_clients fc on fc.party_id = c.party_id and c.party_id is not null
           and fc.org_id = current_setting('app.current_org_id', true)
@@ -79,7 +87,7 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
         out.push({
           id: `inv:${r.id}`,
           type: proc ? 'purchase' : 'reserve',
-          label: proc ? (r.item ?? 'Purchase') : 'Reserved a consult',
+          label: proc ? (r.item ?? 'Purchase') : rule.label,
           at: r.at ? String(r.at) : null,
           detail: `S/ ${Number(r.amount).toLocaleString()}`,
         });

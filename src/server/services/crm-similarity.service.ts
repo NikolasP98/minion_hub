@@ -9,7 +9,8 @@ import { bothEnabled } from './modules.service';
 import { embedText, embedTexts, embeddingsEnabled, toVectorLiteral } from './embeddings';
 import { buildConversationText, isThin } from '$lib/components/crm/crm-similarity';
 import { getOpenRouterModel } from '$server/llm';
-import { DEFAULT_DEPOSIT_RULE, notDepositMatchSql } from './crm-deposit-rule';
+import { notDepositMatchSql, type DepositRule } from './crm-deposit-rule';
+import { resolveDepositRule } from './crm-settings.service';
 
 const winAnalysisResultSchema = z.object({
   wins: z
@@ -52,9 +53,15 @@ export interface WinAnalysis {
   fromCorpus?: boolean;
 }
 
-// TODO(handoff): rule is the module default here — S2 of 2026-08-17-hub-reserva-keyword-config-spec reads it from crm_settings
-const DEPOSIT_RULE = DEFAULT_DEPOSIT_RULE;
-const IS_PROCEDURE = sql`(ii.description is not null and ${notDepositMatchSql('ii.description', DEPOSIT_RULE)})`;
+/**
+ * A bought line: present AND not a booking deposit, under the ORG'S rule
+ * (crm_settings.value.deposit). Rule-parameterized rather than module-level:
+ * `bought`/`snippet` computed from it are MATERIALIZED into
+ * crm_win_embeddings, so one tenant's vocabulary must never be baked in at
+ * import time and reused for the next.
+ */
+const isProcedureSql = (rule: DepositRule) =>
+  sql`(ii.description is not null and ${notDepositMatchSql('ii.description', rule)})`;
 
 /** Bind a JS string[] as a real Postgres text[] (each element parameterized). */
 function textArray(arr: string[]) {
@@ -123,6 +130,10 @@ async function conversationText(
  */
 export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> {
   if (!(await enabled(ctx))) return { indexed: 0 };
+  // ONE settings read per rebuild — the vocabulary that decides what lands in
+  // crm_win_embeddings.bought for every buyer in this pass.
+  const rule = await resolveDepositRule(ctx);
+  const IS_PROCEDURE = isProcedureSql(rule);
 
   // Buyers + their conversations in a SINGLE round-trip each (not per-contact):
   // (1) procedure-buyers with bought procedures, (2) every message across every

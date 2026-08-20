@@ -7,6 +7,14 @@ import { normalizeSql } from '$server/test-utils/normalize-sql';
 const bothEnabled = vi.fn(async () => true);
 vi.mock('./modules.service', () => ({ bothEnabled: (...a: unknown[]) => bothEnabled() }));
 
+// The org's deposit rule is resolved from crm_settings by the settings layer
+// (proven there, against real blobs, in crm-settings.service.test.ts). Mocked
+// here so each test can state WHICH org's vocabulary the service is threading.
+const resolveDepositRule = vi.fn<() => Promise<DepositRule>>(async () => DEFAULT_DEPOSIT_RULE);
+vi.mock('./crm-settings.service', () => ({ resolveDepositRule: () => resolveDepositRule() }));
+
+import { DEFAULT_DEPOSIT_RULE, type DepositRule } from './crm-deposit-rule';
+
 import { contactJourney } from './crm-journey.service';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
@@ -31,7 +39,7 @@ describe('deterministicMilestones (via contactJourney)', () => {
     expect(normalizeSql(sql)).toBe(
       normalizeSql(
         `select fi.id::text id, fi.issued_at at, coalesce(fi.total,0)::float8 amount,
-               bool_or(coalesce((ii.description ilike $1), false)) only_reserva_flag,
+               bool_or(coalesce((ii.description ilike $1), false)) only_deposit_flag,
                bool_or(ii.description is not null and coalesce((ii.description not ilike $2), true)) has_proc,
                (select ii2.description from fin_invoice_items ii2
                   where ii2.invoice_id = fi.id and ii2.description is not null
@@ -77,5 +85,74 @@ describe('deterministicMilestones (via contactJourney)', () => {
     const journey = await contactJourney(ctx(db), 'c1');
     const inv = journey.find((m) => m.id === 'inv:inv2');
     expect(inv).toMatchObject({ type: 'reserve', label: 'Reserved a consult' });
+  });
+});
+
+describe('per-org deposit rule (S2 — crm_settings.value.deposit drives match AND caption)', () => {
+  it('MATCH: the org’s keywords are bound into all three predicates of the finance query', async () => {
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto'], label: 'Adelanto' });
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await contactJourney(ctx(db), 'c1');
+    expect(dialect.sqlToQuery(financeExecutedSql(db)).params).toEqual([
+      '%adelanto%',
+      '%adelanto%',
+      '%adelanto%',
+      'c1',
+    ]);
+  });
+
+  it('CAPTION: a deposits-only invoice renders the org’s label, not the FACES default', async () => {
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['deposit'], label: 'Deposit' });
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'inv3', at: '2026-03-01T00:00:00Z', amount: 50, has_proc: false, item: null }]);
+    const journey = await contactJourney(ctx(db), 'c1');
+    expect(journey.find((m) => m.id === 'inv:inv3')).toMatchObject({
+      type: 'reserve',
+      label: 'Deposit',
+    });
+  });
+
+  it('CAPTION: the label never leaks onto a real purchase — that milestone still names the item', async () => {
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['deposit'], label: 'Deposit' });
+    const { db, resolve } = createMockDb();
+    resolve([
+      { id: 'inv4', at: '2026-03-02T00:00:00Z', amount: 900, has_proc: true, item: 'Botox' },
+    ]);
+    const journey = await contactJourney(ctx(db), 'c1');
+    expect(journey.find((m) => m.id === 'inv:inv4')).toMatchObject({
+      type: 'purchase',
+      label: 'Botox',
+    });
+  });
+
+  it('an org with NO deposit concept (keywords: []) never emits a deposit milestone', async () => {
+    resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'x' });
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await contactJourney(ctx(db), 'c1');
+    const { sql, params } = dialect.sqlToQuery(financeExecutedSql(db));
+    expect(sql).toContain('bool_or(false) only_deposit_flag');
+    expect(sql).toContain('bool_or(ii.description is not null and true) has_proc');
+    expect(params).toEqual(['c1']);
+  });
+});
+
+describe('settings read is demand-driven', () => {
+  it('an org with finances OFF resolves no deposit rule at all — no settings query', async () => {
+    bothEnabled.mockResolvedValueOnce(false);
+    resolveDepositRule.mockClear();
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await contactJourney(ctx(db), 'c1');
+    expect(resolveDepositRule).not.toHaveBeenCalled();
+  });
+
+  it('an org with finances ON resolves it exactly once per journey', async () => {
+    resolveDepositRule.mockClear();
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await contactJourney(ctx(db), 'c1');
+    expect(resolveDepositRule).toHaveBeenCalledTimes(1);
   });
 });

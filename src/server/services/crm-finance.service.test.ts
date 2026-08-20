@@ -5,6 +5,14 @@ import { createMockDb } from '$server/test-utils/mock-db';
 import { normalizeSql } from '$server/test-utils/normalize-sql';
 const bothEnabled = vi.fn(async () => true);
 vi.mock('./modules.service', () => ({ bothEnabled: (...a: unknown[]) => bothEnabled() }));
+
+// The org's deposit rule is resolved from crm_settings by the settings layer
+// (proven there, against real blobs, in crm-settings.service.test.ts). Mocked
+// here so each test can state WHICH org's vocabulary the service is threading.
+const resolveDepositRule = vi.fn<() => Promise<DepositRule>>(async () => DEFAULT_DEPOSIT_RULE);
+vi.mock('./crm-settings.service', () => ({ resolveDepositRule: () => resolveDepositRule() }));
+
+import { DEFAULT_DEPOSIT_RULE, type DepositRule } from './crm-deposit-rule';
 import {
   contactFinanceMap,
   contactCashflow,
@@ -284,5 +292,87 @@ describe('contactCashflow', () => {
       transactions: 4,
       lastTransactionAt: '2026-07-20',
     });
+  });
+});
+
+describe('per-org deposit rule (S2 — crm_settings.value.deposit drives the query)', () => {
+  const adelanto: DepositRule = { keywords: ['adelanto', 'seña'], label: 'Adelanto' };
+
+  it('contactFinanceMap: the org’s own vocabulary is bound into the classification CTE', async () => {
+    resolveDepositRule.mockResolvedValueOnce(adelanto);
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await contactFinanceMap(ctx(db));
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    expect(sql).toContain(
+      'bool_or(coalesce((ii.description ilike $1 or ii.description ilike $2), false)) has_deposit',
+    );
+    expect(sql).toContain(
+      'bool_or((ii.description is not null and coalesce((ii.description not ilike $3 and ii.description not ilike $4), true))) has_proc',
+    );
+    expect(params).toEqual(['%adelanto%', '%seña%', '%adelanto%', '%seña%']);
+  });
+
+  it('contactFinanceMap: an org with NO deposit concept (keywords: []) counts every line as delivered work', async () => {
+    resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'x' });
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await contactFinanceMap(ctx(db));
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    expect(sql).toContain('bool_or(false) has_deposit');
+    expect(sql).toContain('bool_or((ii.description is not null and true)) has_proc');
+    expect(params).toEqual([]);
+  });
+
+  it('contactFinanceMap: a `%` inside a keyword is bound as a LITERAL, not a wildcard', async () => {
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['dep%osit'], label: 'Deposit' });
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await contactFinanceMap(ctx(db));
+    expect(dialect.sqlToQuery(lastExecutedSql(db)).params).toEqual([
+      '%dep\\%osit%',
+      '%dep\\%osit%',
+    ]);
+  });
+
+  it('contactFinanceMap: the rule is resolved ONCE per call, not per query fragment', async () => {
+    resolveDepositRule.mockClear();
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await contactFinanceMap(ctx(db));
+    expect(resolveDepositRule).toHaveBeenCalledTimes(1);
+  });
+
+  it('contactFinanceSummary: both of its queries use the org’s rule', async () => {
+    resolveDepositRule.mockResolvedValueOnce(adelanto);
+    const { db, resolve } = createMockDb();
+    resolve([
+      { id: 'inv1', document_id: null, issued_at: null, total: 0, status: null, item: null },
+    ]);
+    await contactFinanceSummary(ctx(db), 'c1');
+    expect(dialect.sqlToQuery(executedSqlContaining(db, 'as item')).params).toEqual([
+      'c1',
+      '%adelanto%',
+      '%seña%',
+    ]);
+    expect(dialect.sqlToQuery(executedSqlContaining(db, 'proc_dates')).params).toEqual([
+      'c1',
+      '%adelanto%',
+      '%seña%',
+      '%adelanto%',
+      '%seña%',
+    ]);
+  });
+
+  it('rankCustomers: topProduct excludes the org’s OWN deposit words', async () => {
+    resolveDepositRule.mockResolvedValueOnce(adelanto);
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await rankCustomers(ctx(db), 'revenue', 5);
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    expect(sql).toContain(
+      'and ii.description is not null and coalesce((ii.description not ilike $1 and ii.description not ilike $2), true)',
+    );
+    expect(params).toEqual(['%adelanto%', '%seña%']);
   });
 });

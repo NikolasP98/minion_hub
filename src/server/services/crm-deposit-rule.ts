@@ -5,11 +5,13 @@
  * goods/services. Pure logic, no DB access — mirrors the `crm-scoring.ts`
  * precedent (SQL does the ranking, TS owns the rule).
  *
- * S2 (2026-08-17-hub-reserva-keyword-config-spec) adds `resolveDepositRule`
- * in the CRM settings layer, reading a per-org `DepositRule` from
- * `crm_settings.value.deposit`; this module stays DB-free.
+ * Per-org configuration (S2 of 2026-08-17-hub-reserva-keyword-config-spec):
+ * `resolveDepositRule` in `crm-settings.service.ts` reads the org's rule from
+ * `crm_settings.value.deposit` and hands it to every function here. This
+ * module owns the SHAPE and its normalization; it never touches the DB.
  */
 import { sql, type SQL } from 'drizzle-orm';
+import { z } from 'zod';
 
 export interface DepositRule {
   keywords: string[];
@@ -19,10 +21,22 @@ export interface DepositRule {
 /**
  * FACES-era default kept for behavioral compatibility — NOT a universal
  * truth. This is the only occurrence of the word "reserva" in `src/server/`;
- * every call site resolves a `DepositRule` (this default until S2 wires
- * `crm_settings.value.deposit`) rather than hardcoding the keyword again.
+ * every call site resolves a `DepositRule` (from `crm_settings.value.deposit`
+ * when the org has one, this default otherwise) rather than hardcoding the
+ * keyword again.
+ *
+ * `label` is the milestone caption `crm-journey.service.ts` renders for an
+ * invoice that is deposits-only. The default is the exact string that call
+ * site hardcoded before this rule existed, so an org with no
+ * `crm_settings.value.deposit` row keeps byte-identical output. (The spec
+ * carried `'Reserva'` as the presumed default from a checkout where hub was
+ * not available; S0 recon found the real rendered string — see the
+ * "S0 actuals" amendment in FACTORY_SPEC.md.)
  */
-export const DEFAULT_DEPOSIT_RULE: DepositRule = { keywords: ['reserva'], label: 'Reserva' };
+export const DEFAULT_DEPOSIT_RULE: DepositRule = {
+  keywords: ['reserva'],
+  label: 'Reserved a consult',
+};
 
 /**
  * Escapes ILIKE/LIKE wildcards (`\`, `%`, `_`) in an operator-supplied
@@ -104,4 +118,94 @@ export function isDepositText(text: string | null | undefined, rule: DepositRule
   if (text == null) return false;
   const lower = text.toLowerCase();
   return rule.keywords.some((k) => lower.includes(k.toLowerCase()));
+}
+
+// ── Per-org configuration (S2) ───────────────────────────────────────────────
+// `crm_settings.value.deposit` holds the org's own deposit vocabulary. The
+// SHAPE and its normalization live here (pure, DB-free); the QUERY that reads
+// the row lives in `crm-settings.service.ts` (`resolveDepositRule`).
+
+/** Max characters kept per keyword (and for the label) after trimming. */
+export const DEPOSIT_KEYWORD_MAX_LENGTH = 40;
+/** Max keywords kept. N keywords multiply the per-row ILIKE cost on an
+ *  unindexed `fin_invoice_items.description`, so the list is capped. */
+export const DEPOSIT_KEYWORDS_MAX = 20;
+
+/**
+ * READ boundary — deliberately LENIENT, and separate from the write schema
+ * below. It accepts any type-correct blob (including a legacy row written by
+ * hand or by an older, wider cap) and lets `normalizeDepositRule` clamp it,
+ * so a settings row that predates today's caps still yields a usable rule
+ * instead of 500-ing three analytics surfaces. Only a wrong *shape*
+ * (non-array `keywords`, non-string members, a bare string) is malformed.
+ * Unknown sibling keys are ignored rather than rejected — the write path is
+ * where strictness belongs.
+ */
+const depositReadSchema = z.object({
+  keywords: z.array(z.string()),
+  label: z.string().optional(),
+  /** ISO, stamped server-side by the write path; read by rebuild tooling. */
+  updatedAt: z.string().optional(),
+});
+
+/**
+ * WRITE boundary — STRICT. Unknown keys are rejected, `updatedAt` is not
+ * client-supplyable (the handler stamps it), and over-cap input is REJECTED
+ * rather than silently truncated, so an operator who types 21 keywords is
+ * told, not quietly given 20.
+ *
+ * TODO(handoff): defined and unit-tested here but not yet wired to an HTTP
+ * handler — S3 of 2026-08-17-hub-reserva-keyword-config-spec adds the
+ * `/api/crm/settings` write path (strict parse + key-level jsonb merge +
+ * `staleDerived` disclosure) that consumes it.
+ */
+export const depositWriteSchema = z
+  .object({
+    keywords: z
+      .array(z.string().trim().min(1).max(DEPOSIT_KEYWORD_MAX_LENGTH))
+      .max(DEPOSIT_KEYWORDS_MAX),
+    label: z.string().trim().min(1).max(DEPOSIT_KEYWORD_MAX_LENGTH).optional(),
+  })
+  .strict();
+
+/** The stored shape of `crm_settings.value.deposit`. */
+export type DepositConfig = z.infer<typeof depositWriteSchema> & { updatedAt?: string };
+
+/**
+ * Turn a raw `crm_settings.value.deposit` blob into a usable `DepositRule`,
+ * or `null` when the blob is malformed (the caller then falls back to
+ * `DEFAULT_DEPOSIT_RULE` and logs — see `resolveDepositRule`).
+ *
+ * Normalization, in order: trim → lowercase → truncate to
+ * `DEPOSIT_KEYWORD_MAX_LENGTH` → drop empties → dedupe (first occurrence
+ * wins, order preserved) → keep the first `DEPOSIT_KEYWORDS_MAX`.
+ * Keywords are lowercased because both match paths are case-insensitive
+ * (`ILIKE` / `isDepositText`), so casing carries no meaning and would only
+ * defeat the dedupe. The label is display text: trimmed and truncated, never
+ * lowercased.
+ *
+ * An EMPTY keyword list is a legitimate, distinct state ("this org has no
+ * deposit concept") — not a reason to fall back to the default. Only the
+ * ABSENCE of the `deposit` key means "use the default", and that decision is
+ * made by the caller, not here.
+ */
+export function normalizeDepositRule(raw: unknown): DepositRule | null {
+  const parsed = depositReadSchema.safeParse(raw);
+  if (!parsed.success) return null;
+
+  const keywords: string[] = [];
+  const seen = new Set<string>();
+  for (const k of parsed.data.keywords) {
+    const norm = k.trim().toLowerCase().slice(0, DEPOSIT_KEYWORD_MAX_LENGTH).trim();
+    if (!norm || seen.has(norm)) continue;
+    seen.add(norm);
+    keywords.push(norm);
+    if (keywords.length === DEPOSIT_KEYWORDS_MAX) break;
+  }
+
+  const label =
+    parsed.data.label?.trim().slice(0, DEPOSIT_KEYWORD_MAX_LENGTH).trim() ||
+    DEFAULT_DEPOSIT_RULE.label;
+
+  return { keywords, label };
 }
