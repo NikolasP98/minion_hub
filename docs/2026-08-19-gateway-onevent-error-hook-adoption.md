@@ -5,6 +5,13 @@ Parent proposal (open-items ledger for this work):
 `proposals/2026-08-17-gateway-client-error-hook-consumer-adoption.md` in minion-meta.
 
 - **Status:** `blocked-on-publish`
+- **Merge posture:** this branch **does not complete Slice 1's dependency adoption** and must not be
+  recorded as S1 complete. S1 as written _is_ the dependency bump; that bump is still impossible
+  (§1, re-verified 2026-08-20 08:00 UTC) and is not claimed here. What ships is the hub-owned
+  containment (§3a), reviewable on its own merits as hardening. Whether to land that hardening now
+  or hold the whole slice for the publish is the human decision recorded in §5 — the fail-closed
+  default, applied here, is: the record stays `blocked-on-publish`, no dependency line moves, and
+  §4's `TODO(handoff)` stays open.
 - **What that status covers:** the **dependency adoption only**. `package.json` still declares
   `"@minion-stack/shared": "^0.9.0"` and `bun.lock` still resolves `0.9.0`, because no published
   build of that package declares `onEventError` (§1, re-polled 2026-08-20). That bump cannot be made
@@ -20,19 +27,19 @@ Parent proposal (open-items ledger for this work):
   `@minion-stack/shared` build declares the hook while this record still says `blocked-on-publish`,
   and it also fails if the dispatch site stops containing handler failures.
 
-## 1. S0 gate — RED, re-polled 2026-08-20 07:30 UTC
+## 1. S0 gate — RED, re-polled 2026-08-20 08:00 UTC (review round 4)
 
 The dependency bump S1 asks for still cannot be made: no published `@minion-stack/shared` exports
 `onEventError`. Evidence, all re-runnable, re-run in full for this round:
 
-| Check                                                                                                                      | Result                                                                                                                                                                          |
-| -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gh api repos/NikolasP98/minion-meta/contents/packages/shared/src/gateway/client.ts -f ref=main` \| `grep -c onEventError` | `0` — `main`'s `GatewayClientOptions` declares `onEvent?:` at `:27` and dispatches at `:263`; the hook is still only on `dev` (PR #29, merged 2026-08-19T03:11:35Z, base `dev`) |
-| `gh pr list --repo NikolasP98/minion-meta --state merged --base main`                                                      | newest merged `chore: version packages` is still **#18**, 2026-08-13 (the 0.10.0 release); nothing published since                                                              |
-| `gh pr list --repo NikolasP98/minion-meta --state open`                                                                    | the only open PR based on `main` is **#76** (`feat(skills)`), which carries no shared-package change; no `dev` → `main` promotion PR exists                                     |
-| `npm view @minion-stack/shared versions --prefer-online`                                                                   | `… 0.8.1, 0.9.0, 0.10.0`; `dist-tags.latest` = `0.10.0`, published 2026-08-13T17:03:43Z                                                                                         |
-| registry tarball of `@minion-stack/shared@0.10.0` → `package/dist/gateway/client.d.ts`                                     | `:19` declares `onEvent?:` only; `grep -rn onEventError package/dist/` finds nothing                                                                                            |
-| installed `node_modules/@minion-stack/shared`                                                                              | version `0.9.0`; same declaration shape — `onEvent?:` at `:19`, no `onEventError`                                                                                               |
+| Check                                                                                                         | Result                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gh api '…/contents/packages/shared/src/gateway/client.ts?ref=main'` \| `base64 -d` \| `grep -c onEventError` | `0` — the hook is still only on `dev`, where the same command finds it at `:38` (declaration) and `:305` (dispatch); PR #29 merged 2026-08-19T03:11:35Z with base `dev` |
+| `gh pr list --repo NikolasP98/minion-meta --state merged --base main --json number,title,mergedAt`            | newest merged `chore: version packages` is still **#18**, merged 2026-08-13T17:03:01Z (the 0.10.0 release); nothing merged to `main` since                              |
+| `gh pr list --repo NikolasP98/minion-meta --state open --json number,baseRefName`                             | four open PRs; the only one based on `main` is **#76** (`feat(skills)`), which carries no shared-package change — no `dev` → `main` promotion PR exists                 |
+| `npm view @minion-stack/shared versions --prefer-online`                                                      | `… 0.8.1, 0.9.0, 0.10.0`; `dist-tags.latest` = `0.10.0`, published 2026-08-13T17:03:43Z                                                                                 |
+| `npm pack @minion-stack/shared@0.10.0 --prefer-online` → `package/dist/gateway/client.d.ts`                   | re-unpacked this round: `:19` declares `onEvent?:` only; `grep -rn onEventError package/dist/` finds nothing                                                            |
+| installed `node_modules/@minion-stack/shared`                                                                 | version `0.9.0`; same declaration shape — `onEvent?:` at `:19`, no `onEventError`                                                                                       |
 
 Per the spec's §5 S0 ("If the Version-Packages PR is absent … **stop** — S1–S3 do not start") and §7
 ("S1–S3 must not route around it with a git/tarball dependency"), the bump is deferred. Note that
@@ -95,9 +102,12 @@ git/tarball pin, and introduces no new reporting subsystem — it reuses hub's o
 - **Proved.** `src/lib/services/gateway/event-dispatch.test.ts` exercises the shipped module: a
   synchronous throw does not escape, an asynchronous rejection is reported once, success paths stay
   silent, and — through the real `console-interceptor` module, not a stand-in — a contained failure
-  lands as exactly one `error` entry in the buffer `bug-reporter.svelte.ts` reads.
+  lands as exactly one `error` entry in the buffer `bug-reporter.svelte.ts` reads. Containment holds
+  for values engineered to break the report itself (a thrown or rejected value that defeats both
+  `JSON.stringify` and `String()`, a throwing `then` accessor, a console sink that throws): the
+  dispatcher neither throws nor leaves an unhandled rejection.
   `src/lib/utils/console-interceptor.test.ts` pins the sink itself (capture, stacks, ring-buffer cap,
-  idempotent install).
+  idempotent install, and the `[unserializable]` last resort).
 - **Unproved — the artifact does not exist.** How a real hook-bearing `GatewayClient` behaves cannot
   be tested here: no installed or published build contains `onEventError`. That claim must be checked
   against the real client as part of the bump, not inherited from this record. Note that with (a) in
@@ -127,7 +137,16 @@ above.
 
 ## 5. Review findings → what changed
 
-Three consecutive reviews of this branch returned FAIL. Their findings and this round's response:
+Four consecutive reviews of this branch returned FAIL.
+
+**Round 4 (latest).** Two Medium findings:
+
+| Finding                                                                                                                                                                                                                         | Fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _"Slice 1 still does not adopt the hook-bearing client"_ — keep the PR blocked rather than treating it as completed S1                                                                                                          | Accepted as written, fail-closed: the S0 gate was re-run in full for this round (§1, 2026-08-20 08:00 UTC) and is still RED — no published build declares `onEventError`, and no `dev` → `main` promotion PR exists. No dependency line moved: `package.json` still declares `^0.9.0` and `bun.lock` still resolves `0.9.0`. The record now carries an explicit **Merge posture** bullet stating this branch does not complete S1's dependency adoption, and `scripts/shared-onevent-error-gate.test.ts` asserts that bullet is present while the status is `blocked-on-publish`, so the framing cannot drift silently either. Doc commit below |
+| _"Reporting can defeat the dispatcher's containment guarantee"_ — a thrown value that defeats `JSON.stringify` **and** `String()` makes the interceptor throw while the dispatcher reports it, so the failure escapes after all | Fixed in `8395adb`. `safeStringify` guards its `String()` fallback and ends at the constant `[unserializable]`; the patched console's capture body is wrapped; `reportHandlerFailure` is total (constant-only retry, then silence); and the `isThenable`/`Promise.resolve` step is guarded because reading `.then` runs user code outside the handler call's own `try`. Seven tests over the shipped modules cover hostile thrown and rejected values, a throwing `then` accessor and a throwing console sink, asserting no throw and no unhandled rejection; all seven are red without that commit                                             |
+
+**Rounds 1–3.** Their findings and the responses that stand:
 
 | Finding (latest review)                                                                                                                        | Response                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -138,10 +157,23 @@ Three consecutive reviews of this branch returned FAIL. Their findings and this 
 
 ### Decision point for the human reviewer
 
-Reviews 1–3 asked for this branch to be held rather than completed, because S1 as written _is_ the
+Reviews 1–4 asked for this branch to be held rather than completed, because S1 as written _is_ the
 dependency bump. That bump is still blocked and is not claimed here. What changed is the scope of
 what ships alongside the blocker: rather than waiting on an external publish with the event path
 unguarded, hub now owns its own containment (§3a). If the intended reading of S1 is "the dependency
 line and nothing else", §3a can be reviewed as a standalone hardening change and the dependency bump
 tracked by §4's `TODO(handoff)`; the two are independent and §3a does not pre-empt or complicate the
 bump.
+
+**The open question is therefore a merge decision, not an implementation one**, and it needs a human:
+
+- **Option A — land §3a now, keep S1 open.** The event path stops losing handler failures on the
+  installed client today; the dependency bump remains §4's `TODO(handoff)` and the status stays
+  `blocked-on-publish`. Cost: S1 closes in two steps instead of one.
+- **Option B — hold the whole branch until the publish.** S1 lands as a single change matching the
+  spec's wording. Cost: the event path keeps losing handler failures for as long as the external
+  release chain takes, which is the defect the parent spec exists to remove.
+
+Applied here, fail-closed, until that decision is made: nothing about the dependency is claimed or
+changed, the status stays `blocked-on-publish`, and the branch is not to be recorded as S1 complete
+under either option.

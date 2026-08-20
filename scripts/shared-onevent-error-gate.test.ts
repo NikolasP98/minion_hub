@@ -15,8 +15,9 @@
 //
 // TODO(handoff): Slice 1's DEPENDENCY adoption is still not done — `package.json`
 // pins `@minion-stack/shared` at `^0.9.0` and no published build declares
-// `onEventError` (registry re-polled 2026-08-20: latest is 0.10.0, published
-// 2026-08-13, and its `dist/gateway/client.d.ts` has `onEvent?:` only). It
+// `onEventError` (registry re-polled 2026-08-20 08:00 UTC: latest is 0.10.0,
+// published 2026-08-13, and its `dist/gateway/client.d.ts` has `onEvent?:`
+// only; the hook is still only on minion-meta's `dev` branch). It
 // cannot be done from this repo: it waits on an external publish from
 // minion-meta. This gate is the enforcement site because `package.json` cannot
 // carry a comment; the exact remaining steps, evidence, and ledger pointer are
@@ -52,6 +53,20 @@ describe('@minion-stack/shared onEventError adoption gate', () => {
       `@minion-stack/shared@${installedVersion} ${hookDeclared ? 'declares' : 'does not declare'} ` +
         `onEventError — reconcile the "- **Status:** \`…\`" line in ${RECORD_PATH}`,
     ).toBe(hookDeclared ? 'adopted' : 'blocked-on-publish');
+  });
+
+  it('keeps the blocked slice recorded as blocked, not as completed S1', () => {
+    if (hookDeclared) return; // Covered by the status test above once the bump lands.
+
+    // S1 as written IS the dependency bump, and it is not made here. Three
+    // reviews read the branch as claiming otherwise, so the disclaimer is part
+    // of the record's contract rather than incidental prose: a rewrite that
+    // drops it while the dependency is still pinned pre-hook flips this red.
+    expect(
+      read(RECORD_PATH),
+      `${RECORD_PATH} must keep stating that this branch does not complete S1's dependency adoption ` +
+        `while @minion-stack/shared@${installedVersion} cannot declare onEventError`,
+    ).toContain("does not complete Slice 1's dependency adoption");
   });
 
   it('does not wire onEventError against a build that cannot declare it', () => {
