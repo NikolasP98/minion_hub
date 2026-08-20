@@ -6,8 +6,40 @@ import { describe, expect, it } from 'vitest';
 import { crmContacts } from '$server/db/pg-crm-schema';
 import { setContactCustomField, setFunnelStage } from './crm-contacts.service';
 
+/**
+ * Unlike its siblings (crm-contacts.sql.integration.test.ts,
+ * crm-funnel-parity.sql.integration.test.ts), this file does NOT create its own
+ * throwaway schema: the lost-update property it proves runs through the real
+ * `withOrgCore` path, so it needs pre-existing `organizations` (for the org row
+ * + RLS GUC) and `crm_activities` rows. Per the standing schema note, those
+ * tables have no `CREATE` anywhere in the monorepo — they exist only in the
+ * provisioned Supabase database — so this suite CANNOT run against the bare
+ * `postgres:` service container the CI Postgres job spins up, and no CI job
+ * names it. It runs only against a full-schema database (the local Supabase
+ * stack, or a branch DB) with SUPABASE_DB_URL pointed at it.
+ *
+ * TODO(handoff): the spec's central concurrency claim is therefore proven by a
+ * suite that executes on no automated gate — CI covers the atomic write only
+ * via the single-connection pglite tests (crm-journey.atomic-write.test.ts),
+ * which cannot interleave two transactions. Closing this needs a CI job with a
+ * full-schema database (seed `organizations` from a dump, or point the job at a
+ * Supabase branch DB) that runs this file with
+ * REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES=1. Pointer:
+ * spec 2026-08-18-hub-funnel-atomic-write-spec; schema constraint is the
+ * "hub schema NOT reproducible" operator note; CI job is
+ * `.github/workflows/ci.yml` → "Real-PostgreSQL CRM pagination suite".
+ */
 const databaseUrl =
   process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
+
+// Same loud-skip convention as the parity suite: when a caller PROMISES a
+// database, an empty URL is a misconfigured job, not a reason to quietly pass.
+if (process.env.REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES && !databaseUrl) {
+  throw new Error(
+    'REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES is set but SUPABASE_DB_URL is empty — this suite ' +
+      'needs a FULL-SCHEMA database (organizations + crm_activities), not the bare CI service.',
+  );
+}
 
 describe.runIf(Boolean(databaseUrl))(
   'funnel writes against concurrent PostgreSQL transactions',
