@@ -31,19 +31,28 @@ src/server/services/crm-funnel.concurrent.integration.test.ts .github/workflows/
 src/server/db/pg-crm-schema.ts` is empty — every AS-IS fact the spec asserts about those three
 files still holds at `678ad05`.
 
-| Access path to the authoritative catalog | Result |
-|---|---|
-| `SUPABASE_DB_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `PUBLIC_SUPABASE_ANON_KEY` in the process env | unset (empty) |
-| Same keys in `.env.example` | present but blank (`.env.example:132-141`) |
-| `gh secret list --repo NikolasP98/minion_hub` | only `CLAUDE_CODE_OAUTH_TOKEN`, `FACTORY_HOOK_SECRET` — no Supabase credential |
-| `gh variable list --repo NikolasP98/minion_hub` | empty |
-| Local Supabase stack / `docker` / `psql` / `pg_dump` in the sandbox | none installed |
-| `create table ... crm_contacts` / `crm_activities` in `supabase/migrations/` (61 files) | zero hits — only self-seeding test files define those tables, for their own throwaway schemas |
-| Any checked-in `pg_policies` dump for the CRM tables | none |
+| Access path to the authoritative catalog                                                        | Result                                                                                        |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `SUPABASE_DB_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `PUBLIC_SUPABASE_ANON_KEY` in the process env | unset (empty)                                                                                 |
+| Same keys in `.env.example`                                                                     | present but blank (`.env.example:132-141`)                                                    |
+| `gh secret list --repo NikolasP98/minion_hub`                                                   | only `CLAUDE_CODE_OAUTH_TOKEN`, `FACTORY_HOOK_SECRET` — no Supabase credential                |
+| `gh variable list --repo NikolasP98/minion_hub`                                                 | empty                                                                                         |
+| Local Supabase stack / `docker` / `psql` / `pg_dump` in the sandbox                             | none installed                                                                                |
+| `create table ... crm_contacts` / `crm_activities` in `supabase/migrations/` (61 files)         | zero hits — only self-seeding test files define those tables, for their own throwaway schemas |
+| Any checked-in `pg_policies` dump for the CRM tables                                            | none                                                                                          |
 
 This independently reproduces the AS-IS finding in spec §2 and the operator-memory finding
-`hub-supabase-schema-not-reproducible` (`organizations` and the CRM contact tables have no
-`CREATE` anywhere in the monorepo).
+`hub-supabase-schema-not-reproducible`: for `organizations` and the CRM contact tables there is
+**no authoritative production migration or schema snapshot** checked into the monorepo, and no
+checked-in production policy/grant definition (RLS policies, grants) for them.
+
+To be precise about what _does_ exist — the `supabase/migrations/` row above is scoped to that
+directory, not to the whole repository. `create table crm_contacts` / `crm_activities` statements
+are present elsewhere, but only inside self-seeding tests that build their own throwaway schemas:
+`crm-contacts.sql.integration.test.ts:76`, `crm-funnel-parity.sql.integration.test.ts:122`,
+`crm-contacts.service.test.ts:33`, and `crm-journey.atomic-write.test.ts:172,187`. Those are
+reusable scaffolding for a future fixture, but they are test-authored shapes, not evidence of what
+production enforces — which is exactly why they cannot close Slice 0.
 
 ## What unblocks Slice 1
 
