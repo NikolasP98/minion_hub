@@ -224,11 +224,18 @@ export async function triggerShadowEmission(
     ]);
     const customer: PartyDocInfo | null = partyRows[0] ?? null;
     const emitter = resolveEmitter();
-    // Resolved BEFORE the transaction on purpose: an unusable configured rate
-    // must not burn a correlativo out of pos_series (allocateNumber is a
-    // committed counter bump, there is no giving one back).
-    const igvRate = resolveIgvRate(finSettings);
     const docType = resolveEmissionDocType(customer, settings.emission.docTypeDefault);
+    // Resolved OUTSIDE the document transaction on purpose: a throw inside it
+    // rolls back the whole thing, so the refusal could not leave the audit row
+    // `recordUnemittableTicket` writes (⚠️ A2 of the igv-rate spec) — the row
+    // would be erased by the same rollback that gave the correlativo back.
+    let igvRate: number;
+    try {
+      igvRate = resolveIgvRate(finSettings);
+    } catch (e) {
+      await recordUnemittableTicket(ctx, ticket, docType, e);
+      return;
+    }
 
     const { id: emissionId, invoice, docRequired } = await withOrgCore(ctx, async (tx) => {
       const allocation = await allocateNumber(tx, ctx.tenantId, docType, 'beta');
@@ -260,20 +267,59 @@ export async function triggerShadowEmission(
     });
     fireAndForget(runBetaEmission(ctx, emissionId, invoice, docRequired));
   } catch (e) {
-    // no_serie / no_emitter / invalid_tax_rate / a transient DB error — log and
-    // move on, this must never surface to the cashier (spec §4: shadow is
-    // invisible). Verified for ⚠️ A2 of the igv-rate spec: a misconfigured rate
-    // cannot reach the cashier's response, submitTicket only awaits this
-    // never-throwing function.
-    // TODO(handoff): a failure BEFORE the pos_emissions insert (no_serie /
-    // no_emitter / invalid_tax_rate) leaves no row at all, only this log — so
-    // it is invisible in the ticket-detail UI, unlike the post-insert failures
-    // runBetaEmission degrades to status='error'. Pre-existing for
-    // no_serie/no_emitter; invalid_tax_rate joins the same class. Needs an
-    // observability proposal (insert an error row, or surface the log) — see
-    // 2026-08-17-hub-igv-rate-from-org-config-spec ⚠️ A2.
+    // no_serie / no_emitter / a transient DB error — log and move on, this must
+    // never surface to the cashier (spec §4: shadow is invisible). Verified for
+    // ⚠️ A2 of the igv-rate spec: a misconfigured rate cannot reach the
+    // cashier's response, submitTicket only awaits this never-throwing
+    // function. no_serie and no_emitter stay log-only here — unchanged
+    // pre-existing behaviour, and no_serie in particular cannot be recorded as
+    // a row at all, since pos_emissions.serie/correlativo are NOT NULL and a
+    // serie is exactly what is missing.
     console.error('[pos-emission] shadow emission trigger failed', ticket.id, e);
   }
+}
+
+/**
+ * Record a ticket the shadow emitter REFUSED to build a document for — today
+ * only `invalid_tax_rate` (spec ⚠️ A2 of
+ * 2026-08-17-hub-igv-rate-from-org-config-spec.md: an org whose configured
+ * `fin_settings.tax_rate` is unusable for SUNAT gets a hard error instead of a
+ * silently wrong document).
+ *
+ * A2 states that such a failure "surfaces as a `pos_emissions` row with
+ * `status='error'`" — this is what makes that true. The refusal happens BEFORE
+ * the normal insert, so without a row of its own it would exist only in the
+ * server log: `listEmissionsForTicket` (the ticket-detail read, see
+ * `pos.service.ts` getTicket) would show nothing and a misconfigured org would
+ * silently stop shadow-emitting. It costs the correlativo the document would
+ * have used — exactly like every failure one step later (bad cert, SUNAT
+ * unreachable), which already degrades an allocated row to `status='error'`.
+ *
+ * The client columns stay null on purpose: the ticket->invoice mapping never
+ * ran, so there is no resolved SUNAT client document to record.
+ */
+async function recordUnemittableTicket(
+  ctx: CoreCtx,
+  ticket: PosTicket,
+  docType: EmissionDocType,
+  cause: unknown,
+): Promise<void> {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  console.error('[pos-emission] shadow emission refused', ticket.id, message);
+  await withOrgCore(ctx, async (tx) => {
+    const allocation = await allocateNumber(tx, ctx.tenantId, docType, 'beta');
+    await tx.insert(posEmissions).values({
+      orgId: ctx.tenantId,
+      ticketId: ticket.id,
+      docType,
+      serie: allocation.serie,
+      correlativo: allocation.correlativo,
+      environment: 'beta',
+      status: 'error',
+      responseDescription: message.slice(0, 500),
+      total: ticket.total,
+    });
+  });
 }
 
 export async function listEmissionsForTicket(ctx: CoreCtx, ticketId: string): Promise<PosEmission[]> {

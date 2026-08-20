@@ -1,12 +1,59 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import type { CoreCtx } from '$server/auth/core-ctx';
+import type { PosTicket } from '$server/db/pg-pos-schema';
+import type { PosSettings } from './pos.service';
+
+// --- doubles for triggerShadowEmission's I/O edges (the pure-function suites
+// below are untouched by them). The DB double is a hand-rolled tx whose
+// builder chain matches what the service actually calls; every assertion is
+// on what the SERVICE decided to write, never on a mock echoing its own
+// configuration.
+const fakeTx = {
+  select: () => ({ from: () => ({ where: () => txSelectRows() }) }),
+  execute: vi.fn(async () => [{ serie: 'B999', correlativo: 5 }]),
+  insert: () => ({
+    values: (row: Record<string, unknown>) => {
+      inserted.push(row);
+      return Object.assign(Promise.resolve([{ id: 'emission-1' }]), {
+        returning: async () => [{ id: 'emission-1' }],
+      });
+    },
+  }),
+  update: () => ({ set: (row: Record<string, unknown>) => ({ where: async () => updated.push(row) }) }),
+};
+const txSelectRows = () =>
+  Object.assign(Promise.resolve(ticketLineRows), { limit: async () => ticketLineRows });
+let ticketLineRows: Array<Record<string, unknown>> = [];
+let inserted: Array<Record<string, unknown>> = [];
+let updated: Array<Record<string, unknown>> = [];
+const detached: Array<Promise<unknown>> = [];
+
+vi.mock('$server/db/with-org-core', () => ({
+  withOrgCore: (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(fakeTx),
+}));
+vi.mock('./finance.service', () => ({ getFinSettings: vi.fn() }));
+vi.mock('$server/finance/emission', () => ({ emitToBeta: vi.fn() }));
+vi.mock('@vercel/functions', () => ({ waitUntil: (p: Promise<unknown>) => detached.push(p) }));
+vi.mock('$env/dynamic/private', () => ({
+  env: {
+    POS_EMISSION_EMITTER_RUC: '20611172967',
+    POS_EMISSION_EMITTER_NAME: 'FACES BETA SAC',
+    POS_EMISSION_BETA_CERT: 'CERT-PEM',
+    POS_EMISSION_BETA_KEY: 'KEY-PEM',
+  },
+}));
+
 import {
   allocateNumber,
   seedShadowSeries,
   ticketToEmission,
   resolveEmissionDocType,
+  triggerShadowEmission,
   type PartyDocInfo,
 } from './pos-emission.service';
+import { getFinSettings } from './finance.service';
+import { emitToBeta } from '$server/finance/emission';
 import type { CoreTx } from '$server/db/with-org-core';
 import { DEFAULT_IGV_RATE, resolveIgvRate } from '$server/finance/tax';
 import { buildInvoiceXml, computeTotals } from '$server/finance/emission/ubl';
@@ -248,5 +295,75 @@ describe('ticketToEmission — org IGV rate', () => {
         expect.objectContaining({ name: 'PosError', code: 'invalid_tax_rate' }),
       );
     }
+  });
+});
+
+// ⚠️ A2 of specs/2026-08-17-hub-igv-rate-from-org-config-spec.md: an org with an
+// unusable configured rate gets a hard refusal — and that refusal has to be
+// AUDITABLE. It is raised before the document insert, so without a row of its
+// own it would live only in the server log and the ticket-detail read
+// (`listEmissionsForTicket`) would show a checkout that silently emitted
+// nothing.
+describe('triggerShadowEmission — an unusable configured rate is recorded, not swallowed', () => {
+  const ctx = { tenantId: 'org-1' } as unknown as CoreCtx;
+  const ticket = {
+    id: 'ticket-1',
+    partyId: null,
+    subtotal: '118',
+    total: '118',
+  } as unknown as PosTicket;
+  const settings = {
+    emission: { mode: 'shadow', docTypeDefault: '03' },
+  } as unknown as PosSettings;
+
+  beforeEach(() => {
+    ticketLineRows = [{ description: 'Servicio', qty: '1', total: '118' }];
+    inserted = [];
+    updated = [];
+    detached.length = 0;
+    vi.mocked(emitToBeta).mockReset();
+    vi.mocked(emitToBeta).mockResolvedValue({
+      responseCode: '0',
+      description: 'ACEPTADA',
+      xmlHash: 'hash-1',
+    } as Awaited<ReturnType<typeof emitToBeta>>);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('writes a status=error emission row and never reaches SUNAT', async () => {
+    vi.mocked(getFinSettings).mockResolvedValue({
+      taxRate: 0,
+    } as Awaited<ReturnType<typeof getFinSettings>>);
+
+    await expect(triggerShadowEmission(ctx, ticket, settings)).resolves.toBeUndefined();
+
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toMatchObject({
+      orgId: 'org-1',
+      ticketId: 'ticket-1',
+      docType: '03',
+      serie: 'B999',
+      correlativo: 5,
+      environment: 'beta',
+      status: 'error',
+      total: '118',
+    });
+    expect(String(inserted[0].responseDescription)).toContain('tax rate');
+    expect(emitToBeta).not.toHaveBeenCalled(); // refused before anything is built
+  });
+
+  it('a usable rate still emits normally, at the rate the org configured', async () => {
+    vi.mocked(getFinSettings).mockResolvedValue({
+      taxRate: 0.1,
+    } as Awaited<ReturnType<typeof getFinSettings>>);
+
+    await triggerShadowEmission(ctx, ticket, settings);
+    await Promise.all(detached); // the beta call is fire-and-forget
+
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0].status).toBe('pending'); // awaiting the beta round-trip
+    expect(emitToBeta).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(emitToBeta).mock.calls[0][0]).toMatchObject({ igvRate: 0.1 });
+    expect(updated[0]).toMatchObject({ status: 'accepted', responseCode: '0' });
   });
 });
