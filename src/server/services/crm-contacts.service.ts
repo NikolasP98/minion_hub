@@ -1,6 +1,6 @@
 import { and, eq, desc, sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
-import { withOrgCore } from '$server/db/with-org-core';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { maskPii, sanitizeContactFields } from '$lib/pii';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -668,6 +668,105 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
   });
 }
 
+/** A value that round-trips through `JSON.stringify`/`JSON.parse` unchanged. */
+export type JsonValue =
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+/**
+ * Runtime boundary check for `contactCustomFieldSetSql`/`setContactCustomField`.
+ * `JsonValue` at the type level doesn't stop `NaN`/`Infinity` (still `number`)
+ * or a value that only *looks* like `JsonValue` because it arrived as `any`
+ * from an untyped caller — this walks the actual value and throws before any
+ * SQL gets built, instead of letting `JSON.stringify` silently coerce
+ * `NaN`/`Infinity` to `null`, silently drop `undefined` (producing no JSON
+ * text at all), or throw deep inside `JSON.stringify` on a cyclic reference
+ * with no context about which custom-field write caused it.
+ */
+export function assertJsonValue(
+  value: unknown,
+  seen = new Set<unknown>(),
+): asserts value is JsonValue {
+  if (value === null) return;
+  const t = typeof value;
+  if (t === 'string' || t === 'boolean') return;
+  if (t === 'number') {
+    if (!Number.isFinite(value as number)) {
+      throw new Error(`custom field value is not a finite JSON number: ${String(value)}`);
+    }
+    return;
+  }
+  if (t !== 'object') {
+    throw new Error(`custom field value is not JSON-serializable (${t})`);
+  }
+  if (seen.has(value)) {
+    throw new Error('custom field value is not JSON-serializable (circular reference)');
+  }
+  if (!Array.isArray(value)) {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) {
+      throw new Error('custom field value is not a plain JSON object (unsupported object type)');
+    }
+  }
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      for (const item of value) assertJsonValue(item, seen);
+      return;
+    }
+    for (const v of Object.values(value as Record<string, unknown>)) assertJsonValue(v, seen);
+  } finally {
+    seen.delete(value);
+  }
+}
+
+/**
+ * Pure SQL fragment for the per-key `jsonb_set` merge, split out from
+ * `setContactCustomField` so its shape (no `SELECT … custom_fields`, bound
+ * path/value params, never `sql.raw`/string interpolation) is unit-testable
+ * the same way `customFieldsMergeSql` is — inspect the fragment directly via
+ * `PgDialect().sqlToQuery(...)` instead of digging through a mocked chain.
+ */
+export function contactCustomFieldSetSql(key: string, value: JsonValue) {
+  assertJsonValue(value);
+  return sql`jsonb_set(coalesce(${crmContacts.customFields}, '{}'::jsonb), ARRAY[${key}]::text[], ${JSON.stringify(value)}::jsonb, true)`;
+}
+
+/**
+ * Atomic single-key `jsonb_set` on `custom_fields` — the shared primitive
+ * behind every reserved-key writer (`_funnel`, `_relationship`, and any
+ * future `_icp`). Never reads the column first: this asks Postgres to merge
+ * one top-level key in a single statement, so a concurrent writer targeting
+ * a different key can never observe or clobber this one, regardless of
+ * commit order (the bug this replaces read the whole column into JS, spread
+ * it, and wrote the merged object back over the whole column). Takes the
+ * caller's own `tx` rather than opening a nested `withOrgCore` transaction,
+ * so a writer that also needs a preceding read in the same transaction
+ * (e.g. `_funnel`'s forward-only/manual-pin guard) stays one round trip for
+ * the write. `guard` (optional) folds an extra WHERE predicate into the same
+ * statement so a conditional write ("only if not user-pinned") never needs a
+ * separate read either.
+ */
+export async function setContactCustomField(
+  tx: CoreTx,
+  orgId: string,
+  contactId: string,
+  key: string,
+  value: JsonValue,
+  guard?: ReturnType<typeof sql>,
+): Promise<boolean> {
+  const rows = await tx
+    .update(crmContacts)
+    .set({
+      customFields: contactCustomFieldSetSql(key, value),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, orgId), ...(guard ? [guard] : [])),
+    )
+    .returning({ id: crmContacts.id });
+  return rows.length > 0;
+}
+
 /** Cache tag for an org's CRM contact list — bust on any contact/tag mutation. */
 function crmListTags(tenantId: string) {
   return tags.tenantDomain(tenantId, 'crm');
@@ -1142,6 +1241,7 @@ export async function setFunnelStage(
       .select({ customFields: crmContacts.customFields })
       .from(crmContacts)
       .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)))
+      .for('update')
       .limit(1);
     if (!row) return null;
 
@@ -1166,12 +1266,11 @@ export async function setFunnelStage(
       ...(opts.by !== 'user' ? { analyzedAt: nowIso } : {}),
       updatedAt: nowIso,
     };
-    const nextFields = { ...fields, _funnel: nextMeta };
 
-    await tx
-      .update(crmContacts)
-      .set({ customFields: nextFields, updatedAt: new Date() })
-      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)));
+    // The row is locked by the read above until this transaction commits, so
+    // no competing funnel writer can change the stage/manual pin between the
+    // decision and this write. The write itself only touches `_funnel`.
+    await setContactCustomField(tx, ctx.tenantId, contactId, '_funnel', nextMeta);
 
     await tx.insert(crmActivities).values({
       orgId: ctx.tenantId,

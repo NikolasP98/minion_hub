@@ -1,13 +1,52 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import { PGlite } from '@electric-sql/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
+import { eq } from 'drizzle-orm';
 import { createMockDb } from '$server/test-utils/mock-db';
+import { crmContacts } from '$server/db/pg-crm-schema';
 import {
   ensureAccountInScope,
   getContactGraph,
   customFieldsMergeSql,
   rankContacts,
   rankContactsPage,
+  contactCustomFieldSetSql,
+  assertJsonValue,
+  setContactCustomField,
+  setFunnelStage,
 } from './crm-contacts.service';
+
+/**
+ * A real Postgres engine (WASM-embedded, via pglite) rather than a mock —
+ * for the cross-org isolation case a mock can only replay the row count it
+ * was configured to return, which proves nothing about whether
+ * `setContactCustomField`'s own `eq(orgId, ...)` predicate actually excludes
+ * a mismatched org. Only `crm_contacts`' columns are created (the setter
+ * touches none of the CRM tables' foreign relations).
+ */
+async function createRealCrmContactsDb() {
+  const client = new PGlite();
+  const db = drizzle(client);
+  await client.exec(`
+    create table crm_contacts (
+      id uuid primary key,
+      org_id text not null,
+      human_id text,
+      display_name text,
+      profile_id uuid,
+      owner_id uuid,
+      party_id uuid,
+      lifecycle_override text,
+      source text not null default 'harvested',
+      custom_fields jsonb not null default '{}'::jsonb,
+      deleted_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+  `);
+  return { client, db };
+}
 
 // Default passthrough mirrors the real withOrgCore's `db.transaction(cb => cb(db))`
 // shape (see mock-db.ts) — keeps ensureAccountInScope's select/insert chains
@@ -36,6 +75,46 @@ vi.mock('./modules.service', async (importOriginal) => ({
 
 function useExecMock(execute: ReturnType<typeof vi.fn>) {
   mockWithOrgCore.mockImplementationOnce((_scope, fn) => fn({ execute } as never));
+}
+
+/**
+ * A fake `tx` for `setFunnelStage` scenarios that need to inspect the value
+ * passed to `.set(...)` on the write — the generic `createMockDb` chain proxy
+ * mints a fresh untracked `vi.fn` per property access, so it can't record
+ * intermediate chain arguments. `sequence` supplies one resolved value per
+ * chain-terminal call (`.limit()`/`.returning()`/`.values()`), consumed in
+ * call order — the same contract as `resolveSequence`.
+ */
+function makeFunnelTx(sequence: unknown[]) {
+  let cursor = 0;
+  const setCalls: Array<{ customFields: unknown }> = [];
+  const lockCalls: string[] = [];
+  function next() {
+    return Promise.resolve(sequence[cursor++] ?? []);
+  }
+  function chain(): Record<string, unknown> {
+    return {
+      from: () => chain(),
+      where: () => chain(),
+      for: (strength: string) => {
+        lockCalls.push(strength);
+        return chain();
+      },
+      limit: () => next(),
+      set: (v: { customFields: unknown }) => {
+        setCalls.push(v);
+        return chain();
+      },
+      returning: () => next(),
+      values: () => next(),
+    };
+  }
+  const tx = {
+    select: () => chain(),
+    update: () => chain(),
+    insert: () => chain(),
+  };
+  return { tx, setCalls, lockCalls };
 }
 
 describe('ensureAccountInScope', () => {
@@ -190,6 +269,240 @@ describe('customFieldsMergeSql (spec F3b — client cannot forge/delete reserved
     );
     const jsonParam = query.params.find((p) => typeof p === 'string' && p.includes('distrito'));
     expect(jsonParam).toBe(JSON.stringify({ distrito: 'Miraflores', edad: '34' }));
+  });
+});
+
+describe('contactCustomFieldSetSql (spec hub-funnel-atomic-write S1 — atomic per-key write)', () => {
+  it('is a single jsonb_set targeting one key, never a SELECT of the column', () => {
+    const query = new PgDialect().sqlToQuery(
+      contactCustomFieldSetSql('_funnel', { stage: 'opportunity' }),
+    );
+    expect(query.sql).toContain('jsonb_set');
+    expect(query.sql.toLowerCase()).not.toMatch(/\bselect\b/);
+  });
+
+  it('binds the key and value as params, never string-interpolated into the SQL text', () => {
+    const query = new PgDialect().sqlToQuery(
+      contactCustomFieldSetSql('_funnel', { stage: 'opportunity' }),
+    );
+    expect(query.sql).not.toContain('_funnel');
+    expect(query.sql).not.toContain('opportunity');
+    expect(query.params).toContain('_funnel');
+    expect(query.params).toContain(JSON.stringify({ stage: 'opportunity' }));
+  });
+
+  it("a fragment for one key never carries another key's value as a param — the statement cannot clobber it", () => {
+    const query = new PgDialect().sqlToQuery(
+      contactCustomFieldSetSql('_relationship', { label: 'mamá' }),
+    );
+    expect(query.params).not.toContain('_funnel');
+    expect(query.params.some((p) => typeof p === 'string' && p.includes('opportunity'))).toBe(
+      false,
+    );
+  });
+});
+
+describe('setContactCustomField (S1 — shared atomic setter)', () => {
+  it('reports applied when the update matches exactly one row', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'c1' }]);
+
+    const applied = await setContactCustomField(db as never, 'org-1', 'c1', '_funnel', {
+      stage: 'lead',
+    });
+
+    expect(applied).toBe(true);
+    expect(db.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("cross-org isolation on a real Postgres engine: same contact id under a different org updates zero rows and leaves org-A's row unchanged", async () => {
+    const { client, db } = await createRealCrmContactsDb();
+    try {
+      const contactId = crypto.randomUUID();
+      await db.insert(crmContacts).values({
+        id: contactId,
+        orgId: 'org-A',
+        customFields: { _funnel: { stage: 'lead' } },
+      });
+
+      const applied = await db.transaction((tx) =>
+        setContactCustomField(tx as never, 'org-B', contactId, '_funnel', { stage: 'customer' }),
+      );
+      expect(applied).toBe(false);
+
+      const [row] = await db.select().from(crmContacts).where(eq(crmContacts.id, contactId));
+      expect(row.orgId).toBe('org-A');
+      expect(row.customFields).toEqual({ _funnel: { stage: 'lead' } }); // unchanged
+
+      // Sanity: the same write through the OWNING org does apply and does persist —
+      // proves the zero-rows result above is the org predicate, not a broken statement.
+      const appliedSameOrg = await db.transaction((tx) =>
+        setContactCustomField(tx as never, 'org-A', contactId, '_funnel', { stage: 'customer' }),
+      );
+      expect(appliedSameOrg).toBe(true);
+
+      const [rowAfter] = await db.select().from(crmContacts).where(eq(crmContacts.id, contactId));
+      expect(rowAfter.customFields).toEqual({ _funnel: { stage: 'customer' } });
+    } finally {
+      await client.close();
+    }
+  });
+});
+
+describe('assertJsonValue (S1 — reject non-JSON values before they reach SQL)', () => {
+  it('accepts plain JSON-shaped values (string/number/boolean/null/array/nested object)', () => {
+    expect(() =>
+      assertJsonValue({ a: 1, b: 'x', c: true, d: null, e: [1, 2, { f: 'g' }] }),
+    ).not.toThrow();
+  });
+
+  it('rejects undefined', () => {
+    expect(() => assertJsonValue(undefined)).toThrow();
+  });
+
+  it('rejects undefined nested inside an object', () => {
+    expect(() => assertJsonValue({ a: undefined })).toThrow();
+  });
+
+  it('rejects NaN', () => {
+    expect(() => assertJsonValue(Number.NaN)).toThrow();
+  });
+
+  it('rejects Infinity and -Infinity', () => {
+    expect(() => assertJsonValue(Number.POSITIVE_INFINITY)).toThrow();
+    expect(() => assertJsonValue(Number.NEGATIVE_INFINITY)).toThrow();
+  });
+
+  it('rejects a circular reference instead of hanging or throwing an opaque stack overflow', () => {
+    const obj: Record<string, unknown> = { a: 1 };
+    obj.self = obj;
+    expect(() => assertJsonValue(obj)).toThrow();
+  });
+
+  it('rejects functions and other non-JSON types', () => {
+    expect(() => assertJsonValue(() => {})).toThrow();
+    expect(() => assertJsonValue(Symbol('x'))).toThrow();
+    expect(() => assertJsonValue(10n)).toThrow();
+  });
+
+  it('rejects a Map instead of silently round-tripping to `{}`', () => {
+    expect(() => assertJsonValue(new Map([['stage', 'customer']]))).toThrow();
+  });
+
+  it('rejects a Date instead of silently round-tripping to a string', () => {
+    expect(() => assertJsonValue(new Date())).toThrow();
+  });
+
+  it('accepts an acyclic value that references the same child object from two properties', () => {
+    const shared = { x: 1 };
+    expect(() => assertJsonValue({ a: shared, b: shared })).not.toThrow();
+  });
+
+  it('accepts the same array value repeated as siblings, not just as a cycle', () => {
+    const shared = [1, 2, 3];
+    expect(() => assertJsonValue([shared, shared])).not.toThrow();
+  });
+
+  it('contactCustomFieldSetSql rejects an invalid value before building SQL', () => {
+    expect(() => contactCustomFieldSetSql('_funnel', { stage: Number.NaN } as never)).toThrow();
+  });
+});
+
+describe('setFunnelStage (S1 — converted off whole-column read-modify-write)', () => {
+  it('locks the contact row before deciding and holds the lock through the write/activity transaction', async () => {
+    const { tx, lockCalls } = makeFunnelTx([
+      [{ customFields: { _funnel: { stage: 'lead', auto: true } } }],
+      [{ id: 'c1' }],
+      [{}],
+    ]);
+    mockWithOrgCore.mockImplementationOnce((_scope, fn) => fn(tx));
+
+    const result = await setFunnelStage({ db: {} as never, tenantId: 'org-1' }, 'c1', 'customer', {
+      by: 'auto',
+    });
+
+    expect(result).toEqual({ applied: true, stage: 'customer' });
+    expect(lockCalls).toEqual(['update']);
+  });
+
+  it('writes via ONE atomic jsonb_set targeting only `_funnel` — not a whole-object merge back over the column', async () => {
+    // The stored row carries two OTHER reserved/user keys the old RMW write
+    // would have silently reproduced only by accident (spread order) — the
+    // fixed writer never even reads them into the outgoing statement.
+    const existing = {
+      _relationship: {
+        label: 'mamá',
+        category: 'family',
+        source: 'ai',
+        updatedAt: '2026-08-01T00:00:00Z',
+      },
+      someUserField: 'x',
+    };
+    const { tx, setCalls } = makeFunnelTx([
+      [{ customFields: existing }], // select
+      [{ id: 'c1' }], // update .returning()
+      [{}], // insert crm_activities .values()
+    ]);
+    mockWithOrgCore.mockImplementationOnce((_scope, fn) => fn(tx));
+    const ctx = { db: {} as never, tenantId: 'org-1' };
+
+    const result = await setFunnelStage(ctx, 'c1', 'opportunity', { by: 'auto' });
+
+    expect(result.applied).toBe(true);
+    expect(setCalls).toHaveLength(1); // exactly one write statement
+    const query = new PgDialect().sqlToQuery(
+      setCalls[0].customFields as Parameters<typeof PgDialect.prototype.sqlToQuery>[0],
+    );
+    expect(query.sql).toContain('jsonb_set');
+    expect(query.sql.toLowerCase()).not.toMatch(/\bselect\b/);
+    expect(query.params).toContain('_funnel');
+    // Neither other reserved key's value nor the user field's value is bound
+    // into this statement — jsonb_set's path targets `_funnel` only, so a
+    // concurrent writer of `_relationship` or `someUserField` can never be
+    // clobbered by this one, regardless of commit order.
+    expect(query.params.some((p) => typeof p === 'string' && p.includes('someUserField'))).toBe(
+      false,
+    );
+    expect(query.params.some((p) => typeof p === 'string' && p.includes('"label":"mamá"'))).toBe(
+      false,
+    );
+  });
+
+  it('auto/agent writes are skipped when a human has pinned the stage — unchanged business logic (parity)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ customFields: { _funnel: { stage: 'customer', auto: false } } }]]);
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    const result = await setFunnelStage(ctx, 'c1', 'loyal', { by: 'auto' });
+
+    expect(result).toEqual({ applied: false, stage: 'customer' });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('auto/agent writes never move the stage backward or sideways — advance-only (parity)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ customFields: { _funnel: { stage: 'customer', auto: true } } }]]);
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    const result = await setFunnelStage(ctx, 'c1', 'opportunity', { by: 'auto' });
+
+    expect(result).toEqual({ applied: false, stage: 'customer' });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('a manual (`by: "user"`) override applies even over a pinned stage, writing through the atomic setter', async () => {
+    const { tx, setCalls } = makeFunnelTx([
+      [{ customFields: { _funnel: { stage: 'customer', auto: false } } }],
+      [{ id: 'c1' }],
+      [{}],
+    ]);
+    mockWithOrgCore.mockImplementationOnce((_scope, fn) => fn(tx));
+    const ctx = { db: {} as never, tenantId: 'org-1' };
+
+    const result = await setFunnelStage(ctx, 'c1', 'lead', { by: 'user' });
+
+    expect(result.applied).toBe(true);
+    expect(setCalls).toHaveLength(1);
   });
 });
 

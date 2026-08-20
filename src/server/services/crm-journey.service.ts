@@ -7,6 +7,7 @@ import { crmContacts } from '$server/db/pg-crm-schema';
 import { eq, and } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
+import { setContactCustomField, type JsonValue } from './crm-contacts.service';
 import { getOpenRouterModel } from '$server/llm';
 import { DEFAULT_DEPOSIT_RULE, depositMatchSql, notDepositMatchSql } from './crm-deposit-rule';
 
@@ -241,20 +242,26 @@ Return ONLY a JSON array: [{"label":"Asked about Botox","at":"2026-05-01","detai
     return base;
   }
 
-  // Persist AI milestones on the reserved _journey custom field.
-  await withOrgCore(ctx, async (tx) => {
-    const [c] = await tx
-      .select({ cf: crmContacts.customFields })
-      .from(crmContacts)
-      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)))
-      .limit(1);
-    const cf = { ...((c?.cf as Record<string, unknown>) ?? {}) };
-    cf._journey = aiMilestones;
-    await tx
-      .update(crmContacts)
-      .set({ customFields: cf, updatedAt: new Date() })
-      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)));
-  });
+  // ONE atomic per-key write (spec 2026-08-18-hub-funnel-atomic-write-spec, S2):
+  // `_journey` goes through the same `setContactCustomField` primitive as
+  // `_funnel` and `_relationship`, never a select → spread → whole-column
+  // update. The shape this replaces read the whole `custom_fields` value into
+  // JS, assigned `_journey` on that snapshot, and wrote the entire object back,
+  // so ANY other key committed between the read and the write (a concurrent
+  // `setFunnelStage`, a `_relationship` write) was silently reverted to its
+  // stale value — the lost update the spec exists to remove. `Milestone` is an
+  // interface with an optional `detail`, so project it to a plain JSON value
+  // the setter's `assertJsonValue` boundary check accepts.
+  const journeyValue: JsonValue = aiMilestones.map((m) => ({
+    id: m.id,
+    type: m.type,
+    label: m.label,
+    at: m.at,
+    detail: m.detail ?? null,
+  }));
+  await withOrgCore(ctx, (tx) =>
+    setContactCustomField(tx, ctx.tenantId, contactId, '_journey', journeyValue),
+  );
 
   const merged = [...base, ...aiMilestones];
   merged.sort((a, b) => (b.at ? Date.parse(b.at) : 0) - (a.at ? Date.parse(a.at) : 0));
