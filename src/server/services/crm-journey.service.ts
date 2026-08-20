@@ -7,6 +7,7 @@ import { crmContacts } from '$server/db/pg-crm-schema';
 import { eq, and } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
+import { setContactCustomField, type JsonValue } from './crm-contacts.service';
 import { getOpenRouterModel } from '$server/llm';
 import { DEFAULT_DEPOSIT_RULE, depositMatchSql, notDepositMatchSql } from './crm-deposit-rule';
 
@@ -241,32 +242,26 @@ Return ONLY a JSON array: [{"label":"Asked about Botox","at":"2026-05-01","detai
     return base;
   }
 
-  // TODO(handoff): this is a 4th read-modify-whole-column-write of custom_fields
-  // (select → spread → overwrite the whole column), the exact bug fixed for
-  // `_funnel`/`_relationship` by `setContactCustomField` in crm-contacts.service.ts
-  // (spec 2026-08-18-hub-funnel-atomic-write-spec, S1). It was out of that spec's
-  // Slice-0-enumerated write sites (funnel writer + contact-detail PATCH route) —
-  // discovered during this run's own broader `custom_fields\s*[:=]` grep, which
-  // Slice 0's own recon checklist calls for but the spec text didn't name this
-  // file. Converting it is S2-shaped work (out of scope for the S0+S1 slice this
-  // run implements) and per the spec's own §2, "If Slice 0 finds additional
-  // reachable whole-column read/merge/write sites, convert them in S2 or stop and
-  // amend the spec before shipping; leaving one behind would make the definition
-  // of done false." Convert to `setContactCustomField(tx, ctx.tenantId, contactId,
-  // '_journey', aiMilestones)` when S2 lands.
-  await withOrgCore(ctx, async (tx) => {
-    const [c] = await tx
-      .select({ cf: crmContacts.customFields })
-      .from(crmContacts)
-      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)))
-      .limit(1);
-    const cf = { ...((c?.cf as Record<string, unknown>) ?? {}) };
-    cf._journey = aiMilestones;
-    await tx
-      .update(crmContacts)
-      .set({ customFields: cf, updatedAt: new Date() })
-      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)));
-  });
+  // ONE atomic per-key write (spec 2026-08-18-hub-funnel-atomic-write-spec, S2):
+  // `_journey` goes through the same `setContactCustomField` primitive as
+  // `_funnel` and `_relationship`, never a select → spread → whole-column
+  // update. The shape this replaces read the whole `custom_fields` value into
+  // JS, assigned `_journey` on that snapshot, and wrote the entire object back,
+  // so ANY other key committed between the read and the write (a concurrent
+  // `setFunnelStage`, a `_relationship` write) was silently reverted to its
+  // stale value — the lost update the spec exists to remove. `Milestone` is an
+  // interface with an optional `detail`, so project it to a plain JSON value
+  // the setter's `assertJsonValue` boundary check accepts.
+  const journeyValue: JsonValue = aiMilestones.map((m) => ({
+    id: m.id,
+    type: m.type,
+    label: m.label,
+    at: m.at,
+    detail: m.detail ?? null,
+  }));
+  await withOrgCore(ctx, (tx) =>
+    setContactCustomField(tx, ctx.tenantId, contactId, '_journey', journeyValue),
+  );
 
   const merged = [...base, ...aiMilestones];
   merged.sort((a, b) => (b.at ? Date.parse(b.at) : 0) - (a.at ? Date.parse(a.at) : 0));
