@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import {
   DEFAULT_DEPOSIT_RULE,
+  DEFAULT_RESERVE_LABEL,
   depositMatchSql,
   notDepositMatchSql,
   escapeLikePattern,
   isDepositText,
+  normalizeDepositRule,
   type DepositRule,
 } from './crm-deposit-rule';
 import { DEPOSIT_TEXT_CASES } from './crm-deposit-rule.fixtures';
@@ -57,14 +59,14 @@ describe('depositMatchSql / notDepositMatchSql', () => {
     expect(neg.params).toEqual(['%adelanto%', '%seña%']);
   });
 
-  it('empty keywords ⇒ depositMatchSql is `false` and notDepositMatchSql is `true` — never undefined', () => {
+  it('empty keywords ⇒ depositMatchSql is a wrapped `false` and notDepositMatchSql a wrapped `true` — never undefined, and never a bare literal (invalid in ORDER BY)', () => {
     const rule: DepositRule = { keywords: [], label: 'x' };
     const pos = depositMatchSql('ii.description', rule);
     const neg = notDepositMatchSql('ii.description', rule);
     expect(pos).toBeDefined();
     expect(neg).toBeDefined();
-    expect(render(pos)).toMatchObject({ sql: 'false', params: [] });
-    expect(render(neg)).toMatchObject({ sql: 'true', params: [] });
+    expect(render(pos)).toMatchObject({ sql: 'coalesce(false, false)', params: [] });
+    expect(render(neg)).toMatchObject({ sql: 'coalesce(true, true)', params: [] });
   });
 });
 
@@ -82,6 +84,67 @@ describe('isDepositText', () => {
   it('treats null/undefined as non-deposit — the same total-boolean contract depositMatchSql/notDepositMatchSql coalesce a NULL column to (see crm-deposit-rule.sql.integration.test.ts for the real-Postgres agreement)', () => {
     expect(isDepositText(null, rule)).toBe(false);
     expect(isDepositText(undefined, rule)).toBe(false);
+  });
+});
+
+describe('normalizeDepositRule', () => {
+  it('absent value (undefined) resolves to the default keywords with the corrected reserve label, ok=true', () => {
+    expect(normalizeDepositRule(undefined)).toEqual({
+      rule: { keywords: ['reserva'], label: DEFAULT_RESERVE_LABEL },
+      ok: true,
+    });
+    expect(DEFAULT_RESERVE_LABEL).toBe('Reserved a consult');
+    // The corrected default label supersedes DEFAULT_DEPOSIT_RULE.label ('Reserva')
+    // for the resolved/normalized rule — DEFAULT_DEPOSIT_RULE itself is unchanged.
+    expect(normalizeDepositRule(undefined).rule.label).not.toBe(DEFAULT_DEPOSIT_RULE.label);
+  });
+
+  it.each([null, 'reserva', 42, ['reserva'], { keywords: 'reserva' }, { keywords: [1, 2] }])(
+    'malformed value %j resolves to the default rule, ok=false',
+    (raw) => {
+      expect(normalizeDepositRule(raw)).toEqual({
+        rule: { keywords: ['reserva'], label: DEFAULT_RESERVE_LABEL },
+        ok: false,
+      });
+    },
+  );
+
+  it('explicitly empty keywords is valid (ok=true), not malformed — the canonical empty-keyword contract', () => {
+    expect(normalizeDepositRule({ keywords: [] })).toEqual({
+      rule: { keywords: [], label: DEFAULT_RESERVE_LABEL },
+      ok: true,
+    });
+  });
+
+  it('a valid custom rule with an explicit label is used as-is', () => {
+    expect(normalizeDepositRule({ keywords: ['adelanto', 'seña'], label: 'Deposit paid' })).toEqual(
+      {
+        rule: { keywords: ['adelanto', 'seña'], label: 'Deposit paid' },
+        ok: true,
+      },
+    );
+  });
+
+  it('a valid custom rule that omits label falls back to the corrected default label, not "Reserva"', () => {
+    const { rule, ok } = normalizeDepositRule({ keywords: ['adelanto'] });
+    expect(ok).toBe(true);
+    expect(rule).toEqual({ keywords: ['adelanto'], label: DEFAULT_RESERVE_LABEL });
+  });
+
+  it('trims keyword/label whitespace and drops empty keyword entries', () => {
+    expect(
+      normalizeDepositRule({ keywords: [' adelanto ', '', 'seña'], label: '  Deposit paid  ' }),
+    ).toEqual({
+      rule: { keywords: ['adelanto', 'seña'], label: 'Deposit paid' },
+      ok: true,
+    });
+  });
+
+  it('a blank label falls back to the corrected default label', () => {
+    expect(normalizeDepositRule({ keywords: ['adelanto'], label: '   ' })).toEqual({
+      rule: { keywords: ['adelanto'], label: DEFAULT_RESERVE_LABEL },
+      ok: true,
+    });
   });
 });
 

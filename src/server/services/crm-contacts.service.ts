@@ -36,6 +36,7 @@ import {
   type RelationshipCategory,
 } from '$lib/components/crm/crm-relationship';
 import { StaleWriteError, staleGuard } from './errors';
+import { normalizeDepositRule, type DepositRule } from './crm-deposit-rule';
 
 /**
  * CRM service (spec §4–8). Contacts = inbound senders to the org's registered
@@ -1540,6 +1541,40 @@ export async function getCrmSettings(ctx: CoreCtx): Promise<CrmSettings> {
   } catch {
     return { accounts: null };
   }
+}
+
+/**
+ * Resolves the per-org deposit-line classification rule from
+ * `crm_settings.value.deposit` (S2 of 2026-08-17-hub-reserva-keyword-config-spec)
+ * — the settings-layer counterpart to the DB-free `normalizeDepositRule` in
+ * `crm-deposit-rule.ts`. Resilient like `getCrmSettings`: a missing table/row
+ * falls back to the default rule rather than throwing, since callers build a
+ * finance/journey query around whatever this returns. A malformed stored
+ * value also falls back to the default rule but is logged, since that
+ * indicates a write-path bug rather than the ordinary absent-config case.
+ */
+export async function resolveDepositRule(ctx: CoreCtx): Promise<DepositRule> {
+  let raw: unknown;
+  try {
+    raw = await withOrgCore(ctx, async (tx) => {
+      const [row] = await tx
+        .select({ value: crmSettings.value })
+        .from(crmSettings)
+        .where(eq(crmSettings.orgId, ctx.tenantId))
+        .limit(1);
+      return (row?.value as Record<string, unknown> | undefined)?.deposit;
+    });
+  } catch {
+    raw = undefined;
+  }
+  const { rule, ok } = normalizeDepositRule(raw);
+  if (!ok) {
+    console.warn(
+      '[crm-settings] malformed crm_settings.value.deposit; using default deposit rule',
+      raw,
+    );
+  }
+  return rule;
 }
 
 /**
