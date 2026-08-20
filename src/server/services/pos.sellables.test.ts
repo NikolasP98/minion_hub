@@ -1,6 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
 
+// ── withOrgCore — bypass the real session-setup statements (`set local
+// idle_in_transaction_session_timeout`, `set local role app_ledger`, the two
+// `set_config` GUC calls). Each real withOrgCore call issues FOUR `tx.execute`
+// calls for that setup before running the caller's `fn`, so a sequential
+// `db.execute` mock (`mockResolvedValueOnce(pre).mockResolvedValue(post)`)
+// written against "the Nth real query" actually lands on the Nth session-setup
+// no-op instead — the prior attempt at this slice hit exactly that: its
+// trackStock false→true test's `deriveSellableFacts` read silently resolved
+// to the POST-transition row, so `trackStockChanged` was false and the insert
+// never fired. Same passthrough pattern as crm-journey.atomic-write.test.ts. ──
+vi.mock('$server/db/with-org-core', () => ({
+  withOrgCore: (
+    scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } },
+    fn: (tx: unknown) => unknown,
+  ) => scope.db.transaction((tx: unknown) => fn(tx)),
+}));
+
 // ── finance-products.service mock (upsertProduct) ──
 const upsertProductMock = vi.fn<(ctx: unknown, p: unknown) => Promise<void>>();
 vi.mock('./finance-products.service', () => ({
