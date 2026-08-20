@@ -64,7 +64,7 @@ describe.runIf(Boolean(databaseUrl))(
           ${contactId},
           ${orgId},
           'manual',
-          ${JSON.stringify({ _funnel: { stage: 'lead', auto: true } })}::jsonb
+          ${owner.json({ _funnel: { stage: 'lead', auto: true } })}
         )
       `;
 
@@ -80,7 +80,7 @@ describe.runIf(Boolean(databaseUrl))(
           set custom_fields = jsonb_set(
             custom_fields,
             array['_funnel'],
-            ${JSON.stringify({ stage: 'customer', auto: false })}::jsonb,
+            ${tx.json({ stage: 'customer', auto: false })},
             true
           )
           where id = ${contactId}
@@ -151,7 +151,7 @@ describe.runIf(Boolean(databaseUrl))(
           ${contactId},
           ${orgId},
           'manual',
-          ${JSON.stringify({ _funnel: { stage: 'lead', auto: true }, nombre: 'Ana' })}::jsonb
+          ${owner.json({ _funnel: { stage: 'lead', auto: true }, nombre: 'Ana' })}
         )
       `;
       return { orgId, contactId };
