@@ -15,7 +15,7 @@ const render = (frag: ReturnType<typeof depositMatchSql>) => dialect.sqlToQuery(
 
 describe('DEFAULT_DEPOSIT_RULE', () => {
   it('is the FACES-era default — the only occurrence of "reserva" outside this module/tests', () => {
-    expect(DEFAULT_DEPOSIT_RULE).toEqual({ keywords: ['reserva'], label: 'Reserva' });
+    expect(DEFAULT_DEPOSIT_RULE).toEqual({ keywords: ['reserva'], label: 'Reserved a consult' });
   });
 });
 

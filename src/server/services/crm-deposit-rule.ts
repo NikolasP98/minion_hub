@@ -21,8 +21,19 @@ export interface DepositRule {
  * truth. This is the only occurrence of the word "reserva" in `src/server/`;
  * every call site resolves a `DepositRule` (this default until S2 wires
  * `crm_settings.value.deposit`) rather than hardcoding the keyword again.
+ *
+ * `label` is `'Reserved a consult'`, not `'Reserva'`: `crm-journey.service.ts`
+ * is the only consumer that reads `label` (finance/similarity classify but
+ * never surface it), and its shipped absent-config copy has always been
+ * `'Reserved a consult'`. Since this default also backs the normalized
+ * omitted-label fallback in `crm-settings.service.ts`, changing it here is
+ * what lets journey use `rule.label` directly instead of hardcoding its own
+ * string — see 2026-08-20-handoff-minion-hub-2131866440-spec §3.
  */
-export const DEFAULT_DEPOSIT_RULE: DepositRule = { keywords: ['reserva'], label: 'Reserva' };
+export const DEFAULT_DEPOSIT_RULE: DepositRule = {
+  keywords: ['reserva'],
+  label: 'Reserved a consult',
+};
 
 /**
  * Stable fingerprint of a rule's MATCHING semantics — folded into the `d`
