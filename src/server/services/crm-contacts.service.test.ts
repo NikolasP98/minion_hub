@@ -654,10 +654,12 @@ describe('rankContacts search (S1 — phone/DNI exact-prefix)', () => {
 
     const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
     expect(query.sql).toContain("c.custom_fields->>'telefono' like");
-    // name = substring; phone + dni = prefix. A mid-string phone match would
-    // need a leading '%', and there is exactly one of those (the name).
+    expect(query.sql).toContain('p.doc_number like');
+    // name = substring; phone + custom_fields.dni + party-spine doc_number =
+    // prefix. A mid-string phone match would need a leading '%', and there is
+    // exactly one of those (the name).
     expect(query.params.filter((p) => p === '%9876%')).toHaveLength(1);
-    expect(query.params.filter((p) => p === '9876%')).toHaveLength(2);
+    expect(query.params.filter((p) => p === '9876%')).toHaveLength(3);
   });
 
   it('DNI search uses the custom_fields prefix required by the server-pagination contract', async () => {
@@ -681,6 +683,7 @@ describe('rankContacts search (S1 — phone/DNI exact-prefix)', () => {
     // recover the hidden digits by lengthening the prefix one probe at a time.
     expect(query.sql).not.toContain("c.custom_fields->>'telefono' like");
     expect(query.sql).not.toContain("c.custom_fields->>'dni' like");
+    expect(query.sql).not.toContain('p.doc_number like');
     expect(query.sql).toContain('c.display_name ilike');
     expect(query.params).not.toContain('5198%');
     expect(query.params).toContain('%5198%');
