@@ -3,14 +3,20 @@ import { cached, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
-import { depositMatchSql, notDepositMatchSql, type DepositRule } from './crm-deposit-rule';
-import { resolveDepositRule } from './crm-deposit-settings.service';
+import {
+  depositMatchSql,
+  depositSortKeySql,
+  depositRuleFingerprint,
+  notDepositMatchSql,
+  type DepositRule,
+} from './crm-deposit-rule';
+import { resolveDepositRule } from './crm-settings.service';
 import { scopeData } from './base';
 
 // A line item may be a booking deposit rather than an actual procedure — the
 // signal that splits "reservó pero no compró" from real buyers. Which words
 // count as a deposit is org-configurable (crm-deposit-rule.ts), resolved
-// per-org by crm-deposit-settings.service.ts's resolveDepositRule. Every
+// per-org by crm-settings.service.ts's resolveDepositRule. Every
 // predicate below is built call-time from a rule resolved once per public
 // function invocation — never frozen at module load.
 function isDepositSql(rule: DepositRule) {
@@ -79,14 +85,6 @@ export interface ContactFinance {
   reservedOnly: boolean;
   /** repeat procedure buyer (≥2 distinct procedure dates) */
   loyal: boolean;
-}
-
-/** Stable fingerprint of a DepositRule's matching semantics, folded into the
- *  cache key's `d` descriptor so a same-tenant rule change is visible on the
- *  very next call — a previously cached result keyed on the old rule is
- *  simply a different key, never served in its place. */
-function depositRuleFingerprint(rule: DepositRule): string {
-  return rule.keywords.join('\u0000');
 }
 
 export async function contactFinanceMap(ctx: CoreCtx): Promise<Record<string, ContactFinance>> {
@@ -201,7 +199,7 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
       select fi.id, fi.document_id, fi.issued_at, coalesce(fi.total,0)::float8 total, fi.status,
              -- the "what was done": a representative line, procedures first (deposit lines last), priciest first.
              (select ii.description from fin_invoice_items ii where ii.invoice_id = fi.id and ii.description is not null
-                order by ${depositMatchSql('ii.description', rule)} asc, ii.total desc nulls last limit 1) as item
+                order by ${depositSortKeySql('ii.description', rule)} asc, ii.total desc nulls last limit 1) as item
       from fin_invoices fi
       join fin_clients fc on fc.id = fi.client_id
       where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)

@@ -7,7 +7,7 @@ import { DEFAULT_DEPOSIT_RULE, type DepositRule } from './crm-deposit-rule';
 const bothEnabled = vi.fn(async () => true);
 vi.mock('./modules.service', () => ({ bothEnabled: (...a: unknown[]) => bothEnabled() }));
 const resolveDepositRule = vi.fn(async (): Promise<DepositRule> => DEFAULT_DEPOSIT_RULE);
-vi.mock('./crm-deposit-settings.service', () => ({
+vi.mock('./crm-settings.service', () => ({
   resolveDepositRule: (...a: unknown[]) => resolveDepositRule(...(a as [])),
 }));
 import {
@@ -243,7 +243,7 @@ describe('contactFinanceSummary', () => {
         select fi.id, fi.document_id, fi.issued_at, coalesce(fi.total,0)::float8 total, fi.status,
                -- the "what was done": a representative line, procedures first (deposit lines last), priciest first.
                (select ii.description from fin_invoice_items ii where ii.invoice_id = fi.id and ii.description is not null
-                  order by coalesce((ii.description ilike $2), false) asc, ii.total desc nulls last limit 1) as item
+                  order by (case when coalesce((ii.description ilike $2), false) then 1 else 0 end) asc, ii.total desc nulls last limit 1) as item
         from fin_invoices fi
         join fin_clients fc on fc.id = fi.client_id
         where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
@@ -295,12 +295,21 @@ describe('contactFinanceSummary', () => {
     const { db, resolve } = createMockDb();
     resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
     resolve([
-      { id: 'inv1', document_id: 'd1', issued_at: null, total: 500, status: 's', item: 'Cualquier cosa' },
+      {
+        id: 'inv1',
+        document_id: 'd1',
+        issued_at: null,
+        total: 500,
+        status: 's',
+        item: 'Cualquier cosa',
+      },
     ]);
     const summary = await contactFinanceSummary(ctx(db), 'c1');
 
     const itemQuery = dialect.sqlToQuery(executedSqlContaining(db, 'as item'));
-    expect(normalizeSql(itemQuery.sql)).toContain(normalizeSql('order by false asc'));
+    expect(normalizeSql(itemQuery.sql)).toContain(
+      normalizeSql('order by (case when false then 1 else 0 end) asc'),
+    );
     expect(itemQuery.params).toEqual(['c1']);
 
     const aggQuery = dialect.sqlToQuery(executedSqlContaining(db, 'proc_dates'));
@@ -400,6 +409,62 @@ describe('rankCustomers', () => {
       ),
     );
     expect(params).toEqual(['%reserva%']);
+  });
+
+  it('PARITY: a custom resolved rule binds its own escaped keywords in the top_product predicate, never %reserva%', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto', 'seña'], label: 'Adelanto' });
+    resolve([]);
+    await rankCustomers(ctx(db), 'revenue', 5);
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    // NOT-deposit polarity: the top product is the priciest line that matches
+    // NONE of the configured keywords, so each keyword contributes its own
+    // `not ilike` conjunct.
+    expect(normalizeSql(sql)).toContain(
+      normalizeSql('coalesce((ii.description not ilike $1 and ii.description not ilike $2), true)'),
+    );
+    expect(params).toEqual(['%adelanto%', '%seña%']);
+    expect(params).not.toContain('%reserva%');
+  });
+
+  it('PARITY: an explicitly empty keyword set compiles top_product to a literal true — no dropped predicate, no bound pattern', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    resolve([]);
+    await rankCustomers(ctx(db), 'revenue', 5);
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    // A dropped predicate would leave `and ii.description is not null group by`
+    // — the widened match this module exists to prevent.
+    expect(normalizeSql(sql)).toContain(normalizeSql('and ii.description is not null and true'));
+    expect(params).toEqual([]);
+  });
+
+  it('the rule changes only top_product — revenue/invoice arithmetic comes from the same aggregate either way', async () => {
+    const row = {
+      contact_id: 'c1',
+      name: 'Ana',
+      revenue: 500,
+      invoices: 2,
+      first_at: '2026-01-01T00:00:00Z',
+      last_at: '2026-03-01T00:00:00Z',
+    };
+    const { db: defaultDb, resolve: resolveDefault } = createMockDb();
+    resolveDefault([{ ...row, top_product: 'Botox facial' }]);
+    const underDefault = await rankCustomers(ctx(defaultDb), 'revenue', 5);
+
+    const { db: customDb, resolve: resolveCustom } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto'], label: 'Adelanto' });
+    // Under a rule that does not name "reserva", the deposit line stops being
+    // excluded and (being the priciest) becomes the top product.
+    resolveCustom([{ ...row, top_product: 'Reserva de cita' }]);
+    const underCustom = await rankCustomers(ctx(customDb), 'revenue', 5);
+
+    expect(underDefault[0].topProduct).toBe('Botox facial');
+    expect(underCustom[0].topProduct).toBe('Reserva de cita');
+    expect(underCustom[0].revenue).toBe(underDefault[0].revenue);
+    expect(underCustom[0].invoices).toBe(underDefault[0].invoices);
+    expect(underCustom[0].firstPurchaseAt).toBe(underDefault[0].firstPurchaseAt);
+    expect(underCustom[0].lastPurchaseAt).toBe(underDefault[0].lastPurchaseAt);
   });
 });
 

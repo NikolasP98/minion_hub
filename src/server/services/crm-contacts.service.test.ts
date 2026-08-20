@@ -15,6 +15,7 @@ import {
   assertJsonValue,
   setContactCustomField,
   setFunnelStage,
+  listContactsCached,
 } from './crm-contacts.service';
 
 /**
@@ -75,12 +76,13 @@ vi.mock('./modules.service', async (importOriginal) => ({
 
 // Same reasoning as bothEnabled above: resolveDepositRule (called only when
 // withFinance is true) issues its own withOrgCore round-trip via
-// crm-deposit-settings.service.ts and would otherwise eat the exec mock
+// crm-settings.service.ts and would otherwise eat the exec mock
 // queued for the ranking query.
 const { mockResolveDepositRule } = vi.hoisted(() => ({
   mockResolveDepositRule: vi.fn(async () => ({ keywords: ['reserva'], label: 'Reserva' })),
 }));
-vi.mock('./crm-deposit-settings.service', () => ({
+vi.mock('./crm-settings.service', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   resolveDepositRule: () => mockResolveDepositRule(),
 }));
 
@@ -789,5 +791,64 @@ describe('rankContacts finance CTE deposit rule (Slice 1 — same resolved rule 
     // No deposit-keyword ILIKE pattern is bound at all — an empty rule drops
     // the predicate's PARAMS, not the predicate itself (still `false`/`true`).
     expect(query.params.filter((p) => typeof p === 'string' && p.startsWith('%'))).toHaveLength(0);
+  });
+});
+
+/**
+ * The roster the CRM dashboard and the Customers page actually consume is the
+ * CACHED one, and its rows carry the deposit-derived `fin_purchased` /
+ * `fin_reserved_only` → `funnel_stage`. A cache identity that ignores the rule
+ * would serve the previous classification for the whole TTL+SWR window after a
+ * same-tenant settings change — the failure this fixture pins.
+ */
+describe('listContactsCached rule sensitivity', () => {
+  /** One roster row, only the fields the mapper touches plus the classification. */
+  const rosterRow = (funnelStage: string) => ({
+    contact_id: 'c1',
+    total_rows: 1,
+    page_position: 1,
+    custom_fields: {},
+    identities: [],
+    funnel_stage: funnelStage,
+  });
+
+  it('a same-tenant rule change is visible on the very next call, and each rule keeps its own entry', async () => {
+    const { configureCache, MemoryBackend } = await import('@minion-stack/cache');
+    configureCache({ backend: new MemoryBackend(), namespace: 'crm-contacts-rule-test' });
+    const tenant = 'org-roster-fingerprint';
+    const scoped = { db: {} as never, tenantId: tenant };
+
+    // Default rule: the deposit line classifies c1 as reserved-only.
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['reserva'], label: 'Reserva' });
+    useExecMock(vi.fn().mockResolvedValueOnce([rosterRow('reserved')]));
+    const first = await listContactsCached(scoped);
+    expect(first[0]).toMatchObject({ funnel_stage: 'reserved' });
+
+    // Custom rule, same tenant: the same line is no longer a deposit, so the
+    // roster must recompute rather than replay the cached 'reserved' payload.
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto'], label: 'Adelanto' });
+    useExecMock(vi.fn().mockResolvedValueOnce([rosterRow('customer')]));
+    const second = await listContactsCached(scoped);
+    expect(second[0]).toMatchObject({ funnel_stage: 'customer' });
+
+    // Explicitly empty keywords: a third distinct rule, a third distinct entry.
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    useExecMock(vi.fn().mockResolvedValueOnce([rosterRow('customer-empty-rule')]));
+    const third = await listContactsCached(scoped);
+    expect(third[0]).toMatchObject({ funnel_stage: 'customer-empty-rule' });
+
+    // Back to the default rule inside its TTL: a genuine cache HIT, so the
+    // loader's poison rows must never surface — proving these are separate
+    // entries rather than one entry being blown away each time.
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['reserva'], label: 'Reserva' });
+    const poison = vi.fn().mockResolvedValueOnce([rosterRow('POISON')]);
+    useExecMock(poison);
+    const fourth = await listContactsCached(scoped);
+    expect(fourth[0]).toMatchObject({ funnel_stage: 'reserved' });
+    expect(poison).not.toHaveBeenCalled();
   });
 });

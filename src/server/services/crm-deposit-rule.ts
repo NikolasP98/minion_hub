@@ -25,6 +25,22 @@ export interface DepositRule {
 export const DEFAULT_DEPOSIT_RULE: DepositRule = { keywords: ['reserva'], label: 'Reserva' };
 
 /**
+ * Stable fingerprint of a rule's MATCHING semantics — folded into the `d`
+ * descriptor of every cache key whose payload carries deposit classification
+ * (the finance map, the ranked roster). A same-tenant rule change then lands on
+ * a DIFFERENT key, so the next call can never be served a result classified
+ * under the previous rule, TTL/SWR notwithstanding.
+ *
+ * Only `keywords` participate: `label` is display-only and never reaches SQL.
+ * `null` = the caller resolved no rule at all (finances off ⇒ no classification
+ * in the payload), which is its own cache identity. Textual JSON on purpose —
+ * a raw delimiter byte in a source file makes Git treat it as binary.
+ */
+export function depositRuleFingerprint(rule: DepositRule | null): string {
+  return rule ? JSON.stringify(rule.keywords) : 'none';
+}
+
+/**
  * Escapes ILIKE/LIKE wildcards (`\`, `%`, `_`) in an operator-supplied
  * keyword and wraps it in `%…%`. Every pattern builder in this module goes
  * through this function; never build an ILIKE pattern by interpolation
@@ -57,6 +73,20 @@ function patterns(rule: DepositRule): string[] {
  * an `and(...)`/`or(...)` chain would silently widen the result set, which is
  * the failure mode this module exists to prevent.
  */
+/**
+ * `depositMatchSql` as an ORDER BY key: procedures (0) before deposits (1).
+ *
+ * PostgreSQL rejects a bare constant as a sort key ("non-integer constant in
+ * ORDER BY" — a bare constant there is reserved for ordinal column references),
+ * so `order by ${depositMatchSql(...)}` is a runtime 42601 for a ZERO-keyword
+ * rule, where the predicate compiles to the literal `false`. Every call site
+ * that sorts by deposit-ness must go through this CASE instead of interpolating
+ * the boolean predicate directly.
+ */
+export function depositSortKeySql(column: string, rule: DepositRule): SQL {
+  return sql`(case when ${depositMatchSql(column, rule)} then 1 else 0 end)`;
+}
+
 export function depositMatchSql(column: string, rule: DepositRule): SQL {
   const pats = patterns(rule);
   if (pats.length === 0) return sql`false`;
