@@ -1,6 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
 
+// ── withOrgCore — bypass the real session-setup statements (`set local
+// idle_in_transaction_session_timeout`, `set local role app_ledger`, the two
+// `set_config` GUC calls). Each real withOrgCore call issues FOUR `tx.execute`
+// calls for that setup before running the caller's `fn`, so a sequential
+// `db.execute` mock (`mockResolvedValueOnce(pre).mockResolvedValue(post)`)
+// written against "the Nth real query" actually lands on the Nth session-setup
+// no-op instead — the prior attempt at this slice hit exactly that: its
+// trackStock false→true test's `deriveSellableFacts` read silently resolved
+// to the POST-transition row, so `trackStockChanged` was false and the insert
+// never fired. Same passthrough pattern as crm-journey.atomic-write.test.ts. ──
+vi.mock('$server/db/with-org-core', () => ({
+  withOrgCore: (
+    scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } },
+    fn: (tx: unknown) => unknown,
+  ) => scope.db.transaction((tx: unknown) => fn(tx)),
+}));
+
 // ── finance-products.service mock (upsertProduct) ──
 const upsertProductMock = vi.fn<(ctx: unknown, p: unknown) => Promise<void>>();
 vi.mock('./finance-products.service', () => ({
@@ -8,10 +25,10 @@ vi.mock('./finance-products.service', () => ({
 }));
 
 // ── stock.service mock — sellables slice only; ticket-flow exports are
-// stubbed no-ops since pos.sellables.test.ts never exercises them ──
-const createItemMock = vi.fn<(ctx: unknown, input: unknown) => Promise<{ id: string }>>();
-const updateItemMock =
-  vi.fn<(ctx: unknown, id: string, patch: unknown) => Promise<{ id: string } | null>>();
+// stubbed no-ops since pos.sellables.test.ts never exercises them. Item
+// creation/linking now happens via pos.service.ts's own syncSellableItem
+// writing directly on the tx (see mock-db insert/update spies below), not
+// through createItem/updateItem — so those two are no longer mocked here. ──
 const setConsumptionMock =
   vi.fn<(ctx: unknown, input: unknown, actor: unknown) => Promise<{ id: string }>>();
 const deleteConsumptionMock = vi.fn<(ctx: unknown, id: string) => Promise<boolean>>();
@@ -23,8 +40,6 @@ vi.mock('./stock.service', () => ({
   submitEntry: vi.fn(),
   cancelEntry: vi.fn(),
   StockError: class StockError extends Error {},
-  createItem: (ctx: unknown, input: unknown) => createItemMock(ctx, input),
-  updateItem: (ctx: unknown, id: string, patch: unknown) => updateItemMock(ctx, id, patch),
   setConsumption: (ctx: unknown, input: unknown, actor: unknown) =>
     setConsumptionMock(ctx, input, actor),
   deleteConsumption: (ctx: unknown, id: string) => deleteConsumptionMock(ctx, id),
@@ -284,7 +299,7 @@ describe('createSellable', () => {
       unitPrice: null,
       active: true,
     });
-    expect(createItemMock).not.toHaveBeenCalled();
+    expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).not.toHaveBeenCalled();
     expect(setConsumptionMock).not.toHaveBeenCalled();
     expect(row.kind).toBe('service');
     expect(row.itemId).toBeNull();
@@ -307,7 +322,12 @@ describe('createSellable', () => {
       },
     ]);
     upsertProductMock.mockResolvedValue(undefined);
-    createItemMock.mockResolvedValue({ id: 'item-9' });
+    // syncSellableItem's trackStock branch inserts directly on the tx — spy on
+    // the values() the SUT writes, not just the (separately mocked) readback.
+    const valuesSpy = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'item-9' }]) });
+    (db as unknown as { insert: ReturnType<typeof vi.fn> }).insert = vi
+      .fn()
+      .mockReturnValue({ values: valuesSpy });
 
     const input: SellableInput = {
       name: 'Botox',
@@ -319,11 +339,12 @@ describe('createSellable', () => {
     };
     const row = await createSellable(ctx(db), input, actor);
 
-    expect(createItemMock).toHaveBeenCalledWith(expect.anything(), {
+    expect(valuesSpy).toHaveBeenCalledWith({
       code: 'BTX',
       name: 'Botox',
       uom: 'vial',
       finProductId: 'fp-2',
+      orgId: 'org-1',
     });
     expect(row.itemId).toBe('item-9');
     expect(row.kind).toBe('product');
@@ -332,7 +353,11 @@ describe('createSellable', () => {
   // ── #10: publish an EXISTING raw material (a mask, a vial) as a sellable ──
   it('itemId links the existing item instead of creating one', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[{ id: 'fp-x' }]]);
+    resolveSequence([
+      [{ id: 'fp-x' }], // select product id by code
+      [{ id: 'item-raw' }], // syncSellableItem: stkItems existence check
+      [{ id: 'item-raw' }], // syncSellableItem: stkItems update…returning
+    ]);
     mockExecute(db, [
       {
         id: 'fp-x',
@@ -347,7 +372,6 @@ describe('createSellable', () => {
       },
     ]);
     upsertProductMock.mockResolvedValue(undefined);
-    updateItemMock.mockResolvedValue({ id: 'item-raw' });
 
     const input: SellableInput = {
       name: 'Mask',
@@ -358,16 +382,18 @@ describe('createSellable', () => {
     };
     const row = await createSellable(ctx(db), input, actor);
 
-    expect(updateItemMock).toHaveBeenCalledWith(expect.anything(), 'item-raw', {
-      finProductId: 'fp-x',
-    });
-    expect(createItemMock).not.toHaveBeenCalled(); // linked, never created
+    expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).toHaveBeenCalled();
+    expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).not.toHaveBeenCalled(); // linked, never created
     expect(row.kind).toBe('product'); // derived from the link, for free
   });
 
   it('itemId wins over trackStock when both are sent', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[{ id: 'fp-y' }]]);
+    resolveSequence([
+      [{ id: 'fp-y' }],
+      [{ id: 'item-raw' }], // existence check
+      [{ id: 'item-raw' }], // update…returning
+    ]);
     mockExecute(db, [
       {
         id: 'fp-y',
@@ -382,7 +408,6 @@ describe('createSellable', () => {
       },
     ]);
     upsertProductMock.mockResolvedValue(undefined);
-    updateItemMock.mockResolvedValue({ id: 'item-raw' });
 
     await createSellable(
       ctx(db),
@@ -398,16 +423,27 @@ describe('createSellable', () => {
       actor,
     );
 
-    expect(updateItemMock).toHaveBeenCalled();
-    expect(createItemMock).not.toHaveBeenCalled();
+    expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).toHaveBeenCalled();
+    expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).not.toHaveBeenCalled();
   });
 
   it('publishing an already-published item surfaces item_taken, not a raw 23505', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[{ id: 'fp-z' }]]);
+    resolveSequence([
+      [{ id: 'fp-z' }], // select product id by code
+      [{ id: 'item-raw' }], // existence check finds the item
+    ]);
     upsertProductMock.mockResolvedValue(undefined);
     // what the stk_items_org_fin_product_uniq partial index raises
-    updateItemMock.mockRejectedValue(Object.assign(new Error('duplicate key'), { code: '23505' }));
+    (db as unknown as { update: ReturnType<typeof vi.fn> }).update = vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi
+            .fn()
+            .mockRejectedValue(Object.assign(new Error('duplicate key'), { code: '23505' })),
+        }),
+      }),
+    });
 
     const input: SellableInput = {
       name: 'Dup',
@@ -423,9 +459,11 @@ describe('createSellable', () => {
 
   it('a missing itemId surfaces item_not_found', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[{ id: 'fp-w' }]]);
+    resolveSequence([
+      [{ id: 'fp-w' }], // select product id by code
+      [], // syncSellableItem: stkItems existence check → none
+    ]);
     upsertProductMock.mockResolvedValue(undefined);
-    updateItemMock.mockResolvedValue(null); // updateItem returns null when not found
 
     const input: SellableInput = {
       name: 'Ghost',
@@ -465,7 +503,7 @@ describe('createSellable', () => {
     };
     await createSellable(ctx(db), input, actor);
 
-    expect(createItemMock).not.toHaveBeenCalled();
+    expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).not.toHaveBeenCalled();
   });
 
   it('consumption rows are written via setConsumption, one call per row', async () => {
@@ -552,7 +590,7 @@ describe('createSellable', () => {
     await expect(createSellable(ctx(db), input, actor)).rejects.toMatchObject({
       code: 'code_taken',
     });
-    expect(createItemMock).not.toHaveBeenCalled();
+    expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).not.toHaveBeenCalled();
   });
 
   it('a non-unique-violation error from upsertProduct is rethrown as-is', async () => {
@@ -886,7 +924,7 @@ describe('updateSellable', () => {
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
-    it("trackStock false→true throws PosError code 'stock_tracking_immutable', mutates nothing", async () => {
+    it("trackStock true→false still throws PosError code 'stock_tracking_immutable', mutates nothing (S3, out of scope)", async () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([
         [
@@ -908,6 +946,168 @@ describe('updateSellable', () => {
           category: null,
           unit_price: null,
           active: true,
+          item_id: 'item-13',
+          stock_qty: '3',
+          has_mapping: false,
+          uom: 'Unidad',
+        },
+      ]);
+
+      await expect(
+        updateSellable(ctx(db), 'fp-13', { trackStock: false }, actor),
+      ).rejects.toMatchObject({ code: 'stock_tracking_immutable' });
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+      expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).not.toHaveBeenCalled();
+    });
+
+    // ── S2 of 2026-08-20-handoff-minion-hub-902723699-spec: trackStock
+    // false→true now APPLIES (creates the linked stk_items row) instead of
+    // refusing — the sibling spec's own S2, deferred until this spec. ──
+    it("trackStock false→true APPLIES: creates the linked stk_items row via syncSellableItem, getSellableRow() reports kind 'product'", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-13',
+            code: 'CONS',
+            name: 'Consulta',
+            category: null,
+            unitPrice: null,
+            active: true,
+          },
+        ], // load current product
+        [], // fin_products .update() — return value unused
+      ]);
+      const preRow = {
+        id: 'fp-13',
+        code: 'CONS',
+        name: 'Consulta',
+        category: null,
+        unit_price: null,
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: false,
+      };
+      const postRow = {
+        ...preRow,
+        item_id: 'item-13',
+        stock_qty: '0',
+        uom: 'Unidad',
+      };
+      // 1st raw execute = deriveSellableFacts' pre-transition read (untracked);
+      // every execute after that (the final getSellableRow readback) sees the
+      // now-linked item — this is what "apply" means observably.
+      (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute = vi
+        .fn()
+        .mockResolvedValueOnce([preRow])
+        .mockResolvedValue([postRow]);
+      const valuesSpy = vi
+        .fn()
+        .mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'item-13' }]) });
+      (db as unknown as { insert: ReturnType<typeof vi.fn> }).insert = vi
+        .fn()
+        .mockReturnValue({ values: valuesSpy });
+
+      const row = await updateSellable(
+        ctx(db),
+        'fp-13',
+        { trackStock: true, uom: 'Unidad' },
+        actor,
+      );
+
+      expect(valuesSpy).toHaveBeenCalledWith({
+        code: 'CONS',
+        name: 'Consulta',
+        uom: 'Unidad',
+        finProductId: 'fp-13',
+        orgId: 'org-1',
+      });
+      expect(row.kind).toBe('product');
+      expect(row.itemId).toBe('item-13');
+    });
+
+    it('omitted uom on a trackStock false→true transition defaults to \'unit\' — same default createSellable uses', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [{ id: 'fp-13b', code: 'CONS', name: 'Consulta', category: null, unitPrice: null, active: true }],
+        [],
+      ]);
+      const preRow = {
+        id: 'fp-13b',
+        code: 'CONS',
+        name: 'Consulta',
+        category: null,
+        unit_price: null,
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: false,
+      };
+      (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute = vi
+        .fn()
+        .mockResolvedValueOnce([preRow])
+        .mockResolvedValue([{ ...preRow, item_id: 'item-13b', stock_qty: '0', uom: 'unit' }]);
+      const valuesSpy = vi
+        .fn()
+        .mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'item-13b' }]) });
+      (db as unknown as { insert: ReturnType<typeof vi.fn> }).insert = vi
+        .fn()
+        .mockReturnValue({ values: valuesSpy });
+
+      await updateSellable(ctx(db), 'fp-13b', { trackStock: true }, actor);
+
+      expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ uom: 'unit' }));
+    });
+
+    it("a coupled full-object PATCH kind:'product' + trackStock:true succeeds because the submitted kind matches the post-transition state", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [{ id: 'fp-13c', code: 'CONS', name: 'Consulta', category: null, unitPrice: null, active: true }],
+        [],
+      ]);
+      const preRow = {
+        id: 'fp-13c',
+        code: 'CONS',
+        name: 'Consulta',
+        category: null,
+        unit_price: null,
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: false,
+      };
+      (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute = vi
+        .fn()
+        .mockResolvedValueOnce([preRow])
+        .mockResolvedValue([{ ...preRow, item_id: 'item-13c', stock_qty: '0', uom: 'Unidad' }]);
+      (db as unknown as { insert: ReturnType<typeof vi.fn> }).insert = vi
+        .fn()
+        .mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'item-13c' }]) }) });
+
+      const row = await updateSellable(
+        ctx(db),
+        'fp-13c',
+        { kind: 'product', trackStock: true, uom: 'Unidad' },
+        actor,
+      );
+
+      expect(row.kind).toBe('product');
+    });
+
+    it("kind: 'service' with trackStock: true (submitted kind conflicts with the POST-transition state) throws PosError code 'kind_derived', mutates nothing", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [{ id: 'fp-13d', code: 'CONS', name: 'Consulta', category: null, unitPrice: null, active: true }],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-13d',
+          code: 'CONS',
+          name: 'Consulta',
+          category: null,
+          unit_price: null,
+          active: true,
           item_id: null,
           stock_qty: null,
           has_mapping: false,
@@ -915,9 +1115,74 @@ describe('updateSellable', () => {
       ]);
 
       await expect(
-        updateSellable(ctx(db), 'fp-13', { trackStock: true }, actor),
-      ).rejects.toMatchObject({ code: 'stock_tracking_immutable' });
+        updateSellable(ctx(db), 'fp-13d', { kind: 'service', trackStock: true }, actor),
+      ).rejects.toMatchObject({ code: 'kind_derived' });
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+      expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).not.toHaveBeenCalled();
+    });
+
+    it('a failed item insert propagates and the call rejects — the fin_products write in the same tx does not surface as a success', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [{ id: 'fp-13e', code: 'CONS', name: 'Consulta', category: null, unitPrice: null, active: true }],
+        [],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-13e',
+          code: 'CONS',
+          name: 'Consulta',
+          category: null,
+          unit_price: null,
+          active: true,
+          item_id: null,
+          stock_qty: null,
+          has_mapping: false,
+        },
+      ]);
+      const boom = new Error('connection reset');
+      (db as unknown as { insert: ReturnType<typeof vi.fn> }).insert = vi.fn().mockReturnValue({
+        values: vi.fn().mockReturnValue({ returning: vi.fn().mockRejectedValue(boom) }),
+      });
+
+      await expect(
+        updateSellable(ctx(db), 'fp-13e', { trackStock: true, uom: 'Unidad' }, actor),
+      ).rejects.toThrow('connection reset');
+    });
+
+    it('a concurrent double-apply (partial unique index conflict) surfaces item_taken on the loser, not a raw 23505', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [{ id: 'fp-13f', code: 'CONS', name: 'Consulta', category: null, unitPrice: null, active: true }],
+        [],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-13f',
+          code: 'CONS',
+          name: 'Consulta',
+          category: null,
+          unit_price: null,
+          active: true,
+          item_id: null,
+          stock_qty: null,
+          has_mapping: false,
+        },
+      ]);
+      // First racer's insert wins; the second hits the partial unique index
+      // (stk_items_org_fin_product_uniq) — same conflict shape createSellable's
+      // itemId branch already maps, now shared via syncSellableItem.
+      (db as unknown as { insert: ReturnType<typeof vi.fn> }).insert = vi.fn().mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi
+            .fn()
+            .mockRejectedValue(Object.assign(new Error('duplicate key'), { code: '23505' })),
+        }),
+      });
+
+      await expect(
+        updateSellable(ctx(db), 'fp-13f', { trackStock: true, uom: 'Unidad' }, actor),
+      ).rejects.toMatchObject({ code: 'item_taken' });
     });
 
     it("uom 'Unidad'→'mL' throws PosError code 'uom_immutable', mutates nothing", async () => {
