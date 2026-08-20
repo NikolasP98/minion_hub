@@ -43,12 +43,28 @@ export interface NormalizedDepositRule {
 }
 
 /**
+ * Bounds on a stored rule. Every keyword is expanded into at least two ILIKE
+ * bind parameters per finance/journey query (`depositMatchSql` +
+ * `notDepositMatchSql`), so an unbounded array is a live path to exceeding
+ * PostgreSQL's 65,535 bind-parameter ceiling and turning every journey/finance
+ * read for that org into a 500. `MAX_DEPOSIT_KEYWORD_LENGTH`/
+ * `MAX_DEPOSIT_LABEL_LENGTH` bound the operator-editable strings themselves.
+ */
+export const MAX_DEPOSIT_KEYWORDS = 100;
+export const MAX_DEPOSIT_KEYWORD_LENGTH = 200;
+export const MAX_DEPOSIT_LABEL_LENGTH = 200;
+
+/**
  * Pure, DB-free normalization of a raw `crm_settings.value.deposit` value
  * into a usable `DepositRule`. `raw === undefined` (key absent) and a valid
  * `{ keywords: [] }` (explicitly no keywords) are both NOT malformed — they
  * fall through to `ok: true` with, respectively, the default keywords and an
  * empty list. Anything else that isn't `{ keywords: string[], label?: string
- * }` is malformed and resolves to the same default rule, `ok: false`.
+ * }` is malformed and resolves to the same default rule, `ok: false` —
+ * including a keyword array over `MAX_DEPOSIT_KEYWORDS`, any keyword or
+ * `label` over its length cap, and a present `label` that isn't a string. A
+ * blank/whitespace-only `label` is not malformed (mirrors the empty-keywords
+ * case) — it falls back to `DEFAULT_RESERVE_LABEL` with `ok: true`.
  */
 export function normalizeDepositRule(raw: unknown): NormalizedDepositRule {
   const fallback: DepositRule = {
@@ -60,8 +76,17 @@ export function normalizeDepositRule(raw: unknown): NormalizedDepositRule {
     return { rule: fallback, ok: false };
   }
   const o = raw as Record<string, unknown>;
-  const keywordsValid = Array.isArray(o.keywords) && o.keywords.every((k) => typeof k === 'string');
+  const keywordsValid =
+    Array.isArray(o.keywords) &&
+    o.keywords.length <= MAX_DEPOSIT_KEYWORDS &&
+    o.keywords.every((k) => typeof k === 'string' && k.length <= MAX_DEPOSIT_KEYWORD_LENGTH);
   if (!keywordsValid) return { rule: fallback, ok: false };
+  if (o.label !== undefined && typeof o.label !== 'string') {
+    return { rule: fallback, ok: false };
+  }
+  if (typeof o.label === 'string' && o.label.length > MAX_DEPOSIT_LABEL_LENGTH) {
+    return { rule: fallback, ok: false };
+  }
   const keywords = (o.keywords as string[]).map((k) => k.trim()).filter((k) => k.length > 0);
   const label =
     typeof o.label === 'string' && o.label.trim().length > 0

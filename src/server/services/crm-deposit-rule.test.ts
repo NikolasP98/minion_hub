@@ -8,6 +8,9 @@ import {
   escapeLikePattern,
   isDepositText,
   normalizeDepositRule,
+  MAX_DEPOSIT_KEYWORDS,
+  MAX_DEPOSIT_KEYWORD_LENGTH,
+  MAX_DEPOSIT_LABEL_LENGTH,
   type DepositRule,
 } from './crm-deposit-rule';
 import { DEPOSIT_TEXT_CASES } from './crm-deposit-rule.fixtures';
@@ -145,6 +148,57 @@ describe('normalizeDepositRule', () => {
       rule: { keywords: ['adelanto'], label: DEFAULT_RESERVE_LABEL },
       ok: true,
     });
+  });
+
+  it('a present non-string label is malformed, ok=false — never silently defaulted', () => {
+    expect(normalizeDepositRule({ keywords: ['reserva'], label: 42 })).toEqual({
+      rule: { keywords: ['reserva'], label: DEFAULT_RESERVE_LABEL },
+      ok: false,
+    });
+  });
+
+  it('a label over MAX_DEPOSIT_LABEL_LENGTH is malformed, ok=false', () => {
+    const label = 'x'.repeat(MAX_DEPOSIT_LABEL_LENGTH + 1);
+    expect(normalizeDepositRule({ keywords: ['reserva'], label })).toEqual({
+      rule: { keywords: ['reserva'], label: DEFAULT_RESERVE_LABEL },
+      ok: false,
+    });
+  });
+
+  it('a label exactly at MAX_DEPOSIT_LABEL_LENGTH is valid', () => {
+    const label = 'x'.repeat(MAX_DEPOSIT_LABEL_LENGTH);
+    expect(normalizeDepositRule({ keywords: ['reserva'], label })).toEqual({
+      rule: { keywords: ['reserva'], label },
+      ok: true,
+    });
+  });
+
+  it('a keyword array over MAX_DEPOSIT_KEYWORDS is malformed, ok=false — never reaches SQL construction', () => {
+    const keywords = Array.from({ length: MAX_DEPOSIT_KEYWORDS + 1 }, (_, i) => `kw${i}`);
+    const { rule, ok } = normalizeDepositRule({ keywords });
+    expect(ok).toBe(false);
+    expect(rule).toEqual({ keywords: ['reserva'], label: DEFAULT_RESERVE_LABEL });
+  });
+
+  it('a keyword array at exactly MAX_DEPOSIT_KEYWORDS is valid', () => {
+    const keywords = Array.from({ length: MAX_DEPOSIT_KEYWORDS }, (_, i) => `kw${i}`);
+    const { rule, ok } = normalizeDepositRule({ keywords });
+    expect(ok).toBe(true);
+    expect(rule.keywords).toHaveLength(MAX_DEPOSIT_KEYWORDS);
+  });
+
+  it('a single keyword over MAX_DEPOSIT_KEYWORD_LENGTH is malformed, ok=false', () => {
+    const oversized = 'x'.repeat(MAX_DEPOSIT_KEYWORD_LENGTH + 1);
+    const { rule, ok } = normalizeDepositRule({ keywords: ['reserva', oversized] });
+    expect(ok).toBe(false);
+    expect(rule).toEqual({ keywords: ['reserva'], label: DEFAULT_RESERVE_LABEL });
+  });
+
+  it('a keyword exactly at MAX_DEPOSIT_KEYWORD_LENGTH is valid', () => {
+    const atCap = 'x'.repeat(MAX_DEPOSIT_KEYWORD_LENGTH);
+    const { rule, ok } = normalizeDepositRule({ keywords: [atCap] });
+    expect(ok).toBe(true);
+    expect(rule.keywords).toEqual([atCap]);
   });
 });
 
