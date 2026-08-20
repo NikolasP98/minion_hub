@@ -22,12 +22,27 @@ export interface ServerInput {
  * hits when the row's tenantId was migrated to a Supabase UUID but the row still
  * carries the legacy Better-Auth UUID as its primary key.
  *
- * SECURITY: IDOR is gated at the call site via assertOwnsOrAdmin() (which checks
- * userHasGatewayAccess + userServers link) — not here. We intentionally omit a
- * tenantId scope from the WHERE because ctx.tenantId carries the post-migration
- * Supabase UUID while the stored Turso row still carries the old Better-Auth UUID;
- * adding eq(servers.tenantId, ctx.tenantId) would silently no-op every update.
- * TODO: add tenantId scope once Turso server rows are re-keyed to the Supabase UUID.
+ * SECURITY: this mutation is NOT tenant-scoped, and the call site does not close
+ * that gap for admins. assertOwnsOrAdmin() in
+ * src/routes/api/servers/[id]/+server.ts returns true for ANY admin before this
+ * runs, so an admin of one organization who supplies another organization's
+ * server id patches that row — name, url, gateway token — and receives `ok`.
+ * Only non-admins are narrowed (userHasGatewayAccess + the userServers link).
+ *
+ * The tenantId scope is withheld deliberately, not by oversight: ctx.tenantId
+ * carries the post-migration Supabase UUID, and it is not yet proven that every
+ * stored Turso row was re-keyed off the old Better-Auth UUID. If any row was
+ * not, eq(servers.tenantId, ctx.tenantId) matches nothing and silently no-ops
+ * its legitimate owner's updates instead of denying a cross-tenant one.
+ *
+ * TODO(handoff): add eq(servers.tenantId, ctx.tenantId) to the WHERE below
+ * (spec Slice 2) once a credential holder has proven the re-key against real
+ * non-production and production data. Blocked on human evidence, not on code:
+ * `bun run rekey:readiness` exits 1 and names every missing artifact, and the
+ * suite reds either way round once the evidence lands
+ * (src/server/services/server.service.test.ts, "updateServer tenant scope").
+ * Pointer: docs/runbooks/server-tenant-scope-rekey-readiness.md and
+ * specs/2026-08-18-hub-updateserver-tenant-scope-spec.md.
  */
 export async function updateServer(ctx: TenantContext, id: string, updates: Partial<ServerInput>) {
   const now = nowMs();
