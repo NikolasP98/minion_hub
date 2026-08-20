@@ -94,6 +94,11 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
         id uuid primary key, client_id uuid, issued_at timestamptz, total numeric
       );
       create table fin_invoice_items (invoice_id uuid, description text, total numeric);
+      -- crm_settings.value.deposit backs resolveDepositRule (crm-deposit-settings.service.ts) —
+      -- org_id is TEXT here too, same production-parity reasoning as every other table above.
+      create table crm_settings (
+        org_id text primary key, value jsonb not null default '{}', updated_at timestamptz not null default now()
+      );
     `);
     await client!.unsafe(
       `insert into crm_contacts (id, display_name, custom_fields) values
@@ -314,5 +319,60 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     expect(idsOf(page.rows).has(ids.unscored)).toBe(false);
     const unbounded = await rankContactsPage(ctx, { minIcp: 0, limit: 100 });
     expect(idsOf(unbounded.rows).has(ids.unscored)).toBe(false);
+  });
+
+  // ── Slice 1 (2026-08-20-handoff-minion-hub-2785164896-spec): the finance
+  // service and contacts ranking path must resolve and observe the SAME
+  // per-org deposit rule, immediately on a same-tenant rule change. ──
+  it('a same-tenant rule change (default → custom → empty → back to absent) is visible immediately, with finance/contacts classification agreeing at every step', async () => {
+    financeOn = true;
+    try {
+      // Default (no crm_settings row yet): DNI's only invoice line is "Reserva
+      // de cita" — matches the default 'reserva' keyword, so DNI is reserved-only.
+      const finDefault = await contactFinanceMap(ctx);
+      expect(finDefault[ids.dni]).toMatchObject({ purchased: false, reservedOnly: true });
+      const pageDefaultReserved = await rankContactsPage(ctx, { reservedOnly: true, limit: 100 });
+      expect(idsOf(pageDefaultReserved.rows).has(ids.dni)).toBe(true);
+
+      // Custom rule that does NOT contain 'reserva': the same line item no
+      // longer matches any keyword, so DNI becomes a real (non-deposit) buyer —
+      // in BOTH the finance map and the contacts ranking path.
+      await client!.unsafe(
+        `insert into crm_settings (org_id, value) values ($1, $2::jsonb)
+         on conflict (org_id) do update set value = excluded.value`,
+        [org, JSON.stringify({ deposit: { keywords: ['adelanto'], label: 'Adelanto' } })],
+      );
+      const finCustom = await contactFinanceMap(ctx);
+      expect(finCustom[ids.dni]).toMatchObject({ purchased: true, reservedOnly: false });
+      const pageCustomReserved = await rankContactsPage(ctx, { reservedOnly: true, limit: 100 });
+      expect(idsOf(pageCustomReserved.rows).has(ids.dni)).toBe(false);
+      const pageCustomBuyer = await rankContactsPage(ctx, { buyerOnly: true, limit: 100 });
+      expect(idsOf(pageCustomBuyer.rows).has(ids.dni)).toBe(true);
+
+      // Explicitly empty keywords: nothing is ever a deposit, so any line item
+      // makes the contact a purchaser — same conclusion, proven independently
+      // (no dropped predicate silently widening the match instead).
+      await client!.unsafe(`update crm_settings set value = $2::jsonb where org_id = $1`, [
+        org,
+        JSON.stringify({ deposit: { keywords: [], label: 'None' } }),
+      ]);
+      const finEmpty = await contactFinanceMap(ctx);
+      expect(finEmpty[ids.dni]).toMatchObject({ purchased: true, reservedOnly: false });
+
+      // Back to an absent deposit key: parity with the original default.
+      await client!.unsafe(`update crm_settings set value = '{}'::jsonb where org_id = $1`, [org]);
+      const finBack = await contactFinanceMap(ctx);
+      expect(finBack[ids.dni]).toMatchObject({ purchased: false, reservedOnly: true });
+
+      // Invoice totals/counts never move across any of these rule changes —
+      // only classification and item selection do.
+      expect(finCustom[ids.dni].invoices).toBe(finDefault[ids.dni].invoices);
+      expect(finCustom[ids.dni].revenue).toBe(finDefault[ids.dni].revenue);
+      expect(finEmpty[ids.dni].invoices).toBe(finDefault[ids.dni].invoices);
+      expect(finEmpty[ids.dni].revenue).toBe(finDefault[ids.dni].revenue);
+    } finally {
+      financeOn = false;
+      await client!.unsafe(`delete from crm_settings where org_id = $1`, [org]);
+    }
   });
 });

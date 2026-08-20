@@ -15,11 +15,12 @@ import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
 import { reconcileParties } from './party.service';
 import {
   CONTACT_PARTY,
-  CONTACT_INVOICE_CLASS,
+  contactInvoiceClassSql,
   FIN_PURCHASED,
   FIN_RESERVED_ONLY,
   FIN_LOYAL,
 } from './crm-finance.service';
+import { resolveDepositRule } from './crm-deposit-settings.service';
 import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
 import { recordAudit } from './activity.service';
@@ -465,11 +466,14 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
     // Only joined when both CRM + Finances are on; otherwise an empty CTE so the
     // lifecycle degrades cleanly to message-only signals.
     const withFinance = await bothEnabled(ctx, 'crm', 'finances');
-    // CONTACT_INVOICE_CLASS is the SAME per-invoice deposit/procedure split
-    // contactFinanceMap aggregates, so the funnel floor computed here can never
-    // drift from the ContactFinance flags the detail page renders.
+    // Same resolved rule crm-finance.service.ts uses for this tenant — the
+    // funnel floor computed here can never classify an invoice differently
+    // than the ContactFinance flags the detail page renders.
+    const depositRule = withFinance ? await resolveDepositRule(ctx) : null;
+    // contactInvoiceClassSql(rule) is the SAME per-invoice deposit/procedure
+    // split contactFinanceMap aggregates, built from the same resolved rule.
     const finCte = withFinance
-      ? sql`${CONTACT_INVOICE_CLASS},
+      ? sql`${contactInvoiceClassSql(depositRule!)},
         fin as (
           select contact_id,
                  min(issued_at) as first_purchase_at,

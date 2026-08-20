@@ -73,6 +73,17 @@ vi.mock('./modules.service', async (importOriginal) => ({
   bothEnabled: () => mockBothEnabled(),
 }));
 
+// Same reasoning as bothEnabled above: resolveDepositRule (called only when
+// withFinance is true) issues its own withOrgCore round-trip via
+// crm-deposit-settings.service.ts and would otherwise eat the exec mock
+// queued for the ranking query.
+const { mockResolveDepositRule } = vi.hoisted(() => ({
+  mockResolveDepositRule: vi.fn(async () => ({ keywords: ['reserva'], label: 'Reserva' })),
+}));
+vi.mock('./crm-deposit-settings.service', () => ({
+  resolveDepositRule: () => mockResolveDepositRule(),
+}));
+
 function useExecMock(execute: ReturnType<typeof vi.fn>) {
   mockWithOrgCore.mockImplementationOnce((_scope, fn) => fn({ execute } as never));
 }
@@ -726,5 +737,57 @@ describe('rankContacts revenue column (S1 — order-by fuel, not part of the pay
     expect(sqlText).not.toContain('contact_invoice_class');
     expect(sqlText).toContain('null::float8 as revenue');
     expect(sqlText).toContain('revenue desc nulls last');
+  });
+});
+
+describe('rankContacts finance CTE deposit rule (Slice 1 — same resolved rule as crm-finance.service)', () => {
+  const ctx = { db: {} as never, tenantId: 'org-1' };
+
+  it("crm+finances on with the default rule binds '%reserva%', matching crm-finance.service's default", async () => {
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['reserva'], label: 'Reserva' });
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, { sort: 'revenue' });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain('from contact_invoice_class');
+    expect(query.params).toContain('%reserva%');
+    expect(query.params).not.toContain('%adelanto%');
+  });
+
+  it('a custom resolved rule binds its own escaped keywords in the finance CTE, never %reserva%', async () => {
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({
+      keywords: ['adelanto', 'seña'],
+      label: 'Adelanto',
+    });
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, { sort: 'revenue' });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.params).toEqual(
+      expect.arrayContaining(['%adelanto%', '%seña%', '%adelanto%', '%seña%']),
+    );
+    expect(query.params).not.toContain('%reserva%');
+  });
+
+  it('an explicitly empty keyword set compiles the finance CTE to literal false/true — no dropped predicate', async () => {
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, { sort: 'revenue' });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain('bool_or(false) has_deposit');
+    expect(query.sql).toContain('bool_or((ii.description is not null and true)) has_proc');
+    // No deposit-keyword ILIKE pattern is bound at all — an empty rule drops
+    // the predicate's PARAMS, not the predicate itself (still `false`/`true`).
+    expect(query.params.filter((p) => typeof p === 'string' && p.startsWith('%'))).toHaveLength(0);
   });
 });

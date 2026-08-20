@@ -3,15 +3,20 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 import { createMockDb } from '$server/test-utils/mock-db';
 import { normalizeSql } from '$server/test-utils/normalize-sql';
+import { DEFAULT_DEPOSIT_RULE, type DepositRule } from './crm-deposit-rule';
 const bothEnabled = vi.fn(async () => true);
 vi.mock('./modules.service', () => ({ bothEnabled: (...a: unknown[]) => bothEnabled() }));
+const resolveDepositRule = vi.fn(async (): Promise<DepositRule> => DEFAULT_DEPOSIT_RULE);
+vi.mock('./crm-deposit-settings.service', () => ({
+  resolveDepositRule: (...a: unknown[]) => resolveDepositRule(...(a as [])),
+}));
 import {
   contactFinanceMap,
   contactCashflow,
   contactFinanceSummary,
   rankCustomers,
 } from './crm-finance.service';
-const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
+const ctx = (db: unknown, tenantId = 'org-1') => ({ db: db as never, tenantId });
 
 const dialect = new PgDialect();
 /** Last SQL fragment handed to `tx.execute` — the data query, after withOrgCore's setup calls. */
@@ -114,6 +119,109 @@ describe('contactFinanceMap', () => {
       ),
     );
     expect(params).toEqual(['%reserva%', '%reserva%']);
+  });
+
+  it('PARITY: a custom resolved rule binds its own escaped keywords, never %reserva%', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto', 'seña'], label: 'Adelanto' });
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: 0,
+        invoices: 0,
+        last: null,
+        purchased: false,
+        reserved_only: false,
+        loyal: false,
+      },
+    ]);
+    await contactFinanceMap(ctx(db));
+    const { params } = dialect.sqlToQuery(lastExecutedSql(db));
+    expect(params).toEqual(['%adelanto%', '%seña%', '%adelanto%', '%seña%']);
+    expect(params).not.toContain('%reserva%');
+  });
+
+  it('PARITY: an explicitly empty keyword set compiles to literal false/true — no dropped predicate, no bound pattern', async () => {
+    const { db, resolve } = createMockDb();
+    resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: 0,
+        invoices: 0,
+        last: null,
+        purchased: false,
+        reserved_only: false,
+        loyal: false,
+      },
+    ]);
+    await contactFinanceMap(ctx(db));
+    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    expect(normalizeSql(sql)).toContain(normalizeSql('bool_or(false) has_deposit'));
+    expect(normalizeSql(sql)).toContain(
+      normalizeSql('bool_or((ii.description is not null and true)) has_proc'),
+    );
+    expect(params).toEqual([]);
+  });
+});
+
+describe('contactFinanceMap cache freshness on a same-tenant rule change', () => {
+  it('a changed resolved rule is visible on the very next call, and each rule keeps its own cache entry', async () => {
+    const { configureCache, MemoryBackend } = await import('@minion-stack/cache');
+    configureCache({ backend: new MemoryBackend(), namespace: 'crm-finance-test' });
+
+    const tenant = 'org-deposit-fingerprint';
+    const { db, resolve } = createMockDb();
+
+    resolveDepositRule.mockResolvedValueOnce(DEFAULT_DEPOSIT_RULE);
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: 100,
+        invoices: 1,
+        last: null,
+        purchased: true,
+        reserved_only: false,
+        loyal: false,
+      },
+    ]);
+    const first = await contactFinanceMap(ctx(db, tenant));
+    expect(first['c1']).toMatchObject({ revenue: 100, purchased: true });
+
+    // Same tenant, DIFFERENT resolved rule + different underlying data — the
+    // previous rule's cached result must not leak into this call.
+    resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto'], label: 'Adelanto' });
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: 999,
+        invoices: 2,
+        last: null,
+        purchased: false,
+        reserved_only: true,
+        loyal: false,
+      },
+    ]);
+    const second = await contactFinanceMap(ctx(db, tenant));
+    expect(second['c1']).toMatchObject({ revenue: 999, reservedOnly: true });
+
+    // Back to the default rule: its own cache entry is still fresh (TTL not
+    // expired), so this is a cache HIT — the loader's new (stale-marker) rows
+    // must NOT be what's returned.
+    resolveDepositRule.mockResolvedValueOnce(DEFAULT_DEPOSIT_RULE);
+    resolve([
+      {
+        contact_id: 'c1',
+        revenue: -1,
+        invoices: -1,
+        last: null,
+        purchased: false,
+        reserved_only: false,
+        loyal: false,
+      },
+    ]);
+    const third = await contactFinanceMap(ctx(db, tenant));
+    expect(third['c1']).toMatchObject({ revenue: 100, purchased: true });
   });
 });
 
