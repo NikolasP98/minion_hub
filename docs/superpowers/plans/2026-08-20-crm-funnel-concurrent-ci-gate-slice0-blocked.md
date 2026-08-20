@@ -2,79 +2,97 @@
 
 **Spec:** `2026-08-20-handoff-minion-hub-3530856808-spec` — "Wire
 `crm-funnel.concurrent.integration.test.ts` into a real CI gate".
-**Stage:** dev, Slice 0 (recon) — run `0eb02565`, 2026-08-20.
-**Outcome:** Slice 0 could not be closed. Slice 1 (the CI-only schema fixture) and Slice 2
-(the CI job + `TODO(handoff)` marker removal) are **not** implemented, deliberately.
+**Stage:** dev, Slice 0 (recon) — opened blocked in run `0eb02565`, 2026-08-20; partially
+answered by an operator-supplied live-prod extraction in run `12bb3918`, but still **BLOCKED**.
+Slice 1 (the CI-only schema fixture) and Slice 2 (the CI job + `TODO(handoff)` marker removal)
+are **not** implemented, deliberately.
 
-## Why this file exists instead of a fixture
+## Why Slice 0 remains stop-ship
 
-The spec's Slice 0 is an explicit stop-ship gate (spec §3 Slice 0, §5 A1): the real RLS policy
-text and column shape for `crm_contacts` / `crm_activities` must be read from the provisioned
-Supabase project (or a verified schema clone) **before** the fixture is written, and
+The spec requires four authoritative production inputs before Slice 1 may reproduce the CRM trust
+boundary. The operator extraction supplied the policy rows, RLS flags, and required column shapes,
+but omitted the `app_ledger` grants on `crm_contacts` and `crm_activities`.
 
-> If neither is available when this spec reaches dev, **stop and do not guess** — a hand-authored
-> RLS policy that merely follows the `_org_guc` naming convention without independent confirmation
-> would silently reintroduce exactly the failure class this proposal exists to close.
+The earlier Slice 1 attempt filled that gap with a locally selected "minimum" grant set and then
+asserted the fixture catalog matched the same selection. That assertion was self-referential: it
+proved only that the synthetic DDL matched itself, not that its privilege boundary matched
+production. The fixture has therefore been removed. Service usage and sibling migrations are not
+authoritative substitutes for the required production grant snapshot.
 
-A fixture reconstructed from checked-in sibling migrations was committed earlier in this run
-(`e809223`, `a2a790d`) and reverted here. Reconstruction is not equivalence: if prod's real
-policies, policy roles, grants, or `organizations.id` definition differ from the reconstruction,
-the new CI job would go green while proving a security contract production does not have — a
-milder instance of the very bug ("a test that is green because it never proved what it claims")
-this spec was written to close.
+## Recon performed
 
-## Recon performed (2026-08-20, dev sandbox, branch base `origin/master` = `678ad05`)
+The original run established that this repository and sandbox do not contain an authoritative
+production schema snapshot:
 
-The spec's own Slice 0 command list was run. `origin/master` has advanced from the spec's
-`5e77bbe7a` to `678ad05`, but `git diff --name-only 5e77bbe7a origin/master --
-src/server/services/crm-funnel.concurrent.integration.test.ts .github/workflows/ci.yml
-src/server/db/pg-crm-schema.ts` is empty — every AS-IS fact the spec asserts about those three
-files still holds at `678ad05`.
+| Access path to the authoritative catalog                                                        | Result                                                      |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `SUPABASE_DB_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `PUBLIC_SUPABASE_ANON_KEY` in the process env | unset                                                       |
+| Same keys in `.env.example`                                                                     | present but blank                                           |
+| `gh secret list --repo NikolasP98/minion_hub`                                                   | no Supabase credential                                      |
+| `gh variable list --repo NikolasP98/minion_hub`                                                 | empty                                                       |
+| Cached Vercel CLI auth / project link                                                           | absent                                                      |
+| Local Supabase stack / `docker` / `psql` / `pg_dump`                                            | unavailable                                                 |
+| `create table ... crm_contacts` / `crm_activities` in `supabase/migrations/`                    | zero hits — only self-seeding tests define throwaway copies |
+| Checked-in `pg_policies` or grant dump for the CRM tables                                       | none                                                        |
 
-| Access path to the authoritative catalog                                                        | Result                                                                                        |
-| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `SUPABASE_DB_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `PUBLIC_SUPABASE_ANON_KEY` in the process env | unset (empty)                                                                                 |
-| Same keys in `.env.example`                                                                     | present but blank (`.env.example:132-141`)                                                    |
-| `gh secret list --repo NikolasP98/minion_hub`                                                   | only `CLAUDE_CODE_OAUTH_TOKEN`, `FACTORY_HOOK_SECRET` — no Supabase credential                |
-| `gh variable list --repo NikolasP98/minion_hub`                                                 | empty                                                                                         |
-| Local Supabase stack / `docker` / `psql` / `pg_dump` in the sandbox                             | none installed                                                                                |
-| `create table ... crm_contacts` / `crm_activities` in `supabase/migrations/` (61 files)         | zero hits — only self-seeding test files define those tables, for their own throwaway schemas |
-| Any checked-in `pg_policies` dump for the CRM tables                                            | none                                                                                          |
+The latest `VERDICT: FAIL` and all PR #153 comments were fetched on 2026-08-20. There is no
+self-test failure comment. PR #154's operator task brief was also checked; it contains the same
+partial extraction below and no grant rows.
 
-This independently reproduces the AS-IS finding in spec §2 and the operator-memory finding
-`hub-supabase-schema-not-reproducible`: for `organizations` and the CRM contact tables there is
-**no authoritative production migration or schema snapshot** checked into the monorepo, and no
-checked-in production policy/grant definition (RLS policies, grants) for them.
+## Partial authoritative extraction retained for the next run
 
-To be precise about what _does_ exist — the `supabase/migrations/` row above is scoped to that
-directory, not to the whole repository. `create table crm_contacts` / `crm_activities` statements
-are present elsewhere, but only inside self-seeding tests that build their own throwaway schemas:
-`crm-contacts.sql.integration.test.ts:76`, `crm-funnel-parity.sql.integration.test.ts:122`,
-`crm-contacts.service.test.ts:33`, and `crm-journey.atomic-write.test.ts:172,187`. Those are
-reusable scaffolding for a future fixture, but they are test-authored shapes, not evidence of what
-production enforces — which is exactly why they cannot close Slice 0.
+The operator supervising the factory pipeline queried the live provisioned Supabase project on
+2026-08-20. Operator memory records the method as `vercel env pull` followed by `psql` catalog
+queries, with the temporary environment file deleted afterwards. PR #154's operator-authored task
+brief records these results:
+
+- `crm_contacts_org_guc` and `crm_activities_org_guc` are the only two policies; both are
+  `PERMISSIVE`, `ALL`, `roles={public}`, with `qual` and `with_check` equal to
+  `(org_id = current_setting('app.current_org_id'::text, true))`.
+- `crm_contacts` and `crm_activities` both have RLS enabled and forced.
+- `organizations` has RLS enabled and not forced.
+- `crm_contacts.id` is `uuid NOT NULL default gen_random_uuid()`; `org_id` is `text NOT NULL`
+  with no default.
+- `crm_activities.id` is nullable `uuid default gen_random_uuid()`; `org_id` is `text NOT NULL`;
+  `contact_id` is `uuid NOT NULL`.
+- `organizations.id` is `uuid NOT NULL default gen_random_uuid()`.
+
+These are authoritative facts, but they answer only three of the four required queries:
+
+| Spec §3 Slice 0 query                                                              | Answered? |
+| ---------------------------------------------------------------------------------- | --------- |
+| `pg_policies` rows for `crm_contacts` and `crm_activities`                         | **Yes**   |
+| `pg_class.relrowsecurity` / `relforcerowsecurity` for the required tables          | **Yes**   |
+| `information_schema.columns` for `organizations.id` and the supplied CRM columns   | **Yes**   |
+| `information_schema.role_table_grants` for grantee `app_ledger` on both CRM tables | **No**    |
 
 ## What unblocks Slice 1
 
-Either of the two paths the spec already names — nothing else:
+An operator with access to the provisioned project must run the approved query and record its
+complete ordered output and source:
 
-1. A human/ops operator with prod (or verified schema-clone, per the `hub-local-qa-stack-recipe`
-   operator memory) read access runs the four queries in spec §3 Slice 0 and pastes the results
-   into the PR:
-   - `pg_policies` rows (name, permissive, roles, cmd, qual, with_check) for both CRM tables,
-   - `pg_class.relrowsecurity` / `relforcerowsecurity` for both,
-   - `information_schema.role_table_grants` for grantee `app_ledger`,
-   - the `organizations.id` column definition.
-2. A scoped, read-only credential provisioned for that recon step only (never committed,
-   never logged) — a decision for whoever runs the dev stage, not for this spec.
+```sql
+select grantee, table_name, privilege_type
+from information_schema.role_table_grants
+where table_name in ('crm_contacts', 'crm_activities')
+  and grantee = 'app_ledger'
+order by table_name, privilege_type;
+```
 
-With those in hand, Slice 1's fixture DDL and its exact catalog assertions must be written to
-match them literally (policy name/count, `permissive`, exact role set, `cmd`, `qual`,
-`with_check`), rejecting any missing or extra policy.
+Only then may Slice 1 reproduce those literal rows in both its `GRANT` statements and its exact
+catalog assertion. Until that output is available, no
+`supabase/ci-fixtures/crm-funnel-concurrent.sql` should land.
+
+## Rejected fixture experiment
+
+The removed synthetic fixture was exercised successfully in PGlite, including exact policy
+identity/cardinality checks, catalog mutations, and an org-A/org-B RLS negative control. That
+evidence proved internal PostgreSQL behavior, but not production grant parity, so it cannot close
+Slice 0 and is not shipped.
 
 ## Open end (ledger)
 
-The `TODO(handoff):` marker at
-`src/server/services/crm-funnel.concurrent.integration.test.ts:21` is intentionally left in
-place: its open end — the concurrency proof executes on no automated gate — is still open, and
-removing the marker while it is open is precisely what Slice 2 forbids until the gate is green.
+The existing `TODO(handoff)` at
+`src/server/services/crm-funnel.concurrent.integration.test.ts:21` remains intentionally. Its open
+end — the concurrency proof executes on no automated gate — cannot close until the grant snapshot
+unblocks Slice 1 and Slice 2 lands a green CI job.
