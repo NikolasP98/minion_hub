@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { exportPKCS8, generateKeyPair, jwtVerify } from 'jose';
+import { isBrainVectorSearchRequestV1 } from '@minion-stack/shared';
 
 vi.mock('$env/dynamic/private', () => ({ env: {} }));
 
@@ -288,14 +289,6 @@ describe('brain vector API client', () => {
   });
 
   it('makes org_all unrepresentable at the request-construction boundary', async () => {
-    // TODO(handoff): the spec's DoD also asks this source_list request to be checked
-    // against `isBrainVectorSearchRequestV1` imported from `@minion-stack/shared`, but
-    // the installed @minion-stack/shared@0.9.0 has no brain-vector export at all (recon:
-    // `dist/index.d.ts` only re-exports gateway/utils/prompt-sections) — the frozen v1
-    // contract described in 2026-08-17-hub-brain-org-all-scope-spec §1 isn't published to
-    // the version this repo depends on. Needs a proposal once minion-meta is reachable
-    // from this checkout to either bump the shared package or confirm the validator lives
-    // elsewhere. See src/server/services/brain-vector-client.ts.
     const buildRequest = (filters: BrainVectorSearchFilters) => ({
       orgId: 'org-1',
       brainId: '22222222-2222-4222-8222-222222222222',
@@ -309,15 +302,16 @@ describe('brain vector API client', () => {
     // not type-check at the request-construction boundary until §8.1 policy proof exists.
     buildRequest({ scopeMode: 'org_all' });
 
-    const fetchImpl = vi.fn(async () =>
-      Response.json({
+    const fetchImpl = vi.fn(async (_url: URL, init: RequestInit) => {
+      expect(isBrainVectorSearchRequestV1(JSON.parse(init.body as string))).toBe(true);
+      return Response.json({
         contractVersion: BRAIN_VECTOR_CONTRACT_VERSION,
         generation: config.generation,
         collection: brainVectorCollectionName(config.generation),
         tookMs: 1,
         candidates: [],
-      }),
-    );
+      });
+    });
     await expect(
       searchBrainVectorApi(
         config,
@@ -325,6 +319,7 @@ describe('brain vector API client', () => {
         fetchImpl as typeof fetch,
       ),
     ).resolves.toMatchObject({ candidates: [] });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
 
