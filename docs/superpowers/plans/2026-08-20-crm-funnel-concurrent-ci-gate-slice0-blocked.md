@@ -78,3 +78,28 @@ The `TODO(handoff):` marker at
 `src/server/services/crm-funnel.concurrent.integration.test.ts:21` is intentionally left in
 place: its open end — the concurrency proof executes on no automated gate — is still open, and
 removing the marker while it is open is precisely what Slice 2 forbids until the gate is green.
+
+## Reconfirmation — run `12bb3918`, 2026-08-20 (same day, spec reopened)
+
+The spec was reopened (`approved_reason`: the prior zero-diff "done" flip was wrong — Slices 1-2
+genuinely remain) and sent back through dev. This run re-ran the same recon independently, with
+no assumptions carried over from the report above, and found **zero drift**:
+
+- `git diff --name-only 5e77bbe7a origin/master -- src/server/services/crm-funnel.concurrent.integration.test.ts .github/workflows/ci.yml src/server/db/pg-crm-schema.ts`
+  is still empty; `origin/master` is at `4a7f219` (this run's merge-base), which already contains
+  the report above from PR #150 — no new commits touched any of the three files since.
+- `gh secret list` / `gh variable list` on `NikolasP98/minion_hub`: still only
+  `CLAUDE_CODE_OAUTH_TOKEN` and `FACTORY_HOOK_SECRET`; no Supabase credential, still empty.
+- `SUPABASE_DB_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `PUBLIC_SUPABASE_ANON_KEY`: unset in this
+  sandbox's process env, same as before.
+- **New finding, not previously recorded:** `docker`, `psql`, and `pg_dump` are **not installed**
+  in this dev sandbox. This means even if the authoritative RLS text were supplied today, this
+  sandbox could not itself run Slice 1's own machine-checkable DoD (`docker run ... postgres:15`
+  + `psql -f supabase/ci-fixtures/crm-funnel-concurrent.sql`) to prove the fixture applies
+  cleanly before committing it — that verification step needs an environment with Docker, not
+  just the credential. Worth flagging to whoever unblocks A1, since it changes what "provide the
+  RLS text" alone would unblock here.
+
+Conclusion unchanged: Slice 0 remains blocked on the same two paths already named above (human
+recon paste, or a scoped read-only credential). No fixture is added in this run. Slices 1 and 2
+remain not implemented, deliberately, for the same reason as PR #150.
