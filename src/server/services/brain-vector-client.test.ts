@@ -13,6 +13,7 @@ import {
   mintBrainVectorCapability,
   searchBrainVectorApi,
   type BrainVectorClientConfig,
+  type BrainVectorSearchFilters,
 } from './brain-vector-client';
 
 let config: BrainVectorClientConfig;
@@ -286,17 +287,44 @@ describe('brain vector API client', () => {
     ).rejects.toThrow('too many candidates');
   });
 
-  it('fails closed on org_all until the Hub can prove all-source policy scope', async () => {
-    await expect(
-      searchBrainVectorApi(config, {
-        orgId: 'org-1',
-        brainId: '22222222-2222-4222-8222-222222222222',
-        subject: 'profile-1',
-        vector: Array.from({ length: 1536 }, () => 0),
-        limit: 20,
-        filters: { scopeMode: 'org_all' },
+  it('makes org_all unrepresentable at the request-construction boundary', async () => {
+    // TODO(handoff): the spec's DoD also asks this source_list request to be checked
+    // against `isBrainVectorSearchRequestV1` imported from `@minion-stack/shared`, but
+    // the installed @minion-stack/shared@0.9.0 has no brain-vector export at all (recon:
+    // `dist/index.d.ts` only re-exports gateway/utils/prompt-sections) — the frozen v1
+    // contract described in 2026-08-17-hub-brain-org-all-scope-spec §1 isn't published to
+    // the version this repo depends on. Needs a proposal once minion-meta is reachable
+    // from this checkout to either bump the shared package or confirm the validator lives
+    // elsewhere. See src/server/services/brain-vector-client.ts.
+    const buildRequest = (filters: BrainVectorSearchFilters) => ({
+      orgId: 'org-1',
+      brainId: '22222222-2222-4222-8222-222222222222',
+      subject: 'profile-1',
+      vector: Array.from({ length: 1536 }, () => 0),
+      limit: 20,
+      filters,
+    });
+
+    // @ts-expect-error scopeMode is narrowed to the literal 'source_list'; 'org_all' must
+    // not type-check at the request-construction boundary until §8.1 policy proof exists.
+    buildRequest({ scopeMode: 'org_all' });
+
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        contractVersion: BRAIN_VECTOR_CONTRACT_VERSION,
+        generation: config.generation,
+        collection: brainVectorCollectionName(config.generation),
+        tookMs: 1,
+        candidates: [],
       }),
-    ).rejects.toThrow(/org_all vector scope is not implemented/);
+    );
+    await expect(
+      searchBrainVectorApi(
+        config,
+        buildRequest({ scopeMode: 'source_list', sourceIds: ['source-a'] }),
+        fetchImpl as typeof fetch,
+      ),
+    ).resolves.toMatchObject({ candidates: [] });
   });
 });
 
