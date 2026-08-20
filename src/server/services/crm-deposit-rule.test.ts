@@ -5,8 +5,8 @@ import {
   DEPOSIT_KEYWORDS_MAX,
   DEPOSIT_KEYWORD_MAX_LENGTH,
   depositMatchSql,
+  depositSortKeySql,
   depositWriteSchema,
-  normalizeDepositRule,
   notDepositMatchSql,
   escapeLikePattern,
   isDepositText,
@@ -78,6 +78,27 @@ describe('depositMatchSql / notDepositMatchSql', () => {
   });
 });
 
+describe('depositSortKeySql', () => {
+  it('wraps the predicate in a CASE so a keyword rule sorts procedures (0) before deposits (1)', () => {
+    const { sql, params } = render(depositSortKeySql('ii.description', DEFAULT_DEPOSIT_RULE));
+    expect(sql).toBe('(case when coalesce((ii.description ilike $1), false) then 1 else 0 end)');
+    expect(params).toEqual(['%reserva%']);
+  });
+
+  it('stays a CASE for a ZERO-keyword rule — `order by false` is a PostgreSQL 42601', () => {
+    // This is the whole reason the helper exists: depositMatchSql compiles an
+    // empty rule to the literal `false`, which PostgreSQL rejects as a sort
+    // key ("non-integer constant in ORDER BY"). Every ORDER BY on deposit-ness
+    // goes through here, so an org that configured `keywords: []` still gets a
+    // query that runs.
+    const { sql, params } = render(
+      depositSortKeySql('ii.description', { keywords: [], label: 'x' }),
+    );
+    expect(sql).toBe('(case when false then 1 else 0 end)');
+    expect(params).toEqual([]);
+  });
+});
+
 describe('isDepositText', () => {
   const rule = DEFAULT_DEPOSIT_RULE;
 
@@ -101,77 +122,6 @@ describe('isDepositText with multiple keywords', () => {
     expect(isDepositText('ADELANTO 50%', rule)).toBe(true);
     expect(isDepositText('dejó una seña', rule)).toBe(true);
     expect(isDepositText('Reserva de Consulta', rule)).toBe(false);
-  });
-});
-
-describe('normalizeDepositRule (the READ boundary — lenient, then clamped)', () => {
-  it('trims, lowercases and preserves the operator’s order', () => {
-    expect(normalizeDepositRule({ keywords: ['  Adelanto ', 'SEÑA'] })).toEqual({
-      keywords: ['adelanto', 'seña'],
-      label: DEFAULT_DEPOSIT_RULE.label,
-    });
-  });
-
-  it('drops empty/whitespace-only entries and dedupes case-insensitively (first wins)', () => {
-    expect(normalizeDepositRule({ keywords: ['reserva', '   ', 'RESERVA', '', 'abono'] })).toEqual({
-      keywords: ['reserva', 'abono'],
-      label: DEFAULT_DEPOSIT_RULE.label,
-    });
-  });
-
-  it(`truncates a keyword to ${DEPOSIT_KEYWORD_MAX_LENGTH} characters`, () => {
-    const rule = normalizeDepositRule({ keywords: ['x'.repeat(80)] });
-    expect(rule?.keywords).toEqual(['x'.repeat(DEPOSIT_KEYWORD_MAX_LENGTH)]);
-  });
-
-  it(`caps a hand-written 40-keyword row at ${DEPOSIT_KEYWORDS_MAX} — asserted on the BUILT SQL, not the input`, () => {
-    const raw = { keywords: Array.from({ length: 40 }, (_, i) => `kw${i}`) };
-    const rule = normalizeDepositRule(raw);
-    expect(rule).not.toBeNull();
-    const { params } = render(depositMatchSql('ii.description', rule as DepositRule));
-    expect(params).toHaveLength(DEPOSIT_KEYWORDS_MAX);
-    expect(params[0]).toBe('%kw0%');
-    expect(params[DEPOSIT_KEYWORDS_MAX - 1]).toBe(`%kw${DEPOSIT_KEYWORDS_MAX - 1}%`);
-  });
-
-  it('keeps an EXPLICITLY EMPTY keyword list — "this org has no deposit concept" is a config, not a fallback', () => {
-    expect(normalizeDepositRule({ keywords: [], label: 'x' })).toEqual({
-      keywords: [],
-      label: 'x',
-    });
-  });
-
-  it('takes the label as display text: trimmed and truncated, never lowercased', () => {
-    expect(normalizeDepositRule({ keywords: ['dep'], label: '  Down Payment  ' })?.label).toBe(
-      'Down Payment',
-    );
-    expect(normalizeDepositRule({ keywords: ['dep'], label: 'L'.repeat(80) })?.label).toBe(
-      'L'.repeat(DEPOSIT_KEYWORD_MAX_LENGTH),
-    );
-  });
-
-  it('falls back to the default label when the stored label is absent or blank', () => {
-    expect(normalizeDepositRule({ keywords: ['dep'] })?.label).toBe(DEFAULT_DEPOSIT_RULE.label);
-    expect(normalizeDepositRule({ keywords: ['dep'], label: '   ' })?.label).toBe(
-      DEFAULT_DEPOSIT_RULE.label,
-    );
-  });
-
-  it('ignores unknown sibling keys — strictness is the WRITE path’s job', () => {
-    expect(
-      normalizeDepositRule({ keywords: ['dep'], surprise: 1, updatedAt: '2026-08-20' }),
-    ).toEqual({ keywords: ['dep'], label: DEFAULT_DEPOSIT_RULE.label });
-  });
-
-  it.each([
-    ['a bare string', 'reserva'],
-    ['non-string members', { keywords: [1, 2] }],
-    ['a non-array keywords', { keywords: 'reserva' }],
-    ['a missing keywords key', { label: 'x' }],
-    ['null', null],
-    ['a number', 7],
-  ])('returns null for a malformed blob: %s', (_name, raw) => {
-    expect(normalizeDepositRule(raw)).toBeNull();
   });
 });
 

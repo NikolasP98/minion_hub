@@ -43,7 +43,7 @@ describe('deterministicMilestones (via contactJourney)', () => {
                bool_or(ii.description is not null and coalesce((ii.description not ilike $2), true)) has_proc,
                (select ii2.description from fin_invoice_items ii2
                   where ii2.invoice_id = fi.id and ii2.description is not null
-                  order by coalesce((ii2.description ilike $3), false) asc, ii2.total desc nulls last limit 1) item
+                  order by (case when coalesce((ii2.description ilike $3), false) then 1 else 0 end) asc, ii2.total desc nulls last limit 1) item
         from crm_contacts c
         join fin_clients fc on fc.party_id = c.party_id and c.party_id is not null
           and fc.org_id = current_setting('app.current_org_id', true)
@@ -210,6 +210,13 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit drives match A
     const { sql, params } = dialect.sqlToQuery(financeExecutedSql(db));
     expect(sql).toContain('bool_or(false) only_deposit_flag');
     expect(sql).toContain('bool_or(ii.description is not null and true) has_proc');
+    // REGRESSION GUARD: the representative-item sort key must stay a CASE.
+    // A zero-keyword rule compiles depositMatchSql to the literal `false`, and
+    // `order by false` is a PostgreSQL 42601 ("non-integer constant in ORDER
+    // BY") — the exact error an org with no deposit concept would hit on every
+    // contact-journey load.
+    expect(sql).toContain('order by (case when false then 1 else 0 end) asc');
+    expect(sql).not.toMatch(/order by false\b/);
     expect(params).toEqual(['c1']);
   });
 });

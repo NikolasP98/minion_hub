@@ -1,77 +1,147 @@
 import { eq } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
-import { crmSettings } from '$server/db/pg-crm-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { DEFAULT_DEPOSIT_RULE, normalizeDepositRule, type DepositRule } from './crm-deposit-rule';
+import { crmSettings } from '$server/db/pg-crm-schema';
+import {
+  DEFAULT_DEPOSIT_RULE,
+  DEPOSIT_KEYWORDS_MAX,
+  DEPOSIT_KEYWORD_MAX_LENGTH,
+  type DepositRule,
+} from './crm-deposit-rule';
 
 /**
- * The CRM settings layer — the ONE query path onto `crm_settings.value`, the
- * per-org jsonb KV shared by every CRM feature (`accounts` = harvest scope,
- * `winAnalysis`, `deposit`). Every reader goes through
- * `readCrmSettingsValue` so the graceful-default contract below is honoured
- * in exactly one place instead of being re-implemented per feature.
+ * The CRM settings boundary — the ONE place `crm_settings.value` is read.
+ *
+ * `crm_settings` is a single jsonb row per org whose top-level keys are owned
+ * by different features (`accounts` → the CRM account scope,
+ * `winAnalysis` → the similarity service, `deposit` → the deposit rule below).
+ * Every consumer reads through `readCrmSettingsValue` and parses only its own
+ * key: a second hand-written `select … from crm_settings` is how the org
+ * scoping, the missing-row fallback and the transaction discipline drift
+ * apart.
+ *
+ * ## Transaction discipline
+ *
+ * `readCrmSettingsValue` opens its OWN `withOrgCore` transaction, and the RLS
+ * pool defaults to a SINGLE connection (`pg-pool.ts` → `getRlsPgClient`). So
+ * this module must never be called from inside another `withOrgCore` callback:
+ * the outer transaction owns the only connection while the inner one waits for
+ * a second, which is a self-deadlock, not a slow query. Resolve settings
+ * BEFORE opening the transaction that needs them and pass the value in.
  */
 
 /**
- * Raw `crm_settings.value` for the org, or `{}`.
- *
- * Graceful default, quoting the migration that created the table
- * (`20260614200000_crm_settings.sql`): *"a missing table OR missing row means
- * 'all channels enabled', so the harvest gate and channel manager are safe
- * even before this migration reaches an environment (the service swallows a
- * missing-relation error)"*. Same behaviour here, generalized: a missing
- * table, a missing row, or any read failure yields an empty settings
- * document, and each feature applies its own default on top.
- *
- * RLS scopes the row by the `app.current_org_id` GUC that `withOrgCore` sets,
- * so this read is org-scoped by the database, not by the `where` alone.
+ * Reads the org's raw `crm_settings.value` object. Missing table/row ⇒ `{}`
+ * — callers layer their own per-key fallback on top. Throws only on a real
+ * read failure, which each caller handles (settings are never load-bearing
+ * enough to fail a page).
  */
 export async function readCrmSettingsValue(ctx: CoreCtx): Promise<Record<string, unknown>> {
-  try {
-    return await withOrgCore(ctx, async (tx) => {
-      const [row] = await tx
-        .select({ value: crmSettings.value })
-        .from(crmSettings)
-        .where(eq(crmSettings.orgId, ctx.tenantId))
-        .limit(1);
-      return (row?.value ?? {}) as Record<string, unknown>;
-    });
-  } catch {
-    return {};
-  }
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ value: crmSettings.value })
+      .from(crmSettings)
+      .where(eq(crmSettings.orgId, ctx.tenantId))
+      .limit(1);
+    return (row?.value ?? {}) as Record<string, unknown>;
+  });
+}
+
+// ── Deposit rule (`crm_settings.value.deposit`) ─────────────────────────────
+
+/** Upper bound on stored keywords. Each becomes a bound ILIKE/NOT ILIKE clause
+ *  in every finance/contacts predicate and a component of the finance and
+ *  roster cache keys, so an unbounded array would grow SQL and cache-key size
+ *  without limit. Shared with the strict write schema (`depositWriteSchema`)
+ *  so the read clamp and the write rejection cannot drift apart — an operator
+ *  can never store a rule that this reader would silently truncate. */
+const MAX_DEPOSIT_KEYWORDS = DEPOSIT_KEYWORDS_MAX;
+/** Upper bound on a single keyword or the label, for the same reason: one
+ *  arbitrarily long string is an arbitrarily long SQL parameter. */
+const MAX_VALUE_LENGTH = DEPOSIT_KEYWORD_MAX_LENGTH;
+
+function warnAndDefault(reason: string): DepositRule {
+  console.warn(
+    `crm_settings.value.deposit is malformed (${reason}); falling back to DEFAULT_DEPOSIT_RULE`,
+  );
+  return DEFAULT_DEPOSIT_RULE;
 }
 
 /**
- * The org's deposit-classification rule — what `crm-finance.service.ts`,
- * `crm-contacts.service.ts`, `crm-similarity.service.ts` and
- * `crm-journey.service.ts` each resolve ONCE per call and hand to the pure
- * helpers in `crm-deposit-rule.ts`.
+ * Read normalization for a stored `deposit` value.
  *
- * Three states, deliberately distinguished:
+ * - **Absent** (`undefined`/`null`) ⇒ `DEFAULT_DEPOSIT_RULE`, silently. An org
+ *   that never configured a rule is not a misconfiguration.
+ * - **Malformed** — not an object, `keywords` not an array, ANY non-string
+ *   keyword member, or a non-string `label` ⇒ warn and fall back to
+ *   `DEFAULT_DEPOSIT_RULE` as a WHOLE. Salvaging the string members of a mixed
+ *   array would silently activate a rule the operator never wrote, which is
+ *   worse than the known default.
+ * - **Well-formed** ⇒ each keyword trimmed, lowercased (ILIKE and
+ *   `isDepositText` are both casefolded, so case carries no meaning), truncated
+ *   to `MAX_VALUE_LENGTH`, blanks dropped, stable-deduped (first occurrence
+ *   wins), capped at `MAX_DEPOSIT_KEYWORDS`. The label is trimmed and truncated;
+ *   a blank/absent label falls back to the default label.
+ * - **Explicitly empty** `keywords: []` is well-formed and preserved — a
+ *   zero-keyword rule matches nothing (`depositMatchSql` ⇒ `false`), which is a
+ *   legitimate configuration, NOT an absent key.
+ */
+export function normalizeDepositRule(raw: unknown): DepositRule {
+  if (raw == null) return DEFAULT_DEPOSIT_RULE;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return warnAndDefault('not an object');
+  const o = raw as { keywords?: unknown; label?: unknown };
+  if (!Array.isArray(o.keywords)) return warnAndDefault('keywords is not an array');
+  if (o.keywords.some((k) => typeof k !== 'string')) {
+    return warnAndDefault('keywords contains a non-string member');
+  }
+  if (o.label != null && typeof o.label !== 'string') {
+    return warnAndDefault('label is not a string');
+  }
+
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  let dropped = false;
+  for (const entry of o.keywords as string[]) {
+    const k = entry.trim().toLowerCase().slice(0, MAX_VALUE_LENGTH).trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    if (keywords.length >= MAX_DEPOSIT_KEYWORDS) {
+      dropped = true;
+      continue;
+    }
+    keywords.push(k);
+  }
+  if (dropped) {
+    console.warn(
+      `crm_settings.value.deposit.keywords exceeds ${MAX_DEPOSIT_KEYWORDS} entries; extra keywords ignored`,
+    );
+  }
+  const label =
+    (typeof o.label === 'string' ? o.label.trim().slice(0, MAX_VALUE_LENGTH).trim() : '') ||
+    DEFAULT_DEPOSIT_RULE.label;
+  return { keywords, label };
+}
+
+/**
+ * Resolves the normalized `DepositRule` for one org — call ONCE per public
+ * finance/contacts service invocation, before opening that call's
+ * `withOrgCore` transaction (see the transaction-discipline note above), and
+ * reuse the result for every predicate in that call.
  *
- * - **absent** (`value.deposit` missing or null) ⇒ `DEFAULT_DEPOSIT_RULE`.
- *   This is every org today, and it must stay byte-identical.
- * - **explicitly empty** (`keywords: []`) ⇒ a rule with no keywords. This org
- *   has no deposit concept: `depositMatchSql` becomes `false`, the journey
- *   milestone never fires, and every invoice line counts as delivered work.
- *   It is a legitimate configuration, NOT a reason to fall back.
- * - **malformed** (wrong shape / non-string members) ⇒ warn and fall back to
- *   the default. FAIL-SOFT ON PURPOSE: these three services back analytics
- *   pages, and one bad settings row must not 500 the whole CRM. Strict
- *   rejection belongs on the WRITE path (`depositWriteSchema`), where a human
- *   is present to fix the input.
+ * A read failure warns and falls back to the default: a classification built
+ * from the FACES-era default is a known, auditable answer, while a 500 on the
+ * CRM roster is not.
  */
 export async function resolveDepositRule(ctx: CoreCtx): Promise<DepositRule> {
-  const value = await readCrmSettingsValue(ctx);
-  const raw = value.deposit;
-  if (raw == null) return DEFAULT_DEPOSIT_RULE;
-  const rule = normalizeDepositRule(raw);
-  if (!rule) {
+  let value: Record<string, unknown>;
+  try {
+    value = await readCrmSettingsValue(ctx);
+  } catch (err) {
     console.warn(
-      `[crm-settings] org ${ctx.tenantId}: crm_settings.value.deposit is malformed — ` +
-        'falling back to the default deposit rule. Fix it through the CRM settings write path.',
+      'resolveDepositRule: crm_settings read failed; falling back to DEFAULT_DEPOSIT_RULE',
+      err,
     );
     return DEFAULT_DEPOSIT_RULE;
   }
-  return rule;
+  return normalizeDepositRule(value.deposit);
 }

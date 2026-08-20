@@ -15,12 +15,14 @@ import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
 import { reconcileParties } from './party.service';
 import {
   CONTACT_PARTY,
-  contactInvoiceClass,
+  contactInvoiceClassSql,
   FIN_PURCHASED,
   FIN_RESERVED_ONLY,
   FIN_LOYAL,
 } from './crm-finance.service';
 import { readCrmSettingsValue, resolveDepositRule } from './crm-settings.service';
+import { scopeData } from './base';
+import { depositRuleFingerprint, type DepositRule } from './crm-deposit-rule';
 import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
 import { recordAudit } from './activity.service';
@@ -370,7 +372,31 @@ const M_EXPR = sql`(100 * (0.60 * least(1, ln(1 + total_msgs) / ln(1 + ${lit(VS)
  * only messaged recently is not mislabelled "New".
  */
 export async function rankContactsPage(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedPage> {
-  return runRankQuery(ctx, f);
+  return runRankQuery(ctx, f, await resolveFinanceBridge(ctx));
+}
+
+/**
+ * The two settings reads the ranking query's shape depends on: whether the
+ * finance bridge is joined at all, and (if so) which deposit rule its
+ * classification is built from.
+ *
+ * Resolved OUTSIDE the ranking transaction on purpose. `bothEnabled` and
+ * `resolveDepositRule` each open their own `withOrgCore`, and the RLS pool
+ * defaults to ONE connection (`pg-pool.ts` → `getRlsPgClient`): reading them
+ * from inside the ranking transaction makes the outer transaction hold the only
+ * connection while the inner read waits for a second one — a self-deadlock that
+ * a larger pool only downgrades to a concurrency race. Resolve first, pass the
+ * result in, open exactly one transaction.
+ */
+async function resolveFinanceBridge(ctx: CoreCtx): Promise<FinanceBridge> {
+  const withFinance = await bothEnabled(ctx, 'crm', 'finances');
+  return { withFinance, depositRule: withFinance ? await resolveDepositRule(ctx) : null };
+}
+
+interface FinanceBridge {
+  withFinance: boolean;
+  /** null exactly when `withFinance` is false — no classification is computed. */
+  depositRule: DepositRule | null;
 }
 
 /** Rows only — the shape every pre-pagination caller (contact-detail score,
@@ -379,11 +405,11 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
   return (await rankContactsPage(ctx, f)).rows;
 }
 
-async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
-  // Resolved ONCE per call, BEFORE the txn opens (a nested withOrgCore would
-  // open a pointless savepoint): the org's deposit vocabulary, which decides
-  // the finance funnel floor below exactly as it decides ContactFinance.
-  const rule = await resolveDepositRule(ctx);
+async function runRankQuery(
+  ctx: CoreCtx,
+  f: RankFilters,
+  finance: FinanceBridge,
+): Promise<RankedPage> {
   return withOrgCore(ctx, async (tx) => {
     const ruleSql = f.ruleJson != null ? tryCompileTagRule(f.ruleJson) : null;
 
@@ -401,20 +427,19 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
     // surviving prefix spells the number out. Masked callers therefore keep the
     // pre-pagination display_name-only predicate.
     //
-    // TODO(handoff): DNI search reads `crm_contacts.custom_fields->>'dni'`, the
-    // RAW column — the `base` CTE below overlays `parties.doc_number` for
-    // DISPLAY, so a contact whose document lives only on the party spine renders
-    // a DNI the roster cannot find. Slice 1 of
-    // 2026-08-13-crm-customers-server-pagination-spec names the custom_fields
-    // prefix, so widening the predicate to `p.doc_number` belongs to the slice
-    // that owns party-spine search, not here.
+    // p.doc_number is the party-spine DNI search alternative: the `base` CTE
+    // below overlays nonblank `parties.doc_number` into `custom_fields.dni` for
+    // DISPLAY, so search must match the same authoritative source or a contact
+    // whose document lives only on the party spine would render a DNI the
+    // roster cannot find.
     if (f.search)
       conds.push(
         f.maskSensitive
           ? sql`c.display_name ilike ${'%' + f.search + '%'}`
           : sql`(c.display_name ilike ${'%' + f.search + '%'}
         or c.custom_fields->>'telefono' like ${f.search + '%'}
-        or c.custom_fields->>'dni' like ${f.search + '%'})`,
+        or c.custom_fields->>'dni' like ${f.search + '%'}
+        or p.doc_number like ${f.search + '%'})`,
       );
     if (f.tagId)
       conds.push(
@@ -469,13 +494,16 @@ async function runRankQuery(ctx: CoreCtx, f: RankFilters): Promise<RankedPage> {
     // last week is not "New", and a finance-only payer is a buyer, not "New".
     // Only joined when both CRM + Finances are on; otherwise an empty CTE so the
     // lifecycle degrades cleanly to message-only signals.
-    const withFinance = await bothEnabled(ctx, 'crm', 'finances');
-    // contactInvoiceClass() is the SAME per-invoice deposit/procedure split
-    // contactFinanceMap aggregates, under the SAME resolved rule, so the funnel
-    // floor computed here can never drift from the ContactFinance flags the
-    // detail page renders.
+    // Both resolved by the caller BEFORE this transaction opened — see
+    // resolveFinanceBridge. `depositRule` is the same rule crm-finance.service.ts
+    // resolves for this tenant, so the funnel floor computed here can never
+    // classify an invoice differently than the ContactFinance flags the detail
+    // page renders.
+    const { withFinance, depositRule } = finance;
+    // contactInvoiceClassSql(rule) is the SAME per-invoice deposit/procedure
+    // split contactFinanceMap aggregates, built from the same resolved rule.
     const finCte = withFinance
-      ? sql`${contactInvoiceClass(rule)},
+      ? sql`${contactInvoiceClassSql(depositRule!)},
         fin as (
           select contact_id,
                  min(issued_at) as first_purchase_at,
@@ -799,20 +827,35 @@ export function bustCrmList(tenantId: string) {
  * (no roster materialization). Fine for the current few-thousand scale.
  */
 const ROSTER_CAP = 50_000;
-export function listContactsCached(
+export async function listContactsCached(
   ctx: CoreCtx,
   ownerId?: string,
   maskSensitive = false,
 ): Promise<RankedContact[]> {
+  // Resolved BEFORE the cache lookup, not inside the loader: the roster rows
+  // carry fin_purchased/fin_reserved_only and therefore funnel_stage, so a
+  // payload built under the previous deposit rule must not survive a
+  // same-tenant rule change for the TTL+SWR window. Folding the rule's
+  // fingerprint into the key makes the new rule a different entry, so the very
+  // next call recomputes instead of serving the stale classification.
+  const finance = await resolveFinanceBridge(ctx);
   return cached(
     // Fold owner + mask into the tenant key so an if-owner-scoped or PII-masked
     // caller gets a distinct cached payload (never reads/poisons the org-wide
     // roster). The org-level invalidation tag still busts all on any mutation.
     keys.hub('crm-contacts', {
       t: `${ctx.tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`,
+      d: scopeData({ rule: depositRuleFingerprint(finance.depositRule) }),
     }),
     { ttl: '2m', swr: '30s', tags: [...crmListTags(ctx.tenantId)] },
-    () => rankContacts(ctx, { limit: ROSTER_CAP, maxLimit: ROSTER_CAP, ownerId, maskSensitive }),
+    async () =>
+      (
+        await runRankQuery(
+          ctx,
+          { limit: ROSTER_CAP, maxLimit: ROSTER_CAP, ownerId, maskSensitive },
+          finance,
+        )
+      ).rows,
   );
 }
 
@@ -1533,13 +1576,14 @@ export interface AccountConfig extends AccountRef {
  * migration applies.
  */
 export async function getCrmSettings(ctx: CoreCtx): Promise<CrmSettings> {
-  // readCrmSettingsValue owns the query AND the graceful default (missing
-  // table/row/read failure ⇒ {}), so the deposit rule and the harvest scope
-  // read `crm_settings` through one code path, not two. `{}` here yields
-  // `accounts: null` — the same legacy 'all linked accounts' answer this
-  // function's own catch used to return.
-  const value = await readCrmSettingsValue(ctx);
-  return { accounts: parseAccountConfigs(value.accounts) };
+  try {
+    // Same single `crm_settings` reader resolveDepositRule goes through — one
+    // query, one org-scoping/missing-row contract, per-key parsing on top.
+    const value = await readCrmSettingsValue(ctx);
+    return { accounts: parseAccountConfigs(value.accounts) };
+  } catch {
+    return { accounts: null };
+  }
 }
 
 /**

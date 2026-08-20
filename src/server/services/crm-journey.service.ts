@@ -9,7 +9,7 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
 import { setContactCustomField, type JsonValue } from './crm-contacts.service';
 import { getOpenRouterModel } from '$server/llm';
-import { depositMatchSql, notDepositMatchSql } from './crm-deposit-rule';
+import { depositMatchSql, depositSortKeySql, notDepositMatchSql } from './crm-deposit-rule';
 import { resolveDepositRule } from './crm-settings.service';
 
 const milestoneItemSchema = z.object({
@@ -59,13 +59,19 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
     const out: Milestone[] = [];
 
     if (rule) {
+      // The representative-item ORDER BY goes through `depositSortKeySql`, not
+      // the bare `depositMatchSql` predicate: now that the rule is per-org it
+      // can legitimately have ZERO keywords, and that predicate compiles to the
+      // literal `false`, which PostgreSQL rejects as a sort key (42601,
+      // "non-integer constant in ORDER BY"). The CASE wrapper keeps the same
+      // ordering — procedures (0) before deposits (1).
       const rows = (await tx.execute(sql`
         select fi.id::text id, fi.issued_at at, coalesce(fi.total,0)::float8 amount,
                bool_or(${depositMatchSql('ii.description', rule)}) only_deposit_flag,
                bool_or(ii.description is not null and ${notDepositMatchSql('ii.description', rule)}) has_proc,
                (select ii2.description from fin_invoice_items ii2
                   where ii2.invoice_id = fi.id and ii2.description is not null
-                  order by ${depositMatchSql('ii2.description', rule)} asc, ii2.total desc nulls last limit 1) item
+                  order by ${depositSortKeySql('ii2.description', rule)} asc, ii2.total desc nulls last limit 1) item
         from crm_contacts c
         join fin_clients fc on fc.party_id = c.party_id and c.party_id is not null
           and fc.org_id = current_setting('app.current_org_id', true)

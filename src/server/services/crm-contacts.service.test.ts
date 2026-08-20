@@ -15,6 +15,7 @@ import {
   assertJsonValue,
   setContactCustomField,
   setFunnelStage,
+  listContactsCached,
 } from './crm-contacts.service';
 
 /**
@@ -73,15 +74,12 @@ vi.mock('./modules.service', async (importOriginal) => ({
   bothEnabled: () => mockBothEnabled(),
 }));
 
-// runRankQuery resolves the org's deposit rule BEFORE opening its txn (the
-// finance funnel floor must use the same vocabulary ContactFinance does). Only
-// that resolution is mocked — readCrmSettingsValue stays REAL so the harvest-scope
-// tests above keep exercising the actual crm_settings read.
+// Same reasoning as bothEnabled above: resolveDepositRule (called only when
+// withFinance is true) issues its own withOrgCore round-trip via
+// crm-settings.service.ts and would otherwise eat the exec mock
+// queued for the ranking query.
 const { mockResolveDepositRule } = vi.hoisted(() => ({
-  mockResolveDepositRule: vi.fn(async () => ({
-    keywords: ['reserva'],
-    label: 'Reserved a consult',
-  })),
+  mockResolveDepositRule: vi.fn(async () => ({ keywords: ['reserva'], label: 'Reserva' })),
 }));
 vi.mock('./crm-settings.service', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -669,10 +667,12 @@ describe('rankContacts search (S1 — phone/DNI exact-prefix)', () => {
 
     const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
     expect(query.sql).toContain("c.custom_fields->>'telefono' like");
-    // name = substring; phone + dni = prefix. A mid-string phone match would
-    // need a leading '%', and there is exactly one of those (the name).
+    expect(query.sql).toContain('p.doc_number like');
+    // name = substring; phone + custom_fields.dni + party-spine doc_number =
+    // prefix. A mid-string phone match would need a leading '%', and there is
+    // exactly one of those (the name).
     expect(query.params.filter((p) => p === '%9876%')).toHaveLength(1);
-    expect(query.params.filter((p) => p === '9876%')).toHaveLength(2);
+    expect(query.params.filter((p) => p === '9876%')).toHaveLength(3);
   });
 
   it('DNI search uses the custom_fields prefix required by the server-pagination contract', async () => {
@@ -696,6 +696,7 @@ describe('rankContacts search (S1 — phone/DNI exact-prefix)', () => {
     // recover the hidden digits by lengthening the prefix one probe at a time.
     expect(query.sql).not.toContain("c.custom_fields->>'telefono' like");
     expect(query.sql).not.toContain("c.custom_fields->>'dni' like");
+    expect(query.sql).not.toContain('p.doc_number like');
     expect(query.sql).toContain('c.display_name ilike');
     expect(query.params).not.toContain('5198%');
     expect(query.params).toContain('%5198%');
@@ -744,33 +745,113 @@ describe('rankContacts revenue column (S1 — order-by fuel, not part of the pay
   });
 });
 
-describe('rankContacts finance funnel floor (S2 — per-org deposit rule)', () => {
+describe('rankContacts finance CTE deposit rule (Slice 1 — same resolved rule as crm-finance.service)', () => {
   const ctx = { db: {} as never, tenantId: 'org-1' };
 
-  it('binds the ORG’s deposit vocabulary into the shared classification CTE', async () => {
+  it("crm+finances on with the default rule binds '%reserva%', matching crm-finance.service's default", async () => {
     mockBothEnabled.mockResolvedValueOnce(true);
-    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto'], label: 'Adelanto' });
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['reserva'], label: 'Reserva' });
     const execute = vi.fn().mockResolvedValueOnce([]);
     useExecMock(execute);
 
     await rankContacts(ctx, { sort: 'revenue' });
 
-    const { sql, params } = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
-    expect(sql).toContain('bool_or(coalesce((ii.description ilike $1), false)) has_deposit');
-    expect(params.slice(0, 2)).toEqual(['%adelanto%', '%adelanto%']);
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain('from contact_invoice_class');
+    expect(query.params).toContain('%reserva%');
+    expect(query.params).not.toContain('%adelanto%');
   });
 
-  it('resolves the rule once per call, and skips the CTE entirely when finances are off', async () => {
-    mockBothEnabled.mockResolvedValueOnce(false);
-    mockResolveDepositRule.mockClear();
+  it('a custom resolved rule binds its own escaped keywords in the finance CTE, never %reserva%', async () => {
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({
+      keywords: ['adelanto', 'seña'],
+      label: 'Adelanto',
+    });
     const execute = vi.fn().mockResolvedValueOnce([]);
     useExecMock(execute);
 
-    await rankContacts(ctx, {});
+    await rankContacts(ctx, { sort: 'revenue' });
 
-    expect(mockResolveDepositRule).toHaveBeenCalledTimes(1);
-    expect(new PgDialect().sqlToQuery(execute.mock.calls[0][0]).sql).not.toContain(
-      'contact_invoice_class',
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.params).toEqual(
+      expect.arrayContaining(['%adelanto%', '%seña%', '%adelanto%', '%seña%']),
     );
+    expect(query.params).not.toContain('%reserva%');
+  });
+
+  it('an explicitly empty keyword set compiles the finance CTE to literal false/true — no dropped predicate', async () => {
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, { sort: 'revenue' });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain('bool_or(false) has_deposit');
+    expect(query.sql).toContain('bool_or((ii.description is not null and true)) has_proc');
+    // No deposit-keyword ILIKE pattern is bound at all — an empty rule drops
+    // the predicate's PARAMS, not the predicate itself (still `false`/`true`).
+    expect(query.params.filter((p) => typeof p === 'string' && p.startsWith('%'))).toHaveLength(0);
+  });
+});
+
+/**
+ * The roster the CRM dashboard and the Customers page actually consume is the
+ * CACHED one, and its rows carry the deposit-derived `fin_purchased` /
+ * `fin_reserved_only` → `funnel_stage`. A cache identity that ignores the rule
+ * would serve the previous classification for the whole TTL+SWR window after a
+ * same-tenant settings change — the failure this fixture pins.
+ */
+describe('listContactsCached rule sensitivity', () => {
+  /** One roster row, only the fields the mapper touches plus the classification. */
+  const rosterRow = (funnelStage: string) => ({
+    contact_id: 'c1',
+    total_rows: 1,
+    page_position: 1,
+    custom_fields: {},
+    identities: [],
+    funnel_stage: funnelStage,
+  });
+
+  it('a same-tenant rule change is visible on the very next call, and each rule keeps its own entry', async () => {
+    const { configureCache, MemoryBackend } = await import('@minion-stack/cache');
+    configureCache({ backend: new MemoryBackend(), namespace: 'crm-contacts-rule-test' });
+    const tenant = 'org-roster-fingerprint';
+    const scoped = { db: {} as never, tenantId: tenant };
+
+    // Default rule: the deposit line classifies c1 as reserved-only.
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['reserva'], label: 'Reserva' });
+    useExecMock(vi.fn().mockResolvedValueOnce([rosterRow('reserved')]));
+    const first = await listContactsCached(scoped);
+    expect(first[0]).toMatchObject({ funnel_stage: 'reserved' });
+
+    // Custom rule, same tenant: the same line is no longer a deposit, so the
+    // roster must recompute rather than replay the cached 'reserved' payload.
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto'], label: 'Adelanto' });
+    useExecMock(vi.fn().mockResolvedValueOnce([rosterRow('customer')]));
+    const second = await listContactsCached(scoped);
+    expect(second[0]).toMatchObject({ funnel_stage: 'customer' });
+
+    // Explicitly empty keywords: a third distinct rule, a third distinct entry.
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    useExecMock(vi.fn().mockResolvedValueOnce([rosterRow('customer-empty-rule')]));
+    const third = await listContactsCached(scoped);
+    expect(third[0]).toMatchObject({ funnel_stage: 'customer-empty-rule' });
+
+    // Back to the default rule inside its TTL: a genuine cache HIT, so the
+    // loader's poison rows must never surface — proving these are separate
+    // entries rather than one entry being blown away each time.
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['reserva'], label: 'Reserva' });
+    const poison = vi.fn().mockResolvedValueOnce([rosterRow('POISON')]);
+    useExecMock(poison);
+    const fourth = await listContactsCached(scoped);
+    expect(fourth[0]).toMatchObject({ funnel_stage: 'reserved' });
+    expect(poison).not.toHaveBeenCalled();
   });
 });

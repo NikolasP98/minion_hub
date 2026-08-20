@@ -79,3 +79,29 @@ proposal append (`proposals/2026-08-17-hub-reserva-keyword-config.md`) could not
 from this run: minion-meta is not checked out in this environment.** ⚠️ A3 is CONFIRMED and
 still applies — `crm-similarity.service.ts:buildWinIndex` does materialize `bought`/`snippet`
 into `crm_win_embeddings`, so a keyword change leaves stored rows stale until a rebuild.
+
+### Amendment 4 — merge with master's sibling settings service (PRs #143/#145)
+
+Master landed its own `crm-settings.service.ts` and its own `resolveDepositRule` wiring for
+`crm-finance.service.ts` / `crm-contacts.service.ts` while this branch was open. Master's
+versions of those three files are canonical; this branch's S2 was re-applied on top of them
+rather than replacing them:
+
+- **Normalization has ONE home: `crm-settings.service.ts`.** Master's `normalizeDepositRule`
+  (total — malformed input warns and returns `DEFAULT_DEPOSIT_RULE` instead of `null`) is the
+  one kept. This branch's `normalizeDepositRule` + its lenient read schema were deleted from
+  `crm-deposit-rule.ts`; that module now owns only the rule SHAPE, the caps, and the strict
+  `depositWriteSchema`. The two caps are exported from `crm-deposit-rule.ts` and imported by
+  the settings reader, so the read clamp and the write rejection cannot drift apart.
+- **`crm-journey.service.ts` and `crm-similarity.service.ts`** — still module-default on
+  master — carry this branch's per-org wiring, which is what S2 was for.
+- **The journey's representative-item `ORDER BY` now uses `depositSortKeySql`** (master's
+  helper), not the bare `depositMatchSql` predicate. A per-org rule may legitimately have
+  ZERO keywords, and that predicate compiles to the literal `false`, which PostgreSQL rejects
+  as a sort key (42601, "non-integer constant in ORDER BY"). Making that call site
+  org-configurable without the CASE wrapper would have 500'd every contact journey for an org
+  that configured `keywords: []`. Regression-guarded in `crm-journey.service.test.ts`.
+- `DEFAULT_DEPOSIT_RULE.label` stays `'Reserved a consult'` (Amendment 1). Master's `'Reserva'`
+  was never rendered anywhere — the journey hardcoded the English caption — so adopting it
+  while feeding `rule.label` into that caption would have silently changed every existing
+  org's milestone text.
