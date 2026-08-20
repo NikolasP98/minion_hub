@@ -13,6 +13,7 @@ import {
   mintBrainVectorCapability,
   searchBrainVectorApi,
   type BrainVectorClientConfig,
+  type BrainVectorSearchFilters,
 } from './brain-vector-client';
 
 let config: BrainVectorClientConfig;
@@ -286,17 +287,98 @@ describe('brain vector API client', () => {
     ).rejects.toThrow('too many candidates');
   });
 
-  it('fails closed on org_all until the Hub can prove all-source policy scope', async () => {
+  it('makes org_all unrepresentable at the request-construction boundary', async () => {
+    const buildRequest = (filters: BrainVectorSearchFilters) => ({
+      orgId: 'org-1',
+      brainId: '22222222-2222-4222-8222-222222222222',
+      subject: 'profile-1',
+      vector: Array.from({ length: 1536 }, () => 0),
+      limit: 20,
+      filters,
+    });
+
+    // @ts-expect-error scopeMode is narrowed to the literal 'source_list'; 'org_all' must not
+    // type-check at the request-construction boundary until the architecture §8.1 policy proof
+    // exists. Everything else here is valid, so removing this directive fails only on scopeMode.
+    buildRequest({ scopeMode: 'org_all', sourceIds: ['source-a'] });
+
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        contractVersion: BRAIN_VECTOR_CONTRACT_VERSION,
+        generation: config.generation,
+        collection: brainVectorCollectionName(config.generation),
+        tookMs: 1,
+        candidates: [],
+      }),
+    );
     await expect(
-      searchBrainVectorApi(config, {
+      searchBrainVectorApi(
+        config,
+        buildRequest({ scopeMode: 'source_list', sourceIds: ['source-a'] }),
+        fetchImpl as typeof fetch,
+      ),
+    ).resolves.toMatchObject({ candidates: [] });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits a canonical source_list request body on the wire', async () => {
+    // TODO(handoff): FACTORY_SPEC.md (2026-08-17-hub-brain-org-all-scope-spec) §3 "Tests" also
+    // requires this emitted body to be asserted with `isBrainVectorSearchRequestV1` imported from
+    // `@minion-stack/shared`, so drift from the frozen v1 wire contract is caught by the contract's
+    // own validator instead of by Hub-side expectations. That import cannot resolve here: the Hub's
+    // pinned `@minion-stack/shared@0.9.0` ships no brain-vector entry point at all — its published
+    // `dist/` contains only gateway/, node/, utils/ and prompt-sections (verified by unpacking the
+    // 0.9.0 npm tarball); the validator first ships in 0.10.0. Raising the dependency range is
+    // outside this slice — §3 "Files" and §4 confine the diff to the brain-vector client and this
+    // test — and that bump was rejected in review twice (2026-08-20) for exactly that reason, while
+    // a hand-copied validator would assert against a reimplementation rather than the shipped
+    // contract, which review also rejected. Unblock: a minion-meta proposal that authorizes and
+    // assesses `@minion-stack/shared@0.10.0` Hub-wide, then restore the import plus a positive and
+    // a negative-control assertion here. minion-meta is not reachable from this checkout, so that
+    // proposal could not be filed from this run. Until then the assertions below freeze the body
+    // `searchBrainVectorApi` actually puts on the wire, which still detects Hub-side drift.
+    let emitted: unknown;
+    const fetchImpl = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
+      emitted = JSON.parse(String(init?.body));
+      return Response.json({
+        contractVersion: BRAIN_VECTOR_CONTRACT_VERSION,
+        generation: config.generation,
+        collection: brainVectorCollectionName(config.generation),
+        tookMs: 1,
+        candidates: [],
+      });
+    });
+    await searchBrainVectorApi(
+      config,
+      {
         orgId: 'org-1',
         brainId: '22222222-2222-4222-8222-222222222222',
         subject: 'profile-1',
         vector: Array.from({ length: 1536 }, () => 0),
         limit: 20,
-        filters: { scopeMode: 'org_all' },
-      }),
-    ).rejects.toThrow(/org_all vector scope is not implemented/);
+        filters: {
+          scopeMode: 'source_list',
+          sourceIds: ['source-b', 'source-a', 'source-b'],
+          kinds: ['note'],
+          occurredAfter: '2026-01-31T23:59:59Z',
+        },
+      },
+      fetchImpl as typeof fetch,
+    );
+
+    const body = emitted as Record<string, unknown>;
+    expect(body.contractVersion).toBe(BRAIN_VECTOR_CONTRACT_VERSION);
+    expect(body.generation).toBe(config.generation);
+    expect(body.limit).toBe(20);
+    expect((body.vector as number[]).length).toBe(1536);
+    // The Hub only ever mints `source_list`, with source IDs deduped and canonically ordered so
+    // the emitted scope matches the scope hash bound into the capability token.
+    expect(body.filters).toEqual({
+      scopeMode: 'source_list',
+      sourceIds: ['source-a', 'source-b'],
+      kinds: ['note'],
+      occurredAfter: '2026-01-31T23:59:59Z',
+    });
   });
 });
 
