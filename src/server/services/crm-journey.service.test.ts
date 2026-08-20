@@ -103,12 +103,14 @@ describe('deterministicMilestones (via contactJourney)', () => {
     expect(inv).toMatchObject({ type: 'reserve', label: 'Reserved a consult' });
   });
 
-  // The deposit caption is licensed by the DEPOSIT flag, not by the absence of
-  // a procedure line: an invoice whose lines match neither predicate (every
-  // description null, or no line items at all) is unclassifiable and must not
-  // be captioned as a deposit — for the DEFAULT rule as much as for a
-  // configured one.
-  it('MAPPING: an invoice matching neither predicate emits no milestone at all', async () => {
+  // The legacy `!has_proc ⇒ reserve` mapping is preserved unconditionally for
+  // the DEFAULT rule (and any non-empty rule): an invoice whose lines match
+  // neither predicate (every description null, or no line items at all) is
+  // still captioned as a reserve, exactly as it was before per-org keywords
+  // existed — S2 requires every existing org to stay byte-identical. Only an
+  // EXPLICIT `keywords: []` rule withholds the caption (see the S2 describe
+  // block below).
+  it('MAPPING: an invoice matching neither predicate still emits the legacy reserve milestone under the default rule', async () => {
     const { db, resolve } = createMockDb();
     resolve([
       {
@@ -121,7 +123,10 @@ describe('deterministicMilestones (via contactJourney)', () => {
       },
     ]);
     const journey = await contactJourney(ctx(db), 'c1');
-    expect(journey.find((m) => m.id === 'inv:inv5')).toBeUndefined();
+    expect(journey.find((m) => m.id === 'inv:inv5')).toMatchObject({
+      type: 'reserve',
+      label: 'Reserved a consult',
+    });
   });
 });
 
