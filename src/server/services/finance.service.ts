@@ -70,7 +70,17 @@ export function loadProductMap(ctx: CoreCtx): Promise<Map<string, string>> {
 }
 
 /** Upsert a whole page of canonical invoices in ONE org-scoped transaction using
- *  set-based multi-row statements. ~100× fewer round-trips than per-invoice. */
+ *  set-based multi-row statements. ~100× fewer round-trips than per-invoice.
+ *
+ *  Temporary SUSII → SUNAT bridge: SIRE is document-only, while the existing
+ *  SUSII invoice owns the richer operational line items. A SIRE row with the
+ *  same document_id is therefore attached as source metadata to that existing
+ *  invoice instead of inserted as a duplicate. The matched invoice never enters
+ *  the child replacement path below, so its SUSII items/payments stay intact.
+ *
+ *  TODO(handoff): Replace metadata.sourceOverlays with provider-neutral
+ *  fin_invoice_source_refs; see proposals/2026-08-20-hub-finance-provider-source-refs.md.
+ */
 export async function upsertInvoicesBatch(
   ctx: CoreCtx,
   invoices: CanonicalInvoice[],
@@ -83,9 +93,106 @@ export async function upsertInvoicesBatch(
   for (const inv of invoices) invMap.set(inv.providerRef, inv);
   const deduped = [...invMap.values()];
   await withOrgCore(ctx, async (tx) => {
+    let pending = deduped;
+    const overlays: Array<{ targetId: string; invoice: CanonicalInvoice }> = [];
+    const sunatCandidates = deduped.filter(
+      (inv) => inv.provider === 'sunat-sire' && inv.documentId != null,
+    );
+    if (sunatCandidates.length > 0) {
+      const incomingByDocument = new Map<string, CanonicalInvoice>();
+      for (const inv of sunatCandidates) {
+        const documentId = inv.documentId!;
+        if (incomingByDocument.has(documentId)) {
+          throw new Error(`ambiguous SUNAT document identity in one page: ${documentId}`);
+        }
+        incomingByDocument.set(documentId, inv);
+      }
+
+      const existing = await tx
+        .select({ id: finInvoices.id, documentId: finInvoices.documentId })
+        .from(finInvoices)
+        .where(
+          and(
+            eq(finInvoices.orgId, ctx.tenantId),
+            eq(finInvoices.provider, 'susii'),
+            inArray(finInvoices.documentId, [...incomingByDocument.keys()]),
+          ),
+        );
+      const targetByDocument = new Map<string, string>();
+      for (const row of existing) {
+        if (!row.documentId) continue;
+        if (targetByDocument.has(row.documentId)) {
+          throw new Error(`ambiguous SUSII document identity: ${row.documentId}`);
+        }
+        targetByDocument.set(row.documentId, row.id);
+      }
+
+      for (const inv of sunatCandidates) {
+        const targetId = targetByDocument.get(inv.documentId!);
+        if (targetId) overlays.push({ targetId, invoice: inv });
+      }
+      if (overlays.length > 0) {
+        const syncedAt = new Date().toISOString();
+        const overlayValues = sql.join(
+          overlays.map(
+            ({ targetId, invoice }) =>
+              sql`(${targetId}::uuid, ${JSON.stringify({
+                providerRef: invoice.providerRef,
+                documentId: invoice.documentId,
+                syncedAt,
+                record: invoice.metadata,
+              })}::jsonb)`,
+          ),
+          sql`, `,
+        );
+        await tx.execute(sql`
+          update fin_invoices as i
+             set metadata = coalesce(i.metadata, '{}'::jsonb)
+                   || jsonb_build_object(
+                        'sourceOverlays',
+                        coalesce(i.metadata -> 'sourceOverlays', '{}'::jsonb)
+                          || jsonb_build_object('sunat-sire', v.source)
+                      ),
+                 synced_at = now()
+            from (values ${overlayValues}) as v(id, source)
+           where i.id = v.id
+             and i.org_id = ${ctx.tenantId}`);
+        await tx.insert(docAuditLog).values(
+          overlays.map(({ targetId, invoice }) => ({
+            orgId: ctx.tenantId,
+            refType: 'fin_invoice',
+            refId: targetId,
+            op: 'update',
+            changes: [
+              {
+                field: 'sourceOverlays.sunat-sire',
+                label: 'SUNAT SIRE source',
+                old: null,
+                new: invoice.providerRef,
+              },
+            ],
+            actorId: null,
+            actorName: 'connector:sunat-sire',
+          })),
+        );
+        const overlaidRefs = new Set(overlays.map(({ invoice }) => invoice.providerRef));
+        pending = deduped.filter((inv) => !overlaidRefs.has(inv.providerRef));
+      }
+    }
+
+    if (pending.length === 0) {
+      await emitHubEvent(tx, {
+        type: 'finance.invoices_upserted',
+        orgId: ctx.tenantId,
+        created: 0,
+        updated: overlays.length,
+      });
+      return;
+    }
+
     // 1. Clients (dedupe by providerRef within the page).
     const clients = new Map<string, CanonicalInvoice['client']>();
-    for (const inv of deduped) if (inv.client) clients.set(inv.client.providerRef, inv.client);
+    for (const inv of pending) if (inv.client) clients.set(inv.client.providerRef, inv.client);
     const clientIdByRef = new Map<string, string>();
     if (clients.size) {
       const rows = await tx
@@ -125,7 +232,7 @@ export async function upsertInvoicesBatch(
     const invRows = await tx
       .insert(finInvoices)
       .values(
-        deduped.map((inv) => ({
+        pending.map((inv) => ({
           orgId: ctx.tenantId,
           provider: inv.provider,
           providerRef: inv.providerRef,
@@ -206,7 +313,7 @@ export async function upsertInvoicesBatch(
 
     // 3. Replace children for these invoices (set-based delete + multi-row insert).
     await tx.delete(finInvoiceItems).where(inArray(finInvoiceItems.invoiceId, invoiceIds));
-    const itemRows = deduped.flatMap((inv) => {
+    const itemRows = pending.flatMap((inv) => {
       const invoiceId = invIdByRef.get(inv.providerRef);
       if (!invoiceId) return [];
       return inv.items.map((it) => ({
@@ -227,7 +334,7 @@ export async function upsertInvoicesBatch(
     if (itemRows.length) await tx.insert(finInvoiceItems).values(itemRows);
 
     await tx.delete(finPayments).where(inArray(finPayments.invoiceId, invoiceIds));
-    const payRows = deduped.flatMap((inv) => {
+    const payRows = pending.flatMap((inv) => {
       const invoiceId = invIdByRef.get(inv.providerRef);
       if (!invoiceId) return [];
       return inv.payments.map((p) => ({
@@ -248,7 +355,7 @@ export async function upsertInvoicesBatch(
       type: 'finance.invoices_upserted',
       orgId: ctx.tenantId,
       created,
-      updated: invRows.length - created,
+      updated: invRows.length - created + overlays.length,
     });
   });
 }
