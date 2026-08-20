@@ -109,3 +109,121 @@ describe('dispatchGatewayEvent', () => {
     expect(captured[0].message).toContain('handler exploded');
   });
 });
+
+// A handler can throw or reject with ANY value, including one engineered to
+// defeat the reporting path: `toJSON` makes `JSON.stringify` throw and
+// `Symbol.toPrimitive` makes `String()` throw, so the interceptor's serialiser
+// has no ordinary way to render it. Containment has to survive its own report —
+// otherwise the failure escapes through the sink instead of the handler.
+function hostileValue(): unknown {
+  return {
+    toJSON() {
+      throw new Error('toJSON refused');
+    },
+    toString() {
+      throw new Error('toString refused');
+    },
+    valueOf() {
+      throw new Error('valueOf refused');
+    },
+    [Symbol.toPrimitive]() {
+      throw new Error('toPrimitive refused');
+    },
+  };
+}
+
+describe('dispatchGatewayEvent reporting is total', () => {
+  it('contains a synchronous throw of a value that defeats serialisation', () => {
+    const before = getConsoleBuffer().length;
+
+    expect(() =>
+      dispatchGatewayEvent(frame, () => {
+        throw hostileValue();
+      }),
+    ).not.toThrow();
+
+    // Still reported once, with the value rendered by the sink's last resort.
+    expect(consoleError).toHaveBeenCalledOnce();
+    const captured = getConsoleBuffer().slice(before);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].message).toContain(EVENT_HANDLER_FAILURE_PREFIX);
+    expect(captured[0].message).toContain('[unserializable]');
+  });
+
+  it('reports a hostile asynchronous rejection without leaving it unhandled', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+
+    try {
+      dispatchGatewayEvent(frame, () => Promise.reject(hostileValue()));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(consoleError).toHaveBeenCalledOnce();
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
+  it('contains a throwing `then` accessor on the handler’s return value', () => {
+    const boom = new Error('then refused');
+
+    expect(() =>
+      dispatchGatewayEvent(frame, () => ({
+        get then() {
+          throw boom;
+        },
+      })),
+    ).not.toThrow();
+
+    expect(consoleError).toHaveBeenCalledExactlyOnceWith(
+      `${EVENT_HANDLER_FAILURE_PREFIX} (event=agent, seq=42)`,
+      boom,
+    );
+  });
+
+  it('contains a reporting sink that throws, and still tries a bare report', () => {
+    const patched = console.error;
+    const attempts: unknown[][] = [];
+    let throwOnce = true;
+
+    console.error = (...args: unknown[]) => {
+      attempts.push(args);
+      if (throwOnce) {
+        throwOnce = false;
+        throw new Error('sink refused');
+      }
+    };
+
+    try {
+      expect(() =>
+        dispatchGatewayEvent(frame, () => {
+          throw new Error('handler exploded');
+        }),
+      ).not.toThrow();
+    } finally {
+      console.error = patched;
+    }
+
+    expect(attempts).toHaveLength(2);
+    expect(attempts[1]).toEqual([EVENT_HANDLER_FAILURE_PREFIX]);
+  });
+
+  it('gives up silently when even the bare report throws', () => {
+    const patched = console.error;
+    console.error = () => {
+      throw new Error('sink refused');
+    };
+
+    try {
+      expect(() =>
+        dispatchGatewayEvent(frame, () => {
+          throw hostileValue();
+        }),
+      ).not.toThrow();
+    } finally {
+      console.error = patched;
+    }
+  });
+});

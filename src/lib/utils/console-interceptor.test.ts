@@ -80,3 +80,56 @@ describe('console-interceptor', () => {
     expect(buffer[buffer.length - 1].level).toBe('info');
   });
 });
+
+// Reporting sinks receive whatever a failing caller hands them, including values
+// engineered to defeat serialisation. `dispatchGatewayEvent` promises a handler
+// failure is never rethrown, and it keeps that promise through this sink, so the
+// sink itself must not throw for any input.
+describe('console-interceptor hostile payloads', () => {
+  const hostile = {
+    toJSON() {
+      throw new Error('toJSON refused');
+    },
+    toString() {
+      throw new Error('toString refused');
+    },
+    valueOf() {
+      throw new Error('valueOf refused');
+    },
+    [Symbol.toPrimitive]() {
+      throw new Error('toPrimitive refused');
+    },
+  };
+
+  // The ring buffer is already at its cap here (the test above fills it), so a
+  // new entry evicts an old one and the length never grows: read the newest
+  // entry rather than a slice from a remembered length.
+  const newestEntry = () => {
+    const buffer = getConsoleBuffer();
+    return buffer[buffer.length - 1];
+  };
+
+  it('renders a value that defeats both JSON and String() instead of throwing', () => {
+    expect(() => console.error('[gateway] onEvent handler failed', hostile)).not.toThrow();
+
+    const entry = newestEntry();
+    expect(entry.level).toBe('error');
+    expect(entry.message).toBe('[gateway] onEvent handler failed [unserializable]');
+  });
+
+  it('survives a null-prototype object, which cannot be coerced to a string', () => {
+    // No prototype ⇒ no `toString`/`valueOf` ⇒ `String()` raises TypeError; the
+    // throwing getter makes `JSON.stringify` bail first.
+    const bare = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(bare, 'boom', {
+      enumerable: true,
+      get() {
+        throw new Error('getter refused');
+      },
+    });
+
+    expect(() => console.error('frame', bare)).not.toThrow();
+
+    expect(newestEntry().message).toBe('frame [unserializable]');
+  });
+});
