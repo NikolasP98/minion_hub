@@ -176,6 +176,22 @@ describe('deterministicMilestones deposit classification against PGlite', () => 
     expect(invoiceMilestone(journey)).toMatchObject({ type: 'reserve', label: 'Deposit paid' });
   });
 
+  it('malformed config: a non-object stored deposit value warns once and falls back to the default rule, same as absent config', async () => {
+    await setDepositConfig('not-an-object');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const contactId = await seedInvoice([['Reserva de cita', 50]]);
+    const journey = await journeyOf({ db: {} as never, tenantId: ORG }, contactId);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('crm_settings.value.deposit is malformed'),
+    );
+    expect(invoiceMilestone(journey)).toMatchObject({
+      type: 'reserve',
+      label: 'Reserved a consult',
+    });
+    warnSpy.mockRestore();
+  });
+
   it('empty keywords: nothing is ever a deposit, so a non-null item always produces purchase, not reserve', async () => {
     await setDepositConfig({ keywords: [], label: 'None' });
     const contactId = await seedInvoice([['Reserva de cita', 50]]);
