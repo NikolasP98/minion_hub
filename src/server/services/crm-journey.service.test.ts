@@ -72,19 +72,56 @@ describe('deterministicMilestones (via contactJourney)', () => {
   it('MAPPING: has_proc true is labelled from the item, not "Reserved a consult"', async () => {
     const { db, resolve } = createMockDb();
     resolve([
-      { id: 'inv1', at: '2026-01-01T00:00:00Z', amount: 100, has_proc: true, item: 'Botox' },
+      {
+        id: 'inv1',
+        at: '2026-01-01T00:00:00Z',
+        amount: 100,
+        only_deposit_flag: false,
+        has_proc: true,
+        item: 'Botox',
+      },
     ]);
     const journey = await contactJourney(ctx(db), 'c1');
     const inv = journey.find((m) => m.id === 'inv:inv1');
     expect(inv).toMatchObject({ type: 'purchase', label: 'Botox' });
   });
 
-  it('MAPPING: has_proc false is labelled "Reserved a consult"', async () => {
+  it('MAPPING: a deposit line with no procedure line is labelled "Reserved a consult"', async () => {
     const { db, resolve } = createMockDb();
-    resolve([{ id: 'inv2', at: '2026-01-02T00:00:00Z', amount: 50, has_proc: false, item: null }]);
+    resolve([
+      {
+        id: 'inv2',
+        at: '2026-01-02T00:00:00Z',
+        amount: 50,
+        only_deposit_flag: true,
+        has_proc: false,
+        item: null,
+      },
+    ]);
     const journey = await contactJourney(ctx(db), 'c1');
     const inv = journey.find((m) => m.id === 'inv:inv2');
     expect(inv).toMatchObject({ type: 'reserve', label: 'Reserved a consult' });
+  });
+
+  // The deposit caption is licensed by the DEPOSIT flag, not by the absence of
+  // a procedure line: an invoice whose lines match neither predicate (every
+  // description null, or no line items at all) is unclassifiable and must not
+  // be captioned as a deposit — for the DEFAULT rule as much as for a
+  // configured one.
+  it('MAPPING: an invoice matching neither predicate emits no milestone at all', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([
+      {
+        id: 'inv5',
+        at: '2026-01-03T00:00:00Z',
+        amount: 75,
+        only_deposit_flag: false,
+        has_proc: false,
+        item: null,
+      },
+    ]);
+    const journey = await contactJourney(ctx(db), 'c1');
+    expect(journey.find((m) => m.id === 'inv:inv5')).toBeUndefined();
   });
 });
 
@@ -105,7 +142,16 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit drives match A
   it('CAPTION: a deposits-only invoice renders the org’s label, not the FACES default', async () => {
     resolveDepositRule.mockResolvedValueOnce({ keywords: ['deposit'], label: 'Deposit' });
     const { db, resolve } = createMockDb();
-    resolve([{ id: 'inv3', at: '2026-03-01T00:00:00Z', amount: 50, has_proc: false, item: null }]);
+    resolve([
+      {
+        id: 'inv3',
+        at: '2026-03-01T00:00:00Z',
+        amount: 50,
+        only_deposit_flag: true,
+        has_proc: false,
+        item: null,
+      },
+    ]);
     const journey = await contactJourney(ctx(db), 'c1');
     expect(journey.find((m) => m.id === 'inv:inv3')).toMatchObject({
       type: 'reserve',
@@ -117,7 +163,14 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit drives match A
     resolveDepositRule.mockResolvedValueOnce({ keywords: ['deposit'], label: 'Deposit' });
     const { db, resolve } = createMockDb();
     resolve([
-      { id: 'inv4', at: '2026-03-02T00:00:00Z', amount: 900, has_proc: true, item: 'Botox' },
+      {
+        id: 'inv4',
+        at: '2026-03-02T00:00:00Z',
+        amount: 900,
+        only_deposit_flag: false,
+        has_proc: true,
+        item: 'Botox',
+      },
     ]);
     const journey = await contactJourney(ctx(db), 'c1');
     expect(journey.find((m) => m.id === 'inv:inv4')).toMatchObject({
@@ -126,11 +179,29 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit drives match A
     });
   });
 
+  // Behavior first, SQL second: the row fed in is the one the empty rule
+  // actually produces — `only_deposit_flag` false (nothing can match `false`)
+  // and `has_proc` false (an invoice whose lines carry no description). Under
+  // the old `!has_proc ⇒ reserve` mapping this returned a milestone captioned
+  // 'x' for an org that has no deposit concept; the assertion is that NO
+  // invoice milestone is emitted, not merely that the SQL compiled to `false`.
   it('an org with NO deposit concept (keywords: []) never emits a deposit milestone', async () => {
     resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'x' });
     const { db, resolve } = createMockDb();
-    resolve([]);
-    await contactJourney(ctx(db), 'c1');
+    resolve([
+      {
+        id: 'inv6',
+        at: '2026-04-01T00:00:00Z',
+        amount: 120,
+        only_deposit_flag: false,
+        has_proc: false,
+        item: null,
+      },
+    ]);
+    const journey = await contactJourney(ctx(db), 'c1');
+    expect(journey.filter((m) => m.id.startsWith('inv:'))).toEqual([]);
+    expect(journey.some((m) => m.type === 'reserve' || m.label === 'x')).toBe(false);
+
     const { sql, params } = dialect.sqlToQuery(financeExecutedSql(db));
     expect(sql).toContain('bool_or(false) only_deposit_flag');
     expect(sql).toContain('bool_or(ii.description is not null and true) has_proc');

@@ -79,11 +79,31 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
         id: string;
         at: string | null;
         amount: number;
+        only_deposit_flag: boolean | null;
         has_proc: boolean;
         item: string | null;
       }>;
       for (const r of rows) {
         const proc = Boolean(r.has_proc);
+        // BOTH flags are read, and the DEPOSIT one is what licenses a
+        // 'reserve' milestone. `has_proc = false` alone only says "no
+        // delivered-goods line was found" — it does not say "this invoice is a
+        // deposit". The difference is load-bearing for an org whose rule is
+        // `keywords: []` ("this org has no deposit concept", spec S2): there
+        // `depositMatchSql` compiles to `false`, so `only_deposit_flag` is
+        // always false and the deposit milestone can never fire — exactly what
+        // the spec requires. Emitting on `!has_proc` instead would caption
+        // every invoice whose lines carry no usable description as a deposit,
+        // under the org's own label, for an org that just told us it has none.
+        //
+        // The same reasoning holds for a non-empty rule: an invoice with no
+        // matching deposit line AND no described procedure line (every
+        // description null, or no line items at all) is unclassifiable, so it
+        // contributes no milestone rather than a caption we cannot justify.
+        // Its money is still counted by `crm-finance.service.ts`; only the
+        // timeline caption is withheld.
+        const deposit = Boolean(r.only_deposit_flag);
+        if (!proc && !deposit) continue;
         out.push({
           id: `inv:${r.id}`,
           type: proc ? 'purchase' : 'reserve',
