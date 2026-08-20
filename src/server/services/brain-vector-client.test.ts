@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { exportPKCS8, generateKeyPair, jwtVerify } from 'jose';
-import { isBrainVectorSearchRequestV1 } from '@minion-stack/shared';
 
 vi.mock('$env/dynamic/private', () => ({ env: {} }));
 
@@ -322,7 +321,22 @@ describe('brain vector API client', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('emits a source_list request that the frozen shared v1 validator accepts', async () => {
+  it('emits a canonical source_list request body on the wire', async () => {
+    // TODO(handoff): FACTORY_SPEC.md (2026-08-17-hub-brain-org-all-scope-spec) §3 "Tests" also
+    // requires this emitted body to be asserted with `isBrainVectorSearchRequestV1` imported from
+    // `@minion-stack/shared`, so drift from the frozen v1 wire contract is caught by the contract's
+    // own validator instead of by Hub-side expectations. That import cannot resolve here: the Hub's
+    // pinned `@minion-stack/shared@0.9.0` ships no brain-vector entry point at all — its published
+    // `dist/` contains only gateway/, node/, utils/ and prompt-sections (verified by unpacking the
+    // 0.9.0 npm tarball); the validator first ships in 0.10.0. Raising the dependency range is
+    // outside this slice — §3 "Files" and §4 confine the diff to the brain-vector client and this
+    // test — and that bump was rejected in review twice (2026-08-20) for exactly that reason, while
+    // a hand-copied validator would assert against a reimplementation rather than the shipped
+    // contract, which review also rejected. Unblock: a minion-meta proposal that authorizes and
+    // assesses `@minion-stack/shared@0.10.0` Hub-wide, then restore the import plus a positive and
+    // a negative-control assertion here. minion-meta is not reachable from this checkout, so that
+    // proposal could not be filed from this run. Until then the assertions below freeze the body
+    // `searchBrainVectorApi` actually puts on the wire, which still detects Hub-side drift.
     let emitted: unknown;
     const fetchImpl = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
       emitted = JSON.parse(String(init?.body));
@@ -344,7 +358,7 @@ describe('brain vector API client', () => {
         limit: 20,
         filters: {
           scopeMode: 'source_list',
-          sourceIds: ['source-b', 'source-a'],
+          sourceIds: ['source-b', 'source-a', 'source-b'],
           kinds: ['note'],
           occurredAfter: '2026-01-31T23:59:59Z',
         },
@@ -352,17 +366,19 @@ describe('brain vector API client', () => {
       fetchImpl as typeof fetch,
     );
 
-    // The Hub redeclares the v1 request shape locally, so this asserts the body it actually
-    // puts on the wire against the frozen contract's own validator rather than a local mirror.
-    expect(isBrainVectorSearchRequestV1(emitted)).toBe(true);
-    // Negative control: the same validator must reject a body whose scope was tampered with,
-    // proving the assertion above is discriminating rather than vacuously true.
-    expect(
-      isBrainVectorSearchRequestV1({
-        ...(emitted as Record<string, unknown>),
-        filters: { scopeMode: 'source_list', sourceIds: [] },
-      }),
-    ).toBe(false);
+    const body = emitted as Record<string, unknown>;
+    expect(body.contractVersion).toBe(BRAIN_VECTOR_CONTRACT_VERSION);
+    expect(body.generation).toBe(config.generation);
+    expect(body.limit).toBe(20);
+    expect((body.vector as number[]).length).toBe(1536);
+    // The Hub only ever mints `source_list`, with source IDs deduped and canonically ordered so
+    // the emitted scope matches the scope hash bound into the capability token.
+    expect(body.filters).toEqual({
+      scopeMode: 'source_list',
+      sourceIds: ['source-a', 'source-b'],
+      kinds: ['note'],
+      occurredAfter: '2026-01-31T23:59:59Z',
+    });
   });
 });
 
