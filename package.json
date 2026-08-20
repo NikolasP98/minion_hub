@@ -151,6 +151,7 @@
     "test:e2e": "playwright test",
     "audit:ui:inventory": "node scripts/ui-audit-inventory.mjs",
     "audit:server-tenant-scope": "bun --no-env-file scripts/audit-server-tenant-scope.ts",
+    "rekey:readiness": "bun --no-env-file scripts/rekey-readiness-status.ts",
     "audit:ui:seed": "bun scripts/ui-audit-seed.ts",
     "audit:ui:capture": "E2E_UI_AUDIT=1 playwright test tests/e2e/ui-audit/route-audit.spec.ts",
     "audit:ui:certify": "E2E_UI_AUDIT=1 E2E_UI_AUDIT_CERTIFY=1 playwright test tests/e2e/ui-audit/route-audit.spec.ts",

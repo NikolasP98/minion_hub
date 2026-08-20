@@ -197,21 +197,35 @@ export function rekeyReadinessGateFailures(input: {
   evidence: unknown;
 }): string[] {
   if (!input.predicateIsTenantScoped) return [];
+  return evidenceFailures(input.evidence);
+}
 
-  if (input.evidence === undefined) {
+/**
+ * Everything the recorded evidence still owes, artifact by artifact.
+ *
+ * An absent file enumerates the same per-artifact list as an empty one (after
+ * the pointer line): "no evidence" is the state this branch is actually in, and
+ * a single summary line there would make the one report an operator reads the
+ * least specific one.
+ */
+function evidenceFailures(evidence: unknown): string[] {
+  if (evidence === undefined) {
     return [
-      'updateServer is tenant-scoped but no re-key readiness evidence is recorded — see docs/runbooks/server-tenant-scope-rekey-readiness.md',
+      `no re-key readiness evidence is recorded at ${EVIDENCE_RELATIVE_PATH} — see docs/runbooks/server-tenant-scope-rekey-readiness.md`,
+      ...evidenceFailures({}),
     ];
   }
-  if (typeof input.evidence !== 'object' || input.evidence === null) {
+  if (typeof evidence !== 'object' || evidence === null) {
     return ['re-key readiness evidence is not an object'];
   }
 
-  const evidence = input.evidence as Record<string, unknown>;
+  const evidenceObject = evidence as Record<string, unknown>;
   const failures: string[] = [];
 
-  const runs = Array.isArray(evidence.runs) ? (evidence.runs as unknown[]) : [];
-  if (!Array.isArray(evidence.runs)) failures.push('re-key readiness evidence has no `runs` array');
+  const runs = Array.isArray(evidenceObject.runs) ? (evidenceObject.runs as unknown[]) : [];
+  if (!Array.isArray(evidenceObject.runs)) {
+    failures.push('re-key readiness evidence has no `runs` array');
+  }
   for (const environment of REQUIRED_AUDIT_ENVIRONMENTS) {
     const run = runs.find(
       (candidate) =>
@@ -222,7 +236,7 @@ export function rekeyReadinessGateFailures(input: {
     failures.push(...runFailures(environment, run));
   }
 
-  const record = evidence.rekeyRecord;
+  const record = evidenceObject.rekeyRecord;
   if (typeof record !== 'object' || record === null) {
     failures.push('re-key readiness evidence has no `rekeyRecord`');
   } else {
@@ -252,4 +266,156 @@ export function updateServerIsTenantScoped(serviceSource: string): boolean {
   const nextExport = serviceSource.indexOf('\nexport ', start + 1);
   const body = serviceSource.slice(start, nextExport === -1 ? undefined : nextExport);
   return /servers\.tenantId/.test(body);
+}
+
+/** Where a credential holder's recorded evidence lives, relative to the repo root. */
+export const EVIDENCE_RELATIVE_PATH = 'tests/rekey-readiness/evidence.json';
+
+/** An empty `rekeyRecord` shape, so a partially-recorded file still shows what is owed. */
+function blankRekeyRecord(): RecordedRekeyRecord {
+  return { identifier: '', appliedAt: '', applyEvidence: '', rollbackNote: '' };
+}
+
+function asRekeyRecord(value: unknown): RecordedRekeyRecord {
+  if (typeof value !== 'object' || value === null) return blankRekeyRecord();
+  const r = value as Record<string, unknown>;
+  const blank = blankRekeyRecord();
+  return {
+    identifier: isNonEmptyString(r.identifier) ? r.identifier : blank.identifier,
+    appliedAt: isNonEmptyString(r.appliedAt) ? r.appliedAt : blank.appliedAt,
+    applyEvidence: isNonEmptyString(r.applyEvidence) ? r.applyEvidence : blank.applyEvidence,
+    rollbackNote: isNonEmptyString(r.rollbackNote) ? r.rollbackNote : blank.rollbackNote,
+  };
+}
+
+/**
+ * Merge one real audit run into the recorded evidence file.
+ *
+ * Hand-transcribing `turso_server_rows=… null_tenant_ids=… unmatched_tenant_ids=…`
+ * into JSON is the one step of the Slice 1 gate where a typo silently changes the
+ * answer, so `--record` writes the counters the run actually produced. The
+ * function refuses anything the gate would later reject — an unknown environment
+ * name, a zero-row run, a non-zero mismatch counter — because a rejected run must
+ * never reach the file at all: an operator who sees a written file reasonably
+ * reads it as "this environment is done".
+ *
+ * Anything already recorded for the *other* environment, and any `rekeyRecord`
+ * fields a human has filled in, are preserved.
+ */
+export function recordAuditRun(existing: unknown, run: RecordedAuditRun): RekeyReadinessEvidence {
+  if (!(REQUIRED_AUDIT_ENVIRONMENTS as readonly string[]).includes(run.environment)) {
+    throw new Error(
+      `unknown environment "${run.environment}" — the spec requires exactly ${REQUIRED_AUDIT_ENVIRONMENTS.join(' and ')}`,
+    );
+  }
+  const failures = runFailures(run.environment, run);
+  if (failures.length > 0) {
+    throw new Error(
+      `refusing to record an audit run that the gate rejects: ${failures.join('; ')}`,
+    );
+  }
+  if (existing !== undefined && (typeof existing !== 'object' || existing === null)) {
+    throw new Error(
+      `${EVIDENCE_RELATIVE_PATH} exists but is not a JSON object — refusing to overwrite it`,
+    );
+  }
+
+  const previous = (existing ?? {}) as Record<string, unknown>;
+  const previousRuns = Array.isArray(previous.runs) ? (previous.runs as unknown[]) : [];
+  const kept = previousRuns.filter(
+    (candidate) =>
+      typeof candidate === 'object' &&
+      candidate !== null &&
+      (candidate as Record<string, unknown>).environment !== run.environment,
+  ) as RecordedAuditRun[];
+
+  const runs = [...kept, run].sort(
+    (a, b) =>
+      REQUIRED_AUDIT_ENVIRONMENTS.indexOf(
+        a.environment as (typeof REQUIRED_AUDIT_ENVIRONMENTS)[number],
+      ) -
+      REQUIRED_AUDIT_ENVIRONMENTS.indexOf(
+        b.environment as (typeof REQUIRED_AUDIT_ENVIRONMENTS)[number],
+      ),
+  );
+
+  return { schemaVersion: 1, runs, rekeyRecord: asRekeyRecord(previous.rekeyRecord) };
+}
+
+export interface RekeyReadinessReport {
+  status: 'READY' | 'BLOCKED';
+  /** Everything the spec still owes, in the order the runbook lists it. Empty when READY. */
+  missing: string[];
+}
+
+/**
+ * Ask the readiness question unconditionally — "is the recorded evidence
+ * complete?" — rather than the gate's conditional "may the shipped predicate
+ * exist?".
+ *
+ * The gate is deliberately quiet while the predicate is parked (there is nothing
+ * to stop), which means a green test suite says nothing about whether Slice 1's
+ * human half is done. This is the other half: `bun run rekey:readiness` answers
+ * BLOCKED, with the missing artifacts named, until a credential holder has
+ * recorded both runs and the re-key record. It shares the gate's rules rather
+ * than restating them, so the two answers can never drift apart.
+ */
+export function rekeyReadinessReport(evidence: unknown): RekeyReadinessReport {
+  const missing = rekeyReadinessGateFailures({ predicateIsTenantScoped: true, evidence });
+  return { status: missing.length === 0 ? 'READY' : 'BLOCKED', missing };
+}
+
+/** Machine-greppable first line, mirroring the audit's counters line. */
+export function formatReadinessReport(report: RekeyReadinessReport): string {
+  return `rekey_readiness=${report.status} missing=${report.missing.length}`;
+}
+
+export interface RekeyCliOptions {
+  /** Environment to record this run under; null when the run is read-only. */
+  recordEnvironment: string | null;
+  /** Overrides the default evidence path. Tests use it; operators normally don't. */
+  evidencePath: string | null;
+}
+
+/**
+ * Parse the two commands' flags.
+ *
+ * Kept here (and covered by fixtures) because a mistyped `--record prod` must
+ * abort rather than silently record nothing, or record under a name the gate
+ * will not look for.
+ */
+export function parseRekeyCliArgs(
+  argv: readonly string[],
+  options: { allowRecord: boolean },
+): RekeyCliOptions {
+  let recordEnvironment: string | null = null;
+  let evidencePath: string | null = null;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--record' && options.allowRecord) {
+      const value = argv[++i];
+      if (!isNonEmptyString(value)) {
+        throw new Error(
+          `--record needs an environment: ${REQUIRED_AUDIT_ENVIRONMENTS.join(' | ')}`,
+        );
+      }
+      if (!(REQUIRED_AUDIT_ENVIRONMENTS as readonly string[]).includes(value)) {
+        throw new Error(
+          `--record ${value} is not one of the environments the spec requires: ${REQUIRED_AUDIT_ENVIRONMENTS.join(' | ')}`,
+        );
+      }
+      recordEnvironment = value;
+      continue;
+    }
+    if (arg === '--evidence') {
+      const value = argv[++i];
+      if (!isNonEmptyString(value)) throw new Error('--evidence needs a file path');
+      evidencePath = value;
+      continue;
+    }
+    throw new Error(`unknown argument: ${arg}`);
+  }
+
+  return { recordEnvironment, evidencePath };
 }

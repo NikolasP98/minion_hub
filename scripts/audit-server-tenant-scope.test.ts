@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -9,12 +10,17 @@ import {
   auditTenantScope,
   collectCanonicalOrgIds,
   formatAuditCounters,
+  formatReadinessReport,
+  parseRekeyCliArgs,
+  recordAuditRun,
   REQUIRED_AUDIT_ENVIRONMENTS,
   rekeyReadinessGateFailures,
+  rekeyReadinessReport,
   updateServerIsTenantScoped,
 } from './audit-server-tenant-scope.lib';
 
 const AUDIT_SCRIPT = path.resolve(import.meta.dirname, 'audit-server-tenant-scope.ts');
+const STATUS_SCRIPT = path.resolve(import.meta.dirname, 'rekey-readiness-status.ts');
 const CREDENTIAL_KEYS = [
   'TURSO_DB_URL',
   'TURSO_DB_AUTH_TOKEN',
@@ -189,9 +195,10 @@ describe('collectCanonicalOrgIds pagination', () => {
 function runAudit(
   env: NodeJS.ProcessEnv,
   cwd: string,
+  args: string[] = [],
 ): Promise<{ status: number | null; output: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn('bun', ['--no-env-file', AUDIT_SCRIPT], { cwd, env });
+    const child = spawn('bun', ['--no-env-file', AUDIT_SCRIPT, ...args], { cwd, env });
     let output = '';
     child.stdout.on('data', (chunk) => (output += chunk));
     child.stderr.on('data', (chunk) => (output += chunk));
@@ -340,8 +347,11 @@ describe('re-key readiness gate rules', () => {
       predicateIsTenantScoped: true,
       evidence: undefined,
     });
-    expect(failures).toHaveLength(1);
     expect(failures[0]).toContain('no re-key readiness evidence is recorded');
+    // Not just a summary line: an absent file still enumerates every artifact it owes.
+    expect(failures).toContain('no recorded audit run for the non-production environment');
+    expect(failures).toContain('no recorded audit run for the production environment');
+    expect(failures).toContain('re-key readiness evidence has no `rekeyRecord`');
   });
 
   it('accepts a tenant-scoped predicate backed by both audits and the re-key record', () => {
@@ -414,4 +424,244 @@ export async function upsertServer(ctx: TenantContext) {
       /anchored to a symbol that moved/,
     );
   });
+});
+
+// `--record` exists because hand-transcribing three counters into JSON is the one
+// step of this gate where a typo silently changes the answer. These fixtures pin
+// what it will and will not write.
+describe('recordAuditRun', () => {
+  const passingRun = (environment: string) => ({
+    environment,
+    recordedAt: '2026-08-20T09:00:00Z',
+    recordedBy: 'credential-holder',
+    command: `bun run audit:server-tenant-scope -- --record ${environment}`,
+    tursoServerRows: 7,
+    nullTenantIds: 0,
+    unmatchedTenantIds: 0,
+  });
+
+  it('creates the evidence file shape with a blank re-key record to fill in', () => {
+    const evidence = recordAuditRun(undefined, passingRun('non-production'));
+
+    expect(evidence.schemaVersion).toBe(1);
+    expect(evidence.runs).toEqual([passingRun('non-production')]);
+    expect(evidence.rekeyRecord).toEqual({
+      identifier: '',
+      appliedAt: '',
+      applyEvidence: '',
+      rollbackNote: '',
+    });
+    // A file with one run recorded is still BLOCKED — it is progress, not readiness.
+    expect(rekeyReadinessReport(evidence).status).toBe('BLOCKED');
+  });
+
+  it('keeps the other environment and the human-written re-key record', () => {
+    const first = recordAuditRun(undefined, passingRun('non-production'));
+    first.rekeyRecord = {
+      identifier: '20260812_rekey_servers_tenant_id',
+      appliedAt: '2026-08-12T00:00:00Z',
+      applyEvidence: 'https://example.invalid/deployment/1234',
+      rollbackNote: 'Restore from the pre-apply Turso snapshot.',
+    };
+
+    const second = recordAuditRun(first, passingRun('production'));
+
+    expect(second.runs.map((run) => run.environment)).toEqual([...REQUIRED_AUDIT_ENVIRONMENTS]);
+    expect(second.rekeyRecord).toEqual(first.rekeyRecord);
+    expect(rekeyReadinessReport(second)).toEqual({ status: 'READY', missing: [] });
+  });
+
+  it('replaces a re-run of the same environment rather than appending a second entry', () => {
+    const first = recordAuditRun(undefined, passingRun('production'));
+    const rerun = { ...passingRun('production'), recordedAt: '2026-08-21T09:00:00Z' };
+
+    const second = recordAuditRun(first, rerun);
+
+    expect(second.runs).toEqual([rerun]);
+  });
+
+  it('refuses to record a run the gate would reject, so no file implies a done step', () => {
+    expect(() =>
+      recordAuditRun(undefined, { ...passingRun('production'), tursoServerRows: 0 }),
+    ).toThrow(/non-zero turso_server_rows/);
+    expect(() =>
+      recordAuditRun(undefined, { ...passingRun('production'), unmatchedTenantIds: 2 }),
+    ).toThrow(/unmatched_tenant_ids=0, got 2/);
+  });
+
+  it('refuses an environment name the gate will never look for', () => {
+    expect(() => recordAuditRun(undefined, passingRun('prod'))).toThrow(/unknown environment/);
+  });
+
+  it('refuses to overwrite an evidence file that is not a JSON object', () => {
+    expect(() => recordAuditRun('nonsense', passingRun('production'))).toThrow(/not a JSON object/);
+  });
+});
+
+describe('parseRekeyCliArgs', () => {
+  it('accepts the two documented flags', () => {
+    expect(
+      parseRekeyCliArgs(['--record', 'production', '--evidence', '/tmp/e.json'], {
+        allowRecord: true,
+      }),
+    ).toEqual({ recordEnvironment: 'production', evidencePath: '/tmp/e.json' });
+  });
+
+  it('aborts on an environment name the gate will never look for', () => {
+    expect(() => parseRekeyCliArgs(['--record', 'prod'], { allowRecord: true })).toThrow(
+      /not one of the environments/,
+    );
+  });
+
+  it('aborts on a --record with no value instead of silently recording nothing', () => {
+    expect(() => parseRekeyCliArgs(['--record'], { allowRecord: true })).toThrow(
+      /--record needs an environment/,
+    );
+  });
+
+  it('rejects --record for the read-only status command', () => {
+    expect(() => parseRekeyCliArgs(['--record', 'production'], { allowRecord: false })).toThrow(
+      /unknown argument/,
+    );
+  });
+});
+
+describe('rekeyReadinessReport', () => {
+  it('reports BLOCKED with every missing artifact when nothing is recorded', () => {
+    const report = rekeyReadinessReport(undefined);
+
+    expect(formatReadinessReport(report)).toBe('rekey_readiness=BLOCKED missing=5');
+    expect(report.missing).toContain('no recorded audit run for the production environment');
+  });
+
+  it('asks unconditionally, unlike the gate, which stays quiet while the predicate is parked', () => {
+    expect(
+      rekeyReadinessGateFailures({ predicateIsTenantScoped: false, evidence: undefined }).length,
+    ).toBe(0);
+    expect(rekeyReadinessReport(undefined).status).toBe('BLOCKED');
+  });
+});
+
+describe('rekey readiness status command', () => {
+  function runStatus(args: string[]): { status: number | null; output: string } {
+    const result = spawnSync('bun', ['--no-env-file', STATUS_SCRIPT, ...args], {
+      encoding: 'utf8',
+    });
+    return { status: result.status, output: `${result.stdout}${result.stderr}` };
+  }
+
+  it('exits 1 and names the missing artifacts when no evidence file exists', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rekey-status-'));
+    try {
+      const result = runStatus(['--evidence', path.join(root, 'evidence.json')]);
+
+      expect(result.status).toBe(1);
+      expect(result.output).toContain('rekey_readiness=BLOCKED');
+      expect(result.output).toContain('no recorded audit run for the non-production environment');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('exits 0 only once both runs and the re-key record are recorded', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rekey-status-'));
+    const evidencePath = path.join(root, 'evidence.json');
+    try {
+      let evidence = recordAuditRun(undefined, {
+        environment: 'non-production',
+        recordedAt: '2026-08-20T09:00:00Z',
+        recordedBy: 'credential-holder',
+        command: 'bun run audit:server-tenant-scope -- --record non-production',
+        tursoServerRows: 3,
+        nullTenantIds: 0,
+        unmatchedTenantIds: 0,
+      });
+      await writeFile(evidencePath, JSON.stringify(evidence));
+      expect(runStatus(['--evidence', evidencePath]).status).toBe(1);
+
+      evidence = recordAuditRun(evidence, {
+        environment: 'production',
+        recordedAt: '2026-08-20T10:00:00Z',
+        recordedBy: 'credential-holder',
+        command: 'bun run audit:server-tenant-scope -- --record production',
+        tursoServerRows: 9,
+        nullTenantIds: 0,
+        unmatchedTenantIds: 0,
+      });
+      evidence.rekeyRecord = {
+        identifier: '20260812_rekey_servers_tenant_id',
+        appliedAt: '2026-08-12T00:00:00Z',
+        applyEvidence: 'https://example.invalid/deployment/1234',
+        rollbackNote: 'Restore from the pre-apply Turso snapshot.',
+      };
+      await writeFile(evidencePath, JSON.stringify(evidence));
+
+      const result = runStatus(['--evidence', evidencePath]);
+      expect(result.status).toBe(0);
+      expect(result.output).toContain('rekey_readiness=READY missing=0');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// The recording half of the rehearsal: proves the shipped command writes the
+// counters it actually produced, and writes nothing at all when the audit fails.
+describe('server tenant-scope audit --record (local stand-ins, not spec evidence)', () => {
+  it('writes the real counters for the named environment after a passing run', async () => {
+    await withRehearsalEnvironment(
+      [
+        { id: 's1', tenantId: 'org-a' },
+        { id: 's2', tenantId: 'org-b' },
+      ],
+      ['org-a', 'org-b'],
+      async (env, cwd) => {
+        const evidencePath = path.join(cwd, 'nested/evidence.json');
+        const result = await runAudit(env, cwd, [
+          '--record',
+          'non-production',
+          '--evidence',
+          evidencePath,
+        ]);
+
+        expect(result.status).toBe(0);
+        expect(result.output).toContain(`recorded the non-production run in ${evidencePath}`);
+
+        const recorded = JSON.parse(await readFile(evidencePath, 'utf8'));
+        expect(recorded.runs).toHaveLength(1);
+        expect(recorded.runs[0]).toMatchObject({
+          environment: 'non-production',
+          tursoServerRows: 2,
+          nullTenantIds: 0,
+          unmatchedTenantIds: 0,
+        });
+        expect(recorded.runs[0].recordedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+        expect(recorded.runs[0].recordedBy).not.toBe('');
+        // One environment recorded is not readiness.
+        expect(rekeyReadinessReport(recorded).status).toBe('BLOCKED');
+      },
+    );
+  }, 60_000);
+
+  it('records nothing when the audit fails, so a written file always means a passing run', async () => {
+    await withRehearsalEnvironment(
+      [
+        { id: 's1', tenantId: 'org-a' },
+        { id: 's2', tenantId: 'legacy-better-auth-uuid' },
+      ],
+      ['org-a', 'org-b'],
+      async (env, cwd) => {
+        const evidencePath = path.join(cwd, 'evidence.json');
+        const result = await runAudit(env, cwd, [
+          '--record',
+          'production',
+          '--evidence',
+          evidencePath,
+        ]);
+
+        expect(result.status).toBe(1);
+        expect(existsSync(evidencePath)).toBe(false);
+      },
+    );
+  }, 60_000);
 });
