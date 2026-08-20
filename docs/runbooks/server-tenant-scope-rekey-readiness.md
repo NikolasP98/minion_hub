@@ -16,10 +16,30 @@ The block is enforced, not merely documented, from two directions:
 - `bun run rekey:readiness` exits 1 until all four artifacts are recorded and passing. It asks the
   question unconditionally, so "nobody has done the human half yet" is a visible, non-zero exit
   rather than silence.
-- `scripts/rekey-readiness-gate.test.ts` reads the shipped `updateServer` source, and the moment it
-  carries a `servers.tenantId` predicate the suite fails unless `tests/rekey-readiness/evidence.json`
-  records both passing audits and the re-key deployment. Slice 2 cannot land ahead of its evidence
-  by accident.
+- The test suite binds the shipped mutation to the recorded evidence, in both directions.
+  `src/server/services/server.service.test.ts` ("updateServer tenant scope") runs the real
+  `updateServer` against a two-tenant table and reads the answer off the rows that actually moved:
+  the moment the mutation stops writing across tenants, the suite fails unless
+  `tests/rekey-readiness/evidence.json` records both passing audits and the re-key deployment — so
+  Slice 2 cannot land ahead of its evidence by accident. The converse holds too: once the evidence
+  is complete, the suite fails while `updateServer` still matches on `servers.id` alone, so
+  recording the evidence cannot quietly leave the defect open. `scripts/rekey-readiness-gate.test.ts`
+  applies the same rule to the service's source shape as defence in depth, and the two answers are
+  pinned against each other. Gating on behaviour rather than on the source text is deliberate: a
+  text search for `servers.tenantId` inside `updateServer` also matches a comment, a log line, an
+  assignment into the `set` object, or a tenant-scoped _read_ above an unscoped UPDATE, and would
+  certify all four as scoped.
+
+Re-confirmed on 2026-08-20, after a review escalation asked for the evidence again:
+`bun run rekey:readiness` still reports `rekey_readiness=BLOCKED missing=5`. The agent
+environment this branch is developed in holds no `TURSO_DB_URL`, `TURSO_DB_AUTH_TOKEN`,
+`PUBLIC_SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` for any real environment, and the only value
+it could fall back to is the local `file:./data/minion_hub.db` — which the command refuses on
+purpose, because a pass against an empty local file would be a false answer to a security question.
+Producing these four artifacts is therefore not work that was skipped; it is work that cannot be
+done from here. What this branch does instead is make their absence loud and their arrival binding
+(the two enforcement directions below), and leave Slice 2 parked with the cost of parking stated in
+[Decision point for the human merge gate](#decision-point-for-the-human-merge-gate).
 
 **Owner:** whoever holds the hub's Turso and Supabase service-role credentials.
 **Spec:** `FACTORY_SPEC.md` (`specs/2026-08-18-hub-updateserver-tenant-scope-spec.md`), Slice 1
@@ -215,7 +235,7 @@ and the cheaper-looking one is not free — that is what this section exists to 
 Fail-closed with respect to the _data_: no predicate is added while it is unknown whether a live
 row would be silently denied by it. The cost is that the defect Slice 2 closes stays open in
 production for as long as the evidence takes. That defect is real and pinned by a test
-(`src/server/services/server.service.test.ts`, "cross-tenant update"): `updateServer` matches on
+(`src/server/services/server.service.test.ts`, "updateServer tenant scope"): `updateServer` matches on
 `servers.id` alone, and `assertOwnsOrAdmin()` in `src/routes/api/servers/[id]/+server.ts` returns
 true for **any** admin, so an admin of one organization who supplies another organization's server
 id patches that row — name, url, gateway token — and receives `ok`. Parking is a decision to accept
@@ -254,9 +274,15 @@ keys, legacy keys with sampling, the ten-id sample cap, and both fail-closed emp
 the paginated organization read at its page boundaries, and the command's refusal to start when a
 credential is missing even with a repository dotenv file present. It also rehearses the whole
 command end-to-end against local stand-ins, and covers the gate's own rules — that it stays quiet
-while the predicate is parked, and reds on a missing environment, a zero-row run, a non-zero
-mismatch counter, or an incomplete re-key record. It also covers `--record` (it writes the counters
-a real run produced, refuses an unknown environment name, refuses a run the gate would reject, and
-preserves the other environment's entry and any hand-written `rekeyRecord`) and both exit codes of
-`bun run rekey:readiness`. That rehearsal exercises the wiring; it is **not** evidence about any
-real environment and does not substitute for the two runs above.
+while the predicate is parked, that it reds on a missing environment, a zero-row run, a non-zero
+mismatch counter, or an incomplete re-key record, and that it reds on complete evidence shipped
+with an unscoped mutation. The source-shape guard carries its own false-positive regressions: a
+comment naming the predicate, a string literal or log line, an assignment into the `set` object, a
+tenant-scoped read above an unscoped UPDATE, another table's scoped update, an UPDATE with no
+`where` at all, a `where` applied through a separate binding, and a body where only one of two
+`update(servers)` chains is scoped — every one of them answers "not scoped". It also covers
+`--record` (it writes the counters a real run produced, refuses an unknown environment name,
+refuses a run the gate would reject, and preserves the other environment's entry and any
+hand-written `rekeyRecord`) and both exit codes of `bun run rekey:readiness`. That rehearsal
+exercises the wiring; it is **not** evidence about any real environment and does not substitute for
+the two runs above.

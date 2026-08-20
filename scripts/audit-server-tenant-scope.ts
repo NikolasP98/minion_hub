@@ -36,10 +36,14 @@
  * re-key migration/deployment identifier, its apply evidence, and its
  * rollback/recovery note in `tests/rekey-readiness/evidence.json` (`--record`
  * writes the run halves; the re-key record is filled in by hand). That file is
- * not optional paperwork: `scripts/rekey-readiness-gate.test.ts` reds the suite
- * if `updateServer` ever gains its tenant predicate without it, and
- * `bun run rekey:readiness` exits 1 while any of the four artifacts is missing,
- * which is the spec's Slice 1 stop rule made executable.
+ * not optional paperwork: `src/server/services/server.service.test.ts`
+ * ("updateServer tenant scope") runs the shipped mutation against a two-tenant
+ * table and reds the suite if it stops writing across tenants without this
+ * evidence — or, once the evidence is complete, if it still writes across them.
+ * `scripts/rekey-readiness-gate.test.ts` applies the same rule to the service's
+ * source shape, and `bun run rekey:readiness` exits 1 while any of the four
+ * artifacts is missing. Together that is the spec's Slice 1 stop rule made
+ * executable.
  * Pointer: docs/runbooks/server-tenant-scope-rekey-readiness.md (procedure,
  * decision table, evidence template) and
  * specs/2026-08-18-hub-updateserver-tenant-scope-spec.md (this repo's
