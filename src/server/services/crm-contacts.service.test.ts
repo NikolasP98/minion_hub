@@ -15,7 +15,9 @@ import {
   assertJsonValue,
   setContactCustomField,
   setFunnelStage,
+  resolveDepositRule,
 } from './crm-contacts.service';
+import { DEFAULT_RESERVE_LABEL } from './crm-deposit-rule';
 
 /**
  * A real Postgres engine (WASM-embedded, via pglite) rather than a mock —
@@ -149,6 +151,57 @@ describe('ensureAccountInScope', () => {
     await ensureAccountInScope(ctx, 'messenger', 'page-1', 'FACES Page');
 
     expect(db.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveDepositRule', () => {
+  it('absent config resolves to the default rule, no warning', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]); // crm_settings select → no row
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const rule = await resolveDepositRule({ db: db as never, tenantId: 'org-1' });
+
+    expect(rule).toEqual({ keywords: ['reserva'], label: DEFAULT_RESERVE_LABEL });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('a malformed stored value (non-string label) warns and falls back to the default rule, without throwing', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ value: { deposit: { keywords: ['reserva'], label: 42 } } }]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const rule = await resolveDepositRule({ db: db as never, tenantId: 'org-1' });
+
+    expect(rule).toEqual({ keywords: ['reserva'], label: DEFAULT_RESERVE_LABEL });
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it('a malformed stored value (keyword count over the cap) warns and falls back to the default rule', async () => {
+    const { db, resolve } = createMockDb();
+    const keywords = Array.from({ length: 101 }, (_, i) => `kw${i}`);
+    resolve([{ value: { deposit: { keywords } } }]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const rule = await resolveDepositRule({ db: db as never, tenantId: 'org-1' });
+
+    expect(rule).toEqual({ keywords: ['reserva'], label: DEFAULT_RESERVE_LABEL });
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it('a valid custom rule resolves without warning', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ value: { deposit: { keywords: ['adelanto'], label: 'Deposit paid' } } }]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const rule = await resolveDepositRule({ db: db as never, tenantId: 'org-1' });
+
+    expect(rule).toEqual({ keywords: ['adelanto'], label: 'Deposit paid' });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 

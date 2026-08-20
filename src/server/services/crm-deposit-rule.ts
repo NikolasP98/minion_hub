@@ -25,6 +25,77 @@ export interface DepositRule {
 export const DEFAULT_DEPOSIT_RULE: DepositRule = { keywords: ['reserva'], label: 'Reserva' };
 
 /**
+ * The reserve-milestone label crm-journey.service.ts has always shown for an
+ * absent/malformed deposit config — NOT `DEFAULT_DEPOSIT_RULE.label`
+ * ('Reserva', a display value nothing before this read). Journey is the only
+ * caller that consumes `DepositRule.label`; finance and similarity only use
+ * the keywords. `normalizeDepositRule` resolves an omitted/malformed label to
+ * this text so the byte-identical absent-config invariant holds.
+ */
+export const DEFAULT_RESERVE_LABEL = 'Reserved a consult';
+
+/** Result of validating a raw `crm_settings.value.deposit` JSON blob. */
+export interface NormalizedDepositRule {
+  rule: DepositRule;
+  /** False when `raw` was present but not a valid `{ keywords: string[], label?:
+   *  string }` shape — the caller decides whether/how to surface a warning. */
+  ok: boolean;
+}
+
+/**
+ * Bounds on a stored rule. Every keyword is expanded into at least two ILIKE
+ * bind parameters per finance/journey query (`depositMatchSql` +
+ * `notDepositMatchSql`), so an unbounded array is a live path to exceeding
+ * PostgreSQL's 65,535 bind-parameter ceiling and turning every journey/finance
+ * read for that org into a 500. `MAX_DEPOSIT_KEYWORD_LENGTH`/
+ * `MAX_DEPOSIT_LABEL_LENGTH` bound the operator-editable strings themselves.
+ */
+export const MAX_DEPOSIT_KEYWORDS = 100;
+export const MAX_DEPOSIT_KEYWORD_LENGTH = 200;
+export const MAX_DEPOSIT_LABEL_LENGTH = 200;
+
+/**
+ * Pure, DB-free normalization of a raw `crm_settings.value.deposit` value
+ * into a usable `DepositRule`. `raw === undefined` (key absent) and a valid
+ * `{ keywords: [] }` (explicitly no keywords) are both NOT malformed — they
+ * fall through to `ok: true` with, respectively, the default keywords and an
+ * empty list. Anything else that isn't `{ keywords: string[], label?: string
+ * }` is malformed and resolves to the same default rule, `ok: false` —
+ * including a keyword array over `MAX_DEPOSIT_KEYWORDS`, any keyword or
+ * `label` over its length cap, and a present `label` that isn't a string. A
+ * blank/whitespace-only `label` is not malformed (mirrors the empty-keywords
+ * case) — it falls back to `DEFAULT_RESERVE_LABEL` with `ok: true`.
+ */
+export function normalizeDepositRule(raw: unknown): NormalizedDepositRule {
+  const fallback: DepositRule = {
+    keywords: [...DEFAULT_DEPOSIT_RULE.keywords],
+    label: DEFAULT_RESERVE_LABEL,
+  };
+  if (raw === undefined) return { rule: fallback, ok: true };
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { rule: fallback, ok: false };
+  }
+  const o = raw as Record<string, unknown>;
+  const keywordsValid =
+    Array.isArray(o.keywords) &&
+    o.keywords.length <= MAX_DEPOSIT_KEYWORDS &&
+    o.keywords.every((k) => typeof k === 'string' && k.length <= MAX_DEPOSIT_KEYWORD_LENGTH);
+  if (!keywordsValid) return { rule: fallback, ok: false };
+  if (o.label !== undefined && typeof o.label !== 'string') {
+    return { rule: fallback, ok: false };
+  }
+  if (typeof o.label === 'string' && o.label.length > MAX_DEPOSIT_LABEL_LENGTH) {
+    return { rule: fallback, ok: false };
+  }
+  const keywords = (o.keywords as string[]).map((k) => k.trim()).filter((k) => k.length > 0);
+  const label =
+    typeof o.label === 'string' && o.label.trim().length > 0
+      ? o.label.trim()
+      : DEFAULT_RESERVE_LABEL;
+  return { rule: { keywords, label }, ok: true };
+}
+
+/**
  * Escapes ILIKE/LIKE wildcards (`\`, `%`, `_`) in an operator-supplied
  * keyword and wraps it in `%…%`. Every pattern builder in this module goes
  * through this function; never build an ILIKE pattern by interpolation
@@ -53,13 +124,19 @@ function patterns(rule: DepositRule): string[] {
  * null` (the shared 10-case table in `crm-deposit-rule.fixtures.ts` asserts
  * this against real PostgreSQL).
  *
- * Empty keywords ⇒ `sql\`false\`` — never `undefined`. A dropped predicate in
- * an `and(...)`/`or(...)` chain would silently widen the result set, which is
- * the failure mode this module exists to prevent.
+ * Empty keywords ⇒ `sql\`coalesce(false, false)\`` — never `undefined`, and
+ * never a bare `false` literal: PostgreSQL's SQL92 ORDER BY rule rejects an
+ * unparenthesized/unwrapped boolean constant there ("non-integer constant in
+ * ORDER BY") — both `depositMatchSql`/`notDepositMatchSql` are used in an
+ * `ORDER BY` position (representative-item ordering), not just `WHERE`, so
+ * the literal must be wrapped in an expression to stay valid in either. A
+ * dropped predicate in an `and(...)`/`or(...)` chain would also silently
+ * widen the result set, which is the failure mode this module exists to
+ * prevent.
  */
 export function depositMatchSql(column: string, rule: DepositRule): SQL {
   const pats = patterns(rule);
-  if (pats.length === 0) return sql`false`;
+  if (pats.length === 0) return sql`coalesce(false, false)`;
   const col = sql.raw(column);
   const disjunction = sql.join(
     pats.map((p) => sql`${col} ilike ${p}`),
@@ -78,12 +155,13 @@ export function depositMatchSql(column: string, rule: DepositRule): SQL {
  * `!isDepositText(null, rule) === true` — see `depositMatchSql` for why a
  * bare `NOT ILIKE` (SQL `NULL`) would silently diverge from the TS twin.
  *
- * Empty keywords ⇒ `sql\`true\`` — never `undefined`, mirroring
- * `depositMatchSql`.
+ * Empty keywords ⇒ `sql\`coalesce(true, true)\`` — never `undefined`,
+ * mirroring `depositMatchSql` (see its ORDER BY note for why a bare literal
+ * isn't safe here either).
  */
 export function notDepositMatchSql(column: string, rule: DepositRule): SQL {
   const pats = patterns(rule);
-  if (pats.length === 0) return sql`true`;
+  if (pats.length === 0) return sql`coalesce(true, true)`;
   const col = sql.raw(column);
   const conjunction = sql.join(
     pats.map((p) => sql`${col} not ilike ${p}`),
