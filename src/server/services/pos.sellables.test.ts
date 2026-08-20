@@ -1065,9 +1065,15 @@ describe('updateSellable', () => {
             },
           ],
         ]);
-        (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute = vi
-          .fn()
-          .mockResolvedValueOnce([
+        // Two merge-query reads happen (deriveSellableFacts' pre-write snapshot,
+        // then the final getSellableRow) interleaved with withOrgCore's own
+        // SET LOCAL/set_config execute() calls — stubExecuteSequence filters by
+        // query text so only the merge query consumes a payload (see the
+        // sibling test above; a raw mockResolvedValueOnce chain here mis-fed
+        // the setup calls and crashed getSellableRow on `rows[0]` of undefined).
+        stubExecuteSequence(
+          db,
+          [
             {
               id: 'fp-13c',
               code: 'CONS',
@@ -1079,8 +1085,8 @@ describe('updateSellable', () => {
               stock_qty: null,
               has_mapping: false,
             },
-          ])
-          .mockResolvedValueOnce([
+          ],
+          [
             {
               id: 'fp-13c',
               code: 'CONS',
@@ -1093,7 +1099,8 @@ describe('updateSellable', () => {
               has_mapping: false,
               uom: 'Unidad',
             },
-          ]);
+          ],
+        );
         (db as unknown as { update: ReturnType<typeof vi.fn> }).update = vi
           .fn()
           .mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) });
@@ -1159,9 +1166,12 @@ describe('updateSellable', () => {
             },
           ],
         ]);
-        (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute = vi
-          .fn()
-          .mockResolvedValueOnce([
+        // See the parity-succeeds test above: use the query-text-filtering
+        // stubExecuteSequence, not a raw execute() override, so withOrgCore's
+        // SET LOCAL/set_config calls don't consume the merge-query payloads.
+        stubExecuteSequence(
+          db,
+          [
             {
               id: 'fp-13e',
               code: 'CONS',
@@ -1173,8 +1183,8 @@ describe('updateSellable', () => {
               stock_qty: null,
               has_mapping: false,
             },
-          ])
-          .mockResolvedValueOnce([
+          ],
+          [
             {
               id: 'fp-13e',
               code: 'CONS',
@@ -1187,7 +1197,8 @@ describe('updateSellable', () => {
               has_mapping: false,
               uom: 'unit',
             },
-          ]);
+          ],
+        );
         (db as unknown as { update: ReturnType<typeof vi.fn> }).update = vi
           .fn()
           .mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) });
@@ -1323,11 +1334,15 @@ describe('updateSellable', () => {
         vi.clearAllMocks();
 
         // Path B — create as a service, then PATCH the same trackStock/uom.
-        // Three execute() calls happen in order: createSellable's final
+        // Three merge-query reads happen in order: createSellable's final
         // getSellableRow (service, untracked), updateSellable's
         // deriveSellableFacts pre-write read (same, untracked), and
-        // updateSellable's final getSellableRow (now tracked) — set them up
-        // sequentially since mockExecute only supports one fixed value.
+        // updateSellable's final getSellableRow (now tracked). Each withOrgCore
+        // call also issues its own SET LOCAL/set_config execute() calls, so a
+        // raw mockResolvedValueOnce chain (which answers EVERY execute() call
+        // in order, not just the merge query) mis-feeds those setup calls and
+        // starves the real reads — use stubExecuteSequence, which filters by
+        // query text, split per withOrgCore-calling function.
         const b = createMockDb();
         b.resolveSequence([[{ id: 'fp-parity-b' }]]);
         const serviceFixture = {
@@ -1353,11 +1368,7 @@ describe('updateSellable', () => {
           has_mapping: false,
           uom: 'vial',
         };
-        (b.db as unknown as { execute: ReturnType<typeof vi.fn> }).execute = vi
-          .fn()
-          .mockResolvedValueOnce([serviceFixture])
-          .mockResolvedValueOnce([serviceFixture])
-          .mockResolvedValueOnce([trackedFixture]);
+        stubExecuteSequence(b.db, [serviceFixture]);
         upsertProductMock.mockResolvedValue(undefined);
         await createSellable(
           ctx(b.db),
@@ -1377,6 +1388,7 @@ describe('updateSellable', () => {
             },
           ],
         ]);
+        stubExecuteSequence(b.db, [serviceFixture], [trackedFixture]);
         (b.db as unknown as { update: ReturnType<typeof vi.fn> }).update = vi
           .fn()
           .mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) });
