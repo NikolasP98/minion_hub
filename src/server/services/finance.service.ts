@@ -535,7 +535,12 @@ export async function getSource(ctx: CoreCtx, provider: string) {
 /** Returns true when the source row already has encrypted credentials stored. */
 export function sourceHasCredentials(source: { secretRefs?: unknown } | null | undefined): boolean {
   const refs = source?.secretRefs as Record<string, unknown> | null | undefined;
-  return !!(refs?.ciphertext && refs?.iv);
+  return (
+    typeof refs?.ciphertext === 'string' &&
+    refs.ciphertext.length > 0 &&
+    typeof refs.iv === 'string' &&
+    refs.iv.length > 0
+  );
 }
 
 export async function upsertSource(
@@ -549,8 +554,32 @@ export async function upsertSource(
       .values({ orgId: ctx.tenantId, provider, ...data, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: [finSources.orgId, finSources.provider],
-        set: { ...data, updatedAt: new Date() },
+        set: {
+          ...data,
+          lastProbeAt: null,
+          lastProbeStatus: null,
+          lastProbeMessage: null,
+          updatedAt: new Date(),
+        },
       }),
+  );
+}
+
+export async function setSourceProbe(
+  ctx: CoreCtx,
+  provider: string,
+  probe: { status: 'valid' | 'invalid' | 'unavailable'; message: string },
+) {
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(finSources)
+      .set({
+        lastProbeAt: new Date(),
+        lastProbeStatus: probe.status,
+        lastProbeMessage: probe.message.slice(0, 300),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(finSources.orgId, ctx.tenantId), eq(finSources.provider, provider))),
   );
 }
 
