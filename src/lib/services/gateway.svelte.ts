@@ -51,6 +51,7 @@ import {
   scheduleEagerReconnect,
 } from './gateway/eager-reconnect';
 import { ConnectionLifecycleFence, isDistinctCutoverTarget } from './gateway/connection-lifecycle';
+import { dispatchGatewayEvent } from './gateway/event-dispatch';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
 import { toastError, toastInfo, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
@@ -376,7 +377,14 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // per-client scope filter, so a skipped seq means "not for us", not
       // "dropped". Track it for debugging; never warn on gaps.
       if (typeof frame.seq === 'number') gw.lastSeq = frame.seq;
-      handleEvent(frame as unknown as Record<string, unknown>);
+      // Contain handler failures here rather than letting them reach the shared
+      // client: its dispatch lets a synchronous throw escape into the socket's
+      // message handler and swallows an async rejection. `dispatchGatewayEvent`
+      // reports either one exactly once via console.error (captured by the
+      // app-wide console interceptor) and leaves connection state alone — a
+      // handler failure is not a disconnection. See
+      // docs/2026-08-19-gateway-onevent-error-hook-adoption.md.
+      dispatchGatewayEvent(frame as unknown as Record<string, unknown>, handleEvent);
     },
 
     onClose(code: number, reason: string) {
