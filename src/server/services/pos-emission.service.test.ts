@@ -34,13 +34,11 @@ const detached: Array<Promise<unknown>> = [];
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(fakeTx),
 }));
-vi.mock('./finance.service', () => ({ getFinSettings: vi.fn() }));
+vi.mock('./finance.service', () => ({ getFinSettings: vi.fn(), getSource: vi.fn() }));
 vi.mock('$server/finance/emission', () => ({ emitToBeta: vi.fn() }));
 vi.mock('@vercel/functions', () => ({ waitUntil: (p: Promise<unknown>) => detached.push(p) }));
 vi.mock('$env/dynamic/private', () => ({
   env: {
-    POS_EMISSION_EMITTER_RUC: '20611172967',
-    POS_EMISSION_EMITTER_NAME: 'FACES BETA SAC',
     POS_EMISSION_BETA_CERT: 'CERT-PEM',
     POS_EMISSION_BETA_KEY: 'KEY-PEM',
   },
@@ -54,7 +52,7 @@ import {
   triggerShadowEmission,
   type PartyDocInfo,
 } from './pos-emission.service';
-import { getFinSettings } from './finance.service';
+import { getFinSettings, getSource } from './finance.service';
 import { emitToBeta } from '$server/finance/emission';
 import type { CoreTx } from '$server/db/with-org-core';
 import { DEFAULT_IGV_RATE, resolveIgvRate } from '$server/finance/tax';
@@ -323,6 +321,14 @@ describe('triggerShadowEmission — an unusable configured rate is recorded, not
     inserted = [];
     updated = [];
     detached.length = 0;
+    vi.mocked(getSource).mockResolvedValue({
+      enabled: true,
+      config: {
+        ruc: '20611172967',
+        clientId: 'client-id',
+        legalName: 'FACES BETA SAC',
+      },
+    } as Awaited<ReturnType<typeof getSource>>);
     vi.mocked(emitToBeta).mockReset();
     vi.mocked(emitToBeta).mockResolvedValue({
       responseCode: '0',

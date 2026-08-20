@@ -202,6 +202,9 @@ export const finSources = pgTable(
     watermark: text('watermark'), // last modified_after ISO
     lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
     lastStatus: text('last_status'),
+    lastProbeAt: timestamp('last_probe_at', { withTimezone: true }),
+    lastProbeStatus: text('last_probe_status'),
+    lastProbeMessage: text('last_probe_message'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ uniq: uniqueIndex('fin_sources_org_provider_uniq').on(t.orgId, t.provider) }),

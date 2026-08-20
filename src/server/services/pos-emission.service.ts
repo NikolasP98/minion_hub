@@ -14,8 +14,9 @@ import {
 import { parties } from '$server/db/pg-party-schema';
 import { emitToBeta } from '$server/finance/emission';
 import type { EmissionDocType, EmissionInvoice } from '$server/finance/emission';
+import { emitterFromSunatConfig } from '$server/finance/connectors/sunat-source';
 import { PosError, type PosSettings } from './pos.service';
-import { getFinSettings } from './finance.service';
+import { getFinSettings, getSource } from './finance.service';
 import { resolveIgvRate } from '$server/finance/tax';
 // The ticket->EmissionInvoice mapping is a PURE module (no $env/db/@vercel
 // imports) so scripts/shadow-emit-test.ts can import it under plain `bun run`
@@ -98,28 +99,18 @@ export async function listPosSeries(ctx: CoreCtx): Promise<PosSeries[]> {
 
 // ---- emitter config ----
 
-/**
- * Emitter identity for shadow emission. Spec says "read from fin_settings if
- * present, else env" — `fin_settings` (pg-finance-schema.ts) has no
- * ruc/razonSocial columns today and adding one is out of scope for this
- * additive-migration-only slice ("keep it simple, one org in practice"), so
- * this reads env only. Revisit if a second org ever needs its own emitter.
- */
-export function resolveEmitter(): EmitterConfig {
-  const ruc = env.POS_EMISSION_EMITTER_RUC;
-  const razonSocial = env.POS_EMISSION_EMITTER_NAME;
-  if (!ruc || !razonSocial) {
-    throw new PosError(
-      'POS_EMISSION_EMITTER_RUC/POS_EMISSION_EMITTER_NAME not configured',
-      'no_emitter',
-    );
+/** Resolve identity from this org's SUNAT source; never borrow another tenant's identity. */
+export function resolveEmitter(
+  source: { enabled: boolean; config: unknown } | null,
+): EmitterConfig {
+  if (!source?.enabled) {
+    throw new PosError('SUNAT source is not enabled for this organization', 'no_emitter');
   }
-  return {
-    ruc,
-    razonSocial,
-    ubigeo: env.POS_EMISSION_EMITTER_UBIGEO || undefined,
-    address: env.POS_EMISSION_EMITTER_ADDRESS || undefined,
-  };
+  try {
+    return emitterFromSunatConfig(source.config);
+  } catch {
+    throw new PosError('SUNAT emitter identity is incomplete for this organization', 'no_emitter');
+  }
 }
 
 // ---- wiring: submitTicket -> shadow emission ----
@@ -213,7 +204,7 @@ export async function triggerShadowEmission(
   settings: PosSettings,
 ): Promise<void> {
   try {
-    const [lines, partyRows, finSettings] = await Promise.all([
+    const [lines, partyRows, finSettings, sunatSource] = await Promise.all([
       withOrgCore(ctx, (tx) =>
         tx
           .select({
@@ -240,9 +231,10 @@ export async function triggerShadowEmission(
           )
         : Promise.resolve([]),
       getFinSettings(ctx),
+      getSource(ctx, 'sunat-sire'),
     ]);
     const customer: PartyDocInfo | null = partyRows[0] ?? null;
-    const emitter = resolveEmitter();
+    const emitter = resolveEmitter(sunatSource);
     const docType = resolveEmissionDocType(customer, settings.emission.docTypeDefault);
     // Resolved OUTSIDE the document transaction on purpose: a throw inside it
     // rolls back the whole thing, so the refusal could not leave the audit row
