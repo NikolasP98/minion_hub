@@ -90,6 +90,31 @@ describe('buildResumenXml', () => {
     expect(xml).toContain('<cbc:ConditionCode>3</cbc:ConditionCode>');
   });
 
+  it('S3: threads a non-0.18 igvRate — per-boleta gravada/IGV differ and gravada + IGV == total', () => {
+    const boletaAt10: EmissionInvoice = { ...boleta, igvRate: 0.1 };
+    const xml18 = buildResumenXml({
+      emitter,
+      correlativo: '1',
+      referenceDate: '2026-08-14',
+      issueDate: '2026-08-14',
+      lines: [{ invoice: boleta, estado: '1' }],
+    });
+    const xml10 = buildResumenXml({
+      emitter,
+      correlativo: '1',
+      referenceDate: '2026-08-14',
+      issueDate: '2026-08-14',
+      lines: [{ invoice: boletaAt10, estado: '1' }],
+    });
+    // 118 incl @18% => 100.00 gravada + 18.00 IGV (asserted above); @10% => 107.27 + 10.73
+    expect(xml18).not.toBe(xml10);
+    expect(xml10).toContain('<cbc:PaidAmount currencyID="PEN">107.27</cbc:PaidAmount>');
+    expect(xml10).toContain('<cbc:TaxAmount currencyID="PEN">10.73</cbc:TaxAmount>');
+    // gravada + IGV == total, exactly, for the 10% boleta
+    expect(xml10).toContain('<sac:TotalAmount currencyID="PEN">118.00</sac:TotalAmount>');
+    expect(107.27 + 10.73).toBe(118.0);
+  });
+
   it('rejects a non-boleta invoice at runtime', () => {
     const factura: EmissionInvoice = { ...boleta, docType: '01', serie: 'F998' };
     expect(() =>

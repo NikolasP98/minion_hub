@@ -1,14 +1,13 @@
 <script lang="ts">
-  import {
-    SECRETS_METHODS,
-    type SecretsSummary,
-    type SecretsListResult,
-    type SecretsSetResult,
-    type SecretsSetScopedResult,
-    type SecretsProbeResult,
-    type SecretsProbeScopedResult,
-    type SecretsProbeStatus,
-  } from '$lib/types/secrets';
+  import type {
+    SecretsSummary,
+    SecretsListResult,
+    SecretsSetResult,
+    SecretsSetScopedResult,
+    SecretsProbeResult,
+    SecretsProbeScopedResult,
+    SecretsProbeStatus,
+  } from '@minion-stack/shared';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { toastAsync, toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
@@ -16,6 +15,20 @@
   import SecretStatusPill from './SecretStatusPill.svelte';
   import SecretEditModal from './SecretEditModal.svelte';
   import DynamicSecretGroup from './DynamicSecretGroup.svelte';
+
+  // Kept as a local value (not imported from '@minion-stack/shared'): the
+  // package's ./gateway barrel also re-exports ws-dependent client code, and
+  // this component renders client-side — see
+  // 2026-08-17-hub-dead-mirrors-cleanup-spec.md §2.2.
+  const SECRETS_METHODS = {
+    list: 'secrets.list',
+    set: 'secrets.set',
+    clear: 'secrets.clear',
+    probe: 'secrets.probe',
+    setScoped: 'secrets.set_scoped',
+    clearScoped: 'secrets.clear_scoped',
+    probeScoped: 'secrets.probe_scoped',
+  } as const;
 
   type EditTarget =
     | { kind: 'static'; key: string; label: string }
@@ -129,8 +142,7 @@
       }),
       {
         loading: `Setting ${key}…`,
-        getOutcome: (r) =>
-          getProbeOutcome(`Set ${key}`, r.probeStatus, r.probeMessage),
+        getOutcome: (r) => getProbeOutcome(`Set ${key}`, r.probeStatus, r.probeMessage),
       },
     );
   }
@@ -146,11 +158,7 @@
       {
         loading: `Probing ${groupKey}/${instanceId}…`,
         getOutcome: (r: SecretsProbeScopedResult) =>
-          getProbeOutcome(
-            `Probed ${groupKey}/${instanceId}`,
-            r.probeStatus,
-            r.probeMessage,
-          ),
+          getProbeOutcome(`Probed ${groupKey}/${instanceId}`, r.probeStatus, r.probeMessage),
       },
     );
   }
@@ -224,23 +232,17 @@
       </p>
     </div>
   {:else if loadError}
-    <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-5 py-4 text-xs text-destructive">
+    <div
+      class="bg-destructive/10 border border-destructive/30 rounded-lg px-5 py-4 text-xs text-destructive"
+    >
       <p class="font-semibold mb-1">Failed to load secrets</p>
       <p>{loadError}</p>
-      <Button
-        variant="outline"
-        size="sm"
-        type="button"
-        class="mt-2"
-        onclick={refresh}
-      >
+      <Button variant="outline" size="sm" type="button" class="mt-2" onclick={refresh}>
         Retry
       </Button>
     </div>
   {:else if !loaded}
-    <div class="surface-2 rounded-lg px-5 py-4 text-xs text-muted-foreground">
-      Loading secrets…
-    </div>
+    <div class="surface-2 rounded-lg px-5 py-4 text-xs text-muted-foreground">Loading secrets…</div>
   {:else if secrets.length === 0}
     <div class="surface-2 rounded-lg px-5 py-6 text-center text-xs text-muted-foreground">
       No plugins have declared secrets, or the gateway vault is not configured.

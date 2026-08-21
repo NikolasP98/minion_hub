@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import type { SecretsProbeStatus } from '$lib/types/secrets';
+  import type { SecretsProbeStatus } from '@minion-stack/shared';
   import { Button } from '$lib/components/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
 
@@ -69,7 +69,9 @@
       onkeydown={(e) => e.stopPropagation()}
     >
       <h2 class="text-sm font-semibold text-foreground mb-1">{secretLabel}</h2>
-      <p class="text-[length:var(--font-size-label)] text-muted-foreground mb-4 font-mono">{secretKey}</p>
+      <p class="text-[length:var(--font-size-label)] text-muted-foreground mb-4 font-mono">
+        {secretKey}
+      </p>
 
       <label class="block">
         <span class="text-xs text-muted-foreground mb-1.5 block">{m.secretEditModal_value()}</span>
@@ -102,13 +104,7 @@
         <Button variant="ghost" size="sm" disabled={saving} onclick={onClose}>
           {result ? m.common_close() : m.common_cancel()}
         </Button>
-        <Button
-          variant="primary"
-          size="sm"
-          loading={saving}
-          disabled={!value}
-          onclick={handleSave}
-        >
+        <Button variant="primary" size="sm" loading={saving} disabled={!value} onclick={handleSave}>
           {m.secretEditModal_saveAndProbe()}
         </Button>
       </div>

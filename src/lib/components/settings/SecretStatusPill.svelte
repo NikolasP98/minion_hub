@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SecretsProbeStatus } from '$lib/types/secrets';
+  import type { SecretsProbeStatus } from '@minion-stack/shared';
 
   interface Props {
     status: SecretsProbeStatus;
@@ -9,15 +9,23 @@
 
   let { status, label, message }: Props = $props();
 
-  const palette: Record<
-    SecretsProbeStatus,
-    { bg: string; fg: string; dot: string; text: string }
-  > = {
-    ok: { bg: 'bg-success/10', fg: 'text-success', dot: 'bg-success', text: 'Configured' },
-    invalid: { bg: 'bg-destructive/10', fg: 'text-destructive', dot: 'bg-destructive', text: 'Invalid' },
-    missing: { bg: 'bg-muted/10', fg: 'text-muted-foreground', dot: 'bg-muted-foreground', text: 'Missing' },
-    unknown: { bg: 'bg-warning/10', fg: 'text-warning', dot: 'bg-warning', text: 'Unchecked' },
-  };
+  const palette: Record<SecretsProbeStatus, { bg: string; fg: string; dot: string; text: string }> =
+    {
+      ok: { bg: 'bg-success/10', fg: 'text-success', dot: 'bg-success', text: 'Configured' },
+      invalid: {
+        bg: 'bg-destructive/10',
+        fg: 'text-destructive',
+        dot: 'bg-destructive',
+        text: 'Invalid',
+      },
+      missing: {
+        bg: 'bg-muted/10',
+        fg: 'text-muted-foreground',
+        dot: 'bg-muted-foreground',
+        text: 'Missing',
+      },
+      unknown: { bg: 'bg-warning/10', fg: 'text-warning', dot: 'bg-warning', text: 'Unchecked' },
+    };
 
   const p = $derived(palette[status]);
 </script>

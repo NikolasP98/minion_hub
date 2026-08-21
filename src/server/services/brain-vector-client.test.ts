@@ -13,6 +13,7 @@ import {
   mintBrainVectorCapability,
   searchBrainVectorApi,
   type BrainVectorClientConfig,
+  type BrainVectorSearchFilters,
 } from './brain-vector-client';
 
 let config: BrainVectorClientConfig;
@@ -286,17 +287,10 @@ describe('brain vector API client', () => {
     ).rejects.toThrow('too many candidates');
   });
 
-  it('fails closed on org_all until the Hub can prove all-source policy scope', async () => {
-    await expect(
-      searchBrainVectorApi(config, {
-        orgId: 'org-1',
-        brainId: '22222222-2222-4222-8222-222222222222',
-        subject: 'profile-1',
-        vector: Array.from({ length: 1536 }, () => 0),
-        limit: 20,
-        filters: { scopeMode: 'org_all' },
-      }),
-    ).rejects.toThrow(/org_all vector scope is not implemented/);
+  it('rejects org_all at compile time — the hub request boundary only represents source_list', () => {
+    // @ts-expect-error scopeMode: 'org_all' is unrepresentable — narrowed to 'source_list' only
+    const filters: BrainVectorSearchFilters = { scopeMode: 'org_all', sourceIds: [] };
+    expect(filters.scopeMode).toBe('org_all');
   });
 });
 
