@@ -1526,7 +1526,11 @@ export async function updateSellable(
         'kind_derived',
       );
     }
-    if (patch.trackStock !== undefined && patch.trackStock !== facts.trackStock && !applyTrackStock) {
+    if (
+      patch.trackStock !== undefined &&
+      patch.trackStock !== facts.trackStock &&
+      !applyTrackStock
+    ) {
       // true→false (untrack) and bundle transitions stay refused — the
       // sibling spec's S3 (destructive policy) owns those.
       throw new PosError(

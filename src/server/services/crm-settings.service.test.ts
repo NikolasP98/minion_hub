@@ -228,7 +228,9 @@ describe('writeDepositRule', () => {
       ((query as { queryChunks?: Array<{ value?: string[] }> }).queryChunks ?? [])
         .map((c) => c.value?.join(' ') ?? '')
         .join(' ');
-    const upsertCall = execute.mock.calls.find((c) => sqlText(c[0]).includes('insert into crm_settings'));
+    const upsertCall = execute.mock.calls.find((c) =>
+      sqlText(c[0]).includes('insert into crm_settings'),
+    );
     expect(upsertCall).toBeDefined();
     // Only `value || jsonb_build_object('deposit', …)` — never `value = $1`,
     // which is the exact bug (replacing, not merging) this slice must avoid.
@@ -243,7 +245,10 @@ describe('writeDepositRule', () => {
 
     const result = await writeDepositRule(ctx(db), { keywords: ['ADELANTO', ' seña '] });
 
-    expect(result.rule).toEqual({ keywords: ['adelanto', 'seña'], label: DEFAULT_DEPOSIT_RULE.label });
+    expect(result.rule).toEqual({
+      keywords: ['adelanto', 'seña'],
+      label: DEFAULT_DEPOSIT_RULE.label,
+    });
   });
 
   it('staleDerivedCount reflects crm_win_embeddings rows built before this update; 0 ⇒ staleDerived false', async () => {

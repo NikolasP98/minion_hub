@@ -172,9 +172,10 @@ describe('anti-recurrence guard — no second hardcoded deposit keyword', () => 
     ];
     for (const file of guarded) {
       const source = readFileSync(`${dir}${file}`, 'utf-8');
-      expect(source, `${file} must not hardcode the keyword — use depositMatchSql/notDepositMatchSql`).not.toMatch(
-        /reserva/i,
-      );
+      expect(
+        source,
+        `${file} must not hardcode the keyword — use depositMatchSql/notDepositMatchSql`,
+      ).not.toMatch(/reserva/i);
       expect(
         source,
         `${file} must not build an ILIKE pattern by string concatenation — use escapeLikePattern`,

@@ -71,11 +71,7 @@ function mockExecuteSeq(db: unknown, values: unknown[]) {
     // from every real query built by this module.
     const first = chunks?.[0] as { value?: unknown } | string | undefined;
     const text =
-      typeof first === 'string'
-        ? first
-        : Array.isArray(first?.value)
-          ? first.value.join(' ')
-          : '';
+      typeof first === 'string' ? first : Array.isArray(first?.value) ? first.value.join(' ') : '';
     return /^\s*(set local|select set_config)/i.test(text);
   };
   (db as { execute: unknown }).execute = vi.fn((query: unknown) =>
@@ -965,10 +961,12 @@ describe('updateSellable', () => {
       );
 
       // The linked stk_items row is created with fin_product_id == the sellable.
-      expect(createItemMock).toHaveBeenCalledWith(
-        expect.anything(),
-        { code: 'CONS', name: 'Consulta', uom: 'Unidad', finProductId: 'fp-13' },
-      );
+      expect(createItemMock).toHaveBeenCalledWith(expect.anything(), {
+        code: 'CONS',
+        name: 'Consulta',
+        uom: 'Unidad',
+        finProductId: 'fp-13',
+      });
       expect(row.kind).toBe('product');
       expect(row.itemId).toBe('item-13');
     });
@@ -998,10 +996,7 @@ describe('updateSellable', () => {
       {
         const { db, resolveSequence } = createMockDb();
         resolveSequence([[current]]);
-        mockExecuteSeq(db, [
-          [serviceRow],
-          [{ ...serviceRow, item_id: 'item-13', stock_qty: '0' }],
-        ]);
+        mockExecuteSeq(db, [[serviceRow], [{ ...serviceRow, item_id: 'item-13', stock_qty: '0' }]]);
         createItemMock.mockResolvedValue({ id: 'item-13' });
         const row = await updateSellable(
           ctx(db),
@@ -1067,8 +1062,7 @@ describe('updateSellable', () => {
         [[finalRow]],
       );
       const updateArgs = await syncArgs(
-        (db) =>
-          updateSellable(ctx(db), 'fp-1', { kind: 'product', trackStock: true }, actor),
+        (db) => updateSellable(ctx(db), 'fp-1', { kind: 'product', trackStock: true }, actor),
         [
           [
             {
@@ -1121,9 +1115,9 @@ describe('updateSellable', () => {
       ]);
       createItemMock.mockRejectedValue(new Error('item insert failed'));
 
-      await expect(
-        updateSellable(ctx(db), 'fp-13', { trackStock: true }, actor),
-      ).rejects.toThrow('item insert failed');
+      await expect(updateSellable(ctx(db), 'fp-13', { trackStock: true }, actor)).rejects.toThrow(
+        'item insert failed',
+      );
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
