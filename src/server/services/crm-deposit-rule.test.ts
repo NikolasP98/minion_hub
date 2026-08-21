@@ -154,3 +154,31 @@ describe('depositWriteSchema (the WRITE boundary — strict, rejects instead of 
     expect(depositWriteSchema.safeParse({ keywords: [1] }).success).toBe(false);
   });
 });
+
+// S3 anti-recurrence guard (2026-08-17-hub-reserva-keyword-config-spec §S3):
+// makes "one shared constant" permanent instead of a one-time grep in a spec.
+// Verified locally by adding `ilike('%reserva%')` to crm-journey.service.ts
+// and confirming this test fails, then reverting.
+describe('anti-recurrence guard — no second hardcoded deposit keyword', () => {
+  it('the deposit consumers never hardcode /reserva/i or a string-built ILIKE pattern', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const dir = fileURLToPath(new URL('.', import.meta.url));
+    const guarded = [
+      'crm-finance.service.ts',
+      'crm-similarity.service.ts',
+      'crm-journey.service.ts',
+      'crm-settings.service.ts',
+    ];
+    for (const file of guarded) {
+      const source = readFileSync(`${dir}${file}`, 'utf-8');
+      expect(source, `${file} must not hardcode the keyword — use depositMatchSql/notDepositMatchSql`).not.toMatch(
+        /reserva/i,
+      );
+      expect(
+        source,
+        `${file} must not build an ILIKE pattern by string concatenation — use escapeLikePattern`,
+      ).not.toMatch(/ilike\s*\(\s*[a-zA-Z0-9_.]+\s*,\s*[`'"]%/);
+    }
+  });
+});

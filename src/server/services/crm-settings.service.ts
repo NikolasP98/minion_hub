@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { crmSettings } from '$server/db/pg-crm-schema';
@@ -6,8 +6,11 @@ import {
   DEFAULT_DEPOSIT_RULE,
   DEPOSIT_KEYWORDS_MAX,
   DEPOSIT_KEYWORD_MAX_LENGTH,
+  depositWriteSchema,
+  type DepositConfig,
   type DepositRule,
 } from './crm-deposit-rule';
+import type { z } from 'zod';
 
 /**
  * The CRM settings boundary — the ONE place `crm_settings.value` is read.
@@ -144,4 +147,68 @@ export async function resolveDepositRule(ctx: CoreCtx): Promise<DepositRule> {
     return DEFAULT_DEPOSIT_RULE;
   }
   return normalizeDepositRule(value.deposit);
+}
+
+export interface WriteDepositRuleResult {
+  rule: DepositRule;
+  staleDerived: boolean;
+  staleDerivedCount: number;
+}
+
+/**
+ * Writes `crm_settings.value.deposit` — the validated write path behind
+ * `PUT /api/crm/settings` (see `crm-deposit-rule.ts`'s `depositWriteSchema`
+ * doc comment for the design pointer). `patch` must already be
+ * `depositWriteSchema`-validated (the route does this; `updatedAt` is never
+ * client-supplyable and is stamped here).
+ *
+ * ONE statement does the read-modify-write: `insert ... on conflict do
+ * update set value = crm_settings.value || jsonb_build_object('deposit', …)`
+ * merges only the `deposit` key so sibling keys (`accounts`,
+ * `disabled_channels`, …) survive untouched, and there is no separate
+ * select-then-update window for a concurrent writer to land in between.
+ *
+ * TODO(handoff): a keyword change does not retroactively reclassify rows
+ * already materialized into `crm_win_embeddings.bought`/`snippet` — this
+ * function surfaces that as `staleDerivedCount`/`staleDerived` in the
+ * response and a warn log; nothing here rebuilds those rows. See the
+ * deposit-classification config spec's §5 (⚠️ A3) and the matching handoff
+ * entry in the meta-repo proposal for the classification config work.
+ */
+export async function writeDepositRule(
+  ctx: CoreCtx,
+  patch: z.infer<typeof depositWriteSchema>,
+): Promise<WriteDepositRuleResult> {
+  const updatedAt = new Date().toISOString();
+  const stored: DepositConfig = { ...patch, updatedAt };
+  const rule = normalizeDepositRule(stored);
+
+  return withOrgCore(ctx, async (tx) => {
+    await tx.execute(sql`
+      insert into crm_settings (org_id, value, updated_at)
+      values (${ctx.tenantId}, jsonb_build_object('deposit', ${JSON.stringify(stored)}::jsonb), now())
+      on conflict (org_id) do update
+      set value = coalesce(crm_settings.value, '{}'::jsonb)
+            || jsonb_build_object('deposit', ${JSON.stringify(stored)}::jsonb),
+          updated_at = now()
+    `);
+
+    const [row] = (await tx.execute(sql`
+      select count(*)::int as count
+      from crm_win_embeddings
+      where org_id = ${ctx.tenantId} and built_at < ${updatedAt}::timestamptz
+    `)) as unknown as Array<{ count: number }>;
+    const staleDerivedCount = row?.count ?? 0;
+
+    if (staleDerivedCount > 0) {
+      console.warn(
+        `crm-settings: deposit rule changed for org ${ctx.tenantId}; ${staleDerivedCount} ` +
+          `crm_win_embeddings row(s) were classified under the previous rule and are now stale ` +
+          `(bought/snippet not rebuilt — reclassifying history is out of scope, see the ` +
+          `deposit-classification config spec §5)`,
+      );
+    }
+
+    return { rule, staleDerived: staleDerivedCount > 0, staleDerivedCount };
+  });
 }
