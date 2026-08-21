@@ -23,8 +23,16 @@ interface BrainVectorSearchFilterBaseV1 {
   occurredBefore?: string | null;
 }
 
-export type BrainVectorSearchFilters = BrainVectorSearchFilterBaseV1 &
-  ({ scopeMode: 'source_list'; sourceIds: string[] } | { scopeMode: 'org_all'; sourceIds?: never });
+/**
+ * Hub request-construction boundary: only `source_list` is representable.
+ * `org_all` remains reserved by the frozen v1 wire contract and may not be
+ * minted by the Hub until the architecture §8.1 org-wide policy proof exists
+ * (2026-07-22-self-hosted-qdrant-brains-architecture).
+ */
+export type BrainVectorSearchFilters = BrainVectorSearchFilterBaseV1 & {
+  scopeMode: 'source_list';
+  sourceIds: string[];
+};
 
 export interface BrainVectorCandidate {
   chunkId: string;
@@ -304,9 +312,6 @@ export async function searchBrainVectorApi(
   input: BrainVectorSearchInput,
   fetchImpl: typeof fetch = fetch,
 ): Promise<BrainVectorSearchResponse> {
-  if (input.filters.scopeMode !== 'source_list') {
-    throw new Error('org_all vector scope is not implemented by the Hub');
-  }
   const sourceIds = canonicalizeBrainVectorSourceIds(input.filters.sourceIds);
   if (sourceIds.length === 0 || sourceIds.length > BRAIN_VECTOR_MAX_SOURCE_IDS) {
     throw new Error(`Vector search requires 1-${BRAIN_VECTOR_MAX_SOURCE_IDS} scoped sources`);

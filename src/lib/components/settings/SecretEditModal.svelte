@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import type { SecretsProbeStatus } from '$lib/types/secrets';
+  import type { SecretsProbeStatus } from '@minion-stack/shared';
   import { Button } from '$lib/components/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
 

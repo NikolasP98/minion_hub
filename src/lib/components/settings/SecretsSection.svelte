@@ -1,14 +1,13 @@
 <script lang="ts">
-  import {
-    SECRETS_METHODS,
-    type SecretsSummary,
-    type SecretsListResult,
-    type SecretsSetResult,
-    type SecretsSetScopedResult,
-    type SecretsProbeResult,
-    type SecretsProbeScopedResult,
-    type SecretsProbeStatus,
-  } from '$lib/types/secrets';
+  import type {
+    SecretsSummary,
+    SecretsListResult,
+    SecretsSetResult,
+    SecretsSetScopedResult,
+    SecretsProbeResult,
+    SecretsProbeScopedResult,
+    SecretsProbeStatus,
+  } from '@minion-stack/shared';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { toastAsync, toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
@@ -16,6 +15,20 @@
   import SecretStatusPill from './SecretStatusPill.svelte';
   import SecretEditModal from './SecretEditModal.svelte';
   import DynamicSecretGroup from './DynamicSecretGroup.svelte';
+
+  // Kept as a local value (not imported from '@minion-stack/shared'): the
+  // package's ./gateway barrel also re-exports ws-dependent client code, and
+  // this component renders client-side — see
+  // 2026-08-17-hub-dead-mirrors-cleanup-spec.md §2.2.
+  const SECRETS_METHODS = {
+    list: 'secrets.list',
+    set: 'secrets.set',
+    clear: 'secrets.clear',
+    probe: 'secrets.probe',
+    setScoped: 'secrets.set_scoped',
+    clearScoped: 'secrets.clear_scoped',
+    probeScoped: 'secrets.probe_scoped',
+  } as const;
 
   type EditTarget =
     | { kind: 'static'; key: string; label: string }

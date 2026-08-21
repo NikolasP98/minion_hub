@@ -137,3 +137,66 @@ describe('igvRate (S1 — required input, no module-level default)', () => {
     void invoice;
   });
 });
+
+describe('S3 — rounding invariant holds at every supported rate', () => {
+  const RATES = [0.18, 0.1, 0.08, 0.05];
+
+  function lineSetsFor(rate: number) {
+    // The "exact multiple of the divisor" line is derived per-rate: a net of
+    // 10.00 at this rate's divisor, rounded to 2dp like every other price.
+    const exactMultiplePrice = Math.round(10 * (1 + rate) * 100) / 100;
+    return {
+      '1 line': [{ description: 'Solo line', quantity: 1, unitPriceInclTax: 19.9 }],
+      '3 lines, odd céntimos': base.lines,
+      '1 line × quantity 7': [{ description: 'Bulk line', quantity: 7, unitPriceInclTax: 3.33 }],
+      'line at an exact divisor multiple': [
+        { description: 'Clean line', quantity: 1, unitPriceInclTax: exactMultiplePrice },
+      ],
+    };
+  }
+
+  for (const rate of RATES) {
+    for (const [setName, lines] of Object.entries(lineSetsFor(rate))) {
+      it(`rate ${rate}, ${setName}: sum(lines) == totals, exactly, no tolerance`, () => {
+        const totals = computeTotals({ ...base, igvRate: rate, lines });
+        const sumExcl = totals.lines.reduce((s, l) => s + l.totalExclTax, 0);
+        const sumIgv = totals.lines.reduce((s, l) => s + l.igv, 0);
+        expect(totals.lineExtensionAmount).toBe(Math.round(sumExcl * 100) / 100);
+        expect(totals.igvAmount).toBe(Math.round(sumIgv * 100) / 100);
+        expect(
+          Math.round((totals.lineExtensionAmount + totals.igvAmount) * 100) / 100,
+        ).toBe(totals.taxInclusiveAmount);
+      });
+    }
+  }
+});
+
+describe('S3 — anti-recurrence guard: no hardcoded tax rate in the emission library', () => {
+  it('no numeric literal matching a tax rate appears outside test fixtures', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const dir = import.meta.dirname;
+    const offenders: string[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
+      if (entry.name.endsWith('.test.ts')) continue; // fixtures/tests may state rates literally
+      const content = readFileSync(join(dir, entry.name), 'utf8');
+      // A module-level `const ... = 0.18` (or 18 adjacent to Percent/IGV/rate)
+      // reintroducing the deleted hardcoded rate. resolveIgvRate's own
+      // DEFAULT_IGV_RATE lives in finance/tax.ts, outside this directory.
+      if (/(?:^|[^.\w])0\.18(?![0-9])/.test(content)) {
+        offenders.push(`${entry.name}: contains a bare 0.18 literal`);
+      }
+      if (
+        /\b18\b(?=[^]*?(?:Percent|IGV|rate))/i.test(content) &&
+        /const\s+\w*(?:RATE|PERCENT)\w*\s*=/.test(content)
+      ) {
+        offenders.push(`${entry.name}: contains a rate/percent constant declaration`);
+      }
+    }
+    expect(
+      offenders,
+      'reintroduced hardcoded tax rate — use resolveIgvRate from finance/tax.ts',
+    ).toEqual([]);
+  });
+});

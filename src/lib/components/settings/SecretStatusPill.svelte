@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SecretsProbeStatus } from '$lib/types/secrets';
+  import type { SecretsProbeStatus } from '@minion-stack/shared';
 
   interface Props {
     status: SecretsProbeStatus;

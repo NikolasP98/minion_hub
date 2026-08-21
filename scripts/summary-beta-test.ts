@@ -10,6 +10,13 @@
  * 2. submitResumen RC with both (estado 1) -> CDR ResponseCode 0.
  * 3. submitResumen RC with B998-2 estado 3 (anulacion) -> accepted.
  * 4. Emit factura F998-1, then submitBaja RA for it -> accepted.
+ *
+ * TODO(handoff): S3 of 2026-08-17-hub-igv-rate-from-org-config-spec.md
+ * requires re-running this (and emit-beta-test.ts) at --rate 0.10 against
+ * SUNAT's live beta validator and pasting the CDR ResponseCode/description
+ * into the shipping PR. Not run in this pass — no `.beta-cert` (real
+ * signing cert) is available in this environment. See the proposal
+ * 2026-08-17-hub-igv-rate-from-org-config for the open-items entry.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

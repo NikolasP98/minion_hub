@@ -24,7 +24,7 @@ import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { createPaperclipClient, mintIdentity } from '@minion-stack/paperclip-client';
 import { user as userTable } from '../src/server/db/schema/auth/index.js';
-import { workspaceMembership } from '../src/server/db/schema/workspace-membership.js';
+import { workspaceMembership } from '@minion-stack/db/schema';
 
 async function main() {
   const secret = process.env.HUB_PAPERCLIP_SHARED_SECRET;
