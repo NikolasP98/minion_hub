@@ -21,7 +21,7 @@
 // stale in this branch. A human needs to reconcile whether S4 was reverted,
 // never merged to this branch, or the spec's premise needs correction before
 // Slice 2 can be attempted — see specs/2026-08-21-hub-datatable-server-mode-test-gap-spec.md.
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { Button } from '$lib/components/ui';
 import type { DataColumn } from './DataTable.svelte';
@@ -61,8 +61,33 @@ const rows: Row[] = [
 ];
 
 describe('DataTable DOM smoke (browser=true override)', () => {
+  // @tanstack/virtual-core measures the scroll container via `offsetWidth`/
+  // `offsetHeight` (see @tanstack/virtual-core's `getRect`), which happy-dom
+  // never lays out (always 0) — a 0-height viewport makes the virtualizer
+  // compute zero visible rows regardless of `browser`/`wrapperEl`. Stub both
+  // to a real size so the initial (synchronous, pre-ResizeObserver) measurement
+  // sees a non-empty viewport.
+  const offsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+  const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+
+  beforeAll(() => {
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      value: 800,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      value: 600,
+    });
+  });
+
+  afterAll(() => {
+    if (offsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidth);
+    if (offsetHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', offsetHeight);
+  });
+
   test('renders at least one real body row once virtualization initializes', async () => {
-    const { findAllByRole } = render(DataTable, {
+    const { findAllByRole } = render(DataTable<Row>, {
       props: {
         data: rows,
         columns,
