@@ -175,10 +175,8 @@ export const DEPOSIT_KEYWORDS_MAX = 20;
  * rather than silently truncated, so an operator who types 21 keywords is
  * told, not quietly given 20.
  *
- * TODO(handoff): defined and unit-tested here but not yet wired to an HTTP
- * handler — S3 of 2026-08-17-hub-reserva-keyword-config-spec adds the
- * `/api/crm/settings` write path (strict parse + key-level jsonb merge +
- * `staleDerived` disclosure) that consumes it.
+ * Consumed by `writeDepositRule` (`crm-settings.service.ts`), wired to
+ * `PUT /api/crm/settings` — S3 of 2026-08-17-hub-reserva-keyword-config-spec.
  */
 export const depositWriteSchema = z
   .object({

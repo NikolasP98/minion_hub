@@ -665,10 +665,17 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
     const type = entry.type;
 
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
+    // `for('share')` (was a plain read): serializes this submit against
+    // pos.service.ts's applyUomChange, which takes `for('update')` on the
+    // same stk_items row before its pristine-history check — a movement can
+    // no longer commit between that check and the uom write and be
+    // reinterpreted under a renamed unit. Share mode keeps concurrent
+    // submits touching the same item fully parallel.
     const items = await tx
       .select({ id: stkItems.id })
       .from(stkItems)
-      .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
+      .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)))
+      .for('share');
     const itemIdSet = new Set(items.map((i) => i.id));
     const warehouseIds = [
       ...new Set(

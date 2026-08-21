@@ -4,10 +4,32 @@ import {
   normalizeDepositRule,
   readCrmSettingsValue,
   resolveDepositRule,
+  writeDepositRule,
 } from './crm-settings.service';
 import { DEFAULT_DEPOSIT_RULE } from './crm-deposit-rule';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
+
+/**
+ * Real-query sequencing for raw `tx.execute` calls, skipping `withOrgCore`'s
+ * fixed setup statements (idle-timeout, `set local role`, two `set_config`
+ * GUCs) so `values` only has to list results for writeDepositRule's own two
+ * queries (the upsert, then the stale-count select) — same technique as
+ * `pos.sellables.test.ts`'s `mockExecuteSeq`.
+ */
+function mockExecuteSeq(db: unknown, values: unknown[]) {
+  const queue = [...values];
+  const isSetupQuery = (query: unknown): boolean => {
+    const chunks = (query as { queryChunks?: unknown[] } | undefined)?.queryChunks;
+    const first = chunks?.[0] as { value?: unknown } | string | undefined;
+    const text =
+      typeof first === 'string' ? first : Array.isArray(first?.value) ? first.value.join(' ') : '';
+    return /^\s*(set local|select set_config)/i.test(text);
+  };
+  (db as { execute: unknown }).execute = vi.fn((query: unknown) =>
+    isSetupQuery(query) ? Promise.resolve(undefined) : Promise.resolve(queue.shift()),
+  );
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -190,5 +212,61 @@ describe('resolveDepositRule', () => {
     } as never;
     expect(await resolveDepositRule(ctx(db))).toEqual(DEFAULT_DEPOSIT_RULE);
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// S3 of 2026-08-17-hub-reserva-keyword-config-spec: the validated write path.
+describe('writeDepositRule', () => {
+  it('merges the deposit key via one insert-on-conflict statement — sibling keys untouched by construction', async () => {
+    const { db } = createMockDb();
+    mockExecuteSeq(db, [undefined, [{ count: 0 }]]);
+
+    await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
+
+    const execute = (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute;
+    const sqlText = (query: unknown) =>
+      ((query as { queryChunks?: Array<{ value?: string[] }> }).queryChunks ?? [])
+        .map((c) => c.value?.join(' ') ?? '')
+        .join(' ');
+    const upsertCall = execute.mock.calls.find((c) =>
+      sqlText(c[0]).includes('insert into crm_settings'),
+    );
+    expect(upsertCall).toBeDefined();
+    // Only `value || jsonb_build_object('deposit', …)` — never `value = $1`,
+    // which is the exact bug (replacing, not merging) this slice must avoid.
+    const upsertSql = sqlText(upsertCall![0]);
+    expect(upsertSql).toContain('||');
+    expect(upsertSql).toContain("jsonb_build_object('deposit'");
+  });
+
+  it('stamps updatedAt server-side and returns the normalized rule', async () => {
+    const { db } = createMockDb();
+    mockExecuteSeq(db, [undefined, [{ count: 0 }]]);
+
+    const result = await writeDepositRule(ctx(db), { keywords: ['ADELANTO', ' seña '] });
+
+    expect(result.rule).toEqual({
+      keywords: ['adelanto', 'seña'],
+      label: DEFAULT_DEPOSIT_RULE.label,
+    });
+  });
+
+  it('staleDerivedCount reflects crm_win_embeddings rows built before this update; 0 ⇒ staleDerived false', async () => {
+    const { db } = createMockDb();
+    mockExecuteSeq(db, [undefined, [{ count: 0 }]]);
+    const clean = await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
+    expect(clean).toMatchObject({ staleDerived: false, staleDerivedCount: 0 });
+
+    const { db: db2 } = createMockDb();
+    mockExecuteSeq(db2, [undefined, [{ count: 7 }]]);
+    const stale = await writeDepositRule(ctx(db2), { keywords: ['adelanto'] });
+    expect(stale).toMatchObject({ staleDerived: true, staleDerivedCount: 7 });
+  });
+
+  it('an empty keywords array is a legitimate write (matches nothing), not rejected', async () => {
+    const { db } = createMockDb();
+    mockExecuteSeq(db, [undefined, [{ count: 0 }]]);
+    const result = await writeDepositRule(ctx(db), { keywords: [] });
+    expect(result.rule.keywords).toEqual([]);
   });
 });
