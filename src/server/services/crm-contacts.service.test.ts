@@ -870,11 +870,9 @@ describe('getMetaKeys (S3 meta-column discovery)', () => {
     configureCache({ backend: new MemoryBackend(), namespace: 'crm-meta-keys-test' });
     const scoped = { db: {} as never, tenantId: 'org-meta-keys' };
 
-    const execute = vi.fn().mockResolvedValueOnce([
-      { key: 'dni' },
-      { key: 'edad' },
-      { key: 'telefono' },
-    ]);
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([{ key: 'dni' }, { key: 'edad' }, { key: 'telefono' }]);
     useExecMock(execute);
     const first = await getMetaKeys(scoped);
     // set equality against the fixture roster's key domain
