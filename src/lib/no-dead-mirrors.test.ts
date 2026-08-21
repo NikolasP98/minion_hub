@@ -43,8 +43,6 @@ describe('no dead mirrors', () => {
         if (content.includes(importPattern)) offenders.push(`${file} → ${importPattern}`);
       }
     }
-    expect(offenders, 'retired-mirror references (import canonical @minion-stack pkg)').toEqual(
-      [],
-    );
+    expect(offenders, 'retired-mirror references (import canonical @minion-stack pkg)').toEqual([]);
   });
 });

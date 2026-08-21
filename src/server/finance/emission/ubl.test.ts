@@ -163,9 +163,9 @@ describe('S3 — rounding invariant holds at every supported rate', () => {
         const sumIgv = totals.lines.reduce((s, l) => s + l.igv, 0);
         expect(totals.lineExtensionAmount).toBe(Math.round(sumExcl * 100) / 100);
         expect(totals.igvAmount).toBe(Math.round(sumIgv * 100) / 100);
-        expect(
-          Math.round((totals.lineExtensionAmount + totals.igvAmount) * 100) / 100,
-        ).toBe(totals.taxInclusiveAmount);
+        expect(Math.round((totals.lineExtensionAmount + totals.igvAmount) * 100) / 100).toBe(
+          totals.taxInclusiveAmount,
+        );
       });
     }
   }
