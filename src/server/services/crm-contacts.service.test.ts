@@ -16,6 +16,7 @@ import {
   setContactCustomField,
   setFunnelStage,
   listContactsCached,
+  getMetaKeys,
 } from './crm-contacts.service';
 
 /**
@@ -53,12 +54,11 @@ async function createRealCrmContactsDb() {
 // shape (see mock-db.ts) — keeps ensureAccountInScope's select/insert chains
 // working. getContactGraph tests override it via useExecMock to hand back a
 // bare `{ execute }` tx (avoids typing tx.execute onto the tenant-DB mock).
-const mockWithOrgCore = vi.fn(
-  (
-    scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } },
-    fn: (tx: unknown) => unknown,
-  ) => scope.db.transaction((tx: unknown) => fn(tx)),
-);
+const defaultWithOrgCore = (
+  scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } },
+  fn: (tx: unknown) => unknown,
+) => scope.db.transaction((tx: unknown) => fn(tx));
+const mockWithOrgCore = vi.fn(defaultWithOrgCore);
 
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: (scope: unknown, fn: (tx: unknown) => unknown) =>
@@ -852,6 +852,40 @@ describe('listContactsCached rule sensitivity', () => {
     useExecMock(poison);
     const fourth = await listContactsCached(scoped);
     expect(fourth[0]).toMatchObject({ funnel_stage: 'reserved' });
+    expect(poison).not.toHaveBeenCalled();
+  });
+});
+
+describe('getMetaKeys (S3 meta-column discovery)', () => {
+  it('returns the distinct custom_fields keys and serves repeats from cache', async () => {
+    // The previous describe block's last case deliberately leaves a queued
+    // mockImplementationOnce unconsumed (it asserts the poisoned loader is
+    // never called on a cache hit). mockImplementationOnce queues survive
+    // vi.clearAllMocks(), so drain it here or it silently backs THIS test's
+    // first withOrgCore call instead of the one useExecMock queues below.
+    mockWithOrgCore.mockReset();
+    mockWithOrgCore.mockImplementation(defaultWithOrgCore);
+
+    const { configureCache, MemoryBackend } = await import('@minion-stack/cache');
+    configureCache({ backend: new MemoryBackend(), namespace: 'crm-meta-keys-test' });
+    const scoped = { db: {} as never, tenantId: 'org-meta-keys' };
+
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([{ key: 'dni' }, { key: 'edad' }, { key: 'telefono' }]);
+    useExecMock(execute);
+    const first = await getMetaKeys(scoped);
+    // set equality against the fixture roster's key domain
+    expect(new Set(first)).toEqual(new Set(['telefono', 'dni', 'edad']));
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain('jsonb_object_keys(custom_fields)');
+    expect(query.sql).toContain('deleted_at is null');
+
+    // second call inside the TTL: cache HIT — no second roster scan
+    const poison = vi.fn().mockResolvedValueOnce([{ key: 'POISON' }]);
+    useExecMock(poison);
+    const second = await getMetaKeys(scoped);
+    expect(second).toEqual(first);
     expect(poison).not.toHaveBeenCalled();
   });
 });

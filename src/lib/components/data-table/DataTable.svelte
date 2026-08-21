@@ -76,6 +76,31 @@
     danger?: boolean;
     onSelect: (ids: Set<string>, rows: T[]) => void;
   };
+
+  /** One server-mode query — fired on every search/sort/filter/page change. */
+  export type ServerQuery = {
+    search: string;
+    sort: { key: string; dir: 'asc' | 'desc' } | null;
+    /** Enum-filter selections, one comma-joined value per active column key. */
+    filters: Record<string, string>;
+    page: number;
+    pageSize: number;
+  };
+
+  /**
+   * Opt-in server mode (spec 2026-08-13 §S4): absent ⇒ current client-only
+   * behavior, byte-identical, for every existing consumer. Present ⇒ `data` is
+   * rendered as-is (the caller already applied search/filter/sort/page), the
+   * "showing" label and pager read `total` instead of `data.length`, and every
+   * interaction calls `onQuery` instead of mutating the table locally.
+   */
+  export type ServerMode = {
+    total: number;
+    loading?: boolean;
+    /** Rows per page. Defaults to the first page's `data.length`. */
+    pageSize?: number;
+    onQuery: (q: ServerQuery) => void;
+  };
 </script>
 
 <script lang="ts" generics="T">
@@ -86,6 +111,7 @@
     ArrowUp,
     ArrowDown,
     ChevronsUpDown,
+    ChevronLeft,
     ChevronRight,
     Columns3,
     Check,
@@ -102,7 +128,7 @@
     Divide,
     Hash,
   } from 'lucide-svelte';
-  import { Button, Tooltip } from '$lib/components/ui';
+  import { Button, Tooltip, iconSizes } from '$lib/components/ui';
   import { formatMoney } from '$lib/utils/format';
   import ColumnFilter from '$lib/components/crm/ColumnFilter.svelte';
   import ExportDialog from '$lib/components/crm/ExportDialog.svelte';
@@ -137,6 +163,8 @@
     editDisabled = false,
     initialSort,
     initialFilters,
+    // server mode
+    server,
     // expansion
     getSubRows,
     expandedContent,
@@ -177,6 +205,8 @@
     editDisabled?: boolean;
     initialSort?: { key: string; dir?: 'asc' | 'desc' };
     initialFilters?: Record<string, string[]>;
+    /** Opt-in server mode — see {@link ServerMode}. Absent ⇒ current client-only behavior. */
+    server?: ServerMode;
     /** Same-shape children rendered as indented sub-rows when a row is expanded. */
     getSubRows?: (row: T) => T[] | null | undefined;
     /** Custom block rendered under a row when expanded (different-shape children). */
@@ -509,6 +539,10 @@
   }
   function setFilter(key: string, s: Set<string>) {
     filters = { ...filters, [key]: s };
+    if (server) {
+      serverPage = 1;
+      emitServerQuery();
+    }
   }
 
   // ── Sort ──────────────────────────────────────────────────────────────────
@@ -520,6 +554,10 @@
     if (c.sortable === false) return;
     sortKey = c.key;
     sortDir = dir;
+    if (server) {
+      serverPage = 1;
+      emitServerQuery();
+    }
   }
   function toggleSort(c: DataColumn<T>) {
     if (c.sortable === false) return;
@@ -528,7 +566,71 @@
       sortKey = c.key;
       sortDir = c.align === 'right' ? 'desc' : 'asc';
     }
+    if (server) {
+      serverPage = 1;
+      emitServerQuery();
+    }
   }
+
+  // ── Server mode (opt-in, spec 2026-08-13 §S4) ────────────────────────────
+  // The table renders `data` as-is and only ever asks the caller for the next
+  // page via `onQuery` — it never filters/sorts/slices locally. `sortKey` /
+  // `sortDir` / `filters` above are still tracked (for header arrows and the
+  // enum-filter UI) but no longer feed `view`.
+  //
+  // TODO(handoff): no DOM-mount test covers this block. @testing-library/svelte
+  // + happy-dom crashes mounting ANY @minion-stack/ui Button.svelte instance
+  // here (`Cannot read properties of null (reading 'Symbol(parentNode)')` in
+  // Button.svelte's <svelte:element> insertion, node_modules/happy-dom's
+  // `Node.nextSibling` getter) — confirmed independent of this diff (repro on
+  // a bare column with no server mode at all). Separately, `view.length > 0`
+  // rows never render in tests at all: `rowVirt` requires `browser` from
+  // `$app/environment`, stubbed permanently `false` in
+  // src/server/test-utils/env-stubs/app-environment.ts, so the `{:else if
+  // rowVirt}` branch is always skipped with no `{:else}` fallback. Fixing
+  // either is a repo-wide test-infra gap, not a DataTable-only fix — logged in
+  // the meta-repo proposals ledger (2026-08-20-hub-datatable-server-mode-test-gap).
+  // svelte-ignore state_referenced_locally
+  let serverPage = $state(1);
+  // svelte-ignore state_referenced_locally
+  let serverPageSize = $state(server?.pageSize ?? data.length);
+  function emitServerQuery() {
+    if (!server) return;
+    server.onQuery({
+      search,
+      sort: sortKey ? { key: sortKey, dir: sortDir } : null,
+      filters: Object.fromEntries(
+        Object.entries(filters)
+          .filter(([, s]) => s.size > 0)
+          .map(([k, s]) => [k, [...s].join(',')]),
+      ),
+      page: serverPage,
+      pageSize: serverPageSize || data.length,
+    });
+  }
+  function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number) {
+    let t: ReturnType<typeof setTimeout>;
+    return (...a: A) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...a), ms);
+    };
+  }
+  const emitSearchQuery = debounce(() => {
+    serverPage = 1;
+    emitServerQuery();
+  }, 300);
+  function goToServerPage(p: number) {
+    if (!server) return;
+    serverPage = Math.max(1, p);
+    emitServerQuery();
+  }
+  const serverPageCount = $derived(serverPageSize || data.length || 1);
+  const serverCanPrev = $derived(serverPage > 1);
+  const serverCanNext = $derived(serverPage * serverPageCount < (server?.total ?? 0));
+  const serverRangeStart = $derived(
+    (server?.total ?? 0) === 0 ? 0 : (serverPage - 1) * serverPageCount + 1,
+  );
+  const serverRangeEnd = $derived(Math.min(serverPage * serverPageCount, server?.total ?? 0));
   function defaultCmp(a: unknown, b: unknown): number {
     if (a == null && b == null) return 0;
     if (a == null) return -1;
@@ -538,7 +640,11 @@
   }
 
   // ── Pipeline: search → enum filters → sort ───────────────────────────────
+  // Server mode: the caller already applied search/filter/sort/page — `data`
+  // IS the view. Re-deriving here would double-apply the local pipeline on
+  // top of an already-scoped page (and silently reorder an already-sorted one).
   const view = $derived.by(() => {
+    if (server) return data;
     const q = search.trim().toLowerCase();
     let list = data;
     if (q) list = list.filter((row) => rowText(row).toLowerCase().includes(q));
@@ -902,12 +1008,15 @@
           <input
             bind:this={searchInputEl}
             bind:value={search}
+            oninput={() => server && emitSearchQuery()}
             placeholder={searchPlaceholder ?? m.data_table_search()}
           />
         </div>
       {/if}
       {#if selectedIds.size > 0}
         <span class="dt-count text-accent">{m.data_table_selected({ n: selectedIds.size })}</span>
+      {:else if server}
+        <!-- server-mode range/total renders as the pager label below -->
       {:else}
         <span class="dt-count tabular-nums">
           {#if filterActive}{m.data_table_showing({
@@ -915,6 +1024,35 @@
               total: data.length,
             })}{:else}{m.data_table_rows({ total: data.length })}{/if}
         </span>
+      {/if}
+      {#if server}
+        <div class="flex items-center gap-1">
+          <Button
+            variant="secondary"
+            size="icon"
+            type="button"
+            class="!h-6 !w-6"
+            disabled={!serverCanPrev}
+            aria-label={m.a11y_previous_page()}
+            onclick={() => goToServerPage(serverPage - 1)}
+          >
+            <ChevronLeft size={iconSizes.xs} />
+          </Button>
+          <span class="dt-count tabular-nums">
+            {serverRangeStart}–{serverRangeEnd} / {server.total}
+          </span>
+          <Button
+            variant="secondary"
+            size="icon"
+            type="button"
+            class="!h-6 !w-6"
+            disabled={!serverCanNext}
+            aria-label={m.a11y_next_page()}
+            onclick={() => goToServerPage(serverPage + 1)}
+          >
+            <ChevronRight size={iconSizes.xs} />
+          </Button>
+        </div>
       {/if}
 
       {#if bulkActions && bulkActions.length && selectedIds.size > 0}
