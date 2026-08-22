@@ -3,7 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import {
-  rankContactsPage,
+  rankContactsPageCached,
   listTags,
   getMetaKeys,
   type RankFilters,
@@ -72,7 +72,7 @@ export const load: PageServerLoad = async ({ locals, depends, parent, url }) => 
   const filters: RankFilters = { ...filtersFromUrl(url.searchParams), ownerId, maskSensitive };
 
   const [pageRes, tags, metaKeys, financeMap] = await Promise.all([
-    rankContactsPage(ctx, filters),
+    rankContactsPageCached(ctx, filters),
     listTags(ctx),
     // Meta columns come from the org-wide distinct-key set, not from scanning
     // shipped rows (the page only has 100 of them now).

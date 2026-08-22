@@ -382,6 +382,38 @@ export async function rankContactsPage(ctx: CoreCtx, f: RankFilters = {}): Promi
 }
 
 /**
+ * Cached page query — the interactive twin of `listContactsCached`. The raw
+ * ranking SQL ranks the WHOLE org before LIMIT, which costs tens of seconds on
+ * the production dataset (measured 43-57s, FACES, 2026-08-22) — the old roster
+ * page only felt fast because its cache hid that. Every distinct
+ * (filters, page) result therefore goes through the same Valkey cache +
+ * org-tag invalidation as the roster did: ttl 2m keeps pages fresh, swr 1h
+ * serves stale while a background refresh recomputes, and any contact mutation
+ * busts the org's tags. A never-seen filter combination still pays the raw
+ * query once — making the query itself fast is the open follow-up
+ * (TODO(handoff): profile/optimize the rank query in prod — see the meta-repo
+ * proposal 2026-08-22-crm-rank-query-prod-latency).
+ */
+export async function rankContactsPageCached(
+  ctx: CoreCtx,
+  f: RankFilters = {},
+): Promise<RankedPage> {
+  const finance = await resolveFinanceBridge(ctx);
+  const { ownerId, maskSensitive, ...shape } = f;
+  // Stable fingerprint: replacer-array stringify orders keys; undefined
+  // values drop out, so {} and {stage: undefined} share an entry.
+  const fp = JSON.stringify(shape, Object.keys(shape).sort());
+  return cached(
+    keys.hub('crm-page', {
+      t: `${ctx.tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`,
+      d: scopeData({ fp, rule: depositRuleFingerprint(finance.depositRule) }),
+    }),
+    { ttl: '2m', swr: '1h', tags: [...crmListTags(ctx.tenantId)] },
+    async () => runRankQuery(ctx, f, finance),
+  );
+}
+
+/**
  * The two settings reads the ranking query's shape depends on: whether the
  * finance bridge is joined at all, and (if so) which deposit rule its
  * classification is built from.
