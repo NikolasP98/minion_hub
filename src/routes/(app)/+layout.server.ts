@@ -1,8 +1,7 @@
 import type { LayoutServerLoad } from './$types';
-import { error, redirect } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
-import { decideRouteAccess } from '$lib/routes/route-access-policies';
 import { canonicalPath } from '$lib/canonical-path';
 import { loadWorkspacesForUser } from '$server/services/workspaces.service';
 import { loadOrganizationsForUser } from '$server/services/organizations.service';
@@ -60,7 +59,13 @@ async function traceLayoutLoad<T>(name: string, promise: Promise<T>): Promise<T>
  * sessions that bypass the login/callback/invite client-side
  * `setActive()` flows (legacy users, session-table drift, manual SQL).
  */
-export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) => {
+export const load: LayoutServerLoad = async ({ locals, depends, url, cookies, untrack }) => {
+  // Navigation independence (perf spec 2026-08-22 §S3): every `url` read below
+  // is wrapped in `untrack` so this load does NOT re-run on every navigation.
+  // The route-policy guard that needed a tracked pathname moved to
+  // hooks.server.ts (applyRouteAccessGuard); this bundle re-runs only on its
+  // explicit `depends` invalidations.
+  const pathname = untrack(() => canonicalPath(url.pathname));
   // Prod-visible regression guardrail: log the total layout-load duration when
   // it crosses the slow threshold (the per-sub-load `traceLayoutLoad` above is
   // dev-only). Only slow loads log, so this stays quiet on healthy requests.
@@ -149,23 +154,9 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
     ? await traceLayoutLoad('active-tenant-kind', getTenant({ db: getDb(), tenantId: activeOrgId }))
     : null;
 
-  // Central route-policy guard. The serializable policy registry also drives
-  // the route design manifest and client navigation visibility. Reuse the
-  // already-resolved RBAC bridge; route-owned page guards remain defense in
-  // depth for direct loads and contextual data operations.
-  const granted = new Set(permissions.permissions);
-  const routeAccess = decideRouteAccess(canonicalPath(url.pathname), {
-    authenticated: true,
-    role: user.role,
-    permissions: granted,
-    orgCapabilities: granted,
-  });
-  if (!routeAccess.allowed) {
-    throw error(
-      routeAccess.deniedStatus,
-      routeAccess.deniedStatus === 404 ? 'Not found' : 'You do not have access to this module.',
-    );
-  }
+  // Central route-policy guard moved to hooks.server.ts
+  // (applyRouteAccessGuard, perf spec 2026-08-22 §S3) — it must run per
+  // navigation, and keeping it here forced this whole bundle to re-run per nav.
 
   // Personal-agent guarantee: provisioning is a MANDATORY part of user
   // creation, so an authenticated user must never dead-end on a "not
@@ -175,7 +166,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
   // /onboarding manual-retry UI. Rare path: runs only while non-active.
   let personalAgentBundle = personalAgent;
   if (
-    !canonicalPath(url.pathname).startsWith('/onboarding') &&
+    !pathname.startsWith('/onboarding') &&
     (!personalAgent.agent || personalAgent.agent.provisioningStatus !== 'active')
   ) {
     const coreCtx = await getCoreCtx(locals);
@@ -196,7 +187,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
 
   const loadMs = Date.now() - loadStartedAt;
   if (loadMs > SLOW_LOAD_WARNING_MS) {
-    console.warn(`[app-layout] load ${canonicalPath(url.pathname)} took ${loadMs}ms`);
+    console.warn(`[app-layout] load ${pathname} took ${loadMs}ms`);
     // The console.warn dies in stdout on Vercel — ship the one prod slow-load
     // signal somewhere queryable. Fire-and-forget, same as server_error.
     void getPostHogClient()
@@ -204,7 +195,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
         posthog?.capture({
           distinctId: 'server',
           event: 'app_layout_slow_load',
-          properties: { path: canonicalPath(url.pathname), duration_ms: loadMs },
+          properties: { path: pathname, duration_ms: loadMs },
         }),
       )
       .catch(() => {});

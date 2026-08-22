@@ -5,9 +5,7 @@ vi.mock('$server/services/permissions.service', () => ({
   loadPermissionsForUser: vi.fn(async () => ({ permissions: ['perm.a', 'perm.b'] })),
 }));
 vi.mock('$server/services/workspaces.service', () => ({
-  loadWorkspacesForUser: vi.fn(async () => [
-    { companyId: 'c1', role: 'admin', name: 'Acme' },
-  ]),
+  loadWorkspacesForUser: vi.fn(async () => [{ companyId: 'c1', role: 'admin', name: 'Acme' }]),
 }));
 vi.mock('$server/services/personal-agent.service', () => ({
   loadPersonalAgentForUser: vi.fn(async () => ({
@@ -78,6 +76,8 @@ function makeEvent(overrides: Partial<{ user: unknown; session: unknown }> = {})
     fetch: globalThis.fetch,
     setHeaders: vi.fn(),
     cookies: { get: () => undefined } as never,
+    // untrack passthrough — the load wraps its url reads in it (S3 nav-independence)
+    untrack: (fn: () => unknown) => fn(),
     getClientAddress: () => '127.0.0.1',
     isDataRequest: false,
     isSubRequest: false,

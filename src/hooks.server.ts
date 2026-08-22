@@ -25,6 +25,8 @@ import { runWithAiUsageScope } from '$server/ai-usage';
 import { getUserPreferences } from '$server/services/user-preferences.service';
 import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
 import { apiWriteCapability, hasOrgCapability } from '$server/services/rbac.service';
+import { loadPermissionsForUser } from '$server/services/permissions.service';
+import { decideRouteAccess } from '$lib/routes/route-access-policies';
 import { listModuleStates } from '$server/services/modules.service';
 import { isAppPageRequest, isAppRouteBlocked } from '$lib/modules/route-guard';
 import {
@@ -178,10 +180,40 @@ const appHandle: Handle = async ({ event, resolve }) => {
     // guards this hook replaced are gone). isAppPageRequest keeps the
     // /api/metrics bearer bypass (no user / no (app) route id) out of it.
     await applyModuleAvailabilityGuard(event);
+    await applyRouteAccessGuard(event);
     return resolve(event);
   }
   return finishApp({ event, resolve });
 };
+
+/**
+ * Central route-policy guard (perf spec 2026-08-22 §S3). This lived in
+ * `(app)/+layout.server.ts`, but reading `url.pathname` there made the ENTIRE
+ * layout bundle (permissions, orgs, workspaces, hosts, prefs — 12-16 round
+ * trips) re-run on every navigation just to re-check the policy. Hooks run on
+ * every server request (pages, __data.json, actions), so the check is
+ * equivalent while the layout load becomes navigation-independent.
+ * Route-owned page guards remain defense in depth for load-less shells.
+ */
+async function applyRouteAccessGuard(event: Parameters<Handle>[0]['event']): Promise<void> {
+  const user = event.locals.user;
+  if (!user || !isAppPageRequest(true, event.route.id)) return;
+  // Cached (2m) — the same resolver the layout bundle serves to the client.
+  const permissions = await loadPermissionsForUser(event.locals, user.id);
+  const granted = new Set(permissions.permissions);
+  const routeAccess = decideRouteAccess(canonicalPath(event.url.pathname), {
+    authenticated: true,
+    role: user.role,
+    permissions: granted,
+    orgCapabilities: granted,
+  });
+  if (!routeAccess.allowed) {
+    throw error(
+      routeAccess.deniedStatus,
+      routeAccess.deniedStatus === 404 ? 'Not found' : 'You do not have access to this module.',
+    );
+  }
+}
 
 /**
  * Module-availability guard for authenticated `(app)` page requests
@@ -337,6 +369,7 @@ const finishApp: Handle = async ({ event, resolve }) => {
   // Existing per-route pulse guards stay in place until this hook has soaked
   // (belt-and-suspenders).
   await applyModuleAvailabilityGuard(event);
+  await applyRouteAccessGuard(event);
 
   // Central RBAC write guard: business-data + org-config mutating API calls
   // (/api/crm|finances|sales|scheduling|support|memberships|projects|work|
