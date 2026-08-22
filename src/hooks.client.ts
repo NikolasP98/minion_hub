@@ -27,6 +27,10 @@ export function init() {
       // We capture pageviews manually via `afterNavigate` in `+layout.svelte`.
       capture_pageview: false,
       capture_pageleave: 'if_capture_pageview',
+      // Own web vitals in code — remote-config-only capture silently degrades
+      // (idle-deferred init loses buffered entries) and can be toggled off
+      // project-side without any trace in the repo.
+      capture_performance: { web_vitals: true },
     });
     // Expose for browser console debugging
     (window as Window & { posthog?: typeof posthog }).posthog = posthog;

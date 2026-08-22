@@ -8,7 +8,9 @@ const executed: string[] = [];
 function fakeScope(tenantId: string) {
   const tx = {
     execute: async (q: unknown) => {
-      executed.push(String(q));
+      // drizzle sql`` tags aren't stringifiable via String(); serialize the
+      // whole object so assertions can see the query chunks.
+      executed.push(JSON.stringify(q));
     },
   };
   return {
@@ -27,21 +29,33 @@ describe('withOrgCore', () => {
     expect(() => withOrgCore(fakeScope(''), async () => 1)).toThrow(/tenantId/);
   });
 
-  it('runs three setup statements (role + org GUC + profile GUC) inside the txn and returns fn result', async () => {
+  it('runs ALL txn setup in a single statement (one round trip) and returns fn result', async () => {
     const out = await withOrgCore(fakeScope('21e0601b-f632-43fd-8414-d644af4271f4'), async (tx) => {
       expect(tx).toBeDefined();
       return 'ok';
     });
     expect(out).toBe('ok');
-    // idle-in-txn guard + SET LOCAL ROLE + set_config(app.current_org_id) + set_config(app.current_profile_id)
-    expect(executed.length).toBe(4);
+    // Perf contract: idle-in-txn guard + role + org GUC + profile GUC batched
+    // into ONE execute — each extra statement is a full WAN round trip on every
+    // org-scoped read. If setup grows, extend the single SELECT, don't add
+    // statements.
+    expect(executed.length).toBe(1);
+    const setup = executed[0];
+    for (const guc of [
+      'idle_in_transaction_session_timeout',
+      "'role'",
+      'app.current_org_id',
+      'app.current_profile_id',
+    ]) {
+      expect(setup).toContain(guc);
+    }
   });
 
-  it('runs the role/GUC statements before the callback body', async () => {
+  it('runs the setup statement before the callback body', async () => {
     const order: string[] = [];
     await withOrgCore(fakeScope('org-x'), async () => {
       order.push('fn');
-      expect(executed.length).toBe(4); // setup already ran
+      expect(executed.length).toBe(1); // setup already ran
     });
     expect(order).toEqual(['fn']);
   });

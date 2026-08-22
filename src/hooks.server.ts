@@ -9,6 +9,7 @@ import { error, type Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
 import { canonicalPath } from '$lib/canonical-path';
 import { getPostHogClient } from '$lib/server/posthog';
+import { createServerTimingHandle } from '$lib/server/server-timing';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
 import { supabaseAdmin } from '$server/supabase';
@@ -477,8 +478,21 @@ Sentry.init({
 const aiUsageScopeHandle: Handle = ({ event, resolve }) =>
   runWithAiUsageScope({ orgId: null, route: event.route.id, feature: null }, () => resolve(event));
 
+// Route-level server timing (perf spec S2). Sits right behind the AI-usage
+// scope so it measures the whole downstream chain (auth, module guard, load).
+// Fire-and-forget capture — same batching rationale as serverErrorHandler.
+const serverTimingHandle = createServerTimingHandle({
+  sampleRate: env.SERVER_TIMING_SAMPLE_RATE ? Number(env.SERVER_TIMING_SAMPLE_RATE) : 0.1,
+  capture: (eventName, properties) => {
+    void getPostHogClient()
+      .then((posthog) => posthog?.capture({ distinctId: 'server', event: eventName, properties }))
+      .catch(() => {});
+  },
+});
+
 export const handle = sequence(
   aiUsageScopeHandle,
+  serverTimingHandle,
   Sentry.sentryHandle(),
   i18n.handle(),
   cloudPasskeyHandle,

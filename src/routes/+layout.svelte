@@ -2,7 +2,7 @@
   import { canonicalPath } from '$lib/canonical-path';
   import '../app.css';
   import { onMount } from 'svelte';
-  import { goto, afterNavigate } from '$lib/navigation';
+  import { goto, afterNavigate, beforeNavigate } from '$lib/navigation';
   import { page } from '$app/state';
   import { ParaglideJS } from '@inlang/paraglide-sveltekit';
   import { i18n } from '$lib/i18n';
@@ -44,13 +44,28 @@
   // capture (`capture_pageview: false` in hooks.client.ts) to silence the
   // SvelteKit "Avoid using history.pushState(...)" router warning.
   if (!import.meta.env.VITE_DESKTOP) {
-    afterNavigate(() => {
+    // SPA navigation timing: ssr=false means web vitals only cover hard loads —
+    // this event is the only latency signal for client-side navs (route id +
+    // duration from nav start to afterNavigate, i.e. data loaded + DOM updated).
+    let navStartedAt = 0;
+    beforeNavigate(() => {
+      navStartedAt = performance.now();
+    });
+    afterNavigate((nav) => {
       const ph = (
         window as Window & {
           posthog?: { capture: (e: string, p?: Record<string, unknown>) => void };
         }
       ).posthog;
       ph?.capture('$pageview');
+      if (nav.type !== 'enter' && navStartedAt > 0) {
+        ph?.capture('nav_timing', {
+          route: nav.to?.route.id ?? null,
+          duration_ms: Math.round(performance.now() - navStartedAt),
+          nav_type: nav.type,
+        });
+        navStartedAt = 0;
+      }
     });
   }
 
