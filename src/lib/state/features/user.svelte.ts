@@ -51,7 +51,7 @@ export const userState = {
 
 export const isAdmin = {
   get value(): boolean {
-    return ((page.data as any)?.user?.role) === 'admin';
+    return (page.data as any)?.user?.role === 'admin';
   },
 };
 

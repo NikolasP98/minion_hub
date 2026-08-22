@@ -52,7 +52,12 @@ describe('createServerTimingHandle', () => {
     const handle = createServerTimingHandle({ sampleRate: 1, capture, random: () => 0 });
     const frozen = new Response(null, { status: 302 });
     Object.defineProperty(frozen, 'headers', {
-      value: { set: () => { throw new TypeError('immutable'); }, get: () => null },
+      value: {
+        set: () => {
+          throw new TypeError('immutable');
+        },
+        get: () => null,
+      },
     });
     const res = await handle({ event: fakeEvent('/en/x'), resolve: async () => frozen } as never);
     expect(res.status).toBe(302);
