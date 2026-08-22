@@ -3,7 +3,7 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { goto, afterNavigate, beforeNavigate } from '$lib/navigation';
-  import { page } from '$app/state';
+  import { page, navigating } from '$app/state';
   import { ParaglideJS } from '@inlang/paraglide-sveltekit';
   import { i18n } from '$lib/i18n';
   import ParticleCanvas from '$lib/components/layout/ParticleCanvas.svelte';
@@ -103,6 +103,19 @@
     if (hostsState.activeHostId) wsConnect();
   });
 
+  // Navigation feedback: the content area froze with ZERO signal while a nav's
+  // server load ran (the only spinner was a 12px one inside the sidebar row).
+  // Reuse the existing top loading bar for any client-side navigation that
+  // takes longer than a beat — the 120ms delay keeps instant navs flicker-free.
+  let navPending = $state(false);
+  $effect(() => {
+    if (navigating.to) {
+      const t = setTimeout(() => (navPending = true), 120);
+      return () => clearTimeout(t);
+    }
+    navPending = false;
+  });
+
   $effect(() => {
     applyTheme(theme.preset, theme.accent.value);
   });
@@ -139,7 +152,7 @@
     {/await}
   {/if}
 
-  {#if conn.connecting}
+  {#if conn.connecting || navPending}
     <div class="fixed top-0 left-0 right-0 h-[2px] bg-bg3 z-[var(--layer-toast)] overflow-hidden">
       <div class="h-full w-1/3 bg-accent animate-loading-slide"></div>
     </div>
