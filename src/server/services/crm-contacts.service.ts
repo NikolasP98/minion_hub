@@ -399,7 +399,14 @@ export async function rankContactsPageCached(
   f: RankFilters = {},
 ): Promise<RankedPage> {
   const finance = await resolveFinanceBridge(ctx);
-  const { ownerId, maskSensitive, ...shape } = f;
+  // Normalize before fingerprinting so equivalent queries share one entry:
+  // limit/offset get their effective defaults (the page load passes offset 0
+  // where the API omits it), and maxLimit is dropped — it is a cap, and an
+  // equal `limit` yields identical rows under any cap. Without this the SSR
+  // load and the first client interaction each paid the raw query for the
+  // SAME view. ownerId/maskSensitive live in the tenant key, not the fp.
+  const { ownerId, maskSensitive, maxLimit: _cap, ...rest } = f;
+  const shape = { ...rest, limit: f.limit ?? 100, offset: f.offset ?? 0 };
   // Stable fingerprint: replacer-array stringify orders keys; undefined
   // values drop out, so {} and {stage: undefined} share an entry.
   const fp = JSON.stringify(shape, Object.keys(shape).sort());
