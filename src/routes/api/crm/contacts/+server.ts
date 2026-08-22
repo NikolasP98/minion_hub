@@ -5,7 +5,7 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import {
-  rankContactsPage,
+  rankContactsPageCached,
   createContact,
   listTags,
   ROSTER_CAP,
@@ -62,7 +62,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   // Lean id-only variant: same filters, no pagination, no PII, no decoration.
   if (q.get('fields') === 'id') {
-    const { rows, total } = await rankContactsPage(ctx, {
+    const { rows, total } = await rankContactsPageCached(ctx, {
       ...filters,
       limit: ROSTER_CAP,
       maxLimit: ROSTER_CAP,
@@ -71,7 +71,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     return json({ contacts: rows.map((r) => ({ contact_id: r.contact_id })), total });
   }
 
-  const { rows, total } = await rankContactsPage(ctx, filters);
+  const { rows, total } = await rankContactsPageCached(ctx, filters);
 
   // Decorate ONLY the returned page (≤ MAX_LIMIT rows): live auto-tag matches
   // and the cached finance rollup. Both were full-roster passes in the page

@@ -15,6 +15,7 @@ const mockListTags = vi.fn(async () => [] as unknown[]);
 vi.mock('$server/services/crm-contacts.service', () => ({
   ROSTER_CAP: 50_000,
   rankContactsPage: (...a: unknown[]) => mockRankContactsPage(...a),
+  rankContactsPageCached: (...a: unknown[]) => mockRankContactsPage(...a),
   listTags: () => mockListTags(),
   createContact: vi.fn(),
 }));
