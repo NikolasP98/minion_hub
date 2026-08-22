@@ -50,6 +50,7 @@ function filtersFromUrl(q: URLSearchParams): RankFilters {
     minScore,
     maxScore,
     sort: sort && SORTS.has(sort) ? (sort as RankFilters['sort']) : undefined,
+    sortDir: q.get('dir') === 'asc' ? 'asc' : q.get('dir') === 'desc' ? 'desc' : undefined,
     limit: PAGE_SIZE,
     maxLimit: PAGE_SIZE,
     offset: (pageNum - 1) * PAGE_SIZE,

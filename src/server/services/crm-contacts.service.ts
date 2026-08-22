@@ -205,6 +205,9 @@ export interface RankFilters {
   ruleJson?: unknown;
   search?: string;
   sort?: 'score' | 'recent' | 'frequency' | 'name' | 'revenue' | 'icp';
+  /** Sort direction for `sort`. Defaults per key (name asc, everything else
+   *  desc — the historical fixed orders). */
+  sortDir?: 'asc' | 'desc';
   limit?: number;
   /** Upper bound on `limit`. Defaults to 5000 (the list-page payload cap). The
    *  dashboard raises it so its COUNTS reflect every contact, not a truncated
@@ -522,18 +525,22 @@ async function runRankQuery(
     if (typeof f.maxIcp === 'number') outer.push(sql`${ICP_SCORE_EXPR} <= ${f.maxIcp}`);
     if (ruleSql) outer.push(sql.raw(ruleSql)); // vetted: whitelisted columns only
 
+    // Direction is whitelisted to the two literals before sql.raw — never
+    // interpolate request input into SQL keywords otherwise.
+    const requestedDir = f.sortDir === 'asc' ? 'asc' : f.sortDir === 'desc' ? 'desc' : null;
+    const dir = (def: 'asc' | 'desc') => sql.raw(requestedDir ?? def);
     const sortOrder =
       f.sort === 'recent'
-        ? sql`last_contact_at desc nulls last, display_name asc nulls last`
+        ? sql`last_contact_at ${dir('desc')} nulls last, display_name asc nulls last`
         : f.sort === 'frequency'
-          ? sql`total_msgs desc, display_name asc nulls last`
+          ? sql`total_msgs ${dir('desc')}, display_name asc nulls last`
           : f.sort === 'name'
-            ? sql`display_name asc nulls last`
+            ? sql`display_name ${dir('asc')} nulls last`
             : f.sort === 'revenue'
-              ? sql`revenue desc nulls last, display_name asc nulls last`
+              ? sql`revenue ${dir('desc')} nulls last, display_name asc nulls last`
               : f.sort === 'icp'
-                ? sql`${ICP_SCORE_EXPR} desc nulls last, display_name asc nulls last`
-                : sql`score desc, display_name asc nulls last`;
+                ? sql`${ICP_SCORE_EXPR} ${dir('desc')} nulls last, display_name asc nulls last`
+                : sql`score ${dir('desc')}, display_name asc nulls last`;
     const orderBy = sql`${sortOrder}, contact_id asc`;
 
     const limit = Math.min(f.limit ?? 100, f.maxLimit ?? 5000);

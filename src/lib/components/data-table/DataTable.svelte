@@ -99,6 +99,10 @@
     loading?: boolean;
     /** Rows per page. Defaults to the first page's `data.length`. */
     pageSize?: number;
+    /** Scroll pagination: instead of prev/next buttons, nearing the bottom of
+     *  the scroll container requests the next page via `onQuery` — the CALLER
+     *  appends the new rows to `data` (page 1 replaces, page >1 appends). */
+    infinite?: boolean;
     onQuery: (q: ServerQuery) => void;
   };
 </script>
@@ -541,6 +545,7 @@
     filters = { ...filters, [key]: s };
     if (server) {
       serverPage = 1;
+      lastInfiniteRequest = 0;
       emitServerQuery();
     }
   }
@@ -556,6 +561,7 @@
     sortDir = dir;
     if (server) {
       serverPage = 1;
+      lastInfiniteRequest = 0;
       emitServerQuery();
     }
   }
@@ -568,6 +574,7 @@
     }
     if (server) {
       serverPage = 1;
+      lastInfiniteRequest = 0;
       emitServerQuery();
     }
   }
@@ -617,11 +624,29 @@
   }
   const emitSearchQuery = debounce(() => {
     serverPage = 1;
+    lastInfiniteRequest = 0;
     emitServerQuery();
   }, 300);
   function goToServerPage(p: number) {
     if (!server) return;
     serverPage = Math.max(1, p);
+    lastInfiniteRequest = 0;
+    emitServerQuery();
+  }
+  // ── Infinite scroll (server.infinite) ────────────────────────────────────
+  // Nearing the bottom requests the NEXT page once; the caller appends rows.
+  // `lastInfiniteRequest` stops repeat requests while the fetch is in flight
+  // and is reset by every path that returns to page 1 (search/filter/sort).
+  let lastInfiniteRequest = 0;
+  function maybeRequestNextPage() {
+    if (!server?.infinite || server.loading || !wrapperEl) return;
+    if (data.length >= (server.total ?? 0)) return;
+    const el = wrapperEl;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight > 600) return;
+    const next = Math.floor(data.length / serverPageCount) + 1;
+    if (next <= 1 || next === lastInfiniteRequest) return;
+    lastInfiniteRequest = next;
+    serverPage = next;
     emitServerQuery();
   }
   const serverPageCount = $derived(serverPageSize || data.length || 1);
@@ -769,10 +794,14 @@
     rowVirt?.measureElement(node);
   };
   // view identity changes (search/filter/sort) → snap back to the top, same
-  // intent as the old renderLimit reset.
+  // intent as the old renderLimit reset. Infinite mode: an APPEND (page > 1)
+  // must not yank the user back to the top — only page-1 replacements snap.
   $effect(() => {
     view;
-    untrack(() => rowVirt?.scrollToOffset(0));
+    untrack(() => {
+      if (server?.infinite && serverPage > 1) return;
+      rowVirt?.scrollToOffset(0);
+    });
   });
 
   // ── Selection ──────────────────────────────────────────────────────────────
@@ -1026,33 +1055,39 @@
         </span>
       {/if}
       {#if server}
-        <div class="flex items-center gap-1">
-          <Button
-            variant="secondary"
-            size="icon"
-            type="button"
-            class="!h-6 !w-6"
-            disabled={!serverCanPrev}
-            aria-label={m.a11y_previous_page()}
-            onclick={() => goToServerPage(serverPage - 1)}
-          >
-            <ChevronLeft size={iconSizes.xs} />
-          </Button>
+        {#if server.infinite}
           <span class="dt-count tabular-nums">
-            {serverRangeStart}–{serverRangeEnd} / {server.total}
+            {data.length} / {server.total}
           </span>
-          <Button
-            variant="secondary"
-            size="icon"
-            type="button"
-            class="!h-6 !w-6"
-            disabled={!serverCanNext}
-            aria-label={m.a11y_next_page()}
-            onclick={() => goToServerPage(serverPage + 1)}
-          >
-            <ChevronRight size={iconSizes.xs} />
-          </Button>
-        </div>
+        {:else}
+          <div class="flex items-center gap-1">
+            <Button
+              variant="secondary"
+              size="icon"
+              type="button"
+              class="!h-6 !w-6"
+              disabled={!serverCanPrev}
+              aria-label={m.a11y_previous_page()}
+              onclick={() => goToServerPage(serverPage - 1)}
+            >
+              <ChevronLeft size={iconSizes.xs} />
+            </Button>
+            <span class="dt-count tabular-nums">
+              {serverRangeStart}–{serverRangeEnd} / {server.total}
+            </span>
+            <Button
+              variant="secondary"
+              size="icon"
+              type="button"
+              class="!h-6 !w-6"
+              disabled={!serverCanNext}
+              aria-label={m.a11y_next_page()}
+              onclick={() => goToServerPage(serverPage + 1)}
+            >
+              <ChevronRight size={iconSizes.xs} />
+            </Button>
+          </div>
+        {/if}
       {/if}
 
       {#if bulkActions && bulkActions.length && selectedIds.size > 0}
@@ -1197,6 +1232,7 @@
     class="flex-1 min-h-0 overflow-auto dt-scroll"
     tabindex="0"
     bind:this={wrapperEl}
+    onscroll={maybeRequestNextPage}
     {@attach gridAttachment}
   >
     {#if data.length === 0}

@@ -186,14 +186,18 @@
     const p = new URLSearchParams();
     if (q.search) p.set('q', q.search);
     const serverSort = q.sort ? SORT_MAP[q.sort.key] : undefined;
-    if (serverSort && serverSort !== 'score') p.set('sort', serverSort);
+    if (serverSort) {
+      p.set('sort', serverSort);
+      if (q.sort?.dir) p.set('dir', q.sort.dir);
+    }
     for (const [k, v] of Object.entries(q.filters)) {
       // Column filter keys → URL/API names. `origin` sends 'none' for the
       // untracked option ('' in the column filter's value domain).
       if (k === 'origin') p.set('origin', v.replace(/(^|,)(?=,|$)/g, '$1none'));
       else p.set(k, v);
     }
-    if (q.page > 1) p.set('page', String(q.page));
+    // Infinite scroll: `page` feeds the API offset only — the URL always
+    // restores from the top, so it never carries a page param.
     if (tagId) p.set('tag', tagId);
     if (reservedFilter) p.set('reserved', '1');
     if (awaitingFilter) p.set('awaiting', '1');
@@ -206,7 +210,12 @@
   function toApiParams(p: URLSearchParams): URLSearchParams {
     const api = new URLSearchParams(p);
     // Rename page-state keys to the API's RankFilters names.
-    const rename: Record<string, string> = { q: 'search', funnel: 'funnelStage', tag: 'tagId' };
+    const rename: Record<string, string> = {
+      q: 'search',
+      funnel: 'funnelStage',
+      tag: 'tagId',
+      dir: 'sortDir',
+    };
     for (const [from, to] of Object.entries(rename)) {
       const v = api.get(from);
       if (v != null) {
@@ -251,7 +260,8 @@
       const body: { contacts: Row[]; total: number } = await res.json();
       // Promise-identity guard: drop out-of-order resolutions.
       if (seq !== reqSeq) return;
-      rows = body.contacts;
+      // Infinite scroll: page 1 replaces the list, later pages append.
+      rows = q.page > 1 ? [...rows, ...body.contacts] : body.contacts;
       total = body.total;
       replaceState(`?${urlParams}`, {});
     } finally {
@@ -270,7 +280,9 @@
   };
   const initialSortFromUrl = {
     key: URL_SORT_TO_COL[qp.get('sort') ?? 'score'] ?? 'score',
-    dir: (qp.get('sort') === 'name' ? 'asc' : 'desc') as 'asc' | 'desc',
+    dir: (qp.get('dir') === 'asc' || (!qp.get('dir') && qp.get('sort') === 'name')
+      ? 'asc'
+      : 'desc') as 'asc' | 'desc',
   };
 
   // ── Columns (base + dynamic meta + conditional finance) ────────────────────
@@ -639,7 +651,7 @@
     class="flex-1 min-h-0"
     {columns}
     data={rows}
-    server={{ total, loading, pageSize: data.pageSize, onQuery: runQuery }}
+    server={{ total, loading, pageSize: data.pageSize, infinite: true, onQuery: runQuery }}
     getRowId={(c) => c.contact_id}
     searchPlaceholder={m.crm_search_placeholder()}
     bind:search={searchQuery}
