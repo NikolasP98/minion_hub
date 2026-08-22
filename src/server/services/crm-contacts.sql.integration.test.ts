@@ -105,6 +105,7 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
       -- from this fixture.
       create table fin_invoices (
         id uuid primary key, client_id uuid, issued_at timestamptz, total numeric,
+        shadowed boolean not null default false,
         document_id text, status text
       );
       create table fin_invoice_items (invoice_id uuid, description text, total numeric);

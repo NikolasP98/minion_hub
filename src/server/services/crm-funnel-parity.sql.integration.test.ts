@@ -147,7 +147,8 @@ describe.runIf(Boolean(databaseUrl))('SQL funnel_stage vs the TS funnel helpers'
       );
       create table fin_clients (id uuid primary key, org_id text, party_id uuid);
       create table fin_invoices (
-        id uuid primary key, client_id uuid, issued_at timestamptz, total numeric
+        id uuid primary key, client_id uuid, issued_at timestamptz, total numeric,
+        shadowed boolean not null default false
       );
       create table fin_invoice_items (invoice_id uuid, description text, total numeric);
     `);
