@@ -191,7 +191,10 @@ export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> 
 // ── Ranking (spec §6): on-read RFM over the ledger ───────────────────────────
 
 export interface RankFilters {
+  /** Lifecycle stage(s) — a single value or a comma-joined list (the DataTable
+   *  enum filter multi-select emits `"New,Engaged"`); any listed value matches. */
   stage?: string;
+  /** Channel(s) — single value or comma-joined list, same contract as `stage`. */
   channel?: string;
   minScore?: number;
   maxScore?: number;
@@ -212,10 +215,14 @@ export interface RankFilters {
   ownerId?: string;
   /** Field-level: redact PII in custom_fields (phone/email/dni) for low field level. */
   maskSensitive?: boolean;
-  // TODO(handoff): S3 wired these five filters into GET /api/crm/contacts, but
-  // /crm/customers still filters the full roster client-side. S5 points the
-  // page at the API (and must map the "reserved" toggle to `reservedOnly`,
-  // NOT `buyerOnly`).
+  /** Meta lead attribution — comma-joined list of 'ad' | 'organic' | 'none'
+   *  ('none' = untracked: lead_origin null or any non-ad/organic value). */
+  origin?: string;
+  /** DNI-verified flag — comma-joined list of '1' | '0'. */
+  verified?: string;
+  /** Canonical sex — comma-joined list of 'M' | 'F' (rows with neither are
+   *  excluded while the filter is active, matching the column's value domain). */
+  sex?: string;
   /** Only contacts whose last message is inbound with no later reply. */
   awaitingReply?: boolean;
   /** Only contacts with a purchase history (any finance invoice). */
@@ -446,11 +453,23 @@ async function runRankQuery(
       );
 
     const outer = [sql`true`];
-    if (f.stage) outer.push(sql`stage = ${f.stage}`);
+    // Enum filters accept comma-joined multi-select values (the DataTable
+    // filter contract); `x = any(string_to_array(v, ','))` ≡ `x = v` for a
+    // single value, so single-value callers are unchanged.
+    if (f.stage) outer.push(sql`stage = any(string_to_array(${f.stage}, ','))`);
     if (f.channel)
       outer.push(
-        sql`exists (select 1 from crm_contact_identities ci2 where ci2.contact_id = contact_id and ci2.channel = ${f.channel})`,
+        sql`exists (select 1 from crm_contact_identities ci2 where ci2.contact_id = contact_id and ci2.channel = any(string_to_array(${f.channel}, ',')))`,
       );
+    if (f.origin)
+      outer.push(
+        sql`(case when lead_origin in ('ad', 'organic') then lead_origin else 'none' end) = any(string_to_array(${f.origin}, ','))`,
+      );
+    if (f.verified)
+      outer.push(
+        sql`(case when dni_verified then '1' else '0' end) = any(string_to_array(${f.verified}, ','))`,
+      );
+    if (f.sex) outer.push(sql`coalesce(sex, '') = any(string_to_array(${f.sex}, ','))`);
     if (typeof f.minScore === 'number') outer.push(sql`score >= ${f.minScore}`);
     if (typeof f.maxScore === 'number') outer.push(sql`score <= ${f.maxScore}`);
     // Filters ported from the client's full-roster predicates (a page of rows is
@@ -458,7 +477,7 @@ async function runRankQuery(
     if (f.awaitingReply) outer.push(sql`awaiting_reply`);
     if (f.buyerOnly) outer.push(sql`is_buyer`);
     if (f.reservedOnly) outer.push(sql`fin_reserved_only`);
-    if (f.funnelStage) outer.push(sql`funnel_stage = ${f.funnelStage}`);
+    if (f.funnelStage) outer.push(sql`funnel_stage = any(string_to_array(${f.funnelStage}, ','))`);
     // Range filters are INCLUSIVE at both endpoints (standing governance rule).
     if (typeof f.minIcp === 'number') outer.push(sql`${ICP_SCORE_EXPR} >= ${f.minIcp}`);
     if (typeof f.maxIcp === 'number') outer.push(sql`${ICP_SCORE_EXPR} <= ${f.maxIcp}`);
