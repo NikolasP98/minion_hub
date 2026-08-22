@@ -53,7 +53,7 @@ describe('getPgClient', () => {
       expect.objectContaining({
         prepare: false,
         max: 3,
-        idle_timeout: 20,
+        idle_timeout: 120,
         connect_timeout: 10,
         max_lifetime: 600,
       }),

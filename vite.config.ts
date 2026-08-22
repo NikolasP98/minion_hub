@@ -85,6 +85,9 @@ export default defineConfig({
       '@zag-js/combobox',
       '@zag-js/slider',
       '@inlang/paraglide-sveltekit/internal',
+      // ~1500 individual .svelte icon modules; without prebundling the dev
+      // server transforms each one on demand, which dominates dev nav latency.
+      'lucide-svelte',
     ],
     exclude: ['@dimforge/rapier2d-compat'],
   },

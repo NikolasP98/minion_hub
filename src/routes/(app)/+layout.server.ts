@@ -18,6 +18,7 @@ import { listBrainAgentIds } from '$server/services/brain-agents.service';
 import { dev } from '$app/environment';
 import { withCoreDbRecovery, withCriticalCoreDb } from '$server/db/pg-client';
 import { shareInflight } from '$server/utils/inflight-singleflight';
+import { getPostHogClient } from '$lib/server/posthog';
 
 const SLOW_LOAD_WARNING_MS = 3_000;
 
@@ -196,6 +197,17 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
   const loadMs = Date.now() - loadStartedAt;
   if (loadMs > SLOW_LOAD_WARNING_MS) {
     console.warn(`[app-layout] load ${canonicalPath(url.pathname)} took ${loadMs}ms`);
+    // The console.warn dies in stdout on Vercel — ship the one prod slow-load
+    // signal somewhere queryable. Fire-and-forget, same as server_error.
+    void getPostHogClient()
+      .then((posthog) =>
+        posthog?.capture({
+          distinctId: 'server',
+          event: 'app_layout_slow_load',
+          properties: { path: canonicalPath(url.pathname), duration_ms: loadMs },
+        }),
+      )
+      .catch(() => {});
   }
 
   return {

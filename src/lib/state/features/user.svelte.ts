@@ -1,6 +1,5 @@
 import { page } from '$app/state';
 import { invalidate } from '$app/navigation';
-import { supabaseBrowser } from '$lib/supabase/client';
 
 type UserRole = 'user' | 'admin';
 
@@ -52,7 +51,7 @@ export const userState = {
 
 export const isAdmin = {
   get value(): boolean {
-    return ((page.data as any)?.user?.role) === 'admin';
+    return (page.data as any)?.user?.role === 'admin';
   },
 };
 
@@ -91,6 +90,10 @@ export async function logout(): Promise<void> {
   try {
     // Supabase Auth (GoTrue) is the sole provider — clear the Supabase session
     // cookie. (Better Auth's signOut was removed in the GoTrue migration.)
+    // Dynamic import: this module is in the app-shell graph and signOut is the
+    // ONLY supabase-js consumer there — a static import shipped 212KB of
+    // supabase-js to every page load.
+    const { supabaseBrowser } = await import('$lib/supabase/client');
     await supabaseBrowser().auth.signOut();
   } finally {
     window.location.href = '/login';
