@@ -70,7 +70,8 @@ async function setup() {
     );
     create table fin_clients (id uuid primary key, org_id text not null, party_id uuid);
     create table fin_invoices (
-      id uuid primary key, client_id uuid, issued_at timestamptz, total numeric, status text
+      id uuid primary key, client_id uuid, issued_at timestamptz, total numeric,
+        shadowed boolean not null default false, status text
     );
     create table fin_invoice_items (invoice_id uuid, description text, total numeric);
     create table sched_bookings (
