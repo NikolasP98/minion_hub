@@ -44,6 +44,12 @@ export const finInvoices = pgTable(
     status: text('status'), // 'paid'|'partial'|'pending'|'void'
     seller: text('seller'),
     note: text('note'),
+    /** Cross-provider dedup (SUNAT cutover): true when this row's comprobante
+     *  (org_id, document_id) also exists under provider 'susii' — the susii
+     *  row is canonical (it carries line items + payments; SIRE rows never
+     *  do). Doc-level reads filter `shadowed = false`; maintained by
+     *  upsertInvoicesBatch. */
+    shadowed: boolean('shadowed').notNull().default(false),
     metadata: jsonb('metadata').notNull().default({}),
     syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

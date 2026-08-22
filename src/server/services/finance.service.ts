@@ -350,6 +350,17 @@ export async function upsertInvoicesBatch(
     });
     if (payRows.length) await tx.insert(finPayments).values(payRows);
 
+    // Safety net behind the overlay bridge above: a sunat-sire ROW that
+    // nonetheless coexists with a susii twin (e.g. it was inserted before the
+    // susii row existed) is shadowed so doc-level reads never double-count.
+    // Idempotent and org-wide (~4k rows) — one statement per batch.
+    await tx.execute(sql`
+      update fin_invoices f set shadowed = true
+       where f.org_id = ${ctx.tenantId} and f.provider = 'sunat-sire' and not f.shadowed
+         and exists (select 1 from fin_invoices s
+                      where s.org_id = f.org_id and s.document_id = f.document_id
+                        and s.provider = 'susii' and s.document_id is not null)`);
+
     const created = invRows.filter((r) => r.inserted).length;
     await emitHubEvent(tx, {
       type: 'finance.invoices_upserted',
@@ -409,7 +420,11 @@ export function listInvoices(
         join crm_contacts c on c.party_id = fc.party_id and c.party_id is not null
         where c.id = ${opts.contactId} and c.org_id = ${ctx.tenantId})`
     : undefined;
-  const where = and(eq(finInvoices.orgId, ctx.tenantId), contactCond);
+  const where = and(
+    eq(finInvoices.orgId, ctx.tenantId),
+    eq(finInvoices.shadowed, false),
+    contactCond,
+  );
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -745,7 +760,7 @@ export async function clientRevenueRows(ctx: CoreCtx) {
       select ${clientKey()} as client_doc_number, max(client_name) as name, count(*)::int as invoices,
              coalesce(sum(${effTotal()}), 0)::float8 as revenue, max(issued_at) as last
       from fin_invoices
-      where org_id = ${ctx.tenantId} and (client_doc_number is not null or client_id is not null)
+      where org_id = ${ctx.tenantId} and not shadowed and (client_doc_number is not null or client_id is not null)
       group by ${clientKey()} order by revenue desc limit 500
     `)) as unknown as Array<{
       client_doc_number: unknown;
@@ -768,7 +783,11 @@ export async function clientRevenueRows(ctx: CoreCtx) {
 
 function periodWhere(p: Period, alias = '') {
   const c = alias ? `${alias}.` : '';
-  const conds = [sql`${sql.raw(c)}org_id = current_setting('app.current_org_id', true)`];
+  const conds = [
+    sql`${sql.raw(c)}org_id = current_setting('app.current_org_id', true)`,
+    // Cross-provider dedup: a SIRE row shadowed by its susii twin never counts.
+    sql`${sql.raw(c)}shadowed = false`,
+  ];
   if (p.from) conds.push(sql`${sql.raw(c)}issued_at >= ${p.from}`);
   // INCLUSIVE of the whole `to` day. `p.to` arrives already resolved by
   // resolvePeriodWindow() to the exclusive start of the next day in the org's
@@ -794,7 +813,7 @@ export function financeDataSpan(ctx: CoreCtx, tz = 'UTC') {
           select min(issued_at at time zone ${tz})::date::text lo,
                  max(issued_at at time zone ${tz})::date::text hi
           from fin_invoices
-          where org_id = current_setting('app.current_org_id', true) and issued_at is not null
+          where org_id = current_setting('app.current_org_id', true) and not shadowed and issued_at is not null
         `)) as unknown as Array<{ lo: string | null; hi: string | null }>;
         return { min: r?.lo ?? '', max: r?.hi ?? '' };
       }),
@@ -858,7 +877,7 @@ export function financeSummary(
         const [nc] = (await tx.execute(sql`
         select count(*)::int n from (
           select ${clientKey()} as k, min(issued_at) first from fin_invoices
-          where org_id = current_setting('app.current_org_id', true)
+          where org_id = current_setting('app.current_org_id', true) and not shadowed
             and (client_doc_number is not null or client_id is not null) group by ${clientKey()}
         ) f where ${p.from ? sql`f.first >= ${p.from}` : sql`true`} and ${p.to ? sql`f.first < ${p.to}` : sql`true`}
       `)) as unknown as Array<{ n: number }>;
