@@ -3,7 +3,7 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { goto, afterNavigate, beforeNavigate } from '$lib/navigation';
-  import { page, navigating } from '$app/state';
+  import { page, navigating, updated } from '$app/state';
   import { ParaglideJS } from '@inlang/paraglide-sveltekit';
   import { i18n } from '$lib/i18n';
   import ParticleCanvas from '$lib/components/layout/ParticleCanvas.svelte';
@@ -48,7 +48,16 @@
     // this event is the only latency signal for client-side navs (route id +
     // duration from nav start to afterNavigate, i.e. data loaded + DOM updated).
     let navStartedAt = 0;
-    beforeNavigate(() => {
+    beforeNavigate((nav) => {
+      // Deploy-skew escape hatch: once _app/version.json reports a newer
+      // build (kit.version.pollInterval), turn the next client-side nav into
+      // a full-page load so this tab stops running stale code. Without this,
+      // a long-lived SPA tab never receives deployed fixes.
+      if (updated.current && nav.to?.url && !nav.willUnload) {
+        nav.cancel();
+        location.href = nav.to.url.href;
+        return;
+      }
       navStartedAt = performance.now();
     });
     afterNavigate((nav) => {
