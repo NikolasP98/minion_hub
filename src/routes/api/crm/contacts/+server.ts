@@ -53,6 +53,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     minIcp: num('minIcp'),
     maxIcp: num('maxIcp'),
     sort: (q.get('sort') as RankFilters['sort']) ?? undefined,
+    sortDir: q.get('sortDir') === 'asc' ? 'asc' : q.get('sortDir') === 'desc' ? 'desc' : undefined,
     limit: Math.min(num('limit') ?? DEFAULT_LIMIT, MAX_LIMIT),
     maxLimit: MAX_LIMIT,
     offset: num('offset'),
