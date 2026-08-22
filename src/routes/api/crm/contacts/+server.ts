@@ -4,14 +4,37 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
-import { rankContacts, createContact, type RankFilters } from '$server/services/crm-contacts.service';
+import {
+  rankContactsPage,
+  createContact,
+  listTags,
+  ROSTER_CAP,
+  type RankFilters,
+} from '$server/services/crm-contacts.service';
+import { matchingAutoTagIds } from '$server/services/crm-scoring';
+import { contactFinanceMap } from '$server/services/crm-finance.service';
 
-/** GET /api/crm/contacts — ranked, filterable contact list (the core product). */
+/** Page-size caps (spec 2026-08-13 §S3): default 100 rows, hard max 500. */
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 500;
+
+/**
+ * GET /api/crm/contacts — ranked, filterable contact list (the core product).
+ *
+ * Server-mode page contract: `{ contacts, total }` where `total` is the row
+ * count the SAME filters match with limit/offset removed. `contacts` keeps its
+ * name and element shape — decoration (`finance`, `auto_tag_ids`) is ADDITIVE
+ * and computed over the returned page only, never the full roster.
+ *
+ * `?fields=id` returns a lean id-only variant for the current filters (feeds
+ * "select all N matching"), capped at ROSTER_CAP.
+ */
 export const GET: RequestHandler = async ({ locals, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const q = url.searchParams;
   const num = (k: string) => (q.has(k) ? Number(q.get(k)) : undefined);
+  const bool = (k: string) => (q.get(k) === 'true' || q.get(k) === '1' ? true : undefined);
   const filters: RankFilters = {
     stage: q.get('stage') ?? undefined,
     channel: q.get('channel') ?? undefined,
@@ -19,14 +42,48 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     search: q.get('search') ?? undefined,
     minScore: num('minScore'),
     maxScore: num('maxScore'),
+    // S2 filters, parsed here (S3) so a page of rows is sufficient.
+    awaitingReply: bool('awaitingReply'),
+    buyerOnly: bool('buyerOnly'),
+    reservedOnly: bool('reservedOnly'),
+    funnelStage: q.get('funnelStage') ?? undefined,
+    minIcp: num('minIcp'),
+    maxIcp: num('maxIcp'),
     sort: (q.get('sort') as RankFilters['sort']) ?? undefined,
-    limit: num('limit'),
+    limit: Math.min(num('limit') ?? DEFAULT_LIMIT, MAX_LIMIT),
+    maxLimit: MAX_LIMIT,
     offset: num('offset'),
     ownerId: await ownerFilter(locals, 'crm'),
     maskSensitive: await shouldMaskSensitive(locals, 'crm'),
   };
-  const contacts = await rankContacts(ctx, filters);
-  return json({ contacts });
+
+  // Lean id-only variant: same filters, no pagination, no PII, no decoration.
+  if (q.get('fields') === 'id') {
+    const { rows, total } = await rankContactsPage(ctx, {
+      ...filters,
+      limit: ROSTER_CAP,
+      maxLimit: ROSTER_CAP,
+      offset: 0,
+    });
+    return json({ contacts: rows.map((r) => ({ contact_id: r.contact_id })), total });
+  }
+
+  const { rows, total } = await rankContactsPage(ctx, filters);
+
+  // Decorate ONLY the returned page (≤ MAX_LIMIT rows): live auto-tag matches
+  // and the cached finance rollup. Both were full-roster passes in the page
+  // load before pagination.
+  const tags = await listTags(ctx);
+  const autoTags = tags.filter((t) => t.kind === 'auto' && t.rule != null);
+  const withAutoTags = autoTags.length
+    ? rows.map((c) => ({ ...c, auto_tag_ids: matchingAutoTagIds(c, autoTags) }))
+    : rows;
+  const financeMap = await contactFinanceMap(ctx);
+  const contacts = Object.keys(financeMap).length
+    ? withAutoTags.map((c) => ({ ...c, finance: financeMap[c.contact_id] ?? null }))
+    : withAutoTags;
+
+  return json({ contacts, total });
 };
 
 const postSchema = z.object({

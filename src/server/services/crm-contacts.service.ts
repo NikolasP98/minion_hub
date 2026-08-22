@@ -212,11 +212,10 @@ export interface RankFilters {
   ownerId?: string;
   /** Field-level: redact PII in custom_fields (phone/email/dni) for low field level. */
   maskSensitive?: boolean;
-  // TODO(handoff): S2 ships these five filters on the SERVICE only — nothing
-  // parses them from the query string yet, so /crm/customers still filters the
-  // full roster client-side. S3 of FACTORY_SPEC.md (§S3, "Parse the S2 filters")
-  // wires them into GET /api/crm/contacts; S5 points the page at them (and must
-  // map the "reserved" toggle to `reservedOnly`, NOT `buyerOnly`).
+  // TODO(handoff): S3 wired these five filters into GET /api/crm/contacts, but
+  // /crm/customers still filters the full roster client-side. S5 points the
+  // page at the API (and must map the "reserved" toggle to `reservedOnly`,
+  // NOT `buyerOnly`).
   /** Only contacts whose last message is inbound with no later reply. */
   awaitingReply?: boolean;
   /** Only contacts with a purchase history (any finance invoice). */
@@ -826,7 +825,7 @@ export function bustCrmList(tenantId: string) {
  * needs server-side pagination/search and the dashboard a pure SQL COUNT/GROUP BY
  * (no roster materialization). Fine for the current few-thousand scale.
  */
-const ROSTER_CAP = 50_000;
+export const ROSTER_CAP = 50_000;
 export async function listContactsCached(
   ctx: CoreCtx,
   ownerId?: string,
@@ -856,6 +855,30 @@ export async function listContactsCached(
           finance,
         )
       ).rows,
+  );
+}
+
+/**
+ * Distinct custom_fields keys across the org's live contacts — drives the
+ * user-configurable meta columns on /crm/customers WITHOUT scanning the full
+ * roster payload (the old client-side collectMetaKeys needed every row shipped).
+ * Keys are near-static, so a 10m TTL is fine; contact mutations bust the same
+ * org tag as the roster cache anyway.
+ */
+export async function getMetaKeys(ctx: CoreCtx): Promise<string[]> {
+  return cached(
+    keys.hub('crm-meta-keys', { t: ctx.tenantId }),
+    { ttl: '10m', tags: [...crmListTags(ctx.tenantId)] },
+    async () =>
+      withOrgCore(ctx, async (tx) => {
+        const rows = (await tx.execute(sql`
+          select distinct jsonb_object_keys(custom_fields) as key
+          from crm_contacts
+          where deleted_at is null
+          order by 1
+        `)) as unknown as { key: string }[];
+        return rows.map((r) => r.key);
+      }),
   );
 }
 
