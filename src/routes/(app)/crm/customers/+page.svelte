@@ -249,14 +249,19 @@
     api.set('offset', String((pageNum - 1) * data.pageSize));
     return api;
   }
+  let queryError = $state<string | null>(null);
   async function runQuery(q: ServerQuery) {
     lastQuery = q;
     const seq = ++reqSeq;
     loading = true;
+    queryError = null;
     try {
       const urlParams = buildParams(q);
       const res = await fetch(`/api/crm/contacts?${toApiParams(urlParams)}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (seq === reqSeq) queryError = m.crm_bulk_failed();
+        return;
+      }
       const body: { contacts: Row[]; total: number } = await res.json();
       // Promise-identity guard: drop out-of-order resolutions.
       if (seq !== reqSeq) return;
@@ -264,6 +269,8 @@
       rows = q.page > 1 ? [...rows, ...body.contacts] : body.contacts;
       total = body.total;
       replaceState(`?${urlParams}`, {});
+    } catch {
+      if (seq === reqSeq) queryError = m.crm_bulk_failed();
     } finally {
       if (seq === reqSeq) loading = false;
     }
@@ -837,6 +844,7 @@
 
     {#snippet filterOptionIcon(v)}<ChannelBrandIcon channel={v} size={14} />{/snippet}
   </DataTable>
+  {#if queryError}<p class="err-msg" role="alert">{queryError}</p>{/if}
 </PageShell>
 
 <CrmMergeResolver
