@@ -1,7 +1,7 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { finProducts } from '$server/db/pg-finance-schema';
+import { finProducts, finInvoiceItems } from '$server/db/pg-finance-schema';
 import { bustFinanceCache } from './finance.service';
 
 export async function listProducts(ctx: CoreCtx) {
@@ -24,6 +24,42 @@ export async function listProducts(ctx: CoreCtx) {
       billed: Number(r.billed),
       revenue: Number(r.revenue),
     }));
+  });
+}
+
+/**
+ * Same billed-count + revenue-sum join as `listProducts`, keyed by product id
+ * and scoped to just the given ids — the catalog page (/pos/catalog) merges
+ * this into `listSellables` output rather than folding it into
+ * `SELLABLE_MERGE_SQL`, so other `listSellables` callers (POS sell screen,
+ * gateway query) stay untouched.
+ */
+export async function billingForProducts(
+  ctx: CoreCtx,
+  productIds: string[],
+): Promise<Map<string, { billed: number; revenue: number }>> {
+  const out = new Map<string, { billed: number; revenue: number }>();
+  if (productIds.length === 0) return out;
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        productId: finInvoiceItems.productId,
+        billed: sql<number>`count(*)::int`,
+        revenue: sql<number>`coalesce(sum(${finInvoiceItems.total}),0)::float8`,
+      })
+      .from(finInvoiceItems)
+      .where(
+        and(
+          eq(finInvoiceItems.orgId, ctx.tenantId),
+          inArray(finInvoiceItems.productId, productIds),
+        ),
+      )
+      .groupBy(finInvoiceItems.productId);
+    for (const r of rows) {
+      if (r.productId)
+        out.set(r.productId, { billed: Number(r.billed), revenue: Number(r.revenue) });
+    }
+    return out;
   });
 }
 
