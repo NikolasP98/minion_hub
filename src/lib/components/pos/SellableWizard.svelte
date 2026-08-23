@@ -1,9 +1,7 @@
 <script lang="ts">
-  import { Select } from '$lib/components/ui';
-
   import * as m from '$lib/paraglide/messages';
   import { Plus, Trash2 } from 'lucide-svelte';
-  import { Modal, Button, SegmentedControl, Input } from '$lib/components/ui';
+  import { Modal, Button, SegmentedControl, Input, Select, Combobox } from '$lib/components/ui';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
   import {
     CODE_MAX,
@@ -24,11 +22,15 @@
     /** Set ⇒ already published as a sellable, so it can't be published again
      *  (enforced by the stk_items_org_fin_product_uniq partial index). */
     finProductId?: string | null;
+    /** Consumption-side unit, when different from the stock uom (e.g. stock
+     *  in boxes, consumed in units) — same field /stock/consumption reads. */
+    consumptionUom?: string | null;
   }
   interface ConsumptionLike {
     finProductId: string;
     itemId: string;
     qtyPerUnit: number;
+    note?: string | null;
   }
   export interface SellableLike {
     productId: string;
@@ -103,8 +105,16 @@
   const kind = $derived<'product' | 'service'>(source === 'service' ? 'service' : 'product');
   /** Only items not already published can be linked. */
   const availableItems = $derived(stockItems.filter((i) => !i.finProductId));
-  let rows = $state<{ itemId: string; qtyPerUnit: string }[]>([]);
+  let rows = $state<{ itemId: string; qtyPerUnit: string; note: string }[]>([]);
   let busy = $state(false);
+
+  /** Label a row's qty input with the CONSUMPTION uom when the item has one,
+   *  falling back to its stock uom — same rule as /stock/consumption's
+   *  unitLabel(). Boxes on the shelf, units on the ticket. */
+  function unitLabel(itemId: string): string {
+    const item = stockItems.find((i) => i.id === itemId);
+    return item?.consumptionUom ?? item?.uom ?? '';
+  }
 
   // Seed (or reset) the form whenever the wizard opens, from `editing` when
   // present. ★ Prefill for consumption mappings comes from the page's own
@@ -126,7 +136,7 @@
     rows = e
       ? consumption
           .filter((c) => c.finProductId === e.productId)
-          .map((c) => ({ itemId: c.itemId, qtyPerUnit: String(c.qtyPerUnit) }))
+          .map((c) => ({ itemId: c.itemId, qtyPerUnit: String(c.qtyPerUnit), note: c.note ?? '' }))
       : [];
   });
 
@@ -151,7 +161,7 @@
     const used = new Set(rows.map((r) => r.itemId));
     const next = stockItems.find((i) => !used.has(i.id));
     if (!next) return; // every stock item already mapped
-    rows = [...rows, { itemId: next.id, qtyPerUnit: '' }];
+    rows = [...rows, { itemId: next.id, qtyPerUnit: '', note: '' }];
   }
   function removeRow(idx: number) {
     rows = rows.filter((_, i) => i !== idx);
@@ -194,9 +204,16 @@
     // bridge). createSellable/updateSellable already accepted this for any
     // kind — only this form was gating it.
     if (stockEnabled) {
+      // ★ note MUST ride along: this is a replace-set (updateSellable deletes
+      // rows missing from this array and setConsumption upserts the rest), so
+      // omitting note here would silently blank it on every save.
       payload.consumption = rows
         .filter((r) => r.itemId && Number(r.qtyPerUnit) > 0)
-        .map((r) => ({ itemId: r.itemId, qtyPerUnit: Number(r.qtyPerUnit) }));
+        .map((r) => ({
+          itemId: r.itemId,
+          qtyPerUnit: Number(r.qtyPerUnit),
+          note: r.note.trim() || null,
+        }));
     }
 
     const url = editing ? `/api/pos/sellables/${editing.productId}` : '/api/pos/sellables';
@@ -324,24 +341,42 @@
     {/if}
 
     {#if stockEnabled}
+      <!-- TODO(handoff): /stock/consumption also renders a ConsumptionGauge
+           per row for items with diagramEnabled (subunit-shape visual qty
+           picker, $lib/components/stock/ConsumptionGauge.svelte + gaugeMax()
+           from stock-ui.ts) — not ported here to keep this slice scoped.
+           Wire it the same way /stock/consumption/+page.svelte:217-227 does,
+           keyed off stockItems.find(i => i.id === row.itemId)?.diagramEnabled,
+           when this wizard gets its next pass. -->
       <div class="fld">
         <span>{m.pos_catalog_consumption()}</span>
         <div class="consumption-rows">
           {#each rows as row, idx (idx)}
             <div class="consumption-row">
-              <Select fieldClass="min-w-0 flex-1" bind:value={row.itemId}>
-                {#each optionsFor(idx) as item (item.id)}
-                  <option value={item.id}>{item.code} — {item.name}</option>
-                {/each}
-              </Select>
+              <div class="cb-wrap">
+                <Combobox
+                  id={`sellable-consumption-${idx}`}
+                  items={optionsFor(idx)}
+                  itemToValue={(item) => item.id}
+                  itemToString={(item) => `${item.code} — ${item.name}`}
+                  placeholder={m.stock_field_item()}
+                  bind:value={row.itemId}
+                />
+              </div>
               <Input
                 size="sm"
                 class="w-24"
                 type="number"
                 min="0"
                 step="0.01"
-                placeholder={m.pos_catalog_qty_per_unit()}
+                placeholder={`${m.pos_catalog_qty_per_unit()} (${unitLabel(row.itemId)})`}
                 bind:value={row.qtyPerUnit}
+              />
+              <Input
+                size="sm"
+                class="flex-1"
+                placeholder={m.stock_field_note()}
+                bind:value={row.note}
               />
               <Button
                 type="button"
@@ -392,6 +427,13 @@
     display: flex;
     gap: var(--space-2);
     align-items: center;
+  }
+  /* Combobox has no `class`/width prop of its own (see $lib/components/ui);
+     the flex sizing that used to sit on the Select's fieldClass has to be
+     forced onto a wrapper instead. */
+  .consumption-row .cb-wrap {
+    flex: 1;
+    min-width: 0;
   }
   .consumption-row :global(.act-btn) {
     display: inline-flex;
