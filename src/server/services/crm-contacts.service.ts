@@ -34,10 +34,6 @@ import {
   FUNNEL_LEGACY_ALIASES,
 } from '$lib/components/crm/crm-funnel';
 import { isReservedMetaKey } from '$lib/components/crm/crm-meta';
-import {
-  parseRelationshipValue,
-  type RelationshipCategory,
-} from '$lib/components/crm/crm-relationship';
 import { StaleWriteError, staleGuard } from './errors';
 
 /**
@@ -945,91 +941,6 @@ export async function getMetaKeys(ctx: CoreCtx): Promise<string[]> {
         return rows.map((r) => r.key);
       }),
   );
-}
-
-// ── Relationship graph (spec v2 WP1) ────────────────────────────────────────
-
-export interface ContactGraphRow {
-  contactId: string;
-  label: string;
-  messageCount: number;
-  lastAt: string | null;
-  /** null when unset OR the caller is PII-masked (spec R6 — no relationship
-   *  data at all for a masked principal). */
-  relationship: {
-    label: string | null;
-    category: RelationshipCategory;
-    source: 'ai' | 'user';
-  } | null;
-}
-
-/** Contacts ranked into the graph — a UI concern, not the roster; separate from
- *  GRAPH_CONTACT_CAP below. */
-const GRAPH_CONTACT_CAP = 60;
-
-/**
- * Graph data for /crm/graph: the org's `GRAPH_CONTACT_CAP` most-recently-active
- * contacts (ties broken by message volume), ONE row per contact (spec v2 §C1
- * — the per-channel split from v1 is gone; a contact's messages are summed
- * across every channel identity, mirroring the `agg` join in `rankContacts`).
- * `group by c.id` relies on Postgres' primary-key functional-dependency rule
- * to select `c.display_name`/`c.custom_fields` without listing them in the
- * GROUP BY. Cheap indexed join bounded to 60 contacts — no cache needed.
- *
- * Record-level (if-owner) + field-level (PII) RBAC scoping mirrors
- * `listContactsCached`/`getContact`: an owner-scoped caller only sees their
- * own contacts (`c.owner_id`), and a masked caller gets redacted labels AND
- * no relationship data — the graph must never leak what the roster hides.
- */
-export async function getContactGraph(
-  ctx: CoreCtx,
-  opts: { ownerId?: string; maskSensitive?: boolean } = {},
-): Promise<ContactGraphRow[]> {
-  const { ownerId, maskSensitive = false } = opts;
-  return withOrgCore(ctx, async (tx) => {
-    const ownerClause = ownerId ? sql`and c.owner_id = ${ownerId}` : sql``;
-    const rows = await tx.execute(sql`
-      with agg as (
-        select c.id as contact_id,
-               coalesce(c.display_name, 'Unknown') as label,
-               c.custom_fields,
-               count(m.id)::int as message_count,
-               max(coalesce(m.occurred_at, m.created_at)) as last_at
-        from crm_contacts c
-        join crm_contact_identities ci on ci.contact_id = c.id and ci.org_id = c.org_id
-        join messages m
-          on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
-        where c.org_id = ${ctx.tenantId}
-          and c.deleted_at is null
-          and m.is_bot is not true
-          ${ownerClause}
-        group by c.id
-      )
-      select contact_id, label, message_count, last_at,
-             custom_fields->'_relationship' as relationship
-      from agg
-      order by last_at desc nulls last, message_count desc
-      limit ${GRAPH_CONTACT_CAP}
-    `);
-    const out = rows as unknown as Array<{
-      contact_id: string;
-      label: string;
-      message_count: number | string;
-      last_at: string | null;
-      relationship: unknown;
-    }>;
-    // pg returns bigint/numeric aggregates as strings — coerce (see rankContacts).
-    return out.map((r) => {
-      const rel = maskSensitive ? undefined : parseRelationshipValue(r.relationship);
-      return {
-        contactId: r.contact_id,
-        label: maskSensitive ? maskPii(r.label) : r.label,
-        messageCount: Number(r.message_count) || 0,
-        lastAt: r.last_at,
-        relationship: rel ? { label: rel.label, category: rel.category, source: rel.source } : null,
-      };
-    });
-  });
 }
 
 // ── Single contact + journey ──────────────────────────────────────────────────

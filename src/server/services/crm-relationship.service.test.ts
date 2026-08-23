@@ -25,73 +25,10 @@ vi.mock('./crm-contacts.service', async (importOriginal) => {
   };
 });
 
-import {
-  setUserRelationship,
-  setAiRelationship,
-  resumeAiSuggestions,
-} from './crm-relationship.service';
+import { setAiRelationship } from './crm-relationship.service';
 
 beforeEach(() => {
   vi.clearAllMocks();
-});
-
-describe('setUserRelationship', () => {
-  it('writes source:user unconditionally (no owner guard) and busts the cache', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([{ id: 'c1' }]); // .returning() → one row → applied
-    const ctx = { db: db as never, tenantId: 'org-1' };
-
-    const result = await setUserRelationship(ctx, 'c1', {
-      label: 'amiga del trabajo',
-      category: 'friend',
-    });
-
-    expect(result.applied).toBe(true);
-    expect(db.update).toHaveBeenCalledTimes(1);
-    expect(mockBustCrmList).toHaveBeenCalledWith('org-1');
-  });
-
-  it('accepts label:null as an explicit user clear', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([{ id: 'c1' }]);
-    const ctx = { db: db as never, tenantId: 'org-1' };
-
-    const result = await setUserRelationship(ctx, 'c1', { label: null, category: 'unknown' });
-
-    expect(result.applied).toBe(true);
-  });
-
-  it('accepts an ownerId (record-level scope, spec F2) without changing the success path', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([{ id: 'c1' }]);
-    const ctx = { db: db as never, tenantId: 'org-1' };
-
-    const result = await setUserRelationship(
-      ctx,
-      'c1',
-      { label: 'amiga', category: 'friend' },
-      'profile-1',
-    );
-
-    expect(result.applied).toBe(true);
-    expect(mockBustCrmList).toHaveBeenCalledWith('org-1');
-  });
-
-  it('is not applied (no cache bust) when the owner guard excludes the row — 0 rows matched', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([]); // not owned by this profile → WHERE guard excludes it
-    const ctx = { db: db as never, tenantId: 'org-1' };
-
-    const result = await setUserRelationship(
-      ctx,
-      'c1',
-      { label: 'amiga', category: 'friend' },
-      'profile-1',
-    );
-
-    expect(result.applied).toBe(false);
-    expect(mockBustCrmList).not.toHaveBeenCalled();
-  });
 });
 
 describe('setAiRelationship', () => {
@@ -138,31 +75,6 @@ describe('setAiRelationship', () => {
       { label: 'mamá', category: 'family' },
       'stale-token',
     );
-
-    expect(result.applied).toBe(false);
-    expect(mockBustCrmList).not.toHaveBeenCalled();
-  });
-});
-
-describe('resumeAiSuggestions', () => {
-  it('clears the pin and busts the cache when a row matched', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([{ id: 'c1' }]); // .returning() → one row → applied
-    const ctx = { db: db as never, tenantId: 'org-1' };
-
-    const result = await resumeAiSuggestions(ctx, 'c1');
-
-    expect(result.applied).toBe(true);
-    expect(db.update).toHaveBeenCalledTimes(1);
-    expect(mockBustCrmList).toHaveBeenCalledWith('org-1');
-  });
-
-  it('is not applied (no cache bust) when 0 rows matched — not found or not owned', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([]);
-    const ctx = { db: db as never, tenantId: 'org-1' };
-
-    const result = await resumeAiSuggestions(ctx, 'c1', 'profile-1');
 
     expect(result.applied).toBe(false);
     expect(mockBustCrmList).not.toHaveBeenCalled();

@@ -10,8 +10,8 @@ const pageData: {
   // Platform admins receive the full PERMISSIONS set (loadPermissionsForUser
   // short-circuit); users.manage + reliability.monitor are now permission-driven
   // (RBAC-migrated off minRole/super-view), so the perm set must carry them.
-  // For canViewPath we include finance:view but NOT finance.products:view so the
-  // products subpage link hides while the section view stays.
+  // For canViewPath we include finance:view but NOT finance.purchases:view so the
+  // purchases subpage link hides while the section view stays.
   user: { role: 'admin' },
   permissions: {
     permissions: ['marketplace:publish', 'users:manage', 'reliability:view', 'finance:view'],
@@ -42,7 +42,7 @@ describe('canViewPath — section subpage gating', () => {
     expect(canViewPath('/overview')).toBe(true); // ungated
     expect(canViewPath('/finances')).toBe(true); // finance:view present
     expect(canViewPath('/finances/invoices')).toBe(true); // no sub-resource → inherits finance:view
-    expect(canViewPath('/finances/products')).toBe(false); // finance.products:view absent
+    expect(canViewPath('/finances/purchases')).toBe(false); // finance.purchases:view absent
   });
 });
 
@@ -52,7 +52,11 @@ describe('canViewPath — section subpage gating', () => {
 describe('canViewPath — org-kind gating', () => {
   test('personal org: Team/Stock/POS/Workforce hidden even though RBAC would allow them', async () => {
     pageData.activeOrgKind = 'personal';
-    pageData.permissions.permissions = [...pageData.permissions.permissions, 'stock:view', 'pos:view'];
+    pageData.permissions.permissions = [
+      ...pageData.permissions.permissions,
+      'stock:view',
+      'pos:view',
+    ];
     const { canViewPath } = await import('./can.svelte');
     expect(canViewPath('/team')).toBe(false);
     expect(canViewPath('/settings/team')).toBe(false);

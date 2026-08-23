@@ -23,7 +23,8 @@
      *  (enforced by the stk_items_org_fin_product_uniq partial index). */
     finProductId?: string | null;
     /** Consumption-side unit, when different from the stock uom (e.g. stock
-     *  in boxes, consumed in units) — same field /stock/consumption reads. */
+     *  in boxes, consumed in units) — same field the /api/stock/consumption
+     *  mapping reads. */
     consumptionUom?: string | null;
   }
   interface ConsumptionLike {
@@ -109,8 +110,7 @@
   let busy = $state(false);
 
   /** Label a row's qty input with the CONSUMPTION uom when the item has one,
-   *  falling back to its stock uom — same rule as /stock/consumption's
-   *  unitLabel(). Boxes on the shelf, units on the ticket. */
+   *  falling back to its stock uom. Boxes on the shelf, units on the ticket. */
   function unitLabel(itemId: string): string {
     const item = stockItems.find((i) => i.id === itemId);
     return item?.consumptionUom ?? item?.uom ?? '';
@@ -118,7 +118,7 @@
 
   // Seed (or reset) the form whenever the wizard opens, from `editing` when
   // present. ★ Prefill for consumption mappings comes from the page's own
-  // `consumption` list (already loaded org-wide for /stock/consumption) —
+  // `consumption` list (already loaded org-wide by the catalog page) —
   // trivially available here, so edit mode filters it by productId rather
   // than starting empty.
   $effect(() => {
@@ -341,13 +341,15 @@
     {/if}
 
     {#if stockEnabled}
-      <!-- TODO(handoff): /stock/consumption also renders a ConsumptionGauge
-           per row for items with diagramEnabled (subunit-shape visual qty
-           picker, $lib/components/stock/ConsumptionGauge.svelte + gaugeMax()
-           from stock-ui.ts) — not ported here to keep this slice scoped.
-           Wire it the same way /stock/consumption/+page.svelte:217-227 does,
-           keyed off stockItems.find(i => i.id === row.itemId)?.diagramEnabled,
-           when this wizard gets its next pass. -->
+      <!-- TODO(handoff): other consumption-mapping surfaces (e.g.
+           /stock/items/[id]/+page.svelte, /pos/appointments/+page.svelte)
+           render a ConsumptionGauge per row for items with diagramEnabled
+           (subunit-shape visual qty picker,
+           $lib/components/stock/ConsumptionGauge.svelte + gaugeMax() from
+           stock-ui.ts) — not ported here to keep this slice scoped. Wire it
+           the same way those pages do, keyed off
+           stockItems.find(i => i.id === row.itemId)?.diagramEnabled, when
+           this wizard gets its next pass. -->
       <div class="fld">
         <span>{m.pos_catalog_consumption()}</span>
         <div class="consumption-rows">

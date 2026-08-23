@@ -4,7 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
   import { createHotkey } from '$lib/hotkeys';
-  import { Package, ArrowLeft, ExternalLink } from 'lucide-svelte';
+  import { Package, ArrowLeft } from 'lucide-svelte';
   import { PageHeader, Button, Toggle, Input, SegmentedControl } from '$lib/components/ui';
   import { FormFieldset } from '$lib/components/ui/foundations';
   import { canAct } from '$lib/access/can.svelte';
@@ -590,9 +590,6 @@
             {/each}
           </tbody>
         </table>
-        <a class="consumed-link" href="/stock/consumption"
-          >{m.stock_item_manage_consumption()} <ExternalLink size={12} /></a
-        >
       {/if}
     </div>
     <div class="card">
@@ -769,16 +766,5 @@
   }
   .mini-table .out {
     color: var(--color-destructive);
-  }
-  .consumed-link {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    margin-top: var(--space-2);
-    font-size: var(--font-size-body);
-    color: var(--color-accent);
-  }
-  .consumed-link:hover {
-    text-decoration: underline;
   }
 </style>
