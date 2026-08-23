@@ -4,7 +4,7 @@
 > is the current state again, not just history.** An earlier pass of this run claimed the
 > stop-ship was fully lifted and committed `supabase/ci-fixtures/crm-funnel-concurrent.sql`.
 > That was only partly true. What the operator's live extraction (`sdlc-board-triage-and-
-> phase-gates.md`, "TICK ~13:10Z": `vercel env pull` for the minion-hub project, then `psql`
+phase-gates.md`, "TICK ~13:10Z": `vercel env pull` for the minion-hub project, then `psql`
 > against the pooler URL) actually covered was `pg_policies` (RLS policy text/roles/cmd/
 > predicates), `pg_class.relrowsecurity`/`relforcerowsecurity`, and the key column
 > definitions for `crm_contacts` / `crm_activities` / `organizations.id`. **It never covered
