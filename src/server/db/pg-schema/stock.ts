@@ -90,6 +90,9 @@ export const stkWarehouses = pgTable(
     /** Accrual paths (booking create) have no warehouse input — this org's
      *  default is used, else the earliest-created. One per org (partial uniq). */
     isDefault: boolean('is_default').notNull().default(false),
+    /** NULL = active. Set (not deleted) by updateWarehouse's archive guard —
+     *  see 20260823120000_stk_warehouses_archived.sql. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
