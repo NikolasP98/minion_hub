@@ -132,7 +132,8 @@
     Divide,
     Hash,
   } from 'lucide-svelte';
-  import { Button, Tooltip, iconSizes } from '$lib/components/ui';
+  import { Button, Tooltip, Dropdown, iconSizes } from '$lib/components/ui';
+  import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
   import { formatMoney } from '$lib/utils/format';
   import ColumnFilter from '$lib/components/crm/ColumnFilter.svelte';
   import ExportDialog from '$lib/components/crm/ExportDialog.svelte';
@@ -161,6 +162,8 @@
     onRowClick,
     addLabel,
     onAdd,
+    addMenu,
+    onAddSelect,
     addDisabled = false,
     canEdit = true,
     onSaveRow,
@@ -203,6 +206,9 @@
     onRowClick?: (row: T) => void;
     addLabel?: string;
     onAdd?: () => void;
+    /** When provided, the + button opens this menu instead of calling onAdd. */
+    addMenu?: DropdownItem[];
+    onAddSelect?: (value: string) => void;
     addDisabled?: boolean;
     canEdit?: boolean;
     onSaveRow?: (row: T, draft: EditDraft) => Promise<boolean | void>;
@@ -1029,7 +1035,7 @@
 
 <div class="flex flex-col h-full min-h-0 {className}">
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
-  {#if searchable || exportable || onAdd || showColMenu || toolbar || actions || bulkActions}
+  {#if searchable || exportable || onAdd || addMenu || showColMenu || toolbar || actions || bulkActions}
     <div class="dt-toolbar">
       {#if searchable}
         <div class="dt-search">
@@ -1205,7 +1211,18 @@
             {/if}
           </div>
         {/if}
-        {#if onAdd}
+        {#if addMenu?.length}
+          <!-- Menu form of the add affordance: the + opens a Dropdown of typed
+               create actions (e.g. stock movement kinds) instead of one onAdd. -->
+          <Dropdown items={addMenu} onSelect={(v) => onAddSelect?.(v)}>
+            {#snippet trigger()}
+              <span class="dt-add-menu" title={addLabel ?? m.data_table_add()}>
+                <Plus size={iconSizes.md} aria-hidden="true" />
+                <span class="sr-only">{addLabel ?? m.data_table_add()}</span>
+              </span>
+            {/snippet}
+          </Dropdown>
+        {:else if onAdd}
           <Tooltip label={addLabel ?? m.data_table_add()} asChild>
             {#snippet children(p)}
               <Button
@@ -1687,6 +1704,22 @@
   .dt-toolbar :global(.dt-add:disabled) {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  /* Menu form of the add affordance — same accent square as .dt-add, but the
+     interactive element is the Dropdown's own trigger element around it. */
+  .dt-toolbar :global(.dt-add-menu) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+    transition: filter var(--duration-fast) var(--ease-standard);
+  }
+  .dt-toolbar :global(.dt-add-menu:hover) {
+    filter: brightness(1.08);
   }
   .col-menu :global(.bulk-item) {
     display: flex;

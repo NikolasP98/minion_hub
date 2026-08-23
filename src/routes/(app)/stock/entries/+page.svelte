@@ -16,7 +16,13 @@
 
   // Lazy per-entry line items (loaded on expand). Memoize the fetch so `{#await}`
   // resolves once and re-renders don't refetch.
-  type Line = { itemId: string; qty: string | number; uom: string | null; rate: string | number | null; lineNo: number };
+  type Line = {
+    itemId: string;
+    qty: string | number;
+    uom: string | null;
+    rate: string | number | null;
+    lineNo: number;
+  };
   const linePromises = new Map<string, Promise<Line[]>>();
   function entryLines(id: string): Promise<Line[]> {
     let p = linePromises.get(id);
@@ -35,23 +41,63 @@
   };
   const fmtNum = (v: string | number | null) => (v == null ? '—' : Number(v).toLocaleString());
 
-  const statusLabel = (s: string) => (s === 'draft' ? m.stock_status_draft() : s === 'submitted' ? m.stock_status_submitted() : m.stock_status_cancelled());
+  const statusLabel = (s: string) =>
+    s === 'draft'
+      ? m.stock_status_draft()
+      : s === 'submitted'
+        ? m.stock_status_submitted()
+        : m.stock_status_cancelled();
   const typeLabel = (t: string) =>
-    t === 'receipt' ? m.stock_type_receipt() : t === 'issue' ? m.stock_type_issue() : t === 'transfer' ? m.stock_type_transfer() : m.stock_type_adjustment();
+    t === 'receipt'
+      ? m.stock_type_receipt()
+      : t === 'issue'
+        ? m.stock_type_issue()
+        : t === 'transfer'
+          ? m.stock_type_transfer()
+          : m.stock_type_adjustment();
   const idLabel = (e: Row) => e.humanId ?? e.id.slice(0, 8);
 
   const columns: DataColumn<Row>[] = [
     { key: 'id', label: m.stock_col_id(), accessor: idLabel, cellClass: 'font-mono text-xs' },
     {
-      key: 'type', label: m.stock_col_type(), accessor: (e) => typeLabel(e.type),
-      filter: { options: () => ['receipt', 'issue', 'transfer', 'adjustment'].map((v) => ({ value: v, label: typeLabel(v) })), match: (e) => e.type },
+      key: 'type',
+      label: m.stock_col_type(),
+      accessor: (e) => typeLabel(e.type),
+      filter: {
+        options: () =>
+          ['receipt', 'issue', 'transfer', 'adjustment'].map((v) => ({
+            value: v,
+            label: typeLabel(v),
+          })),
+        match: (e) => e.type,
+      },
     },
     {
-      key: 'status', label: m.stock_col_status(), custom: true, accessor: (e) => statusLabel(e.status),
-      filter: { options: () => ['draft', 'submitted', 'cancelled'].map((v) => ({ value: v, label: statusLabel(v) })), match: (e) => e.status },
+      key: 'status',
+      label: m.stock_col_status(),
+      custom: true,
+      accessor: (e) => statusLabel(e.status),
+      filter: {
+        options: () =>
+          ['draft', 'submitted', 'cancelled'].map((v) => ({ value: v, label: statusLabel(v) })),
+        match: (e) => e.status,
+      },
     },
-    { key: 'party', label: m.stock_col_party(), accessor: (e) => e.partyName ?? '', cellClass: 't-caption' },
-    { key: 'created', label: m.stock_col_created(), align: 'right', custom: true, accessor: (e) => e.createdAt, sortFn: (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(), exportValue: (e) => new Date(e.createdAt).toISOString().slice(0, 10) },
+    {
+      key: 'party',
+      label: m.stock_col_party(),
+      accessor: (e) => e.partyName ?? '',
+      cellClass: 't-caption',
+    },
+    {
+      key: 'created',
+      label: m.stock_col_created(),
+      align: 'right',
+      custom: true,
+      accessor: (e) => e.createdAt,
+      sortFn: (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      exportValue: (e) => new Date(e.createdAt).toISOString().slice(0, 10),
+    },
   ];
 </script>
 
@@ -67,14 +113,27 @@
     {columns}
     data={entries}
     getRowId={(e) => e.id}
-    searchFields={(e) => `${idLabel(e)} ${typeLabel(e.type)} ${statusLabel(e.status)} ${e.partyName ?? ''}`}
+    searchFields={(e) =>
+      `${idLabel(e)} ${typeLabel(e.type)} ${statusLabel(e.status)} ${e.partyName ?? ''}`}
     initialSort={{ key: 'created', dir: 'desc' }}
     exportable
     exportName="stock-entries"
     selectable
     storageKey="stock-entries"
     addLabel={m.stock_new_entry()}
-    onAdd={() => goto('/stock/entries/new')}
+    addMenu={canAct('stock', 'create')
+      ? [
+          { value: 'receipt', label: m.stock_type_receipt() },
+          { value: 'issue', label: m.stock_type_issue() },
+          // Transfer needs somewhere to transfer TO — hidden entirely with a
+          // single warehouse (spec 2026-08-23 §S6 logic-gating).
+          ...(data.warehouseCount > 1
+            ? [{ value: 'transfer', label: m.stock_type_transfer() }]
+            : []),
+          { value: 'adjustment', label: m.stock_type_adjustment() },
+        ]
+      : undefined}
+    onAddSelect={(t) => goto(`/stock/entries/new?type=${t}`)}
     addDisabled={!canAct('stock', 'create')}
     onRowClick={(e) => goto(`/stock/entries/${e.id}`)}
     emptyMessage={m.stock_entries_empty()}
@@ -113,7 +172,8 @@
     {#snippet toolbar()}
       {#if data.partyFilter}
         <Button variant="ghost" class="chip" onclick={() => goto('/stock/entries')}>
-          {m.stock_col_party()}: {data.entries[0]?.partyName ?? data.partyFilter} <X size={11} />
+          {m.stock_col_party()}: {data.entries[0]?.partyName ?? data.partyFilter}
+          <X size={11} />
         </Button>
       {/if}
     {/snippet}
@@ -121,12 +181,48 @@
 </div>
 
 <style>
-  .stock-entries-page :global(.chip) { display: inline-flex; align-items: center; gap: var(--space-1); height: 1.8rem; padding: 0 var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-full); border: 1px solid var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); cursor: pointer; }
-  .lines { padding: var(--space-2) var(--space-4) var(--space-2) var(--space-12); }
-  .lines-msg { font-size: var(--font-size-body); color: var(--color-muted-foreground); padding: var(--space-2) 0; }
-  .lines-tbl { width: 100%; max-width: 40rem; border-collapse: collapse; }
-  .lines-tbl td { padding: var(--space-1) var(--space-2); font-size: var(--font-size-body); border-bottom: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent); }
-  .lines-tbl tr:last-child td { border-bottom: none; }
-  .li-item { color: var(--color-foreground); }
-  .li-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); white-space: nowrap; width: 8rem; }
+  .stock-entries-page :global(.chip) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: 1.8rem;
+    padding: 0 var(--space-2);
+    font-size: var(--font-size-body);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-accent);
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    cursor: pointer;
+  }
+  .lines {
+    padding: var(--space-2) var(--space-4) var(--space-2) var(--space-12);
+  }
+  .lines-msg {
+    font-size: var(--font-size-body);
+    color: var(--color-muted-foreground);
+    padding: var(--space-2) 0;
+  }
+  .lines-tbl {
+    width: 100%;
+    max-width: 40rem;
+    border-collapse: collapse;
+  }
+  .lines-tbl td {
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--font-size-body);
+    border-bottom: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent);
+  }
+  .lines-tbl tr:last-child td {
+    border-bottom: none;
+  }
+  .li-item {
+    color: var(--color-foreground);
+  }
+  .li-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-muted-foreground);
+    white-space: nowrap;
+    width: 8rem;
+  }
 </style>

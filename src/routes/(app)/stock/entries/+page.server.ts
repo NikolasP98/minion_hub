@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { listEntries, listItems } from '$server/services/stock.service';
+import { listEntries, listItems, listWarehouses } from '$server/services/stock.service';
 import { getParty } from '$server/services/party.service';
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
@@ -10,7 +10,11 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   depends('stock:entries');
 
   const partyId = url.searchParams.get('party') ?? undefined;
-  const [entries, items] = await Promise.all([listEntries(ctx, { partyId }), listItems(ctx)]);
+  const [entries, items, warehouses] = await Promise.all([
+    listEntries(ctx, { partyId }),
+    listItems(ctx),
+    listWarehouses(ctx),
+  ]);
   // Light id→label map so an expanded entry can name its line items without a
   // per-line lookup (the org's item catalog is small).
   const itemsById: Record<string, { code: string; name: string }> = {};
@@ -24,8 +28,14 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const partyById = new Map(parties.filter((p) => p != null).map((p) => [p.id, p]));
 
   return {
-    entries: entries.map((e) => ({ ...e, partyName: e.partyId ? (partyById.get(e.partyId)?.name ?? e.partyId) : null })),
+    entries: entries.map((e) => ({
+      ...e,
+      partyName: e.partyId ? (partyById.get(e.partyId)?.name ?? e.partyId) : null,
+    })),
     partyFilter: partyId ?? null,
     itemsById,
+    // Gates the Transfer action in the add-menu: one warehouse = nothing to
+    // transfer to. Count only, the roster itself isn't needed here.
+    warehouseCount: warehouses.length,
   };
 };
