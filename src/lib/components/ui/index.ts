@@ -19,6 +19,8 @@ export { default as MathFormula } from './MathFormula.svelte';
 export { default as SideNav } from './SideNav.svelte';
 export { default as Tooltip } from './Tooltip.svelte';
 export { default as Dropdown } from './Dropdown.svelte';
+export { default as Picker } from './Picker.svelte';
+export type { PickerColumn } from './Picker.svelte';
 export { default as Popover } from './Popover.svelte';
 export { default as DraggableDialog } from './DraggableDialog.svelte';
 export { default as StatusDot } from './StatusDot.svelte';
