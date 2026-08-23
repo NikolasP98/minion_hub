@@ -8,7 +8,10 @@ import type { BadgeVariant, SemanticValue } from '@minion-stack/ui';
 export type EntryStatus = 'draft' | 'submitted' | 'cancelled';
 
 /** Badge color mapping for entry status pills. */
-export function entryStatusVariant(status: string): { variant: BadgeVariant; value: SemanticValue } {
+export function entryStatusVariant(status: string): {
+  variant: BadgeVariant;
+  value: SemanticValue;
+} {
   if (status === 'submitted') return { variant: 'semantic', value: 'success' };
   if (status === 'cancelled') return { variant: 'semantic', value: 'error' };
   return { variant: 'semantic', value: 'info' }; // draft
@@ -21,6 +24,7 @@ export interface WarehouseRow {
   name: string;
   parentId: string | null;
   isDefault?: boolean;
+  archivedAt?: Date | string | null;
 }
 export interface WarehouseTreeRow extends WarehouseRow {
   depth: number;
