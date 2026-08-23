@@ -30,19 +30,11 @@ const pinnedBaselineIsReachable = (() => {
 })();
 
 describe('UI audit route inventory', () => {
-  // TODO(handoff): this test pins to tests/ui-audit/current-baseline.json's
-  // sourceCommit, an immutable Git object — it cannot reflect the four-route
-  // retirement (hub-stock-crm-ux-consolidation spec: /crm/graph,
-  // /finances/products, /stock/consumption, /stock/consume) until THIS diff
-  // is committed. Regenerate the pinned baseline once committed:
-  // `node scripts/ui-audit-inventory.mjs --clean-baseline --baseline-ref=HEAD
-  // --out=tests/ui-audit/current-baseline.json`, then update the 152/142
-  // literals below (and the `.size).toBe(152)` one) to 148/138.
-  it('locks the complete endpoint ledger at 142 screens and 10 redirects', async () => {
+  it('locks the complete endpoint ledger at 138 screens and 10 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
-    expect(inventory.summary).toMatchObject({ endpoints: 152, screens: 142, redirects: 10 });
-    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(152);
+    expect(inventory.summary).toMatchObject({ endpoints: 148, screens: 138, redirects: 10 });
+    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(148);
     expect(
       inventory.routes.filter((route) => route.kind === 'redirect').map((route) => route.pattern),
     ).toEqual([
