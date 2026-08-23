@@ -30,6 +30,14 @@ const pinnedBaselineIsReachable = (() => {
 })();
 
 describe('UI audit route inventory', () => {
+  // TODO(handoff): this test pins to tests/ui-audit/current-baseline.json's
+  // sourceCommit, an immutable Git object — it cannot reflect the four-route
+  // retirement (hub-stock-crm-ux-consolidation spec: /crm/graph,
+  // /finances/products, /stock/consumption, /stock/consume) until THIS diff
+  // is committed. Regenerate the pinned baseline once committed:
+  // `node scripts/ui-audit-inventory.mjs --clean-baseline --baseline-ref=HEAD
+  // --out=tests/ui-audit/current-baseline.json`, then update the 152/142
+  // literals below (and the `.size).toBe(152)` one) to 148/138.
   it('locks the complete endpoint ledger at 142 screens and 10 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
@@ -110,7 +118,10 @@ describe('UI audit route inventory', () => {
     const inventory = await buildRouteInventory();
     const terminal = inventory.routes.find((route) => route.pattern === '/terminal');
 
-    expect(inventory.summary).toMatchObject({ endpoints: 152, screens: 142, redirects: 10 });
+    // Unlike the pinned-commit ledger above, this reads the WORKTREE (no
+    // cleanBaseline flag), so it reflects the route surface at HEAD-with-
+    // uncommitted-changes, not the immutable pre-program commit.
+    expect(inventory.summary).toMatchObject({ endpoints: 148, screens: 138, redirects: 10 });
     expect(terminal).toMatchObject({
       kind: 'redirect',
       source: 'src/routes/(app)/terminal/+page.svelte',

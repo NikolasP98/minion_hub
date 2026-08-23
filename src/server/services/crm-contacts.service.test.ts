@@ -7,7 +7,6 @@ import { createMockDb } from '$server/test-utils/mock-db';
 import { crmContacts } from '$server/db/pg-crm-schema';
 import {
   ensureAccountInScope,
-  getContactGraph,
   customFieldsMergeSql,
   rankContacts,
   rankContactsPage,
@@ -52,8 +51,8 @@ async function createRealCrmContactsDb() {
 
 // Default passthrough mirrors the real withOrgCore's `db.transaction(cb => cb(db))`
 // shape (see mock-db.ts) — keeps ensureAccountInScope's select/insert chains
-// working. getContactGraph tests override it via useExecMock to hand back a
-// bare `{ execute }` tx (avoids typing tx.execute onto the tenant-DB mock).
+// working. Several describe blocks below override it via useExecMock to hand
+// back a bare `{ execute }` tx (avoids typing tx.execute onto the tenant-DB mock).
 const defaultWithOrgCore = (
   scope: { db: { transaction: (fn: (tx: unknown) => unknown) => unknown } },
   fn: (tx: unknown) => unknown,
@@ -162,92 +161,6 @@ describe('ensureAccountInScope', () => {
     await ensureAccountInScope(ctx, 'messenger', 'page-1', 'FACES Page');
 
     expect(db.insert).not.toHaveBeenCalled();
-  });
-});
-
-describe('getContactGraph', () => {
-  const row = {
-    contact_id: 'c1',
-    label: 'John Smith',
-    message_count: '5',
-    last_at: '2026-07-01T00:00:00Z',
-    relationship: {
-      label: 'mamá',
-      category: 'family',
-      source: 'ai',
-      updatedAt: '2026-07-01T00:00:00Z',
-    },
-  };
-  const ctx = { db: {} as never, tenantId: 'org-1' };
-
-  it('unrestricted caller: query carries no owner_id clause; label passes through', async () => {
-    const execute = vi.fn().mockResolvedValueOnce([row]);
-    useExecMock(execute);
-
-    const rows = await getContactGraph(ctx);
-
-    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
-    expect(query.sql).not.toContain('owner_id');
-    expect(rows[0].label).toBe('John Smith');
-  });
-
-  it('owner-scoped caller: query filters on c.owner_id', async () => {
-    const execute = vi.fn().mockResolvedValueOnce([row]);
-    useExecMock(execute);
-
-    await getContactGraph(ctx, { ownerId: 'profile-1' });
-
-    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
-    expect(query.sql).toContain('c.owner_id');
-    expect(query.params).toContain('profile-1');
-  });
-
-  it('one row per contact — no per-channel split (spec v2 §C1)', async () => {
-    const execute = vi.fn().mockResolvedValueOnce([row]);
-    useExecMock(execute);
-
-    const rows = await getContactGraph(ctx);
-
-    expect(rows).toHaveLength(1);
-    expect(rows[0].messageCount).toBe(5);
-    expect(rows[0].lastAt).toBe('2026-07-01T00:00:00Z');
-  });
-
-  it('surfaces a valid stored relationship', async () => {
-    const execute = vi.fn().mockResolvedValueOnce([row]);
-    useExecMock(execute);
-
-    const rows = await getContactGraph(ctx);
-
-    expect(rows[0].relationship).toEqual({ label: 'mamá', category: 'family', source: 'ai' });
-  });
-
-  it('unmasked caller with no stored relationship gets null, not a default', async () => {
-    const execute = vi.fn().mockResolvedValueOnce([{ ...row, relationship: null }]);
-    useExecMock(execute);
-
-    const rows = await getContactGraph(ctx);
-
-    expect(rows[0].relationship).toBeNull();
-  });
-
-  it('masked caller: contact label is PII-masked, not the raw name', async () => {
-    const execute = vi.fn().mockResolvedValueOnce([row]);
-    useExecMock(execute);
-
-    const rows = await getContactGraph(ctx, { maskSensitive: true });
-
-    expect(rows[0].label).not.toBe('John Smith');
-    expect(rows[0].label.endsWith('mith')).toBe(true); // maskPii keeps the last 4 chars
-  });
-
-  it('masked caller: relationship is null even though the row has one (spec R6)', async () => {
-    const execute = vi.fn().mockResolvedValueOnce([row]);
-    useExecMock(execute);
-
-    const rows = await getContactGraph(ctx, { maskSensitive: true });
-
-    expect(rows[0].relationship).toBeNull();
   });
 });
 

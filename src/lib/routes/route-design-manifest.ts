@@ -458,14 +458,13 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     states: MUTATING_DETAIL_STATES,
   }),
 
-  // CRM, finance, sales, support and work (16)
+  // CRM, finance, sales, support and work (15)
   screen('/crm', 'CRM', 'business-operations', 'dashboard'),
   screen('/crm/[contactId]', 'Contact', 'business-operations', 'record-detail', {
     fixtureId: 'crm-contact-detail',
     states: OWNER_DESTRUCTIVE_DETAIL_STATES,
   }),
   screen('/crm/customers', 'Customers', 'business-operations', 'collection'),
-  screen('/crm/graph', 'CRM relationship graph', 'business-operations', 'canvas-kanban'),
   screen('/crm/insights', 'CRM insights', 'business-operations', 'dashboard'),
   screen('/crm/settings', 'CRM settings', 'business-operations', 'form-settings'),
   screen('/finances', 'Finances', 'business-operations', 'dashboard'),
@@ -474,7 +473,6 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     fixtureId: 'invoice-detail',
     states: MUTATING_DETAIL_STATES,
   }),
-  screen('/finances/products', 'Products', 'business-operations', 'collection'),
   screen('/finances/purchases', 'Purchases', 'business-operations', 'collection'),
   screen('/finances/settings', 'Finance settings', 'business-operations', 'form-settings'),
   screen('/sales', 'Sales', 'business-operations', 'collection'),
@@ -519,11 +517,9 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   }),
   screen('/socials/settings', 'Social settings', 'socials', 'form-settings'),
 
-  // Stock (10)
+  // Stock (8)
   screen('/stock', 'Stock', 'stock', 'dashboard'),
   screen('/stock/commitments', 'Stock commitments', 'stock', 'collection'),
-  screen('/stock/consume', 'Consume stock', 'stock', 'form-settings'),
-  screen('/stock/consumption', 'Consumption', 'stock', 'collection'),
   screen('/stock/entries', 'Stock entries', 'stock', 'collection'),
   screen('/stock/entries/[id]', 'Stock entry', 'stock', 'record-detail', {
     fixtureId: 'stock-entry-detail',

@@ -1520,7 +1520,8 @@ export interface CreateServiceIssueInput {
   lines: CreateIssueFromInvoiceLine[];
   submit?: boolean;
   actor: Actor;
-  /** Generic provenance: 'service' (default, /stock/consume) | 'booking' | future 'order'. */
+  /** Generic provenance: 'service' (default, createServiceIssue via the gateway
+   *  stock-issue-from-service action) | 'booking' | future 'order'. */
   source?: string;
   /** When set, a same-tx dup guard refuses a second non-cancelled entry for
    *  (source, sourceId) — mirrors the invoice guard. Absent for legacy
