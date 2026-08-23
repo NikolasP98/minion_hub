@@ -1,10 +1,28 @@
 # Slice 0 recon result: BLOCKED (stop-ship) — CRM funnel concurrency CI gate
 
+> **RESOLVED 2026-08-20 — this document is a historical record, not the current state.**
+> The stop-ship below was lifted when the authoritative schema arrived: an operator
+> live-extracted the RLS policy text, `relrowsecurity`/`relforcerowsecurity` flags, and the
+> key column definitions for `crm_contacts` / `crm_activities` / `organizations.id` from the
+> provisioned Supabase project's catalog (`pg_policies` / `information_schema`), per path 1
+> of "What unblocks Slice 1" below (recorded in operator memory
+> `sdlc-board-triage-and-phase-gates.md`, "TICK ~13:10Z": `vercel env pull` for the
+> minion-hub project, then `psql` against the pooler URL). This run (`55ba4b5f`) verified
+> that extraction is still the authoritative source (cross-checked against the independent
+> implementation in draft PR #154 / run `485528fa`, which used the same recorded values) and
+> carried it into Slice 1: `supabase/ci-fixtures/crm-funnel-concurrent.sql`, with the
+> extracted values recorded in its header and asserted executably at apply time (verified
+> against `@electric-sql/pglite` in-process, including a mutation matrix proving each
+> assertion is load-bearing — no docker/psql/Supabase credential exists in this sandbox
+> either). Slice 2 (the CI job wiring and `TODO(handoff)` marker removal) is **out of scope
+> for this run** and remains for a follow-up dev stage; the marker stays in place until then.
+
 **Spec:** `2026-08-20-handoff-minion-hub-3530856808-spec` — "Wire
 `crm-funnel.concurrent.integration.test.ts` into a real CI gate".
 **Stage:** dev, Slice 0 (recon) — run `0eb02565`, 2026-08-20.
-**Outcome:** Slice 0 could not be closed. Slice 1 (the CI-only schema fixture) and Slice 2
-(the CI job + `TODO(handoff)` marker removal) are **not** implemented, deliberately.
+**Outcome (as of that run — superseded, see the banner above):** Slice 0 could not be closed.
+Slice 1 (the CI-only schema fixture) and Slice 2 (the CI job + `TODO(handoff)` marker
+removal) were **not** implemented at that time, deliberately.
 
 ## Why this file exists instead of a fixture
 
@@ -72,9 +90,14 @@ With those in hand, Slice 1's fixture DDL and its exact catalog assertions must 
 match them literally (policy name/count, `permissive`, exact role set, `cmd`, `qual`,
 `with_check`), rejecting any missing or extra policy.
 
-## Open end (ledger)
+## Open end (ledger) — still open after this run (`55ba4b5f`, Slice 0 + Slice 1 only)
 
 The `TODO(handoff):` marker at
 `src/server/services/crm-funnel.concurrent.integration.test.ts:21` is intentionally left in
 place: its open end — the concurrency proof executes on no automated gate — is still open, and
 removing the marker while it is open is precisely what Slice 2 forbids until the gate is green.
+Slice 1's fixture (`supabase/ci-fixtures/crm-funnel-concurrent.sql`) exists now and is verified
+against `@electric-sql/pglite`, but nothing in this run wires it into `.github/workflows/ci.yml`
+or runs the suite against a real `postgres:15` container end to end — that is Slice 2, explicitly
+out of scope for this dev-stage run per its own instructions ("implement ONLY Slice 0 and Slice
+1... do NOT start later slices").
