@@ -591,18 +591,10 @@
   // `sortDir` / `filters` above are still tracked (for header arrows and the
   // enum-filter UI) but no longer feed `view`.
   //
-  // TODO(handoff): no DOM-mount test covers this block. @testing-library/svelte
-  // + happy-dom crashes mounting ANY @minion-stack/ui Button.svelte instance
-  // here (`Cannot read properties of null (reading 'Symbol(parentNode)')` in
-  // Button.svelte's <svelte:element> insertion, node_modules/happy-dom's
-  // `Node.nextSibling` getter) — confirmed independent of this diff (repro on
-  // a bare column with no server mode at all). Separately, `view.length > 0`
-  // rows never render in tests at all: `rowVirt` requires `browser` from
-  // `$app/environment`, stubbed permanently `false` in
-  // src/server/test-utils/env-stubs/app-environment.ts, so the `{:else if
-  // rowVirt}` branch is always skipped with no `{:else}` fallback. Fixing
-  // either is a repo-wide test-infra gap, not a DataTable-only fix — logged in
-  // the meta-repo proposals ledger (2026-08-20-hub-datatable-server-mode-test-gap).
+  // TODO(handoff): DataTable.test.ts now supplies the browser-capable DOM
+  // foundation and exercises this virtualized row branch, but server-mode
+  // search/sort/filter/pagination/infinite-scroll interactions still need the
+  // Slice 2 coverage in 2026-08-21-hub-datatable-server-mode-test-gap-spec.
   // svelte-ignore state_referenced_locally
   let serverPage = $state(1);
   // svelte-ignore state_referenced_locally

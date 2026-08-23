@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest';
-import { render, cleanup } from '@testing-library/svelte';
-import { createRawSnippet } from 'svelte';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { render, cleanup, waitFor } from '@testing-library/svelte';
+import { createRawSnippet, type Component } from 'svelte';
 import { Button } from '@minion-stack/ui';
 
 // DataTable's row virtualizer only initializes `if (browser && wrapperEl)` (see
@@ -17,6 +17,19 @@ vi.mock('$app/environment', async (importOriginal) => {
 
 const { default: DataTable } = await import('./DataTable.svelte');
 type DataColumn<T> = import('./DataTable.svelte').DataColumn<T>;
+
+beforeAll(() => {
+  // happy-dom has no layout engine, so TanStack Virtual observes a zero-height
+  // viewport unless this test supplies deterministic element dimensions.
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.tagName === 'TR' ? 44 : 480;
+  });
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
+});
+
+afterAll(() => vi.restoreAllMocks());
 
 describe('Button DOM mount (shared @minion-stack/ui primitive)', () => {
   // Reproduces (and guards) the crash the S4 follow-up proposal reported:
@@ -38,6 +51,15 @@ describe('Button DOM mount (shared @minion-stack/ui primitive)', () => {
 });
 
 type Row = { id: string; name: string };
+type DataTableProps<T> = {
+  data: T[];
+  columns: DataColumn<T>[];
+  getRowId: (row: T) => string;
+};
+
+// Testing Library cannot infer a concrete type argument from a generic Svelte
+// component import, so bind the fixture's Row contract at this test boundary.
+const RowDataTable = DataTable as Component<DataTableProps<Row>>;
 const columns: DataColumn<Row>[] = [{ key: 'name', label: 'Name' }];
 const rows: Row[] = [
   { id: '1', name: 'Alpha' },
@@ -45,12 +67,14 @@ const rows: Row[] = [
 ];
 
 describe('DataTable DOM mount (browser=true row virtualization)', () => {
-  it('renders at least one real tbody row once browser === true', () => {
-    const { container, unmount } = render(DataTable, {
+  it('renders at least one real tbody row once browser === true', async () => {
+    const { container, unmount } = render(RowDataTable, {
       props: { data: rows, columns, getRowId: (r: Row) => r.id },
     });
-    const bodyRows = container.querySelectorAll('tbody tr[data-row-index]');
-    expect(bodyRows.length).toBeGreaterThanOrEqual(1);
+    await waitFor(() => {
+      const bodyRows = container.querySelectorAll('tbody tr[data-row-index]');
+      expect(bodyRows.length).toBeGreaterThanOrEqual(1);
+    });
     unmount();
     cleanup();
   });
