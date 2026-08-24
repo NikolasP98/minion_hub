@@ -10,7 +10,7 @@
   import * as m from '$lib/paraglide/messages';
   import { createAsyncDebouncer } from '$lib/pacer/index.svelte';
   import PartyCreateForm from './PartyCreateForm.svelte';
-  import { creatablePartyTypes, type PartyOption } from './party-picker';
+  import { creatablePartyTypes, partyPickerSearchParams, type PartyOption } from './party-picker';
 
   let {
     value = $bindable(null),
@@ -21,6 +21,7 @@
     docLookup = false,
     onPicked,
     allowCreate = true,
+    initialVerifiedOnly,
     columnsConfigurable = true,
     pickerColumns,
     pickerStorageKey,
@@ -35,6 +36,11 @@
     docLookup?: boolean;
     onPicked?: (party: PartyOption) => void;
     allowCreate?: boolean;
+    /**
+     * Show only DNI-verified parties before search. Defaults on for customer
+     * contexts and off when the accepted types include system agents.
+     */
+    initialVerifiedOnly?: boolean;
     columnsConfigurable?: boolean;
     pickerColumns?: PickerColumn<PartyOption>[];
     pickerStorageKey?: string;
@@ -88,8 +94,7 @@
 
   async function loadParties(term: string): Promise<PartyOption[]> {
     const url = new URL('/api/crm/parties', location.origin);
-    url.searchParams.set('q', term);
-    if (types) url.searchParams.set('type', types);
+    url.search = partyPickerSearchParams(term, types, initialVerifiedOnly).toString();
     const response = await fetch(url);
     if (!response.ok) throw new Error('party search failed');
     return (await response.json()) as PartyOption[];
