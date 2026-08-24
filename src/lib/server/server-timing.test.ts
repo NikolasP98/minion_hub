@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createServerTimingHandle } from './server-timing';
+import { createServerTimingHandle, ServerTiming } from './server-timing';
 
 function fakeEvent(pathname: string, routeId: string | null = '/(app)/home') {
   return {
@@ -16,6 +16,15 @@ describe('createServerTimingHandle', () => {
     const handle = createServerTimingHandle({ sampleRate: 0, capture: vi.fn() });
     const res = await handle({ event: fakeEvent('/en/home'), resolve: resolveOk } as never);
     expect(res.headers.get('Server-Timing')).toMatch(/^app;dur=\d+$/);
+  });
+
+  it('preserves route-specific timing entries when adding the total app duration', async () => {
+    const handle = createServerTimingHandle({ sampleRate: 0, capture: vi.fn() });
+    const res = await handle({
+      event: fakeEvent('/en/crm/customers'),
+      resolve: async () => new Response('ok', { headers: { 'Server-Timing': 'crm_rank;dur=12' } }),
+    } as never);
+    expect(res.headers.get('Server-Timing')).toMatch(/^crm_rank;dur=12, app;dur=\d+$/);
   });
 
   it('captures a sampled server_timing event with route + duration + status', async () => {
@@ -62,5 +71,14 @@ describe('createServerTimingHandle', () => {
     const res = await handle({ event: fakeEvent('/en/x'), resolve: async () => frozen } as never);
     expect(res.status).toBe(302);
     expect(capture).toHaveBeenCalledOnce(); // event still recorded
+  });
+});
+
+describe('ServerTiming', () => {
+  it('measures named stages and serializes a response header', async () => {
+    const ticks = [10, 22];
+    const timing = new ServerTiming(() => ticks.shift() ?? 22);
+    await expect(timing.measure('crm_rank', async () => 'rows')).resolves.toBe('rows');
+    expect(timing.headerValue()).toBe('crm_rank;dur=12');
   });
 });

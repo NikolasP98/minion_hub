@@ -1788,6 +1788,7 @@
   "data_table_save_failed": "Error al guardar",
   "data_table_search": "Buscar…",
   "data_table_select_all": "Seleccionar todo",
+  "data_table_select_all_matching": "Seleccionar los {n} resultados",
   "data_table_selected": "{n} seleccionados",
   "data_table_showing": "Mostrando {shown} de {total}",
   "data_table_sort_asc": "Orden ascendente",

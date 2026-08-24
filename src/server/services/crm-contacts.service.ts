@@ -1,4 +1,4 @@
-import { and, eq, desc, sql } from 'drizzle-orm';
+import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { maskPii, sanitizeContactFields } from '$lib/pii';
@@ -19,13 +19,14 @@ import {
   FIN_PURCHASED,
   FIN_RESERVED_ONLY,
   FIN_LOYAL,
+  type ContactFinance,
 } from './crm-finance.service';
 import { readCrmSettingsValue, resolveDepositRule } from './crm-settings.service';
 import { scopeData } from './base';
 import { depositRuleFingerprint, type DepositRule } from './crm-deposit-rule';
 import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
-import { recordAudit } from './activity.service';
+import { recordAudit, recordAuditInTx, recordAuditsInTx } from './activity.service';
 import {
   isFunnelStage,
   readFunnelMeta,
@@ -210,6 +211,9 @@ export interface RankFilters {
    *  roster — it aggregates server-side and never ships the rows. */
   maxLimit?: number;
   offset?: number;
+  /** Whether to compute the exact filtered row count. Continuation pages can
+   *  set false and use the one-row look-ahead exposed as `hasMore`. */
+  includeTotal?: boolean;
   /** Record-level (if-owner) scope: restrict to contacts owned by this profile. */
   ownerId?: string;
   /** Field-level: redact PII in custom_fields (phone/email/dni) for low field level. */
@@ -294,14 +298,19 @@ export interface RankedContact {
   funnel_stage: string | null;
   /** Auto-tag ids whose rule matches this row (computed in the page load, not SQL). */
   auto_tag_ids?: string[];
+  /** Page-bounded finance decoration. Undefined when the finance bridge is
+   *  disabled; null when it is enabled but this contact has no invoices. */
+  finance?: ContactFinance | null;
 }
 
-/** One page of ranked contacts plus the total number of rows the SAME filters
- *  match with limit/offset removed — the pager needs both, and the window count
- *  in the outer select gets them in a single round-trip. */
+/** One page of ranked contacts. The first page normally includes the exact
+ *  filtered total; continuation pages may omit it and use `hasMore`. */
 export interface RankedPage {
   rows: RankedContact[];
-  total: number;
+  total: number | null;
+  hasMore: boolean;
+  /** Module availability, independent of whether this particular page contains buyers. */
+  financeEnabled: boolean;
 }
 
 // ICP fit is stored at `custom_fields._icp.score` (written by the ICP scoring
@@ -389,9 +398,9 @@ export async function rankContactsPage(ctx: CoreCtx, f: RankFilters = {}): Promi
  * org-tag invalidation as the roster did: ttl 2m keeps pages fresh, swr 1h
  * serves stale while a background refresh recomputes, and any contact mutation
  * busts the org's tags. A never-seen filter combination still pays the raw
- * query once — making the query itself fast is the open follow-up
- * (TODO(handoff): profile/optimize the rank query in prod — see the meta-repo
- * proposal 2026-08-22-crm-rank-query-prod-latency).
+ * query once. The production covering-index and visibility-map fixes keep that
+ * cold path bounded; the query below additionally defers row decoration until
+ * after LIMIT/OFFSET so page size, not organization size, controls its cost.
  */
 export async function rankContactsPageCached(
   ctx: CoreCtx,
@@ -405,7 +414,12 @@ export async function rankContactsPageCached(
   // load and the first client interaction each paid the raw query for the
   // SAME view. ownerId/maskSensitive live in the tenant key, not the fp.
   const { ownerId, maskSensitive, maxLimit: _cap, ...rest } = f;
-  const shape = { ...rest, limit: f.limit ?? 100, offset: f.offset ?? 0 };
+  const shape = {
+    ...rest,
+    limit: f.limit ?? 100,
+    offset: f.offset ?? 0,
+    includeTotal: f.includeTotal !== false,
+  };
   // Stable fingerprint: replacer-array stringify orders keys; undefined
   // values drop out, so {} and {stage: undefined} share an entry.
   const fp = JSON.stringify(shape, Object.keys(shape).sort());
@@ -446,7 +460,7 @@ interface FinanceBridge {
 /** Rows only — the shape every pre-pagination caller (contact-detail score,
  *  /crm/cleanup, the dashboard via listContactsCached) already consumes. */
 export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedContact[]> {
-  return (await rankContactsPage(ctx, f)).rows;
+  return (await rankContactsPage(ctx, { ...f, includeTotal: false })).rows;
 }
 
 async function runRankQuery(
@@ -497,7 +511,7 @@ async function runRankQuery(
     if (f.stage) outer.push(sql`stage = any(string_to_array(${f.stage}, ','))`);
     if (f.channel)
       outer.push(
-        sql`exists (select 1 from crm_contact_identities ci2 where ci2.contact_id = contact_id and ci2.channel = any(string_to_array(${f.channel}, ',')))`,
+        sql`exists (select 1 from crm_contact_identities ci2 where ci2.contact_id = scored.contact_id and ci2.channel = any(string_to_array(${f.channel}, ',')))`,
       );
     if (f.origin)
       outer.push(
@@ -541,6 +555,8 @@ async function runRankQuery(
 
     const limit = Math.min(f.limit ?? 100, f.maxLimit ?? 5000);
     const offset = f.offset ?? 0;
+    const includeTotal = f.includeTotal !== false;
+    const queryLimit = includeTotal ? limit : limit + 1;
 
     // When scoring a single contact (detail page), push its id into the agg CTE
     // so we aggregate only that contact's conversation — not the whole roster.
@@ -571,15 +587,20 @@ async function runRankQuery(
                  -- same revenue definition as contactFinanceMap; exists only so
                  -- sort:'revenue' is orderable, and is stripped from the rows below.
                  sum(total)::float8 as revenue,
+                 count(*)::int as invoices,
                  ${FIN_PURCHASED} as fin_purchased,
                  ${FIN_RESERVED_ONLY} as fin_reserved_only,
                  ${FIN_LOYAL} as fin_loyal
           from contact_invoice_class
           group by contact_id
         )`
-      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at, null::float8 as revenue, false as fin_purchased, false as fin_reserved_only, false as fin_loyal where false)`;
+      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at, null::float8 as revenue, null::int as invoices, false as fin_purchased, false as fin_reserved_only, false as fin_loyal where false)`;
 
     const rows = await tx.execute(sql`
+      -- TODO(handoff): replace this indexed ledger aggregation with a validated,
+      -- incrementally maintained contact-activity table only after message ingest,
+      -- post-ingest identity creation, and contact merges all share a tested
+      -- rebuild path. See meta proposal 2026-08-24-hub-crm-activity-rollup.
       with agg as (
         select ci.contact_id,
                max(coalesce(m.occurred_at, m.created_at)) as last_contact_at,
@@ -619,17 +640,13 @@ async function runRankQuery(
                coalesce(a.total_msgs, 0) as total_msgs,
                coalesce(a.inbound_msgs, 0) as inbound_msgs,
                coalesce(a.channels_used, 0) as channels_used,
-               (select coalesce(array_agg(distinct ci.channel order by ci.channel), array[]::text[])
-                  from crm_contact_identities ci where ci.contact_id = c.id) as channels,
-               (select coalesce(json_agg(json_build_object('channel', ci.channel, 'externalId', ci.external_id, 'handle', ci.handle)), '[]'::json)
-                  from crm_contact_identities ci where ci.contact_id = c.id) as identities,
-               (select coalesce(array_agg(ct.tag_id::text), array[]::text[])
-                  from crm_contact_tags ct where ct.contact_id = c.id) as tag_ids,
                -- effective first/last interaction = earliest/latest of {message, purchase}
                least(a.first_contact_at, fn.first_purchase_at) as first_contact_at,
                greatest(a.last_contact_at, fn.last_purchase_at) as last_contact_at,
                (fn.first_purchase_at is not null) as is_buyer,
                fn.revenue,
+               fn.invoices as fin_invoices,
+               fn.last_purchase_at as fin_last_purchase_at,
                coalesce(fn.fin_purchased, false) as fin_purchased,
                coalesce(fn.fin_reserved_only, false) as fin_reserved_only,
                coalesce(fn.fin_loyal, false) as fin_loyal,
@@ -660,12 +677,12 @@ async function runRankQuery(
         where ${and(...conds)}
       ),
       scored as (
-        select contact_id, display_name, owner_id, source, channels, identities, tag_ids,
+        select contact_id, display_name, owner_id, source,
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
                party_id, dni_verified, age, dob, sex,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
-               lead_origin, lead_campaign, revenue,
-               fin_reserved_only,
+               lead_origin, lead_campaign, revenue, fin_invoices, fin_last_purchase_at,
+               fin_purchased, fin_reserved_only, fin_loyal,
                ${FUNNEL_STAGE_EXPR} as funnel_stage,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
@@ -696,32 +713,78 @@ async function runRankQuery(
         select *, row_number() over (order by ${orderBy}) as page_position
         from filtered
         order by ${orderBy}
-        limit ${limit} offset ${offset}
-      ),
-      filtered_total as (
-        select count(*)::int as total_rows from filtered
+        limit ${queryLimit} offset ${offset}
       )
-      select requested_page.*, filtered_total.total_rows
+      ${
+        includeTotal
+          ? sql`, filtered_total as (
+              select count(*)::int as total_rows from filtered
+            )`
+          : sql``
+      }
+      ${
+        includeTotal
+          ? sql`select requested_page.*,
+             (select coalesce(array_agg(distinct ci.channel order by ci.channel), array[]::text[])
+                from crm_contact_identities ci where ci.contact_id = requested_page.contact_id) as channels,
+             (select coalesce(json_agg(json_build_object('channel', ci.channel, 'externalId', ci.external_id, 'handle', ci.handle)), '[]'::json)
+                from crm_contact_identities ci where ci.contact_id = requested_page.contact_id) as identities,
+             (select coalesce(array_agg(ct.tag_id::text), array[]::text[])
+                from crm_contact_tags ct where ct.contact_id = requested_page.contact_id) as tag_ids,
+             filtered_total.total_rows
       from filtered_total
       left join requested_page on true
-      order by requested_page.page_position
+      order by requested_page.page_position`
+          : sql`select requested_page.*,
+             (select coalesce(array_agg(distinct ci.channel order by ci.channel), array[]::text[])
+                from crm_contact_identities ci where ci.contact_id = requested_page.contact_id) as channels,
+             (select coalesce(json_agg(json_build_object('channel', ci.channel, 'externalId', ci.external_id, 'handle', ci.handle)), '[]'::json)
+                from crm_contact_identities ci where ci.contact_id = requested_page.contact_id) as identities,
+             (select coalesce(array_agg(ct.tag_id::text), array[]::text[])
+                from crm_contact_tags ct where ct.contact_id = requested_page.contact_id) as tag_ids,
+             null::int as total_rows
+      from requested_page
+      order by requested_page.page_position`
+      }
     `);
     // The left join returns one sentinel row when the requested page is empty,
     // preserving the filtered count without a second database round-trip.
     const raw = rows as unknown as (RankedContact & {
       total_rows?: number;
       revenue?: number | null;
+      fin_invoices?: number | null;
+      fin_last_purchase_at?: string | null;
+      fin_purchased?: boolean;
       fin_reserved_only?: boolean;
+      fin_loyal?: boolean;
       page_position?: number;
     })[];
-    const total = Number(raw[0]?.total_rows) || 0;
+    const total = includeTotal ? Number(raw[0]?.total_rows) || 0 : null;
     let out: RankedContact[] = raw
       .filter((r) => r.contact_id != null)
       .map((r) => {
-        const rest = { ...r };
+        const rest: typeof r & { finance?: ContactFinance | null } = { ...r };
+        if (withFinance) {
+          rest.finance =
+            r.fin_invoices == null
+              ? null
+              : {
+                  revenue: Number(r.revenue) || 0,
+                  invoices: Number(r.fin_invoices) || 0,
+                  lastPurchaseAt:
+                    r.fin_last_purchase_at != null ? String(r.fin_last_purchase_at) : null,
+                  purchased: Boolean(r.fin_purchased),
+                  reservedOnly: Boolean(r.fin_reserved_only),
+                  loyal: Boolean(r.fin_loyal),
+                };
+        }
         delete rest.total_rows;
         delete rest.revenue;
+        delete rest.fin_invoices;
+        delete rest.fin_last_purchase_at;
+        delete rest.fin_purchased;
         delete rest.fin_reserved_only;
+        delete rest.fin_loyal;
         delete rest.page_position;
         return rest as RankedContact;
       });
@@ -740,6 +803,8 @@ async function runRankQuery(
       inbound_msgs: Number(r.inbound_msgs) || 0,
       channels_used: Number(r.channels_used) || 0,
     }));
+    const hasMore = includeTotal ? offset + out.length < (total ?? 0) : out.length > limit;
+    if (!includeTotal && out.length > limit) out = out.slice(0, limit);
     // Age is DERIVED from parties.dob (set by DNI validation); when known it
     // overrides the imported custom_fields.edad so the Age column never goes stale.
     out = out.map((r) =>
@@ -758,7 +823,7 @@ async function runRankQuery(
         ...r,
         identities: r.identities.map((i) => ({ ...i, externalId: maskPii(i.externalId) })),
       }));
-    return { rows: out, total };
+    return { rows: out, total, hasMore, financeEnabled: withFinance };
   });
 }
 
@@ -912,7 +977,13 @@ export async function listContactsCached(
       (
         await runRankQuery(
           ctx,
-          { limit: ROSTER_CAP, maxLimit: ROSTER_CAP, ownerId, maskSensitive },
+          {
+            limit: ROSTER_CAP,
+            maxLimit: ROSTER_CAP,
+            ownerId,
+            maskSensitive,
+            includeTotal: false,
+          },
           finance,
         )
       ).rows,
@@ -939,6 +1010,27 @@ export async function getMetaKeys(ctx: CoreCtx): Promise<string[]> {
           order by 1
         `)) as unknown as { key: string }[];
         return rows.map((r) => r.key);
+      }),
+  );
+}
+
+/** Distinct channels across all live contacts. Page-bounded rows cannot supply
+ *  a complete filter domain, so this small cached projection is resolved once
+ *  for the organization and reused by the Customers header. */
+export async function listContactChannels(ctx: CoreCtx): Promise<string[]> {
+  return cached(
+    keys.hub('crm-contact-channels', { t: ctx.tenantId }),
+    { ttl: '10m', tags: [...crmListTags(ctx.tenantId)] },
+    async () =>
+      withOrgCore(ctx, async (tx) => {
+        const rows = (await tx.execute(sql`
+          select distinct ci.channel
+          from crm_contact_identities ci
+          join crm_contacts c on c.id = ci.contact_id and c.org_id = ci.org_id
+          where c.deleted_at is null and nullif(btrim(ci.channel), '') is not null
+          order by ci.channel
+        `)) as unknown as { channel: string }[];
+        return rows.map((r) => r.channel);
       }),
   );
 }
@@ -1211,19 +1303,60 @@ export async function updateContact(
 /** Soft-delete (right-to-erasure first step). */
 export async function softDeleteContact(ctx: CoreCtx, id: string) {
   await withOrgCore(ctx, async (tx) => {
-    await tx
+    const deleted = await tx
       .update(crmContacts)
       .set({ deletedAt: new Date() })
-      .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)));
-    await recordAudit(ctx, {
-      refType: 'crm_contact',
-      refId: id,
-      op: 'delete',
-      changes: [{ field: 'deletedAt', label: 'Deleted', old: null, new: true }],
-      actor: { id: ctx.profileId ?? null, name: null },
-    });
+      .where(
+        and(
+          eq(crmContacts.id, id),
+          eq(crmContacts.orgId, ctx.tenantId),
+          isNull(crmContacts.deletedAt),
+        ),
+      )
+      .returning({ id: crmContacts.id });
+    if (deleted.length > 0)
+      await recordAuditInTx(tx, ctx, {
+        refType: 'crm_contact',
+        refId: id,
+        op: 'delete',
+        changes: [{ field: 'deletedAt', label: 'Deleted', old: null, new: true }],
+        actor: { id: ctx.profileId ?? null, name: null },
+      });
   });
   await bustCrmList(ctx.tenantId);
+}
+
+/** One transaction, one UPDATE, and one audit INSERT for a bulk soft-delete. */
+export async function softDeleteContacts(ctx: CoreCtx, ids: string[]): Promise<number> {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) return 0;
+  const count = await withOrgCore(ctx, async (tx) => {
+    const deleted = await tx
+      .update(crmContacts)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          eq(crmContacts.orgId, ctx.tenantId),
+          inArray(crmContacts.id, uniqueIds),
+          isNull(crmContacts.deletedAt),
+        ),
+      )
+      .returning({ id: crmContacts.id });
+    await recordAuditsInTx(
+      tx,
+      ctx,
+      deleted.map(({ id }) => ({
+        refType: 'crm_contact',
+        refId: id,
+        op: 'delete',
+        changes: [{ field: 'deletedAt', label: 'Deleted', old: null, new: true }],
+        actor: { id: ctx.profileId ?? null, name: null },
+      })),
+    );
+    return deleted.length;
+  });
+  if (count > 0) await bustCrmList(ctx.tenantId);
+  return count;
 }
 
 /** Hard-delete ("Forget this contact" — removes contact + identities + activities

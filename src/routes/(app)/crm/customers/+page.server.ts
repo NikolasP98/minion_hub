@@ -6,10 +6,11 @@ import {
   rankContactsPageCached,
   listTags,
   getMetaKeys,
+  listContactChannels,
   type RankFilters,
 } from '$server/services/crm-contacts.service';
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
-import { contactFinanceMap } from '$server/services/crm-finance.service';
+import { ServerTiming } from '$lib/server/server-timing';
 
 /** Server-mode page size — mirrored by the page's request manager. */
 const PAGE_SIZE = 100;
@@ -57,7 +58,8 @@ function filtersFromUrl(q: URLSearchParams): RankFilters {
   };
 }
 
-export const load: PageServerLoad = async ({ locals, depends, parent, url }) => {
+export const load: PageServerLoad = async ({ locals, depends, parent, url, setHeaders }) => {
+  const timing = new ServerTiming();
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('crm:contacts');
@@ -66,23 +68,19 @@ export const load: PageServerLoad = async ({ locals, depends, parent, url }) => 
   // roster — the old full-roster path shipped a 12MB devalue payload per
   // visit. Every later interaction is a scoped GET /api/crm/contacts.
   const parentP = parent();
-  const [ownerId, maskSensitive] = await Promise.all([
-    ownerFilter(locals, 'crm'),
-    shouldMaskSensitive(locals, 'crm'),
-  ]);
+  const [ownerId, maskSensitive] = await timing.measure('crm_authz', () =>
+    Promise.all([ownerFilter(locals, 'crm'), shouldMaskSensitive(locals, 'crm')]),
+  );
   const filters: RankFilters = { ...filtersFromUrl(url.searchParams), ownerId, maskSensitive };
 
-  const [pageRes, tags, metaKeys, financeMap] = await Promise.all([
-    rankContactsPageCached(ctx, filters),
-    listTags(ctx),
+  const [pageRes, tags, metaKeys, channels, parentData] = await Promise.all([
+    timing.measure('crm_rank', () => rankContactsPageCached(ctx, filters)),
+    timing.measure('crm_tags', () => listTags(ctx)),
     // Meta columns come from the org-wide distinct-key set, not from scanning
     // shipped rows (the page only has 100 of them now).
-    getMetaKeys(ctx),
-    // Personal orgs de-emphasize the sales funnel (WP2) — the revenue-ranked
-    // finance columns aren't rendered for them, so skip the finance map.
-    parentP.then((p) =>
-      p.activeOrgKind === 'personal' ? ({} as Record<string, never>) : contactFinanceMap(ctx),
-    ),
+    timing.measure('crm_meta', () => getMetaKeys(ctx)),
+    timing.measure('crm_channels', () => listContactChannels(ctx)),
+    timing.measure('crm_parent', () => parentP),
   ]);
 
   // Decorate ONLY the returned page — mirrors GET /api/crm/contacts so SSR and
@@ -91,16 +89,20 @@ export const load: PageServerLoad = async ({ locals, depends, parent, url }) => 
   const withAutoTags = autoTags.length
     ? pageRes.rows.map((c) => ({ ...c, auto_tag_ids: matchingAutoTagIds(c, autoTags) }))
     : pageRes.rows;
-  const financeEnabled = Object.keys(financeMap).length > 0;
+  // Personal orgs de-emphasize the sales funnel (WP2). Finance decoration is
+  // already page-bounded in the rank query; hide it here without a second scan.
+  const financeEnabled = parentData.activeOrgKind !== 'personal' && pageRes.financeEnabled;
   const contacts = financeEnabled
-    ? withAutoTags.map((c) => ({ ...c, finance: financeMap[c.contact_id] ?? null }))
-    : withAutoTags;
+    ? withAutoTags
+    : withAutoTags.map(({ finance: _finance, ...contact }) => contact);
+  setHeaders({ 'Server-Timing': timing.headerValue() });
 
   return {
     contacts,
-    total: pageRes.total,
+    total: pageRes.total ?? pageRes.rows.length,
     tags,
     metaKeys,
+    channels,
     orgId: ctx.tenantId,
     financeEnabled,
     pageSize: PAGE_SIZE,
