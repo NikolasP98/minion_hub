@@ -113,7 +113,7 @@ describe('UI audit route inventory', () => {
     // Unlike the pinned-commit ledger above, this reads the WORKTREE (no
     // cleanBaseline flag), so it reflects the route surface at HEAD-with-
     // uncommitted-changes, not the immutable pre-program commit.
-    expect(inventory.summary).toMatchObject({ endpoints: 148, screens: 138, redirects: 10 });
+    expect(inventory.summary).toMatchObject({ endpoints: 150, screens: 140, redirects: 10 });
     expect(terminal).toMatchObject({
       kind: 'redirect',
       source: 'src/routes/(app)/terminal/+page.svelte',

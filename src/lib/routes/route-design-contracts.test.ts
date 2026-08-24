@@ -62,8 +62,9 @@ describe('route design contracts', () => {
     // (payment-methods config) added one more. /finances/purchases
     // (purchases-rce module spec) added one more. /crm/graph, /finances/products,
     // /stock/consumption and /stock/consume (all wave B) retired
-    // (hub-stock-crm-ux-consolidation spec) — B lost four more.
-    expect(counts).toEqual({ A: 32, B: 66, C: 17, D: 23, E: 10 });
+    // (hub-stock-crm-ux-consolidation spec) — B lost four more. The dedicated
+    // POS catalog create and edit pages add two Wave-B form surfaces.
+    expect(counts).toEqual({ A: 32, B: 68, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

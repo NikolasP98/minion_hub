@@ -20,6 +20,7 @@
   import DraggableWindow from './foundations/DraggableWindow.svelte';
   import {
     defaultPickerHidden,
+    effectivePickerPickedIds,
     orderPickerColumns,
     pickerRowIsDuplicate,
     reconcilePickerHidden,
@@ -110,8 +111,8 @@
   let createdRows = $state<T[]>([]);
   let loading = $state(false);
   let loadFailed = $state(false);
-  let pickCount = $state(0);
   let sessionPickedIds = $state<Set<string>>(new Set());
+  const noSessionPickedIds = new Set<string>();
   let tableEl = $state<HTMLTableElement | null>(null);
   let columnPanelEl = $state<HTMLDivElement | null>(null);
   let columnPanelOpen = $state(false);
@@ -233,7 +234,6 @@
       activeTab = 'browse';
       createTabOpen = false;
       columnPanelOpen = false;
-      pickCount = 0;
       sessionPickedIds = new Set();
       q = initialSearch;
       if (loadRows) void runLoad(q);
@@ -269,6 +269,8 @@
     return sourceRows.filter((row) => rowText(row).toLocaleLowerCase().includes(needle));
   });
   const resultTotal = $derived(loadRows ? (asyncTotal ?? view.length) : view.length);
+  const effectivePickedIds = $derived(effectivePickerPickedIds(pickedIds, sessionPickedIds));
+  const selectedCount = $derived(effectivePickedIds.size);
 
   function cellValue(column: PickerColumn<T>, row: T): string {
     if (column.value) return column.value(row);
@@ -282,7 +284,7 @@
       resolvedSelectionMode,
       duplicatePolicy,
       pickedIds,
-      sessionPickedIds,
+      pickedIds ? noSessionPickedIds : sessionPickedIds,
     );
   }
 
@@ -294,8 +296,7 @@
     if (disabled(row)) return;
     onPick(row);
     if (resolvedSelectionMode === 'multiple') {
-      pickCount += 1;
-      sessionPickedIds = new Set(sessionPickedIds).add(getRowId(row));
+      if (!pickedIds) sessionPickedIds = new Set(sessionPickedIds).add(getRowId(row));
     } else {
       closeWindow();
     }
@@ -386,60 +387,72 @@
   onclose={closeWindow}
   class="ui-picker"
 >
+  {#snippet titleContent()}
+    {#if createTabOpen}
+      <div class="picker-title-tabs" role="tablist" aria-label={title}>
+        <div class="picker-title-tab" class:active={activeTab === 'browse'}>
+          <button
+            type="button"
+            role="tab"
+            id={browseTabId}
+            aria-controls={browsePanelId}
+            aria-selected={activeTab === 'browse'}
+            tabindex={activeTab === 'browse' ? 0 : -1}
+            class="picker-title-tab-trigger"
+            onclick={() => {
+              activeTab = 'browse';
+              focusSearch();
+            }}
+          >
+            {title}
+          </button>
+          <button
+            type="button"
+            class="picker-title-tab-close"
+            aria-label={m.window_close()}
+            onclick={closeWindow}
+          >
+            <X size={iconSizes.xs} aria-hidden="true" />
+          </button>
+        </div>
+        <div class="picker-title-tab" class:active={activeTab === 'create'}>
+          <button
+            type="button"
+            role="tab"
+            id={createTabId}
+            aria-controls={createPanelId}
+            aria-selected={activeTab === 'create'}
+            tabindex={activeTab === 'create' ? 0 : -1}
+            class="picker-title-tab-trigger"
+            onclick={() => (activeTab = 'create')}
+          >
+            <Plus size={iconSizes.sm} aria-hidden="true" />
+            {create?.tabLabel ?? create?.label ?? m.picker_add_new()}
+          </button>
+          <button
+            type="button"
+            class="picker-title-tab-close"
+            aria-label={m.picker_close_create_tab()}
+            onclick={closeCreateTab}
+          >
+            <X size={iconSizes.xs} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    {:else}
+      <span class="picker-window-title">{title}</span>
+    {/if}
+  {/snippet}
+
   {#snippet toolbar()}
-    {#if resolvedSelectionMode === 'multiple' && pickCount > 0}
-      <span class="picker-count t-caption">{m.picker_added_n({ n: pickCount })}</span>
+    {#if resolvedSelectionMode === 'multiple' && selectedCount > 0}
+      <span class="picker-count t-caption">{m.picker_selected_n({ n: selectedCount })}</span>
     {/if}
   {/snippet}
 
   <div class="picker-shell">
     {#if subtitle}
       <p class="picker-subtitle t-caption">{subtitle}</p>
-    {/if}
-
-    {#if createTabOpen}
-      <div class="picker-tabs" role="tablist" aria-label={title}>
-        <button
-          type="button"
-          role="tab"
-          id={browseTabId}
-          aria-controls={browsePanelId}
-          aria-selected={activeTab === 'browse'}
-          tabindex={activeTab === 'browse' ? 0 : -1}
-          class="picker-tab"
-          class:active={activeTab === 'browse'}
-          onclick={() => {
-            activeTab = 'browse';
-            focusSearch();
-          }}
-        >
-          {m.picker_browse()}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id={createTabId}
-          aria-controls={createPanelId}
-          aria-selected={activeTab === 'create'}
-          tabindex={activeTab === 'create' ? 0 : -1}
-          class="picker-tab"
-          class:active={activeTab === 'create'}
-          onclick={() => (activeTab = 'create')}
-        >
-          <Plus size={iconSizes.sm} aria-hidden="true" />
-          {create?.tabLabel ?? create?.label ?? m.picker_add_new()}
-        </button>
-        <Button
-          variant="ghost"
-          size="xs"
-          shape="icon"
-          class="picker-close-tab"
-          aria-label={m.picker_close_create_tab()}
-          onclick={closeCreateTab}
-        >
-          <X size={iconSizes.sm} aria-hidden="true" />
-        </Button>
-      </div>
     {/if}
 
     {#if activeTab === 'create' && createTabOpen}
@@ -579,8 +592,7 @@
                 {#each view as row, index (getRowId(row))}
                   {@const rowDuplicate = duplicate(row)}
                   {@const rowDisabled = disabled(row)}
-                  {@const picked =
-                    pickedIds?.has(getRowId(row)) || sessionPickedIds.has(getRowId(row))}
+                  {@const picked = effectivePickedIds.has(getRowId(row))}
                   {@const disabledReason = rowDuplicate
                     ? m.picker_already_added()
                     : rowDisabledReason?.(row)}
@@ -643,9 +655,6 @@
 
         <footer class="picker-footer">
           <p class="picker-hint t-caption">{m.picker_dblclick_hint()}</p>
-          {#if resolvedSelectionMode === 'multiple'}
-            <Button variant="outline" size="sm" onclick={closeWindow}>{m.common_close()}</Button>
-          {/if}
         </footer>
       </div>
     {/if}
@@ -667,41 +676,72 @@
     background: var(--color-surface-1);
     border-bottom: 1px solid var(--color-border-subtle);
   }
-  .picker-tabs {
+  .picker-window-title {
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--font-size-section-title);
+    font-weight: var(--font-weight-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .picker-title-tabs {
     display: flex;
+    min-width: 0;
+    height: 100%;
+    align-items: center;
+    gap: var(--space-1);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .picker-title-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .picker-title-tab {
+    display: inline-flex;
+    min-width: 0;
+    height: var(--control-height-md);
     flex: none;
     align-items: center;
-    gap: var(--space-1);
-    padding: var(--space-1) var(--space-2) 0;
-    background: var(--color-surface-1);
-    border-bottom: 1px solid var(--color-border-subtle);
-  }
-  .picker-tab {
-    display: inline-flex;
-    min-height: var(--control-height-md);
-    align-items: center;
-    gap: var(--space-1);
-    padding: 0 var(--space-3);
-    border: 0;
-    border-bottom: 2px solid transparent;
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
-    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
     color: var(--color-text-secondary);
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
-    cursor: pointer;
   }
-  .picker-tab.active {
+  .picker-title-tab.active {
     color: var(--color-accent);
-    border-bottom-color: var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
     background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   }
-  .picker-tab:hover:not(.active) {
+  .picker-title-tab:hover:not(.active) {
     color: var(--color-text-primary);
     background: var(--color-surface-2);
   }
-  .picker-tabs :global(.picker-close-tab) {
-    margin-left: calc(var(--space-1) * -1);
+  .picker-title-tab-trigger,
+  .picker-title-tab-close {
+    display: inline-flex;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    color: inherit;
+    background: transparent;
+  }
+  .picker-title-tab-trigger {
+    min-width: 0;
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+    font-size: var(--font-size-label);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+  }
+  .picker-title-tab-close {
+    width: var(--control-height-xs);
+    flex: none;
+    padding: 0;
+    border-radius: var(--radius-sm);
+  }
+  .picker-title-tab-close:hover {
+    color: var(--color-text-primary);
+    background: var(--color-surface-3);
   }
   .picker-toolbar {
     position: relative;
