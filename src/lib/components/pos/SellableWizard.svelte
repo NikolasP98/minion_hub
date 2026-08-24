@@ -2,6 +2,8 @@
   import * as m from '$lib/paraglide/messages';
   import { Plus, Trash2 } from 'lucide-svelte';
   import { Modal, Button, SegmentedControl, Input, Select, Combobox } from '$lib/components/ui';
+  import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
+  import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
   import {
     CODE_MAX,
@@ -102,17 +104,21 @@
   type Source = 'service' | 'new-item' | 'existing-item';
   let source = $state<Source>('service');
   let existingItemId = $state('');
+  let existingItemPickerOpen = $state(false);
+  let consumptionPickerOpen = $state(false);
+  let createdStockItems = $state<StockItemLike[]>([]);
   let uom = $state('unit');
   const kind = $derived<'product' | 'service'>(source === 'service' ? 'service' : 'product');
+  const allStockItems = $derived([...createdStockItems, ...stockItems]);
   /** Only items not already published can be linked. */
-  const availableItems = $derived(stockItems.filter((i) => !i.finProductId));
+  const availableItems = $derived(allStockItems.filter((i) => !i.finProductId));
   let rows = $state<{ itemId: string; qtyPerUnit: string; note: string }[]>([]);
   let busy = $state(false);
 
   /** Label a row's qty input with the CONSUMPTION uom when the item has one,
    *  falling back to its stock uom. Boxes on the shelf, units on the ticket. */
   function unitLabel(itemId: string): string {
-    const item = stockItems.find((i) => i.id === itemId);
+    const item = allStockItems.find((i) => i.id === itemId);
     return item?.consumptionUom ?? item?.uom ?? '';
   }
 
@@ -132,7 +138,7 @@
     // `source` is creation-only (hidden in edit mode), so edit just resets it.
     source = 'service';
     existingItemId = '';
-    uom = (e?.itemId ? stockItems.find((i) => i.id === e.itemId)?.uom : undefined) ?? 'unit';
+    uom = (e?.itemId ? allStockItems.find((i) => i.id === e.itemId)?.uom : undefined) ?? 'unit';
     rows = e
       ? consumption
           .filter((c) => c.finProductId === e.productId)
@@ -155,13 +161,26 @@
   }
   function optionsFor(idx: number): StockItemLike[] {
     const used = usedElsewhere(idx);
-    return stockItems.filter((i) => !used.has(i.id));
+    return allStockItems.filter((i) => !used.has(i.id));
   }
-  function addRow() {
-    const used = new Set(rows.map((r) => r.itemId));
-    const next = stockItems.find((i) => !used.has(i.id));
-    if (!next) return; // every stock item already mapped
-    rows = [...rows, { itemId: next.id, qtyPerUnit: '', note: '' }];
+  const pickedConsumptionIds = $derived(new Set(rows.map((row) => row.itemId)));
+
+  function rememberCreatedItem(item: StockItemOption): StockItemLike {
+    const stockItem: StockItemLike = item;
+    if (!allStockItems.some((candidate) => candidate.id === item.id)) {
+      createdStockItems = [stockItem, ...createdStockItems];
+    }
+    return stockItem;
+  }
+
+  function pickExistingItem(item: StockItemOption) {
+    existingItemId = rememberCreatedItem(item).id;
+  }
+
+  function addRow(item: StockItemOption) {
+    const remembered = rememberCreatedItem(item);
+    if (rows.some((row) => row.itemId === remembered.id)) return;
+    rows = [...rows, { itemId: remembered.id, qtyPerUnit: '', note: '' }];
   }
   function removeRow(idx: number) {
     rows = rows.filter((_, i) => i !== idx);
@@ -330,12 +349,18 @@
       {:else if source === 'existing-item' && stockEnabled}
         <label class="fld">
           <span>{m.pos_catalog_pick_item()}</span>
-          <Select fieldClass="min-w-0" bind:value={existingItemId}>
-            <option value="">{m.pos_catalog_pick_item()}…</option>
-            {#each availableItems as item (item.id)}
-              <option value={item.id}>{item.code} — {item.name}</option>
-            {/each}
-          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            class="wizard-item-picker"
+            onclick={() => (existingItemPickerOpen = true)}
+          >
+            {existingItemId
+              ? `${allStockItems.find((item) => item.id === existingItemId)?.code ?? ''} — ${
+                  allStockItems.find((item) => item.id === existingItemId)?.name ?? existingItemId
+                }`
+              : m.pos_catalog_pick_item()}
+          </Button>
         </label>
       {/if}
     {/if}
@@ -391,8 +416,8 @@
           <Button
             variant="outline"
             size="sm"
-            onclick={addRow}
-            disabled={rows.length >= stockItems.length}
+            onclick={() => (consumptionPickerOpen = true)}
+            disabled={rows.length >= allStockItems.length}
           >
             <Plus size={13} />
             {m.common_add()}
@@ -409,6 +434,28 @@
     >
   {/snippet}
 </Modal>
+
+<StockItemPicker
+  bind:open={existingItemPickerOpen}
+  items={availableItems}
+  title={m.pos_catalog_pick_item()}
+  onPick={pickExistingItem}
+  selectionMode="single"
+  duplicatePolicy="prevent"
+  storageKey="sellable-existing-stock-item"
+/>
+
+<StockItemPicker
+  bind:open={consumptionPickerOpen}
+  items={allStockItems}
+  title={m.pos_catalog_consumption()}
+  onPick={addRow}
+  selectionMode="multiple"
+  duplicatePolicy="prevent"
+  pickedIds={pickedConsumptionIds}
+  columnsConfigurable
+  storageKey="sellable-consumption-items"
+/>
 
 <style>
   /* `.fld` survives only for the two grouping wrappers (consumption rows,
@@ -452,5 +499,11 @@
   .consumption-row :global(.act-btn):hover {
     background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
     color: var(--color-foreground);
+  }
+  .fld :global(.wizard-item-picker) {
+    min-width: 0;
+    justify-content: flex-start;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>

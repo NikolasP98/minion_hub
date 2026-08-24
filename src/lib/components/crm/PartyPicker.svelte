@@ -1,94 +1,142 @@
-<script lang="ts">
-  import { Button, iconSizes } from '$lib/components/ui';
+<script lang="ts" module>
+  export type { PartyOption } from './party-picker';
+</script>
 
+<script lang="ts">
   import { onDestroy } from 'svelte';
-  import { X, IdCard } from 'lucide-svelte';
+  import { IdCard, ListFilter, X } from 'lucide-svelte';
+  import { canAct } from '$lib/access/can.svelte';
+  import { Button, Input, Picker, iconSizes, type PickerColumn } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { createAsyncDebouncer } from '$lib/pacer/index.svelte';
-
-  type Party = {
-    id: string;
-    name: string | null;
-    type: string;
-    email: string | null;
-    docNumber: string | null;
-  };
+  import PartyCreateForm from './PartyCreateForm.svelte';
+  import { creatablePartyTypes, type PartyOption } from './party-picker';
 
   let {
     value = $bindable(null),
     label = '',
-    placeholder = 'Search parties…',
+    placeholder = m.party_picker_search(),
     types = undefined,
     initialName = '',
     docLookup = false,
-    onPicked = undefined,
+    onPicked,
+    allowCreate = true,
+    columnsConfigurable = true,
+    pickerColumns,
+    pickerStorageKey,
   }: {
     value?: string | null;
     label?: string;
     placeholder?: string;
-    /** Comma-separated party types to filter, e.g. "person,company". */
+    /** Comma-separated party types to filter, e.g. `person,company`. */
     types?: string | undefined;
     initialName?: string;
-    /**
-     * Offer registry autofill when the query is a bare DNI (8 digits) or RUC
-     * (11 digits): looks the document up (perudevs) and find-or-creates the
-     * party with the registry name via POST /api/crm/parties.
-     */
+    /** Offer DNI/RUC registry autofill for bare 8- or 11-digit queries. */
     docLookup?: boolean;
-    /** Called with the picked party (existing or just created). */
-    onPicked?: (party: Party) => void;
+    onPicked?: (party: PartyOption) => void;
+    allowCreate?: boolean;
+    columnsConfigurable?: boolean;
+    pickerColumns?: PickerColumn<PartyOption>[];
+    pickerStorageKey?: string;
   } = $props();
 
   // svelte-ignore state_referenced_locally -- seed the editable query once from the prop
   let q = $state(initialName);
-  let results = $state<Party[]>([]);
-  let open = $state(false);
+  let results = $state<PartyOption[]>([]);
+  let menuOpen = $state(false);
+  let pickerOpen = $state(false);
 
-  // A slow response for an earlier keystroke can otherwise land after a
-  // faster response for a later one and overwrite it with stale results.
-  // AsyncDebouncer only collapses calls still *pending* — it does not
-  // guarantee a superseding call wins once two fetches are in flight — so
-  // guard the commit with a seq token (same pattern as
-  // `runRecordSearch` in $lib/state/ui/command-palette.svelte.ts).
-  let searchSeq = 0;
+  const allowedCreateTypes = $derived(creatablePartyTypes(types));
+  const canCreate = $derived(
+    allowCreate && allowedCreateTypes.length > 0 && canAct('crm', 'create'),
+  );
+  const pickerKey = $derived(
+    pickerStorageKey ?? `party-${(types ?? 'person-company').replaceAll(',', '-')}`,
+  );
+  const defaultColumns = $derived<PickerColumn<PartyOption>[]>([
+    {
+      key: 'name',
+      label: m.party_picker_name(),
+      value: (party) => party.name ?? m.party_picker_unnamed(),
+      priority: 10,
+      emphasis: 'primary',
+      hideable: false,
+    },
+    {
+      key: 'type',
+      label: m.party_picker_type(),
+      priority: 20,
+      defaultHidden: Boolean(types && !types.includes(',')),
+    },
+    {
+      key: 'docNumber',
+      label: m.party_picker_document_number(),
+      value: (party) => party.docNumber ?? '',
+      priority: 30,
+    },
+    {
+      key: 'email',
+      label: m.party_picker_email(),
+      value: (party) => party.email ?? '',
+      priority: 40,
+      defaultHidden: true,
+    },
+  ]);
+  const resolvedColumns = $derived(pickerColumns ?? defaultColumns);
+
+  let searchSequence = 0;
+
+  async function loadParties(term: string): Promise<PartyOption[]> {
+    const url = new URL('/api/crm/parties', location.origin);
+    url.searchParams.set('q', term);
+    if (types) url.searchParams.set('type', types);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('party search failed');
+    return (await response.json()) as PartyOption[];
+  }
+
   const search = createAsyncDebouncer(
     async (term: string) => {
-      const seq = ++searchSeq;
-      const u = new URL('/api/crm/parties', location.origin);
-      u.searchParams.set('q', term);
-      if (types) u.searchParams.set('type', types);
-      const r = await fetch(u);
-      if (seq !== searchSeq) return; // a newer search superseded this one
-      if (r.ok) {
-        results = await r.json();
-        open = true;
+      const sequence = ++searchSequence;
+      try {
+        const found = await loadParties(term);
+        if (sequence !== searchSequence) return;
+        results = found;
+        menuOpen = true;
+      } catch {
+        if (sequence === searchSequence) {
+          results = [];
+          menuOpen = false;
+        }
       }
     },
     { wait: 200 },
   );
+
   onDestroy(() => search.cancel());
 
-  function onInput(e: Event) {
-    q = (e.currentTarget as HTMLInputElement).value;
-    value = null; // typing invalidates the prior selection until re-picked
+  function onInput(event: Event) {
+    q = (event.currentTarget as HTMLInputElement).value;
+    value = null;
+    docErr = null;
     search.run(q);
   }
 
-  function pick(p: Party) {
-    value = p.id;
-    q = p.name ?? p.email ?? p.id;
-    open = false;
-    onPicked?.(p);
+  function pick(party: PartyOption) {
+    value = party.id;
+    q = party.name ?? party.email ?? party.id;
+    menuOpen = false;
+    onPicked?.(party);
   }
 
   function clear() {
     value = null;
     q = '';
     results = [];
-    open = false;
+    menuOpen = false;
+    docErr = null;
   }
 
-  // ── Registry doc lookup (opt-in) ───────────────────────────────────────────
   const docQuery = $derived(docLookup ? q.trim() : '');
   const docKind = $derived(
     /^\d{8}$/.test(docQuery) ? 'dni' : /^\d{11}$/.test(docQuery) ? 'ruc' : null,
@@ -101,9 +149,7 @@
     docBusy = true;
     docErr = null;
     try {
-      // Two literal fetch sites (not a templated path) so the frontend
-      // contract scanner can resolve each call to its tracked handler.
-      const res =
+      const response =
         docKind === 'dni'
           ? await fetch('/api/crm/dni-lookup', {
               method: 'POST',
@@ -115,7 +161,7 @@
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ ruc: docQuery }),
             });
-      const found = res.ok ? ((await res.json()) as Record<string, unknown>) : null;
+      const found = response.ok ? ((await response.json()) as Record<string, unknown>) : null;
       if (!found?.found) {
         docErr = 'not_found';
         return;
@@ -125,8 +171,7 @@
         docErr = 'not_found';
         return;
       }
-      // Find-or-create (dedups on docNumber server-side), then pick it.
-      const createRes = await fetch('/api/crm/parties', {
+      const createResponse = await fetch('/api/crm/parties', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -136,11 +181,13 @@
           type: docKind === 'ruc' ? 'company' : 'person',
         }),
       });
-      if (!createRes.ok) {
+      if (!createResponse.ok) {
         docErr = 'failed';
         return;
       }
-      const created = (await createRes.json()) as { party: { id: string; name: string | null } };
+      const created = (await createResponse.json()) as {
+        party: { id: string; name: string | null };
+      };
       pick({
         id: created.party.id,
         name: created.party.name ?? name,
@@ -156,42 +203,89 @@
   }
 </script>
 
-<div class="pp">
-  {#if label}<span class="lbl">{label}</span>{/if}
-  <div class="field">
-    <input
-      class="in"
+{#snippet createPartyForm(context: {
+  oncreated: (party: PartyOption) => void;
+  oncancel: () => void;
+})}
+  <PartyCreateForm
+    allowedTypes={allowedCreateTypes}
+    initialName={q}
+    oncreated={context.oncreated}
+    oncancel={context.oncancel}
+  />
+{/snippet}
+
+<div class="party-picker">
+  <div class="party-field">
+    <Input
+      size="sm"
+      {label}
       {placeholder}
+      inputClass="party-input"
       value={q}
       oninput={onInput}
       onfocus={() => q && search.run(q)}
-      onblur={() => setTimeout(() => (open = false), 150)}
+      onblur={() => setTimeout(() => (menuOpen = false), 150)}
+      autocomplete="off"
     />
-    {#if value || q}
-      <Button class="clr" type="button" title="Clear" onclick={clear}><X size={13} /></Button>
-    {/if}
-    {#if open && (results.length || docKind)}
-      <ul class="menu">
-        {#each results as p (p.id)}
+    <div class="party-controls">
+      {#if value || q}
+        <Button
+          variant="ghost"
+          size="xs"
+          shape="icon"
+          aria-label={m.common_reset()}
+          onclick={clear}
+        >
+          <X size={iconSizes.sm} aria-hidden="true" />
+        </Button>
+      {/if}
+      <Button
+        variant="ghost"
+        size="xs"
+        shape="icon"
+        aria-label={m.party_picker_browse()}
+        onclick={() => {
+          menuOpen = false;
+          pickerOpen = true;
+        }}
+      >
+        <ListFilter size={iconSizes.sm} aria-hidden="true" />
+      </Button>
+    </div>
+
+    {#if menuOpen && (results.length || docKind)}
+      <ul class="party-menu">
+        {#each results as party (party.id)}
           <li>
-            <Button type="button" onclick={() => pick(p)}>
-              <span class="nm">{p.name ?? '(unnamed)'}</span>
-              <span class="ty"
-                >{p.type}{p.email ? ` · ${p.email}` : p.docNumber ? ` · ${p.docNumber}` : ''}</span
-              >
+            <Button variant="ghost" type="button" onclick={() => pick(party)}>
+              <span class="party-name">{party.name ?? m.party_picker_unnamed()}</span>
+              <span class="party-meta">
+                {party.type}{party.email
+                  ? ` · ${party.email}`
+                  : party.docNumber
+                    ? ` · ${party.docNumber}`
+                    : ''}
+              </span>
             </Button>
           </li>
         {/each}
         {#if docKind}
           <li>
-            <Button type="button" class="doc-row" onclick={lookupDoc} disabled={docBusy}>
-              <span class="nm doc-nm">
+            <Button
+              variant="ghost"
+              type="button"
+              class="doc-row"
+              onclick={lookupDoc}
+              disabled={docBusy}
+            >
+              <span class="party-name doc-name">
                 <IdCard size={iconSizes.sm} aria-hidden="true" />
                 {docBusy ? m.crm_dni_checking() : m.crm_dni_lookup()}
                 {docKind.toUpperCase()}
                 {docQuery}
               </span>
-              {#if docErr}<span class="ty doc-err">{m.crm_dni_error()}</span>{/if}
+              {#if docErr}<span class="party-meta doc-error">{m.crm_dni_error()}</span>{/if}
             </Button>
           </li>
         {/if}
@@ -200,95 +294,97 @@
   </div>
 </div>
 
+<Picker
+  bind:open={pickerOpen}
+  title={m.party_picker_browse()}
+  columns={resolvedColumns}
+  loadRows={loadParties}
+  getRowId={(party) => party.id}
+  searchText={(party) =>
+    `${party.name ?? ''} ${party.type} ${party.email ?? ''} ${party.docNumber ?? ''}`}
+  onPick={pick}
+  selectionMode="single"
+  {columnsConfigurable}
+  initialSearch={q}
+  searchPlaceholder={placeholder}
+  storageKey={pickerKey}
+  create={canCreate
+    ? {
+        label: m.party_picker_new(),
+        tabLabel: m.party_picker_new(),
+        form: createPartyForm,
+      }
+    : undefined}
+/>
+
 <style>
-  .pp {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    flex: 1;
+  .party-picker {
     min-width: 0;
+    flex: 1;
   }
-  .lbl {
-    font-size: var(--font-size-caption);
-    color: var(--color-muted-foreground);
-  }
-  .field {
+  .party-field {
     position: relative;
   }
-  .in {
-    width: 100%;
-    height: 2rem;
-    font-size: var(--font-size-body);
-    border-radius: var(--radius-md);
-    background: var(--color-bg3);
-    border: 1px solid var(--hairline);
-    padding: 0 1.8rem 0 0.55rem;
-    color: var(--color-foreground);
+  .party-field :global(.party-input) {
+    padding-right: calc(var(--control-height-xs) * 2 + var(--space-2));
   }
-  .pp :global(.clr) {
+  .party-controls {
     position: absolute;
-    right: 0.3rem;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    color: var(--color-muted-foreground);
-    cursor: pointer;
-    display: grid;
-    place-items: center;
+    right: var(--space-1);
+    bottom: 0;
+    display: flex;
+    height: var(--control-height-sm);
+    align-items: center;
+    gap: var(--space-0-5);
   }
-  .menu {
+  .party-menu {
     position: absolute;
-    z-index: var(--layer-navigation);
-    top: calc(100% + 2px);
-    left: 0;
+    top: calc(100% + var(--space-1));
     right: 0;
-    max-height: 14rem;
+    left: 0;
+    max-height: calc(var(--control-height-touch) * 6);
     overflow: auto;
     margin: 0;
     padding: var(--space-1);
     list-style: none;
-    background: var(--color-card);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    background: var(--color-overlay);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-overlay);
+    z-index: var(--layer-popover);
   }
-  .menu li :global([data-part='button']) {
+  .party-menu li :global([data-part='button']) {
     width: 100%;
+    justify-content: flex-start;
     text-align: left;
-    background: none;
-    border: none;
-    padding: var(--space-2) var(--space-2);
-    border-radius: var(--radius-sm, 4px);
-    cursor: pointer;
-    color: var(--color-foreground);
   }
-  .menu li :global([data-part='button'] > span) {
+  .party-menu li :global([data-part='button'] > span) {
     width: 100%;
     flex-direction: column;
     align-items: flex-start;
-    gap: var(--space-0);
+    gap: var(--space-0-5);
   }
-  .menu li :global([data-part='button']):hover {
-    background: var(--color-bg3);
-  }
-  .nm {
+  .party-name {
+    color: var(--color-text-primary);
     font-size: var(--font-size-body);
+    font-weight: var(--font-weight-medium);
   }
-  .ty {
+  .party-meta {
+    color: var(--color-text-tertiary);
     font-size: var(--font-size-caption);
-    color: var(--color-muted-foreground);
   }
-  .doc-nm {
+  .doc-name {
     display: inline-flex;
+    flex-direction: row;
     align-items: center;
     gap: var(--space-1);
     color: var(--color-accent);
   }
-  .doc-err {
+  .doc-error {
     color: var(--color-danger-fg);
   }
-  .menu li :global(.doc-row) {
-    border-top: 1px solid var(--hairline);
+  .party-menu li :global(.doc-row) {
+    border-top: 1px solid var(--color-border-subtle);
   }
 </style>
