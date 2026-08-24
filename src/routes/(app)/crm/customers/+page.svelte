@@ -277,7 +277,10 @@
     };
     const requestIdle = (
       window as unknown as {
-        requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+        requestIdleCallback?: (
+          callback: IdleRequestCallback,
+          options?: IdleRequestOptions,
+        ) => number;
       }
     ).requestIdleCallback;
     if (requestIdle) requestIdle(warm, { timeout: 1_000 });
