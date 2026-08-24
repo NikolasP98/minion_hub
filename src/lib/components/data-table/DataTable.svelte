@@ -104,6 +104,11 @@
      *  appends the new rows to `data` (page 1 replaces, page >1 appends). */
     infinite?: boolean;
     onQuery: (q: ServerQuery) => void;
+    /** Delegate export to a server endpoint so it covers the full filtered set. */
+    onExport?: (format: 'csv' | 'xlsx', keys: string[]) => void;
+    exportFormats?: ('csv' | 'xlsx')[];
+    /** Resolve ids for the complete current filter, beyond loaded rows. */
+    onSelectAllMatching?: () => Promise<string[]>;
   };
 </script>
 
@@ -834,6 +839,18 @@
   function toggleAll() {
     emitSelection(allSelected ? new Set() : new Set(viewIds));
   }
+  let selectingAllMatching = $state(false);
+  async function selectAllMatching() {
+    if (!server?.onSelectAllMatching || selectingAllMatching) return;
+    selectingAllMatching = true;
+    try {
+      emitSelection(new Set(await server.onSelectAllMatching()));
+    } catch {
+      // Caller owns the domain-specific error surface; preserve current selection.
+    } finally {
+      selectingAllMatching = false;
+    }
+  }
   let bulkOpen = $state(false);
   function runBulk(a: BulkAction<T>) {
     bulkOpen = false;
@@ -998,6 +1015,10 @@
     })),
   );
   function handleExport(format: 'csv' | 'xlsx', keys: string[]) {
+    if (server?.onExport) {
+      server.onExport(format, keys);
+      return;
+    }
     const cols = exportColumns.filter((c) => keys.includes(c.key));
     const val = (c: DataColumn<T>, row: T): string | number => {
       if (c.exportValue) return c.exportValue(row);
@@ -1050,6 +1071,17 @@
       {/if}
       {#if selectedIds.size > 0}
         <span class="dt-count text-accent">{m.data_table_selected({ n: selectedIds.size })}</span>
+        {#if server?.onSelectAllMatching && allSelected && selectedIds.size < server.total}
+          <Button
+            variant="ghost"
+            size="xs"
+            class="dt-tool"
+            disabled={selectingAllMatching}
+            onclick={selectAllMatching}
+          >
+            {m.data_table_select_all_matching({ n: server.total })}
+          </Button>
+        {/if}
       {:else if server}
         <!-- server-mode range/total renders as the pager label below -->
       {:else}
@@ -1596,7 +1628,8 @@
   <ExportDialog
     bind:open={exportOpen}
     columns={exportDialogCols}
-    count={view.length}
+    count={server?.total ?? view.length}
+    formats={server?.exportFormats}
     onexport={handleExport}
   />
 {/if}

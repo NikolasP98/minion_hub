@@ -12,7 +12,7 @@ import {
   type RankFilters,
 } from '$server/services/crm-contacts.service';
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
-import { contactFinanceMap } from '$server/services/crm-finance.service';
+import { ServerTiming } from '$lib/server/server-timing';
 
 /** Page-size caps (spec 2026-08-13 §S3): default 100 rows, hard max 500. */
 const DEFAULT_LIMIT = 100;
@@ -30,11 +30,19 @@ const MAX_LIMIT = 500;
  * "select all N matching"), capped at ROSTER_CAP.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
+  const timing = new ServerTiming();
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const q = url.searchParams;
-  const num = (k: string) => (q.has(k) ? Number(q.get(k)) : undefined);
+  const num = (k: string) => {
+    if (!q.has(k)) return undefined;
+    const value = Number(q.get(k));
+    return Number.isFinite(value) ? value : undefined;
+  };
   const bool = (k: string) => (q.get(k) === 'true' || q.get(k) === '1' ? true : undefined);
+  const [ownerId, maskSensitive] = await timing.measure('crm_authz', () =>
+    Promise.all([ownerFilter(locals, 'crm'), shouldMaskSensitive(locals, 'crm')]),
+  );
   const filters: RankFilters = {
     stage: q.get('stage') ?? undefined,
     channel: q.get('channel') ?? undefined,
@@ -54,40 +62,48 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     maxIcp: num('maxIcp'),
     sort: (q.get('sort') as RankFilters['sort']) ?? undefined,
     sortDir: q.get('sortDir') === 'asc' ? 'asc' : q.get('sortDir') === 'desc' ? 'desc' : undefined,
-    limit: Math.min(num('limit') ?? DEFAULT_LIMIT, MAX_LIMIT),
+    limit: Math.max(1, Math.min(num('limit') ?? DEFAULT_LIMIT, MAX_LIMIT)),
     maxLimit: MAX_LIMIT,
-    offset: num('offset'),
-    ownerId: await ownerFilter(locals, 'crm'),
-    maskSensitive: await shouldMaskSensitive(locals, 'crm'),
+    offset: Math.max(0, num('offset') ?? 0),
+    includeTotal: q.get('includeTotal') !== '0',
+    ownerId,
+    maskSensitive,
   };
 
   // Lean id-only variant: same filters, no pagination, no PII, no decoration.
   if (q.get('fields') === 'id') {
-    const { rows, total } = await rankContactsPageCached(ctx, {
-      ...filters,
-      limit: ROSTER_CAP,
-      maxLimit: ROSTER_CAP,
-      offset: 0,
-    });
-    return json({ contacts: rows.map((r) => ({ contact_id: r.contact_id })), total });
+    const { rows, total } = await timing.measure('crm_rank', () =>
+      rankContactsPageCached(ctx, {
+        ...filters,
+        limit: ROSTER_CAP,
+        maxLimit: ROSTER_CAP,
+        offset: 0,
+        includeTotal: true,
+      }),
+    );
+    return json(
+      { contacts: rows.map((r) => ({ contact_id: r.contact_id })), total },
+      { headers: { 'Server-Timing': timing.headerValue() } },
+    );
   }
 
-  const { rows, total } = await rankContactsPageCached(ctx, filters);
+  const [ranked, tags] = await Promise.all([
+    timing.measure('crm_rank', () => rankContactsPageCached(ctx, filters)),
+    timing.measure('crm_tags', () => listTags(ctx)),
+  ]);
+  const { rows, total, hasMore, financeEnabled } = ranked;
 
-  // Decorate ONLY the returned page (≤ MAX_LIMIT rows): live auto-tag matches
-  // and the cached finance rollup. Both were full-roster passes in the page
-  // load before pagination.
-  const tags = await listTags(ctx);
+  // Decorate ONLY the returned page (≤ MAX_LIMIT rows): live auto-tag matches.
+  // Finance is already emitted by the ranking query for these rows, avoiding a
+  // second full-organization contactFinanceMap scan on every page request.
   const autoTags = tags.filter((t) => t.kind === 'auto' && t.rule != null);
   const withAutoTags = autoTags.length
     ? rows.map((c) => ({ ...c, auto_tag_ids: matchingAutoTagIds(c, autoTags) }))
     : rows;
-  const financeMap = await contactFinanceMap(ctx);
-  const contacts = Object.keys(financeMap).length
-    ? withAutoTags.map((c) => ({ ...c, finance: financeMap[c.contact_id] ?? null }))
-    : withAutoTags;
-
-  return json({ contacts, total });
+  return json(
+    { contacts: withAutoTags, total, hasMore, financeEnabled },
+    { headers: { 'Server-Timing': timing.headerValue() } },
+  );
 };
 
 const postSchema = z.object({

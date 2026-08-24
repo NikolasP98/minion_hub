@@ -1,5 +1,5 @@
 import { and, eq, desc, sql } from 'drizzle-orm';
-import { withOrgCore } from '$server/db/with-org-core';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { docComments, docAuditLog } from '$server/db/pg-activity-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
@@ -48,7 +48,12 @@ export function computeChanges(
   const out: FieldChange[] = [];
   for (const f of fields) {
     if (before[f.field] !== after[f.field]) {
-      out.push({ field: f.field, label: f.label, old: before[f.field] ?? null, new: after[f.field] ?? null });
+      out.push({
+        field: f.field,
+        label: f.label,
+        old: before[f.field] ?? null,
+        new: after[f.field] ?? null,
+      });
     }
   }
   return out;
@@ -87,19 +92,23 @@ export async function addComment(
 
 /** Append an audit entry. No-op when there are no changes. Run inside the
  *  caller's tx when available; standalone otherwise. */
-export async function recordAudit(
+export interface AuditInput {
+  refType: string;
+  refId: string;
+  op?: string;
+  changes: FieldChange[];
+  actor: { id: string | null; name: string | null };
+}
+
+/** Append audit rows inside an existing transaction. */
+export async function recordAuditsInTx(
+  tx: CoreTx,
   ctx: CoreCtx,
-  input: {
-    refType: string;
-    refId: string;
-    op?: string;
-    changes: FieldChange[];
-    actor: { id: string | null; name: string | null };
-  },
+  inputs: AuditInput[],
 ): Promise<void> {
-  if (input.changes.length === 0) return;
-  await withOrgCore(ctx, (tx) =>
-    tx.insert(docAuditLog).values({
+  const values = inputs
+    .filter((input) => input.changes.length > 0)
+    .map((input) => ({
       orgId: ctx.tenantId,
       refType: input.refType,
       refId: input.refId,
@@ -107,8 +116,17 @@ export async function recordAudit(
       changes: input.changes,
       actorId: input.actor.id,
       actorName: input.actor.name,
-    }),
-  );
+    }));
+  if (values.length > 0) await tx.insert(docAuditLog).values(values);
+}
+
+export async function recordAuditInTx(tx: CoreTx, ctx: CoreCtx, input: AuditInput): Promise<void> {
+  await recordAuditsInTx(tx, ctx, [input]);
+}
+
+export async function recordAudit(ctx: CoreCtx, input: AuditInput): Promise<void> {
+  if (input.changes.length === 0) return;
+  await withOrgCore(ctx, (tx) => recordAuditInTx(tx, ctx, input));
 }
 
 /** Merged comment + audit feed for one record, newest first. */
@@ -122,13 +140,25 @@ export async function listEntityTimeline(
       tx
         .select()
         .from(docComments)
-        .where(and(eq(docComments.orgId, ctx.tenantId), eq(docComments.refType, refType), eq(docComments.refId, refId)))
+        .where(
+          and(
+            eq(docComments.orgId, ctx.tenantId),
+            eq(docComments.refType, refType),
+            eq(docComments.refId, refId),
+          ),
+        )
         .orderBy(desc(docComments.createdAt))
         .limit(200),
       tx
         .select()
         .from(docAuditLog)
-        .where(and(eq(docAuditLog.orgId, ctx.tenantId), eq(docAuditLog.refType, refType), eq(docAuditLog.refId, refId)))
+        .where(
+          and(
+            eq(docAuditLog.orgId, ctx.tenantId),
+            eq(docAuditLog.refType, refType),
+            eq(docAuditLog.refId, refId),
+          ),
+        )
         .orderBy(desc(docAuditLog.occurredAt))
         .limit(200),
     ]);

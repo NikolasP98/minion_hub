@@ -1788,6 +1788,7 @@
   "data_table_save_failed": "Save failed",
   "data_table_search": "Search…",
   "data_table_select_all": "Select all",
+  "data_table_select_all_matching": "Select all {n} matching",
   "data_table_selected": "{n} selected",
   "data_table_showing": "Showing {shown} of {total}",
   "data_table_sort_asc": "Sort ascending",

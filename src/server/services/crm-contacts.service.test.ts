@@ -16,6 +16,8 @@ import {
   setFunnelStage,
   listContactsCached,
   getMetaKeys,
+  listContactChannels,
+  softDeleteContacts,
 } from './crm-contacts.service';
 
 /**
@@ -272,7 +274,7 @@ describe('setContactCustomField (S1 — shared atomic setter)', () => {
     } finally {
       await client.close();
     }
-  });
+  }, 15_000); // PGlite WASM cold-start is slower under the fully parallel suite.
 });
 
 describe('assertJsonValue (S1 — reject non-JSON values before they reach SQL)', () => {
@@ -466,7 +468,13 @@ function rankedRow(over: Record<string, unknown> = {}) {
     m_score: '40',
     score: '65',
     stage: 'Engaged',
+    funnel_stage: 'lead',
     revenue: 1200,
+    fin_invoices: 3,
+    fin_last_purchase_at: '2026-08-20T12:00:00.000Z',
+    fin_purchased: true,
+    fin_reserved_only: false,
+    fin_loyal: true,
     page_position: 1,
     total_rows: 1543,
     ...over,
@@ -486,9 +494,31 @@ describe('rankContactsPage (S1 — one round-trip page + filtered total)', () =>
     expect(query.sql).toContain('select count(*)::int as total_rows from filtered');
     expect(page.rows).toHaveLength(2);
     expect(page.total).toBe(1543); // ≫ the 2 rows on this page
+    expect(page.hasMore).toBe(true);
+    expect(page.financeEnabled).toBe(false);
   });
 
-  it('strips the helper columns — a page row is exactly a RankedContact', async () => {
+  it('skips the exact count for continuation pages and uses one look-ahead row', async () => {
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([
+        rankedRow(),
+        rankedRow({ contact_id: 'c2', page_position: 2 }),
+        rankedRow({ contact_id: 'c3', page_position: 3 }),
+      ]);
+    useExecMock(execute);
+
+    const page = await rankContactsPage(ctx, { limit: 2, offset: 2, includeTotal: false });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).not.toContain('select count(*)::int as total_rows from filtered');
+    expect(page.rows.map((r) => r.contact_id)).toEqual(['c1', 'c2']);
+    expect(page.total).toBeNull();
+    expect(page.hasMore).toBe(true);
+  });
+
+  it('decorates finance from the page query and strips its SQL helper columns', async () => {
+    mockBothEnabled.mockResolvedValueOnce(true);
     const execute = vi.fn().mockResolvedValueOnce([rankedRow()]);
     useExecMock(execute);
 
@@ -496,10 +526,36 @@ describe('rankContactsPage (S1 — one round-trip page + filtered total)', () =>
 
     expect(rows[0]).not.toHaveProperty('total_rows');
     expect(rows[0]).not.toHaveProperty('revenue');
+    expect(rows[0]).not.toHaveProperty('fin_invoices');
+    expect(rows[0]).not.toHaveProperty('fin_last_purchase_at');
+    expect(rows[0]).not.toHaveProperty('fin_purchased');
+    expect(rows[0]).not.toHaveProperty('fin_reserved_only');
+    expect(rows[0]).not.toHaveProperty('fin_loyal');
     expect(rows[0]).not.toHaveProperty('page_position');
+    expect(rows[0].finance).toEqual({
+      revenue: 1200,
+      invoices: 3,
+      lastPurchaseAt: '2026-08-20T12:00:00.000Z',
+      purchased: true,
+      reservedOnly: false,
+      loyal: true,
+    });
     // …and the numeric coercion still applies to what remains.
     expect(rows[0].score).toBe(65);
     expect(rows[0].total_msgs).toBe(12);
+  });
+
+  it('runs identity and tag decoration after the requested page has been bounded', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContactsPage(ctx, { limit: 100 });
+
+    const sqlText = new PgDialect().sqlToQuery(execute.mock.calls[0][0]).sql;
+    const pageAt = sqlText.indexOf('requested_page as');
+    expect(pageAt).toBeGreaterThan(-1);
+    expect(sqlText.indexOf("json_build_object('channel'", pageAt)).toBeGreaterThan(pageAt);
+    expect(sqlText.indexOf('array_agg(ct.tag_id::text)', pageAt)).toBeGreaterThan(pageAt);
   });
 
   it('an out-of-range page preserves the nonzero filtered total in one round trip', async () => {
@@ -510,7 +566,12 @@ describe('rankContactsPage (S1 — one round-trip page + filtered total)', () =>
 
     const page = await rankContactsPage(ctx, { limit: 100, offset: 99900 });
 
-    expect(page).toEqual({ rows: [], total: 25 });
+    expect(page).toEqual({
+      rows: [],
+      total: 25,
+      hasMore: false,
+      financeEnabled: false,
+    });
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
@@ -624,6 +685,21 @@ describe('rankContacts search (S1 — phone/DNI exact-prefix)', () => {
     const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
     expect(query.sql).not.toContain("c.custom_fields->>'telefono' like");
     expect(query.sql).not.toContain('display_name ilike');
+  });
+});
+
+describe('rankContacts channel filter', () => {
+  const ctx = { db: {} as never, tenantId: 'org-1' };
+
+  it('correlates the identity probe to the scored contact instead of matching itself', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContacts(ctx, { channel: 'instagram' });
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain('ci2.contact_id = scored.contact_id');
+    expect(query.sql).not.toContain('ci2.contact_id = contact_id');
   });
 });
 
@@ -800,5 +876,66 @@ describe('getMetaKeys (S3 meta-column discovery)', () => {
     const second = await getMetaKeys(scoped);
     expect(second).toEqual(first);
     expect(poison).not.toHaveBeenCalled();
+  });
+});
+
+describe('listContactChannels (organization-wide filter options)', () => {
+  it('returns distinct live-contact channels and serves repeats from cache', async () => {
+    mockWithOrgCore.mockReset();
+    mockWithOrgCore.mockImplementation(defaultWithOrgCore);
+    const { configureCache, MemoryBackend } = await import('@minion-stack/cache');
+    configureCache({ backend: new MemoryBackend(), namespace: 'crm-contact-channels-test' });
+    const scoped = { db: {} as never, tenantId: 'org-contact-channels' };
+
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([{ channel: 'instagram' }, { channel: 'whatsapp' }]);
+    useExecMock(execute);
+    const first = await listContactChannels(scoped);
+
+    expect(first).toEqual(['instagram', 'whatsapp']);
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain('select distinct ci.channel');
+    expect(query.sql).toContain('c.deleted_at is null');
+
+    const poison = vi.fn().mockResolvedValueOnce([{ channel: 'POISON' }]);
+    useExecMock(poison);
+    await expect(listContactChannels(scoped)).resolves.toEqual(first);
+    expect(poison).not.toHaveBeenCalled();
+  });
+});
+
+describe('softDeleteContacts', () => {
+  it('deduplicates ids and writes the update plus audit batch in one org transaction', async () => {
+    mockWithOrgCore.mockReset();
+    const returning = vi
+      .fn()
+      .mockResolvedValue([
+        { id: '00000000-0000-4000-8000-000000000001' },
+        { id: '00000000-0000-4000-8000-000000000002' },
+      ]);
+    const where = vi.fn(() => ({ returning }));
+    const set = vi.fn(() => ({ where }));
+    const update = vi.fn(() => ({ set }));
+    const values = vi.fn().mockResolvedValue(undefined);
+    const insert = vi.fn(() => ({ values }));
+    const tx = { update, insert };
+    mockWithOrgCore.mockImplementationOnce((_scope, fn) => fn(tx as never));
+    const ctx = { db: {} as never, tenantId: 'org-1', profileId: 'profile-1' };
+    const ids = [
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000002',
+    ];
+
+    await expect(softDeleteContacts(ctx, ids)).resolves.toBe(2);
+
+    expect(update).toHaveBeenCalledOnce();
+    expect(insert).toHaveBeenCalledOnce();
+    expect(values).toHaveBeenCalledWith([
+      expect.objectContaining({ refId: ids[0], op: 'delete', actorId: 'profile-1' }),
+      expect.objectContaining({ refId: ids[2], op: 'delete', actorId: 'profile-1' }),
+    ]);
+    expect(mockWithOrgCore).toHaveBeenCalledOnce();
   });
 });

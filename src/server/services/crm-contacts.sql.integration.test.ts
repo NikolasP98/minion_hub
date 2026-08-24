@@ -215,7 +215,12 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     );
     expect(first.total).toBe(count);
     expect(first.rows).toHaveLength(2);
-    expect(empty).toEqual({ rows: [], total: count });
+    expect(empty).toEqual({
+      rows: [],
+      total: count,
+      hasMore: false,
+      financeEnabled: false,
+    });
   });
 
   it('sorts ICP null last and traverses tied rows exactly once', async () => {
@@ -268,13 +273,13 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
         { db: {} as never, tenantId: org },
         { search, limit: 20, maskSensitive: true },
       );
-      expect(page).toEqual({ rows: [], total: 0 });
+      expect(page).toEqual({ rows: [], total: 0, hasMore: false, financeEnabled: false });
     },
   );
 
   it.each(['8765', '5566', '8877'])('does not match phone/DNI mid-string %s', async (search) => {
     const page = await rankContactsPage({ db: {} as never, tenantId: org }, { search, limit: 20 });
-    expect(page).toEqual({ rows: [], total: 0 });
+    expect(page).toEqual({ rows: [], total: 0, hasMore: false, financeEnabled: false });
   });
 
   // ── Slice 2: filters the Customers page used to apply over the FULL roster ──

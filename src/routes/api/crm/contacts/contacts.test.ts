@@ -20,11 +20,6 @@ vi.mock('$server/services/crm-contacts.service', () => ({
   createContact: vi.fn(),
 }));
 
-const mockFinanceMap = vi.fn(async () => ({}) as Record<string, unknown>);
-vi.mock('$server/services/crm-finance.service', () => ({
-  contactFinanceMap: () => mockFinanceMap(),
-}));
-
 vi.mock('$server/services/crm-scoring', () => ({
   matchingAutoTagIds: (row: { contact_id: string }, tags: { id: string }[]) =>
     tags.map((t) => t.id),
@@ -64,6 +59,7 @@ const row = (id: string) => ({
   score: 65,
   stage: 'Engaged',
   funnel_stage: 'lead',
+  finance: null,
 });
 
 const callGET = (search = '') =>
@@ -78,8 +74,12 @@ beforeEach(() => {
   mockOwnerFilter.mockResolvedValue(undefined);
   mockShouldMask.mockResolvedValue(false);
   mockListTags.mockResolvedValue([]);
-  mockFinanceMap.mockResolvedValue({});
-  mockRankContactsPage.mockResolvedValue({ rows: [row('a'), row('b')], total: 42 });
+  mockRankContactsPage.mockResolvedValue({
+    rows: [row('a'), row('b')],
+    total: 42,
+    hasMore: true,
+    financeEnabled: true,
+  });
 });
 
 describe('GET /api/crm/contacts (S3 page contract)', () => {
@@ -113,6 +113,28 @@ describe('GET /api/crm/contacts (S3 page contract)', () => {
       expect.anything(),
       expect.objectContaining({ limit: 25 }),
     );
+    await callGET('?limit=-5&offset=-10');
+    expect(mockRankContactsPage).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ limit: 1, offset: 0 }),
+    );
+  });
+
+  it('lets continuation pages skip the exact filtered count', async () => {
+    mockRankContactsPage.mockResolvedValueOnce({
+      rows: [row('c')],
+      total: null,
+      hasMore: false,
+      financeEnabled: true,
+    });
+
+    const body = await (await callGET('?offset=100&includeTotal=0')).json();
+
+    expect(mockRankContactsPage).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ offset: 100, includeTotal: false }),
+    );
+    expect(body).toMatchObject({ total: null, hasMore: false });
   });
 
   it('parses the S2 filters from the query string', async () => {
@@ -139,12 +161,17 @@ describe('GET /api/crm/contacts (S3 page contract)', () => {
     );
   });
 
-  it('decorates ONLY the returned page: finance + live auto-tag matches, additively', async () => {
+  it('decorates ONLY the returned page with live auto-tag matches; finance already comes from SQL', async () => {
     mockListTags.mockResolvedValue([
       { id: 'tag-auto', kind: 'auto', rule: { op: 'gte' } },
       { id: 'tag-manual', kind: 'manual', rule: null },
     ]);
-    mockFinanceMap.mockResolvedValue({ a: { revenue: 100 } });
+    mockRankContactsPage.mockResolvedValue({
+      rows: [{ ...row('a'), finance: { revenue: 100 } }, row('b')],
+      total: 42,
+      hasMore: true,
+      financeEnabled: true,
+    });
     const body = await (await callGET()).json();
     expect(body.contacts[0].auto_tag_ids).toEqual(['tag-auto']);
     expect(body.contacts[0].finance).toEqual({ revenue: 100 });
@@ -163,7 +190,6 @@ describe('GET /api/crm/contacts (S3 page contract)', () => {
     );
     // the lean variant never runs the page decoration
     expect(mockListTags).not.toHaveBeenCalled();
-    expect(mockFinanceMap).not.toHaveBeenCalled();
   });
 
   it('passes the masking flag through to the service (RBAC unchanged)', async () => {
