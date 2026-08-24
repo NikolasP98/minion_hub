@@ -82,3 +82,15 @@ export function pickerRowIsDuplicate(
     (pickedIds?.has(id) === true || sessionPickedIds.has(id))
   );
 }
+
+/**
+ * Controlled picker state always wins over the local session cache. This lets
+ * an invoking form remove a row while the picker is open without leaving the
+ * row visually selected or duplicate-blocked inside the picker.
+ */
+export function effectivePickerPickedIds(
+  pickedIds: ReadonlySet<string> | undefined,
+  sessionPickedIds: ReadonlySet<string>,
+): ReadonlySet<string> {
+  return pickedIds ?? sessionPickedIds;
+}

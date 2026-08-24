@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   defaultPickerHidden,
+  effectivePickerPickedIds,
   orderPickerColumns,
   pickerRowIsDuplicate,
   reconcilePickerHidden,
@@ -39,5 +40,14 @@ describe('picker configuration', () => {
     expect(pickerRowIsDuplicate('item-2', 'multiple', 'prevent', existing, session)).toBe(true);
     expect(pickerRowIsDuplicate('item-1', 'multiple', 'allow', existing, session)).toBe(false);
     expect(pickerRowIsDuplicate('item-1', 'single', 'prevent', existing, session)).toBe(false);
+  });
+
+  it('treats controlled selections as authoritative after the invoking form removes a row', () => {
+    const staleSession = new Set(['item-1', 'item-2']);
+    const controlled = new Set(['item-2']);
+
+    expect(effectivePickerPickedIds(controlled, staleSession)).toBe(controlled);
+    expect(effectivePickerPickedIds(controlled, staleSession).has('item-1')).toBe(false);
+    expect(effectivePickerPickedIds(undefined, staleSession)).toBe(staleSession);
   });
 });

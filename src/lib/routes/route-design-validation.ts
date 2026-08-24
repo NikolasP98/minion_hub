@@ -14,8 +14,8 @@ import {
 export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // /crm/graph, /finances/products, /stock/consumption, /stock/consume
   // retired (hub-stock-crm-ux-consolidation spec) — 4 fewer screens+endpoints.
-  endpoints: 148,
-  screens: 138,
+  endpoints: 150,
+  screens: 140,
   redirects: 10,
   fixtures: 27,
   viewports: ['compact', 'medium', 'wide'] as const,

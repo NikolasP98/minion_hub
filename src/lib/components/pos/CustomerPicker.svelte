@@ -1,17 +1,13 @@
 <script lang="ts">
-  import { Button, Badge } from '$lib/components/ui';
+  import { Button, Badge, Input, Picker, iconSizes, type PickerColumn } from '$lib/components/ui';
 
   import { onDestroy } from 'svelte';
-  import { X, UserPlus } from 'lucide-svelte';
+  import { Search, X, UserPlus } from 'lucide-svelte';
+  import { canAct } from '$lib/access/can.svelte';
+  import PartyCreateForm from '$lib/components/crm/PartyCreateForm.svelte';
+  import type { PartyOption } from '$lib/components/crm/party-picker';
   import * as m from '$lib/paraglide/messages';
   import { createAsyncDebouncer } from '$lib/pacer/index.svelte';
-
-  interface PartyResult {
-    id: string;
-    name: string | null;
-    docNumber: string | null;
-    phone9: string | null;
-  }
 
   interface Props {
     /** Party-spine linkage — set when the customer exists (or was created) in CRM. */
@@ -30,13 +26,50 @@
   }: Props = $props();
 
   let q = $state('');
-  let results = $state<PartyResult[]>([]);
+  let results = $state<PartyOption[]>([]);
   let open = $state(false);
+  let pickerOpen = $state(false);
   let quickAdd = $state(false);
   let quickName = $state('');
   let quickPhone = $state('');
   let quickDni = $state('');
   let quickBusy = $state(false);
+  const canCreateCustomer = $derived(canAct('crm', 'create'));
+  const pickerColumns: PickerColumn<PartyOption>[] = [
+    {
+      key: 'name',
+      label: m.party_picker_name(),
+      value: (party) => party.name ?? m.party_picker_unnamed(),
+      priority: 10,
+      emphasis: 'primary',
+      hideable: false,
+    },
+    {
+      key: 'docNumber',
+      label: m.party_picker_document_number(),
+      value: (party) => party.docNumber ?? '',
+      priority: 20,
+    },
+    {
+      key: 'phone9',
+      label: m.party_picker_phone(),
+      value: (party) => party.phone9 ?? '',
+      priority: 30,
+    },
+    {
+      key: 'email',
+      label: m.party_picker_email(),
+      value: (party) => party.email ?? '',
+      priority: 40,
+      defaultHidden: true,
+    },
+  ];
+
+  async function loadCustomers(term: string): Promise<PartyOption[]> {
+    const res = await fetch(`/api/crm/parties?q=${encodeURIComponent(term)}&type=person`);
+    if (!res.ok) throw new Error('customer search failed');
+    return (await res.json()) as PartyOption[];
+  }
 
   // Party search covers name / email / DNI / phone9 server-side — one input,
   // digits or letters. Async-debounce + seq-guard: a slow response for an
@@ -49,10 +82,16 @@
         results = [];
         return;
       }
-      const res = await fetch(`/api/crm/parties?q=${encodeURIComponent(term)}&type=person`);
-      if (seq !== searchSeq) return;
-      results = res.ok ? ((await res.json()) as PartyResult[]) : [];
-      open = true;
+      try {
+        const found = await loadCustomers(term);
+        if (seq !== searchSeq) return;
+        results = found;
+        open = true;
+      } catch {
+        if (seq !== searchSeq) return;
+        results = [];
+        open = false;
+      }
     },
     { wait: 200 },
   );
@@ -63,13 +102,18 @@
     search.run(q);
   }
 
-  function pick(p: PartyResult) {
+  function pick(p: PartyOption) {
     partyId = p.id;
     customerName = p.name ?? '—';
-    phone = p.phone9;
+    phone = p.phone9 ?? null;
     q = customerName;
     open = false;
     results = [];
+  }
+
+  function openPicker() {
+    open = false;
+    pickerOpen = true;
   }
 
   function clear() {
@@ -140,6 +184,18 @@
   }
 </script>
 
+{#snippet createCustomerForm(context: {
+  oncreated: (party: PartyOption) => void;
+  oncancel: () => void;
+})}
+  <PartyCreateForm
+    allowedTypes={['person']}
+    initialName={q}
+    oncreated={context.oncreated}
+    oncancel={context.oncancel}
+  />
+{/snippet}
+
 <div class="picker">
   <span class="lbl"
     >{m.pos_sell_customer()}{#if required}<span class="req">*</span>{/if}</span
@@ -160,13 +216,27 @@
     </div>
   {:else}
     <div class="field">
-      <input
-        class="inp"
+      <Input
+        size="sm"
+        inputClass="customer-quick-search"
         placeholder={m.pos_sell_customer_ph()}
         value={q}
         oninput={onInput}
         onfocus={() => q && search.run(q)}
+        onblur={() => setTimeout(() => (open = false), 150)}
       />
+      <div class="field-action">
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          shape="icon"
+          aria-label={m.pos_sell_customer_browse()}
+          onclick={openPicker}
+        >
+          <Search size={iconSizes.sm} aria-hidden="true" />
+        </Button>
+      </div>
       {#if open && results.length}
         <ul class="menu">
           {#each results as p (p.id)}
@@ -220,6 +290,29 @@
   {/if}
 </div>
 
+<Picker
+  bind:open={pickerOpen}
+  title={m.pos_sell_customer_browse()}
+  columns={pickerColumns}
+  loadRows={loadCustomers}
+  getRowId={(party) => party.id}
+  searchText={(party) =>
+    `${party.name ?? ''} ${party.docNumber ?? ''} ${party.phone9 ?? ''} ${party.email ?? ''}`}
+  onPick={pick}
+  selectionMode="single"
+  columnsConfigurable
+  initialSearch={q}
+  searchPlaceholder={m.pos_sell_customer_ph()}
+  storageKey="pos-sell-customer"
+  create={canCreateCustomer
+    ? {
+        label: m.party_picker_new(),
+        tabLabel: m.party_picker_new(),
+        form: createCustomerForm,
+      }
+    : undefined}
+/>
+
 <style>
   .picker {
     display: flex;
@@ -236,6 +329,17 @@
   }
   .field {
     position: relative;
+  }
+  .field :global(.customer-quick-search) {
+    padding-right: calc(var(--control-height-xs) + var(--space-2));
+  }
+  .field-action {
+    position: absolute;
+    right: var(--space-1);
+    bottom: 0;
+    display: flex;
+    height: var(--control-height-sm);
+    align-items: center;
   }
   .inp {
     width: 100%;

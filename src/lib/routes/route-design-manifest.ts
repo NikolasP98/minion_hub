@@ -487,7 +487,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   }),
   screen('/work', 'My work', 'business-operations', 'dashboard'),
 
-  // Scheduling and POS (12)
+  // Scheduling and POS (14)
   screen('/scheduling', 'Scheduling', 'scheduling-pos', 'dashboard'),
   screen('/scheduling/bookings', 'Bookings', 'scheduling-pos', 'collection'),
   screen('/scheduling/calendar', 'Calendar', 'scheduling-pos', 'workspace-editor'),
@@ -498,6 +498,11 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/scheduling/settings', 'Scheduling settings', 'scheduling-pos', 'form-settings'),
   screen('/pos/appointments', 'POS appointments', 'scheduling-pos', 'workspace-editor'),
   screen('/pos/catalog', 'POS catalog', 'scheduling-pos', 'collection'),
+  screen('/pos/catalog/new', 'New catalog item', 'scheduling-pos', 'form-settings'),
+  screen('/pos/catalog/[productId]/edit', 'Edit catalog item', 'scheduling-pos', 'form-settings', {
+    params: { productId: 'catalog-item' },
+    states: MUTATING_DETAIL_STATES,
+  }),
   screen('/pos/sell', 'Point of sale', 'scheduling-pos', 'workspace-editor'),
   screen('/pos/settings', 'POS settings', 'scheduling-pos', 'form-settings'),
 

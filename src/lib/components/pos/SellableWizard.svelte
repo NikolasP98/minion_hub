@@ -16,7 +16,7 @@
 
   // Narrow local shapes (mirrors server types) — avoids importing $server/*
   // runtime modules into a client component (same convention as ShiftBanner.svelte).
-  interface StockItemLike {
+  export interface StockItemLike {
     id: string;
     code: string;
     name: string;
@@ -29,7 +29,7 @@
      *  mapping reads. */
     consumptionUom?: string | null;
   }
-  interface ConsumptionLike {
+  export interface ConsumptionLike {
     finProductId: string;
     itemId: string;
     qtyPerUnit: number;
@@ -51,6 +51,8 @@
   interface Props {
     /** Bindable open state. */
     open?: boolean;
+    /** Modal for legacy callers; page renders the same editor inline. */
+    presentation?: 'modal' | 'page';
     stockEnabled: boolean;
     stockItems: StockItemLike[];
     /** Existing categories across the catalog — feeds the free-entry datalist. */
@@ -63,12 +65,14 @@
     consumption: ConsumptionLike[];
     /** null = create mode; a row = edit mode, prefilled from it. */
     editing?: SellableLike | null;
-    /** Called after a successful save — caller invalidates the page load. */
-    onSaved: () => void;
+    /** Called after a successful save — caller invalidates or navigates. */
+    onSaved: () => void | Promise<void>;
+    onCancel?: () => void;
   }
 
   let {
     open = $bindable(false),
+    presentation = 'modal',
     stockEnabled,
     stockItems,
     categories,
@@ -76,7 +80,10 @@
     consumption,
     editing = null,
     onSaved,
+    onCancel,
   }: Props = $props();
+
+  const visible = $derived(presentation === 'page' || open);
 
   // Code format is now ONE shared rail ($lib/catalog/code.ts), imported by both
   // this component and pos.service.ts. It used to be a hand-copied mirror of the
@@ -128,7 +135,7 @@
   // trivially available here, so edit mode filters it by productId rather
   // than starting empty.
   $effect(() => {
-    if (!open) return;
+    if (!visible) return;
     const e = editing;
     name = e?.name ?? '';
     code = e?.code ?? '';
@@ -138,7 +145,7 @@
     // `source` is creation-only (hidden in edit mode), so edit just resets it.
     source = 'service';
     existingItemId = '';
-    uom = (e?.itemId ? allStockItems.find((i) => i.id === e.itemId)?.uom : undefined) ?? 'unit';
+    uom = (e?.itemId ? stockItems.find((i) => i.id === e.itemId)?.uom : undefined) ?? 'unit';
     rows = e
       ? consumption
           .filter((c) => c.finProductId === e.productId)
@@ -195,6 +202,11 @@
       // publishing an existing item requires one to be picked
       !(!editing && source === 'existing-item' && !existingItemId),
   );
+
+  function cancel() {
+    if (presentation === 'modal') open = false;
+    onCancel?.();
+  }
 
   async function submit() {
     if (!canSubmit) return;
@@ -264,8 +276,8 @@
           }),
         },
       );
-      open = false;
-      onSaved();
+      if (presentation === 'modal') open = false;
+      await onSaved();
     } catch {
       // already toasted
     } finally {
@@ -274,7 +286,7 @@
   }
 </script>
 
-<Modal bind:open title={editing ? m.pos_catalog_edit() : m.pos_catalog_new()}>
+{#snippet editorFields()}
   <div class="flex flex-col gap-3">
     <Input size="sm" label={m.stock_field_name()} bind:value={name} />
     <Input
@@ -426,14 +438,36 @@
       </div>
     {/if}
   </div>
+{/snippet}
 
-  {#snippet footer()}
-    <Button variant="outline" size="sm" onclick={() => (open = false)}>{m.common_cancel()}</Button>
-    <Button variant="primary" size="sm" onclick={submit} disabled={!canSubmit}
-      >{m.common_save()}</Button
-    >
-  {/snippet}
-</Modal>
+{#if presentation === 'modal'}
+  <Modal bind:open title={editing ? m.pos_catalog_edit() : m.pos_catalog_new()}>
+    {@render editorFields()}
+    {#snippet footer()}
+      <Button variant="outline" size="sm" onclick={cancel}>{m.common_cancel()}</Button>
+      <Button variant="primary" size="sm" onclick={submit} disabled={!canSubmit}
+        >{m.common_save()}</Button
+      >
+    {/snippet}
+  </Modal>
+{:else}
+  <form
+    class="sellable-editor"
+    onsubmit={(event) => {
+      event.preventDefault();
+      void submit();
+    }}
+  >
+    {@render editorFields()}
+    <div class="editor-actions">
+      <Button type="button" variant="outline" size="sm" onclick={cancel}>{m.common_cancel()}</Button
+      >
+      <Button type="submit" variant="primary" size="sm" disabled={!canSubmit}
+        >{m.common_save()}</Button
+      >
+    </div>
+  </form>
+{/if}
 
 <StockItemPicker
   bind:open={existingItemPickerOpen}
@@ -458,6 +492,18 @@
 />
 
 <style>
+  .sellable-editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+  .editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border-subtle);
+  }
   /* `.fld` survives only for the two grouping wrappers (consumption rows,
      existing-item picker) that aren't a single Input. */
   .fld {

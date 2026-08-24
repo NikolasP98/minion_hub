@@ -20,7 +20,6 @@
   import { canAct } from '$lib/access/can.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
-  import SellableWizard, { type SellableLike } from '$lib/components/pos/SellableWizard.svelte';
   import RecipeEditor from '$lib/components/pos/RecipeEditor.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -39,12 +38,6 @@
     else url.searchParams.delete('inactive');
     goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
   }
-
-  const categories = $derived(
-    Array.from(new Set(sellables.map((s) => s.category).filter((c): c is string => !!c))).sort(),
-  );
-  /** Feeds the wizard's code suggester so it never proposes a taken code. */
-  const takenCodes = $derived(sellables.map((s) => s.code));
 
   // ── Table | Board ──────────────────────────────────────────────────────────
   const VIEW_KEY = 'pos-catalog-view';
@@ -216,17 +209,11 @@
     },
   ]);
 
-  // ── Wizard (create + edit) ───────────────────────────────────────────────
-  let wizardOpen = $state(false);
-  let editingRow = $state<SellableLike | null>(null);
-
   function openCreate() {
-    editingRow = null;
-    wizardOpen = true;
+    void goto('/pos/catalog/new');
   }
   function openEdit(row: Row) {
-    editingRow = row;
-    wizardOpen = true;
+    void goto(`/pos/catalog/${encodeURIComponent(row.productId)}/edit`);
   }
 
   // ★ The central write-capability hook (rbac.service.ts apiWriteCapability)
@@ -305,8 +292,8 @@
 
   {#if view === 'board'}
     <!-- Board: one column per group on the chosen axis, empty groups omitted.
-         Cards open the same wizard the table's name cell does, so the board is a
-         real editing surface rather than a read-only visualization. -->
+         Cards open the dedicated editor page, so the board remains a real
+         editing surface rather than a read-only visualization. -->
     <div class="board">
       {#each boardColumns as col (col.key)}
         <section class="bcol" aria-label={col.label}>
@@ -446,17 +433,6 @@
     <p class="t-caption no-recipe">{m.pos_recipe_needs_item()}</p>
   {/if}
 {/snippet}
-
-<SellableWizard
-  bind:open={wizardOpen}
-  {stockEnabled}
-  stockItems={data.stockItems}
-  {categories}
-  {takenCodes}
-  consumption={data.consumption}
-  editing={editingRow}
-  onSaved={() => invalidate('pos:catalog')}
-/>
 
 <style>
   .view-bar {
