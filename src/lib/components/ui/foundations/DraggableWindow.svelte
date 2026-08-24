@@ -11,6 +11,7 @@
   import Layer from './Layer.svelte';
   import {
     clampWindowRect,
+    isWindowControlTarget,
     moveWindowBy,
     resizeWindowBy,
     type WindowRect,
@@ -119,7 +120,7 @@
   }
 
   function beginDrag(event: PointerEvent) {
-    if (!wide || fullscreen || event.button !== 0) return;
+    if (!wide || fullscreen || event.button !== 0 || isWindowControlTarget(event.target)) return;
     dragging = true;
     startPointerX = event.clientX;
     startPointerY = event.clientY;

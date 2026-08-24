@@ -1,180 +1,377 @@
 <script lang="ts" module>
-  /** Column of the picker's browse table. */
-  export interface PickerColumn<T> {
-    key: string;
-    label: string;
-    /** Cell text; defaults to `String(row[key] ?? '')`. */
-    value?: (row: T) => string;
-    align?: 'left' | 'right';
-  }
+  export type {
+    PickerColumn,
+    PickerCreateConfig,
+    PickerCreateContext,
+    PickerDuplicatePolicy,
+    PickerLoadResult,
+    PickerSelectionMode,
+  } from './picker';
 </script>
 
 <script lang="ts" generics="T">
-  import type { Snippet } from 'svelte';
-  import { Plus } from 'lucide-svelte';
-  import { iconSizes } from './icon-sizes';
+  import { onDestroy, onMount, tick, untrack, type Snippet } from 'svelte';
+  import { Check, Columns3, Plus, RotateCcw, Search, SearchX, X } from 'lucide-svelte';
+  import { Button, Checkbox, Input } from '@minion-stack/ui';
   import * as m from '$lib/paraglide/messages';
-  import { Button } from '@minion-stack/ui';
+  import EmptyState from './EmptyState.svelte';
+  import Spinner from './Spinner.svelte';
+  import { iconSizes } from './icon-sizes';
   import DraggableWindow from './foundations/DraggableWindow.svelte';
+  import {
+    defaultPickerHidden,
+    orderPickerColumns,
+    pickerRowIsDuplicate,
+    reconcilePickerHidden,
+    type PickerColumn,
+    type PickerCreateConfig,
+    type PickerDuplicatePolicy,
+    type PickerLoadResult,
+    type PickerSelectionMode,
+  } from './picker';
 
-  /**
-   * Picker — SAP-style selection window (spec 2026-08-23-hub-stock-crm-ux-
-   * consolidation §S7). A field ("selector") opens it; the browse tab lists
-   * candidate rows with search; double-clicking a row (or its + button on
-   * coarse pointers, or Enter on a focused row) hands the row back to the
-   * invoker via `onPick`. `multi` keeps the window open so several picks land
-   * in the destination; single-pick closes on the first pick. An optional
-   * "Add new" tab renders a caller-supplied create form whose result is picked
-   * automatically. Desktop = draggable floating window; small screens degrade
-   * to a bottom sheet via DraggableWindow's compactPresentation.
-   */
   interface Props {
     open?: boolean;
     title: string;
+    subtitle?: string;
     columns: PickerColumn<T>[];
     /** Static candidate list; filtered client-side with `searchText`. */
     rows?: T[];
-    /** Async source; wins over `rows` when provided. Called on open and per search input (debounced). */
-    loadRows?: (q: string) => Promise<T[]>;
+    /** Async source; wins over `rows` and may report a server-side total. */
+    loadRows?: (query: string) => Promise<PickerLoadResult<T>>;
     getRowId: (row: T) => string;
-    /** Text used for client-side filtering of static `rows`. Defaults to joining column values. */
+    /** Text used for static filtering. Defaults to searchable visible columns. */
     searchText?: (row: T) => string;
     onPick: (row: T) => void;
-    /** Keep the window open and count picks (default false = close on first pick). */
+    onclose?: () => void;
+    selectionMode?: PickerSelectionMode;
+    /** @deprecated Use `selectionMode="multiple"`. */
     multi?: boolean;
-    /** Ids to badge as already picked (multi mode). */
+    duplicatePolicy?: PickerDuplicatePolicy;
+    /** Existing selections in the invoking form. Required for set-like behavior across reopen. */
     pickedIds?: ReadonlySet<string>;
-    /** "Add new" tab content. Receives oncreated: call it with the new row to auto-pick it. */
+    isRowDisabled?: (row: T) => boolean;
+    rowDisabledReason?: (row: T) => string | undefined;
+    create?: PickerCreateConfig<T>;
+    /** Compatibility with the initial picker contract. Prefer `create`. */
     createForm?: Snippet<[{ oncreated: (row: T) => void }]>;
+    columnsConfigurable?: boolean;
     searchPlaceholder?: string;
     emptyLabel?: string;
-    /** localStorage key to remember window geometry. */
+    initialSearch?: string;
+    /** localStorage namespace for geometry and optional column choices. */
     storageKey?: string;
   }
 
   let {
     open = $bindable(false),
     title,
+    subtitle,
     columns,
     rows,
     loadRows,
     getRowId,
     searchText,
     onPick,
+    onclose,
+    selectionMode,
     multi = false,
+    duplicatePolicy = 'prevent',
     pickedIds,
+    isRowDisabled,
+    rowDisabledReason,
+    create,
     createForm,
+    columnsConfigurable = false,
     searchPlaceholder,
     emptyLabel,
+    initialSearch = '',
     storageKey,
   }: Props = $props();
 
-  let tab = $state<'browse' | 'create'>('browse');
-  let q = $state('');
-  let asyncRows = $state<T[] | null>(null);
-  let loading = $state(false);
-  let pickCount = $state(0);
+  const pickerId = $props.id();
+  const browseTabId = `${pickerId}-browse-tab`;
+  const browsePanelId = `${pickerId}-browse-panel`;
+  const createTabId = `${pickerId}-create-tab`;
+  const createPanelId = `${pickerId}-create-panel`;
+  const searchId = `${pickerId}-search`;
 
-  // Window geometry, restored per storageKey (best-effort; SSR-safe).
-  // svelte-ignore state_referenced_locally -- storageKey is load-constant for a given field
-  const geomKey = storageKey ? `picker:${storageKey}` : null;
-  const geom = readGeom();
-  let winX = $state(geom?.x ?? 120);
-  let winY = $state(geom?.y ?? 96);
-  let winW = $state(geom?.w ?? 640);
-  let winH = $state(geom?.h ?? 480);
-  function readGeom(): { x: number; y: number; w: number; h: number } | null {
-    if (!geomKey || typeof localStorage === 'undefined') return null;
+  const resolvedSelectionMode = $derived<PickerSelectionMode>(
+    selectionMode ?? (multi ? 'multiple' : 'single'),
+  );
+  const hasCreate = $derived(Boolean(create || createForm));
+
+  let activeTab = $state<'browse' | 'create'>('browse');
+  let createTabOpen = $state(false);
+  // svelte-ignore state_referenced_locally -- initialSearch seeds editable search state once
+  let q = $state(initialSearch);
+  let asyncRows = $state<T[] | null>(null);
+  let asyncTotal = $state<number | null>(null);
+  let createdRows = $state<T[]>([]);
+  let loading = $state(false);
+  let loadFailed = $state(false);
+  let pickCount = $state(0);
+  let sessionPickedIds = $state<Set<string>>(new Set());
+  let tableEl = $state<HTMLTableElement | null>(null);
+  let columnPanelEl = $state<HTMLDivElement | null>(null);
+  let columnPanelOpen = $state(false);
+
+  // svelte-ignore state_referenced_locally -- one picker instance owns one persistence namespace
+  const geometryKey = storageKey ? `picker:${storageKey}:geometry` : null;
+  // svelte-ignore state_referenced_locally -- one picker instance owns one persistence namespace
+  const columnKey = storageKey ? `picker:${storageKey}:columns` : null;
+  const geometry = readGeometry();
+  let winX = $state(geometry?.x ?? 120);
+  let winY = $state(geometry?.y ?? 96);
+  let winW = $state(geometry?.w ?? 720);
+  let winH = $state(geometry?.h ?? 520);
+
+  function readGeometry(): { x: number; y: number; w: number; h: number } | null {
+    if (!geometryKey || typeof localStorage === 'undefined') return null;
     try {
-      const raw = localStorage.getItem(geomKey);
+      const raw = localStorage.getItem(geometryKey);
       return raw ? (JSON.parse(raw) as { x: number; y: number; w: number; h: number }) : null;
     } catch {
       return null;
     }
   }
-  function saveGeom() {
-    if (!geomKey || typeof localStorage === 'undefined') return;
+
+  function saveGeometry() {
+    if (!geometryKey || typeof localStorage === 'undefined') return;
     try {
-      localStorage.setItem(geomKey, JSON.stringify({ x: winX, y: winY, w: winW, h: winH }));
+      localStorage.setItem(geometryKey, JSON.stringify({ x: winX, y: winY, w: winW, h: winH }));
     } catch {
-      /* storage full/denied — geometry memory is best-effort */
+      // Geometry persistence is best-effort; the picker remains fully usable.
     }
   }
 
-  let loadSeq = 0;
-  async function runLoad(term: string) {
-    if (!loadRows) return;
-    const seq = ++loadSeq;
-    loading = true;
+  const orderedColumns = $derived(orderPickerColumns(columns));
+  // svelte-ignore state_referenced_locally -- seeded once, then reconciled when columns change
+  let hiddenColumns = $state<Set<string>>(defaultPickerHidden(columns));
+  const visibleColumns = $derived(
+    orderedColumns.filter((column) => !hiddenColumns.has(column.key)),
+  );
+
+  onMount(() => {
+    if (!columnKey) return;
     try {
-      const out = await loadRows(term);
-      if (seq === loadSeq) asyncRows = out;
-    } finally {
-      if (seq === loadSeq) loading = false;
+      const raw = localStorage.getItem(columnKey);
+      if (raw) hiddenColumns = reconcilePickerHidden(columns, JSON.parse(raw) as string[]);
+    } catch {
+      hiddenColumns = defaultPickerHidden(columns);
+    }
+  });
+
+  $effect(() => {
+    const currentColumns = columns;
+    untrack(() => {
+      hiddenColumns = reconcilePickerHidden(currentColumns, hiddenColumns);
+    });
+  });
+
+  function persistColumns(next: Set<string>) {
+    hiddenColumns = reconcilePickerHidden(columns, next);
+    if (!columnKey || typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(columnKey, JSON.stringify([...hiddenColumns]));
+    } catch {
+      // Column preferences are optional; keep the in-memory choice.
     }
   }
+
+  function toggleColumn(column: PickerColumn<T>) {
+    if (column.hideable === false) return;
+    const next = new Set(hiddenColumns);
+    if (next.has(column.key)) next.delete(column.key);
+    else if (visibleColumns.length > 1) next.add(column.key);
+    persistColumns(next);
+  }
+
+  function resetColumns() {
+    persistColumns(defaultPickerHidden(columns));
+  }
+
+  let loadSequence = 0;
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-  function onSearchInput(e: Event) {
-    q = (e.currentTarget as HTMLInputElement).value;
+
+  async function runLoad(term: string) {
+    if (!loadRows) return;
+    const sequence = ++loadSequence;
+    loading = true;
+    loadFailed = false;
+    try {
+      const result = await loadRows(term);
+      if (sequence !== loadSequence) return;
+      if (Array.isArray(result)) {
+        asyncRows = result;
+        asyncTotal = result.length;
+      } else {
+        asyncRows = result.rows;
+        asyncTotal = result.total ?? result.rows.length;
+      }
+    } catch {
+      if (sequence === loadSequence) loadFailed = true;
+    } finally {
+      if (sequence === loadSequence) loading = false;
+    }
+  }
+
+  function onSearchInput(event: Event) {
+    q = (event.currentTarget as HTMLInputElement).value;
     if (!loadRows) return;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => void runLoad(q), 250);
   }
 
+  function focusSearch() {
+    void tick().then(() => document.getElementById(searchId)?.focus());
+  }
+
+  let wasOpen = false;
   $effect(() => {
-    if (open) {
-      tab = 'browse';
+    if (open && !wasOpen) {
+      activeTab = 'browse';
+      createTabOpen = false;
+      columnPanelOpen = false;
       pickCount = 0;
+      sessionPickedIds = new Set();
+      q = initialSearch;
       if (loadRows) void runLoad(q);
+      focusSearch();
     }
+    wasOpen = open;
+  });
+
+  onDestroy(() => {
+    clearTimeout(debounceTimer);
+    loadSequence += 1;
   });
 
   const rowText = $derived(
     searchText ??
       ((row: T) =>
-        columns
-          .map((c) => cellValue(c, row))
-          .join(' ')
-          .toLowerCase()),
+        orderedColumns
+          .filter((column) => column.searchable !== false)
+          .map((column) => cellValue(column, row))
+          .join(' ')),
   );
-  const view = $derived.by(() => {
-    const base = loadRows ? (asyncRows ?? []) : (rows ?? []);
-    if (loadRows || !q.trim()) return base;
-    const needle = q.trim().toLowerCase();
-    return base.filter((r) => rowText(r).toLowerCase().includes(needle));
+
+  const sourceRows = $derived.by(() => {
+    const source = loadRows ? (asyncRows ?? []) : (rows ?? []);
+    const merged = new Map<string, T>();
+    for (const row of [...createdRows, ...source]) merged.set(getRowId(row), row);
+    return [...merged.values()];
   });
 
-  function cellValue(c: PickerColumn<T>, row: T): string {
-    if (c.value) return c.value(row);
-    const v = (row as Record<string, unknown>)[c.key];
-    return v == null ? '' : String(v);
+  const view = $derived.by(() => {
+    if (loadRows || !q.trim()) return sourceRows;
+    const needle = q.trim().toLocaleLowerCase();
+    return sourceRows.filter((row) => rowText(row).toLocaleLowerCase().includes(needle));
+  });
+  const resultTotal = $derived(loadRows ? (asyncTotal ?? view.length) : view.length);
+
+  function cellValue(column: PickerColumn<T>, row: T): string {
+    if (column.value) return column.value(row);
+    const value = (row as Record<string, unknown>)[column.key];
+    return value == null ? '' : String(value);
+  }
+
+  function duplicate(row: T): boolean {
+    return pickerRowIsDuplicate(
+      getRowId(row),
+      resolvedSelectionMode,
+      duplicatePolicy,
+      pickedIds,
+      sessionPickedIds,
+    );
+  }
+
+  function disabled(row: T): boolean {
+    return duplicate(row) || isRowDisabled?.(row) === true;
   }
 
   function pick(row: T) {
+    if (disabled(row)) return;
     onPick(row);
-    if (multi) {
+    if (resolvedSelectionMode === 'multiple') {
       pickCount += 1;
+      sessionPickedIds = new Set(sessionPickedIds).add(getRowId(row));
     } else {
-      open = false;
+      closeWindow();
     }
   }
 
-  function onRowKeydown(e: KeyboardEvent, row: T) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
+  function onRowKeydown(event: KeyboardEvent, row: T, index: number) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
       pick(row);
+      return;
     }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const next = index + (event.key === 'ArrowDown' ? 1 : -1);
+    tableEl?.querySelector<HTMLElement>(`[data-picker-row="${next}"]`)?.focus();
+  }
+
+  function onSearchKeydown(event: KeyboardEvent) {
+    if (event.key !== 'ArrowDown' || view.length === 0) return;
+    event.preventDefault();
+    tableEl?.querySelector<HTMLElement>('[data-picker-row="0"]')?.focus();
+  }
+
+  function openCreateTab() {
+    if (!hasCreate) return;
+    createTabOpen = true;
+    activeTab = 'create';
+    columnPanelOpen = false;
+  }
+
+  function closeCreateTab() {
+    activeTab = 'browse';
+    createTabOpen = false;
+    focusSearch();
   }
 
   function oncreated(row: T) {
+    createdRows = [
+      row,
+      ...createdRows.filter((candidate) => getRowId(candidate) !== getRowId(row)),
+    ];
     pick(row);
-    tab = 'browse';
-    if (loadRows) void runLoad(q);
+    if (open) {
+      closeCreateTab();
+      if (loadRows) void runLoad(q);
+    }
+  }
+
+  function closeWindow() {
+    if (!open) return;
+    open = false;
+    columnPanelOpen = false;
+    onclose?.();
+  }
+
+  function handleDocumentPointerDown(event: PointerEvent) {
+    if (columnPanelOpen && event.target instanceof Node && !columnPanelEl?.contains(event.target)) {
+      columnPanelOpen = false;
+    }
+  }
+
+  function handleDocumentKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && columnPanelOpen) {
+      event.stopPropagation();
+      columnPanelOpen = false;
+    }
   }
 </script>
 
+<svelte:document
+  onpointerdown={handleDocumentPointerDown}
+  onkeydowncapture={handleDocumentKeydown}
+/>
+
 <DraggableWindow
-  bind:open
+  {open}
   {title}
   resizable
   resizeLabel={m.picker_resize()}
@@ -184,175 +381,419 @@
   bind:y={winY}
   bind:width={winW}
   bind:height={winH}
-  onmove={saveGeom}
-  onresize={saveGeom}
+  onmove={saveGeometry}
+  onresize={saveGeometry}
+  onclose={closeWindow}
   class="ui-picker"
 >
   {#snippet toolbar()}
-    {#if multi && pickCount > 0}
+    {#if resolvedSelectionMode === 'multiple' && pickCount > 0}
       <span class="picker-count t-caption">{m.picker_added_n({ n: pickCount })}</span>
     {/if}
   {/snippet}
-  <div class="picker-body">
-    {#if createForm}
+
+  <div class="picker-shell">
+    {#if subtitle}
+      <p class="picker-subtitle t-caption">{subtitle}</p>
+    {/if}
+
+    {#if createTabOpen}
       <div class="picker-tabs" role="tablist" aria-label={title}>
         <button
           type="button"
           role="tab"
-          aria-selected={tab === 'browse'}
+          id={browseTabId}
+          aria-controls={browsePanelId}
+          aria-selected={activeTab === 'browse'}
+          tabindex={activeTab === 'browse' ? 0 : -1}
           class="picker-tab"
-          class:active={tab === 'browse'}
-          onclick={() => (tab = 'browse')}>{m.picker_browse()}</button
+          class:active={activeTab === 'browse'}
+          onclick={() => {
+            activeTab = 'browse';
+            focusSearch();
+          }}
         >
+          {m.picker_browse()}
+        </button>
         <button
           type="button"
           role="tab"
-          aria-selected={tab === 'create'}
+          id={createTabId}
+          aria-controls={createPanelId}
+          aria-selected={activeTab === 'create'}
+          tabindex={activeTab === 'create' ? 0 : -1}
           class="picker-tab"
-          class:active={tab === 'create'}
-          onclick={() => (tab = 'create')}
+          class:active={activeTab === 'create'}
+          onclick={() => (activeTab = 'create')}
         >
           <Plus size={iconSizes.sm} aria-hidden="true" />
-          {m.picker_add_new()}
+          {create?.tabLabel ?? create?.label ?? m.picker_add_new()}
         </button>
+        <Button
+          variant="ghost"
+          size="xs"
+          shape="icon"
+          class="picker-close-tab"
+          aria-label={m.picker_close_create_tab()}
+          onclick={closeCreateTab}
+        >
+          <X size={iconSizes.sm} aria-hidden="true" />
+        </Button>
       </div>
     {/if}
 
-    {#if tab === 'create' && createForm}
-      <div class="picker-create">{@render createForm({ oncreated })}</div>
+    {#if activeTab === 'create' && createTabOpen}
+      <div id={createPanelId} role="tabpanel" aria-labelledby={createTabId} class="picker-create">
+        {#if create?.description}<p class="picker-create-copy t-body">{create.description}</p>{/if}
+        {#if create}
+          {@render create.form({ oncreated, oncancel: closeCreateTab })}
+        {:else if createForm}
+          {@render createForm({ oncreated })}
+        {/if}
+      </div>
     {:else}
-      <div class="picker-search">
-        <input
-          class="picker-search-in"
-          type="search"
-          placeholder={searchPlaceholder ?? m.picker_search()}
-          value={q}
-          oninput={onSearchInput}
-        />
-      </div>
-      <div class="picker-table-wrap">
-        <table class="picker-table">
-          <thead>
-            <tr>
-              {#each columns as c (c.key)}
-                <th class:num={c.align === 'right'}>{c.label}</th>
-              {/each}
-              <th class="act-col"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each view as row (getRowId(row))}
-              {@const picked = pickedIds?.has(getRowId(row)) ?? false}
-              <tr
-                class="picker-row"
-                class:picked
-                tabindex="0"
-                ondblclick={() => pick(row)}
-                onkeydown={(e) => onRowKeydown(e, row)}
-              >
-                {#each columns as c (c.key)}
-                  <td class:num={c.align === 'right'}>{cellValue(c, row)}</td>
-                {/each}
-                <td class="act-col">
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    class="picker-add-btn"
-                    aria-label={m.picker_pick_row()}
-                    onclick={() => pick(row)}
+      <div
+        id={browsePanelId}
+        role={createTabOpen ? 'tabpanel' : undefined}
+        aria-labelledby={createTabOpen ? browseTabId : undefined}
+        class="picker-browse"
+      >
+        <div class="picker-toolbar">
+          <div class="picker-search-wrap">
+            {#snippet searchIcon()}<Search size={iconSizes.sm} aria-hidden="true" />{/snippet}
+            <Input
+              id={searchId}
+              type="search"
+              size="sm"
+              class="picker-search-field"
+              leading={searchIcon}
+              placeholder={searchPlaceholder ?? m.picker_search()}
+              aria-label={searchPlaceholder ?? m.picker_search()}
+              bind:value={q}
+              oninput={onSearchInput}
+              onkeydown={onSearchKeydown}
+            />
+          </div>
+          <span class="picker-results t-caption" aria-live="polite">
+            {m.picker_results({ n: resultTotal })}
+          </span>
+          <div class="picker-actions">
+            {#if columnsConfigurable}
+              <div class="picker-column-control" bind:this={columnPanelEl}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  shape="icon"
+                  aria-label={m.data_table_columns()}
+                  aria-expanded={columnPanelOpen}
+                  onclick={() => (columnPanelOpen = !columnPanelOpen)}
+                >
+                  <Columns3 size={iconSizes.md} aria-hidden="true" />
+                </Button>
+                {#if columnPanelOpen}
+                  <div class="picker-column-panel">
+                    <div class="picker-column-head">
+                      <span class="t-label">{m.data_table_columns_heading()}</span>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onclick={resetColumns}
+                        aria-label={m.picker_reset_columns()}
+                      >
+                        <RotateCcw size={iconSizes.xs} aria-hidden="true" />
+                        {m.common_reset()}
+                      </Button>
+                    </div>
+                    <div class="picker-column-list">
+                      {#each orderedColumns as column (column.key)}
+                        <Checkbox
+                          label={column.label}
+                          checked={!hiddenColumns.has(column.key)}
+                          disabled={column.hideable === false ||
+                            (!hiddenColumns.has(column.key) && visibleColumns.length === 1)}
+                          onchange={() => toggleColumn(column)}
+                        />
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+            {#if hasCreate}
+              <Button variant="primary" size="sm" onclick={openCreateTab}>
+                <Plus size={iconSizes.sm} aria-hidden="true" />
+                {create?.label ?? m.picker_add_new()}
+              </Button>
+            {/if}
+          </div>
+        </div>
+
+        <div class="picker-table-wrap">
+          {#if loading}
+            <div class="picker-state" aria-live="polite">
+              <Spinner size="md" label={m.common_loading()} />
+              <span class="t-caption">{m.common_loading()}</span>
+            </div>
+          {:else if loadFailed}
+            {#snippet retryAction()}
+              <Button variant="outline" size="sm" onclick={() => runLoad(q)}>
+                <RotateCcw size={iconSizes.sm} aria-hidden="true" />
+                {m.picker_retry()}
+              </Button>
+            {/snippet}
+            <EmptyState
+              compact
+              icon={SearchX}
+              tone="error"
+              title={m.picker_load_failed()}
+              action={retryAction}
+            />
+          {:else if view.length === 0}
+            {#snippet emptyAction()}
+              {#if hasCreate}
+                <Button variant="outline" size="sm" onclick={openCreateTab}>
+                  <Plus size={iconSizes.sm} aria-hidden="true" />
+                  {create?.label ?? m.picker_add_new()}
+                </Button>
+              {/if}
+            {/snippet}
+            <EmptyState
+              compact
+              icon={SearchX}
+              title={emptyLabel ?? m.picker_empty()}
+              action={hasCreate ? emptyAction : undefined}
+            />
+          {:else}
+            <table class="picker-table" bind:this={tableEl}>
+              <thead>
+                <tr>
+                  {#each visibleColumns as column (column.key)}
+                    <th class:num={column.align === 'right'}>{column.label}</th>
+                  {/each}
+                  <th class="picker-action-column"
+                    ><span class="visually-hidden">{m.common_add()}</span></th
                   >
-                    <Plus size={iconSizes.sm} />
-                  </Button>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-        {#if !loading && view.length === 0}
-          <p class="picker-empty t-caption">{emptyLabel ?? m.picker_empty()}</p>
-        {/if}
-        {#if loading}
-          <p class="picker-empty t-caption">{m.common_loading()}</p>
-        {/if}
+                </tr>
+              </thead>
+              <tbody>
+                {#each view as row, index (getRowId(row))}
+                  {@const rowDuplicate = duplicate(row)}
+                  {@const rowDisabled = disabled(row)}
+                  {@const picked =
+                    pickedIds?.has(getRowId(row)) || sessionPickedIds.has(getRowId(row))}
+                  {@const disabledReason = rowDuplicate
+                    ? m.picker_already_added()
+                    : rowDisabledReason?.(row)}
+                  <tr
+                    class="picker-row"
+                    class:picked
+                    class:disabled={rowDisabled}
+                    tabindex={rowDisabled ? -1 : 0}
+                    data-picker-row={index}
+                    aria-disabled={rowDisabled ? 'true' : undefined}
+                    aria-describedby={rowDisabled && disabledReason
+                      ? `${pickerId}-row-${index}-reason`
+                      : undefined}
+                    ondblclick={(event) => {
+                      if (!(event.target as Element).closest('button')) pick(row);
+                    }}
+                    onkeydown={(event) => onRowKeydown(event, row, index)}
+                  >
+                    {#each visibleColumns as column, columnIndex (column.key)}
+                      <td
+                        class:num={column.align === 'right'}
+                        class:primary={column.emphasis === 'primary' ||
+                          (!column.emphasis && columnIndex === 0)}
+                      >
+                        {cellValue(column, row)}
+                      </td>
+                    {/each}
+                    <td class="picker-action-column">
+                      {#if rowDisabled && disabledReason}
+                        <span id={`${pickerId}-row-${index}-reason`} class="visually-hidden">
+                          {disabledReason}
+                        </span>
+                      {/if}
+                      <Button
+                        variant={picked ? 'secondary' : 'ghost'}
+                        size="xs"
+                        shape="icon"
+                        class="picker-add-row"
+                        aria-label={rowDuplicate ? m.picker_already_added() : m.picker_pick_row()}
+                        disabled={rowDisabled}
+                        onclick={(event) => {
+                          event.stopPropagation();
+                          pick(row);
+                        }}
+                        ondblclick={(event: MouseEvent) => event.stopPropagation()}
+                      >
+                        {#if picked && duplicatePolicy === 'prevent'}
+                          <Check size={iconSizes.sm} aria-hidden="true" />
+                        {:else}
+                          <Plus size={iconSizes.sm} aria-hidden="true" />
+                        {/if}
+                      </Button>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+        </div>
+
+        <footer class="picker-footer">
+          <p class="picker-hint t-caption">{m.picker_dblclick_hint()}</p>
+          {#if resolvedSelectionMode === 'multiple'}
+            <Button variant="outline" size="sm" onclick={closeWindow}>{m.common_close()}</Button>
+          {/if}
+        </footer>
       </div>
-      <p class="picker-hint t-caption">{m.picker_dblclick_hint()}</p>
     {/if}
   </div>
 </DraggableWindow>
 
 <style>
-  .picker-body {
+  .picker-shell,
+  .picker-browse {
     display: flex;
     min-height: 0;
     height: 100%;
     flex-direction: column;
   }
+  .picker-subtitle {
+    flex: none;
+    padding: var(--space-2) var(--space-3);
+    color: var(--color-text-secondary);
+    background: var(--color-surface-1);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
   .picker-tabs {
     display: flex;
     flex: none;
+    align-items: center;
     gap: var(--space-1);
     padding: var(--space-1) var(--space-2) 0;
+    background: var(--color-surface-1);
     border-bottom: 1px solid var(--color-border-subtle);
   }
   .picker-tab {
     display: inline-flex;
+    min-height: var(--control-height-md);
     align-items: center;
     gap: var(--space-1);
-    padding: var(--space-1) var(--space-2);
+    padding: 0 var(--space-3);
     border: 0;
     border-bottom: 2px solid transparent;
-    border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: var(--font-size-body);
+    font-size: var(--font-size-label);
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
   }
   .picker-tab.active {
     color: var(--color-accent);
     border-bottom-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   }
   .picker-tab:hover:not(.active) {
     color: var(--color-text-primary);
     background: var(--color-surface-2);
   }
-  .picker-search {
-    flex: none;
-    padding: var(--space-2);
+  .picker-tabs :global(.picker-close-tab) {
+    margin-left: calc(var(--space-1) * -1);
   }
-  .picker-search-in {
+  .picker-toolbar {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-surface-1);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .picker-search-wrap {
+    min-width: 0;
+    flex: 1;
+  }
+  .picker-search-wrap :global(.picker-search-field) {
     width: 100%;
-    height: var(--control-height-sm);
-    padding: 0 var(--space-2);
-    font-size: var(--font-size-body);
+  }
+  .picker-results {
+    flex: none;
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+  .picker-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .picker-column-control {
+    position: relative;
+  }
+  .picker-column-panel {
+    position: absolute;
+    top: calc(100% + var(--space-1));
+    right: 0;
+    min-width: calc(var(--space-12) * 5);
+    padding: var(--space-2);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
     color: var(--color-text-primary);
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-md);
+    background: var(--color-overlay);
+    box-shadow: var(--shadow-overlay);
+    z-index: var(--layer-popover);
+  }
+  .picker-column-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .picker-column-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
   }
   .picker-table-wrap {
     min-height: 0;
     flex: 1;
     overflow: auto;
     overscroll-behavior: contain;
+    background: var(--color-surface-1);
   }
   .picker-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: var(--font-size-body);
   }
   .picker-table th {
     position: sticky;
     top: 0;
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-2) var(--space-3);
     text-align: left;
-    font-weight: 500;
+    font-size: var(--font-size-label);
+    font-weight: var(--font-weight-medium);
     color: var(--color-text-secondary);
-    background: var(--color-overlay);
-    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-surface-2);
+    border-bottom: 1px solid var(--color-border-default);
+    z-index: var(--layer-sticky);
   }
   .picker-table td {
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    color: var(--color-text-secondary);
     border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .picker-table td.primary {
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-medium);
   }
   .picker-table .num {
     text-align: right;
@@ -361,56 +802,109 @@
   .picker-row {
     cursor: default;
     user-select: none;
+    transition: background var(--duration-fast) var(--ease-standard);
   }
-  .picker-row:hover {
+  .picker-row:hover,
+  .picker-row:focus-visible {
     background: var(--color-surface-2);
   }
   .picker-row:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
   }
-  .picker-row.picked td {
-    color: var(--color-text-tertiary);
+  .picker-row.picked {
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-1));
   }
-  .act-col {
-    width: var(--control-height-md);
+  .picker-row.picked td.primary {
+    color: var(--color-accent);
+  }
+  .picker-row.disabled {
+    cursor: not-allowed;
+  }
+  .picker-row.disabled td {
+    color: var(--color-text-disabled);
+  }
+  .picker-action-column {
+    width: var(--control-height-touch);
     text-align: right;
   }
-  /* Row + button: pointer-fine users double-click; keep the explicit button
-     discoverable but quiet until the row is hovered or focused. */
   @media (pointer: fine) {
-    .picker-row :global(.picker-add-btn) {
+    .picker-row :global(.picker-add-row) {
       opacity: 0;
+      transition: opacity var(--duration-fast) var(--ease-standard);
     }
-    .picker-row:hover :global(.picker-add-btn),
-    .picker-row:focus-visible :global(.picker-add-btn),
-    .picker-row :global(.picker-add-btn:focus-visible) {
+    .picker-row:hover :global(.picker-add-row),
+    .picker-row:focus-visible :global(.picker-add-row),
+    .picker-row.picked :global(.picker-add-row),
+    .picker-row :global(.picker-add-row:focus-visible) {
       opacity: 1;
     }
   }
-  .picker-empty {
-    padding: var(--space-4);
-    text-align: center;
+  .picker-state {
+    display: flex;
+    min-height: calc(var(--space-12) * 4);
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    color: var(--color-text-secondary);
+  }
+  .picker-footer {
+    display: flex;
+    min-height: var(--control-height-touch);
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     color: var(--color-text-tertiary);
+    background: var(--color-surface-1);
+    border-top: 1px solid var(--color-border-subtle);
   }
   .picker-hint {
-    flex: none;
-    padding: var(--space-1) var(--space-2);
-    color: var(--color-text-tertiary);
-    border-top: 1px solid var(--color-border-subtle);
+    min-width: 0;
   }
   .picker-create {
     min-height: 0;
     flex: 1;
     overflow: auto;
-    padding: var(--space-3);
+    padding: var(--space-4);
+    background: var(--color-surface-1);
+  }
+  .picker-create-copy {
+    margin-bottom: var(--space-4);
+    color: var(--color-text-secondary);
   }
   .picker-count {
     color: var(--color-success-fg);
     white-space: nowrap;
   }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
   @media (pointer: coarse) {
     .picker-hint {
+      display: none;
+    }
+  }
+  @media (max-width: 47.99875rem) {
+    .picker-toolbar {
+      flex-wrap: wrap;
+    }
+    .picker-search-wrap {
+      flex-basis: 100%;
+    }
+    .picker-results {
+      flex: 1;
+    }
+    .picker-subtitle {
       display: none;
     }
   }

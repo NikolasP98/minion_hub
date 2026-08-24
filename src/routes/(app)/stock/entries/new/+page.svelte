@@ -4,9 +4,10 @@
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { ArrowLeftRight, Plus, Trash2 } from 'lucide-svelte';
-  import { PageHeader, Button, Combobox, Picker } from '$lib/components/ui';
-  import type { PickerColumn } from '$lib/components/ui';
+  import { PageHeader, Button, Combobox } from '$lib/components/ui';
   import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
+  import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
+  import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -33,12 +34,14 @@
   };
   let lines = $state<Line[]>([]);
   let pickerOpen = $state(false);
+  let createdItems = $state<StockItemOption[]>([]);
 
   const needsFrom = $derived(type === 'issue' || type === 'transfer' || type === 'adjustment');
   const needsTo = $derived(type === 'receipt' || type === 'transfer' || type === 'adjustment');
   const needsRate = $derived(type === 'receipt');
 
-  const itemById = $derived(new Map(data.items.map((i) => [i.id, i])));
+  const availableItems = $derived([...createdItems, ...data.items]);
+  const itemById = $derived(new Map(availableItems.map((item) => [item.id, item])));
   const defaultWarehouseId = $derived(
     data.warehouses.find((w) => w.isDefault)?.id ?? data.warehouses[0]?.id ?? '',
   );
@@ -48,15 +51,11 @@
     return it ? `${it.code} — ${it.name}` : id;
   }
 
-  type Item = (typeof data.items)[number];
-  const pickerColumns: PickerColumn<Item>[] = [
-    { key: 'code', label: m.stock_col_code() },
-    { key: 'name', label: m.stock_col_name() },
-    { key: 'uom', label: m.stock_col_uom() },
-  ];
+  type Item = StockItemOption;
   const pickedItemIds = $derived(new Set(lines.map((l) => l.itemId)));
 
   function addItem(item: Item) {
+    if (!itemById.has(item.id)) createdItems = [item, ...createdItems];
     lines = [
       ...lines,
       {
@@ -313,16 +312,15 @@
   </div>
 </div>
 
-<Picker
+<StockItemPicker
   bind:open={pickerOpen}
+  items={availableItems}
   title={m.stock_add_items()}
-  columns={pickerColumns}
-  rows={data.items}
-  getRowId={(i) => i.id}
-  searchText={(i) => `${i.code} ${i.name}`}
   onPick={addItem}
-  multi
+  selectionMode="multiple"
+  duplicatePolicy="allow"
   pickedIds={pickedItemIds}
+  columnsConfigurable
   storageKey="stock-entry-items"
 />
 

@@ -19,6 +19,21 @@ describe('portal layer action', () => {
     expect(origin.contains(node)).toBe(true);
   });
 
+  it('removes portaled content when its source was already torn down', () => {
+    const origin = document.createElement('div');
+    const target = document.createElement('div');
+    const node = document.createElement('div');
+    document.body.append(origin, target);
+    origin.append(node);
+    const action = portal(node, { target });
+
+    origin.remove();
+    action.destroy();
+
+    expect(target.contains(node)).toBe(false);
+    expect(node.isConnected).toBe(false);
+  });
+
   it('fails loudly when a requested portal target does not exist', () => {
     const node = document.createElement('div');
     document.body.append(node);
