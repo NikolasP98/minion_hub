@@ -610,6 +610,15 @@ async function runRankQuery(
         from crm_contact_activity_stats s
         ${activityWhere}
       ),
+      lead_attr as (
+        select distinct on (ci.contact_id)
+               ci.contact_id, la.origin, la.campaign_name
+        from crm_contact_identities ci
+        join meta_lead_attribution la
+          on la.org_id = ci.org_id and la.channel = ci.channel and la.sender_id = ci.external_id
+        where ci.org_id = ${ctx.tenantId}
+        order by ci.contact_id, la.first_contact_at asc nulls last
+      ),
       ${withFinance ? sql`${CONTACT_PARTY},` : sql``}
       ${finCte},
       base as (
@@ -658,15 +667,9 @@ async function runRankQuery(
         left join fin fn on fn.contact_id = c.id
         -- Meta lead attribution (IG today): earliest attribution row across the
         -- contact's identities decides the acquisition origin (ad vs organic).
-        left join lateral (
-          select la.origin, la.campaign_name
-          from crm_contact_identities ci
-          join meta_lead_attribution la
-            on la.org_id = ci.org_id and la.channel = ci.channel and la.sender_id = ci.external_id
-          where ci.contact_id = c.id
-          order by la.first_contact_at asc nulls last
-          limit 1
-        ) attr on true
+        -- Build that sparse map once; a correlated lateral probe repeated the
+        -- same two index walks for every contact in the organization.
+        left join lead_attr attr on attr.contact_id = c.id
         where ${and(...conds)}
       ),
       scored as (
@@ -703,7 +706,7 @@ async function runRankQuery(
         select * from scored where ${and(...outer)}
       ),
       requested_page as (
-        select *, row_number() over (order by ${orderBy}) as page_position
+        select *
         from filtered
         order by ${orderBy}
         limit ${queryLimit} offset ${offset}
@@ -727,7 +730,7 @@ async function runRankQuery(
              filtered_total.total_rows
       from filtered_total
       left join requested_page on true
-      order by requested_page.page_position`
+      order by ${orderBy}`
           : sql`select requested_page.*,
              (select coalesce(array_agg(distinct ci.channel order by ci.channel), array[]::text[])
                 from crm_contact_identities ci where ci.contact_id = requested_page.contact_id) as channels,
@@ -737,7 +740,7 @@ async function runRankQuery(
                 from crm_contact_tags ct where ct.contact_id = requested_page.contact_id) as tag_ids,
              null::int as total_rows
       from requested_page
-      order by requested_page.page_position`
+      order by ${orderBy}`
       }
     `);
     // The left join returns one sentinel row when the requested page is empty,

@@ -558,6 +558,31 @@ describe('rankContactsPage (S1 — one round-trip page + filtered total)', () =>
     expect(sqlText.indexOf('array_agg(ct.tag_id::text)', pageAt)).toBeGreaterThan(pageAt);
   });
 
+  it('keeps LIMIT eligible for a top-N sort instead of numbering the full filtered roster', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContactsPage(ctx, { sort: 'name', limit: 100, includeTotal: false });
+
+    const sqlText = new PgDialect().sqlToQuery(execute.mock.calls[0][0]).sql;
+    expect(sqlText).toContain('requested_page as');
+    expect(sqlText).toContain('order by display_name asc nulls last, contact_id asc');
+    expect(sqlText).not.toContain('row_number() over');
+  });
+
+  it('builds lead attribution once instead of probing it laterally for every contact', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([]);
+    useExecMock(execute);
+
+    await rankContactsPage(ctx, { limit: 100 });
+
+    const sqlText = new PgDialect().sqlToQuery(execute.mock.calls[0][0]).sql;
+    expect(sqlText).toContain('lead_attr as');
+    expect(sqlText).toContain('distinct on (ci.contact_id)');
+    expect(sqlText).toContain('left join lead_attr attr on attr.contact_id = c.id');
+    expect(sqlText).not.toContain('left join lateral');
+  });
+
   it('an out-of-range page preserves the nonzero filtered total in one round trip', async () => {
     const execute = vi
       .fn()
