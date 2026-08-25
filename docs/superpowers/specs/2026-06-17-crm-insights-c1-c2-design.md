@@ -1,6 +1,7 @@
 # CRM Insights (C1 word cloud + C2 sentiment groundwork) — Design
 
 **Date:** 2026-06-17
+**Performance contract updated:** 2026-08-25
 **Project:** minion_hub (SvelteKit 2 / Svelte 5 / Bun, Postgres `gxv` with org-GUC RLS)
 **Origin:** CEO Renzo Granda's "aspirational" CRM feedback (the "C" set).
 
@@ -29,7 +30,7 @@ Root cause: WhatsApp history never backfilled into the ledger (Baileys serves hi
 fresh link), so the ledger holds ~12 days of forward-flow messages.
 
 **Implication:** C1 works now and improves as data grows. C2's trend has one data point today,
-so we build the *collection* (per-message sentiment scoring) now and let the chart fill in.
+so we build the _collection_ (per-message sentiment scoring) now and let the chart fill in.
 C3 stays designed-but-unbuilt until a real conversational corpus exists.
 
 ## Scope
@@ -60,36 +61,37 @@ Render pattern: d3 **computes** layout/scales; **Svelte renders** the SVG from t
 arrays (each-blocks), rather than letting d3 mutate the DOM — matches the overview-graph
 approach and stays reactive/testable.
 
-### C1 — word frequency (pure SQL, no LLM)
+### C1 — word frequency (Postgres daily rollup, no live tokenization)
 
-`src/server/services/crm-insights.service.ts`:
+`src/server/services/crm-word-frequency-rollup.service.ts`:
 
 ```ts
-wordFrequency(ctx, { from, to, limit = 60 }): Promise<{ word: string; count: number }[]>
+wordFrequencyRollup(ctx, { fromIso, toIso, limit = 60 }): Promise<{ word: string; count: number }[]>
 ```
 
-Postgres-native via `ts_stat` over `to_tsvector('spanish', body)` on inbound messages in the
-range (Spanish stemming + stopword removal for free; English tail is negligible):
+`crm_word_frequency_daily` stores per-org, per-UTC-day document frequency for inbound,
+non-bot messages. The scheduled refresh tokenizes changed days with Postgres
+`to_tsvector('simple', content)` and `tsvector_to_array`; the interactive RLS request only
+sums the bounded daily rows:
 
 ```sql
-select word, nentry as count
-from ts_stat($$
-  select to_tsvector('spanish', coalesce(m.content,''))
-  from messages m
-  where m.org_id = current_setting('app.current_org_id', true)
-    and m.direction = 'inbound' and m.is_bot is not true
-    and coalesce(m.occurred_at, m.created_at) between :from and :to
-$$)
-where char_length(word) >= 3
-order by nentry desc
+select word, sum(document_count)::int as count
+from crm_word_frequency_daily
+where org_id = current_setting('app.current_org_id', true)
+  and day between :from_utc_day and :to_utc_day
+group by word
+order by sum(document_count) desc
 limit :limit
 ```
 
-(Message text lives in `messages.content`. The org-GUC scopes to the tenant; no
-join to `crm_contact_identities` is needed for a tenant-wide word frequency.)
+The refresh endpoint runs a rolling three-day rebuild every 15 minutes and a bounded
+4,000-day rebuild at 08:15 UTC. It requires Vercel's `CRON_SECRET`. Message text is never
+tokenized on the live request path, and DuckDB is not part of an RLS request.
 
-Valkey-cached (short TTL ~5m, key includes the date range) since message ingest does not bust
-the CRM cache. A small extra stopword denylist (e.g. "hola","gracias","buenas") filtered in JS.
+The page loads one `crmInsightsDashboard` snapshot, Valkey-cached for 5 minutes with a
+30-minute stale-while-revalidate window. Its stable key contains only the org, selected range,
+and sentiment granularity; rolling ISO timestamps do not create one-off cache keys. A small
+Spanish/English chat-noise denylist is still filtered in JS.
 
 UI: `CrmWordCloud.svelte` — d3-cloud computes `{text,size,x,y,rotate}` for the top-N words
 (font size scaled to count); Svelte renders positioned `<text>` in an SVG viewBox. Empty state
@@ -99,14 +101,14 @@ when no words.
 
 **Storage** — new table `crm_message_sentiment`:
 
-| col | type | notes |
-|---|---|---|
-| org_id | text | RLS GUC, FK-less (matches existing fin_/crm_ pattern) |
-| message_id | uuid | PK with org_id; the ledger `messages.id` (uuid) |
-| score | real | -1.0 (negative) … +1.0 (positive) |
-| label | text | 'positive' | 'neutral' | 'negative' |
-| model | text | model id used |
-| analyzed_at | timestamptz | default now() |
+| col         | type        | notes                                                 |
+| ----------- | ----------- | ----------------------------------------------------- |
+| org_id      | text        | RLS GUC, FK-less (matches existing fin_/crm_ pattern) |
+| message_id  | uuid        | PK with org_id; the ledger `messages.id` (uuid)       |
+| score       | real        | -1.0 (negative) … +1.0 (positive)                     |
+| label       | text        | `positive` \| `neutral` \| `negative`                 |
+| model       | text        | model id used                                         |
+| analyzed_at | timestamptz | default now()                                         |
 
 org-GUC RLS forced (same `app_ledger`/`app.current_org_id` pattern as fin_/crm_ tables).
 One migration at meta-repo root `supabase/migrations/`, applied to gxv via Supabase MCP.
@@ -117,20 +119,28 @@ One migration at meta-repo root `supabase/migrations/`, applied to gxv via Supab
 scoreSentimentBatch(ctx, { cap = 50 }): Promise<{ scored: number }>
 ```
 
-Selects inbound messages with non-empty `content` and **no** `crm_message_sentiment` row
-(cap per run), sends them to OpenRouter in one batched JSON request (reuse the
-funnel/analyze + tag/evaluate OpenRouter pattern), upserts one row per message. Failures are
-swallowed (left unscored, retried next run) and never block the page.
+Selects up to `cap` unscored chat-days, preserving each chat-day's inbound message order, and
+sends those grouped conversations to OpenRouter in one batched JSON request (reuse the
+funnel/analyze + tag/evaluate OpenRouter pattern). One conversation score is fanned out to
+every message row in that chat-day. This preserves the per-message storage contract while
+making the customer's daily conversation the scoring unit and bounding model tokens. Failures
+are swallowed (left unscored, retried next run) and never block the page.
 
 **Trigger:** incremental-on-Insights-view (one capped batch per load, like the funnel
-auto-analyze `$effect`) **plus** a manual "Analyze sentiment" button. No cron in v1.
+auto-analyze `$effect`) **plus** a manual "Analyze sentiment" button. A successful scoring
+batch refreshes only its affected org/day range and invalidates the org CRM cache. The same
+cron that refreshes word frequency also refreshes the rolling sentiment window.
 
 **Aggregate:**
 
 ```ts
-sentimentByMonth(ctx): Promise<{ month: string; avg: number; n: number }[]>
+sentimentByDayRollup(ctx, { granularity }): Promise<{ day: string; avg: number; n: number }[]>
 currentSentiment(ctx): Promise<{ avg: number; n: number } | null>  // trailing 30d
 ```
+
+Historical trend reads come from `crm_sentiment_chat_daily`: message scores first average
+within a chat-day, then those rows aggregate by day/week/month so chatty customers do not
+dominate the trend. The interactive request never recomputes the historic message join.
 
 UI: `CrmSentimentTrend.svelte` — d3-scale (`scaleTime` x, `scaleLinear` y in [-1,1]) +
 d3-shape (`line`, optional `area`) build the SVG path; Svelte renders path + axis ticks
@@ -141,11 +151,13 @@ d3-shape (`line`, optional `area`) build the SVG path; Svelte renders path + axi
 
 ```
 Insights page load (server):
-  parse ?from/?to (message-date range; default last 90d)
-  → wordFrequency(range)            [cached]
-  → sentimentByMonth() + currentSentiment()
-  → (client, on mount) POST /api/crm/insights/sentiment  → scoreSentimentBatch(cap)
-                                                          → invalidate on completion
+  parse ?range + ?sent (default last 90d + day granularity)
+  → crmInsightsDashboard(range, granularity) [stable Valkey snapshot]
+      → wordFrequencyRollup(range) + sentimentByDayRollup(granularity)
+      → currentSentiment() + the existing Insights aggregates
+  → (client, on mount) POST /api/crm/insights/sentiment
+      → scoreSentimentBatch(cap)
+      → refresh affected sentiment rollup days + invalidate CRM cache
 ```
 
 Insights is **CRM-only** — no finance dependency.
@@ -156,9 +168,12 @@ Insights is **CRM-only** — no finance dependency.
 - `src/routes/(app)/crm/insights/+page.svelte` — date-range control + both viz cards.
 - `src/lib/components/crm/CrmWordCloud.svelte` — d3-cloud word cloud.
 - `src/lib/components/crm/CrmSentimentTrend.svelte` — d3 line chart.
-- `src/server/services/crm-insights.service.ts` — wordFrequency, scoreSentimentBatch,
-  sentimentByMonth, currentSentiment.
+- `src/server/services/crm-insights-dashboard.service.ts` — stable cached page snapshot.
+- `src/server/services/crm-word-frequency-rollup.service.ts` — bounded daily word reads and refresh.
+- `src/server/services/crm-sentiment-rollup.service.ts` — chat-day trend reads and refresh.
+- `src/server/services/crm-insights.service.ts` — scoreSentimentBatch and currentSentiment.
 - `src/routes/api/crm/insights/sentiment/+server.ts` — POST triggers a capped scoring batch.
+- `src/routes/api/crm/insights/word-frequency/refresh/+server.ts` — authenticated rollup cron.
 - `src/lib/components/crm/crm-insights.ts` — pure helpers (stopword filter, month bucketing,
   label↔score mapping) — unit-tested.
 - `src/lib/components/crm/CrmNav.svelte` — add Insights item.
@@ -176,8 +191,8 @@ Insights is **CRM-only** — no finance dependency.
 
 - `crm-insights.ts` pure helpers: stopword filtering, month bucketing, label↔score mapping,
   word-size scaling — vitest.
-- Service SQL validated manually against gxv (word freq returns sensible Spanish tokens;
-  sentiment upsert idempotent).
+- Service coverage verifies stable dashboard keys, rollup queries, bounded refreshes, and
+  sentiment upsert/idempotency behavior.
 - `bun run check` 0/0, full `crm` + `services` suites green.
 
 ## Why C3 is deferred
@@ -190,3 +205,5 @@ accumulation or solving the WhatsApp history backfill). Designing it now would b
 ## Migrations
 
 1. `crm_message_sentiment` (additive, RLS forced) — applied to gxv via Supabase MCP.
+2. `crm_word_frequency_daily` and `crm_sentiment_chat_daily` (additive, RLS forced), plus
+   cold-path indexes and their refresh functions.

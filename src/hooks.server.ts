@@ -513,9 +513,9 @@ Sentry.init({
 const aiUsageScopeHandle: Handle = ({ event, resolve }) =>
   runWithAiUsageScope({ orgId: null, route: event.route.id, feature: null }, () => resolve(event));
 
-// Route-level server timing (perf spec S2). Sits right behind the AI-usage
-// scope so it measures the whole downstream chain (auth, module guard, load).
-// Fire-and-forget capture — same batching rationale as serverErrorHandler.
+// Route-level request telemetry. Sits right behind the AI-usage scope so it
+// measures the whole downstream chain (auth, module guard, load). PostHog
+// capture is fire-and-forget; org-scoped monitor persistence uses waitUntil.
 const serverTimingHandle = createServerTimingHandle({
   sampleRate: env.SERVER_TIMING_SAMPLE_RATE ? Number(env.SERVER_TIMING_SAMPLE_RATE) : 0.1,
   capture: (eventName, properties, orgId) => {

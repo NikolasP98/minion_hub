@@ -345,9 +345,7 @@
           {:else if column.key === 'dbP95Ms'}
             <span class="font-mono tabular-nums text-muted-strong">{formatMs(row.dbP95Ms)}</span>
           {:else if column.key === 'cacheP95Ms'}
-            <span class="font-mono tabular-nums text-muted-strong"
-              >{formatMs(row.cacheP95Ms)}</span
-            >
+            <span class="font-mono tabular-nums text-muted-strong">{formatMs(row.cacheP95Ms)}</span>
           {:else if column.key === 'cacheMissRate'}
             <span class="font-mono tabular-nums text-muted-strong"
               >{formatPct(row.cacheMissRate)}</span

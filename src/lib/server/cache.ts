@@ -42,7 +42,8 @@ const cleanEnv = (v: string | undefined): string | undefined => {
  *   - Else dev defaults to 'memory', production defaults to 'noop'
  *
  * Broadcaster selection:
- *   - If MINION_GATEWAY_BROADCAST_URL + OPENCLAW_GATEWAY_TOKEN set → HttpBroadcaster
+ *   - If MINION_GATEWAY_BROADCAST_URL and a gateway-row token are available → HttpBroadcaster
+ *   - OPENCLAW_GATEWAY_TOKEN is a last-resort token for a fresh deploy
  *   - Else NoopBroadcaster (cross-runtime invalidation disabled)
  *
  * Valkey is selected via createBackendAsync since it dynamically imports

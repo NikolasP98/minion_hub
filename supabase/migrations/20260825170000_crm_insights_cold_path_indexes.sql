@@ -2,9 +2,9 @@
 -- CREATE INDEX CONCURRENTLY before this migration ships; IF NOT EXISTS makes
 -- the deploy transaction a no-op there while fresh environments remain whole.
 
--- ts_stat's inner query filters exactly this inbound/non-bot population by a
+-- The rollup refresh filters exactly this inbound/non-bot population by a
 -- rolling coalesced timestamp. Without the expression index Postgres scans the
--- 1.3GB messages heap before tokenization on every uncached range.
+-- messages heap before tokenizing each refresh range.
 set local lock_timeout = '2s';
 set local statement_timeout = '5s';
 
@@ -61,10 +61,9 @@ begin
   end if;
 end $$;
 
--- Daily document-frequency rollup. `ts_stat.nentry` counts documents containing
--- a lexeme, so tsvector_to_array (unique lexemes per message) preserves the
--- existing word-cloud semantics without re-tokenizing every historic message
--- on every cold request.
+-- Daily document-frequency rollup. tsvector_to_array returns each message's
+-- unique lexemes, so count(*) preserves the word cloud's document-frequency
+-- semantics without re-tokenizing every historic message on every cold request.
 create table if not exists public.crm_word_frequency_daily (
   org_id text not null,
   day date not null,

@@ -10,8 +10,8 @@ const INSTANCE_STARTED_AT = Date.now();
 let instanceRequestOrdinal = 0;
 
 interface ServerTimingDeps {
-  /** 0..1 — share of requests whose duration is captured as an analytics event.
-   *  The Server-Timing response header is set on EVERY request regardless. */
+  /** 0..1 — share of otherwise-warm, non-slow requests captured as analytics.
+   * Isolate-cold, cache-miss/error, and 3s+ requests are always captured. */
   sampleRate: number;
   capture: (event: string, properties: Record<string, unknown>, orgId: string | null) => void;
   persist?: (orgId: string, sample: PerformanceSample) => void;
@@ -44,13 +44,12 @@ export class ServerTiming {
 }
 
 /**
- * Route-level server timing. The hub had zero request-layer latency signal in
- * prod (the only instrumentation was a >3s console.warn that died in stdout);
- * this handle is the server half of the perf RUM contract
- * (specs/2026-08-22-hub-load-nav-performance-spec.md S2): every response gets a
- * `Server-Timing: app;dur=<ms>` header (visible in browser devtools + Vercel
- * logs), and a sampled `server_timing` analytics event records route id,
- * duration, and status.
+ * Route-level request telemetry. Every measured response attempts to expose
+ * `Server-Timing: app;dur=<ms>`. Isolate-cold, cache-miss/error, and 3s+ requests
+ * are retained; otherwise-warm traffic is sampled. Analytics and the org-scoped
+ * monitor record only the SvelteKit route template (never a raw path or query)
+ * together with cache and RLS-transaction timing contributions. The PostHog
+ * ingest proxy is excluded below to avoid measuring telemetry with itself.
  */
 export function createServerTimingHandle(deps: ServerTimingDeps): Handle {
   const {
