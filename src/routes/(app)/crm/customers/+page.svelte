@@ -42,6 +42,7 @@
     type MergeResolution,
   } from '$lib/components/crm/crm-merge';
   import { CustomerPageCache, isAbortError } from '$lib/components/crm/customer-page-cache';
+  import { crmCountScopeFingerprint } from '$lib/components/crm/customer-query';
 
   let { data }: { data: PageData } = $props();
   const tags = $derived(data.tags);
@@ -56,6 +57,7 @@
   let rows = $state<Row[]>(data.contacts);
   // svelte-ignore state_referenced_locally
   let total = $state<number>(data.total);
+  let knownTotalFingerprint: string | null = null;
   let loading = $state(false);
   type PageBody = {
     contacts: Row[];
@@ -77,6 +79,7 @@
     clearPageCache();
     rows = data.contacts;
     total = data.total;
+    knownTotalFingerprint = crmCountScopeFingerprint(toApiParams(buildParams(lastQuery)));
   });
 
   // Personal orgs de-emphasize the sales funnel (WP2) — no funnel column.
@@ -153,7 +156,7 @@
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-  let tagId = $state('');
+  let tagId = $state(qp.get('tag') ?? '');
   let reservedFilter = $state(qp.get('reserved') === '1');
   let awaitingFilter = $state(qp.get('awaiting') === '1');
   let scoreMin = $state<number | null>(qp.has('scoreMin') ? Number(qp.get('scoreMin')) : null);
@@ -263,11 +266,18 @@
     return api;
   }
   let queryError = $state<string | null>(null);
-  function apiUrlFor(q: ServerQuery): { url: string; urlParams: URLSearchParams } {
+  function apiUrlFor(q: ServerQuery): {
+    url: string;
+    urlParams: URLSearchParams;
+    countFingerprint: string;
+  } {
     const urlParams = buildParams(q);
     const apiParams = toApiParams(urlParams);
-    if (q.page > 1) apiParams.set('includeTotal', '0');
-    return { url: `/api/crm/contacts?${apiParams}`, urlParams };
+    const countFingerprint = crmCountScopeFingerprint(apiParams);
+    if (q.page > 1 || countFingerprint === knownTotalFingerprint) {
+      apiParams.set('includeTotal', '0');
+    }
+    return { url: `/api/crm/contacts?${apiParams}`, urlParams, countFingerprint };
   }
   function prefetchNext(q: ServerQuery) {
     const next = apiUrlFor({ ...q, page: q.page + 1 }).url;
@@ -292,13 +302,16 @@
     loading = true;
     queryError = null;
     try {
-      const { url, urlParams } = apiUrlFor(q);
+      const { url, urlParams, countFingerprint } = apiUrlFor(q);
       const body = await pageCache.load(url);
       // Promise-identity guard: drop out-of-order resolutions.
       if (seq !== reqSeq) return;
       // Infinite scroll: page 1 replaces the list, later pages append.
       rows = q.page > 1 ? [...rows, ...body.contacts] : body.contacts;
-      if (body.total != null) total = body.total;
+      if (body.total != null) {
+        total = body.total;
+        knownTotalFingerprint = countFingerprint;
+      }
       replaceState(`?${urlParams}`, {});
       if (body.hasMore) prefetchNext(q);
     } catch (error) {

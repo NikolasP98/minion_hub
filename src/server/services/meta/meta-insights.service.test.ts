@@ -7,12 +7,15 @@ import {
   calcCpc,
   extentToRange,
   getPostDetail,
+  socialDashboardContext,
+  socialDashboardData,
 } from './meta-insights.service';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
 function rawSqlDb(...queryResults: unknown[]) {
   let executeCount = 0;
+  let transactionCount = 0;
   const tx = {
     execute: async () => {
       executeCount += 1;
@@ -23,7 +26,11 @@ function rawSqlDb(...queryResults: unknown[]) {
     },
   };
   return {
-    transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
+    transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => {
+      transactionCount += 1;
+      return callback(tx);
+    },
+    counts: () => ({ execute: executeCount, transaction: transactionCount }),
   };
 }
 
@@ -88,6 +95,49 @@ describe('extentToRange', () => {
       from: '2026-06-04',
       to: '2026-07-04',
     });
+  });
+});
+
+describe('Socials dashboard read path', () => {
+  it('loads connection state and ad extent in one org-scoped transaction', async () => {
+    const db = rawSqlDb(
+      [{ has_connection: true }],
+      [{ min_date: '2026-06-01', max_date: '2026-06-30', currency: 'PEN' }],
+    );
+
+    await expect(socialDashboardContext(ctx(db))).resolves.toEqual({
+      hasConnection: true,
+      extent: { minDate: '2026-06-01', maxDate: '2026-06-30', currency: 'PEN' },
+    });
+    expect(db.counts()).toEqual({ execute: 3, transaction: 1 });
+  });
+
+  it('loads all dashboard aggregates in one org-scoped transaction', async () => {
+    const db = rawSqlDb(
+      [{ spend: 100, impressions: 1000, reach: 800, clicks: 50 }],
+      [{ spend: 80, impressions: 900, reach: 700, clicks: 40 }],
+      [{ date: '2026-06-30', spend: 100, impressions: 1000, clicks: 50 }],
+      [
+        {
+          campaign_id: 'campaign-1',
+          campaign_name: 'Launch',
+          spend: 100,
+          impressions: 1000,
+          reach: 800,
+          clicks: 50,
+          conversations_started: 10,
+        },
+      ],
+      [{ post_id: 'post-1', platform: 'ig', metrics: { likes: '25' }, is_promoted: false }],
+    );
+
+    const result = await socialDashboardData(ctx(db), { from: '2026-06-01', to: '2026-06-30' });
+
+    expect(result.kpis.spend).toBe(100);
+    expect(result.series).toHaveLength(1);
+    expect(result.campaigns[0]?.campaignId).toBe('campaign-1');
+    expect(result.posts[0]?.postId).toBe('post-1');
+    expect(db.counts()).toEqual({ execute: 6, transaction: 1 });
   });
 });
 
