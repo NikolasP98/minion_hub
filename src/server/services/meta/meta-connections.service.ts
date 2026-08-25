@@ -19,6 +19,7 @@ import {
 } from '$server/db/pg-meta-schema';
 import { encrypt } from '$server/auth/crypto';
 import { ensureAccountInScope } from '../crm-contacts.service';
+import { bustSocialsCache } from './meta-insights.service';
 import {
   exchangeCodeForToken,
   extendUserToken,
@@ -209,6 +210,7 @@ export async function createConnectionFromOAuth(
   });
 
   const enumeration = await enumerateAndUpsertAssets(ctx, connectionId, accessToken, { fetchImpl });
+  await bustSocialsCache(ctx.tenantId);
   return {
     ok: true,
     connectionId,
@@ -478,6 +480,7 @@ export async function createIgConnectionFromOAuth(
   // Same CRM harvest auto-registration the FLB path does for its IG assets.
   await ensureAccountInScope(ctx, 'instagram', igUserId, username);
 
+  await bustSocialsCache(ctx.tenantId);
   return { ok: true, connectionId };
 }
 
@@ -505,7 +508,7 @@ export function listAssets(ctx: CoreCtx, connectionId?: string): Promise<MetaAss
 }
 
 export async function toggleAsset(ctx: CoreCtx, assetId: string, enabled: boolean): Promise<boolean> {
-  return withOrgCore(ctx, async (tx) => {
+  const found = await withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .update(metaAssets)
       .set({ enabled })
@@ -513,11 +516,13 @@ export async function toggleAsset(ctx: CoreCtx, assetId: string, enabled: boolea
       .returning({ id: metaAssets.id });
     return rows.length > 0;
   });
+  if (found) await bustSocialsCache(ctx.tenantId);
+  return found;
 }
 
 /** Disconnect: mark the connection revoked, keep the row + its assets/facts. */
 export async function disconnect(ctx: CoreCtx, connectionId: string): Promise<boolean> {
-  return withOrgCore(ctx, async (tx) => {
+  const found = await withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .update(metaConnections)
       .set({ status: 'revoked', updatedAt: new Date() })
@@ -525,6 +530,8 @@ export async function disconnect(ctx: CoreCtx, connectionId: string): Promise<bo
       .returning({ id: metaConnections.id });
     return rows.length > 0;
   });
+  if (found) await bustSocialsCache(ctx.tenantId);
+  return found;
 }
 
 // ---------------------------------------------------------------------------

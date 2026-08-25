@@ -64,6 +64,7 @@ import {
   markFailed,
 } from './meta-post-media.service';
 import { upsertAdPosts, type AdPostInsertRow } from './meta-ad-posts.service';
+import { bustSocialsCache } from './meta-insights.service';
 
 /**
  * Shared Graph opts carrying the App Secret so every authenticated read sends
@@ -1294,6 +1295,7 @@ export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
     return;
   }
   await recordProgress(ctx, jobId, { pageCursor: result.cursor, countsDelta: result.counts });
+  await bustSocialsCache(ctx.tenantId);
   if (result.cursor) await requeue(ctx, jobId);
   else await finishJob(ctx, jobId, 'succeeded');
 }

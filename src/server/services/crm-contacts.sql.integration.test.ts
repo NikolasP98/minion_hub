@@ -90,6 +90,23 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
         org_id text, channel text, chat_id text, occurred_at timestamptz,
         created_at timestamptz, direction text, is_bot boolean
       );
+      -- This fixture tests ranking semantics, not trigger maintenance. A live
+      -- compatibility view supplies the same projection shape while the
+      -- dedicated activity-rollup integration suite exercises the real table.
+      create view crm_contact_activity_stats as
+        select ci.contact_id, ci.org_id,
+               count(*)::bigint as message_count,
+               count(*) filter (where m.direction = 'inbound')::bigint as inbound_count,
+               count(*) filter (where m.direction = 'outbound')::bigint as outbound_count,
+               count(distinct m.channel)::int as channels_used,
+               min(coalesce(m.occurred_at, m.created_at)) as first_contact_at,
+               max(coalesce(m.occurred_at, m.created_at)) as last_contact_at,
+               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'inbound') as last_inbound_at,
+               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'outbound') as last_outbound_at
+        from crm_contact_identities ci
+        join messages m on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
+        where m.is_bot is not true
+        group by ci.contact_id, ci.org_id;
       create table parties (
         id uuid primary key, doc_number text, dni_verified boolean, dob date,
         metadata jsonb not null default '{}'

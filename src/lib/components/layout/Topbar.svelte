@@ -16,7 +16,7 @@
     import * as m from "$lib/paraglide/messages";
     import { Activity, Cloud, Settings, Menu, X, Search, Bell, LogOut, User } from "lucide-svelte";
     import NavIcon from "./NavIcon.svelte";
-    import { notifications, refreshNotifications } from "$lib/state/features/notifications.svelte";
+    import { notifications, subscribeNotificationsPolling } from "$lib/state/features/notifications.svelte";
     import { onMount } from "svelte";
     import { userState, logout } from "$lib/state/features/user.svelte";
     import { Button } from '$lib/components/ui';
@@ -53,9 +53,7 @@
     const email = $derived(userState.user?.email ?? "");
 
     onMount(() => {
-        refreshNotifications();
-        const interval = setInterval(refreshNotifications, 60_000);
-        return () => clearInterval(interval);
+        return subscribeNotificationsPolling();
     });
 </script>
 

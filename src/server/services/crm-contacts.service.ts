@@ -57,9 +57,10 @@ export interface SyncResult {
 
 /**
  * Idempotent set-based harvest: ensure a contact + identity exists for every
- * NEW inbound `(channel, sender_id)` the ledger knows but CRM doesn't. No
- * counters (rollups are the crm_contact_stats view), no watermark (the anti-join
- * IS the reconciliation), no locks (ON CONFLICT makes concurrent runs no-ops).
+ * NEW inbound `(channel, sender_id)` the ledger knows but CRM doesn't. The
+ * identity trigger rebuilds the activity projection from ledger truth, so the
+ * normal message-before-identity order is covered without a watermark. The
+ * anti-join IS reconciliation and ON CONFLICT makes concurrent runs no-ops.
  */
 export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> {
   // Harvest gate: only accounts the user has added to the CRM scope (and not
@@ -558,11 +559,11 @@ async function runRankQuery(
     const includeTotal = f.includeTotal !== false;
     const queryLimit = includeTotal ? limit : limit + 1;
 
-    // When scoring a single contact (detail page), push its id into the agg CTE
-    // so we aggregate only that contact's conversation — not the whole roster.
-    const aggWhere = f.contactId
-      ? sql`where m.is_bot is not true and ci.contact_id = ${f.contactId}`
-      : sql`where m.is_bot is not true`;
+    // The activity projection is org-scoped and one row per contact. Preserve
+    // the single-contact predicate used by detail callers.
+    const activityWhere = f.contactId
+      ? sql`where s.org_id = ${ctx.tenantId} and s.contact_id = ${f.contactId}`
+      : sql`where s.org_id = ${ctx.tenantId}`;
 
     // Finance bridge: a contact's purchase history (via the PARTY SPINE — same
     // CONTACT_PARTY map as crm-finance.service) gives a TRUE first/last
@@ -597,25 +598,17 @@ async function runRankQuery(
       : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at, null::float8 as revenue, null::int as invoices, false as fin_purchased, false as fin_reserved_only, false as fin_loyal where false)`;
 
     const rows = await tx.execute(sql`
-      -- TODO(handoff): replace this indexed ledger aggregation with a validated,
-      -- incrementally maintained contact-activity table only after message ingest,
-      -- post-ingest identity creation, and contact merges all share a tested
-      -- rebuild path. See meta proposal 2026-08-24-hub-crm-activity-rollup.
       with agg as (
-        select ci.contact_id,
-               max(coalesce(m.occurred_at, m.created_at)) as last_contact_at,
-               min(coalesce(m.occurred_at, m.created_at)) as first_contact_at,
-               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'inbound') as last_inbound_at,
-               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'outbound') as last_outbound_at,
-               count(*) as total_msgs,
-               count(*) filter (where m.direction = 'inbound') as inbound_msgs,
-               count(distinct m.channel) as channels_used
-        from crm_contact_identities ci
-        join messages m
-          -- match the whole conversation (chat_id), not just msgs the contact sent
-          on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
-        ${aggWhere}
-        group by ci.contact_id
+        select s.contact_id,
+               s.last_contact_at,
+               s.first_contact_at,
+               s.last_inbound_at,
+               s.last_outbound_at,
+               s.message_count as total_msgs,
+               s.inbound_count as inbound_msgs,
+               s.channels_used
+        from crm_contact_activity_stats s
+        ${activityWhere}
       ),
       ${withFinance ? sql`${CONTACT_PARTY},` : sql``}
       ${finCte},
