@@ -46,6 +46,7 @@ export interface PerformanceRouteSummary {
   p99Ms: number;
   coldP95Ms: number;
   dbP95Ms: number;
+  cacheP95Ms: number;
   slowRate: number;
   cacheMissRate: number;
   lastSeenAt: number;
@@ -64,6 +65,8 @@ export interface PerformanceMonitorSnapshot {
   available: boolean;
   generatedAt: number;
   range: { from: number; to: number };
+  truncated: boolean;
+  effectiveRange: { from: number; to: number };
   summary: {
     totalSamples: number;
     coldSamples: number;
@@ -82,6 +85,9 @@ export interface PerformanceMonitorSnapshot {
     misses: number;
     errors: number;
     hitRate: number;
+    lookupP50Ms: number;
+    lookupP95Ms: number;
+    totalLookupMs: number;
   };
   routes: PerformanceRouteSummary[];
   timeline: PerformanceTimelinePoint[];

@@ -518,9 +518,15 @@ const aiUsageScopeHandle: Handle = ({ event, resolve }) =>
 // Fire-and-forget capture — same batching rationale as serverErrorHandler.
 const serverTimingHandle = createServerTimingHandle({
   sampleRate: env.SERVER_TIMING_SAMPLE_RATE ? Number(env.SERVER_TIMING_SAMPLE_RATE) : 0.1,
-  capture: (eventName, properties) => {
+  capture: (eventName, properties, orgId) => {
     void getPostHogClient()
-      .then((posthog) => posthog?.capture({ distinctId: 'server', event: eventName, properties }))
+      .then((posthog) =>
+        posthog?.capture({
+          distinctId: orgId ? `org:${orgId}` : 'server',
+          event: eventName,
+          properties,
+        }),
+      )
       .catch(() => {});
   },
   persist: (orgId, sample) => {

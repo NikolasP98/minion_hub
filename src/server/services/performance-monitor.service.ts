@@ -80,11 +80,14 @@ function timelineBucketMs(rangeMs: number): number {
 function emptySnapshot(
   range: { from: number; to: number },
   available: boolean,
+  truncated = false,
 ): PerformanceMonitorSnapshot {
   return {
     available,
     generatedAt: Date.now(),
     range,
+    truncated,
+    effectiveRange: range,
     summary: {
       totalSamples: 0,
       coldSamples: 0,
@@ -97,7 +100,16 @@ function emptySnapshot(
       coldP95Ms: 0,
       dbP95Ms: 0,
     },
-    cache: { hits: 0, staleHits: 0, misses: 0, errors: 0, hitRate: 0 },
+    cache: {
+      hits: 0,
+      staleHits: 0,
+      misses: 0,
+      errors: 0,
+      hitRate: 0,
+      lookupP50Ms: 0,
+      lookupP95Ms: 0,
+      totalLookupMs: 0,
+    },
     routes: [],
     timeline: [],
     recentSlow: [],
@@ -108,16 +120,20 @@ export function aggregatePerformanceSamples(
   input: PerformanceSample[],
   range: { from: number; to: number },
   available = true,
+  truncated = false,
 ): PerformanceMonitorSnapshot {
   const samples = input.filter(
     (sample) => sample.timestamp >= range.from && sample.timestamp <= range.to,
   );
-  if (samples.length === 0) return emptySnapshot(range, available);
+  if (samples.length === 0) return emptySnapshot(range, available, truncated);
 
   const cold = samples.filter(isCold);
   const cacheMiss = samples.filter((sample) => sample.cache.misses > 0);
   const durations = samples.map((sample) => sample.durationMs);
   const databaseDurations = samples.map((sample) => sample.database.queryMs);
+  const cacheDurations = samples.map((sample) =>
+    Number.isFinite(sample.cache.lookupMs) ? Math.max(0, sample.cache.lookupMs) : 0,
+  );
   const cache = samples.reduce(
     (total, sample) => ({
       hits: total.hits + sample.cache.hits,
@@ -165,6 +181,12 @@ export function aggregatePerformanceSamples(
           routeSamples.map((sample) => sample.database.queryMs),
           0.95,
         ),
+        cacheP95Ms: percentile(
+          routeSamples.map((sample) =>
+            Number.isFinite(sample.cache.lookupMs) ? Math.max(0, sample.cache.lookupMs) : 0,
+          ),
+          0.95,
+        ),
         slowRate:
           routeSamples.filter((sample) => sample.durationMs >= SLOW_MS).length /
           routeSamples.length,
@@ -209,6 +231,13 @@ export function aggregatePerformanceSamples(
     available,
     generatedAt: Date.now(),
     range,
+    truncated,
+    effectiveRange: truncated
+      ? {
+          from: Math.min(...samples.map((sample) => sample.timestamp)),
+          to: Math.max(...samples.map((sample) => sample.timestamp)),
+        }
+      : range,
     summary: {
       totalSamples: samples.length,
       coldSamples: cold.length,
@@ -227,6 +256,9 @@ export function aggregatePerformanceSamples(
     cache: {
       ...cache,
       hitRate: cacheLookups > 0 ? (cache.hits + cache.staleHits) / cacheLookups : 0,
+      lookupP50Ms: percentile(cacheDurations, 0.5),
+      lookupP95Ms: percentile(cacheDurations, 0.95),
+      totalLookupMs: Math.round(cacheDurations.reduce((total, duration) => total + duration, 0)),
     },
     routes,
     timeline,
@@ -271,9 +303,10 @@ export async function getPerformanceSnapshot(
       range.from,
       'LIMIT',
       0,
-      MAX_READ_SAMPLES,
+      MAX_READ_SAMPLES + 1,
     );
-    const samples = rows.flatMap((row): PerformanceSample[] => {
+    const truncated = rows.length > MAX_READ_SAMPLES;
+    const samples = rows.slice(0, MAX_READ_SAMPLES).flatMap((row): PerformanceSample[] => {
       try {
         const parsed = JSON.parse(row) as PerformanceSample;
         return typeof parsed.timestamp === 'number' && typeof parsed.route === 'string'
@@ -283,7 +316,7 @@ export async function getPerformanceSnapshot(
         return [];
       }
     });
-    return aggregatePerformanceSamples(samples, range, true);
+    return aggregatePerformanceSamples(samples, range, true, truncated);
   } catch (error) {
     console.warn('[performance-monitor] snapshot read failed', error);
     return aggregatePerformanceSamples([], range, false);

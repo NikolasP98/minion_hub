@@ -28,16 +28,22 @@ describe('createServerTimingHandle', () => {
     expect(res.headers.get('Server-Timing')).toMatch(/^crm_rank;dur=12, app;dur=\d+$/);
   });
 
-  it('captures a sampled server_timing event with route + duration + status', async () => {
+  it('captures org-scoped route-template telemetry without the raw path', async () => {
     const capture = vi.fn();
     const handle = createServerTimingHandle({ sampleRate: 0.5, capture, random: () => 0.1 });
-    await handle({ event: fakeEvent('/en/home'), resolve: resolveOk } as never);
+    await handle({
+      event: fakeEvent('/en/crm/customers/customer-secret', '/(app)/crm/customers/[id]'),
+      resolve: resolveOk,
+    } as never);
     expect(capture).toHaveBeenCalledOnce();
     const [name, props] = capture.mock.calls[0];
     expect(name).toBe('server_timing');
-    expect(props.route).toBe('/(app)/home');
+    expect(props.route).toBe('/(app)/crm/customers/[id]');
+    expect(props.org_id).toBe('org-test');
+    expect(props).not.toHaveProperty('path');
     expect(props.status).toBe(200);
     expect(typeof props.duration_ms).toBe('number');
+    expect(capture.mock.calls[0][2]).toBe('org-test');
   });
 
   it('does not capture when the sample misses', async () => {
@@ -104,7 +110,7 @@ describe('createServerTimingHandle', () => {
       event: fakeEvent('/en/home'),
       resolve: async () => {
         const { recordCacheEvent, recordDatabaseTiming } = await import('./performance-context');
-        recordCacheEvent({ type: 'miss' });
+        recordCacheEvent({ type: 'miss', ms: 17 });
         recordDatabaseTiming({ acquireMs: 8, setupMs: 4, queryMs: 90, totalMs: 102 });
         return new Response('ok');
       },
@@ -113,6 +119,7 @@ describe('createServerTimingHandle', () => {
     expect(capture.mock.calls[0][1]).toMatchObject({
       sample_reason: 'cache-miss',
       cache_status: 'miss',
+      cache_lookup_ms: 17,
       db_query_ms: 90,
     });
     expect(persist.mock.calls[0][1]).toMatchObject({

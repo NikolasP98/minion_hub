@@ -13,7 +13,7 @@ interface ServerTimingDeps {
   /** 0..1 — share of requests whose duration is captured as an analytics event.
    *  The Server-Timing response header is set on EVERY request regardless. */
   sampleRate: number;
-  capture: (event: string, properties: Record<string, unknown>) => void;
+  capture: (event: string, properties: Record<string, unknown>, orgId: string | null) => void;
   persist?: (orgId: string, sample: PerformanceSample) => void;
   random?: () => number;
   now?: () => number;
@@ -104,6 +104,7 @@ export function createServerTimingHandle(deps: ServerTimingDeps): Handle {
       const shouldSample = isolateCold || cacheCold || slow || random() < sampleRate;
 
       if (shouldSample) {
+        const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId ?? null;
         const sample: PerformanceSample = {
           timestamp,
           route: event.route.id ?? '[unmatched]',
@@ -120,35 +121,39 @@ export function createServerTimingHandle(deps: ServerTimingDeps): Handle {
           commitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
         };
         try {
-          capture('server_timing', {
-            route: event.route.id,
-            path: event.url.pathname,
-            method: event.request.method,
-            duration_ms: durationMs,
-            status: response.status,
-            sample_reason: sampleReason,
-            isolate_cold: isolateCold,
-            request_ordinal: ordinal,
-            instance_age_ms: sample.instanceAgeMs,
-            cache_status: measured.cache.status,
-            cache_hits: measured.cache.hits,
-            cache_stale_hits: measured.cache.staleHits,
-            cache_misses: measured.cache.misses,
-            cache_errors: measured.cache.errors,
-            db_transactions: measured.database.transactions,
-            db_acquire_ms: measured.database.acquireMs,
-            db_setup_ms: measured.database.setupMs,
-            db_query_ms: measured.database.queryMs,
-            db_total_ms: measured.database.totalMs,
-            region: sample.region,
-            deployment_id: sample.deploymentId,
-            commit_sha: sample.commitSha,
-          });
+          capture(
+            'server_timing',
+            {
+              route: sample.route,
+              org_id: orgId,
+              method: event.request.method,
+              duration_ms: durationMs,
+              status: response.status,
+              sample_reason: sampleReason,
+              isolate_cold: isolateCold,
+              request_ordinal: ordinal,
+              instance_age_ms: sample.instanceAgeMs,
+              cache_status: measured.cache.status,
+              cache_hits: measured.cache.hits,
+              cache_stale_hits: measured.cache.staleHits,
+              cache_misses: measured.cache.misses,
+              cache_errors: measured.cache.errors,
+              cache_lookup_ms: measured.cache.lookupMs,
+              db_transactions: measured.database.transactions,
+              db_acquire_ms: measured.database.acquireMs,
+              db_setup_ms: measured.database.setupMs,
+              db_query_ms: measured.database.queryMs,
+              db_total_ms: measured.database.totalMs,
+              region: sample.region,
+              deployment_id: sample.deploymentId,
+              commit_sha: sample.commitSha,
+            },
+            orgId,
+          );
         } catch {
           // Analytics is independent from the durable org monitor.
         }
         try {
-          const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId;
           if (orgId && event.route.id !== '/api/reliability/performance') persist?.(orgId, sample);
         } catch {
           // Performance instrumentation must never fail the measured request.

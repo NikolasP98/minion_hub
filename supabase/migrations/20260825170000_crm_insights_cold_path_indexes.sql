@@ -5,10 +5,42 @@
 -- ts_stat's inner query filters exactly this inbound/non-bot population by a
 -- rolling coalesced timestamp. Without the expression index Postgres scans the
 -- 1.3GB messages heap before tokenization on every uncached range.
+set local lock_timeout = '2s';
+set local statement_timeout = '5s';
+
 create index if not exists messages_crm_insights_inbound_time_idx
   on public.messages (org_id, (coalesce(occurred_at, created_at)))
   where direction = 'inbound'
     and is_bot is not true;
+
+create index if not exists messages_crm_insights_rollup_time_idx
+  on public.messages ((coalesce(occurred_at, created_at)))
+  where direction = 'inbound'
+    and is_bot is not true
+    and content is not null
+    and length(trim(content)) > 0;
+
+do $$
+begin
+  if (
+    select count(*)
+    from pg_class index_class
+    join pg_index index_meta on index_meta.indexrelid = index_class.oid
+    join pg_namespace namespace on namespace.oid = index_class.relnamespace
+    where namespace.nspname = 'public'
+      and index_class.relname in (
+        'messages_crm_insights_inbound_time_idx',
+        'messages_crm_insights_rollup_time_idx'
+      )
+      and index_meta.indisvalid
+      and index_meta.indisready
+  ) <> 2 then
+    raise exception 'CRM Insights indexes must be precreated concurrently and valid';
+  end if;
+end $$;
+
+set local statement_timeout = default;
+set local lock_timeout = default;
 
 -- Theme rollups are org + last_at bounded for 30d/90d/365d views.
 create index if not exists crm_conversation_analysis_org_last_idx
@@ -83,8 +115,9 @@ begin
     and m.content is not null
     and length(trim(m.content)) > 0
     and char_length(lexeme.word) >= 3
-    and (coalesce(m.occurred_at, m.created_at) at time zone 'UTC')::date
-      between p_from and p_to
+    and coalesce(m.occurred_at, m.created_at) >= (p_from::timestamp at time zone 'UTC')
+    and coalesce(m.occurred_at, m.created_at) <
+      ((p_to + 1)::timestamp at time zone 'UTC')
   group by m.org_id, 2, lexeme.word;
 
   get diagnostics refreshed = row_count;

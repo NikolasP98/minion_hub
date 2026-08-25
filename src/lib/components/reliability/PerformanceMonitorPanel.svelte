@@ -102,6 +102,7 @@
         subtext: m.reliability_performanceCacheCounts({
           hits: snapshot.cache.hits + snapshot.cache.staleHits,
           misses: snapshot.cache.misses,
+          p95: formatMs(snapshot.cache.lookupP95Ms),
         }),
       },
       {
@@ -162,6 +163,14 @@
       custom: true,
       align: 'right',
       width: 100,
+    },
+    {
+      key: 'cacheP95Ms',
+      label: m.reliability_performanceCacheP95(),
+      accessor: (row) => row.cacheP95Ms,
+      custom: true,
+      align: 'right',
+      width: 110,
     },
     {
       key: 'cacheMissRate',
@@ -273,6 +282,17 @@
 
     <KpiRow items={kpis} cols={6} />
 
+    {#if snapshot.truncated}
+      <div class="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 flex gap-3">
+        <AlertTriangle size={iconSizes.sm} class="text-warning shrink-0 mt-0.5" />
+        <p class="text-xs text-muted-strong">
+          {m.reliability_performanceTruncated({
+            time: formatTime(snapshot.effectiveRange.from),
+          })}
+        </p>
+      </div>
+    {/if}
+
     {#if snapshot.timeline.length > 1}
       <section class="surface-2 rounded-lg overflow-hidden">
         <header class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
@@ -324,6 +344,10 @@
             <span class="font-mono tabular-nums text-foreground">{formatMs(row.p95Ms)}</span>
           {:else if column.key === 'dbP95Ms'}
             <span class="font-mono tabular-nums text-muted-strong">{formatMs(row.dbP95Ms)}</span>
+          {:else if column.key === 'cacheP95Ms'}
+            <span class="font-mono tabular-nums text-muted-strong"
+              >{formatMs(row.cacheP95Ms)}</span
+            >
           {:else if column.key === 'cacheMissRate'}
             <span class="font-mono tabular-nums text-muted-strong"
               >{formatPct(row.cacheMissRate)}</span

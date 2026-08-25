@@ -69,15 +69,33 @@ describe('aggregatePerformanceSamples', () => {
       dbP95Ms: 4_500,
     });
     expect(snapshot.cache).toMatchObject({ hits: 1, misses: 2, hitRate: 1 / 3 });
+    expect(snapshot.cache).toMatchObject({
+      lookupP50Ms: 2,
+      lookupP95Ms: 5,
+      totalLookupMs: 7,
+    });
     expect(snapshot.routes[0]).toMatchObject({
       route: '/(app)/crm/insights',
       samples: 2,
       coldSamples: 2,
       p95Ms: 6_000,
       dbP95Ms: 4_500,
+      cacheP95Ms: 5,
       slowRate: 1,
     });
     expect(snapshot.recentSlow).toHaveLength(2);
+  });
+
+  it('marks a newest-sample slice with its effective range', () => {
+    const snapshot = aggregatePerformanceSamples(
+      [sample({ timestamp: FROM + 20_000 }), sample({ timestamp: FROM + 30_000 })],
+      { from: FROM, to: TO },
+      true,
+      true,
+    );
+
+    expect(snapshot.truncated).toBe(true);
+    expect(snapshot.effectiveRange).toEqual({ from: FROM + 20_000, to: FROM + 30_000 });
   });
 
   it('returns a stable empty payload when the backing monitor is unavailable', () => {

@@ -37,3 +37,22 @@ export async function refreshSentimentRollup(
   `)) as unknown as Array<{ refreshed: number | string }>;
   return Number(rows[0]?.refreshed ?? 0);
 }
+
+export async function refreshSentimentRollupRange(
+  fromDay: string,
+  toDay: string,
+  orgId: string,
+): Promise<number> {
+  const dayPattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dayPattern.test(fromDay) || !dayPattern.test(toDay) || fromDay > toDay || !orgId) {
+    throw new Error('refreshSentimentRollupRange: invalid range');
+  }
+  const rows = (await getCoreDb().execute(sql`
+    select public.crm_refresh_sentiment_chat_daily(
+      ${orgId},
+      ${fromDay}::date,
+      ${toDay}::date
+    )::bigint as refreshed
+  `)) as unknown as Array<{ refreshed: number | string }>;
+  return Number(rows[0]?.refreshed ?? 0);
+}
