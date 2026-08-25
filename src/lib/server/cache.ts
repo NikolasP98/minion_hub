@@ -7,12 +7,22 @@ import {
   type Backend,
   type CacheBackend,
   type CacheBroadcaster,
+  type CacheLogger,
 } from '@minion-stack/cache';
 import { env } from '$env/dynamic/private';
 import { randomUUID } from 'node:crypto';
 import { getSystemGatewayCredentials as getSystemGatewayCredentialsPg } from '$server/services/gateway.pg.service';
+import { recordCacheEvent } from '$lib/server/performance-context';
+import { instrumentCacheBackend } from '$lib/server/cache-backend-instrumentation';
 
 let initPromise: Promise<void> | null = null;
+let dataPlanePromise: Promise<CacheRuntime> | null = null;
+
+interface CacheRuntime {
+  backend: CacheBackend;
+  backendName: Backend;
+  logger: CacheLogger;
+}
 
 const sourceId = env.VERCEL_DEPLOYMENT_ID ?? randomUUID();
 
@@ -33,7 +43,8 @@ const cleanEnv = (v: string | undefined): string | undefined => {
  *   - Else dev defaults to 'memory', production defaults to 'noop'
  *
  * Broadcaster selection:
- *   - If MINION_GATEWAY_BROADCAST_URL + OPENCLAW_GATEWAY_TOKEN set → HttpBroadcaster
+ *   - If MINION_GATEWAY_BROADCAST_URL and a gateway-row token are available → HttpBroadcaster
+ *   - OPENCLAW_GATEWAY_TOKEN is a last-resort token for a fresh deploy
  *   - Else NoopBroadcaster (cross-runtime invalidation disabled)
  *
  * Valkey is selected via createBackendAsync since it dynamically imports
@@ -53,7 +64,25 @@ export function initCache(): Promise<void> {
   return initPromise;
 }
 
-async function doInitCache(): Promise<void> {
+/** Make cached reads available before the gateway-token lookup used only by
+ * cross-runtime invalidation. The first app request awaits this short path;
+ * broadcaster discovery continues through initCache() without holding every
+ * dashboard cache behind an unrelated database round trip. */
+function getCacheRuntime(): Promise<CacheRuntime> {
+  if (!dataPlanePromise) {
+    dataPlanePromise = doInitCacheDataPlane().catch((error) => {
+      dataPlanePromise = null;
+      throw error;
+    });
+  }
+  return dataPlanePromise;
+}
+
+export async function initCacheDataPlane(): Promise<void> {
+  await getCacheRuntime();
+}
+
+async function doInitCacheDataPlane(): Promise<CacheRuntime> {
   const explicit = cleanEnv(env.CACHE_BACKEND) as Backend | undefined;
   const isProd = env.NODE_ENV === 'production';
   const backendName: Backend = explicit ?? (isProd ? 'noop' : 'memory');
@@ -85,6 +114,30 @@ async function doInitCache(): Promise<void> {
   } else {
     backend = createBackend({ backend: backendName });
   }
+
+  const logger: CacheLogger = (evt) => {
+    recordCacheEvent(evt);
+    if (env.CACHE_LOG === '1' || !isProd) console.log(`[cache] ${JSON.stringify(evt)}`);
+  };
+  const runtime = { backend: instrumentCacheBackend(backend), backendName, logger };
+  configureRuntime(runtime, new NoopBroadcaster());
+  console.log(`[cache] data plane ready — backend=${backendName}`);
+  return runtime;
+}
+
+function configureRuntime(runtime: CacheRuntime, broadcaster: CacheBroadcaster): void {
+  configureCache({
+    backend: runtime.backend,
+    namespace: 'hub',
+    broadcaster,
+    source: 'hub',
+    sourceId,
+    logger: runtime.logger,
+  });
+}
+
+async function doInitCache(): Promise<void> {
+  const runtime = await getCacheRuntime();
 
   const broadcastUrl = cleanEnv(env.MINION_GATEWAY_BROADCAST_URL);
   // Token comes from the encrypted Supabase `gateway` row (system-of-record) —
@@ -121,17 +174,9 @@ async function doInitCache(): Promise<void> {
     }
   }
 
-  configureCache({
-    backend,
-    namespace: 'hub',
-    broadcaster,
-    source: 'hub',
-    sourceId,
-    logger:
-      env.CACHE_LOG === '1' || !isProd
-        ? (evt) => console.log(`[cache] ${JSON.stringify(evt)}`)
-        : undefined,
-  });
+  configureRuntime(runtime, broadcaster);
 
-  console.log(`[cache] initialized — backend=${backendName} sourceId=${sourceId.slice(0, 8)}`);
+  console.log(
+    `[cache] initialized — backend=${runtime.backendName} sourceId=${sourceId.slice(0, 8)}`,
+  );
 }

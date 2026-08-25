@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { withOrgCore } from './with-org-core';
+import {
+  createPerformanceContext,
+  currentPerformanceSnapshot,
+  runWithPerformanceContext,
+} from '$lib/server/performance-context';
 
 // withOrgCore transacts on the scope's own db handle, so we pass a fake scope
 // whose db.transaction passes a tx through and records the executed setup SQL.
@@ -58,5 +63,18 @@ describe('withOrgCore', () => {
       expect(executed.length).toBe(1); // setup already ran
     });
     expect(order).toEqual(['fn']);
+  });
+
+  it('records a failed callback as one database transaction', async () => {
+    const snapshot = await runWithPerformanceContext(createPerformanceContext(), async () => {
+      await expect(
+        withOrgCore(fakeScope('org-x'), async () => {
+          throw new Error('query failed');
+        }),
+      ).rejects.toThrow('query failed');
+      return currentPerformanceSnapshot();
+    });
+
+    expect(snapshot.database.transactions).toBe(1);
   });
 });

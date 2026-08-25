@@ -19,7 +19,7 @@ import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
 import { trustedWorkforceViewerRoleKeys } from '$lib/server/workforce-viewer';
 import { canonicalizeWorkforceRoleKeys } from '$lib/server/workforce-role-keys';
 import { needsWorkforceIdentity } from '$lib/server/workforce-route';
-import { initCache } from '$lib/server/cache';
+import { initCache, initCacheDataPlane } from '$lib/server/cache';
 import { getCoreDb } from '$server/db/pg-client';
 import { runWithAiUsageScope } from '$server/ai-usage';
 import { getUserPreferences } from '$server/services/user-preferences.service';
@@ -36,6 +36,9 @@ import {
 } from '$server/http/proxy-headers';
 import { BUILD_CHANNEL_COOKIE, runWithBuildChannel } from '$server/gateway-channel';
 import { isGatewayChannel } from '$server/services/gateway.pg.service';
+import { waitUntil } from '@vercel/functions';
+import { storePerformanceSample } from '$server/services/performance-monitor.service';
+import { isCronAuthPath } from '$lib/server/cron-auth-path';
 
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
@@ -299,24 +302,7 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // Cron tick endpoints (driven by Vercel cron or an external scheduler)
     // authenticate via CRON_SECRET Bearer in the handler, not a user session —
     // let them through so the handler can enforce its own auth.
-    if (
-      path === '/api/scheduling/reminders/tick' ||
-      path === '/api/finances/sync/tick' ||
-      path === '/api/finances/sync/daily' ||
-      path === '/api/notifications/tick' ||
-      path === '/api/memberships/tick' ||
-      path === '/api/org-config/tick' ||
-      path === '/api/jobs/tick' ||
-      path === '/api/brains/reconcile/tick' ||
-      path === '/api/meta/sync/tick' ||
-      path === '/api/meta/attribution' ||
-      path === '/api/email-ledger/tick' ||
-      path === '/api/crm/dni-validation/tick' ||
-      path === '/api/crm/conversations/vectorize/tick' ||
-      path === '/api/crm/conversations/analyze/tick' ||
-      path === '/api/crm/relationship/tick' ||
-      path === '/api/reliability/retention/tick'
-    ) {
+    if (isCronAuthPath(path)) {
       return resolve(event);
     }
     // Pre-login auth endpoints: by definition the caller has no session yet.
@@ -511,21 +497,36 @@ Sentry.init({
 const aiUsageScopeHandle: Handle = ({ event, resolve }) =>
   runWithAiUsageScope({ orgId: null, route: event.route.id, feature: null }, () => resolve(event));
 
-// Route-level server timing (perf spec S2). Sits right behind the AI-usage
-// scope so it measures the whole downstream chain (auth, module guard, load).
-// Fire-and-forget capture — same batching rationale as serverErrorHandler.
+// Route-level request telemetry. Sits right behind the AI-usage scope so it
+// measures the whole downstream chain (auth, module guard, load). PostHog
+// capture is fire-and-forget; org-scoped monitor persistence uses waitUntil.
 const serverTimingHandle = createServerTimingHandle({
   sampleRate: env.SERVER_TIMING_SAMPLE_RATE ? Number(env.SERVER_TIMING_SAMPLE_RATE) : 0.1,
-  capture: (eventName, properties) => {
+  capture: (eventName, properties, orgId) => {
     void getPostHogClient()
-      .then((posthog) => posthog?.capture({ distinctId: 'server', event: eventName, properties }))
+      .then((posthog) =>
+        posthog?.capture({
+          distinctId: orgId ? `org:${orgId}` : 'server',
+          event: eventName,
+          properties,
+        }),
+      )
       .catch(() => {});
   },
+  persist: (orgId, sample) => {
+    waitUntil(storePerformanceSample(orgId, sample));
+  },
 });
+
+const cacheDataPlaneHandle: Handle = async ({ event, resolve }) => {
+  await initCacheDataPlane();
+  return resolve(event);
+};
 
 export const handle = sequence(
   aiUsageScopeHandle,
   serverTimingHandle,
+  cacheDataPlaneHandle,
   Sentry.sentryHandle(),
   i18n.handle(),
   cloudPasskeyHandle,
