@@ -46,7 +46,7 @@ vi.mock('./modules.service', async (importOriginal) => ({
   bothEnabled: async () => financeOn,
 }));
 
-import { rankContactsPage } from './crm-contacts.service';
+import { getCrmDashboardStats, rankContactsPage } from './crm-contacts.service';
 import { contactFinanceMap, contactFinanceSummary, rankCustomers } from './crm-finance.service';
 
 const ids = {
@@ -315,6 +315,34 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     const page = await rankContactsPage(ctx, { awaitingReply: true, limit: 100 });
     expect(idsOf(page.rows)).toEqual(idsOf(expected));
     expect(page.total).toBe(expected.length);
+  });
+
+  it('aggregates the full dashboard in SQL with the same roster semantics', async () => {
+    const all = await roster();
+    const stats = await getCrmDashboardStats(ctx);
+    const stageCounts = Object.fromEntries(
+      ['New', 'Engaged', 'Active', 'Dormant', 'Churned'].map((stage) => [
+        stage,
+        all.rows.filter((row) => row.stage === stage).length,
+      ]),
+    );
+    const scoreBuckets = new Array(10).fill(0) as number[];
+    for (const row of all.rows) {
+      scoreBuckets[Math.min(9, Math.max(0, Math.floor(row.score / 10)))]++;
+    }
+
+    expect(stats).toMatchObject({
+      total: all.rows.length,
+      avgScore: Math.round(all.rows.reduce((sum, row) => sum + row.score, 0) / all.rows.length),
+      stageCounts,
+      scoreBuckets,
+      response: {
+        inboundContacts: all.rows.filter((row) => row.inbound_msgs > 0).length,
+        awaiting: all.rows.filter((row) => row.inbound_msgs > 0 && row.awaiting_reply).length,
+      },
+      revenue: null,
+    });
+    expect(stats.channels).toEqual([{ channel: 'whatsapp', count: 2 }]);
   });
 
   it('buyerOnly selects exactly the contacts with a purchase history', async () => {

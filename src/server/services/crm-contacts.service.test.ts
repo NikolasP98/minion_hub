@@ -10,6 +10,7 @@ import {
   customFieldsMergeSql,
   rankContacts,
   rankContactsPage,
+  getCrmDashboardStats,
   contactCustomFieldSetSql,
   assertJsonValue,
   setContactCustomField,
@@ -609,6 +610,94 @@ describe('rankContactsPage (S1 — one round-trip page + filtered total)', () =>
     expect(Array.isArray(out)).toBe(true);
     expect(out[0].contact_id).toBe('c1');
     expect(out[0]).not.toHaveProperty('total_rows');
+  });
+});
+
+describe('getCrmDashboardStats', () => {
+  it('returns one compact SQL aggregate with the roster scoring and finance semantics', async () => {
+    const { configureCache, MemoryBackend } = await import('@minion-stack/cache');
+    configureCache({ backend: new MemoryBackend(), namespace: `crm-dashboard-${Math.random()}` });
+    mockBothEnabled.mockResolvedValueOnce(true);
+    mockResolveDepositRule.mockResolvedValueOnce({ keywords: ['reserva'], label: 'Reserva' });
+    const execute = vi.fn().mockResolvedValueOnce([
+      {
+        total: 8,
+        stage_new: 1,
+        stage_engaged: 2,
+        stage_active: 3,
+        stage_dormant: 1,
+        stage_churned: 1,
+        new_count: 2,
+        active_week: 3,
+        avg_score: 64,
+        score_buckets: [0, 0, 0, 0, 1, 1, 2, 1, 2, 1],
+        temp_hot: 4,
+        temp_warm: 3,
+        temp_cold: 1,
+        funnel_lead: 4,
+        funnel_opportunity: 2,
+        funnel_customer: 1,
+        funnel_loyal: 1,
+        inbound_contacts: 6,
+        awaiting: 2,
+        awaiting_hot: 1,
+        awaiting_warm: 1,
+        awaiting_cold: 0,
+        booked: 4,
+        bought: 2,
+        origin_ad: 3,
+        origin_organic: 2,
+        origin_untracked: 3,
+        channels: [
+          { channel: 'instagram', count: 5 },
+          { channel: 'whatsapp', count: 3 },
+        ],
+        campaigns: [{ name: 'Launch', count: 2 }],
+        finance_revenue: 900,
+        finance_invoices: 3,
+        finance_buyers: 4,
+        finance_customers: 2,
+        finance_reserved: 1,
+        finance_loyal: 1,
+      },
+    ]);
+    useExecMock(execute);
+
+    const stats = await getCrmDashboardStats(
+      { db: {} as never, tenantId: 'org-dashboard' },
+      {
+        ownerId: 'owner-1',
+        from: new Date('2026-08-01T00:00:00Z'),
+        to: new Date('2026-08-25T23:59:59Z'),
+      },
+    );
+
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.sql).toContain('from scoped');
+    expect(query.sql).toContain("count(*) filter (where stage = 'Active')");
+    expect(query.sql).toContain('select distinct s.contact_id, ci.channel');
+    expect(query.sql).toContain('from contact_invoice_class');
+    expect(query.sql).not.toContain('requested_page as');
+    expect(query.params).toEqual(
+      expect.arrayContaining([
+        'owner-1',
+        new Date('2026-08-01T00:00:00Z'),
+        new Date('2026-08-25T23:59:59Z'),
+      ]),
+    );
+    expect(stats).toMatchObject({
+      total: 8,
+      avgScore: 64,
+      stageCounts: { Active: 3, Churned: 1 },
+      funnelCounts: { lead: 4, opportunity: 2, customer: 1, loyal: 1 },
+      response: { inboundContacts: 6, awaiting: 2, answered: 4, responseRate: 67 },
+      conversion: { leads: 6, booked: 4, bought: 2, bookedRate: 67, boughtRate: 50 },
+      revenue: { revenue: 900, invoices: 3, buyers: 4, avgTicket: 300 },
+    });
+    expect(stats.channels).toEqual([
+      { channel: 'instagram', count: 5 },
+      { channel: 'whatsapp', count: 3 },
+    ]);
   });
 });
 
