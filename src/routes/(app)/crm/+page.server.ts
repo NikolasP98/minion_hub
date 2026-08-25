@@ -1,18 +1,8 @@
 import type { PageServerLoad } from './$types';
 import { requireCoreCtx } from '$server/auth/core-ctx';
-import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
-import { listContactsCached } from '$server/services/crm-contacts.service';
-import { crmRevenueSummary, contactFinanceMap } from '$server/services/crm-finance.service';
-import {
-  FUNNEL_ORDER,
-  effectiveFunnelStage,
-  maxFunnelStage,
-  financeFloorStage,
-} from '$lib/components/crm/crm-funnel';
-import { temperatureOf } from '$lib/components/crm/crm-format';
+import { ownerFilter } from '$server/services/rbac.service';
+import { getCrmDashboardStats } from '$server/services/crm-contacts.service';
 import { fromTimestamps, toTimestamps } from '$lib/components/dashboard/date-range/url';
-
-const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'] as const;
 
 // Date-range presets for the dashboard cohort filter (acquisition window).
 const RANGE_DAYS: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '365d': 365 };
@@ -53,163 +43,31 @@ export const load: PageServerLoad = async ({ locals, url, depends, parent }) => 
   const { activeOrgKind } = await parent();
   const isPersonal = activeOrgKind === 'personal';
 
-  // RBAC gates stay synchronous — an unauthorized/masked request must never
-  // fall through to the streamed body below.
+  // Record-level RBAC stays synchronous. The aggregate returns no contact PII,
+  // so field masking is irrelevant and no second authz read is needed.
   const owner = await ownerFilter(locals, 'crm');
-  const masked = await shouldMaskSensitive(locals, 'crm');
 
   // Acquisition-date cohort filter is cheap (no DB access) — resolve it now so
   // the page shell can render the range picker immediately, without waiting
   // on the heavy roster fetch below.
   const { range, fromTs, toTs } = resolveRange(url.searchParams, Date.now());
 
-  // Heavy body: reuse the same Valkey-cached roster the Customers list loads,
-  // then aggregate server-side into a COMPACT summary — the dashboard never
-  // ships the full roster (that 941 KB payload is what makes the list page
-  // heavy), only counts. Streamed so the page shell paints instantly with
-  // skeletons instead of blocking on this.
+  // The streamed body is one cached SQL aggregate. It preserves the roster's
+  // score/lifecycle/funnel semantics without materializing 17k+ contacts in the
+  // server process before the compact dashboard payload can close.
   async function computeStats() {
-    // Uncapped roster (shared with the Customers list). Aggregated server-side
-    // here; only the compact stats below are returned to the client, never the
-    // rows — so the dashboard COUNTS every contact without shipping them.
-    const roster = await listContactsCached(ctx, owner, masked);
-
-    // Dashboard scope: contacts first seen within the selected acquisition
-    // window (default 'all' = today's behaviour). Revenue stays an all-time
-    // rollup (it's invoice-keyed, a different axis).
-    const all =
+    const bounded =
       range === 'all'
-        ? roster
-        : roster.filter((c) => {
-            const t = c.first_contact_at ? Date.parse(c.first_contact_at) : NaN;
-            return Number.isFinite(t) && t >= fromTs && t <= toTs;
-          });
-    const total = all.length;
-
-    // Lifecycle stage breakdown (drives the funnel).
-    const stageCounts: Record<string, number> = Object.fromEntries(STAGES.map((s) => [s, 0]));
-    // RFM score distribution in 10 buckets (0–9, 10–19, … 90–100).
-    const scoreBuckets = new Array(10).fill(0) as number[];
-    // Channel mix across all contacts (a contact can span several channels).
-    const channelMix: Record<string, number> = {};
-    let scoreSum = 0;
-
-    // "New this period" = first seen within the last 30 days.
-    const now = Date.now();
-    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
-    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-    let newCount = 0;
-    let activeWeek = 0; // contacted within the last 7 days
-
-    // Marketing-funnel breakdown (drives the dashboard ribbon). Counts the
-    // effective stage per contact (stored _funnel else baseline lead).
-    const funnelCounts: Record<string, number> = Object.fromEntries(
-      FUNNEL_ORDER.map((s) => [s, 0]),
-    );
-
-    // Engagement temperature split (hot/warm/cold) derived from the RFM score —
-    // the dashboard's at-a-glance "who's worth chasing right now".
-    const temperature = { hot: 0, warm: 0, cold: 0 };
-
-    // Lead origin (Meta attribution, IG today): paid-ad vs organic first
-    // contact; contacts with no attribution row (e.g. WhatsApp) are untracked.
-    const leadOrigin = { ad: 0, organic: 0, untracked: 0 };
-    const campaignMix: Record<string, number> = {};
-
-    // Per-contact billing classification (empty unless CRM + Finances both on) so
-    // the funnel counts reflect real purchases, not just chat sentiment.
-    const financeMap = await contactFinanceMap(ctx);
-
-    // B5 — message responsiveness: of contacts who wrote in, how many are still
-    // awaiting our reply (last message inbound), split by temperature.
-    let inboundContacts = 0;
-    let awaiting = 0;
-    const awaitingByTemp = { hot: 0, warm: 0, cold: 0 };
-    // B6 — conversion funnel (acquisition cohort): leads → booked (any reservation
-    // /invoice) → bought (a real procedure). Reservation = the "cita agendada".
-    let booked = 0;
-    let bought = 0;
-
-    for (const c of all) {
-      if (c.stage in stageCounts) stageCounts[c.stage]++;
-      const b = Math.min(9, Math.max(0, Math.floor(c.score / 10)));
-      scoreBuckets[b]++;
-      scoreSum += c.score;
-      temperature[temperatureOf(c.score)]++;
-      for (const ch of c.channels ?? []) channelMix[ch] = (channelMix[ch] ?? 0) + 1;
-      if (c.first_contact_at && now - Date.parse(c.first_contact_at) <= THIRTY_DAYS) newCount++;
-      if (c.last_contact_at && now - Date.parse(c.last_contact_at) <= SEVEN_DAYS) activeWeek++;
-      const fin = financeMap[c.contact_id] ?? null;
-      const fs = maxFunnelStage(
-        effectiveFunnelStage(c.custom_fields, { inbound: c.inbound_msgs }),
-        financeFloorStage(fin),
-      );
-      if (fs && !isPersonal) funnelCounts[fs]++;
-      if (c.inbound_msgs > 0) {
-        inboundContacts++;
-        if (c.awaiting_reply) {
-          awaiting++;
-          awaitingByTemp[temperatureOf(c.score)]++;
-        }
-      }
-      if (fin) booked++;
-      if (fin?.purchased) bought++;
-      if (c.lead_origin === 'ad') {
-        leadOrigin.ad++;
-        if (c.lead_campaign) campaignMix[c.lead_campaign] = (campaignMix[c.lead_campaign] ?? 0) + 1;
-      } else if (c.lead_origin === 'organic') leadOrigin.organic++;
-      else leadOrigin.untracked++;
-    }
-    const campaigns = Object.entries(campaignMix)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-
-    // B5 response stats. answered = inbound contacts we've replied to most recently.
-    const answered = inboundContacts - awaiting;
-    const response = {
-      inboundContacts,
-      awaiting,
-      answered,
-      awaitingByTemp,
-      responseRate: inboundContacts ? Math.round((answered / inboundContacts) * 100) : 0,
-    };
-    // B6 conversion rates (guarded against the rare booked-without-inbound case).
-    const leads = inboundContacts;
-    const conversion = {
-      leads,
-      booked,
-      bought,
-      bookedRate: leads ? Math.round((Math.min(booked, leads) / leads) * 100) : 0,
-      boughtRate: booked ? Math.round((bought / booked) * 100) : 0,
-    };
-
-    const channels = Object.entries(channelMix)
-      .map(([channel, count]) => ({ channel, count }))
-      .sort((a, b) => b.count - a.count);
-
-    // Addressable revenue inside the CRM (null unless both CRM + Finances are
-    // enabled). The bridge keeps the two modules decoupled — purely additive.
-    // Personal orgs never render the revenue card — skip the query.
-    const revenue = isPersonal ? null : await crmRevenueSummary(ctx);
-
-    return {
-      total,
-      newCount,
-      activeWeek,
-      churned: stageCounts.Churned ?? 0,
-      avgScore: total ? Math.round(scoreSum / total) : 0,
-      stageCounts,
-      funnelCounts,
-      scoreBuckets,
-      channels,
-      temperature,
-      revenue,
-      response,
-      conversion,
-      leadOrigin,
-      campaigns,
-    };
+        ? {}
+        : {
+            from: Number.isFinite(fromTs) ? new Date(fromTs) : new Date('1970-01-01T00:00:00Z'),
+            to: Number.isFinite(toTs) ? new Date(toTs) : new Date(),
+          };
+    return getCrmDashboardStats(ctx, {
+      ownerId: owner ?? undefined,
+      ...bounded,
+      includeRevenue: !isPersonal,
+    });
   }
 
   // Expose the resolved window as dates so the shared date controls can show it.
