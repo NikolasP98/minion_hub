@@ -645,7 +645,10 @@ export function getPostDetail(ctx: CoreCtx, postId: string): Promise<PostDetail 
       postedAt: r.posted_at != null ? String(r.posted_at) : null,
       isPromoted: Boolean(r.is_promoted),
       metrics: Object.fromEntries(
-        Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [k, Number(v)]),
+        Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [
+          k,
+          Number(v),
+        ]),
       ),
       thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
       thumbStatus: r.thumb_status != null ? String(r.thumb_status) : null,
@@ -815,7 +818,11 @@ export interface CampaignDetail {
  *  per-ad breakdown (ads carry the §4 post/thumbnail join), and a daily spend
  *  series for the trend chart. Null when the campaign has no rows at all for
  *  this org (any date) — a real 404, not merely an empty range. */
-export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateRange): Promise<CampaignDetail | null> {
+export function getCampaignDetail(
+  ctx: CoreCtx,
+  campaignId: string,
+  range: DateRange,
+): Promise<CampaignDetail | null> {
   return withOrgCore(ctx, async (tx) => {
     const [existsRow] = (await tx.execute(sql`
       select campaign_name
@@ -834,7 +841,13 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
       from meta_ad_insights mai
       where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
         and date >= ${range.from} and date <= ${range.to}
-    `)) as unknown as Array<{ spend: number; impressions: number; reach: number; clicks: number; conversations_started: number }>;
+    `)) as unknown as Array<{
+      spend: number;
+      impressions: number;
+      reach: number;
+      clicks: number;
+      conversations_started: number;
+    }>;
     const spend = Number(totalsRow?.spend ?? 0);
     const impressions = Number(totalsRow?.impressions ?? 0);
     const reach = Number(totalsRow?.reach ?? 0);

@@ -291,7 +291,12 @@ export const crmConversationChunks = pgTable(
     metadata: jsonb('metadata').notNull().default({}),
   },
   (t) => ({
-    uniq: uniqueIndex('crm_conversation_chunks_uniq').on(t.orgId, t.channel, t.chatId, t.chunkIndex),
+    uniq: uniqueIndex('crm_conversation_chunks_uniq').on(
+      t.orgId,
+      t.channel,
+      t.chatId,
+      t.chunkIndex,
+    ),
     orgChatIdx: index('crm_conversation_chunks_org_chat_idx').on(t.orgId, t.channel, t.chatId),
   }),
 );

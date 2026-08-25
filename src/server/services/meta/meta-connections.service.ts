@@ -54,7 +54,9 @@ export function requireMetaIgEnv(): { igAppId: string; igAppSecret: string } {
   const igAppId = env.META_IG_APP_ID;
   const igAppSecret = env.META_IG_APP_SECRET;
   if (!igAppId || !igAppSecret) {
-    throw new Error('Instagram Login OAuth is not configured — META_IG_APP_ID and META_IG_APP_SECRET must both be set');
+    throw new Error(
+      'Instagram Login OAuth is not configured — META_IG_APP_ID and META_IG_APP_SECRET must both be set',
+    );
   }
   return { igAppId, igAppSecret };
 }
@@ -86,8 +88,10 @@ export async function debugToken(
   const url = `${GRAPH_BASE}/${GRAPH_VERSION}/debug_token?input_token=${encodeURIComponent(inputToken)}&access_token=${encodeURIComponent(`${appId}|${appSecret}`)}`;
   try {
     const res = await fetchImpl(url);
-    const body = (await res.json().catch(() => undefined)) as { data?: DebugTokenData; error?: { message?: string } } | undefined;
-    if (!res.ok || !body?.data) return { ok: false, error: body?.error?.message ?? `debug_token failed (${res.status})` };
+    const body = (await res.json().catch(() => undefined)) as
+      { data?: DebugTokenData; error?: { message?: string } } | undefined;
+    if (!res.ok || !body?.data)
+      return { ok: false, error: body?.error?.message ?? `debug_token failed (${res.status})` };
     return { ok: true, data: body.data };
   } catch (err) {
     return { ok: false, error: `debug_token request failed: ${String(err)}` };
@@ -108,7 +112,9 @@ async function listOwnedPagesForBusiness(
   fetchImpl: FetchImpl = fetch,
   appSecret?: string,
 ): Promise<OwnedPage[]> {
-  const proof = appSecret ? `&appsecret_proof=${createHmac('sha256', appSecret).update(token).digest('hex')}` : '';
+  const proof = appSecret
+    ? `&appsecret_proof=${createHmac('sha256', appSecret).update(token).digest('hex')}`
+    : '';
   const url = `${GRAPH_BASE}/${GRAPH_VERSION}/${businessId}/owned_pages?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(token)}${proof}`;
   try {
     const res = await fetchImpl(url);
@@ -153,7 +159,10 @@ export async function createConnectionFromOAuth(
   const fetchImpl = opts.fetchImpl ?? fetch;
   const graphOpts: GraphOpts = { fetchImpl };
 
-  const exchange = await exchangeCodeForToken({ appId, appSecret, code: input.code, redirectUri: input.redirectUri }, graphOpts);
+  const exchange = await exchangeCodeForToken(
+    { appId, appSecret, code: input.code, redirectUri: input.redirectUri },
+    graphOpts,
+  );
   if (!exchange.ok || !exchange.data?.access_token) {
     return { ok: false, error: exchange.error ?? 'token exchange failed' };
   }
@@ -165,12 +174,19 @@ export async function createConnectionFromOAuth(
   // expires_at 0 (or absent) = never-expiring — the FLB "Core Manager" config's
   // business system-user token, per spec §5 LIVE FACTS. token_expires_at stays
   // null in that case; only call extendUserToken when Graph says it will lapse.
-  let expiresAt: Date | null = debug.data.expires_at ? new Date(debug.data.expires_at * 1000) : null;
+  let expiresAt: Date | null = debug.data.expires_at
+    ? new Date(debug.data.expires_at * 1000)
+    : null;
   if (expiresAt) {
-    const extended = await extendUserToken({ appId, appSecret, shortToken: accessToken }, graphOpts);
+    const extended = await extendUserToken(
+      { appId, appSecret, shortToken: accessToken },
+      graphOpts,
+    );
     if (extended.ok && extended.data?.access_token) {
       accessToken = extended.data.access_token;
-      expiresAt = extended.data.expires_in ? new Date(Date.now() + extended.data.expires_in * 1000) : expiresAt;
+      expiresAt = extended.data.expires_in
+        ? new Date(Date.now() + extended.data.expires_in * 1000)
+        : expiresAt;
     }
   }
 
@@ -369,7 +385,11 @@ export async function enumerateAndUpsertAssets(
 // ---------------------------------------------------------------------------
 
 /** Best-effort `username` for a readable settings-page label — not returned by the token exchange. */
-async function fetchIgUsername(igUserId: string, token: string, fetchImpl: FetchImpl): Promise<string | null> {
+async function fetchIgUsername(
+  igUserId: string,
+  token: string,
+  fetchImpl: FetchImpl,
+): Promise<string | null> {
   try {
     const url = `https://graph.instagram.com/${igUserId}?fields=username&access_token=${encodeURIComponent(token)}`;
     const res = await fetchImpl(url);
@@ -380,7 +400,8 @@ async function fetchIgUsername(igUserId: string, token: string, fetchImpl: Fetch
   }
 }
 
-export type IgOAuthExchangeResult = { ok: true; connectionId: string } | { ok: false; error: string };
+export type IgOAuthExchangeResult =
+  { ok: true; connectionId: string } | { ok: false; error: string };
 
 /**
  * Exchange the IG-Login OAuth `code` (short-lived → long-lived), encrypt +
@@ -421,10 +442,14 @@ export async function createIgConnectionFromOAuth(
   // any scope-gated feature (e.g. comments needs instagram_business_manage_comments)
   // can't tell what's really available, and a partial re-consent looks identical
   // to a full one. Falls back to basic if IG omits the field.
-  const grantedScopes = shortLived.data.permissions?.length ? shortLived.data.permissions : ['instagram_business_basic'];
+  const grantedScopes = shortLived.data.permissions?.length
+    ? shortLived.data.permissions
+    : ['instagram_business_basic'];
   // Unlike FLB's "0 = never expires" business system-user token, IG-Login
   // tokens always expire (~60 days) — expiresAt is always set here.
-  const expiresAt = longLived.data.expires_in ? new Date(Date.now() + longLived.data.expires_in * 1000) : null;
+  const expiresAt = longLived.data.expires_in
+    ? new Date(Date.now() + longLived.data.expires_in * 1000)
+    : null;
   const { ciphertext, iv } = encrypt(longLived.data.access_token);
   const username = await fetchIgUsername(igUserId, longLived.data.access_token, fetchImpl);
 
@@ -490,7 +515,11 @@ export async function createIgConnectionFromOAuth(
 
 export function listConnections(ctx: CoreCtx): Promise<MetaConnection[]> {
   return withOrgCore(ctx, (tx) =>
-    tx.select().from(metaConnections).where(eq(metaConnections.orgId, ctx.tenantId)).orderBy(desc(metaConnections.createdAt)),
+    tx
+      .select()
+      .from(metaConnections)
+      .where(eq(metaConnections.orgId, ctx.tenantId))
+      .orderBy(desc(metaConnections.createdAt)),
   );
 }
 
@@ -507,7 +536,11 @@ export function listAssets(ctx: CoreCtx, connectionId?: string): Promise<MetaAss
   );
 }
 
-export async function toggleAsset(ctx: CoreCtx, assetId: string, enabled: boolean): Promise<boolean> {
+export async function toggleAsset(
+  ctx: CoreCtx,
+  assetId: string,
+  enabled: boolean,
+): Promise<boolean> {
   const found = await withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .update(metaAssets)
@@ -563,7 +596,14 @@ export async function enqueueInitialSyncJobs(ctx: CoreCtx): Promise<void> {
   await withOrgCore(ctx, async (tx) => {
     await tx
       .insert(metaSyncJobs)
-      .values(INITIAL_SYNC_KINDS.map((kind) => ({ orgId: ctx.tenantId, kind, status: 'queued' as const, since: sinceStr })))
+      .values(
+        INITIAL_SYNC_KINDS.map((kind) => ({
+          orgId: ctx.tenantId,
+          kind,
+          status: 'queued' as const,
+          since: sinceStr,
+        })),
+      )
       .onConflictDoNothing();
   });
 }

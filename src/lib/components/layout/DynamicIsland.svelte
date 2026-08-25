@@ -5,7 +5,10 @@
   import { Search, Bug, Bell } from 'lucide-svelte';
   import { togglePalette } from '$lib/state/ui/command-palette.svelte';
   import { captureSnapshot, bugReporter } from '$lib/state/ui/bug-reporter.svelte';
-  import { notifications, subscribeNotificationsPolling } from '$lib/state/features/notifications.svelte';
+  import {
+    notifications,
+    subscribeNotificationsPolling,
+  } from '$lib/state/features/notifications.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
