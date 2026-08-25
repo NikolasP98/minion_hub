@@ -19,7 +19,7 @@ import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
 import { trustedWorkforceViewerRoleKeys } from '$lib/server/workforce-viewer';
 import { canonicalizeWorkforceRoleKeys } from '$lib/server/workforce-role-keys';
 import { needsWorkforceIdentity } from '$lib/server/workforce-route';
-import { initCache } from '$lib/server/cache';
+import { initCache, initCacheDataPlane } from '$lib/server/cache';
 import { getCoreDb } from '$server/db/pg-client';
 import { runWithAiUsageScope } from '$server/ai-usage';
 import { getUserPreferences } from '$server/services/user-preferences.service';
@@ -36,6 +36,8 @@ import {
 } from '$server/http/proxy-headers';
 import { BUILD_CHANNEL_COOKIE, runWithBuildChannel } from '$server/gateway-channel';
 import { isGatewayChannel } from '$server/services/gateway.pg.service';
+import { waitUntil } from '@vercel/functions';
+import { storePerformanceSample } from '$server/services/performance-monitor.service';
 
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
@@ -521,11 +523,20 @@ const serverTimingHandle = createServerTimingHandle({
       .then((posthog) => posthog?.capture({ distinctId: 'server', event: eventName, properties }))
       .catch(() => {});
   },
+  persist: (orgId, sample) => {
+    waitUntil(storePerformanceSample(orgId, sample));
+  },
 });
+
+const cacheDataPlaneHandle: Handle = async ({ event, resolve }) => {
+  await initCacheDataPlane();
+  return resolve(event);
+};
 
 export const handle = sequence(
   aiUsageScopeHandle,
   serverTimingHandle,
+  cacheDataPlaneHandle,
   Sentry.sentryHandle(),
   i18n.handle(),
   cloudPasskeyHandle,
