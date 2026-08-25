@@ -28,10 +28,23 @@ export async function refreshSentimentRollup(
   orgId: string | null = null,
 ): Promise<number> {
   const boundedDays = Math.min(4_000, Math.max(1, Math.floor(days)));
+  if (!orgId) {
+    const organizations = (await getCoreDb().execute(sql`
+      select distinct org_id
+      from crm_message_sentiment
+      where org_id is not null
+      order by org_id
+    `)) as unknown as Array<{ org_id: string }>;
+    let refreshed = 0;
+    for (const organization of organizations) {
+      refreshed += await refreshSentimentRollup(boundedDays, String(organization.org_id));
+    }
+    return refreshed;
+  }
   const rows = (await getCoreDb().execute(sql`
     select public.crm_refresh_sentiment_chat_daily(
       ${orgId},
-      (current_date - ${boundedDays}::int)::date,
+      (current_date - (${boundedDays}::int - 1))::date,
       current_date
     )::bigint as refreshed
   `)) as unknown as Array<{ refreshed: number | string }>;
@@ -55,4 +68,48 @@ export async function refreshSentimentRollupRange(
     )::bigint as refreshed
   `)) as unknown as Array<{ refreshed: number | string }>;
   return Number(rows[0]?.refreshed ?? 0);
+}
+
+function contiguousDayRanges(days: string[]): Array<{ from: string; to: string }> {
+  const dayPattern = /^\d{4}-\d{2}-\d{2}$/;
+  const unique = [...new Set(days)];
+  if (unique.length === 0 || unique.length > 100 || unique.some((day) => !dayPattern.test(day))) {
+    throw new Error('refreshSentimentRollupDays: invalid days');
+  }
+  const parsed = unique
+    .map((day) => ({ day, timestamp: Date.parse(`${day}T00:00:00.000Z`) }))
+    .sort((a, b) => a.timestamp - b.timestamp);
+  if (
+    parsed.some(
+      ({ day, timestamp }) =>
+        !Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== day,
+    )
+  ) {
+    throw new Error('refreshSentimentRollupDays: invalid days');
+  }
+
+  const ranges: Array<{ from: string; to: string }> = [];
+  for (const current of parsed) {
+    const previous = ranges.at(-1);
+    if (
+      previous &&
+      current.timestamp === Date.parse(`${previous.to}T00:00:00.000Z`) + 24 * 60 * 60_000
+    ) {
+      previous.to = current.day;
+    } else {
+      ranges.push({ from: current.day, to: current.day });
+    }
+  }
+  return ranges;
+}
+
+/** Refresh only the exact affected days, coalescing adjacent days into bounded
+ * ranges so sparse scoring batches never rebuild the intervening history. */
+export async function refreshSentimentRollupDays(days: string[], orgId: string): Promise<number> {
+  if (!orgId) throw new Error('refreshSentimentRollupDays: organization required');
+  let refreshed = 0;
+  for (const range of contiguousDayRanges(days)) {
+    refreshed += await refreshSentimentRollupRange(range.from, range.to, orgId);
+  }
+  return refreshed;
 }

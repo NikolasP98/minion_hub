@@ -38,6 +38,7 @@ import { BUILD_CHANNEL_COOKIE, runWithBuildChannel } from '$server/gateway-chann
 import { isGatewayChannel } from '$server/services/gateway.pg.service';
 import { waitUntil } from '@vercel/functions';
 import { storePerformanceSample } from '$server/services/performance-monitor.service';
+import { isCronAuthPath } from '$lib/server/cron-auth-path';
 
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
@@ -301,24 +302,7 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // Cron tick endpoints (driven by Vercel cron or an external scheduler)
     // authenticate via CRON_SECRET Bearer in the handler, not a user session —
     // let them through so the handler can enforce its own auth.
-    if (
-      path === '/api/scheduling/reminders/tick' ||
-      path === '/api/finances/sync/tick' ||
-      path === '/api/finances/sync/daily' ||
-      path === '/api/notifications/tick' ||
-      path === '/api/memberships/tick' ||
-      path === '/api/org-config/tick' ||
-      path === '/api/jobs/tick' ||
-      path === '/api/brains/reconcile/tick' ||
-      path === '/api/meta/sync/tick' ||
-      path === '/api/meta/attribution' ||
-      path === '/api/email-ledger/tick' ||
-      path === '/api/crm/dni-validation/tick' ||
-      path === '/api/crm/conversations/vectorize/tick' ||
-      path === '/api/crm/conversations/analyze/tick' ||
-      path === '/api/crm/relationship/tick' ||
-      path === '/api/reliability/retention/tick'
-    ) {
+    if (isCronAuthPath(path)) {
       return resolve(event);
     }
     // Pre-login auth endpoints: by definition the caller has no session yet.

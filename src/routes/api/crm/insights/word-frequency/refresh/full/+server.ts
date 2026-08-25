@@ -5,5 +5,5 @@ import { refreshCrmInsightsRollups } from '$server/services/crm-insights-rollup-
 export const GET: RequestHandler = async ({ request }) => {
   const secret = env.CRON_SECRET;
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
-  return json(await refreshCrmInsightsRollups(3));
+  return json(await refreshCrmInsightsRollups(4_000));
 };

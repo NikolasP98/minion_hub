@@ -14,9 +14,9 @@ function canonicalRange(fromIso: string, toIso: string): { fromIso: string; toIs
 }
 
 /** UTC-date word frequency backed entirely by daily document-frequency
- * rollups. The word cloud is trend-oriented rather than transaction-exact; a
- * 15-minute refresh keeps the current day fresh while removing all historic
- * message tokenization from the interactive request path. */
+ * rollups. Complete UTC day buckets are the deliberate product contract for
+ * this trend-oriented word cloud; a 15-minute refresh keeps the current day
+ * fresh while removing all historic tokenization from the request path. */
 export function wordFrequencyRollup(
   ctx: CoreCtx,
   opts: { fromIso: string; toIso: string; limit?: number },
@@ -46,7 +46,7 @@ export async function refreshWordFrequencyRollup(days: number): Promise<number> 
   const boundedDays = Math.min(4_000, Math.max(1, Math.floor(days)));
   const rows = (await getCoreDb().execute(sql`
     select public.crm_refresh_word_frequency_daily(
-      (current_date - ${boundedDays}::int)::date,
+      (current_date - (${boundedDays}::int - 1))::date,
       current_date
     )::bigint as refreshed
   `)) as unknown as Array<{ refreshed: number | string }>;

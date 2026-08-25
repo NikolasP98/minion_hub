@@ -72,7 +72,8 @@ wordFrequencyRollup(ctx, { fromIso, toIso, limit = 60 }): Promise<{ word: string
 `crm_word_frequency_daily` stores per-org, per-UTC-day document frequency for inbound,
 non-bot messages. The scheduled refresh tokenizes changed days with Postgres
 `to_tsvector('simple', content)` and `tsvector_to_array`; the interactive RLS request only
-sums the bounded daily rows:
+sums the bounded daily rows. Complete UTC day buckets are the intentional trend contract;
+the word cloud does not claim transaction-exact partial-day boundaries:
 
 ```sql
 select word, sum(document_count)::int as count
@@ -85,8 +86,9 @@ limit :limit
 ```
 
 The refresh endpoint runs a rolling three-day rebuild every 15 minutes and a bounded
-4,000-day rebuild at 08:15 UTC. It requires Vercel's `CRON_SECRET`. Message text is never
-tokenized on the live request path, and DuckDB is not part of an RLS request.
+4,000-day `/refresh/full` rebuild at 08:15 UTC. It requires Vercel's `CRON_SECRET`. Historical
+population is owned by that cron rather than the transactional schema migration. Message
+text is never tokenized on the live request path, and DuckDB is not part of an RLS request.
 
 The page loads one `crmInsightsDashboard` snapshot, Valkey-cached for 5 minutes with a
 30-minute stale-while-revalidate window. Its stable key contains only the org, selected range,
@@ -116,7 +118,7 @@ One migration at meta-repo root `supabase/migrations/`, applied to gxv via Supab
 **Scoring** — in `crm-insights.service.ts`:
 
 ```ts
-scoreSentimentBatch(ctx, { cap = 50 }): Promise<{ scored: number }>
+scoreSentimentBatch(ctx, { cap = 50 }): Promise<{ scored: number; affectedDays: string[] }>
 ```
 
 Selects up to `cap` unscored chat-days, preserving each chat-day's inbound message order, and
@@ -128,8 +130,9 @@ are swallowed (left unscored, retried next run) and never block the page.
 
 **Trigger:** incremental-on-Insights-view (one capped batch per load, like the funnel
 auto-analyze `$effect`) **plus** a manual "Analyze sentiment" button. A successful scoring
-batch refreshes only its affected org/day range and invalidates the org CRM cache. The same
-cron that refreshes word frequency also refreshes the rolling sentiment window.
+batch refreshes only its exact affected org days, coalescing adjacent days into bounded
+ranges, and invalidates the org CRM cache. The same cron that refreshes word frequency fans
+the rolling sentiment repair out per organization.
 
 **Aggregate:**
 

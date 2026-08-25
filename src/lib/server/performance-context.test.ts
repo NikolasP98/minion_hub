@@ -3,6 +3,7 @@ import {
   createPerformanceContext,
   currentPerformanceSnapshot,
   recordCacheEvent,
+  recordCacheLookup,
   recordDatabaseTiming,
   runWithPerformanceContext,
 } from './performance-context';
@@ -11,6 +12,7 @@ describe('request performance context', () => {
   it('classifies a cache miss as a cold-path signal and accumulates database stages', async () => {
     const snapshot = await runWithPerformanceContext(createPerformanceContext(), async () => {
       recordCacheEvent({ type: 'miss' });
+      recordCacheLookup(6);
       recordCacheEvent({ type: 'set' });
       recordDatabaseTiming({ acquireMs: 7, setupMs: 4, queryMs: 21, totalMs: 32 });
       return currentPerformanceSnapshot();
@@ -22,7 +24,7 @@ describe('request performance context', () => {
       staleHits: 0,
       misses: 1,
       errors: 0,
-      lookupMs: 0,
+      lookupMs: 6,
     });
     expect(snapshot.database).toEqual({
       transactions: 1,
@@ -37,11 +39,13 @@ describe('request performance context', () => {
     const [hit, stale] = await Promise.all([
       runWithPerformanceContext(createPerformanceContext(), async () => {
         recordCacheEvent({ type: 'hit', ms: 3 });
+        recordCacheLookup(3);
         await Promise.resolve();
         return currentPerformanceSnapshot().cache;
       }),
       runWithPerformanceContext(createPerformanceContext(), async () => {
         recordCacheEvent({ type: 'stale-hit', ms: 8 });
+        recordCacheLookup(8);
         await Promise.resolve();
         return currentPerformanceSnapshot().cache;
       }),

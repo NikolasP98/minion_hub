@@ -7,7 +7,7 @@
       "schedule": "*/15 * * * *"
     },
     {
-      "path": "/api/crm/insights/word-frequency/refresh",
+      "path": "/api/crm/insights/word-frequency/refresh/full",
       "schedule": "15 8 * * *"
     }
   ]

@@ -1,22 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const refreshWordFrequencyRollup = vi.fn();
-const refreshSentimentRollup = vi.fn();
+const refreshCrmInsightsRollups = vi.fn();
 
 vi.mock('$env/dynamic/private', () => ({ env: { CRON_SECRET: 'sekret' } }));
-vi.mock('$server/services/crm-word-frequency-rollup.service', () => ({
-  refreshWordFrequencyRollup,
-}));
-vi.mock('$server/services/crm-sentiment-rollup.service', () => ({
-  refreshSentimentRollup,
+vi.mock('$server/services/crm-insights-rollup-refresh.service', () => ({
+  refreshCrmInsightsRollups,
 }));
 
 const { GET } = await import('./+server');
 
 beforeEach(() => {
   vi.clearAllMocks();
-  refreshWordFrequencyRollup.mockResolvedValue(123);
-  refreshSentimentRollup.mockResolvedValue(45);
+  refreshCrmInsightsRollups.mockResolvedValue({
+    ok: true,
+    days: 3,
+    wordRows: 123,
+    sentimentRows: 45,
+  });
 });
 
 describe('GET /api/crm/insights/word-frequency/refresh', () => {
@@ -27,8 +27,7 @@ describe('GET /api/crm/insights/word-frequency/refresh', () => {
         url: new URL('https://hub.test/api/crm/insights/word-frequency/refresh'),
       } as never),
     ).rejects.toMatchObject({ status: 401 });
-    expect(refreshWordFrequencyRollup).not.toHaveBeenCalled();
-    expect(refreshSentimentRollup).not.toHaveBeenCalled();
+    expect(refreshCrmInsightsRollups).not.toHaveBeenCalled();
   });
 
   it('refreshes three days for the frequent incremental cron', async () => {
@@ -43,22 +42,6 @@ describe('GET /api/crm/insights/word-frequency/refresh', () => {
       wordRows: 123,
       sentimentRows: 45,
     });
-    expect(refreshWordFrequencyRollup).toHaveBeenCalledWith(3);
-    expect(refreshSentimentRollup).toHaveBeenCalledWith(3);
-  });
-
-  it('refreshes the full retained history for the nightly repair cron', async () => {
-    const url = new URL('https://hub.test/api/crm/insights/word-frequency/refresh');
-    await GET!({
-      request: new Request(url, {
-        headers: {
-          authorization: 'Bearer sekret',
-          'x-vercel-cron-schedule': '15 8 * * *',
-        },
-      }),
-      url,
-    } as never);
-    expect(refreshWordFrequencyRollup).toHaveBeenCalledWith(4_000);
-    expect(refreshSentimentRollup).toHaveBeenCalledWith(4_000);
+    expect(refreshCrmInsightsRollups).toHaveBeenCalledWith(3);
   });
 });

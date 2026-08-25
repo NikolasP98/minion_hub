@@ -126,21 +126,9 @@ $$;
 
 revoke all on function public.crm_refresh_word_frequency_daily(date, date) from public;
 
--- Fresh installations need a baseline. Production is pre-warmed before the
--- release, so this guarded block skips there and keeps deploy migrations fast.
-do $$
-begin
-  if not exists (select 1 from public.crm_word_frequency_daily limit 1) then
-    perform public.crm_refresh_word_frequency_daily(
-      coalesce(
-        (select min((coalesce(occurred_at, created_at) at time zone 'UTC')::date)
-         from public.messages where direction = 'inbound' and is_bot is not true),
-        current_date
-      ),
-      current_date
-    );
-  end if;
-end $$;
+-- Historical population is intentionally NOT part of this transactional
+-- migration. The nightly `/refresh/full` cron performs the bounded 4,000-day repair;
+-- production is pre-warmed and verified before this migration is released.
 
 -- One row per chat-day preserves the existing two-stage sentiment semantics:
 -- message scores average within a chat-day, then chat-days average into the
@@ -180,14 +168,14 @@ as $$
 declare
   refreshed bigint := 0;
 begin
-  if p_from is null or p_to is null or p_from > p_to then
+  if p_org_id is null or p_from is null or p_to is null or p_from > p_to then
     raise exception 'invalid CRM sentiment refresh range';
   end if;
   perform pg_advisory_xact_lock(hashtext('crm-sentiment-chat-daily'));
 
   delete from public.crm_sentiment_chat_daily
   where day between p_from and p_to
-    and (p_org_id is null or org_id = p_org_id);
+    and org_id = p_org_id;
 
   insert into public.crm_sentiment_chat_daily
     (org_id, chat_id, day, score, message_count, refreshed_at)
@@ -199,9 +187,12 @@ begin
          now()
   from public.crm_message_sentiment s
   join public.messages m on m.id = s.message_id and m.org_id = s.org_id
-  where (p_org_id is null or s.org_id = p_org_id)
-    and (coalesce(m.occurred_at, m.created_at) at time zone 'UTC')::date
-      between p_from and p_to
+  where s.org_id = p_org_id
+    and m.direction = 'inbound'
+    and m.is_bot is not true
+    and coalesce(m.occurred_at, m.created_at) >= (p_from::timestamp at time zone 'UTC')
+    and coalesce(m.occurred_at, m.created_at) <
+      ((p_to + 1)::timestamp at time zone 'UTC')
   group by s.org_id, m.chat_id, 3;
 
   get diagnostics refreshed = row_count;
@@ -211,18 +202,6 @@ $$;
 
 revoke all on function public.crm_refresh_sentiment_chat_daily(text, date, date) from public;
 
-do $$
-begin
-  if not exists (select 1 from public.crm_sentiment_chat_daily limit 1) then
-    perform public.crm_refresh_sentiment_chat_daily(
-      null,
-      coalesce(
-        (select min((coalesce(m.occurred_at, m.created_at) at time zone 'UTC')::date)
-         from public.crm_message_sentiment s
-         join public.messages m on m.id = s.message_id and m.org_id = s.org_id),
-        current_date
-      ),
-      current_date
-    );
-  end if;
-end $$;
+-- As above, the bearer-authenticated nightly cron owns bounded historical
+-- population. Keeping it out of the migration prevents a deploy transaction
+-- from rescanning years of message history.

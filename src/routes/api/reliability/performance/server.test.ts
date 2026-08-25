@@ -47,4 +47,23 @@ describe('GET /api/reliability/performance', () => {
     ).rejects.toMatchObject({ status: 400 });
     expect(mocks.getPerformanceSnapshot).not.toHaveBeenCalled();
   });
+
+  it('normalizes the inclusive end-of-today picker bound and accepts a calendar 90d span', async () => {
+    const now = Date.now();
+    const from = now - 90 * 24 * 60 * 60_000;
+    const endOfToday = now + 8 * 60 * 60_000;
+
+    await GET({
+      locals: { user: { role: 'admin' }, orgId: 'org-active' },
+      url: new URL(`https://hub.test/api/reliability/performance?from=${from}&to=${endOfToday}`),
+    } as never);
+
+    expect(mocks.getPerformanceSnapshot).toHaveBeenCalledWith('org-active', {
+      from,
+      to: expect.any(Number),
+    });
+    const normalized = mocks.getPerformanceSnapshot.mock.calls[0][1].to;
+    expect(normalized).toBeGreaterThanOrEqual(now);
+    expect(normalized).toBeLessThanOrEqual(Date.now());
+  });
 });

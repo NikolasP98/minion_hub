@@ -29,7 +29,7 @@ describe('scoreSentimentBatch', () => {
     );
   });
 
-  it('fans chat-day scores out to messages and returns the affected day bounds', async () => {
+  it('fans chat-day scores out to messages and returns the exact affected days', async () => {
     mocks.execute
       .mockResolvedValueOnce([
         {
@@ -63,8 +63,7 @@ describe('scoreSentimentBatch', () => {
 
     expect(result).toEqual({
       scored: 3,
-      fromDay: '2026-08-20',
-      toDay: '2026-08-22',
+      affectedDays: ['2026-08-20', '2026-08-22'],
     });
     expect(mocks.withOrgCore).toHaveBeenCalledTimes(2);
     expect(mocks.execute).toHaveBeenCalledTimes(2);

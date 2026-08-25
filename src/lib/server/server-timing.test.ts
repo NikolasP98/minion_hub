@@ -109,8 +109,10 @@ describe('createServerTimingHandle', () => {
     await handle({
       event: fakeEvent('/en/home'),
       resolve: async () => {
-        const { recordCacheEvent, recordDatabaseTiming } = await import('./performance-context');
-        recordCacheEvent({ type: 'miss', ms: 17 });
+        const { recordCacheEvent, recordCacheLookup, recordDatabaseTiming } =
+          await import('./performance-context');
+        recordCacheEvent({ type: 'miss' });
+        recordCacheLookup(17);
         recordDatabaseTiming({ acquireMs: 8, setupMs: 4, queryMs: 90, totalMs: 102 });
         return new Response('ok');
       },

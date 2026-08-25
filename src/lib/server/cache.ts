@@ -13,6 +13,7 @@ import { env } from '$env/dynamic/private';
 import { randomUUID } from 'node:crypto';
 import { getSystemGatewayCredentials as getSystemGatewayCredentialsPg } from '$server/services/gateway.pg.service';
 import { recordCacheEvent } from '$lib/server/performance-context';
+import { instrumentCacheBackend } from '$lib/server/cache-backend-instrumentation';
 
 let initPromise: Promise<void> | null = null;
 let dataPlanePromise: Promise<CacheRuntime> | null = null;
@@ -118,7 +119,7 @@ async function doInitCacheDataPlane(): Promise<CacheRuntime> {
     recordCacheEvent(evt);
     if (env.CACHE_LOG === '1' || !isProd) console.log(`[cache] ${JSON.stringify(evt)}`);
   };
-  const runtime = { backend, backendName, logger };
+  const runtime = { backend: instrumentCacheBackend(backend), backendName, logger };
   configureRuntime(runtime, new NoopBroadcaster());
   console.log(`[cache] data plane ready — backend=${backendName}`);
   return runtime;

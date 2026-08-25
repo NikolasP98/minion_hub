@@ -30,9 +30,15 @@ export function recordCacheEvent(event: Pick<CacheEvent, 'type' | 'ms'>): void {
   else if (event.type === 'stale-hit') context.cache.staleHits += 1;
   else if (event.type === 'miss') context.cache.misses += 1;
   else if (event.type === 'error') context.cache.errors += 1;
-  if (typeof event.ms === 'number' && Number.isFinite(event.ms)) {
-    context.cache.lookupMs += Math.max(0, event.ms);
-  }
+}
+
+/** Record backend lookup time independently from cache outcome logging.
+ * The shared cache package omits `ms` on miss/error events, so measuring the
+ * backend itself is the only way to expose cold lookup contribution reliably. */
+export function recordCacheLookup(ms: number): void {
+  const context = requestPerformance.getStore();
+  if (!context || !Number.isFinite(ms)) return;
+  context.cache.lookupMs += Math.max(0, ms);
 }
 
 export function recordDatabaseTiming(
