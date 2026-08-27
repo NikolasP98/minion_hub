@@ -122,7 +122,7 @@ presented as empty data.
 
 ## Draggable windows
 
-`DraggableWindow` floats only at `>=1024px`. Compact/medium viewports deliberately
+`DraggableWindow` floats only at `>=768px`. Compact/medium viewports deliberately
 transform it to a full-screen task surface or bottom sheet. The title bar supports
 `Alt+Arrow` move and `Alt+Shift+Arrow` resize; `Ctrl` reduces the step. Supply
 localized keyboard instructions and, when resizable, a localized resize label.

@@ -89,7 +89,7 @@
   let startRect: WindowRect = { x, y, width, height };
 
   onMount(() => {
-    const media = window.matchMedia('(min-width: 1024px)');
+    const media = window.matchMedia('(min-width: 768px)');
     const update = () => (wide = media.matches);
     update();
     media.addEventListener('change', update);
