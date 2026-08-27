@@ -47,6 +47,15 @@ this repo does vendor other meta-repo packages as `file:deps/*.tgz` (`@minion-st
 `@minion-stack/ui`, `@minion-stack/design-tokens`); that route is available but is explicitly
 forbidden for this hook, so it was not used.
 
+**Re-polled again 2026-08-27** (branch rebased onto `master` for staleness, no code/doc content
+change beyond this note): `npm view @minion-stack/shared versions --prefer-online` still ends at
+`0.10.0`; `dist-tags.latest` is still `0.10.0`; `gh api '…/contents/packages/shared/src/gateway/client.ts?ref=main'`
+still finds zero `onEventError` matches; `gh pr list --repo NikolasP98/minion-meta --state merged --base main`
+still tops out at #18; the only open PR based on minion-meta `main` is still #76, with no
+shared-package change. Nothing about the gate moved. `package.json` still pins `^0.9.0`, `bun.lock`
+still resolves `0.9.0`, and `scripts/shared-onevent-error-gate.test.ts` still passes with
+`recordedStatus === 'blocked-on-publish'`.
+
 ### Why waiting inside this repo cannot turn the gate green
 
 Publishing is two merges to minion-meta `main`
