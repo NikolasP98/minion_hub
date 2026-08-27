@@ -209,7 +209,11 @@ async function readFields(client: PGlite, contactId: string) {
   return res.rows[0].custom_fields;
 }
 
-const allowed = { principalId: PRINCIPAL, orgId: ORG, capabilities: makeCaps({ 'crm.edit': true }) };
+const allowed = {
+  principalId: PRINCIPAL,
+  orgId: ORG,
+  capabilities: makeCaps({ 'crm.edit': true }),
+};
 
 beforeEach(() => {
   // reset, not clear: one test installs a mockImplementation that issues a
@@ -326,16 +330,24 @@ describe('POST /api/gateway/actions/contact-update — the email write is atomic
     }
   }, 30_000);
 
-  it('a user key written between the agent call\'s decision and its statement is NOT lost', async () => {
+  it("a user key written between the agent call's decision and its statement is NOT lost", async () => {
     const { client } = await createDb();
     try {
       const contactId = await seed(client, { edad: '34' });
       mockResolveAssistantPrincipal.mockResolvedValue(allowed);
-      // The competing edit commits after the handler has decided what to send
-      // and before its UPDATE runs — precisely the window the removed
-      // getContact-and-spread straddled. Its key must survive, because the
-      // handler's payload is `{email}` alone and the merge's left operand is
-      // read by Postgres at UPDATE time.
+      // pglite backs this whole suite with ONE session, so this is a SIMULATED
+      // interleave (a raw SQL write injected via the mocked principal-resolve
+      // hook), not a second real connection/transaction — it pins the merge
+      // expression's shape (no application-side read to go stale), not
+      // lock-wait behavior under a genuine concurrent writer. The real
+      // coordinator-lock proof (two independent connections, both verified
+      // blocked via pg_stat_activity before release) is
+      // crm-funnel.concurrent.integration.test.ts (real Postgres via
+      // SUPABASE_DB_URL). The competing edit commits after the handler has
+      // decided what to send and before its UPDATE runs — precisely the window
+      // the removed getContact-and-spread straddled. Its key must survive,
+      // because the handler's payload is `{email}` alone and the merge's left
+      // operand is read by Postgres at UPDATE time.
       mockResolveAssistantPrincipal.mockImplementation(async () => {
         await client.query(
           `update crm_contacts set custom_fields = custom_fields || '{"distrito":"Barranco"}'::jsonb

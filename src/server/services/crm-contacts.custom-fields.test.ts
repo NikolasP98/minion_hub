@@ -149,7 +149,7 @@ const ctxFor = (db: ReturnType<typeof drizzle>) => ({ db: db as never, tenantId:
 // ── Statement shape ─────────────────────────────────────────────────────────
 
 describe('customFieldsPatchSql (S2 — partial merge, no application-side read)', () => {
-  it('merges the caller\'s keys OVER the pre-update row, in one statement with no SELECT', () => {
+  it("merges the caller's keys OVER the pre-update row, in one statement with no SELECT", () => {
     const query = dialect.sqlToQuery(customFieldsPatchSql({ email: 'ana@example.com' }));
     // The left operand is the stored column read inside the UPDATE's own SET
     // expression — that is what makes the merge atomic instead of a snapshot.
@@ -329,9 +329,22 @@ describe('updateContact custom_fields contracts against a real Postgres engine',
   }, 30_000);
 });
 
-// ── Real engine: the writers survive each other ─────────────────────────────
+// ── Real engine: commit-order and simulated interleave (NOT a concurrency proof) ──
 
-describe('a user-field write and a `_funnel` write on the same contact both survive', () => {
+/**
+ * pglite is a single session (see the `reentrantWithOrgCore` note above), so
+ * nothing here runs two genuinely overlapping transactions — these tests pin
+ * the SQL merge's commit-order and same-session interleave behavior only.
+ * Review round 1 (S2) correctly flagged that this is NOT the deterministic
+ * concurrency proof the spec's ship gate requires (a coordinator holding
+ * `SELECT ... FOR UPDATE` while two independent connections both provably
+ * block on it, then both survive the release). That proof lives in
+ * `crm-funnel.concurrent.integration.test.ts` (real Postgres via
+ * `SUPABASE_DB_URL`), which exercises `setFunnelStage` / `updateContact` /
+ * `setContactCustomField` against a real coordinator lock and two independent
+ * writer connections, verified blocked via `pg_stat_activity` before release.
+ */
+describe('a user-field write and a `_funnel` write on the same contact both survive (commit order, single session)', () => {
   it('funnel first, then the user edit', async () => {
     const { client, db } = await createContactsDb();
     try {
@@ -366,7 +379,7 @@ describe('a user-field write and a `_funnel` write on the same contact both surv
     }
   }, 30_000);
 
-  it('a `_funnel` write that commits INSIDE the user edit\'s transaction is not reverted by it', async () => {
+  it("a `_funnel` write that commits INSIDE the user edit's transaction is not reverted by it", async () => {
     const { client, db } = await createContactsDb();
     try {
       const contactId = await seedContact(client, {
@@ -375,12 +388,16 @@ describe('a user-field write and a `_funnel` write on the same contact both surv
       });
       const ctx = ctxFor(db);
 
-      // pglite is a single session, so the interleaving is expressed the only
-      // way it can be: the competing funnel write lands between the moment the
-      // user edit's payload is decided and the moment its statement executes.
-      // Under the replaced shape (read the column, spread it in JS, write the
-      // whole object back) that snapshot is exactly what got written back over
-      // the funnel write. Under the merge expression there is no snapshot: the
+      // pglite is a single session, so this is a SIMULATED interleave (a raw
+      // SQL write injected by the test harness itself, not a second real
+      // connection/transaction) — it pins the merge expression's shape, not
+      // lock-wait behavior under genuine concurrent writers; see the file-level
+      // note above and crm-funnel.concurrent.integration.test.ts for that proof.
+      // The competing funnel write lands between the moment the user edit's
+      // payload is decided and the moment its statement executes. Under the
+      // replaced shape (read the column, spread it in JS, write the whole
+      // object back) that snapshot is exactly what got written back over the
+      // funnel write. Under the merge expression there is no snapshot: the
       // left operand is read by Postgres when the UPDATE runs.
       mockWithOrgCore.mockImplementationOnce(async (scope, fn) => {
         await client.query(
