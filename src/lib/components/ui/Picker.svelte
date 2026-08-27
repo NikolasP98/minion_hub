@@ -753,9 +753,12 @@
     background: var(--color-surface-1);
     border-bottom: 1px solid var(--color-border-subtle);
   }
+  /* Search is sized, not greedy (same idiom as DataTable's toolbar): a wide
+     window should grow the RESULTS, not the query field. It shrinks down to
+     the min before the toolbar wraps at compact widths. */
   .picker-search-wrap {
-    min-width: 0;
-    flex: 1;
+    min-width: calc(var(--space-12) * 3);
+    flex: 0 1 calc(var(--space-12) * 7);
   }
   .picker-search-wrap :global(.picker-search-field) {
     width: 100%;
@@ -765,11 +768,14 @@
     color: var(--color-text-tertiary);
     font-variant-numeric: tabular-nums;
   }
+  /* Actions hold the right edge; the slack between count and actions is the
+     toolbar's breathing room. */
   .picker-actions {
     display: flex;
     flex: none;
     align-items: center;
     gap: var(--space-1);
+    margin-left: auto;
   }
   .picker-column-control {
     position: relative;
