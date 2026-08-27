@@ -2,53 +2,79 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { requireAdmin } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { getSource, upsertSource, sourceHasCredentials } from '$server/services/finance.service';
 import { encryptCreds } from '$server/services/finance-secrets';
+import { parseSunatSourceConfig } from '$server/finance/connectors/sunat-source';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'finance', 'view');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const provider = url.searchParams.get('provider') ?? 'susii';
+  const requestedProvider = url.searchParams.get('provider') ?? 'susii';
+  const parsedProvider = z.enum(['susii', 'sunat-sire']).safeParse(requestedProvider);
+  if (!parsedProvider.success) throw error(400, 'Unsupported finance source provider.');
+  const provider = parsedProvider.data;
   const source = await getSource(ctx, provider);
   // Never return the raw secret blob to the client.
   return json({
-    source: source ? { ...source, secretRefs: undefined, hasCredentials: sourceHasCredentials(source) } : null,
+    source: source
+      ? { ...source, secretRefs: undefined, hasCredentials: sourceHasCredentials(source) }
+      : null,
   });
 };
 
 const putSchema = z.object({
-  provider: z.string().max(200).optional(),
+  provider: z.enum(['susii', 'sunat-sire']).default('susii'),
   username: z.string().max(500).optional(),
   password: z.string().max(500).optional(),
   clientSecret: z.string().max(500).optional(),
-  config: z.record(z.string(), z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()),
   enabled: z.boolean().optional(),
 });
 
 export const PUT: RequestHandler = async ({ locals, request }) => {
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'finance', 'edit');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, putSchema);
-  const provider = typeof body.provider === 'string' ? body.provider : 'susii';
+  const provider = body.provider;
   const username = typeof body.username === 'string' ? body.username.trim() : '';
   const password = typeof body.password === 'string' ? body.password.trim() : '';
   const clientSecret = typeof body.clientSecret === 'string' ? body.clientSecret.trim() : '';
+  const existing = await getSource(ctx, provider);
+
+  let config: Record<string, unknown>;
+  try {
+    config =
+      provider === 'sunat-sire'
+        ? parseSunatSourceConfig(body.config)
+        : z.object({ businessId: z.number().int().positive().nullable() }).parse(body.config);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : 'invalid connector configuration';
+    throw error(400, message.slice(0, 300));
+  }
 
   let secretRefs: Record<string, unknown>;
-  if (username && password) {
+  const suppliedAnyCredential = !!(username || password || clientSecret);
+  const suppliedCompleteCredentials =
+    provider === 'sunat-sire' ? !!(username && password && clientSecret) : !!(username && password);
+  if (suppliedAnyCredential && !suppliedCompleteCredentials) {
+    throw error(400, 'Provide the complete credential set or leave every credential field blank.');
+  }
+  if (suppliedCompleteCredentials) {
     secretRefs = encryptCreds({ username, password, ...(clientSecret ? { clientSecret } : {}) });
   } else {
     // Preserve existing credentials when the user left the fields blank.
-    const existing = await getSource(ctx, provider);
     secretRefs = (existing?.secretRefs ?? {}) as Record<string, unknown>;
+  }
+  if (!sourceHasCredentials({ secretRefs })) {
+    throw error(400, 'Credentials are required before this connector can be saved.');
   }
 
   await upsertSource(ctx, provider, {
-    config: (body.config ?? {}) as Record<string, unknown>,
+    config,
     secretRefs,
     enabled: body.enabled !== false,
   });

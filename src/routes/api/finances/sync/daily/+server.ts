@@ -106,7 +106,9 @@ export const GET: RequestHandler = async ({ request }) => {
   const secret = env.CRON_SECRET;
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
 
-  const sources = await listEnabledSources('susii');
+  // Every enabled provider — post-cutover that is 'sunat-sire' (susii is
+  // disabled and skipped by the enabled filter).
+  const sources = await listEnabledSources();
   let started = 0;
   let failed = 0;
   for (const s of sources) {

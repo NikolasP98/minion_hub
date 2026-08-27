@@ -41,8 +41,10 @@ function databaseUrl(): string {
 /**
  * One bounded postgres-js pool per Hub process.
  *
- * A short idle timeout and finite connection lifetime keep dev reloads and
- * retired serverless isolates from holding Supabase connections indefinitely.
+ * idle_timeout 120s: long enough that a warm isolate doesn't re-pay pooler
+ * connection setup (~1s) after every >20s traffic gap, short enough (with
+ * max_lifetime) that retired serverless isolates don't hold Supabase
+ * connections indefinitely.
  * Size via SUPABASE_DB_POOL_SIZE: higher for local dev against a remote DB,
  * small on serverless where each isolate opens its own pool.
  */
@@ -60,7 +62,7 @@ export function getPgClient(): PgClient {
   const client = postgres(url, {
     prepare: false,
     max: poolSize(),
-    idle_timeout: 20,
+    idle_timeout: 120,
     connect_timeout: 10,
     max_lifetime: 10 * 60,
   });
@@ -93,7 +95,7 @@ export function getCriticalPgClient(): PgClient {
     // ponytail: max 1 serialized all app-shell gates behind one remote conn
     // (~500ms/query × 5 parallel layout gates → 20s CoreDbOperationTimeout).
     max: Math.min(4, poolSize()),
-    idle_timeout: 20,
+    idle_timeout: 120,
     connect_timeout: 10,
     max_lifetime: 10 * 60,
   });
@@ -124,7 +126,7 @@ export function getRlsPgClient(): PgClient {
   const client = postgres(url, {
     prepare: false,
     max,
-    idle_timeout: 20,
+    idle_timeout: 120,
     connect_timeout: 10,
     max_lifetime: 10 * 60,
   });

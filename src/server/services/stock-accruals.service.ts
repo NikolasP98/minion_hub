@@ -12,7 +12,7 @@
  *
  * Design: docs/superpowers/specs/2026-07-05-consumption-accrual-scheduling-stock-design.md
  */
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -47,7 +47,7 @@ async function defaultWarehouseTx(tx: CoreTx, orgId: string): Promise<string | n
   const rows = await tx
     .select({ id: stkWarehouses.id, isDefault: stkWarehouses.isDefault })
     .from(stkWarehouses)
-    .where(eq(stkWarehouses.orgId, orgId))
+    .where(and(eq(stkWarehouses.orgId, orgId), isNull(stkWarehouses.archivedAt)))
     .orderBy(asc(stkWarehouses.createdAt));
   return rows.find((w) => w.isDefault)?.id ?? rows[0]?.id ?? null;
 }

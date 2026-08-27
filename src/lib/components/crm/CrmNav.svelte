@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
-  import { LayoutDashboard, Users, Sparkles, Settings, Network } from 'lucide-svelte';
+  import { LayoutDashboard, Users, Sparkles, Settings } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
@@ -13,7 +13,6 @@
     if (id === 'settings')
       return pathname.startsWith('/crm/settings') || pathname.startsWith('/crm/cleanup');
     if (id === 'insights') return pathname.startsWith('/crm/insights');
-    if (id === 'graph') return pathname.startsWith('/crm/graph');
     // Customers owns the ranked list and every contact-detail drill-down (/crm/<id>).
     return (
       pathname.startsWith('/crm/customers') ||
@@ -21,8 +20,7 @@
         pathname !== '/crm' &&
         !pathname.startsWith('/crm/settings') &&
         !pathname.startsWith('/crm/cleanup') &&
-        !pathname.startsWith('/crm/insights') &&
-        !pathname.startsWith('/crm/graph'))
+        !pathname.startsWith('/crm/insights'))
     );
   }
 
@@ -39,7 +37,6 @@
         indent: 1,
       },
       { id: 'customers', label: m.crm_nav_customers(), icon: Users, href: '/crm/customers' },
-      { id: 'graph', label: m.crm_nav_graph(), icon: Network, href: '/crm/graph' },
       { id: 'settings', label: m.crm_nav_settings(), icon: Settings, href: '/crm/settings' },
     ].filter((i) => canViewPath(i.href)),
   );

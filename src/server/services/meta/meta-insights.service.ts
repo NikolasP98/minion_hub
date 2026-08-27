@@ -6,7 +6,8 @@
 // looping over raw rows in JS. See specs/2026-07-04-meta-business-integration.md
 // §3 (schema) and §7 (this module's contract).
 import { eq, desc, sql } from 'drizzle-orm';
-import { withOrgCore } from '$server/db/with-org-core';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { metaConnections, metaAssets, metaSyncJobs } from '$server/db/pg-meta-schema';
 
@@ -15,6 +16,20 @@ export interface DateRange {
   from: string;
   /** INCLUSIVE upper bound, 'YYYY-MM-DD' — the whole `to` day counts. */
   to: string;
+}
+
+const socialsCacheTags = (orgId: string) => tags.tenantDomain(orgId, 'socials');
+
+/** Bust every cached Socials dashboard shape after Meta facts or connection
+ * state change. Exported so the sync and OAuth services share one contract. */
+export async function bustSocialsCache(orgId: string): Promise<void> {
+  try {
+    await invalidateTags([...socialsCacheTags(orgId)]);
+  } catch (cause) {
+    // Meta ingestion is durable even if the cache backend is briefly down.
+    // The 2m TTL is the bounded stale fallback; never fail a sync/OAuth write.
+    console.warn('[socials] cache invalidation failed (stale until TTL)', cause);
+  }
 }
 
 // ── Pure helpers (period math) — unit-tested in meta-insights.service.test.ts ──
@@ -71,27 +86,66 @@ export interface DataExtent {
 
 /** Org's ad-spend date range (min/max `date` in meta_ad_insights). Null bounds
  *  when the org has no ad rows yet (nothing synced). */
-export function adDataExtent(ctx: CoreCtx): Promise<DataExtent> {
-  return withOrgCore(ctx, async (tx) => {
-    const [row] = (await tx.execute(sql`
+async function adDataExtentTx(tx: CoreTx, orgId: string): Promise<DataExtent> {
+  const [row] = (await tx.execute(sql`
       select min(date)::text as min_date, max(date)::text as max_date,
              -- one distinct currency ⇒ safe to label; mixed ⇒ null (don't guess)
              case when count(distinct currency) = 1 then min(currency) end as currency
       from meta_ad_insights
-      where org_id = ${ctx.tenantId}
-    `)) as unknown as Array<{ min_date: string | null; max_date: string | null; currency: string | null }>;
-    return {
-      minDate: row?.min_date ?? null,
-      maxDate: row?.max_date ?? null,
-      currency: row?.currency ?? null,
-    };
-  });
+      where org_id = ${orgId}
+    `)) as unknown as Array<{
+    min_date: string | null;
+    max_date: string | null;
+    currency: string | null;
+  }>;
+  return {
+    minDate: row?.min_date ?? null,
+    maxDate: row?.max_date ?? null,
+    currency: row?.currency ?? null,
+  };
+}
+
+export function adDataExtent(ctx: CoreCtx): Promise<DataExtent> {
+  return withOrgCore(ctx, (tx) => adDataExtentTx(tx, ctx.tenantId));
+}
+
+export interface SocialDashboardContext {
+  hasConnection: boolean;
+  extent: DataExtent;
+}
+
+/** Connection state + ad-data extent in one cached RLS transaction. */
+export function socialDashboardContext(ctx: CoreCtx): Promise<SocialDashboardContext> {
+  return cached(
+    keys.hub('socials-context', { t: ctx.tenantId }),
+    { ttl: '2m', swr: '30s', tags: [...socialsCacheTags(ctx.tenantId)] },
+    () =>
+      withOrgCore(ctx, async (tx) => {
+        const [connectionRows, extent] = await Promise.all([
+          tx.execute(sql`
+            select exists (
+              select 1 from meta_connections
+              where org_id = ${ctx.tenantId} and status <> 'revoked'
+            ) as has_connection
+          `) as unknown as Promise<Array<{ has_connection: boolean }>>,
+          adDataExtentTx(tx, ctx.tenantId),
+        ]);
+        return {
+          hasConnection: Boolean(connectionRows[0]?.has_connection),
+          extent,
+        };
+      }),
+  );
 }
 
 /** Full-history DateRange from an extent (`to` exclusive, so maxDate+1 day).
  *  Falls back to the last `fallbackDays` ending today when there's no data yet
  *  (fresh/unsynced org) — same shape as the old hardcoded "last 30d" default. */
-export function extentToRange(extent: DataExtent, now: Date = new Date(), fallbackDays = 30): DateRange {
+export function extentToRange(
+  extent: DataExtent,
+  now: Date = new Date(),
+  fallbackDays = 30,
+): DateRange {
   if (!extent.minDate || !extent.maxDate) {
     const to = now.toISOString().slice(0, 10);
     const from = new Date(now);
@@ -117,7 +171,7 @@ export interface AdKpis extends AdKpiTotals {
   deltaPct: Record<'spend' | 'impressions' | 'reach' | 'clicks' | 'ctr' | 'cpc', number | null>;
 }
 
-async function kpiAgg(tx: Parameters<Parameters<CoreCtx['db']['transaction']>[0]>[0], orgId: string, r: DateRange): Promise<AdKpiTotals> {
+async function kpiAgg(tx: CoreTx, orgId: string, r: DateRange): Promise<AdKpiTotals> {
   const [row] = (await tx.execute(sql`
     select coalesce(sum(spend), 0)::float8 spend,
            coalesce(sum(impressions), 0)::bigint impressions,
@@ -130,30 +184,39 @@ async function kpiAgg(tx: Parameters<Parameters<CoreCtx['db']['transaction']>[0]
   const impressions = Number(row?.impressions ?? 0);
   const reach = Number(row?.reach ?? 0); // ponytail: summed across ad×day rows, not deduped unique reach
   const clicks = Number(row?.clicks ?? 0);
-  return { spend, impressions, reach, clicks, ctr: calcCtr(clicks, impressions), cpc: calcCpc(spend, clicks) };
+  return {
+    spend,
+    impressions,
+    reach,
+    clicks,
+    ctr: calcCtr(clicks, impressions),
+    cpc: calcCpc(spend, clicks),
+  };
 }
 
 /** KPI ribbon: spend/impressions/reach/clicks/ctr/cpc for `range`, plus the same
  *  totals for the immediately-preceding equal-length window and the % deltas. */
+async function adKpisTx(tx: CoreTx, orgId: string, range: DateRange): Promise<AdKpis> {
+  const [curr, prev] = await Promise.all([
+    kpiAgg(tx, orgId, range),
+    kpiAgg(tx, orgId, previousRange(range)),
+  ]);
+  return {
+    ...curr,
+    previous: prev,
+    deltaPct: {
+      spend: deltaPct(curr.spend, prev.spend),
+      impressions: deltaPct(curr.impressions, prev.impressions),
+      reach: deltaPct(curr.reach, prev.reach),
+      clicks: deltaPct(curr.clicks, prev.clicks),
+      ctr: deltaPct(curr.ctr, prev.ctr),
+      cpc: deltaPct(curr.cpc, prev.cpc),
+    },
+  };
+}
+
 export function adKpis(ctx: CoreCtx, range: DateRange): Promise<AdKpis> {
-  return withOrgCore(ctx, async (tx) => {
-    const [curr, prev] = await Promise.all([
-      kpiAgg(tx, ctx.tenantId, range),
-      kpiAgg(tx, ctx.tenantId, previousRange(range)),
-    ]);
-    return {
-      ...curr,
-      previous: prev,
-      deltaPct: {
-        spend: deltaPct(curr.spend, prev.spend),
-        impressions: deltaPct(curr.impressions, prev.impressions),
-        reach: deltaPct(curr.reach, prev.reach),
-        clicks: deltaPct(curr.clicks, prev.clicks),
-        ctr: deltaPct(curr.ctr, prev.ctr),
-        cpc: deltaPct(curr.cpc, prev.cpc),
-      },
-    };
-  });
+  return withOrgCore(ctx, (tx) => adKpisTx(tx, ctx.tenantId, range));
 }
 
 // ── Daily spend series (dashboard line chart) ───────────────────────────────
@@ -165,20 +228,31 @@ export interface AdSpendPoint {
   clicks: number;
 }
 
-export function adSpendSeries(ctx: CoreCtx, range: DateRange): Promise<AdSpendPoint[]> {
-  return withOrgCore(ctx, async (tx) => {
-    const rows = (await tx.execute(sql`
+async function adSpendSeriesTx(
+  tx: CoreTx,
+  orgId: string,
+  range: DateRange,
+): Promise<AdSpendPoint[]> {
+  const rows = (await tx.execute(sql`
       select date::text as date,
              coalesce(sum(spend), 0)::float8 spend,
              coalesce(sum(impressions), 0)::bigint impressions,
              coalesce(sum(clicks), 0)::bigint clicks
       from meta_ad_insights
-      where org_id = ${ctx.tenantId} and date >= ${range.from} and date <= ${range.to}
+      where org_id = ${orgId} and date >= ${range.from} and date <= ${range.to}
       group by date
       order by date
     `)) as unknown as Array<{ date: string; spend: number; impressions: number; clicks: number }>;
-    return rows.map((r) => ({ date: r.date, spend: Number(r.spend), impressions: Number(r.impressions), clicks: Number(r.clicks) }));
-  });
+  return rows.map((r) => ({
+    date: r.date,
+    spend: Number(r.spend),
+    impressions: Number(r.impressions),
+    clicks: Number(r.clicks),
+  }));
+}
+
+export function adSpendSeries(ctx: CoreCtx, range: DateRange): Promise<AdSpendPoint[]> {
+  return withOrgCore(ctx, (tx) => adSpendSeriesTx(tx, ctx.tenantId, range));
 }
 
 // ── Campaign → adset → ad breakdown (campaigns table) ───────────────────────
@@ -214,12 +288,27 @@ export interface CampaignRow {
  *  already-small grouped result, never raw daily rows. Ad level additionally
  *  joins meta_ad_posts → meta_post_media so each ad row carries its linked
  *  post id + mirrored thumbnail (spec 2026-07-05 §4). */
-export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: CampaignLevel = 'ad'): Promise<CampaignRow[]> {
+async function campaignBreakdownTx(
+  tx: CoreTx,
+  orgId: string,
+  range: DateRange,
+  level: CampaignLevel,
+): Promise<CampaignRow[]> {
   // Fixed 3-way enum, not user SQL — safe to splice as raw fragments.
-  const selectAdset = level === 'campaign' ? sql`null::text as adset_id, null::text as adset_name,` : sql`mai.adset_id, max(mai.adset_name) as adset_name,`;
-  const selectAd = level === 'ad' ? sql`mai.ad_id, max(mai.ad_name) as ad_name,` : sql`null::text as ad_id, null::text as ad_name,`;
+  const selectAdset =
+    level === 'campaign'
+      ? sql`null::text as adset_id, null::text as adset_name,`
+      : sql`mai.adset_id, max(mai.adset_name) as adset_name,`;
+  const selectAd =
+    level === 'ad'
+      ? sql`mai.ad_id, max(mai.ad_name) as ad_name,`
+      : sql`null::text as ad_id, null::text as ad_name,`;
   const groupBy =
-    level === 'campaign' ? sql`mai.campaign_id` : level === 'adset' ? sql`mai.campaign_id, mai.adset_id` : sql`mai.campaign_id, mai.adset_id, mai.ad_id`;
+    level === 'campaign'
+      ? sql`mai.campaign_id`
+      : level === 'adset'
+        ? sql`mai.campaign_id, mai.adset_id`
+        : sql`mai.campaign_id, mai.adset_id, mai.ad_id`;
   // Ad-level only: the post/thumbnail join keys (org_id, ad_id) / (org_id,
   // platform, post_id) are functionally dependent on the ad_id group — safe
   // to max() like postPerformance does for its media join.
@@ -230,9 +319,11 @@ export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: Campaig
           left join meta_post_media mm on mm.org_id = map.org_id and mm.platform = map.platform and mm.post_id = map.post_id
         `
       : sql``;
-  const selectPost = level === 'ad' ? sql`, max(map.post_id) as post_id, max(mm.file_id) filter (where mm.status = 'mirrored') as thumb_file_id` : sql``;
-  return withOrgCore(ctx, async (tx) => {
-    const rows = (await tx.execute(sql`
+  const selectPost =
+    level === 'ad'
+      ? sql`, max(map.post_id) as post_id, max(mm.file_id) filter (where mm.status = 'mirrored') as thumb_file_id`
+      : sql``;
+  const rows = (await tx.execute(sql`
       select mai.campaign_id, max(mai.campaign_name) as campaign_name,
              ${selectAdset}
              ${selectAd}
@@ -244,36 +335,43 @@ export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: Campaig
              ${selectPost}
       from meta_ad_insights mai
       ${postJoin}
-      where mai.org_id = ${ctx.tenantId} and mai.date >= ${range.from} and mai.date <= ${range.to}
+      where mai.org_id = ${orgId} and mai.date >= ${range.from} and mai.date <= ${range.to}
       group by ${groupBy}
       order by spend desc
       limit 500
     `)) as unknown as Array<Record<string, unknown>>;
-    return rows.map((r) => {
-      const spend = Number(r.spend ?? 0);
-      const impressions = Number(r.impressions ?? 0);
-      const clicks = Number(r.clicks ?? 0);
-      const conversationsStarted = Number(r.conversations_started ?? 0);
-      return {
-        campaignId: r.campaign_id != null ? String(r.campaign_id) : null,
-        campaignName: r.campaign_name != null ? String(r.campaign_name) : null,
-        adsetId: r.adset_id != null ? String(r.adset_id) : null,
-        adsetName: r.adset_name != null ? String(r.adset_name) : null,
-        adId: r.ad_id != null ? String(r.ad_id) : null,
-        adName: r.ad_name != null ? String(r.ad_name) : null,
-        spend,
-        impressions,
-        reach: Number(r.reach ?? 0),
-        clicks,
-        ctr: calcCtr(clicks, impressions),
-        cpc: calcCpc(spend, clicks),
-        conversationsStarted,
-        costPerConversation: conversationsStarted > 0 ? spend / conversationsStarted : null,
-        postId: r.post_id != null ? String(r.post_id) : null,
-        thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
-      };
-    });
+  return rows.map((r) => {
+    const spend = Number(r.spend ?? 0);
+    const impressions = Number(r.impressions ?? 0);
+    const clicks = Number(r.clicks ?? 0);
+    const conversationsStarted = Number(r.conversations_started ?? 0);
+    return {
+      campaignId: r.campaign_id != null ? String(r.campaign_id) : null,
+      campaignName: r.campaign_name != null ? String(r.campaign_name) : null,
+      adsetId: r.adset_id != null ? String(r.adset_id) : null,
+      adsetName: r.adset_name != null ? String(r.adset_name) : null,
+      adId: r.ad_id != null ? String(r.ad_id) : null,
+      adName: r.ad_name != null ? String(r.ad_name) : null,
+      spend,
+      impressions,
+      reach: Number(r.reach ?? 0),
+      clicks,
+      ctr: calcCtr(clicks, impressions),
+      cpc: calcCpc(spend, clicks),
+      conversationsStarted,
+      costPerConversation: conversationsStarted > 0 ? spend / conversationsStarted : null,
+      postId: r.post_id != null ? String(r.post_id) : null,
+      thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
+    };
   });
+}
+
+export function campaignBreakdown(
+  ctx: CoreCtx,
+  range: DateRange,
+  level: CampaignLevel = 'ad',
+): Promise<CampaignRow[]> {
+  return withOrgCore(ctx, (tx) => campaignBreakdownTx(tx, ctx.tenantId, range, level));
 }
 
 // ── Post performance (posts page + dashboard top posts) ─────────────────────
@@ -306,16 +404,23 @@ export interface PostRow {
  * SQL, not a JS reduce over raw rows). Filters to `period='lifetime'` so a
  * metric can't appear twice under different periods within one pivot.
  */
-export function postPerformance(
-  ctx: CoreCtx,
-  opts: { limit?: number; orderBy?: 'recent' | 'score'; platform?: 'fb' | 'ig'; promoted?: boolean } = {},
+async function postPerformanceTx(
+  tx: CoreTx,
+  orgId: string,
+  opts: {
+    limit?: number;
+    orderBy?: 'recent' | 'score';
+    platform?: 'fb' | 'ig';
+    promoted?: boolean;
+  } = {},
 ): Promise<PostRow[]> {
   const limit = Math.min(opts.limit ?? 200, 500);
   const platformCond = opts.platform ? sql` and mi.platform = ${opts.platform}` : sql``;
-  const promotedCond = opts.promoted === undefined ? sql`` : sql` and mi.is_promoted = ${opts.promoted}`;
-  const orderClause = opts.orderBy === 'recent' ? sql`posted_at desc nulls last` : sql`score desc nulls last`;
-  return withOrgCore(ctx, async (tx) => {
-    const rows = (await tx.execute(sql`
+  const promotedCond =
+    opts.promoted === undefined ? sql`` : sql` and mi.is_promoted = ${opts.promoted}`;
+  const orderClause =
+    opts.orderBy === 'recent' ? sql`posted_at desc nulls last` : sql`score desc nulls last`;
+  const rows = (await tx.execute(sql`
       select mi.post_id,
              max(mi.platform) as platform,
              max(mi.permalink) as permalink,
@@ -329,25 +434,66 @@ export function postPerformance(
       from meta_post_insights mi
       left join meta_post_media mm
         on mm.org_id = mi.org_id and mm.platform = mi.platform and mm.post_id = mi.post_id
-      where mi.org_id = ${ctx.tenantId} and mi.period = 'lifetime'${platformCond}${promotedCond}
+      where mi.org_id = ${orgId} and mi.period = 'lifetime'${platformCond}${promotedCond}
       group by mi.post_id
       order by ${orderClause}
       limit ${limit}
     `)) as unknown as Array<Record<string, unknown>>;
-    return rows.map((r) => ({
-      postId: String(r.post_id),
-      platform: r.platform != null ? String(r.platform) : null,
-      permalink: r.permalink != null ? String(r.permalink) : null,
-      caption: r.caption != null ? String(r.caption) : null,
-      postedAt: r.posted_at != null ? String(r.posted_at) : null,
-      mediaType: r.media_type != null ? String(r.media_type) : null,
-      isPromoted: Boolean(r.is_promoted),
-      metrics: Object.fromEntries(
-        Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [k, Number(v)]),
-      ),
-      thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
-    }));
-  });
+  return rows.map((r) => ({
+    postId: String(r.post_id),
+    platform: r.platform != null ? String(r.platform) : null,
+    permalink: r.permalink != null ? String(r.permalink) : null,
+    caption: r.caption != null ? String(r.caption) : null,
+    postedAt: r.posted_at != null ? String(r.posted_at) : null,
+    mediaType: r.media_type != null ? String(r.media_type) : null,
+    isPromoted: Boolean(r.is_promoted),
+    metrics: Object.fromEntries(
+      Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [k, Number(v)]),
+    ),
+    thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
+  }));
+}
+
+export function postPerformance(
+  ctx: CoreCtx,
+  opts: {
+    limit?: number;
+    orderBy?: 'recent' | 'score';
+    platform?: 'fb' | 'ig';
+    promoted?: boolean;
+  } = {},
+): Promise<PostRow[]> {
+  return withOrgCore(ctx, (tx) => postPerformanceTx(tx, ctx.tenantId, opts));
+}
+
+export interface SocialDashboardData {
+  kpis: AdKpis;
+  series: AdSpendPoint[];
+  campaigns: CampaignRow[];
+  posts: PostRow[];
+}
+
+/** The dashboard's four aggregates share one transaction and one cache entry.
+ * This removes three RLS transaction setup/lease cycles on a cold load, while
+ * repeat navigation is served from Valkey until a Meta write invalidates it. */
+export function socialDashboardData(ctx: CoreCtx, range: DateRange): Promise<SocialDashboardData> {
+  return cached(
+    keys.hub('socials-dashboard', {
+      t: ctx.tenantId,
+      d: { from: range.from, to: range.to },
+    }),
+    { ttl: '2m', swr: '30s', tags: [...socialsCacheTags(ctx.tenantId)] },
+    () =>
+      withOrgCore(ctx, async (tx) => {
+        const [kpis, series, campaigns, posts] = await Promise.all([
+          adKpisTx(tx, ctx.tenantId, range),
+          adSpendSeriesTx(tx, ctx.tenantId, range),
+          campaignBreakdownTx(tx, ctx.tenantId, range, 'campaign'),
+          postPerformanceTx(tx, ctx.tenantId, { limit: 5, orderBy: 'score' }),
+        ]);
+        return { kpis, series, campaigns: campaigns.slice(0, 10), posts };
+      }),
+  );
 }
 
 // ── Post detail (posts/[postId] page, spec 2026-07-05 §5.1) ─────────────────
@@ -499,7 +645,10 @@ export function getPostDetail(ctx: CoreCtx, postId: string): Promise<PostDetail 
       postedAt: r.posted_at != null ? String(r.posted_at) : null,
       isPromoted: Boolean(r.is_promoted),
       metrics: Object.fromEntries(
-        Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [k, Number(v)]),
+        Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [
+          k,
+          Number(v),
+        ]),
       ),
       thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
       thumbStatus: r.thumb_status != null ? String(r.thumb_status) : null,
@@ -669,7 +818,11 @@ export interface CampaignDetail {
  *  per-ad breakdown (ads carry the §4 post/thumbnail join), and a daily spend
  *  series for the trend chart. Null when the campaign has no rows at all for
  *  this org (any date) — a real 404, not merely an empty range. */
-export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateRange): Promise<CampaignDetail | null> {
+export function getCampaignDetail(
+  ctx: CoreCtx,
+  campaignId: string,
+  range: DateRange,
+): Promise<CampaignDetail | null> {
   return withOrgCore(ctx, async (tx) => {
     const [existsRow] = (await tx.execute(sql`
       select campaign_name
@@ -688,7 +841,13 @@ export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateR
       from meta_ad_insights mai
       where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
         and date >= ${range.from} and date <= ${range.to}
-    `)) as unknown as Array<{ spend: number; impressions: number; reach: number; clicks: number; conversations_started: number }>;
+    `)) as unknown as Array<{
+      spend: number;
+      impressions: number;
+      reach: number;
+      clicks: number;
+      conversations_started: number;
+    }>;
     const spend = Number(totalsRow?.spend ?? 0);
     const impressions = Number(totalsRow?.impressions ?? 0);
     const reach = Number(totalsRow?.reach ?? 0);

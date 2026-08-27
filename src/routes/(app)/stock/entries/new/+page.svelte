@@ -1,18 +1,27 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { page } from '$app/state';
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { ArrowLeftRight, Check, ArrowLeft, Trash2 } from 'lucide-svelte';
+  import { ArrowLeftRight, Plus, Trash2 } from 'lucide-svelte';
   import { PageHeader, Button, Combobox } from '$lib/components/ui';
   import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
+  import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
+  import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
 
   let { data }: { data: PageData } = $props();
 
   type EntryType = 'receipt' | 'issue' | 'transfer' | 'adjustment';
-  type Step = 'type' | 'lines' | 'review';
+  const ENTRY_TYPES: EntryType[] = ['receipt', 'issue', 'transfer', 'adjustment'];
+  function isEntryType(v: string | null): v is EntryType {
+    return v != null && (ENTRY_TYPES as string[]).includes(v);
+  }
 
-  let step = $state<Step>('type');
-  let type = $state<EntryType>('receipt');
+  // The movement kind comes from the action the user picked on /stock/entries
+  // (?type=...). A deep link without a valid type gets the chooser fallback.
+  const urlType = $derived(page.url.searchParams.get('type'));
+  const type = $derived(isEntryType(urlType) ? urlType : null);
+
   let partyId = $state<string | null>(null);
   let note = $state('');
 
@@ -24,59 +33,57 @@
     toWarehouseId: string;
   };
   let lines = $state<Line[]>([]);
-
-  // ── Line draft form (shape depends on the chosen type) ─────────────────────
-  let draftItemId = $state('');
-  let draftQty = $state('');
-  let draftRate = $state('');
-  let draftFromWarehouseId = $state('');
-  let draftToWarehouseId = $state('');
+  let pickerOpen = $state(false);
+  let createdItems = $state<StockItemOption[]>([]);
 
   const needsFrom = $derived(type === 'issue' || type === 'transfer' || type === 'adjustment');
   const needsTo = $derived(type === 'receipt' || type === 'transfer' || type === 'adjustment');
   const needsRate = $derived(type === 'receipt');
 
-  const itemById = $derived(new Map(data.items.map((i) => [i.id, i])));
-  const warehouseById = $derived(new Map(data.warehouses.map((w) => [w.id, w])));
+  const availableItems = $derived([...createdItems, ...data.items]);
+  const itemById = $derived(new Map(availableItems.map((item) => [item.id, item])));
+  const defaultWarehouseId = $derived(
+    data.warehouses.find((w) => w.isDefault)?.id ?? data.warehouses[0]?.id ?? '',
+  );
 
   function itemLabel(id: string): string {
     const it = itemById.get(id);
     return it ? `${it.code} — ${it.name}` : id;
   }
-  function warehouseLabel(id: string): string {
-    return warehouseById.get(id)?.name ?? id;
-  }
 
-  const draftValid = $derived(
-    draftItemId !== '' &&
-      Number(draftQty) > 0 &&
-      (!needsFrom || draftFromWarehouseId !== '') &&
-      (!needsTo || draftToWarehouseId !== '') &&
-      (type !== 'adjustment' || (draftFromWarehouseId !== '') !== (draftToWarehouseId !== '')) && // exactly one
-      (!needsRate || draftRate !== ''),
-  );
+  type Item = StockItemOption;
+  const pickedItemIds = $derived(new Set(lines.map((l) => l.itemId)));
 
-  function addLine() {
-    if (!draftValid) return;
+  function addItem(item: Item) {
+    if (!itemById.has(item.id)) createdItems = [item, ...createdItems];
     lines = [
       ...lines,
       {
-        itemId: draftItemId,
-        qty: draftQty,
-        rate: draftRate,
-        fromWarehouseId: needsFrom ? draftFromWarehouseId : '',
-        toWarehouseId: needsTo ? draftToWarehouseId : '',
+        itemId: item.id,
+        qty: '1',
+        rate: '',
+        // Adjustment must end up with exactly ONE side — leave both empty and
+        // let the row's validity highlight steer the choice.
+        fromWarehouseId: needsFrom && type !== 'adjustment' ? defaultWarehouseId : '',
+        toWarehouseId: needsTo && type !== 'adjustment' ? defaultWarehouseId : '',
       },
     ];
-    draftItemId = '';
-    draftQty = '';
-    draftRate = '';
-    draftFromWarehouseId = '';
-    draftToWarehouseId = '';
   }
   function removeLine(i: number) {
     lines = lines.filter((_, idx) => idx !== i);
   }
+
+  function lineValid(l: Line): boolean {
+    return (
+      l.itemId !== '' &&
+      Number(l.qty) > 0 &&
+      (!needsFrom || type === 'adjustment' || l.fromWarehouseId !== '') &&
+      (!needsTo || type === 'adjustment' || l.toWarehouseId !== '') &&
+      (type !== 'adjustment' || (l.fromWarehouseId !== '') !== (l.toWarehouseId !== '')) &&
+      (!needsRate || l.rate !== '')
+    );
+  }
+  const allValid = $derived(lines.length > 0 && lines.every(lineValid));
 
   function payload() {
     return {
@@ -153,91 +160,58 @@
     }
   }
 
-  const steps: Array<{ k: Step; label: string }> = [
-    { k: 'type', label: m.stock_step_type() },
-    { k: 'lines', label: m.stock_step_lines() },
-    { k: 'review', label: m.stock_step_review() },
-  ];
-  const currentIdx = $derived(steps.findIndex((s) => s.k === step));
+  function typeLabel(t: EntryType): string {
+    return t === 'receipt'
+      ? m.stock_type_receipt()
+      : t === 'issue'
+        ? m.stock_type_issue()
+        : t === 'transfer'
+          ? m.stock_type_transfer()
+          : m.stock_type_adjustment();
+  }
 </script>
 
 <svelte:head><title>{m.stock_new_entry_title()} — {m.nav_stock()}</title></svelte:head>
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader title={m.stock_new_entry_title()}>
+  <PageHeader title={m.stock_new_entry_title()} subtitle={type ? typeLabel(type) : undefined}>
     {#snippet leading()}<ArrowLeftRight size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-auto p-4">
     <div class="w-full max-w-2xl mx-auto flex flex-col gap-4">
-      <div class="stepper">
-        {#each steps as s, i (s.k)}
-          <div class="step" class:active={i === currentIdx} class:done={i < currentIdx}>
-            <span class="dot">{#if i < currentIdx}<Check size={12} />{:else}{i + 1}{/if}</span>
-            <span>{s.label}</span>
-          </div>
-        {/each}
-      </div>
-
-      {#if step === 'type'}
+      {#if !type}
+        <!-- Deep-link fallback: no (or invalid) ?type= — offer the four kinds. -->
         <div class="card flex flex-col gap-3">
           <p class="t-caption">{m.stock_step_type_hint()}</p>
           <div class="type-grid">
-            {#each ['receipt', 'issue', 'transfer', 'adjustment'] as t (t)}
+            {#each ENTRY_TYPES.filter((t) => t !== 'transfer' || data.warehouses.length > 1) as t (t)}
               <Button
                 variant="ghost"
-                class="type-btn {type === t ? 'active' : ''}"
-                onclick={() => (type = t as EntryType)}
+                class="type-btn"
+                onclick={() => goto(`/stock/entries/new?type=${t}`, { replaceState: true })}
               >
-                {t === 'receipt' ? m.stock_type_receipt() : t === 'issue' ? m.stock_type_issue() : t === 'transfer' ? m.stock_type_transfer() : m.stock_type_adjustment()}
+                {typeLabel(t)}
               </Button>
             {/each}
           </div>
-          <PartyPicker bind:value={partyId} label={m.stock_field_party()} />
+        </div>
+      {:else}
+        <div class="card flex flex-col gap-3">
+          <PartyPicker bind:value={partyId} label={m.stock_field_party()} docLookup />
           <label class="fld">
             <span>{m.stock_field_note()}</span>
             <textarea class="inp" rows="2" bind:value={note}></textarea>
           </label>
-          <div class="flex justify-end">
-            <Button variant="primary" size="sm" onclick={() => (step = 'lines')}>{m.stock_next()}</Button>
-          </div>
         </div>
-      {:else if step === 'lines'}
+
         <div class="card flex flex-col gap-3">
-          <div class="line-form">
-            <Combobox
-              id="stock-line-item"
-              items={data.items}
-              itemToValue={(i) => i.id}
-              itemToString={(i) => `${i.code} — ${i.name}`}
-              placeholder={m.stock_field_item()}
-              bind:value={draftItemId}
-            />
-            <input class="inp" type="number" min="0" step="0.01" placeholder={m.stock_field_qty()} bind:value={draftQty} />
-            {#if needsRate}
-              <input class="inp" type="number" min="0" step="0.01" placeholder={m.stock_field_rate()} bind:value={draftRate} />
-            {/if}
-            {#if needsFrom}
-              <Combobox
-                id="stock-line-from"
-                items={data.warehouses}
-                itemToValue={(w) => w.id}
-                itemToString={(w) => w.name}
-                placeholder={m.stock_field_from_warehouse()}
-                bind:value={draftFromWarehouseId}
-              />
-            {/if}
-            {#if needsTo}
-              <Combobox
-                id="stock-line-to"
-                items={data.warehouses}
-                itemToValue={(w) => w.id}
-                itemToString={(w) => w.name}
-                placeholder={m.stock_field_to_warehouse()}
-                bind:value={draftToWarehouseId}
-              />
-            {/if}
-            <Button variant="outline" size="sm" onclick={addLine} disabled={!draftValid}>{m.stock_add_line()}</Button>
+          <div class="flex items-center justify-between">
+            <span class="card-h">{m.stock_step_lines()}</span>
+            <Button variant="outline" size="sm" onclick={() => (pickerOpen = true)}>
+              <Plus size={14} />
+              {m.stock_add_items()}
+            </Button>
           </div>
 
           {#if lines.length === 0}
@@ -248,64 +222,89 @@
                 <tr>
                   <th>{m.stock_field_item()}</th>
                   <th class="num">{m.stock_field_qty()}</th>
-                  <th>{m.stock_field_from_warehouse()}</th>
-                  <th>{m.stock_field_to_warehouse()}</th>
+                  {#if needsRate}<th class="num">{m.stock_field_rate()}</th>{/if}
+                  {#if needsFrom}<th>{m.stock_field_from_warehouse()}</th>{/if}
+                  {#if needsTo}<th>{m.stock_field_to_warehouse()}</th>{/if}
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {#each lines as l, i (i)}
-                  <tr>
+                {#each lines as l, i (l.itemId + i)}
+                  <tr class:invalid={!lineValid(l)}>
                     <td>{itemLabel(l.itemId)}</td>
-                    <td class="num">{l.qty}</td>
-                    <td>{l.fromWarehouseId ? warehouseLabel(l.fromWarehouseId) : '—'}</td>
-                    <td>{l.toWarehouseId ? warehouseLabel(l.toWarehouseId) : '—'}</td>
-                    <td><Button variant="ghost" class="rm-btn" onclick={() => removeLine(i)}><Trash2 size={13} /></Button></td>
+                    <td class="num">
+                      <input
+                        class="inp cell-in num"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        bind:value={l.qty}
+                        aria-label={m.stock_field_qty()}
+                      />
+                    </td>
+                    {#if needsRate}
+                      <td class="num">
+                        <input
+                          class="inp cell-in num"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          bind:value={l.rate}
+                          aria-label={m.stock_field_rate()}
+                        />
+                      </td>
+                    {/if}
+                    {#if needsFrom}
+                      <td>
+                        <Combobox
+                          id={`line-${i}-from`}
+                          items={data.warehouses}
+                          itemToValue={(w) => w.id}
+                          itemToString={(w) => w.name}
+                          placeholder={m.stock_field_from_warehouse()}
+                          bind:value={l.fromWarehouseId}
+                        />
+                      </td>
+                    {/if}
+                    {#if needsTo}
+                      <td>
+                        <Combobox
+                          id={`line-${i}-to`}
+                          items={data.warehouses}
+                          itemToValue={(w) => w.id}
+                          itemToString={(w) => w.name}
+                          placeholder={m.stock_field_to_warehouse()}
+                          bind:value={l.toWarehouseId}
+                        />
+                      </td>
+                    {/if}
+                    <td>
+                      <Button variant="ghost" class="rm-btn" onclick={() => removeLine(i)}>
+                        <Trash2 size={13} />
+                      </Button>
+                    </td>
                   </tr>
                 {/each}
               </tbody>
             </table>
+            {#if type === 'adjustment'}
+              <p class="t-caption">{m.stock_adjustment_hint()}</p>
+            {/if}
           {/if}
 
-          <div class="flex justify-between">
-            <Button variant="outline" size="sm" onclick={() => (step = 'type')}><ArrowLeft size={14} /> {m.common_back()}</Button>
-            <Button variant="primary" size="sm" onclick={() => (step = 'review')} disabled={lines.length === 0}>{m.stock_next()}</Button>
-          </div>
-        </div>
-      {:else}
-        <div class="card flex flex-col gap-3">
-          <div class="card-h">{m.stock_review_title()}</div>
-          <dl class="meta-grid">
-            <dt>{m.stock_step_type()}</dt><dd>{type}</dd>
-            <dt>{m.stock_field_party()}</dt><dd>{partyId ?? '—'}</dd>
-          </dl>
-          <table class="mini-table">
-            <thead>
-              <tr>
-                <th>{m.stock_field_item()}</th>
-                <th class="num">{m.stock_field_qty()}</th>
-                <th>{m.stock_field_from_warehouse()}</th>
-                <th>{m.stock_field_to_warehouse()}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each lines as l (l.itemId + l.fromWarehouseId + l.toWarehouseId)}
-                <tr>
-                  <td>{itemLabel(l.itemId)}</td>
-                  <td class="num">{l.qty}</td>
-                  <td>{l.fromWarehouseId ? warehouseLabel(l.fromWarehouseId) : '—'}</td>
-                  <td>{l.toWarehouseId ? warehouseLabel(l.toWarehouseId) : '—'}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
           {#if err}<p class="err-msg">{err}</p>{/if}
-          <div class="flex justify-between">
-            <Button variant="outline" size="sm" onclick={() => (step = 'lines')}><ArrowLeft size={14} /> {m.common_back()}</Button>
-            <div class="flex gap-2">
-              <Button variant="outline" size="sm" onclick={saveDraft} disabled={busy}>{m.stock_save_draft()}</Button>
-              <Button variant="primary" size="sm" onclick={saveAndSubmit} disabled={busy}>{m.stock_submit()}</Button>
-            </div>
+          <div class="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onclick={saveDraft} disabled={busy || !allValid}>
+              {m.stock_save_draft()}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onclick={saveAndSubmit}
+              disabled={busy || !allValid}
+            >
+              {m.stock_submit()}
+            </Button>
           </div>
         </div>
       {/if}
@@ -313,29 +312,108 @@
   </div>
 </div>
 
+<StockItemPicker
+  bind:open={pickerOpen}
+  items={availableItems}
+  title={m.stock_add_items()}
+  onPick={addItem}
+  selectionMode="multiple"
+  duplicatePolicy="allow"
+  pickedIds={pickedItemIds}
+  columnsConfigurable
+  storageKey="stock-entry-items"
+/>
+
 <style>
-  .stepper { display: flex; gap: var(--space-4); align-items: center; }
-  .step { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-body); color: var(--color-muted-foreground); }
-  .step.active { color: var(--color-foreground); font-weight: 600; }
-  .step.done { color: var(--color-accent); }
-  .dot { display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; border-radius: var(--radius-full); border: 1px solid var(--hairline); font-size: var(--font-size-caption); }
-  .step.active .dot { border-color: var(--color-accent); color: var(--color-accent); }
-  .step.done .dot { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-text-primary); }
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-4); }
-  .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); }
-  .type-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); }
-  .type-grid :global(.type-btn) { padding: var(--space-2); border-radius: var(--radius-md); border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-foreground); }
-  .type-grid :global(.type-btn.active) { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
-  .fld { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-body); color: var(--color-muted-foreground); }
-  .inp { min-height: 2rem; padding: var(--space-2) var(--space-2); font-size: var(--font-size-body); border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
-  .line-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-2); align-items: end; }
-  .mini-table { width: 100%; font-size: var(--font-size-body); border-collapse: collapse; }
-  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
-  .mini-table td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
-  .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .mini-table :global(.rm-btn) { background: none; border: none; color: var(--color-muted-foreground); cursor: pointer; }
-  .mini-table :global(.rm-btn):hover { color: var(--color-destructive); }
-  .meta-grid { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4); font-size: var(--font-size-body); }
-  .meta-grid dt { color: var(--color-muted-foreground); }
-  .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }
+  .card {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    background: var(--color-card);
+    padding: var(--space-4);
+  }
+  .card-h {
+    font-size: var(--font-size-body);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-muted-foreground);
+  }
+  .type-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-2);
+  }
+  .type-grid :global(.type-btn) {
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--hairline);
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-foreground);
+  }
+  .type-grid :global(.type-btn:hover) {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .fld {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--font-size-body);
+    color: var(--color-muted-foreground);
+  }
+  .inp {
+    min-height: 2rem;
+    padding: var(--space-2) var(--space-2);
+    font-size: var(--font-size-body);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg3);
+    border: 1px solid var(--hairline);
+    color: var(--color-foreground);
+    font-family: inherit;
+  }
+  .cell-in {
+    min-height: 1.7rem;
+    padding: 0 var(--space-1);
+    width: 5.5rem;
+  }
+  .cell-in.num {
+    text-align: right;
+  }
+  .mini-table {
+    width: 100%;
+    font-size: var(--font-size-body);
+    border-collapse: collapse;
+  }
+  .mini-table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--color-muted-foreground);
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .mini-table td {
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .mini-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .mini-table tr.invalid td {
+    background: color-mix(in srgb, var(--color-warning-fg) 7%, transparent);
+  }
+  .mini-table :global(.rm-btn) {
+    background: none;
+    border: none;
+    color: var(--color-muted-foreground);
+    cursor: pointer;
+  }
+  .mini-table :global(.rm-btn):hover {
+    color: var(--color-destructive);
+  }
+  .err-msg {
+    font-size: var(--font-size-body);
+    color: var(--color-destructive);
+  }
 </style>
