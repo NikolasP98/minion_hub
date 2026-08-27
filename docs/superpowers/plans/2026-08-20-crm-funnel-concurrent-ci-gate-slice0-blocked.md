@@ -1,5 +1,11 @@
 # Slice 0 recon result: BLOCKED (stop-ship) — CRM funnel concurrency CI gate
 
+> **Round-3 status (run `9b5097bd`, 2026-08-27): still blocked — re-verified from
+> scratch, not inherited.** See "Review-fix round 3" at the end of this file: it
+> re-derives every prior finding against the current branch and adds first-party,
+> checked-in evidence that the reverted `app_ledger` grant guess was _unsafe_, not
+> merely unverified.
+
 > **STILL BLOCKED as of the review-fix round on run `55ba4b5f` (2026-08-23) — this document
 > is the current state again, not just history.** An earlier pass of this run claimed the
 > stop-ship was fully lifted and committed `supabase/ci-fixtures/crm-funnel-concurrent.sql`.
@@ -157,3 +163,78 @@ blocked — see the banner at the top of this file and "What unblocks Slice 1" a
 `role_table_grants` extraction this sandbox cannot perform. Slice 2 (CI job wiring) was never
 started in any pass of this run, per its own instructions ("implement ONLY Slice 0 and Slice
 1... do NOT start later slices").
+
+## Review-fix round 3 (run `9b5097bd`, 2026-08-27)
+
+Round 2's `VERDICT: PASS` was voided a second time for the same process reason (the reviewer
+edited the working tree; the harness discards such edits and forces `FAIL` regardless of the
+findings text). Because two voided passes in a row could equally mean "nothing left to fix" or
+"nobody actually checked", this round re-derived every finding from scratch against the current
+branch instead of deferring to the earlier rounds.
+
+| Prior finding / invariant                                                  | Status | Re-verified here by                                                                                                                                                                                                                                       |
+| -------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Round-1 Medium — Slice 1 shipped convention-derived `app_ledger` grants    | Fixed  | `supabase/ci-fixtures/` does not exist; `git diff --name-only origin/master...HEAD` lists only this document                                                                                                                                              |
+| Slice 2 must stay untouched (spec: "do NOT start later slices")            | Holds  | `git diff --name-only origin/master...HEAD -- .github/workflows/ci.yml src/server/services/crm-funnel.concurrent.integration.test.ts supabase/migrations` is empty; the `TODO(handoff)` marker is still at `crm-funnel.concurrent.integration.test.ts:21` |
+| No production write path touched                                           | Holds  | same diff over `crm-contacts.service.ts`, `crm-journey.service.ts`, `crm-relationship.service.ts` — empty                                                                                                                                                 |
+| The recorded policy/RLS/column facts are honestly sourced, not back-filled | Holds  | traced to operator memory `sdlc-board-triage-and-phase-gates.md` line 177 ("TICK ~13:10Z"), which records the live `vercel env pull` → `psql pg_policies`/`information_schema` extraction and — importantly — does **not** record any grant query         |
+
+### New evidence: the reverted guess was unsafe, not merely unverified
+
+Rounds 1–2 justified the stop-ship procedurally (spec §5 A1 says do not guess). This round found
+first-party, checked-in evidence that the specific guess was also substantively wrong to make.
+The reverted fixture granted `SELECT, INSERT, UPDATE, DELETE` on the strength of a uniform
+`*_org_guc` migration convention. That convention is **not** uniform:
+
+- 44 `grant ... to app_ledger` statements exist across `supabase/migrations/` (66 files).
+- 43 of them are `select, insert, update, delete`.
+- One is not: `supabase/migrations/20260702130000_stock.sql:138` grants only `select, insert` on
+  `public.stk_ledger`.
+
+That exception is deliberate and load-bearing, documented at `src/server/db/pg-schema/stock.ts:160`:
+_"DB grants omit update/delete for the `app_ledger` role (see migration) — append-only is enforced
+at the privilege layer, not just by convention."_ So in this codebase the `app_ledger` grant set is
+a per-table security control, not boilerplate that can be inferred from a neighbouring migration.
+A fixture granting `UPDATE`/`DELETE` where production withholds them would let CI prove a write
+path production forbids — precisely the false-green class this spec exists to close. The missing
+`role_table_grants` extraction is therefore a real blocker, not a formality.
+
+### One-paste unblock (for an operator with prod or verified-clone read access)
+
+Connection recipe: `hub-local-qa-stack-recipe.md` / the `vercel env pull` + pooler-URL note in
+`sdlc-board-triage-and-phase-gates.md` (user `postgres.<PROJECT>`; the password contains a literal
+`@`, so pass it via `PGPASSWORD` rather than inlining it in the URL). Delete any pulled env file
+afterwards. Paste the output into the PR; nothing here needs to be committed.
+
+```sql
+-- DIRECT grants held by app_ledger on the two CRM tables.
+-- aclexplode(relacl) is used deliberately in preference to the spec's
+-- information_schema.role_table_grants query: information_schema filters rows by the
+-- *querying* role's visibility and folds in privileges inherited via role membership,
+-- so it can both under-report and blur direct grants with inherited ones. Slice 1 must
+-- assert exact set equality on DIRECT grants (reject missing AND extra), so it needs
+-- exactly this.
+select c.relname as table_name, a.privilege_type
+from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  cross join lateral aclexplode(c.relacl) a
+  join pg_roles g on g.oid = a.grantee
+where n.nspname = 'public'
+  and c.relname in ('crm_contacts', 'crm_activities')
+  and g.rolname = 'app_ledger'
+order by 1, 2;
+```
+
+**Zero rows is a meaningful answer, not a failed query** — record it verbatim either way. A NULL
+`relacl` means the table still carries owner-only default privileges, i.e. `app_ledger` holds no
+direct grants and reaches these tables by role membership instead. Slice 1's fixture would then
+have to reproduce _that_ arrangement; silently substituting direct grants would repeat the
+round-1 defect in a new form.
+
+### Disposition
+
+No code change this round; the stop-ship stands and is now evidence-backed rather than only
+policy-backed. Slice 1 stays blocked on the extraction above, Slice 2 stays unstarted, and the
+`TODO(handoff)` marker stays in place. This remains a human-gated spec (§5 A1) — an agent cannot
+close it from this sandbox, which has no Supabase credential, no `psql`/`pg_dump`, and no Docker
+(reconfirmed this round).
