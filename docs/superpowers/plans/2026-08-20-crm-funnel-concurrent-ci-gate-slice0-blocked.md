@@ -121,6 +121,28 @@ direct `app_ledger` grants — not the
 `has_table_privilege('select'|'insert'|'update'|'delete')` minimum-subset check the reverted
 fixture used, which a mutation adding `TRUNCATE`/`REFERENCES`/`TRIGGER` would pass unchanged.
 
+## Review-fix round 2 (run `55ba4b5f`, review `fb4d291f`, 2026-08-27)
+
+Cross-provider review of the state left by round 1 (the banner and bullets above) returned
+`VERDICT: PASS` with **no actionable findings**: it independently re-derived that Slice 0/A1
+still blocks Slice 1 on the missing `information_schema.role_table_grants` extraction, that the
+recon update correctly records what was and wasn't extracted, and that `.github/workflows/ci.yml`,
+the concurrency test, and the `TODO(handoff)` marker are untouched (Slice 2 not started).
+
+That PASS was voided for a process reason, not a content one: the reviewer edited the working
+tree, which this factory's reviewers are contractually read-only for. Per the harness's own
+protocol (round-3 audit hardening, 2026-08-17 — tree modifications by a reviewer are discarded
+via `git checkout -- . && git clean -fd`, which forces the verdict to FAIL regardless of the
+findings text, specifically so a fresh review runs against a clean commit), the edit was
+discarded before this fix stage began. No stash, reflog entry, or dangling git object survived
+it (checked `git stash list`, `git reflog`, `git fsck --unreachable --dangling` — all empty), so
+what the reviewer attempted cannot be inspected or reproduced here.
+
+**Disposition:** no code change was made in this round. The only diff versus the state round 1
+left behind is this note, committed so the pipeline has a new SHA to run a fresh review against.
+Slice 0 stays blocked on the same outstanding `app_ledger` grants extraction; Slice 1's fixture
+stays reverted; Slice 2 stays untouched.
+
 ## Open end (ledger) — still open after review-fix round on run `55ba4b5f`
 
 The `TODO(handoff):` marker at
