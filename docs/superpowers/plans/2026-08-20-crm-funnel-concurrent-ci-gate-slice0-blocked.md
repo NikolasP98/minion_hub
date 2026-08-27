@@ -1,5 +1,11 @@
 # Slice 0 recon result: BLOCKED (stop-ship) — CRM funnel concurrency CI gate
 
+> **Round-4 status (run `9b5097bd`, 2026-08-27): still blocked.** Round 3's own
+> "one-paste" operator recipe and grant-count inventory had defects (wrong replacement
+> query, stale count) — see "Review-fix round 4" at the end of this file for the fix.
+> The underlying blocker is unchanged: Slice 1 needs a real prod/verified-clone
+> `app_ledger` privilege extraction this sandbox cannot perform.
+
 > **Round-3 status (run `9b5097bd`, 2026-08-27): still blocked — re-verified from
 > scratch, not inherited.** See "Review-fix round 3" at the end of this file: it
 > re-derives every prior finding against the current branch and adds first-party,
@@ -186,10 +192,15 @@ first-party, checked-in evidence that the specific guess was also substantively 
 The reverted fixture granted `SELECT, INSERT, UPDATE, DELETE` on the strength of a uniform
 `*_org_guc` migration convention. That convention is **not** uniform:
 
-- 44 `grant ... to app_ledger` statements exist across `supabase/migrations/` (66 files).
-- 43 of them are `select, insert, update, delete`.
-- One is not: `supabase/migrations/20260702130000_stock.sql:138` grants only `select, insert` on
-  `public.stk_ledger`.
+- `git grep -i -E 'grant[[:space:]].*app_ledger' HEAD -- supabase/migrations` returns 58
+  `grant ... to app_ledger` statements, not a uniform shape: 47 full-CRUD
+  (`select, insert, update, delete`) table grants, one deliberately narrower table grant
+  (`supabase/migrations/20260702130000_stock.sql:138`, `select, insert` on `public.stk_ledger`),
+  three read-only table grants (`org_areas`, `organization_members`, `member_roles` in
+  `20260722113000_org_areas_brain_corpus_read.sql`), one sequence grant
+  (`stk_ledger_id_seq`), and six `execute on function` grants. The exact count is not load-bearing
+  here and should be re-derived with the command above rather than copied, since new migrations
+  land on this file regularly; what matters is the conclusion below.
 
 That exception is deliberate and load-bearing, documented at `src/server/db/pg-schema/stock.ts:160`:
 _"DB grants omit update/delete for the `app_ledger` role (see migration) — append-only is enforced
@@ -199,7 +210,23 @@ A fixture granting `UPDATE`/`DELETE` where production withholds them would let C
 path production forbids — precisely the false-green class this spec exists to close. The missing
 `role_table_grants` extraction is therefore a real blocker, not a formality.
 
-### One-paste unblock (for an operator with prod or verified-clone read access)
+### Operator recipe (for an operator with prod or verified-clone read access) — still not "one-paste"
+
+**Round-3 correction:** an earlier version of this section replaced the spec-approved
+`information_schema.role_table_grants` query (`FACTORY_SPEC.md:258-270`) with a single
+`aclexplode(relacl)` query, justified by a comment claiming `information_schema` "folds in
+privileges inherited via role membership." That claim does not hold:
+`information_schema.role_table_grants` reports grant rows visible to the current user for
+grants whose grantor or grantee is an enabled role, and it omits `PUBLIC` — it does not rewrite
+role-inherited privileges as direct grants to `app_ledger`
+([Postgres 15 docs](https://www.postgresql.org/docs/15/infoschema-role-table-grants.html)). The
+replacement query had its own gap: filtering `aclexplode(relacl)` by `join pg_roles g on g.oid =
+a.grantee` silently drops `PUBLIC` grants (grantee OID `0` has no matching `pg_roles` row), and
+neither query alone can tell "no ACL entry" apart from "authorized via role membership" or "via
+`PUBLIC`" — a zero-row result is genuinely ambiguous without more catalog state. Per the review
+finding, **do not run just one query and call it sufficient.** Run all four below and paste every
+result verbatim; Slice 1 must not start until the effective privilege source for `app_ledger` on
+both tables is identified from this evidence, not asserted from a single query's silence.
 
 Connection recipe: `hub-local-qa-stack-recipe.md` / the `vercel env pull` + pooler-URL note in
 `sdlc-board-triage-and-phase-gates.md` (user `postgres.<PROJECT>`; the password contains a literal
@@ -207,29 +234,50 @@ Connection recipe: `hub-local-qa-stack-recipe.md` / the `vercel env pull` + pool
 afterwards. Paste the output into the PR; nothing here needs to be committed.
 
 ```sql
--- DIRECT grants held by app_ledger on the two CRM tables.
--- aclexplode(relacl) is used deliberately in preference to the spec's
--- information_schema.role_table_grants query: information_schema filters rows by the
--- *querying* role's visibility and folds in privileges inherited via role membership,
--- so it can both under-report and blur direct grants with inherited ones. Slice 1 must
--- assert exact set equality on DIRECT grants (reject missing AND extra), so it needs
--- exactly this.
-select c.relname as table_name, a.privilege_type
+-- 1. The spec-approved query (FACTORY_SPEC.md Slice 0) — grants visible via enabled roles,
+-- excludes PUBLIC.
+select grantee, table_name, privilege_type from information_schema.role_table_grants
+where table_name in ('crm_contacts', 'crm_activities') and grantee = 'app_ledger';
+
+-- 2. Table owner — owners hold full implicit privileges with no ACL row at all.
+select relname as table_name, relowner::regrole as owner
+from pg_class
+where relname in ('crm_contacts', 'crm_activities');
+
+-- 3. Full direct ACL, INCLUDING PUBLIC (left join, not inner join, so grantee OID 0 survives)
+-- and including a NULL-relacl case explicitly.
+select c.relname as table_name,
+       coalesce(g.rolname, 'PUBLIC') as grantee,
+       a.privilege_type
 from pg_class c
   join pg_namespace n on n.oid = c.relnamespace
-  cross join lateral aclexplode(c.relacl) a
-  join pg_roles g on g.oid = a.grantee
+  cross join lateral aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
+  left join pg_roles g on g.oid = a.grantee
 where n.nspname = 'public'
   and c.relname in ('crm_contacts', 'crm_activities')
-  and g.rolname = 'app_ledger'
-order by 1, 2;
+order by 1, 2, 3;
+
+-- 4. Role membership chain for app_ledger — a privilege can arrive via a role app_ledger is a
+-- member of, not only via a direct grant. rolinherit matters: a NOINHERIT parent's privileges
+-- only apply after an explicit SET ROLE, not automatically.
+with recursive membership as (
+  select oid as role_oid, rolname, rolinherit, 0 as depth
+  from pg_roles where rolname = 'app_ledger'
+  union all
+  select r.oid, r.rolname, r.rolinherit, m.depth + 1
+  from pg_auth_members am
+    join pg_roles r on r.oid = am.roleid
+    join membership m on m.role_oid = am.member
+)
+select * from membership order by depth;
 ```
 
-**Zero rows is a meaningful answer, not a failed query** — record it verbatim either way. A NULL
-`relacl` means the table still carries owner-only default privileges, i.e. `app_ledger` holds no
-direct grants and reaches these tables by role membership instead. Slice 1's fixture would then
-have to reproduce _that_ arrangement; silently substituting direct grants would repeat the
-round-1 defect in a new form.
+**A zero-row result from query 1 or 3 is a meaningful answer, not a failed query** — record it
+verbatim either way, but it does not by itself prove role-membership access (that is what query 4
+is for) or rule out `PUBLIC`/owner privileges (queries 2 and 3 cover those). Slice 1's fixture
+must reproduce whichever source queries 2–4 actually show grants the access, and must not
+silently substitute direct grants for a role-membership or `PUBLIC` arrangement — that would
+repeat the round-1 defect in a new form.
 
 ### Disposition
 
@@ -238,3 +286,39 @@ policy-backed. Slice 1 stays blocked on the extraction above, Slice 2 stays unst
 `TODO(handoff)` marker stays in place. This remains a human-gated spec (§5 A1) — an agent cannot
 close it from this sandbox, which has no Supabase credential, no `psql`/`pg_dump`, and no Docker
 (reconfirmed this round).
+
+## Review-fix round 4 (run `9b5097bd`, review `9b5097bd`-fail, 2026-08-27)
+
+Cross-provider review of round 3 returned `VERDICT: FAIL` with two findings, both against this
+document's text only (no code, test, workflow, or migration file was in scope):
+
+1. **Medium** — the round-3 "one-paste" query replaced the spec-approved
+   `information_schema.role_table_grants` query with a single `aclexplode(relacl)` query, on the
+   strength of an inaccurate comment about what `information_schema` does, and that replacement
+   query itself dropped `PUBLIC` grants (inner join to `pg_roles` on grantee OID `0`) and never
+   inspected `relowner` or `pg_auth_members`. A zero-row result therefore could not be told apart
+   from "authorized via role membership", "authorized via `PUBLIC`", or "authorized via table
+   ownership" — the recipe could not actually deliver what it promised.
+2. **Low** — the "44 grant statements, 43 full-CRUD + 1 exception" inventory in this file was
+   stale/wrong. `git grep -i -E 'grant[[:space:]].*app_ledger' HEAD -- supabase/migrations`
+   returns 58 statements at this `HEAD`, not 44.
+
+**Fix applied:** both are documentation-only corrections in this file, made in this round:
+
+- The grant-count paragraph now cites the exact `git grep` command instead of a copied count, and
+  states the real breakdown (47 full-CRUD table grants, 1 narrower table grant, 3 read-only table
+  grants, 1 sequence grant, 6 function grants = 58), independently re-run and verified against
+  this round's `HEAD` before writing it down.
+- The "operator recipe" section (formerly "one-paste unblock") now leads with the spec-approved
+  `information_schema.role_table_grants` query (not a replacement for it), and adds three
+  supplementary catalog queries — table owner, a `PUBLIC`-inclusive direct-ACL dump, and a
+  recursive `pg_auth_members` role-membership walk — so an operator's paste can actually
+  distinguish "no access", "role-membership access", "`PUBLIC` access", and "owner access" instead
+  of asserting one of those from a single query's silence. The inaccurate claim about what
+  `information_schema.role_table_grants` does was removed rather than repeated.
+
+No production code, CI workflow, test, or migration file changed in this round — the fix is
+confined to the two findings, both of which are about this recon document's own text. Slice 1
+stays blocked on a real prod/verified-clone extraction (still unavailable in this sandbox — no
+Supabase credential, no `psql`/`pg_dump`, no Docker, reconfirmed this round); Slice 2 stays
+unstarted; the `TODO(handoff)` marker stays in place.
