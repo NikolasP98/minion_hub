@@ -28,7 +28,7 @@
         : []),
       { id: 'catalog', label: m.pos_nav_catalog(), icon: LayoutGrid, href: '/pos/catalog' },
       // No refills tab: stock operations live ONLY in the stock module
-      // (/stock/entries, /stock/consume). POS owns recipes + commerce.
+      // (/stock/entries). POS owns recipes + commerce.
       { id: 'settings', label: m.pos_nav_settings(), icon: Settings2, href: '/pos/settings' },
     ].filter((i) => canViewPath(i.href)),
   );

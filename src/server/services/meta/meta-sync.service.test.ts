@@ -60,6 +60,10 @@ vi.mock('./graph-read', async (orig) => {
 });
 
 vi.mock('../messages.service', () => ({ insertMessages: vi.fn(async () => 0) }));
+const bustSocialsCache = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
+vi.mock('./meta-insights.service', () => ({
+  bustSocialsCache: (...a: unknown[]) => bustSocialsCache(...a),
+}));
 vi.mock('$server/auth/crypto', () => ({
   decrypt: (ciphertext: string) => ciphertext,
   encrypt: vi.fn(),
@@ -667,6 +671,7 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
       }),
     );
     expect(finishJob).toHaveBeenCalledWith(ctx, 'job-1', 'succeeded');
+    expect(bustSocialsCache).toHaveBeenCalledWith('org-1');
   });
 
   it('persists the ad→post link (meta_ad_posts) — db.insert is invoked with the meta_ad_posts table', async () => {

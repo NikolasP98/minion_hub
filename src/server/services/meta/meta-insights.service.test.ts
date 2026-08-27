@@ -1,21 +1,36 @@
 import { describe, it, expect } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { previousRange, deltaPct, calcCtr, calcCpc, extentToRange, getPostDetail } from './meta-insights.service';
+import {
+  previousRange,
+  deltaPct,
+  calcCtr,
+  calcCpc,
+  extentToRange,
+  getPostDetail,
+  socialDashboardContext,
+  socialDashboardData,
+} from './meta-insights.service';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
 function rawSqlDb(...queryResults: unknown[]) {
   let executeCount = 0;
+  let transactionCount = 0;
   const tx = {
     execute: async () => {
       executeCount += 1;
-      // withOrgCore's four SET LOCAL / set_config statements precede service queries.
-      if (executeCount <= 4) return undefined;
-      return queryResults[executeCount - 5] ?? [];
+      // withOrgCore's single batched set_config setup statement precedes
+      // service queries (see with-org-core.test.ts for the contract).
+      if (executeCount <= 1) return undefined;
+      return queryResults[executeCount - 2] ?? [];
     },
   };
   return {
-    transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
+    transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => {
+      transactionCount += 1;
+      return callback(tx);
+    },
+    counts: () => ({ execute: executeCount, transaction: transactionCount }),
   };
 }
 
@@ -83,6 +98,49 @@ describe('extentToRange', () => {
   });
 });
 
+describe('Socials dashboard read path', () => {
+  it('loads connection state and ad extent in one org-scoped transaction', async () => {
+    const db = rawSqlDb(
+      [{ has_connection: true }],
+      [{ min_date: '2026-06-01', max_date: '2026-06-30', currency: 'PEN' }],
+    );
+
+    await expect(socialDashboardContext(ctx(db))).resolves.toEqual({
+      hasConnection: true,
+      extent: { minDate: '2026-06-01', maxDate: '2026-06-30', currency: 'PEN' },
+    });
+    expect(db.counts()).toEqual({ execute: 3, transaction: 1 });
+  });
+
+  it('loads all dashboard aggregates in one org-scoped transaction', async () => {
+    const db = rawSqlDb(
+      [{ spend: 100, impressions: 1000, reach: 800, clicks: 50 }],
+      [{ spend: 80, impressions: 900, reach: 700, clicks: 40 }],
+      [{ date: '2026-06-30', spend: 100, impressions: 1000, clicks: 50 }],
+      [
+        {
+          campaign_id: 'campaign-1',
+          campaign_name: 'Launch',
+          spend: 100,
+          impressions: 1000,
+          reach: 800,
+          clicks: 50,
+          conversations_started: 10,
+        },
+      ],
+      [{ post_id: 'post-1', platform: 'ig', metrics: { likes: '25' }, is_promoted: false }],
+    );
+
+    const result = await socialDashboardData(ctx(db), { from: '2026-06-01', to: '2026-06-30' });
+
+    expect(result.kpis.spend).toBe(100);
+    expect(result.series).toHaveLength(1);
+    expect(result.campaigns[0]?.campaignId).toBe('campaign-1');
+    expect(result.posts[0]?.postId).toBe('post-1');
+    expect(db.counts()).toEqual({ execute: 6, transaction: 1 });
+  });
+});
+
 describe('getPostDetail', () => {
   it('returns null when the post has no rows (missing or foreign org)', async () => {
     const { db, resolve } = createMockDb();
@@ -147,24 +205,27 @@ describe('getPostDetail', () => {
   });
 
   it('falls back to linked ad aggregates for a dark post', async () => {
-    const db = rawSqlDb([], [
-      {
-        post_id: 'dark-post-1',
-        platform: 'fb',
-        promoted_by_ad_ids: 'ad-1,ad-2',
-        spend: 75.5,
-        impressions: 5000,
-        reach: 4200,
-        clicks: 125,
-        campaign_id: 'campaign-1',
-        campaign_name: 'Winter launch',
-        ad_names: ['Dark creative A', 'Dark creative B'],
-        first_date: '2026-06-01',
-        last_date: '2026-06-10',
-        thumb_file_id: 'file-dark-1',
-        thumb_status: 'mirrored',
-      },
-    ]);
+    const db = rawSqlDb(
+      [],
+      [
+        {
+          post_id: 'dark-post-1',
+          platform: 'fb',
+          promoted_by_ad_ids: 'ad-1,ad-2',
+          spend: 75.5,
+          impressions: 5000,
+          reach: 4200,
+          clicks: 125,
+          campaign_id: 'campaign-1',
+          campaign_name: 'Winter launch',
+          ad_names: ['Dark creative A', 'Dark creative B'],
+          first_date: '2026-06-01',
+          last_date: '2026-06-10',
+          thumb_file_id: 'file-dark-1',
+          thumb_status: 'mirrored',
+        },
+      ],
+    );
 
     const detail = await getPostDetail(ctx(db), 'dark-post-1');
 

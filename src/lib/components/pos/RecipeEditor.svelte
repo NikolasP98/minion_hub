@@ -1,7 +1,9 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { Plus, Trash2, CornerDownRight } from 'lucide-svelte';
-  import { Button, Input, Select, iconSizes } from '$lib/components/ui';
+  import { Plus, Trash2, CornerDownRight, ListFilter } from 'lucide-svelte';
+  import { Button, Input, iconSizes } from '$lib/components/ui';
+  import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
+  import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
 
   interface ItemLike {
@@ -77,8 +79,20 @@
   }
 
   let newChildId = $state('');
+  let selectedPickerItem = $state<StockItemOption | null>(null);
+  let pickerOpen = $state(false);
   let newQty = $state('');
   let busy = $state(false);
+
+  const selectedChildLabel = $derived.by(() => {
+    const selected = selectedPickerItem ?? itemById.get(newChildId);
+    return selected ? `${selected.code} — ${selected.name}` : m.pos_recipe_pick_child();
+  });
+
+  function pickChild(item: StockItemOption) {
+    newChildId = item.id;
+    selectedPickerItem = item;
+  }
 
   async function addComponent() {
     if (!newChildId || !(Number(newQty) > 0)) return;
@@ -91,6 +105,7 @@
       });
       if (res.ok) {
         newChildId = '';
+        selectedPickerItem = null;
         newQty = '';
         onChanged();
       } else {
@@ -176,12 +191,15 @@
 
   {#if canEdit}
     <div class="add">
-      <Select fieldClass="min-w-0 flex-1" bind:value={newChildId}>
-        <option value="">{m.pos_recipe_pick_child()}…</option>
-        {#each candidates as i (i.id)}
-          <option value={i.id}>{i.code} — {i.name}</option>
-        {/each}
-      </Select>
+      <Button
+        variant="outline"
+        size="sm"
+        class="item-picker-trigger"
+        onclick={() => (pickerOpen = true)}
+      >
+        <ListFilter size={iconSizes.sm} aria-hidden="true" />
+        <span class="item-picker-label">{selectedChildLabel}</span>
+      </Button>
       <Input
         size="sm"
         class="w-24"
@@ -203,6 +221,18 @@
     </div>
   {/if}
 </div>
+
+<StockItemPicker
+  bind:open={pickerOpen}
+  items={candidates}
+  title={m.pos_recipe_pick_child()}
+  onPick={pickChild}
+  selectionMode="single"
+  duplicatePolicy="prevent"
+  pickedIds={alreadyUsed}
+  allowCreate={canEdit}
+  storageKey="recipe-component-items"
+/>
 
 <style>
   .recipe {
@@ -263,5 +293,21 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+  }
+  .add :global(.item-picker-trigger) {
+    min-width: 0;
+    flex: 1;
+    justify-content: flex-start;
+  }
+  .add :global(.item-picker-trigger > span) {
+    min-width: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .item-picker-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>
