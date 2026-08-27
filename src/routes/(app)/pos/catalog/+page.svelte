@@ -527,7 +527,9 @@
      card shape has to be forced through a scoped ancestor + `> span`. */
   :global(.bcards .bcard) {
     height: auto;
-    min-height: 0;
+    /* Never let cards compress when a column overflows — they'd stack on top
+       of each other instead of scrolling (`min-height: 0` here caused that). */
+    flex-shrink: 0;
     padding: var(--space-2);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
