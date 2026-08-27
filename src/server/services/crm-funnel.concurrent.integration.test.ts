@@ -302,9 +302,19 @@ describe.runIf(Boolean(databaseUrl))(
      * writers). Those suites stay — they pin the SQL shape and per-engine merge
      * semantics — but the actual ship-gate proof lives here: a THIRD connection
      * (the coordinator) takes `SELECT ... FOR UPDATE` first, two independent
-     * writer connections are started concurrently, `pg_stat_activity` confirms
-     * BOTH are genuinely queued on the lock (not just "happened to resolve in
-     * order"), then the lock is released and both keys are asserted to survive.
+     * writer connections are started (one at a time, each affirmed blocked
+     * before the next starts), `pg_stat_activity` confirms BOTH are genuinely
+     * queued on the lock (not just "happened to resolve in order"), then the
+     * lock is released and both keys — plus the FIFO release/completion order —
+     * are asserted.
+     *
+     * Review round 2 flagged that polling `pg_stat_activity` through `owner`
+     * deadlocked: `owner` has `max: 1` and its sole connection is reserved for
+     * the whole `owner.begin(...)` callback that holds the coordinator lock, so
+     * a `pg_stat_activity` query on `owner` could never get a connection until
+     * *after* the lock-holding callback finished — which itself only finishes
+     * once `waitUntilBlocked` returns. A dedicated `probe` connection (not
+     * inside the locking transaction) breaks that cycle.
      */
     async function proveBothWritersQueueBehindCoordinatorLock<A, B>(
       writerA: (
@@ -321,6 +331,7 @@ describe.runIf(Boolean(databaseUrl))(
       const owner = postgres(databaseUrl!, { max: 1, prepare: false });
       const clientA = postgres(databaseUrl!, { max: 1, prepare: false });
       const clientB = postgres(databaseUrl!, { max: 1, prepare: false });
+      const probe = postgres(databaseUrl!, { max: 1, prepare: false });
       let contactId: string | undefined;
       try {
         const seeded = await seedContact(owner);
@@ -342,26 +353,37 @@ describe.runIf(Boolean(databaseUrl))(
         });
         await lockIsHeld;
 
-        const resultA = writerA(orgId, seeded.contactId, clientA);
-        const resultB = writerB(orgId, seeded.contactId, clientB);
+        // Machine-check the queue order the two "reverse start order" test
+        // variants exist to distinguish: start A, affirm it is genuinely
+        // blocked on the coordinator's lock, THEN start B and affirm the same
+        // for it — rather than firing both and only proving they eventually
+        // both resolve.
+        const order: Array<'A' | 'B'> = [];
+        const resultA = writerA(orgId, seeded.contactId, clientA).then((r) => {
+          order.push('A');
+          return r;
+        });
+        await waitUntilBlocked(probe, pidA);
 
-        // The affirmative proof: both competing writers are genuinely blocked
-        // on the coordinator's row lock, not just started-but-not-yet-scheduled.
-        await waitUntilBlocked(owner, pidA);
-        await waitUntilBlocked(owner, pidB);
+        const resultB = writerB(orgId, seeded.contactId, clientB).then((r) => {
+          order.push('B');
+          return r;
+        });
+        await waitUntilBlocked(probe, pidB);
 
         releaseLock();
         await coordination;
         await Promise.all([resultA, resultB]);
 
         const [row] = await readFields(owner, seeded.contactId);
-        return row.cf;
+        return { cf: row.cf, order };
       } finally {
         if (contactId) await owner`delete from crm_contacts where id = ${contactId}`;
         await Promise.all([
           owner.end({ timeout: 5 }),
           clientA.end({ timeout: 5 }),
           clientB.end({ timeout: 5 }),
+          probe.end({ timeout: 5 }),
         ]);
       }
     }
@@ -406,43 +428,51 @@ describe.runIf(Boolean(databaseUrl))(
       );
 
     it('setFunnelStage and the customFieldsPatch writer (contact patch service) both queue on the coordinator lock and both survive — funnel starts first', async () => {
-      const cf = await proveBothWritersQueueBehindCoordinatorLock(
+      const { cf, order } = await proveBothWritersQueueBehindCoordinatorLock(
         writeFunnelViaSetFunnelStage,
         writePatchViaUpdateContact,
       );
       expect(cf._funnel).toMatchObject({ stage: 'customer', auto: false });
       expect(cf.favoriteColor).toBe('blue');
       expect(cf.nombre).toBe('Ana');
+      // FIFO lock queue: the writer that blocked first (funnel) is granted the
+      // row lock first once the coordinator releases it.
+      expect(order).toEqual(['A', 'B']);
     }, 30_000);
 
     it('setFunnelStage and the customFieldsPatch writer both queue on the coordinator lock and both survive — patch starts first (reverse start order)', async () => {
-      const cf = await proveBothWritersQueueBehindCoordinatorLock(
+      const { cf, order } = await proveBothWritersQueueBehindCoordinatorLock(
         writePatchViaUpdateContact,
         writeFunnelViaSetFunnelStage,
       );
       expect(cf._funnel).toMatchObject({ stage: 'customer', auto: false });
       expect(cf.favoriteColor).toBe('blue');
       expect(cf.nombre).toBe('Ana');
+      // Reversed start order reverses the FIFO grant order — this is the
+      // machine check that the two "start order" cases actually differ.
+      expect(order).toEqual(['A', 'B']);
     }, 30_000);
 
     it("setContactCustomField('_funnel', ...) and setContactCustomField('_relationship', ...) both queue on the coordinator lock and both survive — funnel starts first", async () => {
-      const cf = await proveBothWritersQueueBehindCoordinatorLock(
+      const { cf, order } = await proveBothWritersQueueBehindCoordinatorLock(
         writeFunnelViaSetContactCustomField,
         writeRelationshipViaSetContactCustomField,
       );
       expect(cf._funnel).toMatchObject({ stage: 'customer', auto: false });
       expect(cf._relationship).toEqual({ label: 'mamá' });
       expect(cf.nombre).toBe('Ana');
+      expect(order).toEqual(['A', 'B']);
     }, 30_000);
 
     it("setContactCustomField('_funnel', ...) and setContactCustomField('_relationship', ...) both queue on the coordinator lock and both survive — relationship starts first (reverse start order)", async () => {
-      const cf = await proveBothWritersQueueBehindCoordinatorLock(
+      const { cf, order } = await proveBothWritersQueueBehindCoordinatorLock(
         writeRelationshipViaSetContactCustomField,
         writeFunnelViaSetContactCustomField,
       );
       expect(cf._funnel).toMatchObject({ stage: 'customer', auto: false });
       expect(cf._relationship).toEqual({ label: 'mamá' });
       expect(cf.nombre).toBe('Ana');
+      expect(order).toEqual(['A', 'B']);
     }, 30_000);
   },
 );
