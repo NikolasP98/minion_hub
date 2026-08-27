@@ -6,7 +6,12 @@ import FoundationHarness from './foundation-test-harness.svelte';
 import SectionNav from './SectionNav.svelte';
 import SectionNavBusinessFixture from './section-nav-business-fixture.svelte';
 import { assertDialogLabel } from './dialog';
-import { clampWindowRect, moveWindowBy, resizeWindowBy } from './draggable-window';
+import {
+  clampWindowRect,
+  isWindowControlTarget,
+  moveWindowBy,
+  resizeWindowBy,
+} from './draggable-window';
 
 describe('composition foundations', () => {
   it('associates a field label and helper with one stable control id', () => {
@@ -103,5 +108,13 @@ describe('composition foundations', () => {
     expect(rect).toEqual({ x: 1120, y: 0, width: 360, height: 800 });
     expect(moveWindowBy(rect, -16, 16).x).toBe(1104);
     expect(resizeWindowBy(rect, 16, -16).height).toBe(784);
+  });
+
+  it('keeps title-bar controls out of the drag pointer-capture path', () => {
+    const buttonTarget = { closest: () => ({}) } as unknown as EventTarget;
+    const titleTarget = { closest: () => null } as unknown as EventTarget;
+
+    expect(isWindowControlTarget(buttonTarget)).toBe(true);
+    expect(isWindowControlTarget(titleTarget)).toBe(false);
   });
 });

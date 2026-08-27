@@ -30,13 +30,24 @@ const config = {
     // Single serverless function (no per-route `export const config`): split
     // functions break locale-prefixed URLs — the /en|/es catchall lands in a
     // routes:[] 404 function where reroute() has nothing to resolve to.
-    adapter: process.env.DESKTOP === '1' ? adapter() : adapter({ runtime: 'nodejs22.x', maxDuration: 300 }),
+    adapter:
+      process.env.DESKTOP === '1'
+        ? adapter()
+        : adapter({ runtime: 'nodejs22.x', maxDuration: 300 }),
     alias: {
       $server: 'src/server',
       '$server/*': 'src/server/*',
     },
     paths: {
       relative: false,
+    },
+    // Version-skew detection: the hub is a long-lived SPA (ssr=false), so a
+    // tab opened before a deploy keeps running the OLD bundle indefinitely —
+    // users never receive fixes without a manual hard refresh. Polling
+    // _app/version.json lets the root layout turn the next navigation after a
+    // deploy into a full-page load (see beforeNavigate in +layout.svelte).
+    version: {
+      pollInterval: 300_000,
     },
   },
 };

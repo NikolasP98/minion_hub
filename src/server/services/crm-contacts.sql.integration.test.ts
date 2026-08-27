@@ -2,6 +2,7 @@ import postgres from 'postgres';
 import { loadEnv } from 'vite';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import { drizzle } from 'drizzle-orm/postgres-js';
 
 const databaseUrl =
   process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
@@ -19,6 +20,14 @@ const client = databaseUrl
   : null;
 const schema = `crm_page_${process.pid}_${Math.random().toString(36).slice(2)}`;
 
+// A real Drizzle handle over the SAME connection the raw-SQL path uses, so the
+// `tx` handed to services is query-capable on BOTH surfaces: `execute` for the
+// hand-written ranking/finance SQL and `select` for the settings reads
+// (`readCrmSettingsValue`). A tx that only implements `execute` makes
+// `resolveDepositRule` throw and silently fall back to DEFAULT_DEPOSIT_RULE —
+// the configured-rule assertions below would then pass on the default and prove
+// nothing about reading `crm_settings` at all.
+const orm = client ? drizzle(client) : null;
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: async (_scope: unknown, fn: (tx: unknown) => unknown) =>
     fn({
@@ -26,6 +35,7 @@ vi.mock('$server/db/with-org-core', () => ({
         const query = dialect.sqlToQuery(statement);
         return client!.unsafe(query.sql, query.params as never[]);
       },
+      select: (...args: Parameters<NonNullable<typeof orm>['select']>) => orm!.select(...args),
     }),
 }));
 // The finance bridge (and with it the revenue column `sort:'revenue'` orders by)
@@ -36,8 +46,8 @@ vi.mock('./modules.service', async (importOriginal) => ({
   bothEnabled: async () => financeOn,
 }));
 
-import { rankContactsPage } from './crm-contacts.service';
-import { contactFinanceMap } from './crm-finance.service';
+import { getCrmDashboardStats, rankContactsPage } from './crm-contacts.service';
+import { contactFinanceMap, contactFinanceSummary, rankCustomers } from './crm-finance.service';
 
 const ids = {
   ana1: '00000000-0000-4000-8000-000000000001',
@@ -80,6 +90,23 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
         org_id text, channel text, chat_id text, occurred_at timestamptz,
         created_at timestamptz, direction text, is_bot boolean
       );
+      -- This fixture tests ranking semantics, not trigger maintenance. A live
+      -- compatibility view supplies the same projection shape while the
+      -- dedicated activity-rollup integration suite exercises the real table.
+      create view crm_contact_activity_stats as
+        select ci.contact_id, ci.org_id,
+               count(*)::bigint as message_count,
+               count(*) filter (where m.direction = 'inbound')::bigint as inbound_count,
+               count(*) filter (where m.direction = 'outbound')::bigint as outbound_count,
+               count(distinct m.channel)::int as channels_used,
+               min(coalesce(m.occurred_at, m.created_at)) as first_contact_at,
+               max(coalesce(m.occurred_at, m.created_at)) as last_contact_at,
+               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'inbound') as last_inbound_at,
+               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'outbound') as last_outbound_at
+        from crm_contact_identities ci
+        join messages m on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
+        where m.is_bot is not true
+        group by ci.contact_id, ci.org_id;
       create table parties (
         id uuid primary key, doc_number text, dni_verified boolean, dob date,
         metadata jsonb not null default '{}'
@@ -90,10 +117,20 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
         campaign_name text, first_contact_at timestamptz
       );
       create table fin_clients (id uuid primary key, org_id text, party_id uuid);
+      -- document_id/status are selected by contactFinanceSummary's
+      -- representative-invoice query; omitting them made that path unreachable
+      -- from this fixture.
       create table fin_invoices (
-        id uuid primary key, client_id uuid, issued_at timestamptz, total numeric
+        id uuid primary key, client_id uuid, issued_at timestamptz, total numeric,
+        shadowed boolean not null default false,
+        document_id text, status text
       );
       create table fin_invoice_items (invoice_id uuid, description text, total numeric);
+      -- crm_settings.value.deposit backs resolveDepositRule (crm-settings.service.ts) —
+      -- org_id is TEXT here too, same production-parity reasoning as every other table above.
+      create table crm_settings (
+        org_id text primary key, value jsonb not null default '{}', updated_at timestamptz not null default now()
+      );
     `);
     await client!.unsafe(
       `insert into crm_contacts (id, display_name, custom_fields) values
@@ -127,6 +164,18 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
       `insert into fin_invoices (id, client_id, issued_at, total)
        values ($1, $2, now() - interval '10 days', 500)`,
       [invoice, finClient],
+    );
+    // TWO lines on one invoice, and the DEPOSIT line is the pricier of the two.
+    // That is what makes the rule-dependent SELECTIONS observable: under the
+    // default rule "Reserva de cita" is excluded, so the representative item and
+    // the top product are both "Botox facial"; under a rule that does not name
+    // "reserva" nothing is a deposit and the priciest line wins instead. The
+    // invoice total (500) is unchanged by either, which is the arithmetic
+    // invariant the rule must never move.
+    await client!.unsafe(
+      `insert into fin_invoice_items (invoice_id, description, total) values
+       ($1, 'Reserva de cita', 400), ($1, 'Botox facial', 100)`,
+      [invoice],
     );
 
     // Awaiting-reply fixture: Bea's last message is inbound (we owe her a
@@ -183,7 +232,12 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     );
     expect(first.total).toBe(count);
     expect(first.rows).toHaveLength(2);
-    expect(empty).toEqual({ rows: [], total: count });
+    expect(empty).toEqual({
+      rows: [],
+      total: count,
+      hasMore: false,
+      financeEnabled: false,
+    });
   });
 
   it('sorts ICP null last and traverses tied rows exactly once', async () => {
@@ -204,6 +258,8 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
   it.each([
     ['5198', ids.phone],
     ['4455', ids.dni],
+    // Party-spine DNI: "No score" has no custom_fields.dni, only party doc_number 99887766.
+    ['9988', ids.unscored],
   ])('matches exact phone/DNI prefix %s', async (search, expectedId) => {
     const page = await rankContactsPage({ db: {} as never, tenantId: org }, { search, limit: 20 });
     expect(page.rows.map((row) => row.contact_id)).toEqual([expectedId]);
@@ -227,17 +283,20 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     }
   });
 
-  it('a masked principal cannot probe the phone/DNI digits the mask hides', async () => {
-    const page = await rankContactsPage(
-      { db: {} as never, tenantId: org },
-      { search: '5198', limit: 20, maskSensitive: true },
-    );
-    expect(page).toEqual({ rows: [], total: 0 });
-  });
+  it.each(['5198', '9988'])(
+    'a masked principal cannot probe the phone/DNI/doc_number digits the mask hides %s',
+    async (search) => {
+      const page = await rankContactsPage(
+        { db: {} as never, tenantId: org },
+        { search, limit: 20, maskSensitive: true },
+      );
+      expect(page).toEqual({ rows: [], total: 0, hasMore: false, financeEnabled: false });
+    },
+  );
 
-  it.each(['8765', '5566'])('does not match phone/DNI mid-string %s', async (search) => {
+  it.each(['8765', '5566', '8877'])('does not match phone/DNI mid-string %s', async (search) => {
     const page = await rankContactsPage({ db: {} as never, tenantId: org }, { search, limit: 20 });
-    expect(page).toEqual({ rows: [], total: 0 });
+    expect(page).toEqual({ rows: [], total: 0, hasMore: false, financeEnabled: false });
   });
 
   // ── Slice 2: filters the Customers page used to apply over the FULL roster ──
@@ -256,6 +315,34 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     const page = await rankContactsPage(ctx, { awaitingReply: true, limit: 100 });
     expect(idsOf(page.rows)).toEqual(idsOf(expected));
     expect(page.total).toBe(expected.length);
+  });
+
+  it('aggregates the full dashboard in SQL with the same roster semantics', async () => {
+    const all = await roster();
+    const stats = await getCrmDashboardStats(ctx);
+    const stageCounts = Object.fromEntries(
+      ['New', 'Engaged', 'Active', 'Dormant', 'Churned'].map((stage) => [
+        stage,
+        all.rows.filter((row) => row.stage === stage).length,
+      ]),
+    );
+    const scoreBuckets = new Array(10).fill(0) as number[];
+    for (const row of all.rows) {
+      scoreBuckets[Math.min(9, Math.max(0, Math.floor(row.score / 10)))]++;
+    }
+
+    expect(stats).toMatchObject({
+      total: all.rows.length,
+      avgScore: Math.round(all.rows.reduce((sum, row) => sum + row.score, 0) / all.rows.length),
+      stageCounts,
+      scoreBuckets,
+      response: {
+        inboundContacts: all.rows.filter((row) => row.inbound_msgs > 0).length,
+        awaiting: all.rows.filter((row) => row.inbound_msgs > 0 && row.awaiting_reply).length,
+      },
+      revenue: null,
+    });
+    expect(stats.channels).toEqual([{ channel: 'whatsapp', count: 2 }]);
   });
 
   it('buyerOnly selects exactly the contacts with a purchase history', async () => {
@@ -314,5 +401,134 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     expect(idsOf(page.rows).has(ids.unscored)).toBe(false);
     const unbounded = await rankContactsPage(ctx, { minIcp: 0, limit: 100 });
     expect(idsOf(unbounded.rows).has(ids.unscored)).toBe(false);
+  });
+
+  // ── Slice 1 (2026-08-20-handoff-minion-hub-2785164896-spec): the finance
+  // service and contacts ranking path must resolve and observe the SAME
+  // per-org deposit rule, immediately on a same-tenant rule change. ──
+  it('a same-tenant rule change (default → custom → empty → back to absent) is visible immediately, with finance/contacts classification agreeing at every step', async () => {
+    financeOn = true;
+    // A silent fallback to DEFAULT_DEPOSIT_RULE would make every "custom rule"
+    // assertion below pass on the default and prove nothing, so the fallback
+    // path is asserted NOT to fire rather than merely assumed absent.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      // Default (no crm_settings row yet): DNI's only invoice line is "Reserva
+      // de cita" — matches the default 'reserva' keyword, so DNI is reserved-only.
+      const finDefault = await contactFinanceMap(ctx);
+      expect(finDefault[ids.dni]).toMatchObject({ purchased: false, reservedOnly: true });
+      const pageDefaultReserved = await rankContactsPage(ctx, { reservedOnly: true, limit: 100 });
+      expect(idsOf(pageDefaultReserved.rows).has(ids.dni)).toBe(true);
+
+      // Custom rule that does NOT contain 'reserva': the same line item no
+      // longer matches any keyword, so DNI becomes a real (non-deposit) buyer —
+      // in BOTH the finance map and the contacts ranking path.
+      await client!.unsafe(
+        `insert into crm_settings (org_id, value) values ($1, $2::jsonb)
+         on conflict (org_id) do update set value = excluded.value`,
+        [org, JSON.stringify({ deposit: { keywords: ['adelanto'], label: 'Adelanto' } })],
+      );
+      const finCustom = await contactFinanceMap(ctx);
+      expect(finCustom[ids.dni]).toMatchObject({ purchased: true, reservedOnly: false });
+      const pageCustomReserved = await rankContactsPage(ctx, { reservedOnly: true, limit: 100 });
+      expect(idsOf(pageCustomReserved.rows).has(ids.dni)).toBe(false);
+      const pageCustomBuyer = await rankContactsPage(ctx, { buyerOnly: true, limit: 100 });
+      expect(idsOf(pageCustomBuyer.rows).has(ids.dni)).toBe(true);
+
+      // Explicitly empty keywords: nothing is ever a deposit, so any line item
+      // makes the contact a purchaser — same conclusion, proven independently
+      // (no dropped predicate silently widening the match instead).
+      await client!.unsafe(`update crm_settings set value = $2::jsonb where org_id = $1`, [
+        org,
+        JSON.stringify({ deposit: { keywords: [], label: 'None' } }),
+      ]);
+      const finEmpty = await contactFinanceMap(ctx);
+      expect(finEmpty[ids.dni]).toMatchObject({ purchased: true, reservedOnly: false });
+      const pageEmptyReserved = await rankContactsPage(ctx, { reservedOnly: true, limit: 100 });
+      expect(idsOf(pageEmptyReserved.rows).has(ids.dni)).toBe(false);
+      const pageEmptyBuyer = await rankContactsPage(ctx, { buyerOnly: true, limit: 100 });
+      expect(idsOf(pageEmptyBuyer.rows).has(ids.dni)).toBe(true);
+
+      // Back to an absent deposit key: parity with the original default, and
+      // rankContactsPage agrees with contactFinanceMap again too.
+      await client!.unsafe(`update crm_settings set value = '{}'::jsonb where org_id = $1`, [org]);
+      const finBack = await contactFinanceMap(ctx);
+      expect(finBack[ids.dni]).toMatchObject({ purchased: false, reservedOnly: true });
+      const pageBackReserved = await rankContactsPage(ctx, { reservedOnly: true, limit: 100 });
+      expect(idsOf(pageBackReserved.rows).has(ids.dni)).toBe(true);
+
+      // Invoice totals/counts never move across any of these rule changes —
+      // only classification and item selection do.
+      expect(finCustom[ids.dni].invoices).toBe(finDefault[ids.dni].invoices);
+      expect(finCustom[ids.dni].revenue).toBe(finDefault[ids.dni].revenue);
+      expect(finEmpty[ids.dni].invoices).toBe(finDefault[ids.dni].invoices);
+      expect(finEmpty[ids.dni].revenue).toBe(finDefault[ids.dni].revenue);
+
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      financeOn = false;
+      warn.mockRestore();
+      await client!.unsafe(`delete from crm_settings where org_id = $1`, [org]);
+    }
+  });
+
+  // D1/D4: the two remaining public finance paths, on the SAME fixture, where
+  // the rule moves an item SELECTION rather than a boolean flag.
+  it('contactFinanceSummary and rankCustomers follow the configured rule: representative item and top product move, invoice arithmetic does not', async () => {
+    financeOn = true;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const setRule = (deposit: unknown) =>
+      client!.unsafe(
+        `insert into crm_settings (org_id, value) values ($1, $2::jsonb)
+         on conflict (org_id) do update set value = excluded.value`,
+        [org, JSON.stringify({ deposit })],
+      );
+    const topProductOf = async () =>
+      (await rankCustomers(ctx, 'revenue', 5)).find((c) => c.contactId === ids.unscored);
+
+    try {
+      // Absent key ⇒ the S1 default: "Reserva de cita" is a deposit, so the
+      // representative line and the top product are the CHEAPER "Botox facial".
+      const summaryDefault = await contactFinanceSummary(ctx, ids.unscored);
+      const rankedDefault = await topProductOf();
+      expect(summaryDefault?.recentInvoices[0].item).toBe('Botox facial');
+      expect(rankedDefault?.topProduct).toBe('Botox facial');
+      expect(summaryDefault).toMatchObject({ purchased: true, reservedOnly: false });
+
+      // Custom rule that never names "reserva" ⇒ nothing on this invoice is a
+      // deposit, so the priciest line ("Reserva de cita", 400) wins both.
+      await setRule({ keywords: ['adelanto'], label: 'Adelanto' });
+      const summaryCustom = await contactFinanceSummary(ctx, ids.unscored);
+      const rankedCustom = await topProductOf();
+      expect(summaryCustom?.recentInvoices[0].item).toBe('Reserva de cita');
+      expect(rankedCustom?.topProduct).toBe('Reserva de cita');
+
+      // Explicitly empty keywords ⇒ same selection, reached by the total-`false`
+      // predicate rather than by a non-matching keyword. A dropped predicate
+      // would be indistinguishable in the flags but shows up here.
+      await setRule({ keywords: [], label: 'None' });
+      const summaryEmpty = await contactFinanceSummary(ctx, ids.unscored);
+      const rankedEmpty = await topProductOf();
+      expect(summaryEmpty?.recentInvoices[0].item).toBe('Reserva de cita');
+      expect(rankedEmpty?.topProduct).toBe('Reserva de cita');
+
+      // Arithmetic invariant: only classification and selection move.
+      for (const s of [summaryCustom, summaryEmpty]) {
+        expect(s?.revenue).toBe(summaryDefault?.revenue);
+        expect(s?.invoices).toBe(summaryDefault?.invoices);
+        expect(s?.recentInvoices).toHaveLength(summaryDefault!.recentInvoices.length);
+        expect(s?.recentInvoices[0].total).toBe(summaryDefault!.recentInvoices[0].total);
+      }
+      for (const r of [rankedCustom, rankedEmpty]) {
+        expect(r?.revenue).toBe(rankedDefault?.revenue);
+        expect(r?.invoices).toBe(rankedDefault?.invoices);
+      }
+
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      financeOn = false;
+      warn.mockRestore();
+      await client!.unsafe(`delete from crm_settings where org_id = $1`, [org]);
+    }
   });
 });

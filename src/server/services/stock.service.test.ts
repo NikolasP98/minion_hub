@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { and } from 'drizzle-orm';
 import { createMockDb } from '$server/test-utils/mock-db';
 import {
   submitEntry,
@@ -14,7 +15,16 @@ import {
   createItem,
   updateItem,
   updateWarehouse,
+  listWarehouses,
 } from './stock.service';
+
+// `and` is spied (not stubbed — it still delegates to the real implementation)
+// so listWarehouses's condition COUNT (org filter alone vs. org + archived
+// filter) is observable without reaching into drizzle's internal SQL shape.
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>();
+  return { ...actual, and: vi.fn(actual.and) };
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -772,5 +782,75 @@ describe('updateWarehouse — default flag', () => {
     const w = await updateWarehouse(ctx(db), 'w2', { isDefault: true });
     expect(w?.isDefault).toBe(true);
     expect(db.update).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('updateWarehouse — archive / restore', () => {
+  it('archiving sets archivedAt when the warehouse is not default, has no stock, and has no active children', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const archivedAt = new Date('2026-08-23T00:00:00Z');
+    resolveSequence([
+      [{ isDefault: false }], // cur select
+      [{ total: '0' }], // stk_bins qty sum
+      [], // active children select — none
+      [{ id: 'w2', orgId: 'org-1', name: 'B', isDefault: false, archivedAt }], // update(...).returning()
+    ]);
+    const w = await updateWarehouse(ctx(db), 'w2', { archived: true });
+    expect(w?.archivedAt).toEqual(archivedAt);
+  });
+
+  it('restoring clears archivedAt without running the archive guards', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'w2', orgId: 'org-1', name: 'B', archivedAt: null }]);
+    const w = await updateWarehouse(ctx(db), 'w2', { archived: false });
+    expect(w?.archivedAt).toBeNull();
+    // No guard selects — the only DB call is the update itself.
+    expect(db.select).not.toHaveBeenCalled();
+  });
+
+  it('rejects archiving the default warehouse', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ isDefault: true }]]); // cur select
+    await expect(updateWarehouse(ctx(db), 'w2', { archived: true })).rejects.toMatchObject({
+      code: 'default_warehouse',
+    });
+  });
+
+  it('rejects archiving a warehouse that still has stock', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ isDefault: false }], // cur select
+      [{ total: '5' }], // stk_bins qty sum — non-zero
+    ]);
+    await expect(updateWarehouse(ctx(db), 'w2', { archived: true })).rejects.toMatchObject({
+      code: 'has_stock',
+    });
+  });
+
+  it('rejects archiving a warehouse with active (non-archived) sub-warehouses', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ isDefault: false }], // cur select
+      [{ total: '0' }], // stk_bins qty sum
+      [{ id: 'child-1' }], // active child found
+    ]);
+    await expect(updateWarehouse(ctx(db), 'w2', { archived: true })).rejects.toMatchObject({
+      code: 'has_children',
+    });
+  });
+});
+
+describe('listWarehouses — archived filter', () => {
+  it('excludes archived rows by default and includes them with includeArchived', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await listWarehouses(ctx(db));
+    // org filter + isNull(archivedAt)
+    expect(vi.mocked(and).mock.calls[0]?.length).toBe(2);
+
+    resolve([]);
+    await listWarehouses(ctx(db), { includeArchived: true });
+    // org filter only
+    expect(vi.mocked(and).mock.calls[1]?.length).toBe(1);
   });
 });

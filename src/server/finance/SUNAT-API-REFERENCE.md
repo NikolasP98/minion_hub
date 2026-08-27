@@ -46,6 +46,18 @@ Returns `{access_token, expires_in}` (~3600s JWT). Bearer it on every call.
 there is **ONE app per RUC**; FACES reuses the accountant's "STARSOFT" app
 (never regenerate its clave). Secret has a lowercase L, not a capital I.
 
+### Tenant configuration and live probe
+
+Store one `fin_sources.provider='sunat-sire'` row per organization. Keep the
+RUC, legal name, address, ubigeo, client ID, and optional backfill period in
+`config`. Store the SOL user, SOL password, and client secret only in the
+encrypted `secret_refs` envelope. Never return `secret_refs` to the browser.
+
+`POST /api/finances/sources/probe` decrypts the stored credentials on the
+server, obtains an OAuth token, and calls the read-only periods endpoint once.
+It records only `last_probe_at`, `last_probe_status`, and a bounded non-secret
+message. The probe never presents, acknowledges, or changes a SUNAT book.
+
 ## SIRE reads — `sunat-sire-client.ts`
 
 Base `https://api-sire.sunat.gob.pe/v1/contribuyente/migeigv/libros`. Book code:
@@ -77,6 +89,10 @@ Base `https://api-sire.sunat.gob.pe/v1/contribuyente/migeigv/libros`. Book code:
 - There is **no** paged-JSON `comprobantes` endpoint for RCE (RVIE-only).
 
 ## SEE emission (SOAP) — `emission/*`
+
+Shadow emission reads the emitter identity from the active organization's
+`sunat-sire` source. It must never fall back to a process-global RUC or another
+organization's configuration.
 
 - Beta (sandbox, no cert): `https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService`
   — WS-Security UsernameToken `<RUC>MODDATOS` / `MODDATOS`.

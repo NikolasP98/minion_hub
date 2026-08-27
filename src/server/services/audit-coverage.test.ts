@@ -12,7 +12,7 @@ import type { CanonicalInvoice } from '$server/finance/connector';
  * identity (imported from the same schema modules the services use), so
  * `table === finInvoices` etc. just works without mocking the schema.
  */
-function buildTx() {
+function buildTx(opts: { existingInvoices?: Array<{ id: string; documentId: string }> } = {}) {
   const insertCalls: Array<{ table: unknown; rows: unknown[] }> = [];
   const insert = vi.fn((table: unknown) => ({
     values: (rows: unknown[]) => {
@@ -37,14 +37,22 @@ function buildTx() {
   }));
   const del = vi.fn(() => ({ where: () => Promise.resolve(undefined) }));
   const execute = vi.fn().mockResolvedValue(undefined);
-  const update = vi.fn(() => ({
-    set: () => ({ where: () => ({ returning: () => Promise.resolve([{ id: 'c1', displayName: 'Jane' }]) }) }),
+  const select = vi.fn(() => ({
+    from: () => ({ where: () => Promise.resolve(opts.existingInvoices ?? []) }),
   }));
-  return { tx: { insert, delete: del, execute, update }, insertCalls };
+  const update = vi.fn(() => ({
+    set: () => ({
+      where: () => ({ returning: () => Promise.resolve([{ id: 'c1', displayName: 'Jane' }]) }),
+    }),
+  }));
+  return { tx: { insert, delete: del, execute, select, update }, insertCalls };
 }
 
 function ctxWithTx(tx: unknown) {
-  return { db: { transaction: (cb: (t: unknown) => unknown) => cb(tx) }, tenantId: 'org-1' } as never;
+  return {
+    db: { transaction: (cb: (t: unknown) => unknown) => cb(tx) },
+    tenantId: 'org-1',
+  } as never;
 }
 
 function invoiceFixture(overrides: Partial<CanonicalInvoice> = {}): CanonicalInvoice {
@@ -94,12 +102,66 @@ describe('finance audit (§B.1)', () => {
     expect(rows[0].actorName.startsWith('connector:')).toBe(true);
     expect(rows[0].actorName).toBe('connector:susii');
   });
+
+  it('repeatedly overlays a SUNAT source onto the matching SUSII invoice without replacing its items', async () => {
+    const { upsertInvoicesBatch } = await import('./finance.service');
+    const { tx, insertCalls } = buildTx({
+      existingInvoices: [{ id: 'susii-inv-1', documentId: 'F001-1' }],
+    });
+
+    const incoming = invoiceFixture({
+      provider: 'sunat-sire',
+      providerRef: 'sunat-car-1',
+      documentId: 'F001-1',
+      metadata: { codCar: 'sunat-car-1' },
+    });
+    await upsertInvoicesBatch(ctxWithTx(tx), [incoming]);
+    await upsertInvoicesBatch(ctxWithTx(tx), [incoming]);
+
+    expect(insertCalls.find((c) => c.table === finInvoices)).toBeUndefined();
+    expect(tx.delete).not.toHaveBeenCalled();
+    const auditCall = insertCalls.find((c) => c.table === docAuditLog);
+    expect(auditCall?.rows).toEqual([
+      expect.objectContaining({
+        refType: 'fin_invoice',
+        refId: 'susii-inv-1',
+        op: 'update',
+        actorName: 'connector:sunat-sire',
+      }),
+    ]);
+  });
+
+  it('inserts only unmatched SUNAT documents from a mixed page', async () => {
+    const { upsertInvoicesBatch } = await import('./finance.service');
+    const { tx, insertCalls } = buildTx({
+      existingInvoices: [{ id: 'susii-inv-1', documentId: 'F001-1' }],
+    });
+
+    await upsertInvoicesBatch(ctxWithTx(tx), [
+      invoiceFixture({
+        provider: 'sunat-sire',
+        providerRef: 'sunat-car-1',
+        documentId: 'F001-1',
+      }),
+      invoiceFixture({
+        provider: 'sunat-sire',
+        providerRef: 'sunat-car-2',
+        documentId: 'F001-2',
+      }),
+    ]);
+
+    const invoiceCall = insertCalls.find((c) => c.table === finInvoices);
+    expect(invoiceCall?.rows).toEqual([
+      expect.objectContaining({ providerRef: 'sunat-car-2', documentId: 'F001-2' }),
+    ]);
+  });
 });
 
 describe('crm contacts audit (§B.2)', () => {
   it('updateContact writes a crm_contact audit row', async () => {
     vi.doMock('./activity.service', async () => {
-      const actual = await vi.importActual<typeof import('./activity.service')>('./activity.service');
+      const actual =
+        await vi.importActual<typeof import('./activity.service')>('./activity.service');
       return { ...actual, recordAudit: vi.fn(actual.recordAudit) };
     });
     const { updateContact } = await import('./crm-contacts.service');

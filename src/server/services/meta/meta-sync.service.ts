@@ -64,6 +64,7 @@ import {
   markFailed,
 } from './meta-post-media.service';
 import { upsertAdPosts, type AdPostInsertRow } from './meta-ad-posts.service';
+import { bustSocialsCache } from './meta-insights.service';
 
 /**
  * Shared Graph opts carrying the App Secret so every authenticated read sends
@@ -924,8 +925,7 @@ async function syncAds(
       for (;;) {
         if (!page.ok) {
           if (page.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
-          const priorFails =
-            resumedAccount && resume.cs === windows[w].since ? (resume.f ?? 0) : 0;
+          const priorFails = resumedAccount && resume.cs === windows[w].since ? (resume.f ?? 0) : 0;
           if (priorFails + 1 < MAX_WINDOW_ATTEMPTS) {
             // Transient Graph failure (rate limit, 5xx): park the job at this
             // window and let a later tick retry it. Skipping ahead on first
@@ -1294,6 +1294,7 @@ export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
     return;
   }
   await recordProgress(ctx, jobId, { pageCursor: result.cursor, countsDelta: result.counts });
+  await bustSocialsCache(ctx.tenantId);
   if (result.cursor) await requeue(ctx, jobId);
   else await finishJob(ctx, jobId, 'succeeded');
 }

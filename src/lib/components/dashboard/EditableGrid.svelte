@@ -1,10 +1,12 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
   import { browser } from '$app/environment';
+  import { page } from '$app/state';
   import { Pencil, Check, RotateCcw, GripVertical, Pin } from 'lucide-svelte';
   import type { Snippet } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { mergeLayout, reorder, clampSpan, type GridLayout, type Span } from './editable-grid';
+  import { loadDashboardLayout, primeDashboardLayout } from './dashboard-layout-cache';
 
   type Item = { id: string; w: number; h: number };
   let {
@@ -33,6 +35,7 @@
   } = $props();
 
   const storageKey = $derived(`dash:layout:${id}`);
+  const orgId = $derived(String(page.data.activeOrgId ?? ''));
   const defaults = $derived(items.map((it) => ({ id: it.id, w: it.w, h: it.h })));
   const byId = $derived(new Map(items.map((it) => [it.id, it])));
 
@@ -57,12 +60,17 @@
   $effect(() => {
     if (!browser) return;
     const key = id;
-    fetch(`/api/dashboard-layouts/${encodeURIComponent(key)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.layout?.order) serverDefault = d.layout as GridLayout;
+    const org = orgId;
+    let cancelled = false;
+    serverDefault = null;
+    loadDashboardLayout(org, key)
+      .then((defaultLayout) => {
+        if (!cancelled) serverDefault = defaultLayout;
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   });
 
   function persist(next: GridLayout) {
@@ -84,6 +92,7 @@
       });
       if (res.ok) {
         serverDefault = layout;
+        primeDashboardLayout(orgId, id, layout);
         savedDefaultAt = savedDefaultAt + 1;
       }
     } finally {
