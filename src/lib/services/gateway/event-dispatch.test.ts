@@ -81,6 +81,23 @@ describe('dispatchGatewayEvent', () => {
     expect(consoleError).not.toHaveBeenCalled();
   });
 
+  it('assimilates and reports a rejecting callable thenable', async () => {
+    const boom = new Error('callable thenable rejected');
+    const callableThenable = Object.assign(() => {}, {
+      then(_resolve: (value: unknown) => void, reject: (reason: unknown) => void) {
+        reject(boom);
+      },
+    });
+
+    dispatchGatewayEvent(frame, () => callableThenable);
+
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalledOnce());
+    expect(consoleError).toHaveBeenCalledExactlyOnceWith(
+      `${EVENT_HANDLER_FAILURE_PREFIX} (event=agent, seq=42)`,
+      boom,
+    );
+  });
+
   it('labels a frame that carries no usable event name or seq', () => {
     const boom = new Error('nameless');
 

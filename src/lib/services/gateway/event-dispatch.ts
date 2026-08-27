@@ -70,7 +70,7 @@ export function dispatchGatewayEvent<F extends DispatchableFrame>(
 
 function isThenable(value: unknown): value is PromiseLike<unknown> {
   return (
-    typeof value === 'object' &&
+    (typeof value === 'object' || typeof value === 'function') &&
     value !== null &&
     typeof (value as PromiseLike<unknown>).then === 'function'
   );
