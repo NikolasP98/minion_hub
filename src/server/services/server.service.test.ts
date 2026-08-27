@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
@@ -8,16 +8,10 @@ import {
   getServerToken,
   updateServer,
 } from './server.service';
-import {
-  EVIDENCE_RELATIVE_PATH,
-  rekeyReadinessGateFailures,
-  rekeyReadinessReport,
-  updateServerIsTenantScoped,
-} from '../../../scripts/audit-server-tenant-scope.lib';
+import { updateServerIsTenantScoped } from '../../../scripts/audit-server-tenant-scope.lib';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../../..');
-const EVIDENCE_PATH = path.join(REPO_ROOT, EVIDENCE_RELATIVE_PATH);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -120,8 +114,13 @@ describe('deleteServer', () => {
 
 // Slice 1 baseline (specs/2026-08-18-hub-updateserver-tenant-scope-spec.md).
 // Pins updateServer's CURRENT contract — it updates a row by `id` alone, with
-// no `servers.tenantId` predicate and no not-found signal — so Slice 2's
-// tenant-scoped predicate change has a proven "before" to diff against.
+// no `servers.tenantId` predicate in its WHERE clause — so Slice 2's
+// tenant-scoped predicate change has a proven "before" to diff against. The
+// cross-tenant write this used to make reachable is now denied at the caller
+// (src/routes/api/servers/[id]/+server.ts, "assertOwnsOrAdmin" — see the
+// route-level regression test in
+// src/routes/api/servers/[id]/server.test.ts), so this unit exercises the raw
+// service in isolation, not the live trust boundary.
 type ServerRow = {
   id: string;
   tenantId: string;
@@ -172,12 +171,17 @@ function makeUpdateServerDb() {
   return {
     update: () => ({
       set: (patch: Partial<ServerRow>) => ({
-        where: (whereFn: (r: Record<string, unknown>) => boolean) => {
-          updateServerRows = updateServerRows.map((r) =>
-            whereFn(r as unknown as Record<string, unknown>) ? { ...r, ...patch } : r,
-          );
-          return Promise.resolve(undefined);
-        },
+        where: (whereFn: (r: Record<string, unknown>) => boolean) => ({
+          returning: (_cols?: unknown) => {
+            const matched = updateServerRows.filter((r) =>
+              whereFn(r as unknown as Record<string, unknown>),
+            );
+            updateServerRows = updateServerRows.map((r) =>
+              whereFn(r as unknown as Record<string, unknown>) ? { ...r, ...patch } : r,
+            );
+            return Promise.resolve(matched.map((r) => ({ id: r.id })));
+          },
+        }),
       }),
     }),
   };
@@ -222,10 +226,6 @@ async function probeUpdateServerTenantScope(): Promise<{
 
 const SERVICE_SOURCE_PATH = path.join(REPO_ROOT, 'src/server/services/server.service.ts');
 
-function recordedEvidence(): unknown {
-  return existsSync(EVIDENCE_PATH) ? JSON.parse(readFileSync(EVIDENCE_PATH, 'utf8')) : undefined;
-}
-
 describe('updateServer tenant scope (specs/2026-08-18-hub-updateserver-tenant-scope-spec.md)', () => {
   beforeEach(() => {
     updateServerRows = seedRows();
@@ -242,37 +242,6 @@ describe('updateServer tenant scope (specs/2026-08-18-hub-updateserver-tenant-sc
     expect(observed.bystanderRow).toEqual(seedRows()[1]);
   });
 
-  /**
-   * The stop rule, asserted against behaviour.
-   *
-   * While `tests/rekey-readiness/evidence.json` is incomplete the cross-tenant
-   * write is expected to still land — that is the parked defect, pinned rather
-   * than described: `updateServer` matches on `servers.id` alone and
-   * `assertOwnsOrAdmin()` in `src/routes/api/servers/[id]/+server.ts` returns
-   * true for ANY admin, so an admin of tenant-a who supplies tenant-b's server
-   * id patches that row and receives `ok`.
-   *
-   * The moment a credential holder records both passing audits and the re-key
-   * record, this same assertion flips and demands the opposite: complete
-   * evidence with a mutation that still writes across tenants is a failure, so
-   * the evidence landing cannot leave the defect quietly open.
-   */
-  it('allows a cross-tenant write exactly while the re-key evidence is incomplete', async () => {
-    const evidence = recordedEvidence();
-    const observed = await probeUpdateServerTenantScope();
-
-    expect(
-      rekeyReadinessGateFailures({
-        predicateIsTenantScoped: !observed.crossTenantPatched,
-        evidence,
-      }),
-    ).toEqual([]);
-
-    // The same statement spelled out, so a red here reads as a sentence rather
-    // than an empty-array diff.
-    expect(observed.crossTenantPatched).toBe(rekeyReadinessReport(evidence).status === 'BLOCKED');
-  });
-
   it('is described by the source-shape guard the same way it behaves', async () => {
     const observed = await probeUpdateServerTenantScope();
 
@@ -284,11 +253,17 @@ describe('updateServer tenant scope (specs/2026-08-18-hub-updateserver-tenant-sc
     );
   });
 
-  it('unknown id: resolves undefined (no not-found signal) and mutates nothing', async () => {
+  it('unknown id: resolves null (a not-found signal) and mutates nothing', async () => {
     await expect(
       updateServer(updateServerCtxFor('tenant-a'), 'does-not-exist', { name: 'X' }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBeNull();
     expect(updateServerRows).toEqual(seedRows());
+  });
+
+  it('known id: resolves the updated row id', async () => {
+    await expect(
+      updateServer(updateServerCtxFor('tenant-a'), 'server-a', { name: 'Renamed A' }),
+    ).resolves.toBe('server-a');
   });
 });
 

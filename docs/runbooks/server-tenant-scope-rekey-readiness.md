@@ -1,9 +1,20 @@
 # Runbook — server tenant-scope re-key readiness audit (PR #130, Slice 1)
 
-**Status: BLOCKED — awaiting a credential holder.** No agent can clear this gate. The audit
-command, its comparison rules and its wiring are checked in and covered by tests; what is missing
-is the four evidence artifacts in [Evidence to record](#evidence-to-record), which can only be
-produced by someone holding real non-production and production credentials.
+**Status: BLOCKED (data-hygiene follow-up only) — the live IDOR this readiness gate exists for is
+closed.** As of the 2026-08-27 review-fix round, `src/routes/api/servers/[id]/+server.ts`
+(`assertOwnsOrAdmin`) resolves every `PUT`/`DELETE` target against the Supabase `gateway` registry
+(`gatewayBelongsToOrg`, org-scoped, independent of the Turso re-key) and, for servers not yet
+bridged into that registry, falls back to a Turso `servers.tenantId` **authorization check** —
+denying with 404 on a mismatch rather than the silent no-op a WHERE-clause predicate would risk —
+scoped per-user for non-admins. Cross-tenant admin bypass (an admin of one org mutating another
+org's server by supplying its id) is denied end to end; see
+`src/routes/api/servers/[id]/server.test.ts`. This gate's remaining BLOCKED status tracks a
+separate, non-blocking question: whether `updateServer`'s own Turso mutation may also carry
+`eq(servers.tenantId, ctx.tenantId)` in its WHERE clause (Slice 2, defense in depth). No agent can
+clear that gate. The audit command, its comparison rules and its wiring are checked in and covered
+by tests; what is missing is the four evidence artifacts in [Evidence to
+record](#evidence-to-record), which can only be produced by someone holding real non-production and
+production credentials.
 
 Check the current state in one command — it needs no credentials and reads only a file:
 
@@ -228,18 +239,20 @@ $ <same command with production credentials, redacted>
 
 ## Decision point for the human merge gate
 
-Slice 1 cannot be closed by any agent, so the call belongs to a human. Both options have a cost,
-and the cheaper-looking one is not free — that is what this section exists to say out loud.
+Slice 1's Turso-side predicate cannot be closed by any agent (it needs the credentialed evidence
+above), so that half of the call still belongs to a human. It is no longer a merge-blocking
+decision, though: the cross-tenant exploit this section used to describe is closed by a different,
+already-shipped mechanism (see the Status note at the top of this runbook), so "which option, and
+when" is now a data-hygiene question, not a live-vulnerability one.
 
-**Option A — keep Slice 2 parked until the evidence exists (what this branch implements).**
-Fail-closed with respect to the _data_: no predicate is added while it is unknown whether a live
-row would be silently denied by it. The cost is that the defect Slice 2 closes stays open in
-production for as long as the evidence takes. That defect is real and pinned by a test
-(`src/server/services/server.service.test.ts`, "updateServer tenant scope"): `updateServer` matches on
-`servers.id` alone, and `assertOwnsOrAdmin()` in `src/routes/api/servers/[id]/+server.ts` returns
-true for **any** admin, so an admin of one organization who supplies another organization's server
-id patches that row — name, url, gateway token — and receives `ok`. Parking is a decision to accept
-that exposure for the duration, not a neutral hold.
+**Option A — keep Slice 2 (the Turso WHERE-clause predicate) parked until the evidence exists
+(what this branch still does).** Fail-closed with respect to the _data_: no predicate is added
+while it is unknown whether a live row would be silently denied by it. This no longer leaves a
+cross-tenant write reachable — `assertOwnsOrAdmin()` in `src/routes/api/servers/[id]/+server.ts`
+now checks the Supabase gateway registry (or, for unbridged rows, Turso `servers.tenantId` as an
+authorization check rather than the mutation's own predicate) before `updateServer` ever runs, for
+every caller, admin included — so parking Slice 2 only defers the defense-in-depth predicate on the
+mutation itself, not authorization.
 
 **Option B — ship the predicate now, before the evidence.** Fail-closed with respect to
 _authorization_, at the risk the spec parked it for: if any live row still carries a pre-re-key
