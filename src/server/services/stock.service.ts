@@ -1493,12 +1493,26 @@ async function previewLinesForItemQtys(
  * `qtyConsumption` are converted authoritatively server-side (the client's own
  * `qty` is ignored) — the server owns the conversion factor, not the caller's
  * arithmetic. Shared by the invoice and service issue paths.
+ *
+ * Locks every line's item BEFORE reading `unitsPerStockUom` and BEFORE the
+ * caller inserts its `stk_entry_lines` rows — the same
+ * `lockItemsAgainstUomChange` protocol `createEntry`/`updateEntry` use,
+ * centralized here since both draft-issue writers (`insertSourcedIssueEntry`,
+ * `createIssueFromInvoice`) fan through this one function. A draft line is
+ * history under `itemHasHistory`, so a concurrent `applyUomChange` must not
+ * be able to check "no history" and rename the uom while a line derived from
+ * the OLD conversion factor is still in flight.
  */
 async function resolveConsumptionLines(
   tx: CoreTx,
   orgId: string,
   lines: CreateIssueFromInvoiceLine[],
 ): Promise<{ itemId: string; qty: number }[]> {
+  await lockItemsAgainstUomChange(
+    tx,
+    orgId,
+    lines.map((l) => l.itemId),
+  );
   const convertItemIds = [
     ...new Set(lines.filter((l) => l.qtyConsumption != null).map((l) => l.itemId)),
   ];

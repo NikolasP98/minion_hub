@@ -61,7 +61,9 @@ vi.mock('$server/db/with-org-core', () => ({
 }));
 
 const { createSellable, updateSellable, PosError } = await import('./pos.service');
-const { createEntry } = await import('./stock.service');
+const { createEntry, createSourcedIssue, createIssueFromInvoice } = await import(
+  './stock.service'
+);
 
 type Client = ReturnType<typeof postgres>;
 
@@ -204,6 +206,16 @@ const DDL = `
     note text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
+  );
+  create table fin_invoices (
+    id uuid primary key default gen_random_uuid(),
+    org_id text not null,
+    provider text not null,
+    provider_ref text not null,
+    shadowed boolean not null default false,
+    metadata jsonb not null default '{}',
+    synced_at timestamptz not null default now(),
+    created_at timestamptz not null default now()
   );
 `;
 
@@ -495,6 +507,146 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
         // counts as history — the UOM change must have been refused, and the
         // pre-race uom must still stand, exactly as if it had run strictly
         // after the entry rather than concurrently with it.
+        expect(uomResult.reason).toBeInstanceOf(PosError);
+        expect(uomResult.reason).toMatchObject({ code: 'uom_immutable' });
+        expect(item).toMatchObject({ uom: 'unit' });
+      }
+    });
+  }, 30_000);
+
+  // Same lock-protocol proof as above, but through the sourced-issue draft
+  // writer (createSourcedIssue → insertSourcedIssueEntry → the shared
+  // resolveConsumptionLines): stock.service.ts's `resolveConsumptionLines`
+  // must take the same lockItemsAgainstUomChange lock BEFORE deriving/writing
+  // its stk_entry_lines row, or a concurrent UOM PATCH could check "no
+  // history", rename the uom, and let this writer's draft land under the OLD
+  // conversion factor undetected.
+  it('LOCK PROTOCOL: a UOM PATCH racing a concurrent sourced-issue draft write on the same item serializes', async () => {
+    await withSchema(2, async ({ schema, owner, clients }) => {
+      const productId = crypto.randomUUID();
+      const itemId = crypto.randomUUID();
+      const warehouseId = crypto.randomUUID();
+      await owner.unsafe(
+        `insert into fin_products (id, org_id, code, name, category, unit_price, active)
+         values ($1, $2, 'SRC', 'Sourced', null, 100, true)`,
+        [productId, ORG_ID],
+      );
+      await owner.unsafe(
+        `insert into stk_items (id, org_id, code, name, uom, fin_product_id)
+         values ($1, $2, 'SRC', 'Sourced', 'unit', $3)`,
+        [itemId, ORG_ID, productId],
+      );
+      await owner.unsafe(`insert into stk_warehouses (id, org_id, name) values ($1, $2, 'Main')`, [
+        warehouseId,
+        ORG_ID,
+      ]);
+
+      const uomPid = await backendPid(clients[0]!);
+      const issuePid = await backendPid(clients[1]!);
+
+      await owner.unsafe('begin');
+      await owner.unsafe(`select id from ${schema}.stk_items where id = $1 for update`, [itemId]);
+
+      const uomPromise = updateSellable(ctxFor(clients[0]!), productId, { uom: 'mL' }, ACTOR);
+      const issuePromise = createSourcedIssue(ctxFor(clients[1]!), {
+        source: 'pos',
+        sourceId: 'src-race-1',
+        warehouseId,
+        lines: [{ itemId, qty: 5 }],
+        actor: ACTOR,
+      });
+
+      await waitUntilBlocked(owner, [uomPid, issuePid]);
+      await owner.unsafe('commit');
+
+      const [uomResult, issueResult] = await Promise.allSettled([uomPromise, issuePromise]);
+
+      // The sourced-issue writer is never the party this protocol refuses —
+      // it only ever serializes around the UOM change, so it must succeed.
+      expect(issueResult.status).toBe('fulfilled');
+
+      const [item] = await owner.unsafe<{ uom: string }[]>(
+        `select uom from ${schema}.stk_items where id = $1`,
+        [itemId],
+      );
+      const lines = await owner.unsafe<{ id: string }[]>(
+        `select id from ${schema}.stk_entry_lines where item_id = $1`,
+        [itemId],
+      );
+      expect(lines).toHaveLength(1);
+
+      if (uomResult.status === 'fulfilled') {
+        expect(item).toMatchObject({ uom: 'mL' });
+      } else {
+        expect(uomResult.reason).toBeInstanceOf(PosError);
+        expect(uomResult.reason).toMatchObject({ code: 'uom_immutable' });
+        expect(item).toMatchObject({ uom: 'unit' });
+      }
+    });
+  }, 30_000);
+
+  // Same proof again through the invoice-issue draft writer
+  // (createIssueFromInvoice), the second unguarded call site the same
+  // `resolveConsumptionLines` fix closes.
+  it('LOCK PROTOCOL: a UOM PATCH racing a concurrent invoice-issue draft write on the same item serializes', async () => {
+    await withSchema(2, async ({ schema, owner, clients }) => {
+      const productId = crypto.randomUUID();
+      const itemId = crypto.randomUUID();
+      const warehouseId = crypto.randomUUID();
+      const invoiceId = crypto.randomUUID();
+      await owner.unsafe(
+        `insert into fin_products (id, org_id, code, name, category, unit_price, active)
+         values ($1, $2, 'INV', 'Invoiced', null, 100, true)`,
+        [productId, ORG_ID],
+      );
+      await owner.unsafe(
+        `insert into stk_items (id, org_id, code, name, uom, fin_product_id)
+         values ($1, $2, 'INV', 'Invoiced', 'unit', $3)`,
+        [itemId, ORG_ID, productId],
+      );
+      await owner.unsafe(`insert into stk_warehouses (id, org_id, name) values ($1, $2, 'Main')`, [
+        warehouseId,
+        ORG_ID,
+      ]);
+      await owner.unsafe(
+        `insert into fin_invoices (id, org_id, provider, provider_ref) values ($1, $2, 'susii', 'REF-1')`,
+        [invoiceId, ORG_ID],
+      );
+
+      const uomPid = await backendPid(clients[0]!);
+      const issuePid = await backendPid(clients[1]!);
+
+      await owner.unsafe('begin');
+      await owner.unsafe(`select id from ${schema}.stk_items where id = $1 for update`, [itemId]);
+
+      const uomPromise = updateSellable(ctxFor(clients[0]!), productId, { uom: 'mL' }, ACTOR);
+      const issuePromise = createIssueFromInvoice(ctxFor(clients[1]!), {
+        invoiceId,
+        warehouseId,
+        lines: [{ itemId, qty: 5 }],
+        actor: ACTOR,
+      });
+
+      await waitUntilBlocked(owner, [uomPid, issuePid]);
+      await owner.unsafe('commit');
+
+      const [uomResult, issueResult] = await Promise.allSettled([uomPromise, issuePromise]);
+
+      expect(issueResult.status).toBe('fulfilled');
+
+      const [item] = await owner.unsafe<{ uom: string }[]>(
+        `select uom from ${schema}.stk_items where id = $1`,
+        [itemId],
+      );
+      const lines = await owner.unsafe<{ id: string }[]>(
+        `select id from ${schema}.stk_entry_lines where item_id = $1`,
+        [itemId],
+      );
+      expect(lines).toHaveLength(1);
+
+      if (uomResult.status === 'fulfilled') {
+        expect(item).toMatchObject({ uom: 'mL' });
+      } else {
         expect(uomResult.reason).toBeInstanceOf(PosError);
         expect(uomResult.reason).toMatchObject({ code: 'uom_immutable' });
         expect(item).toMatchObject({ uom: 'unit' });

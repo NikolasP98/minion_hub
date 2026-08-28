@@ -162,8 +162,8 @@ export interface WriteDepositRuleResult {
  * `depositWriteSchema`-validated (the route does this; `updatedAt` is never
  * client-supplyable and is stamped here).
  *
- * ONE statement does the read-modify-write: `insert ... on conflict do
- * update set value = crm_settings.value || jsonb_build_object('deposit', …)`
+ * ONE statement does the read-modify-write: `insert().onConflictDoUpdate()`
+ * with `set.value = coalesce(crm_settings.value, '{}') || jsonb_build_object('deposit', …)`
  * merges only the `deposit` key so sibling keys (`accounts`,
  * `disabled_channels`, …) survive untouched, and there is no separate
  * select-then-update window for a concurrent writer to land in between.
@@ -184,14 +184,22 @@ export async function writeDepositRule(
   const rule = normalizeDepositRule(stored);
 
   return withOrgCore(ctx, async (tx) => {
-    await tx.execute(sql`
-      insert into crm_settings (org_id, value, updated_at)
-      values (${ctx.tenantId}, jsonb_build_object('deposit', ${JSON.stringify(stored)}::jsonb), now())
-      on conflict (org_id) do update
-      set value = coalesce(crm_settings.value, '{}'::jsonb)
-            || jsonb_build_object('deposit', ${JSON.stringify(stored)}::jsonb),
-          updated_at = now()
-    `);
+    // Same key-merge shape as crm-contacts.service.ts's persistConfigs (the
+    // repository's proven pattern for a shared jsonb KV row): the Drizzle
+    // builder's `sql` fragment references the column directly rather than a
+    // hand-rolled `insert ... on conflict` string, so the merge is verified
+    // against the same query-construction path every other `crm_settings`
+    // writer uses.
+    await tx
+      .insert(crmSettings)
+      .values({ orgId: ctx.tenantId, value: { deposit: stored } })
+      .onConflictDoUpdate({
+        target: crmSettings.orgId,
+        set: {
+          value: sql`coalesce(${crmSettings.value}, '{}'::jsonb) || jsonb_build_object('deposit', ${JSON.stringify(stored)}::jsonb)`,
+          updatedAt: sql`now()`,
+        },
+      });
 
     const [row] = (await tx.execute(sql`
       select count(*)::int as count
