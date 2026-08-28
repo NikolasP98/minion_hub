@@ -187,9 +187,16 @@ export async function writeDepositRule(
     // Same key-merge shape as crm-contacts.service.ts's persistConfigs (the
     // repository's proven pattern for a shared jsonb KV row): the Drizzle
     // builder's `sql` fragment references the column directly rather than a
-    // hand-rolled `insert ... on conflict` string, so the merge is verified
-    // against the same query-construction path every other `crm_settings`
-    // writer uses.
+    // hand-rolled `insert ... on conflict` string, so the merge is built by the
+    // same query-construction path every other `crm_settings` writer uses.
+    //
+    // The `deposit` payload rides Drizzle's own jsonb binding on the insert
+    // branch and a `jsonb_build_object` parameter on the conflict branch; both
+    // are proven to land as a jsonb OBJECT (and to leave sibling keys intact)
+    // by crm-settings.sql.integration.test.ts against a real server. Do not
+    // "simplify" a sibling seed or write here into a hand-stringified
+    // `JSON.stringify(x)::jsonb` parameter — see that file's `seedJsonb` doc
+    // comment for why postgres-js double-encodes those into a jsonb string.
     await tx
       .insert(crmSettings)
       .values({ orgId: ctx.tenantId, value: { deposit: stored } })

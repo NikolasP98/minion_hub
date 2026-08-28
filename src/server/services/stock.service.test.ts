@@ -346,6 +346,7 @@ describe('createIssueFromInvoice — duplicate guard + happy path', () => {
     resolveSequence([
       [{ id: 'inv1', providerRef: 'REF-1' }], // invoice
       [], // no duplicate
+      [], // lockItemsAgainstUomChange: `select … from stk_items … for share`
       [{ id: 'entry1', orgId: 'org-1', type: 'issue', status: 'draft' }], // stk_entries insert
       [], // stk_entry_lines insert
     ]);
@@ -507,6 +508,7 @@ describe('createServiceIssue — customer + procedure note, no invoice', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ id: 'p1', name: 'Menton (Opera II)' }], // product lookup
+      [], // lockItemsAgainstUomChange: `select … from stk_items … for share`
       [{ id: 'entry1', orgId: 'org-1', type: 'issue', status: 'draft' }], // stk_entries insert
       [], // stk_entry_lines insert
     ]);
@@ -547,6 +549,7 @@ describe('createServiceIssue — source generalization', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ id: 'p1', name: 'Botox' }], // product
+      [], // lockItemsAgainstUomChange: `select … from stk_items … for share`
       [
         {
           id: 'e1',

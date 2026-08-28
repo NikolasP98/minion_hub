@@ -88,13 +88,58 @@ async function withSchema<T>(
 
 const ctxFor = (client: Client) => ({ db: drizzle(client) as never, tenantId: ORG_ID });
 
+/**
+ * Seeds `crm_settings.value` as a real jsonb OBJECT and proves it landed as
+ * one before any assertion depends on it.
+ *
+ * ★ The cast is `::text::jsonb`, not `::jsonb`, and that is load-bearing.
+ * postgres-js is opened with `prepare: false` (matching `pg-pool.ts`), so every
+ * parameterised statement takes the describe-first path: it Parses, waits for
+ * the server's `ParameterDescription`, then Binds using the SERVER-declared
+ * parameter types (`connection.js` → `ParameterDescription` → `prepared` →
+ * `Bind`). `Bind` runs `options.serializers[type]` on the value, and
+ * postgres-js registers `JSON.stringify` for both json OIDs (114 and 3802).
+ * With `$2::jsonb` PostgreSQL declares the parameter as jsonb, so an
+ * already-`JSON.stringify`-ed argument is stringified a SECOND time and the row
+ * stores the jsonb string `"{\"disabled_channels\":…}"` — a scalar, not an
+ * object. `'"…"'::jsonb || '{"deposit":…}'::jsonb` then evaluates to a jsonb
+ * ARRAY, which is why the sibling-key assertions read `undefined`.
+ * `$2::text::jsonb` declares the parameter as text, so the raw string goes on
+ * the wire and PostgreSQL parses it into an object.
+ *
+ * Drizzle's own jsonb binding (`.values({ value: … })`) is unaffected — only
+ * hand-written `${JSON.stringify(x)}::jsonb` parameters hit this.
+ */
+async function seedJsonb(
+  owner: Client,
+  schema: string,
+  orgId: string,
+  value: Record<string, unknown>,
+): Promise<void> {
+  await owner.unsafe(
+    `insert into ${schema}.crm_settings (org_id, value) values ($1, $2::text::jsonb)`,
+    [orgId, JSON.stringify(value)],
+  );
+  const [seeded] = await owner.unsafe<{ kind: string }[]>(
+    `select jsonb_typeof(value) as kind from ${schema}.crm_settings where org_id = $1`,
+    [orgId],
+  );
+  // Fail HERE, on the fixture, if the seed ever silently double-encodes again
+  // — not twenty lines later on an assertion about the shipped merge.
+  expect(seeded?.kind).toBe('object');
+}
+
 describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL', () => {
   it('merges the deposit key without disturbing a sibling key, stamps updatedAt server-side, and resolveDepositRule agrees immediately', async () => {
     await withSchema(async ({ schema, owner, client }) => {
-      await owner.unsafe(
-        `insert into ${schema}.crm_settings (org_id, value) values ($1, $2::jsonb)`,
-        [ORG_ID, JSON.stringify({ disabled_channels: ['whatsapp'], accounts: ['a1'] })],
-      );
+      // ★ `$2::text::jsonb`, NOT `$2::jsonb` — see seedJsonb's doc comment. A
+      //   `$2::jsonb` seed here stores a jsonb STRING, and `string || object`
+      //   yields a jsonb ARRAY, so every sibling-key assertion below reads
+      //   `undefined` and blames the shipped merge for a fixture defect.
+      await seedJsonb(owner, schema, ORG_ID, {
+        disabled_channels: ['whatsapp'],
+        accounts: ['a1'],
+      });
 
       // Mirrors the real call sequence: the route validates through
       // depositWriteSchema (trims, does NOT lowercase) before writeDepositRule
@@ -117,6 +162,19 @@ describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL',
       // property a mocked "the SQL contains ||" assertion cannot prove.
       expect(row!.value.disabled_channels).toEqual(['whatsapp']);
       expect(row!.value.accounts).toEqual(['a1']);
+
+      // Asserted in SQL, not through Drizzle: `mapFromDriverValue` JSON.parses a
+      // string-typed jsonb column, so a double-encoded write round-trips
+      // invisibly through the ORM. `jsonb_typeof` is the only reader that can
+      // tell "an object" from "a string that looks like one", and everything
+      // that reads this row in SQL (`value->'deposit'`, `#>>`) depends on the
+      // difference.
+      const [kinds] = await owner.unsafe<{ doc: string; deposit: string }[]>(
+        `select jsonb_typeof(value) as doc, jsonb_typeof(value->'deposit') as deposit
+           from ${schema}.crm_settings where org_id = $1`,
+        [ORG_ID],
+      );
+      expect(kinds).toMatchObject({ doc: 'object', deposit: 'object' });
 
       const deposit = row!.value.deposit as {
         keywords: string[];

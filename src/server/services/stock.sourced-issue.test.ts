@@ -20,6 +20,11 @@ const actor = { id: 'u1', name: 'Test User' };
  */
 function buildTx(itemRows: Array<{ id: string; unitsPerStockUom: string | null }> = []) {
   const insertCalls: Array<{ table: unknown; rows: unknown[] }> = [];
+  /** Every row-lock the service took: `mode` is the `for(...)` strength and
+   *  `insertsBefore` is how many inserts had already run, so a test can assert
+   *  the lock was taken BEFORE the draft lines were written rather than merely
+   *  somewhere in the same transaction. */
+  const lockCalls: Array<{ table: unknown; mode: string; insertsBefore: number }> = [];
   const insert = vi.fn((table: unknown) => ({
     values: (rows: unknown) => {
       const rowsArr = Array.isArray(rows) ? rows : [rows];
@@ -30,13 +35,25 @@ function buildTx(itemRows: Array<{ id: string; unitsPerStockUom: string | null }
       return Promise.resolve(undefined);
     },
   }));
+  // Thenable so a plain `await …where(…)` resolves, while
+  // `lockItemsAgainstUomChange`'s `.orderBy(…).for('share')` tail still chains.
+  const rowsChain = (table: unknown, rows: unknown[]) => ({
+    then: (onFulfilled: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) =>
+      Promise.resolve(rows).then(onFulfilled, onRejected),
+    orderBy: () => ({
+      for: (mode: string) => {
+        lockCalls.push({ table, mode, insertsBefore: insertCalls.length });
+        return Promise.resolve(rows);
+      },
+    }),
+  });
   const select = vi.fn(() => ({
     from: (table: unknown) => ({
-      where: () => Promise.resolve(table === stkItems ? itemRows : []),
+      where: () => rowsChain(table, table === stkItems ? itemRows : []),
     }),
   })); // no duplicate found; optional item rows support authoritative UOM conversion
   const execute = vi.fn().mockResolvedValue(undefined);
-  return { tx: { insert, select, execute }, insertCalls };
+  return { tx: { insert, select, execute }, insertCalls, lockCalls };
 }
 
 function ctxWithTx(tx: unknown) {
@@ -104,6 +121,32 @@ describe('createSourcedIssue — draft creation', () => {
     ]);
   });
 
+  // Review finding: a draft `stk_entry_lines` row IS history under
+  // `itemHasHistory`, so `applyUomChange` must not be able to observe "no
+  // history", rename the uom, and leave a line derived from the OLD conversion
+  // factor behind it. `resolveConsumptionLines` therefore takes the shared
+  // `stk_items` lock before it reads `unitsPerStockUom` and before the caller
+  // inserts anything. The real-PostgreSQL serialization proof lives in
+  // pos.trackstock.concurrent.integration.test.ts; this asserts the ordering
+  // that proof depends on, in the suite that runs everywhere.
+  it('takes the shared stk_items lock before writing any draft row', async () => {
+    const { tx, insertCalls, lockCalls } = buildTx([{ id: 'item1', unitsPerStockUom: null }]);
+
+    await createSourcedIssue(ctxWithTx(tx), {
+      source: 'pos',
+      sourceId: 't-lock',
+      warehouseId: 'wh1',
+      lines: [{ itemId: 'item1', qty: 2 }],
+      actor,
+    });
+
+    expect(lockCalls).toHaveLength(1);
+    expect(lockCalls[0]).toMatchObject({ table: stkItems, mode: 'share', insertsBefore: 0 });
+    // …and the draft rows really were written after it, so `insertsBefore: 0`
+    // means "before the inserts", not "there were never any inserts".
+    expect(insertCalls.map((c) => c.table)).toEqual([stkEntries, stkEntryLines]);
+  });
+
   it('converts consumption UOM authoritatively and ignores the caller stock fallback', async () => {
     const { tx, insertCalls } = buildTx([{ id: 'item-h', unitsPerStockUom: '15' }]);
 
@@ -137,6 +180,7 @@ describe('createSourcedIssue — submit path', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [], // dup check — no existing entry
+      [], // lockItemsAgainstUomChange: `select … from stk_items … for share`
       [{ id: 'entry1', orgId: 'org-1', type: 'issue', status: 'draft' }], // stk_entries insert returning
       [], // stk_entry_lines insert
       [{ id: 'entry1', orgId: 'org-1', status: 'draft', type: 'issue', humanId: 'STE-PRESET' }], // submitEntry: select entry for update
