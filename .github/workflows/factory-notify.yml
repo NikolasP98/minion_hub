@@ -1,0 +1,16 @@
+name: Factory Notify
+# Every push to a deploy branch pokes the factory's level-triggered reconcile
+# sweep (idempotent, 409-deduped) so board intake reacts in minutes, not the
+# 4h poll. Scoped secret: can ONLY trigger reconcile/monitor intake.
+on:
+  push:
+    branches: [master]
+jobs:
+  poke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Poke factory reconcile
+        run: |
+          curl -fsS -m 20 -X POST https://factory.minion-ai.org/pipeline/reconcile \
+            -H "authorization: Bearer ${{ secrets.FACTORY_HOOK_SECRET }}" || true

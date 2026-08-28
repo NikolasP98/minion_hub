@@ -13,7 +13,13 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { emitToBeta, submitBaja, submitResumen, type EmissionInvoice } from '../src/server/finance/emission/index.ts';
+import {
+  emitToBeta,
+  submitBaja,
+  submitResumen,
+  type EmissionInvoice,
+} from '../src/server/finance/emission/index.ts';
+import { rateArg } from './_rate-arg.ts';
 
 const certDir = join(import.meta.dirname, '..', '.beta-cert');
 const certPem = readFileSync(join(certDir, 'cert.pem'), 'utf8');
@@ -21,6 +27,11 @@ const keyPem = readFileSync(join(certDir, 'key.pem'), 'utf8');
 
 const today = new Date().toISOString().slice(0, 10);
 const emitter = { ruc: '20611172967', razonSocial: 'FACES BETA SAC' };
+// Synthetic payloads with no org behind them, so the rate is explicit here —
+// `--rate 0.10` puts a non-statutory resumen in front of SUNAT's real
+// validator without editing this file. boleta2/factura spread boleta1, so
+// setting it once covers every document this harness sends.
+const igvRate = rateArg();
 
 const boleta1: EmissionInvoice = {
   docType: '03',
@@ -28,6 +39,7 @@ const boleta1: EmissionInvoice = {
   correlativo: '1',
   issueDate: today,
   currency: 'PEN',
+  igvRate,
   emitter: { ...emitter, ubigeo: '150101', address: 'AV BETA 123, LIMA' },
   client: { docType: '1', docNumber: '12345678', name: 'CLIENTE DE PRUEBA UNO' },
   lines: [{ description: 'Servicio de prueba resumen 1', quantity: 1, unitPriceInclTax: 118 }],
@@ -60,6 +72,8 @@ async function step(label: string, fn: () => Promise<unknown>) {
   }
   await sleep(3000); // beta gateway rate-limits back-to-back requests
 }
+
+console.log(`=== resumen/baja live-beta run at IGV ${igvRate * 100}% ===`);
 
 await step('emit boleta B998-1', () => emitToBeta(boleta1, certPem, keyPem));
 await step('emit boleta B998-2', () => emitToBeta(boleta2, certPem, keyPem));
@@ -104,7 +118,9 @@ await step('submitBaja RA-1: F998-1', () =>
       correlativo: '1',
       referenceDate: today,
       issueDate: today,
-      lines: [{ docType: '01', serie: 'F998', correlativo: '1', motivo: 'ERROR EN EL COMPROBANTE' }],
+      lines: [
+        { docType: '01', serie: 'F998', correlativo: '1', motivo: 'ERROR EN EL COMPROBANTE' },
+      ],
     },
     certPem,
     keyPem,

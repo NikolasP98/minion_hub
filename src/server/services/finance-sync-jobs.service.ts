@@ -210,11 +210,18 @@ export async function findResumableJobs(
  * Bypass-RLS by design (not request-scoped); the caller builds a per-org CoreCtx.
  */
 export async function listEnabledSources(
-  provider: string,
+  provider?: string,
 ): Promise<Array<{ orgId: string; provider: string }>> {
   const db = getCoreDb();
+  // No provider ⇒ every enabled source (the daily cron syncs them all — it was
+  // hardcoded to 'susii', which silently exempted 'sunat-sire' from any
+  // scheduled sync after the SUNAT cutover).
   return db
     .select({ orgId: finSources.orgId, provider: finSources.provider })
     .from(finSources)
-    .where(and(eq(finSources.provider, provider), eq(finSources.enabled, true)));
+    .where(
+      provider
+        ? and(eq(finSources.provider, provider), eq(finSources.enabled, true))
+        : eq(finSources.enabled, true),
+    );
 }

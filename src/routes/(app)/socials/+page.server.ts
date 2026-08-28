@@ -2,6 +2,7 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import {
+<<<<<<< HEAD
   adDataExtent,
   adKpis,
   adSpendSeries,
@@ -14,6 +15,15 @@ import {
 } from '$server/services/meta/meta-insights.service';
 import { adPerformanceByCampaign } from '$server/services/meta/ad-performance.service';
 import { ALL_PERIODS, type Period } from '$lib/components/dashboard/date-range';
+=======
+  extentToRange,
+  socialDashboardContext,
+  socialDashboardData,
+  type DataExtent,
+  type DateRange,
+} from '$server/services/meta/meta-insights.service';
+import { ServerTiming } from '$lib/server/server-timing';
+>>>>>>> origin/master
 
 const THIRTY_DAYS_MS = 30 * 86_400_000;
 
@@ -38,6 +48,7 @@ function resolveRange(url: URL, extent: DataExtent): DateRange {
     : defaultRange;
 }
 
+<<<<<<< HEAD
 /** Chart granularity. Bucketing itself happens client-side over the daily
  *  series (already loaded) — the server only echoes a validated selection so
  *  the choice survives a reload / shared link. */
@@ -47,20 +58,31 @@ function resolvePeriod(url: URL): Period {
 }
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
+=======
+export const load: PageServerLoad = async ({ locals, url, depends, setHeaders }) => {
+  const timing = new ServerTiming();
+>>>>>>> origin/master
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('ads:data');
 
+<<<<<<< HEAD
   // Fetched together — extent on an unconnected org is a cheap empty-table
   // read, and serializing these two costs a full RLS-txn round-trip each
   // against a remote pooler.
   const [connections, extentRaw] = await Promise.all([listConnections(ctx), adDataExtent(ctx)]);
   const hasConnection = connections.some((c) => c.status !== 'revoked');
   const extent: DataExtent = hasConnection ? extentRaw : { minDate: null, maxDate: null };
+=======
+  const context = await timing.measure('social_context', () => socialDashboardContext(ctx));
+  const { hasConnection } = context;
+  const extent: DataExtent = hasConnection ? context.extent : { minDate: null, maxDate: null };
+>>>>>>> origin/master
   const range = resolveRange(url, extent);
   const period = resolvePeriod(url);
 
   if (!hasConnection) {
+<<<<<<< HEAD
     return {
       range,
       period,
@@ -103,4 +125,14 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
     posts,
     lastSync: lastSync && { finishedAt: lastSync.finishedAt, status: lastSync.status },
   };
+=======
+    setHeaders({ 'Server-Timing': timing.headerValue() });
+    return { range, hasConnection, extent, kpis: null, series: [], campaigns: [], posts: [] };
+  }
+
+  const dashboard = await timing.measure('social_data', () => socialDashboardData(ctx, range));
+  setHeaders({ 'Server-Timing': timing.headerValue() });
+
+  return { range, hasConnection, extent, ...dashboard };
+>>>>>>> origin/master
 };

@@ -7,11 +7,11 @@ import { buildRouteInventory } from './ui-audit-inventory.mjs';
 import baseline from '../tests/ui-audit/current-baseline.json';
 
 describe('UI audit route inventory', () => {
-  it('locks the complete endpoint ledger at 135 screens and 7 redirects', async () => {
+  it('locks the complete endpoint ledger at 140 screens and 10 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
-    expect(inventory.summary).toMatchObject({ endpoints: 142, screens: 135, redirects: 7 });
-    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(142);
+    expect(inventory.summary).toMatchObject({ endpoints: 150, screens: 140, redirects: 10 });
+    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(150);
     expect(
       inventory.routes.filter((route) => route.kind === 'redirect').map((route) => route.pattern),
     ).toEqual([
@@ -20,6 +20,9 @@ describe('UI audit route inventory', () => {
       '/builder',
       '/crm/cleanup',
       '/pos',
+      '/shells',
+      '/shells/[shellId]',
+      '/terminal',
       '/tools',
       '/workshop/[...path]',
     ]);
@@ -28,8 +31,7 @@ describe('UI audit route inventory', () => {
         .filter((route) => route.kind === 'redirect')
         .every((route) => route.redirectContract),
     ).toBe(true);
-    expect(inventory.sourceRef).toBe(baseline.sourceRef);
-    expect(inventory.sourceCommit).toBe(baseline.sourceCommit);
+    expect(inventory.sourceTreeSha).toBe(baseline.sourceTreeSha);
     expect(inventory.workingTreeFingerprint).toBe(baseline.workingTreeFingerprint);
   });
 
@@ -64,9 +66,55 @@ describe('UI audit route inventory', () => {
       expect(after).toEqual(before);
       expect(after.sourceRef).toBe('HEAD');
       expect(after.sourceCommit).toMatch(/^[0-9a-f]{40}$/);
-      expect(after.workingTreeFingerprint).toBe(`git:${after.sourceCommit}:${after.sourceTreeSha}`);
+      expect(after.workingTreeFingerprint).toBe(`git-tree:${after.sourceTreeSha}`);
       expect(workingTree.routes[0].observations.nativeButtons).toBe(1);
       expect(workingTree.workingTreeFingerprint).not.toBe(after.workingTreeFingerprint);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('validates unchanged route content when a recorded feature commit is absent', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'minion-ui-inventory-shallow-'));
+    const routeFile = path.join(root, 'src/routes/example/+page.svelte');
+    const baselineFile = path.join(root, 'tests/ui-audit/current-baseline.json');
+    try {
+      await mkdir(path.dirname(routeFile), { recursive: true });
+      await mkdir(path.dirname(baselineFile), { recursive: true });
+      await writeFile(routeFile, '<h1>Durable route tree</h1>\n');
+      await writeFile(
+        baselineFile,
+        `${JSON.stringify({
+          sourceCommit: '0000000000000000000000000000000000000000',
+        })}\n`,
+      );
+      execFileSync('git', ['init', '--quiet'], { cwd: root });
+      execFileSync('git', ['add', '.'], { cwd: root });
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=UI Audit',
+          '-c',
+          'user.email=ui-audit@minion.test',
+          'commit',
+          '--quiet',
+          '-m',
+          'shallow checkout',
+        ],
+        { cwd: root },
+      );
+
+      const inventory = await buildRouteInventory({ cleanBaseline: true, repositoryRoot: root });
+      const recordedTreeSha = execFileSync('git', ['rev-parse', 'HEAD:src/routes'], {
+        cwd: root,
+        encoding: 'utf8',
+      }).trim();
+
+      expect(inventory.sourceRef).toBe('HEAD');
+      expect(inventory.sourceTreeSha).toBe(recordedTreeSha);
+      expect(inventory.workingTreeFingerprint).toBe(`git-tree:${recordedTreeSha}`);
+      expect(inventory.routes.map((route) => route.pattern)).toEqual(['/example']);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -76,7 +124,10 @@ describe('UI audit route inventory', () => {
     const inventory = await buildRouteInventory();
     const terminal = inventory.routes.find((route) => route.pattern === '/terminal');
 
-    expect(inventory.summary).toMatchObject({ endpoints: 152, screens: 142, redirects: 10 });
+    // Unlike the pinned-commit ledger above, this reads the WORKTREE (no
+    // cleanBaseline flag), so it reflects the route surface at HEAD-with-
+    // uncommitted-changes, not the immutable pre-program commit.
+    expect(inventory.summary).toMatchObject({ endpoints: 150, screens: 140, redirects: 10 });
     expect(terminal).toMatchObject({
       kind: 'redirect',
       source: 'src/routes/(app)/terminal/+page.svelte',

@@ -90,6 +90,9 @@ export const stkWarehouses = pgTable(
     /** Accrual paths (booking create) have no warehouse input — this org's
      *  default is used, else the earliest-created. One per org (partial uniq). */
     isDefault: boolean('is_default').notNull().default(false),
+    /** NULL = active. Set (not deleted) by updateWarehouse's archive guard —
+     *  see 20260823120000_stk_warehouses_archived.sql. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -233,7 +236,8 @@ export const stkAccruals = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
-    /** 'booking' today; 'order' later. Plain 'service' issues never accrue. */
+    /** 'booking' today; 'order' later. Manual service issues (createServiceIssue,
+     *  via the /api/gateway/actions/stock-issue-from-service action) never accrue. */
     source: text('source').notNull(),
     sourceId: uuid('source_id').notNull(),
     /** Soft ref → fin_products (the sold service that drove the accrual). */

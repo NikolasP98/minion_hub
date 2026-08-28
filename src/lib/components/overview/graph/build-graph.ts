@@ -3,9 +3,6 @@ import { INTEGRATIONS, integrationIconUrl } from '$lib/types/entities';
 import { areaIconDataUri } from '$lib/utils/lucide-svg';
 import { ARCHETYPE_AVATAR_STYLE } from '$lib/utils/avatar';
 
-// 'contact'/'channel' are consumed by the CRM relationship graph
-// (`$lib/components/crm/graph/build-crm-graph.ts`), which reuses this shared
-// node/edge shape + the simulation/renderer stack rather than forking them.
 export type NodeKind =
   'org' | 'area' | 'skill' | 'integration' | 'agent' | 'user' | 'shared' | 'contact' | 'channel';
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { goto } from '$lib/navigation';
-  import { invalidate } from '$app/navigation';
+  import { invalidate, replaceState } from '$app/navigation';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
@@ -23,12 +23,7 @@
   import FunnelStagePill from '$lib/components/crm/FunnelStagePill.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import Highlight from '$lib/components/crm/Highlight.svelte';
-  import {
-    relativeTime,
-    contactLabel,
-    temperatureOf,
-    identityValue,
-  } from '$lib/components/crm/crm-format';
+  import { relativeTime, contactLabel, identityValue } from '$lib/components/crm/crm-format';
   import { stageLabel, funnelStageLabel } from '$lib/components/crm/crm-i18n';
   import {
     FUNNEL_ORDER,
@@ -36,35 +31,56 @@
     maxFunnelStage,
     financeFloorStage,
   } from '$lib/components/crm/crm-funnel';
-  import { collectMetaKeys, metaLabel, metaDisplay } from '$lib/components/crm/crm-meta';
+  import { metaLabel, metaDisplay } from '$lib/components/crm/crm-meta';
   import { canAct } from '$lib/access/can.svelte';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
-  import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import type { DataColumn, ServerQuery } from '$lib/components/data-table/DataTable.svelte';
   import CrmMergeResolver from '$lib/components/crm/CrmMergeResolver.svelte';
   import {
     applyContactMerge,
     type MergeField,
     type MergeResolution,
   } from '$lib/components/crm/crm-merge';
+  import { CustomerPageCache, isAbortError } from '$lib/components/crm/customer-page-cache';
+  import { crmCountScopeFingerprint } from '$lib/components/crm/customer-query';
 
   let { data }: { data: PageData } = $props();
-  // The roster is STREAMED (10MB+ at 15k contacts) so navigation paints the
-  // shell instantly; resolve it into state when it lands. The promise identity
-  // guard drops out-of-order resolutions across invalidations.
-  type Roster = Awaited<PageData['streamed']['roster']>;
-  let roster = $state<Roster | null>(null);
-  $effect(() => {
-    const pending = data.streamed.roster;
-    roster = null;
-    pending.then((r) => {
-      if (pending === data.streamed.roster) roster = r;
-    });
-  });
-  const contacts = $derived(roster?.contacts ?? []);
-  const financeEnabled = $derived(roster?.financeEnabled ?? false);
-  const rosterLoading = $derived(roster === null);
   const tags = $derived(data.tags);
-  type Row = Roster['contacts'][number];
+  type Row = (typeof data.contacts)[number];
+
+  // ── Server-mode rows (spec 2026-08-13 §S5) ─────────────────────────────────
+  // `data.contacts` is ONE page resolved by the server load from the URL;
+  // interactions refetch through GET /api/crm/contacts (same contract). After
+  // `invalidate('crm:contacts')` the load re-runs with the synced URL, and this
+  // resync keeps local rows consistent with it.
+  // svelte-ignore state_referenced_locally
+  let rows = $state<Row[]>(data.contacts);
+  // svelte-ignore state_referenced_locally
+  let total = $state<number>(data.total);
+  let knownTotalFingerprint: string | null = null;
+  let loading = $state(false);
+  type PageBody = {
+    contacts: Row[];
+    total: number | null;
+    hasMore: boolean;
+    financeEnabled: boolean;
+  };
+  const pageCache = new CustomerPageCache<PageBody>(async (url, signal) => {
+    const res = await fetch(url, { signal });
+    if (!res.ok) throw new Error(`CRM page request failed (${res.status})`);
+    return res.json() as Promise<PageBody>;
+  });
+  let pageCacheEpoch = 0;
+  function clearPageCache() {
+    pageCacheEpoch += 1;
+    pageCache.clear();
+  }
+  $effect(() => {
+    clearPageCache();
+    rows = data.contacts;
+    total = data.total;
+    knownTotalFingerprint = crmCountScopeFingerprint(toApiParams(buildParams(lastQuery)));
+  });
 
   // Personal orgs de-emphasize the sales funnel (WP2) — no funnel column.
   const isPersonal = $derived(page.data.activeOrgKind === 'personal');
@@ -88,7 +104,9 @@
     );
 
   // ── Filter options ──────────────────────────────────────────────────────────
-  const metaKeys = $derived(collectMetaKeys(contacts));
+  // Org-wide distinct custom_fields keys from the server (`getMetaKeys`) — the
+  // page only ships 100 rows now, so scanning them would miss most keys.
+  const metaKeys = $derived(data.metaKeys);
   const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'];
   const stageOptions = STAGES.map((s) => ({ value: s, label: stageLabel(s) }));
   const funnelOptions = FUNNEL_ORDER.map((id) => ({ value: id, label: funnelStageLabel(id) }));
@@ -122,13 +140,12 @@
       : c.sex === 'F'
         ? m.crm_sex_f()
         : ((c.custom_fields?.sexo as string | undefined) ?? '');
-  const channelOptions = $derived.by(() => {
-    const s = new Set<string>();
-    for (const c of contacts) for (const ch of c.channels ?? []) s.add(ch);
-    return [...s]
-      .sort()
-      .map((ch) => ({ value: ch, label: ch.charAt(0).toUpperCase() + ch.slice(1) }));
-  });
+  const channelOptions = $derived(
+    data.channels.map((ch) => ({
+      value: ch,
+      label: ch.charAt(0).toUpperCase() + ch.slice(1),
+    })),
+  );
 
   // ── Page-owned filters (tag / reserved / awaiting / score / temp) ──────────
   // Header enum filters (stage/funnel/channel) are seeded into DataTable via
@@ -139,7 +156,7 @@
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-  let tagId = $state('');
+  let tagId = $state(qp.get('tag') ?? '');
   let reservedFilter = $state(qp.get('reserved') === '1');
   let awaitingFilter = $state(qp.get('awaiting') === '1');
   let scoreMin = $state<number | null>(qp.has('scoreMin') ? Number(qp.get('scoreMin')) : null);
@@ -150,33 +167,206 @@
     stage: qpArr('stage'),
     funnel: qpArr('funnel'),
     channel: qpArr('channel'),
-    origin: qpArr('origin'),
+    origin: qpArr('origin').map((v) => (v === 'none' ? '' : v)),
+    verified: qpArr('verified'),
+    sex: qpArr('sex'),
   };
 
-  const filtered = $derived.by(() => {
-    let list = contacts;
-    if (tagId)
-      list = list.filter((c) => c.tag_ids?.includes(tagId) || c.auto_tag_ids?.includes(tagId));
-    if (reservedFilter) list = list.filter(reservedOnly);
-    if (awaitingFilter) list = list.filter((c) => c.awaiting_reply);
-    if (scoreMin != null) list = list.filter((c) => c.score >= scoreMin!);
-    if (scoreMax != null) list = list.filter((c) => c.score <= scoreMax!);
-    if (tempFilter) list = list.filter((c) => temperatureOf(c.score) === tempFilter);
-    return list;
-  });
-
-  // ── Sort comparators ──────────────────────────────────────────────────────
-  const name = (c: Row) => (c.display_name ?? '￿').toLowerCase();
-  const byName = (a: Row, b: Row) => (name(a) < name(b) ? -1 : name(a) > name(b) ? 1 : 0);
-  const t = (c: Row) => (c.last_contact_at ? Date.parse(c.last_contact_at) : -Infinity);
-  const rev = (c: Row) => finOf(c)?.revenue ?? -Infinity;
-  const inv = (c: Row) => finOf(c)?.invoices ?? -Infinity;
-  const lastBuy = (c: Row) => {
-    const at = finOf(c)?.lastPurchaseAt;
-    return at ? Date.parse(at) : -Infinity;
+  // ── Server request manager (spec 2026-08-13 §S5) ───────────────────────────
+  // DataTable server mode reports every search/sort/filter/page interaction
+  // through `onQuery`; the page-owned toggles above fold into the same request.
+  // The URL mirrors the full state (shallow `replaceState` — no load re-run),
+  // so reload/share restores it and `invalidate('crm:contacts')` refetches the
+  // same view through the server load.
+  const SORT_MAP: Record<string, string> = {
+    score: 'score',
+    recent: 'recent',
+    name: 'name',
+    revenue: 'revenue',
+    msgs: 'frequency',
+  };
+  let lastQuery: ServerQuery = {
+    search: qp.get('q') ?? '',
+    sort: qp.get('sort') ? { key: qp.get('sort')!, dir: 'desc' } : null,
+    filters: Object.fromEntries(
+      Object.entries(initialFilters)
+        .filter(([, v]) => v.length > 0)
+        .map(([k, v]) => [k, v.join(',')]),
+    ),
+    page: Math.max(1, Number(qp.get('page') ?? 1)),
+    // svelte-ignore state_referenced_locally — pageSize is load-constant
+    pageSize: data.pageSize,
+  };
+  let reqSeq = 0;
+  function buildParams(q: ServerQuery): URLSearchParams {
+    const p = new URLSearchParams();
+    if (q.search) p.set('q', q.search);
+    const serverSort = q.sort ? SORT_MAP[q.sort.key] : undefined;
+    if (serverSort) {
+      p.set('sort', serverSort);
+      if (q.sort?.dir) p.set('dir', q.sort.dir);
+    }
+    for (const [k, v] of Object.entries(q.filters)) {
+      // Column filter keys → URL/API names. `origin` sends 'none' for the
+      // untracked option ('' in the column filter's value domain).
+      if (k === 'origin') p.set('origin', v.replace(/(^|,)(?=,|$)/g, '$1none'));
+      else p.set(k, v);
+    }
+    // Infinite scroll: `page` feeds the API offset only — the URL always
+    // restores from the top, so it never carries a page param.
+    if (tagId) p.set('tag', tagId);
+    if (reservedFilter) p.set('reserved', '1');
+    if (awaitingFilter) p.set('awaiting', '1');
+    if (scoreMin != null) p.set('scoreMin', String(scoreMin));
+    if (scoreMax != null) p.set('scoreMax', String(scoreMax));
+    if (tempFilter) p.set('temp', tempFilter);
+    return p;
+  }
+  /** URL params (page state) → API params for GET /api/crm/contacts. */
+  function toApiParams(p: URLSearchParams): URLSearchParams {
+    const api = new URLSearchParams(p);
+    // Rename page-state keys to the API's RankFilters names.
+    const rename: Record<string, string> = {
+      q: 'search',
+      funnel: 'funnelStage',
+      tag: 'tagId',
+      dir: 'sortDir',
+    };
+    for (const [from, to] of Object.entries(rename)) {
+      const v = api.get(from);
+      if (v != null) {
+        api.delete(from);
+        api.set(to, v);
+      }
+    }
+    if (api.get('reserved') === '1') api.set('reservedOnly', '1');
+    api.delete('reserved');
+    if (api.get('awaiting') === '1') api.set('awaitingReply', '1');
+    api.delete('awaiting');
+    // Temperature = score band (hot ≥75, warm 50–74, cold <50), intersected
+    // with any explicit score range — mirrors the server load's parser.
+    const temp = api.get('temp');
+    api.delete('temp');
+    const num = (k: string) => (api.has(k) ? Number(api.get(k)) : undefined);
+    let min = num('scoreMin');
+    let max = num('scoreMax');
+    if (temp === 'hot') min = Math.max(min ?? 75, 75);
+    else if (temp === 'warm') {
+      min = Math.max(min ?? 50, 50);
+      max = Math.min(max ?? 74, 74);
+    } else if (temp === 'cold') max = Math.min(max ?? 49, 49);
+    api.delete('scoreMin');
+    api.delete('scoreMax');
+    if (min != null) api.set('minScore', String(min));
+    if (max != null) api.set('maxScore', String(max));
+    const pageNum = Math.max(1, Number(api.get('page') ?? 1));
+    api.delete('page');
+    api.set('limit', String(data.pageSize));
+    api.set('offset', String((pageNum - 1) * data.pageSize));
+    return api;
+  }
+  let queryError = $state<string | null>(null);
+  function apiUrlFor(q: ServerQuery): {
+    url: string;
+    urlParams: URLSearchParams;
+    countFingerprint: string;
+  } {
+    const urlParams = buildParams(q);
+    const apiParams = toApiParams(urlParams);
+    const countFingerprint = crmCountScopeFingerprint(apiParams);
+    if (q.page > 1 || countFingerprint === knownTotalFingerprint) {
+      apiParams.set('includeTotal', '0');
+    }
+    return { url: `/api/crm/contacts?${apiParams}`, urlParams, countFingerprint };
+  }
+  function prefetchNext(q: ServerQuery) {
+    const next = apiUrlFor({ ...q, page: q.page + 1 }).url;
+    const epoch = pageCacheEpoch;
+    const warm = () => {
+      if (epoch === pageCacheEpoch) void pageCache.prefetch(next).catch(() => undefined);
+    };
+    const requestIdle = (
+      window as unknown as {
+        requestIdleCallback?: (
+          callback: IdleRequestCallback,
+          options?: IdleRequestOptions,
+        ) => number;
+      }
+    ).requestIdleCallback;
+    if (requestIdle) requestIdle(warm, { timeout: 1_000 });
+    else window.setTimeout(warm, 0);
+  }
+  async function runQuery(q: ServerQuery) {
+    lastQuery = q;
+    const seq = ++reqSeq;
+    loading = true;
+    queryError = null;
+    try {
+      const { url, urlParams, countFingerprint } = apiUrlFor(q);
+      const body = await pageCache.load(url);
+      // Promise-identity guard: drop out-of-order resolutions.
+      if (seq !== reqSeq) return;
+      // Infinite scroll: page 1 replaces the list, later pages append.
+      rows = q.page > 1 ? [...rows, ...body.contacts] : body.contacts;
+      if (body.total != null) {
+        total = body.total;
+        knownTotalFingerprint = countFingerprint;
+      }
+      replaceState(`?${urlParams}`, {});
+      if (body.hasMore) prefetchNext(q);
+    } catch (error) {
+      if (isAbortError(error)) return;
+      if (seq === reqSeq) queryError = m.crm_bulk_failed();
+    } finally {
+      if (seq === reqSeq) loading = false;
+    }
+  }
+  /** Page-owned toggles re-run the current table query from page 1. */
+  const refetch = () => void runQuery({ ...lastQuery, page: 1 });
+  function exportMatching(_format: 'csv' | 'xlsx', keys: string[]) {
+    const api = toApiParams(buildParams({ ...lastQuery, page: 1 }));
+    api.delete('limit');
+    api.delete('offset');
+    api.set('columns', keys.join(','));
+    const link = document.createElement('a');
+    link.href = `/api/crm/contacts/export.csv?${api}`;
+    link.download = '';
+    link.click();
+  }
+  async function selectAllMatching(): Promise<string[]> {
+    try {
+      const api = toApiParams(buildParams({ ...lastQuery, page: 1 }));
+      api.delete('limit');
+      api.delete('offset');
+      api.set('fields', 'id');
+      const res = await fetch(`/api/crm/contacts?${api}`);
+      if (!res.ok) throw new Error(`CRM id request failed (${res.status})`);
+      const body = (await res.json()) as { contacts: { contact_id: string }[] };
+      return body.contacts.map((contact) => contact.contact_id);
+    } catch (error) {
+      queryError = m.crm_bulk_failed();
+      throw error;
+    }
+  }
+  // Seed the header sort arrow from the URL (server default = score desc).
+  const URL_SORT_TO_COL: Record<string, string> = {
+    score: 'score',
+    recent: 'recent',
+    name: 'name',
+    revenue: 'revenue',
+    frequency: 'msgs',
+  };
+  const initialSortFromUrl = {
+    key: URL_SORT_TO_COL[qp.get('sort') ?? 'score'] ?? 'score',
+    dir: (qp.get('dir') === 'asc' || (!qp.get('dir') && qp.get('sort') === 'name')
+      ? 'asc'
+      : 'desc') as 'asc' | 'desc',
   };
 
   // ── Columns (base + dynamic meta + conditional finance) ────────────────────
+  // Server mode: sorting happens in SQL (`RankFilters.sort`), so only columns
+  // with a server sort mapping (SORT_MAP below) stay sortable — a client
+  // `sortFn` would silently reorder just the visible page.
   const columns = $derived.by<DataColumn<Row>[]>(() => {
     const cols: DataColumn<Row>[] = [
       {
@@ -185,7 +375,6 @@
         custom: true,
         accessor: (c) => contactLabel(c.display_name),
         exportValue: (c) => contactLabel(c.display_name),
-        sortFn: byName,
         width: 240,
       },
       {
@@ -193,13 +382,13 @@
         label: m.crm_col_score(),
         custom: true,
         accessor: (c) => c.score,
-        sortFn: (a, b) => a.score - b.score,
         width: 120,
       },
       {
         key: 'stage',
         label: m.crm_col_stage(),
         custom: true,
+        sortable: false,
         accessor: (c) => c.stage,
         exportValue: (c) => stageLabel(c.stage),
         filter: { options: () => stageOptions, match: (c) => c.stage },
@@ -211,6 +400,7 @@
               key: 'funnel',
               label: m.crm_funnel_col(),
               custom: true,
+              sortable: false,
               accessor: (c: Row) => {
                 const f = funnelOf(c);
                 return f ? funnelStageLabel(f) : '';
@@ -226,9 +416,9 @@
         key: 'verified',
         label: m.crm_col_verified(),
         custom: true,
+        sortable: false,
         accessor: (c) => (c.dni_verified ? '✓' : ''),
         exportValue: (c) => (c.dni_verified ? 'yes' : 'no'),
-        sortFn: (a, b) => Number(a.dni_verified) - Number(b.dni_verified),
         filter: { options: () => verifiedOptions, match: (c) => (c.dni_verified ? '1' : '0') },
         width: 96,
       },
@@ -236,6 +426,7 @@
         key: 'sex',
         label: m.crm_col_sex(),
         defaultHidden: true,
+        sortable: false,
         accessor: (c) => sexLabel(c),
         exportValue: (c) => sexLabel(c),
         filter: { options: () => sexOptions, match: (c) => c.sex ?? '' },
@@ -248,6 +439,7 @@
               key: 'origin',
               label: m.crm_col_origin(),
               custom: true,
+              sortable: false,
               accessor: (c: Row) => originLabel(c),
               exportValue: (c: Row) => originOf(c),
               filter: { options: () => originOptions, match: (c: Row) => originOf(c) },
@@ -261,9 +453,10 @@
         label: metaLabel(k),
         custom: true,
         defaultHidden: true,
+        sortable: false,
         accessor: (c) => metaDisplay(k, c.custom_fields?.[k]),
       });
-    if (financeEnabled) {
+    if (data.financeEnabled) {
       cols.push({
         key: 'revenue',
         money: true,
@@ -272,7 +465,6 @@
         custom: true,
         accessor: (c) => finOf(c)?.revenue ?? null,
         exportValue: (c) => finOf(c)?.revenue ?? '',
-        sortFn: (a, b) => rev(a) - rev(b),
         width: 120,
       });
       cols.push({
@@ -280,9 +472,9 @@
         label: m.crm_col_invoices(),
         align: 'right',
         custom: true,
+        sortable: false,
         accessor: (c) => finOf(c)?.invoices ?? null,
         exportValue: (c) => finOf(c)?.invoices ?? '',
-        sortFn: (a, b) => inv(a) - inv(b),
         width: 96,
       });
       cols.push({
@@ -290,9 +482,9 @@
         label: m.crm_col_last_purchase(),
         align: 'right',
         custom: true,
+        sortable: false,
         accessor: (c) => finOf(c)?.lastPurchaseAt ?? null,
         exportValue: (c) => finOf(c)?.lastPurchaseAt ?? '',
-        sortFn: (a, b) => lastBuy(a) - lastBuy(b),
         width: 120,
       });
     }
@@ -301,6 +493,7 @@
       label: m.crm_col_channels(),
       align: 'right',
       custom: true,
+      sortable: false,
       accessor: (c) => (c.channels ?? []).join(', '),
       exportValue: (c) => (c.channels ?? []).join(', '),
       filter: {
@@ -318,7 +511,6 @@
       custom: true,
       accessor: (c) => c.total_msgs,
       exportable: false,
-      sortFn: (a, b) => a.total_msgs - b.total_msgs,
       width: 100,
     });
     cols.push({
@@ -326,6 +518,7 @@
       label: m.crm_export_inbound(),
       align: 'right',
       defaultHidden: true,
+      sortable: false,
       accessor: (c) => c.inbound_msgs,
     });
     cols.push({
@@ -333,6 +526,7 @@
       label: m.crm_export_outbound(),
       align: 'right',
       defaultHidden: true,
+      sortable: false,
       accessor: (c) => c.total_msgs - c.inbound_msgs,
     });
     cols.push({
@@ -342,7 +536,6 @@
       custom: true,
       accessor: (c) => c.last_contact_at,
       exportValue: (c) => c.last_contact_at ?? '',
-      sortFn: (a, b) => t(a) - t(b),
       width: 120,
     });
     return cols;
@@ -455,13 +648,16 @@
   let deleteIds = $state<string[]>([]);
 
   const bulkActions = $derived.by(() => {
-    if (!canAct('crm', 'edit')) return [];
     const acts: {
       label: string;
       danger?: boolean;
       onSelect: (ids: Set<string>, rows: Row[]) => void;
     }[] = [];
-    if (selected.size >= 2)
+    if (
+      canAct('crm', 'edit') &&
+      selected.size >= 2 &&
+      selected.size === rows.filter((r) => selected.has(r.contact_id)).length
+    )
       acts.push({
         label: m.crm_bulk_merge_action(),
         onSelect: (_ids, rows) => {
@@ -470,15 +666,16 @@
           mergeOpen = true;
         },
       });
-    acts.push({
-      label: m.crm_bulk_delete_action({ n: selected.size }),
-      danger: true,
-      onSelect: (ids) => {
-        deleteIds = [...ids];
-        bulkErr = null;
-        deleteOpen = true;
-      },
-    });
+    if (canAct('crm', 'delete'))
+      acts.push({
+        label: m.crm_bulk_delete_action({ n: selected.size }),
+        danger: true,
+        onSelect: (ids) => {
+          deleteIds = [...ids];
+          bulkErr = null;
+          deleteOpen = true;
+        },
+      });
     return acts;
   });
 
@@ -501,10 +698,13 @@
     bulkBusy = true;
     bulkErr = null;
     try {
-      const res = await Promise.all(
-        deleteIds.map((id) => fetch(`/api/crm/contacts/${id}`, { method: 'DELETE' })),
-      );
-      if (res.some((r) => !r.ok)) throw new Error('delete');
+      const res = await fetch('/api/crm/contacts/bulk-delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids: deleteIds }),
+      });
+      if (!res.ok) throw new Error('delete');
+      clearPageCache();
       selected = new Set();
       deleteOpen = false;
       await invalidate('crm:contacts');
@@ -535,13 +735,22 @@
   <DataTable
     class="flex-1 min-h-0"
     {columns}
-    data={filtered}
+    data={rows}
+    server={{
+      total,
+      loading,
+      pageSize: data.pageSize,
+      infinite: true,
+      onQuery: runQuery,
+      onExport: exportMatching,
+      exportFormats: ['csv'],
+      onSelectAllMatching: selectAllMatching,
+    }}
     getRowId={(c) => c.contact_id}
     searchPlaceholder={m.crm_search_placeholder()}
-    searchFields={(c) => contactLabel(c.display_name)}
     bind:search={searchQuery}
     {initialFilters}
-    initialSort={{ key: 'score', dir: 'desc' }}
+    initialSort={initialSortFromUrl}
     selectable
     bind:selectedIds={selected}
     {bulkActions}
@@ -552,23 +761,27 @@
     addLabel={m.crm_new_contact()}
     onAdd={newContact}
     addDisabled={creating || !canAct('crm', 'edit')}
-    emptyMessage={rosterLoading ? m.common_loading() : m.crm_empty_title()}
+    emptyMessage={m.crm_empty_title()}
   >
     {#snippet toolbar()}
       <Select
         bind:value={tagId}
+        onchange={refetch}
         class="h-7 px-2 text-xs rounded-[var(--radius-sm)] bg-bg3 border border-[var(--hairline)]"
       >
         <option value="">{m.crm_all_tags()}</option>
         {#each tags as tg (tg.id)}<option value={tg.id}>{tg.name}</option>{/each}
       </Select>
-      {#if financeEnabled}
+      {#if data.financeEnabled}
         <Button
           variant="ghost"
           size="sm"
           class={`res-toggle ${reservedFilter ? 'active' : ''}`}
           aria-pressed={reservedFilter}
-          onclick={() => (reservedFilter = !reservedFilter)}
+          onclick={() => {
+            reservedFilter = !reservedFilter;
+            refetch();
+          }}
           title={m.crm_reserved_only()}
         >
           {m.crm_reserved_badge()}
@@ -579,7 +792,10 @@
         size="sm"
         class={`await-toggle ${awaitingFilter ? 'active' : ''}`}
         aria-pressed={awaitingFilter}
-        onclick={() => (awaitingFilter = !awaitingFilter)}
+        onclick={() => {
+          awaitingFilter = !awaitingFilter;
+          refetch();
+        }}
         title={m.crm_awaiting_hint()}
       >
         {m.crm_awaiting_filter()}
@@ -592,6 +808,7 @@
           onclick={() => {
             scoreMin = null;
             scoreMax = null;
+            refetch();
           }}
           title={m.crm_filter_clear()}
         >
@@ -604,7 +821,10 @@
           variant="ghost"
           size="sm"
           class="chip"
-          onclick={() => (tempFilter = '')}
+          onclick={() => {
+            tempFilter = '';
+            refetch();
+          }}
           title={m.crm_filter_clear()}
         >
           {m.crm_filter_temp({ temp: tempFilter })}
@@ -711,6 +931,7 @@
 
     {#snippet filterOptionIcon(v)}<ChannelBrandIcon channel={v} size={14} />{/snippet}
   </DataTable>
+  {#if queryError}<p class="err-msg" role="alert">{queryError}</p>{/if}
 </PageShell>
 
 <CrmMergeResolver

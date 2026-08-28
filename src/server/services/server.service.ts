@@ -22,14 +22,37 @@ export interface ServerInput {
  * hits when the row's tenantId was migrated to a Supabase UUID but the row still
  * carries the legacy Better-Auth UUID as its primary key.
  *
- * SECURITY: IDOR is gated at the call site via assertOwnsOrAdmin() (which checks
- * userHasGatewayAccess + userServers link) — not here. We intentionally omit a
- * tenantId scope from the WHERE because ctx.tenantId carries the post-migration
- * Supabase UUID while the stored Turso row still carries the old Better-Auth UUID;
- * adding eq(servers.tenantId, ctx.tenantId) would silently no-op every update.
- * TODO: add tenantId scope once Turso server rows are re-keyed to the Supabase UUID.
+ * This mutation is still not itself tenant-scoped in its WHERE clause: ctx.tenantId
+ * carries the post-migration Supabase UUID, and it is not yet proven that every
+ * stored Turso row was re-keyed off the old Better-Auth UUID, so
+ * eq(servers.tenantId, ctx.tenantId) here could silently no-op a legitimate
+ * owner's update on an un-re-keyed row instead of denying a cross-tenant one
+ * (see docs/runbooks/server-tenant-scope-rekey-readiness.md).
+ *
+ * That is no longer the trust boundary, though: the cross-tenant write this
+ * comment used to describe is closed at the caller — `assertOwnsOrAdmin()` in
+ * src/routes/api/servers/[id]/+server.ts requires both the Supabase gateway
+ * organization (when bridged) and the Turso row's tenant to match before this
+ * mutation runs. Non-admins also need their personal gateway/server link. A
+ * mismatch denies with 404 rather than no-oping. `updateServer` is reached only
+ * after those checks pass, for every caller, admin included.
+ *
+ * Returns the updated row's id, or `null` if `id` did not match any row (the
+ * caller should treat that as a 404, not a false `{ ok: true }`).
+ *
+ * TODO(handoff): add eq(servers.tenantId, ctx.tenantId) to the WHERE below
+ * (spec Slice 2, defense in depth) once a credential holder has proven the
+ * re-key against real non-production and production data — `bun run
+ * rekey:readiness` names every missing artifact. This is no longer a live
+ * IDOR blocker (closed at the route boundary above); it is a data-hygiene
+ * follow-up. Pointer: docs/runbooks/server-tenant-scope-rekey-readiness.md and
+ * specs/2026-08-18-hub-updateserver-tenant-scope-spec.md.
  */
-export async function updateServer(ctx: TenantContext, id: string, updates: Partial<ServerInput>) {
+export async function updateServer(
+  ctx: TenantContext,
+  id: string,
+  updates: Partial<ServerInput>,
+): Promise<string | null> {
   const now = nowMs();
   const set: Record<string, unknown> = { updatedAt: now };
   if (updates.name != null) set.name = updates.name;
@@ -40,7 +63,12 @@ export async function updateServer(ctx: TenantContext, id: string, updates: Part
     set.token = enc.encrypted;
     set.tokenIv = enc.iv;
   }
-  await ctx.db.update(servers).set(set).where(eq(servers.id, id));
+  const rows = await ctx.db
+    .update(servers)
+    .set(set)
+    .where(eq(servers.id, id))
+    .returning({ id: servers.id });
+  return rows[0]?.id ?? null;
 }
 
 export async function upsertServer(ctx: TenantContext, s: ServerInput, userId?: string) {

@@ -289,18 +289,20 @@ export type PartySearchRow = {
 /**
  * Typeahead search across the party spine (name / email / doc / phone), org-scoped.
  * `types` narrows by nature (e.g. ['person','company'] for a customer picker,
- * ['person','agent'] for an assignee/lead picker). Capped — this powers a picker,
- * not a report.
+ * ['person','agent'] for an assignee/lead picker). `verifiedOnly` powers the
+ * CRM picker's trusted empty-query view; typed searches intentionally omit it.
+ * Capped — this powers a picker, not a report.
  */
 export async function searchParties(
   ctx: CoreCtx,
   q: string,
-  opts: { types?: string[]; limit?: number } = {},
+  opts: { types?: string[]; limit?: number; verifiedOnly?: boolean } = {},
 ): Promise<PartySearchRow[]> {
   const term = q.trim();
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(parties.orgId, ctx.tenantId)];
     if (opts.types?.length) conds.push(inArray(parties.type, opts.types));
+    if (opts.verifiedOnly) conds.push(eq(parties.dniVerified, true));
     if (term) {
       const like = `%${term}%`;
       conds.push(

@@ -56,7 +56,14 @@ export interface ResumenParseResult {
   totals: ResumenRow;
 }
 
-const EMPTY_TOTALS: ResumenRow = { docTypeCode: 'TOTAL', docTypeLabel: 'Total', count: 0, baseGravada: 0, igv: 0, total: 0 };
+const EMPTY_TOTALS: ResumenRow = {
+  docTypeCode: 'TOTAL',
+  docTypeLabel: 'Total',
+  count: 0,
+  baseGravada: 0,
+  igv: 0,
+  total: 0,
+};
 
 /** Parses SUNAT's pipe-delimited resumencomprobantes CSV. Columns (verified
  *  live 2026-08-14): Tipo|Documentos|BI Gravado DG|IGV DG|…|Total CP (last). */
@@ -112,7 +119,10 @@ export async function listPeriods(ctx: CoreCtx): Promise<FinPurchasePeriod[]> {
   );
 }
 
-export async function listPurchases(ctx: CoreCtx, opts: { period?: string } = {}): Promise<FinPurchase[]> {
+export async function listPurchases(
+  ctx: CoreCtx,
+  opts: { period?: string } = {},
+): Promise<FinPurchase[]> {
   return withOrgCore(ctx, (tx) =>
     tx
       .select()
@@ -151,11 +161,16 @@ export interface ManualPurchaseInput {
   total?: number | null;
 }
 
-export async function createPurchase(ctx: CoreCtx, input: ManualPurchaseInput): Promise<FinPurchase> {
-  if (!/^\d{6}$/.test(input.period)) throw new PurchasesError('period must be YYYYMM', 'invalid_input');
+export async function createPurchase(
+  ctx: CoreCtx,
+  input: ManualPurchaseInput,
+): Promise<FinPurchase> {
+  if (!/^\d{6}$/.test(input.period))
+    throw new PurchasesError('period must be YYYYMM', 'invalid_input');
   return withOrgCore(ctx, async (tx) => {
     const period = await getPeriodRow(ctx, tx, input.period);
-    if (period && period.status === 'closed') throw new PurchasesError('period is closed', 'period_closed');
+    if (period && period.status === 'closed')
+      throw new PurchasesError('period is closed', 'period_closed');
     const [row] = await tx
       .insert(finPurchases)
       .values({
@@ -183,7 +198,11 @@ export async function createPurchase(ctx: CoreCtx, input: ManualPurchaseInput): 
 
 export type PurchasePatch = Partial<Omit<ManualPurchaseInput, 'period'>>;
 
-export async function updatePurchase(ctx: CoreCtx, id: string, patch: PurchasePatch): Promise<FinPurchase> {
+export async function updatePurchase(
+  ctx: CoreCtx,
+  id: string,
+  patch: PurchasePatch,
+): Promise<FinPurchase> {
   return withOrgCore(ctx, async (tx) => {
     const [existing] = await tx
       .select()
@@ -192,7 +211,8 @@ export async function updatePurchase(ctx: CoreCtx, id: string, patch: PurchasePa
       .limit(1);
     if (!existing) throw error(404, 'purchase not found');
     const period = await getPeriodRow(ctx, tx, existing.period);
-    if (period && period.status === 'closed') throw new PurchasesError('period is closed', 'period_closed');
+    if (period && period.status === 'closed')
+      throw new PurchasesError('period is closed', 'period_closed');
 
     const [row] = await tx
       .update(finPurchases)
@@ -204,9 +224,20 @@ export async function updatePurchase(ctx: CoreCtx, id: string, patch: PurchasePa
         numero: patch.numero !== undefined ? patch.numero : existing.numero,
         issuedAt: patch.issuedAt !== undefined ? patch.issuedAt : existing.issuedAt,
         currency: patch.currency !== undefined ? patch.currency : existing.currency,
-        baseGravada: patch.baseGravada !== undefined ? (patch.baseGravada != null ? String(patch.baseGravada) : null) : existing.baseGravada,
-        igv: patch.igv !== undefined ? (patch.igv != null ? String(patch.igv) : null) : existing.igv,
-        total: patch.total !== undefined ? (patch.total != null ? String(patch.total) : null) : existing.total,
+        baseGravada:
+          patch.baseGravada !== undefined
+            ? patch.baseGravada != null
+              ? String(patch.baseGravada)
+              : null
+            : existing.baseGravada,
+        igv:
+          patch.igv !== undefined ? (patch.igv != null ? String(patch.igv) : null) : existing.igv,
+        total:
+          patch.total !== undefined
+            ? patch.total != null
+              ? String(patch.total)
+              : null
+            : existing.total,
         // Editing a synced (SUNAT-sourced) row means it no longer mirrors
         // SUNAT verbatim — flag it so the next sync skips it instead of
         // silently clobbering the user's edit.
@@ -228,7 +259,8 @@ export async function deletePurchase(ctx: CoreCtx, id: string): Promise<void> {
       .limit(1);
     if (!existing) throw error(404, 'purchase not found');
     const period = await getPeriodRow(ctx, tx, existing.period);
-    if (period && period.status === 'closed') throw new PurchasesError('period is closed', 'period_closed');
+    if (period && period.status === 'closed')
+      throw new PurchasesError('period is closed', 'period_closed');
     await tx.delete(finPurchases).where(eq(finPurchases.id, id));
   });
 }
@@ -248,14 +280,17 @@ export interface SyncResult {
 
 export async function syncPurchases(ctx: CoreCtx): Promise<SyncResult> {
   const source = await getSource(ctx, 'sunat-sire');
-  if (!source || !source.enabled) throw new PurchasesError('sunat-sire source not configured', 'no_source');
+  if (!source || !source.enabled)
+    throw new PurchasesError('sunat-sire source not configured', 'no_source');
   const refs = (source.secretRefs ?? {}) as Record<string, unknown>;
-  if (!refs.ciphertext || !refs.iv) throw new PurchasesError('sunat-sire has no credentials configured', 'no_credentials');
+  if (!refs.ciphertext || !refs.iv)
+    throw new PurchasesError('sunat-sire has no credentials configured', 'no_credentials');
   const creds = decryptCreds(String(refs.ciphertext), String(refs.iv));
   const config = (source.config ?? {}) as Record<string, unknown>;
   const ruc = String(config.ruc ?? '');
   const clientId = String(config.clientId ?? '');
-  if (!/^\d{11}$/.test(ruc) || !clientId) throw new PurchasesError('sunat-sire config missing ruc/clientId', 'invalid_source');
+  if (!/^\d{11}$/.test(ruc) || !clientId)
+    throw new PurchasesError('sunat-sire config missing ruc/clientId', 'invalid_source');
 
   const client = new SunatSireClient({
     ruc,
@@ -269,7 +304,9 @@ export async function syncPurchases(ctx: CoreCtx): Promise<SyncResult> {
   const periods = resolvePeriods(allPeriods, {
     startPeriod: typeof config.startPeriod === 'string' ? config.startPeriod : undefined,
   });
-  const statusByPeriod = new Map(allPeriods.map((p) => [p.perTributario, periodStatusFromDesEstado(p.desEstado)]));
+  const statusByPeriod = new Map(
+    allPeriods.map((p) => [p.perTributario, periodStatusFromDesEstado(p.desEstado)]),
+  );
 
   let purchasesUpserted = 0;
   const divergedSkipped: string[] = [];
@@ -312,14 +349,19 @@ export async function syncPurchases(ctx: CoreCtx): Promise<SyncResult> {
         const [existing] = await tx
           .select()
           .from(finPurchases)
-          .where(and(eq(finPurchases.orgId, ctx.tenantId), eq(finPurchases.providerRef, providerRef)))
+          .where(
+            and(eq(finPurchases.orgId, ctx.tenantId), eq(finPurchases.providerRef, providerRef)),
+          )
           .limit(1);
         if (existing?.syncState === 'diverged') {
           // Never overwrite a user-edited row — flag it in the result instead.
           divergedSkipped.push(providerRef);
           // Still keep its denormalised period_status current so locking stays honest.
           if (existing.periodStatus !== status) {
-            await tx.update(finPurchases).set({ periodStatus: status, updatedAt: new Date() }).where(eq(finPurchases.id, existing.id));
+            await tx
+              .update(finPurchases)
+              .set({ periodStatus: status, updatedAt: new Date() })
+              .where(eq(finPurchases.id, existing.id));
           }
           continue;
         }

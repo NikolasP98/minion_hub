@@ -49,7 +49,11 @@ import { emitHubEvent } from '$server/events/emit';
 // PosSettings (types + a class, never touched at module-eval time) back from
 // here. Safe under ESM — neither module reads the other's export until a
 // function actually runs, well after both have finished initializing.
-import { triggerShadowEmission, seedShadowSeries, listEmissionsForTicket } from './pos-emission.service';
+import {
+  triggerShadowEmission,
+  seedShadowSeries,
+  listEmissionsForTicket,
+} from './pos-emission.service';
 // The ONE code-format rail, shared with the client wizard. Pure module, no
 // runtime deps — see the drift note in $lib/catalog/code.ts for why it is not
 // duplicated here the way the old slugifyCode/slugify pair was.
@@ -1117,11 +1121,19 @@ const SELLABLE_MERGE_SQL = sql`
  * left-joined to their linked stk_items (1:1 via stk_items.fin_product_id),
  * Σ stk_bins.qty for the item, and an exists-flag on stk_consumption — ONE
  * query, no N+1 per row.
+ *
+ * `includeInactive` defaults to false (unchanged behavior for every existing
+ * caller — POS sell screen, gateway query tool); only the catalog manager
+ * passes it true so deactivated sellables stay reachable/reactivatable.
  */
-export async function listSellables(ctx: CoreCtx): Promise<SellableRow[]> {
+export async function listSellables(
+  ctx: CoreCtx,
+  opts: { includeInactive?: boolean } = {},
+): Promise<SellableRow[]> {
   return withOrgCore(ctx, async (tx) => {
+    const activeFilter = opts.includeInactive ? sql`` : sql`and p.active = true`;
     const rows = (await tx.execute(sql`${SELLABLE_MERGE_SQL}
-      where p.org_id = ${ctx.tenantId} and p.active = true
+      where p.org_id = ${ctx.tenantId} ${activeFilter}
       group by p.id, i.id
       order by p.name`)) as unknown as SellableSqlRow[];
     return rows.map(mapSellableRow);
@@ -1138,6 +1150,50 @@ async function getSellableRow(ctx: CoreCtx, productId: string): Promise<Sellable
   )) as unknown as SellableSqlRow[];
   if (!rows[0]) throw new PosError('sellable not found', 'not_found');
   return mapSellableRow(rows[0]);
+}
+
+/**
+ * Single source of truth for "is this a product, is it stock-tracked, what
+ * uom is it in" — reuses getSellableRow's `kind`/`itemId` derivation (see the
+ * doc comment on `SellableRow.kind`) rather than redefining it; only the uom
+ * lookup is new, since SellableRow doesn't carry it. Used by both the read
+ * path (implicitly, via getSellableRow) and updateSellable's write-guard.
+ */
+export async function deriveSellableFacts(
+  ctx: CoreCtx,
+  finProductId: string,
+): Promise<{
+  kind: 'service' | 'product' | 'bundle';
+  trackStock: boolean;
+  uom: string | null;
+  itemId: string | null;
+}> {
+  const row = await getSellableRow(ctx, finProductId);
+  const itemId = row.itemId;
+  let uom: string | null = null;
+  if (itemId) {
+    const uomRows = (await withOrgCore(ctx, (tx) =>
+      tx.execute(sql`select uom from stk_items where id = ${itemId} and org_id = ${ctx.tenantId}`),
+    )) as unknown as Array<{ uom: string | null }>;
+    uom = uomRows[0]?.uom ?? null;
+  }
+  return {
+    // The true derived kind, bundle included. `SellableInput.kind` (what a
+    // PATCH can submit) has no 'bundle' variant, so a bundle can never equal
+    // patch.kind below — every kind patch on a bundle refuses with
+    // 'kind_derived' instead of a same-as-service patch (e.g. kind: 'service')
+    // comparing equal-by-coincidence and silently passing through as a no-op.
+    kind: row.kind,
+    trackStock: itemId != null,
+    uom,
+    itemId,
+  };
+}
+
+/** trim + case-fold for uom comparison; null/undefined both normalize to ''
+ *  so "not tracked" only ever compares equal to another "not tracked". */
+function normalizeUomForCompare(v: string | null | undefined): string {
+  return (v ?? '').trim().toLowerCase();
 }
 
 /** Translate a raw pg unique-violation into the domain error — same
@@ -1162,7 +1218,7 @@ export interface SellableInput {
    * Mutually exclusive with `trackStock`; when both are sent, this wins.
    */
   itemId?: string;
-  consumption?: Array<{ itemId: string; qtyPerUnit: number }>;
+  consumption?: Array<{ itemId: string; qtyPerUnit: number; note?: string | null }>;
   active?: boolean;
 }
 
@@ -1242,7 +1298,12 @@ export async function createSellable(
     for (const c of input.consumption) {
       await setConsumption(
         ctx,
-        { finProductId: product.id, itemId: c.itemId, qtyPerUnit: c.qtyPerUnit },
+        {
+          finProductId: product.id,
+          itemId: c.itemId,
+          qtyPerUnit: c.qtyPerUnit,
+          note: c.note ?? null,
+        },
         actor,
       );
     }
@@ -1322,6 +1383,51 @@ export async function updateSellable(
     }
   }
 
+  // Stop the silent drop: kind/trackStock/uom are all projections of the
+  // linked stk_items row, not columns on fin_products, so a naive .set()
+  // below would accept these fields and discard them (operator sees a green
+  // save, reopens, the old value is back). An unchanged resubmit — the
+  // wizard's normal full-object save — stays a 200 no-op; a real change is
+  // refused with a typed 400 rather than silently lost. Only derive facts
+  // when one of the three is actually submitted, so a plain price/name edit
+  // costs nothing extra.
+  if (patch.kind !== undefined || patch.trackStock !== undefined || patch.uom !== undefined) {
+    const facts = await deriveSellableFacts(ctx, productId);
+    if (patch.kind !== undefined && patch.kind !== facts.kind) {
+      // `kind` is derived by design and is never a directly settable field in
+      // any slice of this fix — refusing a direct write is the permanent,
+      // correct behavior, not deferred work.
+      throw new PosError(
+        'kind follows the linked stock item; publish or unlink an item to change it',
+        'kind_derived',
+      );
+    }
+    if (patch.trackStock !== undefined && patch.trackStock !== facts.trackStock) {
+      // TODO(handoff): apply the safe trackStock transitions (false→true:
+      // create the link; true→false on a pristine item: unlink) instead of
+      // refusing unconditionally — S2/S3 of
+      // 2026-08-17-hub-updatesellable-silent-drop-spec. Refusing is safe
+      // (never silently dropped) but not yet the preferred branch.
+      throw new PosError(
+        'stock tracking cannot be changed on an existing sellable yet',
+        'stock_tracking_immutable',
+      );
+    }
+    if (
+      patch.uom !== undefined &&
+      normalizeUomForCompare(patch.uom) !== normalizeUomForCompare(facts.uom)
+    ) {
+      // TODO(handoff): apply a uom change when the linked item is pristine
+      // (no ledger history) instead of refusing unconditionally — S2/S3 of
+      // 2026-08-17-hub-updatesellable-silent-drop-spec. Refusing is safe
+      // (never silently dropped) but not yet the preferred branch.
+      throw new PosError(
+        'unit of measure cannot be changed on an existing sellable yet',
+        'uom_immutable',
+      );
+    }
+  }
+
   try {
     await withOrgCore(ctx, (tx) =>
       tx
@@ -1351,7 +1457,12 @@ export async function updateSellable(
     for (const c of patch.consumption) {
       await setConsumption(
         ctx,
-        { finProductId: productId, itemId: c.itemId, qtyPerUnit: c.qtyPerUnit },
+        {
+          finProductId: productId,
+          itemId: c.itemId,
+          qtyPerUnit: c.qtyPerUnit,
+          note: c.note ?? null,
+        },
         actor,
       );
     }

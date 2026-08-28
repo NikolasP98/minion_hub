@@ -5,7 +5,6 @@
     Package,
     Warehouse,
     ArrowLeftRight,
-    Boxes,
     CalendarClock,
   } from 'lucide-svelte';
   import { page } from '$app/state';
@@ -27,12 +26,6 @@
         href: '/stock/warehouses',
       },
       { id: 'entries', label: m.stock_nav_entries(), icon: ArrowLeftRight, href: '/stock/entries' },
-      {
-        id: 'consumption',
-        label: m.stock_nav_consumption(),
-        icon: Boxes,
-        href: '/stock/consumption',
-      },
       {
         id: 'commitments',
         label: m.stock_nav_commitments(),

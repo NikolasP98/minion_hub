@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { browser } from '$app/environment';
-  import { invalidate } from '$app/navigation';
+  import { invalidate, goto } from '$app/navigation';
+  import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { LayoutGrid, List, Columns3 } from 'lucide-svelte';
   import {
@@ -19,19 +20,24 @@
   import { canAct } from '$lib/access/can.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
-  import SellableWizard, { type SellableLike } from '$lib/components/pos/SellableWizard.svelte';
   import RecipeEditor from '$lib/components/pos/RecipeEditor.svelte';
 
   let { data }: { data: PageData } = $props();
   const sellables = $derived(data.sellables);
   const stockEnabled = $derived(data.stockEnabled);
+  const coverage = $derived(data.coverage);
   type Row = (typeof sellables)[number];
 
-  const categories = $derived(
-    Array.from(new Set(sellables.map((s) => s.category).filter((c): c is string => !!c))).sort(),
-  );
-  /** Feeds the wizard's code suggester so it never proposes a taken code. */
-  const takenCodes = $derived(sellables.map((s) => s.code));
+  // ── Show inactive ────────────────────────────────────────────────────────
+  // Page-load param (not client-only state): the toggle re-navigates so the
+  // server re-queries listSellables with includeInactive, same as every other
+  // filter in this app.
+  function toggleShowInactive(checked: boolean) {
+    const url = new URL(page.url);
+    if (checked) url.searchParams.set('inactive', '1');
+    else url.searchParams.delete('inactive');
+    goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
+  }
 
   // ── Table | Board ──────────────────────────────────────────────────────────
   const VIEW_KEY = 'pos-catalog-view';
@@ -168,19 +174,46 @@
       accessor: (s) => s.active,
       exportValue: (s) => (s.active ? 1 : 0),
     },
+    {
+      key: 'billed',
+      label: m.fin_col_billed(),
+      align: 'right',
+      accessor: (s) => s.billed,
+    },
+    {
+      key: 'revenue',
+      money: true,
+      label: m.fin_col_revenue(),
+      align: 'right',
+      custom: true,
+      accessor: (s) => s.revenue,
+      exportValue: (s) => s.revenue ?? '',
+    },
+    {
+      key: 'cost',
+      money: true,
+      label: m.fin_col_cost(),
+      align: 'right',
+      custom: true,
+      accessor: (s) => s.cost,
+      exportValue: (s) => s.cost ?? '',
+    },
+    {
+      key: 'margin',
+      money: true,
+      label: m.fin_col_margin(),
+      align: 'right',
+      custom: true,
+      accessor: (s) => s.margin,
+      exportValue: (s) => s.margin ?? '',
+    },
   ]);
 
-  // ── Wizard (create + edit) ───────────────────────────────────────────────
-  let wizardOpen = $state(false);
-  let editingRow = $state<SellableLike | null>(null);
-
   function openCreate() {
-    editingRow = null;
-    wizardOpen = true;
+    void goto('/pos/catalog/new');
   }
   function openEdit(row: Row) {
-    editingRow = row;
-    wizardOpen = true;
+    void goto(`/pos/catalog/${encodeURIComponent(row.productId)}/edit`);
   }
 
   // ★ The central write-capability hook (rbac.service.ts apiWriteCapability)
@@ -211,6 +244,12 @@
     {#snippet leading()}<LayoutGrid size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
     {#snippet actions()}
       <div class="view-bar">
+        <Toggle
+          size="sm"
+          label={m.pos_catalog_show_inactive()}
+          checked={data.includeInactive}
+          onchange={toggleShowInactive}
+        />
         {#if view === 'board'}
           <SegmentedControl
             aria-label={m.catalog_group_by()}
@@ -249,10 +288,21 @@
     {/snippet}
   </PageHeader>
 
+  {#if coverage.billedNotInCatalog > 0 || coverage.catalogNeverBilled > 0}
+    <div class="coverage-banner">
+      {#if coverage.billedNotInCatalog > 0}
+        <span>{m.fin_products_coverage({ n: coverage.billedNotInCatalog })}</span>
+      {/if}
+      {#if coverage.catalogNeverBilled > 0}
+        <span>{m.fin_products_catalog_never_billed({ n: coverage.catalogNeverBilled })}</span>
+      {/if}
+    </div>
+  {/if}
+
   {#if view === 'board'}
     <!-- Board: one column per group on the chosen axis, empty groups omitted.
-         Cards open the same wizard the table's name cell does, so the board is a
-         real editing surface rather than a read-only visualization. -->
+         Cards open the dedicated editor page, so the board remains a real
+         editing surface rather than a read-only visualization. -->
     <div class="board">
       {#each boardColumns as col (col.key)}
         <section class="bcol" aria-label={col.label}>
@@ -328,6 +378,38 @@
         {:else if col.key === 'hasMapping'}
           <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}
           ></span>
+        {:else if col.key === 'revenue'}
+          {#if s.costMasked}
+            <span class="muted">•••</span>
+          {:else}
+            <span class="tabular-nums font-medium">{formatMoney(s.revenue ?? 0)}</span>
+          {/if}
+        {:else if col.key === 'cost'}
+          {#if s.costMasked}
+            <span class="muted">•••</span>
+          {:else if s.cost == null}
+            <span class="muted">—</span>
+          {:else}
+            <span class="tabular-nums" title={s.partial ? m.fin_cost_partial_hint() : undefined}>
+              {formatMoney(s.cost)}{#if s.partial}<span class="partial-mark">*</span>{/if}
+            </span>
+          {/if}
+        {:else if col.key === 'margin'}
+          {#if s.costMasked}
+            <span class="muted">•••</span>
+          {:else if s.margin == null}
+            <span class="muted">—</span>
+          {:else}
+            <span
+              class="tabular-nums font-medium"
+              class:margin-pos={s.margin >= 0}
+              class:margin-neg={s.margin < 0}
+            >
+              {formatMoney(s.margin)}{#if s.marginPct != null}<span class="t-caption pct"
+                  >{s.marginPct}%</span
+                >{/if}
+            </span>
+          {/if}
         {:else if col.key === 'active'}
           {#key `${s.productId}-${toggleNonce}`}
             <Toggle
@@ -360,17 +442,6 @@
     <p class="t-caption no-recipe">{m.pos_recipe_needs_item()}</p>
   {/if}
 {/snippet}
-
-<SellableWizard
-  bind:open={wizardOpen}
-  {stockEnabled}
-  stockItems={data.stockItems}
-  {categories}
-  {takenCodes}
-  consumption={data.consumption}
-  editing={editingRow}
-  onSaved={() => invalidate('pos:catalog')}
-/>
 
 <style>
   .view-bar {
@@ -465,7 +536,9 @@
      card shape has to be forced through a scoped ancestor + `> span`. */
   :global(.bcards .bcard) {
     height: auto;
-    min-height: 0;
+    /* Never let cards compress when a column overflows — they'd stack on top
+       of each other instead of scrolling (`min-height: 0` here caused that). */
+    flex-shrink: 0;
     padding: var(--space-2);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
@@ -532,5 +605,31 @@
   }
   .mapping-dot.on {
     background: var(--color-success, var(--color-emerald));
+  }
+  .muted {
+    color: var(--color-text-tertiary);
+  }
+  .margin-pos {
+    color: var(--color-success-fg);
+  }
+  .margin-neg {
+    color: var(--color-danger-fg);
+  }
+  .partial-mark {
+    color: var(--color-warning-fg);
+    margin-left: var(--space-0-5);
+  }
+  .pct {
+    margin-left: var(--space-1);
+  }
+  .coverage-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    background: color-mix(in oklab, var(--color-accent) 10%, transparent);
+    border-bottom: 1px solid var(--hairline);
+    color: var(--color-text-secondary);
   }
 </style>

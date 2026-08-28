@@ -30,9 +30,23 @@ describe('parseResumenCsv', () => {
     const { parseResumenCsv } = await import('./purchases.service');
     const { rows, totals } = parseResumenCsv(SAMPLE_CSV);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toEqual({ docTypeCode: '01', docTypeLabel: 'Factura', count: 34, baseGravada: 21911.59, igv: 3944.11, total: 26185.91 });
+    expect(rows[0]).toEqual({
+      docTypeCode: '01',
+      docTypeLabel: 'Factura',
+      count: 34,
+      baseGravada: 21911.59,
+      igv: 3944.11,
+      total: 26185.91,
+    });
     expect(rows[1].docTypeCode).toBe('30');
-    expect(totals).toEqual({ docTypeCode: 'TOTAL', docTypeLabel: 'Total', count: 35, baseGravada: 23411.62, igv: 3944.11, total: 27685.94 });
+    expect(totals).toEqual({
+      docTypeCode: 'TOTAL',
+      docTypeLabel: 'Total',
+      count: 35,
+      baseGravada: 23411.62,
+      igv: 3944.11,
+      total: 27685.94,
+    });
   });
 
   it('returns empty on a header-only or blank CSV', async () => {
@@ -55,7 +69,9 @@ describe('purchase CRUD locking guards', () => {
     const { createPurchase, PurchasesError } = await import('./purchases.service');
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[{ orgId: 'org-1', period: '202607', status: 'closed' }]]); // getPeriodRow
-    await expect(createPurchase(ctx(db), { period: '202607', supplierName: 'Acme' })).rejects.toThrow(PurchasesError);
+    await expect(
+      createPurchase(ctx(db), { period: '202607', supplierName: 'Acme' }),
+    ).rejects.toThrow(PurchasesError);
   });
 
   it('createPurchase allows into an open period (or an unsynced/unknown one)', async () => {
@@ -72,7 +88,9 @@ describe('purchase CRUD locking guards', () => {
   it('createPurchase rejects a malformed period', async () => {
     const { createPurchase, PurchasesError } = await import('./purchases.service');
     const { db } = createMockDb();
-    await expect(createPurchase(ctx(db), { period: 'bad', supplierName: 'x' })).rejects.toThrow(PurchasesError);
+    await expect(createPurchase(ctx(db), { period: 'bad', supplierName: 'x' })).rejects.toThrow(
+      PurchasesError,
+    );
   });
 
   it('updatePurchase rejects once the period is closed', async () => {
@@ -82,14 +100,33 @@ describe('purchase CRUD locking guards', () => {
       [{ id: 'p-1', orgId: 'org-1', period: '202607', syncState: 'synced' }], // select existing
       [{ orgId: 'org-1', period: '202607', status: 'closed' }], // getPeriodRow
     ]);
-    await expect(updatePurchase(ctx(db), 'p-1', { supplierName: 'New name' })).rejects.toThrow(PurchasesError);
+    await expect(updatePurchase(ctx(db), 'p-1', { supplierName: 'New name' })).rejects.toThrow(
+      PurchasesError,
+    );
   });
 
   it('updatePurchase flips a synced row to diverged on edit', async () => {
     const { updatePurchase } = await import('./purchases.service');
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
-      [{ id: 'p-1', orgId: 'org-1', period: '202608', syncState: 'synced', supplierRuc: null, supplierName: 'Old', docType: '01', serie: null, numero: null, issuedAt: null, currency: 'PEN', baseGravada: null, igv: null, total: null }],
+      [
+        {
+          id: 'p-1',
+          orgId: 'org-1',
+          period: '202608',
+          syncState: 'synced',
+          supplierRuc: null,
+          supplierName: 'Old',
+          docType: '01',
+          serie: null,
+          numero: null,
+          issuedAt: null,
+          currency: 'PEN',
+          baseGravada: null,
+          igv: null,
+          total: null,
+        },
+      ],
       [{ orgId: 'org-1', period: '202608', status: 'open' }], // getPeriodRow
       [{ id: 'p-1', syncState: 'diverged', supplierName: 'New name' }], // update().returning()
     ]);
@@ -120,7 +157,9 @@ describe('syncPurchases', () => {
       secretRefs: { ciphertext: 'x', iv: 'y' },
       config: { ruc: '20611172967', clientId: 'client-1' },
     });
-    mockPeriodosRce.mockResolvedValue([{ perTributario: '202608', codEstado: '03', desEstado: 'No Presentado' }]);
+    mockPeriodosRce.mockResolvedValue([
+      { perTributario: '202608', codEstado: '03', desEstado: 'No Presentado' },
+    ]);
     // Single-row CSV keeps the mock-db call sequence tractable.
     mockResumenComprobantes.mockResolvedValue(
       'Tipo|Documentos|BI|IGV|a|b|c|d|e|f|g|Total\n01-Factura|1|100.00|18.00|0|0|0|0|0|0|0|118.00\nTOTAL |1|100.00|18.00|0|0|0|0|0|0|0|118.00\n',
@@ -147,7 +186,9 @@ describe('syncPurchases', () => {
       secretRefs: { ciphertext: 'x', iv: 'y' },
       config: { ruc: '20611172967', clientId: 'client-1' },
     });
-    mockPeriodosRce.mockResolvedValue([{ perTributario: '202608', codEstado: '03', desEstado: 'No Presentado' }]);
+    mockPeriodosRce.mockResolvedValue([
+      { perTributario: '202608', codEstado: '03', desEstado: 'No Presentado' },
+    ]);
     mockResumenComprobantes.mockResolvedValue(
       'Tipo|Documentos|BI|IGV|a|b|c|d|e|f|g|Total\n01-Factura|1|100.00|18.00|0|0|0|0|0|0|0|118.00\nTOTAL |1|100.00|18.00|0|0|0|0|0|0|0|118.00\n',
     );
@@ -168,7 +209,11 @@ describe('syncPurchases', () => {
 
   it('throws when the sunat-sire source has no credentials', async () => {
     const { getSource } = await import('$server/services/finance.service');
-    (getSource as ReturnType<typeof vi.fn>).mockResolvedValue({ enabled: true, secretRefs: {}, config: {} });
+    (getSource as ReturnType<typeof vi.fn>).mockResolvedValue({
+      enabled: true,
+      secretRefs: {},
+      config: {},
+    });
     const { syncPurchases, PurchasesError } = await import('./purchases.service');
     const { db } = createMockDb();
     await expect(syncPurchases(ctx(db))).rejects.toThrow(PurchasesError);

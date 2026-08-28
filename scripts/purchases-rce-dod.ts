@@ -19,9 +19,26 @@ function periodStatusFromDesEstado(desEstado: string): 'open' | 'closed' {
   return /^no/i.test(desEstado) ? 'open' : 'closed';
 }
 function parseResumenCsv(text: string) {
-  const lines = text.trim().split(/\r?\n/).filter((l) => l.length > 0);
-  const rows: Array<{ docTypeCode: string; docTypeLabel: string; count: number; baseGravada: number; igv: number; total: number }> = [];
-  let totals = { docTypeCode: 'TOTAL', docTypeLabel: 'Total', count: 0, baseGravada: 0, igv: 0, total: 0 };
+  const lines = text
+    .trim()
+    .split(/\r?\n/)
+    .filter((l) => l.length > 0);
+  const rows: Array<{
+    docTypeCode: string;
+    docTypeLabel: string;
+    count: number;
+    baseGravada: number;
+    igv: number;
+    total: number;
+  }> = [];
+  let totals = {
+    docTypeCode: 'TOTAL',
+    docTypeLabel: 'Total',
+    count: 0,
+    baseGravada: 0,
+    igv: 0,
+    total: 0,
+  };
   for (const line of lines.slice(1)) {
     const cols = line.split('|');
     if (cols.length < 4) continue;
@@ -35,7 +52,14 @@ function parseResumenCsv(text: string) {
       continue;
     }
     const m = /^(\d+)-(.*)$/.exec(label);
-    rows.push({ docTypeCode: m ? m[1] : label, docTypeLabel: (m ? m[2] : label).trim(), count, baseGravada, igv, total });
+    rows.push({
+      docTypeCode: m ? m[1] : label,
+      docTypeLabel: (m ? m[2] : label).trim(),
+      count,
+      baseGravada,
+      igv,
+      total,
+    });
   }
   return { rows, totals };
 }
@@ -56,15 +80,25 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 async function main() {
   console.log('=== Purchases RCE DoD (spec §5.2) ===\n');
 
-  const client = new SunatSireClient({ ruc: ruc!, username: username!, password: password!, clientId: clientId!, clientSecret: clientSecret! });
+  const client = new SunatSireClient({
+    ruc: ruc!,
+    username: username!,
+    password: password!,
+    clientId: clientId!,
+    clientSecret: clientSecret!,
+  });
 
   console.log('--- 1. RCE periods (codLibro 080000) ---');
   const periods = await client.periodosRce();
   const current = periods.find((p) => p.perTributario === '202608');
   console.log(`total periods: ${periods.length}`);
-  console.log(`202608 present: ${!!current} status: ${current?.desEstado} → ${current ? periodStatusFromDesEstado(current.desEstado) : 'n/a'}`);
+  console.log(
+    `202608 present: ${!!current} status: ${current?.desEstado} → ${current ? periodStatusFromDesEstado(current.desEstado) : 'n/a'}`,
+  );
   const presented = periods.filter((p) => periodStatusFromDesEstado(p.desEstado) === 'closed');
-  console.log(`presented (closed) periods: ${presented.length} (e.g. ${presented[0]?.perTributario})`);
+  console.log(
+    `presented (closed) periods: ${presented.length} (e.g. ${presented[0]?.perTributario})`,
+  );
 
   await sleep(2000);
 
@@ -73,8 +107,13 @@ async function main() {
   const { rows, totals } = parseResumenCsv(csv);
   console.log('raw CSV:');
   console.log(csv);
-  console.log(`parsed ${rows.length} doc-type rows, totals: ${totals.count} docs / S/ ${totals.total.toFixed(2)}`);
-  for (const r of rows) console.log(`  ${r.docTypeCode}-${r.docTypeLabel}: ${r.count} docs, base=${r.baseGravada}, igv=${r.igv}, total=${r.total}`);
+  console.log(
+    `parsed ${rows.length} doc-type rows, totals: ${totals.count} docs / S/ ${totals.total.toFixed(2)}`,
+  );
+  for (const r of rows)
+    console.log(
+      `  ${r.docTypeCode}-${r.docTypeLabel}: ${r.count} docs, base=${r.baseGravada}, igv=${r.igv}, total=${r.total}`,
+    );
 
   await sleep(2000);
 
@@ -89,18 +128,25 @@ async function main() {
     if (archivo) {
       console.log(`generated file: ${archivo.nomArchivoReporte}`);
       await sleep(2000);
-      const res = await client.descargarArchivoReporte(archivo.nomArchivoReporte, archivo.codTipoAchivoReporte);
+      const res = await client.descargarArchivoReporte(
+        archivo.nomArchivoReporte,
+        archivo.codTipoAchivoReporte,
+      );
       console.log(`download attempt: HTTP ${res.status}`);
       if (res.ok) {
         const text = await res.text();
         console.log('DOWNLOAD SUCCEEDED — first 3 lines:');
         console.log(text.split('\n').slice(0, 3).join('\n'));
       } else {
-        console.log('download failed as documented (see sunat-sire-client.ts descargarArchivoReporte doc comment) — falling back to resumen CSV as the row source, per spec §1.');
+        console.log(
+          'download failed as documented (see sunat-sire-client.ts descargarArchivoReporte doc comment) — falling back to resumen CSV as the row source, per spec §1.',
+        );
       }
     }
   } catch (e) {
-    console.log(`export/download flow error (non-fatal — resumen CSV fallback already validated above): ${e instanceof Error ? e.message : e}`);
+    console.log(
+      `export/download flow error (non-fatal — resumen CSV fallback already validated above): ${e instanceof Error ? e.message : e}`,
+    );
   }
 
   console.log('\n=== DoD complete ===');

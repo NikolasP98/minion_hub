@@ -425,7 +425,7 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
       module: 'crm',
       action: 'delete',
     });
-    expect(apiWriteCapability('/api/finances/products', 'PUT')).toEqual({
+    expect(apiWriteCapability('/api/finances/purchases', 'PUT')).toEqual({
       module: 'finance',
       action: 'edit',
     });

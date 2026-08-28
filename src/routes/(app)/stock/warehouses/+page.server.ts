@@ -7,5 +7,5 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('stock:warehouses');
-  return { warehouses: await listWarehouses(ctx) };
+  return { warehouses: await listWarehouses(ctx, { includeArchived: true }) };
 };

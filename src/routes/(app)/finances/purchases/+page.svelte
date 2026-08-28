@@ -25,7 +25,9 @@
     const now = new Date();
     return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
   }
-  const openPeriod = $derived(data.periods.find((p) => p.status === 'open')?.period ?? currentPeriod());
+  const openPeriod = $derived(
+    data.periods.find((p) => p.status === 'open')?.period ?? currentPeriod(),
+  );
 
   function periodLabel(period: string): string {
     const y = period.slice(0, 4);
@@ -112,7 +114,11 @@
             <span>{m.fin_purchases_doc_count({ n: group.period.docCount })}</span>
             <span class="tabular-nums">{formatMoney(group.period.total)}</span>
             {#if group.period.lastSyncedAt}
-              <span>{m.fin_purchases_last_synced({ date: new Date(group.period.lastSyncedAt).toLocaleString() })}</span>
+              <span
+                >{m.fin_purchases_last_synced({
+                  date: new Date(group.period.lastSyncedAt).toLocaleString(),
+                })}</span
+              >
             {/if}
           </div>
         </header>
@@ -139,26 +145,53 @@
               <tbody>
                 {#each group.rows as row (row.id)}
                   <tr>
-                    <td>{row.supplierName ?? '—'}{#if row.supplierRuc}<span class="t-caption ruc"> · {row.supplierRuc}</span>{/if}</td>
-                    <td class="mono">{[row.docType, row.serie, row.numero].filter(Boolean).join('-') || '—'}</td>
+                    <td
+                      >{row.supplierName ?? '—'}{#if row.supplierRuc}<span class="t-caption ruc">
+                          · {row.supplierRuc}</span
+                        >{/if}</td
+                    >
+                    <td class="mono"
+                      >{[row.docType, row.serie, row.numero].filter(Boolean).join('-') || '—'}</td
+                    >
                     <td>{row.issuedAt ?? '—'}</td>
-                    <td class="num tabular-nums">{formatMoney(row.baseGravada, row.currency ?? 'PEN')}</td>
+                    <td class="num tabular-nums"
+                      >{formatMoney(row.baseGravada, row.currency ?? 'PEN')}</td
+                    >
                     <td class="num tabular-nums">{formatMoney(row.igv, row.currency ?? 'PEN')}</td>
-                    <td class="num tabular-nums font-medium">{formatMoney(row.total, row.currency ?? 'PEN')}</td>
+                    <td class="num tabular-nums font-medium"
+                      >{formatMoney(row.total, row.currency ?? 'PEN')}</td
+                    >
                     <td>
-                      <Badge variant={row.source === 'sunat' ? 'semantic' : 'neutral'} value={row.source === 'sunat' ? 'info' : undefined}>
+                      <Badge
+                        variant={row.source === 'sunat' ? 'semantic' : 'neutral'}
+                        value={row.source === 'sunat' ? 'info' : undefined}
+                      >
                         {row.source === 'sunat' ? 'SUNAT' : m.fin_purchases_source_manual()}
                       </Badge>
                       {#if row.syncState === 'diverged'}
-                        <Badge variant="semantic" value="warning">{m.fin_purchases_diverged()}</Badge>
+                        <Badge variant="semantic" value="warning"
+                          >{m.fin_purchases_diverged()}</Badge
+                        >
                       {/if}
                     </td>
                     {#if group.period.status === 'open' && canWrite}
                       <td class="actions-col">
-                        <Button variant="ghost" size="xs" shape="icon" aria-label={m.common_edit()} onclick={() => (editing = row)}>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          shape="icon"
+                          aria-label={m.common_edit()}
+                          onclick={() => (editing = row)}
+                        >
                           {#snippet icon()}<Pencil size={iconSizes.sm} />{/snippet}
                         </Button>
-                        <Button variant="ghost" size="xs" shape="icon" aria-label={m.common_delete()} onclick={() => (deleting = row)}>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          shape="icon"
+                          aria-label={m.common_delete()}
+                          onclick={() => (deleting = row)}
+                        >
                           {#snippet icon()}<Trash2 size={iconSizes.sm} />{/snippet}
                         </Button>
                       </td>
@@ -178,7 +211,12 @@
 
 <PurchaseFormDialog bind:open={showAdd} period={openPeriod} />
 {#if editing}
-  <PurchaseFormDialog open={true} period={editing.period} purchase={editing} onclose={() => (editing = null)} />
+  <PurchaseFormDialog
+    open={true}
+    period={editing.period}
+    purchase={editing}
+    onclose={() => (editing = null)}
+  />
 {/if}
 {#if deleting}
   <ConfirmDialog

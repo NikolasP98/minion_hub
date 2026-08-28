@@ -86,12 +86,24 @@
     // svelte-ignore state_referenced_locally
     typeof sunatConfig?.clientId === 'string' ? sunatConfig.clientId : '',
   );
+  let sunatLegalName = $state(
+    // svelte-ignore state_referenced_locally
+    typeof sunatConfig?.legalName === 'string' ? sunatConfig.legalName : '',
+  );
+  let sunatUbigeo = $state(
+    // svelte-ignore state_referenced_locally
+    typeof sunatConfig?.ubigeo === 'string' ? sunatConfig.ubigeo : '',
+  );
+  let sunatAddress = $state(
+    // svelte-ignore state_referenced_locally
+    typeof sunatConfig?.address === 'string' ? sunatConfig.address : '',
+  );
   let sunatStartPeriod = $state(
     // svelte-ignore state_referenced_locally
     typeof sunatConfig?.startPeriod === 'string' ? sunatConfig.startPeriod : '',
   );
   // svelte-ignore state_referenced_locally
-  const sunatHasCredentials = $state(sunatSrc?.hasCredentials ?? false);
+  let sunatHasCredentials = $state(sunatSrc?.hasCredentials ?? false);
   let sunatSecretUser = $state('');
   let sunatSecretPassword = $state('');
   let sunatSecretClientSecret = $state('');
@@ -101,6 +113,16 @@
   );
   let sunatBusy = $state(false);
   let sunatMsg = $state<{ ok: boolean; text: string } | null>(null);
+  let sunatProbeBusy = $state(false);
+  let sunatProbeStatus = $state<string | null>(sunatSrc?.lastProbeStatus ?? null);
+  let sunatProbeAt = $state<Date | string | null>(sunatSrc?.lastProbeAt ?? null);
+
+  function sunatProbeLabel(status: string | null): string {
+    if (status === 'valid') return m.finance_settings_sunat_probe_valid();
+    if (status === 'invalid') return m.finance_settings_sunat_probe_invalid();
+    if (status === 'unavailable') return m.finance_settings_sunat_probe_unavailable();
+    return m.finance_settings_sunat_probe_never();
+  }
 
   async function saveSunat() {
     sunatBusy = true;
@@ -114,7 +136,10 @@
           config: {
             ruc: sunatRuc,
             clientId: sunatClientId,
-            startPeriod: sunatStartPeriod || null,
+            legalName: sunatLegalName,
+            ...(sunatUbigeo ? { ubigeo: sunatUbigeo } : {}),
+            ...(sunatAddress ? { address: sunatAddress } : {}),
+            ...(sunatStartPeriod ? { startPeriod: sunatStartPeriod } : {}),
           },
           username: sunatSecretUser,
           password: sunatSecretPassword,
@@ -122,13 +147,43 @@
           enabled: sunatEnabled,
         }),
       });
-      sunatMsg = res.ok
-        ? { ok: true, text: m.fin_connector_saved() }
-        : { ok: false, text: m.fin_connector_error() };
+      if (res.ok) {
+        sunatHasCredentials = true;
+        sunatProbeStatus = null;
+        sunatProbeAt = null;
+        sunatSecretUser = '';
+        sunatSecretPassword = '';
+        sunatSecretClientSecret = '';
+        sunatMsg = { ok: true, text: m.fin_connector_saved() };
+      } else {
+        sunatMsg = { ok: false, text: m.fin_connector_error() };
+      }
     } catch {
       sunatMsg = { ok: false, text: m.fin_connector_error() };
     } finally {
       sunatBusy = false;
+    }
+  }
+
+  async function probeSunat() {
+    sunatProbeBusy = true;
+    sunatMsg = null;
+    try {
+      const result = await fetchJson<{ ok: boolean; status: string }>(
+        '/api/finances/sources/probe',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ provider: 'sunat-sire' }),
+        },
+      );
+      sunatProbeStatus = result.status;
+      sunatProbeAt = new Date();
+      sunatMsg = { ok: result.ok, text: sunatProbeLabel(result.status) };
+    } catch {
+      sunatMsg = { ok: false, text: m.finance_settings_sunat_probe_error() };
+    } finally {
+      sunatProbeBusy = false;
     }
   }
 
@@ -439,6 +494,28 @@
         </label>
 
         <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_legal_name()}</span>
+          <input class="inp" type="text" bind:value={sunatLegalName} />
+        </label>
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_ubigeo()}</span>
+          <input
+            class="inp"
+            type="text"
+            inputmode="numeric"
+            pattern="\d{6}"
+            maxlength="6"
+            bind:value={sunatUbigeo}
+          />
+        </label>
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_address()}</span>
+          <input class="inp" type="text" bind:value={sunatAddress} />
+        </label>
+
+        <label class="field">
           <span class="t-caption">{m.finance_settings_sunat_start_period()}</span>
           <input
             class="inp"
@@ -503,6 +580,16 @@
             <span class="mono-val">{sunatSrc.watermark}</span>
           </div>
         {/if}
+        <div class="meta-row">
+          <span class="t-caption">{m.finance_settings_sunat_probe_status()}</span>
+          <span class="mono-val">{sunatProbeLabel(sunatProbeStatus)}</span>
+        </div>
+        {#if sunatProbeAt}
+          <div class="meta-row">
+            <span class="t-caption">{m.finance_settings_sunat_probe_last()}</span>
+            <span class="mono-val">{new Date(sunatProbeAt).toLocaleString()}</span>
+          </div>
+        {/if}
 
         {#if sunatMsg}
           <p class={sunatMsg.ok ? 'ok-msg' : 'err-msg'}>{sunatMsg.text}</p>
@@ -517,6 +604,20 @@
             title={canAct('finance', 'edit') ? undefined : m.no_permission()}
           >
             {m.fin_connector_save()}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={probeSunat}
+            disabled={sunatBusy ||
+              sunatProbeBusy ||
+              !sunatHasCredentials ||
+              !sunatEnabled ||
+              !canAct('finance', 'edit')}
+            title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+          >
+            {#if sunatProbeBusy}<Spinner size="xs" />{/if}
+            {sunatProbeBusy ? m.finance_settings_sunat_probing() : m.finance_settings_sunat_probe()}
           </Button>
         </div>
 
@@ -753,6 +854,9 @@
   }
   .actions {
     margin-top: var(--space-3, 12px);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
   }
   .ok-msg {
     font-size: var(--font-size-body, 14px);

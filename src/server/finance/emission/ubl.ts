@@ -1,9 +1,6 @@
 import type { EmissionInvoice, EmissionLine } from './types';
 import { EXTENSION_PLACEHOLDER_XML, escapeXml, signatureBlockXml } from './ubl-common';
 
-/** FACES reality: IGV is always 18%, prices are always tax-inclusive. */
-const IGV_RATE = 0.18;
-
 /** Round half-up — Math.round already does this for positive amounts, but the
  * intent (banker's rounding is NOT what SUNAT wants) is worth spelling out. */
 function round(n: number, decimals: number): number {
@@ -39,30 +36,80 @@ export interface InvoiceTotals {
 export function computeTotals(inv: EmissionInvoice): InvoiceTotals {
   const lines = inv.lines.map((line): LineTotals => {
     const totalInclTax = round(line.quantity * line.unitPriceInclTax, 2);
-    const totalExclTax = round(totalInclTax / (1 + IGV_RATE), 2);
+    const totalExclTax = round(totalInclTax / (1 + inv.igvRate), 2);
     const igv = round(totalInclTax - totalExclTax, 2);
     const unitPriceExclTax = round(totalExclTax / line.quantity, 6);
     return { line, totalInclTax, totalExclTax, igv, unitPriceExclTax };
   });
-  const lineExtensionAmount = round(lines.reduce((s, l) => s + l.totalExclTax, 0), 2);
-  const igvAmount = round(lines.reduce((s, l) => s + l.igv, 0), 2);
-  const taxInclusiveAmount = round(lines.reduce((s, l) => s + l.totalInclTax, 0), 2);
-  return { lines, lineExtensionAmount, igvAmount, taxInclusiveAmount, payableAmount: taxInclusiveAmount };
+  const lineExtensionAmount = round(
+    lines.reduce((s, l) => s + l.totalExclTax, 0),
+    2,
+  );
+  const igvAmount = round(
+    lines.reduce((s, l) => s + l.igv, 0),
+    2,
+  );
+  const taxInclusiveAmount = round(
+    lines.reduce((s, l) => s + l.totalInclTax, 0),
+    2,
+  );
+  return {
+    lines,
+    lineExtensionAmount,
+    igvAmount,
+    taxInclusiveAmount,
+    payableAmount: taxInclusiveAmount,
+  };
 }
 
 const UNITS = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
 const TEENS = [
-  'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE',
-  'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE',
+  'DIEZ',
+  'ONCE',
+  'DOCE',
+  'TRECE',
+  'CATORCE',
+  'QUINCE',
+  'DIECISEIS',
+  'DIECISIETE',
+  'DIECIOCHO',
+  'DIECINUEVE',
 ];
 const TWENTIES = [
-  'VEINTE', 'VEINTIUNO', 'VEINTIDOS', 'VEINTITRES', 'VEINTICUATRO',
-  'VEINTICINCO', 'VEINTISEIS', 'VEINTISIETE', 'VEINTIOCHO', 'VEINTINUEVE',
+  'VEINTE',
+  'VEINTIUNO',
+  'VEINTIDOS',
+  'VEINTITRES',
+  'VEINTICUATRO',
+  'VEINTICINCO',
+  'VEINTISEIS',
+  'VEINTISIETE',
+  'VEINTIOCHO',
+  'VEINTINUEVE',
 ];
-const TENS = ['', '', '', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+const TENS = [
+  '',
+  '',
+  '',
+  'TREINTA',
+  'CUARENTA',
+  'CINCUENTA',
+  'SESENTA',
+  'SETENTA',
+  'OCHENTA',
+  'NOVENTA',
+];
 const HUNDREDS = [
-  '', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS',
-  'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS',
+  '',
+  'CIENTO',
+  'DOSCIENTOS',
+  'TRESCIENTOS',
+  'CUATROCIENTOS',
+  'QUINIENTOS',
+  'SEISCIENTOS',
+  'SETECIENTOS',
+  'OCHOCIENTOS',
+  'NOVECIENTOS',
 ];
 
 function twoDigits(n: number): string {
@@ -107,7 +154,8 @@ export function amountInWords(amount: number): string {
 }
 
 function supplierAddress(inv: EmissionInvoice): string {
-  if (!inv.emitter.ubigeo) return '<cac:Country><cbc:IdentificationCode>PE</cbc:IdentificationCode></cac:Country>';
+  if (!inv.emitter.ubigeo)
+    return '<cac:Country><cbc:IdentificationCode>PE</cbc:IdentificationCode></cac:Country>';
   const line = inv.emitter.address
     ? `<cac:AddressLine><cbc:Line>${escapeXml(inv.emitter.address)}</cbc:Line></cac:AddressLine>`
     : '';
@@ -119,7 +167,15 @@ function supplierAddress(inv: EmissionInvoice): string {
   );
 }
 
-function lineXml(id: number, l: LineTotals): string {
+/** `rate * 100`, at most 2 decimals, trailing zeros dropped (a fractional
+ *  rate of eighteen percent becomes "18", not "18.00") — the declared
+ *  `cbc:Percent` and `computeTotals`'s divisor MUST come from the same
+ *  `igvRate`, this is the only formatter. */
+function formatPercent(rate: number): string {
+  return String(round(rate * 100, 2));
+}
+
+function lineXml(id: number, l: LineTotals, percent: string): string {
   return `<cac:InvoiceLine>
 <cbc:ID>${id}</cbc:ID>
 <cbc:InvoicedQuantity unitCode="NIU">${l.line.quantity}</cbc:InvoicedQuantity>
@@ -136,7 +192,7 @@ function lineXml(id: number, l: LineTotals): string {
 <cbc:TaxableAmount currencyID="PEN">${l.totalExclTax.toFixed(2)}</cbc:TaxableAmount>
 <cbc:TaxAmount currencyID="PEN">${l.igv.toFixed(2)}</cbc:TaxAmount>
 <cac:TaxCategory>
-<cbc:Percent>18</cbc:Percent>
+<cbc:Percent>${percent}</cbc:Percent>
 <cbc:TaxExemptionReasonCode>10</cbc:TaxExemptionReasonCode>
 <cac:TaxScheme>
 <cbc:ID>1000</cbc:ID>
@@ -164,7 +220,8 @@ function lineXml(id: number, l: LineTotals): string {
 export function buildInvoiceXml(inv: EmissionInvoice): string {
   const totals = computeTotals(inv);
   const id = `${inv.serie}-${inv.correlativo}`;
-  const lines = totals.lines.map((l, i) => lineXml(i + 1, l)).join('\n');
+  const percent = formatPercent(inv.igvRate);
+  const lines = totals.lines.map((l, i) => lineXml(i + 1, l, percent)).join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">

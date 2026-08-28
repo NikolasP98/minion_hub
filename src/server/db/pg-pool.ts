@@ -5,8 +5,6 @@ import { dev } from '$app/environment';
 type PgClient = ReturnType<typeof postgres>;
 
 interface PgPoolState {
-  /** URL + pool-settings fingerprint, so a config change rebuilds the pool
-   *  (globalThis state survives Vite HMR; the URL alone missed setting edits). */
   url: string;
   client: PgClient;
 }
@@ -40,36 +38,20 @@ function databaseUrl(): string {
   return url;
 }
 
-// Dev runs against a remote Supabase pooler (~1.3s per new connection from
-// here). idle_timeout=20s meant every >20s pause in navigation dropped all
-// connections and the next page load re-paid connection setup across pools —
-// the dominant share of 3-8s cold navigations. Keep connections for 10 min in
-// dev; prod (serverless, DB-adjacent) keeps the short timeout to respect
-// connection budgets.
-const IDLE_TIMEOUT_S = dev ? 600 : 20;
-
-// Long-lived dev connections also need a longer lifetime cap, or max_lifetime
-// re-introduces the same reconnect penalty every 10 minutes.
-const MAX_LIFETIME_S = dev ? 60 * 60 : 10 * 60;
-
-function poolKey(url: string, max: number): string {
-  return `${url}|max=${max}|idle=${IDLE_TIMEOUT_S}`;
-}
-
 /**
  * One bounded postgres-js pool per Hub process.
  *
- * A short idle timeout and finite connection lifetime keep dev reloads and
- * retired serverless isolates from holding Supabase connections indefinitely.
+ * idle_timeout 120s: long enough that a warm isolate doesn't re-pay pooler
+ * connection setup (~1s) after every >20s traffic gap, short enough (with
+ * max_lifetime) that retired serverless isolates don't hold Supabase
+ * connections indefinitely.
  * Size via SUPABASE_DB_POOL_SIZE: higher for local dev against a remote DB,
  * small on serverless where each isolate opens its own pool.
  */
 export function getPgClient(): PgClient {
   const url = databaseUrl();
-  const max = poolSize();
-  const key = poolKey(url, max);
   const existing = globalThis.__minionHubPgPool;
-  if (existing?.url === key) return existing.client;
+  if (existing?.url === url) return existing.client;
 
   if (existing) {
     void existing.client.end({ timeout: 5 }).catch((err: unknown) => {
@@ -79,12 +61,12 @@ export function getPgClient(): PgClient {
 
   const client = postgres(url, {
     prepare: false,
-    max,
-    idle_timeout: IDLE_TIMEOUT_S,
+    max: poolSize(),
+    idle_timeout: 120,
     connect_timeout: 10,
-    max_lifetime: MAX_LIFETIME_S,
+    max_lifetime: 10 * 60,
   });
-  globalThis.__minionHubPgPool = { url: key, client };
+  globalThis.__minionHubPgPool = { url, client };
   return client;
 }
 
@@ -99,12 +81,8 @@ export function getCriticalPgClient(): PgClient {
   if (!dev) return getPgClient();
 
   const url = databaseUrl();
-  // ponytail: max 1 serialized all app-shell gates behind one remote conn
-  // (~500ms/query × 5 parallel layout gates → 20s CoreDbOperationTimeout).
-  const max = Math.min(4, poolSize());
-  const key = poolKey(url, max);
   const existing = globalThis.__minionHubPgCriticalPool;
-  if (existing?.url === key) return existing.client;
+  if (existing?.url === url) return existing.client;
 
   if (existing) {
     void existing.client.end({ timeout: 5 }).catch((err: unknown) => {
@@ -114,12 +92,14 @@ export function getCriticalPgClient(): PgClient {
 
   const client = postgres(url, {
     prepare: false,
-    max,
-    idle_timeout: IDLE_TIMEOUT_S,
+    // ponytail: max 1 serialized all app-shell gates behind one remote conn
+    // (~500ms/query × 5 parallel layout gates → 20s CoreDbOperationTimeout).
+    max: Math.min(4, poolSize()),
+    idle_timeout: 120,
     connect_timeout: 10,
-    max_lifetime: MAX_LIFETIME_S,
+    max_lifetime: 10 * 60,
   });
-  globalThis.__minionHubPgCriticalPool = { url: key, client };
+  globalThis.__minionHubPgCriticalPool = { url, client };
   return client;
 }
 
@@ -132,11 +112,8 @@ export function getCriticalPgClient(): PgClient {
  */
 export function getRlsPgClient(): PgClient {
   const url = databaseUrl();
-  const configured = Number.parseInt(env.SUPABASE_DB_RLS_POOL_SIZE ?? '', 10);
-  const max = Number.isFinite(configured) ? Math.min(5, Math.max(1, configured)) : 1;
-  const key = poolKey(url, max);
   const existing = globalThis.__minionHubPgRlsPool;
-  if (existing?.url === key) return existing.client;
+  if (existing?.url === url) return existing.client;
 
   if (existing) {
     void existing.client.end({ timeout: 5 }).catch((err: unknown) => {
@@ -144,14 +121,16 @@ export function getRlsPgClient(): PgClient {
     });
   }
 
+  const configured = Number.parseInt(env.SUPABASE_DB_RLS_POOL_SIZE ?? '', 10);
+  const max = Number.isFinite(configured) ? Math.min(5, Math.max(1, configured)) : 1;
   const client = postgres(url, {
     prepare: false,
     max,
-    idle_timeout: IDLE_TIMEOUT_S,
+    idle_timeout: 120,
     connect_timeout: 10,
-    max_lifetime: MAX_LIFETIME_S,
+    max_lifetime: 10 * 60,
   });
-  globalThis.__minionHubPgRlsPool = { url: key, client };
+  globalThis.__minionHubPgRlsPool = { url, client };
   return client;
 }
 

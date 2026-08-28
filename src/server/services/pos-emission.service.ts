@@ -3,11 +3,21 @@ import { waitUntil } from '@vercel/functions';
 import { env } from '$env/dynamic/private';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
-import { posEmissions, posSeries, posTicketLines, type PosEmission, type PosSeries, type PosTicket } from '$server/db/pg-pos-schema';
+import {
+  posEmissions,
+  posSeries,
+  posTicketLines,
+  type PosEmission,
+  type PosSeries,
+  type PosTicket,
+} from '$server/db/pg-pos-schema';
 import { parties } from '$server/db/pg-party-schema';
 import { emitToBeta } from '$server/finance/emission';
 import type { EmissionDocType, EmissionInvoice } from '$server/finance/emission';
+import { emitterFromSunatConfig } from '$server/finance/connectors/sunat-source';
 import { PosError, type PosSettings } from './pos.service';
+import { getFinSettings, getSource } from './finance.service';
+import { resolveIgvRate } from '$server/finance/tax';
 // The ticket->EmissionInvoice mapping is a PURE module (no $env/db/@vercel
 // imports) so scripts/shadow-emit-test.ts can import it under plain `bun run`
 // without a SvelteKit runtime. Re-exported here for existing callers/tests.
@@ -89,25 +99,18 @@ export async function listPosSeries(ctx: CoreCtx): Promise<PosSeries[]> {
 
 // ---- emitter config ----
 
-/**
- * Emitter identity for shadow emission. Spec says "read from fin_settings if
- * present, else env" — `fin_settings` (pg-finance-schema.ts) has no
- * ruc/razonSocial columns today and adding one is out of scope for this
- * additive-migration-only slice ("keep it simple, one org in practice"), so
- * this reads env only. Revisit if a second org ever needs its own emitter.
- */
-export function resolveEmitter(): EmitterConfig {
-  const ruc = env.POS_EMISSION_EMITTER_RUC;
-  const razonSocial = env.POS_EMISSION_EMITTER_NAME;
-  if (!ruc || !razonSocial) {
-    throw new PosError('POS_EMISSION_EMITTER_RUC/POS_EMISSION_EMITTER_NAME not configured', 'no_emitter');
+/** Resolve identity from this org's SUNAT source; never borrow another tenant's identity. */
+export function resolveEmitter(
+  source: { enabled: boolean; config: unknown } | null,
+): EmitterConfig {
+  if (!source?.enabled) {
+    throw new PosError('SUNAT source is not enabled for this organization', 'no_emitter');
   }
-  return {
-    ruc,
-    razonSocial,
-    ubigeo: env.POS_EMISSION_EMITTER_UBIGEO || undefined,
-    address: env.POS_EMISSION_EMITTER_ADDRESS || undefined,
-  };
+  try {
+    return emitterFromSunatConfig(source.config);
+  } catch {
+    throw new PosError('SUNAT emitter identity is incomplete for this organization', 'no_emitter');
+  }
 }
 
 // ---- wiring: submitTicket -> shadow emission ----
@@ -147,7 +150,8 @@ async function runBetaEmission(
 ): Promise<void> {
   try {
     const cert = loadBetaCert();
-    if (!cert) throw new PosError('POS_EMISSION_BETA_CERT/POS_EMISSION_BETA_KEY not configured', 'no_cert');
+    if (!cert)
+      throw new PosError('POS_EMISSION_BETA_CERT/POS_EMISSION_BETA_KEY not configured', 'no_cert');
     await betaRateLimit();
     const result = await emitToBeta(invoice, cert.certPem, cert.keyPem);
     const accepted = result.responseCode === '0';
@@ -172,7 +176,9 @@ async function runBetaEmission(
         .update(posEmissions)
         .set({ status: 'error', responseDescription: message.slice(0, 500), updatedAt: new Date() })
         .where(and(eq(posEmissions.id, emissionId), eq(posEmissions.orgId, ctx.tenantId))),
-    ).catch((updateErr) => console.error('[pos-emission] failed to record error status', emissionId, updateErr));
+    ).catch((updateErr) =>
+      console.error('[pos-emission] failed to record error status', emissionId, updateErr),
+    );
   }
 }
 
@@ -198,7 +204,7 @@ export async function triggerShadowEmission(
   settings: PosSettings,
 ): Promise<void> {
   try {
-    const [lines, partyRows] = await Promise.all([
+    const [lines, partyRows, finSettings, sunatSource] = await Promise.all([
       withOrgCore(ctx, (tx) =>
         tx
           .select({
@@ -207,25 +213,56 @@ export async function triggerShadowEmission(
             total: posTicketLines.total,
           })
           .from(posTicketLines)
-          .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticket.id))),
+          .where(
+            and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticket.id)),
+          ),
       ),
       ticket.partyId
         ? withOrgCore(ctx, (tx) =>
             tx
-              .select({ docType: parties.docType, docNumber: parties.docNumber, name: parties.name })
+              .select({
+                docType: parties.docType,
+                docNumber: parties.docNumber,
+                name: parties.name,
+              })
               .from(parties)
               .where(and(eq(parties.id, ticket.partyId as string), eq(parties.orgId, ctx.tenantId)))
               .limit(1),
           )
         : Promise.resolve([]),
+      getFinSettings(ctx),
+      getSource(ctx, 'sunat-sire'),
     ]);
     const customer: PartyDocInfo | null = partyRows[0] ?? null;
-    const emitter = resolveEmitter();
+    const emitter = resolveEmitter(sunatSource);
     const docType = resolveEmissionDocType(customer, settings.emission.docTypeDefault);
+    // Resolved OUTSIDE the document transaction on purpose: a throw inside it
+    // rolls back the whole thing, so the refusal could not leave the audit row
+    // `recordUnemittableTicket` writes (⚠️ A2 of the igv-rate spec) — the row
+    // would be erased by the same rollback that gave the correlativo back.
+    let igvRate: number;
+    try {
+      igvRate = resolveIgvRate(finSettings);
+    } catch (e) {
+      await recordUnemittableTicket(ctx, ticket, docType, e);
+      return;
+    }
 
-    const { id: emissionId, invoice, docRequired } = await withOrgCore(ctx, async (tx) => {
+    const {
+      id: emissionId,
+      invoice,
+      docRequired,
+    } = await withOrgCore(ctx, async (tx) => {
       const allocation = await allocateNumber(tx, ctx.tenantId, docType, 'beta');
-      const mapped = ticketToEmission(ticket, lines, customer, settings, allocation, emitter);
+      const mapped = ticketToEmission(
+        ticket,
+        lines,
+        customer,
+        settings,
+        allocation,
+        emitter,
+        igvRate,
+      );
       const [row] = await tx
         .insert(posEmissions)
         .values({
@@ -245,13 +282,65 @@ export async function triggerShadowEmission(
     });
     fireAndForget(runBetaEmission(ctx, emissionId, invoice, docRequired));
   } catch (e) {
-    // no_serie / no_emitter / a transient DB error — log and move on, this
-    // must never surface to the cashier (spec §4: shadow is invisible).
+    // no_serie / no_emitter / a transient DB error — log and move on, this must
+    // never surface to the cashier (spec §4: shadow is invisible). Verified for
+    // ⚠️ A2 of the igv-rate spec: a misconfigured rate cannot reach the
+    // cashier's response, submitTicket only awaits this never-throwing
+    // function. no_serie and no_emitter stay log-only here — unchanged
+    // pre-existing behaviour, and no_serie in particular cannot be recorded as
+    // a row at all, since pos_emissions.serie/correlativo are NOT NULL and a
+    // serie is exactly what is missing.
     console.error('[pos-emission] shadow emission trigger failed', ticket.id, e);
   }
 }
 
-export async function listEmissionsForTicket(ctx: CoreCtx, ticketId: string): Promise<PosEmission[]> {
+/**
+ * Record a ticket the shadow emitter REFUSED to build a document for — today
+ * only `invalid_tax_rate` (spec ⚠️ A2 of
+ * 2026-08-17-hub-igv-rate-from-org-config-spec.md: an org whose configured
+ * `fin_settings.tax_rate` is unusable for SUNAT gets a hard error instead of a
+ * silently wrong document).
+ *
+ * A2 states that such a failure "surfaces as a `pos_emissions` row with
+ * `status='error'`" — this is what makes that true. The refusal happens BEFORE
+ * the normal insert, so without a row of its own it would exist only in the
+ * server log: `listEmissionsForTicket` (the ticket-detail read, see
+ * `pos.service.ts` getTicket) would show nothing and a misconfigured org would
+ * silently stop shadow-emitting. It costs the correlativo the document would
+ * have used — exactly like every failure one step later (bad cert, SUNAT
+ * unreachable), which already degrades an allocated row to `status='error'`.
+ *
+ * The client columns stay null on purpose: the ticket->invoice mapping never
+ * ran, so there is no resolved SUNAT client document to record.
+ */
+async function recordUnemittableTicket(
+  ctx: CoreCtx,
+  ticket: PosTicket,
+  docType: EmissionDocType,
+  cause: unknown,
+): Promise<void> {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  console.error('[pos-emission] shadow emission refused', ticket.id, message);
+  await withOrgCore(ctx, async (tx) => {
+    const allocation = await allocateNumber(tx, ctx.tenantId, docType, 'beta');
+    await tx.insert(posEmissions).values({
+      orgId: ctx.tenantId,
+      ticketId: ticket.id,
+      docType,
+      serie: allocation.serie,
+      correlativo: allocation.correlativo,
+      environment: 'beta',
+      status: 'error',
+      responseDescription: message.slice(0, 500),
+      total: ticket.total,
+    });
+  });
+}
+
+export async function listEmissionsForTicket(
+  ctx: CoreCtx,
+  ticketId: string,
+): Promise<PosEmission[]> {
   return withOrgCore(ctx, (tx) =>
     tx
       .select()

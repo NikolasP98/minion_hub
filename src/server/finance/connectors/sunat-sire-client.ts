@@ -66,13 +66,19 @@ export class SunatSireClient {
         const res = await this.fetchOnce(url, init);
         if (res.status === 429 || res.status >= 500) {
           lastErr = new Error(`sunat ${res.status}`);
-          if (attempt < RETRY_BACKOFF_MS.length) { await sleep(RETRY_BACKOFF_MS[attempt]); continue; }
+          if (attempt < RETRY_BACKOFF_MS.length) {
+            await sleep(RETRY_BACKOFF_MS[attempt]);
+            continue;
+          }
           return res; // exhausted — let the caller treat as a failure
         }
         return res;
       } catch (e) {
         lastErr = e; // timeout (AbortError) or network failure
-        if (attempt < RETRY_BACKOFF_MS.length) { await sleep(RETRY_BACKOFF_MS[attempt]); continue; }
+        if (attempt < RETRY_BACKOFF_MS.length) {
+          await sleep(RETRY_BACKOFF_MS[attempt]);
+          continue;
+        }
         throw lastErr instanceof Error ? lastErr : new Error('sunat request failed');
       }
     }
@@ -93,16 +99,21 @@ export class SunatSireClient {
       username: `${ruc}${username}`,
       password,
     });
-    const res = await this.fetchRetry(`${TOKEN_BASE}/v1/clientessol/${encodeURIComponent(clientId)}/oauth2/token/`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    });
+    const res = await this.fetchRetry(
+      `${TOKEN_BASE}/v1/clientessol/${encodeURIComponent(clientId)}/oauth2/token/`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      },
+    );
     if (!res.ok) {
       // Carry SUNAT's reason (error_description), not just the status — the body
       // never echoes the submitted secret, so it is safe to surface.
       const detail = await res.text().catch(() => '');
-      throw new Error(`sunat token failed: ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ''}`);
+      throw new Error(
+        `sunat token failed: ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ''}`,
+      );
     }
     const tok = (await res.json()) as { access_token: string; expires_in?: number };
     this.token = tok.access_token;
@@ -128,14 +139,20 @@ export class SunatSireClient {
   async periodos(
     codLibro: '140000' | '080000' = '140000',
   ): Promise<Array<{ perTributario: string; codEstado: string; desEstado: string }>> {
-    const res = await this.authedGet(`${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/padron/web/omisos/${codLibro}/periodos`);
+    const res = await this.authedGet(
+      `${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/padron/web/omisos/${codLibro}/periodos`,
+    );
     if (!res.ok) throw new Error(`sunat periodos fetch failed: ${res.status}`);
-    const body = (await res.json()) as Array<{ lisPeriodos?: Array<{ perTributario: string; codEstado: string; desEstado: string }> }>;
+    const body = (await res.json()) as Array<{
+      lisPeriodos?: Array<{ perTributario: string; codEstado: string; desEstado: string }>;
+    }>;
     return (Array.isArray(body) ? body : []).flatMap((e) => e.lisPeriodos ?? []);
   }
 
   /** RCE periods — codLibro 080000. Convenience wrapper over periodos(). */
-  async periodosRce(): Promise<Array<{ perTributario: string; codEstado: string; desEstado: string }>> {
+  async periodosRce(): Promise<
+    Array<{ perTributario: string; codEstado: string; desEstado: string }>
+  > {
     return this.periodos('080000');
   }
 
@@ -147,7 +164,11 @@ export class SunatSireClient {
    * has no paged-JSON comprobantes endpoint for RCE, only this aggregate CSV
    * and the broken async file export below.
    */
-  async resumenComprobantes(periodo: string, tipoResumen = '1', tipoArchivo = '0'): Promise<string> {
+  async resumenComprobantes(
+    periodo: string,
+    tipoResumen = '1',
+    tipoArchivo = '0',
+  ): Promise<string> {
     const res = await this.authedGet(
       `${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/resumen/web/resumencomprobantes/${periodo}/${tipoResumen}/${tipoArchivo}/exporta?codLibro=080000`,
     );
@@ -167,8 +188,14 @@ export class SunatSireClient {
 
   /** Polls the status of an export ticket; `archivoReporte[].nomArchivoReporte`
    *  is the generated file name once `desEstadoProceso` is 'Terminado'. */
-  async consultaEstadoTicket(perIni: string, perFin: string, numTicket: string): Promise<TicketStatus | null> {
-    const u = new URL(`${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/gestionprocesosmasivos/web/masivo/consultaestadotickets`);
+  async consultaEstadoTicket(
+    perIni: string,
+    perFin: string,
+    numTicket: string,
+  ): Promise<TicketStatus | null> {
+    const u = new URL(
+      `${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/gestionprocesosmasivos/web/masivo/consultaestadotickets`,
+    );
     u.searchParams.set('perIni', perIni);
     u.searchParams.set('perFin', perFin);
     u.searchParams.set('page', '1');
@@ -191,8 +218,13 @@ export class SunatSireClient {
    * client header/param issue. Kept for when SUNAT fixes it; purchases.service
    * does not call this — it uses resumenComprobantes() instead (see spec §1).
    */
-  async descargarArchivoReporte(nomArchivoReporte: string, codTipoArchivoReporte = '00'): Promise<Response> {
-    const u = new URL(`${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/gestionprocesosmasivos/web/masivo/archivoreporte`);
+  async descargarArchivoReporte(
+    nomArchivoReporte: string,
+    codTipoArchivoReporte = '00',
+  ): Promise<Response> {
+    const u = new URL(
+      `${API_BASE}/v1/contribuyente/migeigv/libros/rvierce/gestionprocesosmasivos/web/masivo/archivoreporte`,
+    );
     u.searchParams.set('nomArchivoReporte', nomArchivoReporte);
     u.searchParams.set('codTipoArchivoReporte', codTipoArchivoReporte);
     return this.authedGet(u.toString());
@@ -204,13 +236,16 @@ export class SunatSireClient {
    * which is what makes month-by-month backfill possible.
    */
   async propuestaPage(periodo: string, page: number, perPage = 100): Promise<SirePage> {
-    const u = new URL(`${API_BASE}/v1/contribuyente/migeigv/libros/rvie/propuesta/web/propuesta/${periodo}/comprobantes`);
+    const u = new URL(
+      `${API_BASE}/v1/contribuyente/migeigv/libros/rvie/propuesta/web/propuesta/${periodo}/comprobantes`,
+    );
     u.searchParams.set('page', String(page));
     u.searchParams.set('perPage', String(perPage));
     u.searchParams.set('mostrarDetalle', '1');
     if (page > 1) await sleep(PAGE_DELAY_MS); // pace requests to avoid rate-limiting
     const res = await this.authedGet(u.toString());
-    if (!res.ok) throw new Error(`sunat propuesta fetch failed (${periodo} p${page}): ${res.status}`);
+    if (!res.ok)
+      throw new Error(`sunat propuesta fetch failed (${periodo} p${page}): ${res.status}`);
     const body = (await res.json()) as SirePage;
     return { paginacion: body.paginacion, registros: body.registros ?? [], totales: body.totales };
   }

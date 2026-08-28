@@ -2,18 +2,25 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { requireAdmin } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { getSource, upsertSource, sourceHasCredentials } from '$server/services/finance.service';
 import { encryptCreds } from '$server/services/finance-secrets';
+<<<<<<< HEAD
 import { getConnector } from '$server/finance/connector';
 import '$server/finance/connectors/susii-connector';
+=======
+import { parseSunatSourceConfig } from '$server/finance/connectors/sunat-source';
+>>>>>>> origin/master
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'finance', 'view');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const provider = url.searchParams.get('provider') ?? 'susii';
+  const requestedProvider = url.searchParams.get('provider') ?? 'susii';
+  const parsedProvider = z.enum(['susii', 'sunat-sire']).safeParse(requestedProvider);
+  if (!parsedProvider.success) throw error(400, 'Unsupported finance source provider.');
+  const provider = parsedProvider.data;
   const source = await getSource(ctx, provider);
   // Never return the raw secret blob to the client.
   return json({
@@ -24,23 +31,35 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 };
 
 const putSchema = z.object({
-  provider: z.string().max(200).optional(),
+  provider: z.enum(['susii', 'sunat-sire']).default('susii'),
   username: z.string().max(500).optional(),
   password: z.string().max(500).optional(),
   clientSecret: z.string().max(500).optional(),
-  config: z.record(z.string(), z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()),
   enabled: z.boolean().optional(),
 });
 
 export const PUT: RequestHandler = async ({ locals, request }) => {
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'finance', 'edit');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, putSchema);
-  const provider = typeof body.provider === 'string' ? body.provider : 'susii';
+  const provider = body.provider;
   const username = typeof body.username === 'string' ? body.username.trim() : '';
   const password = typeof body.password === 'string' ? body.password.trim() : '';
   const clientSecret = typeof body.clientSecret === 'string' ? body.clientSecret.trim() : '';
+  const existing = await getSource(ctx, provider);
+
+  let config: Record<string, unknown>;
+  try {
+    config =
+      provider === 'sunat-sire'
+        ? parseSunatSourceConfig(body.config)
+        : z.object({ businessId: z.number().int().positive().nullable() }).parse(body.config);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : 'invalid connector configuration';
+    throw error(400, message.slice(0, 300));
+  }
 
   // Both-or-neither. A half-filled form used to fall into the "preserve
   // existing" branch and return ok:true having changed nothing — so "I updated
@@ -61,6 +80,7 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   let verified: boolean | null = null;
 
   let secretRefs: Record<string, unknown>;
+<<<<<<< HEAD
   if (username && password) {
     // Verify before storing: `count()` performs the provider login, so a bad
     // credential fails here with the provider's own reason instead of being
@@ -86,11 +106,26 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   } else {
     // Both blank — deliberate "keep what's stored" (editing config/enabled only).
     const existing = await getSource(ctx, provider);
+=======
+  const suppliedAnyCredential = !!(username || password || clientSecret);
+  const suppliedCompleteCredentials =
+    provider === 'sunat-sire' ? !!(username && password && clientSecret) : !!(username && password);
+  if (suppliedAnyCredential && !suppliedCompleteCredentials) {
+    throw error(400, 'Provide the complete credential set or leave every credential field blank.');
+  }
+  if (suppliedCompleteCredentials) {
+    secretRefs = encryptCreds({ username, password, ...(clientSecret ? { clientSecret } : {}) });
+  } else {
+    // Preserve existing credentials when the user left the fields blank.
+>>>>>>> origin/master
     secretRefs = (existing?.secretRefs ?? {}) as Record<string, unknown>;
+  }
+  if (!sourceHasCredentials({ secretRefs })) {
+    throw error(400, 'Credentials are required before this connector can be saved.');
   }
 
   await upsertSource(ctx, provider, {
-    config: (body.config ?? {}) as Record<string, unknown>,
+    config,
     secretRefs,
     enabled: body.enabled !== false,
   });

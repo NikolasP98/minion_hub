@@ -57,13 +57,15 @@ describe('route design contracts', () => {
       return output;
     }, {});
     // B lost one when /pos/refills was removed — stock operations live only in
-    // the stock module now. /crm/graph (WP3) added one back; /socials/ad-performance
-    // merged into /socials/campaigns (conversations columns) and its route removed.
+    // the stock module now. /socials/ad-performance merged into /socials/campaigns
+    // (conversations columns) and its route removed. /pos/settings
+    // (payment-methods config) added one more. /finances/purchases
+    // (purchases-rce module spec) added one more. /crm/graph, /finances/products,
+    // /stock/consumption and /stock/consume (all wave B) retired
+    // (hub-stock-crm-ux-consolidation spec) — B lost four more. The dedicated
+    // POS catalog create and edit pages add two Wave-B form surfaces.
     // +1 in B: /workforce/projects/[id]/repo (GitHub link + factory gates).
-    // -1 in B: /stock/consume removed — service consumption is recorded by
-    // /pos (ticket close) and /scheduling (booking complete), not by hand.
-    // +2 in B: /pos/settings (payment methods) and /finances/purchases (RCE).
-    expect(counts).toEqual({ A: 32, B: 70, C: 17, D: 23, E: 10 });
+    expect(counts).toEqual({ A: 32, B: 69, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

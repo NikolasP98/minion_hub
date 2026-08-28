@@ -27,9 +27,8 @@
           ]
         : []),
       { id: 'catalog', label: m.pos_nav_catalog(), icon: LayoutGrid, href: '/pos/catalog' },
-      // No refills tab: manual stock operations live ONLY in the stock module
-      // (/stock/entries). POS owns recipes + commerce, and posts its own
-      // sourced stock issues on ticket close.
+      // No refills tab: stock operations live ONLY in the stock module
+      // (/stock/entries). POS owns recipes + commerce.
       { id: 'settings', label: m.pos_nav_settings(), icon: Settings2, href: '/pos/settings' },
     ].filter((i) => canViewPath(i.href)),
   );

@@ -76,6 +76,40 @@
     danger?: boolean;
     onSelect: (ids: Set<string>, rows: T[]) => void;
   };
+
+  /** One server-mode query — fired on every search/sort/filter/page change. */
+  export type ServerQuery = {
+    search: string;
+    sort: { key: string; dir: 'asc' | 'desc' } | null;
+    /** Enum-filter selections, one comma-joined value per active column key. */
+    filters: Record<string, string>;
+    page: number;
+    pageSize: number;
+  };
+
+  /**
+   * Opt-in server mode (spec 2026-08-13 §S4): absent ⇒ current client-only
+   * behavior, byte-identical, for every existing consumer. Present ⇒ `data` is
+   * rendered as-is (the caller already applied search/filter/sort/page), the
+   * "showing" label and pager read `total` instead of `data.length`, and every
+   * interaction calls `onQuery` instead of mutating the table locally.
+   */
+  export type ServerMode = {
+    total: number;
+    loading?: boolean;
+    /** Rows per page. Defaults to the first page's `data.length`. */
+    pageSize?: number;
+    /** Scroll pagination: instead of prev/next buttons, nearing the bottom of
+     *  the scroll container requests the next page via `onQuery` — the CALLER
+     *  appends the new rows to `data` (page 1 replaces, page >1 appends). */
+    infinite?: boolean;
+    onQuery: (q: ServerQuery) => void;
+    /** Delegate export to a server endpoint so it covers the full filtered set. */
+    onExport?: (format: 'csv' | 'xlsx', keys: string[]) => void;
+    exportFormats?: ('csv' | 'xlsx')[];
+    /** Resolve ids for the complete current filter, beyond loaded rows. */
+    onSelectAllMatching?: () => Promise<string[]>;
+  };
 </script>
 
 <script lang="ts" generics="T">
@@ -86,6 +120,7 @@
     ArrowUp,
     ArrowDown,
     ChevronsUpDown,
+    ChevronLeft,
     ChevronRight,
     Columns3,
     Check,
@@ -102,7 +137,8 @@
     Divide,
     Hash,
   } from 'lucide-svelte';
-  import { Button, Tooltip } from '$lib/components/ui';
+  import { Button, Tooltip, Dropdown, iconSizes } from '$lib/components/ui';
+  import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
   import { formatMoney } from '$lib/utils/format';
   import ColumnFilter from '$lib/components/crm/ColumnFilter.svelte';
   import ExportDialog from '$lib/components/crm/ExportDialog.svelte';
@@ -131,12 +167,16 @@
     onRowClick,
     addLabel,
     onAdd,
+    addMenu,
+    onAddSelect,
     addDisabled = false,
     canEdit = true,
     onSaveRow,
     editDisabled = false,
     initialSort,
     initialFilters,
+    // server mode
+    server,
     // expansion
     getSubRows,
     expandedContent,
@@ -171,12 +211,17 @@
     onRowClick?: (row: T) => void;
     addLabel?: string;
     onAdd?: () => void;
+    /** When provided, the + button opens this menu instead of calling onAdd. */
+    addMenu?: DropdownItem[];
+    onAddSelect?: (value: string) => void;
     addDisabled?: boolean;
     canEdit?: boolean;
     onSaveRow?: (row: T, draft: EditDraft) => Promise<boolean | void>;
     editDisabled?: boolean;
     initialSort?: { key: string; dir?: 'asc' | 'desc' };
     initialFilters?: Record<string, string[]>;
+    /** Opt-in server mode — see {@link ServerMode}. Absent ⇒ current client-only behavior. */
+    server?: ServerMode;
     /** Same-shape children rendered as indented sub-rows when a row is expanded. */
     getSubRows?: (row: T) => T[] | null | undefined;
     /** Custom block rendered under a row when expanded (different-shape children). */
@@ -509,6 +554,11 @@
   }
   function setFilter(key: string, s: Set<string>) {
     filters = { ...filters, [key]: s };
+    if (server) {
+      serverPage = 1;
+      lastInfiniteRequest = 0;
+      emitServerQuery();
+    }
   }
 
   // ── Sort ──────────────────────────────────────────────────────────────────
@@ -520,6 +570,11 @@
     if (c.sortable === false) return;
     sortKey = c.key;
     sortDir = dir;
+    if (server) {
+      serverPage = 1;
+      lastInfiniteRequest = 0;
+      emitServerQuery();
+    }
   }
   function toggleSort(c: DataColumn<T>) {
     if (c.sortable === false) return;
@@ -528,7 +583,89 @@
       sortKey = c.key;
       sortDir = c.align === 'right' ? 'desc' : 'asc';
     }
+    if (server) {
+      serverPage = 1;
+      lastInfiniteRequest = 0;
+      emitServerQuery();
+    }
   }
+
+  // ── Server mode (opt-in, spec 2026-08-13 §S4) ────────────────────────────
+  // The table renders `data` as-is and only ever asks the caller for the next
+  // page via `onQuery` — it never filters/sorts/slices locally. `sortKey` /
+  // `sortDir` / `filters` above are still tracked (for header arrows and the
+  // enum-filter UI) but no longer feed `view`.
+  //
+  // + happy-dom crashes mounting ANY @minion-stack/ui Button.svelte instance
+  // here (`Cannot read properties of null (reading 'Symbol(parentNode)')` in
+  // Button.svelte's <svelte:element> insertion, node_modules/happy-dom's
+  // `Node.nextSibling` getter) — confirmed independent of this diff (repro on
+  // a bare column with no server mode at all). Separately, `view.length > 0`
+  // rows never render in tests at all: `rowVirt` requires `browser` from
+  // `$app/environment`, stubbed permanently `false` in
+  // src/server/test-utils/env-stubs/app-environment.ts, so the `{:else if
+  // rowVirt}` branch is always skipped with no `{:else}` fallback. Fixing
+  // either is a repo-wide test-infra gap, not a DataTable-only fix — logged in
+  // the meta-repo proposals ledger (2026-08-20-hub-datatable-server-mode-test-gap).
+  // svelte-ignore state_referenced_locally
+  let serverPage = $state(1);
+  // svelte-ignore state_referenced_locally
+  let serverPageSize = $state(server?.pageSize ?? data.length);
+  function emitServerQuery() {
+    if (!server) return;
+    server.onQuery({
+      search,
+      sort: sortKey ? { key: sortKey, dir: sortDir } : null,
+      filters: Object.fromEntries(
+        Object.entries(filters)
+          .filter(([, s]) => s.size > 0)
+          .map(([k, s]) => [k, [...s].join(',')]),
+      ),
+      page: serverPage,
+      pageSize: serverPageSize || data.length,
+    });
+  }
+  function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number) {
+    let t: ReturnType<typeof setTimeout>;
+    return (...a: A) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...a), ms);
+    };
+  }
+  const emitSearchQuery = debounce(() => {
+    serverPage = 1;
+    lastInfiniteRequest = 0;
+    emitServerQuery();
+  }, 300);
+  function goToServerPage(p: number) {
+    if (!server) return;
+    serverPage = Math.max(1, p);
+    lastInfiniteRequest = 0;
+    emitServerQuery();
+  }
+  // ── Infinite scroll (server.infinite) ────────────────────────────────────
+  // Nearing the bottom requests the NEXT page once; the caller appends rows.
+  // `lastInfiniteRequest` stops repeat requests while the fetch is in flight
+  // and is reset by every path that returns to page 1 (search/filter/sort).
+  let lastInfiniteRequest = 0;
+  function maybeRequestNextPage() {
+    if (!server?.infinite || server.loading || !wrapperEl) return;
+    if (data.length >= (server.total ?? 0)) return;
+    const el = wrapperEl;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight > 600) return;
+    const next = Math.floor(data.length / serverPageCount) + 1;
+    if (next <= 1 || next === lastInfiniteRequest) return;
+    lastInfiniteRequest = next;
+    serverPage = next;
+    emitServerQuery();
+  }
+  const serverPageCount = $derived(serverPageSize || data.length || 1);
+  const serverCanPrev = $derived(serverPage > 1);
+  const serverCanNext = $derived(serverPage * serverPageCount < (server?.total ?? 0));
+  const serverRangeStart = $derived(
+    (server?.total ?? 0) === 0 ? 0 : (serverPage - 1) * serverPageCount + 1,
+  );
+  const serverRangeEnd = $derived(Math.min(serverPage * serverPageCount, server?.total ?? 0));
   function defaultCmp(a: unknown, b: unknown): number {
     if (a == null && b == null) return 0;
     if (a == null) return -1;
@@ -538,7 +675,11 @@
   }
 
   // ── Pipeline: search → enum filters → sort ───────────────────────────────
+  // Server mode: the caller already applied search/filter/sort/page — `data`
+  // IS the view. Re-deriving here would double-apply the local pipeline on
+  // top of an already-scoped page (and silently reorder an already-sorted one).
   const view = $derived.by(() => {
+    if (server) return data;
     const q = search.trim().toLowerCase();
     let list = data;
     if (q) list = list.filter((row) => rowText(row).toLowerCase().includes(q));
@@ -663,10 +804,14 @@
     rowVirt?.measureElement(node);
   };
   // view identity changes (search/filter/sort) → snap back to the top, same
-  // intent as the old renderLimit reset.
+  // intent as the old renderLimit reset. Infinite mode: an APPEND (page > 1)
+  // must not yank the user back to the top — only page-1 replacements snap.
   $effect(() => {
     view;
-    untrack(() => rowVirt?.scrollToOffset(0));
+    untrack(() => {
+      if (server?.infinite && serverPage > 1) return;
+      rowVirt?.scrollToOffset(0);
+    });
   });
 
   // ── Selection ──────────────────────────────────────────────────────────────
@@ -692,6 +837,18 @@
   const someSelected = $derived(!allSelected && viewIds.some((id) => selectedIds.has(id)));
   function toggleAll() {
     emitSelection(allSelected ? new Set() : new Set(viewIds));
+  }
+  let selectingAllMatching = $state(false);
+  async function selectAllMatching() {
+    if (!server?.onSelectAllMatching || selectingAllMatching) return;
+    selectingAllMatching = true;
+    try {
+      emitSelection(new Set(await server.onSelectAllMatching()));
+    } catch {
+      // Caller owns the domain-specific error surface; preserve current selection.
+    } finally {
+      selectingAllMatching = false;
+    }
   }
   let bulkOpen = $state(false);
   function runBulk(a: BulkAction<T>) {
@@ -857,6 +1014,10 @@
     })),
   );
   function handleExport(format: 'csv' | 'xlsx', keys: string[]) {
+    if (server?.onExport) {
+      server.onExport(format, keys);
+      return;
+    }
     const cols = exportColumns.filter((c) => keys.includes(c.key));
     const val = (c: DataColumn<T>, row: T): string | number => {
       if (c.exportValue) return c.exportValue(row);
@@ -894,7 +1055,7 @@
 
 <div class="flex flex-col h-full min-h-0 {className}">
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
-  {#if searchable || exportable || onAdd || showColMenu || toolbar || actions || bulkActions}
+  {#if searchable || exportable || onAdd || addMenu || showColMenu || toolbar || actions || bulkActions}
     <div class="dt-toolbar">
       {#if searchable}
         <div class="dt-search">
@@ -902,12 +1063,26 @@
           <input
             bind:this={searchInputEl}
             bind:value={search}
+            oninput={() => server && emitSearchQuery()}
             placeholder={searchPlaceholder ?? m.data_table_search()}
           />
         </div>
       {/if}
       {#if selectedIds.size > 0}
         <span class="dt-count text-accent">{m.data_table_selected({ n: selectedIds.size })}</span>
+        {#if server?.onSelectAllMatching && allSelected && selectedIds.size < server.total}
+          <Button
+            variant="ghost"
+            size="xs"
+            class="dt-tool"
+            disabled={selectingAllMatching}
+            onclick={selectAllMatching}
+          >
+            {m.data_table_select_all_matching({ n: server.total })}
+          </Button>
+        {/if}
+      {:else if server}
+        <!-- server-mode range/total renders as the pager label below -->
       {:else}
         <span class="dt-count tabular-nums">
           {#if filterActive}{m.data_table_showing({
@@ -915,6 +1090,41 @@
               total: data.length,
             })}{:else}{m.data_table_rows({ total: data.length })}{/if}
         </span>
+      {/if}
+      {#if server}
+        {#if server.infinite}
+          <span class="dt-count tabular-nums">
+            {data.length} / {server.total}
+          </span>
+        {:else}
+          <div class="flex items-center gap-1">
+            <Button
+              variant="secondary"
+              size="icon"
+              type="button"
+              class="!h-6 !w-6"
+              disabled={!serverCanPrev}
+              aria-label={m.a11y_previous_page()}
+              onclick={() => goToServerPage(serverPage - 1)}
+            >
+              <ChevronLeft size={iconSizes.xs} />
+            </Button>
+            <span class="dt-count tabular-nums">
+              {serverRangeStart}–{serverRangeEnd} / {server.total}
+            </span>
+            <Button
+              variant="secondary"
+              size="icon"
+              type="button"
+              class="!h-6 !w-6"
+              disabled={!serverCanNext}
+              aria-label={m.a11y_next_page()}
+              onclick={() => goToServerPage(serverPage + 1)}
+            >
+              <ChevronRight size={iconSizes.xs} />
+            </Button>
+          </div>
+        {/if}
       {/if}
 
       {#if bulkActions && bulkActions.length && selectedIds.size > 0}
@@ -1032,7 +1242,18 @@
             {/if}
           </div>
         {/if}
-        {#if onAdd}
+        {#if addMenu?.length}
+          <!-- Menu form of the add affordance: the + opens a Dropdown of typed
+               create actions (e.g. stock movement kinds) instead of one onAdd. -->
+          <Dropdown items={addMenu} onSelect={(v) => onAddSelect?.(v)}>
+            {#snippet trigger()}
+              <span class="dt-add-menu" title={addLabel ?? m.data_table_add()}>
+                <Plus size={iconSizes.md} aria-hidden="true" />
+                <span class="sr-only">{addLabel ?? m.data_table_add()}</span>
+              </span>
+            {/snippet}
+          </Dropdown>
+        {:else if onAdd}
           <Tooltip label={addLabel ?? m.data_table_add()} asChild>
             {#snippet children(p)}
               <Button
@@ -1059,6 +1280,7 @@
     class="flex-1 min-h-0 overflow-auto dt-scroll"
     tabindex="0"
     bind:this={wrapperEl}
+    onscroll={maybeRequestNextPage}
     {@attach gridAttachment}
   >
     {#if data.length === 0}
@@ -1405,7 +1627,8 @@
   <ExportDialog
     bind:open={exportOpen}
     columns={exportDialogCols}
-    count={view.length}
+    count={server?.total ?? view.length}
+    formats={server?.exportFormats}
     onexport={handleExport}
   />
 {/if}
@@ -1513,6 +1736,22 @@
   .dt-toolbar :global(.dt-add:disabled) {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  /* Menu form of the add affordance — same accent square as .dt-add, but the
+     interactive element is the Dropdown's own trigger element around it. */
+  .dt-toolbar :global(.dt-add-menu) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+    transition: filter var(--duration-fast) var(--ease-standard);
+  }
+  .dt-toolbar :global(.dt-add-menu:hover) {
+    filter: brightness(1.08);
   }
   .col-menu :global(.bulk-item) {
     display: flex;

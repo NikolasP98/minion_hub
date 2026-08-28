@@ -7,7 +7,10 @@ import { crmContacts } from '$server/db/pg-crm-schema';
 import { eq, and } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
+import { setContactCustomField, type JsonValue } from './crm-contacts.service';
 import { getOpenRouterModel } from '$server/llm';
+import { depositMatchSql, depositSortKeySql, notDepositMatchSql } from './crm-deposit-rule';
+import { resolveDepositRule } from './crm-settings.service';
 
 const milestoneItemSchema = z.object({
   label: z.string(),
@@ -34,24 +37,46 @@ export interface Milestone {
 }
 
 const JOURNEY_MODEL =
-  env.CRM_JOURNEY_MODEL || env.CRM_FUNNEL_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
-
-const RESERVA = `ii.description ilike '%reserva%'`;
+  env.CRM_JOURNEY_MODEL ||
+  env.CRM_FUNNEL_MODEL ||
+  env.NOTES_POLISH_MODEL ||
+  'google/gemini-2.5-flash';
 
 /** Deterministic milestones from structured events (no model). Newest first. */
 async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise<Milestone[]> {
   const finance = await bothEnabled(ctx, 'crm', 'finances');
+  // ONE settings read per call, and only when the finance branch below will
+  // actually use it — a journey on an org with finances off costs no settings
+  // query, so `rule != null` doubles as "finance is on".
+  //
+  // Resolved BEFORE withOrgCore opens its transaction: resolveDepositRule opens
+  // its OWN withOrgCore and the RLS pool is single-connection (see the
+  // transaction-discipline note on crm-settings.service.ts), so nesting the
+  // read inside the callback below would deadlock.
+  //
+  // `rule` carries BOTH halves of the org's deposit config and they are used
+  // separately: `keywords` MATCHES the invoice-line text in SQL, `label` is
+  // the caption RENDERED for a deposits-only invoice. A match rule and a
+  // display string are different things — an org configuring
+  // keywords: ['deposit'] must not get a Spanish milestone caption.
+  const rule = finance ? await resolveDepositRule(ctx) : null;
   return withOrgCore(ctx, async (tx) => {
     const out: Milestone[] = [];
 
-    if (finance) {
+    if (rule) {
+      // The representative-item ORDER BY goes through `depositSortKeySql`, not
+      // the bare `depositMatchSql` predicate: now that the rule is per-org it
+      // can legitimately have ZERO keywords, and that predicate compiles to the
+      // literal `false`, which PostgreSQL rejects as a sort key (42601,
+      // "non-integer constant in ORDER BY"). The CASE wrapper keeps the same
+      // ordering — procedures (0) before deposits (1).
       const rows = (await tx.execute(sql`
         select fi.id::text id, fi.issued_at at, coalesce(fi.total,0)::float8 amount,
-               bool_or(${sql.raw(RESERVA)}) only_reserva_flag,
-               bool_or(ii.description is not null and not (${sql.raw(RESERVA)})) has_proc,
+               bool_or(${depositMatchSql('ii.description', rule)}) only_deposit_flag,
+               bool_or(ii.description is not null and ${notDepositMatchSql('ii.description', rule)}) has_proc,
                (select ii2.description from fin_invoice_items ii2
                   where ii2.invoice_id = fi.id and ii2.description is not null
-                  order by (ii2.description ilike '%reserva%') asc, ii2.total desc nulls last limit 1) item
+                  order by ${depositSortKeySql('ii2.description', rule)} asc, ii2.total desc nulls last limit 1) item
         from crm_contacts c
         join fin_clients fc on fc.party_id = c.party_id and c.party_id is not null
           and fc.org_id = current_setting('app.current_org_id', true)
@@ -61,13 +86,31 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
         group by fi.id, fi.issued_at, fi.total
         order by fi.issued_at desc nulls last
         limit 40
-      `)) as unknown as Array<{ id: string; at: string | null; amount: number; has_proc: boolean; item: string | null }>;
+      `)) as unknown as Array<{
+        id: string;
+        at: string | null;
+        amount: number;
+        only_deposit_flag: boolean | null;
+        has_proc: boolean;
+        item: string | null;
+      }>;
       for (const r of rows) {
         const proc = Boolean(r.has_proc);
+        // Only an EXPLICITLY empty rule (`keywords: []`, "this org has no
+        // deposit concept") withholds the caption for an unclassifiable
+        // invoice (`!proc`, and `only_deposit_flag` is always false when
+        // there are no keywords to match). Every other rule — including
+        // `DEFAULT_DEPOSIT_RULE` for an org with no `crm_settings` row —
+        // keeps the legacy `!proc ⇒ reserve` mapping unconditionally, so an
+        // invoice whose lines carry no usable description still gets the
+        // same 'reserve' milestone it always has. That byte-identical
+        // default is required by S2 (FACTORY_SPEC.md) and is what
+        // distinguishes this from checking `only_deposit_flag` directly.
+        if (!proc && rule.keywords.length === 0) continue;
         out.push({
           id: `inv:${r.id}`,
           type: proc ? 'purchase' : 'reserve',
-          label: proc ? (r.item ?? 'Purchase') : 'Reserved a consult',
+          label: proc ? (r.item ?? 'Purchase') : rule.label,
           at: r.at ? String(r.at) : null,
           detail: `S/ ${Number(r.amount).toLocaleString()}`,
         });
@@ -85,7 +128,13 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
       limit 20
     `)) as unknown as Array<{ id: string; at: string | null; label: string; status: string }>;
     for (const b of bookings)
-      out.push({ id: `bk:${b.id}`, type: 'booking', label: b.label, at: b.at ? String(b.at) : null, detail: b.status });
+      out.push({
+        id: `bk:${b.id}`,
+        type: 'booking',
+        label: b.label,
+        at: b.at ? String(b.at) : null,
+        detail: b.status,
+      });
 
     // First contact (acquisition) from the ledger stats.
     const [stat] = (await tx.execute(sql`
@@ -103,7 +152,11 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
         and ci.org_id = current_setting('app.current_org_id', true)
       order by la.first_contact_at asc nulls last
       limit 1
-    `)) as unknown as Array<{ origin: string | null; campaign_name: string | null; first_contact_at: string | null }>;
+    `)) as unknown as Array<{
+      origin: string | null;
+      campaign_name: string | null;
+      first_contact_at: string | null;
+    }>;
 
     const firstContactAt = stat?.first_contact_at ?? attr?.first_contact_at ?? null;
     if (firstContactAt) {
@@ -178,7 +231,10 @@ export async function analyzeJourney(ctx: CoreCtx, contactId: string): Promise<M
   const convo = msgs
     .slice()
     .reverse()
-    .map((m) => `${(m.at ?? '').slice(0, 10)} ${m.direction === 'inbound' ? 'CLIENT' : 'CLINIC'}: ${m.content.replace(/\n/g, ' ')}`)
+    .map(
+      (m) =>
+        `${(m.at ?? '').slice(0, 10)} ${m.direction === 'inbound' ? 'CLIENT' : 'CLINIC'}: ${m.content.replace(/\n/g, ' ')}`,
+    )
     .join('\n');
 
   const prompt = `You build a CUSTOMER JOURNEY for a Peruvian aesthetics clinic (messages mostly Spanish). From the conversation, extract up to 6 concrete MILESTONES that are NOT already in the known events — things like an inquiry about a treatment, a price negotiation, a no-show, a visit, a complaint, or strong purchase intent. Each milestone: a short ENGLISH label (≤5 words) and the ISO date (YYYY-MM-DD) it happened.
@@ -207,27 +263,36 @@ Return ONLY a JSON array: [{"label":"Asked about Botox","at":"2026-05-01","detai
         id: `ai:${p.at ?? 'x'}:${i}:${p.label.slice(0, 20)}`,
         type: 'ai' as const,
         label: p.label.slice(0, 60),
-        at: typeof p.at === 'string' && /^\d{4}-\d{2}-\d{2}/.test(p.at) ? `${p.at.slice(0, 10)}T00:00:00Z` : null,
+        at:
+          typeof p.at === 'string' && /^\d{4}-\d{2}-\d{2}/.test(p.at)
+            ? `${p.at.slice(0, 10)}T00:00:00Z`
+            : null,
         detail: typeof p.detail === 'string' ? p.detail.slice(0, 80) : null,
       }));
   } catch {
     return base;
   }
 
-  // Persist AI milestones on the reserved _journey custom field.
-  await withOrgCore(ctx, async (tx) => {
-    const [c] = await tx
-      .select({ cf: crmContacts.customFields })
-      .from(crmContacts)
-      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)))
-      .limit(1);
-    const cf = { ...((c?.cf as Record<string, unknown>) ?? {}) };
-    cf._journey = aiMilestones;
-    await tx
-      .update(crmContacts)
-      .set({ customFields: cf, updatedAt: new Date() })
-      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)));
-  });
+  // ONE atomic per-key write (spec 2026-08-18-hub-funnel-atomic-write-spec, S2):
+  // `_journey` goes through the same `setContactCustomField` primitive as
+  // `_funnel` and `_relationship`, never a select → spread → whole-column
+  // update. The shape this replaces read the whole `custom_fields` value into
+  // JS, assigned `_journey` on that snapshot, and wrote the entire object back,
+  // so ANY other key committed between the read and the write (a concurrent
+  // `setFunnelStage`, a `_relationship` write) was silently reverted to its
+  // stale value — the lost update the spec exists to remove. `Milestone` is an
+  // interface with an optional `detail`, so project it to a plain JSON value
+  // the setter's `assertJsonValue` boundary check accepts.
+  const journeyValue: JsonValue = aiMilestones.map((m) => ({
+    id: m.id,
+    type: m.type,
+    label: m.label,
+    at: m.at,
+    detail: m.detail ?? null,
+  }));
+  await withOrgCore(ctx, (tx) =>
+    setContactCustomField(tx, ctx.tenantId, contactId, '_journey', journeyValue),
+  );
 
   const merged = [...base, ...aiMilestones];
   merged.sort((a, b) => (b.at ? Date.parse(b.at) : 0) - (a.at ? Date.parse(a.at) : 0));
