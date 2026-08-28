@@ -174,9 +174,7 @@ describe('anti-recurrence guard — no second hardcoded deposit keyword', () => 
     // brand-new service that hardcodes the keyword or hand-builds an ILIKE
     // still trips this test instead of silently diverging.
     const exempt = new Set(
-      ['crm-deposit-rule.ts', 'crm-deposit-rule.fixtures.ts'].map((f) =>
-        path.join(servicesDir, f),
-      ),
+      ['crm-deposit-rule.ts', 'crm-deposit-rule.fixtures.ts'].map((f) => path.join(servicesDir, f)),
     );
 
     function walk(dir: string, out: string[]): string[] {
