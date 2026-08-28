@@ -105,4 +105,39 @@ describe('DataTable handoff marker block', () => {
     unmount();
     cleanup();
   });
+
+  // Deliberately reverse-of-ascending server fixture: if `view` ever fell
+  // through to the local search/filter/sort pipeline instead of returning
+  // `data` verbatim (the `if (server) return data` guard this marker sits
+  // beside), the asc-sort click above would flip these rows to Alpha, Beta
+  // and this assertion would catch it — the prior onQuery-only test could
+  // not, since its fixture was already in ascending order.
+  it('server mode: does not locally re-sort already server-ranked rows', async () => {
+    const onQuery = vi.fn();
+    const serverRows: Row[] = [
+      { id: '2', name: 'Beta' },
+      { id: '1', name: 'Alpha' },
+    ];
+    const server: ServerMode = { total: serverRows.length, onQuery };
+    const { getByRole, getAllByRole, unmount } = render(ServerRowDataTable, {
+      props: { data: serverRows, columns, getRowId: (r: Row) => r.id, server },
+    });
+
+    const header = getByRole('button', { name: 'Name' });
+    await fireEvent.click(header);
+
+    await waitFor(() => {
+      expect(onQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: { key: 'name', dir: 'asc' } }),
+      );
+    });
+
+    await waitFor(() => {
+      const cells = getAllByRole('cell');
+      expect(cells.map((c) => c.textContent?.trim())).toEqual(['Beta', 'Alpha']);
+    });
+
+    unmount();
+    cleanup();
+  });
 });
