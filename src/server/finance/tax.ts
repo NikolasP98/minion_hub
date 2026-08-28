@@ -47,6 +47,14 @@ export interface IgvRateSettings {
  * category and scheme codes, not as a gravada line at `Percent 0`. Emitting a
  * 0% gravada document would be malformed, so refuse loudly instead.
  */
+// TODO(handoff): live SUNAT beta (2026-08-28, see scripts/summary-beta-test.ts
+// header) proves that any igvRate other than the statutory 0.18 is hard-rejected
+// by sendBill (fault soap-env:Client.3462, "debe corresponder con una tasa
+// vigente") for facturas and individually-sendBill'd boletas. This function
+// accepts and forwards any rate in (0,1), so an org configuring a non-0.18 rate
+// today gets every SUNAT submission rejected in production. Needs a minion-meta
+// proposal amendment to decide the mitigation (e.g. reject/warn here before
+// emission); out of scope to design in this pass.
 export function resolveIgvRate(settings: IgvRateSettings | null | undefined): number {
   const configured = settings?.taxRate;
   if (configured == null) return DEFAULT_IGV_RATE;
