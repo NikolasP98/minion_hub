@@ -11,6 +11,22 @@ vi.mock('$server/auth/authorize', () => ({
 vi.mock('$server/services/organizations.service', () => ({
   listAllOrganizationsWithMemberCounts: () => mocks.listOrganizations(),
 }));
+vi.mock('$server/supabase', () => ({
+  supabaseAdmin: () => ({
+    from: () => {
+      const chain: {
+        select: () => typeof chain;
+        order: () => typeof chain;
+        then: (resolve: (v: { data: unknown[] }) => void) => void;
+      } = {
+        select: () => chain,
+        order: () => chain,
+        then: (resolve) => resolve({ data: [] }),
+      };
+      return chain;
+    },
+  }),
+}));
 
 import { load } from './+page.server';
 
@@ -33,6 +49,8 @@ describe('/settings/organizations load', () => {
     const depends = vi.fn();
     await expect(load({ locals: {}, depends } as never)).resolves.toEqual({
       organizations: [{ id: 'org-1', name: 'MINION', slug: 'minion', members: 3 }],
+      savedTraces: {},
+      profiles: [],
     });
     expect(depends).toHaveBeenCalledWith('settings:organizations');
   });
