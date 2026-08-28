@@ -13,6 +13,11 @@ vi.mock('./finance-products.service', () => ({
 const createItemMock = vi.fn<(ctx: unknown, input: unknown) => Promise<{ id: string }>>();
 const updateItemMock =
   vi.fn<(ctx: unknown, id: string, patch: unknown) => Promise<{ id: string } | null>>();
+// pos.service.ts now calls the tx-scoped variants directly (item write +
+// fin_products write share one transaction — see updateSellable's doc
+// comment); the mock still records calls under the same createItemMock/
+// updateItemMock spies (dropping the orgId arg) so existing assertions read
+// the same call shape as the ctx-based functions did.
 const setConsumptionMock =
   vi.fn<(ctx: unknown, input: unknown, actor: unknown) => Promise<{ id: string }>>();
 const deleteConsumptionMock = vi.fn<(ctx: unknown, id: string) => Promise<boolean>>();
@@ -24,8 +29,9 @@ vi.mock('./stock.service', () => ({
   submitEntry: vi.fn(),
   cancelEntry: vi.fn(),
   StockError: class StockError extends Error {},
-  createItem: (ctx: unknown, input: unknown) => createItemMock(ctx, input),
-  updateItem: (ctx: unknown, id: string, patch: unknown) => updateItemMock(ctx, id, patch),
+  createItemInTx: (tx: unknown, _orgId: unknown, input: unknown) => createItemMock(tx, input),
+  updateItemInTx: (tx: unknown, _orgId: unknown, id: string, patch: unknown) =>
+    updateItemMock(tx, id, patch),
   setConsumption: (ctx: unknown, input: unknown, actor: unknown) =>
     setConsumptionMock(ctx, input, actor),
   deleteConsumption: (ctx: unknown, id: string) => deleteConsumptionMock(ctx, id),

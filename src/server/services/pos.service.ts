@@ -24,8 +24,8 @@ import {
   submitEntry,
   cancelEntry,
   StockError,
-  createItem,
-  updateItem,
+  createItemInTx,
+  updateItemInTx,
   setConsumption,
   deleteConsumption,
   listConsumption,
@@ -1196,10 +1196,16 @@ function normalizeUomForCompare(v: string | null | undefined): string {
   return (v ?? '').trim().toLowerCase();
 }
 
-/** Translate a raw pg unique-violation into the domain error — same
- *  convention as enqueueJob in finance-sync-jobs.service.ts. */
+/** Translate a raw pg unique-violation into the domain error. Walks the
+ *  `cause` chain — drizzle wraps driver errors in DrizzleQueryError, so the
+ *  real Postgres `code` lives on `e.cause`, not `e` (same fix as
+ *  meta-sync-jobs.service.ts's pgErrorCode; a bare `e.code` check misses the
+ *  wrapped code and the caller's PosError never gets thrown). */
 function isUniqueViolation(e: unknown): boolean {
-  return !!e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === '23505';
+  for (let cur = e; cur && typeof cur === 'object'; cur = (cur as { cause?: unknown }).cause) {
+    if ((cur as { code?: unknown }).code === '23505') return true;
+  }
+  return false;
 }
 
 export interface SellableInput {
@@ -1228,8 +1234,10 @@ export interface SellableInput {
  * two flows can never drift (proven by the parity test in
  * pos.sellables.test.ts). `itemId` (publish an EXISTING stk_item) wins over
  * `trackStock` (create a NEW linked item), same precedence as SellableInput
- * documents. Ctx-level sequential call, not a tx parameter: withOrgCore
- * doesn't nest (see createSellable's doc comment).
+ * documents. Takes an open `tx` rather than a `ctx` so callers can fold this
+ * write into a larger transaction (updateSellable lands it atomically with
+ * the fin_products update — see that function's doc comment); createSellable
+ * opens a dedicated one-off `withOrgCore` at its call site instead.
  *
  * A 23505 from either branch is the partial unique index
  * `stk_items_org_fin_product_uniq` (or the org/code index) saying another
@@ -1239,7 +1247,8 @@ export interface SellableInput {
  * committed, never a partial pair.
  */
 async function syncSellableItem(
-  ctx: CoreCtx,
+  tx: CoreTx,
+  orgId: string,
   args: {
     finProductId: string;
     code: string;
@@ -1256,7 +1265,9 @@ async function syncSellableItem(
     // claiming one product; catching it here just turns 23505 into a usable
     // error instead of a 500.
     try {
-      const linked = await updateItem(ctx, args.itemId, { finProductId: args.finProductId });
+      const linked = await updateItemInTx(tx, orgId, args.itemId, {
+        finProductId: args.finProductId,
+      });
       if (!linked) throw new PosError('stock item not found', 'item_not_found');
     } catch (e) {
       if (isUniqueViolation(e))
@@ -1265,7 +1276,7 @@ async function syncSellableItem(
     }
   } else if (args.kind === 'product' && args.trackStock) {
     try {
-      await createItem(ctx, {
+      await createItemInTx(tx, orgId, {
         code: args.code,
         name: args.name,
         // Same default as an equivalent create request — the create/update
@@ -1322,10 +1333,14 @@ export async function itemHasHistory(
 }
 
 /**
- * Apply a uom change to a PRISTINE item — check and write in ONE withOrgCore
- * transaction with the stk_items row locked `for update`, so two concurrent
- * renames serialize and the history decision cannot be split from the write.
- * Movement writers serialize against this lock via submitEntry's
+ * Apply a uom change to a PRISTINE item — check and write against the
+ * `stk_items` row locked `for update` inside the caller's transaction, so two
+ * concurrent renames serialize and the history decision cannot be split from
+ * the write. Takes an open `tx` (updateSellable's sole caller folds this into
+ * the same transaction as the fin_products update — see that function's doc
+ * comment) rather than opening its own, so a later failure in that same PATCH
+ * rolls this write back too instead of leaving it permanently committed.
+ * Movement writers serialize against the item lock via submitEntry's
  * `for('share')` on the same rows (see stock.service.ts): a *submitted*
  * movement cannot commit between this history check and the uom write and be
  * reinterpreted under the renamed unit.
@@ -1343,32 +1358,31 @@ export async function itemHasHistory(
  * 2026-08-28-pos-trackstock-draft-lock-gap.md.
  */
 async function applyUomChange(
-  ctx: CoreCtx,
+  tx: CoreTx,
+  orgId: string,
   itemId: string,
   newUom: string,
   productCode: string | null,
 ): Promise<void> {
-  await withOrgCore(ctx, async (tx) => {
-    const [item] = await tx
-      .select({ id: stkItems.id })
-      .from(stkItems)
-      .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, ctx.tenantId)))
-      .for('update');
-    if (!item) throw new PosError('stock item not found', 'item_not_found');
-    if (await itemHasHistory(tx, ctx.tenantId, itemId, productCode)) {
-      // Unchanged S1 refusal code — this spec only narrows the blanket
-      // refusal to items WITH history; destructive-with-history semantics
-      // are the sibling spec's S3.
-      throw new PosError(
-        'unit of measure cannot be changed once the item has stock or billing history',
-        'uom_immutable',
-      );
-    }
-    await tx
-      .update(stkItems)
-      .set({ uom: newUom, updatedAt: new Date() })
-      .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, ctx.tenantId)));
-  });
+  const [item] = await tx
+    .select({ id: stkItems.id })
+    .from(stkItems)
+    .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)))
+    .for('update');
+  if (!item) throw new PosError('stock item not found', 'item_not_found');
+  if (await itemHasHistory(tx, orgId, itemId, productCode)) {
+    // Unchanged S1 refusal code — this spec only narrows the blanket
+    // refusal to items WITH history; destructive-with-history semantics
+    // are the sibling spec's S3.
+    throw new PosError(
+      'unit of measure cannot be changed once the item has stock or billing history',
+      'uom_immutable',
+    );
+  }
+  await tx
+    .update(stkItems)
+    .set({ uom: newUom, updatedAt: new Date() })
+    .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)));
 }
 
 /**
@@ -1421,15 +1435,17 @@ export async function createSellable(
   );
   if (!product) throw new PosError('product write did not persist', 'write_failed');
 
-  await syncSellableItem(ctx, {
-    finProductId: product.id,
-    code,
-    name: input.name,
-    kind: input.kind,
-    trackStock: input.trackStock,
-    uom: input.uom,
-    itemId: input.itemId,
-  });
+  await withOrgCore(ctx, (tx) =>
+    syncSellableItem(tx, ctx.tenantId, {
+      finProductId: product.id,
+      code,
+      name: input.name,
+      kind: input.kind,
+      trackStock: input.trackStock,
+      uom: input.uom,
+      itemId: input.itemId,
+    }),
+  );
 
   if (input.consumption?.length) {
     for (const c of input.consumption) {
@@ -1609,30 +1625,29 @@ export async function updateSellable(
     }
   }
 
-  // Apply the supported item transitions BEFORE the fin_products write, so a
-  // failed or refused transition leaves the product row untouched (the
-  // "transaction rolled back" property of the spec's DoD — withOrgCore doesn't
-  // nest, so ordering is the atomicity mechanism). NOTE: this is the OPPOSITE
-  // order from createSellable (product row commits first there, then the
-  // item) — the two are not symmetric, see createSellable's own doc comment
-  // for why that direction's residual orphan-row risk is accepted instead.
-  if (applyTrackStock) {
-    await syncSellableItem(ctx, {
-      finProductId: productId,
-      code,
-      name,
-      kind: 'product',
-      trackStock: true,
-      uom: patch.uom,
-    });
-  }
-  if (uomTransitionItemId != null) {
-    await applyUomChange(ctx, uomTransitionItemId, patch.uom!, current.code);
-  }
-
+  // Apply the supported item transitions and the fin_products write in ONE
+  // withOrgCore transaction, so a later failure (e.g. the rename's own 23505)
+  // rolls the item/uom write back too instead of leaving it permanently
+  // committed against a product update that never landed. Item transitions
+  // still run before the products .update() — a refused transition never
+  // reaches it — but now that ordering is inside a single atomic unit rather
+  // than being two independently-committing transactions.
   try {
-    await withOrgCore(ctx, (tx) =>
-      tx
+    await withOrgCore(ctx, async (tx) => {
+      if (applyTrackStock) {
+        await syncSellableItem(tx, ctx.tenantId, {
+          finProductId: productId,
+          code,
+          name,
+          kind: 'product',
+          trackStock: true,
+          uom: patch.uom,
+        });
+      }
+      if (uomTransitionItemId != null) {
+        await applyUomChange(tx, ctx.tenantId, uomTransitionItemId, patch.uom!, current.code);
+      }
+      await tx
         .update(finProducts)
         .set({
           code,
@@ -1642,10 +1657,11 @@ export async function updateSellable(
           active,
           updatedAt: new Date(),
         })
-        .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId))),
-    );
+        .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId)));
+    });
     await bustFinanceCache(ctx);
   } catch (e) {
+    if (e instanceof PosError) throw e;
     if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
     throw e;
   }

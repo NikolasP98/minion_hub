@@ -160,27 +160,56 @@ describe('depositWriteSchema (the WRITE boundary — strict, rejects instead of 
 // Verified locally by adding `ilike('%reserva%')` to crm-journey.service.ts
 // and confirming this test fails, then reverting.
 describe('anti-recurrence guard — no second hardcoded deposit keyword', () => {
-  it('the deposit consumers never hardcode /reserva/i or a string-built ILIKE pattern', async () => {
-    const { readFileSync } = await import('node:fs');
+  it('no server file (anywhere, not just a hand-maintained list) hardcodes /reserva/i or a string-built ILIKE pattern', async () => {
+    const { readFileSync, readdirSync, statSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
-    const dir = fileURLToPath(new URL('.', import.meta.url));
-    // crm-contacts.service.ts is the 4th real consumer (resolveDepositRule +
-    // deposit-rule cache-key fingerprinting) — crm-settings.service.ts builds
-    // no deposit SQL at all and was guarding nothing; kept anyway since an
-    // extra guarded file is free, a missing one is the actual gap.
-    const guarded = [
-      'crm-finance.service.ts',
-      'crm-similarity.service.ts',
-      'crm-journey.service.ts',
-      'crm-settings.service.ts',
-      'crm-contacts.service.ts',
-    ];
-    for (const file of guarded) {
-      const source = readFileSync(`${dir}${file}`, 'utf-8');
+    const path = await import('node:path');
+    const servicesDir = fileURLToPath(new URL('.', import.meta.url));
+    const serverDir = path.join(servicesDir, '..');
+    // The canonical rule module and its fixture are the ONLY files allowed to
+    // say "reserva" — everything else must go through
+    // depositMatchSql/notDepositMatchSql/escapeLikePattern. Excluding a
+    // hand-maintained consumer allowlist (the S0 amendment this guard
+    // implements) instead of hardcoding which files are "consumers", so a
+    // brand-new service that hardcodes the keyword or hand-builds an ILIKE
+    // still trips this test instead of silently diverging.
+    const exempt = new Set(
+      ['crm-deposit-rule.ts', 'crm-deposit-rule.fixtures.ts'].map((f) =>
+        path.join(servicesDir, f),
+      ),
+    );
+
+    function walk(dir: string, out: string[]): string[] {
+      for (const entry of readdirSync(dir)) {
+        const full = path.join(dir, entry);
+        if (statSync(full).isDirectory()) {
+          walk(full, out);
+        } else if (/\.(ts|js)$/.test(entry) && !/\.test\.(ts|js)$/.test(entry)) {
+          out.push(full);
+        }
+      }
+      return out;
+    }
+
+    const files = walk(serverDir, []).filter((f) => !exempt.has(f));
+    expect(files.length).toBeGreaterThan(100); // sanity: the walk actually found the tree
+
+    for (const file of files) {
+      const source = readFileSync(file, 'utf-8');
+      // Global: the keyword itself must never reappear anywhere on the
+      // server, deposit-related file or not.
       expect(
         source,
         `${file} must not hardcode the keyword — use depositMatchSql/notDepositMatchSql`,
       ).not.toMatch(/reserva/i);
+
+      // Scoped: a raw hand-built ILIKE pattern is only a deposit-rule
+      // violation in a file that is actually in the deposit domain — plenty
+      // of unrelated server code (e.g. campaign-name matching) legitimately
+      // hardcodes its own ILIKE literals for a different business rule, and
+      // banning ILIKE literals sitewide would just be noise unrelated to
+      // this guard's claim.
+      if (!/deposit/i.test(source)) continue;
       expect(
         source,
         `${file} must not build an ILIKE pattern by string concatenation — use escapeLikePattern`,
