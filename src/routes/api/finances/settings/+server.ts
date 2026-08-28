@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { parseBody } from '$server/api/validate';
+import { IGV_RATE_NOT_VIGENTE_MESSAGE, isVigenteIgvRate } from '$lib/finance/igv-rates';
 import { getFinSettings, updateFinSettings, refreshExchangeRate } from '$server/services/finance.service';
 
 export const GET: RequestHandler = async ({ locals }) => {
@@ -14,7 +15,13 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 const putSchema = z.object({
   currency: z.string().min(2).max(8).optional(),
-  taxRate: z.number().min(0).max(0.9999).optional(), // fraction, not percent
+  // Fraction, not percent — and only a rate SUNAT currently accepts. A rate
+  // outside the allowlist is rejected here (400) rather than persisted and
+  // then rejected by SUNAT with fault 3462 on every later emission.
+  taxRate: z
+    .number()
+    .refine(isVigenteIgvRate, { message: IGV_RATE_NOT_VIGENTE_MESSAGE })
+    .optional(),
   fxMode: z.enum(['auto', 'manual']).optional(),
   fxManualRate: z.number().positive().nullable().optional(),
 });
