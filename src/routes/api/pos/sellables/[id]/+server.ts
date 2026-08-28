@@ -11,6 +11,10 @@ import { requireSellableFieldCapabilities } from '../_owning-modules';
 const consumptionSchema = z.object({
   itemId: z.string().min(1),
   qtyPerUnit: z.number().finite(),
+  // Mirrors the POST route's schema. updateSellable() persists this onto the
+  // consumption row, and zod strips unknown keys — omitting it here silently
+  // dropped every note sent through PATCH while POST kept it.
+  note: z.string().max(2000).nullable().optional(),
 });
 
 const patchSchema = z.object({
