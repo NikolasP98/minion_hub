@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "baseCommit": "19ba7894e3ec3aefba4f8d3324838d04050c2ccb",
+  "baseCommit": "a01e2da45157088c364018ba587f7171128b2197",
   "sourceRef": "HEAD",
-  "sourceCommit": "19ba7894e3ec3aefba4f8d3324838d04050c2ccb",
-  "sourceTreeSha": "021c0f25111d76ad7d46a1eb821b132b514a6213",
-  "workingTreeFingerprint": "git-tree:021c0f25111d76ad7d46a1eb821b132b514a6213",
+  "sourceCommit": "a01e2da45157088c364018ba587f7171128b2197",
+  "sourceTreeSha": "f83cd238a01dea7053da087ed80bbd66b76812f5",
+  "workingTreeFingerprint": "git-tree:f83cd238a01dea7053da087ed80bbd66b76812f5",
   "summary": {
-    "endpoints": 150,
-    "screens": 140,
+    "endpoints": 151,
+    "screens": 141,
     "redirects": 10,
-    "dynamicScreens": 28,
-    "appScreens": 130,
+    "dynamicScreens": 29,
+    "appScreens": 131,
     "publicScreens": 10
   },
   "knownBaselineFailures": [
@@ -527,7 +527,7 @@
         "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 7,
-        "fetchSites": 7
+        "fetchSites": 8
       }
     },
     {
@@ -1394,7 +1394,7 @@
         "explicitResponsiveRule": true,
         "nativeButtons": 0,
         "nativeInputs": 0,
-        "fetchSites": 1
+        "fetchSites": 2
       }
     },
     {
@@ -2109,6 +2109,21 @@
         "nativeButtons": 0,
         "nativeInputs": 8,
         "fetchSites": 3
+      }
+    },
+    {
+      "id": "workforce.projects.id.repo",
+      "pattern": "/workforce/projects/[id]/repo",
+      "source": "src/routes/(app)/workforce/projects/[id]/repo/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": true,
+      "observations": {
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 3,
+        "fetchSites": 1
       }
     },
     {

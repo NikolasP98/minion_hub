@@ -48,7 +48,9 @@ describe('PUT /api/finances/sources credential handling', () => {
   // returned ok:true having stored nothing, so the sync kept using the old
   // credential and the user believed they had updated it.
   it('rejects a password without a username instead of silently keeping the old one', async () => {
-    await expect(call({ config: { businessId: null }, password: 'new-pass' })).rejects.toMatchObject({
+    await expect(
+      call({ config: { businessId: null }, password: 'new-pass' }),
+    ).rejects.toMatchObject({
       status: 400,
     });
     expect(mockUpsertSource).not.toHaveBeenCalled();

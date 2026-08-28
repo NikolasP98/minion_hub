@@ -33,7 +33,9 @@ import { load } from './+page.server';
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireAdmin.mockReturnValue({ id: 'admin-1', role: 'admin' });
-  mocks.listOrganizations.mockResolvedValue([{ id: 'org-1', name: 'MINION', slug: 'minion', members: 3 }]);
+  mocks.listOrganizations.mockResolvedValue([
+    { id: 'org-1', name: 'MINION', slug: 'minion', members: 3 },
+  ]);
 });
 
 describe('/settings/organizations load', () => {
@@ -41,7 +43,9 @@ describe('/settings/organizations load', () => {
     mocks.requireAdmin.mockImplementation(() => {
       throw { status: 403 };
     });
-    await expect(load({ locals: {}, depends: vi.fn() } as never)).rejects.toMatchObject({ status: 403 });
+    await expect(load({ locals: {}, depends: vi.fn() } as never)).rejects.toMatchObject({
+      status: 403,
+    });
     expect(mocks.listOrganizations).not.toHaveBeenCalled();
   });
 
