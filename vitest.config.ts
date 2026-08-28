@@ -5,12 +5,10 @@ import path from 'node:path';
 export default defineConfig({
   plugins: [svelte({ compilerOptions: { hmr: false } })],
   resolve: {
-    // `svelte`'s package.json routes the default condition to its SSR build,
-    // which throws `lifecycle_function_unavailable` on `Svelte.mount` — the
-    // client build (needed by @testing-library/svelte) only resolves under
-    // the `browser` condition. Gated on VITEST so it never affects the app
-    // build. See vitest.config.ts's export-map safety note below.
-    conditions: process.env.VITEST ? ['browser'] : [],
+    // Keep Node's condition while opting Svelte's root export into its client
+    // entry. `browser` alone makes Vite 8's Rolldown optimizer treat its own
+    // node:module import as a browser dependency under Bun.
+    conditions: ['node', 'module', 'browser', 'development|production'],
   },
   test: {
     include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
