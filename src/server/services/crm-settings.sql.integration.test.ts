@@ -118,7 +118,11 @@ describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL',
       expect(row!.value.disabled_channels).toEqual(['whatsapp']);
       expect(row!.value.accounts).toEqual(['a1']);
 
-      const deposit = row!.value.deposit as { keywords: string[]; label: string; updatedAt: string };
+      const deposit = row!.value.deposit as {
+        keywords: string[];
+        label: string;
+        updatedAt: string;
+      };
       // Stored raw (trimmed, not lowercased) — normalization happens on READ,
       // not on write; see crm-settings.service.ts's normalizeDepositRule.
       expect(deposit.keywords).toEqual(['ADELANTO', 'seña']);

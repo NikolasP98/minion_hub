@@ -278,7 +278,9 @@ async function waitUntilBlocked(owner: Client, pids: number[], timeoutMs = 10_00
     );
     if (row!.n === pids.length) return;
     if (Date.now() > deadline) {
-      throw new Error(`timed out waiting for backends [${pids.join(',')}] to block on the row lock`);
+      throw new Error(
+        `timed out waiting for backends [${pids.join(',')}] to block on the row lock`,
+      );
     }
     await new Promise((r) => setTimeout(r, 25));
   }
