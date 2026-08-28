@@ -1493,6 +1493,14 @@ export async function createContact(
         customFields: data.customFields ?? {},
       })
       .returning();
+    // TODO(handoff): this `recordAudit` has the same nested-transaction shape
+    // that deadlocked `updateContact` on a pool with no free connection (it
+    // opens a second `withOrgCore` inside this one). Left as-is because this
+    // repair run is scoped to the demonstrated `updateContact` deadlock and no
+    // test exercises `createContact` under a saturated pool; the fix is the
+    // same one-line swap to `recordAuditInTx(tx, ...)` plus a
+    // `createContact`-side concurrency case in
+    // src/server/services/crm-funnel.concurrent.integration.test.ts.
     await recordAudit(ctx, {
       refType: 'crm_contact',
       refId: r.id,
@@ -1628,8 +1636,17 @@ export async function updateContact(
         old: null,
         new: field === 'customFields' ? (data.customFields ?? data.customFieldsPatch) : value,
       }));
+    // `recordAuditInTx`, NOT `recordAudit`: the latter opens its OWN
+    // `withOrgCore` transaction, which checks a second connection out of the
+    // pool while this transaction still holds the first one AND the contact's
+    // row lock. On a pool whose free slots are exhausted (a saturated
+    // serverless pool in prod, `max: 1` in the real-Postgres concurrency proof)
+    // that is a self-deadlock: the inner transaction waits for a connection the
+    // outer one cannot release until the inner one returns. Writing through
+    // `tx` also makes the mutation and its audit row one atomic unit, matching
+    // every neighbouring contact mutation (softDeleteContact, mergeContacts).
     if (auditChanges.length) {
-      await recordAudit(ctx, {
+      await recordAuditInTx(tx, ctx, {
         refType: 'crm_contact',
         refId: r.id,
         op: 'update',
