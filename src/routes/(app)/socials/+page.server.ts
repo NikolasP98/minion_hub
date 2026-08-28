@@ -2,28 +2,18 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import {
-<<<<<<< HEAD
-  adDataExtent,
   adKpis,
   adSpendSeries,
   extentToRange,
   postPerformance,
-  listConnections,
+  socialDashboardContext,
   syncJobHistory,
   type DataExtent,
   type DateRange,
 } from '$server/services/meta/meta-insights.service';
 import { adPerformanceByCampaign } from '$server/services/meta/ad-performance.service';
 import { ALL_PERIODS, type Period } from '$lib/components/dashboard/date-range';
-=======
-  extentToRange,
-  socialDashboardContext,
-  socialDashboardData,
-  type DataExtent,
-  type DateRange,
-} from '$server/services/meta/meta-insights.service';
 import { ServerTiming } from '$lib/server/server-timing';
->>>>>>> origin/master
 
 const THIRTY_DAYS_MS = 30 * 86_400_000;
 
@@ -48,7 +38,6 @@ function resolveRange(url: URL, extent: DataExtent): DateRange {
     : defaultRange;
 }
 
-<<<<<<< HEAD
 /** Chart granularity. Bucketing itself happens client-side over the daily
  *  series (already loaded) — the server only echoes a validated selection so
  *  the choice survives a reload / shared link. */
@@ -57,32 +46,22 @@ function resolvePeriod(url: URL): Period {
   return (ALL_PERIODS as string[]).includes(p ?? '') ? (p as Period) : 'day';
 }
 
-export const load: PageServerLoad = async ({ locals, url, depends }) => {
-=======
 export const load: PageServerLoad = async ({ locals, url, depends, setHeaders }) => {
   const timing = new ServerTiming();
->>>>>>> origin/master
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('ads:data');
 
-<<<<<<< HEAD
-  // Fetched together — extent on an unconnected org is a cheap empty-table
-  // read, and serializing these two costs a full RLS-txn round-trip each
-  // against a remote pooler.
-  const [connections, extentRaw] = await Promise.all([listConnections(ctx), adDataExtent(ctx)]);
-  const hasConnection = connections.some((c) => c.status !== 'revoked');
-  const extent: DataExtent = hasConnection ? extentRaw : { minDate: null, maxDate: null };
-=======
+  // Connection state + ad-data extent in one cached RLS transaction — serializing
+  // them costs a full round-trip each against a remote pooler.
   const context = await timing.measure('social_context', () => socialDashboardContext(ctx));
   const { hasConnection } = context;
   const extent: DataExtent = hasConnection ? context.extent : { minDate: null, maxDate: null };
->>>>>>> origin/master
   const range = resolveRange(url, extent);
   const period = resolvePeriod(url);
 
   if (!hasConnection) {
-<<<<<<< HEAD
+    setHeaders({ 'Server-Timing': timing.headerValue() });
     return {
       range,
       period,
@@ -99,13 +78,19 @@ export const load: PageServerLoad = async ({ locals, url, depends, setHeaders })
 
   // `performance` (campaign rollup + conversations) carries the spend the
   // by-campaign chart needs, so there's no separate campaignBreakdown query.
-  const [kpis, series, performance, posts, syncJobs] = await Promise.all([
-    adKpis(ctx, range),
-    adSpendSeries(ctx, range),
-    adPerformanceByCampaign(ctx, range),
-    postPerformance(ctx, { limit: 5, orderBy: 'score' }),
-    syncJobHistory(ctx, { limit: 50 }),
-  ]);
+  // NOTE: not `socialDashboardData()` — that helper slices campaigns to the top
+  // 10 and drops the sync history, so the org-wide `conversations` total and the
+  // freshness strip below could not be derived from it.
+  const [kpis, series, performance, posts, syncJobs] = await timing.measure('social_data', () =>
+    Promise.all([
+      adKpis(ctx, range),
+      adSpendSeries(ctx, range),
+      adPerformanceByCampaign(ctx, range),
+      postPerformance(ctx, { limit: 5, orderBy: 'score' }),
+      syncJobHistory(ctx, { limit: 50 }),
+    ]),
+  );
+  setHeaders({ 'Server-Timing': timing.headerValue() });
 
   // Freshness strip: the newest ads sync that actually finished.
   const lastSync = syncJobs.find((j) => j.kind === 'ads' && j.finishedAt != null) ?? null;
@@ -125,14 +110,4 @@ export const load: PageServerLoad = async ({ locals, url, depends, setHeaders })
     posts,
     lastSync: lastSync && { finishedAt: lastSync.finishedAt, status: lastSync.status },
   };
-=======
-    setHeaders({ 'Server-Timing': timing.headerValue() });
-    return { range, hasConnection, extent, kpis: null, series: [], campaigns: [], posts: [] };
-  }
-
-  const dashboard = await timing.measure('social_data', () => socialDashboardData(ctx, range));
-  setHeaders({ 'Server-Timing': timing.headerValue() });
-
-  return { range, hasConnection, extent, ...dashboard };
->>>>>>> origin/master
 };

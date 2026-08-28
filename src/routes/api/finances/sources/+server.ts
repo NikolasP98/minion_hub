@@ -6,12 +6,14 @@ import { parseBody } from '$server/api/validate';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { getSource, upsertSource, sourceHasCredentials } from '$server/services/finance.service';
 import { encryptCreds } from '$server/services/finance-secrets';
-<<<<<<< HEAD
 import { getConnector } from '$server/finance/connector';
+// Side-effect import registers the susii connector so the save-time probe below
+// can reach it. sunat-sire is deliberately NOT registered here: its count() costs
+// one live SIRE request per period, which is too slow to run inline on save —
+// that provider is verified through the explicit POST /api/finances/sources/probe
+// endpoint instead, so getConnector('sunat-sire') stays undefined and no probe runs.
 import '$server/finance/connectors/susii-connector';
-=======
 import { parseSunatSourceConfig } from '$server/finance/connectors/sunat-source';
->>>>>>> origin/master
 
 export const GET: RequestHandler = async ({ locals, url }) => {
   await requireOrgCapability(locals, 'finance', 'view');
@@ -61,17 +63,6 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     throw error(400, message.slice(0, 300));
   }
 
-  // Both-or-neither. A half-filled form used to fall into the "preserve
-  // existing" branch and return ok:true having changed nothing — so "I updated
-  // the password" silently no-op'd and the sync kept failing with the old
-  // credential (Aug 2026). Typing one field is always a mistake, never intent.
-  if (Boolean(username) !== Boolean(password)) {
-    throw error(
-      400,
-      'provide BOTH username and password, or leave both blank to keep the current credentials',
-    );
-  }
-
   // null = no probe ran (nothing to verify). true = the provider accepted these
   // credentials just now. Returned so the UI can confirm auth immediately
   // instead of leaving the user staring at `last_status`, which describes the
@@ -80,8 +71,17 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   let verified: boolean | null = null;
 
   let secretRefs: Record<string, unknown>;
-<<<<<<< HEAD
-  if (username && password) {
+  // Both-or-neither, per provider. A half-filled form used to fall into the
+  // "preserve existing" branch and return ok:true having changed nothing — so
+  // "I updated the password" silently no-op'd and the sync kept failing with the
+  // old credential (Aug 2026). Typing one field is always a mistake, never intent.
+  const suppliedAnyCredential = !!(username || password || clientSecret);
+  const suppliedCompleteCredentials =
+    provider === 'sunat-sire' ? !!(username && password && clientSecret) : !!(username && password);
+  if (suppliedAnyCredential && !suppliedCompleteCredentials) {
+    throw error(400, 'Provide the complete credential set or leave every credential field blank.');
+  }
+  if (suppliedCompleteCredentials) {
     // Verify before storing: `count()` performs the provider login, so a bad
     // credential fails here with the provider's own reason instead of being
     // written and only surfacing as a failed job at 08:00 the next morning.
@@ -93,7 +93,7 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     const connector = getConnector(provider);
     if (connector?.count) {
       try {
-        await connector.count({ config: (body.config ?? {}) as Record<string, unknown>, secrets });
+        await connector.count({ config, secrets });
         verified = true;
       } catch (e) {
         throw error(
@@ -104,20 +104,7 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     }
     secretRefs = encryptCreds({ username, password, ...(clientSecret ? { clientSecret } : {}) });
   } else {
-    // Both blank — deliberate "keep what's stored" (editing config/enabled only).
-    const existing = await getSource(ctx, provider);
-=======
-  const suppliedAnyCredential = !!(username || password || clientSecret);
-  const suppliedCompleteCredentials =
-    provider === 'sunat-sire' ? !!(username && password && clientSecret) : !!(username && password);
-  if (suppliedAnyCredential && !suppliedCompleteCredentials) {
-    throw error(400, 'Provide the complete credential set or leave every credential field blank.');
-  }
-  if (suppliedCompleteCredentials) {
-    secretRefs = encryptCreds({ username, password, ...(clientSecret ? { clientSecret } : {}) });
-  } else {
-    // Preserve existing credentials when the user left the fields blank.
->>>>>>> origin/master
+    // Every field blank — deliberate "keep what's stored" (editing config/enabled only).
     secretRefs = (existing?.secretRefs ?? {}) as Record<string, unknown>;
   }
   if (!sourceHasCredentials({ secretRefs })) {

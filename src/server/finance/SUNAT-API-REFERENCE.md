@@ -46,8 +46,6 @@ Returns `{access_token, expires_in}` (~3600s JWT). Bearer it on every call.
 there is **ONE app per RUC**; FACES reuses the accountant's "STARSOFT" app
 (never regenerate its clave). Secret has a lowercase L, not a capital I.
 
-<<<<<<< HEAD
-=======
 ### Tenant configuration and live probe
 
 Store one `fin_sources.provider='sunat-sire'` row per organization. Keep the
@@ -60,7 +58,6 @@ server, obtains an OAuth token, and calls the read-only periods endpoint once.
 It records only `last_probe_at`, `last_probe_status`, and a bounded non-secret
 message. The probe never presents, acknowledges, or changes a SUNAT book.
 
->>>>>>> origin/master
 ## SIRE reads — `sunat-sire-client.ts`
 
 Base `https://api-sire.sunat.gob.pe/v1/contribuyente/migeigv/libros`. Book code:
@@ -93,13 +90,10 @@ Base `https://api-sire.sunat.gob.pe/v1/contribuyente/migeigv/libros`. Book code:
 
 ## SEE emission (SOAP) — `emission/*`
 
-<<<<<<< HEAD
-=======
 Shadow emission reads the emitter identity from the active organization's
 `sunat-sire` source. It must never fall back to a process-global RUC or another
 organization's configuration.
 
->>>>>>> origin/master
 - Beta (sandbox, no cert): `https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService`
   — WS-Security UsernameToken `<RUC>MODDATOS` / `MODDATOS`.
 - Prod: `https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService` (needs a real
@@ -129,7 +123,6 @@ organization's configuration.
   is the hook for the eventual push leg.
 - Production emission: needs the real certificate + fresh series (keep BE01/etc.
   for SUSII history; new emitter gets its own serie).
-<<<<<<< HEAD
 
 ## Production certificate (Certificado Digital Tributario — CDT)
 
@@ -147,5 +140,3 @@ to FY2019); no existing valid CDT (max 2 ever) — FACES may already hold one vi
 SUSII that could be reused. Fallback: commercial INDECOPI-accredited CA (~S/
 80-200/yr). Docs: https://cpe.sunat.gob.pe/certificado-digital ·
 https://www.gob.pe/26725-obtener-certificado-digital-tributario
-=======
->>>>>>> origin/master

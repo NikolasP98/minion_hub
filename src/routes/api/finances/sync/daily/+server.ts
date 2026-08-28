@@ -95,47 +95,6 @@ async function postFactoryMonitor(orgId: string, provider: string, reason: strin
 }
 
 /**
- * Shout when the daily money sync fails. `advanceJob` deliberately swallows its
- * error (finance-sync.service.ts — catch → finishJob('failed')), so a broken
- * provider only ever lands in a `fin_sync_jobs` row nobody reads: in Aug 2026
- * SUSII rejected our login for 14 consecutive days and the finances screens
- * served stale money data the whole time, unnoticed. Reads the job back rather
- * than relying on a throw, so it stays correct if that swallow ever changes.
- *
- * Delivery reuses the same `channels.send` primitive notif.service uses, but
- * deliberately NOT the notif_rules engine: that path only fires if a rule row
- * exists AND the org has rules enabled AND /api/notifications/tick is actually
- * scheduled. `notif_rules` is empty in prod (checked 2026-08-12) and that tick
- * is netcup-wired rather than a vercel.json cron, so it has more ways to be
- * silently off than the failure it would report. This route is itself a
- * vercel.json cron and ran every day right through the outage.
- *
- * ponytail: no dedup — a broken money pipeline earns one message per day until
- * it is fixed. Add state only if a real incident proves that is noise.
- */
-async function alertSyncFailure(orgId: string, provider: string, reason: string): Promise<void> {
-  const to = env.FINANCE_ALERT_TO;
-  const channel = env.FINANCE_ALERT_CHANNEL;
-  if (!to || !channel) {
-    console.error('[finance-sync] daily FAILED and no alert configured', {
-      orgId,
-      provider,
-      reason,
-    });
-    return;
-  }
-  try {
-    await gatewayCall('channels.send', {
-      channel,
-      to,
-      text: `⚠️ Finance sync failed — org ${orgId}, provider ${provider}\n${reason}\n\nFinance data is now stale. Check /finances/settings.`,
-    });
-  } catch (e) {
-    console.error('[finance-sync] daily alert delivery failed', orgId, e);
-  }
-}
-
-/**
  * GET /api/finances/sync/daily — external-scheduler entrypoint (run once/day, 3am).
  * Enqueues + advances a bounded 1-WEEK-window sync for every enabled source, across
  * all orgs. Never does a full history sweep — that stays a manual action on
