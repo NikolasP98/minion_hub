@@ -54,7 +54,7 @@ if (process.env.REQUIRE_POS_TRACKSTOCK_POSTGRES && !databaseUrl) {
 }
 
 vi.mock('$server/db/with-org-core', () => ({
-  withOrgCore: <T,>(
+  withOrgCore: <T>(
     scope: { db: { transaction: (fn: (tx: unknown) => Promise<T>) => Promise<T> } },
     fn: (tx: never) => Promise<T>,
   ) => (fn as (tx: unknown) => Promise<T>)((scope as any).db),
@@ -491,13 +491,7 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
           );
           return {
             product: stableRow(product, ['id', 'sku', 'created_at', 'updated_at']),
-            item: stableRow(item, [
-              'id',
-              'sku',
-              'fin_product_id',
-              'created_at',
-              'updated_at',
-            ]),
+            item: stableRow(item, ['id', 'sku', 'fin_product_id', 'created_at', 'updated_at']),
           };
         };
 
@@ -527,8 +521,11 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
         expect(stagedState.item).toEqual(directState.item);
         expect(directState.item).toMatchObject({ uom: uom ?? 'unit' });
 
-        expect(stableRow(stagedRow as unknown as Record<string, unknown>, ['productId', 'itemId']))
-          .toEqual(stableRow(directRow as unknown as Record<string, unknown>, ['productId', 'itemId']));
+        expect(
+          stableRow(stagedRow as unknown as Record<string, unknown>, ['productId', 'itemId']),
+        ).toEqual(
+          stableRow(directRow as unknown as Record<string, unknown>, ['productId', 'itemId']),
+        );
         expect(stagedRow.kind).toBe('product');
         expect(stagedRow.itemId).not.toBeNull();
       });
