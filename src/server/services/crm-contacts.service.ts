@@ -1,4 +1,4 @@
-import { and, eq, desc, sql } from 'drizzle-orm';
+import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { maskPii, sanitizeContactFields } from '$lib/pii';
@@ -19,13 +19,14 @@ import {
   FIN_PURCHASED,
   FIN_RESERVED_ONLY,
   FIN_LOYAL,
+  type ContactFinance,
 } from './crm-finance.service';
 import { readCrmSettingsValue, resolveDepositRule } from './crm-settings.service';
 import { scopeData } from './base';
 import { depositRuleFingerprint, type DepositRule } from './crm-deposit-rule';
 import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
-import { recordAudit } from './activity.service';
+import { recordAudit, recordAuditInTx, recordAuditsInTx } from './activity.service';
 import {
   isFunnelStage,
   readFunnelMeta,
@@ -56,9 +57,10 @@ export interface SyncResult {
 
 /**
  * Idempotent set-based harvest: ensure a contact + identity exists for every
- * NEW inbound `(channel, sender_id)` the ledger knows but CRM doesn't. No
- * counters (rollups are the crm_contact_stats view), no watermark (the anti-join
- * IS the reconciliation), no locks (ON CONFLICT makes concurrent runs no-ops).
+ * NEW inbound `(channel, sender_id)` the ledger knows but CRM doesn't. The
+ * identity trigger rebuilds the activity projection from ledger truth, so the
+ * normal message-before-identity order is covered without a watermark. The
+ * anti-join IS reconciliation and ON CONFLICT makes concurrent runs no-ops.
  */
 export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> {
   // Harvest gate: only accounts the user has added to the CRM scope (and not
@@ -205,11 +207,13 @@ export interface RankFilters {
    *  desc — the historical fixed orders). */
   sortDir?: 'asc' | 'desc';
   limit?: number;
-  /** Upper bound on `limit`. Defaults to 5000 (the list-page payload cap). The
-   *  dashboard raises it so its COUNTS reflect every contact, not a truncated
-   *  roster — it aggregates server-side and never ships the rows. */
+  /** Upper bound on `limit`. Defaults to 5000; legacy bulk callers may raise it
+   *  explicitly, while interactive list and dashboard routes use bounded SQL. */
   maxLimit?: number;
   offset?: number;
+  /** Whether to compute the exact filtered row count. Continuation pages can
+   *  set false and use the one-row look-ahead exposed as `hasMore`. */
+  includeTotal?: boolean;
   /** Record-level (if-owner) scope: restrict to contacts owned by this profile. */
   ownerId?: string;
   /** Field-level: redact PII in custom_fields (phone/email/dni) for low field level. */
@@ -294,14 +298,19 @@ export interface RankedContact {
   funnel_stage: string | null;
   /** Auto-tag ids whose rule matches this row (computed in the page load, not SQL). */
   auto_tag_ids?: string[];
+  /** Page-bounded finance decoration. Undefined when the finance bridge is
+   *  disabled; null when it is enabled but this contact has no invoices. */
+  finance?: ContactFinance | null;
 }
 
-/** One page of ranked contacts plus the total number of rows the SAME filters
- *  match with limit/offset removed — the pager needs both, and the window count
- *  in the outer select gets them in a single round-trip. */
+/** One page of ranked contacts. The first page normally includes the exact
+ *  filtered total; continuation pages may omit it and use `hasMore`. */
 export interface RankedPage {
   rows: RankedContact[];
-  total: number;
+  total: number | null;
+  hasMore: boolean;
+  /** Module availability, independent of whether this particular page contains buyers. */
+  financeEnabled: boolean;
 }
 
 // ICP fit is stored at `custom_fields._icp.score` (written by the ICP scoring
@@ -367,6 +376,18 @@ const F_EXPR = sql`(100 * least(1, ln(1 + inbound_msgs) / ln(1 + ${lit(FS)}.0)))
 const M_EXPR = sql`(100 * (0.60 * least(1, ln(1 + total_msgs) / ln(1 + ${lit(VS)}.0))
                         + 0.25 * least(1, channels_used / ${lit(CT)}.0)
                         + 0.15 * reciprocity))`;
+const SCORE_EXPR = sql`round((${lit(RFM_WEIGHTS.r)} * ${R_EXPR} + ${lit(RFM_WEIGHTS.f)} * ${F_EXPR} + ${lit(RFM_WEIGHTS.m)} * ${M_EXPR})::numeric, 0)`;
+const LIFECYCLE_STAGE_EXPR = sql`coalesce(lifecycle_override,
+  case
+    when total_msgs = 0 and not is_buyer then 'New'
+    when eff_last_days > 90 then 'Churned'
+    when eff_last_days > 30 then 'Dormant'
+    when eff_last_days <= 30 and total_msgs >= 10 then 'Active'
+    when eff_last_days <= 14 and inbound_msgs >= 1 then 'Engaged'
+    when eff_first_days < 7 and total_msgs < 3 and not is_buyer then 'New'
+    when eff_last_days <= 30 then 'Engaged'
+    else 'Dormant'
+  end)`;
 
 /**
  * Ranked contact list. Builds: agg (ledger rollups) → base (contact + derived
@@ -389,9 +410,9 @@ export async function rankContactsPage(ctx: CoreCtx, f: RankFilters = {}): Promi
  * org-tag invalidation as the roster did: ttl 2m keeps pages fresh, swr 1h
  * serves stale while a background refresh recomputes, and any contact mutation
  * busts the org's tags. A never-seen filter combination still pays the raw
- * query once — making the query itself fast is the open follow-up
- * (TODO(handoff): profile/optimize the rank query in prod — see the meta-repo
- * proposal 2026-08-22-crm-rank-query-prod-latency).
+ * query once. The production covering-index and visibility-map fixes keep that
+ * cold path bounded; the query below additionally defers row decoration until
+ * after LIMIT/OFFSET so page size, not organization size, controls its cost.
  */
 export async function rankContactsPageCached(
   ctx: CoreCtx,
@@ -405,7 +426,12 @@ export async function rankContactsPageCached(
   // load and the first client interaction each paid the raw query for the
   // SAME view. ownerId/maskSensitive live in the tenant key, not the fp.
   const { ownerId, maskSensitive, maxLimit: _cap, ...rest } = f;
-  const shape = { ...rest, limit: f.limit ?? 100, offset: f.offset ?? 0 };
+  const shape = {
+    ...rest,
+    limit: f.limit ?? 100,
+    offset: f.offset ?? 0,
+    includeTotal: f.includeTotal !== false,
+  };
   // Stable fingerprint: replacer-array stringify orders keys; undefined
   // values drop out, so {} and {stage: undefined} share an entry.
   const fp = JSON.stringify(shape, Object.keys(shape).sort());
@@ -443,10 +469,341 @@ interface FinanceBridge {
   depositRule: DepositRule | null;
 }
 
-/** Rows only — the shape every pre-pagination caller (contact-detail score,
- *  /crm/cleanup, the dashboard via listContactsCached) already consumes. */
+/** Rows only — the shape pre-pagination callers such as contact-detail scoring
+ *  and /crm/cleanup already consume. */
 export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedContact[]> {
-  return (await rankContactsPage(ctx, f)).rows;
+  return (await rankContactsPage(ctx, { ...f, includeTotal: false })).rows;
+}
+
+export interface CrmDashboardStats {
+  total: number;
+  newCount: number;
+  activeWeek: number;
+  churned: number;
+  avgScore: number;
+  stageCounts: Record<string, number>;
+  funnelCounts: Record<string, number>;
+  scoreBuckets: number[];
+  channels: Array<{ channel: string; count: number }>;
+  temperature: { hot: number; warm: number; cold: number };
+  revenue: {
+    revenue: number;
+    invoices: number;
+    buyers: number;
+    avgTicket: number;
+    customers: number;
+    reserved: number;
+    loyal: number;
+  } | null;
+  response: {
+    inboundContacts: number;
+    awaiting: number;
+    answered: number;
+    awaitingByTemp: { hot: number; warm: number; cold: number };
+    responseRate: number;
+  };
+  conversion: {
+    leads: number;
+    booked: number;
+    bought: number;
+    bookedRate: number;
+    boughtRate: number;
+  };
+  leadOrigin: { ad: number; organic: number; untracked: number };
+  campaigns: Array<{ name: string; count: number }>;
+}
+
+interface CrmDashboardStatsOptions {
+  ownerId?: string;
+  from?: Date;
+  to?: Date;
+  includeRevenue?: boolean;
+}
+
+/**
+ * Compact CRM-dashboard rollup. The dashboard previously materialized and
+ * deserialized every ranked contact in the server process, then looped over the
+ * roster to produce counts. This query keeps the same score/lifecycle/funnel
+ * expressions as the customer list but returns one aggregate row plus two small
+ * JSON groupings, so dashboard latency no longer grows with response payload
+ * size.
+ */
+export async function getCrmDashboardStats(
+  ctx: CoreCtx,
+  opts: CrmDashboardStatsOptions = {},
+): Promise<CrmDashboardStats> {
+  const finance = await resolveFinanceBridge(ctx);
+  const range =
+    opts.from && opts.to
+      ? { from: opts.from.toISOString(), to: opts.to.toISOString() }
+      : { from: null, to: null };
+  return cached(
+    keys.hub('crm-dashboard-stats', {
+      t: `${ctx.tenantId}${opts.ownerId ? `:${opts.ownerId}` : ''}`,
+      d: scopeData({
+        ...range,
+        revenue: opts.includeRevenue === false ? 0 : 1,
+        rule: depositRuleFingerprint(finance.depositRule),
+      }),
+    }),
+    {
+      ttl: '2m',
+      swr: '30s',
+      tags: [
+        ...crmListTags(ctx.tenantId),
+        ...(finance.withFinance ? tags.tenantDomain(ctx.tenantId, 'finances') : []),
+      ],
+    },
+    () =>
+      withOrgCore(ctx, async (tx) => {
+        const finCte = finance.withFinance
+          ? sql`${contactInvoiceClassSql(finance.depositRule!)},
+              fin as (
+                select contact_id,
+                       min(issued_at) as first_purchase_at,
+                       max(issued_at) as last_purchase_at,
+                       sum(total)::float8 as revenue,
+                       count(*)::int as invoices,
+                       ${FIN_PURCHASED} as fin_purchased,
+                       ${FIN_RESERVED_ONLY} as fin_reserved_only,
+                       ${FIN_LOYAL} as fin_loyal
+                from contact_invoice_class
+                group by contact_id
+              )`
+          : sql`fin as (
+              select null::uuid as contact_id, null::timestamptz as first_purchase_at,
+                     null::timestamptz as last_purchase_at, null::float8 as revenue,
+                     null::int as invoices, false as fin_purchased,
+                     false as fin_reserved_only, false as fin_loyal
+              where false
+            )`;
+        const contactWhere = [sql`c.deleted_at is null`];
+        if (opts.ownerId) contactWhere.push(sql`c.owner_id = ${opts.ownerId}`);
+        const cohortWhere =
+          opts.from && opts.to
+            ? sql`first_contact_at is not null and first_contact_at >= ${opts.from} and first_contact_at <= ${opts.to}`
+            : sql`true`;
+        const bucketCounts = sql.join(
+          Array.from(
+            { length: 10 },
+            (_, bucket) =>
+              sql`count(*) filter (where least(9, greatest(0, floor(score / 10)::int)) = ${bucket})::int`,
+          ),
+          sql`, `,
+        );
+
+        const [row] = (await tx.execute(sql`
+          with agg as (
+            select s.contact_id,
+                   s.last_contact_at,
+                   s.first_contact_at,
+                   s.last_inbound_at,
+                   s.last_outbound_at,
+                   s.message_count as total_msgs,
+                   s.inbound_count as inbound_msgs,
+                   s.channels_used
+            from crm_contact_activity_stats s
+            where s.org_id = ${ctx.tenantId}
+          ),
+          lead_attr as (
+            select distinct on (ci.contact_id)
+                   ci.contact_id, la.origin, la.campaign_name
+            from crm_contact_identities ci
+            join meta_lead_attribution la
+              on la.org_id = ci.org_id and la.channel = ci.channel and la.sender_id = ci.external_id
+            where ci.org_id = ${ctx.tenantId}
+            order by ci.contact_id, la.first_contact_at asc nulls last
+          ),
+          ${finance.withFinance ? sql`${CONTACT_PARTY},` : sql``}
+          ${finCte},
+          base as (
+            select c.id as contact_id,
+                   c.lifecycle_override,
+                   coalesce(c.custom_fields, '{}'::jsonb) as custom_fields,
+                   coalesce(a.total_msgs, 0) as total_msgs,
+                   coalesce(a.inbound_msgs, 0) as inbound_msgs,
+                   coalesce(a.channels_used, 0) as channels_used,
+                   least(a.first_contact_at, fn.first_purchase_at) as first_contact_at,
+                   greatest(a.last_contact_at, fn.last_purchase_at) as last_contact_at,
+                   (fn.first_purchase_at is not null) as is_buyer,
+                   fn.invoices as fin_invoices,
+                   coalesce(fn.fin_purchased, false) as fin_purchased,
+                   coalesce(fn.fin_reserved_only, false) as fin_reserved_only,
+                   coalesce(fn.fin_loyal, false) as fin_loyal,
+                   attr.origin as lead_origin,
+                   attr.campaign_name as lead_campaign,
+                   (a.last_inbound_at is not null and
+                     (a.last_outbound_at is null or a.last_inbound_at > a.last_outbound_at)) as awaiting_reply,
+                   coalesce(extract(epoch from (now() - a.last_contact_at)) / 86400.0, 1e9) as last_days,
+                   coalesce(extract(epoch from (now() - greatest(a.last_contact_at, fn.last_purchase_at))) / 86400.0, 1e9) as eff_last_days,
+                   coalesce(extract(epoch from (now() - least(a.first_contact_at, fn.first_purchase_at))) / 86400.0, 1e9) as eff_first_days,
+                   coalesce(a.inbound_msgs::numeric / nullif(a.total_msgs, 0), 0) as reciprocity
+            from crm_contacts c
+            left join agg a on a.contact_id = c.id
+            left join fin fn on fn.contact_id = c.id
+            left join lead_attr attr on attr.contact_id = c.id
+            where ${and(...contactWhere)}
+          ),
+          scored as (
+            select *,
+                   ${FUNNEL_STAGE_EXPR} as funnel_stage,
+                   ${SCORE_EXPR} as score,
+                   ${LIFECYCLE_STAGE_EXPR} as stage
+            from base
+          ),
+          scoped as (
+            select * from scored where ${cohortWhere}
+          )
+          select count(*)::int as total,
+                 count(*) filter (where stage = 'New')::int as stage_new,
+                 count(*) filter (where stage = 'Engaged')::int as stage_engaged,
+                 count(*) filter (where stage = 'Active')::int as stage_active,
+                 count(*) filter (where stage = 'Dormant')::int as stage_dormant,
+                 count(*) filter (where stage = 'Churned')::int as stage_churned,
+                 count(*) filter (where first_contact_at >= now() - interval '30 days')::int as new_count,
+                 count(*) filter (where last_contact_at >= now() - interval '7 days')::int as active_week,
+                 coalesce(round(avg(score)), 0)::int as avg_score,
+                 array[${bucketCounts}]::int[] as score_buckets,
+                 count(*) filter (where score >= 75)::int as temp_hot,
+                 count(*) filter (where score >= 50 and score < 75)::int as temp_warm,
+                 count(*) filter (where score < 50)::int as temp_cold,
+                 count(*) filter (where funnel_stage = 'lead')::int as funnel_lead,
+                 count(*) filter (where funnel_stage = 'opportunity')::int as funnel_opportunity,
+                 count(*) filter (where funnel_stage = 'customer')::int as funnel_customer,
+                 count(*) filter (where funnel_stage = 'loyal')::int as funnel_loyal,
+                 count(*) filter (where inbound_msgs > 0)::int as inbound_contacts,
+                 count(*) filter (where inbound_msgs > 0 and awaiting_reply)::int as awaiting,
+                 count(*) filter (where inbound_msgs > 0 and awaiting_reply and score >= 75)::int as awaiting_hot,
+                 count(*) filter (where inbound_msgs > 0 and awaiting_reply and score >= 50 and score < 75)::int as awaiting_warm,
+                 count(*) filter (where inbound_msgs > 0 and awaiting_reply and score < 50)::int as awaiting_cold,
+                 count(*) filter (where fin_invoices is not null)::int as booked,
+                 count(*) filter (where fin_purchased)::int as bought,
+                 count(*) filter (where lead_origin = 'ad')::int as origin_ad,
+                 count(*) filter (where lead_origin = 'organic')::int as origin_organic,
+                 count(*) filter (where coalesce(lead_origin, '') not in ('ad', 'organic'))::int as origin_untracked,
+                 coalesce((
+                   select json_agg(json_build_object('channel', grouped.channel, 'count', grouped.count)
+                                   order by grouped.count desc, grouped.channel asc)
+                   from (
+                     select identity_channels.channel, count(*)::int as count
+                     from (
+                       select distinct s.contact_id, ci.channel
+                       from scoped s
+                       join crm_contact_identities ci on ci.contact_id = s.contact_id
+                     ) identity_channels
+                     group by identity_channels.channel
+                   ) grouped
+                 ), '[]'::json) as channels,
+                 coalesce((
+                   select json_agg(json_build_object('name', grouped.name, 'count', grouped.count)
+                                   order by grouped.count desc, grouped.name asc)
+                   from (
+                     select lead_campaign as name, count(*)::int as count
+                     from scoped
+                     where lead_origin = 'ad' and lead_campaign is not null
+                     group by lead_campaign
+                     order by count(*) desc, lead_campaign asc
+                     limit 5
+                   ) grouped
+                 ), '[]'::json) as campaigns,
+                 coalesce((select sum(revenue) from fin), 0)::float8 as finance_revenue,
+                 coalesce((select sum(invoices) from fin), 0)::int as finance_invoices,
+                 (select count(*)::int from fin) as finance_buyers,
+                 (select count(*)::int from fin where fin_purchased) as finance_customers,
+                 (select count(*)::int from fin where fin_reserved_only) as finance_reserved,
+                 (select count(*)::int from fin where fin_loyal) as finance_loyal
+          from scoped
+        `)) as unknown as Array<Record<string, unknown>>;
+
+        const n = (key: string) => Number(row?.[key] ?? 0) || 0;
+        const channels = Array.isArray(row?.channels)
+          ? (row.channels as Array<Record<string, unknown>>).map((value) => ({
+              channel: String(value.channel),
+              count: Number(value.count) || 0,
+            }))
+          : [];
+        const campaigns = Array.isArray(row?.campaigns)
+          ? (row.campaigns as Array<Record<string, unknown>>).map((value) => ({
+              name: String(value.name),
+              count: Number(value.count) || 0,
+            }))
+          : [];
+        const inboundContacts = n('inbound_contacts');
+        const awaiting = n('awaiting');
+        const answered = inboundContacts - awaiting;
+        const booked = n('booked');
+        const bought = n('bought');
+        const financeRevenue = n('finance_revenue');
+        const financeInvoices = n('finance_invoices');
+        return {
+          total: n('total'),
+          newCount: n('new_count'),
+          activeWeek: n('active_week'),
+          churned: n('stage_churned'),
+          avgScore: n('avg_score'),
+          stageCounts: {
+            New: n('stage_new'),
+            Engaged: n('stage_engaged'),
+            Active: n('stage_active'),
+            Dormant: n('stage_dormant'),
+            Churned: n('stage_churned'),
+          },
+          funnelCounts: {
+            lead: n('funnel_lead'),
+            opportunity: n('funnel_opportunity'),
+            customer: n('funnel_customer'),
+            loyal: n('funnel_loyal'),
+          },
+          scoreBuckets: Array.isArray(row?.score_buckets)
+            ? (row.score_buckets as unknown[]).map((value) => Number(value) || 0)
+            : new Array(10).fill(0),
+          channels,
+          temperature: {
+            hot: n('temp_hot'),
+            warm: n('temp_warm'),
+            cold: n('temp_cold'),
+          },
+          revenue:
+            finance.withFinance && opts.includeRevenue !== false
+              ? {
+                  revenue: financeRevenue,
+                  invoices: financeInvoices,
+                  buyers: n('finance_buyers'),
+                  avgTicket: financeInvoices ? financeRevenue / financeInvoices : 0,
+                  customers: n('finance_customers'),
+                  reserved: n('finance_reserved'),
+                  loyal: n('finance_loyal'),
+                }
+              : null,
+          response: {
+            inboundContacts,
+            awaiting,
+            answered,
+            awaitingByTemp: {
+              hot: n('awaiting_hot'),
+              warm: n('awaiting_warm'),
+              cold: n('awaiting_cold'),
+            },
+            responseRate: inboundContacts ? Math.round((answered / inboundContacts) * 100) : 0,
+          },
+          conversion: {
+            leads: inboundContacts,
+            booked,
+            bought,
+            bookedRate: inboundContacts
+              ? Math.round((Math.min(booked, inboundContacts) / inboundContacts) * 100)
+              : 0,
+            boughtRate: booked ? Math.round((bought / booked) * 100) : 0,
+          },
+          leadOrigin: {
+            ad: n('origin_ad'),
+            organic: n('origin_organic'),
+            untracked: n('origin_untracked'),
+          },
+          campaigns,
+        };
+      }),
+  );
 }
 
 async function runRankQuery(
@@ -497,7 +854,7 @@ async function runRankQuery(
     if (f.stage) outer.push(sql`stage = any(string_to_array(${f.stage}, ','))`);
     if (f.channel)
       outer.push(
-        sql`exists (select 1 from crm_contact_identities ci2 where ci2.contact_id = contact_id and ci2.channel = any(string_to_array(${f.channel}, ',')))`,
+        sql`exists (select 1 from crm_contact_identities ci2 where ci2.contact_id = scored.contact_id and ci2.channel = any(string_to_array(${f.channel}, ',')))`,
       );
     if (f.origin)
       outer.push(
@@ -541,12 +898,14 @@ async function runRankQuery(
 
     const limit = Math.min(f.limit ?? 100, f.maxLimit ?? 5000);
     const offset = f.offset ?? 0;
+    const includeTotal = f.includeTotal !== false;
+    const queryLimit = includeTotal ? limit : limit + 1;
 
-    // When scoring a single contact (detail page), push its id into the agg CTE
-    // so we aggregate only that contact's conversation — not the whole roster.
-    const aggWhere = f.contactId
-      ? sql`where m.is_bot is not true and ci.contact_id = ${f.contactId}`
-      : sql`where m.is_bot is not true`;
+    // The activity projection is org-scoped and one row per contact. Preserve
+    // the single-contact predicate used by detail callers.
+    const activityWhere = f.contactId
+      ? sql`where s.org_id = ${ctx.tenantId} and s.contact_id = ${f.contactId}`
+      : sql`where s.org_id = ${ctx.tenantId}`;
 
     // Finance bridge: a contact's purchase history (via the PARTY SPINE — same
     // CONTACT_PARTY map as crm-finance.service) gives a TRUE first/last
@@ -571,30 +930,36 @@ async function runRankQuery(
                  -- same revenue definition as contactFinanceMap; exists only so
                  -- sort:'revenue' is orderable, and is stripped from the rows below.
                  sum(total)::float8 as revenue,
+                 count(*)::int as invoices,
                  ${FIN_PURCHASED} as fin_purchased,
                  ${FIN_RESERVED_ONLY} as fin_reserved_only,
                  ${FIN_LOYAL} as fin_loyal
           from contact_invoice_class
           group by contact_id
         )`
-      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at, null::float8 as revenue, false as fin_purchased, false as fin_reserved_only, false as fin_loyal where false)`;
+      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at, null::float8 as revenue, null::int as invoices, false as fin_purchased, false as fin_reserved_only, false as fin_loyal where false)`;
 
     const rows = await tx.execute(sql`
       with agg as (
-        select ci.contact_id,
-               max(coalesce(m.occurred_at, m.created_at)) as last_contact_at,
-               min(coalesce(m.occurred_at, m.created_at)) as first_contact_at,
-               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'inbound') as last_inbound_at,
-               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'outbound') as last_outbound_at,
-               count(*) as total_msgs,
-               count(*) filter (where m.direction = 'inbound') as inbound_msgs,
-               count(distinct m.channel) as channels_used
+        select s.contact_id,
+               s.last_contact_at,
+               s.first_contact_at,
+               s.last_inbound_at,
+               s.last_outbound_at,
+               s.message_count as total_msgs,
+               s.inbound_count as inbound_msgs,
+               s.channels_used
+        from crm_contact_activity_stats s
+        ${activityWhere}
+      ),
+      lead_attr as (
+        select distinct on (ci.contact_id)
+               ci.contact_id, la.origin, la.campaign_name
         from crm_contact_identities ci
-        join messages m
-          -- match the whole conversation (chat_id), not just msgs the contact sent
-          on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
-        ${aggWhere}
-        group by ci.contact_id
+        join meta_lead_attribution la
+          on la.org_id = ci.org_id and la.channel = ci.channel and la.sender_id = ci.external_id
+        where ci.org_id = ${ctx.tenantId}
+        order by ci.contact_id, la.first_contact_at asc nulls last
       ),
       ${withFinance ? sql`${CONTACT_PARTY},` : sql``}
       ${finCte},
@@ -619,17 +984,13 @@ async function runRankQuery(
                coalesce(a.total_msgs, 0) as total_msgs,
                coalesce(a.inbound_msgs, 0) as inbound_msgs,
                coalesce(a.channels_used, 0) as channels_used,
-               (select coalesce(array_agg(distinct ci.channel order by ci.channel), array[]::text[])
-                  from crm_contact_identities ci where ci.contact_id = c.id) as channels,
-               (select coalesce(json_agg(json_build_object('channel', ci.channel, 'externalId', ci.external_id, 'handle', ci.handle)), '[]'::json)
-                  from crm_contact_identities ci where ci.contact_id = c.id) as identities,
-               (select coalesce(array_agg(ct.tag_id::text), array[]::text[])
-                  from crm_contact_tags ct where ct.contact_id = c.id) as tag_ids,
                -- effective first/last interaction = earliest/latest of {message, purchase}
                least(a.first_contact_at, fn.first_purchase_at) as first_contact_at,
                greatest(a.last_contact_at, fn.last_purchase_at) as last_contact_at,
                (fn.first_purchase_at is not null) as is_buyer,
                fn.revenue,
+               fn.invoices as fin_invoices,
+               fn.last_purchase_at as fin_last_purchase_at,
                coalesce(fn.fin_purchased, false) as fin_purchased,
                coalesce(fn.fin_reserved_only, false) as fin_reserved_only,
                coalesce(fn.fin_loyal, false) as fin_loyal,
@@ -648,80 +1009,106 @@ async function runRankQuery(
         left join fin fn on fn.contact_id = c.id
         -- Meta lead attribution (IG today): earliest attribution row across the
         -- contact's identities decides the acquisition origin (ad vs organic).
-        left join lateral (
-          select la.origin, la.campaign_name
-          from crm_contact_identities ci
-          join meta_lead_attribution la
-            on la.org_id = ci.org_id and la.channel = ci.channel and la.sender_id = ci.external_id
-          where ci.contact_id = c.id
-          order by la.first_contact_at asc nulls last
-          limit 1
-        ) attr on true
+        -- Build that sparse map once; a correlated lateral probe repeated the
+        -- same two index walks for every contact in the organization.
+        left join lead_attr attr on attr.contact_id = c.id
         where ${and(...conds)}
       ),
       scored as (
-        select contact_id, display_name, owner_id, source, channels, identities, tag_ids,
+        select contact_id, display_name, owner_id, source,
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
                party_id, dni_verified, age, dob, sex,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
-               lead_origin, lead_campaign, revenue,
-               fin_reserved_only,
+               lead_origin, lead_campaign, revenue, fin_invoices, fin_last_purchase_at,
+               fin_purchased, fin_reserved_only, fin_loyal,
                ${FUNNEL_STAGE_EXPR} as funnel_stage,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
                round(${F_EXPR}::numeric, 1) as f_score,
                round(${M_EXPR}::numeric, 1) as m_score,
-               round((${lit(RFM_WEIGHTS.r)} * ${R_EXPR} + ${lit(RFM_WEIGHTS.f)} * ${F_EXPR} + ${lit(RFM_WEIGHTS.m)} * ${M_EXPR})::numeric, 0) as score,
-               coalesce(lifecycle_override,
-                 case
-                   -- pure cold record: never messaged AND never bought → genuinely new
-                   when total_msgs = 0 and not is_buyer then 'New'
-                   when eff_last_days > 90 then 'Churned'
-                   when eff_last_days > 30 then 'Dormant'
-                   when eff_last_days <= 30 and total_msgs >= 10 then 'Active'
-                   -- Engaged: recent inbound (two-way requirement dropped — the org
-                   -- rarely replies in-channel, so requiring an outbound buried everyone in New)
-                   when eff_last_days <= 14 and inbound_msgs >= 1 then 'Engaged'
-                   -- genuinely new: first-ever interaction <7d, low activity, not a prior buyer
-                   when eff_first_days < 7 and total_msgs < 3 and not is_buyer then 'New'
-                   when eff_last_days <= 30 then 'Engaged'
-                   else 'Dormant'
-                 end) as stage
+               ${SCORE_EXPR} as score,
+               ${LIFECYCLE_STAGE_EXPR} as stage
         from base
       ),
       filtered as (
         select * from scored where ${and(...outer)}
       ),
       requested_page as (
-        select *, row_number() over (order by ${orderBy}) as page_position
+        select *
         from filtered
         order by ${orderBy}
-        limit ${limit} offset ${offset}
-      ),
-      filtered_total as (
-        select count(*)::int as total_rows from filtered
+        limit ${queryLimit} offset ${offset}
       )
-      select requested_page.*, filtered_total.total_rows
+      ${
+        includeTotal
+          ? sql`, filtered_total as (
+              select count(*)::int as total_rows from filtered
+            )`
+          : sql``
+      }
+      ${
+        includeTotal
+          ? sql`select requested_page.*,
+             (select coalesce(array_agg(distinct ci.channel order by ci.channel), array[]::text[])
+                from crm_contact_identities ci where ci.contact_id = requested_page.contact_id) as channels,
+             (select coalesce(json_agg(json_build_object('channel', ci.channel, 'externalId', ci.external_id, 'handle', ci.handle)), '[]'::json)
+                from crm_contact_identities ci where ci.contact_id = requested_page.contact_id) as identities,
+             (select coalesce(array_agg(ct.tag_id::text), array[]::text[])
+                from crm_contact_tags ct where ct.contact_id = requested_page.contact_id) as tag_ids,
+             filtered_total.total_rows
       from filtered_total
       left join requested_page on true
-      order by requested_page.page_position
+      order by ${orderBy}`
+          : sql`select requested_page.*,
+             (select coalesce(array_agg(distinct ci.channel order by ci.channel), array[]::text[])
+                from crm_contact_identities ci where ci.contact_id = requested_page.contact_id) as channels,
+             (select coalesce(json_agg(json_build_object('channel', ci.channel, 'externalId', ci.external_id, 'handle', ci.handle)), '[]'::json)
+                from crm_contact_identities ci where ci.contact_id = requested_page.contact_id) as identities,
+             (select coalesce(array_agg(ct.tag_id::text), array[]::text[])
+                from crm_contact_tags ct where ct.contact_id = requested_page.contact_id) as tag_ids,
+             null::int as total_rows
+      from requested_page
+      order by ${orderBy}`
+      }
     `);
     // The left join returns one sentinel row when the requested page is empty,
     // preserving the filtered count without a second database round-trip.
     const raw = rows as unknown as (RankedContact & {
       total_rows?: number;
       revenue?: number | null;
+      fin_invoices?: number | null;
+      fin_last_purchase_at?: string | null;
+      fin_purchased?: boolean;
       fin_reserved_only?: boolean;
+      fin_loyal?: boolean;
       page_position?: number;
     })[];
-    const total = Number(raw[0]?.total_rows) || 0;
+    const total = includeTotal ? Number(raw[0]?.total_rows) || 0 : null;
     let out: RankedContact[] = raw
       .filter((r) => r.contact_id != null)
       .map((r) => {
-        const rest = { ...r };
+        const rest: typeof r & { finance?: ContactFinance | null } = { ...r };
+        if (withFinance) {
+          rest.finance =
+            r.fin_invoices == null
+              ? null
+              : {
+                  revenue: Number(r.revenue) || 0,
+                  invoices: Number(r.fin_invoices) || 0,
+                  lastPurchaseAt:
+                    r.fin_last_purchase_at != null ? String(r.fin_last_purchase_at) : null,
+                  purchased: Boolean(r.fin_purchased),
+                  reservedOnly: Boolean(r.fin_reserved_only),
+                  loyal: Boolean(r.fin_loyal),
+                };
+        }
         delete rest.total_rows;
         delete rest.revenue;
+        delete rest.fin_invoices;
+        delete rest.fin_last_purchase_at;
+        delete rest.fin_purchased;
         delete rest.fin_reserved_only;
+        delete rest.fin_loyal;
         delete rest.page_position;
         return rest as RankedContact;
       });
@@ -740,6 +1127,8 @@ async function runRankQuery(
       inbound_msgs: Number(r.inbound_msgs) || 0,
       channels_used: Number(r.channels_used) || 0,
     }));
+    const hasMore = includeTotal ? offset + out.length < (total ?? 0) : out.length > limit;
+    if (!includeTotal && out.length > limit) out = out.slice(0, limit);
     // Age is DERIVED from parties.dob (set by DNI validation); when known it
     // overrides the imported custom_fields.edad so the Age column never goes stale.
     out = out.map((r) =>
@@ -758,7 +1147,7 @@ async function runRankQuery(
         ...r,
         identities: r.identities.map((i) => ({ ...i, externalId: maskPii(i.externalId) })),
       }));
-    return { rows: out, total };
+    return { rows: out, total, hasMore, financeEnabled: withFinance };
   });
 }
 
@@ -873,18 +1262,10 @@ export function bustCrmList(tenantId: string) {
 }
 
 /**
- * The full ranked roster, Valkey-cached — the single source for BOTH the
- * Customers list (ships the payload; filters/sorts/searches CLIENT-SIDE, instant,
- * no per-keystroke round-trip) AND the dashboard (aggregates counts server-side,
- * returns only stats). Uncapped up to ROSTER_CAP so neither truncates a large org
- * — an ORDER-BY-score-DESC cap at 5000 used to drop the lowest-scoring contacts,
- * under-reporting the dashboard and hiding rows from the list. RFM recency is
- * day-scaled, so a 2m TTL is imperceptible; mutations bust the tag.
- *
- * ponytail: ROSTER_CAP is a safety valve, not a real limit. Past ~50k contacts,
- * shipping the whole roster to the browser stops scaling — that's when the list
- * needs server-side pagination/search and the dashboard a pure SQL COUNT/GROUP BY
- * (no roster materialization). Fine for the current few-thousand scale.
+ * Full ranked roster for the remaining pre-pagination bulk consumers. The
+ * Customers page now uses `rankContactsPageCached`, and the CRM dashboard uses
+ * `getCrmDashboardStats`; neither route materializes this payload. ROSTER_CAP is
+ * a safety valve for legacy callers rather than a supported UI page size.
  */
 export const ROSTER_CAP = 50_000;
 export async function listContactsCached(
@@ -912,7 +1293,13 @@ export async function listContactsCached(
       (
         await runRankQuery(
           ctx,
-          { limit: ROSTER_CAP, maxLimit: ROSTER_CAP, ownerId, maskSensitive },
+          {
+            limit: ROSTER_CAP,
+            maxLimit: ROSTER_CAP,
+            ownerId,
+            maskSensitive,
+            includeTotal: false,
+          },
           finance,
         )
       ).rows,
@@ -939,6 +1326,27 @@ export async function getMetaKeys(ctx: CoreCtx): Promise<string[]> {
           order by 1
         `)) as unknown as { key: string }[];
         return rows.map((r) => r.key);
+      }),
+  );
+}
+
+/** Distinct channels across all live contacts. Page-bounded rows cannot supply
+ *  a complete filter domain, so this small cached projection is resolved once
+ *  for the organization and reused by the Customers header. */
+export async function listContactChannels(ctx: CoreCtx): Promise<string[]> {
+  return cached(
+    keys.hub('crm-contact-channels', { t: ctx.tenantId }),
+    { ttl: '10m', tags: [...crmListTags(ctx.tenantId)] },
+    async () =>
+      withOrgCore(ctx, async (tx) => {
+        const rows = (await tx.execute(sql`
+          select distinct ci.channel
+          from crm_contact_identities ci
+          join crm_contacts c on c.id = ci.contact_id and c.org_id = ci.org_id
+          where c.deleted_at is null and nullif(btrim(ci.channel), '') is not null
+          order by ci.channel
+        `)) as unknown as { channel: string }[];
+        return rows.map((r) => r.channel);
       }),
   );
 }
@@ -1211,19 +1619,60 @@ export async function updateContact(
 /** Soft-delete (right-to-erasure first step). */
 export async function softDeleteContact(ctx: CoreCtx, id: string) {
   await withOrgCore(ctx, async (tx) => {
-    await tx
+    const deleted = await tx
       .update(crmContacts)
       .set({ deletedAt: new Date() })
-      .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)));
-    await recordAudit(ctx, {
-      refType: 'crm_contact',
-      refId: id,
-      op: 'delete',
-      changes: [{ field: 'deletedAt', label: 'Deleted', old: null, new: true }],
-      actor: { id: ctx.profileId ?? null, name: null },
-    });
+      .where(
+        and(
+          eq(crmContacts.id, id),
+          eq(crmContacts.orgId, ctx.tenantId),
+          isNull(crmContacts.deletedAt),
+        ),
+      )
+      .returning({ id: crmContacts.id });
+    if (deleted.length > 0)
+      await recordAuditInTx(tx, ctx, {
+        refType: 'crm_contact',
+        refId: id,
+        op: 'delete',
+        changes: [{ field: 'deletedAt', label: 'Deleted', old: null, new: true }],
+        actor: { id: ctx.profileId ?? null, name: null },
+      });
   });
   await bustCrmList(ctx.tenantId);
+}
+
+/** One transaction, one UPDATE, and one audit INSERT for a bulk soft-delete. */
+export async function softDeleteContacts(ctx: CoreCtx, ids: string[]): Promise<number> {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) return 0;
+  const count = await withOrgCore(ctx, async (tx) => {
+    const deleted = await tx
+      .update(crmContacts)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          eq(crmContacts.orgId, ctx.tenantId),
+          inArray(crmContacts.id, uniqueIds),
+          isNull(crmContacts.deletedAt),
+        ),
+      )
+      .returning({ id: crmContacts.id });
+    await recordAuditsInTx(
+      tx,
+      ctx,
+      deleted.map(({ id }) => ({
+        refType: 'crm_contact',
+        refId: id,
+        op: 'delete',
+        changes: [{ field: 'deletedAt', label: 'Deleted', old: null, new: true }],
+        actor: { id: ctx.profileId ?? null, name: null },
+      })),
+    );
+    return deleted.length;
+  });
+  if (count > 0) await bustCrmList(ctx.tenantId);
+  return count;
 }
 
 /** Hard-delete ("Forget this contact" — removes contact + identities + activities

@@ -135,6 +135,7 @@
     "db:migrate": "bun scripts/db-migrate.ts",
     "db:status": "bun scripts/db-status.ts",
     "db:conversation-index": "bun scripts/ensure-conversation-corpus-index.ts",
+    "db:crm-insights-cold-path": "bun scripts/ensure-crm-insights-cold-path.ts",
     "db:restore-brain-ann": "bun scripts/restore-brain-ann.ts",
     "preview": "vite preview",
     "check": "svelte-kit sync && NODE_OPTIONS=--max-old-space-size=4096 svelte-check --tsconfig ./tsconfig.json",

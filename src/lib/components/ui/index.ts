@@ -20,7 +20,6 @@ export { default as SideNav } from './SideNav.svelte';
 export { default as Tooltip } from './Tooltip.svelte';
 export { default as Dropdown } from './Dropdown.svelte';
 export { default as Picker } from './Picker.svelte';
-export type { PickerColumn } from './Picker.svelte';
 export { default as Popover } from './Popover.svelte';
 export { default as DraggableDialog } from './DraggableDialog.svelte';
 export { default as StatusDot } from './StatusDot.svelte';
@@ -47,5 +46,13 @@ export type { SideNavItem, SideNavGroup } from './SideNav.svelte';
 export type { TooltipPlacement } from './Tooltip.svelte';
 export type { DropdownItem } from './Dropdown.svelte';
 export type { ProgressBarProps, ProgressBarSize } from './ProgressBar.svelte';
+export type {
+  PickerColumn,
+  PickerCreateConfig,
+  PickerCreateContext,
+  PickerDuplicatePolicy,
+  PickerLoadResult,
+  PickerSelectionMode,
+} from './picker';
 export type { ChipStatus } from './Chip.svelte';
 export type { AvatarSize } from './Avatar.svelte';

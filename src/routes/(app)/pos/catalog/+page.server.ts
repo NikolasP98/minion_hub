@@ -2,15 +2,15 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listSellables } from '$server/services/pos.service';
-import { listItems, listConsumption, listAllComponentEdges } from '$server/services/stock.service';
+import { listItems, listAllComponentEdges } from '$server/services/stock.service';
 import { billingForProducts, catalogCoverage } from '$server/services/finance-products.service';
 import { costForProducts } from '$server/services/item-cost.service';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 
 /** The /pos module gate + 401 live in the (app) route hook guard + this
  *  layout's auth check — this load only adds the merged catalog + (when
- *  stock is on) the item picker + existing consumption mappings the wizard
- *  needs for edit prefill. stockEnabled is data-bearing (controls stock
+ *  stock is on) the item picker + recipe component graph. stockEnabled is
+ *  data-bearing (controls stock
  *  ENRICHMENT below, not a route gate), so it reads the hook's per-request
  *  module-state snapshot instead of re-querying (R5).
  *
@@ -28,10 +28,9 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
 
   const includeInactive = url.searchParams.get('inactive') === '1';
   const stockEnabled = locals.moduleStates?.stock ?? true;
-  const [sellables, stockItems, consumption, componentEdges, coverage, mask] = await Promise.all([
+  const [sellables, stockItems, componentEdges, coverage, mask] = await Promise.all([
     listSellables(ctx, { includeInactive }),
     stockEnabled ? listItems(ctx) : Promise.resolve([]),
-    stockEnabled ? listConsumption(ctx) : Promise.resolve([]),
     // Recipe builder (#8): the whole org graph, so the editor can show nesting
     // and offer only children that wouldn't close a loop — both need more than
     // one item's direct children.
@@ -79,7 +78,6 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   return {
     sellables: enriched,
     stockItems,
-    consumption,
     componentEdges,
     stockEnabled,
     coverage,

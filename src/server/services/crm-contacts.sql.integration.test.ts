@@ -46,7 +46,7 @@ vi.mock('./modules.service', async (importOriginal) => ({
   bothEnabled: async () => financeOn,
 }));
 
-import { rankContactsPage } from './crm-contacts.service';
+import { getCrmDashboardStats, rankContactsPage } from './crm-contacts.service';
 import { contactFinanceMap, contactFinanceSummary, rankCustomers } from './crm-finance.service';
 
 const ids = {
@@ -90,6 +90,23 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
         org_id text, channel text, chat_id text, occurred_at timestamptz,
         created_at timestamptz, direction text, is_bot boolean
       );
+      -- This fixture tests ranking semantics, not trigger maintenance. A live
+      -- compatibility view supplies the same projection shape while the
+      -- dedicated activity-rollup integration suite exercises the real table.
+      create view crm_contact_activity_stats as
+        select ci.contact_id, ci.org_id,
+               count(*)::bigint as message_count,
+               count(*) filter (where m.direction = 'inbound')::bigint as inbound_count,
+               count(*) filter (where m.direction = 'outbound')::bigint as outbound_count,
+               count(distinct m.channel)::int as channels_used,
+               min(coalesce(m.occurred_at, m.created_at)) as first_contact_at,
+               max(coalesce(m.occurred_at, m.created_at)) as last_contact_at,
+               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'inbound') as last_inbound_at,
+               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'outbound') as last_outbound_at
+        from crm_contact_identities ci
+        join messages m on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
+        where m.is_bot is not true
+        group by ci.contact_id, ci.org_id;
       create table parties (
         id uuid primary key, doc_number text, dni_verified boolean, dob date,
         metadata jsonb not null default '{}'
@@ -215,7 +232,12 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     );
     expect(first.total).toBe(count);
     expect(first.rows).toHaveLength(2);
-    expect(empty).toEqual({ rows: [], total: count });
+    expect(empty).toEqual({
+      rows: [],
+      total: count,
+      hasMore: false,
+      financeEnabled: false,
+    });
   });
 
   it('sorts ICP null last and traverses tied rows exactly once', async () => {
@@ -268,13 +290,13 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
         { db: {} as never, tenantId: org },
         { search, limit: 20, maskSensitive: true },
       );
-      expect(page).toEqual({ rows: [], total: 0 });
+      expect(page).toEqual({ rows: [], total: 0, hasMore: false, financeEnabled: false });
     },
   );
 
   it.each(['8765', '5566', '8877'])('does not match phone/DNI mid-string %s', async (search) => {
     const page = await rankContactsPage({ db: {} as never, tenantId: org }, { search, limit: 20 });
-    expect(page).toEqual({ rows: [], total: 0 });
+    expect(page).toEqual({ rows: [], total: 0, hasMore: false, financeEnabled: false });
   });
 
   // ── Slice 2: filters the Customers page used to apply over the FULL roster ──
@@ -293,6 +315,34 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     const page = await rankContactsPage(ctx, { awaitingReply: true, limit: 100 });
     expect(idsOf(page.rows)).toEqual(idsOf(expected));
     expect(page.total).toBe(expected.length);
+  });
+
+  it('aggregates the full dashboard in SQL with the same roster semantics', async () => {
+    const all = await roster();
+    const stats = await getCrmDashboardStats(ctx);
+    const stageCounts = Object.fromEntries(
+      ['New', 'Engaged', 'Active', 'Dormant', 'Churned'].map((stage) => [
+        stage,
+        all.rows.filter((row) => row.stage === stage).length,
+      ]),
+    );
+    const scoreBuckets = new Array(10).fill(0) as number[];
+    for (const row of all.rows) {
+      scoreBuckets[Math.min(9, Math.max(0, Math.floor(row.score / 10)))]++;
+    }
+
+    expect(stats).toMatchObject({
+      total: all.rows.length,
+      avgScore: Math.round(all.rows.reduce((sum, row) => sum + row.score, 0) / all.rows.length),
+      stageCounts,
+      scoreBuckets,
+      response: {
+        inboundContacts: all.rows.filter((row) => row.inbound_msgs > 0).length,
+        awaiting: all.rows.filter((row) => row.inbound_msgs > 0 && row.awaiting_reply).length,
+      },
+      revenue: null,
+    });
+    expect(stats.channels).toEqual([{ channel: 'whatsapp', count: 2 }]);
   });
 
   it('buyerOnly selects exactly the contacts with a purchase history', async () => {

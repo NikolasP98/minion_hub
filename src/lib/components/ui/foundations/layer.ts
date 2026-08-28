@@ -53,7 +53,9 @@ export function portal(node: HTMLElement, options: PortalOptions = {}) {
   return {
     update: move,
     destroy() {
-      marker.parentNode?.insertBefore(node, marker.nextSibling);
+      const markerParent = marker.parentNode;
+      if (markerParent) markerParent.insertBefore(node, marker.nextSibling);
+      else node.remove();
       marker.remove();
     },
   };

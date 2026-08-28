@@ -41,6 +41,8 @@
     type MergeField,
     type MergeResolution,
   } from '$lib/components/crm/crm-merge';
+  import { CustomerPageCache, isAbortError } from '$lib/components/crm/customer-page-cache';
+  import { crmCountScopeFingerprint } from '$lib/components/crm/customer-query';
 
   let { data }: { data: PageData } = $props();
   const tags = $derived(data.tags);
@@ -55,10 +57,29 @@
   let rows = $state<Row[]>(data.contacts);
   // svelte-ignore state_referenced_locally
   let total = $state<number>(data.total);
+  let knownTotalFingerprint: string | null = null;
   let loading = $state(false);
+  type PageBody = {
+    contacts: Row[];
+    total: number | null;
+    hasMore: boolean;
+    financeEnabled: boolean;
+  };
+  const pageCache = new CustomerPageCache<PageBody>(async (url, signal) => {
+    const res = await fetch(url, { signal });
+    if (!res.ok) throw new Error(`CRM page request failed (${res.status})`);
+    return res.json() as Promise<PageBody>;
+  });
+  let pageCacheEpoch = 0;
+  function clearPageCache() {
+    pageCacheEpoch += 1;
+    pageCache.clear();
+  }
   $effect(() => {
+    clearPageCache();
     rows = data.contacts;
     total = data.total;
+    knownTotalFingerprint = crmCountScopeFingerprint(toApiParams(buildParams(lastQuery)));
   });
 
   // Personal orgs de-emphasize the sales funnel (WP2) — no funnel column.
@@ -119,17 +140,12 @@
       : c.sex === 'F'
         ? m.crm_sex_f()
         : ((c.custom_fields?.sexo as string | undefined) ?? '');
-  // TODO(handoff): options derive from the CURRENT page's rows (plus any
-  // URL-selected values), so a channel absent from this page can't be picked
-  // until it scrolls into a page. S6 should source the org's channel list
-  // server-side (see specs/2026-08-13-crm-customers-server-pagination-spec §S6).
-  const channelOptions = $derived.by(() => {
-    const s = new Set<string>(qpArr('channel'));
-    for (const c of rows) for (const ch of c.channels ?? []) s.add(ch);
-    return [...s]
-      .sort()
-      .map((ch) => ({ value: ch, label: ch.charAt(0).toUpperCase() + ch.slice(1) }));
-  });
+  const channelOptions = $derived(
+    data.channels.map((ch) => ({
+      value: ch,
+      label: ch.charAt(0).toUpperCase() + ch.slice(1),
+    })),
+  );
 
   // ── Page-owned filters (tag / reserved / awaiting / score / temp) ──────────
   // Header enum filters (stage/funnel/channel) are seeded into DataTable via
@@ -140,7 +156,7 @@
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-  let tagId = $state('');
+  let tagId = $state(qp.get('tag') ?? '');
   let reservedFilter = $state(qp.get('reserved') === '1');
   let awaitingFilter = $state(qp.get('awaiting') === '1');
   let scoreMin = $state<number | null>(qp.has('scoreMin') ? Number(qp.get('scoreMin')) : null);
@@ -250,26 +266,56 @@
     return api;
   }
   let queryError = $state<string | null>(null);
+  function apiUrlFor(q: ServerQuery): {
+    url: string;
+    urlParams: URLSearchParams;
+    countFingerprint: string;
+  } {
+    const urlParams = buildParams(q);
+    const apiParams = toApiParams(urlParams);
+    const countFingerprint = crmCountScopeFingerprint(apiParams);
+    if (q.page > 1 || countFingerprint === knownTotalFingerprint) {
+      apiParams.set('includeTotal', '0');
+    }
+    return { url: `/api/crm/contacts?${apiParams}`, urlParams, countFingerprint };
+  }
+  function prefetchNext(q: ServerQuery) {
+    const next = apiUrlFor({ ...q, page: q.page + 1 }).url;
+    const epoch = pageCacheEpoch;
+    const warm = () => {
+      if (epoch === pageCacheEpoch) void pageCache.prefetch(next).catch(() => undefined);
+    };
+    const requestIdle = (
+      window as unknown as {
+        requestIdleCallback?: (
+          callback: IdleRequestCallback,
+          options?: IdleRequestOptions,
+        ) => number;
+      }
+    ).requestIdleCallback;
+    if (requestIdle) requestIdle(warm, { timeout: 1_000 });
+    else window.setTimeout(warm, 0);
+  }
   async function runQuery(q: ServerQuery) {
     lastQuery = q;
     const seq = ++reqSeq;
     loading = true;
     queryError = null;
     try {
-      const urlParams = buildParams(q);
-      const res = await fetch(`/api/crm/contacts?${toApiParams(urlParams)}`);
-      if (!res.ok) {
-        if (seq === reqSeq) queryError = m.crm_bulk_failed();
-        return;
-      }
-      const body: { contacts: Row[]; total: number } = await res.json();
+      const { url, urlParams, countFingerprint } = apiUrlFor(q);
+      const body = await pageCache.load(url);
       // Promise-identity guard: drop out-of-order resolutions.
       if (seq !== reqSeq) return;
       // Infinite scroll: page 1 replaces the list, later pages append.
       rows = q.page > 1 ? [...rows, ...body.contacts] : body.contacts;
-      total = body.total;
+      if (body.total != null) {
+        total = body.total;
+        knownTotalFingerprint = countFingerprint;
+      }
       replaceState(`?${urlParams}`, {});
-    } catch {
+      if (body.hasMore) prefetchNext(q);
+    } catch (error) {
+      if (isAbortError(error)) return;
       if (seq === reqSeq) queryError = m.crm_bulk_failed();
     } finally {
       if (seq === reqSeq) loading = false;
@@ -277,6 +323,31 @@
   }
   /** Page-owned toggles re-run the current table query from page 1. */
   const refetch = () => void runQuery({ ...lastQuery, page: 1 });
+  function exportMatching(_format: 'csv' | 'xlsx', keys: string[]) {
+    const api = toApiParams(buildParams({ ...lastQuery, page: 1 }));
+    api.delete('limit');
+    api.delete('offset');
+    api.set('columns', keys.join(','));
+    const link = document.createElement('a');
+    link.href = `/api/crm/contacts/export.csv?${api}`;
+    link.download = '';
+    link.click();
+  }
+  async function selectAllMatching(): Promise<string[]> {
+    try {
+      const api = toApiParams(buildParams({ ...lastQuery, page: 1 }));
+      api.delete('limit');
+      api.delete('offset');
+      api.set('fields', 'id');
+      const res = await fetch(`/api/crm/contacts?${api}`);
+      if (!res.ok) throw new Error(`CRM id request failed (${res.status})`);
+      const body = (await res.json()) as { contacts: { contact_id: string }[] };
+      return body.contacts.map((contact) => contact.contact_id);
+    } catch (error) {
+      queryError = m.crm_bulk_failed();
+      throw error;
+    }
+  }
   // Seed the header sort arrow from the URL (server default = score desc).
   const URL_SORT_TO_COL: Record<string, string> = {
     score: 'score',
@@ -577,13 +648,16 @@
   let deleteIds = $state<string[]>([]);
 
   const bulkActions = $derived.by(() => {
-    if (!canAct('crm', 'edit')) return [];
     const acts: {
       label: string;
       danger?: boolean;
       onSelect: (ids: Set<string>, rows: Row[]) => void;
     }[] = [];
-    if (selected.size >= 2)
+    if (
+      canAct('crm', 'edit') &&
+      selected.size >= 2 &&
+      selected.size === rows.filter((r) => selected.has(r.contact_id)).length
+    )
       acts.push({
         label: m.crm_bulk_merge_action(),
         onSelect: (_ids, rows) => {
@@ -592,15 +666,16 @@
           mergeOpen = true;
         },
       });
-    acts.push({
-      label: m.crm_bulk_delete_action({ n: selected.size }),
-      danger: true,
-      onSelect: (ids) => {
-        deleteIds = [...ids];
-        bulkErr = null;
-        deleteOpen = true;
-      },
-    });
+    if (canAct('crm', 'delete'))
+      acts.push({
+        label: m.crm_bulk_delete_action({ n: selected.size }),
+        danger: true,
+        onSelect: (ids) => {
+          deleteIds = [...ids];
+          bulkErr = null;
+          deleteOpen = true;
+        },
+      });
     return acts;
   });
 
@@ -623,10 +698,13 @@
     bulkBusy = true;
     bulkErr = null;
     try {
-      const res = await Promise.all(
-        deleteIds.map((id) => fetch(`/api/crm/contacts/${id}`, { method: 'DELETE' })),
-      );
-      if (res.some((r) => !r.ok)) throw new Error('delete');
+      const res = await fetch('/api/crm/contacts/bulk-delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids: deleteIds }),
+      });
+      if (!res.ok) throw new Error('delete');
+      clearPageCache();
       selected = new Set();
       deleteOpen = false;
       await invalidate('crm:contacts');
@@ -658,7 +736,16 @@
     class="flex-1 min-h-0"
     {columns}
     data={rows}
-    server={{ total, loading, pageSize: data.pageSize, infinite: true, onQuery: runQuery }}
+    server={{
+      total,
+      loading,
+      pageSize: data.pageSize,
+      infinite: true,
+      onQuery: runQuery,
+      onExport: exportMatching,
+      exportFormats: ['csv'],
+      onSelectAllMatching: selectAllMatching,
+    }}
     getRowId={(c) => c.contact_id}
     searchPlaceholder={m.crm_search_placeholder()}
     bind:search={searchQuery}

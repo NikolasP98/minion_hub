@@ -11,6 +11,7 @@
   import Layer from './Layer.svelte';
   import {
     clampWindowRect,
+    isWindowControlTarget,
     moveWindowBy,
     resizeWindowBy,
     type WindowRect,
@@ -38,6 +39,8 @@
     onmove?: (x: number, y: number) => void;
     onresize?: (width: number, height: number) => void;
     ontogglefullscreen?: (fullscreen: boolean) => void;
+    /** Interactive title-area content, such as a compact tab strip. */
+    titleContent?: Snippet;
     toolbar?: Snippet;
     class?: string;
   }
@@ -64,6 +67,7 @@
     onmove,
     onresize,
     ontogglefullscreen,
+    titleContent,
     toolbar,
     class: cls = '',
   }: Props = $props();
@@ -85,7 +89,7 @@
   let startRect: WindowRect = { x, y, width, height };
 
   onMount(() => {
-    const media = window.matchMedia('(min-width: 1280px)');
+    const media = window.matchMedia('(min-width: 768px)');
     const update = () => (wide = media.matches);
     update();
     media.addEventListener('change', update);
@@ -119,7 +123,7 @@
   }
 
   function beginDrag(event: PointerEvent) {
-    if (!wide || fullscreen || event.button !== 0) return;
+    if (!wide || fullscreen || event.button !== 0 || isWindowControlTarget(event.target)) return;
     dragging = true;
     startPointerX = event.clientX;
     startPointerY = event.clientY;
@@ -224,7 +228,12 @@
         onpointercancel={endDrag}
       >
         <Grip class="window-grip" size={15} aria-hidden="true" />
-        <h2 id={titleId}>{title}</h2>
+        {#if titleContent}
+          <h2 id={titleId} class="visually-hidden">{title}</h2>
+          <div data-part="title-content">{@render titleContent()}</div>
+        {:else}
+          <h2 id={titleId}>{title}</h2>
+        {/if}
         {#if toolbar}<div data-part="toolbar">{@render toolbar()}</div>{/if}
         {#if wide}
           <button
@@ -315,6 +324,14 @@
     font-weight: var(--font-weight-semibold, 600);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  [data-part='title-content'] {
+    display: flex;
+    min-width: 0;
+    min-height: var(--control-height-md, 32px);
+    flex: 1;
+    align-self: stretch;
+    align-items: center;
   }
   [data-part='toolbar'] {
     display: flex;

@@ -19,6 +19,7 @@
   import AgentLlmAnalytics from '$lib/components/reliability/AgentLlmAnalytics.svelte';
   import KpiSparkline from '$lib/components/reliability/KpiSparkline.svelte';
   import KpiRow from '$lib/components/reliability/KpiRow.svelte';
+  import PerformanceMonitorPanel from '$lib/components/reliability/PerformanceMonitorPanel.svelte';
   import { formatUsd } from '$lib/utils/model-pricing';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
   import {
@@ -59,6 +60,7 @@
     ArrowLeftRight,
     Lightbulb,
     Network,
+    Snowflake,
   } from 'lucide-svelte';
   import ArchitectureGraph from '$lib/components/reliability/architecture/ArchitectureGraph.svelte';
 
@@ -236,6 +238,7 @@
     { value: 'agents', label: m.reliability_tabAgents(), icon: Bot },
     { value: 'plugins', label: m.reliability_tabPlugins(), icon: Puzzle },
     { value: 'insights', label: m.reliability_tabInsights(), icon: Lightbulb },
+    { value: 'performance', label: m.reliability_tabPerformance(), icon: Snowflake },
     { value: 'architecture', label: m.reliability_tabArchitecture(), icon: Network },
   ]);
 
@@ -1087,7 +1090,14 @@
     ]);
   }
 
+  let performanceRefreshKey = $state(0);
+  function refreshCurrentTab() {
+    if (activeTab === 'performance') performanceRefreshKey += 1;
+    else void loadData();
+  }
+
   const pageState = $derived.by<AsyncBoundaryState>(() => {
+    if (activeTab === 'performance' || activeTab === 'architecture') return { kind: 'ready' };
     if (!serverId) return { kind: 'unavailable', title: m.reliability_connectToView() };
     if (loading && !summary) return { kind: 'loading', label: m.common_loading() };
     return { kind: 'ready' };
@@ -1687,7 +1697,7 @@
           variant="secondary"
           size="sm"
           shape="icon"
-          onclick={loadData}
+          onclick={refreshCurrentTab}
           title={m.reliability_refreshData()}
           aria-label={m.reliability_refreshData()}
         >
@@ -1912,6 +1922,12 @@
                 to={reliability.dateRange.to}
               />
             {/if}
+          {:else if activeTab === 'performance'}
+            <PerformanceMonitorPanel
+              from={reliability.dateRange.from}
+              to={reliability.dateRange.to}
+              refreshKey={performanceRefreshKey}
+            />
           {:else if activeTab === 'architecture'}
             <!-- ── Architecture: live infrastructure topology graph (servers, containers,
 			     storage, edge) with per-connection port/protocol justification ── -->
