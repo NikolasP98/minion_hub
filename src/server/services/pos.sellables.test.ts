@@ -1211,7 +1211,13 @@ describe('updateSellable', () => {
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
-    it("concurrent false→true loser (unique-index 23505) surfaces the mapped 'item_taken' conflict, no partial product write", async () => {
+    // NOT a real concurrency test — a single call with the item insert mocked
+    // to reject with 23505, proving only the error-code mapping. The actual
+    // two-connection race against a real unique index is proven in
+    // pos.trackstock.concurrent.integration.test.ts (real PostgreSQL, gated by
+    // REQUIRE_POS_TRACKSTOCK_POSTGRES) — see PR #142/#149 review history for
+    // why a mock-configured single call doesn't establish this on its own.
+    it("a 23505 from the item insert (what stk_items_org_fin_product_uniq raises for the losing PATCH) surfaces as the mapped 'item_taken' conflict, no partial product write", async () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([
         [
@@ -1246,6 +1252,55 @@ describe('updateSellable', () => {
       await expect(
         updateSellable(ctx(db), 'fp-13', { trackStock: true }, actor),
       ).rejects.toMatchObject({ code: 'item_taken' });
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+    });
+
+    it("patch.itemId throws 'item_link_immutable', no facts lookup, no writes — itemId is create-only, not a silent no-op", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-13',
+            code: 'CONS',
+            name: 'Consulta',
+            category: null,
+            unitPrice: null,
+            active: true,
+          },
+        ],
+      ]);
+
+      await expect(
+        updateSellable(ctx(db), 'fp-13', { itemId: 'item-99' }, actor),
+      ).rejects.toMatchObject({ code: 'item_link_immutable' });
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+      expect(createItemMock).not.toHaveBeenCalled();
+    });
+
+    it("combined PATCH { code: <colliding>, trackStock:true } throws 'code_taken' BEFORE the item transition runs — no orphan stk_items row under the rejected code", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-13',
+            code: 'CONS',
+            name: 'Consulta',
+            category: null,
+            unitPrice: null,
+            active: true,
+          },
+        ],
+        [{ id: 'fp-other' }], // the NEW code already belongs to another product
+      ]);
+      mockExecuteSeq(db, [[{ n: 0 }]]); // billed-invoice-lines count for the OLD code: 0, rename allowed
+
+      await expect(
+        updateSellable(ctx(db), 'fp-13', { code: 'TAKEN', trackStock: true }, actor),
+      ).rejects.toMatchObject({ code: 'code_taken' });
+      // The precheck must reject before deriveSellableFacts/syncSellableItem run —
+      // otherwise a stk_items row would already be committed under 'TAKEN' by the
+      // time the (never-reached) fin_products update would have failed.
+      expect(createItemMock).not.toHaveBeenCalled();
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 

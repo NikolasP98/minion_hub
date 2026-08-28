@@ -164,11 +164,16 @@ describe('anti-recurrence guard — no second hardcoded deposit keyword', () => 
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
     const dir = fileURLToPath(new URL('.', import.meta.url));
+    // crm-contacts.service.ts is the 4th real consumer (resolveDepositRule +
+    // deposit-rule cache-key fingerprinting) — crm-settings.service.ts builds
+    // no deposit SQL at all and was guarding nothing; kept anyway since an
+    // extra guarded file is free, a missing one is the actual gap.
     const guarded = [
       'crm-finance.service.ts',
       'crm-similarity.service.ts',
       'crm-journey.service.ts',
       'crm-settings.service.ts',
+      'crm-contacts.service.ts',
     ];
     for (const file of guarded) {
       const source = readFileSync(`${dir}${file}`, 'utf-8');
@@ -180,6 +185,19 @@ describe('anti-recurrence guard — no second hardcoded deposit keyword', () => 
         source,
         `${file} must not build an ILIKE pattern by string concatenation — use escapeLikePattern`,
       ).not.toMatch(/ilike\s*\(\s*[a-zA-Z0-9_.]+\s*,\s*[`'"]%/);
+      // The function-call check above only catches Drizzle's `ilike(col, '%x%')`
+      // form. This codebase's deposit/search predicates are written as raw SQL
+      // inside `sql` tagged templates instead (infix `col ilike '%x%'`), which
+      // that regex never sees — this second check is the one that would have
+      // caught a hand-built `ii.description ilike '%adelanto%'` bypassing
+      // depositMatchSql. Deliberately does NOT flag an interpolated pattern
+      // (`ilike ${'%' + variable + '%'}`, crm-contacts.service.ts's legitimate
+      // name-search predicate) — only a LITERAL quoted string sitting directly
+      // after the keyword.
+      expect(
+        source,
+        `${file} must not hardcode a raw ILIKE literal pattern — use depositMatchSql/notDepositMatchSql`,
+      ).not.toMatch(/ilike\s+[`'"]%/i);
     }
   });
 });

@@ -1326,9 +1326,21 @@ export async function itemHasHistory(
  * transaction with the stk_items row locked `for update`, so two concurrent
  * renames serialize and the history decision cannot be split from the write.
  * Movement writers serialize against this lock via submitEntry's
- * `for('share')` on the same rows (see stock.service.ts): a movement cannot
- * commit between this history check and the uom write and be reinterpreted
- * under the renamed unit.
+ * `for('share')` on the same rows (see stock.service.ts): a *submitted*
+ * movement cannot commit between this history check and the uom write and be
+ * reinterpreted under the renamed unit.
+ *
+ * TODO(handoff): that guarantee is narrower than this comment implies —
+ * stock.service.ts's createEntry/updateEntry insert draft stk_entry_lines
+ * with no stk_items lock at all (only submitEntry takes `for('share')`), so a
+ * DRAFT line can still be created for this item between itemHasHistory's
+ * `entry_lines` check and this uom write, landing under the old uom with no
+ * refusal. Narrow (draft creation is a distinct action from the PATCH, and
+ * itemHasHistory already refuses once ANY entry_lines row exists), but real.
+ * Closing it needs createEntry/updateEntry to also take the item's
+ * `for('share')` lock, which is a stock.service.ts change outside this
+ * spec's POS-marker scope — see minion-meta proposals/
+ * 2026-08-28-pos-trackstock-draft-lock-gap.md.
  */
 async function applyUomChange(
   ctx: CoreCtx,
@@ -1506,18 +1518,45 @@ export async function updateSellable(
         'code_locked',
       );
     }
+
+    // Catch a colliding new code HERE, before any item transition below runs.
+    // The final fin_products .update() (after the item transition) also maps
+    // this to 'code_taken' via the DB's own unique index, but by then a
+    // combined PATCH { code, trackStock:true } would already have committed a
+    // stk_items row under the new (rejected) code — a real product write
+    // never lands, yet stk_items ends up permanently linked and stamped with
+    // a code fin_products never actually took. Checking first keeps the
+    // refusal a true no-write refusal for the common (non-racing) case; the
+    // DB unique index remains the backstop for two racing renames.
+    const [collision] = await withOrgCore(ctx, (tx) =>
+      tx
+        .select({ id: finProducts.id })
+        .from(finProducts)
+        .where(and(eq(finProducts.orgId, ctx.tenantId), eq(finProducts.code, code)))
+        .limit(1),
+    );
+    if (collision) throw new PosError(`code ${code} is already taken`, 'code_taken');
   }
 
-  // Stop the silent drop: kind/trackStock/uom are all projections of the
-  // linked stk_items row, not columns on fin_products, so a naive .set()
+  // Stop the silent drop: kind/trackStock/uom/itemId are all projections of
+  // the linked stk_items row, not columns on fin_products, so a naive .set()
   // below would accept these fields and discard them (operator sees a green
   // save, reopens, the old value is back). An unchanged resubmit — the
   // wizard's normal full-object save — stays a 200 no-op; the two SAFE
   // transitions (trackStock false→true on a service, uom on a pristine item)
   // now APPLY via the same code paths createSellable uses; everything else is
-  // still refused with a typed 400 rather than silently lost. Only derive
-  // facts when one of the three is actually submitted, so a plain price/name
-  // edit costs nothing extra.
+  // still refused with a typed 400 rather than silently lost. `itemId`
+  // ("publish an EXISTING stk_item") is create-only per SellableInput's own
+  // doc comment — updateSellable has no defined semantics for re-linking an
+  // already-published sellable to a different item, so it is refused rather
+  // than silently ignored. Only derive facts when one of these is actually
+  // submitted, so a plain price/name edit costs nothing extra.
+  if (patch.itemId !== undefined) {
+    throw new PosError(
+      'linking an existing stock item is create-only; itemId cannot be changed via update',
+      'item_link_immutable',
+    );
+  }
   let applyTrackStock = false;
   let uomTransitionItemId: string | null = null;
   if (patch.kind !== undefined || patch.trackStock !== undefined || patch.uom !== undefined) {
@@ -1573,7 +1612,10 @@ export async function updateSellable(
   // Apply the supported item transitions BEFORE the fin_products write, so a
   // failed or refused transition leaves the product row untouched (the
   // "transaction rolled back" property of the spec's DoD — withOrgCore doesn't
-  // nest, so ordering is the atomicity mechanism, same as createSellable).
+  // nest, so ordering is the atomicity mechanism). NOTE: this is the OPPOSITE
+  // order from createSellable (product row commits first there, then the
+  // item) — the two are not symmetric, see createSellable's own doc comment
+  // for why that direction's residual orphan-row risk is accepted instead.
   if (applyTrackStock) {
     await syncSellableItem(ctx, {
       finProductId: productId,
