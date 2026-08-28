@@ -20,6 +20,13 @@ name: Factory Notify
 # The completion poke is deliberately NOT gated on conclusion == success. A red
 # tip has to reconcile too, otherwise the board can only ever learn about
 # passing builds and a genuine failure stays invisible.
+# TODO(handoff): this fixes the race going forward but does NOT retro-correct the
+# verdict the board already stored for 1b47e8c. The pipeline writes forward only
+# ("no backward reconciliation"), so that entry will not self-heal - it needs the
+# factory-side backward reconciler specified as G0 in minion-meta
+# specs/2026-08-17-sdlc-phase-gates-scoring-spec.md. The matching minion-meta
+# proposal could not be filed from here: this stage's harness contract is
+# Hub-repo-only (no cross-repo pushes/PRs). Escalated in the run summary instead.
 on:
   push:
     branches: [master]
