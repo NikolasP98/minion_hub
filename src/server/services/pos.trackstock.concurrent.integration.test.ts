@@ -61,9 +61,7 @@ vi.mock('$server/db/with-org-core', () => ({
 }));
 
 const { createSellable, updateSellable, PosError } = await import('./pos.service');
-const { createEntry, createSourcedIssue, createIssueFromInvoice } = await import(
-  './stock.service'
-);
+const { createEntry, createSourcedIssue, createIssueFromInvoice } = await import('./stock.service');
 
 type Client = ReturnType<typeof postgres>;
 
