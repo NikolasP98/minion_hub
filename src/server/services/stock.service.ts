@@ -582,6 +582,14 @@ export async function createEntry(
 ): Promise<StkEntry> {
   if (!isEntryType(input.type)) throw new StockError('invalid entry type', 'invalid_type');
   return withOrgCore(ctx, async (tx) => {
+    // Lock BEFORE inserting: a draft line is history under `itemHasHistory`,
+    // so this must serialize against pos.service.ts's applyUomChange the same
+    // way submitEntry does — see lockItemsAgainstUomChange's doc comment.
+    await lockItemsAgainstUomChange(
+      tx,
+      ctx.tenantId,
+      input.lines.map((l) => l.itemId),
+    );
     const [entry] = await tx
       .insert(stkEntries)
       .values({
@@ -627,6 +635,14 @@ export async function updateEntry(
         .where(eq(stkEntries.id, id));
     }
     if (input.lines) {
+      // Same ordering requirement as createEntry: lock before the insert half
+      // of this replace so a concurrent applyUomChange can't slip between the
+      // delete and the new lines landing.
+      await lockItemsAgainstUomChange(
+        tx,
+        ctx.tenantId,
+        input.lines.map((l) => l.itemId),
+      );
       await tx.delete(stkEntryLines).where(eq(stkEntryLines.entryId, id));
       if (input.lines.length)
         await tx.insert(stkEntryLines).values(linesToRows(ctx.tenantId, id, input.lines));
@@ -696,6 +712,34 @@ async function writeBins(tx: CoreTx, orgId: string, bins: Map<string, BinState>)
 }
 
 /**
+ * Lock the given items' `stk_items` rows `for('share')`, sorted by id for a
+ * deterministic acquisition order across callers (avoids deadlocking against
+ * itself or `applyUomChange`'s multi-item callers). Serializes this write
+ * against pos.service.ts's `applyUomChange`, which takes `for('update')` on
+ * the same rows before its pristine-history check — a movement can no
+ * longer commit between that check and the uom write and be reinterpreted
+ * under a renamed unit. Share mode keeps concurrent writers touching the
+ * same item fully parallel with each other. Call this BEFORE inserting any
+ * row that `itemHasHistory` treats as history (stk_entry_lines, including
+ * drafts — see submitEntry's identical use for the submitted/ledger side).
+ */
+async function lockItemsAgainstUomChange(
+  tx: CoreTx,
+  orgId: string,
+  itemIds: Iterable<string>,
+): Promise<Set<string>> {
+  const ids = [...new Set(itemIds)].sort();
+  if (!ids.length) return new Set();
+  const rows = await tx
+    .select({ id: stkItems.id })
+    .from(stkItems)
+    .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, ids)))
+    .orderBy(asc(stkItems.id))
+    .for('share');
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
  * Submit a draft entry: ONE withOrgCore tx that locks the entry row + every
  * touched bin (`select ... for update`, the boring-correct choice over
  * upsert-and-hope), validates lines, computes ledger deltas via
@@ -723,18 +767,7 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
     const type = entry.type;
 
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
-    // `for('share')` (was a plain read): serializes this submit against
-    // pos.service.ts's applyUomChange, which takes `for('update')` on the
-    // same stk_items row before its pristine-history check — a movement can
-    // no longer commit between that check and the uom write and be
-    // reinterpreted under a renamed unit. Share mode keeps concurrent
-    // submits touching the same item fully parallel.
-    const items = await tx
-      .select({ id: stkItems.id })
-      .from(stkItems)
-      .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)))
-      .for('share');
-    const itemIdSet = new Set(items.map((i) => i.id));
+    const itemIdSet = await lockItemsAgainstUomChange(tx, orgId, itemIds);
     const warehouseIds = [
       ...new Set(
         lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x),

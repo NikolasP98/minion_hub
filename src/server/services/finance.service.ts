@@ -1,7 +1,8 @@
 // src/server/services/finance.service.ts
-import { and, eq, desc, sql, inArray } from 'drizzle-orm';
+import { and, asc, eq, desc, sql, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { stkItems } from '$server/db/pg-schema/stock';
 import {
   finInvoices,
   finInvoiceItems,
@@ -312,6 +313,34 @@ export async function upsertInvoicesBatch(
     );
 
     // 3. Replace children for these invoices (set-based delete + multi-row insert).
+    // Lock the stk_items rows this write could newly make "billed" BEFORE the
+    // insert half of the replace: pos.service.ts's applyUomChange takes
+    // `for('update')` on a pristine item's stk_items row, then checks
+    // `itemHasHistory`'s `billed` flag (fin_invoice_items.code match) before
+    // renaming its uom. Without this lock a code could gain a fresh
+    // fin_invoice_items row between that check and the uom write, leaving
+    // the newly-billed quantity ambiguous under the renamed unit. Share mode
+    // (sorted by id, same convention as stock.service.ts's
+    // lockItemsAgainstUomChange) keeps concurrent connector syncs parallel.
+    const billedProductIds = [
+      ...new Set(
+        pending.flatMap((inv) =>
+          inv.items
+            .map((it) => (it.code ? productMap.get(it.code) : undefined))
+            .filter((x): x is string => !!x),
+        ),
+      ),
+    ].sort();
+    if (billedProductIds.length) {
+      await tx
+        .select({ id: stkItems.id })
+        .from(stkItems)
+        .where(
+          and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.finProductId, billedProductIds)),
+        )
+        .orderBy(asc(stkItems.id))
+        .for('share');
+    }
     await tx.delete(finInvoiceItems).where(inArray(finInvoiceItems.invoiceId, invoiceIds));
     const itemRows = pending.flatMap((inv) => {
       const invoiceId = invIdByRef.get(inv.providerRef);

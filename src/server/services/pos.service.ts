@@ -1340,22 +1340,14 @@ export async function itemHasHistory(
  * the same transaction as the fin_products update — see that function's doc
  * comment) rather than opening its own, so a later failure in that same PATCH
  * rolls this write back too instead of leaving it permanently committed.
- * Movement writers serialize against the item lock via submitEntry's
- * `for('share')` on the same rows (see stock.service.ts): a *submitted*
- * movement cannot commit between this history check and the uom write and be
- * reinterpreted under the renamed unit.
- *
- * TODO(handoff): that guarantee is narrower than this comment implies —
- * stock.service.ts's createEntry/updateEntry insert draft stk_entry_lines
- * with no stk_items lock at all (only submitEntry takes `for('share')`), so a
- * DRAFT line can still be created for this item between itemHasHistory's
- * `entry_lines` check and this uom write, landing under the old uom with no
- * refusal. Narrow (draft creation is a distinct action from the PATCH, and
- * itemHasHistory already refuses once ANY entry_lines row exists), but real.
- * Closing it needs createEntry/updateEntry to also take the item's
- * `for('share')` lock, which is a stock.service.ts change outside this
- * spec's POS-marker scope — see minion-meta proposals/
- * 2026-08-28-pos-trackstock-draft-lock-gap.md.
+ * Every writer that inserts a row `itemHasHistory` treats as history serializes
+ * against this `for('update')` lock via a `for('share')` lock on the same
+ * `stk_items` row, taken BEFORE the insert: submitEntry and (now)
+ * createEntry/updateEntry for draft/submitted stk_entry_lines (see
+ * stock.service.ts's `lockItemsAgainstUomChange`), and upsertInvoicesBatch for
+ * fin_invoice_items (finance.service.ts, keyed by the item's linked product
+ * id) for the `billed` flag. None of those writes can land between this
+ * history check and the uom write and be reinterpreted under the renamed unit.
  */
 async function applyUomChange(
   tx: CoreTx,

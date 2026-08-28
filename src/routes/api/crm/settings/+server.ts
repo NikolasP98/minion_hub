@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { parseBody } from '$server/api/validate';
 import { depositWriteSchema } from '$server/services/crm-deposit-rule';
 import { resolveDepositRule, writeDepositRule } from '$server/services/crm-settings.service';
@@ -10,11 +11,14 @@ import { resolveDepositRule, writeDepositRule } from '$server/services/crm-setti
  * `/api/crm/settings` — S3 of 2026-08-17-hub-reserva-keyword-config-spec.
  * Write gate: `apiWriteCapability` (hooks.server.ts) maps the `/api/crm`
  * prefix to `crm:edit` centrally — no per-route capability check needed,
- * same convention as the other `src/routes/api/crm/*` routes.
+ * same convention as the other `src/routes/api/crm/*` routes. Reads are NOT
+ * covered by that central hook (GET/HEAD are excluded), so this GET gates
+ * itself explicitly on `crm:view`.
  */
 
 /** GET /api/crm/settings — the org's resolved deposit rule (default if unset). */
 export const GET: RequestHandler = async ({ locals }) => {
+  await requireOrgCapability(locals, 'crm', 'view');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   return json({ deposit: await resolveDepositRule(ctx) });
