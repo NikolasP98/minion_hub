@@ -5,7 +5,11 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { parseBody } from '$server/api/validate';
 import { IGV_RATE_NOT_VIGENTE_MESSAGE, isVigenteIgvRate } from '$lib/finance/igv-rates';
-import { getFinSettings, updateFinSettings, refreshExchangeRate } from '$server/services/finance.service';
+import {
+  getFinSettings,
+  updateFinSettings,
+  refreshExchangeRate,
+} from '$server/services/finance.service';
 
 export const GET: RequestHandler = async ({ locals }) => {
   const ctx = await getCoreCtx(locals);

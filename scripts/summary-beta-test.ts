@@ -11,43 +11,54 @@
  * 3. submitResumen RC with B998-2 estado 3 (anulacion) -> accepted.
  * 4. Emit factura F998-1, then submitBaja RA for it -> accepted.
  *
- * TODO(handoff): S3 of 2026-08-17-hub-igv-rate-from-org-config-spec.md
- * requires running this (and emit-beta-test.ts) at --rate 0.10 against
- * SUNAT's live beta validator and recording the CDR ResponseCode/description.
+ * LIVE-BETA RESULTS, S3 of specs/2026-08-17-hub-igv-rate-from-org-config-spec.md
+ * (cert from `bash scripts/gen-beta-cert.sh` — beta accepts a self-signed one;
+ * this environment reaches e-beta.sunat.gob.pe directly).
  *
- * DONE 2026-08-28 (an earlier note here said no cert was available — wrong;
- * `bash scripts/gen-beta-cert.sh` makes a self-signed cert, which is all beta
- * needs, and this environment has live network access to e-beta.sunat.gob.pe):
- *   - `bun scripts/emit-beta-test.ts` (18%, baseline): boleta B999-1 and
- *     factura F999-1 both ResponseCode 0 ("...ha sido aceptada").
- *   - `bun scripts/emit-beta-test.ts --rate 0.10`: BOTH documents REJECTED —
- *     SUNAT fault soap-env:Client.3462: "La tasa del IGV debe ser la misma en
- *     todas las líneas o ítems del documento y debe corresponder con una tasa
- *     vigente." (the rate must match a currently-in-force IGV rate). Not a
- *     UBL/arithmetic bug on our side — SUNAT's live `sendBill` validator hard
- *     -rejects any igvRate other than the statutory 18% at the document level.
- *   - `bun scripts/summary-beta-test.ts --rate 0.10`: boletas B998-1/B998-2
- *     and factura F998-1 fail the same 3462 fault on their `emitToBeta` calls
- *     (this script's own convention of sending the doc via sendBill before
- *     summarizing/voiding it, not the production boleta path). `submitResumen`
- *     (RC-1/RC-2) and `submitBaja` (RA-1) themselves DID return ResponseCode 0
- *     at 10% — but only because those validators don't re-check the
- *     underlying document's tax rate the way `sendBill` does; the referenced
- *     boletas/factura were never actually accepted into SUNAT in the first
- *     place, so that's not evidence the configurable-rate path works.
+ * Supported regime (18%) — the acceptance matrix S3 requires, ALL CDRs
+ * ResponseCode 0, re-run 2026-08-28:
+ *   - `bun scripts/emit-beta-test.ts`
+ *       B999-1 "La Boleta numero B999-1, ha sido aceptada"
+ *       F999-1 "La Factura numero F999-1, ha sido aceptada"
+ *   - `bun scripts/summary-beta-test.ts`
+ *       B998-1 / B998-2 "...ha sido aceptada"
+ *       RC-20260828-1 (both estado 1) "El Resumen diario ... ha sido aceptado"
+ *       RC-20260828-2 (B998-2 estado 3, anulacion) "... ha sido aceptado"
+ *       F998-1 "La Factura numero F998-1, ha sido aceptada"
+ *       RA-20260828-1 "La Comunicacion de baja ... ha sido aceptada"
  *
- * NET: `resolveIgvRate` (src/server/finance/tax.ts, shipped in #133, already
- * on master) lets an org configure any rate in (0,1) and feeds it straight to
- * `EmissionInvoice.igvRate` for real `sendBill` submission. Live SUNAT beta
- * now proves that for any org configuring a rate other than 0.18, every
- * factura and every individually-`sendBill`'d boleta is rejected outright
- * (fault 3462) — a production-breaking gap in the already-shipped feature,
- * not just a missing test. Needs a minion-meta proposal amendment (open-items
- * section, mirroring this spec's own S3 append) to decide the mitigation
- * (e.g. reject/warn on a non-vigente configured rate before it ever reaches
- * emission) — designing that is out of scope here. This run's harness
- * contract is Hub-repo-only (no minion-meta write access), so the proposal
- * itself could not be amended from this pass either.
+ * Unsupported rate (10%) — the experiment that motivated the fail-closed gate:
+ *   - `bun scripts/emit-beta-test.ts --rate 0.10`: BOTH documents REJECTED,
+ *     SUNAT fault soap-env:Client.3462 "La tasa del IGV debe ser la misma en
+ *     todas las lineas o items del documento y debe corresponder con una tasa
+ *     vigente." Not a UBL/arithmetic bug on our side — `sendBill` validates the
+ *     declared rate against the rates in force for the emitter.
+ *   - `bun scripts/summary-beta-test.ts --rate 0.10`: B998-1/B998-2/F998-1 fail
+ *     the same 3462 fault on their `emitToBeta` calls. RC-1/RC-2/RA-1 did return
+ *     ResponseCode 0 at 10%, but only because those validators do not re-check
+ *     the underlying document's tax rate the way `sendBill` does — the
+ *     referenced documents were never accepted, so that is not evidence the
+ *     configurable-rate path works.
+ *
+ * SCOPE OF THAT EVIDENCE — deliberately not generalized: 10% is not a rate in
+ * force for this emitter, so the run proves exactly that (rejected), plus that
+ * 18% is accepted. It does NOT establish anything about Peru's reduced-rate
+ * MYPE restaurant/hotel/tourist-accommodation regime, whose applicable rate is
+ * a different number, is eligibility-gated per taxpayer and is time-bounded.
+ *
+ * FIXED (this branch): `resolveIgvRate` (src/server/finance/tax.ts) and the
+ * settings write boundary (`updateFinSettings`, `PUT /api/finances/settings`,
+ * the finance settings form) now share one allowlist —
+ * `$lib/finance/igv-rates` — so a rate SUNAT would reject with 3462 is refused
+ * at configuration time and again before emission, instead of being persisted
+ * and breaking every later submission for that org.
+ *
+ * TODO(handoff): supporting the reduced-rate regime is still open, and is not
+ * "add a number to SUNAT_VIGENTE_IGV_RATES" — `fin_settings` stores one scalar
+ * with no regime/eligibility column. Scoping it needs minion-meta
+ * `proposals/2026-08-17-hub-igv-rate-from-org-config.md` amended with these
+ * results and the fail-closed decision; this run's harness contract is
+ * Hub-repo-only, so that cross-repo edit could not be made here.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

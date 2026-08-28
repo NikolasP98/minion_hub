@@ -16,11 +16,7 @@
   import { onMount } from 'svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
-  import {
-    SUNAT_VIGENTE_IGV_RATES,
-    formatIgvRate,
-    isVigenteIgvRate,
-  } from '$lib/finance/igv-rates';
+  import { SUNAT_VIGENTE_IGV_RATES, formatIgvRate, isVigenteIgvRate } from '$lib/finance/igv-rates';
 
   let { data }: { data: PageData } = $props();
 

@@ -60,10 +60,7 @@ export function resolveIgvRate(settings: IgvRateSettings | null | undefined): nu
   if (configured == null) return DEFAULT_IGV_RATE;
   const rate = Number(configured);
   if (!isVigenteIgvRate(rate)) {
-    throw new PosError(
-      `configured ${IGV_RATE_NOT_VIGENTE_MESSAGE}`,
-      'invalid_tax_rate',
-    );
+    throw new PosError(`configured ${IGV_RATE_NOT_VIGENTE_MESSAGE}`, 'invalid_tax_rate');
   }
   return rate;
 }

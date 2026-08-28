@@ -27,17 +27,6 @@ function put(body: unknown) {
   } as never;
 }
 
-/** SvelteKit `error()` throws an object carrying status + body, not a Response. */
-async function statusOf(promise: Promise<unknown>): Promise<{ status: number; message: string }> {
-  try {
-    await promise;
-    return { status: 200, message: '' };
-  } catch (e) {
-    const err = e as { status?: number; body?: { message?: string } };
-    return { status: err.status ?? 0, message: err.body?.message ?? String(e) };
-  }
-}
-
 beforeEach(() => vi.clearAllMocks());
 
 /**
@@ -51,9 +40,15 @@ describe('PUT /api/finances/settings — taxRate must be a SUNAT-vigente IGV rat
   it.each([0.1, 0.08, 0.105, 0.19, 0, 0.9999, 18, -0.1])(
     'rejects taxRate %s with 400 and never calls the service',
     async (taxRate) => {
-      const { status, message } = await statusOf(PUT(put({ taxRate })));
-      expect(status).toBe(400);
-      expect(message).toMatch(/SUNAT currently accepts/);
+      // NOT via a `statusOf(promise: Promise<unknown>)` helper (the previous
+      // attempt's approach): `RequestHandler` returns `MaybePromise<Response>`,
+      // which is not assignable to `Promise<unknown>`, and that red-ed
+      // svelte-check. `expect().rejects` takes the value as-is and is the
+      // pattern every other route test in this repo already uses.
+      await expect(PUT(put({ taxRate }))).rejects.toMatchObject({
+        status: 400,
+        body: { message: expect.stringContaining('SUNAT currently accepts') },
+      });
       expect(updateFinSettings).not.toHaveBeenCalled();
     },
   );
