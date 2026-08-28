@@ -1,9 +1,31 @@
 name: Factory Notify
-# Every push to a deploy branch pokes the factory's level-triggered reconcile
-# sweep (idempotent, 409-deduped) so board intake reacts in minutes, not the
-# 4h poll. Scoped secret: can ONLY trigger reconcile/monitor intake.
+# Pokes the factory's level-triggered reconcile sweep (idempotent, 409-deduped)
+# so board intake reacts in minutes, not the 4h poll. Scoped secret: can ONLY
+# trigger reconcile/monitor intake.
+#
+# TWO triggers, deliberately:
+#   push          - fast intake; the board learns a new deploy tip exists.
+#   workflow_run  - fires once CI has CONCLUDED, so the sweep reads a settled
+#                   check state instead of an in-flight one.
+#
+# The second trigger is not redundant. A push poke always finishes long before
+# CI can possibly conclude, so it can never observe a green tip. Measured over
+# the six consecutive master pushes ending at 1b47e8c: the poke job completed in
+# 6-11s while the matching CI run concluded 2m39s-3m25s later - a ~3 minute
+# window on 6/6, i.e. structural, not a flake. The board recorded that
+# unsettled read and, because the pipeline writes forward only, the verdict
+# stuck: 1b47e8c was reported as "failing CI" while all four of its checks and
+# its Vercel production deploy had in fact succeeded.
+#
+# The completion poke is deliberately NOT gated on conclusion == success. A red
+# tip has to reconcile too, otherwise the board can only ever learn about
+# passing builds and a genuine failure stays invisible.
 on:
   push:
+    branches: [master]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [master]
 jobs:
   poke:
