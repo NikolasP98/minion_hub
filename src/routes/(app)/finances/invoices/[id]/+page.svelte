@@ -11,8 +11,9 @@
     ExternalLink,
     Boxes,
     Trash2,
+    ListFilter,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Modal, Select, Badge, Combobox } from '$lib/components/ui';
+  import { PageHeader, Button, Modal, Select, Badge, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { canAct } from '$lib/access/can.svelte';
@@ -22,6 +23,8 @@
     type UomConvertible,
   } from '$lib/components/stock/stock-ui';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
+  import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
+  import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
 
   let { data }: { data: PageData } = $props();
   const back = createBackNav('/finances/invoices', m.fin_back_to_invoices);
@@ -175,8 +178,18 @@
 
   // Manual add-line (items the consumption map didn't cover).
   let addItemId = $state('');
+  let addItemPickerOpen = $state(false);
+  let selectedAddItem = $state<StockItemOption | null>(null);
   let addQty = $state('');
   const canAddLine = $derived(addItemId !== '' && Number(addQty) > 0);
+  const addItemLabel = $derived(
+    selectedAddItem ? `${selectedAddItem.code} — ${selectedAddItem.name}` : m.stock_field_item(),
+  );
+
+  function pickAddItem(item: StockItemOption) {
+    addItemId = item.id;
+    selectedAddItem = item;
+  }
 
   function addPreviewLine() {
     if (!canAddLine) return;
@@ -187,10 +200,18 @@
     } else {
       previewLines = [
         ...previewLines,
-        withUomFields({ itemId: addItemId, qty: addQty, available: null }),
+        withUomFields({
+          itemId: addItemId,
+          itemName: selectedAddItem?.name,
+          itemCode: selectedAddItem?.code,
+          uom: selectedAddItem?.uom,
+          qty: addQty,
+          available: null,
+        }),
       ];
     }
     addItemId = '';
+    selectedAddItem = null;
     addQty = '';
   }
 
@@ -199,6 +220,7 @@
     previewLines = [];
     unmatched = [];
     addItemId = '';
+    selectedAddItem = null;
     addQty = '';
     issueErr = null;
     issueDialogOpen = true;
@@ -610,14 +632,15 @@
 
     {#if issueWarehouseId && !previewBusy}
       <div class="add-line-form">
-        <Combobox
-          id="issue-add-item"
-          items={data.stockItems}
-          itemToValue={(i) => i.id}
-          itemToString={(i) => `${i.code} — ${i.name}`}
-          placeholder={m.stock_field_item()}
-          bind:value={addItemId}
-        />
+        <Button
+          variant="outline"
+          size="sm"
+          class="invoice-item-picker"
+          onclick={() => (addItemPickerOpen = true)}
+        >
+          <ListFilter size={iconSizes.sm} aria-hidden="true" />
+          <span class="invoice-item-label">{addItemLabel}</span>
+        </Button>
         <input
           class="inp w-20 text-right"
           type="number"
@@ -658,6 +681,17 @@
     >
   {/snippet}
 </Modal>
+
+<StockItemPicker
+  bind:open={addItemPickerOpen}
+  items={data.stockItems}
+  title={m.stock_field_item()}
+  onPick={pickAddItem}
+  selectionMode="single"
+  duplicatePolicy="allow"
+  columnsConfigurable
+  storageKey="invoice-stock-issue-items"
+/>
 
 <style>
   .void-banner {
@@ -994,6 +1028,21 @@
     grid-template-columns: 1fr auto auto;
     gap: var(--space-2, 8px);
     align-items: end;
+  }
+  .add-line-form :global(.invoice-item-picker) {
+    min-width: 0;
+    justify-content: flex-start;
+  }
+  .add-line-form :global(.invoice-item-picker > span) {
+    min-width: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .invoice-item-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .err-msg {
     font-size: var(--font-size-body, 14px);

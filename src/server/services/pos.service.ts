@@ -1121,11 +1121,19 @@ const SELLABLE_MERGE_SQL = sql`
  * left-joined to their linked stk_items (1:1 via stk_items.fin_product_id),
  * Σ stk_bins.qty for the item, and an exists-flag on stk_consumption — ONE
  * query, no N+1 per row.
+ *
+ * `includeInactive` defaults to false (unchanged behavior for every existing
+ * caller — POS sell screen, gateway query tool); only the catalog manager
+ * passes it true so deactivated sellables stay reachable/reactivatable.
  */
-export async function listSellables(ctx: CoreCtx): Promise<SellableRow[]> {
+export async function listSellables(
+  ctx: CoreCtx,
+  opts: { includeInactive?: boolean } = {},
+): Promise<SellableRow[]> {
   return withOrgCore(ctx, async (tx) => {
+    const activeFilter = opts.includeInactive ? sql`` : sql`and p.active = true`;
     const rows = (await tx.execute(sql`${SELLABLE_MERGE_SQL}
-      where p.org_id = ${ctx.tenantId} and p.active = true
+      where p.org_id = ${ctx.tenantId} ${activeFilter}
       group by p.id, i.id
       order by p.name`)) as unknown as SellableSqlRow[];
     return rows.map(mapSellableRow);
@@ -1210,7 +1218,7 @@ export interface SellableInput {
    * Mutually exclusive with `trackStock`; when both are sent, this wins.
    */
   itemId?: string;
-  consumption?: Array<{ itemId: string; qtyPerUnit: number }>;
+  consumption?: Array<{ itemId: string; qtyPerUnit: number; note?: string | null }>;
   active?: boolean;
 }
 
@@ -1290,7 +1298,12 @@ export async function createSellable(
     for (const c of input.consumption) {
       await setConsumption(
         ctx,
-        { finProductId: product.id, itemId: c.itemId, qtyPerUnit: c.qtyPerUnit },
+        {
+          finProductId: product.id,
+          itemId: c.itemId,
+          qtyPerUnit: c.qtyPerUnit,
+          note: c.note ?? null,
+        },
         actor,
       );
     }
@@ -1444,7 +1457,12 @@ export async function updateSellable(
     for (const c of patch.consumption) {
       await setConsumption(
         ctx,
-        { finProductId: productId, itemId: c.itemId, qtyPerUnit: c.qtyPerUnit },
+        {
+          finProductId: productId,
+          itemId: c.itemId,
+          qtyPerUnit: c.qtyPerUnit,
+          note: c.note ?? null,
+        },
         actor,
       );
     }

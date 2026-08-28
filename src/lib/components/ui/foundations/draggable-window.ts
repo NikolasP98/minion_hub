@@ -1,5 +1,20 @@
 export type WindowRect = { x: number; y: number; width: number; height: number };
 
+const WINDOW_CONTROL_SELECTOR =
+  "button, a, input, select, textarea, [role='button'], [role='tab'], [data-window-no-drag]";
+
+/**
+ * Title-bar controls must keep ownership of their pointer sequence. If the
+ * drag surface captures pointer-down from a nested button, Chromium retargets
+ * the matching pointer-up and the button's click never completes.
+ */
+export function isWindowControlTarget(target: EventTarget | null): boolean {
+  const candidate = target as { closest?: (selector: string) => Element | null } | null;
+  return (
+    typeof candidate?.closest === 'function' && candidate.closest(WINDOW_CONTROL_SELECTOR) != null
+  );
+}
+
 export function clampWindowRect(
   rect: WindowRect,
   viewport: { width: number; height: number },

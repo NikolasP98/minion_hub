@@ -2,8 +2,8 @@
   import { canonicalPath } from '$lib/canonical-path';
   import '../app.css';
   import { onMount } from 'svelte';
-  import { goto, afterNavigate } from '$lib/navigation';
-  import { page } from '$app/state';
+  import { goto, afterNavigate, beforeNavigate } from '$lib/navigation';
+  import { page, navigating, updated } from '$app/state';
   import { ParaglideJS } from '@inlang/paraglide-sveltekit';
   import { i18n } from '$lib/i18n';
   import ParticleCanvas from '$lib/components/layout/ParticleCanvas.svelte';
@@ -44,13 +44,37 @@
   // capture (`capture_pageview: false` in hooks.client.ts) to silence the
   // SvelteKit "Avoid using history.pushState(...)" router warning.
   if (!import.meta.env.VITE_DESKTOP) {
-    afterNavigate(() => {
+    // SPA navigation timing: ssr=false means web vitals only cover hard loads —
+    // this event is the only latency signal for client-side navs (route id +
+    // duration from nav start to afterNavigate, i.e. data loaded + DOM updated).
+    let navStartedAt = 0;
+    beforeNavigate((nav) => {
+      // Deploy-skew escape hatch: once _app/version.json reports a newer
+      // build (kit.version.pollInterval), turn the next client-side nav into
+      // a full-page load so this tab stops running stale code. Without this,
+      // a long-lived SPA tab never receives deployed fixes.
+      if (updated.current && nav.to?.url && !nav.willUnload) {
+        nav.cancel();
+        location.href = nav.to.url.href;
+        return;
+      }
+      navStartedAt = performance.now();
+    });
+    afterNavigate((nav) => {
       const ph = (
         window as Window & {
           posthog?: { capture: (e: string, p?: Record<string, unknown>) => void };
         }
       ).posthog;
       ph?.capture('$pageview');
+      if (nav.type !== 'enter' && navStartedAt > 0) {
+        ph?.capture('nav_timing', {
+          route: nav.to?.route.id ?? null,
+          duration_ms: Math.round(performance.now() - navStartedAt),
+          nav_type: nav.type,
+        });
+        navStartedAt = 0;
+      }
     });
   }
 
@@ -86,6 +110,19 @@
     // RTT each before the gateway WS could even start connecting.
     await Promise.all([loadAndApplyServerPreferences(), loadHosts()]);
     if (hostsState.activeHostId) wsConnect();
+  });
+
+  // Navigation feedback: the content area froze with ZERO signal while a nav's
+  // server load ran (the only spinner was a 12px one inside the sidebar row).
+  // Reuse the existing top loading bar for any client-side navigation that
+  // takes longer than a beat — the 120ms delay keeps instant navs flicker-free.
+  let navPending = $state(false);
+  $effect(() => {
+    if (navigating.to) {
+      const t = setTimeout(() => (navPending = true), 120);
+      return () => clearTimeout(t);
+    }
+    navPending = false;
   });
 
   $effect(() => {
@@ -124,7 +161,7 @@
     {/await}
   {/if}
 
-  {#if conn.connecting}
+  {#if conn.connecting || navPending}
     <div class="fixed top-0 left-0 right-0 h-[2px] bg-bg3 z-[var(--layer-toast)] overflow-hidden">
       <div class="h-full w-1/3 bg-accent animate-loading-slide"></div>
     </div>

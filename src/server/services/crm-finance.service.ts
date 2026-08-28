@@ -61,7 +61,7 @@ export function contactInvoiceClassSql(rule: DepositRule) {
          bool_or(${isDepositSql(rule)}) has_deposit, bool_or(${isProcedureSql(rule)}) has_proc
   from contact_party cp
   join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
-  join fin_invoices fi on fi.client_id = fc.id
+  join fin_invoices fi on fi.client_id = fc.id and fi.shadowed = false
   left join fin_invoice_items ii on ii.invoice_id = fi.id
   group by cp.contact_id, fi.id, fi.total, fi.issued_at
 )`;
@@ -202,7 +202,7 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
                 order by ${depositSortKeySql('ii.description', rule)} asc, ii.total desc nulls last limit 1) as item
       from fin_invoices fi
       join fin_clients fc on fc.id = fi.client_id
-      where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
+      where fi.shadowed = false and fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
       order by fi.issued_at desc nulls last limit 10
     `)) as unknown as Array<Record<string, unknown>>;
     if (invoices.length === 0) return null;
@@ -222,7 +222,7 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
                bool_or(${isDepositSql(rule)}) has_deposit, bool_or(${isProcedureSql(rule)}) has_proc
         from fin_invoices fi join fin_clients fc on fc.id = fi.client_id
         left join fin_invoice_items ii on ii.invoice_id = fi.id
-        where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
+        where fi.shadowed = false and fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
         group by fi.id, fi.total, fi.issued_at
       )
       select coalesce(sum(total),0)::float8 revenue, count(*)::int invoices, max(issued_at) last,
@@ -355,7 +355,7 @@ export async function rankCustomers(
         select cp.contact_id, cp.party_id, coalesce(fi.total,0)::float8 total, fi.issued_at
         from contact_party cp
         join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
-        join fin_invoices fi on fi.client_id = fc.id
+        join fin_invoices fi on fi.client_id = fc.id and fi.shadowed = false
       ),
       agg as (
         select contact_id, party_id, sum(total)::float8 revenue, count(*)::int invoices,
@@ -367,7 +367,7 @@ export async function rankCustomers(
       select a.contact_id, c.display_name as name, a.revenue, a.invoices, a.first_at, a.last_at,
              (select ii.description
                 from fin_invoice_items ii
-                join fin_invoices fi on fi.id = ii.invoice_id
+                join fin_invoices fi on fi.id = ii.invoice_id and fi.shadowed = false
                 join fin_clients fc on fc.id = fi.client_id and fc.party_id = a.party_id
                 where fc.org_id = current_setting('app.current_org_id', true)
                   and ii.description is not null and ${notDepositMatchSql('ii.description', rule)}

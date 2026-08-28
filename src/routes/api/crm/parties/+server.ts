@@ -5,14 +5,20 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { ensureParty, searchParties } from '$server/services/party.service';
 
-/** GET /api/crm/parties?q=&type=person,company — typeahead for party pickers. */
+/** GET /api/crm/parties?q=&type=person,company&verified=1 — party picker search. */
 export const GET: RequestHandler = async ({ locals, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const q = url.searchParams.get('q') ?? '';
   const typeParam = url.searchParams.get('type');
-  const types = typeParam ? typeParam.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
-  return json(await searchParties(ctx, q, { types }));
+  const types = typeParam
+    ? typeParam
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : undefined;
+  const verifiedOnly = url.searchParams.get('verified') === '1';
+  return json(await searchParties(ctx, q, { types, verifiedOnly }));
 };
 
 const postSchema = z.object({
@@ -39,5 +45,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     docType: b.docNumber ? (b.docType ?? 'DNI') : null,
     docNumber: b.docNumber ?? null,
   });
-  return json({ ok: true, party: { id: party.id, name: party.name, phone9: party.phone9, docNumber: party.docNumber } }, { status: 201 });
+  return json(
+    {
+      ok: true,
+      party: { id: party.id, name: party.name, phone9: party.phone9, docNumber: party.docNumber },
+    },
+    { status: 201 },
+  );
 };

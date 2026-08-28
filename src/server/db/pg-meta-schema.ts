@@ -98,6 +98,7 @@ export const metaPostInsights = pgTable(
       t.period,
     ),
     assetIdx: index('meta_post_insights_asset_idx').on(t.assetId),
+    dashboardIdx: index('meta_post_insights_org_period_post_idx').on(t.orgId, t.period, t.postId),
   }),
 );
 
@@ -127,6 +128,7 @@ export const metaAdInsights = pgTable(
   (t) => ({
     uniq: uniqueIndex('meta_ad_insights_org_ad_date_uniq').on(t.orgId, t.adId, t.date),
     accountIdx: index('meta_ad_insights_org_account_date_idx').on(t.orgId, t.adAccountId, t.date),
+    orgDateIdx: index('meta_ad_insights_org_date_idx').on(t.orgId, t.date),
   }),
 );
 
