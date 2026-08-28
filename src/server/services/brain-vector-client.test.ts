@@ -326,17 +326,22 @@ describe('brain vector API client', () => {
     // requires this emitted body to be asserted with `isBrainVectorSearchRequestV1` imported from
     // `@minion-stack/shared`, so drift from the frozen v1 wire contract is caught by the contract's
     // own validator instead of by Hub-side expectations. That import cannot resolve here: the Hub's
-    // pinned `@minion-stack/shared@0.9.0` ships no brain-vector entry point at all — its published
-    // `dist/` contains only gateway/, node/, utils/ and prompt-sections (verified by unpacking the
-    // 0.9.0 npm tarball); the validator first ships in 0.10.0. Raising the dependency range is
-    // outside this slice — PR #139 (hub-brain-org-all-scope-spec) tried the bump twice and review
-    // rejected it both times as an unauthorized scope/dependency-range widen, while a hand-copied
-    // validator would assert against a reimplementation rather than the shipped contract, which
-    // review also rejected. Unblock: a minion-meta proposal that authorizes and assesses
-    // `@minion-stack/shared@0.10.0` Hub-wide, then restore the import plus a positive and a
-    // negative-control assertion here. minion-meta is not reachable from this checkout, so that
-    // proposal could not be filed from this run. Until then the assertions below freeze the body
-    // `searchBrainVectorApi` actually puts on the wire, which still detects Hub-side drift.
+    // pinned `@minion-stack/shared@0.9.0` (package.json:24, bun.lock:415) ships no brain-vector
+    // entry point at all — its published `dist/` contains only gateway/, node/, utils/ and
+    // prompt-sections (verified by unpacking the 0.9.0 npm tarball); the validator first ships in
+    // 0.10.0. Raising the dependency range is outside this slice — PR #139 (hub-brain-org-all-scope-
+    // spec) tried the bump twice and review rejected it both times as an unauthorized scope/
+    // dependency-range widen, while a hand-copied validator would assert against a reimplementation
+    // rather than the shipped contract, which review also rejected. Unblock: get
+    // minion-meta/proposals/2026-08-17-hub-brain-org-all-scope.md (dev branch, already filed, status
+    // in-spec) explicitly amended with an "Open items" section — mirroring
+    // 2026-08-17-hub-igv-rate-from-org-config.md's own S3 append — that authorizes and assesses the
+    // Hub-wide `@minion-stack/shared@0.10.0` upgrade; that proposal edit needs write access to
+    // minion-meta, which this run's harness contract does not grant (Hub-repo-only, no cross-repo
+    // pushes/PRs). Once authorized, update package.json/bun.lock, import the published validator,
+    // and assert the captured emitted body passes it with a discriminating negative control. Until
+    // then the assertions below freeze the body `searchBrainVectorApi` actually puts on the wire,
+    // which still detects Hub-side drift.
     let emitted: unknown;
     const fetchImpl = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
       emitted = JSON.parse(String(init?.body));
