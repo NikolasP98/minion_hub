@@ -158,21 +158,54 @@ describe('finance audit (§B.1)', () => {
 });
 
 describe('crm contacts audit (§B.2)', () => {
-  it('updateContact writes a crm_contact audit row', async () => {
-    vi.doMock('./activity.service', async () => {
-      const actual =
-        await vi.importActual<typeof import('./activity.service')>('./activity.service');
-      return { ...actual, recordAudit: vi.fn(actual.recordAudit) };
-    });
-    const { updateContact } = await import('./crm-contacts.service');
-    const activity = await import('./activity.service');
-    const { tx } = buildTx();
-    await updateContact(ctxWithTx(tx), 'c1', { displayName: 'Jane' });
+  /**
+   * ctxWithTx, plus a count of how many times the service opened a top-level
+   * transaction. `updateContact` must open exactly ONE: its audit row is
+   * written with `recordAuditInTx(tx, ...)` on the transaction that already
+   * holds the contact's row lock, not with `recordAudit(ctx, ...)` (which opens
+   * a SECOND `withOrgCore` transaction and therefore checks a second connection
+   * out of the pool). On a pool with no free slot that nesting self-deadlocks:
+   * the inner transaction waits for a connection the outer one cannot release
+   * until the inner one returns — demonstrated against real PostgreSQL by
+   * `crm-funnel.concurrent.integration.test.ts`, which drives each writer on a
+   * `max: 1` client.
+   */
+  function countingCtx(tx: unknown) {
+    const transactions = { count: 0 };
+    const ctx = {
+      db: {
+        transaction: (cb: (t: unknown) => unknown) => {
+          transactions.count += 1;
+          return cb(tx);
+        },
+      },
+      tenantId: 'org-1',
+    } as never;
+    return { ctx, transactions };
+  }
 
-    expect(activity.recordAudit).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ refType: 'crm_contact', op: 'update' }),
-    );
-    vi.doUnmock('./activity.service');
+  it('updateContact writes a crm_contact audit row inside the mutation transaction', async () => {
+    const { updateContact } = await import('./crm-contacts.service');
+    const { tx, insertCalls } = buildTx();
+    const { ctx, transactions } = countingCtx(tx);
+
+    await updateContact(ctx, 'c1', { displayName: 'Jane' });
+
+    // Assert the shipped write, not a spy on the collaborator: the audit row
+    // itself, on the same `tx` object the contact UPDATE ran on.
+    const auditCall = insertCalls.find((c) => c.table === docAuditLog);
+    expect(auditCall?.rows).toEqual([
+      expect.objectContaining({
+        orgId: 'org-1',
+        refType: 'crm_contact',
+        refId: 'c1',
+        op: 'update',
+        changes: expect.arrayContaining([
+          expect.objectContaining({ field: 'displayName', new: 'Jane' }),
+        ]),
+      }),
+    ]);
+    expect(tx.insert).toHaveBeenCalledWith(docAuditLog);
+    expect(transactions.count).toBe(1);
   });
 });
