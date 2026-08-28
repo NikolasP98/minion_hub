@@ -14,6 +14,7 @@ import {
   searchBrainVectorApi,
   type BrainVectorClientConfig,
   type BrainVectorSearchFilters,
+  type BrainVectorSearchInput,
 } from './brain-vector-client';
 
 let config: BrainVectorClientConfig;
@@ -288,7 +289,7 @@ describe('brain vector API client', () => {
   });
 
   it('makes org_all unrepresentable at the request-construction boundary', async () => {
-    const buildRequest = (filters: BrainVectorSearchFilters) => ({
+    const buildRequest = (filters: BrainVectorSearchFilters): BrainVectorSearchInput => ({
       orgId: 'org-1',
       brainId: '22222222-2222-4222-8222-222222222222',
       subject: 'profile-1',
@@ -297,10 +298,12 @@ describe('brain vector API client', () => {
       filters,
     });
 
-    // @ts-expect-error scopeMode is narrowed to the literal 'source_list'; 'org_all' must not
-    // type-check at the request-construction boundary until the architecture §8.1 policy proof
-    // exists. Everything else here is valid, so removing this directive fails only on scopeMode.
-    buildRequest({ scopeMode: 'org_all', sourceIds: ['source-a'] });
+    // @ts-expect-error `org_all` is not representable at the request-construction boundary until
+    // the architecture §8.1 org-wide policy proof exists. This literal is deliberately legal under
+    // the PREVIOUS union — its `{ scopeMode: 'org_all'; sourceIds?: never }` arm accepted a bare
+    // `{ scopeMode: 'org_all' }` — so reverting the narrowing leaves this directive unused and
+    // `bun run check` fails. The compiler, not a runtime assertion, enforces the policy.
+    buildRequest({ scopeMode: 'org_all' });
 
     const fetchImpl = vi.fn(async () =>
       Response.json({
