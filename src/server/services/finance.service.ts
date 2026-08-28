@@ -2,6 +2,7 @@
 import { and, eq, desc, sql, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { lockItemsAgainstUomChange } from './stock.service';
 import {
   finInvoices,
   finInvoiceItems,
@@ -312,6 +313,29 @@ export async function upsertInvoicesBatch(
     );
 
     // 3. Replace children for these invoices (set-based delete + multi-row insert).
+    // Lock the stk_items rows this write could newly make "billed" BEFORE the
+    // insert half of the replace: pos.service.ts's applyUomChange takes
+    // `for('update')` on a pristine item's stk_items row, then checks
+    // `itemHasHistory`'s `billed` flag (keyed on `fin_invoice_items.product_id`,
+    // which is exactly the resolved id written below) before renaming its uom.
+    // Without this lock a product could gain a fresh fin_invoice_items row
+    // between that check and the uom write, leaving the newly-billed quantity
+    // ambiguous under the renamed unit. Delegates to stock.service.ts's
+    // lockItemsAgainstUomChange (matched by finProductId here, not id) so this
+    // writer and createEntry/updateEntry serialize through the SAME query
+    // shape rather than two independently-drifting implementations.
+    const billedProductIds = [
+      ...new Set(
+        pending.flatMap((inv) =>
+          inv.items
+            .map((it) => (it.code ? productMap.get(it.code) : undefined))
+            .filter((x): x is string => !!x),
+        ),
+      ),
+    ].sort();
+    if (billedProductIds.length) {
+      await lockItemsAgainstUomChange(tx, ctx.tenantId, billedProductIds, 'finProductId');
+    }
     await tx.delete(finInvoiceItems).where(inArray(finInvoiceItems.invoiceId, invoiceIds));
     const itemRows = pending.flatMap((inv) => {
       const invoiceId = invIdByRef.get(inv.providerRef);

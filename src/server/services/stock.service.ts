@@ -332,19 +332,62 @@ export type NewItemInput = Omit<
   'id' | 'orgId' | 'createdAt' | 'updatedAt'
 >;
 
-export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
+/** tx-scoped core of {@link createItem} — callable from inside a caller's own
+ *  `withOrgCore` transaction (see pos.service.ts's updateSellable, which must
+ *  land the item write and the fin_products write atomically) as well as from
+ *  the ctx-based wrapper below. */
+export async function createItemInTx(
+  tx: CoreTx,
+  orgId: string,
+  input: NewItemInput,
+): Promise<StkItem> {
   const err = validateItemUomConfig({
     consumptionUom: input.consumptionUom ?? null,
     unitsPerStockUom: input.unitsPerStockUom == null ? null : Number(input.unitsPerStockUom),
   });
   if (err) throw new StockError(err, 'invalid_uom_config');
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
-      .insert(stkItems)
-      .values({ ...input, orgId: ctx.tenantId })
-      .returning(),
-  );
+  const [row] = await tx
+    .insert(stkItems)
+    .values({ ...input, orgId })
+    .returning();
   return row;
+}
+
+export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
+  return withOrgCore(ctx, (tx) => createItemInTx(tx, ctx.tenantId, input));
+}
+
+/** tx-scoped core of {@link updateItem} — see {@link createItemInTx}. */
+export async function updateItemInTx(
+  tx: CoreTx,
+  orgId: string,
+  id: string,
+  patch: Partial<NewItemInput>,
+): Promise<StkItem | null> {
+  const [cur] = await tx
+    .select()
+    .from(stkItems)
+    .where(and(eq(stkItems.id, id), eq(stkItems.orgId, orgId)));
+  if (!cur) return null;
+  // Merge over the current row — a PATCH only sends the fields it's changing,
+  // so the cross-field rule must be checked against the RESULTING config, not
+  // just the patch in isolation (e.g. setting consumptionUom alone is fine
+  // when unitsPerStockUom was already set on a prior PATCH).
+  const consumptionUom =
+    patch.consumptionUom === undefined ? cur.consumptionUom : patch.consumptionUom;
+  const unitsPerStockUomRaw =
+    patch.unitsPerStockUom === undefined ? cur.unitsPerStockUom : patch.unitsPerStockUom;
+  const err = validateItemUomConfig({
+    consumptionUom,
+    unitsPerStockUom: unitsPerStockUomRaw == null ? null : Number(unitsPerStockUomRaw),
+  });
+  if (err) throw new StockError(err, 'invalid_uom_config');
+  const [row] = await tx
+    .update(stkItems)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(and(eq(stkItems.id, id), eq(stkItems.orgId, orgId)))
+    .returning();
+  return row ?? null;
 }
 
 export async function updateItem(
@@ -352,32 +395,7 @@ export async function updateItem(
   id: string,
   patch: Partial<NewItemInput>,
 ): Promise<StkItem | null> {
-  return withOrgCore(ctx, async (tx) => {
-    const [cur] = await tx
-      .select()
-      .from(stkItems)
-      .where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)));
-    if (!cur) return null;
-    // Merge over the current row — a PATCH only sends the fields it's changing,
-    // so the cross-field rule must be checked against the RESULTING config, not
-    // just the patch in isolation (e.g. setting consumptionUom alone is fine
-    // when unitsPerStockUom was already set on a prior PATCH).
-    const consumptionUom =
-      patch.consumptionUom === undefined ? cur.consumptionUom : patch.consumptionUom;
-    const unitsPerStockUomRaw =
-      patch.unitsPerStockUom === undefined ? cur.unitsPerStockUom : patch.unitsPerStockUom;
-    const err = validateItemUomConfig({
-      consumptionUom,
-      unitsPerStockUom: unitsPerStockUomRaw == null ? null : Number(unitsPerStockUomRaw),
-    });
-    if (err) throw new StockError(err, 'invalid_uom_config');
-    const [row] = await tx
-      .update(stkItems)
-      .set({ ...patch, updatedAt: new Date() })
-      .where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)))
-      .returning();
-    return row ?? null;
-  });
+  return withOrgCore(ctx, (tx) => updateItemInTx(tx, ctx.tenantId, id, patch));
 }
 
 // ── Warehouses ───────────────────────────────────────────────────────────────
@@ -564,6 +582,14 @@ export async function createEntry(
 ): Promise<StkEntry> {
   if (!isEntryType(input.type)) throw new StockError('invalid entry type', 'invalid_type');
   return withOrgCore(ctx, async (tx) => {
+    // Lock BEFORE inserting: a draft line is history under `itemHasHistory`,
+    // so this must serialize against pos.service.ts's applyUomChange the same
+    // way submitEntry does — see lockItemsAgainstUomChange's doc comment.
+    await lockItemsAgainstUomChange(
+      tx,
+      ctx.tenantId,
+      input.lines.map((l) => l.itemId),
+    );
     const [entry] = await tx
       .insert(stkEntries)
       .values({
@@ -609,6 +635,14 @@ export async function updateEntry(
         .where(eq(stkEntries.id, id));
     }
     if (input.lines) {
+      // Same ordering requirement as createEntry: lock before the insert half
+      // of this replace so a concurrent applyUomChange can't slip between the
+      // delete and the new lines landing.
+      await lockItemsAgainstUomChange(
+        tx,
+        ctx.tenantId,
+        input.lines.map((l) => l.itemId),
+      );
       await tx.delete(stkEntryLines).where(eq(stkEntryLines.entryId, id));
       if (input.lines.length)
         await tx.insert(stkEntryLines).values(linesToRows(ctx.tenantId, id, input.lines));
@@ -678,6 +712,42 @@ async function writeBins(tx: CoreTx, orgId: string, bins: Map<string, BinState>)
 }
 
 /**
+ * Lock the given items' `stk_items` rows `for('share')`, sorted by id for a
+ * deterministic acquisition order across callers (avoids deadlocking against
+ * itself or `applyUomChange`'s multi-item callers). Serializes this write
+ * against pos.service.ts's `applyUomChange`, which takes `for('update')` on
+ * the same rows before its pristine-history check — a movement can no
+ * longer commit between that check and the uom write and be reinterpreted
+ * under a renamed unit. Share mode keeps concurrent writers touching the
+ * same item fully parallel with each other. Call this BEFORE inserting any
+ * row that `itemHasHistory` treats as history (stk_entry_lines, including
+ * drafts — see submitEntry's identical use for the submitted/ledger side).
+ *
+ * `by` selects the matching column: `'id'` for createEntry/updateEntry's own
+ * item ids (default), `'finProductId'` for finance.service.ts's
+ * upsertInvoicesBatch, which only knows the billed line's linked product id.
+ * Exported so both writers serialize through the SAME query shape rather than
+ * two independently-drifting implementations of the same lock protocol.
+ */
+export async function lockItemsAgainstUomChange(
+  tx: CoreTx,
+  orgId: string,
+  ids: Iterable<string>,
+  by: 'id' | 'finProductId' = 'id',
+): Promise<Set<string>> {
+  const values = [...new Set(ids)].sort();
+  if (!values.length) return new Set();
+  const column = by === 'id' ? stkItems.id : stkItems.finProductId;
+  const rows = await tx
+    .select({ id: stkItems.id })
+    .from(stkItems)
+    .where(and(eq(stkItems.orgId, orgId), inArray(column, values)))
+    .orderBy(asc(stkItems.id))
+    .for('share');
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
  * Submit a draft entry: ONE withOrgCore tx that locks the entry row + every
  * touched bin (`select ... for update`, the boring-correct choice over
  * upsert-and-hope), validates lines, computes ledger deltas via
@@ -705,11 +775,7 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
     const type = entry.type;
 
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
-    const items = await tx
-      .select({ id: stkItems.id })
-      .from(stkItems)
-      .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
-    const itemIdSet = new Set(items.map((i) => i.id));
+    const itemIdSet = await lockItemsAgainstUomChange(tx, orgId, itemIds);
     const warehouseIds = [
       ...new Set(
         lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x),

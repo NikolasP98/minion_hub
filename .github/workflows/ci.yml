@@ -101,6 +101,22 @@ jobs:
             src/server/services/crm-contacts.sql.integration.test.ts \
             src/server/services/crm-funnel-parity.sql.integration.test.ts
 
+      # fin_products/stk_items/stk_bins/stk_consumption/fin_product_components all
+      # have in-repo CREATE TABLE migrations (unlike organizations/crm_activities),
+      # so the trackStock concurrency race runs against this same bare service —
+      # own throwaway schema per run, no full prod schema needed.
+      - name: Real-PostgreSQL POS trackStock concurrency suite
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/crm_deposit_rule_test
+          REQUIRE_POS_TRACKSTOCK_POSTGRES: '1'
+        run: bunx vitest run --retry=2 src/server/services/pos.trackstock.concurrent.integration.test.ts
+
+      - name: Real-PostgreSQL CRM settings merge suite
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/crm_deposit_rule_test
+          REQUIRE_CRM_SETTINGS_POSTGRES: '1'
+        run: bunx vitest run --retry=2 src/server/services/crm-settings.sql.integration.test.ts
+
   # Isolated from `crm-deposit-rule-postgres` on purpose: that job's Postgres is a
   # BARE service container, while this one is seeded with a CI-only reproduction of
   # the prod CRM schema (organizations + crm_activities + app_ledger + org-GUC RLS).
