@@ -13,7 +13,11 @@ export const notifications = $state({
   },
 });
 
-export async function refreshNotifications() {
+let refreshInFlight: Promise<void> | null = null;
+let pollSubscribers = 0;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+async function runRefreshNotifications() {
   try {
     const res = await fetch('/api/join-requests/count');
     if (res.ok) {
@@ -25,4 +29,31 @@ export async function refreshNotifications() {
     // Silently fail — notification bell just won't show a badge
   }
   await pulse.refreshCount();
+}
+
+/** Coalesce callers so shell surfaces never duplicate the same two requests. */
+export function refreshNotifications(): Promise<void> {
+  if (!refreshInFlight) {
+    refreshInFlight = runRefreshNotifications().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+/** Reference-counted shell polling. Topbar and DynamicIsland are both mounted
+ * at every breakpoint even though CSS hides one, so they share one timer. */
+export function subscribeNotificationsPolling(): () => void {
+  pollSubscribers += 1;
+  if (pollSubscribers === 1) {
+    void refreshNotifications();
+    pollTimer = setInterval(() => void refreshNotifications(), 60_000);
+  }
+  return () => {
+    pollSubscribers = Math.max(0, pollSubscribers - 1);
+    if (pollSubscribers === 0 && pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  };
 }

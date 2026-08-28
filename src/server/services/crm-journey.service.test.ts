@@ -15,7 +15,7 @@ vi.mock('./crm-settings.service', () => ({ resolveDepositRule: () => resolveDepo
 
 import { DEFAULT_DEPOSIT_RULE, type DepositRule } from './crm-deposit-rule';
 
-import { contactJourney } from './crm-journey.service';
+import { analyzeJourney, contactJourney } from './crm-journey.service';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 const dialect = new PgDialect();
@@ -56,13 +56,18 @@ describe('deterministicMilestones (via contactJourney)', () => {
       ),
     );
     expect(params).toEqual(['%reserva%', '%reserva%', '%reserva%', 'c1']);
+    // The projection was renamed off the hardcoded Spanish keyword when the
+    // rule became per-org; a rule named after one org's vocabulary is exactly
+    // what this slice removed.
+    expect(sql).not.toContain('only_reserva_flag');
   });
 
   // MAPPING, not classification: has_proc is injected directly by the mock, so
   // these prove the JS-side label/type mapping (purchase vs reserve) only.
   // Whether a real invoice-item description lands as has_proc=true/false is
   // proven against real PostgreSQL (same predicate as crm-finance.service.ts
-  // and crm-similarity.service.ts) in crm-deposit-rule.sql.integration.test.ts.
+  // and crm-similarity.service.ts) in crm-deposit-rule.sql.integration.test.ts
+  // and, for this service's own query, crm-journey.sql.integration.test.ts.
   //
   // The mock db's `resolve()` returns the SAME configured value for every raw
   // `tx.execute()` call in a test (only db.select() chains consume
@@ -144,6 +149,29 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit drives match A
     ]);
   });
 
+  it('MATCH: a MULTI-keyword rule binds every keyword to every predicate, in order, and never the default', async () => {
+    resolveDepositRule.mockResolvedValueOnce({
+      keywords: ['adelanto', 'seña'],
+      label: 'Deposit paid',
+    });
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await contactJourney(ctx(db), 'c1');
+    const { params } = dialect.sqlToQuery(financeExecutedSql(db));
+    // Three predicates × two keywords, each wrapped by escapeLikePattern — the
+    // non-ASCII keyword goes through as a bound parameter, never interpolated.
+    expect(params).toEqual([
+      '%adelanto%',
+      '%seña%',
+      '%adelanto%',
+      '%seña%',
+      '%adelanto%',
+      '%seña%',
+      'c1',
+    ]);
+    expect(params).not.toContain('%reserva%');
+  });
+
   it('CAPTION: a deposits-only invoice renders the org’s label, not the FACES default', async () => {
     resolveDepositRule.mockResolvedValueOnce({ keywords: ['deposit'], label: 'Deposit' });
     const { db, resolve } = createMockDb();
@@ -219,6 +247,30 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit drives match A
     expect(sql).not.toMatch(/order by false\b/);
     expect(params).toEqual(['c1']);
   });
+
+  // The counterpart to the case above: withholding the deposit caption must
+  // not cost that org its PURCHASE milestones. With no keywords,
+  // notDepositMatchSql is the total `true`, so any invoice with a described
+  // line is has_proc — a purchase, labelled from the item.
+  it('an org with NO deposit concept still gets its purchase milestones', async () => {
+    resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'None' });
+    const { db, resolve } = createMockDb();
+    resolve([
+      {
+        id: 'inv7',
+        at: '2026-04-02T00:00:00Z',
+        amount: 100,
+        only_deposit_flag: false,
+        has_proc: true,
+        item: 'Any item',
+      },
+    ]);
+    const journey = await contactJourney(ctx(db), 'c1');
+    expect(journey.find((m) => m.id === 'inv:inv7')).toMatchObject({
+      type: 'purchase',
+      label: 'Any item',
+    });
+  });
 });
 
 describe('settings read is demand-driven', () => {
@@ -236,6 +288,17 @@ describe('settings read is demand-driven', () => {
     const { db, resolve } = createMockDb();
     resolve([]);
     await contactJourney(ctx(db), 'c1');
+    expect(resolveDepositRule).toHaveBeenCalledTimes(1);
+  });
+
+  // analyzeJourney is the OTHER public entry into deterministicMilestones, so
+  // it gets the same once-per-call guarantee. No OPENROUTER_API_KEY in the test
+  // env ⇒ it returns the deterministic base without calling the model.
+  it('analyzeJourney resolves it exactly once too — the AI layer adds no extra settings read', async () => {
+    resolveDepositRule.mockClear();
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await analyzeJourney(ctx(db), 'c1');
     expect(resolveDepositRule).toHaveBeenCalledTimes(1);
   });
 });

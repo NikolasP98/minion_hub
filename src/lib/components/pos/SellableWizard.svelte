@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { Select } from '$lib/components/ui';
-
   import * as m from '$lib/paraglide/messages';
   import { Plus, Trash2 } from 'lucide-svelte';
-  import { Modal, Button, SegmentedControl, Input } from '$lib/components/ui';
+  import { Modal, Button, SegmentedControl, Input, Select, Combobox } from '$lib/components/ui';
+  import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
+  import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
   import {
     CODE_MAX,
@@ -16,7 +16,7 @@
 
   // Narrow local shapes (mirrors server types) — avoids importing $server/*
   // runtime modules into a client component (same convention as ShiftBanner.svelte).
-  interface StockItemLike {
+  export interface StockItemLike {
     id: string;
     code: string;
     name: string;
@@ -24,11 +24,16 @@
     /** Set ⇒ already published as a sellable, so it can't be published again
      *  (enforced by the stk_items_org_fin_product_uniq partial index). */
     finProductId?: string | null;
+    /** Consumption-side unit, when different from the stock uom (e.g. stock
+     *  in boxes, consumed in units) — same field the /api/stock/consumption
+     *  mapping reads. */
+    consumptionUom?: string | null;
   }
-  interface ConsumptionLike {
+  export interface ConsumptionLike {
     finProductId: string;
     itemId: string;
     qtyPerUnit: number;
+    note?: string | null;
   }
   export interface SellableLike {
     productId: string;
@@ -46,6 +51,8 @@
   interface Props {
     /** Bindable open state. */
     open?: boolean;
+    /** Modal for legacy callers; page renders the same editor inline. */
+    presentation?: 'modal' | 'page';
     stockEnabled: boolean;
     stockItems: StockItemLike[];
     /** Existing categories across the catalog — feeds the free-entry datalist. */
@@ -58,12 +65,14 @@
     consumption: ConsumptionLike[];
     /** null = create mode; a row = edit mode, prefilled from it. */
     editing?: SellableLike | null;
-    /** Called after a successful save — caller invalidates the page load. */
-    onSaved: () => void;
+    /** Called after a successful save — caller invalidates or navigates. */
+    onSaved: () => void | Promise<void>;
+    onCancel?: () => void;
   }
 
   let {
     open = $bindable(false),
+    presentation = 'modal',
     stockEnabled,
     stockItems,
     categories,
@@ -71,7 +80,10 @@
     consumption,
     editing = null,
     onSaved,
+    onCancel,
   }: Props = $props();
+
+  const visible = $derived(presentation === 'page' || open);
 
   // Code format is now ONE shared rail ($lib/catalog/code.ts), imported by both
   // this component and pos.service.ts. It used to be a hand-copied mirror of the
@@ -99,20 +111,31 @@
   type Source = 'service' | 'new-item' | 'existing-item';
   let source = $state<Source>('service');
   let existingItemId = $state('');
+  let existingItemPickerOpen = $state(false);
+  let consumptionPickerOpen = $state(false);
+  let createdStockItems = $state<StockItemLike[]>([]);
   let uom = $state('unit');
   const kind = $derived<'product' | 'service'>(source === 'service' ? 'service' : 'product');
+  const allStockItems = $derived([...createdStockItems, ...stockItems]);
   /** Only items not already published can be linked. */
-  const availableItems = $derived(stockItems.filter((i) => !i.finProductId));
-  let rows = $state<{ itemId: string; qtyPerUnit: string }[]>([]);
+  const availableItems = $derived(allStockItems.filter((i) => !i.finProductId));
+  let rows = $state<{ itemId: string; qtyPerUnit: string; note: string }[]>([]);
   let busy = $state(false);
+
+  /** Label a row's qty input with the CONSUMPTION uom when the item has one,
+   *  falling back to its stock uom. Boxes on the shelf, units on the ticket. */
+  function unitLabel(itemId: string): string {
+    const item = allStockItems.find((i) => i.id === itemId);
+    return item?.consumptionUom ?? item?.uom ?? '';
+  }
 
   // Seed (or reset) the form whenever the wizard opens, from `editing` when
   // present. ★ Prefill for consumption mappings comes from the page's own
-  // `consumption` list (already loaded org-wide for /stock/consumption) —
+  // `consumption` list (already loaded org-wide by the catalog page) —
   // trivially available here, so edit mode filters it by productId rather
   // than starting empty.
   $effect(() => {
-    if (!open) return;
+    if (!visible) return;
     const e = editing;
     name = e?.name ?? '';
     code = e?.code ?? '';
@@ -126,7 +149,7 @@
     rows = e
       ? consumption
           .filter((c) => c.finProductId === e.productId)
-          .map((c) => ({ itemId: c.itemId, qtyPerUnit: String(c.qtyPerUnit) }))
+          .map((c) => ({ itemId: c.itemId, qtyPerUnit: String(c.qtyPerUnit), note: c.note ?? '' }))
       : [];
   });
 
@@ -145,13 +168,26 @@
   }
   function optionsFor(idx: number): StockItemLike[] {
     const used = usedElsewhere(idx);
-    return stockItems.filter((i) => !used.has(i.id));
+    return allStockItems.filter((i) => !used.has(i.id));
   }
-  function addRow() {
-    const used = new Set(rows.map((r) => r.itemId));
-    const next = stockItems.find((i) => !used.has(i.id));
-    if (!next) return; // every stock item already mapped
-    rows = [...rows, { itemId: next.id, qtyPerUnit: '' }];
+  const pickedConsumptionIds = $derived(new Set(rows.map((row) => row.itemId)));
+
+  function rememberCreatedItem(item: StockItemOption): StockItemLike {
+    const stockItem: StockItemLike = item;
+    if (!allStockItems.some((candidate) => candidate.id === item.id)) {
+      createdStockItems = [stockItem, ...createdStockItems];
+    }
+    return stockItem;
+  }
+
+  function pickExistingItem(item: StockItemOption) {
+    existingItemId = rememberCreatedItem(item).id;
+  }
+
+  function addRow(item: StockItemOption) {
+    const remembered = rememberCreatedItem(item);
+    if (rows.some((row) => row.itemId === remembered.id)) return;
+    rows = [...rows, { itemId: remembered.id, qtyPerUnit: '', note: '' }];
   }
   function removeRow(idx: number) {
     rows = rows.filter((_, i) => i !== idx);
@@ -166,6 +202,11 @@
       // publishing an existing item requires one to be picked
       !(!editing && source === 'existing-item' && !existingItemId),
   );
+
+  function cancel() {
+    if (presentation === 'modal') open = false;
+    onCancel?.();
+  }
 
   async function submit() {
     if (!canSubmit) return;
@@ -194,9 +235,16 @@
     // bridge). createSellable/updateSellable already accepted this for any
     // kind — only this form was gating it.
     if (stockEnabled) {
+      // ★ note MUST ride along: this is a replace-set (updateSellable deletes
+      // rows missing from this array and setConsumption upserts the rest), so
+      // omitting note here would silently blank it on every save.
       payload.consumption = rows
         .filter((r) => r.itemId && Number(r.qtyPerUnit) > 0)
-        .map((r) => ({ itemId: r.itemId, qtyPerUnit: Number(r.qtyPerUnit) }));
+        .map((r) => ({
+          itemId: r.itemId,
+          qtyPerUnit: Number(r.qtyPerUnit),
+          note: r.note.trim() || null,
+        }));
     }
 
     const url = editing ? `/api/pos/sellables/${editing.productId}` : '/api/pos/sellables';
@@ -228,8 +276,8 @@
           }),
         },
       );
-      open = false;
-      onSaved();
+      if (presentation === 'modal') open = false;
+      await onSaved();
     } catch {
       // already toasted
     } finally {
@@ -238,7 +286,7 @@
   }
 </script>
 
-<Modal bind:open title={editing ? m.pos_catalog_edit() : m.pos_catalog_new()}>
+{#snippet editorFields()}
   <div class="flex flex-col gap-3">
     <Input size="sm" label={m.stock_field_name()} bind:value={name} />
     <Input
@@ -313,35 +361,61 @@
       {:else if source === 'existing-item' && stockEnabled}
         <label class="fld">
           <span>{m.pos_catalog_pick_item()}</span>
-          <Select fieldClass="min-w-0" bind:value={existingItemId}>
-            <option value="">{m.pos_catalog_pick_item()}…</option>
-            {#each availableItems as item (item.id)}
-              <option value={item.id}>{item.code} — {item.name}</option>
-            {/each}
-          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            class="wizard-item-picker"
+            onclick={() => (existingItemPickerOpen = true)}
+          >
+            {existingItemId
+              ? `${allStockItems.find((item) => item.id === existingItemId)?.code ?? ''} — ${
+                  allStockItems.find((item) => item.id === existingItemId)?.name ?? existingItemId
+                }`
+              : m.pos_catalog_pick_item()}
+          </Button>
         </label>
       {/if}
     {/if}
 
     {#if stockEnabled}
+      <!-- TODO(handoff): other consumption-mapping surfaces (e.g.
+           /stock/items/[id]/+page.svelte, /pos/appointments/+page.svelte)
+           render a ConsumptionGauge per row for items with diagramEnabled
+           (subunit-shape visual qty picker,
+           $lib/components/stock/ConsumptionGauge.svelte + gaugeMax() from
+           stock-ui.ts) — not ported here to keep this slice scoped. Wire it
+           the same way those pages do, keyed off
+           stockItems.find(i => i.id === row.itemId)?.diagramEnabled, when
+           this wizard gets its next pass. -->
       <div class="fld">
         <span>{m.pos_catalog_consumption()}</span>
         <div class="consumption-rows">
           {#each rows as row, idx (idx)}
             <div class="consumption-row">
-              <Select fieldClass="min-w-0 flex-1" bind:value={row.itemId}>
-                {#each optionsFor(idx) as item (item.id)}
-                  <option value={item.id}>{item.code} — {item.name}</option>
-                {/each}
-              </Select>
+              <div class="cb-wrap">
+                <Combobox
+                  id={`sellable-consumption-${idx}`}
+                  items={optionsFor(idx)}
+                  itemToValue={(item) => item.id}
+                  itemToString={(item) => `${item.code} — ${item.name}`}
+                  placeholder={m.stock_field_item()}
+                  bind:value={row.itemId}
+                />
+              </div>
               <Input
                 size="sm"
                 class="w-24"
                 type="number"
                 min="0"
                 step="0.01"
-                placeholder={m.pos_catalog_qty_per_unit()}
+                placeholder={`${m.pos_catalog_qty_per_unit()} (${unitLabel(row.itemId)})`}
                 bind:value={row.qtyPerUnit}
+              />
+              <Input
+                size="sm"
+                class="flex-1"
+                placeholder={m.stock_field_note()}
+                bind:value={row.note}
               />
               <Button
                 type="button"
@@ -354,8 +428,8 @@
           <Button
             variant="outline"
             size="sm"
-            onclick={addRow}
-            disabled={rows.length >= stockItems.length}
+            onclick={() => (consumptionPickerOpen = true)}
+            disabled={rows.length >= allStockItems.length}
           >
             <Plus size={13} />
             {m.common_add()}
@@ -364,16 +438,72 @@
       </div>
     {/if}
   </div>
+{/snippet}
 
-  {#snippet footer()}
-    <Button variant="outline" size="sm" onclick={() => (open = false)}>{m.common_cancel()}</Button>
-    <Button variant="primary" size="sm" onclick={submit} disabled={!canSubmit}
-      >{m.common_save()}</Button
-    >
-  {/snippet}
-</Modal>
+{#if presentation === 'modal'}
+  <Modal bind:open title={editing ? m.pos_catalog_edit() : m.pos_catalog_new()}>
+    {@render editorFields()}
+    {#snippet footer()}
+      <Button variant="outline" size="sm" onclick={cancel}>{m.common_cancel()}</Button>
+      <Button variant="primary" size="sm" onclick={submit} disabled={!canSubmit}
+        >{m.common_save()}</Button
+      >
+    {/snippet}
+  </Modal>
+{:else}
+  <form
+    class="sellable-editor"
+    onsubmit={(event) => {
+      event.preventDefault();
+      void submit();
+    }}
+  >
+    {@render editorFields()}
+    <div class="editor-actions">
+      <Button type="button" variant="outline" size="sm" onclick={cancel}>{m.common_cancel()}</Button
+      >
+      <Button type="submit" variant="primary" size="sm" disabled={!canSubmit}
+        >{m.common_save()}</Button
+      >
+    </div>
+  </form>
+{/if}
+
+<StockItemPicker
+  bind:open={existingItemPickerOpen}
+  items={availableItems}
+  title={m.pos_catalog_pick_item()}
+  onPick={pickExistingItem}
+  selectionMode="single"
+  duplicatePolicy="prevent"
+  storageKey="sellable-existing-stock-item"
+/>
+
+<StockItemPicker
+  bind:open={consumptionPickerOpen}
+  items={allStockItems}
+  title={m.pos_catalog_consumption()}
+  onPick={addRow}
+  selectionMode="multiple"
+  duplicatePolicy="prevent"
+  pickedIds={pickedConsumptionIds}
+  columnsConfigurable
+  storageKey="sellable-consumption-items"
+/>
 
 <style>
+  .sellable-editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+  .editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border-subtle);
+  }
   /* `.fld` survives only for the two grouping wrappers (consumption rows,
      existing-item picker) that aren't a single Input. */
   .fld {
@@ -393,6 +523,13 @@
     gap: var(--space-2);
     align-items: center;
   }
+  /* Combobox has no `class`/width prop of its own (see $lib/components/ui);
+     the flex sizing that used to sit on the Select's fieldClass has to be
+     forced onto a wrapper instead. */
+  .consumption-row .cb-wrap {
+    flex: 1;
+    min-width: 0;
+  }
   .consumption-row :global(.act-btn) {
     display: inline-flex;
     align-items: center;
@@ -408,5 +545,11 @@
   .consumption-row :global(.act-btn):hover {
     background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
     color: var(--color-foreground);
+  }
+  .fld :global(.wizard-item-picker) {
+    min-width: 0;
+    justify-content: flex-start;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>

@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "baseCommit": "b9ee68c86b99773812f91677849ebef7f4c03373",
-  "sourceRef": "8fa1ba034cf7212e89d87651c02c9e28c174529f",
-  "sourceCommit": "8fa1ba034cf7212e89d87651c02c9e28c174529f",
-  "sourceTreeSha": "5856078a0cbd8a0530f1ef34a2090e065f182be0",
-  "workingTreeFingerprint": "git:8fa1ba034cf7212e89d87651c02c9e28c174529f:5856078a0cbd8a0530f1ef34a2090e065f182be0",
+  "baseCommit": "dff3e49fd274d0511d0831a77693c841e55e8347",
+  "sourceRef": "dff3e49fd274d0511d0831a77693c841e55e8347",
+  "sourceCommit": "dff3e49fd274d0511d0831a77693c841e55e8347",
+  "sourceTreeSha": "9ad61c019c8e2a141e2136f8cefd1e3479f67461",
+  "workingTreeFingerprint": "git:dff3e49fd274d0511d0831a77693c841e55e8347:9ad61c019c8e2a141e2136f8cefd1e3479f67461",
   "summary": {
-    "endpoints": 152,
-    "screens": 142,
+    "endpoints": 148,
+    "screens": 138,
     "redirects": 10,
     "dynamicScreens": 27,
-    "appScreens": 132,
+    "appScreens": 128,
     "publicScreens": 10
   },
   "knownBaselineFailures": [
@@ -563,22 +563,7 @@
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
-        "fetchSites": 4
-      }
-    },
-    {
-      "id": "crm.graph",
-      "pattern": "/crm/graph",
-      "source": "src/routes/(app)/crm/graph/+page.svelte",
-      "family": "app",
-      "kind": "screen",
-      "dynamic": false,
-      "observations": {
-        "pageHeader": true,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 0,
-        "nativeInputs": 0,
-        "fetchSites": 0
+        "fetchSites": 5
       }
     },
     {
@@ -657,21 +642,6 @@
       }
     },
     {
-      "id": "finances.products",
-      "pattern": "/finances/products",
-      "source": "src/routes/(app)/finances/products/+page.svelte",
-      "family": "app",
-      "kind": "screen",
-      "dynamic": false,
-      "observations": {
-        "pageHeader": true,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 0,
-        "nativeInputs": 0,
-        "fetchSites": 0
-      }
-    },
-    {
       "id": "finances.purchases",
       "pattern": "/finances/purchases",
       "source": "src/routes/(app)/finances/purchases/+page.svelte",
@@ -697,7 +667,7 @@
         "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
-        "nativeInputs": 11,
+        "nativeInputs": 14,
         "fetchSites": 4
       }
     },
@@ -1650,36 +1620,6 @@
       }
     },
     {
-      "id": "stock.consume",
-      "pattern": "/stock/consume",
-      "source": "src/routes/(app)/stock/consume/+page.svelte",
-      "family": "app",
-      "kind": "screen",
-      "dynamic": false,
-      "observations": {
-        "pageHeader": true,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 0,
-        "nativeInputs": 2,
-        "fetchSites": 2
-      }
-    },
-    {
-      "id": "stock.consumption",
-      "pattern": "/stock/consumption",
-      "source": "src/routes/(app)/stock/consumption/+page.svelte",
-      "family": "app",
-      "kind": "screen",
-      "dynamic": false,
-      "observations": {
-        "pageHeader": true,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 0,
-        "nativeInputs": 5,
-        "fetchSites": 3
-      }
-    },
-    {
       "id": "stock.entries",
       "pattern": "/stock/entries",
       "source": "src/routes/(app)/stock/entries/+page.svelte",
@@ -1765,8 +1705,8 @@
         "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
-        "nativeInputs": 1,
-        "fetchSites": 2
+        "nativeInputs": 2,
+        "fetchSites": 5
       }
     },
     {

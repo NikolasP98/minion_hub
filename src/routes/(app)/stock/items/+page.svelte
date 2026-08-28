@@ -3,12 +3,14 @@
   import { invalidate, goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
-  import { PageHeader, Button, Modal, Input } from '$lib/components/ui';
+  import { PageHeader, Modal } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { formatMoney } from '$lib/utils/format';
+  import StockItemCreateForm from '$lib/components/stock/StockItemCreateForm.svelte';
+  import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
 
   let { data }: { data: PageData } = $props();
   const items = $derived(data.items);
@@ -95,35 +97,11 @@
 
   // ── Create ───────────────────────────────────────────────────────────────
   let createOpen = $state(false);
-  let newCode = $state('');
-  let newName = $state('');
-  let newUom = $state('unit');
-  let createBusy = $state(false);
-  let createErr = $state<string | null>(null);
 
-  async function createItem() {
-    createBusy = true;
-    createErr = null;
-    try {
-      const res = await fetch('/api/stock/items', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ code: newCode, name: newName, uom: newUom || 'unit' }),
-      });
-      if (res.ok) {
-        const item = await res.json();
-        createOpen = false;
-        newCode = '';
-        newName = '';
-        newUom = 'unit';
-        await invalidate('stock:items');
-        await goto(`/stock/items/${item.id}`);
-      } else {
-        createErr = m.stock_item_save_failed();
-      }
-    } finally {
-      createBusy = false;
-    }
+  async function handleCreated(item: StockItemOption) {
+    createOpen = false;
+    await invalidate('stock:items');
+    await goto(`/stock/items/${item.id}`);
   }
 </script>
 
@@ -170,29 +148,5 @@
 </PageShell>
 
 <Modal bind:open={createOpen} title={m.stock_create_item_title()}>
-  <div class="flex flex-col gap-3">
-    <Input size="sm" label={m.stock_field_code()} bind:value={newCode} />
-    <Input size="sm" label={m.stock_field_name()} bind:value={newName} />
-    <Input size="sm" label={m.stock_field_uom()} bind:value={newUom} />
-    {#if createErr}<p class="err-msg text-xs">{createErr}</p>{/if}
-  </div>
-  {#snippet footer()}
-    <Button variant="outline" size="sm" onclick={() => (createOpen = false)}
-      >{m.common_cancel()}</Button
-    >
-    <Button
-      variant="primary"
-      size="sm"
-      onclick={createItem}
-      disabled={createBusy || !newCode.trim() || !newName.trim()}
-    >
-      {m.stock_create()}
-    </Button>
-  {/snippet}
+  <StockItemCreateForm oncreated={handleCreated} oncancel={() => (createOpen = false)} />
 </Modal>
-
-<style>
-  .err-msg {
-    color: var(--color-danger-fg);
-  }
-</style>

@@ -5,6 +5,7 @@ import {
   jsonb,
   timestamp,
   doublePrecision,
+  bigint,
   integer,
   boolean,
   index,
@@ -20,11 +21,12 @@ import {
  * pack/vendor/reinstall cycle the vendored `@minion-stack/db` tarball requires.
  * Promote to the shared package only if the gateway ever needs them.
  *
- * Design principle (spec §1): the `messages` ledger IS the customer journey —
- * we never copy it. The journey timeline is a live VIEW over `messages` joined
- * on (org_id, channel, sender_id); the RFM score is an on-read SQL aggregate.
- * These tables only hold what the immutable ledger can't: a stable contact
- * identity + CRM-only attributes (tags, notes, lifecycle, ownership).
+ * Design principle (spec §1): the `messages` ledger IS the authoritative
+ * customer journey. The journey timeline remains a live VIEW; the customer
+ * roster reads a rebuildable `crm_contact_activity_stats` projection so list
+ * sorting does not re-aggregate the full ledger on every request. CRM tables
+ * also hold stable identity + CRM-only attributes (tags, notes, lifecycle,
+ * ownership).
  *
  * RLS: every table uses `org_id text` to match `messages.org_id`, so journey
  * joins need no casts and the tables ride the same `withOrgCore()` transaction
@@ -105,6 +107,38 @@ export const crmContactIdentities = pgTable(
     /** Matches the ledger's index shape → index-driven timeline join. */
     lookupIdx: index('crm_contact_identities_lookup_idx').on(t.orgId, t.channel, t.externalId),
     contactIdx: index('crm_contact_identities_contact_idx').on(t.contactId),
+  }),
+);
+
+/** Rebuildable message-ledger projection used by CRM roster ranking. */
+export const crmContactActivityStats = pgTable(
+  'crm_contact_activity_stats',
+  {
+    contactId: uuid('contact_id')
+      .primaryKey()
+      .references(() => crmContacts.id, { onDelete: 'cascade' }),
+    orgId: text('org_id').notNull(),
+    messageCount: bigint('message_count', { mode: 'number' }).notNull().default(0),
+    inboundCount: bigint('inbound_count', { mode: 'number' }).notNull().default(0),
+    outboundCount: bigint('outbound_count', { mode: 'number' }).notNull().default(0),
+    channelsUsed: integer('channels_used').notNull().default(0),
+    firstContactAt: timestamp('first_contact_at', { withTimezone: true }),
+    lastContactAt: timestamp('last_contact_at', { withTimezone: true }),
+    lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+    lastOutboundAt: timestamp('last_outbound_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgLastIdx: index('crm_contact_activity_stats_org_last_idx').on(
+      t.orgId,
+      t.lastContactAt,
+      t.contactId,
+    ),
+    orgCountIdx: index('crm_contact_activity_stats_org_count_idx').on(
+      t.orgId,
+      t.messageCount,
+      t.contactId,
+    ),
   }),
 );
 
@@ -257,7 +291,12 @@ export const crmConversationChunks = pgTable(
     metadata: jsonb('metadata').notNull().default({}),
   },
   (t) => ({
-    uniq: uniqueIndex('crm_conversation_chunks_uniq').on(t.orgId, t.channel, t.chatId, t.chunkIndex),
+    uniq: uniqueIndex('crm_conversation_chunks_uniq').on(
+      t.orgId,
+      t.channel,
+      t.chatId,
+      t.chunkIndex,
+    ),
     orgChatIdx: index('crm_conversation_chunks_org_chat_idx').on(t.orgId, t.channel, t.chatId),
   }),
 );

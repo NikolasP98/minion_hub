@@ -27,12 +27,16 @@ export interface DepositRule {
  * keyword again.
  *
  * `label` is the milestone caption `crm-journey.service.ts` renders for an
- * invoice that is deposits-only. The default is the exact string that call
- * site hardcoded before this rule existed, so an org with no
+ * invoice that is deposits-only — the only consumer that reads `label` at all
+ * (finance/similarity classify but never surface it). The default is the exact
+ * string that call site hardcoded before this rule existed, so an org with no
  * `crm_settings.value.deposit` row keeps byte-identical output. (The spec
  * carried `'Reserva'` as the presumed default from a checkout where hub was
  * not available; S0 recon found the real rendered string — see the
- * "S0 actuals" amendment in FACTORY_SPEC.md.)
+ * "S0 actuals" amendment in FACTORY_SPEC.md.) Because this default also backs
+ * the omitted-label fallback in `crm-settings.service.ts`'s normalizer, it is
+ * what lets journey render `rule.label` directly instead of hardcoding its
+ * own string — see 2026-08-20-handoff-minion-hub-2131866440-spec §3.
  */
 export const DEFAULT_DEPOSIT_RULE: DepositRule = {
   keywords: ['reserva'],

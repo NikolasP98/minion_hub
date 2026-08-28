@@ -49,6 +49,11 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
   // actually use it — a journey on an org with finances off costs no settings
   // query, so `rule != null` doubles as "finance is on".
   //
+  // Resolved BEFORE withOrgCore opens its transaction: resolveDepositRule opens
+  // its OWN withOrgCore and the RLS pool is single-connection (see the
+  // transaction-discipline note on crm-settings.service.ts), so nesting the
+  // read inside the callback below would deadlock.
+  //
   // `rule` carries BOTH halves of the org's deposit config and they are used
   // separately: `keywords` MATCHES the invoice-line text in SQL, `label` is
   // the caption RENDERED for a deposits-only invoice. A match rule and a

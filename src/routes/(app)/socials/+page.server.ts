@@ -2,16 +2,13 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import {
-  adDataExtent,
-  adKpis,
-  adSpendSeries,
-  campaignBreakdown,
   extentToRange,
-  postPerformance,
-  listConnections,
+  socialDashboardContext,
+  socialDashboardData,
   type DataExtent,
   type DateRange,
 } from '$server/services/meta/meta-insights.service';
+import { ServerTiming } from '$lib/server/server-timing';
 
 const THIRTY_DAYS_MS = 30 * 86_400_000;
 
@@ -24,33 +21,36 @@ function resolveRange(url: URL, extent: DataExtent): DateRange {
   const hasExplicitRange = url.searchParams.has('from') || url.searchParams.has('to');
   const now = new Date();
   const last30 = extentToRange({ minDate: null, maxDate: null }, now);
-  const newestIsStale = extent.maxDate != null && now.getTime() - new Date(`${extent.maxDate}T00:00:00Z`).getTime() > THIRTY_DAYS_MS;
+  const newestIsStale =
+    extent.maxDate != null &&
+    now.getTime() - new Date(`${extent.maxDate}T00:00:00Z`).getTime() > THIRTY_DAYS_MS;
   const defaultRange = newestIsStale ? extentToRange(extent, now) : last30;
   return hasExplicitRange
-    ? { from: url.searchParams.get('from') || defaultRange.from, to: url.searchParams.get('to') || defaultRange.to }
+    ? {
+        from: url.searchParams.get('from') || defaultRange.from,
+        to: url.searchParams.get('to') || defaultRange.to,
+      }
     : defaultRange;
 }
 
-export const load: PageServerLoad = async ({ locals, url, depends }) => {
+export const load: PageServerLoad = async ({ locals, url, depends, setHeaders }) => {
+  const timing = new ServerTiming();
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('ads:data');
 
-  const connections = await listConnections(ctx);
-  const hasConnection = connections.some((c) => c.status !== 'revoked');
-  const extent: DataExtent = hasConnection ? await adDataExtent(ctx) : { minDate: null, maxDate: null };
+  const context = await timing.measure('social_context', () => socialDashboardContext(ctx));
+  const { hasConnection } = context;
+  const extent: DataExtent = hasConnection ? context.extent : { minDate: null, maxDate: null };
   const range = resolveRange(url, extent);
 
   if (!hasConnection) {
+    setHeaders({ 'Server-Timing': timing.headerValue() });
     return { range, hasConnection, extent, kpis: null, series: [], campaigns: [], posts: [] };
   }
 
-  const [kpis, series, campaigns, posts] = await Promise.all([
-    adKpis(ctx, range),
-    adSpendSeries(ctx, range),
-    campaignBreakdown(ctx, range, 'campaign'),
-    postPerformance(ctx, { limit: 5, orderBy: 'score' }),
-  ]);
+  const dashboard = await timing.measure('social_data', () => socialDashboardData(ctx, range));
+  setHeaders({ 'Server-Timing': timing.headerValue() });
 
-  return { range, hasConnection, extent, kpis, series, campaigns: campaigns.slice(0, 10), posts };
+  return { range, hasConnection, extent, ...dashboard };
 };

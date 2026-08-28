@@ -10,6 +10,7 @@ import { handlePosError } from '../../_errors';
 const consumptionSchema = z.object({
   itemId: z.string().min(1),
   qtyPerUnit: z.number().finite(),
+  note: z.string().max(2000).nullable().optional(),
 });
 
 const patchSchema = z.object({
@@ -30,7 +31,10 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
   const body = await parseBody(request, patchSchema);
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const actor = {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
   try {
     const sellable = await updateSellable(ctx, params.id!, body, actor);
     return json({ ok: true, sellable });

@@ -1204,7 +1204,6 @@ export const C4_NODES: C4Node[] = [
     ],
     artefacts: [
       'GET/POST /api/crm/contacts',
-      'GET/PUT/DELETE /api/crm/contacts/<id>/relationship',
       'POST /api/brains/<id>/search',
       'conversation:<channel>:<account>:<conversationId>',
     ],

@@ -3,178 +3,187 @@ import { capsToLegacyPermissions } from './permissions.service';
 import { buildCapabilities } from './rbac.service';
 import { requiredViewPermForPath } from '$lib/permissions';
 
-const permsFor = (...roles: string[]) => new Set(capsToLegacyPermissions(buildCapabilities(roles, [])));
+const permsFor = (...roles: string[]) =>
+  new Set(capsToLegacyPermissions(buildCapabilities(roles, [])));
 
 describe('capsToLegacyPermissions — RBAC → legacy nav vocab', () => {
-	test('owner gets the full admin surface', () => {
-		const p = permsFor('owner');
-		for (const perm of [
-			'settings:manage',
-			'users:remove',
-			'agents:delete',
-			'roles:manage',
-			'module:admin',
-		]) {
-			expect(p.has(perm)).toBe(true);
-		}
-	});
+  test('owner gets the full admin surface', () => {
+    const p = permsFor('owner');
+    for (const perm of [
+      'settings:manage',
+      'users:remove',
+      'agents:delete',
+      'roles:manage',
+      'module:admin',
+    ]) {
+      expect(p.has(perm)).toBe(true);
+    }
+  });
 
-	test('manager preserves every *:view (== old "user") + business, minus admin writes', () => {
-		const p = permsFor('manager');
-		// All read perms a legacy "user" had:
-		for (const v of [
-			'agents:view',
-			'sessions:view',
-			'channels:view',
-			'skills:view',
-			'settings:view',
-			'users:view',
-			'roles:view',
-			'billing:view',
-			'hosts:view',
-			'workshop:view',
-		]) {
-			expect(p.has(v)).toBe(true);
-		}
-		// Nav groups still visible:
-		expect(p.has('module:admin')).toBe(true);
-		expect(p.has('module:operations')).toBe(true);
-		// But NOT admin/destructive writes:
-		expect(p.has('settings:manage')).toBe(false);
-		expect(p.has('users:remove')).toBe(false);
-		expect(p.has('agents:edit')).toBe(false);
-	});
+  test('manager preserves every *:view (== old "user") + business, minus admin writes', () => {
+    const p = permsFor('manager');
+    // All read perms a legacy "user" had:
+    for (const v of [
+      'agents:view',
+      'sessions:view',
+      'channels:view',
+      'skills:view',
+      'settings:view',
+      'users:view',
+      'roles:view',
+      'billing:view',
+      'hosts:view',
+      'workshop:view',
+    ]) {
+      expect(p.has(v)).toBe(true);
+    }
+    // Nav groups still visible:
+    expect(p.has('module:admin')).toBe(true);
+    expect(p.has('module:operations')).toBe(true);
+    // But NOT admin/destructive writes:
+    expect(p.has('settings:manage')).toBe(false);
+    expect(p.has('users:remove')).toBe(false);
+    expect(p.has('agents:edit')).toBe(false);
+  });
 
-	test('viewer is business-read only — no platform nav', () => {
-		const p = permsFor('viewer');
-		expect(p.has('module:admin')).toBe(false);
-		expect(p.has('settings:view')).toBe(false);
-		expect(p.has('agents:view')).toBe(false);
-		expect(p.has('users:view')).toBe(false);
-	});
+  test('viewer is business-read only — no platform nav', () => {
+    const p = permsFor('viewer');
+    expect(p.has('module:admin')).toBe(false);
+    expect(p.has('settings:view')).toBe(false);
+    expect(p.has('agents:view')).toBe(false);
+    expect(p.has('users:view')).toBe(false);
+  });
 
-	test('multi-role unions (viewer+admin → full)', () => {
-		const p = permsFor('viewer', 'admin');
-		expect(p.has('settings:manage')).toBe(true);
-	});
+  test('multi-role unions (viewer+admin → full)', () => {
+    const p = permsFor('viewer', 'admin');
+    expect(p.has('settings:manage')).toBe(true);
+  });
 
-	test('viewer gets every business *:view (the nav + route guard gate)', () => {
-		const p = permsFor('viewer');
-		for (const v of [
-			'crm:view',
-			'finance:view',
-			'sales:view',
-			'scheduling:view',
-			'support:view',
-			'projects:view',
-			'memberships:view',
-			'comms:view',
-		]) {
-			expect(p.has(v)).toBe(true);
-		}
-		// ...but NO platform-module view (admin modules default to NONE for viewer)
-		for (const v of ['agents:view', 'channels:view', 'flows:view', 'marketplace:view']) {
-			expect(p.has(v)).toBe(false);
-		}
-	});
+  test('viewer gets every business *:view (the nav + route guard gate)', () => {
+    const p = permsFor('viewer');
+    for (const v of [
+      'crm:view',
+      'finance:view',
+      'sales:view',
+      'scheduling:view',
+      'support:view',
+      'projects:view',
+      'memberships:view',
+      'comms:view',
+    ]) {
+      expect(p.has(v)).toBe(true);
+    }
+    // ...but NO platform-module view (admin modules default to NONE for viewer)
+    for (const v of ['agents:view', 'channels:view', 'flows:view', 'marketplace:view']) {
+      expect(p.has(v)).toBe(false);
+    }
+  });
 
-	test('manager gets platform-module *:view (admin modules default to VIEW)', () => {
-		const p = permsFor('manager');
-		for (const v of ['agents:view', 'channels:view', 'flows:view', 'marketplace:view', 'reliability:view']) {
-			expect(p.has(v)).toBe(true);
-		}
-		// manager has admin-module VIEW only — NOT users:manage (owner/admin only)
-		expect(p.has('users:manage')).toBe(false);
-	});
+  test('manager gets platform-module *:view (admin modules default to VIEW)', () => {
+    const p = permsFor('manager');
+    for (const v of [
+      'agents:view',
+      'channels:view',
+      'flows:view',
+      'marketplace:view',
+      'reliability:view',
+    ]) {
+      expect(p.has(v)).toBe(true);
+    }
+    // manager has admin-module VIEW only — NOT users:manage (owner/admin only)
+    expect(p.has('users:manage')).toBe(false);
+  });
 
-	test('owner gets users:manage + reliability:view (RBAC-migrated gates)', () => {
-		const p = permsFor('owner');
-		expect(p.has('users:manage')).toBe(true);
-		expect(p.has('reliability:view')).toBe(true);
-	});
+  test('owner gets users:manage + reliability:view (RBAC-migrated gates)', () => {
+    const p = permsFor('owner');
+    expect(p.has('users:manage')).toBe(true);
+    expect(p.has('reliability:view')).toBe(true);
+  });
 
-	test('action-level business perms mirror apiWriteCapability (create/edit/delete/export/manage)', () => {
-		// owner: full RWXE+manage on business modules (DEFAULT_MATRIX ALL)
-		const owner = permsFor('owner');
-		for (const perm of [
-			'crm:edit',
-			'crm:delete',
-			'crm:export',
-			'finance:edit',
-			'sales:edit',
-			'scheduling:edit',
-			'support:edit',
-			'projects:edit',
-		]) {
-			expect(owner.has(perm)).toBe(true);
-		}
+  test('action-level business perms mirror apiWriteCapability (create/edit/delete/export/manage)', () => {
+    // owner: full RWXE+manage on business modules (DEFAULT_MATRIX ALL)
+    const owner = permsFor('owner');
+    for (const perm of [
+      'crm:edit',
+      'crm:delete',
+      'crm:export',
+      'finance:edit',
+      'sales:edit',
+      'scheduling:edit',
+      'support:edit',
+      'projects:edit',
+    ]) {
+      expect(owner.has(perm)).toBe(true);
+    }
 
-		// viewer: view-only, no business action perms
-		const viewer = permsFor('viewer');
-		for (const perm of ['crm:create', 'crm:edit', 'crm:delete', 'crm:export', 'crm:manage']) {
-			expect(viewer.has(perm)).toBe(false);
-		}
+    // viewer: view-only, no business action perms
+    const viewer = permsFor('viewer');
+    for (const perm of ['crm:create', 'crm:edit', 'crm:delete', 'crm:export', 'crm:manage']) {
+      expect(viewer.has(perm)).toBe(false);
+    }
 
-		// manager: RWXE on business modules (create/edit/export) but not delete/manage
-		const manager = permsFor('manager');
-		expect(manager.has('crm:create')).toBe(true);
-		expect(manager.has('crm:edit')).toBe(true);
-		expect(manager.has('crm:export')).toBe(true);
-		expect(manager.has('crm:delete')).toBe(false);
-		expect(manager.has('crm:manage')).toBe(false);
-	});
+    // manager: RWXE on business modules (create/edit/export) but not delete/manage
+    const manager = permsFor('manager');
+    expect(manager.has('crm:create')).toBe(true);
+    expect(manager.has('crm:edit')).toBe(true);
+    expect(manager.has('crm:export')).toBe(true);
+    expect(manager.has('crm:delete')).toBe(false);
+    expect(manager.has('crm:manage')).toBe(false);
+  });
 
-	test('per-org override disabling crm view strips crm:view (the reported bug)', () => {
-		const noView = {
-			role_key: 'viewer',
-			module: 'crm',
-			can_view: false,
-			can_create: false,
-			can_edit: false,
-			can_delete: false,
-			can_export: false,
-			can_manage: false,
-		};
-		const p = new Set(capsToLegacyPermissions(buildCapabilities(['viewer'], [noView])));
-		expect(p.has('crm:view')).toBe(false);
-		// other modules untouched
-		expect(p.has('finance:view')).toBe(true);
-	});
+  test('per-org override disabling crm view strips crm:view (the reported bug)', () => {
+    const noView = {
+      role_key: 'viewer',
+      module: 'crm',
+      can_view: false,
+      can_create: false,
+      can_edit: false,
+      can_delete: false,
+      can_export: false,
+      can_manage: false,
+    };
+    const p = new Set(capsToLegacyPermissions(buildCapabilities(['viewer'], [noView])));
+    expect(p.has('crm:view')).toBe(false);
+    // other modules untouched
+    expect(p.has('finance:view')).toBe(true);
+  });
 });
 
 describe('requiredViewPermForPath — central route guard mapping', () => {
-	test('business routes map to their view perm (longest prefix, subpaths)', () => {
-		expect(requiredViewPermForPath('/crm')).toBe('crm:view');
-		expect(requiredViewPermForPath('/crm/abc-123')).toBe('crm:view');
-		expect(requiredViewPermForPath('/finances/invoices')).toBe('finance:view');
-		expect(requiredViewPermForPath('/workforce/projects')).toBe('projects:view');
-	});
+  test('business routes map to their view perm (longest prefix, subpaths)', () => {
+    expect(requiredViewPermForPath('/crm')).toBe('crm:view');
+    expect(requiredViewPermForPath('/crm/abc-123')).toBe('crm:view');
+    expect(requiredViewPermForPath('/finances/invoices')).toBe('finance:view');
+    expect(requiredViewPermForPath('/workforce/projects')).toBe('projects:view');
+  });
 
-	test('platform routes map to their module view perm', () => {
-		expect(requiredViewPermForPath('/agents')).toBe('agents:view');
-		expect(requiredViewPermForPath('/agents/autonomous')).toBe('agents:view');
-		expect(requiredViewPermForPath('/capabilities')).toBe('agents:view');
-		expect(requiredViewPermForPath('/prompt')).toBe('agents:view');
-		expect(requiredViewPermForPath('/flow-editor')).toBe('flows:view');
-		expect(requiredViewPermForPath('/channels')).toBe('channels:view');
-		expect(requiredViewPermForPath('/marketplace')).toBe('marketplace:view');
-		expect(requiredViewPermForPath('/reliability')).toBe('reliability:view');
-	});
+  test('platform routes map to their module view perm', () => {
+    expect(requiredViewPermForPath('/agents')).toBe('agents:view');
+    expect(requiredViewPermForPath('/agents/autonomous')).toBe('agents:view');
+    expect(requiredViewPermForPath('/capabilities')).toBe('agents:view');
+    expect(requiredViewPermForPath('/prompt')).toBe('agents:view');
+    expect(requiredViewPermForPath('/flow-editor')).toBe('flows:view');
+    expect(requiredViewPermForPath('/channels')).toBe('channels:view');
+    expect(requiredViewPermForPath('/marketplace')).toBe('marketplace:view');
+    expect(requiredViewPermForPath('/reliability')).toBe('reliability:view');
+  });
 
-	test('section sub-resources map to sub view perm (longest prefix beats parent)', () => {
-		expect(requiredViewPermForPath('/crm/insights')).toBe('crm.insights:view');
-		expect(requiredViewPermForPath('/finances/products')).toBe('finance.products:view');
-		expect(requiredViewPermForPath('/scheduling/event-types/x')).toBe('scheduling.event-types:view');
-		// a CRM subpath with no registered sub-resource falls back to the parent
-		expect(requiredViewPermForPath('/crm/customers')).toBe('crm:view');
-	});
+  test('section sub-resources map to sub view perm (longest prefix beats parent)', () => {
+    expect(requiredViewPermForPath('/crm/insights')).toBe('crm.insights:view');
+    expect(requiredViewPermForPath('/finances/purchases')).toBe('finance.purchases:view');
+    expect(requiredViewPermForPath('/scheduling/event-types/x')).toBe(
+      'scheduling.event-types:view',
+    );
+    // a CRM subpath with no registered sub-resource falls back to the parent
+    expect(requiredViewPermForPath('/crm/customers')).toBe('crm:view');
+  });
 
-	test('deliberately ungated routes stay open (personal/admin-own-guard/universal)', () => {
-		expect(requiredViewPermForPath('/overview')).toBeNull();
-		expect(requiredViewPermForPath('/home')).toBeNull();
-		expect(requiredViewPermForPath('/settings')).toBeNull();
-		expect(requiredViewPermForPath('/settings/roles')).toBeNull();
-		expect(requiredViewPermForPath('/team')).toBeNull(); // requireOrgCapability(users,manage) on the page
-		expect(requiredViewPermForPath('/crmfoo')).toBeNull(); // not a real prefix boundary
-	});
+  test('deliberately ungated routes stay open (personal/admin-own-guard/universal)', () => {
+    expect(requiredViewPermForPath('/overview')).toBeNull();
+    expect(requiredViewPermForPath('/home')).toBeNull();
+    expect(requiredViewPermForPath('/settings')).toBeNull();
+    expect(requiredViewPermForPath('/settings/roles')).toBeNull();
+    expect(requiredViewPermForPath('/team')).toBeNull(); // requireOrgCapability(users,manage) on the page
+    expect(requiredViewPermForPath('/crmfoo')).toBeNull(); // not a real prefix boundary
+  });
 });
