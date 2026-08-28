@@ -36,12 +36,12 @@ import { describe, expect, it, vi } from 'vitest';
  * test drives two DISTINCT physical connections so its race is genuine
  * network-level concurrency rather than two calls serialized on one socket.
  *
- * fin_products/stk_items/stk_bins/stk_consumption/fin_product_components/
- * stk_ledger/stk_entry_lines all have in-repo CREATE TABLE migrations (unlike
- * organizations/crm_activities — see hub-supabase-schema-not-reproducible.md).
- * `fin_invoice_items` does not, so the columns this suite touches (org_id,
- * code, product_id) are mirrored from `pg-finance-schema.ts` below. No
- * full-schema database is required.
+ * fin_products/stk_items/stk_warehouses/stk_bins/stk_consumption/
+ * fin_product_components/stk_ledger/stk_entry_lines all have in-repo CREATE
+ * TABLE migrations (unlike organizations/crm_activities — see
+ * hub-supabase-schema-not-reproducible.md). `fin_invoice_items` does not, so
+ * the columns this suite touches (org_id, code, product_id) are mirrored from
+ * `pg-finance-schema.ts` below. No full-schema database is required.
  */
 const databaseUrl =
   process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
@@ -69,7 +69,17 @@ const ORG_ID = 'org-pos-integration';
 const ACTOR = { id: 'u1', name: 'Integration Tester' };
 
 /** Columns mirrored from the in-repo migrations / drizzle schema for the
- *  tables these paths read and write. */
+ *  tables these paths read and write.
+ *
+ *  ★ These are FULL row contracts, not just the columns an assertion reads
+ *  back. A drizzle insert names every column of the values object it is
+ *  given, so a fixture table that merely omits a column the shipped writer
+ *  always sends fails the whole statement with 42703 (`column … does not
+ *  exist`) — the suite would then be reporting a fixture defect as a
+ *  behavioural one. `stk_entry_lines` is the live example: `linesToRows`
+ *  (stock.service.ts) always emits from_warehouse_id/to_warehouse_id, so both
+ *  must exist here, with their real `stk_warehouses` foreign keys, for
+ *  createEntry to run at all. */
 const DDL = `
   create table fin_products (
     id uuid primary key default gen_random_uuid(),
@@ -112,10 +122,18 @@ const DDL = `
     unique (org_id, code),
     unique (org_id, fin_product_id)
   );
+  create table stk_warehouses (
+    id uuid primary key default gen_random_uuid(),
+    org_id text not null,
+    name text not null,
+    parent_id uuid references stk_warehouses (id),
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  );
   create table stk_bins (
     org_id text not null,
     item_id uuid not null references stk_items (id),
-    warehouse_id uuid not null,
+    warehouse_id uuid not null references stk_warehouses (id),
     qty numeric not null default 0,
     valuation_rate numeric not null default 0,
     updated_at timestamptz not null default now(),
@@ -138,18 +156,20 @@ const DDL = `
   create table stk_entry_lines (
     id uuid primary key default gen_random_uuid(),
     org_id text not null,
-    entry_id uuid not null,
+    entry_id uuid not null references stk_entries (id) on delete cascade,
     item_id uuid not null references stk_items (id),
     qty numeric not null,
     uom text,
     rate numeric,
+    from_warehouse_id uuid references stk_warehouses (id),
+    to_warehouse_id uuid references stk_warehouses (id),
     line_no integer not null default 0
   );
   create table stk_ledger (
     id bigserial primary key,
     org_id text not null,
     item_id uuid not null references stk_items (id),
-    warehouse_id uuid not null,
+    warehouse_id uuid not null references stk_warehouses (id),
     qty_delta numeric not null,
     created_at timestamptz not null default now()
   );
