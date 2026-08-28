@@ -1,8 +1,8 @@
 // src/server/services/finance.service.ts
-import { and, asc, eq, desc, sql, inArray } from 'drizzle-orm';
+import { and, eq, desc, sql, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { stkItems } from '$server/db/pg-schema/stock';
+import { lockItemsAgainstUomChange } from './stock.service';
 import {
   finInvoices,
   finInvoiceItems,
@@ -320,9 +320,10 @@ export async function upsertInvoicesBatch(
     // which is exactly the resolved id written below) before renaming its uom.
     // Without this lock a product could gain a fresh fin_invoice_items row
     // between that check and the uom write, leaving the newly-billed quantity
-    // ambiguous under the renamed unit. Share mode
-    // (sorted by id, same convention as stock.service.ts's
-    // lockItemsAgainstUomChange) keeps concurrent connector syncs parallel.
+    // ambiguous under the renamed unit. Delegates to stock.service.ts's
+    // lockItemsAgainstUomChange (matched by finProductId here, not id) so this
+    // writer and createEntry/updateEntry serialize through the SAME query
+    // shape rather than two independently-drifting implementations.
     const billedProductIds = [
       ...new Set(
         pending.flatMap((inv) =>
@@ -333,14 +334,7 @@ export async function upsertInvoicesBatch(
       ),
     ].sort();
     if (billedProductIds.length) {
-      await tx
-        .select({ id: stkItems.id })
-        .from(stkItems)
-        .where(
-          and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.finProductId, billedProductIds)),
-        )
-        .orderBy(asc(stkItems.id))
-        .for('share');
+      await lockItemsAgainstUomChange(tx, ctx.tenantId, billedProductIds, 'finProductId');
     }
     await tx.delete(finInvoiceItems).where(inArray(finInvoiceItems.invoiceId, invoiceIds));
     const itemRows = pending.flatMap((inv) => {

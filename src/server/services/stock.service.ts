@@ -722,18 +722,26 @@ async function writeBins(tx: CoreTx, orgId: string, bins: Map<string, BinState>)
  * same item fully parallel with each other. Call this BEFORE inserting any
  * row that `itemHasHistory` treats as history (stk_entry_lines, including
  * drafts — see submitEntry's identical use for the submitted/ledger side).
+ *
+ * `by` selects the matching column: `'id'` for createEntry/updateEntry's own
+ * item ids (default), `'finProductId'` for finance.service.ts's
+ * upsertInvoicesBatch, which only knows the billed line's linked product id.
+ * Exported so both writers serialize through the SAME query shape rather than
+ * two independently-drifting implementations of the same lock protocol.
  */
-async function lockItemsAgainstUomChange(
+export async function lockItemsAgainstUomChange(
   tx: CoreTx,
   orgId: string,
-  itemIds: Iterable<string>,
+  ids: Iterable<string>,
+  by: 'id' | 'finProductId' = 'id',
 ): Promise<Set<string>> {
-  const ids = [...new Set(itemIds)].sort();
-  if (!ids.length) return new Set();
+  const values = [...new Set(ids)].sort();
+  if (!values.length) return new Set();
+  const column = by === 'id' ? stkItems.id : stkItems.finProductId;
   const rows = await tx
     .select({ id: stkItems.id })
     .from(stkItems)
-    .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, ids)))
+    .where(and(eq(stkItems.orgId, orgId), inArray(column, values)))
     .orderBy(asc(stkItems.id))
     .for('share');
   return new Set(rows.map((r) => r.id));

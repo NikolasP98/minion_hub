@@ -57,10 +57,11 @@ vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: <T>(
     scope: { db: { transaction: (fn: (tx: unknown) => Promise<T>) => Promise<T> } },
     fn: (tx: never) => Promise<T>,
-  ) => (fn as (tx: unknown) => Promise<T>)((scope as any).db),
+  ) => scope.db.transaction((tx) => (fn as (tx: unknown) => Promise<T>)(tx)),
 }));
 
 const { createSellable, updateSellable, PosError } = await import('./pos.service');
+const { createEntry } = await import('./stock.service');
 
 type Client = ReturnType<typeof postgres>;
 
@@ -119,6 +120,20 @@ const DDL = `
     valuation_rate numeric not null default 0,
     updated_at timestamptz not null default now(),
     primary key (org_id, item_id, warehouse_id)
+  );
+  create table stk_entries (
+    id uuid primary key default gen_random_uuid(),
+    org_id text not null,
+    human_id text,
+    type text not null,
+    status text not null default 'draft',
+    party_id uuid,
+    note text,
+    posted_at timestamptz,
+    created_by text,
+    metadata jsonb not null default '{}',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
   );
   create table stk_entry_lines (
     id uuid primary key default gen_random_uuid(),
@@ -243,6 +258,32 @@ function messageChain(e: unknown): string {
   return parts.join(' | ');
 }
 
+async function backendPid(client: Client): Promise<number> {
+  const [row] = await client.unsafe<{ pid: number }[]>('select pg_backend_pid() as pid');
+  return row!.pid;
+}
+
+/** Block until every backend in `pids` is actually parked waiting on a lock
+ *  (`pg_stat_activity.wait_event_type = 'Lock'`) — not just "the promise has
+ *  been fired". Only once BOTH racers are genuinely queued behind the same
+ *  held row lock is releasing that lock a real barrier-synchronized start,
+ *  rather than a race whose outcome depends on which connection's network
+ *  round trip happened to land first. */
+async function waitUntilBlocked(owner: Client, pids: number[], timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const [row] = await owner.unsafe<{ n: number }[]>(
+      `select count(*)::int as n from pg_stat_activity
+       where pid in (${pids.join(',')}) and wait_event_type = 'Lock'`,
+    );
+    if (row!.n === pids.length) return;
+    if (Date.now() > deadline) {
+      throw new Error(`timed out waiting for backends [${pids.join(',')}] to block on the row lock`);
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
 /** Strip the values that legitimately differ between two independently
  *  generated rows, so everything else must match exactly. */
 function stableRow(row: Record<string, unknown> | undefined, drop: string[]) {
@@ -364,6 +405,78 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
         [productId],
       );
       expect(product).toMatchObject({ name: 'Botox' });
+    });
+  }, 30_000);
+
+  // The lock-protocol ship gate: applyUomChange's `for('update')` and
+  // createEntry's lockItemsAgainstUomChange `for('share')` (see both doc
+  // comments in pos.service.ts/stock.service.ts) must serialize a UOM PATCH
+  // against a concurrent draft-entry write that would otherwise count as
+  // history landing mid-check. A THIRD connection holds the row's lock BEFORE
+  // either racer starts and only releases it once both backends are actually
+  // parked waiting (`waitUntilBlocked`) — genuine simultaneous contention
+  // decided by PostgreSQL's own lock queue, not by which network round trip
+  // happens to land first.
+  it('LOCK PROTOCOL: a UOM PATCH racing a concurrent draft-entry write on the same item serializes — either the entry lands as history and the UOM change is refused, or the UOM change commits first and the entry commits after it', async () => {
+    await withSchema(2, async ({ schema, owner, clients }) => {
+      const productId = crypto.randomUUID();
+      const itemId = crypto.randomUUID();
+      await owner.unsafe(
+        `insert into fin_products (id, org_id, code, name, category, unit_price, active)
+         values ($1, $2, 'RACE', 'Racer', null, 100, true)`,
+        [productId, ORG_ID],
+      );
+      await owner.unsafe(
+        `insert into stk_items (id, org_id, code, name, uom, fin_product_id)
+         values ($1, $2, 'RACE', 'Racer', 'unit', $3)`,
+        [itemId, ORG_ID, productId],
+      );
+
+      const uomPid = await backendPid(clients[0]!);
+      const entryPid = await backendPid(clients[1]!);
+
+      await owner.unsafe('begin');
+      await owner.unsafe(`select id from ${schema}.stk_items where id = $1 for update`, [itemId]);
+
+      const uomPromise = updateSellable(ctxFor(clients[0]!), productId, { uom: 'mL' }, ACTOR);
+      const entryPromise = createEntry(
+        ctxFor(clients[1]!),
+        { type: 'receipt', lines: [{ itemId, qty: 5 }] },
+        ACTOR,
+      );
+
+      await waitUntilBlocked(owner, [uomPid, entryPid]);
+      await owner.unsafe('commit');
+
+      const [uomResult, entryResult] = await Promise.allSettled([uomPromise, entryPromise]);
+
+      // The draft-entry writer is never the party this protocol refuses — it
+      // only ever serializes around the UOM change, so it must always succeed.
+      expect(entryResult.status).toBe('fulfilled');
+
+      const [item] = await owner.unsafe<{ uom: string }[]>(
+        `select uom from ${schema}.stk_items where id = $1`,
+        [itemId],
+      );
+      const lines = await owner.unsafe<{ id: string }[]>(
+        `select id from ${schema}.stk_entry_lines where item_id = $1`,
+        [itemId],
+      );
+      expect(lines).toHaveLength(1);
+
+      if (uomResult.status === 'fulfilled') {
+        // The UOM change won the lock race and committed before the entry's
+        // line could land — no history existed yet to reinterpret.
+        expect(item).toMatchObject({ uom: 'mL' });
+      } else {
+        // The entry's draft line won the lock race, committed first, and now
+        // counts as history — the UOM change must have been refused, and the
+        // pre-race uom must still stand, exactly as if it had run strictly
+        // after the entry rather than concurrently with it.
+        expect(uomResult.reason).toBeInstanceOf(PosError);
+        expect(uomResult.reason).toMatchObject({ code: 'uom_immutable' });
+        expect(item).toMatchObject({ uom: 'unit' });
+      }
     });
   }, 30_000);
 
