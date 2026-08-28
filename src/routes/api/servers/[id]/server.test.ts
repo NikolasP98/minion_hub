@@ -43,13 +43,15 @@ vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
 }));
 
-// Turso fallback rows consulted only for servers unbridged from the Supabase
-// gateway registry — one row per test, set via `fakeDbRows`.
+// Turso rows returned by the tenant check and, for unbridged non-admins, the
+// subsequent personal-link check. Most tests use `fakeDbRows`; the two-query
+// cases enqueue distinct results in `fakeDbRowQueue`.
 let fakeDbRows: Array<Record<string, unknown>>;
+let fakeDbRowQueue: Array<Array<Record<string, unknown>>>;
 const fakeDb = {
   select: () => ({
     from: () => ({
-      where: () => Promise.resolve(fakeDbRows),
+      where: () => Promise.resolve(fakeDbRowQueue.shift() ?? fakeDbRows),
     }),
   }),
 };
@@ -72,7 +74,8 @@ describe('PUT /api/servers/[id] — tenant boundary', () => {
     mocks.userHasGatewayAccess.mockReset().mockResolvedValue(false);
     mocks.updateServer.mockReset().mockResolvedValue('server-1');
     mocks.deleteServer.mockReset().mockResolvedValue(undefined);
-    fakeDbRows = [];
+    fakeDbRows = [{ id: 'server-1' }];
+    fakeDbRowQueue = [];
   });
 
   // The regression H1 asked for: an admin of org-a supplying org-b's (bridged)
@@ -97,6 +100,42 @@ describe('PUT /api/servers/[id] — tenant boundary', () => {
       'server-1',
       expect.objectContaining({ name: 'renamed' }),
     );
+  });
+
+  test('404s when the bridged gateway matches the org but its Turso row does not', async () => {
+    mocks.gatewayBelongsToOrg.mockResolvedValue(true);
+    fakeDbRows = [];
+
+    const response = await PUT(event());
+
+    expect(response.status).toBe(404);
+    expect(mocks.updateServer).not.toHaveBeenCalled();
+  });
+
+  test('bridged server: non-admin still needs their personal gateway link', async () => {
+    currentUser = { id: 'user-2', role: 'user', supabaseId: 'profile-2' };
+    mocks.gatewayBelongsToOrg.mockResolvedValue(true);
+    mocks.userHasGatewayAccess.mockResolvedValue(false);
+
+    const denied = await PUT(event());
+    expect(denied.status).toBe(404);
+    expect(mocks.updateServer).not.toHaveBeenCalled();
+
+    mocks.userHasGatewayAccess.mockResolvedValue(true);
+    const allowed = await PUT(event());
+    expect(allowed.status).toBe(200);
+    expect(mocks.updateServer).toHaveBeenCalled();
+  });
+
+  test('bridged server: fails closed when the personal-link lookup throws', async () => {
+    currentUser = { id: 'user-2', role: 'user', supabaseId: 'profile-2' };
+    mocks.gatewayBelongsToOrg.mockResolvedValue(true);
+    mocks.userHasGatewayAccess.mockRejectedValue(new Error('ECONNRESET'));
+
+    const response = await PUT(event());
+
+    expect(response.status).toBe(503);
+    expect(mocks.updateServer).not.toHaveBeenCalled();
   });
 
   test('fails closed (503) when the gateway registry throws', async () => {
@@ -131,13 +170,23 @@ describe('PUT /api/servers/[id] — tenant boundary', () => {
   test('unbridged server: non-admin without any personal link is denied', async () => {
     currentUser = { id: 'user-2', role: 'user', supabaseId: 'profile-2' };
     mocks.resolveGatewayId.mockResolvedValue(null);
-    mocks.userHasGatewayAccess.mockResolvedValue(false);
-    fakeDbRows = []; // userServers link lookup
+    fakeDbRowQueue = [[{ id: 'server-1' }], []];
 
     const response = await PUT(event());
 
     expect(response.status).toBe(404);
     expect(mocks.updateServer).not.toHaveBeenCalled();
+  });
+
+  test('unbridged server: non-admin with an in-tenant personal link is allowed', async () => {
+    currentUser = { id: 'user-2', role: 'user', supabaseId: 'profile-2' };
+    mocks.resolveGatewayId.mockResolvedValue(null);
+    fakeDbRowQueue = [[{ id: 'server-1' }], [{ serverId: 'server-1' }]];
+
+    const response = await PUT(event());
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateServer).toHaveBeenCalled();
   });
 
   // M2: an admin who clears the tenant-boundary check but supplies a stale or
@@ -157,8 +206,10 @@ describe('DELETE /api/servers/[id] — tenant boundary', () => {
     currentUser = { id: 'user-1', role: 'admin', supabaseId: 'profile-1' };
     mocks.gatewayBelongsToOrg.mockReset();
     mocks.resolveGatewayId.mockReset().mockResolvedValue('gateway-1');
+    mocks.userHasGatewayAccess.mockReset().mockResolvedValue(false);
     mocks.deleteServer.mockReset().mockResolvedValue(undefined);
-    fakeDbRows = [];
+    fakeDbRows = [{ id: 'server-1' }];
+    fakeDbRowQueue = [];
   });
 
   test('404s a bridged server assigned to a foreign org, admin included', async () => {
@@ -176,6 +227,20 @@ describe('DELETE /api/servers/[id] — tenant boundary', () => {
     const response = await DELETE(event());
 
     expect(response.status).toBe(200);
+    expect(mocks.deleteServer).toHaveBeenCalled();
+  });
+
+  test('bridged server: non-admin delete still requires their personal gateway link', async () => {
+    currentUser = { id: 'user-2', role: 'user', supabaseId: 'profile-2' };
+    mocks.gatewayBelongsToOrg.mockResolvedValue(true);
+
+    const denied = await DELETE(event());
+    expect(denied.status).toBe(404);
+    expect(mocks.deleteServer).not.toHaveBeenCalled();
+
+    mocks.userHasGatewayAccess.mockResolvedValue(true);
+    const allowed = await DELETE(event());
+    expect(allowed.status).toBe(200);
     expect(mocks.deleteServer).toHaveBeenCalled();
   });
 });

@@ -31,13 +31,11 @@ export interface ServerInput {
  *
  * That is no longer the trust boundary, though: the cross-tenant write this
  * comment used to describe is closed at the caller — `assertOwnsOrAdmin()` in
- * src/routes/api/servers/[id]/+server.ts resolves the target id against the
- * Supabase gateway registry (org-scoped, independent of the Turso re-key) and,
- * for rows not yet bridged into that registry, falls back to a Turso
- * `servers.tenantId` *authorization check* (not this mutation's predicate) —
- * a mismatch there denies with 404 rather than no-op'ing. `updateServer` itself
- * is only ever reached once that check has passed, for any caller, admin
- * included.
+ * src/routes/api/servers/[id]/+server.ts requires both the Supabase gateway
+ * organization (when bridged) and the Turso row's tenant to match before this
+ * mutation runs. Non-admins also need their personal gateway/server link. A
+ * mismatch denies with 404 rather than no-oping. `updateServer` is reached only
+ * after those checks pass, for every caller, admin included.
  *
  * Returns the updated row's id, or `null` if `id` did not match any row (the
  * caller should treat that as a 404, not a false `{ ok: true }`).

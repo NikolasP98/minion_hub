@@ -27,13 +27,15 @@ type AccessResult = { ok: true } | { ok: false; status: 404 | 503 };
  * through to Turso, because unlike that read path `updateServer`'s own WHERE
  * clause is not tenant-scoped (see its doc comment).
  *
- * Unbridged rows fall back to Turso: admins are scoped to `servers.tenantId ===
- * ctx.tenantId` (the same equality `getServerToken`/`listServers`/`deleteServer`
- * already apply safely — used here as an authorization *check*, so a legacy
- * un-re-keyed row denies with 404 instead of the silent no-op a WHERE-clause
- * predicate would risk); non-admins keep the existing personal-link check
- * (Supabase `user_gateway`, falling back to the legacy Turso `user_servers`
- * link during bake-in so no one loses access mid-cutover).
+ * Every mutation also requires the Turso row to belong to `ctx.tenantId`. This
+ * closes a bridge-drift edge case where a gateway assignment and its legacy
+ * Turso row temporarily disagree: the route must satisfy both authorities
+ * before it calls the still-id-only `updateServer` mutation. A legacy
+ * un-re-keyed row therefore denies with 404 instead of silently no-oping.
+ *
+ * Admins stop after those org and tenant checks. Non-admins additionally need
+ * their existing personal link: Supabase `user_gateway` for bridged rows, or
+ * the legacy Turso `user_servers` link for unbridged rows during bake-in.
  */
 async function assertOwnsOrAdmin(
   ctx: import('$server/services/base').TenantContext,
@@ -51,23 +53,34 @@ async function assertOwnsOrAdmin(
 
   if (gatewayId) {
     try {
-      return (await gatewayBelongsToOrg(serverId, orgId))
-        ? { ok: true }
-        : { ok: false, status: 404 };
+      if (!(await gatewayBelongsToOrg(serverId, orgId))) {
+        return { ok: false, status: 404 };
+      }
     } catch (err) {
       console.warn(`[servers/${serverId}] gateway org-scope lookup failed`, err);
       return { ok: false, status: 503 };
     }
   }
 
-  if (user.role === 'admin') {
-    const [row] = await ctx.db
-      .select({ id: servers.id })
-      .from(servers)
-      .where(and(eq(servers.id, serverId), eq(servers.tenantId, ctx.tenantId)));
-    return row ? { ok: true } : { ok: false, status: 404 };
+  const [tenantRow] = await ctx.db
+    .select({ id: servers.id })
+    .from(servers)
+    .where(and(eq(servers.id, serverId), eq(servers.tenantId, ctx.tenantId)));
+  if (!tenantRow) return { ok: false, status: 404 };
+
+  if (user.role === 'admin') return { ok: true };
+
+  if (gatewayId) {
+    try {
+      return (await userHasGatewayAccess(user.supabaseId ?? null, serverId))
+        ? { ok: true }
+        : { ok: false, status: 404 };
+    } catch (err) {
+      console.warn(`[servers/${serverId}] gateway user-scope lookup failed`, err);
+      return { ok: false, status: 503 };
+    }
   }
-  if (await userHasGatewayAccess(user.supabaseId ?? null, serverId)) return { ok: true };
+
   const [link] = await ctx.db
     .select({ serverId: userServers.serverId })
     .from(userServers)
