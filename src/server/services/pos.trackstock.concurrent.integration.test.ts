@@ -43,21 +43,23 @@ vi.mock('$server/db/with-org-core', () => ({
 
 const { updateSellable, PosError } = await import('./pos.service');
 
-describe.runIf(Boolean(databaseUrl))('updateSellable trackStock transition against PostgreSQL', () => {
-  it('two concurrent {trackStock:true} PATCHes on the same sellable: exactly one wins, the loser gets item_taken, no partial product write', async () => {
-    const schema = `pos_trackstock_${process.pid}_${Math.random().toString(36).slice(2)}`;
-    const owner = postgres(databaseUrl!, { max: 1, prepare: false });
-    const client1 = postgres(databaseUrl!, { max: 1, prepare: false });
-    const client2 = postgres(databaseUrl!, { max: 1, prepare: false });
-    const orgId = 'org-race';
-    const productId = crypto.randomUUID();
+describe.runIf(Boolean(databaseUrl))(
+  'updateSellable trackStock transition against PostgreSQL',
+  () => {
+    it('two concurrent {trackStock:true} PATCHes on the same sellable: exactly one wins, the loser gets item_taken, no partial product write', async () => {
+      const schema = `pos_trackstock_${process.pid}_${Math.random().toString(36).slice(2)}`;
+      const owner = postgres(databaseUrl!, { max: 1, prepare: false });
+      const client1 = postgres(databaseUrl!, { max: 1, prepare: false });
+      const client2 = postgres(databaseUrl!, { max: 1, prepare: false });
+      const orgId = 'org-race';
+      const productId = crypto.randomUUID();
 
-    try {
-      await owner.unsafe(`create schema ${schema}`);
-      for (const client of [owner, client1, client2]) {
-        await client.unsafe(`set search_path to ${schema}, public`);
-      }
-      await owner.unsafe(`
+      try {
+        await owner.unsafe(`create schema ${schema}`);
+        for (const client of [owner, client1, client2]) {
+          await client.unsafe(`set search_path to ${schema}, public`);
+        }
+        await owner.unsafe(`
         create table fin_products (
           id uuid primary key,
           org_id text not null,
@@ -130,53 +132,55 @@ describe.runIf(Boolean(databaseUrl))('updateSellable trackStock transition again
           updated_at timestamptz not null default now()
         );
       `);
-      await owner.unsafe(
-        `insert into fin_products (id, org_id, code, name, category, unit_price, active)
+        await owner.unsafe(
+          `insert into fin_products (id, org_id, code, name, category, unit_price, active)
          values ($1, $2, 'CONS', 'Consulta', null, null, true)`,
-        [productId, orgId],
-      );
+          [productId, orgId],
+        );
 
-      const actor = { id: 'u1', name: 'Race Tester' };
-      const ctx1 = { db: drizzle(client1) as never, tenantId: orgId };
-      const ctx2 = { db: drizzle(client2) as never, tenantId: orgId };
+        const actor = { id: 'u1', name: 'Race Tester' };
+        const ctx1 = { db: drizzle(client1) as never, tenantId: orgId };
+        const ctx2 = { db: drizzle(client2) as never, tenantId: orgId };
 
-      const results = await Promise.allSettled([
-        updateSellable(ctx1, productId, { trackStock: true }, actor),
-        updateSellable(ctx2, productId, { trackStock: true }, actor),
-      ]);
+        const results = await Promise.allSettled([
+          updateSellable(ctx1, productId, { trackStock: true }, actor),
+          updateSellable(ctx2, productId, { trackStock: true }, actor),
+        ]);
 
-      const fulfilled = results.filter((r) => r.status === 'fulfilled');
-      const rejected = results.filter((r) => r.status === 'rejected');
-      expect(fulfilled).toHaveLength(1);
-      expect(rejected).toHaveLength(1);
+        const fulfilled = results.filter((r) => r.status === 'fulfilled');
+        const rejected = results.filter((r) => r.status === 'rejected');
+        expect(fulfilled).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
 
-      const winner = (fulfilled[0] as PromiseFulfilledResult<Awaited<ReturnType<typeof updateSellable>>>)
-        .value;
-      expect(winner.kind).toBe('product');
-      expect(winner.itemId).not.toBeNull();
+        const winner = (
+          fulfilled[0] as PromiseFulfilledResult<Awaited<ReturnType<typeof updateSellable>>>
+        ).value;
+        expect(winner.kind).toBe('product');
+        expect(winner.itemId).not.toBeNull();
 
-      const loserReason = (rejected[0] as PromiseRejectedResult).reason;
-      expect(loserReason).toBeInstanceOf(PosError);
-      expect(loserReason).toMatchObject({ code: 'item_taken' });
+        const loserReason = (rejected[0] as PromiseRejectedResult).reason;
+        expect(loserReason).toBeInstanceOf(PosError);
+        expect(loserReason).toMatchObject({ code: 'item_taken' });
 
-      const items = await owner.unsafe<{ id: string }[]>(
-        `select id from ${schema}.stk_items where fin_product_id = $1`,
-        [productId],
-      );
-      expect(items).toHaveLength(1);
+        const items = await owner.unsafe<{ id: string }[]>(
+          `select id from ${schema}.stk_items where fin_product_id = $1`,
+          [productId],
+        );
+        expect(items).toHaveLength(1);
 
-      const [product] = await owner.unsafe<{ code: string; name: string }[]>(
-        `select code, name from ${schema}.fin_products where id = $1`,
-        [productId],
-      );
-      expect(product).toMatchObject({ code: 'CONS', name: 'Consulta' });
-    } finally {
-      await owner.unsafe(`drop schema if exists ${schema} cascade`);
-      await Promise.all([
-        owner.end({ timeout: 5 }),
-        client1.end({ timeout: 5 }),
-        client2.end({ timeout: 5 }),
-      ]);
-    }
-  }, 30_000);
-});
+        const [product] = await owner.unsafe<{ code: string; name: string }[]>(
+          `select code, name from ${schema}.fin_products where id = $1`,
+          [productId],
+        );
+        expect(product).toMatchObject({ code: 'CONS', name: 'Consulta' });
+      } finally {
+        await owner.unsafe(`drop schema if exists ${schema} cascade`);
+        await Promise.all([
+          owner.end({ timeout: 5 }),
+          client1.end({ timeout: 5 }),
+          client2.end({ timeout: 5 }),
+        ]);
+      }
+    }, 30_000);
+  },
+);
