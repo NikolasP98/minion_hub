@@ -9,7 +9,6 @@
   // ~0.3-1.5s later once requestIdleCallback fires (that gap read as "the
   // hover pill isn't there" — regression from the P2 boot-diet commit,
   // which mis-grouped it with the genuinely invoke-only overlays).
-  import FloatingAssistant from '$lib/components/layout/FloatingAssistant.svelte';
   import { type Snippet } from 'svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
@@ -43,8 +42,9 @@
   // Overlay chrome (palette, shortcuts, g-nav, live-run) is invisible until
   // invoked — mount after first idle so their chunks stay off the shell's
   // hydration path. Hotkeys go live once mounted (≤1.5s). FloatingAssistant
-  // is imported eagerly above — it is NOT invoked-only, its launcher pill is
-  // always-visible chrome.
+  // joins the idle group too: its launcher pill is always-visible chrome, but a
+  // ≤1.5s late pill is a fair trade for keeping its import graph (carta-md +
+  // KaTeX + the whole chat state, ~340KB) out of the shell chunk.
   let idleReady = $state(false);
 
   onMount(() => {
@@ -90,9 +90,10 @@
     </div>
   </AppViewport>
 
-  <FloatingAssistant />
-
   {#if idleReady}
+    {#await import('$lib/components/layout/FloatingAssistant.svelte') then { default: FloatingAssistant }}
+      <FloatingAssistant />
+    {/await}
     {#await import('$lib/components/layout/CommandPalette.svelte') then { default: CommandPalette }}
       <CommandPalette />
     {/await}

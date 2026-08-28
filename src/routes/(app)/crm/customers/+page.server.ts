@@ -2,48 +2,109 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
-import { listContactsCached, listTags } from '$server/services/crm-contacts.service';
+import {
+  rankContactsPageCached,
+  listTags,
+  getMetaKeys,
+  listContactChannels,
+  type RankFilters,
+} from '$server/services/crm-contacts.service';
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
-import { contactFinanceMap } from '$server/services/crm-finance.service';
+import { ServerTiming } from '$lib/server/server-timing';
 
-export const load: PageServerLoad = async ({ locals, depends, parent }) => {
+/** Server-mode page size — mirrored by the page's request manager. */
+const PAGE_SIZE = 100;
+
+/**
+ * URL → server filters. The page persists its complete filter state in the URL
+ * (shareable links, reload-safe), and both this SSR load and the client
+ * request manager resolve rows through the same `rankContactsPage` contract as
+ * `GET /api/crm/contacts`.
+ */
+function filtersFromUrl(q: URLSearchParams): RankFilters {
+  const csv = (k: string) => q.get(k) || undefined;
+  const num = (k: string) => (q.has(k) ? Number(q.get(k)) : undefined);
+  let minScore = num('scoreMin');
+  let maxScore = num('scoreMax');
+  // Temperature is a score band (hot ≥75, warm 50–74, cold <50) — fold it into
+  // the score range by intersection so temp + explicit range compose.
+  const temp = q.get('temp');
+  if (temp === 'hot') minScore = Math.max(minScore ?? 75, 75);
+  else if (temp === 'warm') {
+    minScore = Math.max(minScore ?? 50, 50);
+    maxScore = Math.min(maxScore ?? 74, 74);
+  } else if (temp === 'cold') maxScore = Math.min(maxScore ?? 49, 49);
+  const SORTS = new Set(['score', 'recent', 'frequency', 'name', 'revenue', 'icp']);
+  const sort = q.get('sort');
+  const pageNum = Math.max(1, num('page') ?? 1);
+  return {
+    search: q.get('q') || undefined,
+    stage: csv('stage'),
+    funnelStage: csv('funnel'),
+    channel: csv('channel'),
+    origin: csv('origin'),
+    verified: csv('verified'),
+    sex: csv('sex'),
+    tagId: q.get('tag') || undefined,
+    reservedOnly: q.get('reserved') === '1' || undefined,
+    awaitingReply: q.get('awaiting') === '1' || undefined,
+    minScore,
+    maxScore,
+    sort: sort && SORTS.has(sort) ? (sort as RankFilters['sort']) : undefined,
+    sortDir: q.get('dir') === 'asc' ? 'asc' : q.get('dir') === 'desc' ? 'desc' : undefined,
+    limit: PAGE_SIZE,
+    maxLimit: PAGE_SIZE,
+    offset: (pageNum - 1) * PAGE_SIZE,
+  };
+}
+
+export const load: PageServerLoad = async ({ locals, depends, parent, url, setHeaders }) => {
+  const timing = new ServerTiming();
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('crm:contacts');
-  // Personal orgs de-emphasize the sales funnel (WP2) — the revenue-ranked
-  // finance columns (revenue/invoices/lastPurchase) aren't rendered for them,
-  // so skip the finance-map query entirely.
-  const { activeOrgKind } = await parent();
-  const isPersonal = activeOrgKind === 'personal';
 
-  // The full roster is loaded ONCE (Valkey-cached) and all search/stage/tag/sort
-  // filtering happens client-side — instant, no Apply button, no per-keystroke
-  // round-trip. Mutations bust the cache tag so the list refreshes. Record-level
-  // (if-owner) scope restricts the roster to the caller's own contacts.
-  const [ownerId, maskSensitive] = await Promise.all([
-    ownerFilter(locals, 'crm'),
-    shouldMaskSensitive(locals, 'crm'),
-  ]);
-  const [cached, tags] = await Promise.all([
-    listContactsCached(ctx, ownerId, maskSensitive),
-    listTags(ctx),
+  // Server-mode page (spec 2026-08-13 §S5): ONE page of rows, never the
+  // roster — the old full-roster path shipped a 12MB devalue payload per
+  // visit. Every later interaction is a scoped GET /api/crm/contacts.
+  const parentP = parent();
+  const [ownerId, maskSensitive] = await timing.measure('crm_authz', () =>
+    Promise.all([ownerFilter(locals, 'crm'), shouldMaskSensitive(locals, 'crm')]),
+  );
+  const filters: RankFilters = { ...filtersFromUrl(url.searchParams), ownerId, maskSensitive };
+
+  const [pageRes, tags, metaKeys, channels, parentData] = await Promise.all([
+    timing.measure('crm_rank', () => rankContactsPageCached(ctx, filters)),
+    timing.measure('crm_tags', () => listTags(ctx)),
+    // Meta columns come from the org-wide distinct-key set, not from scanning
+    // shipped rows (the page only has 100 of them now).
+    timing.measure('crm_meta', () => getMetaKeys(ctx)),
+    timing.measure('crm_channels', () => listContactChannels(ctx)),
+    timing.measure('crm_parent', () => parentP),
   ]);
 
-  // Auto-tags are evaluated LIVE against each scored row (never stored), so the
-  // tag filter can match them just like manual tags. Cheap: a few rules × N rows.
+  // Decorate ONLY the returned page — mirrors GET /api/crm/contacts so SSR and
+  // client-fetched pages are shape-identical.
   const autoTags = tags.filter((t) => t.kind === 'auto' && t.rule != null);
   const withAutoTags = autoTags.length
-    ? cached.map((c) => ({ ...c, auto_tag_ids: matchingAutoTagIds(c, autoTags) }))
-    : cached;
-
-  // Finance map is fetched AFTER the cached roster so the Valkey roster cache
-  // stays finance-free. Returns {} when either 'crm' or 'finances' module is off,
-  // or (WP2) when the org is personal — the revenue-ranked columns never render.
-  const financeMap = isPersonal ? {} : await contactFinanceMap(ctx);
-  const financeEnabled = Object.keys(financeMap).length > 0;
+    ? pageRes.rows.map((c) => ({ ...c, auto_tag_ids: matchingAutoTagIds(c, autoTags) }))
+    : pageRes.rows;
+  // Personal orgs de-emphasize the sales funnel (WP2). Finance decoration is
+  // already page-bounded in the rank query; hide it here without a second scan.
+  const financeEnabled = parentData.activeOrgKind !== 'personal' && pageRes.financeEnabled;
   const contacts = financeEnabled
-    ? withAutoTags.map((c) => ({ ...c, finance: financeMap[c.contact_id] ?? null }))
-    : withAutoTags;
+    ? withAutoTags
+    : withAutoTags.map(({ finance: _finance, ...contact }) => contact);
+  setHeaders({ 'Server-Timing': timing.headerValue() });
 
-  return { contacts, tags, orgId: ctx.tenantId, financeEnabled };
+  return {
+    contacts,
+    total: pageRes.total ?? pageRes.rows.length,
+    tags,
+    metaKeys,
+    channels,
+    orgId: ctx.tenantId,
+    financeEnabled,
+    pageSize: PAGE_SIZE,
+  };
 };

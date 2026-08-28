@@ -1,6 +1,12 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { invalidateTags, tags } from '@minion-stack/cache';
-import { canonicalSex, dniNameMatches, formatRegistryName, lookupDni, parseDob } from '@minion-stack/crm-sdk';
+import {
+  canonicalSex,
+  dniNameMatches,
+  formatRegistryName,
+  lookupDni,
+  parseDob,
+} from '@minion-stack/crm-sdk';
 import { withOrgCore } from '$server/db/with-org-core';
 import { parties, type Party } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
@@ -283,18 +289,20 @@ export type PartySearchRow = {
 /**
  * Typeahead search across the party spine (name / email / doc / phone), org-scoped.
  * `types` narrows by nature (e.g. ['person','company'] for a customer picker,
- * ['person','agent'] for an assignee/lead picker). Capped — this powers a picker,
- * not a report.
+ * ['person','agent'] for an assignee/lead picker). `verifiedOnly` powers the
+ * CRM picker's trusted empty-query view; typed searches intentionally omit it.
+ * Capped — this powers a picker, not a report.
  */
 export async function searchParties(
   ctx: CoreCtx,
   q: string,
-  opts: { types?: string[]; limit?: number } = {},
+  opts: { types?: string[]; limit?: number; verifiedOnly?: boolean } = {},
 ): Promise<PartySearchRow[]> {
   const term = q.trim();
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(parties.orgId, ctx.tenantId)];
     if (opts.types?.length) conds.push(inArray(parties.type, opts.types));
+    if (opts.verifiedOnly) conds.push(eq(parties.dniVerified, true));
     if (term) {
       const like = `%${term}%`;
       conds.push(
@@ -302,7 +310,14 @@ export async function searchParties(
       );
     }
     return tx
-      .select({ id: parties.id, name: parties.name, type: parties.type, email: parties.email, docNumber: parties.docNumber, phone9: parties.phone9 })
+      .select({
+        id: parties.id,
+        name: parties.name,
+        type: parties.type,
+        email: parties.email,
+        docNumber: parties.docNumber,
+        phone9: parties.phone9,
+      })
       .from(parties)
       .where(and(...conds))
       .orderBy(asc(parties.name))
@@ -391,7 +406,13 @@ export async function validatePendingDnis(
   ctx: CoreCtx,
   apiKey: string,
   limit = 25,
-): Promise<{ claimed: number; verified: number; mismatch: number; not_found: number; error: number }> {
+): Promise<{
+  claimed: number;
+  verified: number;
+  mismatch: number;
+  not_found: number;
+  error: number;
+}> {
   const claimed = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       update parties set

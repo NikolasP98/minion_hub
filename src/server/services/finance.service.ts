@@ -70,7 +70,17 @@ export function loadProductMap(ctx: CoreCtx): Promise<Map<string, string>> {
 }
 
 /** Upsert a whole page of canonical invoices in ONE org-scoped transaction using
- *  set-based multi-row statements. ~100× fewer round-trips than per-invoice. */
+ *  set-based multi-row statements. ~100× fewer round-trips than per-invoice.
+ *
+ *  Temporary SUSII → SUNAT bridge: SIRE is document-only, while the existing
+ *  SUSII invoice owns the richer operational line items. A SIRE row with the
+ *  same document_id is therefore attached as source metadata to that existing
+ *  invoice instead of inserted as a duplicate. The matched invoice never enters
+ *  the child replacement path below, so its SUSII items/payments stay intact.
+ *
+ *  TODO(handoff): Replace metadata.sourceOverlays with provider-neutral
+ *  fin_invoice_source_refs; see proposals/2026-08-20-hub-finance-provider-source-refs.md.
+ */
 export async function upsertInvoicesBatch(
   ctx: CoreCtx,
   invoices: CanonicalInvoice[],
@@ -83,9 +93,106 @@ export async function upsertInvoicesBatch(
   for (const inv of invoices) invMap.set(inv.providerRef, inv);
   const deduped = [...invMap.values()];
   await withOrgCore(ctx, async (tx) => {
+    let pending = deduped;
+    const overlays: Array<{ targetId: string; invoice: CanonicalInvoice }> = [];
+    const sunatCandidates = deduped.filter(
+      (inv) => inv.provider === 'sunat-sire' && inv.documentId != null,
+    );
+    if (sunatCandidates.length > 0) {
+      const incomingByDocument = new Map<string, CanonicalInvoice>();
+      for (const inv of sunatCandidates) {
+        const documentId = inv.documentId!;
+        if (incomingByDocument.has(documentId)) {
+          throw new Error(`ambiguous SUNAT document identity in one page: ${documentId}`);
+        }
+        incomingByDocument.set(documentId, inv);
+      }
+
+      const existing = await tx
+        .select({ id: finInvoices.id, documentId: finInvoices.documentId })
+        .from(finInvoices)
+        .where(
+          and(
+            eq(finInvoices.orgId, ctx.tenantId),
+            eq(finInvoices.provider, 'susii'),
+            inArray(finInvoices.documentId, [...incomingByDocument.keys()]),
+          ),
+        );
+      const targetByDocument = new Map<string, string>();
+      for (const row of existing) {
+        if (!row.documentId) continue;
+        if (targetByDocument.has(row.documentId)) {
+          throw new Error(`ambiguous SUSII document identity: ${row.documentId}`);
+        }
+        targetByDocument.set(row.documentId, row.id);
+      }
+
+      for (const inv of sunatCandidates) {
+        const targetId = targetByDocument.get(inv.documentId!);
+        if (targetId) overlays.push({ targetId, invoice: inv });
+      }
+      if (overlays.length > 0) {
+        const syncedAt = new Date().toISOString();
+        const overlayValues = sql.join(
+          overlays.map(
+            ({ targetId, invoice }) =>
+              sql`(${targetId}::uuid, ${JSON.stringify({
+                providerRef: invoice.providerRef,
+                documentId: invoice.documentId,
+                syncedAt,
+                record: invoice.metadata,
+              })}::jsonb)`,
+          ),
+          sql`, `,
+        );
+        await tx.execute(sql`
+          update fin_invoices as i
+             set metadata = coalesce(i.metadata, '{}'::jsonb)
+                   || jsonb_build_object(
+                        'sourceOverlays',
+                        coalesce(i.metadata -> 'sourceOverlays', '{}'::jsonb)
+                          || jsonb_build_object('sunat-sire', v.source)
+                      ),
+                 synced_at = now()
+            from (values ${overlayValues}) as v(id, source)
+           where i.id = v.id
+             and i.org_id = ${ctx.tenantId}`);
+        await tx.insert(docAuditLog).values(
+          overlays.map(({ targetId, invoice }) => ({
+            orgId: ctx.tenantId,
+            refType: 'fin_invoice',
+            refId: targetId,
+            op: 'update',
+            changes: [
+              {
+                field: 'sourceOverlays.sunat-sire',
+                label: 'SUNAT SIRE source',
+                old: null,
+                new: invoice.providerRef,
+              },
+            ],
+            actorId: null,
+            actorName: 'connector:sunat-sire',
+          })),
+        );
+        const overlaidRefs = new Set(overlays.map(({ invoice }) => invoice.providerRef));
+        pending = deduped.filter((inv) => !overlaidRefs.has(inv.providerRef));
+      }
+    }
+
+    if (pending.length === 0) {
+      await emitHubEvent(tx, {
+        type: 'finance.invoices_upserted',
+        orgId: ctx.tenantId,
+        created: 0,
+        updated: overlays.length,
+      });
+      return;
+    }
+
     // 1. Clients (dedupe by providerRef within the page).
     const clients = new Map<string, CanonicalInvoice['client']>();
-    for (const inv of deduped) if (inv.client) clients.set(inv.client.providerRef, inv.client);
+    for (const inv of pending) if (inv.client) clients.set(inv.client.providerRef, inv.client);
     const clientIdByRef = new Map<string, string>();
     if (clients.size) {
       const rows = await tx
@@ -125,7 +232,7 @@ export async function upsertInvoicesBatch(
     const invRows = await tx
       .insert(finInvoices)
       .values(
-        deduped.map((inv) => ({
+        pending.map((inv) => ({
           orgId: ctx.tenantId,
           provider: inv.provider,
           providerRef: inv.providerRef,
@@ -206,7 +313,7 @@ export async function upsertInvoicesBatch(
 
     // 3. Replace children for these invoices (set-based delete + multi-row insert).
     await tx.delete(finInvoiceItems).where(inArray(finInvoiceItems.invoiceId, invoiceIds));
-    const itemRows = deduped.flatMap((inv) => {
+    const itemRows = pending.flatMap((inv) => {
       const invoiceId = invIdByRef.get(inv.providerRef);
       if (!invoiceId) return [];
       return inv.items.map((it) => ({
@@ -227,7 +334,7 @@ export async function upsertInvoicesBatch(
     if (itemRows.length) await tx.insert(finInvoiceItems).values(itemRows);
 
     await tx.delete(finPayments).where(inArray(finPayments.invoiceId, invoiceIds));
-    const payRows = deduped.flatMap((inv) => {
+    const payRows = pending.flatMap((inv) => {
       const invoiceId = invIdByRef.get(inv.providerRef);
       if (!invoiceId) return [];
       return inv.payments.map((p) => ({
@@ -243,12 +350,23 @@ export async function upsertInvoicesBatch(
     });
     if (payRows.length) await tx.insert(finPayments).values(payRows);
 
+    // Safety net behind the overlay bridge above: a sunat-sire ROW that
+    // nonetheless coexists with a susii twin (e.g. it was inserted before the
+    // susii row existed) is shadowed so doc-level reads never double-count.
+    // Idempotent and org-wide (~4k rows) — one statement per batch.
+    await tx.execute(sql`
+      update fin_invoices f set shadowed = true
+       where f.org_id = ${ctx.tenantId} and f.provider = 'sunat-sire' and not f.shadowed
+         and exists (select 1 from fin_invoices s
+                      where s.org_id = f.org_id and s.document_id = f.document_id
+                        and s.provider = 'susii' and s.document_id is not null)`);
+
     const created = invRows.filter((r) => r.inserted).length;
     await emitHubEvent(tx, {
       type: 'finance.invoices_upserted',
       orgId: ctx.tenantId,
       created,
-      updated: invRows.length - created,
+      updated: invRows.length - created + overlays.length,
     });
   });
 }
@@ -302,7 +420,11 @@ export function listInvoices(
         join crm_contacts c on c.party_id = fc.party_id and c.party_id is not null
         where c.id = ${opts.contactId} and c.org_id = ${ctx.tenantId})`
     : undefined;
-  const where = and(eq(finInvoices.orgId, ctx.tenantId), contactCond);
+  const where = and(
+    eq(finInvoices.orgId, ctx.tenantId),
+    eq(finInvoices.shadowed, false),
+    contactCond,
+  );
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -535,7 +657,12 @@ export async function getSource(ctx: CoreCtx, provider: string) {
 /** Returns true when the source row already has encrypted credentials stored. */
 export function sourceHasCredentials(source: { secretRefs?: unknown } | null | undefined): boolean {
   const refs = source?.secretRefs as Record<string, unknown> | null | undefined;
-  return !!(refs?.ciphertext && refs?.iv);
+  return (
+    typeof refs?.ciphertext === 'string' &&
+    refs.ciphertext.length > 0 &&
+    typeof refs.iv === 'string' &&
+    refs.iv.length > 0
+  );
 }
 
 export async function upsertSource(
@@ -549,8 +676,32 @@ export async function upsertSource(
       .values({ orgId: ctx.tenantId, provider, ...data, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: [finSources.orgId, finSources.provider],
-        set: { ...data, updatedAt: new Date() },
+        set: {
+          ...data,
+          lastProbeAt: null,
+          lastProbeStatus: null,
+          lastProbeMessage: null,
+          updatedAt: new Date(),
+        },
       }),
+  );
+}
+
+export async function setSourceProbe(
+  ctx: CoreCtx,
+  provider: string,
+  probe: { status: 'valid' | 'invalid' | 'unavailable'; message: string },
+) {
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(finSources)
+      .set({
+        lastProbeAt: new Date(),
+        lastProbeStatus: probe.status,
+        lastProbeMessage: probe.message.slice(0, 300),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(finSources.orgId, ctx.tenantId), eq(finSources.provider, provider))),
   );
 }
 
@@ -609,7 +760,7 @@ export async function clientRevenueRows(ctx: CoreCtx) {
       select ${clientKey()} as client_doc_number, max(client_name) as name, count(*)::int as invoices,
              coalesce(sum(${effTotal()}), 0)::float8 as revenue, max(issued_at) as last
       from fin_invoices
-      where org_id = ${ctx.tenantId} and (client_doc_number is not null or client_id is not null)
+      where org_id = ${ctx.tenantId} and not shadowed and (client_doc_number is not null or client_id is not null)
       group by ${clientKey()} order by revenue desc limit 500
     `)) as unknown as Array<{
       client_doc_number: unknown;
@@ -632,7 +783,11 @@ export async function clientRevenueRows(ctx: CoreCtx) {
 
 function periodWhere(p: Period, alias = '') {
   const c = alias ? `${alias}.` : '';
-  const conds = [sql`${sql.raw(c)}org_id = current_setting('app.current_org_id', true)`];
+  const conds = [
+    sql`${sql.raw(c)}org_id = current_setting('app.current_org_id', true)`,
+    // Cross-provider dedup: a SIRE row shadowed by its susii twin never counts.
+    sql`${sql.raw(c)}shadowed = false`,
+  ];
   if (p.from) conds.push(sql`${sql.raw(c)}issued_at >= ${p.from}`);
   // INCLUSIVE of the whole `to` day. `p.to` arrives already resolved by
   // resolvePeriodWindow() to the exclusive start of the next day in the org's
@@ -658,7 +813,7 @@ export function financeDataSpan(ctx: CoreCtx, tz = 'UTC') {
           select min(issued_at at time zone ${tz})::date::text lo,
                  max(issued_at at time zone ${tz})::date::text hi
           from fin_invoices
-          where org_id = current_setting('app.current_org_id', true) and issued_at is not null
+          where org_id = current_setting('app.current_org_id', true) and not shadowed and issued_at is not null
         `)) as unknown as Array<{ lo: string | null; hi: string | null }>;
         return { min: r?.lo ?? '', max: r?.hi ?? '' };
       }),
@@ -722,7 +877,7 @@ export function financeSummary(
         const [nc] = (await tx.execute(sql`
         select count(*)::int n from (
           select ${clientKey()} as k, min(issued_at) first from fin_invoices
-          where org_id = current_setting('app.current_org_id', true)
+          where org_id = current_setting('app.current_org_id', true) and not shadowed
             and (client_doc_number is not null or client_id is not null) group by ${clientKey()}
         ) f where ${p.from ? sql`f.first >= ${p.from}` : sql`true`} and ${p.to ? sql`f.first < ${p.to}` : sql`true`}
       `)) as unknown as Array<{ n: number }>;

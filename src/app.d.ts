@@ -8,6 +8,12 @@ declare global {
   }
 
   namespace App {
+    interface Error {
+      /** Machine-readable error code, set by stock API's handleStockError
+       *  (and any other route that wants a client-distinguishable 409/4xx
+       *  without string-matching `message`). */
+      code?: string;
+    }
     interface Locals {
       user?: {
         id: string;

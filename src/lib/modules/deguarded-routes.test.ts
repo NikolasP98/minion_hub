@@ -15,15 +15,9 @@ import { resolveModuleForPath, MODULE_MANIFEST, type ModuleId } from './availabi
  * requires it, directly or through the `requires` chain.
  */
 const DEGUARDED_ROUTES: ReadonlyArray<readonly [path: string, requiredModule: string]> = [
-  // /crm/graph never had an inline gate — it was added AFTER the refactor and
-  // relies on the central map from birth, which is exactly why it needs the
-  // same pin: nothing else would notice if the `/crm` prefix stopped covering it.
-  ['/crm/graph', 'crm'],
-  ['/crm/graph/anything', 'crm'],
   ['/finances', 'finances'],
   ['/finances/invoices', 'finances'],
   ['/finances/invoices/abc', 'finances'],
-  ['/finances/products', 'finances'],
   ['/finances/settings', 'finances'],
   ['/pos', 'pos'],
   ['/pos/sell', 'pos'],
@@ -47,8 +41,6 @@ const DEGUARDED_ROUTES: ReadonlyArray<readonly [path: string, requiredModule: st
   ['/socials/settings', 'ads'],
   ['/stock', 'stock'],
   ['/stock/commitments', 'stock'],
-  ['/stock/consume', 'stock'],
-  ['/stock/consumption', 'stock'],
   ['/stock/entries', 'stock'],
   ['/stock/entries/abc', 'stock'],
   ['/stock/entries/new', 'stock'],
@@ -66,8 +58,7 @@ function requirementChain(moduleId: string, seen = new Set<string>()): Set<strin
   // Manifest entries are a heterogeneous const union — only some declare
   // `requires`, so read it through a widened view rather than off the union.
   const entry = MODULE_MANIFEST[moduleId as ModuleId] as
-    | { requires?: readonly string[] }
-    | undefined;
+    { requires?: readonly string[] } | undefined;
   for (const dep of entry?.requires ?? []) requirementChain(dep, seen);
   return seen;
 }

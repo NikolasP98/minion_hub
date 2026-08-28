@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 // ── finance-products.service mock (upsertProduct) ──
@@ -284,6 +285,22 @@ describe('listSellables', () => {
     expect(row.taxonomy.line).toBe('saypha-volume-plus');
     expect(row.taxonomy.lineSource).toBe('inferred');
   });
+
+  it('defaults to active-only; includeInactive:true drops the p.active filter so deactivated sellables stay reachable', async () => {
+    const { db } = createMockDb();
+    mockExecute(db, []);
+    const execute = (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute;
+
+    await listSellables(ctx(db));
+    // withOrgCore issues a session-config execute() before the query itself,
+    // so the query under test is the SECOND call, not the first.
+    const defaultQuery = new PgDialect().sqlToQuery(execute.mock.calls[1][0]);
+    expect(defaultQuery.sql).toContain('p.active = true');
+
+    await listSellables(ctx(db), { includeInactive: true });
+    const inclusiveQuery = new PgDialect().sqlToQuery(execute.mock.calls[3][0]);
+    expect(inclusiveQuery.sql).not.toContain('p.active = true');
+  });
 });
 
 describe('createSellable', () => {
@@ -539,13 +556,48 @@ describe('createSellable', () => {
     expect(setConsumptionMock).toHaveBeenNthCalledWith(
       1,
       expect.anything(),
-      { finProductId: 'fp-3', itemId: 'item-a', qtyPerUnit: 2 },
+      { finProductId: 'fp-3', itemId: 'item-a', qtyPerUnit: 2, note: null },
       actor,
     );
     expect(setConsumptionMock).toHaveBeenNthCalledWith(
       2,
       expect.anything(),
-      { finProductId: 'fp-3', itemId: 'item-b', qtyPerUnit: 1 },
+      { finProductId: 'fp-3', itemId: 'item-b', qtyPerUnit: 1, note: null },
+      actor,
+    );
+  });
+
+  it('consumption note is passed through to setConsumption, not dropped', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ id: 'fp-3b' }]]);
+    mockExecute(db, [
+      {
+        id: 'fp-3b',
+        code: 'PEEL2',
+        name: 'Peel 2',
+        category: null,
+        unit_price: '80',
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: true,
+      },
+    ]);
+    upsertProductMock.mockResolvedValue(undefined);
+    setConsumptionMock.mockResolvedValue({ id: 'c1' });
+
+    const input: SellableInput = {
+      name: 'Peel 2',
+      code: 'PEEL2',
+      unitPrice: 80,
+      kind: 'service',
+      consumption: [{ itemId: 'item-a', qtyPerUnit: 2, note: 'thin layer only' }],
+    };
+    await createSellable(ctx(db), input, actor);
+
+    expect(setConsumptionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      { finProductId: 'fp-3b', itemId: 'item-a', qtyPerUnit: 2, note: 'thin layer only' },
       actor,
     );
   });
@@ -640,7 +692,45 @@ describe('updateSellable', () => {
     expect(deleteConsumptionMock).toHaveBeenCalledWith(expect.anything(), 'c-old-1');
     expect(setConsumptionMock).toHaveBeenCalledWith(
       expect.anything(),
-      { finProductId: 'fp-5', itemId: 'item-keep', qtyPerUnit: 3 },
+      { finProductId: 'fp-5', itemId: 'item-keep', qtyPerUnit: 3, note: null },
+      actor,
+    );
+  });
+
+  it('note survives the replace-set: a save that resubmits an existing row with its note intact does not wipe it', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'fp-5b', code: 'PEEL', name: 'Peel', category: null, unitPrice: '80', active: true }],
+    ]);
+    mockExecute(db, [
+      {
+        id: 'fp-5b',
+        code: 'PEEL',
+        name: 'Peel',
+        category: null,
+        unit_price: '80',
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: true,
+      },
+    ]);
+    upsertProductMock.mockResolvedValue(undefined);
+    listConsumptionMock.mockResolvedValue([{ id: 'c-old-1', itemId: 'item-keep' }]);
+    setConsumptionMock.mockResolvedValue({ id: 'c-new' });
+
+    await updateSellable(
+      ctx(db),
+      'fp-5b',
+      { consumption: [{ itemId: 'item-keep', qtyPerUnit: 3, note: 'thin layer only' }] },
+      actor,
+    );
+
+    // ★ CRITICAL: the wizard's replace-set loop must forward `note`, or every
+    // save silently blanks it via setConsumption's onConflictDoUpdate.
+    expect(setConsumptionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      { finProductId: 'fp-5b', itemId: 'item-keep', qtyPerUnit: 3, note: 'thin layer only' },
       actor,
     );
   });

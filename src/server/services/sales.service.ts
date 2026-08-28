@@ -83,7 +83,12 @@ export async function createOrderFromBooking(ctx: CoreCtx, bookingId: string): P
 
 export function listOrders(
   ctx: CoreCtx,
-  f: { status?: OrderStatus | 'open'; crmContactId?: string; limit?: number; ownerId?: string } = {},
+  f: {
+    status?: OrderStatus | 'open';
+    crmContactId?: string;
+    limit?: number;
+    ownerId?: string;
+  } = {},
 ): Promise<SalesOrder[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(salesOrders.orgId, ctx.tenantId)];
@@ -102,7 +107,11 @@ export function listOrders(
 }
 
 /** Single order by id (detail page). A scoped caller only opens orders they own. */
-export async function getOrder(ctx: CoreCtx, id: string, ownerId?: string): Promise<SalesOrder | null> {
+export async function getOrder(
+  ctx: CoreCtx,
+  id: string,
+  ownerId?: string,
+): Promise<SalesOrder | null> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .select()
@@ -125,7 +134,13 @@ export async function orderCountForContact(ctx: CoreCtx, contactId: string): Pro
     tx
       .select({ n: sql<number>`count(*)::int` })
       .from(salesOrders)
-      .where(and(eq(salesOrders.orgId, ctx.tenantId), eq(salesOrders.crmContactId, contactId), OPEN_ORDER)),
+      .where(
+        and(
+          eq(salesOrders.orgId, ctx.tenantId),
+          eq(salesOrders.crmContactId, contactId),
+          OPEN_ORDER,
+        ),
+      ),
   );
   return Number(row?.n ?? 0);
 }
@@ -153,7 +168,8 @@ export async function reconcileOrdersToInvoices(ctx: CoreCtx): Promise<void> {
         join fin_invoices fi on fi.org_id = so.org_id and fi.client_id = fc.id
         where so.org_id = current_setting('app.current_org_id', true)
           and so.status in ('draft','confirmed') and so.party_id is not null
-          and fi.provider = 'susii'
+          and fi.provider in ('susii', 'sunat-sire')
+          and fi.shadowed = false
           and fi.issued_at >= so.created_at - interval '1 day'
           and fi.issued_at <= so.created_at + interval '60 days'
           and (so.total is null

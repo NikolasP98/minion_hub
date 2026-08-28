@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { nextSerialId } from './naming-series';
@@ -382,14 +382,19 @@ export async function updateItem(
 
 // ── Warehouses ───────────────────────────────────────────────────────────────
 
-export function listWarehouses(ctx: CoreCtx): Promise<StkWarehouse[]> {
-  return withOrgCore(ctx, (tx) =>
-    tx
+export function listWarehouses(
+  ctx: CoreCtx,
+  opts: { includeArchived?: boolean } = {},
+): Promise<StkWarehouse[]> {
+  return withOrgCore(ctx, (tx) => {
+    const conds = [eq(stkWarehouses.orgId, ctx.tenantId)];
+    if (!opts.includeArchived) conds.push(isNull(stkWarehouses.archivedAt));
+    return tx
       .select()
       .from(stkWarehouses)
-      .where(eq(stkWarehouses.orgId, ctx.tenantId))
-      .orderBy(asc(stkWarehouses.name)),
-  );
+      .where(and(...conds))
+      .orderBy(asc(stkWarehouses.name));
+  });
 }
 
 export type NewWarehouseInput = { name: string; parentId?: string | null; isDefault?: boolean };
@@ -417,18 +422,49 @@ export async function createWarehouse(
 export async function updateWarehouse(
   ctx: CoreCtx,
   id: string,
-  patch: Partial<NewWarehouseInput>,
+  patch: Partial<NewWarehouseInput> & { archived?: boolean },
 ): Promise<StkWarehouse | null> {
   return withOrgCore(ctx, async (tx) => {
-    if (patch.parentId !== undefined && patch.parentId !== null) {
+    const { archived, ...rest } = patch;
+    if (rest.parentId !== undefined && rest.parentId !== null) {
       const all = await tx
         .select({ id: stkWarehouses.id, parentId: stkWarehouses.parentId })
         .from(stkWarehouses)
         .where(eq(stkWarehouses.orgId, ctx.tenantId));
-      if (wouldCreateCycle(all, id, patch.parentId))
+      if (wouldCreateCycle(all, id, rest.parentId))
         throw new StockError('would create a cycle in the warehouse tree', 'cycle');
     }
-    if (patch.isDefault === true) {
+    if (archived === true) {
+      const [cur] = await tx
+        .select({ isDefault: stkWarehouses.isDefault })
+        .from(stkWarehouses)
+        .where(and(eq(stkWarehouses.id, id), eq(stkWarehouses.orgId, ctx.tenantId)));
+      if (!cur) return null;
+      if (cur.isDefault)
+        throw new StockError('cannot archive the default warehouse', 'default_warehouse');
+      const [stock] = await tx
+        .select({ total: sql<string>`coalesce(sum(${stkBins.qty}), 0)` })
+        .from(stkBins)
+        .where(and(eq(stkBins.orgId, ctx.tenantId), eq(stkBins.warehouseId, id)));
+      if (Number(stock?.total ?? 0) !== 0)
+        throw new StockError('cannot archive a warehouse that still has stock', 'has_stock');
+      const [child] = await tx
+        .select({ id: stkWarehouses.id })
+        .from(stkWarehouses)
+        .where(
+          and(
+            eq(stkWarehouses.orgId, ctx.tenantId),
+            eq(stkWarehouses.parentId, id),
+            isNull(stkWarehouses.archivedAt),
+          ),
+        );
+      if (child)
+        throw new StockError(
+          'cannot archive a warehouse with active sub-warehouses',
+          'has_children',
+        );
+    }
+    if (rest.isDefault === true) {
       // Partial unique index on (org_id) WHERE is_default rejects a second
       // default in the same org — clear the existing one first, same tx.
       await tx
@@ -438,7 +474,11 @@ export async function updateWarehouse(
     }
     const [row] = await tx
       .update(stkWarehouses)
-      .set({ ...patch, updatedAt: new Date() })
+      .set({
+        ...rest,
+        ...(archived !== undefined ? { archivedAt: archived ? new Date() : null } : {}),
+        updatedAt: new Date(),
+      })
       .where(and(eq(stkWarehouses.id, id), eq(stkWarehouses.orgId, ctx.tenantId)))
       .returning();
     return row ?? null;
@@ -682,6 +722,14 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
         lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x),
       ),
     ];
+    // TODO(handoff): existence-only — doesn't exclude archived warehouses (PR-C,
+    // spec 2026-08-23-hub-stock-crm-ux-consolidation). The warehouses page and
+    // every listWarehouses() caller now hide archived rows by default, so the UI
+    // can't pick one, but a direct API call can still submit an entry against an
+    // archived warehouse id, silently reintroducing stock into something the
+    // archive guard required to be empty. Add an isNull(archivedAt) check here
+    // (or reject when the resolved warehouse row is archived) if that's worth
+    // closing — no proposal filed yet.
     const warehouses = warehouseIds.length
       ? await tx
           .select({ id: stkWarehouses.id })
@@ -1479,7 +1527,8 @@ export interface CreateServiceIssueInput {
   lines: CreateIssueFromInvoiceLine[];
   submit?: boolean;
   actor: Actor;
-  /** Generic provenance: 'service' (default, /stock/consume) | 'booking' | future 'order'. */
+  /** Generic provenance: 'service' (default, createServiceIssue via the gateway
+   *  stock-issue-from-service action) | 'booking' | future 'order'. */
   source?: string;
   /** When set, a same-tx dup guard refuses a second non-cancelled entry for
    *  (source, sourceId) — mirrors the invoice guard. Absent for legacy

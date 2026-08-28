@@ -8,11 +8,13 @@
     open = $bindable(),
     columns,
     count,
+    formats = ['csv', 'xlsx'],
     onexport,
   }: {
     open: boolean;
     columns: Col[];
     count: number;
+    formats?: ('csv' | 'xlsx')[];
     onexport: (format: 'csv' | 'xlsx', keys: string[]) => void;
   } = $props();
 
@@ -21,7 +23,10 @@
 
   // Reset the column selection to the current defaults each time the dialog opens.
   $effect(() => {
-    if (open) selected = new Set(columns.filter((c) => c.default).map((c) => c.key));
+    if (open) {
+      selected = new Set(columns.filter((c) => c.default).map((c) => c.key));
+      if (!formats.includes(format)) format = formats[0] ?? 'csv';
+    }
   });
 
   function toggle(key: string) {
@@ -49,15 +54,22 @@
     </header>
 
     <div class="dlg-body">
-      <div class="seg-label">{m.crm_export_format()}</div>
-      <div class="fmt">
-        <Button class="fmt-btn {format === 'csv' ? 'on' : ''}" onclick={() => (format = 'csv')}>
-          <FileText size={15} /> CSV
-        </Button>
-        <Button class="fmt-btn {format === 'xlsx' ? 'on' : ''}" onclick={() => (format = 'xlsx')}>
-          <Sheet size={15} /> XLSX
-        </Button>
-      </div>
+      {#if formats.length > 1}<div class="seg-label">{m.crm_export_format()}</div>{/if}
+      {#if formats.length > 1}<div class="fmt">
+          {#if formats.includes('csv')}
+            <Button class="fmt-btn {format === 'csv' ? 'on' : ''}" onclick={() => (format = 'csv')}>
+              <FileText size={15} /> CSV
+            </Button>
+          {/if}
+          {#if formats.includes('xlsx')}
+            <Button
+              class="fmt-btn {format === 'xlsx' ? 'on' : ''}"
+              onclick={() => (format = 'xlsx')}
+            >
+              <Sheet size={15} /> XLSX
+            </Button>
+          {/if}
+        </div>{/if}
 
       <div class="seg-label flex items-center justify-between">
         <span>{m.crm_export_columns()}</span>
