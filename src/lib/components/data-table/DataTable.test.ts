@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { render, cleanup, waitFor } from '@testing-library/svelte';
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import { createRawSnippet, type Component } from 'svelte';
 import { Button } from '@minion-stack/ui';
 
@@ -56,10 +56,12 @@ type DataTableProps<T> = {
   columns: DataColumn<T>[];
   getRowId: (row: T) => string;
 };
+type ServerMode = import('./DataTable.svelte').ServerMode;
 
 // Testing Library cannot infer a concrete type argument from a generic Svelte
 // component import, so bind the fixture's Row contract at this test boundary.
 const RowDataTable = DataTable as Component<DataTableProps<Row>>;
+const ServerRowDataTable = DataTable as Component<DataTableProps<Row> & { server: ServerMode }>;
 const columns: DataColumn<Row>[] = [{ key: 'name', label: 'Name' }];
 const rows: Row[] = [
   { id: '1', name: 'Alpha' },
@@ -75,6 +77,31 @@ describe('DataTable DOM mount (browser=true row virtualization)', () => {
       const bodyRows = container.querySelectorAll('tbody tr[data-row-index]');
       expect(bodyRows.length).toBeGreaterThanOrEqual(1);
     });
+    unmount();
+    cleanup();
+  });
+});
+
+describe('DataTable handoff marker block', () => {
+  // Covers the server-mode block (spec 2026-08-13 §S4): in server mode, a
+  // header sort click must delegate to `server.onQuery` instead of sorting
+  // `data` client-side.
+  it('server mode: clicking a sortable header calls server.onQuery with the sort, not a local sort', async () => {
+    const onQuery = vi.fn();
+    const server: ServerMode = { total: rows.length, onQuery };
+    const { getByRole, unmount } = render(ServerRowDataTable, {
+      props: { data: rows, columns, getRowId: (r: Row) => r.id, server },
+    });
+
+    const header = getByRole('button', { name: 'Name' });
+    await fireEvent.click(header);
+
+    await waitFor(() => {
+      expect(onQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: { key: 'name', dir: 'asc' } }),
+      );
+    });
+
     unmount();
     cleanup();
   });

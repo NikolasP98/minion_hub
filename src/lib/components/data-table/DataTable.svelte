@@ -596,7 +596,6 @@
   // `sortDir` / `filters` above are still tracked (for header arrows and the
   // enum-filter UI) but no longer feed `view`.
   //
-  // TODO(handoff): no DOM-mount test covers this block. @testing-library/svelte
   // + happy-dom crashes mounting ANY @minion-stack/ui Button.svelte instance
   // here (`Cannot read properties of null (reading 'Symbol(parentNode)')` in
   // Button.svelte's <svelte:element> insertion, node_modules/happy-dom's
