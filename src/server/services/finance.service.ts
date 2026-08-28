@@ -316,10 +316,11 @@ export async function upsertInvoicesBatch(
     // Lock the stk_items rows this write could newly make "billed" BEFORE the
     // insert half of the replace: pos.service.ts's applyUomChange takes
     // `for('update')` on a pristine item's stk_items row, then checks
-    // `itemHasHistory`'s `billed` flag (fin_invoice_items.code match) before
-    // renaming its uom. Without this lock a code could gain a fresh
-    // fin_invoice_items row between that check and the uom write, leaving
-    // the newly-billed quantity ambiguous under the renamed unit. Share mode
+    // `itemHasHistory`'s `billed` flag (keyed on `fin_invoice_items.product_id`,
+    // which is exactly the resolved id written below) before renaming its uom.
+    // Without this lock a product could gain a fresh fin_invoice_items row
+    // between that check and the uom write, leaving the newly-billed quantity
+    // ambiguous under the renamed unit. Share mode
     // (sorted by id, same convention as stock.service.ts's
     // lockItemsAgainstUomChange) keeps concurrent connector syncs parallel.
     const billedProductIds = [

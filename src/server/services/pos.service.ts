@@ -1296,8 +1296,19 @@ async function syncSellableItem(
  * True when ANY history references the item: a ledger/movement row, a stock
  * entry line (drafts included — a draft's qty is already expressed in the
  * current uom), a non-zero bin quantity, or a billed invoice line for the
- * product this item backs (`fin_invoice_items.code` references
- * `fin_products.code` — same predicate as updateSellable's rename guard).
+ * product this item backs.
+ *
+ * ★ The billing predicate keys on the PRODUCT LINK
+ * (`fin_invoice_items.product_id`), not on the code alone. `loadProductMap`
+ * deliberately resolves `metadata.aliases` as well as live codes to the same
+ * product id, and `upsertInvoicesBatch` stores that RESOLVED `product_id`
+ * while preserving the incoming (possibly retired/alternate) code in `code`
+ * — see finance.service.ts. A code-only predicate therefore reports an item
+ * whose product already has alias-coded billing history as pristine, and lets
+ * its unit of measure change under already-billed quantities. The code match
+ * is retained as a FALLBACK for legacy rows whose `product_id` never
+ * resolved (null), so nothing that counted as history before stops counting.
+ *
  * Exported for tests. Query failures propagate — a broken history check must
  * never be converted into a fabricated answer in either direction.
  */
@@ -1305,8 +1316,12 @@ export async function itemHasHistory(
   tx: CoreTx,
   orgId: string,
   itemId: string,
-  productCode: string | null,
+  product: { id: string | null; code: string | null },
 ): Promise<boolean> {
+  const billedPredicates = [
+    ...(product.id != null ? [sql`ii.product_id = ${product.id}`] : []),
+    ...(product.code != null ? [sql`ii.code = ${product.code}`] : []),
+  ];
   const rows = (await tx.execute(sql`
     select
       exists(select 1 from stk_ledger l
@@ -1316,10 +1331,11 @@ export async function itemHasHistory(
       exists(select 1 from stk_bins b
              where b.org_id = ${orgId} and b.item_id = ${itemId} and b.qty <> 0) as bins,
       ${
-        productCode == null
+        billedPredicates.length === 0
           ? sql`false`
           : sql`exists(select 1 from fin_invoice_items ii
-                       where ii.org_id = ${orgId} and ii.code = ${productCode})`
+                       where ii.org_id = ${orgId}
+                         and (${sql.join(billedPredicates, sql` or `)}))`
       } as billed
   `)) as unknown as Array<{
     ledger: boolean;
@@ -1357,12 +1373,16 @@ async function applyUomChange(
   productCode: string | null,
 ): Promise<void> {
   const [item] = await tx
-    .select({ id: stkItems.id })
+    // `finProductId` is read from the LOCKED row rather than taken from the
+    // caller: it is the stable link the billing-history probe keys on (see
+    // itemHasHistory), so the id checked is the one this item actually backs
+    // at lock time.
+    .select({ id: stkItems.id, finProductId: stkItems.finProductId })
     .from(stkItems)
     .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)))
     .for('update');
   if (!item) throw new PosError('stock item not found', 'item_not_found');
-  if (await itemHasHistory(tx, orgId, itemId, productCode)) {
+  if (await itemHasHistory(tx, orgId, itemId, { id: item.finProductId, code: productCode })) {
     // Unchanged S1 refusal code — this spec only narrows the blanket
     // refusal to items WITH history; destructive-with-history semantics
     // are the sibling spec's S3.
