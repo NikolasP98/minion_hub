@@ -332,19 +332,29 @@ export type NewItemInput = Omit<
   'id' | 'orgId' | 'createdAt' | 'updatedAt'
 >;
 
-export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
+/** tx-scoped body of {@link createItem} — shared with callers (e.g.
+ *  updateSellable's start-tracking transition) that must insert the item in
+ *  the SAME transaction as another write, so a downstream failure rolls the
+ *  insert back instead of leaving it committed. */
+export async function createItemTx(
+  tx: CoreTx,
+  orgId: string,
+  input: NewItemInput,
+): Promise<StkItem> {
   const err = validateItemUomConfig({
     consumptionUom: input.consumptionUom ?? null,
     unitsPerStockUom: input.unitsPerStockUom == null ? null : Number(input.unitsPerStockUom),
   });
   if (err) throw new StockError(err, 'invalid_uom_config');
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
-      .insert(stkItems)
-      .values({ ...input, orgId: ctx.tenantId })
-      .returning(),
-  );
+  const [row] = await tx
+    .insert(stkItems)
+    .values({ ...input, orgId })
+    .returning();
   return row;
+}
+
+export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
+  return withOrgCore(ctx, (tx) => createItemTx(tx, ctx.tenantId, input));
 }
 
 export async function updateItem(

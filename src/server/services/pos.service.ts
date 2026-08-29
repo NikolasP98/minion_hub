@@ -25,6 +25,7 @@ import {
   cancelEntry,
   StockError,
   createItem,
+  createItemTx,
   updateItem,
   setConsumption,
   deleteConsumption,
@@ -1490,36 +1491,37 @@ export async function updateSellable(
     }
   }
 
-  if (startTracking) {
-    /*
-     * BEFORE the fin_products update, deliberately. `withOrgCore` does not nest
-     * (see createSellable's note), so these two writes cannot share one
-     * transaction — ordering is the only rollback we have. Item-first means a
-     * failed item insert leaves the product row completely untouched; the
-     * reverse order would commit the product edit and then report a failure the
-     * operator can't distinguish from a total one.
-     *
-     * The residual (item committed, product update fails) self-heals: the retry
-     * derives trackStock=true, takes no transition, and just applies the field
-     * edits.
-     */
-    try {
-      await syncSellableItem(ctx, productId, { trackStock: true, code, name, uom: patch.uom });
-    } catch (e) {
-      // Two concurrent false→true PATCHes both see trackStock=false; the
-      // partial unique index stk_items_org_fin_product_uniq rejects the loser
-      // with 23505. Map it like the publish-an-existing-item path does rather
-      // than leaking a 500 — and since nothing else has been written yet, the
-      // loser leaves no partial update behind.
-      if (isUniqueViolation(e))
-        throw new PosError('that item is already published as a sellable', 'item_taken');
-      throw e;
+  /*
+   * ONE transaction for both writes: the item insert (when starting tracking)
+   * and the fin_products update share `tx`, via the *Tx helpers that take a
+   * transaction handle directly instead of opening their own via withOrgCore.
+   * A rejected product-code rename (fin_products_org_code_uniq) now rolls the
+   * item insert back with it — the prior two-transaction version could commit
+   * the item and THEN fail the rename, leaving trackStock permanently true
+   * with no way to retry into a fix (the retry hits the same code conflict).
+   */
+  await withOrgCore(ctx, async (tx) => {
+    if (startTracking) {
+      try {
+        await createItemTx(tx, ctx.tenantId, {
+          code,
+          name,
+          uom: patch.uom ?? 'unit',
+          finProductId: productId,
+        });
+      } catch (e) {
+        // Two concurrent false→true PATCHes both see trackStock=false; the
+        // partial unique index stk_items_org_fin_product_uniq rejects the
+        // loser with 23505. Map it like the publish-an-existing-item path
+        // does rather than leaking a 500.
+        if (isUniqueViolation(e))
+          throw new PosError('that item is already published as a sellable', 'item_taken');
+        throw e;
+      }
     }
-  }
 
-  try {
-    await withOrgCore(ctx, (tx) =>
-      tx
+    try {
+      await tx
         .update(finProducts)
         .set({
           code,
@@ -1529,13 +1531,13 @@ export async function updateSellable(
           active,
           updatedAt: new Date(),
         })
-        .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId))),
-    );
-    await bustFinanceCache(ctx);
-  } catch (e) {
-    if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
-    throw e;
-  }
+        .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId)));
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
+      throw e;
+    }
+  });
+  await bustFinanceCache(ctx);
 
   if (patch.consumption !== undefined) {
     const existing = await listConsumption(ctx, { finProductId: productId });
