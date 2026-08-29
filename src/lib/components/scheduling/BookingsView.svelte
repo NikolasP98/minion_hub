@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { CalendarClock, Plus, Check, X, UserX, ClipboardList } from 'lucide-svelte';
+  import type { Snippet } from 'svelte';
+  import { CalendarClock, Plus, Check, X, UserX, ClipboardList, ShoppingCart } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
   import {
     PageHeader,
@@ -21,7 +22,9 @@
   import {
     bookingsLabels,
     type BookingCapabilities,
+    type BookingCustomerControl,
     type BookingsLabelNamespace,
+    type BookingsViewBooking,
     type BookingsViewData,
   } from './bookings-view';
 
@@ -35,6 +38,21 @@
     titleId?: string;
     /** Scoping class the hosting route styles its forwarded classes through. */
     surfaceClass?: string;
+    /** Replaces the default header icon. */
+    leadingIcon?: Snippet;
+    /**
+     * Handles the charge action offered by `capabilities.chargeToPos`. The host
+     * owns the hand-off itself (target route, payload), so no module-specific
+     * navigation lives in this component.
+     */
+    onCharge?: (booking: BookingsViewBooking) => void;
+    /**
+     * Replaces the default CRM-contact search block in the new-booking modal.
+     * Receives a controller that reads and writes the attendee identity this
+     * component submits, so a host can supply its own picker without owning the
+     * booking call.
+     */
+    customerField?: Snippet<[BookingCustomerControl]>;
   };
 
   let {
@@ -44,6 +62,9 @@
     labelNamespace = 'scheduling',
     titleId = 'bookings-view-title',
     surfaceClass = '',
+    leadingIcon,
+    onCharge,
+    customerField,
   }: Props = $props();
 
   const labels = $derived(bookingsLabels(labelNamespace));
@@ -64,6 +85,40 @@
     const dt = typeof d === 'string' ? new Date(d) : d;
     return dt.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   }
+  function fmtTime(d: string | Date): string {
+    const dt = typeof d === 'string' ? new Date(d) : d;
+    return dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  function fmtDay(d: string | Date): string {
+    const dt = typeof d === 'string' ? new Date(d) : d;
+    return dt.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  }
+  function dayKey(d: string | Date): string {
+    const dt = typeof d === 'string' ? new Date(d) : d;
+    return dt.toDateString();
+  }
+
+  // ── Day agenda (capability): today/week client filter over the loaded window,
+  // then day-bucketed groups in chronological order. Without it the loaded rows
+  // render as one flat list, newest-first, exactly as the loader returned them.
+  let range = $state<'today' | 'week'>('today');
+  const todayKey = new Date().toDateString();
+  const rows = $derived(
+    capabilities.dayAgenda
+      ? [...data.bookings]
+          .filter((b) => range === 'week' || dayKey(b.startTime) === todayKey)
+          .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+      : data.bookings,
+  );
+  const groups = $derived.by(() => {
+    const map = new Map<string, { label: string; rows: typeof rows }>();
+    for (const b of rows) {
+      const key = dayKey(b.startTime);
+      if (!map.has(key)) map.set(key, { label: fmtDay(b.startTime), rows: [] });
+      map.get(key)!.rows.push(b);
+    }
+    return [...map.values()];
+  });
 
   async function setStatus(id: string, status: string) {
     await fetch(`/api/scheduling/bookings/${id}`, {
@@ -211,6 +266,31 @@
     );
   }
 
+  /** Handle the `customerField` snippet drives instead of the search block. */
+  const customerControl: BookingCustomerControl = {
+    get name() {
+      return nbName || null;
+    },
+    get phone() {
+      return nbPhone || null;
+    },
+    setCustomer: (next) => {
+      if ('name' in next) nbName = next.name ?? '';
+      if ('phone' in next) nbPhone = next.phone ?? '';
+    },
+  };
+
+  // ── Walk-in extras (capability `staffOverride`): force a specific staff
+  // member, optionally booking off-grid with an exact typed start. BOTH the
+  // forced resource AND the checkbox are required before conflicts are
+  // overridden — a forced pick alone never sends `overrideConflicts`.
+  let nbForceResourceId = $state(''); // '' = "anyone"
+  let nbOverrideChecked = $state(false);
+  let nbOverrideTime = $state(''); // HH:MM
+  const overrideActive = $derived(
+    Boolean(capabilities.staffOverride) && Boolean(nbForceResourceId) && nbOverrideChecked,
+  );
+
   let nbLines = $state<ConsumptionLine[]>([]);
   let nbHasMapping = $state(false);
   let nbGen = 0; // generation token: guards against a stale fetch overwriting a newer selection
@@ -281,7 +361,9 @@
   }
 
   async function book() {
-    if (!nbEventType || !nbSlot || !nbName.trim()) {
+    // The override path needs a typed time instead of a picked slot; the normal
+    // path still needs a picked slot.
+    if (!nbEventType || (overrideActive ? !nbOverrideTime : !nbSlot) || !nbName.trim()) {
       nbErr = 'service, time and name required';
       return;
     }
@@ -291,15 +373,20 @@
       // server requires qtyConsumption > 0 per line; a gauge dragged to 0 (or a typed
       // negative) must not fail the whole booking — drop those lines instead.
       const usedLines = nbHasMapping ? nbLines.filter((l) => l.qtyConsumption > 0) : [];
+      const start = overrideActive
+        ? new Date(`${nbDate}T${nbOverrideTime}:00`).toISOString()
+        : nbSlot;
       const res = await fetch('/api/scheduling/bookings', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           eventTypeId: nbEventType,
-          start: nbSlot,
+          start,
           attendeeName: nbName,
           attendeePhone: nbPhone || null,
           crmContactId: nbContactId,
+          forceResourceId: nbForceResourceId || undefined,
+          overrideConflicts: overrideActive ? true : undefined,
           consumption: usedLines.length
             ? usedLines.map((l) => ({ itemId: l.itemId, qtyConsumption: l.qtyConsumption }))
             : null,
@@ -307,7 +394,8 @@
       });
       if (res.status === 409) {
         nbErr = m.sched_book_unavailable();
-        await loadSlots();
+        // An off-grid start has no slot grid to refresh.
+        if (!overrideActive) await loadSlots();
         return;
       }
       if (!res.ok) throw new Error(String(res.status));
@@ -320,6 +408,9 @@
       nbResults = [];
       nbLines = [];
       nbHasMapping = false;
+      nbForceResourceId = '';
+      nbOverrideChecked = false;
+      nbOverrideTime = '';
       await invalidate(invalidateKey);
     } catch (e) {
       nbErr = e instanceof Error ? e.message : 'error';
@@ -329,126 +420,200 @@
   }
 </script>
 
+{#snippet headerIcon()}
+  {#if leadingIcon}
+    {@render leadingIcon()}
+  {:else}
+    <CalendarClock size={iconSizes.md} class="text-accent shrink-0" />
+  {/if}
+{/snippet}
+
+{#snippet newBookingAction()}
+  <Button
+    size="sm"
+    onclick={() => (showNew = true)}
+    disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
+    title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+  >
+    <Plus size={iconSizes.sm} />
+    {labels.newAction()}
+  </Button>
+{/snippet}
+
+{#snippet bookingCard(b: BookingsViewBooking)}
+  {@const open = b.status === 'accepted' || b.status === 'pending'}
+  {@const sellable =
+    capabilities.createSalesOrder && b.status !== 'cancelled' && b.status !== 'rejected'}
+  <Card padding="md">
+    <div class="flex items-center gap-3 flex-wrap">
+      {#if capabilities.dayAgenda}
+        <div class="min-w-[70px] font-medium">{fmtTime(b.startTime)}</div>
+        <div class="flex-1 min-w-[180px]">
+          <div class="font-medium">{eventTitle(b.eventTypeId)}</div>
+          <div class="t-caption">{resourceName(b.resourceId)}</div>
+        </div>
+      {:else}
+        <div class="flex-1 min-w-[180px]">
+          <div class="font-medium">{eventTitle(b.eventTypeId)}</div>
+          <div class="t-caption">{fmt(b.startTime)} · {resourceName(b.resourceId)}</div>
+        </div>
+      {/if}
+      <div class="min-w-[120px]">
+        <div class="text-sm">{b.attendeeName ?? '—'}</div>
+        <div class="t-caption">{b.attendeePhone ?? ''}</div>
+      </div>
+      <Badge>{(STATUS_LABEL[b.status] ?? (() => b.status))()}</Badge>
+      {#if accrualBySource.get(b.id)}
+        {@const acc = accrualBySource.get(b.id)!}
+        {#if acc.open > 0}
+          <Badge variant="semantic" value="warning"
+            >{m.sched_stock_committed({ value: formatMoney(acc.estValue) })}</Badge
+          >
+        {:else if acc.realized > 0}
+          <a
+            href={acc.realizedEntryId ? `/stock/entries/${acc.realizedEntryId}` : '/stock'}
+            class="no-underline"
+          >
+            <Badge variant="semantic" value="success"
+              >{m.sched_stock_realized({ value: formatMoney(acc.realizedValue) })}</Badge
+            >
+          </a>
+        {:else}
+          <Badge>{m.sched_stock_released()}</Badge>
+        {/if}
+      {/if}
+      {#if stockWarnings[b.id]}
+        <span class="t-caption" style="color:var(--color-destructive)">
+          {stockWarnings[b.id]}
+          <Button
+            variant="ghost"
+            size="sm"
+            class="underline"
+            onclick={() => completeBooking(b.id, null)}>{m.sched_stock_retry_post()}</Button
+          >
+        </span>
+      {/if}
+      {#if capabilities.chargeToPos && onCharge && labels.chargeAction && b.status === 'completed'}
+        <Button
+          variant="outline"
+          size="sm"
+          title={labels.chargeAction()}
+          onclick={() => onCharge(b)}
+        >
+          <ShoppingCart size={iconSizes.sm} />
+          {labels.chargeAction()}
+        </Button>
+      {/if}
+      <!-- Rendered only when it holds something: an empty flex child still eats
+           a gap, which is how the fork's completed rows differed from these. -->
+      {#if open || sellable}
+        <div class="flex gap-1">
+          {#if open}
+            <Button
+              variant="ghost"
+              size="sm"
+              class="act"
+              title={canAct('scheduling', 'edit') ? m.sched_mark_complete() : m.no_permission()}
+              disabled={!canAct('scheduling', 'edit')}
+              onclick={() => openComplete(b.id)}
+            >
+              <Check size={iconSizes.sm} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="act"
+              title={canAct('scheduling', 'edit') ? m.sched_mark_noShow() : m.no_permission()}
+              disabled={!canAct('scheduling', 'edit')}
+              onclick={() => setStatus(b.id, 'no_show')}
+            >
+              <UserX size={iconSizes.sm} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="act del"
+              title={canAct('scheduling', 'edit') ? m.sched_cancel_booking() : m.no_permission()}
+              disabled={!canAct('scheduling', 'edit')}
+              onclick={() => setStatus(b.id, 'cancelled')}
+            >
+              <X size={iconSizes.sm} />
+            </Button>
+          {/if}
+          {#if sellable}
+            <Button
+              variant="ghost"
+              size="sm"
+              class="act"
+              title={canAct('scheduling', 'edit') ? 'Create sales order' : m.no_permission()}
+              disabled={orderBusy === b.id || !canAct('scheduling', 'edit')}
+              onclick={() => createOrder(b.id)}
+            >
+              <ClipboardList size={iconSizes.sm} />
+            </Button>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  </Card>
+{/snippet}
+
 <PageShell archetype="collection" scroll="region" labelledBy={titleId} class={surfaceClass}>
-  <PageHeader {titleId} title={labels.title()} subtitle={labels.subtitle() ?? undefined}>
-    {#snippet leading()}
-      <CalendarClock size={iconSizes.md} class="text-accent shrink-0" />
-    {/snippet}
-    {#snippet actions()}
-      <Button
-        size="sm"
-        onclick={() => (showNew = true)}
-        disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
-        title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
-      >
-        <Plus size={iconSizes.sm} />
-        {labels.newAction()}
-      </Button>
-    {/snippet}
-  </PageHeader>
+  {#if capabilities.dayAgenda}
+    <PageHeader {titleId} title={labels.title()} subtitle={labels.subtitle() ?? undefined}>
+      {#snippet leading()}{@render headerIcon()}{/snippet}
+      {#snippet secondaryActions()}
+        <div class="range-toggle">
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            class="range-btn {range === 'today' ? 'range-on' : ''}"
+            aria-pressed={range === 'today'}
+            onclick={() => (range = 'today')}>{labels.rangeToday?.()}</Button
+          >
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            class="range-btn {range === 'week' ? 'range-on' : ''}"
+            aria-pressed={range === 'week'}
+            onclick={() => (range = 'week')}>{labels.rangeWeek?.()}</Button
+          >
+        </div>
+      {/snippet}
+      {#snippet primaryActions()}{@render newBookingAction()}{/snippet}
+    </PageHeader>
+  {:else}
+    <PageHeader {titleId} title={labels.title()} subtitle={labels.subtitle() ?? undefined}>
+      {#snippet leading()}{@render headerIcon()}{/snippet}
+      {#snippet actions()}{@render newBookingAction()}{/snippet}
+    </PageHeader>
+  {/if}
 
   <PageBody padding="compact" scroll="region">
     {#if data.contactName}<div class="mb-3">
         <ScopeBanner name={data.contactName} contactId={data.contactId} noun="bookings" />
       </div>{/if}
-    {#if data.bookings.length === 0}
+    {#if rows.length === 0}
       <EmptyState title={m.sched_empty_bookings()} />
+    {:else if capabilities.dayAgenda}
+      <div class="flex flex-col gap-4">
+        {#each groups as g (g.label)}
+          <div>
+            <div class="t-caption mb-1.5 capitalize">{g.label}</div>
+            <div class="flex flex-col gap-2">
+              {#each g.rows as b (b.id)}
+                {@render bookingCard(b)}
+              {/each}
+            </div>
+          </div>
+        {/each}
+      </div>
     {:else}
       <div class="flex flex-col gap-2">
-        {#each data.bookings as b (b.id)}
-          <Card padding="md">
-            <div class="flex items-center gap-3 flex-wrap">
-              <div class="flex-1 min-w-[180px]">
-                <div class="font-medium">{eventTitle(b.eventTypeId)}</div>
-                <div class="t-caption">{fmt(b.startTime)} · {resourceName(b.resourceId)}</div>
-              </div>
-              <div class="min-w-[120px]">
-                <div class="text-sm">{b.attendeeName ?? '—'}</div>
-                <div class="t-caption">{b.attendeePhone ?? ''}</div>
-              </div>
-              <Badge>{(STATUS_LABEL[b.status] ?? (() => b.status))()}</Badge>
-              {#if accrualBySource.get(b.id)}
-                {@const acc = accrualBySource.get(b.id)!}
-                {#if acc.open > 0}
-                  <Badge variant="semantic" value="warning"
-                    >{m.sched_stock_committed({ value: formatMoney(acc.estValue) })}</Badge
-                  >
-                {:else if acc.realized > 0}
-                  <a
-                    href={acc.realizedEntryId ? `/stock/entries/${acc.realizedEntryId}` : '/stock'}
-                    class="no-underline"
-                  >
-                    <Badge variant="semantic" value="success"
-                      >{m.sched_stock_realized({ value: formatMoney(acc.realizedValue) })}</Badge
-                    >
-                  </a>
-                {:else}
-                  <Badge>{m.sched_stock_released()}</Badge>
-                {/if}
-              {/if}
-              {#if stockWarnings[b.id]}
-                <span class="t-caption" style="color:var(--color-destructive)">
-                  {stockWarnings[b.id]}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="underline"
-                    onclick={() => completeBooking(b.id, null)}>{m.sched_stock_retry_post()}</Button
-                  >
-                </span>
-              {/if}
-              <div class="flex gap-1">
-                {#if b.status === 'accepted' || b.status === 'pending'}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="act"
-                    title={canAct('scheduling', 'edit')
-                      ? m.sched_mark_complete()
-                      : m.no_permission()}
-                    disabled={!canAct('scheduling', 'edit')}
-                    onclick={() => openComplete(b.id)}
-                  >
-                    <Check size={iconSizes.sm} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="act"
-                    title={canAct('scheduling', 'edit') ? m.sched_mark_noShow() : m.no_permission()}
-                    disabled={!canAct('scheduling', 'edit')}
-                    onclick={() => setStatus(b.id, 'no_show')}
-                  >
-                    <UserX size={iconSizes.sm} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="act del"
-                    title={canAct('scheduling', 'edit')
-                      ? m.sched_cancel_booking()
-                      : m.no_permission()}
-                    disabled={!canAct('scheduling', 'edit')}
-                    onclick={() => setStatus(b.id, 'cancelled')}
-                  >
-                    <X size={iconSizes.sm} />
-                  </Button>
-                {/if}
-                {#if capabilities.createSalesOrder && b.status !== 'cancelled' && b.status !== 'rejected'}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="act"
-                    title={canAct('scheduling', 'edit') ? 'Create sales order' : m.no_permission()}
-                    disabled={orderBusy === b.id || !canAct('scheduling', 'edit')}
-                    onclick={() => createOrder(b.id)}
-                  >
-                    <ClipboardList size={iconSizes.sm} />
-                  </Button>
-                {/if}
-              </div>
-            </div>
-          </Card>
+        {#each rows as b (b.id)}
+          {@render bookingCard(b)}
         {/each}
       </div>
     {/if}
@@ -473,15 +638,26 @@
         {/each}
       </Select>
     </label>
+    {#if capabilities.staffOverride}
+      <label class="field">
+        <span class="t-caption">{m.sched_nav_resources()}</span>
+        <Select class="txt" bind:value={nbForceResourceId}>
+          <option value="">{labels.staffAny?.()}</option>
+          {#each data.resources as r (r.id)}
+            <option value={r.id}>{r.name}</option>
+          {/each}
+        </Select>
+      </label>
+    {/if}
     <label class="field">
       <span class="t-caption">{m.sched_book_pick_time()}</span>
       <input class="txt" type="date" bind:value={nbDate} onchange={loadSlots} />
     </label>
     {#if nbLoading}
       <p class="t-caption">…</p>
-    {:else if nbEventType && nbSlots.length === 0}
+    {:else if nbEventType && nbSlots.length === 0 && !overrideActive}
       <p class="t-caption">{m.sched_book_no_slots()}</p>
-    {:else if nbSlots.length}
+    {:else if nbSlots.length && !overrideActive}
       <div class="slot-grid">
         {#each nbSlots as s (s.start)}
           <Button
@@ -489,6 +665,7 @@
             size="sm"
             type="button"
             class="slot {nbSlot === s.start ? 'slot-on' : ''}"
+            aria-pressed={nbSlot === s.start}
             onclick={() => (nbSlot = s.start)}
           >
             {new Date(s.start).toLocaleTimeString(undefined, {
@@ -497,6 +674,17 @@
             })}
           </Button>
         {/each}
+      </div>
+    {/if}
+    {#if capabilities.staffOverride && nbForceResourceId && canAct('scheduling', 'edit')}
+      <div class="field override-box">
+        <label class="check-row">
+          <input type="checkbox" bind:checked={nbOverrideChecked} />
+          <span class="t-caption">{labels.overrideConflicts?.()}</span>
+        </label>
+        {#if nbOverrideChecked}
+          <input class="txt" type="time" bind:value={nbOverrideTime} />
+        {/if}
       </div>
     {/if}
     {#if nbHasMapping && nbLines.length}
@@ -541,46 +729,53 @@
         </div>
       </div>
     {/if}
-    <div class="field">
-      <span class="t-caption">{m.sched_book_find_client()}</span>
-      <div class="relative">
-        <input
-          class="txt"
-          bind:value={nbSearch}
-          oninput={searchContacts}
-          placeholder={m.sched_book_find_client_ph()}
-        />
-        {#if nbContactId}<span class="linked">✓ {m.sched_book_linked()}</span>{/if}
-        {#if nbResults.length}
-          <div class="results absolute">
-            {#each nbResults as c (c.id)}
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                class="result"
-                onclick={() => pickContact(c)}>{c.name}</Button
-              >
-            {/each}
-          </div>
-        {/if}
+    {#if customerField}
+      {@render customerField(customerControl)}
+    {:else}
+      <div class="field">
+        <span class="t-caption">{m.sched_book_find_client()}</span>
+        <div class="relative">
+          <input
+            class="txt"
+            bind:value={nbSearch}
+            oninput={searchContacts}
+            placeholder={m.sched_book_find_client_ph()}
+          />
+          {#if nbContactId}<span class="linked">✓ {m.sched_book_linked()}</span>{/if}
+          {#if nbResults.length}
+            <div class="results absolute">
+              {#each nbResults as c (c.id)}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  class="result"
+                  onclick={() => pickContact(c)}>{c.name}</Button
+                >
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
-    </div>
-    <label class="field">
-      <span class="t-caption">{m.sched_book_name()}</span>
-      <input class="txt" bind:value={nbName} />
-    </label>
-    {#if !nbContactId}
       <label class="field">
-        <span class="t-caption">{m.sched_book_phone()}</span>
-        <input class="txt" bind:value={nbPhone} />
+        <span class="t-caption">{m.sched_book_name()}</span>
+        <input class="txt" bind:value={nbName} />
       </label>
+      {#if !nbContactId}
+        <label class="field">
+          <span class="t-caption">{m.sched_book_phone()}</span>
+          <input class="txt" bind:value={nbPhone} />
+        </label>
+      {/if}
     {/if}
     {#if nbErr}<p class="t-caption" style="color:var(--color-destructive)">{nbErr}</p>{/if}
     <div class="flex gap-2">
       <Button
         onclick={book}
-        disabled={nbLoading || !nbSlot || !nbName.trim() || !canAct('scheduling', 'edit')}
+        disabled={nbLoading ||
+          (overrideActive ? !nbOverrideTime : !nbSlot) ||
+          !nbName.trim() ||
+          !canAct('scheduling', 'edit')}
         title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
         >{m.sched_book_confirm()}</Button
       >
@@ -659,6 +854,23 @@
   .linked {
     font-size: var(--font-size-caption, 12px);
     color: var(--color-accent);
+  }
+  .range-toggle {
+    display: inline-flex;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .override-box {
+    border: 1px dashed var(--hairline);
+    border-radius: var(--radius-lg);
+    padding: var(--space-2, 8px);
+    gap: var(--space-2, 8px);
+  }
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
   }
   .results {
     z-index: var(--layer-sticky, 10);

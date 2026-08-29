@@ -30,13 +30,43 @@ export type BookingsViewLoadEvent = {
   url: URL;
 };
 
+/**
+ * Booking window applied when no contact scope is in play.
+ *
+ * `now` (default) is the scheduling rolling window; `today` is the front-desk
+ * day book — server-local midnight of today through `afterDays` later.
+ */
+export type BookingsWindow =
+  | { anchor?: 'now'; beforeDays: number; afterDays: number }
+  | { anchor: 'today'; afterDays: number };
+
+/**
+ * How the stock accrual chips are gated.
+ *
+ * `effective` (default, scheduling) consults `effectiveModuleEnabled`, so a
+ * personal-kind org skips the accrual read entirely (S3/WP1 R6).
+ * `module-state` reads the raw toggle and still *attempts* the read fail-soft.
+ *
+ * TODO(handoff): the `module-state` gate is the POS fork's shipped drift —
+ * `/pos/appointments` reports stock enabled for a personal-kind org where
+ * `/scheduling/bookings` reports it disabled. Preserved verbatim here (spec
+ * `2026-08-17-hub-pos-appointments-fork-spec` §7 forbids fixing kind-leaks in
+ * this refactor); the fix is owned by `2026-07-22-personal-org-differentiation-spec`
+ * (WP1, `effectiveModuleEnabled`) and is a one-line change to this option.
+ */
+export type BookingsStockGate = 'effective' | 'module-state';
+
 export interface LoadBookingsViewOptions {
   /** Load-dependency key the route's mutations invalidate. */
   dependsKey: string;
-  /** Rolling window around "now", in days, used when no contact scope applies. */
-  window: { beforeDays: number; afterDays: number };
+  /** Window around "now"/"today", in days, used when no contact scope applies. */
+  window: BookingsWindow;
   /** Row cap handed to `listBookings`. */
   limit: number;
+  /** Drop retired resources before they reach the view (front-desk pickers). */
+  activeResourcesOnly?: boolean;
+  /** Accrual-chip gate. Defaults to `effective`. */
+  stockGate?: BookingsStockGate;
   /**
    * Honour `?contact=` (show ALL of one contact's bookings, unwindowed) and
    * `?new=1` (open the New-booking modal pre-bound to that contact). Adds
@@ -62,6 +92,21 @@ export interface BookingsViewContactScope {
   openNew: boolean;
 }
 
+/** Resolves a window descriptor into the `from`/`to` pair `listBookings` takes. */
+function windowRange(window: BookingsWindow): { from: Date; to: Date } {
+  if (window.anchor === 'today') {
+    // ponytail: server-local midnight, not per-org timezone — fine for a
+    // single-org front-desk view; add per-org tz if a multi-tz org shows up.
+    const from = new Date(new Date().setHours(0, 0, 0, 0));
+    return { from, to: new Date(from.getTime() + window.afterDays * DAY) };
+  }
+  const now = Date.now();
+  return {
+    from: new Date(now - window.beforeDays * DAY),
+    to: new Date(now + window.afterDays * DAY),
+  };
+}
+
 export async function loadBookingsView(
   event: BookingsViewLoadEvent,
   opts: LoadBookingsViewOptions & { contactScope: true },
@@ -83,16 +128,10 @@ export async function loadBookingsView(
   const contact = opts.contactScope ? (url.searchParams.get('contact') ?? undefined) : undefined;
   const openNew = opts.contactScope === true && url.searchParams.get('new') === '1';
 
-  const now = Date.now();
   const maskAttendeePii = await shouldMaskSensitive(locals, 'scheduling');
   const bookingsOpts = contact
     ? { crmContactId: contact, limit: opts.limit, maskAttendeePii }
-    : {
-        from: new Date(now - opts.window.beforeDays * DAY),
-        to: new Date(now + opts.window.afterDays * DAY),
-        limit: opts.limit,
-        maskAttendeePii,
-      };
+    : { ...windowRange(opts.window), limit: opts.limit, maskAttendeePii };
   const [bookings, resources, eventTypes, contactRec] = await Promise.all([
     listBookings(ctx, bookingsOpts),
     listResources(ctx),
@@ -102,10 +141,14 @@ export async function loadBookingsView(
 
   // S3/WP1 R6: stock is now kind-hidden for personal orgs (not just
   // toggle-gated) — skip the accrual read entirely instead of relying on the
-  // try/catch to swallow a query that shouldn't run.
-  const stockEnabled = effectiveModuleEnabled(locals.orgKind, locals.moduleStates ?? {}, 'stock');
+  // try/catch to swallow a query that shouldn't run. The `module-state` gate
+  // keeps the POS fork's looser behaviour (raw toggle, read always attempted).
+  const rawStock = opts.stockGate === 'module-state';
+  const stockEnabled = rawStock
+    ? (locals.moduleStates?.stock ?? true)
+    : effectiveModuleEnabled(locals.orgKind, locals.moduleStates ?? {}, 'stock');
   let accrualSummaries: AccrualSummaries = [];
-  if (stockEnabled) {
+  if (rawStock || stockEnabled) {
     try {
       accrualSummaries = await accrualSummaryForSources(
         ctx,
@@ -119,7 +162,9 @@ export async function loadBookingsView(
 
   const base: BookingsViewLoadData = {
     bookings,
-    resources: resources.map((r) => ({ id: r.id, name: r.name })),
+    resources: resources
+      .filter((r) => !opts.activeResourcesOnly || r.active)
+      .map((r) => ({ id: r.id, name: r.name })),
     eventTypes: eventTypes.map((e) => ({
       id: e.id,
       title: e.title,

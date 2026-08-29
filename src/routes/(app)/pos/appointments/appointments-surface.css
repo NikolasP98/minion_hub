@@ -1,0 +1,45 @@
+/*
+ * `/pos/appointments` surface skin — see `+page.svelte`.
+ *
+ * Every rule is prefixed with the `surfaceClass` this route hands `BookingsView`,
+ * so the shared view stays route-agnostic and the scheduling copy is untouched.
+ */
+.pos-appointments-surface .slot {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1, 4px);
+  font-size: var(--font-size-body, 14px);
+  background: var(--color-card);
+}
+.pos-appointments-surface .slot-on {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  border-color: var(--color-accent);
+}
+.pos-appointments-surface .act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted-foreground);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1, 4px);
+}
+.pos-appointments-surface .act:hover {
+  background: var(--hairline);
+}
+.pos-appointments-surface .act.del:hover {
+  color: var(--color-destructive);
+}
+.pos-appointments-surface .range-btn {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: var(--font-size-body, 14px);
+  background: var(--color-card);
+  color: var(--color-muted-foreground);
+}
+.pos-appointments-surface .range-btn:not(:last-child) {
+  border-right: 1px solid var(--hairline);
+}
+.pos-appointments-surface .range-on {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
