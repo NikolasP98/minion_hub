@@ -12,6 +12,10 @@ jobs:
     env:
       # No PUBLIC_DEFAULT_ORG_SLUG override here: agent-org.ts derives its org
       # regex from it, and tests expect the .env.example default (faces-sculptors).
+      # A throwaway key, not a secret: CI has no real database and seals nothing
+      # that outlives the job. Set explicitly rather than relying on
+      # MINION_ALLOW_DEV_CRYPTO_KEY so CI exercises the configured-key path.
+      ENCRYPTION_KEY: ci-encryption-key-not-a-real-secret
       PUBLIC_POSTHOG_HOST: https://posthog.invalid
       PUBLIC_POSTHOG_KEY: ci
     steps:
@@ -58,6 +62,10 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      # A throwaway key, not a secret: CI has no real database and seals nothing
+      # that outlives the job. Set explicitly rather than relying on
+      # MINION_ALLOW_DEV_CRYPTO_KEY so CI exercises the configured-key path.
+      ENCRYPTION_KEY: ci-encryption-key-not-a-real-secret
       PUBLIC_POSTHOG_HOST: https://posthog.invalid
       PUBLIC_POSTHOG_KEY: ci
     steps:
@@ -125,6 +133,10 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      # A throwaway key, not a secret: CI has no real database and seals nothing
+      # that outlives the job. Set explicitly rather than relying on
+      # MINION_ALLOW_DEV_CRYPTO_KEY so CI exercises the configured-key path.
+      ENCRYPTION_KEY: ci-encryption-key-not-a-real-secret
       PUBLIC_POSTHOG_HOST: https://posthog.invalid
       PUBLIC_POSTHOG_KEY: ci
       # Single source for the connection string every step below shares.
@@ -230,6 +242,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PUBLIC_DEFAULT_ORG_SLUG: ci
+      # A throwaway key, not a secret: CI has no real database and seals nothing
+      # that outlives the job. Set explicitly rather than relying on
+      # MINION_ALLOW_DEV_CRYPTO_KEY so CI exercises the configured-key path.
+      ENCRYPTION_KEY: ci-encryption-key-not-a-real-secret
       PUBLIC_POSTHOG_HOST: https://posthog.invalid
       PUBLIC_POSTHOG_KEY: ci
     steps:
