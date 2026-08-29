@@ -90,6 +90,82 @@ describe('buildResumenXml', () => {
     expect(xml).toContain('<cbc:ConditionCode>3</cbc:ConditionCode>');
   });
 
+  /**
+   * S3 of 2026-08-17-hub-igv-rate-from-org-config-spec: the resumen is the
+   * second home the hardcoded rate used to have. `summaryLineXml` re-derives
+   * each boleta's gravada/IGV through `computeTotals`, so it must move with the
+   * org's rate — and each line must still balance, since SUNAT re-adds them.
+   */
+  describe('S3 — per-boleta totals follow the boleta’s own igvRate', () => {
+    /** '107.27' → 10727 — cents make “exactly” literal, and pin the 2dp format. */
+    function cents(decimal: string): number {
+      expect(decimal).toMatch(/^\d+\.\d{2}$/);
+      return Math.round(Number(decimal) * 100);
+    }
+
+    function summaryLines(xml: string) {
+      return xml
+        .split('<sac:SummaryDocumentsLine>')
+        .slice(1)
+        .map((block) => {
+          const pick = (tag: string) => {
+            const m = block.match(new RegExp(`<${tag} currencyID="PEN">([^<]+)</${tag}>`));
+            if (!m) throw new Error(`no <${tag}> in summary line`);
+            return cents(m[1]);
+          };
+          return {
+            total: pick('sac:TotalAmount'),
+            gravada: pick('cbc:PaidAmount'),
+            igv: pick('cbc:TaxAmount'),
+          };
+        });
+    }
+
+    function build(invoices: EmissionInvoice[]): string {
+      return buildResumenXml({
+        emitter,
+        correlativo: '1',
+        referenceDate: '2026-08-14',
+        issueDate: '2026-08-14',
+        lines: invoices.map((invoice) => ({ invoice, estado: '1' }) as ResumenLine),
+      });
+    }
+
+    const oddCentimos: EmissionInvoice = {
+      ...boleta,
+      correlativo: '2',
+      lines: [
+        { description: 'Servicio A', quantity: 3, unitPriceInclTax: 10.33 },
+        { description: 'Servicio B', quantity: 1, unitPriceInclTax: 7.77 },
+      ],
+    };
+
+    it('a 0.10 resumen differs from the 0.18 one, line by line', () => {
+      const at18 = summaryLines(build([boleta]));
+      const at10 = summaryLines(build([{ ...boleta, igvRate: 0.1 }]));
+      // Same 118.00 the customer paid, split by a different rate.
+      expect(at18[0]).toEqual({ total: 11800, gravada: 10000, igv: 1800 });
+      expect(at10[0]).toEqual({ total: 11800, gravada: 10727, igv: 1073 });
+    });
+
+    it.each([0.18, 0.1, 0.08, 0.05])(
+      'rate %s: every boleta’s gravada + IGV == its declared total, exactly',
+      (igvRate) => {
+        const invoices = [boleta, oddCentimos].map((b) => ({ ...b, igvRate }));
+        const parsed = summaryLines(build(invoices));
+        expect(parsed).toHaveLength(2);
+        for (const [i, line] of parsed.entries()) {
+          expect(line.gravada + line.igv).toBe(line.total);
+          const paid = invoices[i].lines.reduce(
+            (s, l) => s + Math.round(l.quantity * l.unitPriceInclTax * 100),
+            0,
+          );
+          expect(line.total).toBe(paid);
+        }
+      },
+    );
+  });
+
   it('rejects a non-boleta invoice at runtime', () => {
     const factura: EmissionInvoice = { ...boleta, docType: '01', serie: 'F998' };
     expect(() =>

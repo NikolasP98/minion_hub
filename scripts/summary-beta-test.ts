@@ -10,6 +10,11 @@
  * 2. submitResumen RC with both (estado 1) -> CDR ResponseCode 0.
  * 3. submitResumen RC with B998-2 estado 3 (anulacion) -> accepted.
  * 4. Emit factura F998-1, then submitBaja RA for it -> accepted.
+ *
+ * TODO(handoff): step 2-3 have NOT been re-run at a non-statutory rate since
+ * the rate became a parameter — see the same note in scripts/emit-beta-test.ts
+ * for what is owed (`--rate 0.10` here) and why it could not be done in the
+ * shipping agent's sandbox. Spec: 2026-08-17-hub-igv-rate-from-org-config §6.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { amountInWords, buildInvoiceXml, computeTotals } from './ubl';
-import type { EmissionInvoice } from './types';
+import type { EmissionInvoice, EmissionLine } from './types';
 
 const base: EmissionInvoice = {
   docType: '03',
@@ -136,4 +136,91 @@ describe('igvRate (S1 — required input, no module-level default)', () => {
     const invoice: EmissionInvoice = { ...rest };
     void invoice;
   });
+});
+
+/**
+ * S3 of 2026-08-17-hub-igv-rate-from-org-config-spec — the invariant SUNAT
+ * itself enforces ("totales no consistentes"): the document's declared totals
+ * must reconstruct exactly from the line decimals it carries. The rate stopped
+ * being a constant in S1, so this has to hold at EVERY supported rate, not just
+ * at the one the library was built against.
+ *
+ * Asserted on the emitted XML strings, in integer cents — that is the artifact
+ * SUNAT parses, and cents make "exactly, no tolerance" literally true instead
+ * of a floating-point approximation of it.
+ */
+describe('S3 — totals-consistency invariant at every supported rate', () => {
+  const RATES = [0.18, 0.1, 0.08, 0.05];
+
+  /** '107.27' → 10727. Also pins the 2-decimal format SUNAT requires. */
+  function cents(decimal: string): number {
+    expect(decimal).toMatch(/^\d+\.\d{2}$/);
+    return Math.round(Number(decimal) * 100);
+  }
+
+  function amount(xml: string, tag: string): string {
+    const m = xml.match(new RegExp(`<${tag} currencyID="PEN">([^<]+)</${tag}>`));
+    if (!m) throw new Error(`no <${tag}> in document`);
+    return m[1];
+  }
+
+  function parseInvoice(xml: string) {
+    const [header, ...lineBlocks] = xml.split('<cac:InvoiceLine>');
+    return {
+      // Document level lives before the first InvoiceLine.
+      lineExtension: cents(amount(header, 'cbc:LineExtensionAmount')),
+      igv: cents(amount(header, 'cbc:TaxAmount')),
+      taxInclusive: cents(amount(header, 'cbc:TaxInclusiveAmount')),
+      payable: cents(amount(header, 'cbc:PayableAmount')),
+      percents: [...xml.matchAll(/<cbc:Percent>([^<]+)<\/cbc:Percent>/g)].map((m) => m[1]),
+      lines: lineBlocks.map((block) => ({
+        taxable: cents(amount(block, 'cbc:LineExtensionAmount')),
+        igv: cents(amount(block, 'cbc:TaxAmount')),
+      })),
+    };
+  }
+
+  function lineSetsFor(rate: number): Record<string, EmissionLine[]> {
+    // A net of exactly 10.00 at this rate's divisor — the "no rounding to do"
+    // cell, which is where an off-by-a-céntimo split would show up cleanest.
+    const exactMultiple = Math.round(10 * (1 + rate) * 100) / 100;
+    return {
+      '1 line': [{ description: 'Consulta', quantity: 1, unitPriceInclTax: 19.9 }],
+      '3 lines with odd céntimos': base.lines,
+      '1 line x quantity 7': [{ description: 'Ampolla', quantity: 7, unitPriceInclTax: 3.33 }],
+      'inclusive price is an exact multiple of the divisor': [
+        { description: 'Sesion', quantity: 1, unitPriceInclTax: exactMultiple },
+      ],
+    };
+  }
+
+  for (const igvRate of RATES) {
+    for (const [setName, lines] of Object.entries(lineSetsFor(igvRate))) {
+      it(`rate ${igvRate}, ${setName}: lines reconstruct the document totals exactly`, () => {
+        const doc = parseInvoice(buildInvoiceXml({ ...base, igvRate, lines }));
+        expect(doc.lines).toHaveLength(lines.length);
+
+        for (const [i, l] of doc.lines.entries()) {
+          // The line's own split reconstructs the amount the customer paid.
+          const paid = Math.round(lines[i].quantity * lines[i].unitPriceInclTax * 100);
+          expect(l.taxable + l.igv).toBe(paid);
+          // …and the split agrees with the percent the same document declares,
+          // within the céntimo that rounding to 2dp can cost (SUNAT re-derives
+          // IGV from TaxableAmount × Percent and rejects a wider gap).
+          expect(Math.abs(l.igv - l.taxable * igvRate)).toBeLessThanOrEqual(1);
+        }
+
+        const sumTaxable = doc.lines.reduce((s, l) => s + l.taxable, 0);
+        const sumIgv = doc.lines.reduce((s, l) => s + l.igv, 0);
+        expect(doc.lineExtension).toBe(sumTaxable);
+        expect(doc.igv).toBe(sumIgv);
+        expect(doc.lineExtension + doc.igv).toBe(doc.taxInclusive);
+        expect(doc.payable).toBe(doc.taxInclusive);
+
+        // One rate, one document: every declared Percent comes from it.
+        expect(doc.percents.length).toBe(lines.length);
+        for (const p of doc.percents) expect(p).toBe(String(igvRate * 100));
+      });
+    }
+  }
 });

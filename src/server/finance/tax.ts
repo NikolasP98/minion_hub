@@ -46,6 +46,15 @@ export interface IgvRateSettings {
  * ZERO throws (spec ⚠️ A2): SUNAT models exonerado/inafecto with different tax
  * category and scheme codes, not as a gravada line at `Percent 0`. Emitting a
  * 0% gravada document would be malformed, so refuse loudly instead.
+ *
+ * TODO(handoff): an org that legitimately operates exonerada/inafecta (SUNAT
+ * catalog 07 codes 20/30, tax schemes 9997/9998) therefore has NO path to
+ * emission at all — it gets `invalid_tax_rate` on every ticket, which is honest
+ * but is not a feature. Those document shapes are explicitly out of scope of
+ * specs/2026-08-17-hub-igv-rate-from-org-config-spec.md §5 (one rate per
+ * document, gravada only) and need their own spec: per-line affectation type,
+ * the `LegalMonetaryTotal` exempt/unaffected buckets, and a settings surface to
+ * declare the operation type. Nothing here should be relaxed to fake it.
  */
 export function resolveIgvRate(settings: IgvRateSettings | null | undefined): number {
   const configured = settings?.taxRate;
