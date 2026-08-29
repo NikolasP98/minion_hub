@@ -1,21 +1,27 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import { createMockDb } from '$server/test-utils/mock-db';
 import {
   normalizeDepositRule,
   readCrmSettingsValue,
   resolveDepositRule,
+  resolveDepositRuleWithVersion,
   writeDepositRule,
 } from './crm-settings.service';
-import { DEFAULT_DEPOSIT_RULE } from './crm-deposit-rule';
+import { DEFAULT_DEPOSIT_RULE, DEPOSIT_KEYWORDS_MAX } from './crm-deposit-rule';
+
+const dialect = new PgDialect();
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
 /**
  * Real-query sequencing for raw `tx.execute` calls, skipping `withOrgCore`'s
  * fixed setup statements (idle-timeout, `set local role`, two `set_config`
- * GUCs) so `values` only has to list results for writeDepositRule's own two
- * queries (the upsert, then the stale-count select) — same technique as
- * `pos.sellables.test.ts`'s `mockExecuteSeq`.
+ * GUCs) so `values` only has to list results for writeDepositRule's own four
+ * queries — the advisory lock, the `clock_timestamp()` stamp, the upsert, then
+ * the stale-count select — same technique as `pos.sellables.test.ts`'s
+ * `mockExecuteSeq`.
  */
 function mockExecuteSeq(db: unknown, values: unknown[]) {
   const queue = [...values];
@@ -38,6 +44,34 @@ afterEach(() => {
 /** Spy that also silences the warning so a passing run stays readable. */
 function warnSpy() {
   return vi.spyOn(console, 'warn').mockImplementation(() => {});
+}
+
+/** The database clock every writeDepositRule test below answers
+ *  `select clock_timestamp()` with — deliberately NOT close to this process's
+ *  clock, so any stamp taken from `new Date()` instead of the DB is visible. */
+const DB_CLOCK = '2031-03-04T05:06:07.089Z';
+
+/** Results for writeDepositRule's own four statements, in order. */
+function writeSeq(staleCount: number) {
+  return [undefined, [{ at: DB_CLOCK }], undefined, [{ count: staleCount }]];
+}
+
+const executeOf = (db: unknown) => (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute;
+
+/** Rendered SQL text of every non-setup statement the service issued, in order. */
+function executedSql(db: unknown): string[] {
+  return executeOf(db)
+    .mock.calls.map((c) => dialect.sqlToQuery(c[0] as SQL).sql)
+    .filter((text) => !/^\s*(set local|select set_config)/i.test(text));
+}
+
+/** Bound parameters of the first executed statement whose SQL contains `needle`. */
+function paramsOf(db: unknown, needle: string): unknown[] {
+  const call = executeOf(db).mock.calls.find((c) =>
+    dialect.sqlToQuery(c[0] as SQL).sql.includes(needle),
+  );
+  expect(call).toBeDefined();
+  return dialect.sqlToQuery(call![0] as SQL).params;
 }
 
 describe('readCrmSettingsValue', () => {
@@ -143,13 +177,13 @@ describe('normalizeDepositRule', () => {
     expect(label).toBe('b'.repeat(40));
   });
 
-  it('caps the keyword list at 20 entries and warns about the ones it drops', () => {
+  it(`caps the keyword list at ${DEPOSIT_KEYWORDS_MAX} entries and warns about the ones it drops`, () => {
     const warn = warnSpy();
     const many = Array.from({ length: 50 }, (_v, i) => `kw${i}`);
     const { keywords } = normalizeDepositRule({ keywords: many });
-    expect(keywords).toHaveLength(20);
+    expect(keywords).toHaveLength(DEPOSIT_KEYWORDS_MAX);
     expect(keywords[0]).toBe('kw0');
-    expect(keywords.at(-1)).toBe('kw19');
+    expect(keywords.at(-1)).toBe(`kw${DEPOSIT_KEYWORDS_MAX - 1}`);
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
@@ -219,7 +253,7 @@ describe('resolveDepositRule', () => {
 describe('writeDepositRule', () => {
   it('merges the deposit key via one insert-on-conflict statement — sibling keys untouched by construction', async () => {
     const { db } = createMockDb();
-    mockExecuteSeq(db, [undefined, [{ count: 0 }]]);
+    mockExecuteSeq(db, writeSeq(0));
 
     await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
 
@@ -241,7 +275,7 @@ describe('writeDepositRule', () => {
 
   it('stamps updatedAt server-side and returns the normalized rule', async () => {
     const { db } = createMockDb();
-    mockExecuteSeq(db, [undefined, [{ count: 0 }]]);
+    mockExecuteSeq(db, writeSeq(0));
 
     const result = await writeDepositRule(ctx(db), { keywords: ['ADELANTO', ' seña '] });
 
@@ -253,20 +287,97 @@ describe('writeDepositRule', () => {
 
   it('staleDerivedCount reflects crm_win_embeddings rows built before this update; 0 ⇒ staleDerived false', async () => {
     const { db } = createMockDb();
-    mockExecuteSeq(db, [undefined, [{ count: 0 }]]);
+    mockExecuteSeq(db, writeSeq(0));
     const clean = await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
     expect(clean).toMatchObject({ staleDerived: false, staleDerivedCount: 0 });
 
     const { db: db2 } = createMockDb();
-    mockExecuteSeq(db2, [undefined, [{ count: 7 }]]);
+    mockExecuteSeq(db2, writeSeq(7));
     const stale = await writeDepositRule(ctx(db2), { keywords: ['adelanto'] });
     expect(stale).toMatchObject({ staleDerived: true, staleDerivedCount: 7 });
   });
 
   it('an empty keywords array is a legitimate write (matches nothing), not rejected', async () => {
     const { db } = createMockDb();
-    mockExecuteSeq(db, [undefined, [{ count: 0 }]]);
+    mockExecuteSeq(db, writeSeq(0));
     const result = await writeDepositRule(ctx(db), { keywords: [] });
     expect(result.rule.keywords).toEqual([]);
+  });
+
+  // The stale-derived disclosure is only sound if a win-index publication
+  // cannot land between the cutoff stamp and the count. These two tests pin
+  // the two halves of that: the lock comes first, and the cutoff is the
+  // DATABASE's clock read after it.
+  it('takes the org deposit-config lock BEFORE stamping or writing anything', async () => {
+    const { db } = createMockDb();
+    mockExecuteSeq(db, writeSeq(0));
+
+    await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
+
+    const statements = executedSql(db);
+    expect(statements[0]).toContain("pg_advisory_xact_lock(hashtext('crm-deposit-rule:'");
+    expect(statements[1]).toContain('clock_timestamp()');
+    expect(statements[2]).toContain('insert into crm_settings');
+    expect(statements[3]).toContain('from crm_win_embeddings');
+    // Waits for the lock — a `try_` variant would let the write proceed while
+    // a rebuild is publishing, which is exactly the ordering being bought.
+    expect(statements[0]).not.toContain('try_advisory');
+    expect(paramsOf(db, 'pg_advisory_xact_lock')).toEqual(['org-1']);
+  });
+
+  it('stamps updatedAt and the staleness cutoff from the DATABASE clock, not this process clock', async () => {
+    const { db } = createMockDb();
+    mockExecuteSeq(db, writeSeq(0));
+
+    await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
+
+    // Stored blob: the DB clock's instant, not `new Date()`.
+    const [, storedJson] = paramsOf(db, 'insert into crm_settings') as [string, string];
+    expect(JSON.parse(storedJson).updatedAt).toBe(DB_CLOCK);
+    // …and the same instant bounds the stale-row count, so the two can never
+    // be compared across two different clocks.
+    expect(paramsOf(db, 'from crm_win_embeddings')).toEqual(['org-1', DB_CLOCK]);
+  });
+});
+
+// The version stamp `buildWinIndex` snapshots and rechecks (see
+// crm-similarity.service.test.ts's publication tests).
+describe('resolveDepositRuleWithVersion', () => {
+  it('returns the stored updatedAt as the version alongside the normalized rule', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([
+      { value: { deposit: { keywords: ['Adelanto'], updatedAt: '2026-08-29T09:00:00.000Z' } } },
+    ]);
+    expect(await resolveDepositRuleWithVersion(ctx(db))).toEqual({
+      rule: { keywords: ['adelanto'], label: DEFAULT_DEPOSIT_RULE.label },
+      version: '2026-08-29T09:00:00.000Z',
+    });
+  });
+
+  it('an org with no stored rule (and a rule with no stamp) is version null', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ value: {} }]);
+    expect(await resolveDepositRuleWithVersion(ctx(db))).toEqual({
+      rule: DEFAULT_DEPOSIT_RULE,
+      version: null,
+    });
+
+    const { db: db2, resolve: resolve2 } = createMockDb();
+    resolve2([{ value: { deposit: { keywords: ['adelanto'] } } }]);
+    expect((await resolveDepositRuleWithVersion(ctx(db2))).version).toBeNull();
+  });
+
+  it('a failed read is version null — the same version an unconfigured org has', async () => {
+    const warn = warnSpy();
+    const db = {
+      transaction: () => {
+        throw new Error('boom');
+      },
+    } as never;
+    expect(await resolveDepositRuleWithVersion(ctx(db))).toEqual({
+      rule: DEFAULT_DEPOSIT_RULE,
+      version: null,
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });

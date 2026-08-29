@@ -11,15 +11,33 @@ vi.mock('./modules.service', () => ({ bothEnabled: (...a: unknown[]) => bothEnab
 // (proven there, against real blobs, in crm-settings.service.test.ts). Mocked
 // here so each test can state WHICH org's vocabulary the service is threading.
 const resolveDepositRule = vi.fn<() => Promise<DepositRule>>(async () => DEFAULT_DEPOSIT_RULE);
-vi.mock('./crm-settings.service', () => ({ resolveDepositRule: () => resolveDepositRule() }));
+/** The version stamp the rebuild SNAPSHOTS with the rule it classifies under. */
+let snapshotVersion: string | null = null;
+vi.mock('./crm-settings.service', async () => {
+  // Only the read is faked; the lock + in-transaction version read are the
+  // SHIPPED ones, so the statements the publication issues are the real ones.
+  const actual =
+    await vi.importActual<typeof import('./crm-settings.service')>('./crm-settings.service');
+  return {
+    ...actual,
+    resolveDepositRule: () => resolveDepositRule(),
+    resolveDepositRuleWithVersion: async () => ({
+      rule: await resolveDepositRule(),
+      version: snapshotVersion,
+    }),
+  };
+});
 
 import { DEFAULT_DEPOSIT_RULE, type DepositRule } from './crm-deposit-rule';
 
 const embeddingsEnabled = vi.fn(() => true);
+const embedTexts = vi.fn<(texts: string[]) => Promise<number[][]>>(async (texts) =>
+  texts.map(() => [0.1, 0.2]),
+);
 vi.mock('./embeddings', () => ({
   embeddingsEnabled: () => embeddingsEnabled(),
   embedText: vi.fn(async () => []),
-  embedTexts: vi.fn(async () => []),
+  embedTexts: (texts: string[]) => embedTexts(texts),
   toVectorLiteral: (v: number[]) => `[${v.join(',')}]`,
 }));
 
@@ -106,5 +124,100 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit decides what c
     resolve([]);
     await buildWinIndex(ctx(db));
     expect(resolveDepositRule).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Publication ordering (⚠️ A3 of 2026-08-17-hub-reserva-keyword-config-spec).
+ *
+ * `buildWinIndex` classifies buyers under the rule it read at the START of the
+ * pass, then leaves the database for the embedding round-trips, then writes
+ * `bought`/`snippet` with `built_at = now()`. An operator changing the rule in
+ * that window used to get the worst of both: rows derived from the OLD
+ * vocabulary carrying a timestamp NEWER than the new rule's `updatedAt`, so
+ * `writeDepositRule`'s `built_at < updatedAt` disclosure reported them fresh.
+ *
+ * The tests below drive that exact interleaving — the mocked `embedTexts`
+ * stands in for the concurrent `PUT /api/crm/settings`, flipping the stored
+ * version while the pass is embedding — through the SHIPPED publication path.
+ */
+describe('win-index publication vs a concurrent deposit-rule write', () => {
+  const CONTACT_ID = '11111111-1111-4111-8111-111111111111';
+
+  /** A mock db that answers each of buildWinIndex's statements by shape and
+   *  records the SQL it was asked to run, in order. */
+  function routedDb(liveVersion: () => string | null) {
+    const { db } = createMockDb();
+    const executed: string[] = [];
+    const execute = vi.fn(async (query: SQL) => {
+      const text = dialect.sqlToQuery(query).sql;
+      if (/^\s*(set local|select set_config)/i.test(text)) return undefined;
+      executed.push(text);
+      if (text.includes('from crm_contacts c')) return [{ id: CONTACT_ID, bought: ['botox'] }];
+      if (text.includes('join messages m'))
+        return [
+          { contact_id: CONTACT_ID, direction: 'in', content: 'hola', at: '2026-08-01T00:00:00Z' },
+        ];
+      if (text.includes("value #>> '{deposit,updatedAt}'")) return [{ version: liveVersion() }];
+      return [];
+    });
+    (db as unknown as { execute: unknown }).execute = execute;
+    return { db, executed };
+  }
+
+  const publishSql = (executed: string[]) =>
+    executed.filter((t) => t.includes('insert into crm_win_embeddings'));
+
+  it('discards the pass when the rule changed while it was embedding — nothing is published', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    snapshotVersion = '2026-08-29T09:00:00.000Z';
+    let live: string | null = snapshotVersion;
+    // The concurrent PUT lands here: after classification, before publication.
+    embedTexts.mockImplementationOnce(async (texts) => {
+      live = '2026-08-29T09:00:05.000Z';
+      return texts.map(() => [0.1, 0.2]);
+    });
+    const { db, executed } = routedDb(() => live);
+
+    const result = await buildWinIndex(ctx(db));
+
+    expect(result).toEqual({ indexed: 0, skipped: 'rule-changed' });
+    expect(publishSql(executed)).toHaveLength(0);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('changed during the win-index'));
+    warn.mockRestore();
+  });
+
+  it('publishes when the rule is unchanged, holding the deposit-config lock across the recheck and the upsert', async () => {
+    snapshotVersion = '2026-08-29T09:00:00.000Z';
+    const { db, executed } = routedDb(() => snapshotVersion);
+
+    const result = await buildWinIndex(ctx(db));
+
+    expect(result).toEqual({ indexed: 1 });
+    const lockAt = executed.findIndex((t) => t.includes('pg_advisory_xact_lock'));
+    const recheckAt = executed.findIndex((t) => t.includes("value #>> '{deposit,updatedAt}'"));
+    const upsertAt = executed.findIndex((t) => t.includes('insert into crm_win_embeddings'));
+    expect(lockAt).toBeGreaterThanOrEqual(0);
+    // The lock is what makes the recheck and the upsert one indivisible step
+    // against writeDepositRule — a recheck taken before it would be advisory.
+    expect(lockAt).toBeLessThan(recheckAt);
+    expect(recheckAt).toBeLessThan(upsertAt);
+  });
+
+  it('an org that never configured a rule (version null on both sides) still publishes', async () => {
+    snapshotVersion = null;
+    const { db, executed } = routedDb(() => null);
+
+    expect(await buildWinIndex(ctx(db))).toEqual({ indexed: 1 });
+    expect(publishSql(executed)).toHaveLength(1);
+  });
+
+  it('a rule configured while an unversioned pass was in flight discards that pass', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    snapshotVersion = null; // read fell back to the default rule…
+    const { db, executed } = routedDb(() => '2026-08-29T09:00:05.000Z'); // …org is configured now
+    expect(await buildWinIndex(ctx(db))).toEqual({ indexed: 0, skipped: 'rule-changed' });
+    expect(publishSql(executed)).toHaveLength(0);
+    warn.mockRestore();
   });
 });

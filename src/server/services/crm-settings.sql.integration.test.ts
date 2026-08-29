@@ -162,4 +162,71 @@ describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL',
       expect(result.staleDerivedCount).toBe(1);
     });
   }, 30_000);
+
+  /**
+   * The ORDERING half of the ⚠️ A3 staleness disclosure, which the two tests
+   * above cannot see because they run alone.
+   *
+   * `buildWinIndex` reads the deposit rule, leaves the database for its
+   * embedding round-trips, and only then upserts `bought`/`snippet` with
+   * `built_at = now()`. Before the deposit-config lock existed, a PUT that
+   * arrived in that window stamped `updatedAt` from this process's clock the
+   * instant it started, so a publication committing microseconds later
+   * carried a NEWER `built_at` and escaped the `built_at < updatedAt` count:
+   * old-rule rows reported as fresh.
+   *
+   * This test reproduces that interleaving with real transactions — `owner`
+   * holds the same advisory lock the publication takes and commits an
+   * old-rule row while `writeDepositRule` waits on it. The write must observe
+   * that row afterwards, which is only true if it takes the lock BEFORE
+   * stamping and stamps from the DATABASE clock.
+   */
+  it('a win-index publication that commits while the write waits on the deposit-config lock is still counted stale', async () => {
+    await withSchema(async ({ schema, owner, client }) => {
+      await owner.unsafe(
+        `insert into ${schema}.crm_settings (org_id, value) values ($1, '{}'::jsonb)`,
+        [ORG_ID],
+      );
+
+      let releasePublication!: () => void;
+      const publicationDone = new Promise<void>((resolve) => (releasePublication = resolve));
+      let publicationHoldsLock!: () => void;
+      const lockHeld = new Promise<void>((resolve) => (publicationHoldsLock = resolve));
+
+      // The in-flight rebuild: holds the lock, then publishes an old-rule row.
+      const publication = owner.begin(async (tx) => {
+        await tx.unsafe(`set local search_path to ${schema}, public`);
+        await tx.unsafe(`select pg_advisory_xact_lock(hashtext('crm-deposit-rule:' || $1::text))`, [
+          ORG_ID,
+        ]);
+        publicationHoldsLock();
+        await publicationDone;
+        await tx.unsafe(
+          `insert into ${schema}.crm_win_embeddings (org_id, contact_id, built_at)
+           values ($1, gen_random_uuid(), clock_timestamp())`,
+          [ORG_ID],
+        );
+      });
+
+      await lockHeld;
+      const patch = depositWriteSchema.parse({ keywords: ['adelanto'] });
+      let settled = false;
+      const write = writeDepositRule(ctxFor(client), patch).then((r) => {
+        settled = true;
+        return r;
+      });
+
+      // The write must be BLOCKED, not racing: without the lock it would have
+      // stamped `updatedAt` already and missed the row published below.
+      await new Promise((r) => setTimeout(r, 300));
+      expect(settled).toBe(false);
+
+      releasePublication();
+      await publication;
+      const result = await write;
+
+      expect(result.staleDerivedCount).toBe(1);
+      expect(result.staleDerived).toBe(true);
+    });
+  }, 30_000);
 });

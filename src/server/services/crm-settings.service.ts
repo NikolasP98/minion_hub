@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, type SQL } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { crmSettings } from '$server/db/pg-crm-schema';
@@ -126,6 +126,55 @@ export function normalizeDepositRule(raw: unknown): DepositRule {
 }
 
 /**
+ * The stored rule's VERSION stamp (`crm_settings.value.deposit.updatedAt`) —
+ * `null` for an org that has never configured one (the built-in default is
+ * versionless). Only `writeDepositRule` mints these, from the DB clock, so a
+ * caller that snapshots a version and re-reads it later learns whether the
+ * rule it classified under is still the live one.
+ */
+function depositConfigVersion(raw: unknown): string | null {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const stamp = (raw as { updatedAt?: unknown }).updatedAt;
+  return typeof stamp === 'string' ? stamp : null;
+}
+
+/** A `resolveDepositRule` result carrying the version the rule was read at. */
+export interface VersionedDepositRule {
+  rule: DepositRule;
+  /** `crm_settings.value.deposit.updatedAt` as stored, or `null`. */
+  version: string | null;
+}
+
+/**
+ * `resolveDepositRule` plus the version stamp of the value it read — for the
+ * one caller that classifies rows in one transaction and PUBLISHES them in a
+ * later one (`buildWinIndex`): it snapshots the version here and rechecks it
+ * under `lockDepositConfig` before writing, so a rule change that lands during
+ * its embedding round-trips can never be published as if it were current.
+ *
+ * A read failure yields `version: null` alongside the default rule. That is
+ * deliberately the version an org with NO stored rule has, so a rebuild that
+ * fell back to the default can only publish against an org that is still on
+ * the default — against a configured org the recheck disagrees and aborts.
+ */
+export async function resolveDepositRuleWithVersion(ctx: CoreCtx): Promise<VersionedDepositRule> {
+  let value: Record<string, unknown>;
+  try {
+    value = await readCrmSettingsValue(ctx);
+  } catch (err) {
+    console.warn(
+      'resolveDepositRule: crm_settings read failed; falling back to DEFAULT_DEPOSIT_RULE',
+      err,
+    );
+    return { rule: DEFAULT_DEPOSIT_RULE, version: null };
+  }
+  return {
+    rule: normalizeDepositRule(value.deposit),
+    version: depositConfigVersion(value.deposit),
+  };
+}
+
+/**
  * Resolves the normalized `DepositRule` for one org — call ONCE per public
  * finance/contacts service invocation, before opening that call's
  * `withOrgCore` transaction (see the transaction-discipline note above), and
@@ -136,17 +185,54 @@ export function normalizeDepositRule(raw: unknown): DepositRule {
  * CRM roster is not.
  */
 export async function resolveDepositRule(ctx: CoreCtx): Promise<DepositRule> {
-  let value: Record<string, unknown>;
-  try {
-    value = await readCrmSettingsValue(ctx);
-  } catch (err) {
-    console.warn(
-      'resolveDepositRule: crm_settings read failed; falling back to DEFAULT_DEPOSIT_RULE',
-      err,
-    );
-    return DEFAULT_DEPOSIT_RULE;
-  }
-  return normalizeDepositRule(value.deposit);
+  return (await resolveDepositRuleWithVersion(ctx)).rule;
+}
+
+/** The minimum a transaction handle must expose for the two helpers below —
+ *  `withOrgCore`'s `CoreTx` and the test adapters both satisfy it. */
+interface ExecTx {
+  execute: (query: SQL) => Promise<unknown>;
+}
+
+/**
+ * Takes the org's deposit-config lock for the REST of the caller's
+ * transaction (`pg_advisory_xact_lock`, released at commit/rollback — same
+ * `hashtext('<namespace>:' || org)` convention as `crm-analyze:` in
+ * `crm-conversation-analysis.service.ts`).
+ *
+ * Two paths must hold it, and both wait rather than skip (`_xact_` not
+ * `_try_`), because the property being protected is an ordering, not a
+ * mutual-exclusion optimisation:
+ *
+ * - `writeDepositRule` — so its `updatedAt` stamp is taken strictly AFTER any
+ *   already-committing publication, which is what makes the `built_at <
+ *   updatedAt` staleness test sound.
+ * - `buildWinIndex`'s publication — so its version recheck and its upsert are
+ *   one indivisible step against a concurrent write.
+ *
+ * Without it, a rebuild that read rule A can upsert A-derived `bought` values
+ * carrying a timestamp NEWER than a rule-B write that landed while it was
+ * embedding: semantically stale rows that pass the timestamp test and are
+ * reported as fresh.
+ */
+export async function lockDepositConfig(tx: ExecTx, orgId: string): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext('crm-deposit-rule:' || ${orgId}::text))`,
+  );
+}
+
+/**
+ * Reads the stored deposit version INSIDE a caller's transaction (unlike
+ * `resolveDepositRuleWithVersion`, which opens its own — see the
+ * transaction-discipline note above). Call it after `lockDepositConfig` to
+ * compare against a snapshot taken before a long out-of-transaction step.
+ */
+export async function readDepositConfigVersion(tx: ExecTx, orgId: string): Promise<string | null> {
+  const [row] = (await tx.execute(sql`
+    select value #>> '{deposit,updatedAt}' as version
+    from crm_settings where org_id = ${orgId}
+  `)) as unknown as Array<{ version: string | null }>;
+  return row?.version ?? null;
 }
 
 export interface WriteDepositRuleResult {
@@ -168,6 +254,14 @@ export interface WriteDepositRuleResult {
  * `disabled_channels`, …) survive untouched, and there is no separate
  * select-then-update window for a concurrent writer to land in between.
  *
+ * The whole transaction runs under `lockDepositConfig`, and the `updatedAt`
+ * stamp is read from the DB clock inside it. That is what makes
+ * `staleDerivedCount` (rows whose `built_at` predates this rule) a sound
+ * measure rather than a race: a `buildWinIndex` publication either commits
+ * BEFORE this stamp is taken (so its rows are counted) or blocks on the lock
+ * and then aborts on the version recheck (so its old-rule rows are never
+ * published at all).
+ *
  * TODO(handoff): a keyword change does not retroactively reclassify rows
  * already materialized into `crm_win_embeddings.bought`/`snippet` — this
  * function surfaces that as `staleDerivedCount`/`staleDerived` in the
@@ -179,18 +273,32 @@ export async function writeDepositRule(
   ctx: CoreCtx,
   patch: z.infer<typeof depositWriteSchema>,
 ): Promise<WriteDepositRuleResult> {
-  const updatedAt = new Date().toISOString();
-  const stored: DepositConfig = { ...patch, updatedAt };
-  const rule = normalizeDepositRule(stored);
-
   return withOrgCore(ctx, async (tx) => {
+    // Ordering, not exclusion: everything below must observe every win-index
+    // publication that has already committed — see `lockDepositConfig`.
+    await lockDepositConfig(tx, ctx.tenantId);
+
+    // The version stamp AND the staleness cutoff, taken from the DB clock
+    // AFTER the lock. `clock_timestamp()`, never `now()`: `now()` is the
+    // TRANSACTION's start time, which precedes the wait on the lock, so a
+    // publication that committed during that wait would carry a `built_at`
+    // newer than the cutoff and be reported fresh. It must also come from the
+    // same clock as `crm_win_embeddings.built_at` (the database's), not from
+    // this process's — the two are compared below.
+    const [clock] = (await tx.execute(sql`select clock_timestamp() as at`)) as unknown as Array<{
+      at: string | Date;
+    }>;
+    const updatedAt = new Date(clock?.at ?? Date.now()).toISOString();
+    const stored: DepositConfig = { ...patch, updatedAt };
+    const rule = normalizeDepositRule(stored);
+
     await tx.execute(sql`
       insert into crm_settings (org_id, value, updated_at)
-      values (${ctx.tenantId}, jsonb_build_object('deposit', ${JSON.stringify(stored)}::jsonb), now())
+      values (${ctx.tenantId}, jsonb_build_object('deposit', ${JSON.stringify(stored)}::jsonb), ${updatedAt}::timestamptz)
       on conflict (org_id) do update
       set value = coalesce(crm_settings.value, '{}'::jsonb)
             || jsonb_build_object('deposit', ${JSON.stringify(stored)}::jsonb),
-          updated_at = now()
+          updated_at = ${updatedAt}::timestamptz
     `);
 
     const [row] = (await tx.execute(sql`

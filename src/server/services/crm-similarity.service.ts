@@ -10,7 +10,11 @@ import { embedText, embedTexts, embeddingsEnabled, toVectorLiteral } from './emb
 import { buildConversationText, isThin } from '$lib/components/crm/crm-similarity';
 import { getOpenRouterModel } from '$server/llm';
 import { notDepositMatchSql, type DepositRule } from './crm-deposit-rule';
-import { resolveDepositRule } from './crm-settings.service';
+import {
+  lockDepositConfig,
+  readDepositConfigVersion,
+  resolveDepositRuleWithVersion,
+} from './crm-settings.service';
 
 const winAnalysisResultSchema = z.object({
   wins: z
@@ -119,6 +123,14 @@ async function conversationText(
   });
 }
 
+/** `buildWinIndex`'s outcome. `skipped: 'rule-changed'` marks the one case
+ *  where a completed pass is deliberately discarded rather than published:
+ *  the org's deposit rule changed after this pass classified its buyers. */
+export interface BuildWinIndexResult {
+  indexed: number;
+  skipped?: 'rule-changed';
+}
+
 /**
  * (Re)build the winning-conversation index: embed each procedure-buyer's
  * conversation and upsert it. Idempotent; re-embeds all buyers on every call.
@@ -127,12 +139,19 @@ async function conversationText(
  * fin_clients.party_id) — reliable across ALL channels, unlike the old
  * phone-number match hard-filtered to WhatsApp (which missed nearly every
  * buyer and all Instagram conversations).
+ *
+ * The deposit rule is read ONCE, up front, and rechecked under the org's
+ * deposit-config lock at publication time — a pass whose rule was replaced
+ * mid-flight is discarded, never published. See the publication block below.
  */
-export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> {
+export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> {
   if (!(await enabled(ctx))) return { indexed: 0 };
   // ONE settings read per rebuild — the vocabulary that decides what lands in
-  // crm_win_embeddings.bought for every buyer in this pass.
-  const rule = await resolveDepositRule(ctx);
+  // crm_win_embeddings.bought for every buyer in this pass. Its VERSION is
+  // carried to the publication step below and rechecked there: everything
+  // between here and that upsert (the embedding round-trips especially) is
+  // time in which an operator can change the rule out from under this pass.
+  const { rule, version: ruleVersion } = await resolveDepositRuleWithVersion(ctx);
   const IS_PROCEDURE = isProcedureSql(rule);
 
   // Buyers + their conversations in a SINGLE round-trip each (not per-contact):
@@ -224,7 +243,28 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> 
     return { indexed: 0 };
   }
 
-  await withOrgCore(ctx, async (tx) => {
+  const published = await withOrgCore(ctx, async (tx) => {
+    // PUBLICATION — the step that makes this pass's classification visible to
+    // the CRM insights surfaces. It runs under the deposit-config lock so the
+    // recheck below and the upsert are one indivisible step against a
+    // concurrent `writeDepositRule` (see `lockDepositConfig`).
+    await lockDepositConfig(tx, ctx.tenantId);
+    const liveVersion = await readDepositConfigVersion(tx, ctx.tenantId);
+    if (liveVersion !== ruleVersion) {
+      // The rule changed while this pass was embedding. `bought`/`snippet`
+      // here were classified under the OLD vocabulary; writing them now would
+      // stamp them `built_at = now()` — NEWER than the new rule's `updatedAt`
+      // — and `writeDepositRule`'s staleness disclosure would then report
+      // semantically stale rows as fresh. Drop this pass instead: the rows
+      // already in the table keep their older `built_at`, so they stay
+      // correctly counted as stale and the operator is still told to rebuild.
+      console.warn(
+        `crm-similarity: deposit rule for org ${ctx.tenantId} changed during the win-index ` +
+          `rebuild (snapshot ${ruleVersion ?? 'default'} → live ${liveVersion ?? 'default'}); ` +
+          `discarding this pass rather than publishing classifications built under the old rule`,
+      );
+      return false;
+    }
     let offset = 0;
     for (const batch of batches) {
       const batchVectors = vectors.slice(offset, offset + batch.length);
@@ -244,7 +284,12 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> 
           bought = excluded.bought, snippet = excluded.snippet, built_at = excluded.built_at
       `);
     }
+    return true;
   });
+  // Nothing was published, so there is nothing to analyze either — the
+  // breakdown would describe buyers classified under a rule the org has
+  // already replaced.
+  if (!published) return { indexed: 0, skipped: 'rule-changed' };
 
   // Generate + persist the AI breakdown of these winning conversations. Stored in
   // crm_settings (the last analysis is kept until the next rebuild, so the page
