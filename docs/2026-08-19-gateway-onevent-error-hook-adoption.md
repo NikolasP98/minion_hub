@@ -7,14 +7,14 @@ Parent proposal (open-items ledger for this work):
 - **Status:** `blocked-on-publish`
 - **Merge posture:** this branch **does not complete Slice 1's dependency adoption** and must not be
   recorded as S1 complete. S1 as written _is_ the dependency bump; that bump is still impossible
-  (§1, re-verified 2026-08-20 08:00 UTC) and is not claimed here. What ships is the hub-owned
-  containment (§3a), reviewable on its own merits as hardening. Whether to land that hardening now
-  or hold the whole slice for the publish is the human decision recorded in §5 — the fail-closed
-  default, applied here, is: the record stays `blocked-on-publish`, no dependency line moves, and
-  §4's `TODO(handoff)` stays open.
+  (§1, re-verified 2026-08-29) and is not claimed here. What ships is the hub-owned containment
+  (§3a), reviewable on its own merits as hardening. That was an open question for four review
+  rounds; it is now settled — the 2026-08-28 supervised disposition denied the branch as S1 and
+  kept it for the containment (§5). The record therefore stays `blocked-on-publish`, no dependency
+  line moves, and §4's `TODO(handoff)` stays open.
 - **What that status covers:** the **dependency adoption only**. `package.json` still declares
   `"@minion-stack/shared": "^0.9.0"` and `bun.lock` still resolves `0.9.0`, because no published
-  build of that package declares `onEventError` (§1, re-polled 2026-08-20). That bump cannot be made
+  build of that package declares `onEventError` (§1, re-polled 2026-08-29). That bump cannot be made
   from this repo and this branch does not claim it.
 - **What this branch does deliver:** the half of S1's outcome hub owns — the gateway event path no
   longer loses handler failures. `src/lib/services/gateway/event-dispatch.ts` contains a failing
@@ -27,10 +27,11 @@ Parent proposal (open-items ledger for this work):
   `@minion-stack/shared` build declares the hook while this record still says `blocked-on-publish`,
   and it also fails if the dispatch site stops containing handler failures.
 
-## 1. S0 gate — RED, re-polled 2026-08-20 08:00 UTC (review round 4)
+## 1. S0 gate — RED, last re-polled 2026-08-29
 
 The dependency bump S1 asks for still cannot be made: no published `@minion-stack/shared` exports
-`onEventError`. Evidence, all re-runnable, re-run in full for this round:
+`onEventError`. Evidence, all re-runnable. The table below is the round-4 run (2026-08-20 08:00 UTC);
+the re-polls after it are recorded underneath, most recent last:
 
 | Check                                                                                                         | Result                                                                                                                                                                  |
 | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -55,6 +56,20 @@ still tops out at #18; the only open PR based on minion-meta `main` is still #76
 shared-package change. Nothing about the gate moved. `package.json` still pins `^0.9.0`, `bun.lock`
 still resolves `0.9.0`, and `scripts/shared-onevent-error-gate.test.ts` still passes with
 `recordedStatus === 'blocked-on-publish'`.
+
+**Re-polled again 2026-08-29** (branch merged current `master` for staleness; the only content
+changes this round are this note, the §5 disposition, and the date in the gate's `TODO(handoff)`).
+Ten days on, the release chain still has not started:
+
+| Check                                                                     | Result on 2026-08-29                                                                                                                                                                      |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm view @minion-stack/shared versions` / `dist-tags`                    | list still ends at `0.10.0`; `latest` = `0.10.0`, published 2026-08-13T17:03:43Z — no release since                                                                                       |
+| `npm pack @minion-stack/shared@0.10.0` → `grep -rl onEventError package/` | no match anywhere in the tarball; `package/dist/gateway/client.d.ts:19` still declares `onEvent?:` only                                                                                   |
+| `gh api '…/contents/packages/shared/src/gateway/client.ts?ref=main'`      | zero `onEventError` matches (line 27 is `onEvent?:`; line 263 is still the swallowing `.catch(() => {})`). Repo-wide `search/code` for `onEventError` returns `total_count: 0` for `main` |
+| same file at `?ref=dev`                                                   | hook present at `:38` (declaration) and `:305` (dispatch); `.changeset/gateway-client-event-error-hook.md` still sits unpromoted on `dev`                                                 |
+| `gh pr list --repo NikolasP98/minion-meta --state merged --base main`     | newest `chore: version packages` is still **#18** (2026-08-13). The one newer merge to `main`, **#232** `feat(skills)` (2026-08-28), touches no `packages/shared` file                    |
+| `gh pr list --repo NikolasP98/minion-meta --state open`                   | two open PRs, **both based on `dev`** (#244, #247) — still no `dev` → `main` promotion PR                                                                                                 |
+| installed `node_modules/@minion-stack/shared`                             | version `0.9.0`; `onEvent?:` at `:19`, no `onEventError`                                                                                                                                  |
 
 ### Why waiting inside this repo cannot turn the gate green
 
@@ -138,6 +153,9 @@ git/tarball pin, and introduces no new reporting subsystem — it reuses hub's o
 4. Replace §3's "Unproved" clause with a real check against the hook-bearing client: one failing hub
    handler must still produce exactly **one** intercepted `console.error` (hub's, not a duplicate from
    the client fallback) and must leave `conn.connected` untouched (spec invariant 5).
+5. **Decide the two sibling hooks in the same PR** — the bump delivers three, not one (§6). The
+   parent proposal's Definition of Done is "nine decisions total (3 consumers × 3 hooks), none
+   implicit", so a hub PR that records only `onEventError` leaves the slice open.
 
 `scripts/shared-onevent-error-gate.test.ts` fails the moment an installed build declares the hook
 while this record still says `blocked-on-publish`, and separately if the dispatch site drops its
@@ -146,9 +164,17 @@ above.
 
 ## 5. Review findings → what changed
 
-Four consecutive reviews of this branch returned FAIL.
+Five consecutive reviews of this branch returned FAIL.
 
-**Round 4 (latest).** Two Medium findings:
+**Round 5 (latest, 2026-08-27).** Two Medium findings; the round's own re-review confirmed the
+second was fixed and left only the dependency one standing:
+
+| Finding                                                                                                                                                               | Fix                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _"Slice 1 still does not adopt the hook-bearing shared client"_ — keep the PR draft/blocked                                                                           | Accepted, fail-closed, and now settled by the 2026-08-28 supervised disposition below: the branch is denied as S1 and kept for the containment. §1's gate was re-polled again on 2026-08-29 and is still RED                                                                                                                                                                |
+| _"Callable thenables are not contained"_ — `isThenable` required `typeof value === 'object'`, so `Object.assign(function () {}, { then })` skipped the rejection path | Fixed in `8ee5625`. `isThenable` now accepts functions as well as non-null objects before reading `.then`, matching the assimilation rule promise resolution itself uses. `event-dispatch.test.ts` covers a rejecting callable thenable and asserts it is reported exactly once; the test is red without that commit. The round's re-review (18:56 UTC) no longer raised it |
+
+**Round 4 (2026-08-20).** Two Medium findings:
 
 | Finding                                                                                                                                                                                                                         | Fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -164,25 +190,62 @@ Four consecutive reviews of this branch returned FAIL.
 | _"The changed-file Prettier gate fails"_ (round 3)                                                                                             | Fixed in `748e661`; the gate is re-run and clean on every file this branch touches                                                                                                                                                                                                                                                                                                                                                                 |
 | _"expected 'HEAD' to be '0a7bf5ac…'"_ self-test failure                                                                                        | Resolved by the same `master` merge — `master`'s `scripts/ui-audit-inventory.test.ts` skips the provenance assertion in a shallow clone. Full suite: 360 files / 2,912 tests pass                                                                                                                                                                                                                                                                  |
 
-### Decision point for the human reviewer
+### The merge decision, settled 2026-08-28
 
-Reviews 1–4 asked for this branch to be held rather than completed, because S1 as written _is_ the
-dependency bump. That bump is still blocked and is not claimed here. What changed is the scope of
-what ships alongside the blocker: rather than waiting on an external publish with the event path
-unguarded, hub now owns its own containment (§3a). If the intended reading of S1 is "the dependency
-line and nothing else", §3a can be reviewed as a standalone hardening change and the dependency bump
-tracked by §4's `TODO(handoff)`; the two are independent and §3a does not pre-empt or complicate the
-bump.
+Reviews 1–5 all returned FAIL for the same reason, and all for the same half of the slice: S1 as
+written _is_ the dependency bump, and that bump is still blocked and is not claimed here. Rounds
+2–4 also found real defects in the containment (hostile reporting, callable thenables); those are
+fixed and re-proved (see the table above). What remained was never an implementation question but a
+merge one, and it was answered by the supervised disposition on PR #132 (2026-08-28):
 
-**The open question is therefore a merge decision, not an implementation one**, and it needs a human:
+> **DENY as Slice 1; keep the branch preserved and draft.** … The hub-owned dispatcher containment
+> is meaningful unique WIP and fixes real synchronous, asynchronous, hostile-reporting, and
+> callable-thenable failure cases. It is not, however, the package adoption and real-client
+> integration that the approved S1 Definition of Done requires. Repeated automated retries cannot
+> manufacture the missing registry artifact.
 
-- **Option A — land §3a now, keep S1 open.** The event path stops losing handler failures on the
-  installed client today; the dependency bump remains §4's `TODO(handoff)` and the status stays
-  `blocked-on-publish`. Cost: S1 closes in two steps instead of one.
-- **Option B — hold the whole branch until the publish.** S1 lands as a single change matching the
-  spec's wording. Cost: the event path keeps losing handler failures for as long as the external
-  release chain takes, which is the defect the parent spec exists to remove.
+So the scope of this branch is now fixed, and this record states it rather than offering options:
 
-Applied here, fail-closed, until that decision is made: nothing about the dependency is claimed or
-changed, the status stays `blocked-on-publish`, and the branch is not to be recorded as S1 complete
-under either option.
+- **What this branch is:** hub-owned containment of gateway `onEvent` handler failures (§3a),
+  defense in depth on the installed pre-hook client, reviewable on its own merits. It changes no
+  dependency, adds no git/tarball pin, and introduces no new reporting subsystem.
+- **What this branch is not:** Slice 1. The dependency adoption and the real hook-bearing-client
+  proof stay open as §4's `TODO(handoff)`, enforced by `scripts/shared-onevent-error-gate.test.ts`.
+  Merging this must not close S1 — the slice reopens at §4 step 1 the moment minion-meta publishes.
+- **The PR's own title still says "error-hook adoption S1".** That framing is stale for the same
+  reason; retitling PR #132 to the containment scope is a human/harness action, not one this branch
+  can take. Nothing in the diff claims S1.
+
+Under that disposition the fail-closed posture is unchanged and still applied: nothing about the
+dependency is claimed or changed, the status stays `blocked-on-publish`, and the branch is not to
+be recorded as S1 complete.
+
+## 6. The bump delivers three hooks, not one — hub-side recon
+
+Recorded 2026-08-29, from the parent proposal's own amendment (minion-meta
+`proposals/2026-08-17-gateway-client-error-hook-consumer-adoption.md` on branch `dev`, "Scope
+amended 2026-08-20") and from minion-meta `packages/shared/src/gateway/client.ts@dev`. The same
+unpublished minor that adds `onEventError` also adds `onReconnectError` and `onSocketError`
+(`:46`, `:53`), each with a `console.error` default (`:316`, `:325`). There is no partial adoption
+at the package level: one bump turns all three on at once. The proposal's Definition of Done wants
+an explicit posture per consumer **per hook**, so the two below are open decisions, not
+afterthoughts — this record answers only what is verifiable from this checkout and leaves the
+decision itself to the bump PR (§4 step 5).
+
+| Hook               | Hub's existing surface for it                                                                                                                                                                                                          | What the default would do here                                                                                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `onEventError`     | `src/lib/services/gateway/event-dispatch.ts` (§3a) — contains the failure before the client can see it                                                                                                                                 | Nothing, for anything hub contains. Posture recorded: `accepted-default` (§3b)                                                                                                  |
+| `onReconnectError` | Reconnect is hub-driven state, not a report sink: `conn.backoffMs`, the eager-reconnect window (`src/lib/services/gateway/eager-reconnect.ts`), and the fatal-close CTA path. Hub sets `autoReconnect: true` (`gateway.svelte.ts:306`) | **One `console.error` per failed attempt, undeduped.** The proposal states ~240 lines/hour with the gateway down (~15s at the backoff cap). See the ring-buffer note below      |
+| `onSocketError`    | `describeGatewayError` (`src/lib/services/gateway/gateway-errors.ts`) feeds the connection-status UI from close/connect reasons, not from transport `error` events                                                                     | One `console.error` per socket `error`. Reporting only — the proposal's invariant forbids driving reconnect or close from this hook, and hub already drives both from `onClose` |
+
+⚠️ **Hub-specific consequence the accepted default has here.** Hub's only generic sink is the
+console interceptor's ring buffer, and it is capped at 100 entries
+(`src/lib/utils/console-interceptor.ts` `MAX_ENTRIES`). An undeduped reconnect error per attempt
+evicts the whole buffer during any sustained outage, so a bug report filed _after_ one would carry
+~100 identical reconnect lines and none of the context the reporter meant to capture. That is a
+reason to consider wiring `onReconnectError` to something throttled rather than accepting its
+default — but it is a decision for the bump PR, taken against the real client, not one this branch
+can make or prove. It is written here so the bump does not take the default by omission.
+
+Note on locations: the spec and proposal cited throughout this record live on minion-meta's `dev`
+branch, not `main` — the same promotion that is blocking the publish is what keeps them off `main`.

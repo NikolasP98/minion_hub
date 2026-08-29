@@ -15,9 +15,10 @@
 //
 // TODO(handoff): Slice 1's DEPENDENCY adoption is still not done — `package.json`
 // pins `@minion-stack/shared` at `^0.9.0` and no published build declares
-// `onEventError` (registry re-polled 2026-08-20 08:00 UTC: latest is 0.10.0,
+// `onEventError` (registry re-polled 2026-08-29: latest is still 0.10.0,
 // published 2026-08-13, and its `dist/gateway/client.d.ts` has `onEvent?:`
-// only; the hook is still only on minion-meta's `dev` branch). It
+// only; the hook and its changeset are still only on minion-meta's `dev`
+// branch, with no `dev` → `main` promotion PR open). It
 // cannot be done from this repo: it waits on an external publish from
 // minion-meta. This gate is the enforcement site because `package.json` cannot
 // carry a comment; the exact remaining steps, evidence, and ledger pointer are
