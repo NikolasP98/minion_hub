@@ -132,8 +132,8 @@ future debugger greps. The `crm-funnel-concurrent-postgres` job's durable artifa
 Verified green runs (informational secondary record — NOT a substitute for the PR-description
 gate below), each superseded by the next as the head advanced: `33260135098` (head `c5e2480`),
 `33260656975` (`51c09df`), `33261472176` (`b1f3830`), `33263216313` (`89ae1cc`), `33264309260`
-(`46438ea`). Every artifact reports `numTotalTests: 3, numPassedTests: 3, numFailedTests: 0,
-numPendingTests: 0`, naming all three cases:
+(`46438ea`), `33266093259` (`72da98b`). Every artifact reports `numTotalTests: 3, numPassedTests: 3,
+numFailedTests: 0, numPendingTests: 0`, naming all three cases:
 
 - `an automatic writer waiting on the row lock observes a concurrent manual pin`
 - `a _funnel write queued behind an open _journey transaction keeps BOTH keys`
@@ -155,19 +155,31 @@ being merged.
 **Who discharges that gate.** Not the dev-stage agent: its harness contract forbids pushing and
 forbids opening or editing PRs, so it cannot write the PR body, and it cannot know the run id of a
 workflow that only starts once the harness pushes the head it is currently authoring. The gate is
-therefore a harness/human step, and this is the block to paste into PR #201's description once the
-final head's run finishes (`<sha>` = the merged commit; the per-commit checks permalink resolves
-to that head's runs even after the branch advances):
+therefore a harness/human step. As of this round, the current head's own run has already finished,
+so the block below is filled in and ready to paste into PR #201's description verbatim — no further
+lookup needed unless the head advances again, in which case replace both values with the new head's
+run (the per-commit checks permalink stays stable per-sha even after the branch advances):
 
 ```markdown
 ### Spec §7 ship-gate evidence (final head)
 
-- Head: `<sha>`
-- Actions run: https://github.com/NikolasP98/minion_hub/actions/runs/<run-id>
-- Per-commit checks (stable): https://github.com/NikolasP98/minion_hub/commit/<sha>/checks
+- Head: `72da98b83eb17876f3217882873eeead5a233eb4`
+- Actions run: https://github.com/NikolasP98/minion_hub/actions/runs/33266093259
+- Per-commit checks (stable): https://github.com/NikolasP98/minion_hub/commit/72da98b83eb17876f3217882873eeead5a233eb4/checks
 - Job: `crm-funnel-concurrent-postgres`
 - Durable artifact: `crm-funnel-concurrent-report` (`test-results/crm-funnel-concurrent.json`)
 - Artifact must report: `numTotalTests: 3, numPassedTests: 3, numFailedTests: 0, numPendingTests: 0`
+  — confirmed 2026-08-29 by downloading artifact id `9718688792` from this run: reports exactly
+  `{numTotalTests: 3, numPassedTests: 3, numFailedTests: 0, numPendingTests: 0}`.
+
+### Spec §3 Slice 0 source chain for the `app_ledger` grants (A1)
+
+- Obs `21415` (2026-06-14T03:15:35Z) — migration `20260614031500_crm.sql` authored with
+  `GRANT select/insert/update/delete to app_ledger` on all 5 CRM tables, plus enable+force RLS.
+- Obs `21458` (2026-06-14T04:02:00Z) — that file applied to production project
+  `gxvsaskbohavnurfvshr` under `ON_ERROR_STOP=1`, exit 0, post-verified 5 tables/2 views/5 policies.
+- Obs `22073` (2026-06-16T02:41:51Z) — a permission readback against that production database
+  confirming `app_ledger` holds full SELECT/INSERT/UPDATE/DELETE on the CRM tables.
 ```
 
 **A1 (human gate) — RESOLVED 2026-08-29; all four Slice-0 facts are now attributed.**
@@ -291,3 +303,31 @@ cross-org control back to inserting as `app_ledger` (spec §3 Slice 1's own DoD 
 also exercises the INSERT privilege and the `WITH CHECK` arm); removed the residual
 `TODO(handoff)` marker; and re-verified the whole fixture plus nine drift mutations through
 PGlite. No test logic, no production source file, and no migration was touched.
+
+## Review-fix round 7500d384 round 2 (2026-08-29) — the last gap is a harness boundary, not a code defect
+
+The reviewer's only remaining finding (Low) is that PR #201's description still carries only
+factory task/manifest boilerplate, not the Spec §7 evidence block or the A1 source chain. Re-verified
+this round against the current head rather than trusting the prior round's numbers:
+
+- `gh pr view 201 --repo NikolasP98/minion_hub --json body` — confirmed the description is still the
+  unedited factory boilerplate.
+- `gh api repos/NikolasP98/minion_hub/actions/runs/33266093259` — confirmed `head_sha` is exactly
+  the current branch tip `72da98b83eb17876f3217882873eeead5a233eb4` and `conclusion: success`.
+- Downloaded artifact `crm-funnel-concurrent-report` (id `9718688792`) from that run directly and
+  parsed the JSON: `numTotalTests: 3, numPassedTests: 3, numFailedTests: 0, numPendingTests: 0`.
+
+All three checks passed, so the "Spec §7 ship-gate evidence" block above is now filled in with
+concrete, confirmed values instead of `<sha>`/`<run-id>` placeholders, and the A1 source-chain
+observations (21415, 21458, 22073) are repeated next to it in the same paste-ready block, since the
+finding named both as missing from the PR body.
+
+What this round did **not** do: run `gh pr edit` against PR #201. This session's harness contract
+states plainly — "Do NOT push, do NOT open or edit PRs, do NOT touch git config — the harness
+handles those" — and the PR body already carries a `factory-manifest` block the harness itself
+manages; a dev/review-fix-stage agent overwriting that field is exactly the class of action the
+contract exists to prevent. This is the same boundary the "Who discharges that gate" note above
+already named before this round started, and it still holds: writing the PR description is a
+harness/human step, not a dev-stage or review-fix-stage one. The reviewer's own top-line finding
+score reflects this ("explicit ship-gate failure, not a runtime-code defect") — no fixture, CI, or
+test-logic change was made or was warranted this round.
