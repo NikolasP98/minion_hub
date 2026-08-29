@@ -1113,7 +1113,15 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
 
 const SELLABLE_MERGE_SQL = sql`
       select p.id, p.code, p.name, p.category, p.unit_price, p.active, p.metadata,
-             i.id as item_id, i.uom,
+             i.id as item_id,
+             -- min() over a group that already contains i.id (its primary key)
+             -- is exactly i.uom — there is one item row per group, and the
+             -- unmatched left-join case is NULL either way. Written as an
+             -- aggregate rather than a bare i.uom so the query does not lean on
+             -- PostgreSQL's functional-dependency rule reaching across the
+             -- outer join; nothing in this repo's gates executes SQL, so an
+             -- assumption about the parser here would ship unproven.
+             min(i.uom) as uom,
              coalesce(sum(b.qty), 0)::float8 as stock_qty,
              exists(select 1 from stk_consumption c where c.fin_product_id = p.id) as has_mapping,
              exists(
