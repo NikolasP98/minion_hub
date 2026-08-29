@@ -2159,7 +2159,6 @@
   "fin_money_currency": "Moneda de visualización",
   "fin_money_tax_hint": "El IGV de Perú es 18%. Se aplica a estimaciones de precios e impuestos a futuro.",
   "fin_money_tax_rate": "Tasa de impuesto (IGV)",
-  "fin_money_tax_unsupported": "no aceptada por SUNAT",
   "fin_nav_clients": "Clientes",
   "fin_nav_invoices": "Facturas",
   "fin_preset_12m": "Últimos 12m",

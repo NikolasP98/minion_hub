@@ -18,6 +18,7 @@ import type { Period } from '$lib/finance/period';
 import {
   DEFAULT_IGV_RATE,
   IGV_RATE_NOT_VIGENTE_MESSAGE,
+  canonicalizeIgvRate,
   isVigenteIgvRate,
 } from '$lib/finance/igv-rates';
 import { emitHubEvent } from '$server/events/emit';
@@ -576,7 +577,10 @@ export async function updateFinSettings(
     // See `$lib/finance/igv-rates` for the live-beta evidence.
     const t = Number(patch.taxRate);
     if (!isVigenteIgvRate(t)) throw new Error(IGV_RATE_NOT_VIGENTE_MESSAGE);
-    set.taxRate = String(t);
+    // Persist the canonical allowlist value, not the caller's near-match — a
+    // value merely within tolerance would otherwise disagree by a cent with
+    // the rate the emitter declares. See `canonicalizeIgvRate`.
+    set.taxRate = String(canonicalizeIgvRate(t));
   }
   if (patch.fxMode != null) {
     if (patch.fxMode !== 'auto' && patch.fxMode !== 'manual')

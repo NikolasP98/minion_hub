@@ -16,7 +16,6 @@
   import { onMount } from 'svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
-  import { SUNAT_VIGENTE_IGV_RATES, formatIgvRate, isVigenteIgvRate } from '$lib/finance/igv-rates';
 
   let { data }: { data: PageData } = $props();
 
@@ -268,31 +267,6 @@
   // Tax rate is a fraction in the DB (0.18); edited as a percent here.
   // svelte-ignore state_referenced_locally
   let taxPct = $state(String(Math.round(s0.taxRate * 10000) / 100));
-  // Only rates SUNAT currently accepts are offered: an arbitrary percentage is
-  // refused by PUT /api/finances/settings and again by the emitter, so a free
-  // number field would present an invalid value as valid. A rate persisted
-  // before that gate existed still renders, flagged, so an admin can see and
-  // correct it rather than have it silently disappear from the form.
-  //
-  // TODO(handoff): this flagged option is the ONLY place a pre-gate
-  // non-vigente `fin_settings.tax_rate` becomes visible, and only to an admin
-  // who happens to open this page — nothing sweeps the table for such rows, so
-  // an affected org fails closed at emission (`invalid_tax_rate`) until someone
-  // re-saves here. Identifying and correcting those rows in bulk (a report or a
-  // one-off script; not a blind migration, since the right replacement is a
-  // business decision) is tracked as an open follow-up in minion-meta
-  // `proposals/2026-08-17-hub-igv-rate-from-org-config.md` ("Follow-ups this
-  // pass deliberately left open") and in
-  // `specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md`.
-  const taxRateOptions = $derived([
-    ...SUNAT_VIGENTE_IGV_RATES.map((rate) => ({
-      value: String(Math.round(rate * 10000) / 100),
-      label: formatIgvRate(rate),
-    })),
-    ...(isVigenteIgvRate(Number(taxPct) / 100)
-      ? []
-      : [{ value: taxPct, label: `${taxPct}% — ${m.fin_money_tax_unsupported()}` }]),
-  ]);
   // svelte-ignore state_referenced_locally
   let fxManual = $state(s0.fxMode === 'manual');
   // svelte-ignore state_referenced_locally
@@ -697,13 +671,14 @@
           ]}
         />
 
-        <Select
-          fieldClass="field"
-          label={m.fin_money_tax_rate()}
-          helper={m.fin_money_tax_hint()}
-          bind:value={taxPct}
-          options={taxRateOptions}
-        />
+        <label class="field">
+          <span class="t-caption">{m.fin_money_tax_rate()}</span>
+          <div class="pct-wrap">
+            <input class="inp" type="number" min="0" max="99.99" step="0.01" bind:value={taxPct} />
+            <span class="pct-suffix">%</span>
+          </div>
+          <span class="t-caption hint">{m.fin_money_tax_hint()}</span>
+        </label>
 
         <div class="field">
           <span class="t-caption">{m.fin_fx_rate({ base: fxBase, quote: fxQuote })}</span>

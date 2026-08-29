@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { amountInWords, buildInvoiceXml, computeTotals } from './ubl';
 import type { EmissionInvoice, EmissionLine } from './types';
 import { SUNAT_VIGENTE_IGV_RATES } from '$lib/finance/igv-rates';
+import { resolveIgvRate } from '$server/finance/tax';
 
 const base: EmissionInvoice = {
   docType: '03',
@@ -244,5 +245,40 @@ describe('S3 — totals-consistency invariant holds for any igvRate value (arith
   it('cross-checks the fixture list against the real allowlist: only 0.18 is SUNAT-vigente today', () => {
     expect(SUNAT_VIGENTE_IGV_RATES).toEqual([0.18]);
     expect(RATES.filter((r) => SUNAT_VIGENTE_IGV_RATES.includes(r))).toEqual([0.18]);
+  });
+});
+
+/**
+ * M1 regression (review round 1, 2026-08-29): `isVigenteIgvRate` accepts a
+ * value within `1e-9` of an allowlisted rate, but `resolveIgvRate` used to
+ * hand the emission library that raw near-value. `computeTotals` divides by
+ * `1 + igvRate` while `formatPercent` separately rounds it to 2 percentage
+ * decimals for `cbc:Percent` — fed the same near-value, they agree with each
+ * other but not with what a genuinely-0.18 document would produce, and SUNAT
+ * validates the declared rate is exactly a tasa vigente. `resolveIgvRate` now
+ * canonicalizes via `canonicalizeIgvRate` before returning, so this reproduces
+ * the exact repro from the review (`taxRate = 0.1800000009`, one PEN
+ * 131,111.34 line) and asserts it is now identical to configuring 0.18.
+ */
+describe('M1 — a near-vigente configured rate canonicalizes before it reaches emission', () => {
+  it('taxable amount, IGV, and declared percent all agree with an exact-0.18 document', () => {
+    const resolved = resolveIgvRate({ taxRate: 0.1800000009 });
+    expect(resolved).toBe(0.18);
+
+    const invoice: EmissionInvoice = {
+      ...base,
+      igvRate: resolved,
+      lines: [{ description: 'Line 1', quantity: 1, unitPriceInclTax: 131111.34 }],
+    };
+    const totals = computeTotals(invoice);
+    const xml = buildInvoiceXml(invoice);
+
+    // NOT the pre-fix raw near-rate output (taxable 111111.30, IGV 20000.04).
+    expect(totals.lineExtensionAmount).toBe(111111.31);
+    expect(totals.igvAmount).toBe(20000.03);
+    expect(xml).toContain('<cbc:Percent>18</cbc:Percent>');
+    // Byte-identical to configuring 0.18 directly — the rate used for the
+    // arithmetic and the rate declared in cbc:Percent are the same number.
+    expect(xml).toBe(buildInvoiceXml({ ...invoice, igvRate: 0.18 }));
   });
 });

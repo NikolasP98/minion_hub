@@ -67,4 +67,16 @@ describe('resolveIgvRate', () => {
     // it. Guard that the allowlist compares the normalized value.
     expect(resolveIgvRate({ taxRate: Number('0.1800') })).toBe(0.18);
   });
+
+  // M1 regression (review round 1, 2026-08-29): `isVigenteIgvRate` matches
+  // within 1e-9 of an allowlist entry, but a near-match is NOT the same
+  // number as the canonical rate. Returning the raw near-value let
+  // `computeTotals` (divides by `1 + igvRate`) and the declared `cbc:Percent`
+  // (rounded to 2dp) disagree by a cent on an otherwise-valid document — see
+  // `ubl.test.ts`'s "M1" describe block for the full emitted-document check.
+  it('canonicalizes a within-tolerance-but-not-exact rate to the exact allowlist value', () => {
+    const resolved = resolveIgvRate({ taxRate: 0.1800000009 });
+    expect(resolved).toBe(0.18);
+    expect(Object.is(resolved, 0.1800000009)).toBe(false);
+  });
 });

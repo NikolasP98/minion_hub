@@ -60,14 +60,22 @@ Fail closed on a shared allowlist, `src/lib/finance/igv-rates.ts`:
   no module-level constant returns. `src/server/finance/emission/no-hardcoded-rate.test.ts`
   is the permanent guard, and it now discovers every production `EmissionInvoice`
   construction site under `src/` so a new one cannot be added outside its scan.
-- **Settings form** — `/finances/settings` offers the allowlist as a `Select` instead of a
-  free percent field, so an invalid rate cannot be typed in the first place. A rate
-  persisted before the gate existed still renders, labelled `— not accepted by SUNAT`
-  (`fin_money_tax_unsupported`), so an admin sees and can correct it rather than having it
-  silently vanish from the form. Ported from PR #159, which owned this half of S3.
+- **Canonicalization** — `isVigenteIgvRate` matches within `1e-9` of an allowlist entry (the
+  value round-trips through a Postgres `numeric`), but a near-match is not the same number as
+  the canonical rate. `canonicalizeIgvRate` snaps a matched value to the exact allowlist entry
+  before `updateFinSettings` persists it and before `resolveIgvRate` hands it to emission, so
+  `computeTotals`'s arithmetic and the declared `cbc:Percent` are always derived from the same
+  number.
 - The unit suites still exercise 0.10 / 0.08 / 0.05 as **pure arithmetic fixtures** for the
   rounding formula (so a future vigente rate is safe to add). They assert against
   `SUNAT_VIGENTE_IGV_RATES` that those fixtures are not rates the product will emit.
+
+**Settings form — reverted.** An earlier revision of this branch ported a `/finances/settings`
+UI slice from PR #159 (a `Select` over the allowlist instead of a free percent field). §5 of
+the authoritative spec is explicit that `/finances/settings` is untouched by this spec and
+gates the branch diff on zero `.svelte` changes; that UI slice was out of scope here and has
+been reverted. The settings-write and emission boundaries above still fail closed regardless
+of what the form lets an admin type.
 
 ## Recorded in minion-meta
 
@@ -92,13 +100,13 @@ proof a referenced document's rate was accepted.
   exempt/unaffected totals, and a settings surface to declare the operation type.
   Code pointer: `TODO(handoff)` in `src/server/finance/tax.ts`.
 - **Bulk correction of already-persisted rates.** Nothing sweeps `fin_settings` for rows
-  written before the gate existed. Such an org keeps rendering its stored rate (flagged in
-  the form) and fails closed at emission until an admin re-saves; no migration or report
-  identifies those orgs proactively.
-  Code pointer: `TODO(handoff)` in `src/routes/(app)/finances/settings/+page.svelte`, at the
-  flagged-option branch — the only surface where such a row is visible today.
+  written before the gate existed. Such an org keeps its stored rate and fails closed at
+  emission until an admin re-saves `/finances/settings` with a valid rate; no migration or
+  report identifies those orgs proactively, and (the settings-form UI slice being out of
+  scope and reverted) nothing in the product surfaces which orgs are affected either.
+  Code pointer: `TODO(handoff)` in `src/lib/finance/igv-rates.ts`.
 
 All three are carried as open follow-ups in minion-meta
 `proposals/2026-08-17-hub-igv-rate-from-org-config.md` ("Follow-ups this pass deliberately left
-open"); the reduced-rate one's code pointer is the `TODO(handoff)` in
-`src/lib/finance/igv-rates.ts`.
+open"); the reduced-rate and bulk-correction items' code pointers are both `TODO(handoff)`
+comments in `src/lib/finance/igv-rates.ts`.

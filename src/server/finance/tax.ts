@@ -1,6 +1,7 @@
 import {
   DEFAULT_IGV_RATE,
   IGV_RATE_NOT_VIGENTE_MESSAGE,
+  canonicalizeIgvRate,
   isVigenteIgvRate,
 } from '$lib/finance/igv-rates';
 import { PosError } from '$server/services/pos.service';
@@ -76,5 +77,9 @@ export function resolveIgvRate(settings: IgvRateSettings | null | undefined): nu
   if (!isVigenteIgvRate(rate)) {
     throw new PosError(`configured ${IGV_RATE_NOT_VIGENTE_MESSAGE}`, 'invalid_tax_rate');
   }
-  return rate;
+  // Canonicalize a tolerance-matched value to the exact allowlist entry —
+  // `computeTotals` divides by `1 + igvRate` and the UBL formatter separately
+  // rounds it for `cbc:Percent`; feeding both from the same canonical value is
+  // what keeps the declared rate and the arithmetic consistent (M1).
+  return canonicalizeIgvRate(rate);
 }

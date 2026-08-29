@@ -2159,7 +2159,6 @@
   "fin_money_currency": "Display currency",
   "fin_money_tax_hint": "Peru's IGV is 18%. Applied to forward-looking price and tax estimates.",
   "fin_money_tax_rate": "Tax rate (IGV)",
-  "fin_money_tax_unsupported": "not accepted by SUNAT",
   "fin_nav_clients": "Clients",
   "fin_nav_invoices": "Invoices",
   "fin_preset_12m": "Last 12m",
