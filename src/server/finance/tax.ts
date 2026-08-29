@@ -64,9 +64,10 @@ export interface IgvRateSettings {
  * document, gravada only) and need their own spec: per-line affectation type,
  * the `LegalMonetaryTotal` exempt/unaffected buckets, and a settings surface to
  * declare the operation type. Nothing here should be relaxed to fake it.
- * Recorded in specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md
- * ("Open items"), which is also where the minion-meta proposal's amendment is
- * tracked (that repo is not checked out in the workspace this shipped from).
+ * Tracked as an open follow-up in minion-meta
+ * proposals/2026-08-17-hub-igv-rate-from-org-config.md ("Follow-ups this pass
+ * deliberately left open"); runtime evidence in
+ * specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md.
  */
 export function resolveIgvRate(settings: IgvRateSettings | null | undefined): number {
   const configured = settings?.taxRate;

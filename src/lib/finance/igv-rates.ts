@@ -43,12 +43,13 @@ export const DEFAULT_IGV_RATE = 0.18;
 // TODO(handoff): supporting a reduced-rate regime is NOT "append a number
 // here" — `fin_settings` holds one scalar with no regime/eligibility column,
 // so a second entry would be wrong for every org that is not eligible, and the
-// applicable reduced rate is time-bounded; it needs its own spec. Recorded in
-// `specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md` ("Open items"),
-// which also carries what minion-meta
-// `proposals/2026-08-17-hub-igv-rate-from-org-config.md` still owes: its open
-// item claims a beta certificate is missing and asks for 10% to be made to
-// pass, both of which the 2026-08-29 run disproved.
+// applicable reduced rate is time-bounded; it needs its own spec. Tracked as an
+// open follow-up in minion-meta
+// `proposals/2026-08-17-hub-igv-rate-from-org-config.md` ("Follow-ups this pass
+// deliberately left open"), which now records the 2026-08-29 matrix and the
+// fail-closed decision; its earlier "no beta certificate, make 10% pass" item
+// was disproved by that run and has been replaced there. Runtime evidence:
+// `specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md`.
 export const SUNAT_VIGENTE_IGV_RATES: readonly number[] = [DEFAULT_IGV_RATE];
 
 /** A fraction rendered as the percent the UI and SUNAT both talk in: `18%`. */

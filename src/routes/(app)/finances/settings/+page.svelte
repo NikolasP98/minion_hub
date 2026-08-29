@@ -273,6 +273,17 @@
   // number field would present an invalid value as valid. A rate persisted
   // before that gate existed still renders, flagged, so an admin can see and
   // correct it rather than have it silently disappear from the form.
+  //
+  // TODO(handoff): this flagged option is the ONLY place a pre-gate
+  // non-vigente `fin_settings.tax_rate` becomes visible, and only to an admin
+  // who happens to open this page — nothing sweeps the table for such rows, so
+  // an affected org fails closed at emission (`invalid_tax_rate`) until someone
+  // re-saves here. Identifying and correcting those rows in bulk (a report or a
+  // one-off script; not a blind migration, since the right replacement is a
+  // business decision) is tracked as an open follow-up in minion-meta
+  // `proposals/2026-08-17-hub-igv-rate-from-org-config.md` ("Follow-ups this
+  // pass deliberately left open") and in
+  // `specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md`.
   const taxRateOptions = $derived([
     ...SUNAT_VIGENTE_IGV_RATES.map((rate) => ({
       value: String(Math.round(rate * 10000) / 100),

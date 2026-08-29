@@ -95,3 +95,10 @@ proof a referenced document's rate was accepted.
   written before the gate existed. Such an org keeps rendering its stored rate (flagged in
   the form) and fails closed at emission until an admin re-saves; no migration or report
   identifies those orgs proactively.
+  Code pointer: `TODO(handoff)` in `src/routes/(app)/finances/settings/+page.svelte`, at the
+  flagged-option branch — the only surface where such a row is visible today.
+
+All three are carried as open follow-ups in minion-meta
+`proposals/2026-08-17-hub-igv-rate-from-org-config.md` ("Follow-ups this pass deliberately left
+open"); the reduced-rate one's code pointer is the `TODO(handoff)` in
+`src/lib/finance/igv-rates.ts`.
