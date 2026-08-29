@@ -242,9 +242,14 @@ describe('isIcpConfigured — the "feature is OFF" gate', () => {
     expect(isIcpConfigured({ ...stored, criteria: [] })).toBe(true);
     expect(isIcpConfigured({ ...stored, description: '   ' })).toBe(true);
   });
-  it('is false when only disqualifiers are set — nothing to score positively against', () => {
+  it('is true when only disqualifiers are set — exclusion rules alone still drive the disqualified short-circuit', () => {
     expect(
       isIcpConfigured({ ...stored, description: '  ', criteria: [], disqualifiers: ['freebies'] }),
+    ).toBe(true);
+  });
+  it('is false only when description, criteria, AND disqualifiers are all empty', () => {
+    expect(
+      isIcpConfigured({ ...stored, description: '  ', criteria: [], disqualifiers: [] }),
     ).toBe(false);
   });
 });
@@ -263,6 +268,25 @@ describe('icpResultSchema — the stored `_icp` blob', () => {
 
   it('rejects an unknown band', () => {
     expect(icpResultSchema.safeParse({ ...validResult, band: 'excellent' }).success).toBe(false);
+  });
+
+  it('rejects a score/band pair that contradicts the disqualified short-circuit', () => {
+    expect(
+      icpResultSchema.safeParse({ ...validResult, score: 90, band: 'disqualified' }).success,
+    ).toBe(false);
+    // At or under the clamp, disqualified is still valid.
+    expect(
+      icpResultSchema.safeParse({ ...validResult, score: 5, band: 'disqualified' }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a score/band pair that disagrees with the non-disqualified ramp', () => {
+    expect(icpResultSchema.safeParse({ ...validResult, score: 5, band: 'strong' }).success).toBe(
+      false,
+    );
+    expect(icpResultSchema.safeParse({ ...validResult, score: 82, band: 'weak' }).success).toBe(
+      false,
+    );
   });
 
   it(`rejects more than ${ICP_CRITERIA_MAX} criteria`, () => {

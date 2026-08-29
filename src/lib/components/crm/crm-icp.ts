@@ -194,15 +194,20 @@ export type IcpDefinition = z.infer<typeof icpDefinitionSchema>;
 /**
  * Is the feature ON for this org?
  *
- * A definition with neither a description nor any criterion gives the judge
- * nothing to score AGAINST — only exclusions — so it counts as unconfigured,
- * exactly like a missing key: no column, no tick work, no LLM spend (spec §3.1
- * and acceptance criterion 1). This is also how an org turns the feature back
- * off: save an empty definition.
+ * The spec's gate is "missing/empty `icp`" — every field of the definition,
+ * `disqualifiers` included, so an org that has authored only exclusion rules
+ * (no positive description or criteria) still counts as configured: those
+ * rules drive the disqualified short-circuit in {@link icpVerdict} even with
+ * nothing to score positively against. Only a definition that is empty in
+ * ALL THREE fields is unconfigured, exactly like a missing key: no column, no
+ * tick work, no LLM spend (spec §3.1 and acceptance criterion 1). This is
+ * also how an org turns the feature back off: save a fully empty definition.
  */
 export function isIcpConfigured(def: IcpDefinition | null | undefined): def is IcpDefinition {
   if (!def) return false;
-  return def.description.trim().length > 0 || def.criteria.length > 0;
+  return (
+    def.description.trim().length > 0 || def.criteria.length > 0 || def.disqualifiers.length > 0
+  );
 }
 
 // ── The per-contact result (`crm_contacts.custom_fields._icp`) ──────────────
@@ -244,7 +249,19 @@ export const icpResultSchema = z
     promptVersion: z.number().int().min(1),
     scoredAt: z.iso.datetime(),
   })
-  .strict();
+  .strict()
+  // `score` and `band` are independently-bounded fields above, but §4 makes them
+  // ONE verdict (see icpVerdict): `disqualified` only ever comes with a clamped
+  // score, and every other band is exactly the score's own ramp bucket. Without
+  // this refinement a malformed judge response — e.g. `{score:90,band:'disqualified'}`
+  // — would parse as a valid stored result instead of being rejected for retry/skip.
+  .refine(
+    (r) =>
+      r.band === 'disqualified'
+        ? r.score <= ICP_DISQUALIFIED_SCORE_MAX
+        : r.band === icpBandForScore(r.score),
+    { message: 'score and band must agree (see icpVerdict)', path: ['band'] },
+  );
 export type IcpResult = z.infer<typeof icpResultSchema>;
 
 /**
