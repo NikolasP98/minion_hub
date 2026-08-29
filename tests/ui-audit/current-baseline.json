@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "baseCommit": "19ba7894e3ec3aefba4f8d3324838d04050c2ccb",
+  "baseCommit": "3daa134b5e5b436006b810002d2582cc9c8674be",
   "sourceRef": "HEAD",
-  "sourceCommit": "19ba7894e3ec3aefba4f8d3324838d04050c2ccb",
-  "sourceTreeSha": "021c0f25111d76ad7d46a1eb821b132b514a6213",
-  "workingTreeFingerprint": "git-tree:021c0f25111d76ad7d46a1eb821b132b514a6213",
+  "sourceCommit": "3daa134b5e5b436006b810002d2582cc9c8674be",
+  "sourceTreeSha": "c7be8f456a926a026bd5ce754fb083c5eb374bc3",
+  "workingTreeFingerprint": "git-tree:c7be8f456a926a026bd5ce754fb083c5eb374bc3",
   "summary": {
     "endpoints": 150,
     "screens": 140,
@@ -667,7 +667,7 @@
         "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
-        "nativeInputs": 14,
+        "nativeInputs": 13,
         "fetchSites": 4
       }
     },
