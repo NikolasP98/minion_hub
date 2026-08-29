@@ -15,9 +15,19 @@
  * Slice 2 of the spec (`src/server/db/schema/workspace-membership.ts` →
  * `@minion-stack/db/schema`) extends `DEAD_MIRRORS` below rather than adding a
  * second guard file.
- * TODO(handoff): Slice 2 not yet implemented — add the
- * `server/db/schema/workspace-membership.ts` entry to DEAD_MIRRORS when it
- * lands. See specs/2026-08-17-hub-dead-mirrors-cleanup-spec.md §3.
+ *
+ * TODO(handoff): Slice 2 is NOT missing work — it already exists as validated
+ * WIP in open PR #159 (orch/hub-small-trio), which extends DEAD_MIRRORS with
+ * the workspace-membership entry, deletes the schema mirror, and repoints its
+ * barrel/drizzle-config callers, with green check/test/build/Postgres gates.
+ * This branch (PR #196) only reimplements Slice 1, which is *also* already
+ * present in #159 (and was previously merged once via closed PR #138). Do not
+ * add a Slice 2 implementation here without first resolving ownership of the
+ * overlap with #159 — either adopt #159's Slice 2 commit onto this branch (and
+ * drop this branch's duplicate Slice 1 diff), or close this branch and
+ * continue directly on #159. Landing both as separate PRs will re-edit the
+ * same files and this same guard on both sides. See
+ * specs/2026-08-17-hub-dead-mirrors-cleanup-spec.md §3.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
