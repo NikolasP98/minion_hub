@@ -19,6 +19,7 @@ import {
   getMetaKeys,
   listContactChannels,
   softDeleteContacts,
+  createContact,
 } from './crm-contacts.service';
 
 /**
@@ -1051,5 +1052,64 @@ describe('softDeleteContacts', () => {
       expect.objectContaining({ refId: ids[2], op: 'delete', actorId: 'profile-1' }),
     ]);
     expect(mockWithOrgCore).toHaveBeenCalledOnce();
+  });
+});
+
+describe('createContact (spec 2026-08-03 §7 — reserved keys cannot be forged at insert time)', () => {
+  it('drops every `_`-prefixed client key before the INSERT, keeping the user-owned ones', async () => {
+    mockWithOrgCore.mockReset();
+    const insertedValues: Array<Record<string, unknown>> = [];
+    const returning = vi
+      .fn()
+      .mockResolvedValue([
+        { id: '00000000-0000-4000-8000-000000000009', ownerId: 'owner-1', displayName: 'Ana' },
+      ]);
+    const values = vi.fn((v: Record<string, unknown>) => {
+      insertedValues.push(v);
+      return { returning };
+    });
+    const tx = { insert: vi.fn(() => ({ values })) };
+    // one impl for both the contact INSERT and recordAudit's own org round-trip
+    mockWithOrgCore.mockImplementation((_scope, fn) => fn(tx as never));
+    const ctx = { db: {} as never, tenantId: 'org-1', profileId: 'profile-1' };
+
+    await createContact(ctx, {
+      displayName: 'Ana',
+      customFields: {
+        distrito: 'Miraflores',
+        _icpClaim: { token: 'forged', untilEpoch: 4102444800000 },
+        _icp: { score: 100, band: 'strong' },
+        _funnel: { stage: 'customer' },
+        _relationshipClaim: { token: 'forged', untilEpoch: 1 },
+      },
+    });
+
+    // insertedValues[0] is the contact row; [1] is the audit batch.
+    expect(insertedValues[0].customFields).toEqual({ distrito: 'Miraflores' });
+    expect(insertedValues[0]).toMatchObject({ orgId: 'org-1', source: 'manual' });
+
+    mockWithOrgCore.mockImplementation(defaultWithOrgCore);
+  });
+
+  it('inserts an empty object when the caller supplies no custom fields at all', async () => {
+    mockWithOrgCore.mockReset();
+    const insertedValues: Array<Record<string, unknown>> = [];
+    const returning = vi
+      .fn()
+      .mockResolvedValue([
+        { id: '00000000-0000-4000-8000-000000000010', ownerId: 'owner-1', displayName: null },
+      ]);
+    const values = vi.fn((v: Record<string, unknown>) => {
+      insertedValues.push(v);
+      return { returning };
+    });
+    const tx = { insert: vi.fn(() => ({ values })) };
+    mockWithOrgCore.mockImplementation((_scope, fn) => fn(tx as never));
+
+    await createContact({ db: {} as never, tenantId: 'org-1' }, { customFields: undefined });
+
+    expect(insertedValues[0].customFields).toEqual({});
+
+    mockWithOrgCore.mockImplementation(defaultWithOrgCore);
   });
 });

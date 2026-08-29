@@ -331,7 +331,7 @@ describe('saveIcpDefinition — the write boundary', () => {
 
   it('derives the next version IN the update expression and never selects it first', async () => {
     const { db, calls, selectCount } = makeRecordingTx([
-      { value: { icp: { ...ICP_INPUT, version: 4, updatedAt: 'now' } } },
+      { value: { icp: { ...ICP_INPUT, version: 4, updatedAt: '2026-08-29T00:00:00.000Z' } } },
     ]);
     const saved = await saveIcpDefinition(ctx(db as never), ICP_INPUT);
     expect(saved.version).toBe(4);
@@ -351,7 +351,7 @@ describe('saveIcpDefinition — the write boundary', () => {
 
   it('stamps updatedAt server-side into the written body', async () => {
     const { db, calls } = makeRecordingTx([
-      { value: { icp: { ...ICP_INPUT, version: 1, updatedAt: 'now' } } },
+      { value: { icp: { ...ICP_INPUT, version: 1, updatedAt: '2026-08-29T00:00:00.000Z' } } },
     ]);
     await saveIcpDefinition(ctx(db as never), ICP_INPUT);
     const query = new PgDialect().sqlToQuery(calls.set!.value as SQL);
