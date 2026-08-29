@@ -1,3 +1,8 @@
+import {
+  DEFAULT_IGV_RATE,
+  IGV_RATE_NOT_VIGENTE_MESSAGE,
+  isVigenteIgvRate,
+} from '$lib/finance/igv-rates';
 import { PosError } from '$server/services/pos.service';
 
 /**
@@ -11,13 +16,7 @@ import { PosError } from '$server/services/pos.service';
  * src/server/finance/emission/` stays empty.
  */
 
-/**
- * Peru's statutory IGV rate — and the pre-existing behaviour for orgs that
- * never configured one (`fin_settings` has no row, so `getFinSettings` hands
- * back `DEFAULT_FIN_SETTINGS`). Keeping it here, and only here, is what makes
- * this slice bit-identical for every org emitting today.
- */
-export const DEFAULT_IGV_RATE = 0.18;
+export { DEFAULT_IGV_RATE };
 
 /** Just the slice of `FinSettings` this needs — so callers can pass the whole
  *  settings object without this module depending on finance.service.ts. */
@@ -35,17 +34,26 @@ export interface IgvRateSettings {
  *     `tax_rate numeric not null default 0.18   -- IGV as a fraction`
  *   - `src/server/db/pg-finance-schema.ts` mirrors that default and comment
  *   - writers: `/finances/settings/+page.svelte` posts `Number(taxPct) / 100`;
- *     `PUT /api/finances/settings` validates `z.number().min(0).max(0.9999)`;
- *     `updateFinSettings` re-checks "a fraction in [0, 1)"
+ *     `PUT /api/finances/settings` and `updateFinSettings` both validate with
+ *     `isVigenteIgvRate` from `$lib/finance/igv-rates`
  * => the stored unit is ALREADY a fraction. There is no conversion to do, and
  * a percent-shaped value (18) cannot be written through any supported path, so
  * it is rejected below rather than "helpfully" divided by 100 — a
- * guess-by-magnitude heuristic would turn a data-entry typo into a document
- * that SUNAT happily accepts and that is wrong by two orders of magnitude.
+ * guess-by-magnitude heuristic would turn a data-entry typo into a
+ * document that SUNAT happily accepts and that is wrong by two orders of
+ * magnitude.
  *
  * ZERO throws (spec ⚠️ A2): SUNAT models exonerado/inafecto with different tax
  * category and scheme codes, not as a gravada line at `Percent 0`. Emitting a
  * 0% gravada document would be malformed, so refuse loudly instead.
+ *
+ * NON-VIGENTE RATES throw too, and that is the second gate rather than a
+ * duplicate of the settings gate: the write boundary stops new bad values, but
+ * a row persisted before that gate existed (or edited straight in the DB)
+ * would otherwise still reach `sendBill` and be rejected there with fault 3462
+ * — see `$lib/finance/igv-rates` for the live-beta evidence. Failing here
+ * turns that into a refused emission with a readable reason, recorded as a
+ * `status=error` row by `pos-emission.service`, instead of a SUNAT rejection.
  *
  * TODO(handoff): an org that legitimately operates exonerada/inafecta (SUNAT
  * catalog 07 codes 20/30, tax schemes 9997/9998) therefore has NO path to
@@ -60,8 +68,8 @@ export function resolveIgvRate(settings: IgvRateSettings | null | undefined): nu
   const configured = settings?.taxRate;
   if (configured == null) return DEFAULT_IGV_RATE;
   const rate = Number(configured);
-  if (!Number.isFinite(rate) || rate <= 0 || rate >= 1) {
-    throw new PosError('configured tax rate is not usable for SUNAT emission', 'invalid_tax_rate');
+  if (!isVigenteIgvRate(rate)) {
+    throw new PosError(`configured ${IGV_RATE_NOT_VIGENTE_MESSAGE}`, 'invalid_tax_rate');
   }
   return rate;
 }

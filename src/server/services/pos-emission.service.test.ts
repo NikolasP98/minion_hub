@@ -251,7 +251,7 @@ describe('ticketToEmission — org IGV rate', () => {
   const ticket = { subtotal: '118', total: '118' };
   const lines = [{ description: 'Servicio', qty: '1', total: '118' }];
 
-  function emit(finSettings: { taxRate?: number | null }) {
+  function emitAtRate(igvRate: number) {
     const { invoice } = ticketToEmission(
       ticket,
       lines,
@@ -259,13 +259,22 @@ describe('ticketToEmission — org IGV rate', () => {
       settings,
       allocation,
       emitter,
-      resolveIgvRate(finSettings),
+      igvRate,
     );
     return { invoice, totals: computeTotals(invoice), xml: buildInvoiceXml(invoice) };
   }
 
-  it('a non-18% configured rate drives igvRate, the totals AND the declared cbc:Percent', () => {
-    const { invoice, totals, xml } = emit({ taxRate: 0.1 });
+  function emit(finSettings: { taxRate?: number | null }) {
+    return emitAtRate(resolveIgvRate(finSettings));
+  }
+
+  // The mapping + XML builder must carry whatever rate they are handed — no
+  // module-level 18% anywhere along the path. Fed directly rather than through
+  // `resolveIgvRate`, which now refuses 10% (asserted at the end of this test):
+  // SUNAT's live validator rejects a 10% document with fault 3462, so the
+  // boundary fails closed while the pipeline stays rate-agnostic.
+  it('a non-18% rate drives igvRate, the totals AND the declared cbc:Percent', () => {
+    const { invoice, totals, xml } = emitAtRate(0.1);
     expect(invoice.igvRate).toBe(0.1);
     expect(totals.lineExtensionAmount).toBe(107.27);
     expect(totals.igvAmount).toBe(10.73);
@@ -274,6 +283,10 @@ describe('ticketToEmission — org IGV rate', () => {
     expect(xml).not.toContain('<cbc:Percent>18</cbc:Percent>');
     // The whole spec in one assertion: IGV == total * rate / (1 + rate).
     expect(totals.igvAmount).toBe(Math.round(((118 * 0.1) / 1.1) * 100) / 100);
+    // ...and that same rate can no longer arrive from org config.
+    expect(() => emit({ taxRate: 0.1 })).toThrowError(
+      expect.objectContaining({ name: 'PosError', code: 'invalid_tax_rate' }),
+    );
   });
 
   it('an org that never configured a rate still emits at the statutory 18% (zero regression)', () => {
@@ -289,8 +302,9 @@ describe('ticketToEmission — org IGV rate', () => {
   });
 
   it('an unusable configured rate is refused before anything is emitted', () => {
-    // A2 + the range guard — the emitter never sees a 0%/percent-unit rate.
-    for (const taxRate of [0, 18, -0.1]) {
+    // A2, the range guard, and the SUNAT-vigente allowlist — the emitter never
+    // sees a 0%, percent-unit, negative or non-vigente rate.
+    for (const taxRate of [0, 18, -0.1, 0.1, 0.08]) {
       expect(() => emit({ taxRate })).toThrowError(
         expect.objectContaining({ name: 'PosError', code: 'invalid_tax_rate' }),
       );
@@ -360,9 +374,25 @@ describe('triggerShadowEmission — an unusable configured rate is recorded, not
     expect(emitToBeta).not.toHaveBeenCalled(); // refused before anything is built
   });
 
-  it('a usable rate still emits normally, at the rate the org configured', async () => {
+  // A rate persisted before the settings allowlist existed (or written straight
+  // into fin_settings) is the exact case live SUNAT beta rejected with fault
+  // 3462 on 2026-08-28. It must be stopped here, not by SUNAT.
+  it('a stale non-vigente rate is refused before SUNAT ever sees the document', async () => {
     vi.mocked(getFinSettings).mockResolvedValue({
       taxRate: 0.1,
+    } as Awaited<ReturnType<typeof getFinSettings>>);
+
+    await expect(triggerShadowEmission(ctx, ticket, settings)).resolves.toBeUndefined();
+
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0].status).toBe('error');
+    expect(String(inserted[0].responseDescription)).toContain('tax rate');
+    expect(emitToBeta).not.toHaveBeenCalled();
+  });
+
+  it('a usable rate still emits normally, at the rate the org configured', async () => {
+    vi.mocked(getFinSettings).mockResolvedValue({
+      taxRate: 0.18,
     } as Awaited<ReturnType<typeof getFinSettings>>);
 
     await triggerShadowEmission(ctx, ticket, settings);
@@ -371,7 +401,7 @@ describe('triggerShadowEmission — an unusable configured rate is recorded, not
     expect(inserted).toHaveLength(1);
     expect(inserted[0].status).toBe('pending'); // awaiting the beta round-trip
     expect(emitToBeta).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(emitToBeta).mock.calls[0][0]).toMatchObject({ igvRate: 0.1 });
+    expect(vi.mocked(emitToBeta).mock.calls[0][0]).toMatchObject({ igvRate: 0.18 });
     expect(updated[0]).toMatchObject({ status: 'accepted', responseCode: '0' });
   });
 });

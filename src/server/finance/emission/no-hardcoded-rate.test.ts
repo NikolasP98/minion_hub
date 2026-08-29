@@ -5,16 +5,26 @@
  * permanent one. `0.18` was a *design assumption* here ("totals/IGV are DERIVED
  * (18%…), never passed in"), so it is the kind of constant that grows back.
  *
- * Scope: the emission library plus its one production caller. The single
- * sanctioned default lives outside both, in `finance/tax.ts`
- * (`DEFAULT_IGV_RATE`, applied by `resolveIgvRate` at the settings boundary).
+ * Scope: the emission library plus every production caller that constructs an
+ * `EmissionInvoice`. The single sanctioned default lives outside all of them,
+ * in `finance/tax.ts` (`DEFAULT_IGV_RATE`, applied by `resolveIgvRate` at the
+ * settings boundary).
+ *
+ * `pos-emission-mapping.ts` is guarded explicitly, not just
+ * `pos-emission.service.ts`: `ticketToEmission` (the actual `EmissionInvoice`
+ * constructor S1 fixed) lives in the mapping module — the service only
+ * imports and calls it. A `0.18` reintroduced at that construction site would
+ * pass this guard entirely if only the service file were scanned.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const EMISSION_DIR = import.meta.dirname;
-const EXTRA_GUARDED = [join(EMISSION_DIR, '../../services/pos-emission.service.ts')];
+const EXTRA_GUARDED = [
+  join(EMISSION_DIR, '../../services/pos-emission.service.ts'),
+  join(EMISSION_DIR, '../../services/pos-emission-mapping.ts'),
+];
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

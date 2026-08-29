@@ -278,3 +278,60 @@ describe('topClients', () => {
     expect(result[0]).toEqual({ docNumber: '12345', name: 'Client A', invoices: 7, revenue: 820.0, last: '2026-05-15T00:00:00Z' });
   });
 });
+
+// M1 regression (2026-08-28 live SUNAT beta): `fin_settings.tax_rate` used to
+// accept any fraction in [0, 1). SUNAT's `sendBill` rejects a document whose
+// IGV rate is not currently in force (fault soap-env:Client.3462), so saving
+// e.g. 10% made every later shadow emission for that org fail with nothing in
+// the product saying so. The write boundary now fails closed — and does so
+// BEFORE any DB round-trip, so a bad value is never persisted.
+describe('updateFinSettings — taxRate allowlist', () => {
+  const explodingDb = {
+    transaction: () => {
+      throw new Error('updateFinSettings must reject before touching the DB');
+    },
+  };
+
+  beforeEach(() => {
+    mockWithOrgCore.mockImplementation((scope, fn) =>
+      scope.db.transaction((tx: unknown) => fn(tx)),
+    );
+  });
+
+  it.each([0.1, 0.08, 0.105, 0.19, 0, 18, -0.1, Number.NaN])(
+    'refuses taxRate %s without writing anything',
+    async (taxRate) => {
+      const { updateFinSettings } = await import('./finance.service');
+      await expect(updateFinSettings(ctx(explodingDb), { taxRate })).rejects.toThrow(
+        /SUNAT currently accepts/,
+      );
+    },
+  );
+
+  it('accepts a SUNAT-vigente rate and writes it', async () => {
+    const { updateFinSettings } = await import('./finance.service');
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [
+        {
+          orgId: 'org-1',
+          currency: 'PEN',
+          taxRate: '0.18',
+          timezone: 'America/Lima',
+          fxBase: 'USD',
+          fxQuote: 'PEN',
+          fxMode: 'auto',
+          fxManualRate: null,
+          fxAutoRate: null,
+          fxSource: null,
+          fxUpdatedAt: null,
+        },
+      ],
+    ]);
+    await expect(updateFinSettings(ctx(db), { taxRate: 0.18 })).resolves.toMatchObject({
+      taxRate: 0.18,
+    });
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    expect(db.insert).toHaveBeenCalledTimes(1);
+  });
+});

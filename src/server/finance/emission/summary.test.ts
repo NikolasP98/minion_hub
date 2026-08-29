@@ -95,6 +95,12 @@ describe('buildResumenXml', () => {
    * second home the hardcoded rate used to have. `summaryLineXml` re-derives
    * each boleta's gravada/IGV through `computeTotals`, so it must move with the
    * org's rate — and each line must still balance, since SUNAT re-adds them.
+   *
+   * NOTE: 0.10/0.08/0.05 below are pure arithmetic fixtures, not rates the
+   * product will emit — live SUNAT beta (2026-08-28) hard-rejects a non-18%
+   * `sendBill` with fault 3462, so `resolveIgvRate`/`isVigenteIgvRate`
+   * (`$lib/finance/igv-rates`) refuse every rate but 0.18 before a document is
+   * ever built. This suite only pins the resumen's rounding formula.
    */
   describe('S3 — per-boleta totals follow the boleta’s own igvRate', () => {
     /** '107.27' → 10727 — cents make “exactly” literal, and pin the 2dp format. */

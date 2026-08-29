@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { amountInWords, buildInvoiceXml, computeTotals } from './ubl';
 import type { EmissionInvoice, EmissionLine } from './types';
+import { SUNAT_VIGENTE_IGV_RATES } from '$lib/finance/igv-rates';
 
 const base: EmissionInvoice = {
   docType: '03',
@@ -142,14 +143,29 @@ describe('igvRate (S1 — required input, no module-level default)', () => {
  * S3 of 2026-08-17-hub-igv-rate-from-org-config-spec — the invariant SUNAT
  * itself enforces ("totales no consistentes"): the document's declared totals
  * must reconstruct exactly from the line decimals it carries. The rate stopped
- * being a constant in S1, so this has to hold at EVERY supported rate, not just
- * at the one the library was built against.
+ * being a constant in S1, so the arithmetic has to hold for any `igvRate`
+ * value the library is handed, not just the one it was built against — that
+ * is what this suite proves.
+ *
+ * IMPORTANT — this is NOT a claim that every rate below is usable in
+ * production. A live run against SUNAT's beta validator on 2026-08-28 (see
+ * `scripts/summary-beta-test.ts`) proved `sendBill` hard-rejects a document
+ * carrying a 10% IGV with fault `soap-env:Client.3462` — SUNAT only accepts a
+ * rate that is currently "vigente" for the emitter's regime, and today that is
+ * 0.18 alone (`SUNAT_VIGENTE_IGV_RATES` in `$lib/finance/igv-rates`). The
+ * settings-write and emission boundaries (`resolveIgvRate`, `PUT
+ * /api/finances/settings`) fail closed on anything else. The extra rates below
+ * are pure arithmetic fixtures — they exercise the formula's rounding
+ * behaviour so a future *vigente* rate is safe to add, and never reach a real
+ * document.
  *
  * Asserted on the emitted XML strings, in integer cents — that is the artifact
  * SUNAT parses, and cents make "exactly, no tolerance" literally true instead
  * of a floating-point approximation of it.
  */
-describe('S3 — totals-consistency invariant at every supported rate', () => {
+describe('S3 — totals-consistency invariant holds for any igvRate value (arithmetic only)', () => {
+  // Only 0.18 is SUNAT-vigente today; 0.10/0.08/0.05 are hypothetical
+  // fixtures used to pin the rounding formula, not rates the product accepts.
   const RATES = [0.18, 0.1, 0.08, 0.05];
 
   /** '107.27' → 10727. Also pins the 2-decimal format SUNAT requires. */
@@ -223,4 +239,9 @@ describe('S3 — totals-consistency invariant at every supported rate', () => {
       });
     }
   }
+
+  it('cross-checks the fixture list against the real allowlist: only 0.18 is SUNAT-vigente today', () => {
+    expect(SUNAT_VIGENTE_IGV_RATES).toEqual([0.18]);
+    expect(RATES.filter((r) => SUNAT_VIGENTE_IGV_RATES.includes(r))).toEqual([0.18]);
+  });
 });
