@@ -325,22 +325,20 @@ describe('brain vector API client', () => {
   });
 
   it('emits a canonical source_list request body on the wire', async () => {
-    // TODO(handoff): the spec (minion-meta specs/2026-08-17-hub-brain-org-all-scope-spec.md §3
-    // "Tests") also wants this emitted body asserted with `isBrainVectorSearchRequestV1` imported
-    // from `@minion-stack/shared`, so drift from the frozen v1 contract is caught by the contract's
-    // own validator rather than by Hub-side expectations. Why it is not done here: the Hub pins
-    // `@minion-stack/shared@^0.9.0` (package.json:24) and 0.9.0 ships no `./brain-vector` entry
-    // point — the validator first appears in the published 0.10.0, which `^0.9.0` does not admit.
-    // Raising that range touches package.json/bun.lock, which are outside this spec's §3 "Files"
-    // list; PR #139 attempted the bump twice and review rejected it both times as an unauthorized
-    // dependency/scope widen, and a hand-copied validator would assert against a reimplementation
-    // instead of the shipped contract. Unblock: get minion-meta
-    // `proposals/2026-08-17-hub-brain-org-all-scope.md` (dev branch, status `in-spec`) amended with
-    // an "Open items" section — mirroring the append that
-    // `proposals/2026-08-17-hub-igv-rate-from-org-config.md` already carries — authorizing the
-    // Hub-wide `@minion-stack/shared@^0.10.0` upgrade; that edit needs write access to minion-meta,
-    // which this run's Hub-only harness contract does not grant. Once authorized: bump the range,
-    // import the published validator, and assert the captured body passes it alongside a
+    // TODO(handoff): spec `2026-08-17-hub-brain-org-all-scope-spec.md` §3 "Tests" also wants this
+    // emitted body asserted with `isBrainVectorSearchRequestV1` imported from `@minion-stack/shared`,
+    // so Hub/shared drift is caught by the frozen contract's own validator rather than by Hub-side
+    // expectations. It cannot be done inside this spec's approved diff scope: the Hub pins
+    // `@minion-stack/shared@^0.9.0` (package.json:24) and published 0.9.0 ships no `brain-vector`
+    // export at all — the validator first appears in 0.10.0, which `^0.9.0` does not admit. Raising
+    // the range touches package.json/bun.lock, excluded by the spec's §3 "Files" list and §4
+    // diff-confinement clause; review rejected that bump twice as an unauthorized scope widen, and
+    // hand-copying the validator would assert against a reimplementation rather than the shipped
+    // contract. Ledger: minion-meta `proposals/2026-08-17-hub-brain-org-all-scope.md` (dev branch),
+    // "Open items (spec pass 2, 2026-08-29)" — the unblock is a spec amendment adding package.json
+    // and bun.lock to §3 and authorizing `@minion-stack/shared@^0.10.0`, which needs the slice's
+    // human security gate and cannot be self-granted by a Hub-scoped run. Once amended: bump the
+    // range, import the published validator, assert the captured body passes it, and add a
     // discriminating negative control. Until then the assertions below freeze the exact body
     // `searchBrainVectorApi` puts on the wire, which still catches Hub-side drift.
     let emitted: unknown;
