@@ -13,6 +13,8 @@ import {
   mintBrainVectorCapability,
   searchBrainVectorApi,
   type BrainVectorClientConfig,
+  type BrainVectorSearchFilters,
+  type BrainVectorSearchInput,
 } from './brain-vector-client';
 
 let config: BrainVectorClientConfig;
@@ -286,17 +288,103 @@ describe('brain vector API client', () => {
     ).rejects.toThrow('too many candidates');
   });
 
-  it('fails closed on org_all until the Hub can prove all-source policy scope', async () => {
+  it('makes org_all unrepresentable at the request-construction boundary', async () => {
+    const buildRequest = (filters: BrainVectorSearchFilters): BrainVectorSearchInput => ({
+      orgId: 'org-1',
+      brainId: '22222222-2222-4222-8222-222222222222',
+      subject: 'profile-1',
+      vector: Array.from({ length: 1536 }, () => 0),
+      limit: 20,
+      filters,
+    });
+
+    // @ts-expect-error `org_all` is reserved by the frozen v1 contract but the Hub may not mint it
+    // until the architecture §8.1 org-wide policy proof exists. This literal was deliberately legal
+    // under the PREVIOUS union — its `{ scopeMode: 'org_all'; sourceIds?: never }` arm accepted a
+    // bare `{ scopeMode: 'org_all' }` — so widening the type back leaves this directive unused and
+    // `bun run check` fails with TS2578. The compiler, not a runtime throw, enforces the policy.
+    buildRequest({ scopeMode: 'org_all' });
+
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        contractVersion: BRAIN_VECTOR_CONTRACT_VERSION,
+        generation: config.generation,
+        collection: brainVectorCollectionName(config.generation),
+        tookMs: 1,
+        candidates: [],
+      }),
+    );
     await expect(
-      searchBrainVectorApi(config, {
+      searchBrainVectorApi(
+        config,
+        buildRequest({ scopeMode: 'source_list', sourceIds: ['source-a'] }),
+        fetchImpl as typeof fetch,
+      ),
+    ).resolves.toMatchObject({ candidates: [] });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits a canonical source_list request body on the wire', async () => {
+    // TODO(handoff): the spec (minion-meta specs/2026-08-17-hub-brain-org-all-scope-spec.md §3
+    // "Tests") also wants this emitted body asserted with `isBrainVectorSearchRequestV1` imported
+    // from `@minion-stack/shared`, so drift from the frozen v1 contract is caught by the contract's
+    // own validator rather than by Hub-side expectations. Why it is not done here: the Hub pins
+    // `@minion-stack/shared@^0.9.0` (package.json:24) and 0.9.0 ships no `./brain-vector` entry
+    // point — the validator first appears in the published 0.10.0, which `^0.9.0` does not admit.
+    // Raising that range touches package.json/bun.lock, which are outside this spec's §3 "Files"
+    // list; PR #139 attempted the bump twice and review rejected it both times as an unauthorized
+    // dependency/scope widen, and a hand-copied validator would assert against a reimplementation
+    // instead of the shipped contract. Unblock: get minion-meta
+    // `proposals/2026-08-17-hub-brain-org-all-scope.md` (dev branch, status `in-spec`) amended with
+    // an "Open items" section — mirroring the append that
+    // `proposals/2026-08-17-hub-igv-rate-from-org-config.md` already carries — authorizing the
+    // Hub-wide `@minion-stack/shared@^0.10.0` upgrade; that edit needs write access to minion-meta,
+    // which this run's Hub-only harness contract does not grant. Once authorized: bump the range,
+    // import the published validator, and assert the captured body passes it alongside a
+    // discriminating negative control. Until then the assertions below freeze the exact body
+    // `searchBrainVectorApi` puts on the wire, which still catches Hub-side drift.
+    let emitted: unknown;
+    const fetchImpl = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
+      emitted = JSON.parse(String(init?.body));
+      return Response.json({
+        contractVersion: BRAIN_VECTOR_CONTRACT_VERSION,
+        generation: config.generation,
+        collection: brainVectorCollectionName(config.generation),
+        tookMs: 1,
+        candidates: [],
+      });
+    });
+    await searchBrainVectorApi(
+      config,
+      {
         orgId: 'org-1',
         brainId: '22222222-2222-4222-8222-222222222222',
         subject: 'profile-1',
         vector: Array.from({ length: 1536 }, () => 0),
         limit: 20,
-        filters: { scopeMode: 'org_all' },
-      }),
-    ).rejects.toThrow(/org_all vector scope is not implemented/);
+        filters: {
+          scopeMode: 'source_list',
+          sourceIds: ['source-b', 'source-a', 'source-b'],
+          kinds: ['note'],
+          occurredAfter: '2026-01-31T23:59:59Z',
+        },
+      },
+      fetchImpl as typeof fetch,
+    );
+
+    const body = emitted as Record<string, unknown>;
+    expect(body.contractVersion).toBe(BRAIN_VECTOR_CONTRACT_VERSION);
+    expect(body.generation).toBe(config.generation);
+    expect(body.limit).toBe(20);
+    expect((body.vector as number[]).length).toBe(1536);
+    // The Hub only ever mints `source_list`, with source IDs deduped and canonically ordered so the
+    // emitted scope matches the scope hash bound into the capability token.
+    expect(body.filters).toEqual({
+      scopeMode: 'source_list',
+      sourceIds: ['source-a', 'source-b'],
+      kinds: ['note'],
+      occurredAfter: '2026-01-31T23:59:59Z',
+    });
   });
 });
 

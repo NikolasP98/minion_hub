@@ -23,8 +23,19 @@ interface BrainVectorSearchFilterBaseV1 {
   occurredBefore?: string | null;
 }
 
-export type BrainVectorSearchFilters = BrainVectorSearchFilterBaseV1 &
-  ({ scopeMode: 'source_list'; sourceIds: string[] } | { scopeMode: 'org_all'; sourceIds?: never });
+/**
+ * Hub request-construction boundary. Only `source_list` is representable here.
+ *
+ * The frozen v1 wire contract (`@minion-stack/shared` `BrainVectorScopeMode`) also reserves
+ * `org_all`, and the vector API's binder implements it — but the Hub may not mint that scope until
+ * the org-wide policy proof required by `2026-07-22-self-hosted-qdrant-brains-architecture` §8.1
+ * exists. Keeping the mode out of this type makes the unimplemented scope unrepresentable at the
+ * boundary instead of a runtime throw. Widening it back is a cross-repo decision, not a local one.
+ */
+export type BrainVectorSearchFilters = BrainVectorSearchFilterBaseV1 & {
+  scopeMode: 'source_list';
+  sourceIds: string[];
+};
 
 export interface BrainVectorCandidate {
   chunkId: string;
@@ -304,9 +315,6 @@ export async function searchBrainVectorApi(
   input: BrainVectorSearchInput,
   fetchImpl: typeof fetch = fetch,
 ): Promise<BrainVectorSearchResponse> {
-  if (input.filters.scopeMode !== 'source_list') {
-    throw new Error('org_all vector scope is not implemented by the Hub');
-  }
   const sourceIds = canonicalizeBrainVectorSourceIds(input.filters.sourceIds);
   if (sourceIds.length === 0 || sourceIds.length > BRAIN_VECTOR_MAX_SOURCE_IDS) {
     throw new Error(`Vector search requires 1-${BRAIN_VECTOR_MAX_SOURCE_IDS} scoped sources`);
