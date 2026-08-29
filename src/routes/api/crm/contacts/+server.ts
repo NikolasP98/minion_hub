@@ -13,6 +13,7 @@ import {
 } from '$server/services/crm-contacts.service';
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
 import { ServerTiming } from '$lib/server/server-timing';
+import { sanitizeContactFields } from '$lib/pii';
 
 /** Page-size caps (spec 2026-08-13 §S3): default 100 rows, hard max 500. */
 const DEFAULT_LIMIT = 100;
@@ -116,9 +117,21 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, postSchema);
+  const maskSensitive = await shouldMaskSensitive(locals, 'crm');
   const contact = await createContact(ctx, {
     displayName: typeof body.displayName === 'string' ? body.displayName.trim() : null,
     customFields: body.customFields ?? {},
   });
-  return json({ contact }, { status: 201 });
+  return json(
+    {
+      contact: {
+        ...contact,
+        customFields: sanitizeContactFields(
+          contact.customFields as Record<string, unknown>,
+          maskSensitive,
+        ),
+      },
+    },
+    { status: 201 },
+  );
 };

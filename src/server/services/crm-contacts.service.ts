@@ -1483,6 +1483,12 @@ export async function createContact(
   ctx: CoreCtx,
   data: { displayName?: string | null; customFields?: Record<string, unknown> },
 ) {
+  // A newly-created row has no pre-existing reserved keys to merge over, so
+  // (unlike customFieldsMergeSql's PATCH case) a client-supplied `_`-prefixed
+  // key is simply dropped rather than replaced with a stored value.
+  const customFields = Object.fromEntries(
+    Object.entries(data.customFields ?? {}).filter(([k]) => !isReservedMetaKey(k)),
+  );
   const row = await withOrgCore(ctx, async (tx) => {
     const [r] = await tx
       .insert(crmContacts)
@@ -1490,7 +1496,7 @@ export async function createContact(
         orgId: ctx.tenantId,
         displayName: data.displayName ?? null,
         source: 'manual',
-        customFields: data.customFields ?? {},
+        customFields,
       })
       .returning();
     await recordAudit(ctx, {

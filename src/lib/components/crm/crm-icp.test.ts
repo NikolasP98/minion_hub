@@ -119,7 +119,9 @@ describe('icpDefinitionWriteSchema — the WRITE boundary (strict, rejects inste
     });
     expect(parsed.success).toBe(true);
     // …and an empty definition reads as unconfigured, so no column/tick/LLM spend.
-    expect(isIcpConfigured({ ...parsed.data!, version: 4, updatedAt: 'now' })).toBe(false);
+    expect(
+      isIcpConfigured({ ...parsed.data!, version: 4, updatedAt: '2026-08-29T00:00:00.000Z' }),
+    ).toBe(false);
   });
 
   it(`rejects more than ${ICP_CRITERIA_MAX} criteria rather than silently truncating`, () => {
@@ -201,21 +203,37 @@ describe('icpDefinitionSchema — the STORED shape', () => {
   it('requires the server-owned bookkeeping the write schema forbids', () => {
     expect(icpDefinitionSchema.safeParse(validDefinition).success).toBe(false);
     expect(
-      icpDefinitionSchema.safeParse({ ...validDefinition, version: 1, updatedAt: 'now' }).success,
+      icpDefinitionSchema.safeParse({
+        ...validDefinition,
+        version: 1,
+        updatedAt: '2026-08-29T00:00:00.000Z',
+      }).success,
     ).toBe(true);
   });
 
   it('rejects version 0 / a fractional version — versions only move forward', () => {
     for (const version of [0, -1, 1.5]) {
       expect(
-        icpDefinitionSchema.safeParse({ ...validDefinition, version, updatedAt: 'now' }).success,
+        icpDefinitionSchema.safeParse({
+          ...validDefinition,
+          version,
+          updatedAt: '2026-08-29T00:00:00.000Z',
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('rejects a non-ISO `updatedAt` instead of accepting an arbitrary string', () => {
+    for (const updatedAt of ['now', 'not-a-date', '2026-08-29', '2026-08-29 00:00:00']) {
+      expect(
+        icpDefinitionSchema.safeParse({ ...validDefinition, version: 1, updatedAt }).success,
       ).toBe(false);
     }
   });
 });
 
 describe('isIcpConfigured — the "feature is OFF" gate', () => {
-  const stored = { ...validDefinition, version: 1, updatedAt: 'now' };
+  const stored = { ...validDefinition, version: 1, updatedAt: '2026-08-29T00:00:00.000Z' };
   it('is false for null/undefined', () => {
     expect(isIcpConfigured(null)).toBe(false);
     expect(isIcpConfigured(undefined)).toBe(false);
@@ -280,6 +298,12 @@ describe('icpResultSchema — the stored `_icp` blob', () => {
         evidenceRefs: [{ chunkId: 'chunk-1', text: 'me duele mucho, necesito ayuda' }],
       }).success,
     ).toBe(false);
+  });
+
+  it('rejects a non-ISO `scoredAt` instead of accepting an arbitrary string', () => {
+    for (const scoredAt of ['now', 'not-a-date', '2026-08-29', '2026-08-29 00:00:00']) {
+      expect(icpResultSchema.safeParse({ ...validResult, scoredAt }).success).toBe(false);
+    }
   });
 
   it('parse/read helpers return undefined for an absent or malformed blob', () => {

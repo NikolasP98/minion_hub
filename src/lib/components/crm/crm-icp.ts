@@ -187,7 +187,7 @@ export type IcpDefinitionInput = z.infer<typeof icpDefinitionWriteSchema>;
  */
 export const icpDefinitionSchema = icpDefinitionWriteSchema.safeExtend({
   version: z.number().int().min(1),
-  updatedAt: z.string(),
+  updatedAt: z.iso.datetime(),
 });
 export type IcpDefinition = z.infer<typeof icpDefinitionSchema>;
 
@@ -242,7 +242,7 @@ export const icpResultSchema = z
     icpVersion: z.number().int().min(1),
     model: z.string(),
     promptVersion: z.number().int().min(1),
-    scoredAt: z.string(),
+    scoredAt: z.iso.datetime(),
   })
   .strict();
 export type IcpResult = z.infer<typeof icpResultSchema>;
