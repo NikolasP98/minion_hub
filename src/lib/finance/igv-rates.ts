@@ -1,9 +1,9 @@
 /**
  * The IGV rates this product may put on a SUNAT document — the single source
- * of truth shared by the settings write boundary (`updateFinSettings` and the
- * `PUT /api/finances/settings` schema — the settings form posts through the
- * latter and surfaces its rejection) and the emission boundary
- * (`resolveIgvRate`, `$server/finance/tax`).
+ * of truth shared by the settings write boundary (`updateFinSettings`, the
+ * `PUT /api/finances/settings` schema, and the `/finances/settings` form, which
+ * offers these rates as a Select rather than a free percent field) and the
+ * emission boundary (`resolveIgvRate`, `$server/finance/tax`).
  *
  * WHY AN ALLOWLIST, and not "any fraction in (0, 1)": a live run against
  * SUNAT's beta validator on 2026-08-29 had `sendBill` hard-reject both a boleta

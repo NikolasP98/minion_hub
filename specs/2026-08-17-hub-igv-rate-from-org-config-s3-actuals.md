@@ -61,6 +61,11 @@ Fail closed on a shared allowlist, `src/lib/finance/igv-rates.ts`:
   no module-level constant returns. `src/server/finance/emission/no-hardcoded-rate.test.ts`
   is the permanent guard, and it now discovers every production `EmissionInvoice`
   construction site under `src/` so a new one cannot be added outside its scan.
+- **Settings form** — `/finances/settings` offers the allowlist as a `Select` instead of a
+  free percent field, so an invalid rate cannot be typed in the first place. A rate
+  persisted before the gate existed still renders, labelled `— not accepted by SUNAT`
+  (`fin_money_tax_unsupported`), so an admin sees and can correct it rather than having it
+  silently vanish from the form. Ported from PR #159, which owned this half of S3.
 - The unit suites still exercise 0.10 / 0.08 / 0.05 as **pure arithmetic fixtures** for the
   rounding formula (so a future vigente rate is safe to add). They assert against
   `SUNAT_VIGENTE_IGV_RATES` that those fixtures are not rates the product will emit.
@@ -87,7 +92,7 @@ Fail closed on a shared allowlist, `src/lib/finance/igv-rates.ts`:
   the spec's §5 (one gravada rate per document). Needs per-line affectation type, the
   exempt/unaffected totals, and a settings surface to declare the operation type.
   Code pointer: `TODO(handoff)` in `src/server/finance/tax.ts`.
-- **Settings form copy.** `/finances/settings` still shows the generic save-failure message
-  when the rate is refused; the API returns the specific reason
-  (`IGV_RATE_NOT_VIGENTE_MESSAGE`) but the form does not surface it. Localised copy for
-  that case is unwritten.
+- **Bulk correction of already-persisted rates.** Nothing sweeps `fin_settings` for rows
+  written before the gate existed. Such an org keeps rendering its stored rate (flagged in
+  the form) and fails closed at emission until an admin re-saves; no migration or report
+  identifies those orgs proactively.

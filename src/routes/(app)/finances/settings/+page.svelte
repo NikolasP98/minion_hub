@@ -16,6 +16,7 @@
   import { onMount } from 'svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
+  import { SUNAT_VIGENTE_IGV_RATES, formatIgvRate, isVigenteIgvRate } from '$lib/finance/igv-rates';
 
   let { data }: { data: PageData } = $props();
 
@@ -267,6 +268,20 @@
   // Tax rate is a fraction in the DB (0.18); edited as a percent here.
   // svelte-ignore state_referenced_locally
   let taxPct = $state(String(Math.round(s0.taxRate * 10000) / 100));
+  // Only rates SUNAT currently accepts are offered: an arbitrary percentage is
+  // refused by PUT /api/finances/settings and again by the emitter, so a free
+  // number field would present an invalid value as valid. A rate persisted
+  // before that gate existed still renders, flagged, so an admin can see and
+  // correct it rather than have it silently disappear from the form.
+  const taxRateOptions = $derived([
+    ...SUNAT_VIGENTE_IGV_RATES.map((rate) => ({
+      value: String(Math.round(rate * 10000) / 100),
+      label: formatIgvRate(rate),
+    })),
+    ...(isVigenteIgvRate(Number(taxPct) / 100)
+      ? []
+      : [{ value: taxPct, label: `${taxPct}% — ${m.fin_money_tax_unsupported()}` }]),
+  ]);
   // svelte-ignore state_referenced_locally
   let fxManual = $state(s0.fxMode === 'manual');
   // svelte-ignore state_referenced_locally
@@ -671,14 +686,13 @@
           ]}
         />
 
-        <label class="field">
-          <span class="t-caption">{m.fin_money_tax_rate()}</span>
-          <div class="pct-wrap">
-            <input class="inp" type="number" min="0" max="99.99" step="0.01" bind:value={taxPct} />
-            <span class="pct-suffix">%</span>
-          </div>
-          <span class="t-caption hint">{m.fin_money_tax_hint()}</span>
-        </label>
+        <Select
+          fieldClass="field"
+          label={m.fin_money_tax_rate()}
+          helper={m.fin_money_tax_hint()}
+          bind:value={taxPct}
+          options={taxRateOptions}
+        />
 
         <div class="field">
           <span class="t-caption">{m.fin_fx_rate({ base: fxBase, quote: fxQuote })}</span>
