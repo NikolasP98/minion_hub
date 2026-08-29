@@ -1222,6 +1222,12 @@ describe('updateSellable', () => {
      * differ on purpose — a returned `kind: 'product'` is then only reachable
      * by re-reading AFTER the write, so the assertions below cannot be
      * satisfied by a call that returns its own pre-read.
+     *
+     * That, and only that, is what a readback assertion in THIS file proves:
+     * which of the two reads the projection came from. It says nothing about
+     * whether a row was stored, because the rows here are supplied by the
+     * mock. The stored result is asserted against a real server in
+     * `pos.sellables.concurrent.integration.test.ts`.
      */
     function serviceBecomesProduct(db: unknown) {
       mockExecuteSequence(db, [
@@ -1250,10 +1256,10 @@ describe('updateSellable', () => {
         finProductId: 'fp-20',
       });
       expect(updateSpy(db)).toHaveBeenCalled();
-      // The spec's DoD sentence, read off the projection the route returns.
       // `kind`/`trackStock`/`uom` are all derived from the item link, and the
       // pre-write read carried none of them — returning them proves the row
-      // came from the second read, not the first.
+      // came from the second read, not the first. It does NOT prove the item
+      // persisted; the integration suite does that.
       expect(row).toMatchObject({
         kind: 'product',
         trackStock: true,
@@ -1302,7 +1308,13 @@ describe('updateSellable', () => {
       // The killer request: start tracking AND rename onto a code another
       // product already holds. fin_products_org_code_uniq rejects the rename
       // AFTER the item insert has been issued.
-      rejectUpdateWith(db, Object.assign(new Error('duplicate key'), { code: '23505' }));
+      // Wrapped exactly as drizzle raises it (see the item_taken case below).
+      rejectUpdateWith(
+        db,
+        Object.assign(new Error('Failed query: update "fin_products"'), {
+          cause: Object.assign(new Error('duplicate key'), { code: '23505' }),
+        }),
+      );
 
       await expect(
         updateSellable(ctx(db), 'fp-20', { trackStock: true, uom: 'Unidad', code: 'TAKEN' }, actor),
@@ -1383,7 +1395,9 @@ describe('updateSellable', () => {
 
       // Not a mock echo: the two paths are different functions building this
       // payload, and the assertion fails the moment either grows its own copy
-      // of "what a tracked sellable's item looks like".
+      // of "what a tracked sellable's item looks like". Parity of the STORED
+      // rows (the same property, one layer down) is asserted against a real
+      // server in `pos.sellables.concurrent.integration.test.ts`.
       expect(viaCreate).toEqual({
         code: 'CONS',
         name: 'Consulta',
@@ -1432,20 +1446,21 @@ describe('updateSellable', () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([currentService]);
       serviceBecomesProduct(db);
-      // TODO(handoff): this proves only the TRANSLATION of the constraint
-      // violation, because the hub suite has no PostgreSQL to run against —
-      // there is no integration harness in this repo and the schema is not
-      // reproducible from the monorepo (operator memory
-      // `hub-supabase-schema-not-reproducible`). The unproved half is that
-      // two genuinely concurrent false→true PATCHes leave exactly ONE linked
-      // row; that rests on the partial unique index
-      // `stk_items_org_fin_product_uniq`
-      // (supabase/migrations/20260719230000_stk_items_fin_product_uniq.sql),
-      // which is read evidence, not executed evidence. See
-      // docs/superpowers/plans/2026-08-29-updatesellable-slice1-recon-and-open-ends.md
-      // §5 (proposal P2) for the integration-harness follow-up.
+      // This case proves only the TRANSLATION of a unique violation into the
+      // domain error. The behaviour it stands in for — two genuinely concurrent
+      // false→true PATCHes leaving exactly ONE linked row — is proved against a
+      // real server in `pos.sellables.concurrent.integration.test.ts`, because
+      // a mock told to raise 23505 cannot prove that PostgreSQL raises it.
+      //
+      // ★ The wrapped shape is the point. drizzle raises a `DrizzleQueryError`
+      // whose `cause` carries the SQLSTATE; the flat `{code: '23505'}` this
+      // file used to inject was the ONLY shape the old bare `e.code` check
+      // matched, which is why a real-database run was the first thing to notice
+      // that `item_taken` was dead in production.
       createItemTxMock.mockRejectedValue(
-        Object.assign(new Error('duplicate key'), { code: '23505' }),
+        Object.assign(new Error('Failed query: insert into "stk_items"'), {
+          cause: Object.assign(new Error('duplicate key'), { code: '23505' }),
+        }),
       );
 
       await expect(

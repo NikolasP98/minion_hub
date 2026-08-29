@@ -116,6 +116,16 @@
   let createdStockItems = $state<StockItemLike[]>([]);
   let uom = $state('unit');
   const kind = $derived<'product' | 'service'>(source === 'service' ? 'service' : 'product');
+  /**
+   * Edit mode offers the stock-tracking switch only where `updateSellable`
+   * actually applies it: an untracked SERVICE, with the stock module on. A
+   * product already has its item; a bundle derives 'bundle' ahead of the item
+   * link, so linking one would leave `kind` and `trackStock` contradicting each
+   * other — the service refuses both (`stock_tracking_immutable`).
+   */
+  const canStartTracking = $derived(
+    !!editing && stockEnabled && editing.kind === 'service' && editing.itemId == null,
+  );
   const allStockItems = $derived([...createdStockItems, ...stockItems]);
   /** Only items not already published can be linked. */
   const availableItems = $derived(allStockItems.filter((i) => !i.finProductId));
@@ -217,8 +227,6 @@
       category: category.trim() || null,
       unitPrice: unitPrice.trim() === '' ? null : Number(unitPrice),
     };
-    // kind/trackStock/uom/itemId are creation-only — updateSellable ignores
-    // them on PATCH.
     if (!editing) {
       payload.kind = kind;
       if (stockEnabled) {
@@ -229,6 +237,16 @@
           payload.itemId = existingItemId;
         }
       }
+    } else if (canStartTracking && source === 'new-item') {
+      // The ONE transition `updateSellable` applies on PATCH: an untracked
+      // SERVICE starts tracking stock (it creates the missing stk_items mirror
+      // and nothing else). Everything the service still refuses — true→false,
+      // bundles, a uom change on a linked item — is unreachable from here by
+      // construction, so the form never offers an action the API would 400.
+      // `kind` is deliberately NOT sent: it is derived from the item link, and
+      // the server judges it against the POST-transition state anyway.
+      payload.trackStock = true;
+      payload.uom = uom.trim() || 'unit';
     }
     // Recipes are NOT service-only: a product-kind sellable may carry one too
     // (resolveIssueLines gives an authored recipe precedence over the 1:1
@@ -328,9 +346,29 @@
       bind:value={unitPrice}
     />
 
-    {#if editing}
-      <!-- updateSellable ignores kind/trackStock/uom on PATCH — showing live
-           controls here would silently no-op, so they're creation-only. -->
+    {#if editing && canStartTracking}
+      <!-- An untracked service is the one sellable a PATCH can change here:
+           `existing-item` is absent because publishing an EXISTING item is a
+           create-only path, and turning tracking back OFF is refused by the
+           service (it would orphan an item that may carry ledger history). -->
+      <div class="fld">
+        <span>{m.pos_catalog_source()}</span>
+        <SegmentedControl
+          aria-label={m.pos_catalog_source()}
+          bind:value={source}
+          items={[
+            { value: 'service', label: m.pos_catalog_kind_service() },
+            { value: 'new-item', label: m.pos_catalog_source_new_item() },
+          ]}
+        />
+      </div>
+      {#if source === 'new-item'}
+        <Input size="sm" label={m.stock_field_uom()} bind:value={uom} />
+      {/if}
+      <p class="t-caption">{m.pos_catalog_track_stock_one_way()}</p>
+    {:else if editing}
+      <!-- Every other edit: kind follows the linked item, and the service
+           refuses true→false and uom changes on a linked item. -->
       <p class="t-caption">{m.pos_catalog_kind_locked()}</p>
     {:else}
       <div class="fld">

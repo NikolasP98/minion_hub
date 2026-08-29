@@ -3300,6 +3300,7 @@
   "pos_catalog_edit_subtitle": "Actualiza sus datos comerciales y el consumo de insumos.",
   "pos_catalog_empty": "Aún no hay productos ni servicios",
   "pos_catalog_kind_locked": "El tipo y control de stock se definen al crear",
+  "pos_catalog_track_stock_one_way": "El control de stock se puede activar, pero no desactivar.",
   "pos_catalog_kind_product": "Producto",
   "pos_catalog_kind_service": "Servicio",
   "pos_catalog_new": "Nuevo producto/servicio",

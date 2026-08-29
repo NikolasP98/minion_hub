@@ -1,4 +1,5 @@
 import { and, desc, eq, lt, ne, or, sql } from 'drizzle-orm';
+import { pgErrorCode } from '$server/db/pg-error';
 import { withOrgCore } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -72,18 +73,11 @@ export function getJobById(ctx: CoreCtx, jobId: string): Promise<MetaSyncJob | n
 }
 
 /**
- * Postgres error code, walking the `cause` chain — drizzle wraps driver errors
- * in DrizzleQueryError, so the code lives on `e.cause`, not `e` (live-verified:
- * a 23505 duplicate-active-job insert 500'd the run route because the bare
- * `e.code` check missed the wrapped code).
+ * Re-exported so this module's long-standing import site keeps working; the
+ * implementation moved to `$server/db/pg-error.ts` when a second service
+ * (pos.service.ts's unique-violation mapping) needed the same cause-chain walk.
  */
-export function pgErrorCode(e: unknown): string | undefined {
-  for (let cur = e; cur && typeof cur === 'object'; cur = (cur as { cause?: unknown }).cause) {
-    const code = (cur as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
-  }
-  return undefined;
-}
+export { pgErrorCode };
 
 /**
  * Idempotent enqueue vs the partial active-job unique index

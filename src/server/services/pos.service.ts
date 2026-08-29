@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
+import { pgErrorCode } from '$server/db/pg-error';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   posSettings,
@@ -1214,10 +1215,35 @@ function normalizeUomForCompare(v: string | null | undefined): string {
   return (v ?? '').trim().toLowerCase();
 }
 
-/** Translate a raw pg unique-violation into the domain error — same
- *  convention as enqueueJob in finance-sync-jobs.service.ts. */
+/**
+ * The ONE place a submitted unit of measure becomes the value stored on
+ * `stk_items.uom` — trim first, then fall back to `'unit'`.
+ *
+ * The trim is not cosmetic. `stk_items.uom` is NOT NULL DEFAULT 'unit', so the
+ * column itself can never default a value that WAS supplied; a `?? 'unit'`
+ * fallback only fires on nullish, and `"   "` is neither nullish nor a unit.
+ * Both HTTP schemas now refuse whitespace-only input outright, but this service
+ * is also the gateway POS tools' entry point and takes a plain object, so the
+ * normalisation has to live where the value is written, not only at the route.
+ */
+function normalizeUom(v: string | null | undefined): string {
+  return (v ?? '').trim() || 'unit';
+}
+
+/**
+ * Translate a raw pg unique-violation into the domain error — same convention
+ * as enqueueJob in meta-sync-jobs.service.ts.
+ *
+ * ★ Goes through `pgErrorCode`, which walks the `cause` chain, NOT a bare
+ * `e.code` read. drizzle wraps driver errors in `DrizzleQueryError`, so the
+ * SQLSTATE sits on `e.cause` — the bare check this used to do never matched a
+ * real database, and every `code_taken` / `item_taken` branch below was dead in
+ * production while a raw 500 escaped instead. The unit suite could not see it
+ * (it injects a bare `{code: '23505'}`); `pos.sellables.concurrent
+ * .integration.test.ts` caught it on the first run against real PostgreSQL.
+ */
 function isUniqueViolation(e: unknown): boolean {
-  return !!e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === '23505';
+  return pgErrorCode(e) === '23505';
 }
 
 export interface SellableInput {
@@ -1257,8 +1283,8 @@ interface DesiredSellableItem {
  * Extracted verbatim from `createSellable` so `updateSellable`'s trackStock
  * false→true transition goes through the SAME code path instead of growing a
  * second, drifting copy of "what a tracked sellable's item looks like" —
- * including the `uom ?? 'unit'` default, which is the only place that default
- * lives. `pos.sellables.test.ts` pins the parity: an equivalent create and
+ * including the `normalizeUom` trim+default, which lives nowhere else.
+ * `pos.sellables.test.ts` pins the parity: an equivalent create and
  * create-then-update must produce the identical item payload.
  *
  * Takes the TRANSACTION HANDLE, not a ctx, so a caller that must not commit
@@ -1291,7 +1317,7 @@ async function syncSellableItem(
       await createItemTx(tx, orgId, {
         code: desired.code,
         name: desired.name,
-        uom: desired.uom ?? 'unit',
+        uom: normalizeUom(desired.uom),
         finProductId,
       });
     } catch (e) {

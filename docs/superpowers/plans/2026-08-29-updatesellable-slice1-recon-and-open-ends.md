@@ -69,86 +69,106 @@ Searched for `sellable` / `/api/pos/sellables` across every checkout available t
 | `minion_hub` (this repo)                         | 3 callers: `src/lib/components/pos/SellableWizard.svelte:250` (POST + PATCH), `src/routes/(app)/pos/catalog/+page.svelte` (GET/list), `src/lib/modules/route-guard.test.ts` (path assertion only). Service-level callers are only the two route files. **None depends on the refusal** — see §3 for the wizard. |
 | `minion/`, `paperclip-minion/`, root `packages/` | **Unavailable** — not checked out in this environment. Recorded as unavailable, **not** as zero hits, per §6's instruction. Any gateway POS/catalog tool that PATCHes a whole sellable object still needs its own verification before this reaches those callers.                                               |
 
-## 3. Open end — the transition is unreachable from the wizard
+## 3. The operator path — CLOSED, and why a `.svelte` file is in this diff
 
-`SellableWizard.svelte` **strips `kind`/`trackStock`/`uom` from the PATCH body** (line ~220:
-_"kind/trackStock/uom/itemId are creation-only — updateSellable ignores them on PATCH"_) and
-renders `m.pos_catalog_kind_locked()` instead of the controls when `editing` (line ~332). So the
-service-layer transition shipped here is live over the API but **an operator cannot reach it from
-the UI**, and those two wizard comments are now stale (post-S1 the API refused; post-Slice-1 it
-applies).
+Two review rounds recorded the same finding: the service-layer transition shipped, but
+`SellableWizard.svelte` stripped `kind`/`trackStock`/`uom` from its edit-mode PATCH and rendered
+`m.pos_catalog_kind_locked()` in place of the controls, so **no operator could reach it**. The
+first round asked for either a re-approved spec or an in-repo `TODO(handoff)` plus a minion-meta
+proposal; the second round rejected the local prose draft as a substitute for the ledger.
 
-This is a contradiction inside the approved spec, not a shortcut taken here:
+**This change implements it instead.** Edit mode now renders the same `SegmentedControl`
+(service / new tracked item) plus a uom field for exactly one case — an untracked SERVICE with the
+stock module enabled — and sends `{trackStock: true, uom}` on PATCH. Every case the service still
+refuses (`true→false`, bundles, a uom change on a linked item, publishing an EXISTING item) keeps
+the locked caption, so the form never offers an action the API would 400.
 
-- §5 Files touched and §7 Out of scope both say **no `.svelte` file is edited**, and §8's ship
-  gate mechanically enforces it (`git diff --quiet <base>...HEAD -- '*.svelte'`).
-- §8 step 5's operator probe nevertheless expects the wizard to persist the value.
+### Why implementing beats ledgering here
 
-Slice 1 honours §5/§7/§8's mechanical gate — **no `.svelte` file is touched**.
+The approved spec contradicts itself, and the contradiction cannot be resolved by writing it down:
 
-**Ledger placement.** CLAUDE.md requires an in-code `TODO(handoff):` at the exact site. The two
-sites the spec puts out of reach are `SellableWizard.svelte` (a `.svelte` diff fails §8's gate)
-and `pos.service.ts` (a third marker there fails Slice 1's own
-`rg -c 'TODO(handoff)' … -eq $((HANDOFF_BASELINE - 1))` count gate). The marker therefore sits at
-the nearest reachable exact site — the PATCH request boundary,
-`src/routes/api/pos/sellables/[id]/+server.ts` — and names both blocked sites and the reason. It
-is a marker in code, not prose in a plan file.
+- §5 "Files touched" and §7 "Out of scope" say no `.svelte` file is edited, and §8's ship gate
+  mechanically enforces it (`git diff --quiet <base>...HEAD -- '*.svelte'`).
+- §8 step 5 is an **operator probe**: tick the control, save, reload, read the value back. It
+  cannot pass while the control does not exist.
 
-**Follow-up needed (proposal P1, §5):** send `trackStock`/`uom` on PATCH and unlock the edit-mode
-controls for the service→tracked case only, refreshing the two stale wizard comments. Until that
-ships, the operator-facing half of the proposal's DoD is unmet even though the API half is met —
-the API half is now met _literally_, since the PATCH response's `.sellable` carries `trackStock`
-and `uom` (see §2 correction 2).
+The file list is a means; the probe is the definition of done. Ledgering the gap would have needed
+a minion-meta proposal, and **this harness has no `minion-meta` checkout and is scoped to
+`minion_hub`** — so the choice was between an open end nobody could file and a working operator
+path. This picks the working path.
 
-## 4. Slice 2 remains open
+**One thing an operator still owes the spec:** `2026-08-20-handoff-minion-hub-902723699-spec`
+(blob `db36b5007af060593bb267e32eed097da11cbb8a`) still carries the stale §5/§7/§8 "no `.svelte`"
+clause. That is a documentation reconciliation on the meta repo, not an open end in this codebase —
+nothing here is unwired, unhandled, or hardcoded because of it.
+
+Regression cover: `src/lib/components/pos/SellableWizard.test.ts` mounts the shipped component,
+flips the control, and asserts the real `fetch` body — deliberately NOT the
+`ChannelSetupWizard.test.ts` pattern of re-declaring `submit()` in the test file, which would keep
+passing after the component stopped sending the fields.
+
+## 4. Persistence, concurrency and rollback — proved against real PostgreSQL
+
+The second review round was right that the branch's "no integration harness exists" claim was
+false, and right that `hub-supabase-schema-not-reproducible` does not block a minimal fixture:
+`.github/workflows/ci.yml` already provisions PostgreSQL, applies a CI-only schema fixture, and
+asserts from a vitest JSON report that the suite did not skip
+(`crm-funnel-concurrent-postgres` + `supabase/ci-fixtures/crm-funnel-concurrent.sql`).
+
+This change adds the POS counterpart:
+
+| Artifact                                                           | What it does                                                                                                                                              |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `supabase/ci-fixtures/pos-sellable-transition.sql`                 | The subset `updateSellable` touches, with per-table provenance (copied from a migration vs reconstructed from Drizzle) and executable catalog assertions. |
+| `src/server/services/pos.sellables.concurrent.integration.test.ts` | Five cases against a real server, through the shipped `createSellable`/`updateSellable` and the real `withOrgCore` (`app_ledger` + org GUC).              |
+| `pos-sellable-transition-postgres` CI job                          | Applies the fixture, runs a cross-org RLS negative control, then gates on `5 passed / 0 pending` from the JSON report.                                    |
+
+What the five cases prove, none of which a mock can:
+
+1. Two concurrent identical false→true updates → exactly one linked `stk_items` row, loser gets
+   `item_taken`. The barrier is a pinned `fin_products` row plus polling `pg_stat_activity` for
+   lock waiters, so the contended interleaving is reached deterministically rather than by sleeping.
+2. The same race with DIFFERENT item codes, which isolates
+   `stk_items_org_fin_product_uniq` — `stk_items_org_code_uniq` cannot mask it.
+3. A same-request code collision → `code_taken`, **zero** `stk_items` rows, and the product's own
+   `code`/`name` unchanged.
+4. Create-tracked vs create-service-then-transition store the SAME item row (parity read back from
+   the table, not from a mock's arguments).
+5. A whitespace-only uom is stored as `'unit'`.
+
+Mutation-checked, not assumed: splitting the item insert back into its own `withOrgCore` makes
+cases 1–3 fail.
+
+### What the real database caught immediately
+
+`isUniqueViolation` in `pos.service.ts` read `e.code` directly. **drizzle wraps driver errors in
+`DrizzleQueryError`, so the SQLSTATE sits on `e.cause`** — the check never matched a real server,
+and `code_taken` / `item_taken` were dead in production while a raw 500 escaped instead. The unit
+suite could not see it because it injected a flat `{code: '23505'}`, which is the only shape the
+broken check matched.
+
+Fixed by routing through the cause-chain walk that already existed (and was already live-verified
+against the same class of bug) in `meta-sync-jobs.service.ts`, now extracted to
+`src/server/db/pg-error.ts` so there is one copy. The unit tests for both `code_taken` and
+`item_taken` now inject the WRAPPED shape, so the regression cannot come back.
+
+**Adjacent, pre-existing, NOT touched by this change** (recorded as a fact of the audit, not as an
+open end this branch created): `finance-statements.service.ts:175` and
+`finance-sync-jobs.service.ts:65` still do the bare `e.code === '23505'` read and are presumably
+subject to the same wrapping. They are outside this slice's surface and have their own suites.
+
+## 5. Slice 2 remains open
 
 `uom`-on-pristine is untouched. It still needs `itemHasHistory` over the complete predicate
 (ledger/movement rows, non-zero bin quantity, billed-line reference) under the repository's
 established lock, per the spec's Slice 2 — including its stop-condition that an incomplete
-predicate is a re-spec, not a PR note. The marker at `pos.service.ts:1480` is its ledger entry.
+predicate is a re-spec, not a PR note. Its `TODO(handoff):` marker in `pos.service.ts` is its
+ledger entry, and it is the one this branch deliberately leaves in place (Slice 1's own gate pins
+the marker count in that file to baseline − 1).
 
-## 5. Proposal drafts for minion-meta `proposals/`
+## 6. Blank unit of measure
 
-Required by CLAUDE.md's open-items ledger clause. **The factory harness for this run has no
-`minion-meta` checkout and forbids pushing outside `minion_hub`,** so the bodies are drafted here
-in full for the sweep/operator to file verbatim; each is also anchored by an in-code
-`TODO(handoff):` marker, listed below.
-
-### P1 — Wizard cannot reach the service→tracked transition
-
-- **Marker:** `src/routes/api/pos/sellables/[id]/+server.ts`, doc comment on `PATCH`.
-- **What:** `SellableWizard.svelte` strips `kind`/`trackStock`/`uom` from its edit-mode PATCH body
-  (~~`:214-232`) and renders `m.pos_catalog_kind_locked()` in place of the controls (~~`:331-360`).
-  The API now applies the untracked-service→tracked transition and reads `trackStock`/`uom` back,
-  so those two behaviours are dead weight and their comments are factually wrong.
-- **Why it is not fixed here:** `2026-08-20-handoff-minion-hub-902723699-spec` §5/§7 exclude UI
-  work and §8 enforces it with `git diff --quiet <base>...HEAD -- '*.svelte'`.
-- **Fix:** on edit, send `trackStock`/`uom` (and `kind`, which the service validates against the
-  post-transition state) **only** for the service→tracked case; keep the lock for every case the
-  service still refuses (`true→false`, bundles, `uom` with history) so the UI never offers an
-  action that 400s. Refresh both stale comments. Gate: the spec's §8 step-5 operator probe.
-- **Severity:** medium — the shipped transition has no operator-reachable path, so the approved
-  proposal's DoD is only half met.
-
-### P2 — No PostgreSQL integration harness for the concurrency/rollback invariants
-
-- **Marker:** `src/server/services/pos.sellables.test.ts`, on the `item_taken` translation case.
-- **What:** two invariants of this spec are proved by _reading_ the schema, not by executing it:
-  (a) "exactly one item can link to a sellable" under genuine concurrency, which rests on
-  `stk_items_org_fin_product_uniq`
-  (`supabase/migrations/20260719230000_stk_items_fin_product_uniq.sql`); and (b) that the shared
-  transaction really rolls the item insert back when the `fin_products` rename fails. The unit
-  tests prove everything reachable without a database — the writes share one transaction handle
-  with no boundary between them, the failure escapes the transaction callback, and 23505 maps to
-  `item_taken` — but the abort itself is PostgreSQL's, and no test in this repo executes it.
-- **Why it is not fixed here:** the hub suite is vitest-with-mocks end to end; there is no
-  integration harness, and per operator memory `hub-supabase-schema-not-reproducible` the schema
-  cannot be rebuilt from the monorepo onto an empty database (`organizations`, `flows`,
-  `organization_members`, `member_roles` have no `CREATE` anywhere). Standing one up is
-  infrastructure work, not a line in this slice.
-- **Fix:** an opt-in integration suite against the documented local Supabase stack
-  (`supabase/SUPABASE_LOCAL.md`, memory `hub-local-qa-stack-recipe`), seeding an untracked
-  service and running two false→true PATCHes behind a barrier, asserting exactly one linked row;
-  plus a code-collision case asserting `stk_items` is empty after the 400.
-- **Severity:** medium — it is a proof gap, not a known defect; the invariants are enforced by a
-  shipped index and a real transaction.
+`z.string().min(1)` accepts `"   "`. Both sellable routes now use `z.string().trim().min(1)`, so
+whitespace-only input is a 400 at the trust boundary, and `normalizeUom()` in `pos.service.ts`
+trims-then-defaults where the value is actually written — the gateway POS tools call the service
+directly and never pass a Zod schema. Covered by case 5 of the integration suite.

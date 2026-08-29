@@ -24,6 +24,11 @@ export default defineConfig({
       '$env/static/public': path.resolve('src/server/test-utils/env-stubs/static-public.ts'),
       // Same story for `$app/environment` (tanstack query client reads `browser`).
       '$app/environment': path.resolve('src/server/test-utils/env-stubs/app-environment.ts'),
+      // …and for `$app/state`, which `$lib/components/ui` reaches through
+      // `access/can.svelte.ts`. A component-mounting test cannot cover this
+      // with `vi.mock` alone: the import is resolved while Vite transforms the
+      // component graph, before the mock registry applies.
+      '$app/state': path.resolve('src/server/test-utils/env-stubs/app-state.ts'),
     },
   },
 });
