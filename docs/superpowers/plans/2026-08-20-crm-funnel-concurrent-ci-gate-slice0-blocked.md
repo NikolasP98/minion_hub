@@ -207,3 +207,22 @@ raises when the org policy is swapped for a permissive one. PGlite reports as PG
 `postgres:15`, so the authoritative run remains the `crm-funnel-concurrent-postgres` job.
 
 **A2 (schema drift) — accepted, not silently.** See the paragraph above and the fixture header.
+
+## Review-fix round c8cb47f0 (2026-08-29) — blocker re-verified, not re-guessed
+
+The cross-provider reviewer FAILed head `89ae1cc` on this exact A1 grants gap, asking for the
+production `information_schema.role_table_grants` result to be obtained and reproduced literally.
+That result does not exist anywhere this dev-stage agent can reach: re-checked this round —
+process env, `.env.example`, `gh secret list`/`gh variable list` on `NikolasP98/minion_hub`, no
+`psql`/`docker`/local Postgres, no Supabase MCP tool in the session — all empty/absent, identical
+to the 2026-08-20 and 2026-08-27 findings above and to operator memory
+`hub-local-qa-stack-recipe`/`factory/2026-08-20-c6b17283`. Also checked fresh this round: no
+migration under `supabase/migrations/` ever grants privileges on `crm_contacts` or
+`crm_activities` directly (the one file that references either, `20260825100000_crm_contact_activity_rollup.sql`,
+only reads them inside a separate function and grants on its own new table) — so there is no
+in-repo ground truth to fall back on either. Widening the grant set "by convention" was already
+tried and reverted twice (see the table above and `factory/2026-08-19-cd344281`); repeating that
+now would reproduce the exact guessing failure this spec exists to close. No fixture change was
+made this round. This finding needs a human/ops operator to run spec §3 Slice 0's third query
+against production and paste the result — it is not something a further automated review-fix
+round can resolve.
