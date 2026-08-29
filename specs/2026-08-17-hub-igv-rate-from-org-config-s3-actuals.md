@@ -13,10 +13,9 @@ type: fix
 
 # S3 actuals — `2026-08-17-hub-igv-rate-from-org-config-spec`
 
-The spec and its proposal are authored in minion-meta, which is **not checked out in this
-workspace** (this branch may only touch `minion_hub`). The runtime evidence below was
-produced here, so it is recorded here; the minion-meta proposal's "Open items" section
-still owes the same amendment — see [Owed to minion-meta](#owed-to-minion-meta).
+The spec and its proposal are authored in minion-meta. The runtime evidence below was
+produced here and is recorded here; it has also been carried into minion-meta itself — see
+[Recorded in minion-meta](#recorded-in-minion-meta).
 
 ## The result S3 was supposed to confirm, disproved
 
@@ -70,14 +69,14 @@ Fail closed on a shared allowlist, `src/lib/finance/igv-rates.ts`:
   rounding formula (so a future vigente rate is safe to add). They assert against
   `SUNAT_VIGENTE_IGV_RATES` that those fixtures are not rates the product will emit.
 
-## Owed to minion-meta
+## Recorded in minion-meta
 
-1. Amend `proposals/2026-08-17-hub-igv-rate-from-org-config.md`: its open item still reads
-   "no beta cert; make 10% pass". That is disproved — replace it with the matrix above and
-   the fail-closed decision. `scripts/gen-beta-cert.sh` + live egress to
-   `e-beta.sunat.gob.pe` are all the harness needs; nothing is blocked on a certificate.
-2. Correct §6 step 3 of the spec: the 10% acceptance criterion cannot be met and must not
-   be re-attempted as written.
+`proposals/2026-08-17-hub-igv-rate-from-org-config.md` (dev `80899b4`) and
+`specs/2026-08-17-hub-igv-rate-from-org-config-spec.md` (dev `af15a66`) have been amended to
+carry the matrix above, the fail-closed decision, and the reduced-rate / exonerada-inafecta /
+persisted-invalid-rate follow-ups. §6 step 3 of the spec no longer asks for a `ResponseCode 0`
+at 10% — it now states the expected fault and warns that a resumen/baja acceptance is not
+proof a referenced document's rate was accepted.
 
 ## Open items (not implemented, deliberately)
 
