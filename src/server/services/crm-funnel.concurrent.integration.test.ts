@@ -11,23 +11,23 @@ import { setContactCustomField, setFunnelStage } from './crm-contacts.service';
  * crm-funnel-parity.sql.integration.test.ts), this file does NOT create its own
  * throwaway schema: the lost-update property it proves runs through the real
  * `withOrgCore` path, so it needs pre-existing `organizations` (for the org row
- * + RLS GUC) and `crm_activities` rows. Per the standing schema note, those
- * tables have no `CREATE` anywhere in the monorepo — they exist only in the
- * provisioned Supabase database — so this suite CANNOT run against the bare
- * `postgres:` service container the CI Postgres job spins up, and no CI job
- * names it. It runs only against a full-schema database (the local Supabase
- * stack, or a branch DB) with SUPABASE_DB_URL pointed at it.
+ * + RLS GUC) and `crm_activities` rows, with RLS actually in force on the CRM
+ * tables — proving the fix under the real RLS/role machinery is the point, so
+ * nothing here mocks or bypasses `withOrgCore`.
  *
- * TODO(handoff): the spec's central concurrency claim is therefore proven by a
- * suite that executes on no automated gate — CI covers the atomic write only
- * via the single-connection pglite tests (crm-journey.atomic-write.test.ts),
- * which cannot interleave two transactions. Closing this needs a CI job with a
- * full-schema database (seed `organizations` from a dump, or point the job at a
- * Supabase branch DB) that runs this file with
- * REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES=1. Pointer:
- * spec 2026-08-18-hub-funnel-atomic-write-spec; schema constraint is the
- * "hub schema NOT reproducible" operator note; CI job is
- * `.github/workflows/ci.yml` → "Real-PostgreSQL CRM pagination suite".
+ * Per the standing schema note those tables have no `CREATE` anywhere in the
+ * monorepo (they exist only in the provisioned Supabase database), so CI
+ * supplies them from a CI-ONLY fixture rather than from a migration:
+ * `supabase/ci-fixtures/crm-funnel-concurrent.sql` reproduces the prod
+ * `crm_contacts` / `crm_activities` / `organizations.id` shape and the
+ * `*_org_guc` RLS policies as live-extracted from prod's catalog, and the
+ * `crm-funnel-concurrent-postgres` job in `.github/workflows/ci.yml` applies it
+ * to a bare `postgres:15` service container, runs a cross-org negative control,
+ * then runs THIS file with REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES=1 and asserts
+ * from a vitest JSON report that all three cases passed and none skipped.
+ *
+ * Locally it still skips unless SUPABASE_DB_URL is set — point it at the local
+ * Supabase stack, a branch DB, or a container seeded with that same fixture.
  */
 const databaseUrl =
   process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
@@ -37,7 +37,10 @@ const databaseUrl =
 if (process.env.REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES && !databaseUrl) {
   throw new Error(
     'REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES is set but SUPABASE_DB_URL is empty — this suite ' +
-      'needs a FULL-SCHEMA database (organizations + crm_activities), not the bare CI service.',
+      'needs a database carrying organizations + crm_activities under the org-GUC RLS policies. ' +
+      'The crm-funnel-concurrent-postgres CI job seeds exactly that into its postgres service ' +
+      'from supabase/ci-fixtures/crm-funnel-concurrent.sql; locally, point SUPABASE_DB_URL at ' +
+      'the Supabase stack or at a container seeded with that same fixture.',
   );
 }
 
@@ -61,7 +64,7 @@ describe.runIf(Boolean(databaseUrl))(
           ${contactId},
           ${orgId},
           'manual',
-          ${JSON.stringify({ _funnel: { stage: 'lead', auto: true } })}::jsonb
+          ${owner.json({ _funnel: { stage: 'lead', auto: true } })}
         )
       `;
 
@@ -77,7 +80,7 @@ describe.runIf(Boolean(databaseUrl))(
           set custom_fields = jsonb_set(
             custom_fields,
             array['_funnel'],
-            ${JSON.stringify({ stage: 'customer', auto: false })}::jsonb,
+            ${tx.json({ stage: 'customer', auto: false })},
             true
           )
           where id = ${contactId}
@@ -148,7 +151,7 @@ describe.runIf(Boolean(databaseUrl))(
           ${contactId},
           ${orgId},
           'manual',
-          ${JSON.stringify({ _funnel: { stage: 'lead', auto: true }, nombre: 'Ana' })}::jsonb
+          ${owner.json({ _funnel: { stage: 'lead', auto: true }, nombre: 'Ana' })}
         )
       `;
       return { orgId, contactId };

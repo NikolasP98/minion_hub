@@ -100,21 +100,6 @@ function isUnconditionalServerRedirect(source) {
   return /^\s*throw\s+redirect\s*\(/.test(loadBody[1]);
 }
 
-async function recordedBaselineRef(root) {
-  try {
-    const ledger = JSON.parse(
-      await readFile(path.join(root, 'tests/ui-audit/current-baseline.json'), 'utf8'),
-    );
-    if (typeof ledger.sourceCommit === 'string' && /^[0-9a-f]{40}$/.test(ledger.sourceCommit)) {
-      git(root, 'cat-file', '-e', `${ledger.sourceCommit}^{commit}`);
-      return ledger.sourceCommit;
-    }
-  } catch {
-    // A new repository has no ledger yet; its current commit becomes baseline.
-  }
-  return 'HEAD';
-}
-
 /**
  * Build the route inventory either from the mutable working tree or from an
  * immutable Git object. The latter is what backs the pre-program evidence: a
@@ -128,7 +113,10 @@ export async function buildRouteInventory({
   const root = path.resolve(repositoryRoot);
   const routeRoot = path.join(root, 'src/routes');
   const headCommit = git(root, 'rev-parse', 'HEAD');
-  const cleanSourceRef = baselineRef ?? (await recordedBaselineRef(root));
+  // HEAD is available in full, shallow, and post-squash checkouts. Baseline
+  // validation is anchored to the durable src/routes tree SHA below, not to a
+  // feature-branch commit that may disappear from repository history.
+  const cleanSourceRef = baselineRef ?? 'HEAD';
   const sourceCommit = cleanBaseline ? git(root, 'rev-parse', cleanSourceRef) : headCommit;
   const sourceRef = cleanBaseline ? cleanSourceRef : 'WORKTREE';
   const trackedRouteFiles = cleanBaseline
@@ -206,7 +194,7 @@ export async function buildRouteInventory({
   const status = cleanBaseline ? '' : git(root, 'status', '--short', '--untracked-files=all');
   const sourceTreeSha = git(root, 'rev-parse', `${sourceCommit}:src/routes`);
   const fingerprint = cleanBaseline
-    ? `git:${sourceCommit}:${sourceTreeSha}`
+    ? `git-tree:${sourceTreeSha}`
     : createHash('sha256')
         .update(status)
         .update(git(root, 'diff', '--binary'))
