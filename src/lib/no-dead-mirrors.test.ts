@@ -63,7 +63,7 @@ function walkSource(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       if (!SKIP_DIRS.has(entry.name)) walkSource(join(dir, entry.name), out);
-    } else if (/\.(ts|js|svelte)$/.test(entry.name)) {
+    } else if (/\.(?:[cm]?[jt]sx?|svelte)$/.test(entry.name)) {
       out.push(join(dir, entry.name));
     }
   }
@@ -73,6 +73,23 @@ function walkSource(dir: string, out: string[] = []): string[] {
 describe('no dead mirrors', () => {
   it.each(DEAD_MIRRORS)('$file has been deleted', ({ file }) => {
     expect(existsSync(join(REPO_ROOT, file))).toBe(false);
+  });
+
+  // Regression guard: the walker previously matched only `\.(ts|js|svelte)$`,
+  // silently skipping hand-written `.mjs`/`.mts` files under `scripts/` — an
+  // import there could reintroduce a retired mirror without failing this
+  // suite. Assert real, currently-committed files of those extensions are
+  // actually walked, not just that the regex looks right.
+  it('walkSource includes hand-written .mjs and .mts files under scripts/', () => {
+    const walked = new Set(walkSource(join(REPO_ROOT, 'scripts')));
+    for (const file of [
+      'scripts/design-lint.mjs',
+      'scripts/token-integrity.mjs',
+      'scripts/ui-audit-inventory.mjs',
+      'scripts/ui-audit-inventory.d.mts',
+    ]) {
+      expect(walked.has(join(REPO_ROOT, file)), `${file} was not walked`).toBe(true);
+    }
   });
 
   it('no hand-written file references a retired mirror', () => {
