@@ -216,15 +216,22 @@ describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL',
         return r;
       });
 
-      // The write must be BLOCKED, not racing: without the lock it would have
-      // stamped `updatedAt` already and missed the row published below.
-      await new Promise((r) => setTimeout(r, 300));
-      expect(settled).toBe(false);
-
-      releasePublication();
-      await publication;
+      let blockedWhileLockHeld: boolean;
+      try {
+        // The write must be BLOCKED, not racing: without the lock it would
+        // have stamped `updatedAt` already and missed the row published below.
+        await new Promise((r) => setTimeout(r, 300));
+        blockedWhileLockHeld = !settled;
+      } finally {
+        // Always let the publication commit — otherwise a failed expectation
+        // above would leave its transaction open and `withSchema`'s teardown
+        // would block on it until the test timeout, hiding the real reason.
+        releasePublication();
+        await publication;
+      }
       const result = await write;
 
+      expect(blockedWhileLockHeld).toBe(true);
       expect(result.staleDerivedCount).toBe(1);
       expect(result.staleDerived).toBe(true);
     });
