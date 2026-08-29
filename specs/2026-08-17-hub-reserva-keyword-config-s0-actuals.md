@@ -291,12 +291,25 @@ Both halves are fixed:
   and the operator is still told to rebuild. Retrying instead would re-run the embedding spend
   under a rule that may change again.
 
+Scope check while fixing it: `crm_win_embeddings` really is the only store of rule-derived data.
+`crm-journey.service.ts` also classifies with the rule, but it persists ONLY the model's
+`aiMilestones` into `custom_fields._journey` — the deposit-derived milestones in `base` are
+recomputed from the live rule on every read, so there is no stale-classification store there and
+nothing to serialize. The win-index POST's response shape is deliberately unchanged: a discarded
+pass reports through the warn log and `buildWinIndex`'s return value, while the operator-facing
+disclosure the spec asks for is the PUT's `staleDerived`/`staleDerivedCount`, which is what the
+fix makes trustworthy.
+
 Tests: `crm-similarity.service.test.ts` drives the exact interleaving (the mocked `embedTexts`
 stands in for the concurrent PUT, flipping the stored version while the pass is embedding) through
 the shipped publication path, and `crm-settings.service.test.ts` pins the lock-before-stamp order
 and the DB-clock stamp. Both fail against the pre-fix code. `crm-settings.sql.integration.test.ts`
 adds the real-PostgreSQL half (CI job `crm-deposit-rule-postgres`): a publication that commits
-while the write waits on the lock must still be counted stale.
+while the write waits on the lock must still be counted stale. That real-PostgreSQL suite was also
+run locally against a genuine PostgreSQL server (a portable build installed outside the repo, not
+a dependency change) before being pushed at CI: green with the fix, red in 345 ms without it —
+this environment's lack of a database was the reason the previous round shipped a fixture bug to
+CI, so the loop was closed here rather than there.
 
 ### Route-inventory baseline
 
