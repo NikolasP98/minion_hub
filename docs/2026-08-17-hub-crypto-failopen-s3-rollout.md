@@ -45,6 +45,20 @@ $ ENCRYPTION_KEY=realkey                                -> boots, mode configure
 The anti-recurrence guard was proved to fail: adding `scryptSync("x","y",32)` to
 `src/server/auth/tenant.ts` reds `never derives its own key with scrypt`; reverted.
 
+### Boot proof against the built server
+
+`bun run desktop:build` (adapter-node), then `node build/index.js` with `.env`'s
+crypto lines removed — the spec's own DoD form:
+
+| Environment                              | Result                                                                                                                      |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| neither var set                          | **does not boot** — `Error: ENCRYPTION_KEY is not set. Refusing to seal or open secrets with the built-in, source-visible…` |
+| `ENCRYPTION_KEY=$(openssl rand -hex 32)` | boots; **zero** `[crypto]` warnings                                                                                         |
+| `MINION_ALLOW_DEV_CRYPTO_KEY=1`, no key  | boots; **exactly one** `[crypto] ENCRYPTION_KEY is not set…` line                                                           |
+
+`bun run build` (Vercel adapter) succeeds with neither var set — the assertion is
+skipped while `building`, so a runtime-configuration check cannot fail packaging.
+
 ## What did NOT land, and why — read before deploying
 
 ### 1. The dependency bump is deliberately NOT in this change
