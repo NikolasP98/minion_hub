@@ -23,9 +23,10 @@
  *     `scripts/backfill-workspaces.ts`, and keeps `SECRETS_METHODS` as a local
  *     hub constant. (It touches no Drizzle config — this repo has none.)
  *   - This branch is the designated **extraction**: the whole spec, both
- *     slices, with nothing else attached, so the cleanup can land without the
- *     unrelated work #159 is policy-blocked on. It is the single owner of both
- *     slices; #159's dead-mirror commits are now redundant.
+ *     slices, nothing else attached, so the cleanup can land on its own rather
+ *     than as one indivisible unit with #159's unrelated (`ui`/`data`-labelled)
+ *     work. It is the single owner of both slices; #159's dead-mirror commits
+ *     are now redundant.
  *   - Divergence to preserve on merge: here `SECRETS_METHODS` is imported as a
  *     value from `@minion-stack/shared` (§2.2's bundle trap was checked — the
  *     client output contains no `ws`/`node:` import), not re-declared locally.
@@ -36,7 +37,9 @@
  * file) and keep only its IGV / brain-vector / finance work; otherwise the two
  * branches re-edit the same files and this same guard. Nothing further is
  * needed *here* — do not re-implement either slice on another branch.
- * Spec: minion-meta `specs/2026-08-17-hub-dead-mirrors-cleanup-spec.md`.
+ * Spec: minion-meta `specs/2026-08-17-hub-dead-mirrors-cleanup-spec.md`; ledger
+ * entry belongs on `proposals/2026-08-17-hub-dead-mirrors-cleanup.md` (that
+ * append is a minion-meta write, out of reach from this repo's branch).
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
