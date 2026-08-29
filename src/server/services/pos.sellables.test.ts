@@ -10,9 +10,17 @@ vi.mock('./finance-products.service', () => ({
 
 // ── stock.service mock — sellables slice only; ticket-flow exports are
 // stubbed no-ops since pos.sellables.test.ts never exercises them ──
-const createItemMock = vi.fn<(ctx: unknown, input: unknown) => Promise<{ id: string }>>();
-const updateItemMock =
-  vi.fn<(ctx: unknown, id: string, patch: unknown) => Promise<{ id: string } | null>>();
+// The sellable item-sync path runs inside the CALLER's transaction, so it goes
+// through the tx-scoped forms (`createItemTx` / `updateItemTx`), not the
+// ctx-scoped `createItem` / `updateItem` wrappers. Mocking the tx-scoped pair
+// is what keeps `syncSellableItem`'s "one transaction" contract observable:
+// the handle these receive is the same one the fin_products update runs on.
+const createItemTxMock =
+  vi.fn<(tx: unknown, orgId: string, input: unknown) => Promise<{ id: string }>>();
+const updateItemTxMock =
+  vi.fn<
+    (tx: unknown, orgId: string, id: string, patch: unknown) => Promise<{ id: string } | null>
+  >();
 const setConsumptionMock =
   vi.fn<(ctx: unknown, input: unknown, actor: unknown) => Promise<{ id: string }>>();
 const deleteConsumptionMock = vi.fn<(ctx: unknown, id: string) => Promise<boolean>>();
@@ -24,8 +32,9 @@ vi.mock('./stock.service', () => ({
   submitEntry: vi.fn(),
   cancelEntry: vi.fn(),
   StockError: class StockError extends Error {},
-  createItem: (ctx: unknown, input: unknown) => createItemMock(ctx, input),
-  updateItem: (ctx: unknown, id: string, patch: unknown) => updateItemMock(ctx, id, patch),
+  createItemTx: (tx: unknown, orgId: string, input: unknown) => createItemTxMock(tx, orgId, input),
+  updateItemTx: (tx: unknown, orgId: string, id: string, patch: unknown) =>
+    updateItemTxMock(tx, orgId, id, patch),
   setConsumption: (ctx: unknown, input: unknown, actor: unknown) =>
     setConsumptionMock(ctx, input, actor),
   deleteConsumption: (ctx: unknown, id: string) => deleteConsumptionMock(ctx, id),
@@ -83,6 +92,30 @@ function updateSpy(db: unknown) {
   return (db as { update: ReturnType<typeof vi.fn> }).update;
 }
 
+/** The `db.transaction` spy — one call per `withOrgCore`, so its call count is
+ *  how many transactions a service function opened. */
+function txSpy(db: unknown) {
+  return (db as { transaction: ReturnType<typeof vi.fn> }).transaction;
+}
+
+/** The handle `withOrgCore` hands its callback. `createMockDb`'s transaction is
+ *  `cb => cb(db)`, so the handle IS the db proxy — identity against it is what
+ *  proves a write went through the caller's transaction rather than opening
+ *  its own. */
+function txHandle(db: unknown) {
+  return db;
+}
+
+/** Make the next `tx.update(...).set(...).where(...)` reject — the only way to
+ *  simulate a constraint the mock db has no schema to enforce. */
+function rejectUpdateWith(db: unknown, err: unknown) {
+  const chain = {
+    set: () => chain,
+    where: () => Promise.reject(err),
+  };
+  (db as { update: unknown }).update = vi.fn(() => chain);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -116,6 +149,7 @@ describe('listSellables', () => {
         unit_price: '250',
         active: true,
         item_id: 'item-1',
+        uom: 'vial',
         stock_qty: '12',
         has_mapping: false,
       },
@@ -127,6 +161,9 @@ describe('listSellables', () => {
         unit_price: null,
         active: true,
         item_id: null,
+        // A left join with no match still returns a uom column; it must not
+        // become a fact about a sellable that tracks no stock.
+        uom: null,
         stock_qty: null,
         has_mapping: true,
       },
@@ -138,6 +175,7 @@ describe('listSellables', () => {
         unit_price: '300',
         active: true,
         item_id: 'item-2',
+        uom: 'mL',
         stock_qty: null,
         has_mapping: false,
       },
@@ -155,6 +193,8 @@ describe('listSellables', () => {
         active: true,
         kind: 'product',
         itemId: 'item-1',
+        trackStock: true,
+        uom: 'vial',
         stockQty: 12,
         hasMapping: false,
         taxonomy: {
@@ -177,6 +217,8 @@ describe('listSellables', () => {
         active: true,
         kind: 'service',
         itemId: null,
+        trackStock: false,
+        uom: null,
         stockQty: null,
         hasMapping: true,
         taxonomy: {
@@ -196,6 +238,10 @@ describe('listSellables', () => {
         active: true,
         kind: 'product',
         itemId: 'item-2',
+        trackStock: true,
+        uom: 'mL',
+        // No bins yet ≠ untracked: the item link is what makes it a product,
+        // and Σ qty over zero bins is 0, never null.
         stockQty: 0,
         hasMapping: false,
         taxonomy: {
@@ -337,7 +383,7 @@ describe('createSellable', () => {
       unitPrice: null,
       active: true,
     });
-    expect(createItemMock).not.toHaveBeenCalled();
+    expect(createItemTxMock).not.toHaveBeenCalled();
     expect(setConsumptionMock).not.toHaveBeenCalled();
     expect(row.kind).toBe('service');
     expect(row.itemId).toBeNull();
@@ -360,7 +406,7 @@ describe('createSellable', () => {
       },
     ]);
     upsertProductMock.mockResolvedValue(undefined);
-    createItemMock.mockResolvedValue({ id: 'item-9' });
+    createItemTxMock.mockResolvedValue({ id: 'item-9' });
 
     const input: SellableInput = {
       name: 'Botox',
@@ -372,7 +418,7 @@ describe('createSellable', () => {
     };
     const row = await createSellable(ctx(db), input, actor);
 
-    expect(createItemMock).toHaveBeenCalledWith(expect.anything(), {
+    expect(createItemTxMock).toHaveBeenCalledWith(expect.anything(), 'org-1', {
       code: 'BTX',
       name: 'Botox',
       uom: 'vial',
@@ -400,7 +446,7 @@ describe('createSellable', () => {
       },
     ]);
     upsertProductMock.mockResolvedValue(undefined);
-    updateItemMock.mockResolvedValue({ id: 'item-raw' });
+    updateItemTxMock.mockResolvedValue({ id: 'item-raw' });
 
     const input: SellableInput = {
       name: 'Mask',
@@ -411,10 +457,10 @@ describe('createSellable', () => {
     };
     const row = await createSellable(ctx(db), input, actor);
 
-    expect(updateItemMock).toHaveBeenCalledWith(expect.anything(), 'item-raw', {
+    expect(updateItemTxMock).toHaveBeenCalledWith(expect.anything(), 'org-1', 'item-raw', {
       finProductId: 'fp-x',
     });
-    expect(createItemMock).not.toHaveBeenCalled(); // linked, never created
+    expect(createItemTxMock).not.toHaveBeenCalled(); // linked, never created
     expect(row.kind).toBe('product'); // derived from the link, for free
   });
 
@@ -435,7 +481,7 @@ describe('createSellable', () => {
       },
     ]);
     upsertProductMock.mockResolvedValue(undefined);
-    updateItemMock.mockResolvedValue({ id: 'item-raw' });
+    updateItemTxMock.mockResolvedValue({ id: 'item-raw' });
 
     await createSellable(
       ctx(db),
@@ -451,8 +497,8 @@ describe('createSellable', () => {
       actor,
     );
 
-    expect(updateItemMock).toHaveBeenCalled();
-    expect(createItemMock).not.toHaveBeenCalled();
+    expect(updateItemTxMock).toHaveBeenCalled();
+    expect(createItemTxMock).not.toHaveBeenCalled();
   });
 
   it('publishing an already-published item surfaces item_taken, not a raw 23505', async () => {
@@ -460,7 +506,9 @@ describe('createSellable', () => {
     resolveSequence([[{ id: 'fp-z' }]]);
     upsertProductMock.mockResolvedValue(undefined);
     // what the stk_items_org_fin_product_uniq partial index raises
-    updateItemMock.mockRejectedValue(Object.assign(new Error('duplicate key'), { code: '23505' }));
+    updateItemTxMock.mockRejectedValue(
+      Object.assign(new Error('duplicate key'), { code: '23505' }),
+    );
 
     const input: SellableInput = {
       name: 'Dup',
@@ -478,7 +526,7 @@ describe('createSellable', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[{ id: 'fp-w' }]]);
     upsertProductMock.mockResolvedValue(undefined);
-    updateItemMock.mockResolvedValue(null); // updateItem returns null when not found
+    updateItemTxMock.mockResolvedValue(null); // updateItem returns null when not found
 
     const input: SellableInput = {
       name: 'Ghost',
@@ -518,7 +566,7 @@ describe('createSellable', () => {
     };
     await createSellable(ctx(db), input, actor);
 
-    expect(createItemMock).not.toHaveBeenCalled();
+    expect(createItemTxMock).not.toHaveBeenCalled();
   });
 
   it('consumption rows are written via setConsumption, one call per row', async () => {
@@ -640,7 +688,7 @@ describe('createSellable', () => {
     await expect(createSellable(ctx(db), input, actor)).rejects.toMatchObject({
       code: 'code_taken',
     });
-    expect(createItemMock).not.toHaveBeenCalled();
+    expect(createItemTxMock).not.toHaveBeenCalled();
   });
 
   it('a non-unique-violation error from upsertProduct is rethrown as-is', async () => {
@@ -1044,7 +1092,7 @@ describe('updateSellable', () => {
       await expect(
         updateSellable(ctx(db), 'fp-13', { trackStock: false }, actor),
       ).rejects.toMatchObject({ code: 'stock_tracking_immutable' });
-      expect(createItemMock).not.toHaveBeenCalled();
+      expect(createItemTxMock).not.toHaveBeenCalled();
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
@@ -1080,7 +1128,7 @@ describe('updateSellable', () => {
       await expect(
         updateSellable(ctx(db), 'fp-13b', { trackStock: true }, actor),
       ).rejects.toMatchObject({ code: 'stock_tracking_immutable' });
-      expect(createItemMock).not.toHaveBeenCalled();
+      expect(createItemTxMock).not.toHaveBeenCalled();
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
@@ -1168,8 +1216,13 @@ describe('updateSellable', () => {
       },
     ];
 
-    /** Reads the sellable as an untracked service, then (post-transition) as a
-     *  tracked product — the two states one PATCH observes. */
+    /**
+     * The two states ONE PATCH observes: the pre-write read still sees an
+     * untracked service, the post-write read sees the tracked product. They
+     * differ on purpose — a returned `kind: 'product'` is then only reachable
+     * by re-reading AFTER the write, so the assertions below cannot be
+     * satisfied by a call that returns its own pre-read.
+     */
     function serviceBecomesProduct(db: unknown) {
       mockExecuteSequence(db, [
         [sellableSqlRow({ id: 'fp-20' })],
@@ -1177,11 +1230,11 @@ describe('updateSellable', () => {
       ]);
     }
 
-    it('creates the linked stk_items row with the sellable\'s code/name/uom, then reports kind "product"', async () => {
+    it("creates the linked stk_items row with the sellable's code/name/uom, and returns the POST-write read", async () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([currentService]);
       serviceBecomesProduct(db);
-      createItemMock.mockResolvedValue({ id: 'item-20' });
+      createItemTxMock.mockResolvedValue({ id: 'item-20' });
 
       const row = await updateSellable(
         ctx(db),
@@ -1190,22 +1243,92 @@ describe('updateSellable', () => {
         actor,
       );
 
-      expect(createItemMock).toHaveBeenCalledWith(expect.anything(), {
+      expect(createItemTxMock).toHaveBeenCalledWith(expect.anything(), 'org-1', {
         code: 'CONS',
         name: 'Consulta',
         uom: 'Unidad',
         finProductId: 'fp-20',
       });
       expect(updateSpy(db)).toHaveBeenCalled();
-      expect(row.kind).toBe('product');
-      expect(row.itemId).toBe('item-20');
+      // The spec's DoD sentence, read off the projection the route returns.
+      // `kind`/`trackStock`/`uom` are all derived from the item link, and the
+      // pre-write read carried none of them — returning them proves the row
+      // came from the second read, not the first.
+      expect(row).toMatchObject({
+        kind: 'product',
+        trackStock: true,
+        uom: 'Unidad',
+        itemId: 'item-20',
+      });
+    });
+
+    it('runs the item insert and the fin_products update in ONE transaction — a later failure can roll the insert back', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([currentService]);
+      serviceBecomesProduct(db);
+      createItemTxMock.mockResolvedValue({ id: 'item-20' });
+
+      await updateSellable(ctx(db), 'fp-20', { trackStock: true, uom: 'Unidad' }, actor);
+
+      // updateSellable opens exactly four transactions: load the row, derive
+      // the facts, WRITE, read back. A fifth would mean the item insert and
+      // the product update committed separately — the defect this test exists
+      // to prevent.
+      const txOrder = txSpy(db).mock.invocationCallOrder;
+      expect(txOrder).toHaveLength(4);
+
+      // …and both writes land inside the third one: no transaction is opened
+      // between them, and the handle the item write got is the transaction's.
+      const itemAt = createItemTxMock.mock.invocationCallOrder[0];
+      const productAt = updateSpy(db).mock.invocationCallOrder[0];
+      expect(itemAt).toBeGreaterThan(txOrder[2]);
+      expect(productAt).toBeGreaterThan(itemAt);
+      expect(txOrder.filter((o) => o > itemAt && o < productAt)).toEqual([]);
+      expect(createItemTxMock.mock.calls[0][0]).toBe(txHandle(db));
+    });
+
+    it('a code collision on the SAME request reports code_taken and does not commit the stock link — both writes share the transaction, so PostgreSQL rolls the insert back', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([currentService]);
+      // A renamed code adds the billed-lines guard query ahead of the two
+      // sellable reads, so this case spells its sequence out rather than
+      // reusing `serviceBecomesProduct`.
+      mockExecuteSequence(db, [
+        [{ n: 0 }], // no billed invoice lines → the rename is allowed to proceed
+        [sellableSqlRow({ id: 'fp-20' })], // pre-write: an untracked service
+        [sellableSqlRow({ id: 'fp-20', item_id: 'item-20', stock_qty: '0', uom: 'Unidad' })],
+      ]);
+      createItemTxMock.mockResolvedValue({ id: 'item-20' });
+      // The killer request: start tracking AND rename onto a code another
+      // product already holds. fin_products_org_code_uniq rejects the rename
+      // AFTER the item insert has been issued.
+      rejectUpdateWith(db, Object.assign(new Error('duplicate key'), { code: '23505' }));
+
+      await expect(
+        updateSellable(ctx(db), 'fp-20', { trackStock: true, uom: 'Unidad', code: 'TAKEN' }, actor),
+      ).rejects.toMatchObject({ code: 'code_taken' });
+
+      // The rollback proof this unit test can carry: the item insert really
+      // was issued (so the ordering alone would NOT have saved us), it ran on
+      // the transaction handle, and no transaction boundary separates it from
+      // the failing rename — so the driver aborts both together. It is not
+      // retry-healing: every retry re-hits the same code conflict, which is
+      // exactly why the item must not be allowed to survive on its own.
+      expect(createItemTxMock).toHaveBeenCalledTimes(1);
+      expect(createItemTxMock.mock.calls[0][0]).toBe(txHandle(db));
+      const itemAt = createItemTxMock.mock.invocationCallOrder[0];
+      const renameAt = updateSpy(db).mock.invocationCallOrder[0];
+      expect(renameAt).toBeGreaterThan(itemAt);
+      expect(txSpy(db).mock.invocationCallOrder.filter((o) => o > itemAt && o < renameAt)).toEqual(
+        [],
+      );
     });
 
     it("the wizard's full-object save {kind:'product', trackStock:true, uom} is accepted — kind is judged AFTER the transition", async () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([currentService]);
       serviceBecomesProduct(db);
-      createItemMock.mockResolvedValue({ id: 'item-20' });
+      createItemTxMock.mockResolvedValue({ id: 'item-20' });
 
       const row = await updateSellable(
         ctx(db),
@@ -1214,7 +1337,7 @@ describe('updateSellable', () => {
         actor,
       );
 
-      expect(createItemMock).toHaveBeenCalledTimes(1);
+      expect(createItemTxMock).toHaveBeenCalledTimes(1);
       expect(row.kind).toBe('product');
     });
 
@@ -1226,7 +1349,7 @@ describe('updateSellable', () => {
       await expect(
         updateSellable(ctx(db), 'fp-20', { kind: 'service', trackStock: true }, actor),
       ).rejects.toMatchObject({ code: 'kind_derived' });
-      expect(createItemMock).not.toHaveBeenCalled();
+      expect(createItemTxMock).not.toHaveBeenCalled();
       expect(updateSpy(db)).not.toHaveBeenCalled();
     });
 
@@ -1236,7 +1359,7 @@ describe('updateSellable', () => {
       a.resolveSequence([[{ id: 'fp-20' }]]);
       mockExecute(a.db, [sellableSqlRow({ id: 'fp-20', item_id: 'item-20', stock_qty: '0' })]);
       upsertProductMock.mockResolvedValue(undefined);
-      createItemMock.mockResolvedValue({ id: 'item-20' });
+      createItemTxMock.mockResolvedValue({ id: 'item-20' });
       await createSellable(
         ctx(a.db),
         {
@@ -1249,15 +1372,24 @@ describe('updateSellable', () => {
         },
         actor,
       );
-      const viaCreate = createItemMock.mock.calls.at(-1)?.[1];
+      const viaCreate = createItemTxMock.mock.calls.at(-1)?.[2];
 
       // Path B — create as a service, then switch tracking on.
       const b = createMockDb();
       b.resolveSequence([currentService]);
       serviceBecomesProduct(b.db);
       await updateSellable(ctx(b.db), 'fp-20', { trackStock: true, uom: 'Unidad' }, actor);
-      const viaUpdate = createItemMock.mock.calls.at(-1)?.[1];
+      const viaUpdate = createItemTxMock.mock.calls.at(-1)?.[2];
 
+      // Not a mock echo: the two paths are different functions building this
+      // payload, and the assertion fails the moment either grows its own copy
+      // of "what a tracked sellable's item looks like".
+      expect(viaCreate).toEqual({
+        code: 'CONS',
+        name: 'Consulta',
+        uom: 'Unidad',
+        finProductId: 'fp-20',
+      });
       expect(viaUpdate).toEqual(viaCreate);
     });
 
@@ -1266,29 +1398,29 @@ describe('updateSellable', () => {
       a.resolveSequence([[{ id: 'fp-20' }]]);
       mockExecute(a.db, [sellableSqlRow({ id: 'fp-20', item_id: 'item-20', stock_qty: '0' })]);
       upsertProductMock.mockResolvedValue(undefined);
-      createItemMock.mockResolvedValue({ id: 'item-20' });
+      createItemTxMock.mockResolvedValue({ id: 'item-20' });
       await createSellable(
         ctx(a.db),
         { name: 'Consulta', code: 'CONS', unitPrice: null, kind: 'product', trackStock: true },
         actor,
       );
-      const viaCreate = createItemMock.mock.calls.at(-1)?.[1];
+      const viaCreate = createItemTxMock.mock.calls.at(-1)?.[2];
 
       const b = createMockDb();
       b.resolveSequence([currentService]);
       serviceBecomesProduct(b.db);
       await updateSellable(ctx(b.db), 'fp-20', { trackStock: true }, actor);
-      const viaUpdate = createItemMock.mock.calls.at(-1)?.[1];
+      const viaUpdate = createItemTxMock.mock.calls.at(-1)?.[2];
 
       expect(viaCreate).toMatchObject({ uom: 'unit' });
       expect(viaUpdate).toEqual(viaCreate);
     });
 
-    it('a failed item insert leaves the fin_products row untouched — the item write goes FIRST precisely so there is nothing to roll back', async () => {
+    it('a failed item insert aborts the whole request — the fin_products update is never issued', async () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([currentService]);
       serviceBecomesProduct(db);
-      createItemMock.mockRejectedValue(new Error('stk_items insert exploded'));
+      createItemTxMock.mockRejectedValue(new Error('stk_items insert exploded'));
 
       await expect(
         updateSellable(ctx(db), 'fp-20', { trackStock: true, uom: 'Unidad', unitPrice: 42 }, actor),
@@ -1296,13 +1428,23 @@ describe('updateSellable', () => {
       expect(updateSpy(db)).not.toHaveBeenCalled();
     });
 
-    it('the loser of two concurrent false→true PATCHes gets item_taken (the partial unique index), not a raw 23505, and writes no partial update', async () => {
+    it('a 23505 from the item insert surfaces as item_taken, not a raw pg error, and writes no partial update', async () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([currentService]);
       serviceBecomesProduct(db);
-      // What stk_items_org_fin_product_uniq raises when the winner already
-      // linked an item to this product.
-      createItemMock.mockRejectedValue(
+      // TODO(handoff): this proves only the TRANSLATION of the constraint
+      // violation, because the hub suite has no PostgreSQL to run against —
+      // there is no integration harness in this repo and the schema is not
+      // reproducible from the monorepo (operator memory
+      // `hub-supabase-schema-not-reproducible`). The unproved half is that
+      // two genuinely concurrent false→true PATCHes leave exactly ONE linked
+      // row; that rests on the partial unique index
+      // `stk_items_org_fin_product_uniq`
+      // (supabase/migrations/20260719230000_stk_items_fin_product_uniq.sql),
+      // which is read evidence, not executed evidence. See
+      // docs/superpowers/plans/2026-08-29-updatesellable-slice1-recon-and-open-ends.md
+      // §5 (proposal P2) for the integration-harness follow-up.
+      createItemTxMock.mockRejectedValue(
         Object.assign(new Error('duplicate key'), { code: '23505' }),
       );
 

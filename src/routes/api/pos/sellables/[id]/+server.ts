@@ -25,7 +25,23 @@ const patchSchema = z.object({
   active: z.boolean().optional(),
 });
 
-/** PATCH /api/pos/sellables/:id */
+/**
+ * PATCH /api/pos/sellables/:id
+ *
+ * TODO(handoff): `SellableWizard.svelte` still strips `kind`/`trackStock`/`uom`
+ * from its edit-mode PATCH body and renders `m.pos_catalog_kind_locked()`
+ * instead of the controls, so the service→tracked transition this schema now
+ * accepts (and the projection now reads back as `trackStock`/`uom`) is
+ * reachable over the API but NOT by an operator. The marker lives here, at the
+ * request boundary, because the wizard is a `.svelte` file and
+ * `2026-08-20-handoff-minion-hub-902723699-spec` §7/§8 make "no `.svelte` file
+ * is edited" a mechanical ship gate — and because that spec's Slice-1 gate
+ * pins the `TODO(handoff)` count in `pos.service.ts` to baseline-1. Fix =
+ * send the three fields on PATCH and unlock the controls for the
+ * service→tracked case only. Pointer:
+ * docs/superpowers/plans/2026-08-29-updatesellable-slice1-recon-and-open-ends.md
+ * §5 proposal P1.
+ */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);

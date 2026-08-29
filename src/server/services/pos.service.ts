@@ -24,9 +24,8 @@ import {
   submitEntry,
   cancelEntry,
   StockError,
-  createItem,
   createItemTx,
-  updateItem,
+  updateItemTx,
   setConsumption,
   deleteConsumption,
   listConsumption,
@@ -1006,6 +1005,17 @@ export interface SellableRow {
    */
   kind: 'product' | 'service' | 'bundle';
   itemId: string | null;
+  /**
+   * DERIVED, exactly like `kind`: true iff a `stk_items` row links to this
+   * product. Redundant with `itemId != null` by construction and kept that way
+   * on purpose — it is the field name the PATCH body and every caller speak in,
+   * so a client can read back the same word it wrote instead of translating.
+   */
+  trackStock: boolean;
+  /** The linked item's unit of measure; null when nothing is linked. Read from
+   *  the same merge query as the rest of the row — the write path validates it,
+   *  so the read path must be able to report it back. */
+  uom: string | null;
   stockQty: number | null;
   hasMapping: boolean;
   /**
@@ -1029,6 +1039,7 @@ type SellableSqlRow = {
   unit_price: string | null;
   active: boolean;
   item_id: string | null;
+  uom: string | null;
   stock_qty: string | number | null;
   has_mapping: boolean;
   is_bundle: boolean;
@@ -1085,6 +1096,11 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
     active: r.active === true,
     kind: isBundle ? 'bundle' : r.item_id != null ? 'product' : 'service',
     itemId: r.item_id != null ? String(r.item_id) : null,
+    trackStock: r.item_id != null,
+    // Gated on the link, not on the column: a left join with no match still
+    // yields a row, and reporting a uom for a sellable that tracks no stock
+    // would be a fact about nothing.
+    uom: r.item_id != null && r.uom != null ? String(r.uom) : null,
     stockQty: r.item_id != null ? Number(r.stock_qty ?? 0) : null,
     hasMapping: r.has_mapping === true,
     taxonomy: applyTaxonomyOverrides(
@@ -1097,7 +1113,7 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
 
 const SELLABLE_MERGE_SQL = sql`
       select p.id, p.code, p.name, p.category, p.unit_price, p.active, p.metadata,
-             i.id as item_id,
+             i.id as item_id, i.uom,
              coalesce(sum(b.qty), 0)::float8 as stock_qty,
              exists(select 1 from stk_consumption c where c.fin_product_id = p.id) as has_mapping,
              exists(
@@ -1155,10 +1171,11 @@ async function getSellableRow(ctx: CoreCtx, productId: string): Promise<Sellable
 
 /**
  * Single source of truth for "is this a product, is it stock-tracked, what
- * uom is it in" — reuses getSellableRow's `kind`/`itemId` derivation (see the
- * doc comment on `SellableRow.kind`) rather than redefining it; only the uom
- * lookup is new, since SellableRow doesn't carry it. Used by both the read
- * path (implicitly, via getSellableRow) and updateSellable's write-guard.
+ * uom is it in" — a straight narrowing of `getSellableRow`, which now carries
+ * all four facts (see the doc comments on `SellableRow.kind`/`.uom`). Kept as
+ * its own export because `updateSellable`'s write-guard reads exactly these
+ * four and nothing else, and because callers outside the row projection (the
+ * gateway POS tools) want the narrow shape.
  */
 export async function deriveSellableFacts(
   ctx: CoreCtx,
@@ -1170,14 +1187,6 @@ export async function deriveSellableFacts(
   itemId: string | null;
 }> {
   const row = await getSellableRow(ctx, finProductId);
-  const itemId = row.itemId;
-  let uom: string | null = null;
-  if (itemId) {
-    const uomRows = (await withOrgCore(ctx, (tx) =>
-      tx.execute(sql`select uom from stk_items where id = ${itemId} and org_id = ${ctx.tenantId}`),
-    )) as unknown as Array<{ uom: string | null }>;
-    uom = uomRows[0]?.uom ?? null;
-  }
   return {
     // The true derived kind, bundle included. `SellableInput.kind` (what a
     // PATCH can submit) has no 'bundle' variant, so a bundle can never equal
@@ -1185,9 +1194,9 @@ export async function deriveSellableFacts(
     // 'kind_derived' instead of a same-as-service patch (e.g. kind: 'service')
     // comparing equal-by-coincidence and silently passing through as a no-op.
     kind: row.kind,
-    trackStock: itemId != null,
-    uom,
-    itemId,
+    trackStock: row.trackStock,
+    uom: row.uom,
+    itemId: row.itemId,
   };
 }
 
@@ -1242,10 +1251,17 @@ interface DesiredSellableItem {
  * second, drifting copy of "what a tracked sellable's item looks like" —
  * including the `uom ?? 'unit'` default, which is the only place that default
  * lives. `pos.sellables.test.ts` pins the parity: an equivalent create and
- * create-then-update must produce the identical `createItem` payload.
+ * create-then-update must produce the identical item payload.
+ *
+ * Takes the TRANSACTION HANDLE, not a ctx, so a caller that must not commit
+ * this write on its own (updateSellable: the item insert and the `fin_products`
+ * update have to succeed or fail together) can run it inside its transaction.
+ * Callers with nothing to couple it to (`createSellable`) open their own
+ * `withOrgCore` around it.
  */
 async function syncSellableItem(
-  ctx: CoreCtx,
+  tx: CoreTx,
+  orgId: string,
   finProductId: string,
   desired: DesiredSellableItem,
 ): Promise<void> {
@@ -1255,7 +1271,7 @@ async function syncSellableItem(
     // claiming one product; catching it here just turns 23505 into a usable
     // error instead of a 500.
     try {
-      const linked = await updateItem(ctx, desired.itemId, { finProductId });
+      const linked = await updateItemTx(tx, orgId, desired.itemId, { finProductId });
       if (!linked) throw new PosError('stock item not found', 'item_not_found');
     } catch (e) {
       if (isUniqueViolation(e))
@@ -1263,12 +1279,21 @@ async function syncSellableItem(
       throw e;
     }
   } else if (desired.trackStock) {
-    await createItem(ctx, {
-      code: desired.code,
-      name: desired.name,
-      uom: desired.uom ?? 'unit',
-      finProductId,
-    });
+    try {
+      await createItemTx(tx, orgId, {
+        code: desired.code,
+        name: desired.name,
+        uom: desired.uom ?? 'unit',
+        finProductId,
+      });
+    } catch (e) {
+      // Same index, other branch: two requests that both find no linked item
+      // race to insert one, and the loser gets 23505. Map it to the same
+      // domain error the publish-an-existing-item branch already uses.
+      if (isUniqueViolation(e))
+        throw new PosError('that item is already published as a sellable', 'item_taken');
+      throw e;
+    }
   }
 }
 
@@ -1322,16 +1347,18 @@ export async function createSellable(
   );
   if (!product) throw new PosError('product write did not persist', 'write_failed');
 
-  await syncSellableItem(ctx, product.id, {
-    itemId: input.itemId,
-    // `kind` is only ever 'product' | 'service' on input, and a service never
-    // gets an item — folding that condition in here keeps the helper's contract
-    // "trackStock true means: this sellable owns a linked item".
-    trackStock: input.kind === 'product' && input.trackStock === true,
-    code,
-    name: input.name,
-    uom: input.uom,
-  });
+  await withOrgCore(ctx, (tx) =>
+    syncSellableItem(tx, ctx.tenantId, product.id, {
+      itemId: input.itemId,
+      // `kind` is only ever 'product' | 'service' on input, and a service never
+      // gets an item — folding that condition in here keeps the helper's contract
+      // "trackStock true means: this sellable owns a linked item".
+      trackStock: input.kind === 'product' && input.trackStock === true,
+      code,
+      name: input.name,
+      uom: input.uom,
+    }),
+  );
 
   if (input.consumption?.length) {
     for (const c of input.consumption) {
@@ -1492,32 +1519,29 @@ export async function updateSellable(
   }
 
   /*
-   * ONE transaction for both writes: the item insert (when starting tracking)
-   * and the fin_products update share `tx`, via the *Tx helpers that take a
-   * transaction handle directly instead of opening their own via withOrgCore.
-   * A rejected product-code rename (fin_products_org_code_uniq) now rolls the
-   * item insert back with it — the prior two-transaction version could commit
-   * the item and THEN fail the rename, leaving trackStock permanently true
-   * with no way to retry into a fix (the retry hits the same code conflict).
+   * ONE transaction for both writes: `syncSellableItem` takes this `tx` rather
+   * than opening its own, so the item insert and the `fin_products` update
+   * commit or roll back together.
+   *
+   * Not a nicety. Split across two transactions, `PATCH {code: <taken>,
+   * trackStock: true}` commits the item and THEN fails the rename on
+   * `fin_products_org_code_uniq` — the sellable is durably tracked while the
+   * caller is told the whole request failed, and no retry can heal it (every
+   * retry hits the same code conflict, and true→false is refused). Coupling
+   * them is what makes the "a failed PATCH leaves no partial mutation"
+   * invariant true rather than merely likely.
    */
   await withOrgCore(ctx, async (tx) => {
     if (startTracking) {
-      try {
-        await createItemTx(tx, ctx.tenantId, {
-          code,
-          name,
-          uom: patch.uom ?? 'unit',
-          finProductId: productId,
-        });
-      } catch (e) {
-        // Two concurrent false→true PATCHes both see trackStock=false; the
-        // partial unique index stk_items_org_fin_product_uniq rejects the
-        // loser with 23505. Map it like the publish-an-existing-item path
-        // does rather than leaking a 500.
-        if (isUniqueViolation(e))
-          throw new PosError('that item is already published as a sellable', 'item_taken');
-        throw e;
-      }
+      // Same helper `createSellable` uses (see its doc comment): the uom
+      // default and the 23505 → `item_taken` mapping live there once, so an
+      // equivalent create and create-then-update cannot drift apart.
+      await syncSellableItem(tx, ctx.tenantId, productId, {
+        trackStock: true,
+        code,
+        name,
+        uom: patch.uom,
+      });
     }
 
     try {
