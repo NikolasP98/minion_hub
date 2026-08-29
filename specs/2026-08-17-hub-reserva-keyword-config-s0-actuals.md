@@ -168,3 +168,66 @@ the keyword rule, and`'%adelanto%'` fails it on the raw-ILIKE-literal rule. Both
   proposal entry is on meta `dev`. Reclassifying history is the proposal's own out-of-scope.
 - **No UI editor** — deliberate (spec §5): the keyword list is API-only until the `/crm/settings`
   ICP-definition editor exists. No `.svelte` file is touched by this slice.
+
+---
+
+## Ship-gate evidence completed after the S3 code landed (2026-08-29)
+
+The S3 section above was written before two ship-gate clauses of §6 had actually been run.
+They have now been run, and both had a finding.
+
+### ⚠️ A2 sibling-repo grep — ONE real hit, in the gateway
+
+Spec §6 step 3 (`rg -i 'reserva' ~/work/minion ~/work/paperclip-minion ~/work/packages`) is not
+runnable as written here: this container checks out `minion_hub` alone, no sibling repo is on
+disk. It was run against the same code remotely instead (GitHub code search over the org, then
+the raw file for each candidate, on each repo's default branch):
+
+| Repo                        | Result                                                                      |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `minion-ai` (the gateway)   | **HIT** — `src/agents/tools/knowledge/crm-query-tool.ts:13` (branch `main`) |
+| `paperclip-minion`          | zero hits                                                                   |
+| `pixel-agents`              | zero hits                                                                   |
+| `minion_plugins`            | zero literal hits (search stems matched `preservation` only)                |
+| `minion-meta` (`packages/`) | zero hits — the §1 claim still holds                                        |
+
+The gateway hit is the schema hint the CRM query tool ships to the model, verbatim:
+
+> `fin_invoice_items(id, invoice_id, description, …) — description = product/service; reservation deposits ilike '%reserva%'.`
+
+That is the fourth copy of the vocabulary the spec's ⚠️ A2 predicted, and it is the _worst_
+shape of it: not a predicate but a prompt, so an org that configures `keywords: ['adelanto']`
+now gets a hub that classifies on `adelanto` and an agent still being told to write
+`ilike '%reserva%'` by hand. **Not fixed here, deliberately** — §4 ⚠️ A2 is explicit that a hit
+belongs to `proposals/2026-08-17-gw-defaces-crm-tools` (approved, `repos: [minion]`, different
+release train), and "two repos silently disagreeing about what a deposit is would be worse than
+today's single wrong answer".
+
+**The proposal append the spec asks for could NOT be made from this run** and is the one
+outstanding item of this slice: the implementing harness is scoped to this repository and may not
+push to, or open a PR against, `minion-meta`. `proposals/2026-08-17-gw-defaces-crm-tools.md` on
+meta `dev` (read here at implementation time) has an `## Open items` section and no mention of
+`crm-query-tool.ts` yet. The sentence to append, verbatim:
+
+> `src/agents/tools/knowledge/crm-query-tool.ts:13` hardcodes the same single-tenant deposit
+> vocabulary the hub just made org-configurable (`reservation deposits ilike '%reserva%'`, inside
+> the schema hint handed to the model). Hub's `crm_settings.value.deposit` is now the source of
+> truth for that rule (spec `2026-08-17-hub-reserva-keyword-config-spec`, S2/S3); this tool's
+> description must be templated from the same org config, or the gateway will keep instructing
+> agents to classify deposits by a word the org does not use.
+
+### Perf sanity — still not run, and the cap is still a guess
+
+Unchanged from the S3 section, restated here so the ship gate is not read as green: §6 step 5
+(`explain analyze` at 1 vs 20 keywords) was **not** performed — no PostgreSQL and no dev-DB
+credentials in this environment. `DEPOSIT_KEYWORDS_MAX = 20` therefore remains the spec's
+proposed number, not a measured one, and carries the matching `TODO(handoff)` in
+`crm-deposit-rule.ts`.
+
+### Route-inventory baseline
+
+S3 adds `src/routes/api/crm/settings/`, the first route this spec creates. That moves the
+`src/routes` tree SHA that `tests/ui-audit/current-baseline.json` pins, so the baseline was
+regenerated (`node scripts/ui-audit-inventory.mjs --clean-baseline`). Only the four provenance
+fields move; the ledger is byte-identical and the summary still reads 140 screens / 10 redirects
+— an API route is not a screen, so no route-contract count changed.
