@@ -248,9 +248,9 @@ describe('isIcpConfigured — the "feature is OFF" gate', () => {
     ).toBe(true);
   });
   it('is false only when description, criteria, AND disqualifiers are all empty', () => {
-    expect(
-      isIcpConfigured({ ...stored, description: '  ', criteria: [], disqualifiers: [] }),
-    ).toBe(false);
+    expect(isIcpConfigured({ ...stored, description: '  ', criteria: [], disqualifiers: [] })).toBe(
+      false,
+    );
   });
 });
 
