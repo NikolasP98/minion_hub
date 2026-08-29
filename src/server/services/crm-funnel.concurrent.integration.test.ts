@@ -20,7 +20,8 @@ import { setContactCustomField, setFunnelStage } from './crm-contacts.service';
  * supplies them from a CI-ONLY fixture rather than from a migration:
  * `supabase/ci-fixtures/crm-funnel-concurrent.sql` reproduces the prod
  * `crm_contacts` / `crm_activities` / `organizations.id` shape and the
- * `*_org_guc` RLS policies as live-extracted from prod's catalog, and the
+ * `*_org_guc` RLS policies as live-extracted from prod's catalog, plus
+ * `app_ledger`'s recorded production table grants, and the
  * `crm-funnel-concurrent-postgres` job in `.github/workflows/ci.yml` applies it
  * to a bare `postgres:15` service container, runs a cross-org RLS control (own-org
  * rows visible under `app_ledger`, foreign-org rows not), then runs THIS file
