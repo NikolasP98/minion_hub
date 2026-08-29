@@ -101,6 +101,15 @@ jobs:
             src/server/services/crm-contacts.sql.integration.test.ts \
             src/server/services/crm-funnel-parity.sql.integration.test.ts
 
+      # The settings-merge suite creates its own throwaway schema (crm_settings +
+      # crm_win_embeddings only), so the bare service container above is enough —
+      # it never touches the prod-shaped tables the sibling job seeds.
+      - name: Real-PostgreSQL CRM settings deposit-merge suite
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/crm_deposit_rule_test
+          REQUIRE_CRM_SETTINGS_POSTGRES: '1'
+        run: bunx vitest run --retry=2 src/server/services/crm-settings.sql.integration.test.ts
+
   # Isolated from `crm-deposit-rule-postgres` on purpose: that job's Postgres is a
   # BARE service container, while this one is seeded with a CI-only reproduction of
   # the prod CRM schema (organizations + crm_activities + app_ledger + org-GUC RLS).

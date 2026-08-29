@@ -2,8 +2,9 @@
 id: 2026-08-17-hub-reserva-keyword-config-s0-actuals
 title: 'S0 actuals + implementation amendments — CRM deposit-rule org config'
 stage: spec
-status: in-progress
+status: complete
 created: 2026-08-20
+updated: 2026-08-29
 spec: 2026-08-17-hub-reserva-keyword-config-spec
 proposal: 2026-08-17-hub-reserva-keyword-config
 repos: [minion_hub]
@@ -16,7 +17,8 @@ type: fix
 The spec was authored from minion-meta, where `minion_hub/` is not checked out; its §1
 requires the carried paths/symbols to be corrected in-repo rather than implemented against
 silently. The spec file itself is not tracked in this repository, so the corrections live
-here. Written while implementing **S2**; **S3 is not implemented yet**.
+here. Written while implementing **S2**; extended with the **S3 actuals** below when S3 landed
+(2026-08-29).
 
 ### S0 actuals — the three call sites (recorded at S2 time; S1 shipped the extraction)
 
@@ -69,7 +71,7 @@ query onto `crm_settings.value` for the harvest scope and the deposit rule.
 its own error handling and was left untouched (out of scope: "do not opportunistically
 widen the diff").
 
-### Open item carried into S3
+### Open item carried into S3 — CLOSED by the S3 section below
 
 `depositWriteSchema` (strict write boundary) is defined and unit-tested in
 `crm-deposit-rule.ts` but is not yet wired to an HTTP handler — S3 owns the
@@ -105,3 +107,64 @@ rather than replacing them:
   was never rendered anywhere — the journey hardcoded the English caption — so adopting it
   while feeding `rule.label` into that caption would have silently changed every existing
   org's milestone text.
+
+---
+
+## S3 actuals (2026-08-29) — write path, staleness disclosure, anti-recurrence guard
+
+**Provenance / reconciliation.** S3 was first written on `orch/reserva-s3-pos-markers`
+(hub PR #160), a draft PR that bundles this slice with the unrelated `pos-markers` spec and has
+been `CONFLICTING` against master since 2026-08-28 (a separate repair run, PR #191, owns its POS
+fixture blocker). None of it reached `master`, so S3 was genuinely unshipped. This branch lands the
+**reserva-S3 half only** — the CRM settings write path, its tests, the RBAC mapping test and the
+CI step — carried over unchanged where it was already correct, with the route-level rejection
+coverage below added. The POS/stock half stays with PR #160.
+
+### What shipped
+
+| Piece                                                                                                                                                                        | Where                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `PUT /api/crm/settings` — strict `depositWriteSchema` parse, `updatedAt` never client-supplyable                                                                             | `src/routes/api/crm/settings/+server.ts`                                                              |
+| `GET /api/crm/settings` — the org's resolved rule, gated on `crm:view` (GET is NOT covered by the central write hook)                                                        | same file                                                                                             |
+| `writeDepositRule(ctx, patch)` — ONE `insert … on conflict do update set value = value \|\| jsonb_build_object('deposit', …)`; key-level merge, no select-then-update window | `src/server/services/crm-settings.service.ts`                                                         |
+| ⚠️ A3 disclosure — `staleDerived` / `staleDerivedCount` in the response + a `warn` naming the org and row count                                                              | same function                                                                                         |
+| Anti-recurrence guard — walks all of `src/server/`, fails on `/reserva/i` anywhere and on a raw `ilike '%…'` literal in any deposit-domain file                              | `src/server/services/crm-deposit-rule.test.ts`                                                        |
+| Real-PostgreSQL merge proof (sibling `disabled_channels`/`accounts` survive, `updatedAt` stamped, `resolveDepositRule` agrees through an independent connection)             | `src/server/services/crm-settings.sql.integration.test.ts` + a CI step in `crm-deposit-rule-postgres` |
+
+### DoD, clause by clause
+
+- **Write gate** — `/api/crm/settings` is covered by the existing `/api/crm` entry in
+  `API_WRITE_PREFIXES`, so no new registration; `apiWriteCapability('/api/crm/settings','PUT')
+→ (crm, edit)` is now **pinned by a test** (`rbac.service.test.ts`) so a prefix refactor that
+  stopped matching would fail loudly instead of silently ungating the write.
+  Unauthenticated `/api/crm/*` never reaches the handler at all: `hooks.server.ts`'s `finishApp`
+  401s any unauthenticated `/api/` path outside `API_UNAUTH_FALLBACK_PATHS`, which does not
+  include `/api/crm`. The route also 401s on an unresolvable ctx (asserted).
+- **Merge, never replace** — asserted twice: query-shape in `crm-settings.service.test.ts`, and
+  actually executed against PostgreSQL in the integration suite (the shape assertion alone cannot
+  prove PostgreSQL merges rather than replaces).
+- **400s, row unchanged** — over-cap keyword, 21 keywords, unknown key inside `deposit`, a
+  client-supplied `updatedAt`, an over-cap label, non-array `keywords`, a blank keyword, and a body
+  with no `deposit` key: each asserted 400 **and** `writeDepositRule` never called
+  (`src/routes/api/crm/settings/server.test.ts`). Extra _top-level_ settings keys are ignored, not
+  rejected — this operation does not own the whole settings document.
+- **Anti-recurrence guard verified red, then reverted** — done twice locally on this branch:
+  adding `sql\`ii.description ilike '%reserva%'\``to`crm-journey.service.ts`fails the guard on
+the keyword rule, and`'%adelanto%'` fails it on the raw-ILIKE-literal rule. Both reverted; the
+  file is untouched in this diff.
+- **`rg -i 'reserva' src/server/ --glob '!*.test.ts' --glob '!crm-deposit-rule.ts'
+--glob '!crm-deposit-rule.fixtures.ts'` → zero hits** (Amendment 2's third exclusion still needed).
+
+### Open items carried out of S3
+
+- **Perf sanity NOT run.** The spec asks for `explain analyze` of the finance query at 1 vs 20
+  keywords on the largest dev org. This environment has no PostgreSQL and no dev-DB credentials, so
+  the measurement was not taken and the 20-keyword cap was left as specified rather than changed on
+  a guess. `fin_invoice_items.description` is unindexed, so each extra keyword multiplies per-row
+  cost on a scan that is already sequential. Recorded in the meta-repo proposal
+  `proposals/2026-08-17-hub-reserva-keyword-config.md` (handoff section, already on `dev`).
+- **⚠️ A3 stays disclosure-only** — `crm_win_embeddings.bought`/`snippet` are not rebuilt on a
+  keyword change; `TODO(handoff)` sits at the disclosure site in `writeDepositRule` and the matching
+  proposal entry is on meta `dev`. Reclassifying history is the proposal's own out-of-scope.
+- **No UI editor** — deliberate (spec §5): the keyword list is API-only until the `/crm/settings`
+  ICP-definition editor exists. No `.svelte` file is touched by this slice.
