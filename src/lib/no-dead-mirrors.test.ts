@@ -14,40 +14,22 @@
  *   3. the canonical replacement must still carry the exact surface the hub
  *      depends on — a grep guard cannot see the package drifting.
  *
- * Lifecycle evidence (reconciled 2026-08-29, GitHub read-only):
- *   - Neither slice is on `master`. PR #138 (`factory/64590686-…`) implemented
- *     Slice 1 and was closed **without merge** (`mergedAt: null`).
- *   - PR #159 (`orch/hub-small-trio`, open draft) carries both dead-mirror
- *     slices bundled with unrelated IGV / brain-vector / finance work: it
- *     deletes both mirrors, re-points the schema barrel and
- *     `scripts/backfill-workspaces.ts`, and keeps `SECRETS_METHODS` as a local
- *     hub constant. (It touches no Drizzle config — this repo has none.)
- *   - This branch (PR #196) independently implements the same two slices as
- *     their own extraction, so the cleanup can land without #159's unrelated
- *     (`ui`/`data`-labelled) work riding along.
- *   - **Ownership between #159 and #196 is UNRESOLVED, not decided here.**
- *     A source comment cannot close, rebase, or edit another PR, and this
- *     repo has no write access to the minion-meta proposal ledger — deciding
- *     which PR is authoritative (and recording that in the ledger) is a
- *     lifecycle action for a human or a meta-scoped operator, not something
- *     this branch can assert or perform unilaterally. Until that decision is
- *     made and recorded, treat both PRs' dead-mirror commits as live, not
- *     "redundant".
- *   - Divergence to preserve if #196 is chosen: here `SECRETS_METHODS` is
- *     imported as a value from `@minion-stack/shared` (§2.2's bundle trap was
- *     checked — the client output contains no `ws`/`node:` import), not
- *     re-declared locally, unlike #159's local constant.
+ * Ownership: these two slices were implemented twice in parallel — here, and
+ * bundled into open PR #159 (`orch/hub-small-trio`, which also carries
+ * unrelated IGV / brain-vector / finance work and re-declares `SECRETS_METHODS`
+ * locally instead of importing it as a value). That collision is resolved in
+ * the canonical ledger, not in this comment: minion-meta
+ * `proposals/2026-08-17-hub-dead-mirrors-cleanup.md` § "Implementation
+ * ownership (2026-08-29)" assigns both slices to this PR (#196) and records
+ * #159's disposition. (An earlier attempt, PR #138, was closed without merge.)
  *
- * TODO(handoff): the #159/#196 dead-mirror duplication needs a human or
- * meta-scoped operator to (a) pick one PR as owner — either strip the
- * overlapping dead-mirror commits (`src/lib/types/secrets.ts`,
- * `src/server/db/schema/workspace-membership.ts`, the barrel/
- * `scripts/backfill-workspaces.ts` re-points, and this guard file) from the
- * *other* PR while preserving its unrelated work, or close/no-op the
- * redundant PR outright, and (b) append that disposition to the minion-meta
- * ledger entry at `proposals/2026-08-17-hub-dead-mirrors-cleanup.md`. Neither
- * action is possible from a Hub-repo-scoped branch — do not attempt to force
- * it via more comment edits; escalate instead.
+ * TODO(handoff): PR #159 still carries its own copy of both slices — the two
+ * mirror deletions, the `src/server/db/schema/index.ts` and
+ * `scripts/backfill-workspaces.ts` re-points, and its own version of this
+ * guard file. Per the ledger disposition above, whichever PR lands second must
+ * drop that overlap on rebase (preserving #159's unrelated work); a branch
+ * cannot rebase or close another PR, so that step is a maintainer action.
+ * Ledger entry: minion-meta `proposals/2026-08-17-hub-dead-mirrors-cleanup.md`.
  * Spec: minion-meta `specs/2026-08-17-hub-dead-mirrors-cleanup-spec.md`.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
