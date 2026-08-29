@@ -19,13 +19,6 @@
   // `/scheduling/bookings`, which renders the same view unskinned.
   import './appointments-surface.css';
 
-  // TODO(handoff): minion-meta specs/2026-08-17-hub-pos-appointments-fork-spec.md
-  // frontmatter `reconcile_ignore_reason` still says "Slice 3 remains in open
-  // draft PR #137" — #137 is unrelated CRM work; this route collapse (PR #198)
-  // is the actual Slice 3. Needs a dev-branch update pointing at #198 and
-  // noting Slice 4 (route-contract/count/smoke closure) is still open.
-  // proposals/handoff-minion-meta-171406302.md
-
   let { data }: { data: PageData } = $props();
 
   // The front-desk day book: agenda grouping, walk-in staff overrides, and the
