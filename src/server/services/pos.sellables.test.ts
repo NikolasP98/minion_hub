@@ -47,6 +47,42 @@ function mockExecute(db: unknown, value: unknown) {
   (db as { execute: ReturnType<typeof vi.fn> }).execute.mockResolvedValue(value);
 }
 
+/**
+ * Like `mockExecute`, but hands out a DIFFERENT result per raw-SQL query, in
+ * order — needed once a single call reads the sellable twice and must see two
+ * different states (the pre-transition row, then the post-transition readback).
+ * `withOrgCore`'s own `set_config` setup statement runs on the same handle, so
+ * it is skipped rather than eating a slot. Past the end: `[]`.
+ */
+function mockExecuteSequence(db: unknown, values: unknown[]) {
+  let cursor = 0;
+  (db as { execute: ReturnType<typeof vi.fn> }).execute.mockImplementation((q: unknown) => {
+    const { sql: text } = new PgDialect().sqlToQuery(q as Parameters<PgDialect['sqlToQuery']>[0]);
+    if (text.includes('set_config')) return Promise.resolve(undefined);
+    return Promise.resolve(values[cursor++] ?? []);
+  });
+}
+
+/** A `SELLABLE_MERGE_SQL` row, defaulted to an untracked service. */
+function sellableSqlRow(over: Record<string, unknown>) {
+  return {
+    code: 'CONS',
+    name: 'Consulta',
+    category: null,
+    unit_price: null,
+    active: true,
+    item_id: null,
+    stock_qty: null,
+    has_mapping: false,
+    ...over,
+  };
+}
+
+/** The `db.update` top-level spy, which every "mutates nothing" assertion reads. */
+function updateSpy(db: unknown) {
+  return (db as { update: ReturnType<typeof vi.fn> }).update;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -976,16 +1012,16 @@ describe('updateSellable', () => {
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
-    it("trackStock false→true throws PosError code 'stock_tracking_immutable', mutates nothing", async () => {
+    it("trackStock true→false (untrack) still throws PosError code 'stock_tracking_immutable', mutates nothing", async () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([
         [
           {
             id: 'fp-13',
-            code: 'CONS',
-            name: 'Consulta',
+            code: 'BTX',
+            name: 'Botox',
             category: null,
-            unitPrice: null,
+            unitPrice: '250',
             active: true,
           },
         ],
@@ -993,20 +1029,58 @@ describe('updateSellable', () => {
       mockExecute(db, [
         {
           id: 'fp-13',
-          code: 'CONS',
-          name: 'Consulta',
+          code: 'BTX',
+          name: 'Botox',
           category: null,
-          unit_price: null,
+          unit_price: '250',
           active: true,
-          item_id: null,
-          stock_qty: null,
+          item_id: 'item-13',
+          stock_qty: '4',
           has_mapping: false,
+          uom: 'Unidad',
         },
       ]);
 
       await expect(
-        updateSellable(ctx(db), 'fp-13', { trackStock: true }, actor),
+        updateSellable(ctx(db), 'fp-13', { trackStock: false }, actor),
       ).rejects.toMatchObject({ code: 'stock_tracking_immutable' });
+      expect(createItemMock).not.toHaveBeenCalled();
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+    });
+
+    it("trackStock false→true on a BUNDLE stays refused — 'bundle' kind is derived ahead of the item link", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          {
+            id: 'fp-13b',
+            code: 'PACK',
+            name: 'Combo Pack',
+            category: null,
+            unitPrice: '100',
+            active: true,
+          },
+        ],
+      ]);
+      mockExecute(db, [
+        {
+          id: 'fp-13b',
+          code: 'PACK',
+          name: 'Combo Pack',
+          category: null,
+          unit_price: '100',
+          active: true,
+          item_id: null,
+          stock_qty: null,
+          has_mapping: false,
+          is_bundle: true,
+        },
+      ]);
+
+      await expect(
+        updateSellable(ctx(db), 'fp-13b', { trackStock: true }, actor),
+      ).rejects.toMatchObject({ code: 'stock_tracking_immutable' });
+      expect(createItemMock).not.toHaveBeenCalled();
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
     });
 
@@ -1076,6 +1150,166 @@ describe('updateSellable', () => {
       await expect(updateSellable(ctx(db), 'fp-15', { uom: 'unit' }, actor)).rejects.toMatchObject({
         code: 'uom_immutable',
       });
+    });
+  });
+
+  // ── Slice 1 of 2026-08-20-handoff-minion-hub-902723699-spec: the ONE safe
+  // transition (an untracked service starts tracking stock) now applies
+  // instead of being refused. Everything else above stays refused. ──
+  describe('trackStock false→true applies via the shared item-sync path', () => {
+    const currentService = [
+      {
+        id: 'fp-20',
+        code: 'CONS',
+        name: 'Consulta',
+        category: null,
+        unitPrice: null,
+        active: true,
+      },
+    ];
+
+    /** Reads the sellable as an untracked service, then (post-transition) as a
+     *  tracked product — the two states one PATCH observes. */
+    function serviceBecomesProduct(db: unknown) {
+      mockExecuteSequence(db, [
+        [sellableSqlRow({ id: 'fp-20' })],
+        [sellableSqlRow({ id: 'fp-20', item_id: 'item-20', stock_qty: '0', uom: 'Unidad' })],
+      ]);
+    }
+
+    it('creates the linked stk_items row with the sellable\'s code/name/uom, then reports kind "product"', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([currentService]);
+      serviceBecomesProduct(db);
+      createItemMock.mockResolvedValue({ id: 'item-20' });
+
+      const row = await updateSellable(
+        ctx(db),
+        'fp-20',
+        { trackStock: true, uom: 'Unidad' },
+        actor,
+      );
+
+      expect(createItemMock).toHaveBeenCalledWith(expect.anything(), {
+        code: 'CONS',
+        name: 'Consulta',
+        uom: 'Unidad',
+        finProductId: 'fp-20',
+      });
+      expect(updateSpy(db)).toHaveBeenCalled();
+      expect(row.kind).toBe('product');
+      expect(row.itemId).toBe('item-20');
+    });
+
+    it("the wizard's full-object save {kind:'product', trackStock:true, uom} is accepted — kind is judged AFTER the transition", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([currentService]);
+      serviceBecomesProduct(db);
+      createItemMock.mockResolvedValue({ id: 'item-20' });
+
+      const row = await updateSellable(
+        ctx(db),
+        'fp-20',
+        { kind: 'product', trackStock: true, uom: 'Unidad', name: 'Consulta' },
+        actor,
+      );
+
+      expect(createItemMock).toHaveBeenCalledTimes(1);
+      expect(row.kind).toBe('product');
+    });
+
+    it("a submitted kind that CONFLICTS with the post-transition state ({kind:'service', trackStock:true}) is still kind_derived, and writes nothing", async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([currentService]);
+      serviceBecomesProduct(db);
+
+      await expect(
+        updateSellable(ctx(db), 'fp-20', { kind: 'service', trackStock: true }, actor),
+      ).rejects.toMatchObject({ code: 'kind_derived' });
+      expect(createItemMock).not.toHaveBeenCalled();
+      expect(updateSpy(db)).not.toHaveBeenCalled();
+    });
+
+    it('PARITY: create(tracked) and create(service)+update(trackStock) build the SAME item — the anti-drift property of the extraction', async () => {
+      // Path A — one create that tracks stock from the start.
+      const a = createMockDb();
+      a.resolveSequence([[{ id: 'fp-20' }]]);
+      mockExecute(a.db, [sellableSqlRow({ id: 'fp-20', item_id: 'item-20', stock_qty: '0' })]);
+      upsertProductMock.mockResolvedValue(undefined);
+      createItemMock.mockResolvedValue({ id: 'item-20' });
+      await createSellable(
+        ctx(a.db),
+        {
+          name: 'Consulta',
+          code: 'CONS',
+          unitPrice: null,
+          kind: 'product',
+          trackStock: true,
+          uom: 'Unidad',
+        },
+        actor,
+      );
+      const viaCreate = createItemMock.mock.calls.at(-1)?.[1];
+
+      // Path B — create as a service, then switch tracking on.
+      const b = createMockDb();
+      b.resolveSequence([currentService]);
+      serviceBecomesProduct(b.db);
+      await updateSellable(ctx(b.db), 'fp-20', { trackStock: true, uom: 'Unidad' }, actor);
+      const viaUpdate = createItemMock.mock.calls.at(-1)?.[1];
+
+      expect(viaUpdate).toEqual(viaCreate);
+    });
+
+    it("PARITY: an omitted uom defaults to 'unit' identically on both paths", async () => {
+      const a = createMockDb();
+      a.resolveSequence([[{ id: 'fp-20' }]]);
+      mockExecute(a.db, [sellableSqlRow({ id: 'fp-20', item_id: 'item-20', stock_qty: '0' })]);
+      upsertProductMock.mockResolvedValue(undefined);
+      createItemMock.mockResolvedValue({ id: 'item-20' });
+      await createSellable(
+        ctx(a.db),
+        { name: 'Consulta', code: 'CONS', unitPrice: null, kind: 'product', trackStock: true },
+        actor,
+      );
+      const viaCreate = createItemMock.mock.calls.at(-1)?.[1];
+
+      const b = createMockDb();
+      b.resolveSequence([currentService]);
+      serviceBecomesProduct(b.db);
+      await updateSellable(ctx(b.db), 'fp-20', { trackStock: true }, actor);
+      const viaUpdate = createItemMock.mock.calls.at(-1)?.[1];
+
+      expect(viaCreate).toMatchObject({ uom: 'unit' });
+      expect(viaUpdate).toEqual(viaCreate);
+    });
+
+    it('a failed item insert leaves the fin_products row untouched — the item write goes FIRST precisely so there is nothing to roll back', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([currentService]);
+      serviceBecomesProduct(db);
+      createItemMock.mockRejectedValue(new Error('stk_items insert exploded'));
+
+      await expect(
+        updateSellable(ctx(db), 'fp-20', { trackStock: true, uom: 'Unidad', unitPrice: 42 }, actor),
+      ).rejects.toThrow('stk_items insert exploded');
+      expect(updateSpy(db)).not.toHaveBeenCalled();
+    });
+
+    it('the loser of two concurrent false→true PATCHes gets item_taken (the partial unique index), not a raw 23505, and writes no partial update', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([currentService]);
+      serviceBecomesProduct(db);
+      // What stk_items_org_fin_product_uniq raises when the winner already
+      // linked an item to this product.
+      createItemMock.mockRejectedValue(
+        Object.assign(new Error('duplicate key'), { code: '23505' }),
+      );
+
+      await expect(
+        updateSellable(ctx(db), 'fp-20', { trackStock: true, uom: 'Unidad' }, actor),
+      ).rejects.toMatchObject({ code: 'item_taken' });
+      expect(updateSpy(db)).not.toHaveBeenCalled();
     });
   });
 });
