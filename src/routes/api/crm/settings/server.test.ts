@@ -128,3 +128,52 @@ describe('PUT /api/crm/settings', () => {
     expect(mocks.writeDepositRule).not.toHaveBeenCalled();
   });
 });
+
+// S3 DoD: "unauthenticated / wrong-org PUT → rejected by the existing write
+// gate (assert, don't assume)".
+//
+// The handler-side half is asserted above (no resolvable ctx → 401, and the
+// `/api/crm` → `crm:edit` mapping is pinned in rbac.service.test.ts). The half
+// that is NOT expressible at the handler is the central one: an unauthenticated
+// `/api/crm/*` request must never reach this module at all, because
+// `finishApp` (hooks.server.ts) only lets a no-tenantCtx request fall through
+// to the first-tenant fallback for paths in `API_UNAUTH_FALLBACK_PATHS`.
+//
+// That list is a plain local const inside a hook module whose import graph
+// (Sentry, PostHog, $app/environment, supabase, the cache data plane) cannot be
+// stood up in a unit test, so this reads the source. It is a guard, not a
+// behavioral test, and it earns its place for one reason: adding `/api/crm` to
+// that array is a one-line, review-invisible edit that would hand this org-wide
+// config write to whatever org happens to be first in the `organizations`
+// table — the same class of silent ungating the rbac.service.test.ts pin
+// covers from the other direction.
+describe('the central unauthenticated-API gate still excludes /api/crm', () => {
+  it('does not list /api/crm (or an ancestor of it) in API_UNAUTH_FALLBACK_PATHS', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const hooksPath = fileURLToPath(new URL('../../../../hooks.server.ts', import.meta.url));
+    const source = readFileSync(hooksPath, 'utf-8');
+
+    const literal = /const API_UNAUTH_FALLBACK_PATHS = \[([\s\S]*?)\];/.exec(source);
+    // If this ever fails, the gate was renamed or restructured — re-derive the
+    // assertion against whatever replaced it rather than deleting this test.
+    expect(
+      literal,
+      'API_UNAUTH_FALLBACK_PATHS literal not found in hooks.server.ts',
+    ).not.toBeNull();
+
+    const paths = [...literal![1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths).toContain('/api/servers'); // sanity: we parsed the real list
+
+    // `finishApp` matches each entry as an exact path AND as a `${entry}/`
+    // prefix, so any ancestor of /api/crm/settings would open the write too.
+    const opensCrm = paths.filter(
+      (p) => '/api/crm/settings' === p || '/api/crm/settings'.startsWith(`${p}/`),
+    );
+    expect(
+      opensCrm,
+      'an unauthenticated /api/crm/settings write would fall through to the first-tenant fallback',
+    ).toEqual([]);
+  });
+});
