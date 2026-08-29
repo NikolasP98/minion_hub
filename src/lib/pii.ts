@@ -1,3 +1,5 @@
+import { ICP_CLAIM_KEY, ICP_KEY, maskIcpResult } from './components/crm/crm-icp';
+
 /**
  * Field-level (Phase 4) PII redaction: keep the last 4 chars of a phone / email /
  * handle, mask the rest (`•••••6833`). Short values are fully masked. Used by the
@@ -59,16 +61,37 @@ export function maskContactFields<T extends Record<string, unknown> | null | und
   // braces; `sanitizeContactFields` below also strips it unconditionally,
   // including for an UNMASKED caller, which this function alone can't cover).
   delete out['_relationshipClaim'];
+  // `_icp` (ICP fit verdict, spec 2026-08-03 §7) is NOT stripped wholesale like
+  // `_relationship`: its `score`/`band` are derived aggregates of the same class
+  // as the RFM `score` a masked principal already sees. What must not survive is
+  // the LLM-written free text about private conversations — `reasons`,
+  // `criteria[].note` and `evidenceRefs` — which `maskIcpResult` (a whitelist,
+  // because the masking here is SHALLOW and would never reach a nested field)
+  // removes. A malformed blob masks to `undefined` and is dropped outright.
+  if (ICP_KEY in out) {
+    const masked = maskIcpResult(out[ICP_KEY]);
+    if (masked === undefined) delete out[ICP_KEY];
+    else out[ICP_KEY] = masked;
+  }
+  // `_icpClaim` is `_relationshipClaim`'s twin for the ICP inference kernel —
+  // same belt-and-braces strip, same unconditional strip below.
+  delete out[ICP_CLAIM_KEY];
   return out as T;
 }
+
+/** Internal AI-inference lease locks (`{ token, untilEpoch }`). Operational
+ *  state for the relationship + ICP kernels, never user-facing data — stripped
+ *  for EVERY principal, masked or not, on every serialization path. */
+const INTERNAL_CLAIM_KEYS = ['_relationshipClaim', ICP_CLAIM_KEY] as const;
 
 /**
  * The ONE gate every contact-serialization path (roster, detail, hygiene
  * scans, PATCH responses) must run a contact's `custom_fields` through before
- * it reaches the wire. `_relationshipClaim` (AI-inference lease lock —
- * operational state, never user-facing) is stripped for EVERY principal,
- * masked or not. `_relationship` additionally never reaches a masked
- * principal, and PII values get redacted — both via `maskContactFields`.
+ * it reaches the wire. The inference lease locks
+ * (`_relationshipClaim`/`_icpClaim`) are stripped for EVERY principal, masked
+ * or not. `_relationship` additionally never reaches a masked principal,
+ * `_icp` loses its free text there, and PII values get redacted — all three
+ * via `maskContactFields`.
  */
 export function sanitizeContactFields<T extends Record<string, unknown> | null | undefined>(
   fields: T,
@@ -76,8 +99,8 @@ export function sanitizeContactFields<T extends Record<string, unknown> | null |
 ): T {
   if (!fields || typeof fields !== 'object') return fields;
   if (maskSensitive) return maskContactFields(fields);
-  if (!('_relationshipClaim' in fields)) return fields;
+  if (!INTERNAL_CLAIM_KEYS.some((k) => k in fields)) return fields;
   const out = { ...fields } as Record<string, unknown>;
-  delete out['_relationshipClaim'];
+  for (const k of INTERNAL_CLAIM_KEYS) delete out[k];
   return out as T;
 }
