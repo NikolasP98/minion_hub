@@ -8,6 +8,23 @@
  * but they do catch the two regressions that reintroduce the bug quietly: a
  * second key-derivation site appearing in the hub, and the boot assertion being
  * dropped or duplicated during a refactor.
+ *
+ * Changed vs. the first attempt of this run, which had guards that failed on
+ * their own subject matter the moment it was committed:
+ *
+ *  1. The scan set is now *shipped* sources only. `git ls-files` does not list
+ *     untracked files, so scanning `**\/*.test.ts` looked green locally (the new
+ *     tests were still untracked) and went red in CI, flagging the very tests
+ *     that assert the refusal message never echoes the dev-key literal. A test
+ *     file seals nothing at rest; naming the literal in an assertion is the
+ *     opposite of reintroducing it.
+ *  2. Counting boot-assertion call sites now strips the function's own
+ *     declaration first. `export function assertCryptoKeyConfigured(): void`
+ *     contains the same characters as a call, so the declaration in
+ *     `crypto-key.ts` was being counted as a second call site.
+ *
+ * Both narrowings are themselves tested below ("the matchers have teeth"), on
+ * synthetic snippets, so the guards cannot be quietly widened into no-ops.
  */
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -64,18 +81,78 @@ function readCode(relative: string): string {
   return stripComments(read(relative));
 }
 
-describe('no second key-derivation path in the hub', () => {
-  const tsFiles = trackedFiles('src').filter((f) => f.endsWith('.ts'));
+/** Hardcoded key material from `@minion-stack/db/crypto`, in code (not prose). */
+function embedsKeyMaterial(code: string): boolean {
+  return code.includes('minion-hub-dev-key') || code.includes('minion-hub-salt');
+}
 
-  it('has tracked TypeScript sources to scan', () => {
-    expect(tsFiles.length).toBeGreaterThan(100);
+/** A second key-derivation site: the hub must never call scrypt itself. */
+function derivesKey(code: string): boolean {
+  return /\bscryptSync\b|\bscrypt\(/.test(code);
+}
+
+/**
+ * Calls to the boot assertion, excluding the function's own declaration —
+ * `export function assertCryptoKeyConfigured(): void` is not a call site.
+ */
+function countBootAssertionCalls(code: string): number {
+  const withoutDeclaration = code.replace(
+    /\bfunction\s+assertCryptoKeyConfigured\s*\(/g,
+    'function declaredHere(',
+  );
+  return (withoutDeclaration.match(/\bassertCryptoKeyConfigured\s*\(\s*\)/g) ?? []).length;
+}
+
+/**
+ * Shipped sources: everything the server actually runs. Test files are excluded
+ * on purpose — see the header note (1). The exclusion is bounded by the coverage
+ * assertions below, which pin the files that must always be in this set.
+ */
+const shippedSources = trackedFiles('src').filter(
+  (f) => f.endsWith('.ts') && !f.endsWith('.test.ts'),
+);
+
+describe('the matchers have teeth', () => {
+  it('flags hardcoded key material, including inside a rename or a template', () => {
+    expect(
+      embedsKeyMaterial(`const k = scryptSync('minion-hub-dev-key', 'minion-hub-salt', 32);`),
+    ).toBe(true);
+    expect(embedsKeyMaterial(`const salt = \`minion-hub-salt\`;`)).toBe(true);
+    expect(embedsKeyMaterial(`const k = process.env.ENCRYPTION_KEY;`)).toBe(false);
+  });
+
+  it('flags a second derivation site whichever scrypt form is used', () => {
+    expect(derivesKey(`import { scryptSync } from 'node:crypto';`)).toBe(true);
+    expect(derivesKey(`scrypt(pass, salt, 32, cb);`)).toBe(true);
+    expect(derivesKey(`const mode = cryptoKeyMode();`)).toBe(false);
+  });
+
+  it('counts calls to the boot assertion but not its declaration', () => {
+    expect(countBootAssertionCalls(`export function assertCryptoKeyConfigured(): void {}`)).toBe(0);
+    expect(countBootAssertionCalls(`if (!building) assertCryptoKeyConfigured();`)).toBe(1);
+    expect(
+      countBootAssertionCalls(
+        `export function assertCryptoKeyConfigured(): void {}\nassertCryptoKeyConfigured();`,
+      ),
+    ).toBe(1);
+    expect(countBootAssertionCalls(`import { assertCryptoKeyConfigured } from './crypto';`)).toBe(
+      0,
+    );
+  });
+});
+
+describe('no second key-derivation path in the hub', () => {
+  it('scans the shipped sources, including the crypto modules themselves', () => {
+    expect(shippedSources.length).toBeGreaterThan(100);
+    // If these ever drop out of the scan set (rename, move, deletion), the
+    // guards below would pass vacuously for the files that matter most.
+    expect(shippedSources).toContain('src/server/auth/crypto.ts');
+    expect(shippedSources).toContain('src/server/auth/crypto-key.ts');
+    expect(shippedSources).toContain('src/hooks.server.ts');
   });
 
   it('never hardcodes the development key or its salt', () => {
-    const offenders = tsFiles.filter((f) => {
-      const src = readCode(f);
-      return src.includes('minion-hub-dev-key') || src.includes('minion-hub-salt');
-    });
+    const offenders = shippedSources.filter((f) => embedsKeyMaterial(readCode(f)));
     expect(
       offenders,
       'Key material belongs to @minion-stack/db/crypto only. Use cryptoKeyMode() from ' +
@@ -84,7 +161,7 @@ describe('no second key-derivation path in the hub', () => {
   });
 
   it('never derives its own key with scrypt', () => {
-    const offenders = tsFiles.filter((f) => /\bscryptSync\b|\bscrypt\(/.test(readCode(f)));
+    const offenders = shippedSources.filter((f) => derivesKey(readCode(f)));
     expect(
       offenders,
       'The hub must not derive encryption keys. One derivation path lives in ' +
@@ -95,13 +172,14 @@ describe('no second key-derivation path in the hub', () => {
 
 describe('boot assertion wiring', () => {
   it('calls assertCryptoKeyConfigured exactly once, in the server hooks', () => {
-    const callSites = trackedFiles('src')
-      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
-      .flatMap((f) => {
-        const calls = readCode(f).match(/assertCryptoKeyConfigured\(\)/g) ?? [];
-        return calls.map(() => f);
-      });
-    expect(callSites).toEqual(['src/hooks.server.ts']);
+    const callSites = shippedSources.flatMap((f) =>
+      Array.from({ length: countBootAssertionCalls(readCode(f)) }, () => f),
+    );
+    expect(
+      callSites,
+      'The boot assertion runs once, from src/hooks.server.ts. A second call site means a ' +
+        'second boot path that can start without a key; zero means the hub fails open again.',
+    ).toEqual(['src/hooks.server.ts']);
   });
 
   it('runs the assertion at module scope, not per request, and not during build', () => {
