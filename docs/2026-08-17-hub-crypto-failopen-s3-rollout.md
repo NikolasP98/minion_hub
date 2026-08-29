@@ -42,8 +42,18 @@ $ env -u ENCRYPTION_KEY MINION_ALLOW_DEV_CRYPTO_KEY=1 NODE_ENV=production
 $ ENCRYPTION_KEY=realkey                                -> boots, mode configured, silent
 ```
 
-The anti-recurrence guard was proved to fail: adding `scryptSync("x","y",32)` to
-`src/server/auth/tenant.ts` reds `never derives its own key with scrypt`; reverted.
+The anti-recurrence guards were proved to fail: appending
+`scryptSync('minion-hub-dev-key','minion-hub-salt',32)` plus a second
+`assertCryptoKeyConfigured()` call to `src/server/auth/crypto.ts` reds all three
+file-level guards (`never hardcodes…`, `never derives…`, `calls … exactly once`);
+reverted.
+
+Those guards scan **shipped** (non-test) TypeScript only, and skip the function's
+own declaration when counting call sites. Test files legitimately name the dev-key
+literal — `crypto-key.test.ts` asserts the refusal message never echoes it — and a
+test seals nothing at rest. So the exclusions cannot rot into no-ops, each matcher
+is unit-tested on synthetic snippets and the scan set is asserted to still contain
+`hooks.server.ts`, `crypto.ts` and `crypto-key.ts`.
 
 ### Boot proof against the built server
 
