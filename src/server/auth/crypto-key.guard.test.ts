@@ -170,16 +170,32 @@ describe('no second key-derivation path in the hub', () => {
   });
 });
 
+// Every file allowed to call the boot assertion, named explicitly. Each is a
+// distinct process entrypoint that can reach encrypt/decrypt before anything
+// else runs: the SvelteKit server (hooks.server.ts) and the standalone
+// backfill script (S3 follow-up — hooks.server.ts alone doesn't cover
+// entrypoints started outside SvelteKit, e.g. `bun run scripts/*.ts`).
+const KNOWN_BOOT_ASSERTION_CALL_SITES = [
+  'src/hooks.server.ts',
+  'src/server/scripts/backfill-google-identities.ts',
+];
+
 describe('boot assertion wiring', () => {
-  it('calls assertCryptoKeyConfigured exactly once, in the server hooks', () => {
+  it('calls assertCryptoKeyConfigured only from the known entrypoints, at least once each', () => {
     const callSites = shippedSources.flatMap((f) =>
       Array.from({ length: countBootAssertionCalls(readCode(f)) }, () => f),
     );
     expect(
-      callSites,
-      'The boot assertion runs once, from src/hooks.server.ts. A second call site means a ' +
-        'second boot path that can start without a key; zero means the hub fails open again.',
-    ).toEqual(['src/hooks.server.ts']);
+      new Set(callSites),
+      'A call site outside this allowlist means a new process entrypoint either gained an ' +
+        'unreviewed extra call, or can reach encryption without one — update the allowlist ' +
+        'deliberately when a new standalone entrypoint adds its own call.',
+    ).toEqual(new Set(KNOWN_BOOT_ASSERTION_CALL_SITES));
+    for (const site of KNOWN_BOOT_ASSERTION_CALL_SITES) {
+      expect(callSites.filter((f) => f === site), `${site} must call it exactly once`).toHaveLength(
+        1,
+      );
+    }
   });
 
   it('runs the assertion at module scope, not per request, and not during build', () => {
