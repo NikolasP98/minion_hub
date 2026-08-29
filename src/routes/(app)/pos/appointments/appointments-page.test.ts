@@ -121,7 +121,7 @@ describe('/pos/appointments — the collapsed page still charges a booking', () 
 });
 
 describe('/pos/appointments — the POS party picker drives the shared booking call', () => {
-  it('round-trips a quick-added customer through the shared view\'s attendee state', async () => {
+  it("round-trips a quick-added customer through the shared view's attendee state", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.startsWith('/api/crm/parties')) {
