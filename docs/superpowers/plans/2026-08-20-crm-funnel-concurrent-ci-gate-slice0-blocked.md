@@ -99,3 +99,31 @@ prod's CRM RLS or column shape drifts, the fixture's own catalog assertions will
 against the stale snapshot. A scheduled fixture-vs-prod drift detector is explicitly out of
 scope for this spec and belongs in its own proposal; the risk is recorded in the fixture's
 header comment so whoever debugs a mystery failure reads it first.
+
+## Execution evidence (spec §7 ship gate)
+
+Recorded here rather than only in a PR description, because a PR body is not something a
+future debugger greps. The `crm-funnel-concurrent-postgres` job's durable artifact is
+`crm-funnel-concurrent-report` (`test-results/crm-funnel-concurrent.json`), uploaded under
+`if: always()` so it outlives raw-log expiry.
+
+First verified green run: Actions run `33260135098` on `master`-derived head `c5e2480`. Its
+artifact reports `numTotalTests: 3, numPassedTests: 3, numFailedTests: 0, numPendingTests: 0`,
+naming all three cases:
+
+- `an automatic writer waiting on the row lock observes a concurrent manual pin`
+- `a _funnel write queued behind an open _journey transaction keeps BOTH keys`
+- `a _funnel write that commits INSIDE the _journey transaction is not reverted by it`
+
+Zero pending is the load-bearing number, not zero failed: `describe.runIf(...)` makes "0 failed"
+equally true when the suite never ran, which is the failure this whole spec exists to close.
+Every later run re-uploads the same artifact name, so the check for any given commit is to read
+that run's artifact rather than to trust a green tick.
+
+**A1 (human gate) — resolved and attributed.** The authoritative `pg_policies` /
+`information_schema` extraction the fixture is built from was supplied by the operator in the
+task description of PR #154 (run `485528fa`, merged 2026-08-28), taken live from the provisioned
+Supabase project on 2026-08-20. It is transcribed verbatim into the fixture's header comment so
+the source travels with the artifact that depends on it.
+
+**A2 (schema drift) — accepted, not silently.** See the paragraph above and the fixture header.

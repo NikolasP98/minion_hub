@@ -197,7 +197,10 @@ jobs:
       # degrade this job into a silent skip.
       - name: Real-PostgreSQL funnel concurrency suite
         env:
-          SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/crm_funnel_concurrent_test
+          # Reuse the job-level value rather than a second literal: two copies of
+          # the same connection string can drift, and a drifted copy here would
+          # point the suite at a database the fixture steps above never seeded.
+          SUPABASE_DB_URL: ${{ env.FUNNEL_DB_URL }}
           REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES: '1'
         run: |
           mkdir -p test-results
