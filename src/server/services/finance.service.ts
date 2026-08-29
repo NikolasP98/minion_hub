@@ -15,7 +15,11 @@ import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CanonicalInvoice } from '$server/finance/connector';
 import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
 import type { Period } from '$lib/finance/period';
-import { IGV_RATE_NOT_VIGENTE_MESSAGE, isVigenteIgvRate } from '$lib/finance/igv-rates';
+import {
+  DEFAULT_IGV_RATE,
+  IGV_RATE_NOT_VIGENTE_MESSAGE,
+  isVigenteIgvRate,
+} from '$lib/finance/igv-rates';
 import { emitHubEvent } from '$server/events/emit';
 import { effectiveModuleEnabled, type ModuleStates } from '$lib/modules/availability';
 import type { OrgKind } from '$lib/org-kind';
@@ -506,7 +510,9 @@ export interface FinSettings {
 
 export const DEFAULT_FIN_SETTINGS: Readonly<FinSettings> = Object.freeze({
   currency: 'PEN',
-  taxRate: 0.18,
+  // One statutory rate, one definition — the same constant the emission
+  // boundary defaults to when an org has no `fin_settings` row at all.
+  taxRate: DEFAULT_IGV_RATE,
   timezone: 'America/Lima',
   fxBase: 'USD',
   fxQuote: 'PEN',

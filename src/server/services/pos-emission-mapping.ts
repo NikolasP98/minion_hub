@@ -120,7 +120,7 @@ export function ticketToEmission(
     correlativo: String(allocation.correlativo),
     issueDate: new Date().toISOString().slice(0, 10),
     currency: 'PEN',
-    igvRate: 0.18,
+    igvRate,
     emitter,
     client,
     lines: emissionLines,

@@ -5,9 +5,14 @@
  * but it must be settable from the command line so a non-18% document can be
  * put in front of SUNAT's real validator without editing code.
  *
- * Deliberately does NOT import `resolveIgvRate`: that module pulls in
- * `pos.service.ts` (db + `$env`), and these scripts run under plain `bun run`
- * with no SvelteKit runtime. The range rule is kept identical on purpose.
+ * Deliberately does NOT import `resolveIgvRate`, for two reasons. Mechanically:
+ * that module pulls in `pos.service.ts` (db + `$env`) and these scripts run
+ * under plain `bun run`, with no SvelteKit runtime. Substantively: this check is
+ * INTENTIONALLY looser than the product's — `resolveIgvRate`/`isVigenteIgvRate`
+ * fail closed on anything but a SUNAT-vigente rate, whereas these harnesses
+ * exist precisely to put a non-vigente rate in front of SUNAT's own validator
+ * and record what it answers (see the run of record in emit-beta-test.ts).
+ * A bare sanity range is all that belongs here.
  */
 export function rateArg(argv: string[] = process.argv, fallback = 0.18): number {
   const i = argv.indexOf('--rate');

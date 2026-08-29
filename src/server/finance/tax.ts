@@ -51,7 +51,8 @@ export interface IgvRateSettings {
  * duplicate of the settings gate: the write boundary stops new bad values, but
  * a row persisted before that gate existed (or edited straight in the DB)
  * would otherwise still reach `sendBill` and be rejected there with fault 3462
- * — see `$lib/finance/igv-rates` for the live-beta evidence. Failing here
+ * — see `$lib/finance/igv-rates` and the 2026-08-29 run of record in
+ * specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md. Failing here
  * turns that into a refused emission with a readable reason, recorded as a
  * `status=error` row by `pos-emission.service`, instead of a SUNAT rejection.
  *
@@ -63,6 +64,9 @@ export interface IgvRateSettings {
  * document, gravada only) and need their own spec: per-line affectation type,
  * the `LegalMonetaryTotal` exempt/unaffected buckets, and a settings surface to
  * declare the operation type. Nothing here should be relaxed to fake it.
+ * Recorded in specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md
+ * ("Open items"), which is also where the minion-meta proposal's amendment is
+ * tracked (that repo is not checked out in the workspace this shipped from).
  */
 export function resolveIgvRate(settings: IgvRateSettings | null | undefined): number {
   const configured = settings?.taxRate;

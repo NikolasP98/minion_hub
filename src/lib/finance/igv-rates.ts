@@ -1,18 +1,21 @@
 /**
  * The IGV rates this product may put on a SUNAT document — the single source
- * of truth shared by the settings write boundary (`updateFinSettings`, the
- * `PUT /api/finances/settings` schema, the finance settings form) and the
- * emission boundary (`resolveIgvRate`, `$server/finance/tax`).
+ * of truth shared by the settings write boundary (`updateFinSettings` and the
+ * `PUT /api/finances/settings` schema — the settings form posts through the
+ * latter and surfaces its rejection) and the emission boundary
+ * (`resolveIgvRate`, `$server/finance/tax`).
  *
  * WHY AN ALLOWLIST, and not "any fraction in (0, 1)": a live run against
- * SUNAT's beta validator on 2026-08-28 (transcript in the header of
- * `scripts/summary-beta-test.ts`) had `sendBill` hard-reject a document
- * carrying a 10% IGV with fault `soap-env:Client.3462` — "La tasa del IGV debe
- * ser la misma en todas las líneas o ítems del documento y debe corresponder
- * con una tasa vigente". The rate is not free-form: SUNAT only accepts one
- * that is in force for the emitter's regime. Accepting an arbitrary percentage
- * at the settings boundary therefore let an admin save a value that made every
+ * SUNAT's beta validator on 2026-08-29 had `sendBill` hard-reject both a boleta
+ * and a factura carrying a 10% IGV with fault `soap-env:Client.3462` — "La tasa
+ * del IGV debe ser la misma en todas las líneas o ítems del documento y debe
+ * corresponder con una tasa vigente" — while the same documents at 18% came
+ * back `ResponseCode 0`. The rate is not free-form: SUNAT only accepts one that
+ * is in force for the emitter's regime. Accepting an arbitrary percentage at
+ * the settings boundary therefore let an admin save a value that made every
  * subsequent emission for that org fail, with nothing in the product saying so.
+ * Full matrix, including why a green `submitResumen` proves nothing:
+ * `specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md`.
  *
  * It lives in `$lib` rather than next to `resolveIgvRate` on purpose: the
  * settings form needs it too, and `$server/finance/tax.ts` imports `PosError`
@@ -29,7 +32,9 @@ export const DEFAULT_IGV_RATE = 0.18;
 
 /**
  * Every rate a document may declare. Each entry must have been accepted by
- * SUNAT's `sendBill` (CDR `ResponseCode 0`) — 0.18 was, on 2026-08-28 beta.
+ * SUNAT's `sendBill` (CDR `ResponseCode 0`) — 0.18 was, on 2026-08-29 beta,
+ * via `bun scripts/emit-beta-test.ts`. That script is the admission test for
+ * any candidate rate.
  *
  * SCOPE: the general regime only. Peru has had reduced-rate regimes for
  * specific taxpayers (the MYPE restaurant / hotel / tourist-accommodation
@@ -38,10 +43,12 @@ export const DEFAULT_IGV_RATE = 0.18;
 // TODO(handoff): supporting a reduced-rate regime is NOT "append a number
 // here" — `fin_settings` holds one scalar with no regime/eligibility column,
 // so a second entry would be wrong for every org that is not eligible, and the
-// applicable reduced rate is time-bounded. Scoping that work needs
-// minion-meta `proposals/2026-08-17-hub-igv-rate-from-org-config.md` to get its
-// "Open items" section amended with the 3462 result and this fail-closed
-// decision.
+// applicable reduced rate is time-bounded; it needs its own spec. Recorded in
+// `specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md` ("Open items"),
+// which also carries what minion-meta
+// `proposals/2026-08-17-hub-igv-rate-from-org-config.md` still owes: its open
+// item claims a beta certificate is missing and asks for 10% to be made to
+// pass, both of which the 2026-08-29 run disproved.
 export const SUNAT_VIGENTE_IGV_RATES: readonly number[] = [DEFAULT_IGV_RATE];
 
 /** A fraction rendered as the percent the UI and SUNAT both talk in: `18%`. */

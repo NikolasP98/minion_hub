@@ -148,8 +148,9 @@ describe('igvRate (S1 — required input, no module-level default)', () => {
  * is what this suite proves.
  *
  * IMPORTANT — this is NOT a claim that every rate below is usable in
- * production. A live run against SUNAT's beta validator on 2026-08-28 (see
- * `scripts/summary-beta-test.ts`) proved `sendBill` hard-rejects a document
+ * production. A live run against SUNAT's beta validator on 2026-08-29 (matrix
+ * in `specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md`, rerun with
+ * `bun scripts/emit-beta-test.ts`) proved `sendBill` hard-rejects a document
  * carrying a 10% IGV with fault `soap-env:Client.3462` — SUNAT only accepts a
  * rate that is currently "vigente" for the emitter's regime, and today that is
  * 0.18 alone (`SUNAT_VIGENTE_IGV_RATES` in `$lib/finance/igv-rates`). The

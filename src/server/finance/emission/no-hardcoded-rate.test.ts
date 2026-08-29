@@ -17,14 +17,20 @@
  * pass this guard entirely if only the service file were scanned.
  */
 import { readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const EMISSION_DIR = import.meta.dirname;
+const SRC_DIR = join(EMISSION_DIR, '../../..');
 const EXTRA_GUARDED = [
   join(EMISSION_DIR, '../../services/pos-emission.service.ts'),
   join(EMISSION_DIR, '../../services/pos-emission-mapping.ts'),
 ];
+
+/** `const invoice: EmissionInvoice = {` and its array/cast spellings — the
+ *  places a rate could be written onto a document. */
+const CONSTRUCTS_INVOICE =
+  /:\s*EmissionInvoice(?:\[\])?\s*=\s*[[{]|\bas\s+EmissionInvoice\b|<EmissionInvoice(?:\[\])?>\s*[[{]/;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -34,6 +40,10 @@ function sourceFiles(dir: string): string[] {
     return [full];
   });
 }
+
+/** `a/b/../c` -> `a/c`, so the relative EXTRA_GUARDED paths and the walked
+ *  absolute ones compare as the same file. */
+const realish = (file: string) => resolve(file);
 
 /**
  * Drop comments before matching. Prose that *explains* the absent constant
@@ -82,6 +92,28 @@ function offendingLines(code: string): string[] {
 }
 
 describe('S3 — no hardcoded tax rate in the emission library', () => {
+  /**
+   * The guarded set is written down (above) rather than derived, so that a
+   * mis-typed path fails loudly instead of silently scanning nothing — but an
+   * `EmissionInvoice` built somewhere NEW would then simply never be scanned.
+   * This closes that: every production construction site under `src/` must be
+   * inside the guarded set, or this reds and names the file to add.
+   */
+  it('the guarded set covers every production EmissionInvoice construction site', () => {
+    const guarded = new Set([...sourceFiles(EMISSION_DIR), ...EXTRA_GUARDED].map(realish));
+    const sites = sourceFiles(SRC_DIR).filter((file) =>
+      CONSTRUCTS_INVOICE.test(stripComments(readFileSync(file, 'utf8'))),
+    );
+    // Sanity: the discovery must actually find the mapper S1 fixed, or an
+    // empty result would make this assertion vacuous.
+    expect(sites.map(realish)).toContain(realish(EXTRA_GUARDED[1]));
+    expect(
+      sites.map(realish).filter((file) => !guarded.has(file)),
+      'a module constructs an EmissionInvoice but is not scanned for a hardcoded rate — ' +
+        'add it to EXTRA_GUARDED in this file',
+    ).toEqual([]);
+  });
+
   it('guards every non-test source under emission/ plus its production caller', () => {
     const files = [...sourceFiles(EMISSION_DIR), ...EXTRA_GUARDED];
     // Sanity: the walker must actually be finding the library, or this test

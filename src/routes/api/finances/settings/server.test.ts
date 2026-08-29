@@ -32,7 +32,7 @@ beforeEach(() => vi.clearAllMocks());
 /**
  * M1 regression: the write API used to accept `z.number().min(0).max(0.9999)`.
  * SUNAT's live validator rejects a document whose IGV rate is not currently in
- * force (fault soap-env:Client.3462, observed 2026-08-28 at 10%), so the API
+ * force (fault soap-env:Client.3462, observed 2026-08-29 at 10%), so the API
  * must refuse the value rather than persist a setting that silently breaks
  * every later emission for the org.
  */

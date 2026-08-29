@@ -49,9 +49,9 @@ describe('resolveIgvRate', () => {
     (taxRate) => expectInvalidRate(taxRate),
   );
 
-  // 2026-08-28 live SUNAT beta: a document at 10% is hard-rejected by `sendBill`
+  // 2026-08-29 live SUNAT beta: a document at 10% is hard-rejected by `sendBill`
   // (fault soap-env:Client.3462, "debe corresponder con una tasa vigente"), see
-  // the transcript in scripts/summary-beta-test.ts. These rates are in-range
+  // specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md. These rates are in-range
   // fractions that the OLD `(0, 1)` guard let straight through to emission —
   // this is the stale-row gate: a value persisted before the settings gate
   // existed, or written directly to `fin_settings`, is refused here instead of

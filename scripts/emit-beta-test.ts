@@ -6,19 +6,18 @@
  * CDR for each. DoD = both ResponseCode 0. Not a vitest file — SUNAT's beta
  * endpoint is a live network dependency, this is deliberately manual.
  *
- * TODO(handoff): the parameterized-rate re-verification this script exists for
- * has NOT been run. S3 of specs/2026-08-17-hub-igv-rate-from-org-config-spec.md
- * §6 step 3 requires a live run at `--rate 0.18` AND at `--rate 0.10` (plus
- * `scripts/summary-beta-test.ts --rate 0.10`), with the four CDR descriptions
- * recorded, because SUNAT's own validator is the only thing that can confirm a
- * non-statutory `cbc:Percent` and its line arithmetic are accepted rather than
- * rejected with "totales no consistentes". The agent that shipped S3 has no
- * SUNAT beta certificate and no network egress in its sandbox, and must never
- * fabricate a CDR — the unit suite proves the totals invariant at
- * {0.18, 0.10, 0.08, 0.05} (`ubl.test.ts`, "S3 — totals-consistency invariant")
- * but a green suite with a rejected document is not done. Whoever holds
- * `.beta-cert` (see scripts/gen-beta-cert.sh): run both rates, paste the CDRs
- * into the spec's lifecycle evidence, and delete this note.
+ * RUN OF RECORD — 2026-08-29, cert from `bash scripts/gen-beta-cert.sh`
+ * (self-signed; beta registers no certificate). Full matrix and the decision
+ * it drove: `specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md`.
+ *   - default rate (0.18): boleta B999-1 and factura F999-1 both accepted,
+ *     CDR `ResponseCode 0`.
+ *   - `--rate 0.10`: BOTH documents rejected by `sendBill` with fault
+ *     `soap-env:Client.3462` — "La tasa del IGV debe ser la misma en todas las
+ *     lineas o items del documento y debe corresponder con una tasa vigente".
+ * That is why `$lib/finance/igv-rates` allows 0.18 only, and why this script
+ * still accepts `--rate`: it is the harness that PROVES a candidate rate,
+ * before the allowlist may grow. A rate is only addable once this script
+ * returns `ResponseCode 0` for it against a production-equivalent emitter.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

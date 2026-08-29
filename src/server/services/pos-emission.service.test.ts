@@ -376,7 +376,7 @@ describe('triggerShadowEmission — an unusable configured rate is recorded, not
 
   // A rate persisted before the settings allowlist existed (or written straight
   // into fin_settings) is the exact case live SUNAT beta rejected with fault
-  // 3462 on 2026-08-28. It must be stopped here, not by SUNAT.
+  // 3462 on 2026-08-29. It must be stopped here, not by SUNAT.
   it('a stale non-vigente rate is refused before SUNAT ever sees the document', async () => {
     vi.mocked(getFinSettings).mockResolvedValue({
       taxRate: 0.1,
