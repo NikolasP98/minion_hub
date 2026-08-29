@@ -192,9 +192,10 @@ describe('boot assertion wiring', () => {
         'deliberately when a new standalone entrypoint adds its own call.',
     ).toEqual(new Set(KNOWN_BOOT_ASSERTION_CALL_SITES));
     for (const site of KNOWN_BOOT_ASSERTION_CALL_SITES) {
-      expect(callSites.filter((f) => f === site), `${site} must call it exactly once`).toHaveLength(
-        1,
-      );
+      expect(
+        callSites.filter((f) => f === site),
+        `${site} must call it exactly once`,
+      ).toHaveLength(1);
     }
   });
 
