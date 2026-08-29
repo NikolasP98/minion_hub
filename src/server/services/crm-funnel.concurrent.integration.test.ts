@@ -22,8 +22,9 @@ import { setContactCustomField, setFunnelStage } from './crm-contacts.service';
  * `crm_contacts` / `crm_activities` / `organizations.id` shape and the
  * `*_org_guc` RLS policies as live-extracted from prod's catalog, and the
  * `crm-funnel-concurrent-postgres` job in `.github/workflows/ci.yml` applies it
- * to a bare `postgres:15` service container, runs a cross-org negative control,
- * then runs THIS file with REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES=1 and asserts
+ * to a bare `postgres:15` service container, runs a cross-org RLS control (own-org
+ * rows visible under `app_ledger`, foreign-org rows not), then runs THIS file
+ * with REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES=1 and asserts
  * from a vitest JSON report that all three cases passed and none skipped.
  *
  * Locally it still skips unless SUPABASE_DB_URL is set — point it at the local

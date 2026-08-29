@@ -12,8 +12,10 @@
 > `crm-funnel-concurrent-postgres` job in `.github/workflows/ci.yml`. The original
 > `TODO(handoff):` marker referenced in "Open end (ledger)" at the foot of this file has
 > been removed — but the fourth Slice-0 fact (`app_ledger`'s `role_table_grants`) was never
-> extracted, so a new `TODO(handoff):` marker was added at
-> `supabase/ci-fixtures/crm-funnel-concurrent.sql` to track that residual stop-ship gap.
+> extracted, so a `TODO(handoff):` marker at
+> `supabase/ci-fixtures/crm-funnel-concurrent.sql` tracks that residual gap and the fixture grants
+> only the privileges the suite's own statements require, rather than asserting a prod-parity
+> grant contract it cannot back.
 > Everything below is preserved as written, so the reasoning that produced the stop-ship
 > stays auditable.
 
@@ -97,11 +99,12 @@ place: its open end — the concurrency proof executes on no automated gate — 
 removing the marker while it is open is precisely what Slice 2 forbids until the gate is green.~~
 
 The gate now exists (`crm-funnel-concurrent-postgres`) and that marker is gone. A **new**
-`TODO(handoff):` marker was added at `supabase/ci-fixtures/crm-funnel-concurrent.sql` (next to
-the `app_ledger` grant statements) for a different open end: the grants there are
-convention-derived, not extracted from prod (see "A1 (human gate)" under "Execution evidence"
-below). Do not close that marker without a verified `information_schema.role_table_grants`
-result to match the fixture against.
+`TODO(handoff):` marker sits at `supabase/ci-fixtures/crm-funnel-concurrent.sql` (next to the
+`app_ledger` grant statements) for a different open end: production's `role_table_grants` row set
+for the two CRM tables was never extracted, so the fixture grants the minimum set the suite's own
+statements require instead of reproducing prod's (see "A1 (human gate)" under "Execution evidence"
+below). Do not close that marker without a verified `information_schema.role_table_grants` result
+to compare the fixture against.
 
 One residual
 risk is carried forward deliberately, per spec §5 A2 and §6: the fixture is a point-in-time
@@ -139,31 +142,68 @@ merged MUST be pasted into the PR description; this doc is a durable secondary r
 debugging, not a replacement for that gate. Do not treat a run number recorded here as satisfying
 §7 without first confirming it matches the commit being merged.
 
-**A1 (human gate) — PARTIALLY resolved; the grants leg is a live stop-ship gap.** The `pg_policies`
-policy text, the `relrowsecurity`/`relforcerowsecurity` flags, and the column definitions spec §3
-Slice 0 required were supplied by the operator in the task description of PR #154 (run `485528fa`,
-merged 2026-08-28), taken live from the provisioned Supabase project on 2026-08-20, and are
-transcribed verbatim into the fixture's header comment. That much of A1 is genuinely resolved and
-attributed.
+**A1 (human gate) — PARTIALLY resolved; the grants leg is still unverified against prod.** The
+`pg_policies` policy text, the `relrowsecurity`/`relforcerowsecurity` flags, and the column
+definitions spec §3 Slice 0 required were supplied by the operator in the task description of PR
+#154 (run `485528fa`, merged 2026-08-28), taken live from the provisioned Supabase project on
+2026-08-20, and are transcribed verbatim into the fixture's header comment. That much of A1 is
+genuinely resolved and attributed.
 
 The fourth required Slice-0 fact — `information_schema.role_table_grants` for grantee `app_ledger`
 on both CRM tables (spec §3 Slice 0's third query) — was **not** part of that extraction and has
-never been independently verified. `supabase/ci-fixtures/crm-funnel-concurrent.sql:155-162` grants
-(and asserts) all four DML privileges by following this repo's `*_org_guc` migration convention,
-not by reproducing a queried production result — the fixture's own header says so. The spec is
-explicit that this is a stop-ship condition, not a detail to wave through on convention: "stop and
-do not guess... Escalate back through the proposal pipeline with what was found instead of
-shipping an unverified fixture" (§3 Slice 0). No Supabase credential was available in this sandbox
-to close it (reconfirmed empty this run, same result as the original Slice 0 recon above), so per
-that instruction the stop-ship status is restored for this one fact: **A1 is not fully resolved.**
-A `TODO(handoff)` marker at `supabase/ci-fixtures/crm-funnel-concurrent.sql` records this so the
-ledger sweep can escalate it — a human/ops operator needs to run the third Slice-0 query (or
-provision a scoped read-only credential) against prod and this fixture updated to match the result
-literally before A1 can be marked resolved.
+never been independently verified. No Supabase credential exists in the dev sandbox to close it
+(reconfirmed empty again this run: process env, `.env.example`, `gh secret list`, no local stack,
+no `psql`/`docker`/`vercel` binary — the same result as the original Slice 0 recon above).
 
-This does not make the CI job worthless while the gap is open: the policy text, RLS enforcement,
-and cross-org behavioral proof (§7's central claim) **are** verified against production. Only
-"`app_ledger`'s privilege contract matches production" is unverified — read the job as proving
-RLS-policy parity and atomic-write concurrency, not grant parity, until the TODO above is closed.
+What changed on 2026-08-29 (run `c8cb47f0`) is _what the gate depends on_, not a claim that the
+gap is closed. The fixture previously granted `select, insert, update, delete` on both tables "by
+repo convention" and then asserted those same four privileges back — an assertion that could only
+ever prove the fixture had what the fixture had just granted, while quietly certifying a privilege
+contract production may not have. The grants are now derived from the only source that is
+checkable without prod access — the statements the suite actually issues while `app_ledger` is the
+acting role — and narrowed to exactly those:
+
+| Table            | Privileges         | Statement that requires it                                                                                                                                                                 |
+| ---------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `crm_contacts`   | `SELECT`, `UPDATE` | `setFunnelStage`'s `SELECT … FOR UPDATE` (`crm-contacts.service.ts:1737-1742`; a row-locking clause needs UPDATE too) and `setContactCustomField`'s `UPDATE … RETURNING id` (`:1232-1250`) |
+| `crm_activities` | `INSERT`           | `setFunnelStage`'s funnel-activity row (`:1772`)                                                                                                                                           |
+| `crm_activities` | `SELECT`           | the job's cross-org control; the same read production issues under `withOrgCore` (`connections.service.ts:63-68`)                                                                          |
+
+Two properties make this a real reduction of the unverified surface rather than a differently
+worded guess:
+
+1. **Only over-granting can produce a false green.** A privilege the fixture grants but production
+   withholds is the case where CI goes green on a statement production would refuse. Five of the
+   eight previously-granted privileges (`INSERT`/`DELETE` on `crm_contacts`, `UPDATE`/`DELETE` on
+   `crm_activities`, and `DELETE` generally) are never exercised by the suite under `app_ledger`,
+   so they added false-green surface and nothing else. They are gone, and the fixture's assertion
+   is now an **exact set** comparison against `information_schema.role_table_grants` — an extra
+   grant fails on apply, in CI, instead of being waved through in review.
+2. **Each remaining privilege is entailed by a live production code path**, cited above. If
+   production's `app_ledger` lacked one, that production path would already be failing with
+   `permission denied`. That is inference from shipped behaviour, not a catalog extraction — it is
+   deliberately weaker evidence than the policy text has, and is labelled as such in the fixture.
+
+Still open, and why the `TODO(handoff)` marker at `supabase/ci-fixtures/crm-funnel-concurrent.sql`
+stays: production's real `role_table_grants` row set is unknown, so nobody can say whether it is
+_narrower_ than these four. If it is, the gate over-grants and the suite's proof does not transfer
+to production — the exact failure class this spec exists to close. Closing this needs a human/ops
+operator (or a scoped read-only credential) to run spec §3 Slice 0's third query and either
+confirm the four privileges are present or narrow the fixture to match. **A1 is not fully
+resolved.**
+
+Read the job accordingly: it proves RLS-policy parity (extracted), forced-RLS enforcement,
+cross-org isolation behaviour, and the atomic-write concurrency claim. It does **not** prove grant
+parity, and no line in the fixture, this document, or the workflow may say that it does.
+
+Verification of the change itself (no Postgres server in the sandbox): the fixture was applied
+through `@electric-sql/pglite` (the hub devDependency already used by
+`crm-journey.atomic-write.test.ts`) and mutation-tested — an extra grant, a revoked grant, grants
+moved to another role, `no force row level security`, a renamed policy, a policy scoped `TO
+app_ledger`, and a `primary key` re-added to `crm_activities.id` each RAISE on apply; the suite's
+own `SELECT … FOR UPDATE` / `UPDATE … RETURNING` / `INSERT INTO crm_activities` sequence succeeds
+under exactly the four grants; and the workflow's cross-org control passes on the real fixture and
+raises when the org policy is swapped for a permissive one. PGlite reports as PG18 while CI runs
+`postgres:15`, so the authoritative run remains the `crm-funnel-concurrent-postgres` job.
 
 **A2 (schema drift) — accepted, not silently.** See the paragraph above and the fixture header.

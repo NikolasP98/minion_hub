@@ -35,6 +35,10 @@
 -- which owns the table shape in Drizzle even though it does not own roles or
 -- policies.
 --
+--   NOT part of that extraction: `app_ledger`'s table grants. They are derived
+--   from the statements the suite issues, not from production's catalog — read
+--   the "app_ledger's table privileges" block below before changing them.
+--
 -- DRIFT IS A KNOWN, ACCEPTED RISK. This is a point-in-time snapshot; nothing
 -- re-checks it against prod on a schedule. If the concurrency suite starts
 -- failing with no corresponding code change, re-run the extraction queries
@@ -152,26 +156,61 @@ create policy crm_activities_org_guc on public.crm_activities
   using (org_id = current_setting('app.current_org_id', true))
   with check (org_id = current_setting('app.current_org_id', true));
 
+-- ── app_ledger's table privileges ───────────────────────────────────────────
 -- `app_ledger` is the non-bypass role `withOrgCore()` does `set local role`
 -- into, so it needs explicit table grants — policies alone grant nothing.
--- Grant SHAPE (unlike the policy text above) is NOT from the Slice-0
--- extraction, which did not cover `role_table_grants`: it follows this repo's
--- uniform `*_org_guc` migration convention, e.g.
--- `supabase/migrations/20260717230000_crm_conversation_chunks.sql:60`.
 --
--- TODO(handoff): app_ledger's `information_schema.role_table_grants` for
--- crm_contacts/crm_activities were never extracted from production (spec
--- 2026-08-20-handoff-minion-hub-3530856808-spec §3 Slice 0, 3rd query) — the
--- four DML grants below are convention-derived, not verified, which is a
--- stop-ship gap per that spec's §3/§5 A1. A human/ops operator (or a scoped
--- read-only credential) must run `select grantee, table_name, privilege_type
--- from information_schema.role_table_grants where table_name in
--- ('crm_contacts','crm_activities') and grantee = 'app_ledger'` against prod
--- and this fixture updated to match exactly before A1 is resolved — see
+-- READ THIS BEFORE WIDENING IT. Unlike the policy text and the column shapes
+-- above, production's `information_schema.role_table_grants` rows for these two
+-- tables were NEVER extracted (spec §3 Slice 0's third query was not part of
+-- the operator's payload), so there is no recorded production row set to
+-- reproduce here. This block therefore does NOT claim grant parity with
+-- production, and the assertion further down does not pretend to check it —
+-- an earlier revision granted the four DML privileges "by repo convention" and
+-- then asserted them back, which proved only that the fixture had what the
+-- fixture had just granted. The grants are instead derived from the one source
+-- that IS checkable from this repository: the exact statements the suite under
+-- test issues while `app_ledger` is the acting role.
+--
+--   crm_contacts    SELECT + UPDATE — `setFunnelStage`'s `SELECT … FOR UPDATE`
+--                   (crm-contacts.service.ts:1737-1742; a row-locking clause
+--                   needs UPDATE in addition to SELECT) and
+--                   `setContactCustomField`'s `UPDATE … RETURNING id` (:1232-1250).
+--   crm_activities  INSERT — `setFunnelStage`'s funnel-activity row (:1772).
+--                   SELECT — the cross-org control in the CI job, which is also
+--                   the read production issues under `withOrgCore`
+--                   (connections.service.ts:63-68).
+--
+-- Direction is what matters while the production row set is unknown:
+-- OVER-granting is the only direction that can make this gate go green on a
+-- statement production would refuse. So the fixture grants no privilege the
+-- suite does not exercise, and the assertion below fails on any extra one.
+-- Every privilege that remains is entailed by a live production code path —
+-- were production's `app_ledger` missing one, that path would already be
+-- failing in production with `permission denied`.
+--
+-- TODO(handoff): production's complete `role_table_grants` row set for
+-- crm_contacts/crm_activities is still unextracted (spec
+-- 2026-08-20-handoff-minion-hub-3530856808-spec §3 Slice 0, 3rd query). Any
+-- privilege production grants BEYOND the four below is unknown and harmless
+-- here (the suite never exercises it), but this fixture is consequently a
+-- minimal stand-in, NOT a prod-parity snapshot of grants — do not describe it
+-- as one. A human/ops operator (or a scoped read-only credential) should run
+-- `select grantee, table_name, privilege_type from
+-- information_schema.role_table_grants where table_name in
+-- ('crm_contacts','crm_activities') and grantee = 'app_ledger'` against
+-- production: if the real result is NARROWER than the four below, this gate is
+-- over-granting and the suite's proof does not transfer to production, which is
+-- the failure this spec exists to close. Pointer:
 -- docs/superpowers/plans/2026-08-20-crm-funnel-concurrent-ci-gate-slice0-blocked.md
 -- "A1 (human gate)".
-grant select, insert, update, delete on public.crm_contacts to app_ledger;
-grant select, insert, update, delete on public.crm_activities to app_ledger;
+--
+-- Revoke first so re-applying the fixture to a warm container converges on
+-- exactly this set instead of accumulating whatever a previous revision granted
+-- (the exact-set assertion below would otherwise fail on a stale container).
+revoke all on public.crm_contacts, public.crm_activities from app_ledger;
+grant select, update on public.crm_contacts to app_ledger;
+grant select, insert on public.crm_activities to app_ledger;
 
 -- ── Executable catalog assertions ───────────────────────────────────────────
 -- Applying this fixture must FAIL LOUDLY if the objects it just created do not
@@ -189,6 +228,8 @@ declare
   flags record;
   pol record;
   policy_count int;
+  granted text;
+  expected_grants text;
 begin
   foreach tbl in array array['crm_contacts', 'crm_activities'] loop
     select c.relrowsecurity, c.relforcerowsecurity
@@ -237,13 +278,23 @@ begin
         tbl, coalesce(pol.with_check, '<null>'), expected_expr;
     end if;
 
-    -- Convention-derived (see the grant block above), asserted so a typo in a
-    -- grant surfaces here instead of as an opaque "permission denied" mid-test.
-    if not has_table_privilege('app_ledger', 'public.' || tbl, 'select')
-       or not has_table_privilege('app_ledger', 'public.' || tbl, 'insert')
-       or not has_table_privilege('app_ledger', 'public.' || tbl, 'update')
-       or not has_table_privilege('app_ledger', 'public.' || tbl, 'delete') then
-      raise exception 'ci-fixture: app_ledger is missing select/insert/update/delete on %', tbl;
+    -- EXACTLY the privileges the suite exercises (see the grant block above) —
+    -- no fewer, and just as importantly no more. A missing one would surface
+    -- mid-test as an opaque "permission denied"; an extra one is the direction
+    -- that could hide a production refusal behind a green run, so privilege
+    -- creep fails on apply rather than being waved through in review.
+    select coalesce(string_agg(distinct privilege_type, ',' order by privilege_type), '(none)')
+      into granted
+      from information_schema.role_table_grants
+     where table_schema = 'public' and table_name = tbl and grantee = 'app_ledger';
+    expected_grants := case tbl
+      when 'crm_contacts'   then 'SELECT,UPDATE'
+      when 'crm_activities' then 'INSERT,SELECT'
+    end;
+    if granted is distinct from expected_grants then
+      raise exception
+        'ci-fixture: app_ledger holds (%) on %, the suite exercises exactly (%)',
+        granted, tbl, expected_grants;
     end if;
   end loop;
 

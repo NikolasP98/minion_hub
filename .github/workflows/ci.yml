@@ -150,7 +150,8 @@ jobs:
 
       # The fixture ends with executable catalog assertions (RLS enabled + forced,
       # exactly one `*_org_guc` policy per table with the recorded roles/cmd/
-      # predicates, app_ledger grants, seed org row) followed by column-shape
+      # predicates, app_ledger's exact privilege set — no more and no fewer than
+      # the statements the suite issues — seed org row) followed by column-shape
       # assertions over information_schema.columns — type, nullability and
       # default for every column Slice 0 actually extracted, including the
       # deliberate `crm_contacts.id` NOT NULL vs `crm_activities.id` nullable
@@ -162,16 +163,22 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 "$FUNNEL_DB_URL" -f supabase/ci-fixtures/crm-funnel-concurrent.sql
 
       # Behavioural counterpart to the catalog assertions: proves rows really are
-      # invisible across orgs under `app_ledger`, not merely that the policies are
-      # spelled correctly. One explicit transaction because `set_config(..., true)`
-      # and `set local role` are transaction-local — as separate autocommit
-      # statements the GUC would reset between them and the check would be vacuous.
-      - name: Cross-org RLS negative control
+      # invisible ACROSS orgs under `app_ledger` — and, first, that they are
+      # visible WITHIN their own org. The positive half is what keeps the check
+      # from passing vacuously: "no rows" is equally what a mistyped id, an
+      # unseeded table or a missing SELECT grant would produce, so an
+      # invisibility-only assertion cannot tell RLS working from RLS untested.
+      # The two rows are seeded by the owner connection (superuser, bypasses RLS)
+      # rather than by `app_ledger`, which deliberately holds no INSERT on
+      # crm_contacts — see the fixture's "app_ledger's table privileges" block.
+      # One explicit transaction because `set_config(..., true)` and
+      # `set local role` are transaction-local — as separate autocommit
+      # statements the GUC would reset between them and the check would be
+      # vacuous. The rollback leaves the database exactly as the fixture left it.
+      - name: Cross-org RLS control (own org visible, foreign org invisible)
         run: |
           psql -v ON_ERROR_STOP=1 "$FUNNEL_DB_URL" <<'SQL'
           begin;
-          set local role app_ledger;
-          select set_config('app.current_org_id', '00000000-0000-0000-0000-000000000001', true);
           insert into crm_contacts (id, org_id, source, custom_fields)
           values ('00000000-0000-0000-0000-000000000010',
                   '00000000-0000-0000-0000-000000000001', 'manual', '{}');
@@ -179,6 +186,16 @@ jobs:
           values ('00000000-0000-0000-0000-000000000011',
                   '00000000-0000-0000-0000-000000000001',
                   '00000000-0000-0000-0000-000000000010', 'manual');
+          set local role app_ledger;
+          select set_config('app.current_org_id', '00000000-0000-0000-0000-000000000001', true);
+          do $$
+          begin
+            if not exists (select 1 from crm_contacts where id = '00000000-0000-0000-0000-000000000010')
+               or not exists (select 1 from crm_activities where id = '00000000-0000-0000-0000-000000000011') then
+              raise exception
+                'own-org CRM rows are NOT visible under app_ledger — the cross-org check below would pass for the wrong reason';
+            end if;
+          end $$;
           select set_config('app.current_org_id', '00000000-0000-0000-0000-000000000002', true);
           do $$
           begin
