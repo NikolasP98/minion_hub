@@ -157,15 +157,12 @@ the keyword rule, and`'%adelanto%'` fails it on the raw-ILIKE-literal rule. Both
 
 ### Open items carried out of S3
 
-- **Perf sanity NOT run.** The spec asks for `explain analyze` of the finance query at 1 vs 20
-  keywords on the largest dev org. This environment has no PostgreSQL and no dev-DB credentials, so
-  the measurement was not taken and the 20-keyword cap was left as specified rather than changed on
-  a guess. `fin_invoice_items.description` is unindexed, so each extra keyword multiplies per-row
-  cost on a scan that is already sequential. Recorded in the meta-repo proposal
-  `proposals/2026-08-17-hub-reserva-keyword-config.md` (handoff section, already on `dev`).
+- **Perf sanity NOT run** at the time this section was written — **now CLOSED**, and it moved the
+  cap. See "Perf sanity — measured, and the cap came down to 5" below.
 - **⚠️ A3 stays disclosure-only** — `crm_win_embeddings.bought`/`snippet` are not rebuilt on a
   keyword change; `TODO(handoff)` sits at the disclosure site in `writeDepositRule` and the matching
-  proposal entry is on meta `dev`. Reclassifying history is the proposal's own out-of-scope.
+  proposal entry is on meta `dev`. Reclassifying history is the proposal's own out-of-scope. The
+  disclosure itself was not _sound_ as first shipped — see "⚠️ A3 disclosure was racy" below.
 - **No UI editor** — deliberate (spec §5): the keyword list is API-only until the `/crm/settings`
   ICP-definition editor exists. No `.svelte` file is touched by this slice.
 
@@ -205,9 +202,13 @@ today's single wrong answer".
 
 **The proposal append the spec asks for could NOT be made from this run** and is the one
 outstanding item of this slice: the implementing harness is scoped to this repository and may not
-push to, or open a PR against, `minion-meta`. `proposals/2026-08-17-gw-defaces-crm-tools.md` on
-meta `dev` (read here at implementation time) has an `## Open items` section and no mention of
-`crm-query-tool.ts` yet. The sentence to append, verbatim:
+push to, or open a PR against, `minion-meta`. Re-verified on 2026-08-29 during the review-fix
+round (`gh api repos/NikolasP98/minion-meta/contents/proposals/2026-08-17-gw-defaces-crm-tools.md?ref=dev`,
+read-only): the file's `## Open items` section still has no `crm-query-tool`, `reserva` or deposit
+entry. Because the write side stays blocked, the hub-side half of the open-items ledger was
+strengthened instead — a `TODO(handoff)` naming the exact gateway path/line, the owning proposal
+and this document now sits on `DEFAULT_DEPOSIT_RULE` in `crm-deposit-rule.ts`, so the item is
+greppable from the repo that caused it. The sentence to append, verbatim:
 
 > `src/agents/tools/knowledge/crm-query-tool.ts:13` hardcodes the same single-tenant deposit
 > vocabulary the hub just made org-configurable (`reservation deposits ilike '%reserva%'`, inside
@@ -216,13 +217,86 @@ meta `dev` (read here at implementation time) has an `## Open items` section and
 > description must be templated from the same org config, or the gateway will keep instructing
 > agents to classify deposits by a word the org does not use.
 
-### Perf sanity — still not run, and the cap is still a guess
+### Perf sanity — measured, and the cap came down to 5
 
-Unchanged from the S3 section, restated here so the ship gate is not read as green: §6 step 5
-(`explain analyze` at 1 vs 20 keywords) was **not** performed — no PostgreSQL and no dev-DB
-credentials in this environment. `DEPOSIT_KEYWORDS_MAX = 20` therefore remains the spec's
-proposed number, not a measured one, and carries the matching `TODO(handoff)` in
-`crm-deposit-rule.ts`.
+§6 step 5 has now been RUN, and it failed the spec's own threshold at 20 keywords.
+
+**Method.** `scripts/deposit-keyword-perf.ts` (new, committed) builds the finance classification
+query from the SHIPPED `depositMatchSql` / `notDepositMatchSql` builders — no hand-copied
+predicate — and `explain (analyze, format json)`s it at several keyword counts, reporting the
+median of 5 runs after a warm-up. `fin_invoice_items.description` is deliberately left unindexed,
+which is the premise of the whole gate (§1 verified that in prod).
+
+**Where it ran.** Still no PostgreSQL _server_ and no dev-DB credentials in this environment, so
+the gate as literally written ("the largest dev org") remains unrunnable here. It was run instead
+against a real PostgreSQL **engine** — `@electric-sql/pglite`, already used by this repo's CRM
+suites for planner-faithful checks — over synthetic data at two sizes. What transfers is the
+shape of the cost curve; what does not is absolute latency. pglite is single-threaded WASM with
+no parallel workers and no real I/O, and the production query carries extra keyword-independent
+cost (party joins, RLS, network), so **both** deviations make the ratios below an upper bound,
+never an optimistic one.
+
+| keywords | 120k items (median ms) | ×1-kw | 360k items (median ms) | ×1-kw |
+| -------- | ---------------------- | ----- | ---------------------- | ----- |
+| 1        | 452.2                  | 1.00× | 1442.7                 | 1.00× |
+| 2        | 688.8                  | 1.52× | —                      | —     |
+| 3        | 821.5                  | 1.82× | —                      | —     |
+| 4        | 874.4                  | 1.93× | 2745.1                 | 1.90× |
+| 5        | 965.4                  | 2.14× | 3021.5                 | 2.09× |
+| 6        | 1139.6                 | 2.52× | —                      | —     |
+| 8        | 1428.0                 | 3.16× | —                      | —     |
+| 10       | 1833.7                 | 4.07× | —                      | —     |
+| 15       | 2490.7                 | 5.53× | —                      | —     |
+| 20       | 3171.4                 | 7.05× | 9332.4                 | 6.47× |
+
+Cost is linear in keyword count and the ratios are scale-invariant across a 3× row count, which
+is what an unindexed scan with N per-row `ILIKE`s predicts: the majority of lines are NOT
+deposits, so the `and`-chain of `not ilike` has to evaluate every pattern before it can conclude.
+
+**Decision — the spec's rule applied literally.** §3 S3 says: "If the 20-keyword case regresses
+beyond ~2× on real row counts, lower the cap and say so here rather than shipping a configurable
+foot-gun." 20 keywords regresses ~6.5–7×, so **`DEPOSIT_KEYWORDS_MAX` is now 5**, the largest size
+still at the ~2× bound (2.09–2.14×; 6 is already 2.52×). Five keywords still hold a complete
+deposit vocabulary — `reserva`, `adelanto`, `seña`, `anticipo`, `abono`. The `TODO(handoff)` that
+sat on the constant is replaced by the measurement and a pointer to the script; raising the cap
+again is an index question (a `pg_trgm` index on `description`), which is a schema change this
+spec puts out of scope.
+
+Reproduce: `bun run scripts/deposit-keyword-perf.ts` (`DEPOSIT_PERF_ITEMS`, `DEPOSIT_PERF_SIZES`,
+`DEPOSIT_PERF_RUNS` override the defaults).
+
+### ⚠️ A3 disclosure was racy — the win-index publication now serializes against the write
+
+Found in review after S3 landed, and fixed here. `buildWinIndex` read the deposit rule, classified
+every buyer, then left the database for its embedding round-trips before upserting
+`bought`/`snippet` with `built_at = now()`. `writeDepositRule` stamped `updatedAt` from the
+PROCESS clock before its transaction and defined stale rows as `built_at < updatedAt`. So a rule
+change landing mid-rebuild produced rows derived from the OLD vocabulary carrying a timestamp
+NEWER than the new rule — semantically stale rows that passed the timestamp test and were
+reported as fresh. The disclosure the spec requires was, in exactly the window where it matters,
+wrong.
+
+Both halves are fixed:
+
+- `lockDepositConfig` (new, in `crm-settings.service.ts`) — a per-org
+  `pg_advisory_xact_lock(hashtext('crm-deposit-rule:' || org))`, the same namespace convention as
+  `crm-analyze:` in `crm-conversation-analysis.service.ts`. `writeDepositRule` takes it first, and
+  reads its `updatedAt` from `clock_timestamp()` (the DATABASE clock, and _after_ the lock — `now()`
+  is transaction-start, which precedes the wait) so the stamp and `built_at` are comparable and
+  ordered.
+- `buildWinIndex` snapshots the rule's version (`resolveDepositRuleWithVersion`) and, under the
+  same lock, rechecks it immediately before the upsert. A pass whose rule changed mid-flight is
+  DISCARDED (`{ indexed: 0, skipped: 'rule-changed' }`) with a warn rather than published: the
+  rows already in the table keep their older `built_at`, so they stay correctly counted as stale
+  and the operator is still told to rebuild. Retrying instead would re-run the embedding spend
+  under a rule that may change again.
+
+Tests: `crm-similarity.service.test.ts` drives the exact interleaving (the mocked `embedTexts`
+stands in for the concurrent PUT, flipping the stored version while the pass is embedding) through
+the shipped publication path, and `crm-settings.service.test.ts` pins the lock-before-stamp order
+and the DB-clock stamp. Both fail against the pre-fix code. `crm-settings.sql.integration.test.ts`
+adds the real-PostgreSQL half (CI job `crm-deposit-rule-postgres`): a publication that commits
+while the write waits on the lock must still be counted stale.
 
 ### Route-inventory baseline
 

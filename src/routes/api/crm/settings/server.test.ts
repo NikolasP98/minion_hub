@@ -19,6 +19,7 @@ vi.mock('$server/services/crm-settings.service', () => ({
 }));
 
 import { GET, PUT } from './+server';
+import { DEPOSIT_KEYWORDS_MAX } from '$server/services/crm-deposit-rule';
 
 function event(body?: Record<string, unknown>) {
   return {
@@ -98,8 +99,12 @@ describe('PUT /api/crm/settings', () => {
   const rejected: Array<[string, Record<string, unknown>]> = [
     ['a keyword over the 40-char cap', { deposit: { keywords: ['x'.repeat(80)] } }],
     [
-      '21 keywords (over the cap — rejected, never silently truncated)',
-      { deposit: { keywords: Array.from({ length: 21 }, (_, i) => `k${i}`) } },
+      `${DEPOSIT_KEYWORDS_MAX + 1} keywords (over the cap — rejected, never silently truncated)`,
+      {
+        deposit: {
+          keywords: Array.from({ length: DEPOSIT_KEYWORDS_MAX + 1 }, (_, i) => `k${i}`),
+        },
+      },
     ],
     ['an unknown key inside deposit', { deposit: { keywords: ['ok'], surprise: 1 } }],
     [

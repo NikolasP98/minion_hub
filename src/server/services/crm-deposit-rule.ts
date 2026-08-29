@@ -43,6 +43,27 @@ export const DEFAULT_DEPOSIT_RULE: DepositRule = {
   label: 'Reserved a consult',
 };
 
+/*
+ * TODO(handoff): the GATEWAY still hardcodes this default as if it were
+ * universal. `minion-ai` `src/agents/tools/knowledge/crm-query-tool.ts:13`
+ * (branch `main`, re-verified for this slice) tells the model in its schema
+ * hint that "reservation deposits ilike '%reserva%'", so an org that
+ * configures `keywords: ['adelanto']` here gets a hub classifying on
+ * `adelanto` while the agent is instructed to query `reserva`. Fixing it is
+ * deliberately out of scope (different repo, different release train, owned
+ * by the approved proposal `2026-08-17-gw-defaces-crm-tools`); that tool's
+ * description must be templated from `crm_settings.value.deposit`.
+ *
+ * The spec's ⚠️ A2 also asks for this paragraph to be appended to that
+ * proposal in `minion-meta`. It has NOT been: the implementing harness is
+ * scoped to this repository and may not push to, or open a PR against,
+ * another one — verified again on 2026-08-29, the proposal's `## Open items`
+ * section on meta `dev` still has no `crm-query-tool` entry. The exact
+ * sentence to append is in
+ * `specs/2026-08-17-hub-reserva-keyword-config-s0-actuals.md` (⚠️ A2
+ * section), which is where a human or a meta-scoped run picks it up.
+ */
+
 /**
  * Stable fingerprint of a rule's MATCHING semantics — folded into the `d`
  * descriptor of every cache key whose payload carries deposit classification
@@ -168,19 +189,28 @@ export const DEPOSIT_KEYWORD_MAX_LENGTH = 40;
 /** Max keywords kept. N keywords multiply the per-row ILIKE cost on an
  *  unindexed `fin_invoice_items.description`, so the list is capped.
  *
- *  TODO(handoff): the cap is the spec's proposed value, NOT a measured one —
- *  S3's `explain analyze` at 1 vs 20 keywords on a large org has not been run
- *  (no dev-DB access in the implementing environment). If a real org configures
- *  15-20 keywords, measure before assuming 20 is safe; the spec's own rule is
- *  "lower the cap if 20 regresses beyond ~2x". Recorded in the meta-repo
- *  proposal `2026-08-17-hub-reserva-keyword-config.md` (handoff section). */
-export const DEPOSIT_KEYWORDS_MAX = 20;
+ *  MEASURED, not guessed (S3's perf ship gate). `explain analyze` of the
+ *  finance classification query at 1/4/5/20 keywords, on a real PostgreSQL
+ *  engine over 120k and 360k invoice-item rows, cost 1.00× / 1.90× / 2.09× /
+ *  6.47× the one-keyword query — the curve is linear in keyword count and
+ *  scale-invariant. The spec's rule is "lower the cap if 20 regresses beyond
+ *  ~2×", and 20 regresses ~6.5×, so the cap is the largest size that stays at
+ *  the ~2× bound: FIVE, which still holds a full deposit vocabulary
+ *  (`reserva`, `adelanto`, `seña`, `anticipo`, `abono`). Reproduce with
+ *  `bun run scripts/deposit-keyword-perf.ts`; the numbers and the method's
+ *  limits are recorded in
+ *  `specs/2026-08-17-hub-reserva-keyword-config-s0-actuals.md`.
+ *
+ *  Raising it again is an INDEX question, not a config question: give
+ *  `description` a trigram index (`pg_trgm`) — a schema change this spec puts
+ *  out of scope — and re-measure. */
+export const DEPOSIT_KEYWORDS_MAX = 5;
 
 /**
  * WRITE boundary — STRICT. Unknown keys are rejected, `updatedAt` is not
  * client-supplyable (the handler stamps it), and over-cap input is REJECTED
- * rather than silently truncated, so an operator who types 21 keywords is
- * told, not quietly given 20.
+ * rather than silently truncated, so an operator who types one keyword too
+ * many is told, not quietly given `DEPOSIT_KEYWORDS_MAX` of them.
  *
  * Consumed by `writeDepositRule` (`crm-settings.service.ts`), wired to
  * `PUT /api/crm/settings` — S3 of 2026-08-17-hub-reserva-keyword-config-spec.
