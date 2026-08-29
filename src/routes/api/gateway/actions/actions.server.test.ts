@@ -32,8 +32,27 @@ vi.mock('$server/services/support.service', () => ({
   PRIORITIES: ['urgent', 'high', 'medium', 'low'],
 }));
 vi.mock('$server/services/errors', () => ({
-  StaleWriteError: class StaleWriteError extends Error {},
+  // Carries `current` like the real one — the contact-update stale branch
+  // serialises that row, so the sanitizer has to be proven on it too.
+  StaleWriteError: class StaleWriteError extends Error {
+    current: unknown;
+    constructor(current?: unknown) {
+      super('stale write');
+      this.current = current;
+    }
+  },
   staleGuard: vi.fn(),
+}));
+
+const mockGetContact = vi.fn();
+const mockUpdateContact = vi.fn();
+const mockSetFunnelStage = vi.fn();
+const mockAddNote = vi.fn();
+vi.mock('$server/services/crm-contacts.service', () => ({
+  getContact: (...args: unknown[]) => mockGetContact(...args),
+  updateContact: (...args: unknown[]) => mockUpdateContact(...args),
+  setFunnelStage: (...args: unknown[]) => mockSetFunnelStage(...args),
+  addNote: (...args: unknown[]) => mockAddNote(...args),
 }));
 
 const mockCreateEntry = vi.fn();
@@ -70,16 +89,19 @@ import { POST as stockEntryCreatePOST } from './stock-entry-create/+server';
 import { POST as stockIssueFromInvoicePOST } from './stock-issue-from-invoice/+server';
 import { POST as noteCreatePOST } from './note-create/+server';
 import { POST as toolSavePOST } from './tool-save/+server';
+import { POST as contactUpdatePOST } from './contact-update/+server';
+import { StaleWriteError } from '$server/services/errors';
 
-/** Minimal Capabilities stub — only `can` is exercised by requireAssistantCapability. */
-function makeCaps(allowed: Record<string, boolean> = {}): Capabilities {
+/** Minimal Capabilities stub — `can` gates the action, `fieldLevel` decides
+ *  PII/ICP masking on the serialisation paths (independent axes). */
+function makeCaps(allowed: Record<string, boolean> = {}, fieldLevel = 0): Capabilities {
   return {
     roles: ['staff'],
     can: (module, action) => allowed[`${module}.${action}`] ?? false,
     canRunAnalytics: () => false,
     visibleModules: () => [],
     ownerScoped: () => false,
-    fieldLevel: () => 0,
+    fieldLevel: () => fieldLevel,
   };
 }
 
@@ -513,5 +535,142 @@ describe('POST /api/gateway/actions/tool-save', () => {
       permission: { module: 'projects', action: 'view' },
     });
     expect(mockPublishBuiltTool).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('POST /api/gateway/actions/contact-update', () => {
+  /** A scored contact as the DB row hands it back: LLM free text, the internal
+   *  scoring lease, and a PII custom field. */
+  const scoredRow = () => ({
+    id: 'c1',
+    displayName: 'Ana',
+    customFields: {
+      telefono: '51987654321',
+      _funnel: { stage: 'lead' },
+      _icp: {
+        score: 82,
+        band: 'strong',
+        criteria: [{ id: 'budget', met: true, note: 'said she can pay in full' }],
+        reasons: ['asked about the full treatment plan twice'],
+        evidenceRefs: [{ chunkId: 'chunk-9' }],
+        inputSig: 'sig-1',
+        icpVersion: 3,
+        model: 'google/gemini-2.5-flash',
+        promptVersion: 1,
+        scoredAt: '2026-08-29T00:00:00.000Z',
+      },
+      _icpClaim: { token: 'lease-1', untilEpoch: 4102444800000 },
+    },
+  });
+
+  function grantCrmEdit(fieldLevel: number) {
+    mockResolveAssistantPrincipal.mockResolvedValue({
+      principalId: 'u1',
+      orgId: 'org1',
+      capabilities: makeCaps({ 'crm.edit': true }, fieldLevel),
+    });
+  }
+
+  it('403s when the principal lacks crm:edit (RBAC denial)', async () => {
+    mockResolveAssistantPrincipal.mockResolvedValue({
+      principalId: 'u1',
+      orgId: 'org1',
+      capabilities: makeCaps(),
+    });
+    await expect(
+      contactUpdatePOST(
+        makeEvent('/api/gateway/actions/contact-update', {
+          confirm: true,
+          contactId: 'c1',
+          name: 'Ana',
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mockUpdateContact).not.toHaveBeenCalled();
+  });
+
+  it('strips the internal _icpClaim lease for an UNMASKED principal, keeping the verdict', async () => {
+    grantCrmEdit(1);
+    mockUpdateContact.mockResolvedValue(scoredRow());
+    const res = await contactUpdatePOST(
+      makeEvent('/api/gateway/actions/contact-update', {
+        confirm: true,
+        contactId: 'c1',
+        name: 'Ana Torres',
+      }),
+    );
+    const body = (await res.json()) as { contact: { customFields: Record<string, unknown> } };
+    const cf = body.contact.customFields;
+    expect(cf._icpClaim).toBeUndefined();
+    // Field level 1 is above the sensitive threshold: nothing else is removed.
+    expect(cf._icp).toEqual(scoredRow().customFields._icp);
+    expect(cf.telefono).toBe('51987654321');
+  });
+
+  it('masks a field-level-0 principal: no ICP free text, no evidence refs, no lease, redacted PII', async () => {
+    grantCrmEdit(0);
+    mockUpdateContact.mockResolvedValue(scoredRow());
+    const res = await contactUpdatePOST(
+      makeEvent('/api/gateway/actions/contact-update', {
+        confirm: true,
+        contactId: 'c1',
+        name: 'Ana Torres',
+      }),
+    );
+    const body = (await res.json()) as {
+      contact: { customFields: Record<string, Record<string, unknown>> };
+    };
+    const cf = body.contact.customFields;
+    expect(cf._icpClaim).toBeUndefined();
+    // score/band survive (same class as the RFM score a masked principal sees);
+    // every LLM-written string about private conversations does not.
+    expect(cf._icp.score).toBe(82);
+    expect(cf._icp.band).toBe('strong');
+    expect(cf._icp.reasons).toBeUndefined();
+    expect(cf._icp.evidenceRefs).toBeUndefined();
+    expect(cf._icp.criteria).toEqual([{ id: 'budget', met: true }]);
+    expect(JSON.stringify(body)).not.toContain('said she can pay in full');
+    expect(cf.telefono).not.toBe('51987654321');
+  });
+
+  it('sanitizes the 409 stale-write body too, not just the success body', async () => {
+    grantCrmEdit(0);
+    mockUpdateContact.mockRejectedValue(new StaleWriteError(scoredRow()));
+    const res = await contactUpdatePOST(
+      makeEvent('/api/gateway/actions/contact-update', {
+        confirm: true,
+        contactId: 'c1',
+        name: 'Ana Torres',
+        expectedUpdatedAt: '2026-08-01T00:00:00.000Z',
+      }),
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as {
+      error: string;
+      current: { customFields: Record<string, Record<string, unknown>> };
+    };
+    expect(body.error).toBe('stale');
+    expect(body.current.customFields._icpClaim).toBeUndefined();
+    expect(body.current.customFields._icp.reasons).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain('chunk-9');
+  });
+
+  it('merges email over the stored custom fields instead of replacing them', async () => {
+    grantCrmEdit(1);
+    mockGetContact.mockResolvedValue({ contact: { customFields: { telefono: '51987654321' } } });
+    mockUpdateContact.mockResolvedValue(scoredRow());
+    await contactUpdatePOST(
+      makeEvent('/api/gateway/actions/contact-update', {
+        confirm: true,
+        contactId: 'c1',
+        email: 'ana@example.com',
+      }),
+    );
+    const [, , data] = mockUpdateContact.mock.calls[0] as [
+      unknown,
+      string,
+      { customFields: Record<string, unknown> },
+    ];
+    expect(data.customFields).toEqual({ telefono: '51987654321', email: 'ana@example.com' });
   });
 });

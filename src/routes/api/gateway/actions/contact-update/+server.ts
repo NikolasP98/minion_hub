@@ -2,6 +2,8 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { parseBody } from '$server/api/validate';
+import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
+import { sanitizeContactFields } from '$lib/pii';
 import { requireAssistantCapability } from '../../_shared/action-auth';
 import {
   getContact,
@@ -42,10 +44,31 @@ const bodySchema = z
  * customFields param REPLACES the whole object) and funnel stage goes through
  * the dedicated setFunnelStage (advance-only unless by:'user'; an agent write
  * is by:'agent', matching the service's own semantics for automated callers).
+ *
+ * Every `custom_fields` this route puts on the wire goes through
+ * `sanitizeContactFields` — the same ONE serialization gate the roster, detail
+ * and PATCH paths use — so the internal inference leases (`_relationshipClaim`
+ * / `_icpClaim`) reach NO caller, and a field-level-masked principal gets no
+ * `_relationship`, no `_icp` free text and no raw PII. Masking is derived from
+ * the resolved `capabilities` (field level is independent of `crm:edit`), NOT
+ * from `shouldMaskSensitive(locals, …)`: that helper keys off `locals.user`,
+ * which is unset for gateway/server-token callers — same reason
+ * `query/finance` uses `capabilities.fieldLevel()`.
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
-  const { ctx } = await requireAssistantCapability(locals, url, 'crm', 'edit');
+  const { ctx, capabilities } = await requireAssistantCapability(locals, url, 'crm', 'edit');
   const b = await parseBody(request, bodySchema);
+  const maskSensitive = capabilities.fieldLevel('crm') < SENSITIVE_FIELD_LEVEL;
+  const serializeContact = <T extends { customFields?: unknown } | null>(row: T): T =>
+    row
+      ? {
+          ...row,
+          customFields: sanitizeContactFields(
+            row.customFields as Record<string, unknown> | null,
+            maskSensitive,
+          ),
+        }
+      : row;
 
   if (!b.confirm) {
     return json({
@@ -81,10 +104,17 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
       );
     } catch (e) {
       if (e instanceof StaleWriteError)
-        return json({ error: 'stale', current: e.current }, { status: 409 });
+        return json(
+          {
+            error: 'stale',
+            current: serializeContact(e.current as { customFields?: unknown } | null),
+          },
+          { status: 409 },
+        );
       throw e;
     }
     if (!updatedContact) throw error(404, 'contact not found');
+    updatedContact = serializeContact(updatedContact as { customFields?: unknown });
   }
 
   let funnel: { applied: boolean; stage: string } | null = null;
