@@ -164,9 +164,25 @@ above.
 
 ## 5. Review findings → what changed
 
-Five consecutive reviews of this branch returned FAIL.
+Six consecutive reviews of this branch returned FAIL.
 
-**Round 5 (latest, 2026-08-27).** Two Medium findings; the round's own re-review confirmed the
+**Round 6 (latest, 2026-08-29, cross-provider review 891244ae).** One Medium finding, restating the
+same structural gap as rounds 1, 4, and 5: the branch "still resolves `@minion-stack/shared@0.9.0`,
+whose published declarations have no `onEventError` hook." The finding's own text concedes the
+current response is already correct — "the supervised disposition and current draft state correctly
+prevent that impact today; they do not turn the missing S1 outcome into completion" — and its
+"minimal fix" is to keep the PR draft and not claim S1 while the gate is red, which this record and
+`scripts/shared-onevent-error-gate.test.ts` already enforce. Independently re-verified this round
+(2026-08-29, ~02:19 UTC, about 20 minutes after the finding's own re-poll): `npm view
+@minion-stack/shared versions` still ends at `0.10.0`; the `0.10.0` tarball's
+`dist/gateway/client.d.ts` still declares `onEvent?:` only; `minion-meta` `main` still has zero
+`onEventError` matches; both open `minion-meta` PRs are still based on `dev`, not `main`. No
+dependency line moved, `package.json`/`bun.lock` still resolve `0.9.0`, and the record's Status stays
+`blocked-on-publish`. The finding's alternative ("re-scope and retitle this same PR as
+containment-only") is a PR-metadata action for the harness/human, not something this branch's diff
+can do; nothing in the diff claims S1 either way (§5 "The merge decision, settled 2026-08-28").
+
+**Round 5 (2026-08-27).** Two Medium findings; the round's own re-review confirmed the
 second was fixed and left only the dependency one standing:
 
 | Finding                                                                                                                                                               | Fix                                                                                                                                                                                                                                                                                                                                                                         |
