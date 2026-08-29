@@ -91,9 +91,13 @@ const ctxFor = (client: Client) => ({ db: drizzle(client) as never, tenantId: OR
 describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL', () => {
   it('merges the deposit key without disturbing a sibling key, stamps updatedAt server-side, and resolveDepositRule agrees immediately', async () => {
     await withSchema(async ({ schema, owner, client }) => {
+      // postgres.js's `.unsafe()` double-encodes a pre-`JSON.stringify`-ed string bound to
+      // a `::jsonb` placeholder (it serializes the JS value again on top of the already-JSON
+      // text), landing a jsonb SCALAR STRING instead of an object — pass the plain object and
+      // let the driver serialize it once.
       await owner.unsafe(
         `insert into ${schema}.crm_settings (org_id, value) values ($1, $2::jsonb)`,
-        [ORG_ID, JSON.stringify({ disabled_channels: ['whatsapp'], accounts: ['a1'] })],
+        [ORG_ID, { disabled_channels: ['whatsapp'], accounts: ['a1'] }],
       );
 
       // Mirrors the real call sequence: the route validates through
