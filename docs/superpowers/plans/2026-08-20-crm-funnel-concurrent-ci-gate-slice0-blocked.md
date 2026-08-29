@@ -1,17 +1,21 @@
 # Slice 0 recon result: BLOCKED (stop-ship) — CRM funnel concurrency CI gate
 
-> **RESOLVED 2026-08-20 — this document is a historical record, not the current state.**
-> The stop-ship below was lifted when the authoritative schema arrived: the RLS policy
-> text, the `relrowsecurity`/`relforcerowsecurity` flags and the key column definitions
-> for `crm_contacts` / `crm_activities` / `organizations.id` were LIVE-EXTRACTED from the
-> provisioned Supabase project's catalog (`pg_policies` / `information_schema`) — path 1
-> of "What unblocks Slice 1" below. Slices 1 and 2 are now implemented:
-> `supabase/ci-fixtures/crm-funnel-concurrent.sql` (the fixture, with the extracted values
-> recorded in its header and asserted executably at apply time) and the
-> `crm-funnel-concurrent-postgres` job in `.github/workflows/ci.yml`. The
+> **PARTIALLY RESOLVED 2026-08-20 — this document is a historical record, not the current
+> state; see "Execution evidence" near the foot for the current, accurate status.**
+> The stop-ship below was lifted for three of the four Slice-0 facts once the authoritative
+> schema arrived: the RLS policy text, the `relrowsecurity`/`relforcerowsecurity` flags and
+> the key column definitions for `crm_contacts` / `crm_activities` / `organizations.id` were
+> LIVE-EXTRACTED from the provisioned Supabase project's catalog (`pg_policies` /
+> `information_schema`) — path 1 of "What unblocks Slice 1" below. Slices 1 and 2 are
+> implemented: `supabase/ci-fixtures/crm-funnel-concurrent.sql` (the fixture, with the
+> extracted values recorded in its header and asserted executably at apply time) and the
+> `crm-funnel-concurrent-postgres` job in `.github/workflows/ci.yml`. The original
 > `TODO(handoff):` marker referenced in "Open end (ledger)" at the foot of this file has
-> been removed. Everything below is preserved as written, so the reasoning that produced
-> the stop-ship stays auditable.
+> been removed — but the fourth Slice-0 fact (`app_ledger`'s `role_table_grants`) was never
+> extracted, so a new `TODO(handoff):` marker was added at
+> `supabase/ci-fixtures/crm-funnel-concurrent.sql` to track that residual stop-ship gap.
+> Everything below is preserved as written, so the reasoning that produced the stop-ship
+> stays auditable.
 
 **Spec:** `2026-08-20-handoff-minion-hub-3530856808-spec` — "Wire
 `crm-funnel.concurrent.integration.test.ts` into a real CI gate".
@@ -85,14 +89,21 @@ With those in hand, Slice 1's fixture DDL and its exact catalog assertions must 
 match them literally (policy name/count, `permissive`, exact role set, `cmd`, `qual`,
 `with_check`), rejecting any missing or extra policy.
 
-## Open end (ledger) — CLOSED 2026-08-20
+## Open end (ledger) — original marker CLOSED 2026-08-20, new marker OPEN
 
 ~~The `TODO(handoff):` marker at
 `src/server/services/crm-funnel.concurrent.integration.test.ts:21` is intentionally left in
 place: its open end — the concurrency proof executes on no automated gate — is still open, and
 removing the marker while it is open is precisely what Slice 2 forbids until the gate is green.~~
 
-The gate now exists (`crm-funnel-concurrent-postgres`) and the marker is gone. One residual
+The gate now exists (`crm-funnel-concurrent-postgres`) and that marker is gone. A **new**
+`TODO(handoff):` marker was added at `supabase/ci-fixtures/crm-funnel-concurrent.sql` (next to
+the `app_ledger` grant statements) for a different open end: the grants there are
+convention-derived, not extracted from prod (see "A1 (human gate)" under "Execution evidence"
+below). Do not close that marker without a verified `information_schema.role_table_grants`
+result to match the fixture against.
+
+One residual
 risk is carried forward deliberately, per spec §5 A2 and §6: the fixture is a point-in-time
 snapshot of the extracted prod shape, and nothing re-checks it against prod on a schedule. If
 prod's CRM RLS or column shape drifts, the fixture's own catalog assertions will keep passing
@@ -107,9 +118,10 @@ future debugger greps. The `crm-funnel-concurrent-postgres` job's durable artifa
 `crm-funnel-concurrent-report` (`test-results/crm-funnel-concurrent.json`), uploaded under
 `if: always()` so it outlives raw-log expiry.
 
-First verified green run: Actions run `33260135098` on `master`-derived head `c5e2480`. Its
-artifact reports `numTotalTests: 3, numPassedTests: 3, numFailedTests: 0, numPendingTests: 0`,
-naming all three cases:
+Verified green runs (informational secondary record — NOT a substitute for the PR-description
+gate below): Actions run `33260135098` on head `c5e2480`, superseded by run `33260656975` on head
+`51c09df`. Both artifacts report `numTotalTests: 3, numPassedTests: 3, numFailedTests: 0,
+numPendingTests: 0`, naming all three cases:
 
 - `an automatic writer waiting on the row lock observes a concurrent manual pin`
 - `a _funnel write queued behind an open _journey transaction keeps BOTH keys`
@@ -120,10 +132,38 @@ equally true when the suite never ran, which is the failure this whole spec exis
 Every later run re-uploads the same artifact name, so the check for any given commit is to read
 that run's artifact rather than to trust a green tick.
 
-**A1 (human gate) — resolved and attributed.** The authoritative `pg_policies` /
-`information_schema` extraction the fixture is built from was supplied by the operator in the
-task description of PR #154 (run `485528fa`, merged 2026-08-28), taken live from the provisioned
-Supabase project on 2026-08-20. It is transcribed verbatim into the fixture's header comment so
-the source travels with the artifact that depends on it.
+Neither run above is guaranteed to be for the actual final reviewed head — every subsequent
+commit on this branch invalidates the prior "final head" claim. Per spec §3 Slice 2 and §7, the
+Actions run URL and `crm-funnel-concurrent-report` artifact name for the commit that is actually
+merged MUST be pasted into the PR description; this doc is a durable secondary record for future
+debugging, not a replacement for that gate. Do not treat a run number recorded here as satisfying
+§7 without first confirming it matches the commit being merged.
+
+**A1 (human gate) — PARTIALLY resolved; the grants leg is a live stop-ship gap.** The `pg_policies`
+policy text, the `relrowsecurity`/`relforcerowsecurity` flags, and the column definitions spec §3
+Slice 0 required were supplied by the operator in the task description of PR #154 (run `485528fa`,
+merged 2026-08-28), taken live from the provisioned Supabase project on 2026-08-20, and are
+transcribed verbatim into the fixture's header comment. That much of A1 is genuinely resolved and
+attributed.
+
+The fourth required Slice-0 fact — `information_schema.role_table_grants` for grantee `app_ledger`
+on both CRM tables (spec §3 Slice 0's third query) — was **not** part of that extraction and has
+never been independently verified. `supabase/ci-fixtures/crm-funnel-concurrent.sql:155-162` grants
+(and asserts) all four DML privileges by following this repo's `*_org_guc` migration convention,
+not by reproducing a queried production result — the fixture's own header says so. The spec is
+explicit that this is a stop-ship condition, not a detail to wave through on convention: "stop and
+do not guess... Escalate back through the proposal pipeline with what was found instead of
+shipping an unverified fixture" (§3 Slice 0). No Supabase credential was available in this sandbox
+to close it (reconfirmed empty this run, same result as the original Slice 0 recon above), so per
+that instruction the stop-ship status is restored for this one fact: **A1 is not fully resolved.**
+A `TODO(handoff)` marker at `supabase/ci-fixtures/crm-funnel-concurrent.sql` records this so the
+ledger sweep can escalate it — a human/ops operator needs to run the third Slice-0 query (or
+provision a scoped read-only credential) against prod and this fixture updated to match the result
+literally before A1 can be marked resolved.
+
+This does not make the CI job worthless while the gap is open: the policy text, RLS enforcement,
+and cross-org behavioral proof (§7's central claim) **are** verified against production. Only
+"`app_ledger`'s privilege contract matches production" is unverified — read the job as proving
+RLS-policy parity and atomic-write concurrency, not grant parity, until the TODO above is closed.
 
 **A2 (schema drift) — accepted, not silently.** See the paragraph above and the fixture header.

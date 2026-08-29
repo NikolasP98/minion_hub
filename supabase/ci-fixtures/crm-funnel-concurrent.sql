@@ -158,6 +158,18 @@ create policy crm_activities_org_guc on public.crm_activities
 -- extraction, which did not cover `role_table_grants`: it follows this repo's
 -- uniform `*_org_guc` migration convention, e.g.
 -- `supabase/migrations/20260717230000_crm_conversation_chunks.sql:60`.
+--
+-- TODO(handoff): app_ledger's `information_schema.role_table_grants` for
+-- crm_contacts/crm_activities were never extracted from production (spec
+-- 2026-08-20-handoff-minion-hub-3530856808-spec §3 Slice 0, 3rd query) — the
+-- four DML grants below are convention-derived, not verified, which is a
+-- stop-ship gap per that spec's §3/§5 A1. A human/ops operator (or a scoped
+-- read-only credential) must run `select grantee, table_name, privilege_type
+-- from information_schema.role_table_grants where table_name in
+-- ('crm_contacts','crm_activities') and grantee = 'app_ledger'` against prod
+-- and this fixture updated to match exactly before A1 is resolved — see
+-- docs/superpowers/plans/2026-08-20-crm-funnel-concurrent-ci-gate-slice0-blocked.md
+-- "A1 (human gate)".
 grant select, insert, update, delete on public.crm_contacts to app_ledger;
 grant select, insert, update, delete on public.crm_activities to app_ledger;
 
