@@ -251,13 +251,11 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
   // Cache miss: verify the token (getClaims — local when asymmetric keys exist)
   // and resolve profile + tenant. A bad/forged token fails here and is NEVER
   // cached, so a cache hit always implies a previously-verified token.
-  let bridged: Awaited<ReturnType<typeof resolveSupabaseUser>>;
-  try {
-    bridged = await resolveSupabaseUser(event, supabase, token);
-  } catch {
-    clearRejectedSupabaseSession(event.cookies);
-    return ANON;
-  }
+  // `resolveSupabaseUser` returns null for a rejected token. Operational
+  // failures in its canonical profile lookup must propagate: clearing a valid
+  // session on a database outage converts an availability incident into an
+  // identity loss and forces the user through login again.
+  const bridged = await resolveSupabaseUser(event, supabase, token);
   if (!bridged) {
     clearRejectedSupabaseSession(event.cookies);
     return ANON;
