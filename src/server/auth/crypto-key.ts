@@ -19,9 +19,9 @@
 // (`@minion-stack/db/crypto`) — R7 of
 // specs/2026-05-26-auth-token-simplification.md.
 //
-// TODO(handoff): once minion-meta's `@minion-stack/db` fail-closed build (S1/S2,
-// merged to meta `dev`, not yet published — npm latest 0.10.0 still fail-opens)
-// ships and this repo's vendored `deps/minion-stack-db-*.tgz` is bumped, delete
+// TODO(handoff): once the environment inventory, complete at-rest audit, and
+// shared Hub/Site key decision are resolved, bump this repo's vendored
+// `deps/minion-stack-db-*.tgz` to the published fail-closed 0.11.0 release, delete
 // the policy below and re-export the package's own `cryptoKeyMode` /
 // `assertCryptoKeyConfigured` instead. Until that bump lands, the package still
 // fail-opens for any seal/open that does NOT go through the server boot path

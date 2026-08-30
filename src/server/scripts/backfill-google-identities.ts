@@ -29,15 +29,6 @@ async function main() {
   // refused key throws here rather than while resolving that module's own
   // import chain.
   assertCryptoKeyConfigured();
-  // TODO(handoff): this dynamic import still throws today even with
-  // ENCRYPTION_KEY set — identity.service -> supabase-credential imports
-  // `$server/supabase` and `$env/dynamic/private`, neither of which plain
-  // `bun run` resolves (confirmed pre-existing on master, unrelated to this
-  // spec: any `$server/*`-importing file fails the same way under `bun run`).
-  // This script cannot currently complete a real run regardless of the crypto
-  // fix above. Needs its own fix (e.g. a `$server`/`$env`-free credential path
-  // for supabase-credential.ts, or a bundling step for standalone scripts).
-  // Tracked by minion-meta/proposals/handoff-minion-hub-2606958469.md.
   const { attachGoogleIdentity } = await import('../services/identity.service');
 
   const url = process.env.TURSO_DB_URL ?? 'file:./data/minion_hub.db';

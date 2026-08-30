@@ -32,6 +32,9 @@ function runScript(extraEnv: Record<string, string>): { status: number; stderr: 
         PATH: process.env.PATH ?? '',
         GOOGLE_CLIENT_ID: 'test-client-id',
         GOOGLE_CLIENT_SECRET: 'test-client-secret',
+        // Configured-key cases may proceed as far as the query. Keep them
+        // isolated from the developer's on-disk database.
+        TURSO_DB_URL: 'file::memory:',
         ...extraEnv,
       },
       timeout: 30_000,
@@ -58,11 +61,13 @@ describe('backfill-google-identities fails closed without a crypto key', () => {
   it('gets past the guard — no refusal — once the dev-key opt-in is set', () => {
     const { stderr } = runScript({ MINION_ALLOW_DEV_CRYPTO_KEY: '1' });
     expect(stderr).not.toContain('Refusing to seal or open secrets');
+    expect(stderr).not.toContain('Cannot find module');
   });
 
   it('gets past the guard — no refusal — once a real ENCRYPTION_KEY is set', () => {
     const { stderr } = runScript({ ENCRYPTION_KEY: 'a-real-key' });
     expect(stderr).not.toContain('Refusing to seal or open secrets');
     expect(stderr).not.toContain('ENCRYPTION_KEY environment variable must be set');
+    expect(stderr).not.toContain('Cannot find module');
   });
 });

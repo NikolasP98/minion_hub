@@ -75,9 +75,10 @@ skipped while `building`, so a runtime-configuration check cannot fail packaging
 
 S3 step 4 bumps `@minion-stack/db`. It is held because:
 
-- **The fail-closed package is not published.** S1+S2 are merged to minion-meta
-  `dev` (PR #97, 2026-08-20) but npm's latest `@minion-stack/db@0.10.0` still
-  ships the fail-open `key()`. Verified by unpacking 0.10.0.
+- **The fail-closed package is published but activation is still blocked.** npm
+  published `@minion-stack/db@0.11.0` on 2026-08-30 with the strict resolver and
+  startup assertion. This repo intentionally remains on its vendored 0.9.4
+  tarball until the environment and data gates below are complete.
 - This repo consumes the package as a **vendored tarball**
   (`file:deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz`). Hand-building a
   tarball from mixed sources would put an unreproducible artifact in the lockfile
@@ -112,10 +113,20 @@ Vercel scopes for hub _and_ minion_site, using the **same value per shared-DB
 group** — the two apps share a database and cannot read each other's rows under
 different keys (S3 step 1).
 
-### 3. ⚠️ A3 — the at-rest audit was NOT run
+### 3. ⚠️ A3 — the at-rest audit is incomplete
 
-S2's audit (how many rows are already sealed under the dev key) needs database
-credentials this workspace does not have. It is **not zero, it is unknown.**
+The 2026-08-20 read-only audit reached the shared Hub/Site production Supabase
+database. It found five gateway tokens: two readable only with the Site key and
+three readable with neither current key. It also sampled three of eight Google
+identity ciphertext rows under the Hub key. No sampled row matched the dev key.
+
+That is useful evidence, but it is not a complete audit: five identity rows were
+not classified, the A1 per-deployment environment inventory was not produced,
+and databases outside the shared production Supabase instance were not listed
+or checked. The canonical proposal was therefore reopened on 2026-08-29. The
+dev-key count remains **unknown, not zero**. See minion-meta
+`proposals/2026-08-20-dev-key-at-rest-audit.md`.
+
 Columns to count when it is run: `servers.token`/`token_iv`,
 `gateway_signing_keys.private_ciphertext`/`private_iv`,
 `user_identities.secret_ciphertext`/`secret_iv`, and anything else matching the
@@ -129,9 +140,10 @@ its own proposal.
 
 ## Remaining checklist (hand-off)
 
-1. [ ] Publish minion-meta `@minion-stack/db` with S1+S2 (merge `dev` → main).
+1. [x] Publish minion-meta `@minion-stack/db` with S1+S2 (`0.11.0`, 2026-08-30).
 2. [ ] Verify `ENCRYPTION_KEY` in Vercel preview + production for hub and site.
-3. [ ] Run the A3 at-rest audit; record counts.
+3. [ ] Complete the A3 at-rest audit: classify the five unsampled identity rows,
+       record A1, and name every unchecked database.
 4. [ ] Bump the vendored `@minion-stack/db` here + lockfile; replace the policy in
        `src/server/auth/crypto-key.ts` with a re-export of the package's own
        `cryptoKeyMode` / `assertCryptoKeyConfigured`.
