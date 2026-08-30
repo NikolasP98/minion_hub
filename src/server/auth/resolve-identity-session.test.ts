@@ -82,4 +82,16 @@ describe('Supabase browser-session recovery', () => {
     expect(resolveSupabaseUser).toHaveBeenCalledWith(event, expect.any(Object), 'expired.jwt');
     expect(deleted).toHaveLength(2);
   });
+
+  it('preserves the session when the verified-user directory lookup is unavailable', async () => {
+    getSession.mockResolvedValueOnce({
+      data: { session: { access_token: 'valid.jwt' } },
+      error: null,
+    });
+    resolveSupabaseUser.mockRejectedValueOnce(new Error('database unavailable'));
+    const { event, deleted } = eventWithCookies();
+
+    await expect(resolveIdentity(event as never)).rejects.toThrow('database unavailable');
+    expect(deleted).toHaveLength(0);
+  });
 });

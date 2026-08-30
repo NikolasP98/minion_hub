@@ -2,9 +2,13 @@
 // Kept separate from supabase-bridge.ts so the pure mapper stays unit-testable.
 import type { RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { supabaseServer, supabaseAdmin } from '$server/supabase';
+import { supabaseServer } from '$server/supabase';
 import { mapProfileToUser, type BridgedUser, type ProfileRow } from './supabase-bridge.js';
 import type { OrgKind } from '$lib/org-kind';
+import {
+  loadCanonicalMemberships,
+  loadCanonicalProfile,
+} from '$server/services/canonical-directory.service';
 
 /** DB `organizations.kind` is free-text; only the two known values normalize
  *  — anything else (or null/unset) is "unresolvable", not a silent default
@@ -45,33 +49,11 @@ export async function resolveSupabaseUser(
   if (error || !claims?.sub) return null;
   const userId = claims.sub;
 
-  const admin = supabaseAdmin();
-
-  // Single round-trip: pull core identity + enrichment columns together. If an
-  // enrichment column isn't migrated yet PostgREST errors the whole select with
-  // Postgres `undefined_column` (code 42703), so ONLY in that case do we retry
-  // with the CORE-only column set — login must never break on migration lag.
-  // Any other error (row-not-found PGRST116, RLS, network) does NOT warrant a
-  // second round-trip: we fall through to claims-only mapping with profile=null,
-  // which is the same end state the old unconditional retry reached on those
-  // errors, minus the wasted query. (legacy_user_id was dropped in S7: GoTrue
-  // principal id == profile uuid, no bridge needed.)
-  let profile: ProfileRow | null = null;
-  const full = await admin
-    .from('profiles')
-    .select('id, email, display_name, role, avatar_url, created_at, username')
-    .eq('id', userId)
-    .single();
-  if (!full.error && full.data) {
-    profile = full.data as ProfileRow;
-  } else if (full.error?.code === '42703') {
-    const core = await admin
-      .from('profiles')
-      .select('id, email, display_name, role')
-      .eq('id', userId)
-      .single();
-    profile = (core.data as ProfileRow | null) ?? null;
-  }
+  // The profile and membership gates use the canonical database connection,
+  // not PostgREST. Auth's access-token verification remains Supabase-native;
+  // only the server-side directory lookup avoids turning a Data API outage into
+  // a claims-only user with no role or tenant.
+  const profile = (await loadCanonicalProfile(userId)) as ProfileRow | null;
 
   // Fall back to the Google OAuth metadata avatar when the profile row has none.
   const metadataAvatar =
@@ -107,35 +89,18 @@ export async function resolveSupabaseUser(
  * If `preferredOrgId` is one of the user's memberships it wins (honors an
  * explicit org selection); otherwise the alphabetical-first org is the default.
  *
- * Returns null (never throws) when Supabase is unreachable or the user has no
- * membership, so callers can fall back to the legacy Turso path during bake-in.
+ * Returns null only when the user has no membership. Database failures throw so
+ * callers cannot misclassify an infrastructure outage as an authorization fact.
  */
 export async function resolveSupabaseTenant(
   supabaseId: string,
   preferredOrgId?: string | null,
 ): Promise<{ orgId: string; kind: OrgKind | null } | null> {
-  try {
-    const admin = supabaseAdmin();
-    const { data, error } = await admin
-      .from('organization_members')
-      .select('organizations(id, name, kind)')
-      .eq('profile_id', supabaseId);
-    if (error || !data) return null;
-
-    type OrgRow = { id: string; name: string | null; kind: string | null };
-    type MemRow = { organizations: OrgRow | OrgRow[] | null };
-    const orgs = (data as unknown as MemRow[])
-      .map((row) => (Array.isArray(row.organizations) ? row.organizations[0] : row.organizations))
-      .filter((o): o is OrgRow => o != null)
-      .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
-
-    if (orgs.length === 0) return null;
-    if (preferredOrgId) {
-      const preferred = orgs.find((o) => o.id === preferredOrgId);
-      if (preferred) return { orgId: preferred.id, kind: normalizeOrgKind(preferred.kind) };
-    }
-    return { orgId: orgs[0].id, kind: normalizeOrgKind(orgs[0].kind) };
-  } catch {
-    return null;
+  const orgs = await loadCanonicalMemberships(supabaseId);
+  if (orgs.length === 0) return null;
+  if (preferredOrgId) {
+    const preferred = orgs.find((o) => o.id === preferredOrgId);
+    if (preferred) return { orgId: preferred.id, kind: normalizeOrgKind(preferred.kind) };
   }
+  return { orgId: orgs[0].id, kind: normalizeOrgKind(orgs[0].kind) };
 }
