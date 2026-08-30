@@ -36,9 +36,8 @@ async function main() {
   // spec: any `$server/*`-importing file fails the same way under `bun run`).
   // This script cannot currently complete a real run regardless of the crypto
   // fix above. Needs its own fix (e.g. a `$server`/`$env`-free credential path
-  // for supabase-credential.ts, or a bundling step for standalone scripts) and
-  // a minion-meta proposals/ entry — not filed by this run because minion-meta
-  // is not checked out in this environment.
+  // for supabase-credential.ts, or a bundling step for standalone scripts).
+  // Tracked by minion-meta/proposals/handoff-minion-hub-2606958469.md.
   const { attachGoogleIdentity } = await import('../services/identity.service');
 
   const url = process.env.TURSO_DB_URL ?? 'file:./data/minion_hub.db';
