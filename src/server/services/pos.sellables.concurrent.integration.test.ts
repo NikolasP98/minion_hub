@@ -301,6 +301,59 @@ describe.runIf(Boolean(databaseUrl))(
       }
     }, 45_000);
 
+    it('an invalid later consumption row leaves the product, stock link, and prior replace-set unchanged', async () => {
+      const orgId = crypto.randomUUID();
+      const owner = postgres(databaseUrl!, { max: 1, prepare: false });
+      const app = postgres(databaseUrl!, { max: 1, prepare: false });
+
+      try {
+        const productId = await seedService(owner, orgId, 'CONS', 'Consulta');
+        const [firstItem, secondItem] = await owner<{ id: string }[]>`
+          insert into stk_items (org_id, code, name, uom)
+          values (${orgId}, 'MAT1', 'Material 1', 'unit'),
+                 (${orgId}, 'MAT2', 'Material 2', 'unit')
+          returning id::text
+        `;
+        await owner`
+          insert into stk_consumption (org_id, fin_product_id, item_id, qty_per_unit, note)
+          values (${orgId}, ${productId}, ${firstItem.id}, 2, 'original')
+        `;
+
+        await expect(
+          updateSellable(
+            appCtx(app, orgId),
+            productId,
+            {
+              name: 'Changed name',
+              trackStock: true,
+              uom: 'Unidad',
+              consumption: [
+                { itemId: firstItem.id, qtyPerUnit: 7, note: 'changed' },
+                { itemId: secondItem.id, qtyPerUnit: 0 },
+              ],
+            },
+            actor,
+          ),
+        ).rejects.toMatchObject({ code: 'invalid_consumption' });
+
+        const [product] = await owner<{ name: string }[]>`
+          select name from fin_products where id = ${productId}
+        `;
+        expect(product.name).toBe('Consulta');
+        expect(await linkedItems(owner, productId)).toHaveLength(0);
+        const mappings = await owner<{ itemId: string; qty: number; note: string | null }[]>`
+          select item_id::text as "itemId", qty_per_unit::float8 as qty, note
+          from stk_consumption where org_id = ${orgId} and fin_product_id = ${productId}
+        `;
+        expect(mappings).toEqual([{ itemId: firstItem.id, qty: 2, note: 'original' }]);
+      } finally {
+        await owner`delete from stk_consumption where org_id = ${orgId}`;
+        await owner`delete from stk_items where org_id = ${orgId}`;
+        await owner`delete from fin_products where org_id = ${orgId}`;
+        await Promise.all([owner.end({ timeout: 5 }), app.end({ timeout: 5 })]);
+      }
+    }, 45_000);
+
     it('PARITY: create(tracked) and create(service)+update(trackStock) STORE the same item shape', async () => {
       const orgId = crypto.randomUUID();
       const owner = postgres(databaseUrl!, { max: 1, prepare: false });

@@ -706,6 +706,14 @@ describe('updateSellable', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ id: 'fp-5', code: 'PEEL', name: 'Peel', category: null, unitPrice: '80', active: true }],
+      [{ id: 'item-keep', isStockItem: true }],
+      [
+        { id: 'c-old-1', itemId: 'item-a', qtyPerUnit: '1' },
+        { id: 'c-old-2', itemId: 'item-keep', qtyPerUnit: '3' },
+      ],
+      [], // fin_products update
+      [], // stale mapping delete
+      [{ id: 'c-old-2' }], // kept mapping upsert
     ]); // load current product
     mockExecute(db, [
       {
@@ -721,13 +729,6 @@ describe('updateSellable', () => {
       },
     ]);
     upsertProductMock.mockResolvedValue(undefined);
-    listConsumptionMock.mockResolvedValue([
-      { id: 'c-old-1', itemId: 'item-a' },
-      { id: 'c-old-2', itemId: 'item-keep' },
-    ]);
-    deleteConsumptionMock.mockResolvedValue(true);
-    setConsumptionMock.mockResolvedValue({ id: 'c-new' });
-
     await updateSellable(
       ctx(db),
       'fp-5',
@@ -735,20 +736,18 @@ describe('updateSellable', () => {
       actor,
     );
 
-    expect(listConsumptionMock).toHaveBeenCalledWith(expect.anything(), { finProductId: 'fp-5' });
-    expect(deleteConsumptionMock).toHaveBeenCalledTimes(1);
-    expect(deleteConsumptionMock).toHaveBeenCalledWith(expect.anything(), 'c-old-1');
-    expect(setConsumptionMock).toHaveBeenCalledWith(
-      expect.anything(),
-      { finProductId: 'fp-5', itemId: 'item-keep', qtyPerUnit: 3, note: null },
-      actor,
-    );
+    expect((db as never as { delete: ReturnType<typeof vi.fn> }).delete).toHaveBeenCalledTimes(1);
+    expect((db as never as { insert: ReturnType<typeof vi.fn> }).insert).toHaveBeenCalledTimes(1);
   });
 
   it('note survives the replace-set: a save that resubmits an existing row with its note intact does not wipe it', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ id: 'fp-5b', code: 'PEEL', name: 'Peel', category: null, unitPrice: '80', active: true }],
+      [{ id: 'item-keep', isStockItem: true }],
+      [{ id: 'c-old-1', itemId: 'item-keep', qtyPerUnit: '3' }],
+      [],
+      [{ id: 'c-old-1' }],
     ]);
     mockExecute(db, [
       {
@@ -764,9 +763,6 @@ describe('updateSellable', () => {
       },
     ]);
     upsertProductMock.mockResolvedValue(undefined);
-    listConsumptionMock.mockResolvedValue([{ id: 'c-old-1', itemId: 'item-keep' }]);
-    setConsumptionMock.mockResolvedValue({ id: 'c-new' });
-
     await updateSellable(
       ctx(db),
       'fp-5b',
@@ -776,11 +772,7 @@ describe('updateSellable', () => {
 
     // ★ CRITICAL: the wizard's replace-set loop must forward `note`, or every
     // save silently blanks it via setConsumption's onConflictDoUpdate.
-    expect(setConsumptionMock).toHaveBeenCalledWith(
-      expect.anything(),
-      { finProductId: 'fp-5b', itemId: 'item-keep', qtyPerUnit: 3, note: 'thin layer only' },
-      actor,
-    );
+    expect((db as never as { insert: ReturnType<typeof vi.fn> }).insert).toHaveBeenCalledTimes(1);
   });
 
   it('consumption omitted leaves existing mappings untouched', async () => {

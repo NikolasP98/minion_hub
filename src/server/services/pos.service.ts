@@ -28,8 +28,6 @@ import {
   createItemTx,
   updateItemTx,
   setConsumption,
-  deleteConsumption,
-  listConsumption,
   listAllComponentEdges,
   type CreateIssueFromInvoiceLine,
 } from './stock.service';
@@ -46,6 +44,7 @@ import { finProducts } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
 import { bustFinanceCache } from './finance.service';
 import { emitHubEvent } from '$server/events/emit';
+import { recordAudit, type AuditInput } from './activity.service';
 // Deliberate circular import: pos-emission.service.ts imports PosError/
 // PosSettings (types + a class, never touched at module-eval time) back from
 // here. Safe under ESM — neither module reads the other's export until a
@@ -1412,13 +1411,118 @@ export async function createSellable(
   return getSellableRow(ctx, product.id);
 }
 
+type ConsumptionPatch = NonNullable<SellableInput['consumption']>[number];
+
+/** Validate the entire replace-set before any row in the PATCH is mutated. */
+async function validateConsumptionPatchTx(
+  tx: CoreTx,
+  orgId: string,
+  productId: string,
+  consumption: ConsumptionPatch[],
+): Promise<Map<string, { id: string; qtyPerUnit: number }>> {
+  const itemIds = consumption.map((row) => row.itemId);
+  if (new Set(itemIds).size !== itemIds.length) {
+    throw new PosError('consumption contains the same item more than once', 'invalid_consumption');
+  }
+  for (const row of consumption) {
+    if (!(Number.isFinite(row.qtyPerUnit) && row.qtyPerUnit > 0)) {
+      throw new PosError('consumption qtyPerUnit must be > 0', 'invalid_consumption');
+    }
+  }
+
+  if (itemIds.length > 0) {
+    const items = await tx
+      .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
+      .from(stkItems)
+      .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
+    const validItems = new Map(items.map((item) => [item.id, item.isStockItem]));
+    for (const itemId of itemIds) {
+      if (!validItems.has(itemId))
+        throw new PosError('consumption item not found', 'invalid_consumption');
+      if (!validItems.get(itemId)) {
+        throw new PosError('consumption item is not a stock item', 'invalid_consumption');
+      }
+    }
+  }
+
+  const existing = await tx
+    .select({
+      id: stkConsumption.id,
+      itemId: stkConsumption.itemId,
+      qtyPerUnit: stkConsumption.qtyPerUnit,
+    })
+    .from(stkConsumption)
+    .where(and(eq(stkConsumption.orgId, orgId), eq(stkConsumption.finProductId, productId)));
+  return new Map(
+    existing.map((row) => [row.itemId, { id: row.id, qtyPerUnit: Number(row.qtyPerUnit) }]),
+  );
+}
+
+async function replaceConsumptionTx(
+  tx: CoreTx,
+  orgId: string,
+  productId: string,
+  consumption: ConsumptionPatch[],
+  existing: Map<string, { id: string; qtyPerUnit: number }>,
+  actor: Actor,
+): Promise<AuditInput[]> {
+  const keep = new Set(consumption.map((row) => row.itemId));
+  if (existing.size > 0) {
+    const removeIds = [...existing.entries()]
+      .filter(([itemId]) => !keep.has(itemId))
+      .map(([, row]) => row.id);
+    if (removeIds.length > 0) {
+      await tx
+        .delete(stkConsumption)
+        .where(and(eq(stkConsumption.orgId, orgId), inArray(stkConsumption.id, removeIds)));
+    }
+  }
+
+  const audits: AuditInput[] = [];
+  for (const row of consumption) {
+    const old = existing.get(row.itemId);
+    const [saved] = await tx
+      .insert(stkConsumption)
+      .values({
+        orgId,
+        finProductId: productId,
+        itemId: row.itemId,
+        qtyPerUnit: String(row.qtyPerUnit),
+        note: row.note ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [stkConsumption.orgId, stkConsumption.finProductId, stkConsumption.itemId],
+        set: {
+          qtyPerUnit: String(row.qtyPerUnit),
+          note: row.note ?? null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning({ id: stkConsumption.id });
+    audits.push({
+      refType: 'stk_consumption',
+      refId: saved.id,
+      op: old ? 'update' : 'create',
+      changes:
+        old?.qtyPerUnit === row.qtyPerUnit
+          ? []
+          : [
+              {
+                field: 'qtyPerUnit',
+                label: 'Qty per unit',
+                old: old?.qtyPerUnit ?? null,
+                new: row.qtyPerUnit,
+              },
+            ],
+      actor,
+    });
+  }
+  return audits;
+}
+
 /**
- * Patch product fields via upsertProduct (unset patch fields fall back to the
- * current row). `consumption` PRESENT (even `[]`) is a replace-set FOR THIS
- * PRODUCT ONLY: listConsumption is filtered by finProductId, so a mapping
- * belonging to another product is never read or deleted — rows missing from
- * the new array are removed via deleteConsumption, the rest upserted via
- * setConsumption. `consumption` omitted leaves existing mappings untouched.
+ * Patch product fields and, when present, atomically replace this product's
+ * consumption set. `consumption` omitted leaves existing mappings untouched.
  */
 export async function updateSellable(
   ctx: CoreCtx,
@@ -1565,7 +1669,15 @@ export async function updateSellable(
    * them is what makes the "a failed PATCH leaves no partial mutation"
    * invariant true rather than merely likely.
    */
-  await withOrgCore(ctx, async (tx) => {
+  const consumptionAudits = await withOrgCore(ctx, async (tx) => {
+    // Validate every row before the first insert/update/delete. Besides giving
+    // direct service callers the same guard as the HTTP schema, this prevents
+    // a bad later row from partially applying a replace-set.
+    const existingConsumption =
+      patch.consumption === undefined
+        ? null
+        : await validateConsumptionPatchTx(tx, ctx.tenantId, productId, patch.consumption);
+
     if (startTracking) {
       // Same helper `createSellable` uses (see its doc comment): the uom
       // default and the 23505 → `item_taken` mapping live there once, so an
@@ -1594,26 +1706,28 @@ export async function updateSellable(
       if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
       throw e;
     }
+
+    return existingConsumption === null
+      ? []
+      : replaceConsumptionTx(
+          tx,
+          ctx.tenantId,
+          productId,
+          patch.consumption!,
+          existingConsumption,
+          actor,
+        );
   });
   await bustFinanceCache(ctx);
 
-  if (patch.consumption !== undefined) {
-    const existing = await listConsumption(ctx, { finProductId: productId });
-    const keep = new Set(patch.consumption.map((c) => c.itemId));
-    for (const row of existing) {
-      if (!keep.has(row.itemId)) await deleteConsumption(ctx, row.id);
-    }
-    for (const c of patch.consumption) {
-      await setConsumption(
-        ctx,
-        {
-          finProductId: productId,
-          itemId: c.itemId,
-          qtyPerUnit: c.qtyPerUnit,
-          note: c.note ?? null,
-        },
-        actor,
-      );
+  // Audit is intentionally outside the business transaction. A logging
+  // outage must not turn a successfully committed PATCH into a reported
+  // failure, which would invite a misleading retry.
+  for (const audit of consumptionAudits) {
+    try {
+      await recordAudit(ctx, audit);
+    } catch (error) {
+      console.error('[pos] consumption audit failed after updateSellable commit', error);
     }
   }
 
