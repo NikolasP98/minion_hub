@@ -15,8 +15,15 @@ import type { CanonicalInvoice } from '$server/finance/connector';
 function buildTx(opts: { existingInvoices?: Array<{ id: string; documentId: string }> } = {}) {
   const insertCalls: Array<{ table: unknown; rows: unknown[] }> = [];
   const insert = vi.fn((table: unknown) => ({
-    values: (rows: unknown[]) => {
+    values: (value: unknown | unknown[]) => {
+      const rows = Array.isArray(value) ? value : [value];
       insertCalls.push({ table, rows });
+      if (table === crmContacts) {
+        return {
+          returning: () =>
+            Promise.resolve([{ id: 'c-created', displayName: 'Jane', ownerId: 'owner-1' }]),
+        };
+      }
       if (table === finInvoices) {
         const out = (rows as Array<{ providerRef: string }>).map((r, i) => ({
           providerRef: r.providerRef,
@@ -206,6 +213,32 @@ describe('crm contacts audit (§B.2)', () => {
       }),
     ]);
     expect(tx.insert).toHaveBeenCalledWith(docAuditLog);
+    expect(transactions.count).toBe(1);
+  });
+
+  it('createContact writes its audit row without opening a nested transaction', async () => {
+    const { createContact } = await import('./crm-contacts.service');
+    const { tx, insertCalls } = buildTx();
+    const { ctx, transactions } = countingCtx(tx);
+
+    await expect(createContact(ctx, { displayName: 'Jane' })).resolves.toMatchObject({
+      id: 'c-created',
+      displayName: 'Jane',
+    });
+
+    expect(insertCalls.find((c) => c.table === crmContacts)?.rows).toEqual([
+      expect.objectContaining({ orgId: 'org-1', displayName: 'Jane', source: 'manual' }),
+    ]);
+    expect(insertCalls.find((c) => c.table === docAuditLog)?.rows).toEqual([
+      expect.objectContaining({
+        orgId: 'org-1',
+        refType: 'crm_contact',
+        refId: 'c-created',
+        op: 'create',
+      }),
+    ]);
+    // A max:1 pool can complete only if the mutation and audit share this
+    // single top-level transaction; a nested withOrgCore call would count 2.
     expect(transactions.count).toBe(1);
   });
 });

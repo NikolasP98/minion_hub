@@ -1493,15 +1493,7 @@ export async function createContact(
         customFields: data.customFields ?? {},
       })
       .returning();
-    // TODO(handoff): this `recordAudit` has the same nested-transaction shape
-    // that deadlocked `updateContact` on a pool with no free connection (it
-    // opens a second `withOrgCore` inside this one). Left as-is because this
-    // repair run is scoped to the demonstrated `updateContact` deadlock and no
-    // test exercises `createContact` under a saturated pool; the fix is the
-    // same one-line swap to `recordAuditInTx(tx, ...)` plus a
-    // `createContact`-side concurrency case in
-    // src/server/services/crm-funnel.concurrent.integration.test.ts.
-    await recordAudit(ctx, {
+    await recordAuditInTx(tx, ctx, {
       refType: 'crm_contact',
       refId: r.id,
       op: 'create',
