@@ -2,6 +2,7 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { loadEnv } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
+import type { CanonicalInvoice } from '$server/finance/connector';
 
 /**
  * Real-PostgreSQL proofs for the POS sellable write paths. PR #142/#149 (the
@@ -61,13 +62,50 @@ vi.mock('$server/db/with-org-core', () => ({
 }));
 
 const { createSellable, updateSellable, PosError } = await import('./pos.service');
-const { createEntry, createSourcedIssue, createIssueFromInvoice } = await import('./stock.service');
+const { createEntry, createSourcedIssue, createIssueFromInvoice, updateItem } =
+  await import('./stock.service');
 const { upsertInvoicesBatch } = await import('./finance.service');
 
 type Client = ReturnType<typeof postgres>;
 
 const ORG_ID = 'org-pos-integration';
 const ACTOR = { id: 'u1', name: 'Integration Tester' };
+
+const invoiceFor = (code: string, providerRef: string): CanonicalInvoice => ({
+  provider: 'test',
+  providerRef,
+  number: null,
+  documentId: null,
+  issuedAt: null,
+  clientName: null,
+  clientDocType: null,
+  clientDocNumber: null,
+  clientEmail: null,
+  currency: 'PEN',
+  subtotal: 1,
+  tax: 0,
+  discount: 0,
+  total: 1,
+  status: 'paid',
+  seller: null,
+  note: null,
+  metadata: {},
+  items: [
+    {
+      code,
+      description: code,
+      category: null,
+      quantity: 1,
+      unitPrice: 1,
+      discount: 0,
+      tax: 0,
+      total: 1,
+      metadata: {},
+    },
+  ],
+  payments: [],
+  client: null,
+});
 
 /** Columns mirrored from the in-repo migrations / drizzle schema for the
  *  tables these paths read and write.
@@ -791,6 +829,101 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
         expect(uomResult.reason).toMatchObject({ code: 'uom_immutable' });
         expect(item).toMatchObject({ uom: 'unit' });
       }
+    });
+  }, 30_000);
+
+  it('LOCK PROTOCOL: the direct stock-item UOM mutation serializes with invoice history', async () => {
+    await withSchema(2, async ({ owner, clients }) => {
+      const productId = crypto.randomUUID();
+      const itemId = crypto.randomUUID();
+      await owner.unsafe(
+        `insert into fin_products (id, org_id, code, name) values ($1, $2, 'DIRECT', 'Direct')`,
+        [productId, ORG_ID],
+      );
+      await owner.unsafe(
+        `insert into stk_items (id, org_id, code, name, uom, fin_product_id)
+         values ($1, $2, 'DIRECT', 'Direct', 'unit', $3)`,
+        [itemId, ORG_ID, productId],
+      );
+
+      const patchPromise = updateItem(ctxFor(clients[0]!), itemId, { uom: 'kg' });
+      const invoicePromise = upsertInvoicesBatch(ctxFor(clients[1]!), [
+        invoiceFor('DIRECT', 'invoice-direct-race'),
+      ]);
+      const [patchResult, invoiceResult] = await Promise.allSettled([patchPromise, invoicePromise]);
+
+      expect(invoiceResult.status).toBe('fulfilled');
+      const [item] = await owner.unsafe<{ uom: string }[]>(
+        `select uom from stk_items where id = $1`,
+        [itemId],
+      );
+      if (patchResult.status === 'fulfilled') {
+        expect(item).toMatchObject({ uom: 'kg' });
+      } else {
+        expect(patchResult.reason).toMatchObject({ code: 'uom_immutable' });
+        expect(item).toMatchObject({ uom: 'unit' });
+      }
+    });
+  }, 30_000);
+
+  it('LOCK PROTOCOL: product creation after invoice refresh cannot bypass the code lock', async () => {
+    await withSchema(2, async ({ owner, clients }) => {
+      let releaseRefresh!: () => void;
+      const refreshReleased = new Promise<void>((resolve) => (releaseRefresh = resolve));
+      let markRefreshed!: () => void;
+      const refreshed = new Promise<void>((resolve) => (markRefreshed = resolve));
+
+      const invoicePromise = upsertInvoicesBatch(
+        ctxFor(clients[0]!),
+        [invoiceFor('AFTER', 'invoice-post-refresh')],
+        new Map(),
+        {
+          afterProductRefresh: async () => {
+            markRefreshed();
+            await refreshReleased;
+          },
+        },
+      );
+      await refreshed;
+
+      const createPromise = createSellable(
+        ctxFor(clients[1]!),
+        {
+          code: 'AFTER',
+          name: 'After refresh',
+          kind: 'product',
+          trackStock: true,
+          unitPrice: 1,
+        },
+        ACTOR,
+      );
+      let productCreatedBeforeRelease = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const [product] = await owner.unsafe<{ id: string }[]>(
+          `select id from fin_products where org_id = $1 and code = 'AFTER'`,
+          [ORG_ID],
+        );
+        if (product) {
+          productCreatedBeforeRelease = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      releaseRefresh();
+      await Promise.all([invoicePromise, createPromise]);
+      expect(productCreatedBeforeRelease).toBe(true);
+
+      const [line] = await owner.unsafe<{ product_id: string | null }[]>(
+        `select product_id from fin_invoice_items where code = 'AFTER'`,
+      );
+      const [item] = await owner.unsafe<{ id: string; uom: string }[]>(
+        `select id, uom from stk_items where org_id = $1 and code = 'AFTER'`,
+        [ORG_ID],
+      );
+      expect(line).toMatchObject({ product_id: null });
+      await expect(updateItem(ctxFor(clients[1]!), item!.id, { uom: 'kg' })).rejects.toMatchObject({
+        code: 'uom_immutable',
+      });
     });
   }, 30_000);
 

@@ -166,7 +166,9 @@ export function isDepositText(text: string | null | undefined, rule: DepositRule
 /** Max characters kept per keyword (and for the label) after trimming. */
 export const DEPOSIT_KEYWORD_MAX_LENGTH = 40;
 /** Max keywords kept. N keywords multiply the per-row ILIKE cost on an
- *  unindexed `fin_invoice_items.description`, so the list is capped. */
+ *  unindexed `fin_invoice_items.description`, so the list is capped.
+ *  TODO(handoff): Validate the 1-vs-20-keyword production-like EXPLAIN ANALYZE;
+ *  the cap remains unproved — see proposals/2026-08-17-hub-reserva-keyword-config.md. */
 export const DEPOSIT_KEYWORDS_MAX = 20;
 
 /**

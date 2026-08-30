@@ -357,6 +357,86 @@ export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<Stk
   return withOrgCore(ctx, (tx) => createItemInTx(tx, ctx.tenantId, input));
 }
 
+/** Serialize code-based history writers with item creation and UOM mutation.
+ * Unlike a row lock, this key exists before either product or item row does. */
+export async function lockProductCodesAgainstUomChange(
+  tx: CoreTx,
+  orgId: string,
+  codes: Iterable<string>,
+): Promise<void> {
+  const values = [...new Set([...codes].filter(Boolean))].sort();
+  for (const code of values) {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`stock-uom:${orgId}:${code}`}, 0))`,
+    );
+  }
+}
+
+export async function itemHasHistory(
+  tx: CoreTx,
+  orgId: string,
+  itemId: string,
+  product: { id: string | null; code: string | null },
+): Promise<boolean> {
+  const billedPredicates = [
+    ...(product.id != null ? [sql`ii.product_id = ${product.id}`] : []),
+    ...(product.code != null ? [sql`ii.code = ${product.code}`] : []),
+  ];
+  const rows = (await tx.execute(sql`
+    select
+      exists(select 1 from stk_ledger l where l.org_id = ${orgId} and l.item_id = ${itemId}) as ledger,
+      exists(select 1 from stk_entry_lines el where el.org_id = ${orgId} and el.item_id = ${itemId}) as entry_lines,
+      exists(select 1 from stk_bins b where b.org_id = ${orgId} and b.item_id = ${itemId} and b.qty <> 0) as bins,
+      ${
+        billedPredicates.length === 0
+          ? sql`false`
+          : sql`exists(select 1 from fin_invoice_items ii
+                       where ii.org_id = ${orgId}
+                         and (${sql.join(billedPredicates, sql` or `)}))`
+      } as billed
+  `)) as unknown as Array<{
+    ledger: boolean;
+    entry_lines: boolean;
+    bins: boolean;
+    billed: boolean;
+  }>;
+  const row = rows?.[0];
+  if (!row) throw new StockError('item history check returned no row', 'history_check_failed');
+  return !!(row.ledger || row.entry_lines || row.bins || row.billed);
+}
+
+export async function applyItemUomChange(
+  tx: CoreTx,
+  orgId: string,
+  itemId: string,
+  newUom: string,
+  productCode?: string | null,
+): Promise<void> {
+  const [candidate] = await tx
+    .select({ code: stkItems.code })
+    .from(stkItems)
+    .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)));
+  if (!candidate) throw new StockError('stock item not found', 'item_not_found');
+  const code = productCode ?? candidate.code;
+  await lockProductCodesAgainstUomChange(tx, orgId, [code]);
+  const [item] = await tx
+    .select({ id: stkItems.id, finProductId: stkItems.finProductId })
+    .from(stkItems)
+    .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)))
+    .for('update');
+  if (!item) throw new StockError('stock item not found', 'item_not_found');
+  if (await itemHasHistory(tx, orgId, itemId, { id: item.finProductId, code })) {
+    throw new StockError(
+      'unit of measure cannot be changed once the item has stock or billing history',
+      'uom_immutable',
+    );
+  }
+  await tx
+    .update(stkItems)
+    .set({ uom: newUom, updatedAt: new Date() })
+    .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)));
+}
+
 /** tx-scoped core of {@link updateItem} — see {@link createItemInTx}. */
 export async function updateItemInTx(
   tx: CoreTx,
@@ -369,6 +449,8 @@ export async function updateItemInTx(
     .from(stkItems)
     .where(and(eq(stkItems.id, id), eq(stkItems.orgId, orgId)));
   if (!cur) return null;
+  const changesUom =
+    patch.uom !== undefined && patch.uom.trim().toLowerCase() !== cur.uom.trim().toLowerCase();
   // Merge over the current row — a PATCH only sends the fields it's changing,
   // so the cross-field rule must be checked against the RESULTING config, not
   // just the patch in isolation (e.g. setting consumptionUom alone is fine
@@ -382,9 +464,12 @@ export async function updateItemInTx(
     unitsPerStockUom: unitsPerStockUomRaw == null ? null : Number(unitsPerStockUomRaw),
   });
   if (err) throw new StockError(err, 'invalid_uom_config');
+  if (changesUom) await applyItemUomChange(tx, orgId, id, patch.uom!);
+  const itemPatch = { ...patch };
+  if (changesUom) delete itemPatch.uom;
   const [row] = await tx
     .update(stkItems)
-    .set({ ...patch, updatedAt: new Date() })
+    .set({ ...itemPatch, updatedAt: new Date() })
     .where(and(eq(stkItems.id, id), eq(stkItems.orgId, orgId)))
     .returning();
   return row ?? null;

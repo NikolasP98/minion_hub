@@ -756,6 +756,23 @@ describe('createItem — uom cross-field validation', () => {
 });
 
 describe('updateItem — uom cross-field validation (merged against the current row)', () => {
+  it('refuses a direct stock UOM PATCH when the item has quantity history', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'i1', orgId: 'org-1', code: 'RAW', uom: 'unit' }],
+      [{ code: 'RAW' }],
+      [{ id: 'i1', finProductId: null }],
+    ]);
+    (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute.mockResolvedValue([
+      { ledger: true, entry_lines: false, bins: false, billed: false },
+    ]);
+
+    await expect(updateItem(ctx(db), 'i1', { uom: 'kg' })).rejects.toMatchObject({
+      code: 'uom_immutable',
+    });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
   it('rejects setting consumptionUom via PATCH when neither the patch nor the current row has unitsPerStockUom', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[{ id: 'i1', orgId: 'org-1', consumptionUom: null, unitsPerStockUom: null }]]); // current row

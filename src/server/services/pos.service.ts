@@ -26,12 +26,15 @@ import {
   StockError,
   createItemInTx,
   updateItemInTx,
+  applyItemUomChange,
+  lockProductCodesAgainstUomChange,
   setConsumption,
   deleteConsumption,
   listConsumption,
   listAllComponentEdges,
   type CreateIssueFromInvoiceLine,
 } from './stock.service';
+export { itemHasHistory } from './stock.service';
 import {
   edgesByParent,
   explodeIssueRoots,
@@ -1259,6 +1262,7 @@ async function syncSellableItem(
     itemId?: string;
   },
 ): Promise<void> {
+  await lockProductCodesAgainstUomChange(tx, orgId, [args.code]);
   if (args.itemId) {
     // Publish an existing raw material. The partial unique index
     // (stk_items_org_fin_product_uniq) is the real guard against two items
@@ -1312,42 +1316,6 @@ async function syncSellableItem(
  * Exported for tests. Query failures propagate — a broken history check must
  * never be converted into a fabricated answer in either direction.
  */
-export async function itemHasHistory(
-  tx: CoreTx,
-  orgId: string,
-  itemId: string,
-  product: { id: string | null; code: string | null },
-): Promise<boolean> {
-  const billedPredicates = [
-    ...(product.id != null ? [sql`ii.product_id = ${product.id}`] : []),
-    ...(product.code != null ? [sql`ii.code = ${product.code}`] : []),
-  ];
-  const rows = (await tx.execute(sql`
-    select
-      exists(select 1 from stk_ledger l
-             where l.org_id = ${orgId} and l.item_id = ${itemId}) as ledger,
-      exists(select 1 from stk_entry_lines el
-             where el.org_id = ${orgId} and el.item_id = ${itemId}) as entry_lines,
-      exists(select 1 from stk_bins b
-             where b.org_id = ${orgId} and b.item_id = ${itemId} and b.qty <> 0) as bins,
-      ${
-        billedPredicates.length === 0
-          ? sql`false`
-          : sql`exists(select 1 from fin_invoice_items ii
-                       where ii.org_id = ${orgId}
-                         and (${sql.join(billedPredicates, sql` or `)}))`
-      } as billed
-  `)) as unknown as Array<{
-    ledger: boolean;
-    entry_lines: boolean;
-    bins: boolean;
-    billed: boolean;
-  }>;
-  const r = rows?.[0];
-  if (!r) throw new PosError('item history check returned no row', 'history_check_failed');
-  return !!(r.ledger || r.entry_lines || r.bins || r.billed);
-}
-
 /**
  * Apply a uom change to a PRISTINE item — check and write against the
  * `stk_items` row locked `for update` inside the caller's transaction, so two
@@ -1372,29 +1340,12 @@ async function applyUomChange(
   newUom: string,
   productCode: string | null,
 ): Promise<void> {
-  const [item] = await tx
-    // `finProductId` is read from the LOCKED row rather than taken from the
-    // caller: it is the stable link the billing-history probe keys on (see
-    // itemHasHistory), so the id checked is the one this item actually backs
-    // at lock time.
-    .select({ id: stkItems.id, finProductId: stkItems.finProductId })
-    .from(stkItems)
-    .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)))
-    .for('update');
-  if (!item) throw new PosError('stock item not found', 'item_not_found');
-  if (await itemHasHistory(tx, orgId, itemId, { id: item.finProductId, code: productCode })) {
-    // Unchanged S1 refusal code — this spec only narrows the blanket
-    // refusal to items WITH history; destructive-with-history semantics
-    // are the sibling spec's S3.
-    throw new PosError(
-      'unit of measure cannot be changed once the item has stock or billing history',
-      'uom_immutable',
-    );
+  try {
+    await applyItemUomChange(tx, orgId, itemId, newUom, productCode);
+  } catch (error) {
+    if (error instanceof StockError) throw new PosError(error.message, error.code);
+    throw error;
   }
-  await tx
-    .update(stkItems)
-    .set({ uom: newUom, updatedAt: new Date() })
-    .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)));
 }
 
 /**

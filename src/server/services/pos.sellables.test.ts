@@ -23,7 +23,8 @@ const setConsumptionMock =
 const deleteConsumptionMock = vi.fn<(ctx: unknown, id: string) => Promise<boolean>>();
 const listConsumptionMock =
   vi.fn<(ctx: unknown, filters: unknown) => Promise<Array<{ id: string; itemId: string }>>>();
-vi.mock('./stock.service', () => ({
+vi.mock('./stock.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./stock.service')>()),
   createSourcedIssue: vi.fn(),
   findEntryBySource: vi.fn(),
   submitEntry: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('./stock.service', () => ({
   createItemInTx: (tx: unknown, _orgId: unknown, input: unknown) => createItemMock(tx, input),
   updateItemInTx: (tx: unknown, _orgId: unknown, id: string, patch: unknown) =>
     updateItemMock(tx, id, patch),
+  lockProductCodesAgainstUomChange: vi.fn().mockResolvedValue(undefined),
   setConsumption: (ctx: unknown, input: unknown, actor: unknown) =>
     setConsumptionMock(ctx, input, actor),
   deleteConsumption: (ctx: unknown, id: string) => deleteConsumptionMock(ctx, id),
@@ -79,7 +81,7 @@ function mockExecuteSeq(db: unknown, values: unknown[]) {
     const first = chunks?.[0] as { value?: unknown } | string | undefined;
     const text =
       typeof first === 'string' ? first : Array.isArray(first?.value) ? first.value.join(' ') : '';
-    return /^\s*(set local|select set_config)/i.test(text);
+    return /^\s*(set local|select set_config|select pg_advisory_xact_lock)/i.test(text);
   };
   (db as { execute: unknown }).execute = vi.fn((query: unknown) =>
     isSetupQuery(query) ? Promise.resolve(undefined) : Promise.resolve(queue.shift()),
@@ -1398,6 +1400,7 @@ describe('updateSellable', () => {
             active: true,
           },
         ],
+        [{ code: 'BTX' }], // shared UOM guard: code-key lock target
         [{ id: 'item-14' }], // applyUomChange: stk_items row locked for update
       ]);
       const itemRow = {

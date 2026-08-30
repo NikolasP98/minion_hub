@@ -191,10 +191,11 @@ export async function writeDepositRule(
       for update
     `)) as unknown as Array<{ deposit: DepositConfig | null }>;
     const previousRule = normalizeDepositRule(current?.deposit);
+    const previousKeywords = [...previousRule.keywords].sort();
+    const nextKeywords = [...rule.keywords].sort();
     const classificationChanged =
-      previousRule.label !== rule.label ||
-      previousRule.keywords.length !== rule.keywords.length ||
-      previousRule.keywords.some((keyword, index) => keyword !== rule.keywords[index]);
+      previousKeywords.length !== nextKeywords.length ||
+      previousKeywords.some((keyword, index) => keyword !== nextKeywords[index]);
 
     // Same key-merge shape as crm-contacts.service.ts's persistConfigs (the
     // repository's proven pattern for a shared jsonb KV row): the Drizzle
