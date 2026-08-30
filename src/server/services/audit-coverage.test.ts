@@ -36,7 +36,9 @@ function buildTx(opts: { existingInvoices?: Array<{ id: string; documentId: stri
     },
   }));
   const del = vi.fn(() => ({ where: () => Promise.resolve(undefined) }));
-  const execute = vi.fn().mockResolvedValue(undefined);
+  // finance.service refreshes current product/code resolution through execute;
+  // an empty result is the real no-products response for these audit fixtures.
+  const execute = vi.fn().mockResolvedValue([]);
   const select = vi.fn(() => ({
     from: () => ({ where: () => Promise.resolve(opts.existingInvoices ?? []) }),
   }));
