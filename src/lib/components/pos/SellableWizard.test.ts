@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import type { SellableLike } from './SellableWizard.svelte';
 
 /**
  * The operator half of Slice 1 of
@@ -29,7 +30,7 @@ vi.mock('$lib/state/ui/toast.svelte', () => ({
 
 const { default: SellableWizard } = await import('./SellableWizard.svelte');
 
-const untrackedService = {
+const untrackedService: SellableLike = {
   productId: 'fp-20',
   code: 'CONS',
   name: 'Consulta',
@@ -40,11 +41,7 @@ const untrackedService = {
   itemId: null,
 };
 
-function mountEditor(
-  editing:
-    | typeof untrackedService
-    | (typeof untrackedService & { kind: 'product' | 'bundle'; itemId: string | null }),
-) {
+function mountEditor(editing: SellableLike) {
   const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
   vi.stubGlobal('fetch', fetchMock);
   const rendered = render(SellableWizard, {
