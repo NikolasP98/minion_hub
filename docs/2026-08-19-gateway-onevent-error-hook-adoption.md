@@ -15,14 +15,15 @@ Parent proposal: `proposals/2026-08-17-gateway-client-error-hook-consumer-adopti
 
 ## Hub decisions for the three hooks
 
-| Hook               | Posture            | Reason                                                                                                                                                                                                                                        |
-| ------------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `onEventError`     | `accepted-default` | Hub's `dispatchGatewayEvent` contains and reports handler failures first, so the shared fallback remains a backstop without producing a duplicate report.                                                                                     |
-| `onReconnectError` | `explicit-silent`  | Reconnect state and operator feedback already flow through `onClose` and `onReconnectScheduled`; the package hook is reporting-only. Silence prevents a sustained outage from filling the 100-entry bug-report buffer with duplicate retries. |
-| `onSocketError`    | `explicit-silent`  | Socket `error` is reporting-only and `close` remains the lifecycle authority. Hub derives connection UI state from the close/connect path, so a second report would be duplicate noise.                                                       |
+| Hook               | Posture            | Reason                                                                                                                                                                             |
+| ------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `onEventError`     | `accepted-default` | Hub's `dispatchGatewayEvent` contains and reports handler failures first, so the shared fallback remains a backstop without producing a duplicate report.                          |
+| `onReconnectError` | `accepted-default` | A reconnect rejection carries the exact construction, timeout, or handshake failure that `onClose` cannot preserve. Omitting the hook retains the shared client's fallback report. |
+| `onSocketError`    | `accepted-default` | A socket `error` carries the exact transport error value while `onClose` carries only code and reason. Omitting the hook retains the shared client's fallback report.              |
 
-The two silent hooks are deliberately wired as `() => {}`. They do not alter reconnect, close, or
-connection-health state. This is the package contract's explicit opt-out, not an accidental omission.
+All three hooks use the package defaults. Hub owns event-handler containment, while the two sibling
+defaults preserve lifecycle diagnostics without changing reconnect, close, or connection-health
+control flow.
 
 ## Runtime proof
 
@@ -33,6 +34,10 @@ case instantiates the installed `GatewayClient`, delivers an event through its W
 listener, and proves that a failing hub handler creates exactly one intercepted report without
 closing the client. Because hub contains the failure before returning from `onEvent`, the shared
 client's default does not emit a duplicate.
+
+The same installed-client suite emits a socket `error` and forces an automatic reconnect's socket
+constructor to reject. Each path produces exactly one intercepted fallback report carrying the exact
+error, while the reconnect lifecycle remains owned by the shared client.
 
 `scripts/shared-onevent-error-gate.test.ts` binds the record to the installed declarations, exact
 manifest version, all three hook decisions, and hub's containment wiring. A future dependency or

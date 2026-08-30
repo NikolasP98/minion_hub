@@ -74,11 +74,13 @@ describe('@minion-stack/shared onEventError adoption gate', () => {
     expect(gatewaySource).not.toMatch(/onEventError\s*[:(]/);
   });
 
-  it('records explicit silent postures for redundant lifecycle reports', () => {
+  it('accepts the reporting defaults for sibling lifecycle failures', () => {
     const gatewaySource = read('src/lib/services/gateway.svelte.ts');
 
-    expect(gatewaySource).toMatch(/onReconnectError:\s*\(\)\s*=>\s*\{\}/);
-    expect(gatewaySource).toMatch(/onSocketError:\s*\(\)\s*=>\s*\{\}/);
+    expect(gatewaySource).not.toMatch(/onReconnectError\s*:/);
+    expect(gatewaySource).not.toMatch(/onSocketError\s*:/);
+    expect(read(RECORD_PATH)).toMatch(/`onReconnectError` \| `accepted-default`/);
+    expect(read(RECORD_PATH)).toMatch(/`onSocketError`\s+\| `accepted-default`/);
   });
 
   it('keeps hub containing its own handler failures regardless of the gate', () => {

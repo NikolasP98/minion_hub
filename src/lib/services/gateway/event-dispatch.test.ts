@@ -180,6 +180,62 @@ describe('installed GatewayClient integration', () => {
     await expect(connecting).rejects.toThrow('closed before hello');
     expect(onClose).toHaveBeenCalledExactlyOnceWith(1000, 'client close');
   });
+
+  it('reports the exact socket error once through the package default', async () => {
+    const client = new GatewayClient({
+      url: 'ws://gateway.test',
+      WebSocketImpl: TestWebSocket,
+      onChallenge: async () => ({}),
+    });
+    const connecting = client.connect();
+    const transportError = new Error('transport failed');
+
+    TestWebSocket.instance.emit('error', transportError);
+
+    expect(consoleError).toHaveBeenCalledExactlyOnceWith(
+      '[GatewayClient] socket error:',
+      transportError,
+    );
+
+    client.close();
+    await expect(connecting).rejects.toThrow('closed before hello');
+  });
+
+  it('reports an automatic reconnect construction failure once through the package default', async () => {
+    vi.useFakeTimers();
+    let constructions = 0;
+    const reconnectError = new Error('socket construction failed');
+    class ReconnectWebSocket extends TestWebSocket {
+      constructor() {
+        super();
+        constructions += 1;
+        if (constructions === 2) throw reconnectError;
+      }
+    }
+    const client = new GatewayClient({
+      url: 'ws://gateway.test',
+      WebSocketImpl: ReconnectWebSocket,
+      onChallenge: async () => ({}),
+      autoReconnect: true,
+    });
+
+    try {
+      const connecting = client.connect();
+      ReconnectWebSocket.instance.emit('close', 1006, 'connection lost');
+      await expect(connecting).rejects.toThrow('closed before hello');
+
+      await vi.advanceTimersByTimeAsync(800);
+
+      expect(consoleError).toHaveBeenCalledExactlyOnceWith(
+        '[GatewayClient] reconnect attempt failed:',
+        reconnectError,
+      );
+      expect(constructions).toBe(2);
+    } finally {
+      client.close();
+      vi.useRealTimers();
+    }
+  });
 });
 
 // A handler can throw or reject with ANY value, including one engineered to

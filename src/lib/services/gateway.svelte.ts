@@ -472,13 +472,6 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
     onReconnectScheduled(_delayMs: number) {
       // Reconnect scheduled — conn state already updated in onClose
     },
-
-    // The hub already drives reconnect and connection-health state from
-    // onClose/onReconnectScheduled. Opt out of the shared client's reporting-
-    // only defaults so a sustained outage cannot fill the bug-report ring
-    // buffer with duplicate lifecycle errors.
-    onReconnectError: () => {},
-    onSocketError: () => {},
   });
 
   // Group every gateway RPC from this browser session under one trace id, so the
