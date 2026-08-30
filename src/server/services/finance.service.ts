@@ -111,9 +111,9 @@ export async function upsertInvoicesBatch(
           from fin_products where org_id = ${ctx.tenantId}
       ) t
       order by is_alias desc
-    `)) as unknown as Array<{ code: string; id: string }>;
+    `)) as unknown as Array<{ code: string; id: string }> | undefined;
     const resolvedProductMap = new Map(productMap);
-    for (const product of currentProducts) {
+    for (const product of currentProducts ?? []) {
       resolvedProductMap.set(String(product.code), String(product.id));
     }
 
