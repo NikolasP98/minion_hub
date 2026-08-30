@@ -11,6 +11,7 @@ import {
   icpDefinitionSchema,
   icpDefinitionWriteSchema,
   icpResultSchema,
+  icpResultSchemaForDefinition,
   icpVerdict,
   isIcpConfigured,
   maskIcpResult,
@@ -34,6 +35,12 @@ const validDefinition = {
   description: 'Clinics in Lima with budget for a full treatment plan.',
   criteria: [criterion('budget'), criterion('lima', 5)],
   disqualifiers: ['only ever asks for free consults'],
+};
+
+const validStoredDefinition = {
+  ...validDefinition,
+  version: 1,
+  updatedAt: '2026-08-29T00:00:00.000Z',
 };
 
 const validResult: IcpResult = {
@@ -270,6 +277,34 @@ describe('icpResultSchema — the stored `_icp` blob', () => {
     expect(icpResultSchema.safeParse({ ...validResult, band: 'excellent' }).success).toBe(false);
   });
 
+  it('rejects model-authored free text as a criterion id', () => {
+    expect(
+      icpResultSchema.safeParse({
+        ...validResult,
+        criteria: [{ id: 'patient disclosed HIV', met: true, note: 'private' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('definition-bound validation rejects unknown and duplicate criterion ids', () => {
+    const schema = icpResultSchemaForDefinition(validStoredDefinition);
+    expect(
+      schema.safeParse({
+        ...validResult,
+        criteria: [{ id: 'unknown-slug', met: true, note: '' }],
+      }).success,
+    ).toBe(false);
+    expect(
+      schema.safeParse({
+        ...validResult,
+        criteria: [
+          { id: 'budget', met: true, note: '' },
+          { id: 'budget', met: false, note: '' },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it('rejects a score/band pair that contradicts the disqualified short-circuit', () => {
     expect(
       icpResultSchema.safeParse({ ...validResult, score: 90, band: 'disqualified' }).success,
@@ -373,6 +408,12 @@ describe('maskIcpResult — free text never reaches a masked principal', () => {
       criteria: [{ id: 'budget', met: 'yes', note: 'leak' }],
     }) as Record<string, unknown>;
     expect(masked).toEqual({ criteria: [] });
+  });
+
+  it('drops model-authored free text placed in a criterion id', () => {
+    expect(
+      maskIcpResult({ criteria: [{ id: 'patient disclosed HIV', met: true, note: 'leak' }] }),
+    ).toEqual({ criteria: [] });
   });
 
   it('drops a non-object blob entirely', () => {

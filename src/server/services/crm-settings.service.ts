@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { crmSettings } from '$server/db/pg-crm-schema';
+import { crmContacts, crmSettings } from '$server/db/pg-crm-schema';
 import {
   DEFAULT_DEPOSIT_RULE,
   DEPOSIT_KEYWORDS_MAX,
@@ -221,18 +221,27 @@ export async function resolveIcpDefinition(ctx: CoreCtx): Promise<IcpDefinition 
  * signature-based and never age-based.
  *
  * Only positive integral numbers whose successor is JavaScript-safe are usable.
- * Everything else (including strings, negative/fractional numbers and huge
- * JSON numerics) restarts numbering at 1. Keeping the range check in `numeric`
- * before the `bigint` cast means a corrupt `1e100` cannot raise 22003 and make
- * the settings row permanently unsaveable.
+ * A malformed definition version is ignored, but numbering still advances
+ * beyond every valid `_icp.icpVersion` cached for this org. That prevents a
+ * repaired definition from colliding with a stale verdict's dirty-gate input.
+ * Keeping range checks in `numeric` before `bigint` casts means a corrupt
+ * `1e100` cannot raise 22003 and make the settings row permanently unsaveable.
  */
-function nextIcpVersionSql() {
-  return sql`(case when jsonb_typeof(${crmSettings.value}->'icp'->'version') = 'number'
+function nextIcpVersionSql(orgId: string) {
+  const storedDefinitionVersion = sql`case when jsonb_typeof(${crmSettings.value}->'icp'->'version') = 'number'
       and (${crmSettings.value}->'icp'->>'version')::numeric between 1 and 9007199254740990
       and trunc((${crmSettings.value}->'icp'->>'version')::numeric)
         = (${crmSettings.value}->'icp'->>'version')::numeric
       then ((${crmSettings.value}->'icp'->>'version')::numeric)::bigint
-      else 0 end) + 1`;
+      else 0 end`;
+  const highestCachedVersion = sql`coalesce((select max((c.custom_fields->'_icp'->>'icpVersion')::numeric)::bigint
+      from ${crmContacts} c
+      where c.org_id = ${orgId}
+        and jsonb_typeof(c.custom_fields->'_icp'->'icpVersion') = 'number'
+        and (c.custom_fields->'_icp'->>'icpVersion')::numeric between 1 and 9007199254740990
+        and trunc((c.custom_fields->'_icp'->>'icpVersion')::numeric)
+          = (c.custom_fields->'_icp'->>'icpVersion')::numeric), 0)`;
+  return sql`greatest(${storedDefinitionVersion}, ${highestCachedVersion}) + 1`;
 }
 
 /**
@@ -281,7 +290,7 @@ export async function saveIcpDefinition(
           // `persistWinAnalysis` and `customFieldsMergeSql` rely on, and what
           // makes the version bump a single statement with no pre-image read.
           value: sql`jsonb_set(coalesce(${crmSettings.value}, '{}'::jsonb), '{icp}',
-            ${body}::jsonb || jsonb_build_object('version', ${nextIcpVersionSql()}), true)`,
+            ${body}::jsonb || jsonb_build_object('version', ${nextIcpVersionSql(ctx.tenantId)}), true)`,
           updatedAt: new Date(),
         },
       })

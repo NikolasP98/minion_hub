@@ -52,6 +52,12 @@ beforeEach(async () => {
       value jsonb not null default '{}'::jsonb,
       updated_at timestamptz not null default now()
     );
+    drop table if exists crm_contacts;
+    create table crm_contacts (
+      id uuid primary key,
+      org_id text not null,
+      custom_fields jsonb not null default '{}'::jsonb
+    );
   `);
 });
 
@@ -109,20 +115,24 @@ describe('saveIcpDefinition against a real Postgres engine', () => {
     expect((value.icp as { version: number }).version).toBe(1);
   });
 
-  it('restarts numbering instead of failing when the stored version is not a number', async () => {
+  it('advances beyond cached versions when the stored version is not a number', async () => {
     // `(value->'icp'->>'version')::int` on a corrupt blob is a 22P02 that would
     // make the settings page permanently unsaveable; the jsonb_typeof guard
     // treats it as "no usable previous version".
     await db.execute(sql`
       insert into crm_settings (org_id, value) values ('org-1', '{"icp":{"version":"two"}}'::jsonb)
     `);
-    expect((await saveIcpDefinition(ctx, DEFINITION)).version).toBe(1);
+    await db.execute(sql`
+      insert into crm_contacts (id, org_id, custom_fields)
+      values ('00000000-0000-0000-0000-000000000001', 'org-1', '{"_icp":{"icpVersion":1}}'::jsonb)
+    `);
+    expect((await saveIcpDefinition(ctx, DEFINITION)).version).toBe(2);
   });
 
   it.each([
     ['negative', '-5'],
     ['too large for a JavaScript-safe version', '1e100'],
-  ])('repairs a %s numeric stored version and round-trips version 1', async (_label, version) => {
+  ])('repairs a %s numeric stored version and round-trips safely', async (_label, version) => {
     await db.execute(sql`
       insert into crm_settings (org_id, value)
       values ('org-1', jsonb_build_object('icp', jsonb_build_object('version', ${version}::numeric)))

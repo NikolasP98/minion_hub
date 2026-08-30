@@ -79,6 +79,14 @@ export const ICP_EVIDENCE_REFS_MAX = 10;
  */
 export const ICP_CRITERION_ID_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
+/** Shared positive shape for the trusted definition/result join key. */
+const icpCriterionIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(ICP_CRITERION_ID_MAX)
+  .regex(ICP_CRITERION_ID_RE);
+
 // ── Bands ───────────────────────────────────────────────────────────────────
 
 /** Fit bands. `disqualified` is NOT a threshold of the same ramp — it is a
@@ -159,7 +167,7 @@ export const icpDefinitionWriteSchema = z
       .array(
         z
           .object({
-            id: z.string().trim().min(1).max(ICP_CRITERION_ID_MAX).regex(ICP_CRITERION_ID_RE),
+            id: icpCriterionIdSchema,
             label: z.string().trim().min(1).max(ICP_CRITERION_LABEL_MAX),
             weight: z.number().int().min(ICP_WEIGHT_MIN).max(ICP_WEIGHT_MAX),
           })
@@ -232,7 +240,7 @@ export const icpResultSchema = z
       .array(
         z
           .object({
-            id: z.string().min(1).max(ICP_CRITERION_ID_MAX),
+            id: icpCriterionIdSchema,
             met: z.boolean(),
             note: z.string().max(ICP_NOTE_MAX),
           })
@@ -263,6 +271,35 @@ export const icpResultSchema = z
     { message: 'score and band must agree (see icpVerdict)', path: ['band'] },
   );
 export type IcpResult = z.infer<typeof icpResultSchema>;
+
+/**
+ * Result boundary for judge output. Shape validation alone cannot establish
+ * that a model-returned criterion id came from the trusted org definition, so
+ * every persistence caller must parse with this definition-bound schema.
+ */
+export function icpResultSchemaForDefinition(definition: IcpDefinition) {
+  const trustedIds = new Set(definition.criteria.map((criterion) => criterion.id));
+  return icpResultSchema.superRefine((result, ctx) => {
+    const seen = new Set<string>();
+    for (const [index, criterion] of result.criteria.entries()) {
+      if (seen.has(criterion.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'result criterion ids must be unique',
+          path: ['criteria', index, 'id'],
+        });
+      }
+      seen.add(criterion.id);
+      if (!trustedIds.has(criterion.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'result criterion id must exist in the ICP definition',
+          path: ['criteria', index, 'id'],
+        });
+      }
+    }
+  });
+}
 
 /**
  * TODO(handoff): nothing WRITES `_icp` yet — S3 (judge + dirty gate) and S4
@@ -338,8 +375,9 @@ export function maskIcpResult(raw: unknown): MaskedIcpResult | undefined {
     out.criteria = src.criteria.flatMap((c) => {
       if (c == null || typeof c !== 'object' || Array.isArray(c)) return [];
       const entry = c as Record<string, unknown>;
-      if (typeof entry.id !== 'string' || typeof entry.met !== 'boolean') return [];
-      return [{ id: entry.id, met: entry.met }];
+      const id = icpCriterionIdSchema.safeParse(entry.id);
+      if (!id.success || typeof entry.met !== 'boolean') return [];
+      return [{ id: id.data, met: entry.met }];
     });
   }
   if (typeof src.inputSig === 'string') out.inputSig = src.inputSig;

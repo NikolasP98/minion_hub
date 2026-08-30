@@ -329,7 +329,7 @@ describe('saveIcpDefinition — the write boundary', () => {
     ).rejects.toThrow();
   });
 
-  it('derives the next version IN the update expression and never selects it first', async () => {
+  it('derives the next version IN the update expression without a pre-read', async () => {
     const { db, calls, selectCount } = makeRecordingTx([
       { value: { icp: { ...ICP_INPUT, version: 4, updatedAt: '2026-08-29T00:00:00.000Z' } } },
     ]);
@@ -342,9 +342,12 @@ describe('saveIcpDefinition — the write boundary', () => {
     // (deposit/accounts/winAnalysis) on this row are never rewritten.
     expect(query.sql).toContain('jsonb_set');
     expect(query.sql).toContain("'{icp}'");
-    // The version comes from the row being updated, not from a bound parameter.
+    // The version comes from the row being updated and an org-scoped cached
+    // maximum inside that same expression, not from a separate pre-read.
     expect(query.sql).toContain('jsonb_typeof');
-    expect(query.sql.toLowerCase()).not.toMatch(/\bselect\b/);
+    expect(query.sql.toLowerCase()).toContain('select max');
+    expect(query.sql).toContain('"crm_contacts"');
+    expect(query.params).toContain('org-1');
     const body = query.params.find((p) => typeof p === 'string' && p.includes('description'));
     expect(String(body)).not.toContain('"version"');
   });
