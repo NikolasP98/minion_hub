@@ -2,9 +2,14 @@ import { eq } from 'drizzle-orm';
 import { SignJWT, importJWK, exportJWK, generateKeyPair, type JWK } from 'jose';
 import { userAgents } from '@minion-stack/db/schema';
 import { sealSecret, openSecret } from '@minion-stack/db/pg';
-import { supabaseAdmin } from '$server/supabase';
 import { env } from '$env/dynamic/private';
 import type { TenantContext } from './base';
+import { loadCanonicalProfile } from './canonical-directory.service';
+import {
+  insertGatewaySigningKey,
+  listActiveGatewaySigningKeys,
+  listGatewayPublicJwks,
+} from './gateway-signing-key.repository';
 
 /** Claims included in the gateway JWT payload. */
 export interface GatewayJwtClaims {
@@ -35,14 +40,6 @@ interface SigningKey {
   publicJwk: JWK;
 }
 
-interface SigningKeyRow {
-  kid: string;
-  alg: string;
-  public_jwk: JWK;
-  private_ciphertext: string;
-  private_iv: string;
-}
-
 /**
  * Load the active standalone signing key, generating + persisting one on first
  * use. The private JWK is sealed with `ENCRYPTION_KEY` (NOT `BETTER_AUTH_SECRET`).
@@ -53,19 +50,14 @@ interface SigningKeyRow {
  * caller finds + reuses it.
  */
 async function loadActiveSigningKey(): Promise<SigningKey> {
-  const sb = supabaseAdmin();
-  const { data } = await sb
-    .from('gateway_signing_keys')
-    .select('kid, alg, public_jwk, private_ciphertext, private_iv')
-    .eq('active', true)
-    .order('created_at', { ascending: false });
+  const rows = await listActiveGatewaySigningKeys();
 
   // Iterate newest-first and return the first key this environment can actually
   // open. `ENCRYPTION_KEY` differs between dev and prod, so a row sealed by the
   // other environment (e.g. a dev box pointed at prod Supabase) won't decrypt —
   // skip it rather than throw, and fall back to minting a fresh valid key. JWKS
   // serves every public key, so tokens signed with the fresh key still validate.
-  for (const row of (data as SigningKeyRow[] | null) ?? []) {
+  for (const row of rows) {
     try {
       const privJwk = JSON.parse(openSecret(row.private_ciphertext, row.private_iv)) as JWK;
       const privateKey = await importJWK(privJwk, row.alg);
@@ -87,14 +79,12 @@ async function createSigningKey(): Promise<SigningKey> {
   publicJwk.use = 'sig';
 
   const sealed = sealSecret(JSON.stringify(privateJwk));
-  const sb = supabaseAdmin();
-  await sb.from('gateway_signing_keys').insert({
+  await insertGatewaySigningKey({
     kid,
     alg: ALG,
     public_jwk: publicJwk,
     private_ciphertext: sealed.ciphertext,
     private_iv: sealed.iv,
-    active: true,
   });
 
   const imported = await importJWK(privateJwk, ALG);
@@ -110,12 +100,7 @@ async function createSigningKey(): Promise<SigningKey> {
  */
 export async function getJwksPublicKeys(): Promise<JWK[]> {
   const keys: JWK[] = [];
-  const sb = supabaseAdmin();
-  const { data } = await sb
-    .from('gateway_signing_keys')
-    .select('public_jwk')
-    .order('created_at', { ascending: false });
-  for (const r of (data as { public_jwk: JWK }[] | null) ?? []) keys.push(r.public_jwk);
+  for (const row of await listGatewayPublicJwks()) keys.push(row.public_jwk);
 
   // Legacy Better Auth public keys — overlap-only, removed in S7.
   if (env.GATEWAY_JWT_INCLUDE_LEGACY_JWKS !== 'false') {
@@ -152,12 +137,10 @@ export async function issueGatewayJwt(
   ctx: TenantContext,
   userId: string,
 ): Promise<{ token: string; expiresAt: number }> {
-  // 1. Role from the Supabase profile (auth system-of-record).
-  const { data: profile } = await supabaseAdmin()
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle();
+  // 1. Role from canonical Postgres. Do not route authentication through
+  // PostgREST: a REST-gateway restart previously turned this valid profile
+  // into a misleading "User not found" 500 while direct Postgres was healthy.
+  const profile = await loadCanonicalProfile(userId);
   if (!profile) {
     throw new Error(`User not found: ${userId}`);
   }
