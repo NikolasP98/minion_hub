@@ -310,7 +310,7 @@ jobs:
           SQL
 
       # A JSON report, not just the exit code: `describe.runIf(...)` makes
-      # "0 failed" equally true when nothing ran, so the gate asserts five PASSED
+      # "0 failed" equally true when nothing ran, so the gate asserts six PASSED
       # and zero PENDING. REQUIRE_POS_SELLABLE_POSTGRES additionally makes the
       # suite throw if the URL ever goes missing, so a broken service container
       # cannot degrade this job into a silent skip.
@@ -325,12 +325,12 @@ jobs:
             --outputFile.json=test-results/pos-sellable-transition.json \
             src/server/services/pos.sellables.concurrent.integration.test.ts
 
-      - name: Assert the suite actually ran (5 passed, 0 skipped)
+      - name: Assert the suite actually ran (6 passed, 0 skipped)
         if: always()
         run: |
           test -f test-results/pos-sellable-transition.json \
             || { echo 'no vitest JSON report — the suite never produced one'; exit 1; }
-          jq -e '.numTotalTests == 5 and .numPassedTests == 5
+          jq -e '.numTotalTests == 6 and .numPassedTests == 6
                  and .numFailedTests == 0 and .numPendingTests == 0' \
             test-results/pos-sellable-transition.json > /dev/null \
             || { jq '{numTotalTests, numPassedTests, numFailedTests, numPendingTests}' \
