@@ -28,10 +28,7 @@ import { apiWriteCapability, hasOrgCapability } from '$server/services/rbac.serv
 import { loadPermissionsForUser } from '$server/services/permissions.service';
 import { decideRouteAccess } from '$lib/routes/route-access-policies';
 import { listModuleStates } from '$server/services/modules.service';
-import {
-  isAppRouteBlocked,
-  shouldApplyOrganizationRouteGuards,
-} from '$lib/modules/route-guard';
+import { isAppRouteBlocked, shouldApplyOrganizationRouteGuards } from '$lib/modules/route-guard';
 import {
   proxyRequestHeaders,
   proxyResponseHeaders,
