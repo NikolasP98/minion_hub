@@ -194,6 +194,14 @@ interface ExecTx {
   execute: (query: SQL) => Promise<unknown>;
 }
 
+/** PostgreSQL timestamp → stable JSON version without losing microseconds. */
+export function postgresTimestampVersion(value: SQL = sql`clock_timestamp()`): SQL {
+  return sql`to_char(
+    ${value} at time zone 'UTC',
+    'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+  )`;
+}
+
 /**
  * Takes the org's deposit-config lock for the REST of the caller's
  * transaction (`pg_advisory_xact_lock`, released at commit/rollback — same
@@ -295,10 +303,14 @@ export async function writeDepositRule(
     // newer than the cutoff and be reported fresh. It must also come from the
     // same clock as `crm_win_embeddings.built_at` (the database's), not from
     // this process's — the two are compared below.
-    const [clock] = (await tx.execute(sql`select clock_timestamp() as at`)) as unknown as Array<{
-      at: string | Date;
-    }>;
-    const updatedAt = new Date(clock?.at ?? Date.now()).toISOString();
+    const [clock] = (await tx.execute(sql`
+      select ${postgresTimestampVersion()} as at
+    `)) as unknown as Array<{ at: string }>;
+    if (!clock?.at) throw new Error('failed to read PostgreSQL clock for deposit rule version');
+    // Keep PostgreSQL's six fractional digits verbatim. A JavaScript Date
+    // round-trip truncates them to milliseconds and breaks ordering against
+    // crm_win_embeddings.built_at inside the same millisecond.
+    const updatedAt = clock.at;
     const currentVersion = depositConfigVersion(current?.deposit);
     const stored: DepositConfig = {
       ...patch,

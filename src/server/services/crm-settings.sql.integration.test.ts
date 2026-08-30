@@ -42,7 +42,8 @@ vi.mock('$server/db/with-org-core', () => ({
   ) => scope.db.transaction((tx) => (fn as (tx: unknown) => Promise<T>)(tx)),
 }));
 
-const { writeDepositRule, resolveDepositRule } = await import('./crm-settings.service');
+const { writeDepositRule, resolveDepositRule, postgresTimestampVersion } =
+  await import('./crm-settings.service');
 const { deleteMissingWinEmbeddings } = await import('./crm-similarity.service');
 
 type Client = ReturnType<typeof postgres>;
@@ -91,6 +92,29 @@ async function withSchema<T>(
 const ctxFor = (client: Client) => ({ db: drizzle(client) as never, tenantId: ORG_ID });
 
 describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL', () => {
+  it('preserves PostgreSQL ordering for two instants inside one millisecond', async () => {
+    await withSchema(async ({ client }) => {
+      const earlier = '2031-03-04T05:06:07.123456Z';
+      const later = '2031-03-04T05:06:07.123789Z';
+      const [row] = (await drizzle(client).execute(sql`
+        select ${postgresTimestampVersion(sql`${earlier}::timestamptz`)} as earlier_version,
+               ${postgresTimestampVersion(sql`${later}::timestamptz`)} as later_version,
+               ${earlier}::timestamptz < ${later}::timestamptz as true_order
+      `)) as unknown as Array<{
+        earlier_version: string;
+        later_version: string;
+        true_order: boolean;
+      }>;
+
+      expect(row).toEqual({
+        earlier_version: earlier,
+        later_version: later,
+        true_order: true,
+      });
+      expect(row!.earlier_version).not.toBe(row!.later_version);
+    });
+  }, 30_000);
+
   it('merges the deposit key without disturbing a sibling key, stamps updatedAt server-side, and resolveDepositRule agrees immediately', async () => {
     await withSchema(async ({ schema, owner, client }) => {
       // postgres.js's `.unsafe()` double-encodes a pre-`JSON.stringify`-ed string bound to

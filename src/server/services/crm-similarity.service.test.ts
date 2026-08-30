@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 import { createMockDb } from '$server/test-utils/mock-db';
@@ -41,10 +41,31 @@ vi.mock('./embeddings', () => ({
   toVectorLiteral: (v: number[]) => `[${v.join(',')}]`,
 }));
 
-import { buildWinIndex, persistWinAnalysisIfCurrent } from './crm-similarity.service';
+import {
+  buildWinIndex,
+  getWinAnalysis,
+  persistWinAnalysisIfCurrent,
+} from './crm-similarity.service';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 const dialect = new PgDialect();
+const GENERATION = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+beforeEach(() => {
+  vi.spyOn(crypto, 'randomUUID').mockReturnValue(GENERATION);
+});
+
+function createGenerationDb() {
+  const result = createMockDb();
+  const rawDb = result.db as unknown as { execute: (query: SQL) => Promise<unknown> };
+  const original = rawDb.execute.bind(rawDb);
+  rawDb.execute = vi.fn(async (query: SQL) => {
+    const compiled = dialect.sqlToQuery(query);
+    if (compiled.sql.includes("value->>'winIndexGeneration'")) return [{ generation: GENERATION }];
+    return original(query);
+  });
+  return result;
+}
 function executedSqlContaining(db: unknown, needle: string): SQL {
   const calls = (db as { execute: { mock: { calls: unknown[][] } } }).execute.mock.calls;
   const call = calls.find(([query]) => dialect.sqlToQuery(query as SQL).sql.includes(needle));
@@ -55,12 +76,12 @@ function executedSqlContaining(db: unknown, needle: string): SQL {
 describe('buildWinIndex', () => {
   it('returns { indexed: 0 } when disabled', async () => {
     embeddingsEnabled.mockReturnValueOnce(false);
-    const { db } = createMockDb();
+    const { db } = createGenerationDb();
     expect(await buildWinIndex(ctx(db))).toEqual({ indexed: 0 });
   });
 
   it('PARITY: the full compiled buyer query matches the shipped shape, with the deposit rule bound as a parameter', async () => {
-    const { db, resolve } = createMockDb();
+    const { db, resolve } = createGenerationDb();
     resolve([]);
     await buildWinIndex(ctx(db));
     const { sql, params } = dialect.sqlToQuery(executedSqlContaining(db, 'from crm_contacts c'));
@@ -87,7 +108,7 @@ describe('buildWinIndex', () => {
   // and crm-journey.service.ts) is proven against real PostgreSQL, seeded with
   // a deposit-only description row, in crm-deposit-rule.sql.integration.test.ts.
   it('MAPPING: returns { indexed: 0 } when the buyer query returns no rows', async () => {
-    const { db, resolve } = createMockDb();
+    const { db, resolve } = createGenerationDb();
     resolve([]);
     const result = await buildWinIndex(ctx(db));
     expect(result).toEqual({ indexed: 0 });
@@ -95,13 +116,16 @@ describe('buildWinIndex', () => {
       executedSqlContaining(db, 'delete from crm_win_embeddings'),
     );
     expect(deleteQuery.sql).toContain('contact_id <> all(array[]::uuid[])');
+    expect(
+      dialect.sqlToQuery(executedSqlContaining(db, "value = coalesce(value, '{}'::jsonb)")).sql,
+    ).toContain("- 'winAnalysis'");
   });
 });
 
 describe('per-org deposit rule (S2 — crm_settings.value.deposit decides what counts as "bought")', () => {
   it('the org’s vocabulary is bound into both the filter and the HAVING clause', async () => {
     resolveDepositRule.mockResolvedValueOnce({ keywords: ['adelanto', 'seña'], label: 'Adelanto' });
-    const { db, resolve } = createMockDb();
+    const { db, resolve } = createGenerationDb();
     resolve([]);
     await buildWinIndex(ctx(db));
     const { sql, params } = dialect.sqlToQuery(executedSqlContaining(db, 'from crm_contacts c'));
@@ -116,7 +140,7 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit decides what c
 
   it('an org with NO deposit concept (keywords: []) treats every described line as bought', async () => {
     resolveDepositRule.mockResolvedValueOnce({ keywords: [], label: 'x' });
-    const { db, resolve } = createMockDb();
+    const { db, resolve } = createGenerationDb();
     resolve([]);
     await buildWinIndex(ctx(db));
     const { sql, params } = dialect.sqlToQuery(executedSqlContaining(db, 'from crm_contacts c'));
@@ -126,7 +150,7 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit decides what c
 
   it('the rule is resolved ONCE per rebuild — not once per buyer', async () => {
     resolveDepositRule.mockClear();
-    const { db, resolve } = createMockDb();
+    const { db, resolve } = createGenerationDb();
     resolve([]);
     await buildWinIndex(ctx(db));
     expect(resolveDepositRule).toHaveBeenCalledTimes(1);
@@ -165,6 +189,7 @@ describe('win-index publication vs a concurrent deposit-rule write', () => {
           { contact_id: CONTACT_ID, direction: 'in', content: 'hola', at: '2026-08-01T00:00:00Z' },
         ];
       if (text.includes("value #>> '{deposit,updatedAt}'")) return [{ version: liveVersion() }];
+      if (text.includes("value->>'winIndexGeneration'")) return [{ generation: GENERATION }];
       return [];
     });
     (db as unknown as { execute: unknown }).execute = execute;
@@ -239,6 +264,75 @@ describe('win-index publication vs a concurrent deposit-rule write', () => {
     expect(publishSql(executed)).toHaveLength(0);
     warn.mockRestore();
   });
+
+  it('discards an older same-rule snapshot after a newer rebuild has published', async () => {
+    const OLD_GENERATION = '11111111-1111-4111-8111-111111111111';
+    const NEW_GENERATION = '22222222-2222-4222-8222-222222222222';
+    vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce(OLD_GENERATION)
+      .mockReturnValueOnce(NEW_GENERATION);
+    snapshotVersion = '2026-08-29T09:00:00.000000Z';
+
+    let liveGeneration: string | null = null;
+    let buyerRead = 0;
+    let releaseOlder!: () => void;
+    const olderEmbeddingBlocked = new Promise<void>((resolve) => (releaseOlder = resolve));
+    let olderReachedEmbedding!: () => void;
+    const olderAtEmbedding = new Promise<void>((resolve) => (olderReachedEmbedding = resolve));
+    embedTexts
+      .mockImplementationOnce(async (texts) => {
+        olderReachedEmbedding();
+        await olderEmbeddingBlocked;
+        return texts.map(() => [0.1, 0.2]);
+      })
+      .mockImplementationOnce(async (texts) => texts.map(() => [0.3, 0.4]));
+
+    const { db } = createMockDb();
+    const executed: string[] = [];
+    (db as unknown as { execute: unknown }).execute = vi.fn(async (query: SQL) => {
+      const compiled = dialect.sqlToQuery(query);
+      const text = compiled.sql;
+      if (/^\s*(set local|select set_config)/i.test(text)) return undefined;
+      executed.push(text);
+      if (text.includes("jsonb_build_object('winIndexGeneration'")) {
+        liveGeneration = String(compiled.params[1]);
+        return [];
+      }
+      if (text.includes('from crm_contacts c')) {
+        buyerRead += 1;
+        return buyerRead === 1
+          ? [{ id: CONTACT_ID, bought: ['botox'] }]
+          : [
+              { id: CONTACT_ID, bought: ['botox'] },
+              { id: '22222222-2222-4222-8222-222222222223', bought: ['laser'] },
+            ];
+      }
+      if (text.includes('join messages m')) {
+        const ids =
+          buyerRead === 1 ? [CONTACT_ID] : [CONTACT_ID, '22222222-2222-4222-8222-222222222223'];
+        return ids.map((contact_id) => ({
+          contact_id,
+          direction: 'in',
+          content: 'hola',
+          at: '2026-08-01T00:00:00Z',
+        }));
+      }
+      if (text.includes("value->>'winIndexGeneration'")) return [{ generation: liveGeneration }];
+      if (text.includes("value #>> '{deposit,updatedAt}'")) return [{ version: snapshotVersion }];
+      return [];
+    });
+
+    const older = buildWinIndex(ctx(db));
+    await olderAtEmbedding;
+    const newer = await buildWinIndex(ctx(db));
+    releaseOlder();
+
+    expect(newer).toEqual({ indexed: 2 });
+    expect(await older).toEqual({ indexed: 0, skipped: 'newer-build' });
+    expect(executed.filter((text) => text.includes('delete from crm_win_embeddings'))).toHaveLength(
+      1,
+    );
+  });
 });
 
 describe('win-analysis publication vs a concurrent deposit-rule write', () => {
@@ -260,9 +354,9 @@ describe('win-analysis publication vs a concurrent deposit-rule write', () => {
     });
     (db as unknown as { execute: unknown }).execute = execute;
 
-    expect(await persistWinAnalysisIfCurrent(ctx(db), analysis, '2026-08-29T09:00:00.000Z')).toBe(
-      false,
-    );
+    expect(
+      await persistWinAnalysisIfCurrent(ctx(db), analysis, '2026-08-29T09:00:00.000Z', GENERATION),
+    ).toBe(false);
     expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).not.toHaveBeenCalled();
   });
 
@@ -273,14 +367,29 @@ describe('win-analysis publication vs a concurrent deposit-rule write', () => {
     const execute = vi.fn(async (query: SQL) => {
       const text = dialect.sqlToQuery(query).sql;
       executed.push(text);
-      return text.includes("value #>> '{deposit,updatedAt}'") ? [{ version }] : [];
+      if (text.includes("value #>> '{deposit,updatedAt}'")) return [{ version }];
+      if (text.includes("value->>'winIndexGeneration'")) return [{ generation: GENERATION }];
+      return [];
     });
     (db as unknown as { execute: unknown }).execute = execute;
 
-    expect(await persistWinAnalysisIfCurrent(ctx(db), analysis, version)).toBe(true);
+    expect(await persistWinAnalysisIfCurrent(ctx(db), analysis, version, GENERATION)).toBe(true);
     expect(executed.findIndex((t) => t.includes('pg_advisory_xact_lock'))).toBeLessThan(
       executed.findIndex((t) => t.includes("value #>> '{deposit,updatedAt}'")),
     );
     expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses to serve an analysis from a previous rebuild generation', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([
+      {
+        value: {
+          winIndexGeneration: GENERATION,
+          winAnalysis: { ...analysis, generation: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
+        },
+      },
+    ]);
+    expect(await getWinAnalysis(ctx(db))).toBeNull();
   });
 });

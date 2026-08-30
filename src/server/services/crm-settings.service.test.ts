@@ -49,7 +49,7 @@ function warnSpy() {
 /** The database clock every writeDepositRule test below answers
  *  `select clock_timestamp()` with — deliberately NOT close to this process's
  *  clock, so any stamp taken from `new Date()` instead of the DB is visible. */
-const DB_CLOCK = '2031-03-04T05:06:07.089Z';
+const DB_CLOCK = '2031-03-04T05:06:07.089789Z';
 
 /** Results for a classification-changing write's five statements, in order. */
 function writeSeq(staleCount: number) {
@@ -339,6 +339,7 @@ describe('writeDepositRule', () => {
     // Stored blob: the DB clock's instant, not `new Date()`.
     const [, storedJson] = paramsOf(db, 'insert into crm_settings') as [string, string];
     expect(JSON.parse(storedJson).updatedAt).toBe(DB_CLOCK);
+    expect(JSON.parse(storedJson).updatedAt).toMatch(/\.\d{6}Z$/);
     // …and the same instant bounds the stale-row count, so the two can never
     // be compared across two different clocks.
     expect(paramsOf(db, 'from crm_win_embeddings')).toEqual(['org-1', DB_CLOCK]);

@@ -55,6 +55,8 @@ export interface WinAnalysis {
   basedOn: number;
   /** True when the analysis was grounded in the Master-Brain vector corpus. */
   fromCorpus?: boolean;
+  /** Rebuild generation whose complete index snapshot this analysis describes. */
+  generation?: string;
 }
 
 /**
@@ -141,7 +143,35 @@ async function conversationText(
  *  the org's deposit rule changed after this pass classified its buyers. */
 export interface BuildWinIndexResult {
   indexed: number;
-  skipped?: 'rule-changed';
+  skipped?: 'rule-changed' | 'newer-build';
+}
+
+/** Mint and publish the latest requested generation before reading source data. */
+async function beginWinIndexGeneration(ctx: CoreCtx): Promise<string> {
+  const generation = crypto.randomUUID();
+  return withOrgCore(ctx, async (tx) => {
+    await lockDepositConfig(tx, ctx.tenantId);
+    await tx.execute(sql`
+      insert into crm_settings (org_id, value, updated_at)
+      values (${ctx.tenantId}, jsonb_build_object('winIndexGeneration', ${generation}), now())
+      on conflict (org_id) do update
+      set value = coalesce(crm_settings.value, '{}'::jsonb)
+            || jsonb_build_object('winIndexGeneration', ${generation}),
+          updated_at = now()
+    `);
+    return generation;
+  });
+}
+
+async function readWinIndexGeneration(
+  tx: { execute: (query: SQL) => Promise<unknown> },
+  orgId: string,
+): Promise<string | null> {
+  const [row] = (await tx.execute(sql`
+    select value->>'winIndexGeneration' as generation
+    from crm_settings where org_id = ${orgId}
+  `)) as unknown as Array<{ generation: string | null }>;
+  return row?.generation ?? null;
 }
 
 /**
@@ -159,6 +189,7 @@ export interface BuildWinIndexResult {
  */
 export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> {
   if (!(await enabled(ctx))) return { indexed: 0 };
+  const generation = await beginWinIndexGeneration(ctx);
   // ONE settings read per rebuild — the vocabulary that decides what lands in
   // crm_win_embeddings.bought for every buyer in this pass. Its VERSION is
   // carried to the publication step below and rechecked there: everything
@@ -258,6 +289,9 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> 
     // recheck below and the upsert are one indivisible step against a
     // concurrent `writeDepositRule` (see `lockDepositConfig`).
     await lockDepositConfig(tx, ctx.tenantId);
+    if ((await readWinIndexGeneration(tx, ctx.tenantId)) !== generation) {
+      return 'newer-build' as const;
+    }
     const liveVersion = await readDepositConfigVersion(tx, ctx.tenantId);
     if (liveVersion !== ruleVersion) {
       // The rule changed while this pass was embedding. `bought`/`snippet`
@@ -272,7 +306,7 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> 
           `rebuild (snapshot ${ruleVersion ?? 'default'} → live ${liveVersion ?? 'default'}); ` +
           `discarding this pass rather than publishing classifications built under the old rule`,
       );
-      return false;
+      return 'rule-changed' as const;
     }
     // A rebuild publishes the COMPLETE current set, not merely additions. In
     // particular, a broadened deposit rule can make a formerly qualifying
@@ -301,18 +335,26 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> 
           bought = excluded.bought, snippet = excluded.snippet, built_at = excluded.built_at
       `);
     }
-    return true;
+    // The index snapshot is now authoritative. Invalidate the previous
+    // snapshot's analysis in the same transaction, including for an empty
+    // publication and when the best-effort model call below later fails.
+    await tx.execute(sql`
+      update crm_settings
+      set value = coalesce(value, '{}'::jsonb) - 'winAnalysis', updated_at = now()
+      where org_id = ${ctx.tenantId}
+    `);
+    return null;
   });
   // Nothing was published, so there is nothing to analyze either — the
   // breakdown would describe buyers classified under a rule the org has
   // already replaced.
-  if (!published) return { indexed: 0, skipped: 'rule-changed' };
+  if (published) return { indexed: 0, skipped: published };
 
   // Generate + persist the AI breakdown of these winning conversations. Stored in
   // crm_settings (the last analysis is kept until the next rebuild, so the page
   // shows it instantly without re-calling the model). Best-effort.
   const analysis = await analyzeWins(ctx, docs);
-  if (analysis) await persistWinAnalysisIfCurrent(ctx, analysis, ruleVersion);
+  if (analysis) await persistWinAnalysisIfCurrent(ctx, analysis, ruleVersion, generation);
 
   return { indexed: docs.length };
 }
@@ -479,7 +521,7 @@ ${sample}`;
       fromCorpus,
     };
   } catch {
-    return null; // leave the previous analysis in place
+    return null; // the publication already invalidated the previous generation's analysis
   }
 }
 
@@ -488,14 +530,17 @@ export async function persistWinAnalysisIfCurrent(
   ctx: CoreCtx,
   analysis: WinAnalysis,
   ruleVersion: string | null,
+  generation: string,
 ): Promise<boolean> {
-  const patch = JSON.stringify({ winAnalysis: analysis });
+  const versionedAnalysis = { ...analysis, generation };
+  const patch = JSON.stringify({ winAnalysis: versionedAnalysis });
   return withOrgCore(ctx, async (tx) => {
     await lockDepositConfig(tx, ctx.tenantId);
     if ((await readDepositConfigVersion(tx, ctx.tenantId)) !== ruleVersion) return false;
+    if ((await readWinIndexGeneration(tx, ctx.tenantId)) !== generation) return false;
     await tx
       .insert(crmSettings)
-      .values({ orgId: ctx.tenantId, value: { winAnalysis: analysis } })
+      .values({ orgId: ctx.tenantId, value: { winAnalysis: versionedAnalysis } })
       .onConflictDoUpdate({
         target: crmSettings.orgId,
         set: {
@@ -516,8 +561,13 @@ export async function getWinAnalysis(ctx: CoreCtx): Promise<WinAnalysis | null> 
         .from(crmSettings)
         .where(eq(crmSettings.orgId, ctx.tenantId))
         .limit(1);
-      const v = (row?.value ?? {}) as { winAnalysis?: WinAnalysis };
-      return v.winAnalysis ?? null;
+      const settings = (row?.value ?? {}) as {
+        winAnalysis?: WinAnalysis;
+        winIndexGeneration?: unknown;
+      };
+      return settings.winAnalysis?.generation === settings.winIndexGeneration
+        ? (settings.winAnalysis ?? null)
+        : null;
     });
   } catch {
     return null;
