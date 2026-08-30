@@ -1,6 +1,10 @@
 import { describe, test, expect } from 'vitest';
 import { canonicalPath } from '$lib/canonical-path';
-import { isAppPageRequest, isAppRouteBlocked } from './route-guard';
+import {
+  isAppPageRequest,
+  isAppRouteBlocked,
+  shouldApplyOrganizationRouteGuards,
+} from './route-guard';
 
 describe('isAppPageRequest — request-class classification', () => {
   test('authenticated (app) page request is in-class', () => {
@@ -21,6 +25,16 @@ describe('isAppPageRequest — request-class classification', () => {
   test('a null/undefined route id (unmatched route) is skipped', () => {
     expect(isAppPageRequest(true, null)).toBe(false);
     expect(isAppPageRequest(true, undefined)).toBe(false);
+  });
+});
+
+describe('shouldApplyOrganizationRouteGuards — organization recovery boundary', () => {
+  test('defers organization-scoped guards until recovery supplies tenant context', () => {
+    expect(shouldApplyOrganizationRouteGuards(true, false, '/(app)/home')).toBe(false);
+  });
+
+  test('runs for an authenticated organization-scoped app request', () => {
+    expect(shouldApplyOrganizationRouteGuards(true, true, '/(app)/home')).toBe(true);
   });
 });
 
