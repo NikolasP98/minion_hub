@@ -5,7 +5,7 @@ Issue: [#205](https://github.com/NikolasP98/minion_hub/issues/205)
 Recovery source: closed draft [#118](https://github.com/NikolasP98/minion_hub/pull/118) at
 `fe2014a8f68c5592e4b6abbd9d42b19856c8b83e`
 
-Compared base: `origin/master` at `27013e555ce396431876dc0c45fe431ba56eae09`
+Compared base: `origin/master` at `f0ba8a3647695e279727304e467bd107f90b7710`
 (repository default branch verified as `master` on 2026-08-30)
 
 Merge base: `1b47e8ced0751eeb301c9a24d16082f36fe48f78`
@@ -13,9 +13,10 @@ Merge base: `1b47e8ced0751eeb301c9a24d16082f36fe48f78`
 ## Decision
 
 Do not merge or rebase #118. No product code should be extracted until this reconciliation is
-reviewed. The retained head has 96 changed paths against current `master`: 29 are absent from
-`master` and 67 have diverged; zero are byte-identical. “Already shipped” below therefore means
-the behavior is present or superseded on current `master`, not that the old blob is safe to copy.
+reviewed. #118 itself changes 96 paths from its recorded merge base. Classified against current
+`master`, 29 of those paths are absent and 67 have diverged; zero are byte-identical. “Already
+shipped” below therefore means the behavior is present or superseded on current `master`, not that
+the old blob is safe to copy.
 
 The smallest safe successor order is:
 
