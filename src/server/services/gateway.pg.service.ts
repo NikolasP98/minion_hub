@@ -172,6 +172,64 @@ export async function deleteGateway(id: string): Promise<void> {
   await getCoreDb().delete(gateway).where(eq(gateway.id, id));
 }
 
+export interface GatewayUpdateInput {
+  name?: string;
+  url?: string;
+  token?: string;
+  lastConnectedAt?: number | null;
+}
+
+/**
+ * Update a canonical gateway through the legacy server id carried by the Hub
+ * client. Both id and organization are applied to the mutation itself so the
+ * preceding authorization lookup is not the only tenant boundary.
+ */
+export async function updateGatewayForOrgByServerId(
+  serverId: string,
+  orgId: string,
+  updates: GatewayUpdateInput,
+): Promise<string | null> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return null;
+
+  const now = new Date();
+  const set: Record<string, unknown> = { updatedAt: now };
+  if (typeof updates.name === 'string') set.name = updates.name;
+  if (typeof updates.url === 'string') set.url = updates.url;
+  if (updates.lastConnectedAt === null) set.lastConnectedAt = null;
+  else if (
+    typeof updates.lastConnectedAt === 'number' &&
+    Number.isFinite(updates.lastConnectedAt)
+  ) {
+    set.lastConnectedAt = new Date(updates.lastConnectedAt);
+  }
+  if (typeof updates.token === 'string' && updates.token.length > 0) {
+    const sealed = encrypt(updates.token);
+    set.tokenCiphertext = sealed.ciphertext;
+    set.tokenIv = sealed.iv;
+  }
+
+  const rows = await getCoreDb()
+    .update(gateway)
+    .set(set)
+    .where(and(eq(gateway.id, gatewayId), eq(gateway.orgId, orgId)))
+    .returning({ id: gateway.id });
+  return rows[0]?.id ?? null;
+}
+
+export async function deleteGatewayForOrgByServerId(
+  serverId: string,
+  orgId: string,
+): Promise<string | null> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return null;
+  const rows = await getCoreDb()
+    .delete(gateway)
+    .where(and(eq(gateway.id, gatewayId), eq(gateway.orgId, orgId)))
+    .returning({ id: gateway.id });
+  return rows[0]?.id ?? null;
+}
+
 /** Host row in the shape the frontend + still-Turso `/api/servers/[id]/*` routes
  * expect: `id` is the legacy Turso server id (bridged via gateway.legacy_server_id)
  * so server-scoped routes keep resolving, and `lastConnectedAt` is epoch-ms. */

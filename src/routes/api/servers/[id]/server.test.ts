@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   gatewayBelongsToOrg: vi.fn(),
   resolveGatewayId: vi.fn(),
   userHasGatewayAccess: vi.fn(),
+  updateGatewayForOrgByServerId: vi.fn(),
+  deleteGatewayForOrgByServerId: vi.fn(),
   updateServer: vi.fn(),
   deleteServer: vi.fn(),
 }));
@@ -31,6 +33,8 @@ vi.mock('$server/services/gateway.pg.service', () => ({
   userHasGatewayAccess: mocks.userHasGatewayAccess,
   gatewayBelongsToOrg: mocks.gatewayBelongsToOrg,
   resolveGatewayId: mocks.resolveGatewayId,
+  updateGatewayForOrgByServerId: mocks.updateGatewayForOrgByServerId,
+  deleteGatewayForOrgByServerId: mocks.deleteGatewayForOrgByServerId,
 }));
 
 vi.mock('@minion-stack/db/schema', () => ({
@@ -72,6 +76,8 @@ describe('PUT /api/servers/[id] — tenant boundary', () => {
     mocks.gatewayBelongsToOrg.mockReset();
     mocks.resolveGatewayId.mockReset().mockResolvedValue('gateway-1');
     mocks.userHasGatewayAccess.mockReset().mockResolvedValue(false);
+    mocks.updateGatewayForOrgByServerId.mockReset().mockResolvedValue('gateway-1');
+    mocks.deleteGatewayForOrgByServerId.mockReset().mockResolvedValue('gateway-1');
     mocks.updateServer.mockReset().mockResolvedValue('server-1');
     mocks.deleteServer.mockReset().mockResolvedValue(undefined);
     fakeDbRows = [{ id: 'server-1' }];
@@ -95,21 +101,27 @@ describe('PUT /api/servers/[id] — tenant boundary', () => {
     const response = await PUT(event());
 
     expect(response.status).toBe(200);
-    expect(mocks.updateServer).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(mocks.updateGatewayForOrgByServerId).toHaveBeenCalledWith(
       'server-1',
+      'org-a',
       expect.objectContaining({ name: 'renamed' }),
     );
+    expect(mocks.updateServer).not.toHaveBeenCalled();
   });
 
-  test('404s when the bridged gateway matches the org but its Turso row does not', async () => {
+  test('updates canonical Postgres when the bridged gateway has no legacy Turso row', async () => {
     mocks.gatewayBelongsToOrg.mockResolvedValue(true);
     fakeDbRows = [];
 
     const response = await PUT(event());
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
     expect(mocks.updateServer).not.toHaveBeenCalled();
+    expect(mocks.updateGatewayForOrgByServerId).toHaveBeenCalledWith(
+      'server-1',
+      'org-a',
+      expect.objectContaining({ name: 'renamed' }),
+    );
   });
 
   test('bridged server: non-admin still needs their personal gateway link', async () => {
@@ -124,7 +136,7 @@ describe('PUT /api/servers/[id] — tenant boundary', () => {
     mocks.userHasGatewayAccess.mockResolvedValue(true);
     const allowed = await PUT(event());
     expect(allowed.status).toBe(200);
-    expect(mocks.updateServer).toHaveBeenCalled();
+    expect(mocks.updateGatewayForOrgByServerId).toHaveBeenCalled();
   });
 
   test('bridged server: fails closed when the personal-link lookup throws', async () => {
@@ -193,7 +205,7 @@ describe('PUT /api/servers/[id] — tenant boundary', () => {
   // fabricated id must not receive a false `{ ok: true }`.
   test('404s when updateServer finds no matching row', async () => {
     mocks.gatewayBelongsToOrg.mockResolvedValue(true);
-    mocks.updateServer.mockResolvedValue(null);
+    mocks.updateGatewayForOrgByServerId.mockResolvedValue(null);
 
     const response = await PUT(event());
 
@@ -207,6 +219,8 @@ describe('DELETE /api/servers/[id] — tenant boundary', () => {
     mocks.gatewayBelongsToOrg.mockReset();
     mocks.resolveGatewayId.mockReset().mockResolvedValue('gateway-1');
     mocks.userHasGatewayAccess.mockReset().mockResolvedValue(false);
+    mocks.updateGatewayForOrgByServerId.mockReset().mockResolvedValue('gateway-1');
+    mocks.deleteGatewayForOrgByServerId.mockReset().mockResolvedValue('gateway-1');
     mocks.deleteServer.mockReset().mockResolvedValue(undefined);
     fakeDbRows = [{ id: 'server-1' }];
     fakeDbRowQueue = [];
@@ -227,7 +241,8 @@ describe('DELETE /api/servers/[id] — tenant boundary', () => {
     const response = await DELETE(event());
 
     expect(response.status).toBe(200);
-    expect(mocks.deleteServer).toHaveBeenCalled();
+    expect(mocks.deleteGatewayForOrgByServerId).toHaveBeenCalledWith('server-1', 'org-a');
+    expect(mocks.deleteServer).not.toHaveBeenCalled();
   });
 
   test('bridged server: non-admin delete still requires their personal gateway link', async () => {
@@ -241,6 +256,6 @@ describe('DELETE /api/servers/[id] — tenant boundary', () => {
     mocks.userHasGatewayAccess.mockResolvedValue(true);
     const allowed = await DELETE(event());
     expect(allowed.status).toBe(200);
-    expect(mocks.deleteServer).toHaveBeenCalled();
+    expect(mocks.deleteGatewayForOrgByServerId).toHaveBeenCalled();
   });
 });
