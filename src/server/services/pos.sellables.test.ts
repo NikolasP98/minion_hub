@@ -67,7 +67,9 @@ function mockExecuteSequence(db: unknown, values: unknown[]) {
   let cursor = 0;
   (db as { execute: ReturnType<typeof vi.fn> }).execute.mockImplementation((q: unknown) => {
     const { sql: text } = new PgDialect().sqlToQuery(q as Parameters<PgDialect['sqlToQuery']>[0]);
-    if (text.includes('set_config')) return Promise.resolve(undefined);
+    if (text.includes('set_config') || text.includes('for update')) {
+      return Promise.resolve(undefined);
+    }
     return Promise.resolve(values[cursor++] ?? []);
   });
 }

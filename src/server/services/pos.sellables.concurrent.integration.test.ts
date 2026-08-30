@@ -354,6 +354,78 @@ describe.runIf(Boolean(databaseUrl))(
       }
     }, 45_000);
 
+    it('two concurrent consumption replace-sets leave one complete submitted recipe, never their union', async () => {
+      const orgId = crypto.randomUUID();
+      const owner = postgres(databaseUrl!, { max: 2, prepare: false });
+      const first = postgres(databaseUrl!, { max: 1, prepare: false });
+      const second = postgres(databaseUrl!, { max: 1, prepare: false });
+
+      try {
+        const productId = await seedService(owner, orgId, 'CONS', 'Consulta');
+        const [oldItem, itemB, itemC] = await owner<{ id: string }[]>`
+          insert into stk_items (org_id, code, name, uom)
+          values (${orgId}, 'OLD', 'Old material', 'unit'),
+                 (${orgId}, 'MATB', 'Material B', 'unit'),
+                 (${orgId}, 'MATC', 'Material C', 'unit')
+          returning id::text
+        `;
+        await owner`
+          insert into stk_consumption (org_id, fin_product_id, item_id, qty_per_unit)
+          values (${orgId}, ${productId}, ${oldItem.id}, 1)
+        `;
+
+        let pinReady!: () => void;
+        const pinned = new Promise<void>((resolve) => (pinReady = resolve));
+        let releasePin!: () => void;
+        const releaseRequested = new Promise<void>((resolve) => (releasePin = resolve));
+        const pin = owner.begin(async (tx) => {
+          await tx`select id from fin_products where id = ${productId} for update`;
+          pinReady();
+          await releaseRequested;
+        });
+        await pinned;
+
+        const replaceWithB = updateSellable(
+          appCtx(first, orgId),
+          productId,
+          { consumption: [{ itemId: itemB.id, qtyPerUnit: 2 }] },
+          actor,
+        );
+        const replaceWithC = updateSellable(
+          appCtx(second, orgId),
+          productId,
+          { consumption: [{ itemId: itemC.id, qtyPerUnit: 3 }] },
+          actor,
+        );
+
+        // Both calls must queue at the product lock before either can read the
+        // old recipe. Releasing the pin lets them serialize in either order.
+        await waitForLockWaiters(owner, 2);
+        releasePin();
+        await pin;
+        await expect(Promise.all([replaceWithB, replaceWithC])).resolves.toHaveLength(2);
+
+        const rows = await owner<{ itemId: string; qty: number }[]>`
+          select item_id::text as "itemId", qty_per_unit::float8 as qty
+          from stk_consumption
+          where org_id = ${orgId} and fin_product_id = ${productId}
+          order by item_id
+        `;
+        expect([[{ itemId: itemB.id, qty: 2 }], [{ itemId: itemC.id, qty: 3 }]]).toContainEqual(
+          rows,
+        );
+      } finally {
+        await owner`delete from stk_consumption where org_id = ${orgId}`;
+        await owner`delete from stk_items where org_id = ${orgId}`;
+        await owner`delete from fin_products where org_id = ${orgId}`;
+        await Promise.all([
+          owner.end({ timeout: 5 }),
+          first.end({ timeout: 5 }),
+          second.end({ timeout: 5 }),
+        ]);
+      }
+    }, 45_000);
+
     it('PARITY: create(tracked) and create(service)+update(trackStock) STORE the same item shape', async () => {
       const orgId = crypto.randomUUID();
       const owner = postgres(databaseUrl!, { max: 1, prepare: false });

@@ -1670,6 +1670,17 @@ export async function updateSellable(
    * invariant true rather than merely likely.
    */
   const consumptionAudits = await withOrgCore(ctx, async (tx) => {
+    // Serialize every mutation of this sellable before reading its recipe.
+    // Without this lock, two replace-sets can both read the same old rows;
+    // the second transaction then deletes only that stale snapshot and leaves
+    // the first transaction's newly inserted rows behind, producing a union
+    // that neither caller submitted.
+    await tx.execute(
+      sql`select id from fin_products
+          where id = ${productId} and org_id = ${ctx.tenantId}
+          for update`,
+    );
+
     // Validate every row before the first insert/update/delete. Besides giving
     // direct service callers the same guard as the HTTP schema, this prevents
     // a bad later row from partially applying a replace-set.
