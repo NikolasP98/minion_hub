@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // createMembership now writes only the Supabase `organization_members` row.
-const upsert = vi.fn(async () => ({ error: null }));
-const from = vi.fn(() => ({ upsert }));
+const { upsert, from, hasCanonicalMembership } = vi.hoisted(() => {
+  const upsert = vi.fn(async () => ({ error: null }));
+  return {
+    upsert,
+    from: vi.fn(() => ({ upsert })),
+    hasCanonicalMembership: vi.fn(async () => false),
+  };
+});
 vi.mock('$server/supabase', () => ({ supabaseAdmin: () => ({ from }) }));
+vi.mock('$server/services/canonical-directory.service', () => ({ hasCanonicalMembership }));
 
-import { createMembership } from './membership';
+import { createMembership, hasAnyMembership, isOrgMember } from './membership';
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -41,5 +48,27 @@ describe('createMembership', () => {
       createMembership({ id: 'u1', email: 'a@b.c', displayName: 'A' }, 'org1', 'user'),
     ).rejects.toThrow(/supabaseId is required/);
     expect(upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('membership reads', () => {
+  it('uses the canonical database for any-membership checks', async () => {
+    hasCanonicalMembership.mockResolvedValueOnce(true);
+
+    await expect(hasAnyMembership('profile-1')).resolves.toBe(true);
+    expect(hasCanonicalMembership).toHaveBeenCalledWith('profile-1');
+  });
+
+  it('uses the canonical database for organization-scoped checks', async () => {
+    hasCanonicalMembership.mockResolvedValueOnce(true);
+
+    await expect(isOrgMember('profile-1', 'org-1')).resolves.toBe(true);
+    expect(hasCanonicalMembership).toHaveBeenCalledWith('profile-1', 'org-1');
+  });
+
+  it('propagates database failures instead of reporting a false non-member', async () => {
+    hasCanonicalMembership.mockRejectedValueOnce(new Error('database unavailable'));
+
+    await expect(hasAnyMembership('profile-1')).rejects.toThrow('database unavailable');
   });
 });
