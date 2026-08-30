@@ -132,4 +132,16 @@ describe('console-interceptor hostile payloads', () => {
 
     expect(newestEntry().message).toBe('frame [unserializable]');
   });
+
+  it.each([
+    ['Symbol', Symbol('boom'), 'Symbol(boom)'],
+    ['function', function boom() {}, 'function boom() {}'],
+  ])(
+    'preserves a top-level %s value when JSON.stringify returns undefined',
+    (_kind, value, text) => {
+      expect(() => console.error('failure', value)).not.toThrow();
+
+      expect(newestEntry().message).toBe(`failure ${text}`);
+    },
+  );
 });

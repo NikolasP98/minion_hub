@@ -50,25 +50,17 @@ export function dispatchGatewayEvent<F extends DispatchableFrame>(
     return;
   }
 
-  // A handler that returns a thenable (today's `handleEvent` does not, but its
-  // branches are free to become async) must not lose a late rejection either.
+  // Assimilate every result so promise machinery performs the single
+  // authoritative `.then` lookup. Pre-reading `.then` here would let a
+  // stateful accessor change before Promise.resolve sees it and lose a late
+  // rejection.
   try {
-    if (isThenable(result)) {
-      void Promise.resolve(result).catch((error: unknown) => reportHandlerFailure(frame, error));
-    }
+    void Promise.resolve(result).catch((error: unknown) => reportHandlerFailure(frame, error));
   } catch (error) {
-    // Reading `.then` runs user code when the returned value has an accessor
-    // there, and that read sits outside the call's own try. Contain it too.
+    // Keep this boundary total even if the runtime's promise machinery itself
+    // is replaced or otherwise behaves unexpectedly.
     reportHandlerFailure(frame, error);
   }
-}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    (typeof value === 'object' || typeof value === 'function') &&
-    value !== null &&
-    typeof (value as PromiseLike<unknown>).then === 'function'
-  );
 }
 
 /**

@@ -18,7 +18,7 @@ function safeStringify(value: unknown): string {
   if (typeof value === 'string') return value;
   const seen = new WeakSet();
   try {
-    return JSON.stringify(value, (_key, val) => {
+    const serialised = JSON.stringify(value, (_key, val) => {
       if (typeof val === 'object' && val !== null) {
         if (seen.has(val)) return '[Circular]';
         seen.add(val);
@@ -27,16 +27,18 @@ function safeStringify(value: unknown): string {
       if (val instanceof Error) return `${val.name}: ${val.message}`;
       return val;
     });
+    if (typeof serialised === 'string') return serialised;
   } catch {
-    // A hostile value can defeat `String()` as well — a throwing `toString`,
-    // `valueOf` or `Symbol.toPrimitive`, or a null-prototype object. This is a
-    // reporting sink: it must never turn the failure it is reporting into a new
-    // one, so coercion gets its own guard and a constant last resort.
-    try {
-      return String(value);
-    } catch {
-      return UNSERIALIZABLE;
-    }
+    // Fall through to guarded string coercion.
+  }
+
+  // JSON.stringify can either throw or legitimately return undefined for
+  // top-level Symbols and functions. A hostile value can defeat `String()` as
+  // well, so coercion gets its own guard and a constant last resort.
+  try {
+    return String(value);
+  } catch {
+    return UNSERIALIZABLE;
   }
 }
 

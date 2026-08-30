@@ -99,6 +99,29 @@ describe('dispatchGatewayEvent', () => {
     );
   });
 
+  it('assimilates a stateful thenable with one authoritative then lookup', async () => {
+    const boom = new Error('stateful rejection');
+    let reads = 0;
+    const statefulThenable = Object.defineProperty({}, 'then', {
+      get() {
+        reads += 1;
+        if (reads > 1) return undefined;
+        return (_resolve: (value: unknown) => void, reject: (reason: unknown) => void) => {
+          reject(boom);
+        };
+      },
+    });
+
+    dispatchGatewayEvent(frame, () => statefulThenable);
+
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalledOnce());
+    expect(reads).toBe(1);
+    expect(consoleError).toHaveBeenCalledExactlyOnceWith(
+      `${EVENT_HANDLER_FAILURE_PREFIX} (event=agent, seq=42)`,
+      boom,
+    );
+  });
+
   it('labels a frame that carries no usable event name or seq', () => {
     const boom = new Error('nameless');
 
@@ -294,7 +317,7 @@ describe('dispatchGatewayEvent reporting is total', () => {
     }
   });
 
-  it('contains a throwing `then` accessor on the handler’s return value', () => {
+  it('contains a throwing `then` accessor on the handler’s return value', async () => {
     const boom = new Error('then refused');
 
     expect(() =>
@@ -305,6 +328,7 @@ describe('dispatchGatewayEvent reporting is total', () => {
       })),
     ).not.toThrow();
 
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalledOnce());
     expect(consoleError).toHaveBeenCalledExactlyOnceWith(
       `${EVENT_HANDLER_FAILURE_PREFIX} (event=agent, seq=42)`,
       boom,
