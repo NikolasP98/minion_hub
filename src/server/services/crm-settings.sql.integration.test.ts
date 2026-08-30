@@ -1,4 +1,5 @@
 import postgres from 'postgres';
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { loadEnv } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
@@ -184,10 +185,9 @@ describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL',
         ctxFor(client),
         depositWriteSchema.parse({ keywords: ['reserva', 'adelanto'] }),
       );
-      await client.begin(async (tx) => {
-        await tx.unsafe(`set local search_path to ${schema}, public`);
-        await tx.unsafe(`select set_config('app.current_org_id', $1, true)`, [ORG_ID]);
-        await deleteMissingWinEmbeddings(drizzle(tx) as never, []);
+      await drizzle(client).transaction(async (tx) => {
+        await tx.execute(sql`select set_config('app.current_org_id', ${ORG_ID}, true)`);
+        await deleteMissingWinEmbeddings(tx, []);
       });
 
       const [{ count }] = await owner.unsafe<{ count: number }[]>(

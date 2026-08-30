@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, type SQL } from 'drizzle-orm';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { env } from '$env/dynamic/private';
