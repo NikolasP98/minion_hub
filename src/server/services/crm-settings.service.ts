@@ -220,14 +220,18 @@ export async function resolveIcpDefinition(ctx: CoreCtx): Promise<IcpDefinition 
  * contact then keeps a stale `_icp` forever, because the dirty gate is
  * signature-based and never age-based.
  *
- * The `jsonb_typeof` guard keeps a corrupt stored blob (`version: "two"`) from
- * turning the save into a 22P02 cast error: a non-number restarts numbering at
- * 1, which is safe because a malformed definition is unusable anyway
- * (`normalizeIcpDefinition` reports the org as having none).
+ * Only positive integral numbers whose successor is JavaScript-safe are usable.
+ * Everything else (including strings, negative/fractional numbers and huge
+ * JSON numerics) restarts numbering at 1. Keeping the range check in `numeric`
+ * before the `bigint` cast means a corrupt `1e100` cannot raise 22003 and make
+ * the settings row permanently unsaveable.
  */
 function nextIcpVersionSql() {
   return sql`(case when jsonb_typeof(${crmSettings.value}->'icp'->'version') = 'number'
-      then floor((${crmSettings.value}->'icp'->>'version')::numeric)::bigint
+      and (${crmSettings.value}->'icp'->>'version')::numeric between 1 and 9007199254740990
+      and trunc((${crmSettings.value}->'icp'->>'version')::numeric)
+        = (${crmSettings.value}->'icp'->>'version')::numeric
+      then ((${crmSettings.value}->'icp'->>'version')::numeric)::bigint
       else 0 end) + 1`;
 }
 

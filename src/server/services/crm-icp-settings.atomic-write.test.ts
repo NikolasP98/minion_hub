@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { sql } from 'drizzle-orm';
+import { icpDefinitionSchema } from '$lib/components/crm/crm-icp';
 
 /**
  * `crm_settings.value.icp` atomic-write coverage (spec
@@ -116,6 +117,23 @@ describe('saveIcpDefinition against a real Postgres engine', () => {
       insert into crm_settings (org_id, value) values ('org-1', '{"icp":{"version":"two"}}'::jsonb)
     `);
     expect((await saveIcpDefinition(ctx, DEFINITION)).version).toBe(1);
+  });
+
+  it.each([
+    ['negative', '-5'],
+    ['too large for a JavaScript-safe version', '1e100'],
+  ])('repairs a %s numeric stored version and round-trips version 1', async (_label, version) => {
+    await db.execute(sql`
+      insert into crm_settings (org_id, value)
+      values ('org-1', jsonb_build_object('icp', jsonb_build_object('version', ${version}::numeric)))
+    `);
+
+    const saved = await saveIcpDefinition(ctx, DEFINITION);
+    expect(saved.version).toBe(1);
+    const stored = await storedIcp();
+    expect(stored?.version).toBe(1);
+    expect(icpDefinitionSchema.safeParse(stored).success).toBe(true);
+    expect(await resolveIcpDefinition(ctx)).toEqual(saved);
   });
 
   it("is org-scoped: saving for one org leaves another org's definition alone", async () => {
