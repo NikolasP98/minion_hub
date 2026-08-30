@@ -377,12 +377,11 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // per-client scope filter, so a skipped seq means "not for us", not
       // "dropped". Track it for debugging; never warn on gaps.
       if (typeof frame.seq === 'number') gw.lastSeq = frame.seq;
-      // Contain handler failures here rather than letting them reach the shared
-      // client: its dispatch lets a synchronous throw escape into the socket's
-      // message handler and swallows an async rejection. `dispatchGatewayEvent`
-      // reports either one exactly once via console.error (captured by the
-      // app-wide console interceptor) and leaves connection state alone — a
-      // handler failure is not a disconnection. See
+      // Contain handler failures before they reach the shared client's
+      // `onEventError` fallback. `dispatchGatewayEvent` reports either one
+      // exactly once via console.error (captured by the app-wide interceptor)
+      // and leaves connection state alone — a handler failure is not a
+      // disconnection. See
       // docs/2026-08-19-gateway-onevent-error-hook-adoption.md.
       dispatchGatewayEvent(frame as unknown as Record<string, unknown>, handleEvent);
     },
@@ -473,6 +472,13 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
     onReconnectScheduled(_delayMs: number) {
       // Reconnect scheduled — conn state already updated in onClose
     },
+
+    // The hub already drives reconnect and connection-health state from
+    // onClose/onReconnectScheduled. Opt out of the shared client's reporting-
+    // only defaults so a sustained outage cannot fill the bug-report ring
+    // buffer with duplicate lifecycle errors.
+    onReconnectError: () => {},
+    onSocketError: () => {},
   });
 
   // Group every gateway RPC from this browser session under one trace id, so the

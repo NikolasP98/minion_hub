@@ -7,6 +7,7 @@
 // sink, using the real `console-interceptor` module rather than a stand-in.
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GatewayClient } from '@minion-stack/shared/gateway';
 import { dispatchGatewayEvent, EVENT_HANDLER_FAILURE_PREFIX } from './event-dispatch';
 import { getConsoleBuffer, installInterceptor } from '$lib/utils/console-interceptor';
 
@@ -124,6 +125,60 @@ describe('dispatchGatewayEvent', () => {
     expect(captured[0].message).toContain(EVENT_HANDLER_FAILURE_PREFIX);
     expect(captured[0].message).toContain('event=agent, seq=42');
     expect(captured[0].message).toContain('handler exploded');
+  });
+});
+
+class TestWebSocket {
+  static instance: TestWebSocket;
+
+  readyState = 0;
+  private listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+
+  constructor() {
+    TestWebSocket.instance = this;
+  }
+
+  on(event: string, listener: (...args: unknown[]) => void): void {
+    const listeners = this.listeners.get(event) ?? [];
+    listeners.push(listener);
+    this.listeners.set(event, listeners);
+  }
+
+  send(): void {}
+
+  close(code = 1000, reason = 'test close'): void {
+    this.emit('close', code, reason);
+  }
+
+  emit(event: string, ...args: unknown[]): void {
+    for (const listener of this.listeners.get(event) ?? []) listener(...args);
+  }
+}
+
+describe('installed GatewayClient integration', () => {
+  it('produces one hub report without closing the client', async () => {
+    const onClose = vi.fn();
+    const client = new GatewayClient({
+      url: 'ws://gateway.test',
+      WebSocketImpl: TestWebSocket,
+      onChallenge: async () => ({}),
+      onEvent: (gatewayFrame) =>
+        dispatchGatewayEvent(gatewayFrame, () => {
+          throw new Error('real client handler failure');
+        }),
+      onClose,
+    });
+    const connecting = client.connect();
+
+    TestWebSocket.instance.emit('message', JSON.stringify(frame));
+
+    expect(consoleError).toHaveBeenCalledOnce();
+    expect(getConsoleBuffer().at(-1)?.message).toContain(EVENT_HANDLER_FAILURE_PREFIX);
+    expect(onClose).not.toHaveBeenCalled();
+
+    client.close();
+    await expect(connecting).rejects.toThrow('closed before hello');
+    expect(onClose).toHaveBeenCalledExactlyOnceWith(1000, 'client close');
   });
 });
 

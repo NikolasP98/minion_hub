@@ -1,19 +1,14 @@
 /**
  * Containment for hub's gateway event handler.
  *
- * The shared `GatewayClient` dispatches with
- * `void Promise.resolve(this.opts.onEvent?.(frame)).catch(() => {})`
- * (`node_modules/@minion-stack/shared/dist/gateway/client.js`), which loses
- * handler failures two different ways: a SYNCHRONOUS throw happens while
- * evaluating `this.opts.onEvent?.(frame)`, i.e. before `Promise.resolve` can
- * wrap it, so it escapes into the socket's message handler as an uncaught
- * error; an ASYNCHRONOUS rejection lands in the empty `catch` and vanishes.
+ * `@minion-stack/shared` provides an `onEventError` fallback, but hub contains
+ * failures at its own dispatch boundary first. This preserves useful event and
+ * sequence context, reports exactly once through `console.error`, and keeps the
+ * shared fallback as defense in depth for failures outside this boundary. See
+ * `docs/2026-08-19-gateway-onevent-error-hook-adoption.md`.
  *
- * `@minion-stack/shared`'s `onEventError` hook is the upstream fix for this, but
- * no published build declares it yet — see
- * `docs/2026-08-19-gateway-onevent-error-hook-adoption.md`. This module is the
- * part of that outcome hub owns and can ship today: it contains the failure at
- * hub's own dispatch site and reports it exactly once through `console.error`,
+ * This module contains the failure at hub's own dispatch site and reports it
+ * exactly once through `console.error`,
  * which `src/lib/utils/console-interceptor.ts` captures into the bug-report
  * buffer.
  *
