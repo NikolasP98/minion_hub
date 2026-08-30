@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CAPTURE_NAVIGATION_ATTEMPTS,
@@ -42,5 +43,15 @@ describe('UI-audit capture readiness', () => {
 
     expect(countColorBuckets(solid)).toBe(1);
     expect(countColorBuckets(varied)).toBe(2);
+  });
+
+  it('keeps the login shader behind the public task panel', () => {
+    const source = readFileSync(
+      new URL('../../lib/components/decorations/LoginShader.svelte', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).toContain('-z-[var(--layer-sticky)]');
+    expect(source).not.toContain('z-[var(--layer-base)]');
   });
 });
