@@ -46,6 +46,26 @@ export interface IdentityResolution {
 
 const ANON: IdentityResolution = { locals: {}, bypassGate: false };
 
+const SUPABASE_AUTH_COOKIE = /^sb-[a-z0-9]+-auth-token(?:\.\d+)?$/i;
+
+/**
+ * Remove only Supabase's browser-session cookie (including its numbered SSR
+ * chunks). A rejected refresh token otherwise survives the request and makes
+ * every protected page fail before the normal anonymous -> /login redirect.
+ */
+export function clearRejectedSupabaseSession(
+  cookies: Pick<RequestEvent['cookies'], 'getAll' | 'delete'>,
+): number {
+  const names = new Set(
+    cookies
+      .getAll()
+      .map(({ name }) => name)
+      .filter((name) => SUPABASE_AUTH_COOKIE.test(name)),
+  );
+  for (const name of names) cookies.delete(name, { path: '/' });
+  return names.size;
+}
+
 // Short-TTL cache for resolved gateway/server bearer tokens. Without it, EVERY
 // metrics/ingest push (high-frequency, token never changes) scans the whole
 // `gateway` (+ Turso `servers`) table and runs decryptToken() on each row. The
@@ -206,7 +226,18 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
   // getClaims() do internally — so it adds no round-trip. We use it as the cache
   // key. Honor the org switcher: the active_org cookie (set by /api/active-org)
   // is the preferred org, so it's part of the key (an org switch ⇒ new key).
-  const { data: sessionData } = await supabase.auth.getSession();
+  let sessionResult: Awaited<ReturnType<typeof supabase.auth.getSession>>;
+  try {
+    sessionResult = await supabase.auth.getSession();
+  } catch {
+    clearRejectedSupabaseSession(event.cookies);
+    return ANON;
+  }
+  if (sessionResult.error) {
+    clearRejectedSupabaseSession(event.cookies);
+    return ANON;
+  }
+  const { data: sessionData } = sessionResult;
   const token = sessionData.session?.access_token ?? null;
   if (!token) return ANON;
 
@@ -220,8 +251,17 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
   // Cache miss: verify the token (getClaims — local when asymmetric keys exist)
   // and resolve profile + tenant. A bad/forged token fails here and is NEVER
   // cached, so a cache hit always implies a previously-verified token.
-  const bridged = await resolveSupabaseUser(event, supabase, token);
-  if (!bridged) return ANON;
+  let bridged: Awaited<ReturnType<typeof resolveSupabaseUser>>;
+  try {
+    bridged = await resolveSupabaseUser(event, supabase, token);
+  } catch {
+    clearRejectedSupabaseSession(event.cookies);
+    return ANON;
+  }
+  if (!bridged) {
+    clearRejectedSupabaseSession(event.cookies);
+    return ANON;
+  }
   const db = getDb();
 
   // Tenancy source of truth = Supabase organization_members (keyed by profile

@@ -14,7 +14,8 @@
     // Defer one tick so CSS vars are applied before we read them
     requestAnimationFrame(() => {
       const raw = getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-accent').trim();
+        .getPropertyValue('--color-accent')
+        .trim();
       const c = document.createElement('canvas');
       c.width = c.height = 1;
       const ctx2d = c.getContext('2d')!;
@@ -222,9 +223,11 @@
     // Fullscreen quad: two triangles covering NDC [-1,1]
     const buf = ctx.createBuffer();
     ctx.bindBuffer(ctx.ARRAY_BUFFER, buf);
-    ctx.bufferData(ctx.ARRAY_BUFFER,
-      new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]),
-      ctx.STATIC_DRAW);
+    ctx.bufferData(
+      ctx.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+      ctx.STATIC_DRAW,
+    );
     const aPos = ctx.getAttribLocation(prog, 'a_pos');
     ctx.enableVertexAttribArray(aPos);
     ctx.vertexAttribPointer(aPos, 2, ctx.FLOAT, false, 0, 0);
@@ -233,21 +236,28 @@
     ctx.blendFunc(ctx.SRC_ALPHA, ctx.ONE_MINUS_SRC_ALPHA);
 
     // Uniform locations
-    const uRes    = ctx.getUniformLocation(prog, 'u_resolution');
-    const uTime   = ctx.getUniformLocation(prog, 'u_time');
-    const uMouse  = ctx.getUniformLocation(prog, 'u_mouse');
-    const uTile   = ctx.getUniformLocation(prog, 'u_tile_size');
-    const uOpac   = ctx.getUniformLocation(prog, 'u_opacity');
+    const uRes = ctx.getUniformLocation(prog, 'u_resolution');
+    const uTime = ctx.getUniformLocation(prog, 'u_time');
+    const uMouse = ctx.getUniformLocation(prog, 'u_mouse');
+    const uTile = ctx.getUniformLocation(prog, 'u_tile_size');
+    const uOpac = ctx.getUniformLocation(prog, 'u_opacity');
     const uAccent = ctx.getUniformLocation(prog, 'u_accent');
-    const uPat    = ctx.getUniformLocation(prog, 'u_pattern');
+    const uPat = ctx.getUniformLocation(prog, 'u_pattern');
 
     const PATTERN_MAP: Record<string, number> = {
-      dots: 0, grid: 1, crosses: 2, diagonal: 3, hexagons: 4
+      dots: 0,
+      grid: 1,
+      crosses: 2,
+      diagonal: 3,
+      hexagons: 4,
     };
 
-    let W = 0, H = 0;
-    let mouseX = 0.5, mouseY = 0.5;
-    let mx = 0.5, my = 0.5;
+    let W = 0,
+      H = 0;
+    let mouseX = 0.5,
+      mouseY = 0.5;
+    let mx = 0.5,
+      my = 0.5;
     let raf: number;
 
     function resize() {
@@ -270,13 +280,13 @@
       ctx.clearColor(0, 0, 0, 0);
       ctx.clear(ctx.COLOR_BUFFER_BIT);
 
-      ctx.uniform2f(uRes,   W, H);
-      ctx.uniform1f(uTime,  t);
+      ctx.uniform2f(uRes, W, H);
+      ctx.uniform1f(uTime, t);
       ctx.uniform2f(uMouse, mx, my);
-      ctx.uniform1f(uTile,  bgPattern.size);
-      ctx.uniform1f(uOpac,  bgPattern.opacity / 100);
+      ctx.uniform1f(uTile, bgPattern.size);
+      ctx.uniform1f(uOpac, bgPattern.opacity / 100);
       ctx.uniform3f(uAccent, accentColor[0], accentColor[1], accentColor[2]);
-      ctx.uniform1i(uPat,   PATTERN_MAP[bgPattern.pattern] ?? 0);
+      ctx.uniform1i(uPat, PATTERN_MAP[bgPattern.pattern] ?? 0);
 
       ctx.drawArrays(ctx.TRIANGLES, 0, 6);
       raf = requestAnimationFrame(draw);
@@ -299,4 +309,7 @@
   });
 </script>
 
-<canvas bind:this={canvas} class="fixed inset-0 w-full h-full pointer-events-none z-[var(--layer-base)]"></canvas>
+<canvas
+  bind:this={canvas}
+  class="fixed inset-0 w-full h-full pointer-events-none -z-[var(--layer-sticky)]"
+></canvas>
