@@ -1299,8 +1299,8 @@ async function syncSellableItem(
 /**
  * True when ANY history references the item: a ledger/movement row, a stock
  * entry line (drafts included — a draft's qty is already expressed in the
- * current uom), a non-zero bin quantity, or a billed invoice line for the
- * product this item backs.
+ * current uom), a non-zero bin/accrual quantity, or a billed invoice line for
+ * the product this item backs.
  *
  * ★ The billing predicate keys on the PRODUCT LINK
  * (`fin_invoice_items.product_id`), not on the code alone. `loadProductMap`
@@ -1362,6 +1362,7 @@ export async function createSellable(
   ctx: CoreCtx,
   input: SellableInput,
   actor: Actor,
+  hooks: { afterProductUpsert?: () => Promise<void> } = {},
 ): Promise<SellableRow> {
   const code = input.code ? normalizeCode(input.code) : slugifyCode(input.name);
   // Validate at the trust boundary, not just in the wizard: this is also the
@@ -1388,6 +1389,7 @@ export async function createSellable(
     if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
     throw e;
   }
+  await hooks.afterProductUpsert?.();
 
   const [product] = await withOrgCore(ctx, (tx) =>
     tx

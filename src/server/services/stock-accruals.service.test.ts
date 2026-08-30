@@ -41,6 +41,7 @@ describe('accrueConsumption', () => {
       [], // existing accruals for source (none)
       [{ id: 'w1', isDefault: true }], // warehouses (default resolution)
       [], // stk_item_components (Slice 1b) — none, so the explosion is the identity
+      [{ id: 'i1' }], // shared item lock before reading conversion
       [{ id: 'i1', unitsPerStockUom: '500' }], // items (500 ml per caja)
       [{ itemId: 'i1', valuationRate: '100' }], // bins (S/100 per caja)
       [], // delete open rows
@@ -63,6 +64,7 @@ describe('accrueConsumption', () => {
       [{ id: 'w1', isDefault: false }], // warehouses
       [{ itemId: 'i1', qtyPerUnit: '2' }], // mapping: 2 per unit
       [], // stk_item_components (Slice 1b) — none
+      [{ id: 'i1' }], // shared item lock before reading conversion
       [{ id: 'i1', unitsPerStockUom: null }], // item (no conversion)
       [], // bins (no bin yet → cost 0)
       [], // delete

@@ -64,6 +64,7 @@ vi.mock('$server/db/with-org-core', () => ({
 const { createSellable, updateSellable, PosError } = await import('./pos.service');
 const { createEntry, createSourcedIssue, createIssueFromInvoice, updateItem } =
   await import('./stock.service');
+const { accrueConsumption } = await import('./stock-accruals.service');
 const { upsertInvoicesBatch } = await import('./finance.service');
 
 type Client = ReturnType<typeof postgres>;
@@ -166,6 +167,7 @@ const DDL = `
     org_id text not null,
     name text not null,
     parent_id uuid references stk_warehouses (id),
+    is_default boolean not null default false,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
   );
@@ -271,6 +273,29 @@ const DDL = `
     note text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
+  );
+  create table stk_item_components (
+    org_id text not null,
+    parent_item_id uuid not null references stk_items (id),
+    child_item_id uuid not null references stk_items (id),
+    qty numeric not null
+  );
+  create table stk_accruals (
+    id uuid primary key default gen_random_uuid(),
+    org_id text not null,
+    source text not null,
+    source_id uuid not null,
+    fin_product_id uuid,
+    item_id uuid not null references stk_items (id),
+    warehouse_id uuid not null references stk_warehouses (id),
+    qty_consumption numeric not null,
+    qty numeric not null,
+    est_unit_cost numeric not null default 0,
+    est_value numeric not null default 0,
+    status text not null default 'open',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (org_id, source, source_id, item_id)
   );
   create table fin_product_components (
     id uuid primary key default gen_random_uuid(),
@@ -866,6 +891,46 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
     });
   }, 30_000);
 
+  it('LOCK PROTOCOL: an accrual write serializes with and becomes immutable UOM history', async () => {
+    await withSchema(2, async ({ owner, clients }) => {
+      const itemId = crypto.randomUUID();
+      const warehouseId = crypto.randomUUID();
+      await owner.unsafe(
+        `insert into stk_items (id, org_id, code, name, uom, units_per_stock_uom)
+         values ($1, $2, 'ACCRUAL', 'Accrual item', 'unit', 10)`,
+        [itemId, ORG_ID],
+      );
+      await owner.unsafe(
+        `insert into stk_warehouses (id, org_id, name, is_default) values ($1, $2, 'Main', true)`,
+        [warehouseId, ORG_ID],
+      );
+
+      const uomPid = await backendPid(clients[0]!);
+      const accrualPid = await backendPid(clients[1]!);
+      await owner.unsafe('begin');
+      await owner.unsafe('select id from stk_items where id = $1 for update', [itemId]);
+      const uomPromise = updateItem(ctxFor(clients[0]!), itemId, { uom: 'kg' });
+      const accrualPromise = accrueConsumption(ctxFor(clients[1]!), {
+        source: 'booking',
+        sourceId: crypto.randomUUID(),
+        finProductId: null,
+        warehouseId,
+        lines: [{ itemId, qtyConsumption: 5 }],
+      });
+      await waitUntilBlocked(owner, [uomPid, accrualPid]);
+      await owner.unsafe('commit');
+
+      const [uomResult, accrualResult] = await Promise.allSettled([uomPromise, accrualPromise]);
+      expect(accrualResult).toMatchObject({ status: 'fulfilled', value: 1 });
+      if (uomResult.status === 'rejected') {
+        expect(uomResult.reason).toMatchObject({ code: 'uom_immutable' });
+      }
+      await expect(updateItem(ctxFor(clients[0]!), itemId, { uom: 'mL' })).rejects.toMatchObject({
+        code: 'uom_immutable',
+      });
+    });
+  }, 30_000);
+
   it('LOCK PROTOCOL: product creation after invoice refresh cannot bypass the code lock', async () => {
     await withSchema(2, async ({ owner, clients }) => {
       let releaseRefresh!: () => void;
@@ -886,6 +951,8 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
       );
       await refreshed;
 
+      let markProductCommitted!: () => void;
+      const productCommitted = new Promise<void>((resolve) => (markProductCommitted = resolve));
       const createPromise = createSellable(
         ctxFor(clients[1]!),
         {
@@ -896,22 +963,18 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
           unitPrice: 1,
         },
         ACTOR,
+        { afterProductUpsert: async () => markProductCommitted() },
       );
-      let productCreatedBeforeRelease = false;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        const [product] = await owner.unsafe<{ id: string }[]>(
-          `select id from fin_products where org_id = $1 and code = 'AFTER'`,
-          [ORG_ID],
-        );
-        if (product) {
-          productCreatedBeforeRelease = true;
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
+      await productCommitted;
+      const [product] = await owner.unsafe<{ id: string }[]>(
+        `select id from fin_products where org_id = $1 and code = 'AFTER'`,
+        [ORG_ID],
+      );
+      expect(product).toBeDefined();
+      const createPid = await backendPid(clients[1]!);
+      await waitUntilBlocked(owner, [createPid]);
       releaseRefresh();
       await Promise.all([invoicePromise, createPromise]);
-      expect(productCreatedBeforeRelease).toBe(true);
 
       const [line] = await owner.unsafe<{ product_id: string | null }[]>(
         `select product_id from fin_invoice_items where code = 'AFTER'`,

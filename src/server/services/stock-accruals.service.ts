@@ -31,6 +31,7 @@ import {
   buildServiceIssuePreview,
   createServiceIssue,
   findEntryBySource,
+  lockItemsAgainstUomChange,
   submitEntry,
   StockError,
   type Actor,
@@ -152,6 +153,10 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
     }
 
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
+    // Accrual qty is expressed in the item's current stock UOM. Hold the same
+    // shared item lock as every other quantity-history writer before reading
+    // the conversion and through replacement of the open accrual set.
+    await lockItemsAgainstUomChange(tx, orgId, itemIds);
     const items = await tx
       .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
       .from(stkItems)

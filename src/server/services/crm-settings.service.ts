@@ -184,6 +184,11 @@ export async function writeDepositRule(
   const rule = normalizeDepositRule(stored);
 
   return withOrgCore(ctx, async (tx) => {
+    // The settings row may not exist yet, so its row lock alone cannot
+    // serialize the first write with a concurrent win-index publication.
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`crm-deposit-rule:${ctx.tenantId}`}, 0))`,
+    );
     const [current] = (await tx.execute(sql`
       select value -> 'deposit' as deposit
       from crm_settings

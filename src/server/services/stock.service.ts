@@ -387,6 +387,7 @@ export async function itemHasHistory(
       exists(select 1 from stk_ledger l where l.org_id = ${orgId} and l.item_id = ${itemId}) as ledger,
       exists(select 1 from stk_entry_lines el where el.org_id = ${orgId} and el.item_id = ${itemId}) as entry_lines,
       exists(select 1 from stk_bins b where b.org_id = ${orgId} and b.item_id = ${itemId} and b.qty <> 0) as bins,
+      exists(select 1 from stk_accruals a where a.org_id = ${orgId} and a.item_id = ${itemId} and a.qty <> 0) as accruals,
       ${
         billedPredicates.length === 0
           ? sql`false`
@@ -398,11 +399,12 @@ export async function itemHasHistory(
     ledger: boolean;
     entry_lines: boolean;
     bins: boolean;
+    accruals: boolean;
     billed: boolean;
   }>;
   const row = rows?.[0];
   if (!row) throw new StockError('item history check returned no row', 'history_check_failed');
-  return !!(row.ledger || row.entry_lines || row.bins || row.billed);
+  return !!(row.ledger || row.entry_lines || row.bins || row.accruals || row.billed);
 }
 
 export async function applyItemUomChange(

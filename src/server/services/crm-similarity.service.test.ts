@@ -11,7 +11,10 @@ vi.mock('./modules.service', () => ({ bothEnabled: (...a: unknown[]) => bothEnab
 // (proven there, against real blobs, in crm-settings.service.test.ts). Mocked
 // here so each test can state WHICH org's vocabulary the service is threading.
 const resolveDepositRule = vi.fn<() => Promise<DepositRule>>(async () => DEFAULT_DEPOSIT_RULE);
-vi.mock('./crm-settings.service', () => ({ resolveDepositRule: () => resolveDepositRule() }));
+vi.mock('./crm-settings.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./crm-settings.service')>();
+  return { ...actual, resolveDepositRule: () => resolveDepositRule() };
+});
 
 import { DEFAULT_DEPOSIT_RULE, type DepositRule } from './crm-deposit-rule';
 
