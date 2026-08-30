@@ -28,7 +28,10 @@ import { apiWriteCapability, hasOrgCapability } from '$server/services/rbac.serv
 import { loadPermissionsForUser } from '$server/services/permissions.service';
 import { decideRouteAccess } from '$lib/routes/route-access-policies';
 import { listModuleStates } from '$server/services/modules.service';
-import { isAppPageRequest, isAppRouteBlocked } from '$lib/modules/route-guard';
+import {
+  isAppRouteBlocked,
+  shouldApplyOrganizationRouteGuards,
+} from '$lib/modules/route-guard';
 import {
   proxyRequestHeaders,
   proxyResponseHeaders,
@@ -180,7 +183,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
     }
     // Bypass covers AUTHENTICATION only — module/kind availability still
     // applies, or auth-disabled dev reaches routes prod 404s (the per-route
-    // guards this hook replaced are gone). isAppPageRequest keeps the
+    // guards this hook replaced are gone). The organization guard classifier keeps the
     // /api/metrics bearer bypass (no user / no (app) route id) out of it.
     await applyModuleAvailabilityGuard(event);
     await applyRouteAccessGuard(event);
@@ -200,7 +203,17 @@ const appHandle: Handle = async ({ event, resolve }) => {
  */
 async function applyRouteAccessGuard(event: Parameters<Handle>[0]['event']): Promise<void> {
   const user = event.locals.user;
-  if (!user || !isAppPageRequest(true, event.route.id)) return;
+  if (
+    !shouldApplyOrganizationRouteGuards(
+      Boolean(user),
+      Boolean(event.locals.tenantCtx),
+      event.route.id,
+    )
+  ) {
+    return;
+  }
+  // shouldApplyOrganizationRouteGuards proves the user exists for this branch.
+  if (!user) return;
   // Cached (2m) — the same resolver the layout bundle serves to the client.
   const permissions = await loadPermissionsForUser(event.locals, user.id);
   const granted = new Set(permissions.permissions);
@@ -226,15 +239,22 @@ async function applyRouteAccessGuard(event: Parameters<Handle>[0]['event']): Pro
  * kind-restricted or toggled off for this org.
  */
 async function applyModuleAvailabilityGuard(event: Parameters<Handle>[0]['event']): Promise<void> {
-  if (!isAppPageRequest(Boolean(event.locals.user), event.route.id)) return;
+  if (
+    !shouldApplyOrganizationRouteGuards(
+      Boolean(event.locals.user),
+      Boolean(event.locals.tenantCtx),
+      event.route.id,
+    )
+  ) {
+    return;
+  }
   const tenantId = event.locals.tenantCtx?.tenantId;
-  const moduleStates = tenantId
-    ? await listModuleStates({
-        db: getCoreDb(),
-        tenantId,
-        profileId: event.locals.user?.supabaseId,
-      })
-    : {};
+  if (!tenantId) return;
+  const moduleStates = await listModuleStates({
+    db: getCoreDb(),
+    tenantId,
+    profileId: event.locals.user?.supabaseId,
+  });
   event.locals.moduleStates = moduleStates;
   if (
     isAppRouteBlocked(canonicalPath(event.url.pathname), {
@@ -351,7 +371,7 @@ const finishApp: Handle = async ({ event, resolve }) => {
   // Module-availability guard (routing-simplification spec S2). Server-token/
   // cron requests never reach here (resolve-identity.ts's server-token
   // provider sets bypassGate:true — the AUTH_DISABLED bypass branch runs this
-  // same guard itself); isAppPageRequest is defense in depth on top of that.
+  // same guard itself); request classification is defense in depth on top of that.
   // Existing per-route pulse guards stay in place until this hook has soaked
   // (belt-and-suspenders).
   await applyModuleAvailabilityGuard(event);
