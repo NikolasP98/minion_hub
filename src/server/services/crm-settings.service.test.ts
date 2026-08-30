@@ -276,7 +276,7 @@ describe('writeDepositRule', () => {
     });
   });
 
-  it('staleDerivedCount reflects crm_win_embeddings rows built before this update; 0 ⇒ staleDerived false', async () => {
+  it('staleDerivedCount reflects every extant crm_win_embeddings row after a keyword change', async () => {
     const { db } = createMockDb();
     mockDepositInsert(db);
     mockExecuteSeq(db, [undefined, [], [{ count: 0 }]]);

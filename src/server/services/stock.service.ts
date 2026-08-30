@@ -414,6 +414,16 @@ export async function applyItemUomChange(
   newUom: string,
   productCode?: string | null,
 ): Promise<void> {
+  await applyItemQuantitySemanticChange(tx, orgId, itemId, { uom: newUom }, productCode);
+}
+
+async function applyItemQuantitySemanticChange(
+  tx: CoreTx,
+  orgId: string,
+  itemId: string,
+  patch: Pick<Partial<NewItemInput>, 'uom' | 'consumptionUom' | 'unitsPerStockUom'>,
+  productCode?: string | null,
+): Promise<void> {
   const [candidate] = await tx
     .select({ code: stkItems.code })
     .from(stkItems)
@@ -435,7 +445,7 @@ export async function applyItemUomChange(
   }
   await tx
     .update(stkItems)
-    .set({ uom: newUom, updatedAt: new Date() })
+    .set({ ...patch, updatedAt: new Date() })
     .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)));
 }
 
@@ -466,9 +476,28 @@ export async function updateItemInTx(
     unitsPerStockUom: unitsPerStockUomRaw == null ? null : Number(unitsPerStockUomRaw),
   });
   if (err) throw new StockError(err, 'invalid_uom_config');
-  if (changesUom) await applyItemUomChange(tx, orgId, id, patch.uom!);
+  const changesConsumptionUom =
+    patch.consumptionUom !== undefined &&
+    (patch.consumptionUom?.trim().toLowerCase() ?? null) !==
+      (cur.consumptionUom?.trim().toLowerCase() ?? null);
+  const changesConversionFactor =
+    patch.unitsPerStockUom !== undefined &&
+    (patch.unitsPerStockUom == null ? null : Number(patch.unitsPerStockUom)) !==
+      (cur.unitsPerStockUom == null ? null : Number(cur.unitsPerStockUom));
+  const changesQuantitySemantics = changesUom || changesConsumptionUom || changesConversionFactor;
+  if (changesQuantitySemantics) {
+    await applyItemQuantitySemanticChange(tx, orgId, id, {
+      ...(patch.uom !== undefined ? { uom: patch.uom } : {}),
+      ...(patch.consumptionUom !== undefined ? { consumptionUom: patch.consumptionUom } : {}),
+      ...(patch.unitsPerStockUom !== undefined ? { unitsPerStockUom: patch.unitsPerStockUom } : {}),
+    });
+  }
   const itemPatch = { ...patch };
-  if (changesUom) delete itemPatch.uom;
+  if (changesQuantitySemantics) {
+    delete itemPatch.uom;
+    delete itemPatch.consumptionUom;
+    delete itemPatch.unitsPerStockUom;
+  }
   const [row] = await tx
     .update(stkItems)
     .set({ ...itemPatch, updatedAt: new Date() })

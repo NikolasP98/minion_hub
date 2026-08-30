@@ -921,7 +921,11 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
       await owner.unsafe('commit');
 
       const [uomResult, accrualResult] = await Promise.allSettled([uomPromise, accrualPromise]);
-      expect(accrualResult).toMatchObject({ status: 'fulfilled', value: 1 });
+      expect(
+        accrualResult.status === 'rejected'
+          ? `rejected: ${messageChain(accrualResult.reason)}`
+          : accrualResult,
+      ).toMatchObject({ status: 'fulfilled', value: 1 });
       if (uomResult.status === 'rejected') {
         expect(uomResult.reason).toMatchObject({ code: 'uom_immutable' });
       }
@@ -951,6 +955,8 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
       );
       await refreshed;
 
+      const createPid = await backendPid(clients[1]!);
+
       let markProductCommitted!: () => void;
       const productCommitted = new Promise<void>((resolve) => (markProductCommitted = resolve));
       const createPromise = createSellable(
@@ -971,7 +977,6 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
         [ORG_ID],
       );
       expect(product).toBeDefined();
-      const createPid = await backendPid(clients[1]!);
       await waitUntilBlocked(owner, [createPid]);
       releaseRefresh();
       await Promise.all([invoicePromise, createPromise]);

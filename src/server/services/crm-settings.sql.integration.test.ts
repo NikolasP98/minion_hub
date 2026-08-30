@@ -88,6 +88,22 @@ async function withSchema<T>(
 
 const ctxFor = (client: Client) => ({ db: drizzle(client) as never, tenantId: ORG_ID });
 
+async function backendPid(client: Client): Promise<number> {
+  const [row] = await client<{ pid: number }[]>`select pg_backend_pid() as pid`;
+  return row!.pid;
+}
+
+async function waitUntilBlocked(observer: Client, pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const [row] = await observer<{ wait_event_type: string | null }[]>`
+      select wait_event_type from pg_stat_activity where pid = ${pid}
+    `;
+    if (row?.wait_event_type === 'Lock') return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`backend ${pid} did not block on the deposit-rule advisory lock`);
+}
+
 /**
  * Seeds `crm_settings.value` as a real jsonb OBJECT and proves it landed as
  * one before any assertion depends on it.
@@ -214,6 +230,33 @@ describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL',
 
       expect(result.staleDerived).toBe(true);
       expect(result.staleDerivedCount).toBe(1);
+    });
+  }, 30_000);
+
+  it('counts an old-rule publication committed while the settings writer waits for the advisory lock', async () => {
+    await withSchema(async ({ schema, owner, client }) => {
+      await owner.unsafe('begin');
+      await owner.unsafe(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+        `crm-deposit-rule:${ORG_ID}`,
+      ]);
+      const writerPid = await backendPid(client);
+      const writePromise = writeDepositRule(
+        ctxFor(client),
+        depositWriteSchema.parse({ keywords: ['adelanto'] }),
+      );
+      await waitUntilBlocked(owner, writerPid);
+
+      await owner.unsafe(
+        `insert into ${schema}.crm_win_embeddings (org_id, contact_id, built_at)
+         values ($1, gen_random_uuid(), now())`,
+        [ORG_ID],
+      );
+      await owner.unsafe('commit');
+
+      await expect(writePromise).resolves.toMatchObject({
+        staleDerived: true,
+        staleDerivedCount: 1,
+      });
     });
   }, 30_000);
 
