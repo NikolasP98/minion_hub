@@ -131,6 +131,40 @@ create index if not exists crm_activities_contact_idx
 create index if not exists crm_activities_org_idx
   on public.crm_activities (org_id, occurred_at);
 
+-- ── doc_audit_log ───────────────────────────────────────────────────────────
+-- PROVENANCE DIFFERS FROM EVERYTHING ABOVE — read before trusting this block.
+-- The tables above were live-extracted from the provisioned Supabase project.
+-- This one was NOT: it is derived from `src/server/db/pg-activity-schema.ts`
+-- (which owns `doc_audit_log`'s shape in Drizzle) plus this repo's uniform
+-- `*_org_guc` RLS convention, exactly as the `crm_*` grants below are. Like
+-- `crm_contacts` / `crm_activities` it has no `create table` anywhere in the
+-- monorepo, and no prod catalog access was available when it was added, so
+-- claiming it as extracted would be the dressed-up guess this fixture refuses.
+-- Treated as a derived-shape table it is still sound for this suite's purpose:
+-- the suite only needs the audit insert to SUCCEED so the writer's transaction
+-- can commit — it asserts nothing about audit row contents.
+--
+-- It is here because `updateContact` writes its audit row through the SAME
+-- transaction as the contact UPDATE (`recordAuditInTx`, see
+-- `src/server/services/crm-contacts.service.ts`). Without this table the
+-- `customFieldsPatch` writer in `crm-funnel.concurrent.integration.test.ts`
+-- aborts on `relation "doc_audit_log" does not exist` instead of proving it
+-- queued on the coordinator lock.
+create table if not exists public.doc_audit_log (
+  id uuid not null default gen_random_uuid() primary key,
+  org_id text not null,
+  ref_type text not null,
+  ref_id uuid not null,
+  actor_id uuid,
+  actor_name text,
+  op text not null default 'update',
+  changes jsonb not null default '[]'::jsonb,
+  occurred_at timestamptz not null default now()
+);
+
+create index if not exists doc_audit_log_ref_idx
+  on public.doc_audit_log (org_id, ref_type, ref_id, occurred_at);
+
 -- ── RLS (the whole point of this fixture) ───────────────────────────────────
 -- Reproduced literally from the extraction. Note there is NO `to app_ledger`
 -- clause: prod's policies carry `roles={public}`, which is what a `for all`
@@ -160,6 +194,18 @@ create policy crm_activities_org_guc on public.crm_activities
 -- `supabase/migrations/20260717230000_crm_conversation_chunks.sql:60`.
 grant select, insert, update, delete on public.crm_contacts to app_ledger;
 grant select, insert, update, delete on public.crm_activities to app_ledger;
+
+-- Same convention applied to the derived-shape audit table (see its block
+-- above): forced RLS + one `*_org_guc` policy + explicit app_ledger grants.
+alter table public.doc_audit_log enable row level security;
+alter table public.doc_audit_log force row level security;
+drop policy if exists doc_audit_log_org_guc on public.doc_audit_log;
+create policy doc_audit_log_org_guc on public.doc_audit_log
+  for all
+  using (org_id = current_setting('app.current_org_id', true))
+  with check (org_id = current_setting('app.current_org_id', true));
+
+grant select, insert, update, delete on public.doc_audit_log to app_ledger;
 
 -- ── Executable catalog assertions ───────────────────────────────────────────
 -- Applying this fixture must FAIL LOUDLY if the objects it just created do not
@@ -285,6 +331,104 @@ begin
     raise exception
       'ci-fixture: %.% is (type=%, nullable=%, default=%), prod extraction says (type=%, nullable=%, default=%)',
       bad.tbl, bad.col,
+      coalesce(bad.got_type, '<column missing>'),
+      coalesce(bad.got_nullable, '<column missing>'),
+      coalesce(bad.got_default, '<none>'),
+      bad.want_type, bad.want_nullable, coalesce(bad.want_default, '<none>');
+  end loop;
+end
+$$;
+
+-- ── Executable assertions for the DERIVED-shape table ───────────────────────
+-- Kept in its own block, deliberately NOT folded into the two blocks above:
+-- those assert a live prod extraction, this one asserts a shape derived from
+-- `pg-activity-schema.ts` + the `*_org_guc` convention. Merging them would let
+-- a derived guess inherit the credibility of an extracted fact. The checks are
+-- still worth running — a typo in the grant or a missing `force row level
+-- security` fails on apply instead of as an opaque mid-test error — they just
+-- prove agreement with the Drizzle schema, not with production.
+do $$
+declare
+  expected_expr constant text :=
+    '(org_id = current_setting(''app.current_org_id''::text, true))';
+  flags record;
+  pol record;
+  policy_count int;
+  bad record;
+begin
+  select c.relrowsecurity, c.relforcerowsecurity
+    into flags
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relname = 'doc_audit_log';
+  if not found then
+    raise exception 'ci-fixture: table public.doc_audit_log was not created';
+  end if;
+  if not flags.relrowsecurity or not flags.relforcerowsecurity then
+    raise exception 'ci-fixture: doc_audit_log RLS is (enabled=%, forced=%), convention requires both true',
+      flags.relrowsecurity, flags.relforcerowsecurity;
+  end if;
+
+  select count(*) into policy_count
+    from pg_policies where schemaname = 'public' and tablename = 'doc_audit_log';
+  if policy_count <> 1 then
+    raise exception 'ci-fixture: doc_audit_log has % policies, convention has exactly 1', policy_count;
+  end if;
+  select * into pol
+    from pg_policies where schemaname = 'public' and tablename = 'doc_audit_log';
+  if pol.policyname <> 'doc_audit_log_org_guc' then
+    raise exception 'ci-fixture: doc_audit_log policy is named %, expected doc_audit_log_org_guc',
+      pol.policyname;
+  end if;
+  if pol.qual is distinct from expected_expr or pol.with_check is distinct from expected_expr then
+    raise exception 'ci-fixture: doc_audit_log policy predicates are (using=%, check=%), expected % for both',
+      coalesce(pol.qual, '<null>'), coalesce(pol.with_check, '<null>'), expected_expr;
+  end if;
+
+  if not has_table_privilege('app_ledger', 'public.doc_audit_log', 'select')
+     or not has_table_privilege('app_ledger', 'public.doc_audit_log', 'insert')
+     or not has_table_privilege('app_ledger', 'public.doc_audit_log', 'update')
+     or not has_table_privilege('app_ledger', 'public.doc_audit_log', 'delete') then
+    raise exception 'ci-fixture: app_ledger is missing select/insert/update/delete on doc_audit_log';
+  end if;
+
+  -- Column shape, mirrored from `pg-activity-schema.ts`'s `docAuditLog`. Every
+  -- column `recordAuditInTx` writes or relies on a default for is listed, so a
+  -- drift between the Drizzle schema and this fixture surfaces here rather than
+  -- as a `null value violates not-null constraint` inside a concurrency proof.
+  for bad in
+    with expected(col, data_type, is_nullable, col_default) as (
+      values
+        ('id'::text,          'uuid'::text,                       'NO'::text,  'gen_random_uuid()'::text),
+        ('org_id',            'text',                             'NO',        null),
+        ('ref_type',          'text',                             'NO',        null),
+        ('ref_id',            'uuid',                             'NO',        null),
+        ('actor_id',          'uuid',                             'YES',       null),
+        ('actor_name',        'text',                             'YES',       null),
+        ('op',                'text',                             'NO',        '''update''::text'),
+        ('changes',           'jsonb',                            'NO',        '''[]''::jsonb'),
+        ('occurred_at',       'timestamp with time zone',         'NO',        'now()')
+    )
+    select e.col,
+           e.data_type   as want_type,
+           e.is_nullable as want_nullable,
+           e.col_default as want_default,
+           c.data_type      as got_type,
+           c.is_nullable    as got_nullable,
+           c.column_default as got_default
+      from expected e
+      left join information_schema.columns c
+        on c.table_schema = 'public'
+       and c.table_name   = 'doc_audit_log'
+       and c.column_name  = e.col
+     where c.column_name is null
+        or c.data_type      is distinct from e.data_type
+        or c.is_nullable    is distinct from e.is_nullable
+        or c.column_default is distinct from e.col_default
+  loop
+    raise exception
+      'ci-fixture: doc_audit_log.% is (type=%, nullable=%, default=%), pg-activity-schema.ts says (type=%, nullable=%, default=%)',
+      bad.col,
       coalesce(bad.got_type, '<column missing>'),
       coalesce(bad.got_nullable, '<column missing>'),
       coalesce(bad.got_default, '<none>'),

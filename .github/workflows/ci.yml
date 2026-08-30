@@ -207,10 +207,12 @@ jobs:
           SQL
 
       # A JSON report, not just the exit code: `describe.runIf(...)` makes "0 failed"
-      # equally true when nothing ran, so the gate asserts three PASSED and zero
-      # PENDING. REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES additionally makes the suite
-      # throw if the URL ever goes missing, so a broken service container cannot
-      # degrade this job into a silent skip.
+      # equally true when nothing ran, so the gate asserts all seven PASSED and zero
+      # PENDING (3 base-funnel tests + 4 coordinator-lock tests — update this count
+      # if tests are added to or removed from the registered file below).
+      # REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES additionally makes the suite throw if
+      # the URL ever goes missing, so a broken service container cannot degrade this
+      # job into a silent skip.
       - name: Real-PostgreSQL funnel concurrency suite
         env:
           SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/crm_funnel_concurrent_test
@@ -222,12 +224,12 @@ jobs:
             --outputFile.json=test-results/crm-funnel-concurrent.json \
             src/server/services/crm-funnel.concurrent.integration.test.ts
 
-      - name: Assert the suite actually ran (3 passed, 0 skipped)
+      - name: Assert the suite actually ran (7 passed, 0 skipped)
         if: always()
         run: |
           test -f test-results/crm-funnel-concurrent.json \
             || { echo 'no vitest JSON report — the suite never produced one'; exit 1; }
-          jq -e '.numTotalTests == 3 and .numPassedTests == 3
+          jq -e '.numTotalTests == 7 and .numPassedTests == 7
                  and .numFailedTests == 0 and .numPendingTests == 0' \
             test-results/crm-funnel-concurrent.json > /dev/null \
             || { jq '{numTotalTests, numPassedTests, numFailedTests, numPendingTests}' \

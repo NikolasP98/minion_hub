@@ -15,8 +15,15 @@ import type { CanonicalInvoice } from '$server/finance/connector';
 function buildTx(opts: { existingInvoices?: Array<{ id: string; documentId: string }> } = {}) {
   const insertCalls: Array<{ table: unknown; rows: unknown[] }> = [];
   const insert = vi.fn((table: unknown) => ({
-    values: (rows: unknown[]) => {
+    values: (value: unknown | unknown[]) => {
+      const rows = Array.isArray(value) ? value : [value];
       insertCalls.push({ table, rows });
+      if (table === crmContacts) {
+        return {
+          returning: () =>
+            Promise.resolve([{ id: 'c-created', displayName: 'Jane', ownerId: 'owner-1' }]),
+        };
+      }
       if (table === finInvoices) {
         const out = (rows as Array<{ providerRef: string }>).map((r, i) => ({
           providerRef: r.providerRef,
@@ -158,21 +165,80 @@ describe('finance audit (§B.1)', () => {
 });
 
 describe('crm contacts audit (§B.2)', () => {
-  it('updateContact writes a crm_contact audit row', async () => {
-    vi.doMock('./activity.service', async () => {
-      const actual =
-        await vi.importActual<typeof import('./activity.service')>('./activity.service');
-      return { ...actual, recordAudit: vi.fn(actual.recordAudit) };
-    });
-    const { updateContact } = await import('./crm-contacts.service');
-    const activity = await import('./activity.service');
-    const { tx } = buildTx();
-    await updateContact(ctxWithTx(tx), 'c1', { displayName: 'Jane' });
+  /**
+   * ctxWithTx, plus a count of how many times the service opened a top-level
+   * transaction. `updateContact` must open exactly ONE: its audit row is
+   * written with `recordAuditInTx(tx, ...)` on the transaction that already
+   * holds the contact's row lock, not with `recordAudit(ctx, ...)` (which opens
+   * a SECOND `withOrgCore` transaction and therefore checks a second connection
+   * out of the pool). On a pool with no free slot that nesting self-deadlocks:
+   * the inner transaction waits for a connection the outer one cannot release
+   * until the inner one returns — demonstrated against real PostgreSQL by
+   * `crm-funnel.concurrent.integration.test.ts`, which drives each writer on a
+   * `max: 1` client.
+   */
+  function countingCtx(tx: unknown) {
+    const transactions = { count: 0 };
+    const ctx = {
+      db: {
+        transaction: (cb: (t: unknown) => unknown) => {
+          transactions.count += 1;
+          return cb(tx);
+        },
+      },
+      tenantId: 'org-1',
+    } as never;
+    return { ctx, transactions };
+  }
 
-    expect(activity.recordAudit).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ refType: 'crm_contact', op: 'update' }),
-    );
-    vi.doUnmock('./activity.service');
+  it('updateContact writes a crm_contact audit row inside the mutation transaction', async () => {
+    const { updateContact } = await import('./crm-contacts.service');
+    const { tx, insertCalls } = buildTx();
+    const { ctx, transactions } = countingCtx(tx);
+
+    await updateContact(ctx, 'c1', { displayName: 'Jane' });
+
+    // Assert the shipped write, not a spy on the collaborator: the audit row
+    // itself, on the same `tx` object the contact UPDATE ran on.
+    const auditCall = insertCalls.find((c) => c.table === docAuditLog);
+    expect(auditCall?.rows).toEqual([
+      expect.objectContaining({
+        orgId: 'org-1',
+        refType: 'crm_contact',
+        refId: 'c1',
+        op: 'update',
+        changes: expect.arrayContaining([
+          expect.objectContaining({ field: 'displayName', new: 'Jane' }),
+        ]),
+      }),
+    ]);
+    expect(tx.insert).toHaveBeenCalledWith(docAuditLog);
+    expect(transactions.count).toBe(1);
+  });
+
+  it('createContact writes its audit row without opening a nested transaction', async () => {
+    const { createContact } = await import('./crm-contacts.service');
+    const { tx, insertCalls } = buildTx();
+    const { ctx, transactions } = countingCtx(tx);
+
+    await expect(createContact(ctx, { displayName: 'Jane' })).resolves.toMatchObject({
+      id: 'c-created',
+      displayName: 'Jane',
+    });
+
+    expect(insertCalls.find((c) => c.table === crmContacts)?.rows).toEqual([
+      expect.objectContaining({ orgId: 'org-1', displayName: 'Jane', source: 'manual' }),
+    ]);
+    expect(insertCalls.find((c) => c.table === docAuditLog)?.rows).toEqual([
+      expect.objectContaining({
+        orgId: 'org-1',
+        refType: 'crm_contact',
+        refId: 'c-created',
+        op: 'create',
+      }),
+    ]);
+    // A max:1 pool can complete only if the mutation and audit share this
+    // single top-level transaction; a nested withOrgCore call would count 2.
+    expect(transactions.count).toBe(1);
   });
 });
