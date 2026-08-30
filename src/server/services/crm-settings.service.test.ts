@@ -15,7 +15,8 @@ const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
  * Real-query sequencing for raw `tx.execute` calls, skipping `withOrgCore`'s
  * fixed setup statements (idle-timeout, `set local role`, two `set_config`
  * GUCs) so `values` only has to list results for writeDepositRule's own
- * remaining `execute` call (the stale-count select — the upsert now goes
+ * remaining `execute` calls (the locked current-rule read and, when changed,
+ * the stale-count select — the upsert now goes
  * through `tx.insert().onConflictDoUpdate()`, see `mockDepositInsert`) — same
  * technique as `pos.sellables.test.ts`'s `mockExecuteSeq`.
  */
@@ -246,7 +247,7 @@ describe('writeDepositRule', () => {
   it('merges the deposit key via one insert-on-conflict statement — sibling keys untouched by construction', async () => {
     const { db } = createMockDb();
     const calls = mockDepositInsert(db);
-    mockExecuteSeq(db, [[{ count: 0 }]]);
+    mockExecuteSeq(db, [[], [{ count: 0 }]]);
 
     await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
 
@@ -265,7 +266,7 @@ describe('writeDepositRule', () => {
   it('stamps updatedAt server-side and returns the normalized rule', async () => {
     const { db } = createMockDb();
     mockDepositInsert(db);
-    mockExecuteSeq(db, [[{ count: 0 }]]);
+    mockExecuteSeq(db, [[], [{ count: 0 }]]);
 
     const result = await writeDepositRule(ctx(db), { keywords: ['ADELANTO', ' seña '] });
 
@@ -278,21 +279,33 @@ describe('writeDepositRule', () => {
   it('staleDerivedCount reflects crm_win_embeddings rows built before this update; 0 ⇒ staleDerived false', async () => {
     const { db } = createMockDb();
     mockDepositInsert(db);
-    mockExecuteSeq(db, [[{ count: 0 }]]);
+    mockExecuteSeq(db, [[], [{ count: 0 }]]);
     const clean = await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
     expect(clean).toMatchObject({ staleDerived: false, staleDerivedCount: 0 });
 
     const { db: db2 } = createMockDb();
     mockDepositInsert(db2);
-    mockExecuteSeq(db2, [[{ count: 7 }]]);
+    mockExecuteSeq(db2, [[], [{ count: 7 }]]);
     const stale = await writeDepositRule(ctx(db2), { keywords: ['adelanto'] });
     expect(stale).toMatchObject({ staleDerived: true, staleDerivedCount: 7 });
+  });
+
+  it('does not mark existing embeddings stale when normalized classification inputs are unchanged', async () => {
+    const { db } = createMockDb();
+    mockDepositInsert(db);
+    mockExecuteSeq(db, [
+      [{ deposit: { keywords: [' ADELANTO '], label: DEFAULT_DEPOSIT_RULE.label } }],
+    ]);
+
+    const result = await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
+
+    expect(result).toMatchObject({ staleDerived: false, staleDerivedCount: 0 });
   });
 
   it('an empty keywords array is a legitimate write (matches nothing), not rejected', async () => {
     const { db } = createMockDb();
     mockDepositInsert(db);
-    mockExecuteSeq(db, [[{ count: 0 }]]);
+    mockExecuteSeq(db, [[], [{ count: 0 }]]);
     const result = await writeDepositRule(ctx(db), { keywords: [] });
     expect(result.rule.keywords).toEqual([]);
   });

@@ -94,6 +94,29 @@ export async function upsertInvoicesBatch(
   for (const inv of invoices) invMap.set(inv.providerRef, inv);
   const deduped = [...invMap.values()];
   await withOrgCore(ctx, async (tx) => {
+    // The caller's map is only a throughput hint: a long-running sync may have
+    // loaded it before a matching sellable was created. Refresh live codes and
+    // aliases inside this page transaction so every invoice line that can be
+    // found by itemHasHistory participates in the same UOM lock protocol.
+    const currentProducts = (await tx.execute(sql`
+      select code, id, is_alias from (
+        select a.code, p.id, 1 as is_alias
+          from fin_products p,
+               lateral jsonb_array_elements_text(
+                 case when jsonb_typeof(p.metadata -> 'aliases') = 'array'
+                      then p.metadata -> 'aliases' else '[]'::jsonb end) as a(code)
+         where p.org_id = ${ctx.tenantId}
+        union all
+        select code, id, 0 as is_alias
+          from fin_products where org_id = ${ctx.tenantId}
+      ) t
+      order by is_alias desc
+    `)) as unknown as Array<{ code: string; id: string }>;
+    const resolvedProductMap = new Map(productMap);
+    for (const product of currentProducts) {
+      resolvedProductMap.set(String(product.code), String(product.id));
+    }
+
     let pending = deduped;
     const overlays: Array<{ targetId: string; invoice: CanonicalInvoice }> = [];
     const sunatCandidates = deduped.filter(
@@ -328,7 +351,7 @@ export async function upsertInvoicesBatch(
       ...new Set(
         pending.flatMap((inv) =>
           inv.items
-            .map((it) => (it.code ? productMap.get(it.code) : undefined))
+            .map((it) => (it.code ? resolvedProductMap.get(it.code) : undefined))
             .filter((x): x is string => !!x),
         ),
       ),
@@ -343,7 +366,7 @@ export async function upsertInvoicesBatch(
       return inv.items.map((it) => ({
         orgId: ctx.tenantId,
         invoiceId,
-        productId: it.code ? (productMap.get(it.code) ?? null) : null,
+        productId: it.code ? (resolvedProductMap.get(it.code) ?? null) : null,
         code: it.code,
         description: it.description,
         category: it.category,

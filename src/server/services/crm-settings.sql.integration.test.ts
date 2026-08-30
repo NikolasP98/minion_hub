@@ -216,4 +216,25 @@ describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL',
       expect(result.staleDerivedCount).toBe(1);
     });
   }, 30_000);
+
+  it('an unchanged normalized rule leaves existing embeddings current', async () => {
+    await withSchema(async ({ schema, owner, client }) => {
+      await seedJsonb(owner, schema, ORG_ID, {
+        deposit: { keywords: [' ADELANTO ', 'seña'], label: 'Adelanto' },
+      });
+      await owner.unsafe(
+        `insert into ${schema}.crm_win_embeddings (org_id, contact_id, built_at)
+         values ($1, gen_random_uuid(), now() - interval '1 hour')`,
+        [ORG_ID],
+      );
+
+      const patch = depositWriteSchema.parse({
+        keywords: ['adelanto', 'SEÑA'],
+        label: 'Adelanto',
+      });
+      const result = await writeDepositRule(ctxFor(client), patch);
+
+      expect(result).toMatchObject({ staleDerived: false, staleDerivedCount: 0 });
+    });
+  }, 30_000);
 });

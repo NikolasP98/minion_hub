@@ -162,11 +162,11 @@ export interface WriteDepositRuleResult {
  * `depositWriteSchema`-validated (the route does this; `updatedAt` is never
  * client-supplyable and is stamped here).
  *
- * ONE statement does the read-modify-write: `insert().onConflictDoUpdate()`
- * with `set.value = coalesce(crm_settings.value, '{}') || jsonb_build_object('deposit', …)`
- * merges only the `deposit` key so sibling keys (`accounts`,
- * `disabled_channels`, …) survive untouched, and there is no separate
- * select-then-update window for a concurrent writer to land in between.
+ * The transaction locks the current settings row before comparing normalized
+ * classification inputs. The following `insert().onConflictDoUpdate()` merges
+ * only the `deposit` key, so sibling keys (`accounts`, `disabled_channels`, …)
+ * survive untouched. Holding the row lock through both operations also makes
+ * the no-op/stale decision atomic with the write.
  *
  * TODO(handoff): a keyword change does not retroactively reclassify rows
  * already materialized into `crm_win_embeddings.bought`/`snippet` — this
@@ -184,6 +184,18 @@ export async function writeDepositRule(
   const rule = normalizeDepositRule(stored);
 
   return withOrgCore(ctx, async (tx) => {
+    const [current] = (await tx.execute(sql`
+      select value -> 'deposit' as deposit
+      from crm_settings
+      where org_id = ${ctx.tenantId}
+      for update
+    `)) as unknown as Array<{ deposit: DepositConfig | null }>;
+    const previousRule = normalizeDepositRule(current?.deposit);
+    const classificationChanged =
+      previousRule.label !== rule.label ||
+      previousRule.keywords.length !== rule.keywords.length ||
+      previousRule.keywords.some((keyword, index) => keyword !== rule.keywords[index]);
+
     // Same key-merge shape as crm-contacts.service.ts's persistConfigs (the
     // repository's proven pattern for a shared jsonb KV row): the Drizzle
     // builder's `sql` fragment references the column directly rather than a
@@ -208,12 +220,15 @@ export async function writeDepositRule(
         },
       });
 
-    const [row] = (await tx.execute(sql`
-      select count(*)::int as count
-      from crm_win_embeddings
-      where org_id = ${ctx.tenantId} and built_at < ${updatedAt}::timestamptz
-    `)) as unknown as Array<{ count: number }>;
-    const staleDerivedCount = row?.count ?? 0;
+    let staleDerivedCount = 0;
+    if (classificationChanged) {
+      const [row] = (await tx.execute(sql`
+        select count(*)::int as count
+        from crm_win_embeddings
+        where org_id = ${ctx.tenantId} and built_at < ${updatedAt}::timestamptz
+      `)) as unknown as Array<{ count: number }>;
+      staleDerivedCount = row?.count ?? 0;
+    }
 
     if (staleDerivedCount > 0) {
       console.warn(

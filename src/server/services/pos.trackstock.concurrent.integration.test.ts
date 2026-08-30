@@ -62,6 +62,7 @@ vi.mock('$server/db/with-org-core', () => ({
 
 const { createSellable, updateSellable, PosError } = await import('./pos.service');
 const { createEntry, createSourcedIssue, createIssueFromInvoice } = await import('./stock.service');
+const { upsertInvoicesBatch } = await import('./finance.service');
 
 type Client = ReturnType<typeof postgres>;
 
@@ -180,9 +181,48 @@ const DDL = `
     product_id uuid references fin_products (id) on delete set null,
     code text,
     description text,
+    category text,
     quantity numeric,
+    unit_price numeric,
+    discount numeric,
+    tax numeric,
     total numeric,
     metadata jsonb not null default '{}'
+  );
+  create table fin_clients (
+    id uuid primary key default gen_random_uuid(),
+    org_id text not null,
+    provider text not null,
+    provider_ref text not null,
+    name text,
+    doc_type text,
+    doc_number text,
+    email text,
+    phone text,
+    metadata jsonb not null default '{}',
+    unique (org_id, provider, provider_ref)
+  );
+  create table fin_payments (
+    id uuid primary key default gen_random_uuid(),
+    org_id text not null,
+    invoice_id uuid not null,
+    provider_ref text,
+    method text,
+    paid_at timestamptz,
+    amount numeric,
+    status text,
+    metadata jsonb not null default '{}'
+  );
+  create table doc_audit_log (
+    id uuid primary key default gen_random_uuid(),
+    org_id text not null,
+    ref_type text not null,
+    ref_id uuid not null,
+    actor_id uuid,
+    actor_name text,
+    op text not null default 'update',
+    changes jsonb not null default '[]',
+    occurred_at timestamptz not null default now()
   );
   create table stk_consumption (
     id uuid primary key default gen_random_uuid(),
@@ -210,10 +250,27 @@ const DDL = `
     org_id text not null,
     provider text not null,
     provider_ref text not null,
+    number text,
+    document_id text,
+    issued_at timestamptz,
+    client_id uuid,
+    client_name text,
+    client_doc_type text,
+    client_doc_number text,
+    client_email text,
+    currency text,
+    subtotal numeric,
+    tax numeric,
+    discount numeric,
+    total numeric,
+    status text,
+    seller text,
+    note text,
     shadowed boolean not null default false,
     metadata jsonb not null default '{}',
     synced_at timestamptz not null default now(),
-    created_at timestamptz not null default now()
+    created_at timestamptz not null default now(),
+    unique (org_id, provider, provider_ref)
   );
 `;
 
@@ -642,6 +699,91 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
       );
       expect(lines).toHaveLength(1);
 
+      if (uomResult.status === 'fulfilled') {
+        expect(item).toMatchObject({ uom: 'mL' });
+      } else {
+        expect(uomResult.reason).toBeInstanceOf(PosError);
+        expect(uomResult.reason).toMatchObject({ code: 'uom_immutable' });
+        expect(item).toMatchObject({ uom: 'unit' });
+      }
+    });
+  }, 30_000);
+
+  it('LOCK PROTOCOL: invoice upsert with an empty stale product map resolves the current code and serializes with a UOM PATCH', async () => {
+    await withSchema(2, async ({ schema, owner, clients }) => {
+      const productId = crypto.randomUUID();
+      const itemId = crypto.randomUUID();
+      await owner.unsafe(
+        `insert into fin_products (id, org_id, code, name) values ($1, $2, 'LIVE', 'Live')`,
+        [productId, ORG_ID],
+      );
+      await owner.unsafe(
+        `insert into stk_items (id, org_id, code, name, uom, fin_product_id)
+         values ($1, $2, 'LIVE', 'Live', 'unit', $3)`,
+        [itemId, ORG_ID, productId],
+      );
+
+      const uomPid = await backendPid(clients[0]!);
+      const invoicePid = await backendPid(clients[1]!);
+      await owner.unsafe('begin');
+      await owner.unsafe(`select id from ${schema}.stk_items where id = $1 for update`, [itemId]);
+
+      const uomPromise = updateSellable(ctxFor(clients[0]!), productId, { uom: 'mL' }, ACTOR);
+      const invoicePromise = upsertInvoicesBatch(
+        ctxFor(clients[1]!),
+        [
+          {
+            provider: 'test',
+            providerRef: 'invoice-race',
+            number: null,
+            documentId: null,
+            issuedAt: null,
+            clientName: null,
+            clientDocType: null,
+            clientDocNumber: null,
+            clientEmail: null,
+            currency: 'PEN',
+            subtotal: 1,
+            tax: 0,
+            discount: 0,
+            total: 1,
+            status: 'paid',
+            seller: null,
+            note: null,
+            metadata: {},
+            items: [
+              {
+                code: 'LIVE',
+                description: 'Live',
+                category: null,
+                quantity: 1,
+                unitPrice: 1,
+                discount: 0,
+                tax: 0,
+                total: 1,
+                metadata: {},
+              },
+            ],
+            payments: [],
+            client: null,
+          },
+        ],
+        new Map(),
+      );
+
+      await waitUntilBlocked(owner, [uomPid, invoicePid]);
+      await owner.unsafe('commit');
+      const [uomResult, invoiceResult] = await Promise.allSettled([uomPromise, invoicePromise]);
+
+      expect(invoiceResult.status).toBe('fulfilled');
+      const [line] = await owner.unsafe<{ product_id: string }[]>(
+        `select product_id from ${schema}.fin_invoice_items where code = 'LIVE'`,
+      );
+      expect(line).toMatchObject({ product_id: productId });
+      const [item] = await owner.unsafe<{ uom: string }[]>(
+        `select uom from ${schema}.stk_items where id = $1`,
+        [itemId],
+      );
       if (uomResult.status === 'fulfilled') {
         expect(item).toMatchObject({ uom: 'mL' });
       } else {
