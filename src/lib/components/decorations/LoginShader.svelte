@@ -299,4 +299,4 @@
   });
 </script>
 
-<canvas bind:this={canvas} class="fixed inset-0 w-full h-full pointer-events-none z-[var(--layer-base)]"></canvas>
+<canvas bind:this={canvas} class="fixed inset-0 w-full h-full pointer-events-none -z-[var(--layer-sticky)]"></canvas>
