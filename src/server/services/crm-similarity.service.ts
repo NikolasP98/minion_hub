@@ -85,6 +85,19 @@ function uuidArray(arr: string[]) {
   )}]::uuid[]`;
 }
 
+/** Reconcile the removal half of a complete win-index publication. The caller
+ * must hold the org deposit-config transaction lock before invoking this. */
+export async function deleteMissingWinEmbeddings(
+  tx: { execute: (query: SQL) => Promise<unknown> },
+  currentContactIds: string[],
+): Promise<void> {
+  await tx.execute(sql`
+    delete from crm_win_embeddings
+    where org_id = current_setting('app.current_org_id', true)
+      and contact_id <> all(${uuidArray(currentContactIds)})
+  `);
+}
+
 /** Split an array into chunks of at most `size` — caps embedding-request and VALUES-list size. */
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -197,8 +210,6 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> 
     }>;
     return { buyers: buyerRows, messages: msgRows };
   });
-  if (buyers.length === 0) return { indexed: 0 };
-
   // Group messages by contact_id (merges e.g. WA + IG identities of the same
   // contact into one conversation doc), then map each buyer to its conversation.
   const byContact = new Map<string, Array<{ direction: string; content: string | null }>>();
@@ -228,8 +239,6 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> 
       lastAt: lastAt.get(b.id) ?? null,
     });
   }
-  if (docs.length === 0) return { indexed: 0 };
-
   // Hundreds-to-thousands of docs now (not a dozen) — batch embedding calls and
   // upserts instead of sending everything in one request/query.
   const BATCH = 150;
@@ -265,6 +274,14 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> 
       );
       return false;
     }
+    // A rebuild publishes the COMPLETE current set, not merely additions. In
+    // particular, a broadened deposit rule can make a formerly qualifying
+    // contact disappear from `docs`; remove that old row in the same locked
+    // transaction as the upserts. The empty set deliberately clears the org.
+    await deleteMissingWinEmbeddings(
+      tx,
+      docs.map((d) => d.id),
+    );
     let offset = 0;
     for (const batch of batches) {
       const batchVectors = vectors.slice(offset, offset + batch.length);
@@ -295,7 +312,7 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> 
   // crm_settings (the last analysis is kept until the next rebuild, so the page
   // shows it instantly without re-calling the model). Best-effort.
   const analysis = await analyzeWins(ctx, docs);
-  if (analysis) await persistWinAnalysis(ctx, analysis);
+  if (analysis) await persistWinAnalysisIfCurrent(ctx, analysis, ruleVersion);
 
   return { indexed: docs.length };
 }
@@ -467,10 +484,16 @@ ${sample}`;
 }
 
 /** Persist the analysis into crm_settings (shallow jsonb merge; coexists with accounts). */
-async function persistWinAnalysis(ctx: CoreCtx, analysis: WinAnalysis): Promise<void> {
+export async function persistWinAnalysisIfCurrent(
+  ctx: CoreCtx,
+  analysis: WinAnalysis,
+  ruleVersion: string | null,
+): Promise<boolean> {
   const patch = JSON.stringify({ winAnalysis: analysis });
-  await withOrgCore(ctx, (tx) =>
-    tx
+  return withOrgCore(ctx, async (tx) => {
+    await lockDepositConfig(tx, ctx.tenantId);
+    if ((await readDepositConfigVersion(tx, ctx.tenantId)) !== ruleVersion) return false;
+    await tx
       .insert(crmSettings)
       .values({ orgId: ctx.tenantId, value: { winAnalysis: analysis } })
       .onConflictDoUpdate({
@@ -479,8 +502,9 @@ async function persistWinAnalysis(ctx: CoreCtx, analysis: WinAnalysis): Promise<
           value: sql`coalesce(${crmSettings.value}, '{}'::jsonb) || ${patch}::jsonb`,
           updatedAt: new Date(),
         },
-      }),
-  );
+      });
+    return true;
+  });
 }
 
 /** The last-generated win analysis for the org (null if never built). */

@@ -42,6 +42,7 @@ vi.mock('$server/db/with-org-core', () => ({
 }));
 
 const { writeDepositRule, resolveDepositRule } = await import('./crm-settings.service');
+const { deleteMissingWinEmbeddings } = await import('./crm-similarity.service');
 
 type Client = ReturnType<typeof postgres>;
 
@@ -160,6 +161,80 @@ describe.runIf(Boolean(databaseUrl))('writeDepositRule against real PostgreSQL',
 
       expect(result.staleDerived).toBe(true);
       expect(result.staleDerivedCount).toBe(1);
+    });
+  }, 30_000);
+
+  it('a broadened rule can reconcile a formerly qualifying contact out of the complete win index', async () => {
+    await withSchema(async ({ schema, owner, client }) => {
+      const contactId = '11111111-1111-4111-8111-111111111111';
+      await owner.unsafe(
+        `insert into ${schema}.crm_settings (org_id, value) values ($1, '{}'::jsonb)`,
+        [ORG_ID],
+      );
+      await owner.unsafe(
+        `insert into ${schema}.crm_win_embeddings (org_id, contact_id, built_at)
+         values ($1, $2::uuid, now() - interval '1 hour')`,
+        [ORG_ID, contactId],
+      );
+
+      // Under the old/default `reserva` vocabulary, an `adelanto`-only buyer
+      // could have produced the seeded row. Broadening the rule means the
+      // rebuild's current contact set is empty.
+      await writeDepositRule(
+        ctxFor(client),
+        depositWriteSchema.parse({ keywords: ['reserva', 'adelanto'] }),
+      );
+      await client.begin(async (tx) => {
+        await tx.unsafe(`set local search_path to ${schema}, public`);
+        await tx.unsafe(`select set_config('app.current_org_id', $1, true)`, [ORG_ID]);
+        await deleteMissingWinEmbeddings(drizzle(tx) as never, []);
+      });
+
+      const [{ count }] = await owner.unsafe<{ count: number }[]>(
+        `select count(*)::int count from ${schema}.crm_win_embeddings where org_id = $1`,
+        [ORG_ID],
+      );
+      expect(count).toBe(0);
+    });
+  }, 30_000);
+
+  it('matching-equivalent retries and label-only edits preserve the classification version', async () => {
+    await withSchema(async ({ schema, owner, client }) => {
+      const first = await writeDepositRule(
+        ctxFor(client),
+        depositWriteSchema.parse({ keywords: ['adelanto', 'seña'], label: 'Old' }),
+      );
+      expect(first.staleDerived).toBe(false);
+      const [{ version: initialVersion }] = await owner.unsafe<{ version: string }[]>(
+        `select value #>> '{deposit,updatedAt}' version from ${schema}.crm_settings where org_id = $1`,
+        [ORG_ID],
+      );
+      await owner.unsafe(
+        `insert into ${schema}.crm_win_embeddings (org_id, contact_id, built_at)
+         values ($1, gen_random_uuid(), now() - interval '1 hour')`,
+        [ORG_ID],
+      );
+
+      const retry = await writeDepositRule(
+        ctxFor(client),
+        depositWriteSchema.parse({ keywords: [' SEÑA ', 'ADELANTO'], label: 'Old' }),
+      );
+      const labelOnly = await writeDepositRule(
+        ctxFor(client),
+        depositWriteSchema.parse({ keywords: ['adelanto', 'seña'], label: 'New' }),
+      );
+      const [{ version: finalVersion, label }] = await owner.unsafe<
+        { version: string; label: string }[]
+      >(
+        `select value #>> '{deposit,updatedAt}' version, value #>> '{deposit,label}' label
+         from ${schema}.crm_settings where org_id = $1`,
+        [ORG_ID],
+      );
+
+      expect(retry).toMatchObject({ staleDerived: false, staleDerivedCount: 0 });
+      expect(labelOnly).toMatchObject({ staleDerived: false, staleDerivedCount: 0 });
+      expect(finalVersion).toBe(initialVersion);
+      expect(label).toBe('New');
     });
   }, 30_000);
 

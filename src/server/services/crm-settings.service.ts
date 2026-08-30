@@ -278,6 +278,16 @@ export async function writeDepositRule(
     // publication that has already committed — see `lockDepositConfig`.
     await lockDepositConfig(tx, ctx.tenantId);
 
+    const [current] = (await tx.execute(sql`
+      select value->'deposit' as deposit
+      from crm_settings where org_id = ${ctx.tenantId}
+    `)) as unknown as Array<{ deposit: unknown }>;
+    const currentRule = normalizeDepositRule(current?.deposit);
+    const incomingRule = normalizeDepositRule(patch);
+    const sameMatchingSemantics =
+      [...currentRule.keywords].sort().join('\u0000') ===
+      [...incomingRule.keywords].sort().join('\u0000');
+
     // The version stamp AND the staleness cutoff, taken from the DB clock
     // AFTER the lock. `clock_timestamp()`, never `now()`: `now()` is the
     // TRANSACTION's start time, which precedes the wait on the lock, so a
@@ -289,7 +299,15 @@ export async function writeDepositRule(
       at: string | Date;
     }>;
     const updatedAt = new Date(clock?.at ?? Date.now()).toISOString();
-    const stored: DepositConfig = { ...patch, updatedAt };
+    const currentVersion = depositConfigVersion(current?.deposit);
+    const stored: DepositConfig = {
+      ...patch,
+      ...(sameMatchingSemantics && currentVersion
+        ? { updatedAt: currentVersion }
+        : sameMatchingSemantics
+          ? {}
+          : { updatedAt }),
+    };
     const rule = normalizeDepositRule(stored);
 
     await tx.execute(sql`
@@ -300,6 +318,10 @@ export async function writeDepositRule(
             || jsonb_build_object('deposit', ${JSON.stringify(stored)}::jsonb),
           updated_at = ${updatedAt}::timestamptz
     `);
+
+    if (sameMatchingSemantics) {
+      return { rule, staleDerived: false, staleDerivedCount: 0 };
+    }
 
     const [row] = (await tx.execute(sql`
       select count(*)::int as count

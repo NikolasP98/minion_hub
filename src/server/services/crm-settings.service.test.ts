@@ -17,10 +17,10 @@ const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
 /**
  * Real-query sequencing for raw `tx.execute` calls, skipping `withOrgCore`'s
- * fixed setup statements (idle-timeout, `set local role`, two `set_config`
- * GUCs) so `values` only has to list results for writeDepositRule's own four
- * queries — the advisory lock, the `clock_timestamp()` stamp, the upsert, then
- * the stale-count select — same technique as `pos.sellables.test.ts`'s
+ * fixed setup statements so `values` only has to list results for
+ * writeDepositRule's own queries — the advisory lock, current-rule read,
+ * `clock_timestamp()` stamp, upsert, then stale-count select — same technique
+ * as `pos.sellables.test.ts`'s
  * `mockExecuteSeq`.
  */
 function mockExecuteSeq(db: unknown, values: unknown[]) {
@@ -51,9 +51,13 @@ function warnSpy() {
  *  clock, so any stamp taken from `new Date()` instead of the DB is visible. */
 const DB_CLOCK = '2031-03-04T05:06:07.089Z';
 
-/** Results for writeDepositRule's own four statements, in order. */
+/** Results for a classification-changing write's five statements, in order. */
 function writeSeq(staleCount: number) {
-  return [undefined, [{ at: DB_CLOCK }], undefined, [{ count: staleCount }]];
+  return [undefined, [], [{ at: DB_CLOCK }], undefined, [{ count: staleCount }]];
+}
+
+function equivalentWriteSeq(deposit: unknown) {
+  return [undefined, [{ deposit }], [{ at: DB_CLOCK }], undefined];
 }
 
 const executeOf = (db: unknown) => (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute;
@@ -316,9 +320,10 @@ describe('writeDepositRule', () => {
 
     const statements = executedSql(db);
     expect(statements[0]).toContain("pg_advisory_xact_lock(hashtext('crm-deposit-rule:'");
-    expect(statements[1]).toContain('clock_timestamp()');
-    expect(statements[2]).toContain('insert into crm_settings');
-    expect(statements[3]).toContain('from crm_win_embeddings');
+    expect(statements[1]).toContain("value->'deposit'");
+    expect(statements[2]).toContain('clock_timestamp()');
+    expect(statements[3]).toContain('insert into crm_settings');
+    expect(statements[4]).toContain('from crm_win_embeddings');
     // Waits for the lock — a `try_` variant would let the write proceed while
     // a rebuild is publishing, which is exactly the ordering being bought.
     expect(statements[0]).not.toContain('try_advisory');
@@ -337,6 +342,44 @@ describe('writeDepositRule', () => {
     // …and the same instant bounds the stale-row count, so the two can never
     // be compared across two different clocks.
     expect(paramsOf(db, 'from crm_win_embeddings')).toEqual(['org-1', DB_CLOCK]);
+  });
+
+  it('an identical normalized retry preserves the classification version and reports no stale rows', async () => {
+    const version = '2029-01-02T03:04:05.000Z';
+    const { db } = createMockDb();
+    mockExecuteSeq(
+      db,
+      equivalentWriteSeq({ keywords: ['ADELANTO'], label: 'Reserva', updatedAt: version }),
+    );
+
+    const result = await writeDepositRule(ctx(db), { keywords: [' adelanto '] });
+
+    expect(result).toMatchObject({ staleDerived: false, staleDerivedCount: 0 });
+    const [, storedJson] = paramsOf(db, 'insert into crm_settings') as [string, string];
+    expect(JSON.parse(storedJson).updatedAt).toBe(version);
+    expect(executedSql(db).some((text) => text.includes('from crm_win_embeddings'))).toBe(false);
+  });
+
+  it('a label-only update preserves the classification version and reports no stale rows', async () => {
+    const version = '2029-01-02T03:04:05.000Z';
+    const { db } = createMockDb();
+    mockExecuteSeq(
+      db,
+      equivalentWriteSeq({ keywords: ['seña', 'adelanto'], label: 'Old', updatedAt: version }),
+    );
+
+    const result = await writeDepositRule(ctx(db), {
+      keywords: ['ADELANTO', 'SEÑA'],
+      label: 'New label',
+    });
+
+    expect(result).toMatchObject({
+      rule: { keywords: ['adelanto', 'seña'], label: 'New label' },
+      staleDerived: false,
+      staleDerivedCount: 0,
+    });
+    const [, storedJson] = paramsOf(db, 'insert into crm_settings') as [string, string];
+    expect(JSON.parse(storedJson).updatedAt).toBe(version);
   });
 });
 

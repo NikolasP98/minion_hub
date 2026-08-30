@@ -41,13 +41,15 @@ vi.mock('./embeddings', () => ({
   toVectorLiteral: (v: number[]) => `[${v.join(',')}]`,
 }));
 
-import { buildWinIndex } from './crm-similarity.service';
+import { buildWinIndex, persistWinAnalysisIfCurrent } from './crm-similarity.service';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 const dialect = new PgDialect();
-function lastExecutedSql(db: unknown): SQL {
+function executedSqlContaining(db: unknown, needle: string): SQL {
   const calls = (db as { execute: { mock: { calls: unknown[][] } } }).execute.mock.calls;
-  return calls[calls.length - 1][0] as SQL;
+  const call = calls.find(([query]) => dialect.sqlToQuery(query as SQL).sql.includes(needle));
+  expect(call).toBeDefined();
+  return call![0] as SQL;
 }
 
 describe('buildWinIndex', () => {
@@ -59,9 +61,9 @@ describe('buildWinIndex', () => {
 
   it('PARITY: the full compiled buyer query matches the shipped shape, with the deposit rule bound as a parameter', async () => {
     const { db, resolve } = createMockDb();
-    resolve([]); // no buyers → buildWinIndex short-circuits right after this query
+    resolve([]);
     await buildWinIndex(ctx(db));
-    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    const { sql, params } = dialect.sqlToQuery(executedSqlContaining(db, 'from crm_contacts c'));
     expect(normalizeSql(sql)).toBe(
       normalizeSql(
         `select c.id::text id,
@@ -79,7 +81,7 @@ describe('buildWinIndex', () => {
   });
 
   // MAPPING, not classification: the mock returns zero rows directly, so this
-  // only proves buildWinIndex short-circuits on an empty buyerRows result —
+  // only proves buildWinIndex publishes an empty current set —
   // NOT that a deposit-only contact's row is excluded by `having
   // bool_or(IS_PROCEDURE)`. That predicate (shared with crm-finance.service.ts
   // and crm-journey.service.ts) is proven against real PostgreSQL, seeded with
@@ -89,6 +91,10 @@ describe('buildWinIndex', () => {
     resolve([]);
     const result = await buildWinIndex(ctx(db));
     expect(result).toEqual({ indexed: 0 });
+    const deleteQuery = dialect.sqlToQuery(
+      executedSqlContaining(db, 'delete from crm_win_embeddings'),
+    );
+    expect(deleteQuery.sql).toContain('contact_id <> all(array[]::uuid[])');
   });
 });
 
@@ -98,7 +104,7 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit decides what c
     const { db, resolve } = createMockDb();
     resolve([]);
     await buildWinIndex(ctx(db));
-    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    const { sql, params } = dialect.sqlToQuery(executedSqlContaining(db, 'from crm_contacts c'));
     expect(sql).toContain(
       'filter (where (ii.description is not null and coalesce((ii.description not ilike $1 and ii.description not ilike $2), true)))',
     );
@@ -113,7 +119,7 @@ describe('per-org deposit rule (S2 — crm_settings.value.deposit decides what c
     const { db, resolve } = createMockDb();
     resolve([]);
     await buildWinIndex(ctx(db));
-    const { sql, params } = dialect.sqlToQuery(lastExecutedSql(db));
+    const { sql, params } = dialect.sqlToQuery(executedSqlContaining(db, 'from crm_contacts c'));
     expect(sql).toContain('filter (where (ii.description is not null and true))');
     expect(params).toEqual([]);
   });
@@ -197,11 +203,24 @@ describe('win-index publication vs a concurrent deposit-rule write', () => {
     const lockAt = executed.findIndex((t) => t.includes('pg_advisory_xact_lock'));
     const recheckAt = executed.findIndex((t) => t.includes("value #>> '{deposit,updatedAt}'"));
     const upsertAt = executed.findIndex((t) => t.includes('insert into crm_win_embeddings'));
+    const deleteAt = executed.findIndex((t) => t.includes('delete from crm_win_embeddings'));
     expect(lockAt).toBeGreaterThanOrEqual(0);
     // The lock is what makes the recheck and the upsert one indivisible step
     // against writeDepositRule — a recheck taken before it would be advisory.
     expect(lockAt).toBeLessThan(recheckAt);
+    expect(recheckAt).toBeLessThan(deleteAt);
+    expect(deleteAt).toBeLessThan(upsertAt);
     expect(recheckAt).toBeLessThan(upsertAt);
+  });
+
+  it('preserves the previous complete index when embedding fails', async () => {
+    snapshotVersion = '2026-08-29T09:00:00.000Z';
+    embedTexts.mockRejectedValueOnce(new Error('provider unavailable'));
+    const { db, executed } = routedDb(() => snapshotVersion);
+
+    expect(await buildWinIndex(ctx(db))).toEqual({ indexed: 0 });
+    expect(executed.some((t) => t.includes('delete from crm_win_embeddings'))).toBe(false);
+    expect(publishSql(executed)).toHaveLength(0);
   });
 
   it('an org that never configured a rule (version null on both sides) still publishes', async () => {
@@ -219,5 +238,49 @@ describe('win-index publication vs a concurrent deposit-rule write', () => {
     expect(await buildWinIndex(ctx(db))).toEqual({ indexed: 0, skipped: 'rule-changed' });
     expect(publishSql(executed)).toHaveLength(0);
     warn.mockRestore();
+  });
+});
+
+describe('win-analysis publication vs a concurrent deposit-rule write', () => {
+  const analysis = {
+    wins: [{ point: 'x', repeat: 'y' }],
+    improvements: [],
+    builtAt: '2026-08-29T09:01:00.000Z',
+    basedOn: 1,
+  };
+
+  it('does not persist an old-rule analysis after the live version changes', async () => {
+    const { db } = createMockDb();
+    const execute = vi.fn(async (query: SQL) => {
+      const text = dialect.sqlToQuery(query).sql;
+      if (text.includes("value #>> '{deposit,updatedAt}'")) {
+        return [{ version: '2026-08-29T09:00:05.000Z' }];
+      }
+      return [];
+    });
+    (db as unknown as { execute: unknown }).execute = execute;
+
+    expect(await persistWinAnalysisIfCurrent(ctx(db), analysis, '2026-08-29T09:00:00.000Z')).toBe(
+      false,
+    );
+    expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).not.toHaveBeenCalled();
+  });
+
+  it('holds the lock through the version check and current-analysis write', async () => {
+    const version = '2026-08-29T09:00:00.000Z';
+    const { db } = createMockDb();
+    const executed: string[] = [];
+    const execute = vi.fn(async (query: SQL) => {
+      const text = dialect.sqlToQuery(query).sql;
+      executed.push(text);
+      return text.includes("value #>> '{deposit,updatedAt}'") ? [{ version }] : [];
+    });
+    (db as unknown as { execute: unknown }).execute = execute;
+
+    expect(await persistWinAnalysisIfCurrent(ctx(db), analysis, version)).toBe(true);
+    expect(executed.findIndex((t) => t.includes('pg_advisory_xact_lock'))).toBeLessThan(
+      executed.findIndex((t) => t.includes("value #>> '{deposit,updatedAt}'")),
+    );
+    expect((db as unknown as { insert: ReturnType<typeof vi.fn> }).insert).toHaveBeenCalledTimes(1);
   });
 });
