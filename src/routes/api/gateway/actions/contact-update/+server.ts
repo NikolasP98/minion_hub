@@ -5,12 +5,7 @@ import { parseBody } from '$server/api/validate';
 import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
 import { sanitizeContactFields } from '$lib/pii';
 import { requireAssistantCapability } from '../../_shared/action-auth';
-import {
-  getContact,
-  updateContact,
-  setFunnelStage,
-  addNote,
-} from '$server/services/crm-contacts.service';
+import { updateContact, setFunnelStage, addNote } from '$server/services/crm-contacts.service';
 import { StaleWriteError } from '$server/services/errors';
 
 const bodySchema = z
@@ -40,10 +35,10 @@ const bodySchema = z
  *
  * Whitelisted fields per the plan (name/phone/email/funnel stage/notes). email
  * and funnel stage have no dedicated columns on crm_contacts — email lives in
- * custom_fields (merged in here, not a blind overwrite, since updateContact's
- * customFields param REPLACES the whole object) and funnel stage goes through
- * the dedicated setFunnelStage (advance-only unless by:'user'; an agent write
- * is by:'agent', matching the service's own semantics for automated callers).
+ * custom_fields, written through updateContact's `customFieldsPatch` (a single
+ * atomic patch that touches only that key), and funnel stage goes through the
+ * dedicated setFunnelStage (advance-only unless by:'user'; an agent write is
+ * by:'agent', matching the service's own semantics for automated callers).
  *
  * Every `custom_fields` this route puts on the wire goes through
  * `sanitizeContactFields` — the same ONE serialization gate the roster, detail
@@ -86,20 +81,14 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
 
   let updatedContact: unknown = null;
   if (b.name !== undefined || b.phone !== undefined || b.email !== undefined) {
-    let customFields: Record<string, unknown> | undefined;
-    if (b.email !== undefined) {
-      const current = await getContact(ctx, b.contactId);
-      if (!current) throw error(404, 'contact not found');
-      customFields = {
-        ...(current.contact.customFields as Record<string, unknown>),
-        email: b.email,
-      };
-    }
+    // `email: null` is a real edit (clear the field), so key on `!== undefined`
+    // — the same distinction the zod schema draws for name/phone.
+    const customFieldsPatch = b.email !== undefined ? { email: b.email } : undefined;
     try {
       updatedContact = await updateContact(
         ctx,
         b.contactId,
-        { displayName: b.name, phone: b.phone, customFields },
+        { displayName: b.name, phone: b.phone, customFieldsPatch },
         b.expectedUpdatedAt,
       );
     } catch (e) {
