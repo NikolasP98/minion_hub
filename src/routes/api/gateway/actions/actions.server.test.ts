@@ -44,12 +44,10 @@ vi.mock('$server/services/errors', () => ({
   staleGuard: vi.fn(),
 }));
 
-const mockGetContact = vi.fn();
 const mockUpdateContact = vi.fn();
 const mockSetFunnelStage = vi.fn();
 const mockAddNote = vi.fn();
 vi.mock('$server/services/crm-contacts.service', () => ({
-  getContact: (...args: unknown[]) => mockGetContact(...args),
   updateContact: (...args: unknown[]) => mockUpdateContact(...args),
   setFunnelStage: (...args: unknown[]) => mockSetFunnelStage(...args),
   addNote: (...args: unknown[]) => mockAddNote(...args),
@@ -655,9 +653,8 @@ describe('POST /api/gateway/actions/contact-update', () => {
     expect(JSON.stringify(body)).not.toContain('chunk-9');
   });
 
-  it('merges email over the stored custom fields instead of replacing them', async () => {
+  it('patches only email without round-tripping the stored custom fields', async () => {
     grantCrmEdit(1);
-    mockGetContact.mockResolvedValue({ contact: { customFields: { telefono: '51987654321' } } });
     mockUpdateContact.mockResolvedValue(scoredRow());
     await contactUpdatePOST(
       makeEvent('/api/gateway/actions/contact-update', {
@@ -669,8 +666,8 @@ describe('POST /api/gateway/actions/contact-update', () => {
     const [, , data] = mockUpdateContact.mock.calls[0] as [
       unknown,
       string,
-      { customFields: Record<string, unknown> },
+      { customFieldsPatch: Record<string, unknown> },
     ];
-    expect(data.customFields).toEqual({ telefono: '51987654321', email: 'ana@example.com' });
+    expect(data.customFieldsPatch).toEqual({ email: 'ana@example.com' });
   });
 });
