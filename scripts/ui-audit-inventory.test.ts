@@ -31,8 +31,8 @@ describe('UI audit route inventory', () => {
         .filter((route) => route.kind === 'redirect')
         .every((route) => route.redirectContract),
     ).toBe(true);
-    expect(inventory.sourceTreeSha).toBe(baseline.sourceTreeSha);
-    expect(inventory.workingTreeFingerprint).toBe(baseline.workingTreeFingerprint);
+    expect(inventory.summary).toEqual(baseline.summary);
+    expect(inventory.routes).toEqual(baseline.routes);
   });
 
   it('reads clean baseline evidence from the recorded Git object, not dirty route files', async () => {
