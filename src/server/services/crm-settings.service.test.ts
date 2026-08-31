@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import { createMockDb } from '$server/test-utils/mock-db';
 import {
   normalizeDepositRule,
+  normalizeIcpDefinition,
   readCrmSettingsValue,
   resolveDepositRule,
+  resolveIcpDefinition,
+  saveIcpDefinition,
 } from './crm-settings.service';
 import { DEFAULT_DEPOSIT_RULE } from './crm-deposit-rule';
 
@@ -190,5 +195,179 @@ describe('resolveDepositRule', () => {
     } as never;
     expect(await resolveDepositRule(ctx(db))).toEqual(DEFAULT_DEPOSIT_RULE);
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── ICP definition (`crm_settings.value.icp`) ───────────────────────────────
+
+const STORED_ICP = {
+  description: 'Clinics in Lima with budget for a full treatment plan.',
+  criteria: [{ id: 'budget', label: 'Has budget for a full plan', weight: 5 }],
+  disqualifiers: ['only ever asks for free consults'],
+  version: 3,
+  updatedAt: '2026-08-29T00:00:00.000Z',
+};
+
+describe('normalizeIcpDefinition', () => {
+  it('treats an absent icp key as "feature off": null, no warning', () => {
+    const warn = warnSpy();
+    expect(normalizeIcpDefinition(undefined)).toBeNull();
+    expect(normalizeIcpDefinition(null)).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('returns a well-formed stored definition as-is', () => {
+    expect(normalizeIcpDefinition(STORED_ICP)).toEqual(STORED_ICP);
+  });
+
+  it.each([
+    ['a bare string', 'our ideal customer'],
+    ['an array', [STORED_ICP]],
+    ['a definition missing its server-owned version', { ...STORED_ICP, version: undefined }],
+    [
+      'a definition with an out-of-range weight',
+      {
+        ...STORED_ICP,
+        criteria: [{ id: 'budget', label: 'x', weight: 9 }],
+      },
+    ],
+    [
+      'a definition with 9 criteria',
+      {
+        ...STORED_ICP,
+        criteria: Array.from({ length: 9 }, (_, i) => ({ id: `c${i}`, label: 'x', weight: 1 })),
+      },
+    ],
+  ])('warns and returns null (never a salvaged subset) for %s', (_label, raw) => {
+    const warn = warnSpy();
+    expect(normalizeIcpDefinition(raw)).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+  });
+});
+
+describe('resolveIcpDefinition', () => {
+  it('reads the org definition out of the shared settings row', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ value: { deposit: { keywords: ['reserva'] }, icp: STORED_ICP } }]);
+    expect(await resolveIcpDefinition(ctx(db))).toEqual(STORED_ICP);
+  });
+
+  it('returns null when the org has no settings row at all', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    expect(await resolveIcpDefinition(ctx(db))).toBeNull();
+  });
+
+  it('never throws on a settings read failure — the feature goes quiet, the caller keeps working', async () => {
+    const warn = warnSpy();
+    const db = {
+      transaction: () => {
+        throw new Error('boom');
+      },
+    } as never;
+    expect(await resolveIcpDefinition(ctx(db))).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * A tx that RECORDS the upsert instead of executing it, so the shipped
+ * statement's shape is assertable directly (the behaviour it buys is proven
+ * against a real engine in `crm-icp-settings.atomic-write.test.ts`).
+ */
+function makeRecordingTx(returned: unknown[]) {
+  const calls: { values?: Record<string, unknown>; set?: Record<string, unknown> } = {};
+  const chain: Record<string, unknown> = {
+    values: (v: Record<string, unknown>) => {
+      calls.values = v;
+      return chain;
+    },
+    onConflictDoUpdate: (c: { set: Record<string, unknown> }) => {
+      calls.set = c.set;
+      return chain;
+    },
+    returning: () => Promise.resolve(returned),
+  };
+  let selectCalls = 0;
+  const tx = {
+    execute: async () => [],
+    insert: () => chain,
+    select: () => {
+      selectCalls++;
+      return chain;
+    },
+  };
+  return {
+    db: { transaction: (fn: (tx: unknown) => unknown) => fn(tx) },
+    calls,
+    selectCount: () => selectCalls,
+  };
+}
+
+const ICP_INPUT = {
+  description: STORED_ICP.description,
+  criteria: STORED_ICP.criteria,
+  disqualifiers: STORED_ICP.disqualifiers,
+};
+
+describe('saveIcpDefinition — the write boundary', () => {
+  it('rejects an invalid definition before any statement is built', async () => {
+    const { db, calls } = makeRecordingTx([]);
+    await expect(
+      saveIcpDefinition(ctx(db as never), {
+        ...ICP_INPUT,
+        disqualifiers: ['a', 'b', 'c', 'd', 'e', 'f'],
+      }),
+    ).rejects.toThrow();
+    expect(calls.values).toBeUndefined();
+  });
+
+  it('refuses a client-supplied `version` rather than trusting it', async () => {
+    const { db } = makeRecordingTx([]);
+    await expect(
+      saveIcpDefinition(ctx(db as never), { ...ICP_INPUT, version: 99 } as never),
+    ).rejects.toThrow();
+  });
+
+  it('derives the next version IN the update expression without a pre-read', async () => {
+    const { db, calls, selectCount } = makeRecordingTx([
+      { value: { icp: { ...ICP_INPUT, version: 4, updatedAt: '2026-08-29T00:00:00.000Z' } } },
+    ]);
+    const saved = await saveIcpDefinition(ctx(db as never), ICP_INPUT);
+    expect(saved.version).toBe(4);
+    expect(selectCount()).toBe(0); // no read-modify-write
+
+    const query = new PgDialect().sqlToQuery(calls.set!.value as SQL);
+    // One jsonb_set targeting ONLY the `icp` path — the sibling keys
+    // (deposit/accounts/winAnalysis) on this row are never rewritten.
+    expect(query.sql).toContain('jsonb_set');
+    expect(query.sql).toContain("'{icp}'");
+    // The version comes from the row being updated and an org-scoped cached
+    // maximum inside that same expression, not from a separate pre-read.
+    expect(query.sql).toContain('jsonb_typeof');
+    expect(query.sql.toLowerCase()).toContain('select max');
+    expect(query.sql).toContain('"crm_contacts"');
+    expect(query.params).toContain('org-1');
+    const body = query.params.find((p) => typeof p === 'string' && p.includes('description'));
+    expect(String(body)).not.toContain('"version"');
+  });
+
+  it('stamps updatedAt server-side into the written body', async () => {
+    const { db, calls } = makeRecordingTx([
+      { value: { icp: { ...ICP_INPUT, version: 1, updatedAt: '2026-08-29T00:00:00.000Z' } } },
+    ]);
+    await saveIcpDefinition(ctx(db as never), ICP_INPUT);
+    const query = new PgDialect().sqlToQuery(calls.set!.value as SQL);
+    const body = String(
+      query.params.find((p) => typeof p === 'string' && p.includes('description')),
+    );
+    expect(JSON.parse(body).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('fails loudly when the written row does not read back as a valid definition', async () => {
+    const warn = warnSpy();
+    const { db } = makeRecordingTx([{ value: { icp: { description: 'x' } } }]);
+    await expect(saveIcpDefinition(ctx(db as never), ICP_INPUT)).rejects.toThrow('round-trip');
+    expect(warn).toHaveBeenCalled();
   });
 });

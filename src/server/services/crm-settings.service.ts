@@ -1,20 +1,27 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { crmSettings } from '$server/db/pg-crm-schema';
+import { crmContacts, crmSettings } from '$server/db/pg-crm-schema';
 import {
   DEFAULT_DEPOSIT_RULE,
   DEPOSIT_KEYWORDS_MAX,
   DEPOSIT_KEYWORD_MAX_LENGTH,
   type DepositRule,
 } from './crm-deposit-rule';
+import {
+  icpDefinitionSchema,
+  icpDefinitionWriteSchema,
+  type IcpDefinition,
+  type IcpDefinitionInput,
+} from '$lib/components/crm/crm-icp';
 
 /**
  * The CRM settings boundary — the ONE place `crm_settings.value` is read.
  *
  * `crm_settings` is a single jsonb row per org whose top-level keys are owned
  * by different features (`accounts` → the CRM account scope,
- * `winAnalysis` → the similarity service, `deposit` → the deposit rule below).
+ * `winAnalysis` → the similarity service, `deposit` → the deposit rule below,
+ * `icp` → the ICP definition below).
  * Every consumer reads through `readCrmSettingsValue` and parses only its own
  * key: a second hand-written `select … from crm_settings` is how the org
  * scoping, the missing-row fallback and the transaction discipline drift
@@ -144,4 +151,162 @@ export async function resolveDepositRule(ctx: CoreCtx): Promise<DepositRule> {
     return DEFAULT_DEPOSIT_RULE;
   }
   return normalizeDepositRule(value.deposit);
+}
+
+// ── ICP definition (`crm_settings.value.icp`) ───────────────────────────────
+// Spec 2026-08-03-crm-icp-score-spec §3.1. The SHAPE, the caps and the strict
+// write schema live in `$lib/components/crm/crm-icp` (shared with the client);
+// this section owns only the read normalization and the DB round trip, exactly
+// as the deposit rule above splits `crm-deposit-rule.ts` from this file.
+
+/**
+ * Read normalization for a stored `icp` value.
+ *
+ * - **Absent** (`undefined`/`null`) ⇒ `null`, silently. Almost every org has
+ *   never configured an ICP; that is the default state, not a misconfiguration.
+ * - **Malformed** ⇒ warn and return `null` as a WHOLE — never a salvaged
+ *   subset. A partially-recovered definition would be scored against by the
+ *   judge and cached per contact under a version the operator never authored,
+ *   which is worse than the feature staying off.
+ * - **Well-formed** ⇒ returned as stored.
+ *
+ * `null` here means the same thing everywhere downstream: no column, no tick
+ * work, no LLM spend (acceptance criterion 1). Note that a VALID but empty
+ * definition also disables the feature — that check is `isIcpConfigured`, which
+ * the client shares; this function only answers "is there a parseable one".
+ */
+export function normalizeIcpDefinition(raw: unknown): IcpDefinition | null {
+  if (raw == null) return null;
+  const parsed = icpDefinitionSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.warn(
+      `crm_settings.value.icp is malformed (${parsed.error.issues[0]?.message ?? 'invalid'}); treating the org as having no ICP definition`,
+    );
+    return null;
+  }
+  return parsed.data;
+}
+
+/**
+ * Resolves the org's ICP definition — `null` when unset, unparseable, or the
+ * settings read itself fails. A read failure must not 500 the roster or abort a
+ * cross-org tick: the feature going quiet for one cycle is recoverable, a
+ * failed page is not (same ruling as `resolveDepositRule`).
+ *
+ * Opens its own transaction via `readCrmSettingsValue` — see the
+ * transaction-discipline note at the top of this file: resolve it BEFORE
+ * opening the transaction that needs it, never from inside one.
+ */
+export async function resolveIcpDefinition(ctx: CoreCtx): Promise<IcpDefinition | null> {
+  let value: Record<string, unknown>;
+  try {
+    value = await readCrmSettingsValue(ctx);
+  } catch (err) {
+    console.warn('resolveIcpDefinition: crm_settings read failed; treating ICP as unset', err);
+    return null;
+  }
+  return normalizeIcpDefinition(value.icp);
+}
+
+/**
+ * SQL for the NEXT `icp.version`, computed by Postgres from the row it is
+ * updating rather than from a value this process read earlier.
+ *
+ * This is the whole point of the write below: `version` is what invalidates
+ * every cached per-contact score (spec §3.1, §5), so two operators saving
+ * concurrently must produce two distinct, strictly increasing versions. A
+ * read-modify-write (`select version` → `+1` → `update`) loses one of them and
+ * leaves a definition whose version was already scored against — every affected
+ * contact then keeps a stale `_icp` forever, because the dirty gate is
+ * signature-based and never age-based.
+ *
+ * Only positive integral numbers are usable. A stored or cached safe-integer
+ * maximum participates in the calculation so its successor deliberately fails
+ * the write boundary and rolls the transaction back instead of reusing the
+ * maximum. A malformed definition version is ignored, but numbering still advances
+ * beyond every valid `_icp.icpVersion` cached for this org. That prevents a
+ * repaired definition from colliding with a stale verdict's dirty-gate input.
+ * Keeping range checks in `numeric` before `bigint` casts means a corrupt
+ * `1e100` cannot raise 22003 and make the settings row permanently unsaveable.
+ */
+function nextIcpVersionSql(orgId: string) {
+  const storedDefinitionVersion = sql`case when jsonb_typeof(${crmSettings.value}->'icp'->'version') = 'number'
+      and (${crmSettings.value}->'icp'->>'version')::numeric between 1 and 9007199254740991
+      and trunc((${crmSettings.value}->'icp'->>'version')::numeric)
+        = (${crmSettings.value}->'icp'->>'version')::numeric
+      then ((${crmSettings.value}->'icp'->>'version')::numeric)::bigint
+      else 0 end`;
+  const highestCachedVersion = sql`coalesce((select max((c.custom_fields->'_icp'->>'icpVersion')::numeric)::bigint
+      from ${crmContacts} c
+      where c.org_id = ${orgId}
+        and jsonb_typeof(c.custom_fields->'_icp'->'icpVersion') = 'number'
+        and (c.custom_fields->'_icp'->>'icpVersion')::numeric between 1 and 9007199254740991
+        and trunc((c.custom_fields->'_icp'->>'icpVersion')::numeric)
+          = (c.custom_fields->'_icp'->>'icpVersion')::numeric), 0)`;
+  return sql`greatest(${storedDefinitionVersion}, ${highestCachedVersion}) + 1`;
+}
+
+/**
+ * Persist an org's ICP definition, bumping `icp.version` ATOMICALLY.
+ *
+ * The input is parsed with the STRICT write schema — over-cap collections,
+ * unknown keys, and a client-supplied `version`/`updatedAt` are rejected rather
+ * than clamped or trusted. `updatedAt` is stamped here; `version` comes from
+ * {@link nextIcpVersionSql} inside the same statement.
+ *
+ * Every save bumps the version, even a no-op edit: the version's job is to
+ * invalidate cached scores, and a "did anything really change" comparison would
+ * have to know which fields the judge is sensitive to. Cheap over-invalidation
+ * beats a silently stale score (spec §3.1 — "bump on ANY edit").
+ *
+ * Only the `icp` key is written (`jsonb_set` on that path); `accounts`,
+ * `deposit` and `winAnalysis` on the same row are untouched, so a concurrent
+ * writer of another key cannot be clobbered by this one.
+ *
+ * TODO(handoff): defined and tested here but not yet reachable over HTTP — S6
+ * of 2026-08-03-crm-icp-score-spec adds the `/crm/settings` definition editor
+ * and its write route (already covered by the central `['/api/crm', 'crm']`
+ * entry in `API_WRITE_PREFIXES`, so it needs no new RBAC gate). Until then no
+ * org can have an `icp` key, which is exactly the spec's default-off state.
+ */
+export async function saveIcpDefinition(
+  ctx: CoreCtx,
+  input: IcpDefinitionInput,
+): Promise<IcpDefinition> {
+  const parsed = icpDefinitionWriteSchema.parse(input);
+  const body = JSON.stringify({ ...parsed, updatedAt: new Date().toISOString() });
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(crmSettings)
+      .values({
+        orgId: ctx.tenantId,
+        // First definition for this org: version 1. The conflict branch below
+        // is the one that has a previous version to move forward from.
+        value: sql`jsonb_build_object('icp', ${body}::jsonb || jsonb_build_object('version', 1))`,
+      })
+      .onConflictDoUpdate({
+        target: crmSettings.orgId,
+        set: {
+          // Inside DO UPDATE, a bare column reference reads the EXISTING row
+          // (`excluded.*` would be the proposed one) — the same trick
+          // `persistWinAnalysis` and `customFieldsMergeSql` rely on, and what
+          // makes the version bump a single statement with no pre-image read.
+          value: sql`jsonb_set(coalesce(${crmSettings.value}, '{}'::jsonb), '{icp}',
+            ${body}::jsonb || jsonb_build_object('version', ${nextIcpVersionSql(ctx.tenantId)}), true)`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning({ value: crmSettings.value });
+    const stored = normalizeIcpDefinition((row?.value as { icp?: unknown } | undefined)?.icp);
+    if (!stored) {
+      // This check must stay INSIDE the transaction. At safe-integer
+      // exhaustion the SQL deliberately writes an out-of-contract successor;
+      // throwing here rolls that mutation back instead of committing an
+      // invalid definition or reporting a duplicate successful version.
+      throw new Error(
+        'saveIcpDefinition: stored ICP definition did not round-trip; version repair required',
+      );
+    }
+    return stored;
+  });
 }

@@ -12,12 +12,13 @@ vi.mock('$server/services/rbac.service', () => ({
 
 const mockRankContactsPage = vi.fn();
 const mockListTags = vi.fn(async () => [] as unknown[]);
+const mockCreateContact = vi.fn();
 vi.mock('$server/services/crm-contacts.service', () => ({
   ROSTER_CAP: 50_000,
   rankContactsPage: (...a: unknown[]) => mockRankContactsPage(...a),
   rankContactsPageCached: (...a: unknown[]) => mockRankContactsPage(...a),
   listTags: () => mockListTags(),
-  createContact: vi.fn(),
+  createContact: (...a: unknown[]) => mockCreateContact(...a),
 }));
 
 vi.mock('$server/services/crm-scoring', () => ({
@@ -25,7 +26,7 @@ vi.mock('$server/services/crm-scoring', () => ({
     tags.map((t) => t.id),
 }));
 
-import { GET } from './+server';
+import { GET, POST } from './+server';
 
 /** A page row shaped like the service's RankedContact (the golden element shape). */
 const row = (id: string) => ({
@@ -199,5 +200,103 @@ describe('GET /api/crm/contacts (S3 page contract)', () => {
       expect.anything(),
       expect.objectContaining({ maskSensitive: true }),
     );
+  });
+});
+
+/**
+ * POST is the one contact-serialization path that used to skip
+ * `sanitizeContactFields` entirely: it echoed the freshly-inserted row back
+ * verbatim. That let a caller read back the internal `_icpClaim` lease it had
+ * just posted, and handed a field-level-masked writer the un-masked `_icp`
+ * free text (spec 2026-08-03 §7). Both are asserted against the real
+ * `$lib/pii` sanitizer — only `createContact` is mocked, and it echoes what
+ * the *service* would have stored so the route's own gate is what is measured.
+ */
+const icpResult = {
+  score: 82,
+  band: 'strong',
+  criteria: [{ id: 'budget', met: true, note: 'mentions a full treatment plan' }],
+  reasons: ['Repeat buyer with a stated budget'],
+  evidenceRefs: [{ chunkId: 'chunk-1' }],
+  inputSig: 'sig-1',
+  icpVersion: 2,
+  model: 'google/gemini-2.5-flash',
+  promptVersion: 1,
+  scoredAt: '2026-08-29T00:00:00.000Z',
+};
+
+const callPOST = (body: unknown) =>
+  POST({
+    locals: {},
+    request: new Request('http://localhost/api/crm/contacts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  } as unknown as Parameters<typeof POST>[0]);
+
+describe('POST /api/crm/contacts (reserved-key + masking boundary)', () => {
+  it('401s without a core ctx', async () => {
+    mockGetCoreCtx.mockResolvedValueOnce(null);
+    await expect(callPOST({ displayName: 'Ana' })).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('never echoes an internal `_icpClaim` lease back, even to an unmasked caller', async () => {
+    // The service drops `_`-prefixed client keys, so the stored row carries only
+    // the lease the ICP kernel itself owns — which must still not be serialised.
+    mockCreateContact.mockResolvedValue({
+      id: 'c1',
+      displayName: 'Ana',
+      customFields: {
+        distrito: 'Miraflores',
+        _icpClaim: { token: 'forged', untilEpoch: 4102444800000 },
+        _icp: icpResult,
+      },
+    });
+
+    const body = await (
+      await callPOST({
+        displayName: '  Ana  ',
+        customFields: { distrito: 'Miraflores', _icpClaim: { token: 'forged', untilEpoch: 1 } },
+      })
+    ).json();
+
+    expect(body.contact.customFields).not.toHaveProperty('_icpClaim');
+    expect(body.contact.customFields.distrito).toBe('Miraflores');
+    // unmasked principal keeps the ICP verdict in full
+    expect(body.contact.customFields._icp).toMatchObject({ score: 82, band: 'strong' });
+    expect(body.contact.customFields._icp.reasons).toEqual(icpResult.reasons);
+    // the handler still trims the display name it forwards to the service
+    expect(mockCreateContact).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ displayName: 'Ana' }),
+    );
+  });
+
+  it('strips the ICP free text for a field-level-masked writer', async () => {
+    mockShouldMask.mockResolvedValue(true);
+    mockCreateContact.mockResolvedValue({
+      id: 'c1',
+      displayName: 'Ana',
+      customFields: {
+        telefono: '51999888777',
+        _icpClaim: { token: 't', untilEpoch: 1 },
+        _icp: icpResult,
+      },
+    });
+
+    const body = await (await callPOST({ displayName: 'Ana' })).json();
+    const fields = body.contact.customFields;
+
+    expect(fields).not.toHaveProperty('_icpClaim');
+    // score/band survive (same class as the RFM score a masked principal sees)…
+    expect(fields._icp).toMatchObject({ score: 82, band: 'strong' });
+    // …the LLM-written free text about private conversations does not.
+    expect(fields._icp).not.toHaveProperty('reasons');
+    expect(fields._icp).not.toHaveProperty('evidenceRefs');
+    expect(fields._icp.criteria[0]).not.toHaveProperty('note');
+    expect(fields._icp.criteria[0]).toMatchObject({ id: 'budget', met: true });
+    // and the PII redaction the roster already applies is not lost on this path
+    expect(fields.telefono).not.toBe('51999888777');
   });
 });
