@@ -293,8 +293,13 @@ const DDL = `
     est_unit_cost numeric not null default 0,
     est_value numeric not null default 0,
     status text not null default 'open',
+    realized_entry_id uuid,
+    realized_qty numeric,
+    realized_value numeric,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
+    realized_at timestamptz,
+    released_at timestamptz,
     unique (org_id, source, source_id, item_id)
   );
   create table fin_product_components (
@@ -431,6 +436,28 @@ async function waitUntilBlocked(owner: Client, pids: number[], timeoutMs = 10_00
       throw new Error(
         `timed out waiting for backends [${pids.join(',')}] to block on the row lock`,
       );
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
+async function waitUntilAdvisoryBlocked(
+  owner: Client,
+  pid: number,
+  timeoutMs = 10_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const [row] = await owner.unsafe<{ blocked: boolean }[]>(
+      `select exists(
+         select 1 from pg_locks
+          where pid = $1 and locktype = 'advisory' and not granted
+       ) as blocked`,
+      [pid],
+    );
+    if (row!.blocked) return;
+    if (Date.now() > deadline) {
+      throw new Error(`timed out waiting for backend ${pid} to block on the advisory code lock`);
     }
     await new Promise((r) => setTimeout(r, 25));
   }
@@ -942,56 +969,64 @@ describe.runIf(Boolean(databaseUrl))('POS sellable writes against real PostgreSQ
       let markRefreshed!: () => void;
       const refreshed = new Promise<void>((resolve) => (markRefreshed = resolve));
 
-      const invoicePromise = upsertInvoicesBatch(
-        ctxFor(clients[0]!),
-        [invoiceFor('AFTER', 'invoice-post-refresh')],
-        new Map(),
-        {
-          afterProductRefresh: async () => {
-            markRefreshed();
-            await refreshReleased;
+      let invoicePromise: Promise<void> | undefined;
+      try {
+        invoicePromise = upsertInvoicesBatch(
+          ctxFor(clients[0]!),
+          [invoiceFor('AFTER', 'invoice-post-refresh')],
+          new Map(),
+          {
+            afterProductRefresh: async () => {
+              markRefreshed();
+              await refreshReleased;
+            },
           },
-        },
-      );
-      await refreshed;
+        );
+        await refreshed;
 
-      const createPid = await backendPid(clients[1]!);
+        const createPid = await backendPid(clients[1]!);
 
-      let markProductCommitted!: () => void;
-      const productCommitted = new Promise<void>((resolve) => (markProductCommitted = resolve));
-      const createPromise = createSellable(
-        ctxFor(clients[1]!),
-        {
-          code: 'AFTER',
-          name: 'After refresh',
-          kind: 'product',
-          trackStock: true,
-          unitPrice: 1,
-        },
-        ACTOR,
-        { afterProductUpsert: async () => markProductCommitted() },
-      );
-      await productCommitted;
-      const [product] = await owner.unsafe<{ id: string }[]>(
-        `select id from fin_products where org_id = $1 and code = 'AFTER'`,
-        [ORG_ID],
-      );
-      expect(product).toBeDefined();
-      await waitUntilBlocked(owner, [createPid]);
-      releaseRefresh();
-      await Promise.all([invoicePromise, createPromise]);
+        let markProductCommitted!: () => void;
+        const productCommitted = new Promise<void>((resolve) => (markProductCommitted = resolve));
+        const createPromise = createSellable(
+          ctxFor(clients[1]!),
+          {
+            code: 'AFTER',
+            name: 'After refresh',
+            kind: 'product',
+            trackStock: true,
+            unitPrice: 1,
+          },
+          ACTOR,
+          { afterProductUpsert: async () => markProductCommitted() },
+        );
+        await productCommitted;
+        const [product] = await owner.unsafe<{ id: string }[]>(
+          `select id from fin_products where org_id = $1 and code = 'AFTER'`,
+          [ORG_ID],
+        );
+        expect(product).toBeDefined();
+        await waitUntilAdvisoryBlocked(owner, createPid);
+        releaseRefresh();
+        await Promise.all([invoicePromise, createPromise]);
 
-      const [line] = await owner.unsafe<{ product_id: string | null }[]>(
-        `select product_id from fin_invoice_items where code = 'AFTER'`,
-      );
-      const [item] = await owner.unsafe<{ id: string; uom: string }[]>(
-        `select id, uom from stk_items where org_id = $1 and code = 'AFTER'`,
-        [ORG_ID],
-      );
-      expect(line).toMatchObject({ product_id: null });
-      await expect(updateItem(ctxFor(clients[1]!), item!.id, { uom: 'kg' })).rejects.toMatchObject({
-        code: 'uom_immutable',
-      });
+        const [line] = await owner.unsafe<{ product_id: string | null }[]>(
+          `select product_id from fin_invoice_items where code = 'AFTER'`,
+        );
+        const [item] = await owner.unsafe<{ id: string; uom: string }[]>(
+          `select id, uom from stk_items where org_id = $1 and code = 'AFTER'`,
+          [ORG_ID],
+        );
+        expect(line).toMatchObject({ product_id: null });
+        await expect(
+          updateItem(ctxFor(clients[1]!), item!.id, { uom: 'kg' }),
+        ).rejects.toMatchObject({
+          code: 'uom_immutable',
+        });
+      } finally {
+        releaseRefresh();
+        await invoicePromise?.catch(() => undefined);
+      }
     });
   }, 30_000);
 

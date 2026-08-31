@@ -729,6 +729,14 @@ describe('setConsumption — audit trail (§7 audit tracing)', () => {
 });
 
 describe('createItem — uom cross-field validation', () => {
+  it('refuses POS sellable links at the public stock service boundary', async () => {
+    const { db } = createMockDb();
+    await expect(
+      createItem(ctx(db), { code: 'C1', name: 'Item', finProductId: 'product-1' }),
+    ).rejects.toMatchObject({ code: 'pos_link_owned' });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
   it('rejects a consumptionUom without a unitsPerStockUom before touching the db', async () => {
     const { db } = createMockDb();
     await expect(
@@ -756,6 +764,17 @@ describe('createItem — uom cross-field validation', () => {
 });
 
 describe('updateItem — uom cross-field validation (merged against the current row)', () => {
+  it('refuses unlinking or relinking a POS sellable at the public stock service boundary', async () => {
+    const { db } = createMockDb();
+    await expect(updateItem(ctx(db), 'i1', { finProductId: null })).rejects.toMatchObject({
+      code: 'pos_link_owned',
+    });
+    await expect(updateItem(ctx(db), 'i1', { finProductId: 'product-2' })).rejects.toMatchObject({
+      code: 'pos_link_owned',
+    });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
   it('refuses a direct stock UOM PATCH when the item has quantity history', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([

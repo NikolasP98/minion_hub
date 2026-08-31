@@ -354,6 +354,9 @@ export async function createItemInTx(
 }
 
 export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
+  if (input.finProductId != null) {
+    throw new StockError('sellable links are managed by the POS catalog', 'pos_link_owned');
+  }
   return withOrgCore(ctx, (tx) => createItemInTx(tx, ctx.tenantId, input));
 }
 
@@ -387,7 +390,7 @@ export async function itemHasHistory(
       exists(select 1 from stk_ledger l where l.org_id = ${orgId} and l.item_id = ${itemId}) as ledger,
       exists(select 1 from stk_entry_lines el where el.org_id = ${orgId} and el.item_id = ${itemId}) as entry_lines,
       exists(select 1 from stk_bins b where b.org_id = ${orgId} and b.item_id = ${itemId} and b.qty <> 0) as bins,
-      exists(select 1 from stk_accruals a where a.org_id = ${orgId} and a.item_id = ${itemId} and a.qty <> 0) as accruals,
+      exists(select 1 from stk_accruals a where a.org_id = ${orgId} and a.item_id = ${itemId} and a.qty_consumption <> 0) as accruals,
       ${
         billedPredicates.length === 0
           ? sql`false`
@@ -511,6 +514,9 @@ export async function updateItem(
   id: string,
   patch: Partial<NewItemInput>,
 ): Promise<StkItem | null> {
+  if (patch.finProductId !== undefined) {
+    throw new StockError('sellable links are managed by the POS catalog', 'pos_link_owned');
+  }
   return withOrgCore(ctx, (tx) => updateItemInTx(tx, ctx.tenantId, id, patch));
 }
 
