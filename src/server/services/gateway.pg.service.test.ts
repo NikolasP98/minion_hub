@@ -6,11 +6,16 @@ const insertValues = vi.fn(() => ({ returning: insertReturning, onConflictDoNoth
 const selectFrom = vi.fn();
 const selectObj = vi.fn(() => ({ from: selectFrom }));
 const deleteWhere = vi.fn();
+const deleteReturning = vi.fn();
+const updateReturning = vi.fn();
+const updateWhere = vi.fn(() => ({ returning: updateReturning }));
+const updateSet = vi.fn(() => ({ where: updateWhere }));
 
 const mockDb = {
   insert: vi.fn(() => ({ values: insertValues })),
   select: selectObj,
   delete: vi.fn(() => ({ where: deleteWhere })),
+  update: vi.fn(() => ({ set: updateSet })),
 };
 
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: () => mockDb }));
@@ -32,6 +37,8 @@ vi.mock('@minion-stack/db/pg', () => ({
     tokenCiphertext: 'tokenCiphertext',
     tokenIv: 'tokenIv',
     orgId: 'orgId',
+    lastConnectedAt: 'lastConnectedAt',
+    updatedAt: 'updatedAt',
   },
   userGateway: { profileId: 'profileId', gatewayId: 'gatewayId', isDefault: 'isDefault' },
 }));
@@ -82,7 +89,9 @@ beforeEach(() => {
     }),
     where: vi.fn().mockResolvedValue([]),
   });
-  deleteWhere.mockResolvedValue(undefined);
+  deleteReturning.mockResolvedValue([{ id: 'g1' }]);
+  deleteWhere.mockReturnValue({ returning: deleteReturning });
+  updateReturning.mockResolvedValue([{ id: 'g1' }]);
 });
 
 describe('gateway.pg.service', () => {
@@ -124,6 +133,33 @@ describe('gateway.pg.service', () => {
 
     expect(vi.mocked(eq)).toHaveBeenCalledWith('orgId', 'org-active');
     expect(rows).toHaveLength(1);
+  });
+
+  test('updateGatewayForOrgByServerId writes the canonical row scoped by gateway and org', async () => {
+    const { updateGatewayForOrgByServerId } = await import('./gateway.pg.service');
+    selectFrom.mockReturnValueOnce({
+      where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'g1' }]) }),
+    });
+    const connectedAt = Date.parse('2026-08-30T12:00:00Z');
+
+    const updated = await updateGatewayForOrgByServerId('legacy-1', 'org-a', {
+      name: 'Production',
+      token: 'new-secret',
+      lastConnectedAt: connectedAt,
+    });
+
+    expect(updated).toBe('g1');
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Production',
+        tokenCiphertext: 'enc:new-secret',
+        tokenIv: 'iv1',
+        lastConnectedAt: new Date(connectedAt),
+      }),
+    );
+    const { and, eq } = await import('drizzle-orm');
+    expect(vi.mocked(and)).toHaveBeenCalledWith({ _eq: ['id', 'g1'] }, { _eq: ['orgId', 'org-a'] });
+    expect(vi.mocked(eq)).toHaveBeenCalledWith('orgId', 'org-a');
   });
 
   test('getUserGatewayCredentials returns decrypted token', async () => {
