@@ -1270,18 +1270,17 @@ describe('updateSellable', () => {
 
       await updateSellable(ctx(db), 'fp-20', { trackStock: true, uom: 'Unidad' }, actor);
 
-      // updateSellable opens exactly four transactions: load the row, derive
-      // the facts, WRITE, read back. A fifth would mean the item insert and
-      // the product update committed separately — the defect this test exists
-      // to prevent.
+      // updateSellable opens exactly two transactions: one locked business
+      // transaction that reads facts and performs both writes, then readback.
+      // A third would mean part of the decision or mutation escaped the lock.
       const txOrder = txSpy(db).mock.invocationCallOrder;
-      expect(txOrder).toHaveLength(4);
+      expect(txOrder).toHaveLength(2);
 
-      // …and both writes land inside the third one: no transaction is opened
+      // …and both writes land inside the first one: no transaction is opened
       // between them, and the handle the item write got is the transaction's.
       const itemAt = createItemTxMock.mock.invocationCallOrder[0];
       const productAt = updateSpy(db).mock.invocationCallOrder[0];
-      expect(itemAt).toBeGreaterThan(txOrder[2]);
+      expect(itemAt).toBeGreaterThan(txOrder[0]);
       expect(productAt).toBeGreaterThan(itemAt);
       expect(txOrder.filter((o) => o > itemAt && o < productAt)).toEqual([]);
       expect(createItemTxMock.mock.calls[0][0]).toBe(txHandle(db));

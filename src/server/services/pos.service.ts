@@ -1168,11 +1168,17 @@ export async function listSellables(
 /** Same merge as listSellables for a single product, active-or-not — create
  *  and update both need the fresh row back regardless of active state. */
 async function getSellableRow(ctx: CoreCtx, productId: string): Promise<SellableRow> {
-  const rows = (await withOrgCore(ctx, (tx) =>
-    tx.execute(sql`${SELLABLE_MERGE_SQL}
-      where p.org_id = ${ctx.tenantId} and p.id = ${productId}
-      group by p.id, i.id`),
-  )) as unknown as SellableSqlRow[];
+  return withOrgCore(ctx, (tx) => getSellableRowTx(tx, ctx.tenantId, productId));
+}
+
+async function getSellableRowTx(
+  tx: CoreTx,
+  orgId: string,
+  productId: string,
+): Promise<SellableRow> {
+  const rows = (await tx.execute(sql`${SELLABLE_MERGE_SQL}
+    where p.org_id = ${orgId} and p.id = ${productId}
+    group by p.id, i.id`)) as unknown as SellableSqlRow[];
   if (!rows[0]) throw new PosError('sellable not found', 'not_found');
   return mapSellableRow(rows[0]);
 }
@@ -1201,6 +1207,16 @@ export async function deriveSellableFacts(
     // patch.kind below — every kind patch on a bundle refuses with
     // 'kind_derived' instead of a same-as-service patch (e.g. kind: 'service')
     // comparing equal-by-coincidence and silently passing through as a no-op.
+    kind: row.kind,
+    trackStock: row.trackStock,
+    uom: row.uom,
+    itemId: row.itemId,
+  };
+}
+
+async function deriveSellableFactsTx(tx: CoreTx, orgId: string, finProductId: string) {
+  const row = await getSellableRowTx(tx, orgId, finProductId);
+  return {
     kind: row.kind,
     trackStock: row.trackStock,
     uom: row.uom,
@@ -1530,156 +1546,110 @@ export async function updateSellable(
   patch: Partial<SellableInput>,
   actor: Actor,
 ): Promise<SellableRow> {
-  const [current] = await withOrgCore(ctx, (tx) =>
-    tx
+  const consumptionAudits = await withOrgCore(ctx, async (tx) => {
+    // Lock BEFORE reading any fallback value. Reading first and locking later
+    // lets two successful disjoint PATCHes restore each other's old values.
+    const [current] = await tx
       .select()
       .from(finProducts)
       .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId)))
-      .limit(1),
-  );
-  if (!current) throw new PosError('sellable not found', 'not_found');
+      .for('update')
+      .limit(1);
+    if (!current) throw new PosError('sellable not found', 'not_found');
 
-  const code = patch.code ? normalizeCode(patch.code) : current.code;
-  const name = patch.name ?? current.name;
-  const category = patch.category !== undefined ? patch.category : current.category;
-  const unitPrice =
-    patch.unitPrice !== undefined
-      ? patch.unitPrice
-      : current.unitPrice == null
-        ? null
-        : Number(current.unitPrice);
-  const active = patch.active !== undefined ? patch.active : current.active;
+    const code = patch.code ? normalizeCode(patch.code) : current.code;
+    const name = patch.name ?? current.name;
+    const category = patch.category !== undefined ? patch.category : current.category;
+    const unitPrice =
+      patch.unitPrice !== undefined
+        ? patch.unitPrice
+        : current.unitPrice == null
+          ? null
+          : Number(current.unitPrice);
+    const active = patch.active !== undefined ? patch.active : current.active;
 
-  if (codeError(code) !== null) {
-    throw new PosError(`code ${code} is not a valid catalog code`, 'invalid_code');
-  }
+    if (codeError(code) !== null) {
+      throw new PosError(`code ${code} is not a valid catalog code`, 'invalid_code');
+    }
 
-  /*
-   * ★ A code change must RENAME this row, never insert a new one.
-   *
-   * This used to call upsertProduct, which conflicts on (org_id, code). With a
-   * CHANGED code there is no conflict, so it INSERTED a second product and left
-   * the original untouched — the edit silently forked the catalog. That is
-   * exactly how `CM-SVP`, `RS-SVP`, `RS-O4` and `RO-I` appeared on 2026-07-20
-   * within four minutes of each other, each a hyphenated twin of a code that
-   * already existed, each with zero sales. Updating by id makes a rename a
-   * rename, and turns the unique index into the right error instead of a
-   * silent duplicate.
-   */
-  if (code !== current.code) {
-    // `code` is the SUSII sync's business key: loadProductMap() maps
-    // fin_products.code → id, and upsertInvoicesBatch re-inserts every invoice
-    // line resolving product_id through it. Renaming a product that already has
-    // billing history detaches that history the next time those invoices sync.
-    // Refuse until the alias table exists to carry the old code forward.
-    const billedRows = (await withOrgCore(ctx, (tx) =>
-      tx.execute(
+    if (code !== current.code) {
+      const billedRows = (await tx.execute(
         sql`select count(*)::int as n from fin_invoice_items
             where org_id = ${ctx.tenantId} and code = ${current.code}`,
-      ),
-    )) as unknown as Array<{ n: number }> | undefined;
-    const billedCount = billedRows?.[0]?.n ?? 0;
-    if (billedCount > 0) {
-      throw new PosError(
-        `code ${current.code} has ${billedCount} billed invoice lines and cannot be renamed`,
-        'code_locked',
-      );
+      )) as unknown as Array<{ n: number }> | undefined;
+      const billedCount = billedRows?.[0]?.n ?? 0;
+      if (billedCount > 0) {
+        throw new PosError(
+          `code ${current.code} has ${billedCount} billed invoice lines and cannot be renamed`,
+          'code_locked',
+        );
+      }
     }
-  }
 
-  // Stop the silent drop: kind/trackStock/uom are all projections of the
-  // linked stk_items row, not columns on fin_products, so a naive .set()
-  // below would accept these fields and discard them (operator sees a green
-  // save, reopens, the old value is back). An unchanged resubmit — the
-  // wizard's normal full-object save — stays a 200 no-op; a real change is
-  // refused with a typed 400 rather than silently lost. Only derive facts
-  // when one of the three is actually submitted, so a plain price/name edit
-  // costs nothing extra.
-  let startTracking = false;
-  if (patch.kind !== undefined || patch.trackStock !== undefined || patch.uom !== undefined) {
-    const facts = await deriveSellableFacts(ctx, productId);
+    let startTracking = false;
+    if (patch.kind !== undefined || patch.trackStock !== undefined || patch.uom !== undefined) {
+      const facts = await deriveSellableFactsTx(tx, ctx.tenantId, productId);
 
-    /*
-     * The one supported transition here: an untracked SERVICE starts tracking
-     * stock. It is additive — it creates the missing `stk_items` mirror and
-     * nothing else — which is why it is safe where true→false (which would
-     * orphan or delete an item that may carry history) is not.
-     *
-     * Bundles are excluded on purpose: `mapSellableRow` derives 'bundle' ahead
-     * of the item link, so linking an item to a bundle would set trackStock
-     * true while `kind` stayed 'bundle' — an unspecified state. Bundles keep
-     * S1's refusal (fail-closed).
-     */
-    startTracking = patch.trackStock === true && !facts.trackStock && facts.kind === 'service';
-    // `kind` is derived, so the wizard's full-object save must be judged
-    // against the state that will exist AFTER the supported transition —
-    // otherwise `{kind:'product', trackStock:true}` (exactly what the wizard
-    // sends when you tick "track stock") would refuse itself.
-    const effectiveKind = startTracking ? 'product' : facts.kind;
+      /*
+       * The one supported transition here: an untracked SERVICE starts tracking
+       * stock. It is additive — it creates the missing `stk_items` mirror and
+       * nothing else — which is why it is safe where true→false (which would
+       * orphan or delete an item that may carry history) is not.
+       *
+       * Bundles are excluded on purpose: `mapSellableRow` derives 'bundle' ahead
+       * of the item link, so linking an item to a bundle would set trackStock
+       * true while `kind` stayed 'bundle' — an unspecified state. Bundles keep
+       * S1's refusal (fail-closed).
+       */
+      startTracking = patch.trackStock === true && !facts.trackStock && facts.kind === 'service';
+      // `kind` is derived, so the wizard's full-object save must be judged
+      // against the state that will exist AFTER the supported transition —
+      // otherwise `{kind:'product', trackStock:true}` (exactly what the wizard
+      // sends when you tick "track stock") would refuse itself.
+      const effectiveKind = startTracking ? 'product' : facts.kind;
 
-    if (patch.kind !== undefined && patch.kind !== effectiveKind) {
-      // `kind` is derived by design and is never a directly settable field in
-      // any slice of this fix — refusing a direct write is the permanent,
-      // correct behavior, not deferred work.
-      throw new PosError(
-        'kind follows the linked stock item; publish or unlink an item to change it',
-        'kind_derived',
-      );
+      if (patch.kind !== undefined && patch.kind !== effectiveKind) {
+        // `kind` is derived by design and is never a directly settable field in
+        // any slice of this fix — refusing a direct write is the permanent,
+        // correct behavior, not deferred work.
+        throw new PosError(
+          'kind follows the linked stock item; publish or unlink an item to change it',
+          'kind_derived',
+        );
+      }
+      if (
+        patch.trackStock !== undefined &&
+        patch.trackStock !== facts.trackStock &&
+        !startTracking
+      ) {
+        // Everything that is left here is destructive (true→false unlinks a live
+        // item) or unspecified (a bundle) — S3 of
+        // 2026-08-17-hub-updatesellable-silent-drop-spec gives those their own
+        // codes and an explicit unlink path. Refusing stays the safe branch.
+        throw new PosError(
+          'stock tracking cannot be changed on an existing sellable yet',
+          'stock_tracking_immutable',
+        );
+      }
+      if (
+        patch.uom !== undefined &&
+        // When we are about to create the item, the submitted uom is that new
+        // item's uom (create parity), not a change to an existing item's uom.
+        !startTracking &&
+        normalizeUomForCompare(patch.uom) !== normalizeUomForCompare(facts.uom)
+      ) {
+        // TODO(handoff): apply a uom change when the linked item is pristine
+        // (no ledger history) instead of refusing unconditionally — S2 of
+        // 2026-08-20-handoff-minion-hub-902723699-spec (S3 of
+        // 2026-08-17-hub-updatesellable-silent-drop-spec covers the destructive
+        // rest). Refusing is safe (never silently dropped) but not yet the
+        // preferred branch.
+        throw new PosError(
+          'unit of measure cannot be changed on an existing sellable yet',
+          'uom_immutable',
+        );
+      }
     }
-    if (patch.trackStock !== undefined && patch.trackStock !== facts.trackStock && !startTracking) {
-      // Everything that is left here is destructive (true→false unlinks a live
-      // item) or unspecified (a bundle) — S3 of
-      // 2026-08-17-hub-updatesellable-silent-drop-spec gives those their own
-      // codes and an explicit unlink path. Refusing stays the safe branch.
-      throw new PosError(
-        'stock tracking cannot be changed on an existing sellable yet',
-        'stock_tracking_immutable',
-      );
-    }
-    if (
-      patch.uom !== undefined &&
-      // When we are about to create the item, the submitted uom is that new
-      // item's uom (create parity), not a change to an existing item's uom.
-      !startTracking &&
-      normalizeUomForCompare(patch.uom) !== normalizeUomForCompare(facts.uom)
-    ) {
-      // TODO(handoff): apply a uom change when the linked item is pristine
-      // (no ledger history) instead of refusing unconditionally — S2 of
-      // 2026-08-20-handoff-minion-hub-902723699-spec (S3 of
-      // 2026-08-17-hub-updatesellable-silent-drop-spec covers the destructive
-      // rest). Refusing is safe (never silently dropped) but not yet the
-      // preferred branch.
-      throw new PosError(
-        'unit of measure cannot be changed on an existing sellable yet',
-        'uom_immutable',
-      );
-    }
-  }
-
-  /*
-   * ONE transaction for both writes: `syncSellableItem` takes this `tx` rather
-   * than opening its own, so the item insert and the `fin_products` update
-   * commit or roll back together.
-   *
-   * Not a nicety. Split across two transactions, `PATCH {code: <taken>,
-   * trackStock: true}` commits the item and THEN fails the rename on
-   * `fin_products_org_code_uniq` — the sellable is durably tracked while the
-   * caller is told the whole request failed, and no retry can heal it (every
-   * retry hits the same code conflict, and true→false is refused). Coupling
-   * them is what makes the "a failed PATCH leaves no partial mutation"
-   * invariant true rather than merely likely.
-   */
-  const consumptionAudits = await withOrgCore(ctx, async (tx) => {
-    // Serialize every mutation of this sellable before reading its recipe.
-    // Without this lock, two replace-sets can both read the same old rows;
-    // the second transaction then deletes only that stale snapshot and leaves
-    // the first transaction's newly inserted rows behind, producing a union
-    // that neither caller submitted.
-    await tx.execute(
-      sql`select id from fin_products
-          where id = ${productId} and org_id = ${ctx.tenantId}
-          for update`,
-    );
 
     // Validate every row before the first insert/update/delete. Besides giving
     // direct service callers the same guard as the HTTP schema, this prevents

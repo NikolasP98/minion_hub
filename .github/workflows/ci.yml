@@ -325,12 +325,12 @@ jobs:
             --outputFile.json=test-results/pos-sellable-transition.json \
             src/server/services/pos.sellables.concurrent.integration.test.ts
 
-      - name: Assert the suite actually ran (7 passed, 0 skipped)
+      - name: Assert the suite actually ran (8 passed, 0 skipped)
         if: always()
         run: |
           test -f test-results/pos-sellable-transition.json \
             || { echo 'no vitest JSON report — the suite never produced one'; exit 1; }
-          jq -e '.numTotalTests == 7 and .numPassedTests == 7
+          jq -e '.numTotalTests == 8 and .numPassedTests == 8
                  and .numFailedTests == 0 and .numPendingTests == 0' \
             test-results/pos-sellable-transition.json > /dev/null \
             || { jq '{numTotalTests, numPassedTests, numFailedTests, numPendingTests}' \

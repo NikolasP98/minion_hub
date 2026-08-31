@@ -31,11 +31,11 @@ const patchSchema = z.object({
  * PATCH /api/pos/sellables/:id
  *
  * Applies the Slice-1 transition: an untracked SERVICE starts tracking stock.
- * `SellableWizard.svelte` reaches it from edit mode (the service→tracked case
- * only), and the response's `.sellable` carries `trackStock`/`uom` back, so the
- * operator-facing half of the contract is served by this handler and not only
- * the API half. Every other kind/trackStock/uom change is still refused with a
- * typed code rather than silently dropped — see `updateSellable`.
+ * The response's `.sellable` carries `trackStock`/`uom` back. The approved
+ * slice excludes the catalog UI, so callers currently reach this through the
+ * API/service boundary. Every other kind/trackStock/uom change is still
+ * refused with a typed code rather than silently dropped — see
+ * `updateSellable`.
  */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);

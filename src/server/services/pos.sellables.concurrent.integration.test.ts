@@ -113,15 +113,11 @@ function linkedItems(owner: postgres.Sql, productId: string) {
 }
 
 /**
- * Run two `updateSellable` calls into a genuine collision and settle both.
+ * Run two `updateSellable` calls queued behind the same product-row lock.
  *
- * The barrier: an owner transaction pins the `fin_products` row, so call A
- * parks on its `update fin_products` AFTER it has already issued (but not
- * committed) its `stk_items` insert. B then reads "untracked" — A's insert is
- * invisible to it — and blocks on A's uncommitted row when it inserts its own.
- * Releasing the pin lets A commit, at which point B's insert is rejected. That
- * is exactly the interleaving the unique indexes exist to survive, and it is
- * reached by waiting for the contended state rather than by sleeping.
+ * The barrier pins `fin_products` before either call can read its fallback
+ * values. Releasing it makes the requests serialize: the second call must read
+ * the first call's committed product and derived stock facts.
  */
 async function raceTwoTransitions(
   owner: postgres.Sql,
@@ -143,12 +139,11 @@ async function raceTwoTransitions(
   await pinned;
 
   const first = updateSellable(appCtx(a.client, orgId), productId, a.patch, actor);
-  // 1 waiter = A, blocked on the pinned row with its item insert already issued.
+  // 1 waiter = A, blocked before its authoritative read.
   await waitForLockWaiters(owner, 1);
 
   const second = updateSellable(appCtx(b.client, orgId), productId, b.patch, actor);
-  // 2 waiters = B is now blocked on A's uncommitted stk_items row — i.e. it
-  // read "untracked" and reached its own insert.
+  // 2 waiters = B is also blocked before its authoritative read.
   await waitForLockWaiters(owner, 2);
 
   releasePin();
@@ -159,7 +154,7 @@ async function raceTwoTransitions(
 describe.runIf(Boolean(databaseUrl))(
   'updateSellable trackStock false→true against real PostgreSQL',
   () => {
-    it('two concurrent identical false→true updates leave EXACTLY ONE linked item; the loser gets item_taken', async () => {
+    it('two concurrent identical false→true updates serialize and leave EXACTLY ONE linked item', async () => {
       const orgId = crypto.randomUUID();
       const owner = postgres(databaseUrl!, { max: 2, prepare: false });
       const first = postgres(databaseUrl!, { max: 1, prepare: false });
@@ -174,7 +169,7 @@ describe.runIf(Boolean(databaseUrl))(
         const [winnerResult, loserResult] = await raceTwoTransitions(
           owner,
           { client: first, patch: { trackStock: true, uom: 'Unidad' } },
-          { client: second, patch: { trackStock: true, uom: 'Caja' } },
+          { client: second, patch: { trackStock: true, uom: 'Unidad' } },
           orgId,
           productId,
         );
@@ -185,13 +180,15 @@ describe.runIf(Boolean(databaseUrl))(
           trackStock: true,
           uom: 'Unidad',
         });
-        expect(loserResult.status).toBe('rejected');
-        expect(loserResult.status === 'rejected' && loserResult.reason).toMatchObject({
-          code: 'item_taken',
+        expect(loserResult.status).toBe('fulfilled');
+        expect(loserResult.status === 'fulfilled' && loserResult.value).toMatchObject({
+          kind: 'product',
+          trackStock: true,
+          uom: 'Unidad',
         });
 
         // The durable fact, read straight from the table: one link, and it is
-        // the winner's — the loser's 'Caja' never reached storage.
+        // the first transition's. The second request observes and reuses it.
         const items = await linkedItems(owner, productId);
         expect(items).toHaveLength(1);
         expect(items[0]).toMatchObject({ code: 'CONS', name: 'Consulta', uom: 'Unidad' });
@@ -206,7 +203,7 @@ describe.runIf(Boolean(databaseUrl))(
       }
     }, 45_000);
 
-    it('stk_items_org_fin_product_uniq admits ONE link even when the two racing items have DIFFERENT codes', async () => {
+    it('a transition and concurrent rename both survive serialization with one linked item', async () => {
       const orgId = crypto.randomUUID();
       const owner = postgres(databaseUrl!, { max: 2, prepare: false });
       const first = postgres(databaseUrl!, { max: 1, prepare: false });
@@ -215,36 +212,28 @@ describe.runIf(Boolean(databaseUrl))(
       try {
         const productId = await seedService(owner, orgId, 'CONS', 'Consulta');
 
-        // The loser renames the sellable in the same request, so its item is
-        // built with code 'ALT'. `stk_items_org_code_uniq` therefore does NOT
-        // apply, and the only thing standing between this race and two items
-        // linked to one product is the PARTIAL index on (org_id,
-        // fin_product_id) — the invariant the spec's Slice-1 stop-condition
-        // names. This case is why reading the migration is not evidence.
+        // The rename queues behind the transition. It must observe the linked
+        // item instead of trying to create a second one from a stale snapshot.
         const [winnerResult, loserResult] = await raceTwoTransitions(
           owner,
           { client: first, patch: { trackStock: true, uom: 'Unidad' } },
-          { client: second, patch: { trackStock: true, uom: 'Caja', code: 'ALT' } },
+          { client: second, patch: { trackStock: true, uom: 'Unidad', code: 'ALT' } },
           orgId,
           productId,
         );
 
         expect(winnerResult.status).toBe('fulfilled');
-        expect(loserResult.status).toBe('rejected');
-        expect(loserResult.status === 'rejected' && loserResult.reason).toMatchObject({
-          code: 'item_taken',
-        });
+        expect(loserResult.status).toBe('fulfilled');
 
         const items = await linkedItems(owner, productId);
         expect(items).toHaveLength(1);
         expect(items[0]).toMatchObject({ code: 'CONS', uom: 'Unidad' });
 
-        // The loser's rename rolled back with its insert: the sellable is still
-        // 'CONS', so nothing of the failed request survived.
+        // The later rename is not erased by stale values from the transition.
         const [product] = await owner<{ code: string }[]>`
           select code from fin_products where id = ${productId}
         `;
-        expect(product.code).toBe('CONS');
+        expect(product.code).toBe('ALT');
       } finally {
         await owner`delete from stk_items where org_id = ${orgId}`;
         await owner`delete from fin_products where org_id = ${orgId}`;
@@ -417,6 +406,56 @@ describe.runIf(Boolean(databaseUrl))(
       } finally {
         await owner`delete from stk_consumption where org_id = ${orgId}`;
         await owner`delete from stk_items where org_id = ${orgId}`;
+        await owner`delete from fin_products where org_id = ${orgId}`;
+        await Promise.all([
+          owner.end({ timeout: 5 }),
+          first.end({ timeout: 5 }),
+          second.end({ timeout: 5 }),
+        ]);
+      }
+    }, 45_000);
+
+    it('two successful disjoint field patches preserve both changes after serializing', async () => {
+      const orgId = crypto.randomUUID();
+      const owner = postgres(databaseUrl!, { max: 2, prepare: false });
+      const first = postgres(databaseUrl!, { max: 1, prepare: false });
+      const second = postgres(databaseUrl!, { max: 1, prepare: false });
+
+      try {
+        const productId = await seedService(owner, orgId, 'CONS', 'Consulta');
+
+        let pinReady!: () => void;
+        const pinned = new Promise<void>((resolve) => (pinReady = resolve));
+        let releasePin!: () => void;
+        const releaseRequested = new Promise<void>((resolve) => (releasePin = resolve));
+        const pin = owner.begin(async (tx) => {
+          await tx`select id from fin_products where id = ${productId} for update`;
+          pinReady();
+          await releaseRequested;
+        });
+        await pinned;
+
+        const rename = updateSellable(
+          appCtx(first, orgId),
+          productId,
+          { name: 'Consulta Premium' },
+          actor,
+        );
+        const reprice = updateSellable(appCtx(second, orgId), productId, { unitPrice: 99 }, actor);
+
+        // Both calls must block before reading their fallback values. Once the
+        // pin is released, the second reader observes the first writer's row.
+        await waitForLockWaiters(owner, 2);
+        releasePin();
+        await pin;
+        await expect(Promise.all([rename, reprice])).resolves.toHaveLength(2);
+
+        const [product] = await owner<{ name: string; unitPrice: number }[]>`
+          select name, unit_price::float8 as "unitPrice"
+          from fin_products where id = ${productId}
+        `;
+        expect(product).toEqual({ name: 'Consulta Premium', unitPrice: 99 });
+      } finally {
         await owner`delete from fin_products where org_id = ${orgId}`;
         await Promise.all([
           owner.end({ timeout: 5 }),

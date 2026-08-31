@@ -69,7 +69,7 @@ Searched for `sellable` / `/api/pos/sellables` across every checkout available t
 | `minion_hub` (this repo)                         | 3 callers: `src/lib/components/pos/SellableWizard.svelte:250` (POST + PATCH), `src/routes/(app)/pos/catalog/+page.svelte` (GET/list), `src/lib/modules/route-guard.test.ts` (path assertion only). Service-level callers are only the two route files. **None depends on the refusal** — see §3 for the wizard. |
 | `minion/`, `paperclip-minion/`, root `packages/` | **Unavailable** — not checked out in this environment. Recorded as unavailable, **not** as zero hits, per §6's instruction. Any gateway POS/catalog tool that PATCHes a whole sellable object still needs its own verification before this reaches those callers.                                               |
 
-## 3. The operator path — CLOSED, and why a `.svelte` file is in this diff
+## 3. The operator path — deferred by the approved scope
 
 Two review rounds recorded the same finding: the service-layer transition shipped, but
 `SellableWizard.svelte` stripped `kind`/`trackStock`/`uom` from its edit-mode PATCH and rendered
@@ -77,35 +77,19 @@ Two review rounds recorded the same finding: the service-layer transition shippe
 first round asked for either a re-approved spec or an in-repo `TODO(handoff)` plus a minion-meta
 proposal; the second round rejected the local prose draft as a substitute for the ledger.
 
-**This change implements it instead.** Edit mode now renders the same `SegmentedControl`
-(service / new tracked item) plus a uom field for exactly one case — an untracked SERVICE with the
-stock module enabled — and sends `{trackStock: true, uom}` on PATCH. Every case the service still
-refuses (`true→false`, bundles, a uom change on a linked item, publishing an EXISTING item) keeps
-the locked caption, so the form never offers an action the API would 400.
-
-### Why implementing beats ledgering here
-
-The approved spec contradicts itself, and the contradiction cannot be resolved by writing it down:
+The approved spec contradicts itself:
 
 - §5 "Files touched" and §7 "Out of scope" say no `.svelte` file is edited, and §8's ship gate
   mechanically enforces it (`git diff --quiet <base>...HEAD -- '*.svelte'`).
 - §8 step 5 is an **operator probe**: tick the control, save, reload, read the value back. It
   cannot pass while the control does not exist.
 
-The file list is a means; the probe is the definition of done. Ledgering the gap would have needed
-a minion-meta proposal, and **this harness has no `minion-meta` checkout and is scoped to
-`minion_hub`** — so the choice was between an open end nobody could file and a working operator
-path. This picks the working path.
-
-**One thing an operator still owes the spec:** `2026-08-20-handoff-minion-hub-902723699-spec`
-(blob `db36b5007af060593bb267e32eed097da11cbb8a`) still carries the stale §5/§7/§8 "no `.svelte`"
-clause. That is a documentation reconciliation on the meta repo, not an open end in this codebase —
-nothing here is unwired, unhandled, or hardcoded because of it.
-
-Regression cover: `src/lib/components/pos/SellableWizard.test.ts` mounts the shipped component,
-flips the control, and asserts the real `fetch` body — deliberately NOT the
-`ChannelSetupWizard.test.ts` pattern of re-declaring `submit()` in the test file, which would keep
-passing after the component stopped sending the fields.
+This branch follows the mechanical approved gate: it contains no `.svelte` diff. Edit mode still
+omits `kind`/`trackStock`/`uom` from PATCH and shows the locked caption, so the operator probe is
+not represented as shipped here. The API/service transition and its response projection are the
+implemented Slice-1 surface. The 2026-08-30 PR review records the deferred follow-up: reconcile
+and re-approve the authoritative spec, then deliver the wizard controls, payload, i18n message,
+and mounted component test under that approved scope.
 
 ## 4. Persistence, concurrency and rollback — proved against real PostgreSQL
 
@@ -120,21 +104,24 @@ This change adds the POS counterpart:
 | Artifact                                                           | What it does                                                                                                                                              |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `supabase/ci-fixtures/pos-sellable-transition.sql`                 | The subset `updateSellable` touches, with per-table provenance (copied from a migration vs reconstructed from Drizzle) and executable catalog assertions. |
-| `src/server/services/pos.sellables.concurrent.integration.test.ts` | Five cases against a real server, through the shipped `createSellable`/`updateSellable` and the real `withOrgCore` (`app_ledger` + org GUC).              |
-| `pos-sellable-transition-postgres` CI job                          | Applies the fixture, runs a cross-org RLS negative control, then gates on `5 passed / 0 pending` from the JSON report.                                    |
+| `src/server/services/pos.sellables.concurrent.integration.test.ts` | Eight cases against a real server, through the shipped `createSellable`/`updateSellable` and the real `withOrgCore` (`app_ledger` + org GUC).             |
+| `pos-sellable-transition-postgres` CI job                          | Applies the fixture, runs a cross-org RLS negative control, then gates on `8 passed / 0 pending` from the JSON report.                                    |
 
-What the five cases prove, none of which a mock can:
+What the eight cases prove, none of which a mock can:
 
-1. Two concurrent identical false→true updates → exactly one linked `stk_items` row, loser gets
-   `item_taken`. The barrier is a pinned `fin_products` row plus polling `pg_stat_activity` for
-   lock waiters, so the contended interleaving is reached deterministically rather than by sleeping.
-2. The same race with DIFFERENT item codes, which isolates
-   `stk_items_org_fin_product_uniq` — `stk_items_org_code_uniq` cannot mask it.
+1. Two concurrent identical false→true updates serialize behind the product lock and return one
+   linked `stk_items` row. The barrier is a pinned `fin_products` row plus polling
+   `pg_stat_activity`, so the contended interleaving is reached deterministically.
+2. A false→true transition and a concurrent product rename both survive serialization while only
+   one linked item exists.
 3. A same-request code collision → `code_taken`, **zero** `stk_items` rows, and the product's own
    `code`/`name` unchanged.
 4. Create-tracked vs create-service-then-transition store the SAME item row (parity read back from
    the table, not from a mock's arguments).
 5. A whitespace-only uom is stored as `'unit'`.
+6. An invalid later consumption row rolls back the product, stock link, and prior recipe together.
+7. Concurrent consumption replacements leave one complete submitted recipe, never their union.
+8. Concurrent disjoint product-field PATCHes both survive after the row lock serializes their reads.
 
 Mutation-checked, not assumed: splitting the item insert back into its own `withOrgCore` makes
 cases 1–3 fail.
