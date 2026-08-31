@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '$server/supabase';
 import type { LoadCtx } from './types';
 import type { OrgKind } from '$lib/org-kind';
+import { loadCanonicalMemberships } from '$server/services/canonical-directory.service';
 
 export interface OrganizationEntry {
   id: string;
@@ -32,24 +33,15 @@ export async function loadOrganizationsForUser(
   const supabaseId = ctx.user?.supabaseId;
   if (!supabaseId) return { organizations: [], activeOrgId };
 
-  const admin = supabaseAdmin();
-  const { data, error } = await admin
-    .from('organization_members')
-    .select('role, organizations(id, name, slug, kind)')
-    .eq('profile_id', supabaseId);
-  if (error || !data) return { organizations: [], activeOrgId };
-
-  type OrgRow = { id: string; name: string; slug: string | null; kind: string | null };
-  type MemRow = { role: string; organizations: OrgRow | OrgRow[] | null };
-  const organizations: OrganizationEntry[] = (data as unknown as MemRow[])
-    .map((row) => {
-      const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations;
-      if (!org) return null;
-      const kind: OrgKind = org.kind === 'personal' ? 'personal' : 'business';
-      return { id: org.id, name: org.name, slug: org.slug, kind, role: row.role };
-    })
-    .filter((o): o is OrganizationEntry => o !== null)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const organizations: OrganizationEntry[] = (await loadCanonicalMemberships(supabaseId)).map(
+    (org) => ({
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      kind: org.kind === 'personal' ? 'personal' : 'business',
+      role: org.role,
+    }),
+  );
 
   return { organizations, activeOrgId: activeOrgId ?? organizations[0]?.id ?? null };
 }

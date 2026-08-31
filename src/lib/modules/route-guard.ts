@@ -27,6 +27,21 @@ export function isAppPageRequest(hasUser: boolean, routeId: string | null | unde
   return hasUser && Boolean(routeId?.startsWith('/(app)'));
 }
 
+/**
+ * Module availability and RBAC permissions are organization-scoped. An
+ * authenticated browser session can briefly exist without a tenant context while
+ * the app layout repairs legacy or missing organization state. Let that layout
+ * complete its recovery (or redirect the user to `/join`) instead of turning the
+ * transient state into a raw 401/404 before the layout can run.
+ */
+export function shouldApplyOrganizationRouteGuards(
+  hasUser: boolean,
+  hasTenantContext: boolean,
+  routeId: string | null | undefined,
+): boolean {
+  return hasTenantContext && isAppPageRequest(hasUser, routeId);
+}
+
 /** Does `moduleId` (or anything it `requires`) carry a `kinds` restriction? */
 function isKindRestricted(moduleId: string, seen: Set<string> = new Set()): boolean {
   if (seen.has(moduleId)) return false;
