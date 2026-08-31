@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { exportPKCS8, generateKeyPair, jwtVerify } from 'jose';
-import { isBrainVectorSearchRequestV1 } from '@minion-stack/shared/brain-vector';
 
 vi.mock('$env/dynamic/private', () => ({ env: {} }));
 
@@ -326,6 +325,19 @@ describe('brain vector API client', () => {
   });
 
   it('emits a canonical source_list request body on the wire', async () => {
+    // TODO(handoff): spec `2026-08-17-hub-brain-org-all-scope-spec.md` §3 "Tests" also wants this
+    // emitted body asserted with `isBrainVectorSearchRequestV1` imported from `@minion-stack/shared`,
+    // so Hub/shared drift is caught by the frozen contract's own validator rather than by Hub-side
+    // expectations. It cannot be done inside this spec's approved diff scope: the Hub pins
+    // `@minion-stack/shared@^0.9.0` (package.json:24) and published 0.9.0 ships no `brain-vector`
+    // export at all — the validator first appears in 0.10.0, which `^0.9.0` does not admit. Raising
+    // the range touches package.json/bun.lock, excluded by the spec's §3 "Files" list and §4
+    // diff-confinement clause; review rejected that bump as an unauthorized scope widen, and
+    // hand-copying the validator would assert against a reimplementation rather than the shipped
+    // contract. Ledger: minion-meta `proposals/2026-08-17-hub-brain-org-all-scope.md` (dev branch),
+    // "Open items (spec pass 2, 2026-08-29)". Once the security-approved spec authorizes the
+    // package and lockfile impact: bump the range, import the published validator, assert the
+    // captured body passes it, and add a discriminating negative control.
     let emitted: unknown;
     const fetchImpl = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
       emitted = JSON.parse(String(init?.body));
@@ -368,17 +380,6 @@ describe('brain vector API client', () => {
       kinds: ['note'],
       occurredAfter: '2026-01-31T23:59:59Z',
     });
-
-    expect(isBrainVectorSearchRequestV1(body)).toBe(true);
-
-    // Negative control proves this assertion is discriminating: the v1 union forbids source IDs
-    // on an org_all request, so a malformed body must not pass the published shared validator.
-    expect(
-      isBrainVectorSearchRequestV1({
-        ...body,
-        filters: { scopeMode: 'org_all', sourceIds: ['source-a'] },
-      }),
-    ).toBe(false);
   });
 });
 
