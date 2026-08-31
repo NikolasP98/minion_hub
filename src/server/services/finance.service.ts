@@ -2,6 +2,7 @@
 import { and, eq, desc, sql, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { lockItemsAgainstUomChange, lockProductCodesAgainstUomChange } from './stock.service';
 import {
   finInvoices,
   finInvoiceItems,
@@ -85,6 +86,7 @@ export async function upsertInvoicesBatch(
   ctx: CoreCtx,
   invoices: CanonicalInvoice[],
   productMap: Map<string, string> = new Map(),
+  hooks: { afterProductRefresh?: () => Promise<void> } = {},
 ): Promise<void> {
   if (invoices.length === 0) return;
   // Dedupe invoices by providerRef (last-wins) to prevent ON CONFLICT DO UPDATE
@@ -93,6 +95,37 @@ export async function upsertInvoicesBatch(
   for (const inv of invoices) invMap.set(inv.providerRef, inv);
   const deduped = [...invMap.values()];
   await withOrgCore(ctx, async (tx) => {
+    await lockProductCodesAgainstUomChange(
+      tx,
+      ctx.tenantId,
+      deduped.flatMap((invoice) =>
+        invoice.items.map((item) => item.code).filter((code): code is string => !!code),
+      ),
+    );
+    // The caller's map is only a throughput hint: a long-running sync may have
+    // loaded it before a matching sellable was created. Refresh live codes and
+    // aliases inside this page transaction so every invoice line that can be
+    // found by itemHasHistory participates in the same UOM lock protocol.
+    const currentProducts = (await tx.execute(sql`
+      select code, id, is_alias from (
+        select a.code, p.id, 1 as is_alias
+          from fin_products p,
+               lateral jsonb_array_elements_text(
+                 case when jsonb_typeof(p.metadata -> 'aliases') = 'array'
+                      then p.metadata -> 'aliases' else '[]'::jsonb end) as a(code)
+         where p.org_id = ${ctx.tenantId}
+        union all
+        select code, id, 0 as is_alias
+          from fin_products where org_id = ${ctx.tenantId}
+      ) t
+      order by is_alias desc
+    `)) as unknown as Array<{ code: string; id: string }> | undefined;
+    const resolvedProductMap = new Map(productMap);
+    for (const product of currentProducts ?? []) {
+      resolvedProductMap.set(String(product.code), String(product.id));
+    }
+    await hooks.afterProductRefresh?.();
+
     let pending = deduped;
     const overlays: Array<{ targetId: string; invoice: CanonicalInvoice }> = [];
     const sunatCandidates = deduped.filter(
@@ -312,6 +345,29 @@ export async function upsertInvoicesBatch(
     );
 
     // 3. Replace children for these invoices (set-based delete + multi-row insert).
+    // Lock the stk_items rows this write could newly make "billed" BEFORE the
+    // insert half of the replace: pos.service.ts's applyUomChange takes
+    // `for('update')` on a pristine item's stk_items row, then checks
+    // `itemHasHistory`'s `billed` flag (keyed on `fin_invoice_items.product_id`,
+    // which is exactly the resolved id written below) before renaming its uom.
+    // Without this lock a product could gain a fresh fin_invoice_items row
+    // between that check and the uom write, leaving the newly-billed quantity
+    // ambiguous under the renamed unit. Delegates to stock.service.ts's
+    // lockItemsAgainstUomChange (matched by finProductId here, not id) so this
+    // writer and createEntry/updateEntry serialize through the SAME query
+    // shape rather than two independently-drifting implementations.
+    const billedProductIds = [
+      ...new Set(
+        pending.flatMap((inv) =>
+          inv.items
+            .map((it) => (it.code ? resolvedProductMap.get(it.code) : undefined))
+            .filter((x): x is string => !!x),
+        ),
+      ),
+    ].sort();
+    if (billedProductIds.length) {
+      await lockItemsAgainstUomChange(tx, ctx.tenantId, billedProductIds, 'finProductId');
+    }
     await tx.delete(finInvoiceItems).where(inArray(finInvoiceItems.invoiceId, invoiceIds));
     const itemRows = pending.flatMap((inv) => {
       const invoiceId = invIdByRef.get(inv.providerRef);
@@ -319,7 +375,7 @@ export async function upsertInvoicesBatch(
       return inv.items.map((it) => ({
         orgId: ctx.tenantId,
         invoiceId,
-        productId: it.code ? (productMap.get(it.code) ?? null) : null,
+        productId: it.code ? (resolvedProductMap.get(it.code) ?? null) : null,
         code: it.code,
         description: it.description,
         category: it.category,

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { crmSettings } from '$server/db/pg-crm-schema';
@@ -6,8 +6,11 @@ import {
   DEFAULT_DEPOSIT_RULE,
   DEPOSIT_KEYWORDS_MAX,
   DEPOSIT_KEYWORD_MAX_LENGTH,
+  depositWriteSchema,
+  type DepositConfig,
   type DepositRule,
 } from './crm-deposit-rule';
+import type { z } from 'zod';
 
 /**
  * The CRM settings boundary — the ONE place `crm_settings.value` is read.
@@ -144,4 +147,103 @@ export async function resolveDepositRule(ctx: CoreCtx): Promise<DepositRule> {
     return DEFAULT_DEPOSIT_RULE;
   }
   return normalizeDepositRule(value.deposit);
+}
+
+export interface WriteDepositRuleResult {
+  rule: DepositRule;
+  staleDerived: boolean;
+  staleDerivedCount: number;
+}
+
+/**
+ * Writes `crm_settings.value.deposit` — the validated write path behind
+ * `PUT /api/crm/settings` (see `crm-deposit-rule.ts`'s `depositWriteSchema`
+ * doc comment for the design pointer). `patch` must already be
+ * `depositWriteSchema`-validated (the route does this; `updatedAt` is never
+ * client-supplyable and is stamped here).
+ *
+ * The transaction locks the current settings row before comparing normalized
+ * classification inputs. The following `insert().onConflictDoUpdate()` merges
+ * only the `deposit` key, so sibling keys (`accounts`, `disabled_channels`, …)
+ * survive untouched. Holding the row lock through both operations also makes
+ * the no-op/stale decision atomic with the write.
+ *
+ * TODO(handoff): a keyword change does not retroactively reclassify rows
+ * already materialized into `crm_win_embeddings.bought`/`snippet` — this
+ * function surfaces that as `staleDerivedCount`/`staleDerived` in the
+ * response and a warn log; nothing here rebuilds those rows. See the
+ * deposit-classification config spec's §5 (⚠️ A3) and the matching handoff
+ * entry in the meta-repo proposal for the classification config work.
+ */
+export async function writeDepositRule(
+  ctx: CoreCtx,
+  patch: z.infer<typeof depositWriteSchema>,
+): Promise<WriteDepositRuleResult> {
+  return withOrgCore(ctx, async (tx) => {
+    // The settings row may not exist yet, so its row lock alone cannot
+    // serialize the first write with a concurrent win-index publication.
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`crm-deposit-rule:${ctx.tenantId}`}, 0))`,
+    );
+    const updatedAt = new Date().toISOString();
+    const stored: DepositConfig = { ...patch, updatedAt };
+    const rule = normalizeDepositRule(stored);
+    const [current] = (await tx.execute(sql`
+      select value -> 'deposit' as deposit
+      from crm_settings
+      where org_id = ${ctx.tenantId}
+      for update
+    `)) as unknown as Array<{ deposit: DepositConfig | null }>;
+    const previousRule = normalizeDepositRule(current?.deposit);
+    const previousKeywords = [...previousRule.keywords].sort();
+    const nextKeywords = [...rule.keywords].sort();
+    const classificationChanged =
+      previousKeywords.length !== nextKeywords.length ||
+      previousKeywords.some((keyword, index) => keyword !== nextKeywords[index]);
+
+    // Same key-merge shape as crm-contacts.service.ts's persistConfigs (the
+    // repository's proven pattern for a shared jsonb KV row): the Drizzle
+    // builder's `sql` fragment references the column directly rather than a
+    // hand-rolled `insert ... on conflict` string, so the merge is built by the
+    // same query-construction path every other `crm_settings` writer uses.
+    //
+    // The `deposit` payload rides Drizzle's own jsonb binding on the insert
+    // branch and a `jsonb_build_object` parameter on the conflict branch; both
+    // are proven to land as a jsonb OBJECT (and to leave sibling keys intact)
+    // by crm-settings.sql.integration.test.ts against a real server. Do not
+    // "simplify" a sibling seed or write here into a hand-stringified
+    // `JSON.stringify(x)::jsonb` parameter — see that file's `seedJsonb` doc
+    // comment for why postgres-js double-encodes those into a jsonb string.
+    await tx
+      .insert(crmSettings)
+      .values({ orgId: ctx.tenantId, value: { deposit: stored } })
+      .onConflictDoUpdate({
+        target: crmSettings.orgId,
+        set: {
+          value: sql`coalesce(${crmSettings.value}, '{}'::jsonb) || jsonb_build_object('deposit', ${JSON.stringify(stored)}::jsonb)`,
+          updatedAt: sql`now()`,
+        },
+      });
+
+    let staleDerivedCount = 0;
+    if (classificationChanged) {
+      const [row] = (await tx.execute(sql`
+        select count(*)::int as count
+        from crm_win_embeddings
+        where org_id = ${ctx.tenantId}
+      `)) as unknown as Array<{ count: number }>;
+      staleDerivedCount = row?.count ?? 0;
+    }
+
+    if (staleDerivedCount > 0) {
+      console.warn(
+        `crm-settings: deposit rule changed for org ${ctx.tenantId}; ${staleDerivedCount} ` +
+          `crm_win_embeddings row(s) were classified under the previous rule and are now stale ` +
+          `(bought/snippet not rebuilt — reclassifying history is out of scope, see the ` +
+          `deposit-classification config spec §5)`,
+      );
+    }
+
+    return { rule, staleDerived: staleDerivedCount > 0, staleDerivedCount };
+  });
 }

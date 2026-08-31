@@ -332,19 +332,181 @@ export type NewItemInput = Omit<
   'id' | 'orgId' | 'createdAt' | 'updatedAt'
 >;
 
-export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
+/** tx-scoped core of {@link createItem} — callable from inside a caller's own
+ *  `withOrgCore` transaction (see pos.service.ts's updateSellable, which must
+ *  land the item write and the fin_products write atomically) as well as from
+ *  the ctx-based wrapper below. */
+export async function createItemInTx(
+  tx: CoreTx,
+  orgId: string,
+  input: NewItemInput,
+): Promise<StkItem> {
   const err = validateItemUomConfig({
     consumptionUom: input.consumptionUom ?? null,
     unitsPerStockUom: input.unitsPerStockUom == null ? null : Number(input.unitsPerStockUom),
   });
   if (err) throw new StockError(err, 'invalid_uom_config');
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
-      .insert(stkItems)
-      .values({ ...input, orgId: ctx.tenantId })
-      .returning(),
-  );
+  const [row] = await tx
+    .insert(stkItems)
+    .values({ ...input, orgId })
+    .returning();
   return row;
+}
+
+export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
+  if (input.finProductId != null) {
+    throw new StockError('sellable links are managed by the POS catalog', 'pos_link_owned');
+  }
+  return withOrgCore(ctx, (tx) => createItemInTx(tx, ctx.tenantId, input));
+}
+
+/** Serialize code-based history writers with item creation and UOM mutation.
+ * Unlike a row lock, this key exists before either product or item row does. */
+export async function lockProductCodesAgainstUomChange(
+  tx: CoreTx,
+  orgId: string,
+  codes: Iterable<string>,
+): Promise<void> {
+  const values = [...new Set([...codes].filter(Boolean))].sort();
+  for (const code of values) {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`stock-uom:${orgId}:${code}`}, 0))`,
+    );
+  }
+}
+
+export async function itemHasHistory(
+  tx: CoreTx,
+  orgId: string,
+  itemId: string,
+  product: { id: string | null; code: string | null },
+): Promise<boolean> {
+  const billedPredicates = [
+    ...(product.id != null ? [sql`ii.product_id = ${product.id}`] : []),
+    ...(product.code != null ? [sql`ii.code = ${product.code}`] : []),
+  ];
+  const rows = (await tx.execute(sql`
+    select
+      exists(select 1 from stk_ledger l where l.org_id = ${orgId} and l.item_id = ${itemId}) as ledger,
+      exists(select 1 from stk_entry_lines el where el.org_id = ${orgId} and el.item_id = ${itemId}) as entry_lines,
+      exists(select 1 from stk_bins b where b.org_id = ${orgId} and b.item_id = ${itemId} and b.qty <> 0) as bins,
+      exists(select 1 from stk_accruals a where a.org_id = ${orgId} and a.item_id = ${itemId} and a.qty_consumption <> 0) as accruals,
+      ${
+        billedPredicates.length === 0
+          ? sql`false`
+          : sql`exists(select 1 from fin_invoice_items ii
+                       where ii.org_id = ${orgId}
+                         and (${sql.join(billedPredicates, sql` or `)}))`
+      } as billed
+  `)) as unknown as Array<{
+    ledger: boolean;
+    entry_lines: boolean;
+    bins: boolean;
+    accruals: boolean;
+    billed: boolean;
+  }>;
+  const row = rows?.[0];
+  if (!row) throw new StockError('item history check returned no row', 'history_check_failed');
+  return !!(row.ledger || row.entry_lines || row.bins || row.accruals || row.billed);
+}
+
+export async function applyItemUomChange(
+  tx: CoreTx,
+  orgId: string,
+  itemId: string,
+  newUom: string,
+  productCode?: string | null,
+): Promise<void> {
+  await applyItemQuantitySemanticChange(tx, orgId, itemId, { uom: newUom }, productCode);
+}
+
+async function applyItemQuantitySemanticChange(
+  tx: CoreTx,
+  orgId: string,
+  itemId: string,
+  patch: Pick<Partial<NewItemInput>, 'uom' | 'consumptionUom' | 'unitsPerStockUom'>,
+  productCode?: string | null,
+): Promise<void> {
+  const [candidate] = await tx
+    .select({ code: stkItems.code })
+    .from(stkItems)
+    .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)));
+  if (!candidate) throw new StockError('stock item not found', 'item_not_found');
+  const code = productCode ?? candidate.code;
+  await lockProductCodesAgainstUomChange(tx, orgId, [code]);
+  const [item] = await tx
+    .select({ id: stkItems.id, finProductId: stkItems.finProductId })
+    .from(stkItems)
+    .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)))
+    .for('update');
+  if (!item) throw new StockError('stock item not found', 'item_not_found');
+  if (await itemHasHistory(tx, orgId, itemId, { id: item.finProductId, code })) {
+    throw new StockError(
+      'unit of measure cannot be changed once the item has stock or billing history',
+      'uom_immutable',
+    );
+  }
+  await tx
+    .update(stkItems)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(and(eq(stkItems.id, itemId), eq(stkItems.orgId, orgId)));
+}
+
+/** tx-scoped core of {@link updateItem} — see {@link createItemInTx}. */
+export async function updateItemInTx(
+  tx: CoreTx,
+  orgId: string,
+  id: string,
+  patch: Partial<NewItemInput>,
+): Promise<StkItem | null> {
+  const [cur] = await tx
+    .select()
+    .from(stkItems)
+    .where(and(eq(stkItems.id, id), eq(stkItems.orgId, orgId)));
+  if (!cur) return null;
+  const changesUom =
+    patch.uom !== undefined && patch.uom.trim().toLowerCase() !== cur.uom.trim().toLowerCase();
+  // Merge over the current row — a PATCH only sends the fields it's changing,
+  // so the cross-field rule must be checked against the RESULTING config, not
+  // just the patch in isolation (e.g. setting consumptionUom alone is fine
+  // when unitsPerStockUom was already set on a prior PATCH).
+  const consumptionUom =
+    patch.consumptionUom === undefined ? cur.consumptionUom : patch.consumptionUom;
+  const unitsPerStockUomRaw =
+    patch.unitsPerStockUom === undefined ? cur.unitsPerStockUom : patch.unitsPerStockUom;
+  const err = validateItemUomConfig({
+    consumptionUom,
+    unitsPerStockUom: unitsPerStockUomRaw == null ? null : Number(unitsPerStockUomRaw),
+  });
+  if (err) throw new StockError(err, 'invalid_uom_config');
+  const changesConsumptionUom =
+    patch.consumptionUom !== undefined &&
+    (patch.consumptionUom?.trim().toLowerCase() ?? null) !==
+      (cur.consumptionUom?.trim().toLowerCase() ?? null);
+  const changesConversionFactor =
+    patch.unitsPerStockUom !== undefined &&
+    (patch.unitsPerStockUom == null ? null : Number(patch.unitsPerStockUom)) !==
+      (cur.unitsPerStockUom == null ? null : Number(cur.unitsPerStockUom));
+  const changesQuantitySemantics = changesUom || changesConsumptionUom || changesConversionFactor;
+  if (changesQuantitySemantics) {
+    await applyItemQuantitySemanticChange(tx, orgId, id, {
+      ...(patch.uom !== undefined ? { uom: patch.uom } : {}),
+      ...(patch.consumptionUom !== undefined ? { consumptionUom: patch.consumptionUom } : {}),
+      ...(patch.unitsPerStockUom !== undefined ? { unitsPerStockUom: patch.unitsPerStockUom } : {}),
+    });
+  }
+  const itemPatch = { ...patch };
+  if (changesQuantitySemantics) {
+    delete itemPatch.uom;
+    delete itemPatch.consumptionUom;
+    delete itemPatch.unitsPerStockUom;
+  }
+  const [row] = await tx
+    .update(stkItems)
+    .set({ ...itemPatch, updatedAt: new Date() })
+    .where(and(eq(stkItems.id, id), eq(stkItems.orgId, orgId)))
+    .returning();
+  return row ?? null;
 }
 
 export async function updateItem(
@@ -352,32 +514,10 @@ export async function updateItem(
   id: string,
   patch: Partial<NewItemInput>,
 ): Promise<StkItem | null> {
-  return withOrgCore(ctx, async (tx) => {
-    const [cur] = await tx
-      .select()
-      .from(stkItems)
-      .where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)));
-    if (!cur) return null;
-    // Merge over the current row — a PATCH only sends the fields it's changing,
-    // so the cross-field rule must be checked against the RESULTING config, not
-    // just the patch in isolation (e.g. setting consumptionUom alone is fine
-    // when unitsPerStockUom was already set on a prior PATCH).
-    const consumptionUom =
-      patch.consumptionUom === undefined ? cur.consumptionUom : patch.consumptionUom;
-    const unitsPerStockUomRaw =
-      patch.unitsPerStockUom === undefined ? cur.unitsPerStockUom : patch.unitsPerStockUom;
-    const err = validateItemUomConfig({
-      consumptionUom,
-      unitsPerStockUom: unitsPerStockUomRaw == null ? null : Number(unitsPerStockUomRaw),
-    });
-    if (err) throw new StockError(err, 'invalid_uom_config');
-    const [row] = await tx
-      .update(stkItems)
-      .set({ ...patch, updatedAt: new Date() })
-      .where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)))
-      .returning();
-    return row ?? null;
-  });
+  if (patch.finProductId !== undefined) {
+    throw new StockError('sellable links are managed by the POS catalog', 'pos_link_owned');
+  }
+  return withOrgCore(ctx, (tx) => updateItemInTx(tx, ctx.tenantId, id, patch));
 }
 
 // ── Warehouses ───────────────────────────────────────────────────────────────
@@ -564,6 +704,14 @@ export async function createEntry(
 ): Promise<StkEntry> {
   if (!isEntryType(input.type)) throw new StockError('invalid entry type', 'invalid_type');
   return withOrgCore(ctx, async (tx) => {
+    // Lock BEFORE inserting: a draft line is history under `itemHasHistory`,
+    // so this must serialize against pos.service.ts's applyUomChange the same
+    // way submitEntry does — see lockItemsAgainstUomChange's doc comment.
+    await lockItemsAgainstUomChange(
+      tx,
+      ctx.tenantId,
+      input.lines.map((l) => l.itemId),
+    );
     const [entry] = await tx
       .insert(stkEntries)
       .values({
@@ -609,6 +757,14 @@ export async function updateEntry(
         .where(eq(stkEntries.id, id));
     }
     if (input.lines) {
+      // Same ordering requirement as createEntry: lock before the insert half
+      // of this replace so a concurrent applyUomChange can't slip between the
+      // delete and the new lines landing.
+      await lockItemsAgainstUomChange(
+        tx,
+        ctx.tenantId,
+        input.lines.map((l) => l.itemId),
+      );
       await tx.delete(stkEntryLines).where(eq(stkEntryLines.entryId, id));
       if (input.lines.length)
         await tx.insert(stkEntryLines).values(linesToRows(ctx.tenantId, id, input.lines));
@@ -678,6 +834,42 @@ async function writeBins(tx: CoreTx, orgId: string, bins: Map<string, BinState>)
 }
 
 /**
+ * Lock the given items' `stk_items` rows `for('share')`, sorted by id for a
+ * deterministic acquisition order across callers (avoids deadlocking against
+ * itself or `applyUomChange`'s multi-item callers). Serializes this write
+ * against pos.service.ts's `applyUomChange`, which takes `for('update')` on
+ * the same rows before its pristine-history check — a movement can no
+ * longer commit between that check and the uom write and be reinterpreted
+ * under a renamed unit. Share mode keeps concurrent writers touching the
+ * same item fully parallel with each other. Call this BEFORE inserting any
+ * row that `itemHasHistory` treats as history (stk_entry_lines, including
+ * drafts — see submitEntry's identical use for the submitted/ledger side).
+ *
+ * `by` selects the matching column: `'id'` for createEntry/updateEntry's own
+ * item ids (default), `'finProductId'` for finance.service.ts's
+ * upsertInvoicesBatch, which only knows the billed line's linked product id.
+ * Exported so both writers serialize through the SAME query shape rather than
+ * two independently-drifting implementations of the same lock protocol.
+ */
+export async function lockItemsAgainstUomChange(
+  tx: CoreTx,
+  orgId: string,
+  ids: Iterable<string>,
+  by: 'id' | 'finProductId' = 'id',
+): Promise<Set<string>> {
+  const values = [...new Set(ids)].sort();
+  if (!values.length) return new Set();
+  const column = by === 'id' ? stkItems.id : stkItems.finProductId;
+  const rows = await tx
+    .select({ id: stkItems.id })
+    .from(stkItems)
+    .where(and(eq(stkItems.orgId, orgId), inArray(column, values)))
+    .orderBy(asc(stkItems.id))
+    .for('share');
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
  * Submit a draft entry: ONE withOrgCore tx that locks the entry row + every
  * touched bin (`select ... for update`, the boring-correct choice over
  * upsert-and-hope), validates lines, computes ledger deltas via
@@ -705,11 +897,7 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
     const type = entry.type;
 
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
-    const items = await tx
-      .select({ id: stkItems.id })
-      .from(stkItems)
-      .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
-    const itemIdSet = new Set(items.map((i) => i.id));
+    const itemIdSet = await lockItemsAgainstUomChange(tx, orgId, itemIds);
     const warehouseIds = [
       ...new Set(
         lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x),
@@ -1427,12 +1615,26 @@ async function previewLinesForItemQtys(
  * `qtyConsumption` are converted authoritatively server-side (the client's own
  * `qty` is ignored) — the server owns the conversion factor, not the caller's
  * arithmetic. Shared by the invoice and service issue paths.
+ *
+ * Locks every line's item BEFORE reading `unitsPerStockUom` and BEFORE the
+ * caller inserts its `stk_entry_lines` rows — the same
+ * `lockItemsAgainstUomChange` protocol `createEntry`/`updateEntry` use,
+ * centralized here since both draft-issue writers (`insertSourcedIssueEntry`,
+ * `createIssueFromInvoice`) fan through this one function. A draft line is
+ * history under `itemHasHistory`, so a concurrent `applyUomChange` must not
+ * be able to check "no history" and rename the uom while a line derived from
+ * the OLD conversion factor is still in flight.
  */
 async function resolveConsumptionLines(
   tx: CoreTx,
   orgId: string,
   lines: CreateIssueFromInvoiceLine[],
 ): Promise<{ itemId: string; qty: number }[]> {
+  await lockItemsAgainstUomChange(
+    tx,
+    orgId,
+    lines.map((l) => l.itemId),
+  );
   const convertItemIds = [
     ...new Set(lines.filter((l) => l.qtyConsumption != null).map((l) => l.itemId)),
   ];

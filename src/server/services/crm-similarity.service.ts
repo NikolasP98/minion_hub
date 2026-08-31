@@ -9,8 +9,8 @@ import { bothEnabled } from './modules.service';
 import { embedText, embedTexts, embeddingsEnabled, toVectorLiteral } from './embeddings';
 import { buildConversationText, isThin } from '$lib/components/crm/crm-similarity';
 import { getOpenRouterModel } from '$server/llm';
-import { notDepositMatchSql, type DepositRule } from './crm-deposit-rule';
-import { resolveDepositRule } from './crm-settings.service';
+import { depositRuleFingerprint, notDepositMatchSql, type DepositRule } from './crm-deposit-rule';
+import { normalizeDepositRule, resolveDepositRule } from './crm-settings.service';
 
 const winAnalysisResultSchema = z.object({
   wins: z
@@ -133,6 +133,7 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> 
   // ONE settings read per rebuild — the vocabulary that decides what lands in
   // crm_win_embeddings.bought for every buyer in this pass.
   const rule = await resolveDepositRule(ctx);
+  const ruleFingerprint = depositRuleFingerprint(rule);
   const IS_PROCEDURE = isProcedureSql(rule);
 
   // Buyers + their conversations in a SINGLE round-trip each (not per-contact):
@@ -224,7 +225,22 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> 
     return { indexed: 0 };
   }
 
-  await withOrgCore(ctx, async (tx) => {
+  const published = await withOrgCore(ctx, async (tx) => {
+    // Serialize publication with settings writes. Embedding happens outside a
+    // transaction, so the rule may have changed while the provider was in
+    // flight; never stamp old classifications with a fresh built_at.
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`crm-deposit-rule:${ctx.tenantId}`}, 0))`,
+    );
+    const [current] = (await tx.execute(sql`
+      select value -> 'deposit' as deposit
+      from crm_settings
+      where org_id = ${ctx.tenantId}
+      for share
+    `)) as unknown as Array<{ deposit: unknown }>;
+    if (depositRuleFingerprint(normalizeDepositRule(current?.deposit)) !== ruleFingerprint) {
+      return false;
+    }
     let offset = 0;
     for (const batch of batches) {
       const batchVectors = vectors.slice(offset, offset + batch.length);
@@ -244,7 +260,9 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<{ indexed: number }> 
           bought = excluded.bought, snippet = excluded.snippet, built_at = excluded.built_at
       `);
     }
+    return true;
   });
+  if (!published) return { indexed: 0 };
 
   // Generate + persist the AI breakdown of these winning conversations. Stored in
   // crm_settings (the last analysis is kept until the next rebuild, so the page

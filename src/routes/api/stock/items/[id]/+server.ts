@@ -19,7 +19,6 @@ const patchSchema = z.object({
   reorderQty: z.number().nonnegative().nullable().optional(),
   moq: z.number().nonnegative().nullable().optional(),
   defaultSupplierPartyId: z.string().uuid().nullable().optional(),
-  finProductId: z.string().max(200).nullable().optional(),
   consumptionUom: z.string().min(1).max(50).nullable().optional(),
   unitsPerStockUom: z.number().positive().nullable().optional(),
   subunitsPerStockUom: z.number().positive().nullable().optional(),

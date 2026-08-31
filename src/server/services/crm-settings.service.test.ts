@@ -1,13 +1,62 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { createMockDb } from '$server/test-utils/mock-db';
 import {
   normalizeDepositRule,
   readCrmSettingsValue,
   resolveDepositRule,
+  writeDepositRule,
 } from './crm-settings.service';
 import { DEFAULT_DEPOSIT_RULE } from './crm-deposit-rule';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
+
+/**
+ * Real-query sequencing for raw `tx.execute` calls, skipping `withOrgCore`'s
+ * fixed setup statements (idle-timeout, `set local role`, two `set_config`
+ * GUCs) so `values` only has to list results for writeDepositRule's own
+ * remaining `execute` calls (the advisory lock, locked current-rule read and,
+ * when changed, the stale-count select — the upsert now goes
+ * through `tx.insert().onConflictDoUpdate()`, see `mockDepositInsert`) — same
+ * technique as `pos.sellables.test.ts`'s `mockExecuteSeq`.
+ */
+function mockExecuteSeq(db: unknown, values: unknown[]) {
+  const queue = [...values];
+  const isSetupQuery = (query: unknown): boolean => {
+    const chunks = (query as { queryChunks?: unknown[] } | undefined)?.queryChunks;
+    const first = chunks?.[0] as { value?: unknown } | string | undefined;
+    const text =
+      typeof first === 'string' ? first : Array.isArray(first?.value) ? first.value.join(' ') : '';
+    return /^\s*(set local|select set_config)/i.test(text);
+  };
+  (db as { execute: unknown }).execute = vi.fn((query: unknown) =>
+    isSetupQuery(query) ? Promise.resolve(undefined) : Promise.resolve(queue.shift()),
+  );
+}
+
+/**
+ * `db.insert(crmSettings).values(...).onConflictDoUpdate(...)` — the generic
+ * `createMockDb` chain proxy mints a fresh untracked `vi.fn` per property
+ * access, so it can't record intermediate chain arguments (same limitation
+ * `crm-contacts.service.test.ts`'s `makeFunnelTx` works around). Overriding
+ * `db.insert` directly captures the `values`/`onConflictDoUpdate` args
+ * `writeDepositRule` actually passed.
+ */
+function mockDepositInsert(db: unknown) {
+  const calls: { values?: unknown; onConflictDoUpdate?: { target: unknown; set: unknown } } = {};
+  (db as { insert: unknown }).insert = vi.fn(() => ({
+    values: (v: unknown) => {
+      calls.values = v;
+      return {
+        onConflictDoUpdate: (v2: { target: unknown; set: unknown }) => {
+          calls.onConflictDoUpdate = v2;
+          return Promise.resolve([]);
+        },
+      };
+    },
+  }));
+  return calls;
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -190,5 +239,75 @@ describe('resolveDepositRule', () => {
     } as never;
     expect(await resolveDepositRule(ctx(db))).toEqual(DEFAULT_DEPOSIT_RULE);
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// S3 of 2026-08-17-hub-reserva-keyword-config-spec: the validated write path.
+describe('writeDepositRule', () => {
+  it('merges the deposit key via one insert-on-conflict statement — sibling keys untouched by construction', async () => {
+    const { db } = createMockDb();
+    const calls = mockDepositInsert(db);
+    mockExecuteSeq(db, [undefined, [], [{ count: 0 }]]);
+
+    await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
+
+    expect(calls.onConflictDoUpdate).toBeDefined();
+    const { target, set } = calls.onConflictDoUpdate!;
+    expect(target).toBeDefined();
+    // Only `value || jsonb_build_object('deposit', …)` — never `value = $1`,
+    // which is the exact bug (replacing, not merging) this slice must avoid.
+    const { sql: setSql } = new PgDialect().sqlToQuery(
+      (set as { value: Parameters<PgDialect['sqlToQuery']>[0] }).value,
+    );
+    expect(setSql).toContain('||');
+    expect(setSql).toContain("jsonb_build_object('deposit'");
+  });
+
+  it('stamps updatedAt server-side and returns the normalized rule', async () => {
+    const { db } = createMockDb();
+    mockDepositInsert(db);
+    mockExecuteSeq(db, [undefined, [], [{ count: 0 }]]);
+
+    const result = await writeDepositRule(ctx(db), { keywords: ['ADELANTO', ' seña '] });
+
+    expect(result.rule).toEqual({
+      keywords: ['adelanto', 'seña'],
+      label: DEFAULT_DEPOSIT_RULE.label,
+    });
+  });
+
+  it('staleDerivedCount reflects every extant crm_win_embeddings row after a keyword change', async () => {
+    const { db } = createMockDb();
+    mockDepositInsert(db);
+    mockExecuteSeq(db, [undefined, [], [{ count: 0 }]]);
+    const clean = await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
+    expect(clean).toMatchObject({ staleDerived: false, staleDerivedCount: 0 });
+
+    const { db: db2 } = createMockDb();
+    mockDepositInsert(db2);
+    mockExecuteSeq(db2, [undefined, [], [{ count: 7 }]]);
+    const stale = await writeDepositRule(ctx(db2), { keywords: ['adelanto'] });
+    expect(stale).toMatchObject({ staleDerived: true, staleDerivedCount: 7 });
+  });
+
+  it('does not mark existing embeddings stale when normalized classification inputs are unchanged', async () => {
+    const { db } = createMockDb();
+    mockDepositInsert(db);
+    mockExecuteSeq(db, [
+      undefined,
+      [{ deposit: { keywords: [' ADELANTO '], label: DEFAULT_DEPOSIT_RULE.label } }],
+    ]);
+
+    const result = await writeDepositRule(ctx(db), { keywords: ['adelanto'] });
+
+    expect(result).toMatchObject({ staleDerived: false, staleDerivedCount: 0 });
+  });
+
+  it('an empty keywords array is a legitimate write (matches nothing), not rejected', async () => {
+    const { db } = createMockDb();
+    mockDepositInsert(db);
+    mockExecuteSeq(db, [undefined, [], [{ count: 0 }]]);
+    const result = await writeDepositRule(ctx(db), { keywords: [] });
+    expect(result.rule.keywords).toEqual([]);
   });
 });

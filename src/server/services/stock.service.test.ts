@@ -346,6 +346,7 @@ describe('createIssueFromInvoice — duplicate guard + happy path', () => {
     resolveSequence([
       [{ id: 'inv1', providerRef: 'REF-1' }], // invoice
       [], // no duplicate
+      [], // lockItemsAgainstUomChange: `select … from stk_items … for share`
       [{ id: 'entry1', orgId: 'org-1', type: 'issue', status: 'draft' }], // stk_entries insert
       [], // stk_entry_lines insert
     ]);
@@ -507,6 +508,7 @@ describe('createServiceIssue — customer + procedure note, no invoice', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ id: 'p1', name: 'Menton (Opera II)' }], // product lookup
+      [], // lockItemsAgainstUomChange: `select … from stk_items … for share`
       [{ id: 'entry1', orgId: 'org-1', type: 'issue', status: 'draft' }], // stk_entries insert
       [], // stk_entry_lines insert
     ]);
@@ -547,6 +549,7 @@ describe('createServiceIssue — source generalization', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ id: 'p1', name: 'Botox' }], // product
+      [], // lockItemsAgainstUomChange: `select … from stk_items … for share`
       [
         {
           id: 'e1',
@@ -726,6 +729,14 @@ describe('setConsumption — audit trail (§7 audit tracing)', () => {
 });
 
 describe('createItem — uom cross-field validation', () => {
+  it('refuses POS sellable links at the public stock service boundary', async () => {
+    const { db } = createMockDb();
+    await expect(
+      createItem(ctx(db), { code: 'C1', name: 'Item', finProductId: 'product-1' }),
+    ).rejects.toMatchObject({ code: 'pos_link_owned' });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
   it('rejects a consumptionUom without a unitsPerStockUom before touching the db', async () => {
     const { db } = createMockDb();
     await expect(
@@ -753,6 +764,34 @@ describe('createItem — uom cross-field validation', () => {
 });
 
 describe('updateItem — uom cross-field validation (merged against the current row)', () => {
+  it('refuses unlinking or relinking a POS sellable at the public stock service boundary', async () => {
+    const { db } = createMockDb();
+    await expect(updateItem(ctx(db), 'i1', { finProductId: null })).rejects.toMatchObject({
+      code: 'pos_link_owned',
+    });
+    await expect(updateItem(ctx(db), 'i1', { finProductId: 'product-2' })).rejects.toMatchObject({
+      code: 'pos_link_owned',
+    });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses a direct stock UOM PATCH when the item has quantity history', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'i1', orgId: 'org-1', code: 'RAW', uom: 'unit' }],
+      [{ code: 'RAW' }],
+      [{ id: 'i1', finProductId: null }],
+    ]);
+    (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute.mockResolvedValue([
+      { ledger: true, entry_lines: false, bins: false, billed: false },
+    ]);
+
+    await expect(updateItem(ctx(db), 'i1', { uom: 'kg' })).rejects.toMatchObject({
+      code: 'uom_immutable',
+    });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
   it('rejects setting consumptionUom via PATCH when neither the patch nor the current row has unitsPerStockUom', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[{ id: 'i1', orgId: 'org-1', consumptionUom: null, unitsPerStockUom: null }]]); // current row
@@ -765,10 +804,45 @@ describe('updateItem — uom cross-field validation (merged against the current 
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ id: 'i1', orgId: 'org-1', consumptionUom: null, unitsPerStockUom: '500' }], // current row
+      [{ code: 'RAW' }], // product-code advisory-lock key
+      [{ id: 'i1', finProductId: null }], // item row lock
+      [], // guarded semantic update
       [{ id: 'i1', orgId: 'org-1', consumptionUom: 'ml', unitsPerStockUom: '500' }], // updated row
+    ]);
+    (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute.mockResolvedValue([
+      { ledger: false, entry_lines: false, bins: false, accruals: false, billed: false },
     ]);
     const row = await updateItem(ctx(db), 'i1', { consumptionUom: 'ml' });
     expect(row).toMatchObject({ consumptionUom: 'ml' });
+  });
+
+  it.each([
+    ['consumptionUom', { consumptionUom: 'ml' }],
+    ['unitsPerStockUom', { unitsPerStockUom: '20' }],
+  ])('refuses a %s PATCH when the item has quantity history', async (_field, patch) => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [
+        {
+          id: 'i1',
+          orgId: 'org-1',
+          code: 'RAW',
+          uom: 'unit',
+          consumptionUom: 'dose',
+          unitsPerStockUom: '10',
+        },
+      ],
+      [{ code: 'RAW' }],
+      [{ id: 'i1', finProductId: null }],
+    ]);
+    (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute.mockResolvedValue([
+      { ledger: false, entry_lines: false, bins: false, accruals: true, billed: false },
+    ]);
+
+    await expect(updateItem(ctx(db), 'i1', patch)).rejects.toMatchObject({
+      code: 'uom_immutable',
+    });
+    expect(db.update).not.toHaveBeenCalled();
   });
 });
 

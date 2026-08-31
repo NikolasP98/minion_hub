@@ -166,7 +166,9 @@ export function isDepositText(text: string | null | undefined, rule: DepositRule
 /** Max characters kept per keyword (and for the label) after trimming. */
 export const DEPOSIT_KEYWORD_MAX_LENGTH = 40;
 /** Max keywords kept. N keywords multiply the per-row ILIKE cost on an
- *  unindexed `fin_invoice_items.description`, so the list is capped. */
+ *  unindexed `fin_invoice_items.description`, so the list is capped.
+ *  TODO(handoff): Validate the 1-vs-20-keyword production-like EXPLAIN ANALYZE;
+ *  the cap remains unproved — see proposals/2026-08-17-hub-reserva-keyword-config.md. */
 export const DEPOSIT_KEYWORDS_MAX = 20;
 
 /**
@@ -175,10 +177,8 @@ export const DEPOSIT_KEYWORDS_MAX = 20;
  * rather than silently truncated, so an operator who types 21 keywords is
  * told, not quietly given 20.
  *
- * TODO(handoff): defined and unit-tested here but not yet wired to an HTTP
- * handler — S3 of 2026-08-17-hub-reserva-keyword-config-spec adds the
- * `/api/crm/settings` write path (strict parse + key-level jsonb merge +
- * `staleDerived` disclosure) that consumes it.
+ * Consumed by `writeDepositRule` (`crm-settings.service.ts`), wired to
+ * `PUT /api/crm/settings` — S3 of 2026-08-17-hub-reserva-keyword-config-spec.
  */
 export const depositWriteSchema = z
   .object({
