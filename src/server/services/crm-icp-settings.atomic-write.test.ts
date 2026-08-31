@@ -146,6 +146,28 @@ describe('saveIcpDefinition against a real Postgres engine', () => {
     expect(await resolveIcpDefinition(ctx)).toEqual(saved);
   });
 
+  it('rejects version exhaustion without reusing the last safe version', async () => {
+    await db.execute(sql`
+      insert into crm_settings (org_id, value)
+      values ('org-1', '{"icp":{"version":"broken"}}'::jsonb)
+    `);
+    await db.execute(sql`
+      insert into crm_contacts (id, org_id, custom_fields)
+      values (
+        '00000000-0000-0000-0000-000000000001',
+        'org-1',
+        '{"_icp":{"icpVersion":9007199254740990}}'::jsonb
+      )
+    `);
+
+    const lastSafe = await saveIcpDefinition(ctx, DEFINITION);
+    expect(lastSafe.version).toBe(Number.MAX_SAFE_INTEGER);
+
+    await expect(saveIcpDefinition(ctx, DEFINITION)).rejects.toThrow('repair required');
+    expect((await storedIcp())?.version).toBe(Number.MAX_SAFE_INTEGER);
+    expect(await resolveIcpDefinition(ctx)).toEqual(lastSafe);
+  });
+
   it("is org-scoped: saving for one org leaves another org's definition alone", async () => {
     await saveIcpDefinition({ db: db as never, tenantId: 'org-2' }, DEFINITION);
     await saveIcpDefinition(ctx, DEFINITION);

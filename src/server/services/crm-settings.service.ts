@@ -220,8 +220,10 @@ export async function resolveIcpDefinition(ctx: CoreCtx): Promise<IcpDefinition 
  * contact then keeps a stale `_icp` forever, because the dirty gate is
  * signature-based and never age-based.
  *
- * Only positive integral numbers whose successor is JavaScript-safe are usable.
- * A malformed definition version is ignored, but numbering still advances
+ * Only positive integral numbers are usable. A stored or cached safe-integer
+ * maximum participates in the calculation so its successor deliberately fails
+ * the write boundary and rolls the transaction back instead of reusing the
+ * maximum. A malformed definition version is ignored, but numbering still advances
  * beyond every valid `_icp.icpVersion` cached for this org. That prevents a
  * repaired definition from colliding with a stale verdict's dirty-gate input.
  * Keeping range checks in `numeric` before `bigint` casts means a corrupt
@@ -229,7 +231,7 @@ export async function resolveIcpDefinition(ctx: CoreCtx): Promise<IcpDefinition 
  */
 function nextIcpVersionSql(orgId: string) {
   const storedDefinitionVersion = sql`case when jsonb_typeof(${crmSettings.value}->'icp'->'version') = 'number'
-      and (${crmSettings.value}->'icp'->>'version')::numeric between 1 and 9007199254740990
+      and (${crmSettings.value}->'icp'->>'version')::numeric between 1 and 9007199254740991
       and trunc((${crmSettings.value}->'icp'->>'version')::numeric)
         = (${crmSettings.value}->'icp'->>'version')::numeric
       then ((${crmSettings.value}->'icp'->>'version')::numeric)::bigint
@@ -238,7 +240,7 @@ function nextIcpVersionSql(orgId: string) {
       from ${crmContacts} c
       where c.org_id = ${orgId}
         and jsonb_typeof(c.custom_fields->'_icp'->'icpVersion') = 'number'
-        and (c.custom_fields->'_icp'->>'icpVersion')::numeric between 1 and 9007199254740990
+        and (c.custom_fields->'_icp'->>'icpVersion')::numeric between 1 and 9007199254740991
         and trunc((c.custom_fields->'_icp'->>'icpVersion')::numeric)
           = (c.custom_fields->'_icp'->>'icpVersion')::numeric), 0)`;
   return sql`greatest(${storedDefinitionVersion}, ${highestCachedVersion}) + 1`;
@@ -273,8 +275,8 @@ export async function saveIcpDefinition(
 ): Promise<IcpDefinition> {
   const parsed = icpDefinitionWriteSchema.parse(input);
   const body = JSON.stringify({ ...parsed, updatedAt: new Date().toISOString() });
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
       .insert(crmSettings)
       .values({
         orgId: ctx.tenantId,
@@ -294,13 +296,17 @@ export async function saveIcpDefinition(
           updatedAt: new Date(),
         },
       })
-      .returning({ value: crmSettings.value }),
-  );
-  const stored = normalizeIcpDefinition((row?.value as { icp?: unknown } | undefined)?.icp);
-  if (!stored) {
-    // The row we just wrote does not read back as a valid definition — the
-    // caller must not be told the save succeeded.
-    throw new Error('saveIcpDefinition: stored ICP definition did not round-trip');
-  }
-  return stored;
+      .returning({ value: crmSettings.value });
+    const stored = normalizeIcpDefinition((row?.value as { icp?: unknown } | undefined)?.icp);
+    if (!stored) {
+      // This check must stay INSIDE the transaction. At safe-integer
+      // exhaustion the SQL deliberately writes an out-of-contract successor;
+      // throwing here rolls that mutation back instead of committing an
+      // invalid definition or reporting a duplicate successful version.
+      throw new Error(
+        'saveIcpDefinition: stored ICP definition did not round-trip; version repair required',
+      );
+    }
+    return stored;
+  });
 }
