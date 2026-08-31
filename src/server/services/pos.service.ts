@@ -1389,8 +1389,6 @@ export async function createSellable(
     if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
     throw e;
   }
-  await hooks.afterProductUpsert?.();
-
   const [product] = await withOrgCore(ctx, (tx) =>
     tx
       .select({ id: finProducts.id })
@@ -1399,6 +1397,13 @@ export async function createSellable(
       .limit(1),
   );
   if (!product) throw new PosError('product write did not persist', 'write_failed');
+
+  // `upsertProduct` and this read are separate transactions. Keeping the
+  // post-upsert hook after the read gives callers a real committed/observable
+  // boundary: the read cannot begin on this db handle until the upsert's COMMIT
+  // has completed. In particular, concurrency probes must not publish the
+  // product-created barrier from inside the driver's commit hand-off.
+  await hooks.afterProductUpsert?.();
 
   await withOrgCore(ctx, (tx) =>
     syncSellableItem(tx, ctx.tenantId, {
