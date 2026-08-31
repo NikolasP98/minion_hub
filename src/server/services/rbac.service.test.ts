@@ -434,6 +434,15 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
       action: 'edit',
     });
   });
+  // Pins the org-wide deposit-rule config write behind crm:edit — a prefix
+  // refactor that stops matching this path would silently ungate it instead
+  // of failing loudly (see /api/crm/settings/+server.ts).
+  test('CRM settings (deposit-rule config) PUT maps to (crm, edit)', () => {
+    expect(apiWriteCapability('/api/crm/settings', 'PUT')).toEqual({
+      module: 'crm',
+      action: 'edit',
+    });
+  });
   test('brain search is a read operation even though its query body uses POST', () => {
     expect(
       apiWriteCapability('/api/brains/11111111-1111-4111-8111-111111111111/search', 'POST'),
