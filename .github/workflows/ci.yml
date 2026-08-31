@@ -228,6 +228,123 @@ jobs:
           path: test-results/crm-funnel-concurrent.json
           if-no-files-found: warn
 
+  # Same isolation rationale as `crm-funnel-concurrent-postgres` above: this job's
+  # Postgres is seeded with a CI-only reproduction of the POS/stock subset
+  # (fin_products + stk_items + their unique indexes and org-GUC RLS), which is a
+  # different shape from the other two jobs' databases. `SUPABASE_DB_URL` is
+  # therefore scoped to this job's own steps and the suite is named explicitly.
+  pos-sellable-transition-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pos_sellable_transition_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PUBLIC_POSTHOG_HOST: https://posthog.invalid
+      PUBLIC_POSTHOG_KEY: ci
+      # Single source for the connection string every step below shares.
+      POS_DB_URL: postgresql://postgres:postgres@localhost:5432/pos_sellable_transition_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Svelte environment and translations
+        run: |
+          cp .env.example .env
+          bun run i18n:compile
+          bunx svelte-kit sync
+
+      # The fixture ends with executable catalog assertions (the partial unique
+      # index `stk_items_org_fin_product_uniq` spelled exactly as its migration
+      # writes it, `fin_products_org_code_uniq`, RLS enabled AND forced on every
+      # table, and `stk_items.uom` NOT NULL DEFAULT 'unit'). With ON_ERROR_STOP
+      # those assertions ARE this step: a fixture edited into a looser shape
+      # fails here rather than producing a green concurrency run against a
+      # schema whose constraints are not the ones production has.
+      - name: Apply CI-only POS schema fixture
+        run: psql -v ON_ERROR_STOP=1 "$POS_DB_URL" -f supabase/ci-fixtures/pos-sellable-transition.sql
+
+      # Behavioural counterpart to the catalog assertions: proves the suite really
+      # runs under `app_ledger` + the org GUC rather than as a bypass superuser.
+      # One explicit transaction because `set_config(..., true)` and `set local
+      # role` are transaction-local.
+      - name: Cross-org RLS negative control
+        run: |
+          psql -v ON_ERROR_STOP=1 "$POS_DB_URL" <<'SQL'
+          begin;
+          set local role app_ledger;
+          select set_config('app.current_org_id', 'org-rls-a', true);
+          insert into fin_products (id, org_id, code, name)
+          values ('00000000-0000-0000-0000-0000000000a1', 'org-rls-a', 'RLSA', 'Visible');
+          insert into stk_items (id, org_id, code, name, fin_product_id)
+          values ('00000000-0000-0000-0000-0000000000a2', 'org-rls-a', 'RLSA', 'Visible',
+                  '00000000-0000-0000-0000-0000000000a1');
+          select set_config('app.current_org_id', 'org-rls-b', true);
+          do $$
+          begin
+            if exists (select 1 from fin_products where id = '00000000-0000-0000-0000-0000000000a1')
+               or exists (select 1 from stk_items where id = '00000000-0000-0000-0000-0000000000a2') then
+              raise exception 'cross-org POS rows are visible under app_ledger';
+            end if;
+          end $$;
+          rollback;
+          SQL
+
+      # A JSON report, not just the exit code: `describe.runIf(...)` makes
+      # "0 failed" equally true when nothing ran, so the gate asserts seven PASSED
+      # and zero PENDING. REQUIRE_POS_SELLABLE_POSTGRES additionally makes the
+      # suite throw if the URL ever goes missing, so a broken service container
+      # cannot degrade this job into a silent skip.
+      - name: Real-PostgreSQL sellable-transition suite
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/pos_sellable_transition_test
+          REQUIRE_POS_SELLABLE_POSTGRES: '1'
+        run: |
+          mkdir -p test-results
+          bunx vitest run --retry=2 \
+            --reporter=default --reporter=json \
+            --outputFile.json=test-results/pos-sellable-transition.json \
+            src/server/services/pos.sellables.concurrent.integration.test.ts
+
+      - name: Assert the suite actually ran (8 passed, 0 skipped)
+        if: always()
+        run: |
+          test -f test-results/pos-sellable-transition.json \
+            || { echo 'no vitest JSON report — the suite never produced one'; exit 1; }
+          jq -e '.numTotalTests == 8 and .numPassedTests == 8
+                 and .numFailedTests == 0 and .numPendingTests == 0' \
+            test-results/pos-sellable-transition.json > /dev/null \
+            || { jq '{numTotalTests, numPassedTests, numFailedTests, numPendingTests}' \
+                   test-results/pos-sellable-transition.json; exit 1; }
+
+      # Raw job logs expire; the artifact is the durable pass/fail evidence.
+      - name: Upload sellable-transition report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-sellable-transition-report
+          path: test-results/pos-sellable-transition.json
+          if-no-files-found: warn
+
   check-and-build:
     runs-on: ubuntu-latest
     env:

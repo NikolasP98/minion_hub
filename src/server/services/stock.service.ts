@@ -332,19 +332,64 @@ export type NewItemInput = Omit<
   'id' | 'orgId' | 'createdAt' | 'updatedAt'
 >;
 
-export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
+/** tx-scoped body of {@link createItem} — shared with callers (e.g.
+ *  `pos.service.ts`'s `syncSellableItem`) that must write the item in the SAME
+ *  transaction as another write, so a downstream failure rolls the insert back
+ *  instead of leaving it committed. `createItem` is this function plus its own
+ *  `withOrgCore`, so the two forms can never drift. */
+export async function createItemTx(
+  tx: CoreTx,
+  orgId: string,
+  input: NewItemInput,
+): Promise<StkItem> {
   const err = validateItemUomConfig({
     consumptionUom: input.consumptionUom ?? null,
     unitsPerStockUom: input.unitsPerStockUom == null ? null : Number(input.unitsPerStockUom),
   });
   if (err) throw new StockError(err, 'invalid_uom_config');
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
-      .insert(stkItems)
-      .values({ ...input, orgId: ctx.tenantId })
-      .returning(),
-  );
+  const [row] = await tx
+    .insert(stkItems)
+    .values({ ...input, orgId })
+    .returning();
   return row;
+}
+
+export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
+  return withOrgCore(ctx, (tx) => createItemTx(tx, ctx.tenantId, input));
+}
+
+/** tx-scoped body of {@link updateItem} — see {@link createItemTx} for why the
+ *  tx-taking form exists. */
+export async function updateItemTx(
+  tx: CoreTx,
+  orgId: string,
+  id: string,
+  patch: Partial<NewItemInput>,
+): Promise<StkItem | null> {
+  const [cur] = await tx
+    .select()
+    .from(stkItems)
+    .where(and(eq(stkItems.id, id), eq(stkItems.orgId, orgId)));
+  if (!cur) return null;
+  // Merge over the current row — a PATCH only sends the fields it's changing,
+  // so the cross-field rule must be checked against the RESULTING config, not
+  // just the patch in isolation (e.g. setting consumptionUom alone is fine
+  // when unitsPerStockUom was already set on a prior PATCH).
+  const consumptionUom =
+    patch.consumptionUom === undefined ? cur.consumptionUom : patch.consumptionUom;
+  const unitsPerStockUomRaw =
+    patch.unitsPerStockUom === undefined ? cur.unitsPerStockUom : patch.unitsPerStockUom;
+  const err = validateItemUomConfig({
+    consumptionUom,
+    unitsPerStockUom: unitsPerStockUomRaw == null ? null : Number(unitsPerStockUomRaw),
+  });
+  if (err) throw new StockError(err, 'invalid_uom_config');
+  const [row] = await tx
+    .update(stkItems)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(and(eq(stkItems.id, id), eq(stkItems.orgId, orgId)))
+    .returning();
+  return row ?? null;
 }
 
 export async function updateItem(
@@ -352,32 +397,7 @@ export async function updateItem(
   id: string,
   patch: Partial<NewItemInput>,
 ): Promise<StkItem | null> {
-  return withOrgCore(ctx, async (tx) => {
-    const [cur] = await tx
-      .select()
-      .from(stkItems)
-      .where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)));
-    if (!cur) return null;
-    // Merge over the current row — a PATCH only sends the fields it's changing,
-    // so the cross-field rule must be checked against the RESULTING config, not
-    // just the patch in isolation (e.g. setting consumptionUom alone is fine
-    // when unitsPerStockUom was already set on a prior PATCH).
-    const consumptionUom =
-      patch.consumptionUom === undefined ? cur.consumptionUom : patch.consumptionUom;
-    const unitsPerStockUomRaw =
-      patch.unitsPerStockUom === undefined ? cur.unitsPerStockUom : patch.unitsPerStockUom;
-    const err = validateItemUomConfig({
-      consumptionUom,
-      unitsPerStockUom: unitsPerStockUomRaw == null ? null : Number(unitsPerStockUomRaw),
-    });
-    if (err) throw new StockError(err, 'invalid_uom_config');
-    const [row] = await tx
-      .update(stkItems)
-      .set({ ...patch, updatedAt: new Date() })
-      .where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)))
-      .returning();
-    return row ?? null;
-  });
+  return withOrgCore(ctx, (tx) => updateItemTx(tx, ctx.tenantId, id, patch));
 }
 
 // ── Warehouses ───────────────────────────────────────────────────────────────
