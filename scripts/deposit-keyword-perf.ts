@@ -180,3 +180,7 @@ async function main() {
 }
 
 await main();
+// PGlite's worker leaves Bun with exit code 99 after a clean close. Reaching
+// this line means every setup/query/reporting await succeeded; thrown failures
+// still bypass it and retain their non-zero exit.
+process.exit(0);
