@@ -10,6 +10,15 @@
  * 2. submitResumen RC with both (estado 1) -> CDR ResponseCode 0.
  * 3. submitResumen RC with B998-2 estado 3 (anulacion) -> accepted.
  * 4. Emit factura F998-1, then submitBaja RA for it -> accepted.
+ *
+ * RUN OF RECORD — 2026-08-29 at `--rate 0.10`, and the reason this harness
+ * cannot sign off a rate on its own: all three `sendBill` calls were rejected
+ * (fault `soap-env:Client.3462`, non-vigente rate) and SUNAT STILL accepted
+ * RC-20260829-1, RC-20260829-2 and RA-20260829-1 with `ResponseCode 0`.
+ * `submitResumen`/`submitBaja` do not re-validate the referenced document's
+ * rate, so a green resumen here says nothing about whether the boletas it
+ * summarises exist. Pair it with `scripts/emit-beta-test.ts`, which does hit
+ * the validator. Matrix: `specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md`.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { amountInWords, buildInvoiceXml, computeTotals } from './ubl';
-import type { EmissionInvoice } from './types';
+import type { EmissionInvoice, EmissionLine } from './types';
+import { SUNAT_VIGENTE_IGV_RATES } from '$lib/finance/igv-rates';
+import { resolveIgvRate } from '$server/finance/tax';
 
 const base: EmissionInvoice = {
   docType: '03',
@@ -135,5 +137,148 @@ describe('igvRate (S1 — required input, no module-level default)', () => {
     // @ts-expect-error igvRate is required on EmissionInvoice — no default, no fallback
     const invoice: EmissionInvoice = { ...rest };
     void invoice;
+  });
+});
+
+/**
+ * S3 of 2026-08-17-hub-igv-rate-from-org-config-spec — the invariant SUNAT
+ * itself enforces ("totales no consistentes"): the document's declared totals
+ * must reconstruct exactly from the line decimals it carries. The rate stopped
+ * being a constant in S1, so the arithmetic has to hold for any `igvRate`
+ * value the library is handed, not just the one it was built against — that
+ * is what this suite proves.
+ *
+ * IMPORTANT — this is NOT a claim that every rate below is usable in
+ * production. A live run against SUNAT's beta validator on 2026-08-29 (matrix
+ * in `specs/2026-08-17-hub-igv-rate-from-org-config-s3-actuals.md`, rerun with
+ * `bun scripts/emit-beta-test.ts`) proved `sendBill` hard-rejects a document
+ * carrying a 10% IGV with fault `soap-env:Client.3462` — SUNAT only accepts a
+ * rate that is currently "vigente" for the emitter's regime, and today that is
+ * 0.18 alone (`SUNAT_VIGENTE_IGV_RATES` in `$lib/finance/igv-rates`). The
+ * settings-write and emission boundaries (`resolveIgvRate`, `PUT
+ * /api/finances/settings`) fail closed on anything else. The extra rates below
+ * are pure arithmetic fixtures — they exercise the formula's rounding
+ * behaviour so a future *vigente* rate is safe to add, and never reach a real
+ * document.
+ *
+ * Asserted on the emitted XML strings, in integer cents — that is the artifact
+ * SUNAT parses, and cents make "exactly, no tolerance" literally true instead
+ * of a floating-point approximation of it.
+ */
+describe('S3 — totals-consistency invariant holds for any igvRate value (arithmetic only)', () => {
+  // Only 0.18 is SUNAT-vigente today; 0.10/0.08/0.05 are hypothetical
+  // fixtures used to pin the rounding formula, not rates the product accepts.
+  const RATES = [0.18, 0.1, 0.08, 0.05];
+
+  /** '107.27' → 10727. Also pins the 2-decimal format SUNAT requires. */
+  function cents(decimal: string): number {
+    expect(decimal).toMatch(/^\d+\.\d{2}$/);
+    return Math.round(Number(decimal) * 100);
+  }
+
+  function amount(xml: string, tag: string): string {
+    const m = xml.match(new RegExp(`<${tag} currencyID="PEN">([^<]+)</${tag}>`));
+    if (!m) throw new Error(`no <${tag}> in document`);
+    return m[1];
+  }
+
+  function parseInvoice(xml: string) {
+    const [header, ...lineBlocks] = xml.split('<cac:InvoiceLine>');
+    return {
+      // Document level lives before the first InvoiceLine.
+      lineExtension: cents(amount(header, 'cbc:LineExtensionAmount')),
+      igv: cents(amount(header, 'cbc:TaxAmount')),
+      taxInclusive: cents(amount(header, 'cbc:TaxInclusiveAmount')),
+      payable: cents(amount(header, 'cbc:PayableAmount')),
+      percents: [...xml.matchAll(/<cbc:Percent>([^<]+)<\/cbc:Percent>/g)].map((m) => m[1]),
+      lines: lineBlocks.map((block) => ({
+        taxable: cents(amount(block, 'cbc:LineExtensionAmount')),
+        igv: cents(amount(block, 'cbc:TaxAmount')),
+      })),
+    };
+  }
+
+  function lineSetsFor(rate: number): Record<string, EmissionLine[]> {
+    // A net of exactly 10.00 at this rate's divisor — the "no rounding to do"
+    // cell, which is where an off-by-a-céntimo split would show up cleanest.
+    const exactMultiple = Math.round(10 * (1 + rate) * 100) / 100;
+    return {
+      '1 line': [{ description: 'Consulta', quantity: 1, unitPriceInclTax: 19.9 }],
+      '3 lines with odd céntimos': base.lines,
+      '1 line x quantity 7': [{ description: 'Ampolla', quantity: 7, unitPriceInclTax: 3.33 }],
+      'inclusive price is an exact multiple of the divisor': [
+        { description: 'Sesion', quantity: 1, unitPriceInclTax: exactMultiple },
+      ],
+    };
+  }
+
+  for (const igvRate of RATES) {
+    for (const [setName, lines] of Object.entries(lineSetsFor(igvRate))) {
+      it(`rate ${igvRate}, ${setName}: lines reconstruct the document totals exactly`, () => {
+        const doc = parseInvoice(buildInvoiceXml({ ...base, igvRate, lines }));
+        expect(doc.lines).toHaveLength(lines.length);
+
+        for (const [i, l] of doc.lines.entries()) {
+          // The line's own split reconstructs the amount the customer paid.
+          const paid = Math.round(lines[i].quantity * lines[i].unitPriceInclTax * 100);
+          expect(l.taxable + l.igv).toBe(paid);
+          // …and the split agrees with the percent the same document declares,
+          // within the céntimo that rounding to 2dp can cost (SUNAT re-derives
+          // IGV from TaxableAmount × Percent and rejects a wider gap).
+          expect(Math.abs(l.igv - l.taxable * igvRate)).toBeLessThanOrEqual(1);
+        }
+
+        const sumTaxable = doc.lines.reduce((s, l) => s + l.taxable, 0);
+        const sumIgv = doc.lines.reduce((s, l) => s + l.igv, 0);
+        expect(doc.lineExtension).toBe(sumTaxable);
+        expect(doc.igv).toBe(sumIgv);
+        expect(doc.lineExtension + doc.igv).toBe(doc.taxInclusive);
+        expect(doc.payable).toBe(doc.taxInclusive);
+
+        // One rate, one document: every declared Percent comes from it.
+        expect(doc.percents.length).toBe(lines.length);
+        for (const p of doc.percents) expect(p).toBe(String(igvRate * 100));
+      });
+    }
+  }
+
+  it('cross-checks the fixture list against the real allowlist: only 0.18 is SUNAT-vigente today', () => {
+    expect(SUNAT_VIGENTE_IGV_RATES).toEqual([0.18]);
+    expect(RATES.filter((r) => SUNAT_VIGENTE_IGV_RATES.includes(r))).toEqual([0.18]);
+  });
+});
+
+/**
+ * M1 regression (review round 1, 2026-08-29): `isVigenteIgvRate` accepts a
+ * value within `1e-9` of an allowlisted rate, but `resolveIgvRate` used to
+ * hand the emission library that raw near-value. `computeTotals` divides by
+ * `1 + igvRate` while `formatPercent` separately rounds it to 2 percentage
+ * decimals for `cbc:Percent` — fed the same near-value, they agree with each
+ * other but not with what a genuinely-0.18 document would produce, and SUNAT
+ * validates the declared rate is exactly a tasa vigente. `resolveIgvRate` now
+ * canonicalizes via `canonicalizeIgvRate` before returning, so this reproduces
+ * the exact repro from the review (`taxRate = 0.1800000009`, one PEN
+ * 131,111.34 line) and asserts it is now identical to configuring 0.18.
+ */
+describe('M1 — a near-vigente configured rate canonicalizes before it reaches emission', () => {
+  it('taxable amount, IGV, and declared percent all agree with an exact-0.18 document', () => {
+    const resolved = resolveIgvRate({ taxRate: 0.1800000009 });
+    expect(resolved).toBe(0.18);
+
+    const invoice: EmissionInvoice = {
+      ...base,
+      igvRate: resolved,
+      lines: [{ description: 'Line 1', quantity: 1, unitPriceInclTax: 131111.34 }],
+    };
+    const totals = computeTotals(invoice);
+    const xml = buildInvoiceXml(invoice);
+
+    // NOT the pre-fix raw near-rate output (taxable 111111.30, IGV 20000.04).
+    expect(totals.lineExtensionAmount).toBe(111111.31);
+    expect(totals.igvAmount).toBe(20000.03);
+    expect(xml).toContain('<cbc:Percent>18</cbc:Percent>');
+    // Byte-identical to configuring 0.18 directly — the rate used for the
+    // arithmetic and the rate declared in cbc:Percent are the same number.
+    expect(xml).toBe(buildInvoiceXml({ ...invoice, igvRate: 0.18 }));
   });
 });

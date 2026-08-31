@@ -15,6 +15,12 @@ import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CanonicalInvoice } from '$server/finance/connector';
 import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
 import type { Period } from '$lib/finance/period';
+import {
+  DEFAULT_IGV_RATE,
+  IGV_RATE_NOT_VIGENTE_MESSAGE,
+  canonicalizeIgvRate,
+  isVigenteIgvRate,
+} from '$lib/finance/igv-rates';
 import { emitHubEvent } from '$server/events/emit';
 import { effectiveModuleEnabled, type ModuleStates } from '$lib/modules/availability';
 import type { OrgKind } from '$lib/org-kind';
@@ -505,7 +511,9 @@ export interface FinSettings {
 
 export const DEFAULT_FIN_SETTINGS: Readonly<FinSettings> = Object.freeze({
   currency: 'PEN',
-  taxRate: 0.18,
+  // One statutory rate, one definition — the same constant the emission
+  // boundary defaults to when an org has no `fin_settings` row at all.
+  taxRate: DEFAULT_IGV_RATE,
   timezone: 'America/Lima',
   fxBase: 'USD',
   fxQuote: 'PEN',
@@ -547,8 +555,8 @@ export async function updateFinSettings(
   ctx: CoreCtx,
   patch: Partial<FinSettings>,
 ): Promise<FinSettings> {
-  // Validate the fields a user can set. taxRate is a fraction in [0, 1);
-  // exchange rates must be positive when provided.
+  // Validate the fields a user can set. taxRate is a fraction AND must be an
+  // IGV rate SUNAT accepts; exchange rates must be positive when provided.
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.currency != null) set.currency = String(patch.currency).toUpperCase().slice(0, 8);
   if (patch.timezone != null) {
@@ -563,10 +571,16 @@ export async function updateFinSettings(
     set.timezone = tz;
   }
   if (patch.taxRate != null) {
+    // Fail closed: an arbitrary fraction is NOT a valid IGV rate. SUNAT rejects
+    // any document whose rate is not currently in force (fault 3462), so
+    // persisting one silently breaks every later emission for this org.
+    // See `$lib/finance/igv-rates` for the live-beta evidence.
     const t = Number(patch.taxRate);
-    if (!Number.isFinite(t) || t < 0 || t >= 1)
-      throw new Error('taxRate must be a fraction in [0, 1)');
-    set.taxRate = String(t);
+    if (!isVigenteIgvRate(t)) throw new Error(IGV_RATE_NOT_VIGENTE_MESSAGE);
+    // Persist the canonical allowlist value, not the caller's near-match — a
+    // value merely within tolerance would otherwise disagree by a cent with
+    // the rate the emitter declares. See `canonicalizeIgvRate`.
+    set.taxRate = String(canonicalizeIgvRate(t));
   }
   if (patch.fxMode != null) {
     if (patch.fxMode !== 'auto' && patch.fxMode !== 'manual')
