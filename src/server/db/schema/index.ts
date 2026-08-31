@@ -66,5 +66,7 @@ export {
   agentBuiltSkills,
 } from './builder';
 export { userPreferences } from './user-preferences';
-export { workspaceMembership } from './workspace-membership';
-export type { WorkspaceMembership, NewWorkspaceMembership } from './workspace-membership';
+// Canonical declaration lives in `@minion-stack/db`; the hub re-exports it so
+// the barrel keeps the table in its schema graph without a local duplicate.
+export { workspaceMembership } from '@minion-stack/db/schema';
+export type { WorkspaceMembership, NewWorkspaceMembership } from '@minion-stack/db/schema';
