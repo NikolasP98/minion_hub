@@ -35,6 +35,10 @@
 -- which owns the table shape in Drizzle even though it does not own roles or
 -- policies.
 --
+--   `app_ledger`'s table privileges come from a SEPARATE authoritative source
+--   with its own date and its own provenance chain — read the "app_ledger's
+--   table privileges" block below before changing them.
+--
 -- DRIFT IS A KNOWN, ACCEPTED RISK. This is a point-in-time snapshot; nothing
 -- re-checks it against prod on a schedule. If the concurrency suite starts
 -- failing with no corresponding code change, re-run the extraction queries
@@ -186,12 +190,66 @@ create policy crm_activities_org_guc on public.crm_activities
   using (org_id = current_setting('app.current_org_id', true))
   with check (org_id = current_setting('app.current_org_id', true));
 
+-- ── app_ledger's table privileges ───────────────────────────────────────────
 -- `app_ledger` is the non-bypass role `withOrgCore()` does `set local role`
 -- into, so it needs explicit table grants — policies alone grant nothing.
--- Grant SHAPE (unlike the policy text above) is NOT from the Slice-0
--- extraction, which did not cover `role_table_grants`: it follows this repo's
--- uniform `*_org_guc` migration convention, e.g.
--- `supabase/migrations/20260717230000_crm_conversation_chunks.sql:60`.
+--
+-- PROVENANCE. These grants are NOT repo convention and NOT inferred from the
+-- statements the suite happens to issue. They reproduce production, sourced
+-- from spec §3 Slice 0's third query via what its DELTA #1 calls "an equivalent
+-- authoritative source": the operator's recorded past-session observations
+-- (`~/.claude-mem/claude-mem.db` — the memory tier every earlier round of this
+-- work searched past, which is why it kept concluding the fact was
+-- unobtainable). Three mutually corroborating production records:
+--
+--   1. obs 21415, 2026-06-14T03:15:35Z — the hand-written companion migration
+--      `supabase/migrations/20260614031500_crm.sql` (the file
+--      `pg-crm-schema.ts`'s header names and that is not checked into this
+--      repo) was authored with, verbatim: "Complete RLS setup: GRANT
+--      select/insert/update/delete to app_ledger for all 5 tables"
+--      (crm_contacts, crm_contact_identities, crm_activities, crm_tags,
+--      crm_contact_tags), plus "ENABLE + FORCE row level security on all 5
+--      tables" and the five `*_org_guc` policies — whose text the independent
+--      2026-08-20 live `pg_policies` extraction above confirms is still exactly
+--      what production runs today.
+--   2. obs 21458, 2026-06-14T04:02:00Z — that same file was applied to the
+--      production Supabase project `gxvsaskbohavnurfvshr` under
+--      `ON_ERROR_STOP=1`, exit code 0, with a post-application verification
+--      counting 5 `crm_*` tables, 2 views and 5 `crm_*` policies.
+--   3. obs 22073, 2026-06-16T02:41:51Z — a direct permission READBACK against
+--      that production database two days later: "app_ledger role has full
+--      SELECT/INSERT/UPDATE/DELETE privileges on all CRM tables including
+--      crm_contacts, crm_tags, crm_activities, crm_contact_identities,
+--      crm_contact_tags, crm_settings, and messages", recorded next to a live
+--      RLS behavioural check over real production data (1630 contacts for the
+--      FACES SCULPTORS org).
+--
+-- (1) is what was granted, (2) is that it reached production, (3) is a readback
+-- confirming it there. They are per-object records rather than a convention
+-- restated: the same source records the canonical `messages` table as receiving
+-- `select/insert/update` only — three privileges, not four (obs 21413) — so the
+-- four-privilege CRM result is a fact about these two tables, not a house style
+-- applied to everything.
+--
+-- The exact-set assertion below (no extra privilege either) rests on (1): the
+-- grant statement recorded there is the complete one the migration issued, so
+-- TRUNCATE / REFERENCES / TRIGGER were never granted to `app_ledger` on these
+-- tables.
+--
+-- WHAT THIS DOES NOT PROVE. The readback is dated 2026-06-16 and nothing
+-- re-reads production's `role_table_grants` on a schedule, so a privilege
+-- granted or revoked since would not surface here. That is the same accepted
+-- A2 drift risk the policy/column snapshot above already carries (itself dated
+-- 2026-08-20) — not a separate unverified leg. Checked against everything the
+-- repository can still say: no migration under `supabase/migrations/` alters
+-- `app_ledger`'s privileges on either table (the sole file referencing them,
+-- `20260825100000_crm_contact_activity_rollup.sql`, grants only on its own new
+-- table, and grants the same four), and no later observation records a revoke.
+--
+-- Revoke first so re-applying the fixture to a warm container converges on
+-- exactly this set instead of accumulating whatever a previous revision granted
+-- (the exact-set assertion below would otherwise fail on a stale container).
+revoke all on public.crm_contacts, public.crm_activities from app_ledger;
 grant select, insert, update, delete on public.crm_contacts to app_ledger;
 grant select, insert, update, delete on public.crm_activities to app_ledger;
 
@@ -223,6 +281,8 @@ declare
   flags record;
   pol record;
   policy_count int;
+  granted text;
+  expected_grants text;
 begin
   foreach tbl in array array['crm_contacts', 'crm_activities'] loop
     select c.relrowsecurity, c.relforcerowsecurity
@@ -271,13 +331,21 @@ begin
         tbl, coalesce(pol.with_check, '<null>'), expected_expr;
     end if;
 
-    -- Convention-derived (see the grant block above), asserted so a typo in a
-    -- grant surfaces here instead of as an opaque "permission denied" mid-test.
-    if not has_table_privilege('app_ledger', 'public.' || tbl, 'select')
-       or not has_table_privilege('app_ledger', 'public.' || tbl, 'insert')
-       or not has_table_privilege('app_ledger', 'public.' || tbl, 'update')
-       or not has_table_privilege('app_ledger', 'public.' || tbl, 'delete') then
-      raise exception 'ci-fixture: app_ledger is missing select/insert/update/delete on %', tbl;
+    -- EXACTLY production's recorded privilege set (see the provenance chain in
+    -- the grant block above) — no fewer, and just as importantly no more. A
+    -- missing one would surface mid-test as an opaque "permission denied"; an
+    -- extra one is the direction that could hide a production refusal behind a
+    -- green run, so privilege creep fails on apply rather than being waved
+    -- through in review.
+    select coalesce(string_agg(distinct privilege_type, ',' order by privilege_type), '(none)')
+      into granted
+      from information_schema.role_table_grants
+     where table_schema = 'public' and table_name = tbl and grantee = 'app_ledger';
+    expected_grants := 'DELETE,INSERT,SELECT,UPDATE';
+    if granted is distinct from expected_grants then
+      raise exception
+        'ci-fixture: app_ledger holds (%) on %, production''s recorded grant is exactly (%)',
+        granted, tbl, expected_grants;
     end if;
   end loop;
 
