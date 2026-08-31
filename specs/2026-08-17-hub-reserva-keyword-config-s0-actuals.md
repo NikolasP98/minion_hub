@@ -262,8 +262,12 @@ sat on the constant is replaced by the measurement and a pointer to the script; 
 again is an index question (a `pg_trgm` index on `description`), which is a schema change this
 spec puts out of scope.
 
-Reproduce: `bun run scripts/deposit-keyword-perf.ts` (`DEPOSIT_PERF_ITEMS`, `DEPOSIT_PERF_SIZES`,
-`DEPOSIT_PERF_RUNS` override the defaults).
+Reproduce: `bun run scripts/deposit-keyword-perf.ts` (the default explicitly runs 1, the current
+cap, and the fixed 20-keyword ship-gate reference without duplicates; `DEPOSIT_PERF_ITEMS`,
+`DEPOSIT_PERF_SIZES`, `DEPOSIT_PERF_RUNS` override those defaults). The approved largest-dev-org
+measurement remains unexecuted because this environment has no dev-DB credentials; the recorded
+PGlite evidence is synthetic PostgreSQL-engine evidence, not a substitute silently presented as
+representative production data.
 
 ### ⚠️ A3 disclosure was racy — the win-index publication now serializes against the write
 

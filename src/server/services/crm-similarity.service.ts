@@ -146,21 +146,32 @@ export interface BuildWinIndexResult {
   skipped?: 'rule-changed' | 'newer-build';
 }
 
-/** Mint and publish the latest requested generation before reading source data. */
+/** Mint the latest requested generation without changing the published snapshot. */
 async function beginWinIndexGeneration(ctx: CoreCtx): Promise<string> {
   const generation = crypto.randomUUID();
   return withOrgCore(ctx, async (tx) => {
     await lockDepositConfig(tx, ctx.tenantId);
     await tx.execute(sql`
       insert into crm_settings (org_id, value, updated_at)
-      values (${ctx.tenantId}, jsonb_build_object('winIndexGeneration', ${generation}), now())
+      values (${ctx.tenantId}, jsonb_build_object('winIndexRequestedGeneration', ${generation}), now())
       on conflict (org_id) do update
       set value = coalesce(crm_settings.value, '{}'::jsonb)
-            || jsonb_build_object('winIndexGeneration', ${generation}),
+            || jsonb_build_object('winIndexRequestedGeneration', ${generation}),
           updated_at = now()
     `);
     return generation;
   });
+}
+
+async function readWinIndexRequestedGeneration(
+  tx: { execute: (query: SQL) => Promise<unknown> },
+  orgId: string,
+): Promise<string | null> {
+  const [row] = (await tx.execute(sql`
+    select value->>'winIndexRequestedGeneration' as generation
+    from crm_settings where org_id = ${orgId}
+  `)) as unknown as Array<{ generation: string | null }>;
+  return row?.generation ?? null;
 }
 
 async function readWinIndexGeneration(
@@ -289,7 +300,7 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> 
     // recheck below and the upsert are one indivisible step against a
     // concurrent `writeDepositRule` (see `lockDepositConfig`).
     await lockDepositConfig(tx, ctx.tenantId);
-    if ((await readWinIndexGeneration(tx, ctx.tenantId)) !== generation) {
+    if ((await readWinIndexRequestedGeneration(tx, ctx.tenantId)) !== generation) {
       return 'newer-build' as const;
     }
     const liveVersion = await readDepositConfigVersion(tx, ctx.tenantId);
@@ -340,7 +351,9 @@ export async function buildWinIndex(ctx: CoreCtx): Promise<BuildWinIndexResult> 
     // publication and when the best-effort model call below later fails.
     await tx.execute(sql`
       update crm_settings
-      set value = coalesce(value, '{}'::jsonb) - 'winAnalysis', updated_at = now()
+      set value = (coalesce(value, '{}'::jsonb) - 'winAnalysis')
+            || jsonb_build_object('winIndexGeneration', ${generation}),
+          updated_at = now()
       where org_id = ${ctx.tenantId}
     `);
     return null;

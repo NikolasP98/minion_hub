@@ -148,10 +148,10 @@ async function main() {
     analyze;
   `);
 
-  const sizes = (process.env.DEPOSIT_PERF_SIZES ?? `1,5,10,15,${DEPOSIT_KEYWORDS_MAX}`)
+  const sizes = (process.env.DEPOSIT_PERF_SIZES ?? `1,${DEPOSIT_KEYWORDS_MAX},20`)
     .split(',')
     .map((n) => Number(n.trim()))
-    .filter((n) => n > 0);
+    .filter((n, index, values) => n > 0 && values.indexOf(n) === index);
   console.log(
     `engine: pglite (PostgreSQL, single-threaded WASM) · rows: ${items} invoice items / ` +
       `${invoices} invoices / ${clients} clients · median of ${runs} runs after 1 warm-up`,
@@ -171,9 +171,9 @@ async function main() {
       `${String(r.n).padStart(8)} | ${r.ms.toFixed(1).padStart(14)} | ${(r.ms / base).toFixed(2)}×`,
     );
   }
-  const worst = results[results.length - 1]!;
+  const reference = results.find((result) => result.n === 20) ?? results[results.length - 1]!;
   console.log(
-    `\nship gate: ${worst.n} keywords costs ${(worst.ms / base).toFixed(2)}× one keyword — ` +
+    `\nship gate reference: ${reference.n} keywords costs ${(reference.ms / base).toFixed(2)}× one keyword — ` +
       `the spec lowers DEPOSIT_KEYWORDS_MAX if this exceeds ~2×.`,
   );
   await pg.close();

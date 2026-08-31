@@ -61,6 +61,8 @@ function createGenerationDb() {
   const original = rawDb.execute.bind(rawDb);
   rawDb.execute = vi.fn(async (query: SQL) => {
     const compiled = dialect.sqlToQuery(query);
+    if (compiled.sql.includes("value->>'winIndexRequestedGeneration'"))
+      return [{ generation: GENERATION }];
     if (compiled.sql.includes("value->>'winIndexGeneration'")) return [{ generation: GENERATION }];
     return original(query);
   });
@@ -116,9 +118,11 @@ describe('buildWinIndex', () => {
       executedSqlContaining(db, 'delete from crm_win_embeddings'),
     );
     expect(deleteQuery.sql).toContain('contact_id <> all(array[]::uuid[])');
-    expect(
-      dialect.sqlToQuery(executedSqlContaining(db, "value = coalesce(value, '{}'::jsonb)")).sql,
-    ).toContain("- 'winAnalysis'");
+    const publicationQuery = dialect.sqlToQuery(
+      executedSqlContaining(db, "jsonb_build_object('winIndexGeneration'"),
+    );
+    expect(publicationQuery.sql).toContain("- 'winAnalysis'");
+    expect(publicationQuery.params).toContain(GENERATION);
   });
 });
 
@@ -177,7 +181,7 @@ describe('win-index publication vs a concurrent deposit-rule write', () => {
   /** A mock db that answers each of buildWinIndex's statements by shape and
    *  records the SQL it was asked to run, in order. */
   function routedDb(liveVersion: () => string | null) {
-    const { db } = createMockDb();
+    const { db, resolve } = createMockDb();
     const executed: string[] = [];
     const execute = vi.fn(async (query: SQL) => {
       const text = dialect.sqlToQuery(query).sql;
@@ -189,11 +193,13 @@ describe('win-index publication vs a concurrent deposit-rule write', () => {
           { contact_id: CONTACT_ID, direction: 'in', content: 'hola', at: '2026-08-01T00:00:00Z' },
         ];
       if (text.includes("value #>> '{deposit,updatedAt}'")) return [{ version: liveVersion() }];
+      if (text.includes("value->>'winIndexRequestedGeneration'"))
+        return [{ generation: GENERATION }];
       if (text.includes("value->>'winIndexGeneration'")) return [{ generation: GENERATION }];
       return [];
     });
     (db as unknown as { execute: unknown }).execute = execute;
-    return { db, executed };
+    return { db, executed, resolve };
   }
 
   const publishSql = (executed: string[]) =>
@@ -238,14 +244,32 @@ describe('win-index publication vs a concurrent deposit-rule write', () => {
     expect(recheckAt).toBeLessThan(upsertAt);
   });
 
-  it('preserves the previous complete index when embedding fails', async () => {
+  it('preserves the previous complete index and matching analysis when embedding fails', async () => {
     snapshotVersion = '2026-08-29T09:00:00.000Z';
     embedTexts.mockRejectedValueOnce(new Error('provider unavailable'));
-    const { db, executed } = routedDb(() => snapshotVersion);
+    const { db, executed, resolve } = routedDb(() => snapshotVersion);
 
     expect(await buildWinIndex(ctx(db))).toEqual({ indexed: 0 });
     expect(executed.some((t) => t.includes('delete from crm_win_embeddings'))).toBe(false);
     expect(publishSql(executed)).toHaveLength(0);
+    expect(executed.some((t) => t.includes("jsonb_build_object('winIndexGeneration'"))).toBe(false);
+
+    const previousAnalysis = {
+      wins: [{ point: 'old win', repeat: 'keep it' }],
+      improvements: [],
+      builtAt: '2026-08-29T08:00:00.000Z',
+      basedOn: 1,
+      generation: 'previous-successful-generation',
+    };
+    resolve([
+      {
+        value: {
+          winIndexGeneration: 'previous-successful-generation',
+          winAnalysis: previousAnalysis,
+        },
+      },
+    ]);
+    expect(await getWinAnalysis(ctx(db))).toEqual(previousAnalysis);
   });
 
   it('an org that never configured a rule (version null on both sides) still publishes', async () => {
@@ -294,7 +318,7 @@ describe('win-index publication vs a concurrent deposit-rule write', () => {
       const text = compiled.sql;
       if (/^\s*(set local|select set_config)/i.test(text)) return undefined;
       executed.push(text);
-      if (text.includes("jsonb_build_object('winIndexGeneration'")) {
+      if (text.includes("jsonb_build_object('winIndexRequestedGeneration'")) {
         liveGeneration = String(compiled.params[1]);
         return [];
       }
@@ -317,6 +341,8 @@ describe('win-index publication vs a concurrent deposit-rule write', () => {
           at: '2026-08-01T00:00:00Z',
         }));
       }
+      if (text.includes("value->>'winIndexRequestedGeneration'"))
+        return [{ generation: liveGeneration }];
       if (text.includes("value->>'winIndexGeneration'")) return [{ generation: liveGeneration }];
       if (text.includes("value #>> '{deposit,updatedAt}'")) return [{ version: snapshotVersion }];
       return [];
