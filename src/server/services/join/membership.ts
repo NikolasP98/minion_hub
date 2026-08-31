@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '$server/supabase';
+import { hasCanonicalMembership } from '$server/services/canonical-directory.service';
 
 export interface MembershipUser {
   id: string;
@@ -19,25 +20,12 @@ export interface MembershipUser {
  * (a refreshed join-link must not strand a now-member on the join page).
  */
 export async function isOrgMember(supabaseId: string, orgId: string): Promise<boolean> {
-  const { data, error } = await supabaseAdmin()
-    .from('organization_members')
-    .select('profile_id')
-    .eq('profile_id', supabaseId)
-    .eq('organization_id', orgId)
-    .maybeSingle();
-  if (error) return false;
-  return !!data;
+  return hasCanonicalMembership(supabaseId, orgId);
 }
 
 /** True if the Supabase profile belongs to any organization at all. */
 export async function hasAnyMembership(supabaseId: string): Promise<boolean> {
-  const { data, error } = await supabaseAdmin()
-    .from('organization_members')
-    .select('profile_id')
-    .eq('profile_id', supabaseId)
-    .limit(1);
-  if (error) return false;
-  return (data?.length ?? 0) > 0;
+  return hasCanonicalMembership(supabaseId);
 }
 
 /**
