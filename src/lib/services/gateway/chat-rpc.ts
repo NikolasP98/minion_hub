@@ -195,7 +195,16 @@ export function isActionToken(text: string): boolean {
  * block so the bubble shows only what the user actually typed. Safe on already-
  * clean text (no-op) and on assistant replies (they don't carry these blocks).
  */
+const ENVELOPE_END = "Don't restate this context.]";
+
 export function cleanInboundForDisplay(text: string): string {
+  // The page envelope always closes with a fixed marker and always comes LAST
+  // among the injected blocks. Whatever the gateway prepends before it
+  // (memories in any layout, metadata fence, timestamp) is context, never the
+  // user's words — so cut at the last marker instead of pattern-matching every
+  // leading block (a flattened memories block broke the anchored loop below).
+  const end = text.lastIndexOf(ENVELOPE_END);
+  if (end >= 0) return text.slice(end + ENVELOPE_END.length).trimStart();
   let t = text;
   for (let changed = true; changed;) {
     changed = false;
