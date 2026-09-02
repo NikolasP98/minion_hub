@@ -28,6 +28,11 @@ describe('site-map', () => {
       ok: true,
       path: '/stock/entries/abc-123',
     });
+    // No [param] child under /pos/sell in the manifest → invented, not a record.
+    expect(
+      resolvePath('/pos/sell/new', [...pages, { path: '/pos/sell', title: 'POS', description: '' }])
+        .ok,
+    ).toBe(false);
   });
 
   it('rejects unknown and off-origin paths with suggestions', () => {

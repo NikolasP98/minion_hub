@@ -19,7 +19,7 @@ export interface SitePage {
 /**
  * EN + ES synonyms per business page, one line each (Peru vocabulary). A `~word`
  * names a module that does NOT exist here — this page is merely the closest one,
- * so it only scores a weak hit and is briefed as "closest page for".
+ * so it only scores a weak hit and is briefed as "NO MODULE HERE for".
  */
 export const PAGE_KEYWORDS: Record<string, string> = {
   '/home': 'chat assistant asistente inicio',
@@ -87,6 +87,13 @@ function describe(path: string): string {
   return '';
 }
 
+/** Parents that have a `[param]` child in the manifest (e.g. /crm, /stock/entries). */
+const DYNAMIC_PARENTS = new Set(
+  ROUTE_DESIGN_MANIFEST.filter((r) => r.pattern.includes('['))
+    .map((r) => r.pattern.slice(0, r.pattern.indexOf('/[')))
+    .filter(Boolean),
+);
+
 /** All static screens (no `[param]` segments), unfiltered. */
 export function allPages(): SitePage[] {
   return ROUTE_DESIGN_MANIFEST.filter(
@@ -109,11 +116,13 @@ export function resolvePath(
   if (raw.startsWith('//') || raw.includes('\\'))
     return { ok: false, reason: 'off-origin path', suggestions: [] };
   if (pages.some((p) => p.path === path)) return { ok: true, path };
-  // Dynamic record pages (/crm/<id>, /stock/entries/<id>) — allow when the parent collection is visible.
+  // Dynamic record pages (/crm/<id>, /stock/entries/<id>) — only where the manifest
+  // declares a [param] child under a visible parent; anything else is invented.
   const parent = path.split('/').slice(0, -1).join('/');
   if (
     parent &&
     pages.some((p) => p.path === parent) &&
+    DYNAMIC_PARENTS.has(parent) &&
     /^[\w-]+$/.test(path.split('/').pop() ?? '')
   ) {
     return { ok: true, path };
@@ -208,7 +217,9 @@ export function describePages(pages: SitePage[]): string {
         .filter((w) => w[0] === '~')
         .map((w) => w.slice(1))
         .join(' ');
-      const tail = words.length ? ` (${strong}${weak ? `; closest page for: ${weak}` : ''})` : '';
+      const tail = words.length
+        ? ` (${strong}${weak ? `; NO MODULE HERE for: ${weak} — say that plainly, then offer this page as the nearest` : ''})`
+        : '';
       return `${p.path} — ${p.title}${p.description ? `: ${p.description}` : ''}${tail}`;
     })
     .join('\n');

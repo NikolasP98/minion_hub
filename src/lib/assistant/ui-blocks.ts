@@ -25,17 +25,23 @@ export interface UiCall {
 
 export const UI_FENCE = 'minion-ui';
 
-// Tolerates CRLF, trailing spaces after the info string, and an unterminated
-// fence at the very end (streaming: hide the half-typed block, not show it).
-const FENCE_RE = /```minion-ui[ \t]*\r?\n([\s\S]*?)(?:\r?\n```|$)/g;
+// A complete fence. Tolerates CRLF, an EMPTY body, a closing fence glued to the
+// last line, and — seen from DeepSeek in prod — the JSON written on the SAME
+// line as the opener (```minion-ui {"tool":…}), which markdown would otherwise
+// treat as the info string and render as an empty block. Never spans past the
+// closing fence (an empty block must not swallow the prose after it).
+const FENCE_RE = /```minion-ui[ \t]*([^\n]*?)[ \t]*\r?\n?([\s\S]*?)```/g;
+// An unterminated fence at the very end (streaming): hide the half-typed block.
+const OPEN_TAIL_RE = /```minion-ui[ \t]*(?:[^\n]*\r?\n?[\s\S]*)?$/;
 
 export function parseUiBlocks(text: string): { calls: UiCall[]; text: string } {
   const calls: UiCall[] = [];
   const clean = text
-    .replace(FENCE_RE, (_m, body: string) => {
-      for (const c of parseBody(body)) calls.push(c);
+    .replace(FENCE_RE, (_m, infoLine: string, body: string) => {
+      for (const c of parseBody(`${infoLine}\n${body}`)) calls.push(c);
       return '';
     })
+    .replace(OPEN_TAIL_RE, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   return { calls, text: clean };
