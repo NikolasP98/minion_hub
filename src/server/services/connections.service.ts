@@ -65,7 +65,9 @@ export async function contactConnections(
     const [act] = (await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(crmActivities)
-      .where(and(eq(crmActivities.orgId, ctx.tenantId), eq(crmActivities.contactId, contactId)))) as {
+      .where(
+        and(eq(crmActivities.orgId, ctx.tenantId), eq(crmActivities.contactId, contactId)),
+      )) as {
       n: number;
     }[];
     groups.push({
