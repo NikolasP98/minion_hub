@@ -6,7 +6,7 @@ import { goto } from '$lib/navigation';
 import { canViewPath } from '$lib/access/can.svelte';
 import { executeTool, getTools, registerTools, waitForTool } from './model-context';
 import { resolvePath, searchPages, visiblePages } from './site-map';
-import { askChoice, startGuide, type ChoiceOption, type GuideStep } from './guide.svelte';
+import { startGuide, type GuideStep } from './guide.svelte';
 import { FORM_CATALOG } from './catalog';
 import { fillToolName } from './forms';
 
@@ -96,7 +96,7 @@ export function registerGlobalTools() {
     {
       name: 'ui.guide',
       description:
-        'Show a step-by-step spotlight walkthrough on the current page (use when the user wants to LEARN how to do something). Each step highlights one element (`target` = a data-assist key from the form catalog, e.g. stock_entry.item) with a short instruction. Call AFTER hub.navigate to the right page.',
+        'Show an interactive step-by-step walkthrough on the current page (use when the user wants to LEARN how to do something). Each step highlights one element (`target` = a data-assist key from the form catalog, e.g. stock_entry.item) with a short instruction written as an ACTION ("Click Add items and pick the product", "Type the quantity you received"). The walkthrough waits for each element to appear and advances when the user interacts with it, so order the steps the way the user will actually do them. Call AFTER hub.navigate to the right page.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -115,8 +115,30 @@ export function registerGlobalTools() {
         const steps = (Array.isArray(input.steps) ? input.steps : []) as GuideStep[];
         // Targets mount with the form; give it a moment after navigation.
         await new Promise((r) => setTimeout(r, 300));
-        startGuide(steps);
-        return { ok: true, steps: steps.length };
+        // A target is valid when it is on screen now OR declared by a catalog form
+        // for this route (it appears later in the flow — the guide waits for it).
+        const onScreen = new Set(
+          [...document.querySelectorAll('[data-assist]')].map((e) => e.getAttribute('data-assist')),
+        );
+        const path = location.pathname.replace(/^\/(en|es)(?=\/)/, '');
+        const declared = new Set(
+          FORM_CATALOG.filter((f) => path.startsWith(f.route)).flatMap((f) =>
+            (f.guide ?? []).map((g) => g.target),
+          ),
+        );
+        const known = steps.filter((s) => onScreen.has(s.target) || declared.has(s.target));
+        const unknownTargets = steps.filter((s) => !known.includes(s)).map((s) => s.target);
+        startGuide(known);
+        return {
+          ok: known.length > 0,
+          steps: known.length,
+          unknownTargets,
+          ...(unknownTargets.length
+            ? {
+                hint: `Valid targets here: ${[...new Set([...onScreen, ...declared])].filter(Boolean).join(', ')}`,
+              }
+            : {}),
+        };
       },
     },
     {
@@ -138,13 +160,8 @@ export function registerGlobalTools() {
         },
         required: ['question', 'options'],
       },
-      execute: (input) => {
-        askChoice(
-          str(input.question),
-          (Array.isArray(input.options) ? input.options : []) as ChoiceOption[],
-        );
-        return { ok: true };
-      },
+      // Rendered inline by MarkdownMessage from the reply text itself; nothing to run.
+      execute: () => ({ ok: true }),
     },
   ]);
 }

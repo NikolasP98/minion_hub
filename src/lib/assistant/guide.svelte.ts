@@ -19,7 +19,6 @@ interface GuideState {
   steps: GuideStep[];
   index: number;
   active: boolean;
-  choice: { question: string; options: ChoiceOption[] } | null;
   /** Last actions taken by the assistant, for the transcript chip row. */
   lastActions: string[];
 }
@@ -28,7 +27,6 @@ export const guide = $state<GuideState>({
   steps: [],
   index: 0,
   active: false,
-  choice: null,
   lastActions: [],
 });
 
@@ -51,14 +49,6 @@ export function endGuide() {
   guide.active = false;
   guide.steps = [];
   guide.index = 0;
-}
-
-export function askChoice(question: string, options: ChoiceOption[]) {
-  guide.choice = { question, options: options.filter((o) => o.label) };
-}
-
-export function clearChoice() {
-  guide.choice = null;
 }
 
 /** Resolve a guide/highlight target to an element. `data-assist` keys first. */

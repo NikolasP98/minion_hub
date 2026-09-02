@@ -3,7 +3,9 @@
   import DOMPurify from 'dompurify';
   import { goto } from '$lib/navigation';
   import { resolveInternalNav } from '$lib/utils/internal-nav';
-  import { stripUiBlocks } from '$lib/assistant/ui-blocks';
+  import { parseUiBlocks } from '$lib/assistant/ui-blocks';
+  import AssistChoice from '$lib/components/assistant/AssistChoice.svelte';
+  import type { ChoiceOption } from '$lib/assistant/guide.svelte';
   import 'carta-md/default.css';
 
   interface Props {
@@ -11,8 +13,13 @@
     /** Tone changes prose color tokens — 'user' = brand accent bg, 'assistant' = card bg */
     tone?: 'user' | 'assistant';
     class?: string;
+    /**
+     * Sends a `ui.choice` button's label as the user's next turn. Absent on
+     * surfaces without a send path — buttons render disabled there.
+     */
+    onChoice?: (text: string) => void;
   }
-  const { value, tone = 'assistant', class: className = '' }: Props = $props();
+  const { value, tone = 'assistant', class: className = '', onChoice }: Props = $props();
 
   // carta-md ships with remark-gfm so tables / strikethrough / task lists / autolinks work by default.
   const carta = new Carta({
@@ -28,7 +35,15 @@
   // UI tool calls (```minion-ui fences) are executed by the assistant runner,
   // not read by the user — strip them here, the one render path both surfaces
   // and the streaming bubble share.
-  const shown = $derived(stripUiBlocks(value));
+  const parsed = $derived(parseUiBlocks(value));
+  const shown = $derived(parsed.text);
+  // A `ui.choice` call renders as buttons inside this bubble (the reply that asked).
+  const choice = $derived.by(() => {
+    const c = parsed.calls.find((x) => x.tool === 'ui.choice');
+    if (!c) return null;
+    const opts = (Array.isArray(c.input.options) ? c.input.options : []) as ChoiceOption[];
+    return { question: String(c.input.question ?? ''), options: opts.filter((o) => o?.label) };
+  });
   const ssrHtml = $derived(carta.renderSSR(shown));
   let asyncHtml = $state<string | null>(null);
   let renderSeq = 0;
@@ -100,16 +115,23 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div
-  class={`chat-md ${tone === 'user' ? 'chat-md--user' : 'chat-md--assistant'} ${className}`}
-  onclick={onLinkClick}
->
-  <div bind:this={body} class="carta-viewer carta-theme__default markdown-body">
-    <!-- eslint-disable-next-line svelte/no-at-html-tags — sanitized by carta's DOMPurify sanitizer -->
-    {@html rendered}
+{#if shown || choice}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div
+    class={`chat-md ${tone === 'user' ? 'chat-md--user' : 'chat-md--assistant'} ${className}`}
+    onclick={onLinkClick}
+  >
+    {#if shown}
+      <div bind:this={body} class="carta-viewer carta-theme__default markdown-body">
+        <!-- eslint-disable-next-line svelte/no-at-html-tags — sanitized by carta's DOMPurify sanitizer -->
+        {@html rendered}
+      </div>
+    {/if}
+    {#if choice}
+      <AssistChoice question={choice.question} options={choice.options} onPick={onChoice} />
+    {/if}
   </div>
-</div>
+{/if}
 
 <style>
   /* Chat-tuned prose: tighter than default, dark-mode aware via CSS vars. */

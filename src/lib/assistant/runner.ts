@@ -26,6 +26,7 @@ export function needsFollowUp(outcomes: UiCallOutcome[]): boolean {
       if (r.error) return true;
       if (Array.isArray(r.missing) && r.missing.length) return true;
       if (Array.isArray(r.rejected) && r.rejected.length) return true;
+      if (Array.isArray(r.unknownTargets) && r.unknownTargets.length) return true;
       // hub.navigate onto a form that never mounted: the model must not assume it can fill.
       if (
         r.form &&

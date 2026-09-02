@@ -282,7 +282,7 @@
   "assist_guide_next": "Next",
   "assist_guide_back": "Back",
   "assist_guide_done": "Done",
-  "assist_guide_missing": "This element isn't on screen yet — open the form and try again.",
+  "assist_guide_waiting": "Waiting for this element to appear — do the step above to continue.",
   "automation_analyze_desc": "Runs conversation intelligence over new chat history.",
   "automation_analyze_title": "Conversation analysis",
   "automation_cadence_daily_3am": "Daily, 3am",

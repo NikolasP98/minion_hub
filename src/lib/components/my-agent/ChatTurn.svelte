@@ -1,25 +1,27 @@
 <script lang="ts">
-	import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
-	import type { ChatMessage } from '$lib/types/chat';
-	import type { ToolResult } from '$lib/chat/blocks';
+  import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
+  import type { ChatMessage } from '$lib/types/chat';
+  import type { ToolResult } from '$lib/chat/blocks';
 
-	interface Props {
-		message: ChatMessage;
-		/** tool_use_id → result, collected across the whole thread by the parent. */
-		toolResults?: Record<string, ToolResult>;
-		/** True while this turn is still streaming (affects tool/"thinking" labels). */
-		streaming?: boolean;
-		/**
-		 * When set, render THIS text as the answer instead of the message's own
-		 * text blocks — used during streaming to show the smoothed (typewriter)
-		 * reveal while reasoning/tool meta still come from `message`.
-		 */
-		textOverride?: string;
-		/** Threaded to ChatBlocks — sends a chat_artifact button's callback_data as the next chat message. */
-		onArtifactCallback?: (callbackData: string) => void;
-	}
+  interface Props {
+    message: ChatMessage;
+    /** tool_use_id → result, collected across the whole thread by the parent. */
+    toolResults?: Record<string, ToolResult>;
+    /** True while this turn is still streaming (affects tool/"thinking" labels). */
+    streaming?: boolean;
+    /**
+     * When set, render THIS text as the answer instead of the message's own
+     * text blocks — used during streaming to show the smoothed (typewriter)
+     * reveal while reasoning/tool meta still come from `message`.
+     */
+    textOverride?: string;
+    /** Threaded to ChatBlocks — sends a chat_artifact button's callback_data as the next chat message. */
+    onArtifactCallback?: (callbackData: string) => void;
+    /** Threaded to ChatBlocks — sends a ui.choice button's label as the next chat message. */
+    onChoice?: (text: string) => void;
+  }
 
-	const props: Props = $props();
+  const props: Props = $props();
 </script>
 
 <ChatBlocks {...props} />

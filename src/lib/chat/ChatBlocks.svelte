@@ -44,6 +44,8 @@
      * artifact buttons render disabled there instead of silently no-op'ing.
      */
     onArtifactCallback?: (callbackData: string) => void;
+    /** Sends a `ui.choice` button's label as the next chat message (same send path). */
+    onChoice?: (text: string) => void;
   }
 
   const {
@@ -53,6 +55,7 @@
     textOverride,
     compact = false,
     onArtifactCallback,
+    onChoice,
   }: Props = $props();
 
   // Permission badges (chat provenance) reuse the same tools.status data
@@ -314,14 +317,14 @@
   {#if textOverride !== undefined}
     {#if textOverride.length > 0}
       <div class="answer" class:streaming class:compact>
-        <MarkdownMessage value={stripTtsTags(textOverride)} tone="assistant" />
+        <MarkdownMessage value={stripTtsTags(textOverride)} tone="assistant" {onChoice} />
       </div>
     {/if}
   {:else if bodyBlocks.length > 0}
     <div class="answer" class:streaming class:compact>
       {#each bodyBlocks as block, i (i)}
         {#if block.kind === 'text'}
-          <MarkdownMessage value={stripTtsTags(block.text)} tone="assistant" />
+          <MarkdownMessage value={stripTtsTags(block.text)} tone="assistant" {onChoice} />
         {:else if block.kind === 'image'}
           <div class="img-chip">🖼 Image</div>
         {/if}

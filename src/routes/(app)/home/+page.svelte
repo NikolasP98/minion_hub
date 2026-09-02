@@ -8,7 +8,6 @@
   import EventModal from '$lib/components/my-agent/EventModal.svelte';
   import EmailModal from '$lib/components/my-agent/EmailModal.svelte';
   import ChatInput from '$lib/components/my-agent/ChatInput.svelte';
-  import AssistChoice from '$lib/components/assistant/AssistChoice.svelte';
   import ChatHistoryPopover from '$lib/components/my-agent/ChatHistoryPopover.svelte';
   import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
   import CallControls from '$lib/components/my-agent/CallControls.svelte';
@@ -1011,6 +1010,7 @@
                       message={row.msg}
                       toolResults={toolResultsById}
                       onArtifactCallback={(cb) => handleSubmit(cb, 'ask')}
+                      onChoice={(text) => handleSubmit(text, 'ask')}
                     />
                     {#if row.text.trim().length > 0}
                       <MessageActions actions={actionsFor(row, ri)} />
@@ -1113,6 +1113,7 @@
                     streaming
                     textOverride={streamDisplay}
                     onArtifactCallback={(cb) => handleSubmit(cb, 'ask')}
+                    onChoice={(text) => handleSubmit(text, 'ask')}
                   />
                   {#if streamDisplay.length === 0}
                     <!-- Tools running, no answer text yet — live activity verb. -->
@@ -1146,7 +1147,6 @@
 
       <div class="composer">
         <div class="composer-input">
-          <AssistChoice onPick={(text) => handleSubmit(text, 'ask')} />
           <ChatInput bind:value={draft} {agentId} onsubmit={handleSubmit} />
         </div>
         <div class="composer-call">
