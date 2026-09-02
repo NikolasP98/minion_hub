@@ -808,7 +808,15 @@
             {/if}
           {:else if assistantHasContent(msg)}
             <div class="flex flex-col gap-0.5 items-start">
-              <ChatBlocks message={msg} toolResults={toolResultsById} compact />
+              <ChatBlocks
+                message={msg}
+                toolResults={toolResultsById}
+                compact
+                onArtifactCallback={(cb) => {
+                  const id = assistant.personalAgentId;
+                  if (id) sendAssistantTurn(id, cb, buildAssistantContext());
+                }}
+              />
               {#if msgTs(msg)}
                 <span
                   class="text-[length:var(--font-size-telemetry)] text-muted-strong px-1 tabular-nums"
