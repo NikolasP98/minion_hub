@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
@@ -59,7 +58,8 @@
 
   let showAdd = $state(false);
   // ?new=1 (assistant deep link) opens the add dialog — only into an open period.
-  onMount(() => {
+  // Reactive (not onMount): the assistant may navigate to ?new=1 while the page is mounted.
+  $effect(() => {
     if (
       page.url.searchParams.get('new') === '1' &&
       canWrite &&

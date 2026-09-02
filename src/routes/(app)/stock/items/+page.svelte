@@ -98,6 +98,10 @@
   // ── Create ───────────────────────────────────────────────────────────────
   // svelte-ignore state_referenced_locally
   let createOpen = $state(data.openNew ?? false);
+  // ?new=1 while already on the page (assistant deep link): load re-runs, the seed does not.
+  $effect(() => {
+    if (data.openNew) createOpen = true;
+  });
 
   async function handleCreated(item: StockItemOption) {
     createOpen = false;

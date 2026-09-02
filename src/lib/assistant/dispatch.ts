@@ -7,25 +7,26 @@
 import { sendAssistantTurn } from '$lib/services/gateway/chat-rpc';
 import { extractUiCalls, formatFollowUp, needsFollowUp, runUiCalls } from './runner';
 
-// One follow-up per reply, and never more than N consecutive silent turns —
-// a model that keeps erroring must not loop the user's session forever.
+// One follow-up per reply, and never more than N consecutive silent turns per
+// session — a model that keeps erroring must not loop the user's session forever.
 // TODO(handoff): silent follow-up turns are persisted in the gateway transcript
 // (~1-2KB each); native client tools (proposal
 // 2026-09-02-gateway-client-tools-webmcp-bridge) return results in-run instead.
 const MAX_CHAIN = 3;
-let chain = 0;
+const chains = new Map<string, number>();
 
 export async function runAssistantUiCalls(agentId: string, text: string, sessionKey: string) {
   const calls = extractUiCalls(text);
   if (calls.length === 0) {
-    chain = 0;
+    chains.delete(sessionKey);
     return;
   }
   const outcomes = await runUiCalls(calls);
+  const chain = chains.get(sessionKey) ?? 0;
   if (!needsFollowUp(outcomes) || chain >= MAX_CHAIN) {
-    chain = 0;
+    chains.delete(sessionKey);
     return;
   }
-  chain += 1;
+  chains.set(sessionKey, chain + 1);
   sendAssistantTurn(agentId, '', formatFollowUp(outcomes) + '\n\n', sessionKey, { silent: true });
 }

@@ -180,6 +180,10 @@
   // ── New booking modal ── (opened pre-bound from the Connections "+New")
   // svelte-ignore state_referenced_locally
   let showNew = $state(data.openNew ?? false);
+  // ?new=1 while already on the page (assistant deep link): load re-runs, the seed does not.
+  $effect(() => {
+    if (data.openNew) showNew = true;
+  });
   let nbEventType = $state('');
   let nbDate = $state(new Date().toISOString().slice(0, 10));
   let nbSlots = $state<Array<{ start: string; end: string }>>([]);

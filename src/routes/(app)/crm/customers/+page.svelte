@@ -169,6 +169,10 @@
   // party does not appear in this grid — see meta proposal
   // 2026-09-02-gateway-client-tools-webmcp-bridge (known gaps).
   let createOpen = $state(qp.get('new') === '1');
+  // Reactive to in-page navigation to ?new=1 (assistant deep link).
+  $effect(() => {
+    if (page.url.searchParams.get('new') === '1') createOpen = true;
+  });
   const scoreActive = $derived(scoreMin != null || scoreMax != null);
   const initialFilters = {
     stage: qpArr('stage'),

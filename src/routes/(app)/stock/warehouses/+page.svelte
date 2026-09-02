@@ -28,6 +28,10 @@
 
   // svelte-ignore state_referenced_locally
   let formOpen = $state(data.openNew ?? false);
+  // ?new=1 while already on the page (assistant deep link): load re-runs, the seed does not.
+  $effect(() => {
+    if (data.openNew) formOpen = true;
+  });
   let formParentId = $state<string | null>(null);
   let formName = $state('');
   let busy = $state(false);
