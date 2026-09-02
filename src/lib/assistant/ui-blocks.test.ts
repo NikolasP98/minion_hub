@@ -27,6 +27,23 @@ describe('parseUiBlocks', () => {
     expect(r.text).toBe('');
   });
 
+  it('never swallows prose after an empty or glued-close fence', () => {
+    expect(parseUiBlocks('a\n\n```minion-ui\n```\n\nb')).toEqual({ calls: [], text: 'a\n\nb' });
+    const r = parseUiBlocks('a\n```minion-ui\n{"tool":"x"}```\nb');
+    expect(r.calls).toEqual([{ tool: 'x', input: {} }]);
+    expect(r.text.replace(/\s+/g, ' ')).toBe('a b');
+  });
+
+  it('accepts the JSON on the opener line (DeepSeek in prod, 2026-09-02)', () => {
+    const r = parseUiBlocks(
+      'Vamos.\n\n```minion-ui {"tool":"hub.navigate","input":{"path":"/stock/items","params":{"new":"1"}}}\n```\n\nTe abrí el formulario.',
+    );
+    expect(r.calls).toEqual([
+      { tool: 'hub.navigate', input: { path: '/stock/items', params: { new: '1' } } },
+    ]);
+    expect(r.text).toBe('Vamos.\n\nTe abrí el formulario.');
+  });
+
   it('does not touch other code fences', () => {
     const text = '```json\n{"tool":"nope"}\n```';
     expect(parseUiBlocks(text)).toEqual({ calls: [], text });

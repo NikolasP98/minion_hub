@@ -38,7 +38,7 @@ export function uiToolsBriefing(
     '```minion-ui',
     '{"tool":"hub.navigate","input":{"path":"/stock/entries/new","params":{"type":"receipt"}}}',
     '```',
-    `One JSON object per block, several blocks allowed, executed in order after your reply. The block is hidden from the user, so also say in one short sentence what you did. Results come back to you only when something failed or a form needs values.`,
+    `Exactly that shape: the opener line is only \`\`\`minion-ui, the JSON object is on its own line, then the closing \`\`\`. One JSON object per block, several blocks allowed, executed in order after your reply. The block is hidden from the user, so also say in one short sentence what you did. Results come back to you only when something failed or a form needs values.`,
     `Available now:\n${toolLines}`,
     `Pages you may open (path — title):\n${describePages(pages)}`,
     formLines
