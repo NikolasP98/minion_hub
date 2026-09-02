@@ -5,6 +5,7 @@
     PickerCreateContext,
     PickerDuplicatePolicy,
     PickerLoadResult,
+    PickerRowAction,
     PickerSelectionMode,
   } from './picker';
 </script>
@@ -22,12 +23,14 @@
     defaultPickerHidden,
     effectivePickerPickedIds,
     orderPickerColumns,
+    pickerRowAction,
     pickerRowIsDuplicate,
     reconcilePickerHidden,
     type PickerColumn,
     type PickerCreateConfig,
     type PickerDuplicatePolicy,
     type PickerLoadResult,
+    type PickerRowAction,
     type PickerSelectionMode,
   } from './picker';
 
@@ -44,6 +47,13 @@
     /** Text used for static filtering. Defaults to searchable visible columns. */
     searchText?: (row: T) => string;
     onPick: (row: T) => void;
+    /**
+     * Drop an already-picked row from the invoking form. Supplying it turns the
+     * browse rows into toggles: picked rows become removable instead of inert.
+     * Without it a picked row stays blocked, so a picker whose form cannot
+     * remove entries never offers an action it can't honor.
+     */
+    onUnpick?: (row: T) => void;
     onclose?: () => void;
     selectionMode?: PickerSelectionMode;
     /** @deprecated Use `selectionMode="multiple"`. */
@@ -74,6 +84,7 @@
     getRowId,
     searchText,
     onPick,
+    onUnpick,
     onclose,
     selectionMode,
     multi = false,
@@ -288,8 +299,29 @@
     );
   }
 
+  const canUnpick = $derived(Boolean(onUnpick));
+
+  function rowAction(row: T): PickerRowAction {
+    return pickerRowAction({
+      picked: effectivePickedIds.has(getRowId(row)),
+      canUnpick,
+      duplicate: duplicate(row),
+    });
+  }
+
   function disabled(row: T): boolean {
-    return duplicate(row) || isRowDisabled?.(row) === true;
+    return rowAction(row) === 'blocked' || isRowDisabled?.(row) === true;
+  }
+
+  /** One entry point for row activation, so click, double-click, and Enter/Space
+      can never diverge on what a row does. */
+  function toggle(row: T) {
+    if (isRowDisabled?.(row) === true) return;
+    if (rowAction(row) === 'remove') {
+      unpick(row);
+      return;
+    }
+    pick(row);
   }
 
   function pick(row: T) {
@@ -302,10 +334,20 @@
     }
   }
 
+  function unpick(row: T) {
+    onUnpick?.(row);
+    // Only the session mirror needs pruning; a consumer-supplied `pickedIds` is
+    // authoritative and re-derives itself from the form it just mutated.
+    if (pickedIds) return;
+    const next = new Set(sessionPickedIds);
+    next.delete(getRowId(row));
+    sessionPickedIds = next;
+  }
+
   function onRowKeydown(event: KeyboardEvent, row: T, index: number) {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      pick(row);
+      toggle(row);
       return;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -590,12 +632,11 @@
               </thead>
               <tbody>
                 {#each view as row, index (getRowId(row))}
-                  {@const rowDuplicate = duplicate(row)}
+                  {@const action = rowAction(row)}
                   {@const rowDisabled = disabled(row)}
                   {@const picked = effectivePickedIds.has(getRowId(row))}
-                  {@const disabledReason = rowDuplicate
-                    ? m.picker_already_added()
-                    : rowDisabledReason?.(row)}
+                  {@const disabledReason =
+                    action === 'blocked' ? m.picker_already_added() : rowDisabledReason?.(row)}
                   <tr
                     class="picker-row"
                     class:picked
@@ -607,7 +648,7 @@
                       ? `${pickerId}-row-${index}-reason`
                       : undefined}
                     ondblclick={(event) => {
-                      if (!(event.target as Element).closest('button')) pick(row);
+                      if (!(event.target as Element).closest('button')) toggle(row);
                     }}
                     onkeydown={(event) => onRowKeydown(event, row, index)}
                   >
@@ -630,16 +671,26 @@
                         variant={picked ? 'secondary' : 'ghost'}
                         size="xs"
                         shape="icon"
-                        class="picker-add-row"
-                        aria-label={rowDuplicate ? m.picker_already_added() : m.picker_pick_row()}
+                        class={`picker-add-row ${action === 'remove' ? 'removable' : ''}`}
+                        aria-label={action === 'remove'
+                          ? m.picker_remove_row()
+                          : action === 'blocked'
+                            ? m.picker_already_added()
+                            : m.picker_pick_row()}
                         disabled={rowDisabled}
                         onclick={(event) => {
                           event.stopPropagation();
-                          pick(row);
+                          toggle(row);
                         }}
                         ondblclick={(event: MouseEvent) => event.stopPropagation()}
                       >
-                        {#if picked && duplicatePolicy === 'prevent'}
+                        {#if action === 'remove'}
+                          <!-- Check is the resting state (this row IS selected);
+                               the X only surfaces on hover/focus, where it reads
+                               as the action rather than as an error badge. -->
+                          <Check size={iconSizes.sm} aria-hidden="true" class="picker-icon-rest" />
+                          <X size={iconSizes.sm} aria-hidden="true" class="picker-icon-hover" />
+                        {:else if picked && duplicatePolicy === 'prevent'}
                           <Check size={iconSizes.sm} aria-hidden="true" />
                         {:else}
                           <Plus size={iconSizes.sm} aria-hidden="true" />
@@ -654,7 +705,9 @@
         </div>
 
         <footer class="picker-footer">
-          <p class="picker-hint t-caption">{m.picker_dblclick_hint()}</p>
+          <p class="picker-hint t-caption">
+            {canUnpick ? m.picker_dblclick_hint_toggle() : m.picker_dblclick_hint()}
+          </p>
         </footer>
       </div>
     {/if}
@@ -886,6 +939,28 @@
       opacity: 1;
     }
   }
+  /* Check ⇄ X swap on a removable row. Both icons occupy the same cell so the
+     button never resizes mid-hover; the X is the affordance, so it appears on
+     hover AND keyboard focus, never on hover alone. */
+  .picker-row :global(.picker-add-row.removable) {
+    position: relative;
+  }
+  .picker-row :global(.picker-add-row.removable .picker-icon-hover) {
+    position: absolute;
+    opacity: 0;
+  }
+  .picker-row:hover :global(.picker-add-row.removable .picker-icon-rest),
+  .picker-row :global(.picker-add-row.removable:hover .picker-icon-rest),
+  .picker-row :global(.picker-add-row.removable:focus-visible .picker-icon-rest) {
+    opacity: 0;
+  }
+  .picker-row:hover :global(.picker-add-row.removable .picker-icon-hover),
+  .picker-row :global(.picker-add-row.removable:hover .picker-icon-hover),
+  .picker-row :global(.picker-add-row.removable:focus-visible .picker-icon-hover) {
+    opacity: 1;
+    color: var(--color-danger-fg);
+  }
+
   .picker-state {
     display: flex;
     min-height: calc(var(--space-12) * 4);

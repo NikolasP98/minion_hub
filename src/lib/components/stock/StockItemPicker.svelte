@@ -8,6 +8,7 @@
     open = $bindable(false),
     items,
     onPick,
+    onUnpick,
     title = m.stock_add_items(),
     subtitle,
     selectionMode = 'single',
@@ -22,6 +23,8 @@
     open?: boolean;
     items: StockItemOption[];
     onPick: (item: StockItemOption) => void;
+    /** Supply to make picked rows removable from inside the picker. */
+    onUnpick?: (item: StockItemOption) => void;
     title?: string;
     subtitle?: string;
     selectionMode?: 'single' | 'multiple';
@@ -101,6 +104,7 @@
   getRowId={(item) => item.id}
   searchText={(item) => `${item.code} ${item.name} ${item.uom} ${item.itemGroup ?? ''}`}
   {onPick}
+  {onUnpick}
   {selectionMode}
   {duplicatePolicy}
   {pickedIds}
