@@ -18,6 +18,8 @@
   import ServicePickerField from '$lib/components/scheduling/ServicePickerField.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
+  import { registerForm } from '$lib/assistant/forms';
+  import { BOOKING_FORM } from '$lib/assistant/catalog';
   import {
     bookingsLabels,
     type BookingCapabilities,
@@ -178,6 +180,10 @@
   // ── New booking modal ── (opened pre-bound from the Connections "+New")
   // svelte-ignore state_referenced_locally
   let showNew = $state(data.openNew ?? false);
+  // ?new=1 while already on the page (assistant deep link): load re-runs, the seed does not.
+  $effect(() => {
+    if (data.openNew) showNew = true;
+  });
   let nbEventType = $state('');
   let nbDate = $state(new Date().toISOString().slice(0, 10));
   let nbSlots = $state<Array<{ start: string; end: string }>>([]);
@@ -279,6 +285,88 @@
       nbLoading = false;
     }
   }
+
+  // ── Assistant fill (never submits) — registered only while the modal is open.
+  const hhmm = (iso: string) => {
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  $effect(() => {
+    if (!showNew) return;
+    return registerForm({
+      def: BOOKING_FORM,
+      get: () => ({
+        service: nbEventType,
+        date: nbDate,
+        time: nbSlot ? hhmm(nbSlot) : '',
+        client: nbContactId ?? '',
+        name: nbName,
+        phone: nbPhone,
+      }),
+      set: async (v) => {
+        const filled: string[] = [];
+        const rejected: Array<{ key: string; reason: string }> = [];
+        if (typeof v.service === 'string' && v.service.trim()) {
+          const q = v.service.trim().toLowerCase();
+          const et = data.eventTypes.find((e) => e.title.toLowerCase().includes(q));
+          if (et) {
+            nbEventType = et.id;
+            filled.push('service');
+          } else {
+            const opts = data.eventTypes
+              .slice(0, 3)
+              .map((e) => e.title)
+              .join(', ');
+            rejected.push({
+              key: 'service',
+              reason: `no service matches "${v.service}"; try: ${opts}`,
+            });
+          }
+        }
+        if (typeof v.date === 'string' && v.date) {
+          nbDate = v.date;
+          filled.push('date');
+        }
+        if (filled.includes('service')) loadConsumption();
+        if (filled.includes('service') || filled.includes('date')) await loadSlots();
+        if (typeof v.time === 'string' && v.time.trim()) {
+          const mm = /^(\d{1,2}):(\d{2})/.exec(v.time.trim());
+          const want = mm ? `${mm[1].padStart(2, '0')}:${mm[2]}` : v.time.trim();
+          const slot = nbEventType ? nbSlots.find((s) => hhmm(s.start) === want) : undefined;
+          if (slot) {
+            nbSlot = slot.start;
+            filled.push('time');
+          } else {
+            rejected.push({
+              key: 'time',
+              reason: !nbEventType
+                ? 'pick a service first'
+                : nbSlots.length
+                  ? `no free slot at ${want}; free: ${nbSlots.map((s) => hhmm(s.start)).join(', ')}`
+                  : 'no free slots on that date',
+            });
+          }
+        }
+        if (typeof v.client === 'string' && v.client.trim()) {
+          nbSearch = v.client.trim();
+          await searchContacts();
+          if (nbResults[0]) {
+            await pickContact(nbResults[0]);
+            filled.push('client');
+          } else rejected.push({ key: 'client', reason: `no client matches "${v.client}"` });
+        }
+        if (typeof v.name === 'string') {
+          nbName = v.name;
+          filled.push('name');
+        }
+        if (typeof v.phone === 'string') {
+          nbPhone = v.phone;
+          filled.push('phone');
+        }
+        return { filled, rejected };
+      },
+    });
+  });
 
   async function book() {
     if (!nbEventType || !nbSlot || !nbName.trim()) {
@@ -459,25 +547,33 @@
   <div class="flex flex-col gap-3">
     <div class="field">
       <span class="t-caption">{m.sched_book_choose_service()}</span>
-      <ServicePickerField
-        services={data.eventTypes}
-        bind:value={nbEventType}
-        onchange={() => {
-          loadSlots();
-          loadConsumption();
-        }}
-      />
+      <div data-assist="booking.service">
+        <ServicePickerField
+          services={data.eventTypes}
+          bind:value={nbEventType}
+          onchange={() => {
+            loadSlots();
+            loadConsumption();
+          }}
+        />
+      </div>
     </div>
     <label class="field">
       <span class="t-caption">{m.sched_book_pick_time()}</span>
-      <input class="txt" type="date" bind:value={nbDate} onchange={loadSlots} />
+      <input
+        class="txt"
+        type="date"
+        data-assist="booking.date"
+        bind:value={nbDate}
+        onchange={loadSlots}
+      />
     </label>
     {#if nbLoading}
       <p class="t-caption">…</p>
     {:else if nbEventType && nbSlots.length === 0}
       <p class="t-caption">{m.sched_book_no_slots()}</p>
     {:else if nbSlots.length}
-      <div class="slot-grid">
+      <div class="slot-grid" data-assist="booking.time">
         {#each nbSlots as s (s.start)}
           <Button
             variant="ghost"
@@ -541,6 +637,7 @@
       <div class="relative">
         <input
           class="txt"
+          data-assist="booking.client"
           bind:value={nbSearch}
           oninput={searchContacts}
           placeholder={m.sched_book_find_client_ph()}
@@ -563,17 +660,18 @@
     </div>
     <label class="field">
       <span class="t-caption">{m.sched_book_name()}</span>
-      <input class="txt" bind:value={nbName} />
+      <input class="txt" data-assist="booking.name" bind:value={nbName} />
     </label>
     {#if !nbContactId}
       <label class="field">
         <span class="t-caption">{m.sched_book_phone()}</span>
-        <input class="txt" bind:value={nbPhone} />
+        <input class="txt" data-assist="booking.phone" bind:value={nbPhone} />
       </label>
     {/if}
     {#if nbErr}<p class="t-caption" style="color:var(--color-destructive)">{nbErr}</p>{/if}
     <div class="flex gap-2">
       <Button
+        data-assist="booking.submit"
         onclick={book}
         disabled={nbLoading || !nbSlot || !nbName.trim() || !canAct('scheduling', 'edit')}
         title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}

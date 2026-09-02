@@ -78,6 +78,7 @@ import {
   type UpdateProgress,
 } from '$lib/state/gateway/update-state.svelte';
 import { extractText } from '$lib/utils/text';
+import { runAssistantUiCalls } from '$lib/assistant/dispatch';
 import type { ChatMessage } from '$lib/types/chat';
 import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
 // Lazy paraglide messages: this module loads with the root layout, and a
@@ -1213,6 +1214,9 @@ function onChatEvent(payload: ChatEvent) {
       } else {
         notifyAgentReplyFinal(agentId);
       }
+      // Live reply only (never history): execute the UI tool calls the model
+      // emitted, and hand the results back as a silent turn when it needs them.
+      void runAssistantUiCalls(agentId, extractText(finalMsg) ?? '', sk);
     });
     setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) {

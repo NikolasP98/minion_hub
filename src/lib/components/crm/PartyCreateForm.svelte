@@ -2,6 +2,8 @@
   import { Button, Input, Select } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import type { CreatablePartyType, PartyOption } from './party-picker';
+  import { registerForm } from '$lib/assistant/forms';
+  import { PARTY_FORM } from '$lib/assistant/catalog';
 
   let {
     allowedTypes,
@@ -34,6 +36,40 @@
     type = next;
     if (docType === 'DNI' || docType === 'RUC') docType = next === 'company' ? 'RUC' : 'DNI';
   }
+
+  // Assistant `fill_party` tool — registered for as long as this form is
+  // mounted (PartyPicker create tab, /crm/customers?new=1). Never submits.
+  $effect(() => {
+    const str = (x: unknown) => (x == null ? '' : String(x)).trim();
+    return registerForm({
+      def: PARTY_FORM,
+      get: () => ({ name, type, phone, email, docNumber }),
+      set: (v) => {
+        const filled: string[] = [];
+        const rejected: { key: string; reason: string }[] = [];
+        // `type` first so docType (DNI ↔ RUC) is settled before docNumber lands.
+        if ('type' in v) {
+          const t = str(v.type);
+          if (allowedTypes.includes(t as CreatablePartyType)) {
+            changeType(t);
+            filled.push('type');
+          } else {
+            rejected.push({ key: 'type', reason: `allowed: ${allowedTypes.join(', ')}` });
+          }
+        }
+        for (const key of ['name', 'phone', 'email', 'docNumber'] as const) {
+          if (!(key in v)) continue;
+          const val = str(v[key]);
+          if (key === 'name') name = val;
+          else if (key === 'phone') phone = val;
+          else if (key === 'email') email = val;
+          else docNumber = val;
+          filled.push(key);
+        }
+        return { filled, rejected };
+      },
+    });
+  });
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -83,7 +119,13 @@
 
 <form class="party-create" onsubmit={submit}>
   <div class="party-fields">
-    <Input size="sm" label={m.party_picker_name()} required bind:value={name} />
+    <Input
+      size="sm"
+      label={m.party_picker_name()}
+      required
+      bind:value={name}
+      data-assist="party.name"
+    />
     <Select
       size="sm"
       label={m.party_picker_type()}
@@ -93,18 +135,43 @@
         label: value === 'company' ? m.party_picker_type_company() : m.party_picker_type_person(),
       }))}
       onchange={changeType}
+      data-assist="party.type"
     />
-    <Input size="sm" type="tel" label={m.party_picker_phone()} bind:value={phone} />
-    <Input size="sm" type="email" label={m.party_picker_email()} bind:value={email} />
+    <Input
+      size="sm"
+      type="tel"
+      label={m.party_picker_phone()}
+      bind:value={phone}
+      data-assist="party.phone"
+    />
+    <Input
+      size="sm"
+      type="email"
+      label={m.party_picker_email()}
+      bind:value={email}
+      data-assist="party.email"
+    />
     <Input size="sm" label={m.party_picker_document_type()} bind:value={docType} />
-    <Input size="sm" label={m.party_picker_document_number()} bind:value={docNumber} />
+    <Input
+      size="sm"
+      label={m.party_picker_document_number()}
+      bind:value={docNumber}
+      data-assist="party.docNumber"
+    />
   </div>
   {#if createError}<p class="party-error t-caption" role="alert">{createError}</p>{/if}
   <div class="party-actions">
     <Button type="button" variant="outline" size="sm" onclick={oncancel}>
       {m.common_cancel()}
     </Button>
-    <Button type="submit" variant="primary" size="sm" loading={busy} disabled={!valid}>
+    <Button
+      type="submit"
+      variant="primary"
+      size="sm"
+      loading={busy}
+      disabled={!valid}
+      data-assist="party.submit"
+    >
       {m.party_picker_create()}
     </Button>
   </div>

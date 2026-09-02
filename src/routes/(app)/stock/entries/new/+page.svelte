@@ -8,6 +8,9 @@
   import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
   import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
+  import { partyPickerSearchParams, type PartyOption } from '$lib/components/crm/party-picker';
+  import { registerForm } from '$lib/assistant/forms';
+  import { STOCK_ENTRY_FORM } from '$lib/assistant/catalog';
 
   let { data }: { data: PageData } = $props();
 
@@ -23,6 +26,7 @@
   const type = $derived(isEntryType(urlType) ? urlType : null);
 
   let partyId = $state<string | null>(null);
+  let partyPicker = $state<ReturnType<typeof PartyPicker>>();
   let note = $state('');
 
   type Line = {
@@ -160,6 +164,97 @@
     }
   }
 
+  // ── Assistant fill tool ──────────────────────────────────────────────────
+  // Entity fields arrive as free text; resolve them against what the page has
+  // loaded. `item` always appends a line (lines have no "empty" state); qty /
+  // rate / warehouse land on that line, else on the last one.
+  function findByName<T extends { name: string | null }>(rows: T[], text: string): T | undefined {
+    const q = text.trim().toLowerCase();
+    return (
+      rows.find((r) => r.name?.toLowerCase() === q) ??
+      rows.find((r) => r.name?.toLowerCase().includes(q))
+    );
+  }
+  function candidates(names: string[], text: string): string {
+    const tokens = text.toLowerCase().split(/\s+/).filter(Boolean);
+    const near = names.filter((n) => tokens.some((t) => n.toLowerCase().includes(t)));
+    return (near.length ? near : names).slice(0, 3).join(', ');
+  }
+  $effect(() =>
+    registerForm({
+      def: STOCK_ENTRY_FORM,
+      get: () => {
+        const l = lines.at(-1);
+        return {
+          type,
+          party: partyId,
+          item: l?.itemId,
+          qty: l?.qty,
+          rate: l?.rate,
+          warehouse: l?.toWarehouseId || l?.fromWarehouseId,
+          note,
+        };
+      },
+      set: async (v) => {
+        const rejected: Array<{ key: string; reason: string }> = [];
+        if (isEntryType(String(v.type ?? '')) && v.type !== type)
+          await goto(`/stock/entries/new?type=${v.type}`, { replaceState: true });
+        if (!type) return { rejected: [{ key: 'type', reason: 'pick an entry type first' }] };
+
+        if (typeof v.note === 'string') note = v.note;
+
+        if (typeof v.party === 'string' && v.party.trim()) {
+          const res = await fetch(
+            `/api/crm/parties?${partyPickerSearchParams(v.party, undefined)}`,
+          );
+          const found = res.ok ? ((await res.json()) as PartyOption[]) : [];
+          const hit = findByName(found, v.party) ?? found[0];
+          if (hit) partyPicker?.pick(hit);
+          else rejected.push({ key: 'party', reason: `no party matches "${v.party}"` });
+        }
+
+        if (typeof v.item === 'string' && v.item.trim()) {
+          const q = v.item.trim().toLowerCase();
+          const hit =
+            availableItems.find((it) => it.code.toLowerCase() === q) ??
+            findByName(availableItems, q);
+          if (hit) addItem(hit);
+          else
+            rejected.push({
+              key: 'item',
+              reason: `no stock item matches "${v.item}"; try: ${candidates(
+                availableItems.map((it) => `${it.code} — ${it.name}`),
+                q,
+              )}`,
+            });
+        }
+
+        const line = lines.at(-1);
+        for (const key of ['qty', 'rate', 'warehouse'] as const) {
+          if (v[key] == null) continue;
+          if (!line) {
+            rejected.push({ key, reason: 'add an item first' });
+            continue;
+          }
+          if (key === 'warehouse') {
+            const w = findByName(data.warehouses, String(v.warehouse));
+            if (!w) {
+              rejected.push({
+                key,
+                reason: `no warehouse matches "${v.warehouse}"; try: ${candidates(
+                  data.warehouses.map((x) => x.name),
+                  String(v.warehouse),
+                )}`,
+              });
+            } else if (needsTo && type !== 'transfer') line.toWarehouseId = w.id;
+            else line.fromWarehouseId = w.id;
+          } else line[key] = String(v[key]);
+        }
+        return { rejected };
+      },
+    }),
+  );
+
   function typeLabel(t: EntryType): string {
     return t === 'receipt'
       ? m.stock_type_receipt()
@@ -184,7 +279,7 @@
         <!-- Deep-link fallback: no (or invalid) ?type= — offer the four kinds. -->
         <div class="card flex flex-col gap-3">
           <p class="t-caption">{m.stock_step_type_hint()}</p>
-          <div class="type-grid">
+          <div class="type-grid" data-assist="stock_entry.type">
             {#each ENTRY_TYPES.filter((t) => t !== 'transfer' || data.warehouses.length > 1) as t (t)}
               <Button
                 variant="ghost"
@@ -198,7 +293,14 @@
         </div>
       {:else}
         <div class="card flex flex-col gap-3">
-          <PartyPicker bind:value={partyId} label={m.stock_field_party()} docLookup />
+          <div data-assist="stock_entry.party">
+            <PartyPicker
+              bind:this={partyPicker}
+              bind:value={partyId}
+              label={m.stock_field_party()}
+              docLookup
+            />
+          </div>
           <label class="fld">
             <span>{m.stock_field_note()}</span>
             <textarea class="inp" rows="2" bind:value={note}></textarea>
@@ -208,7 +310,12 @@
         <div class="card flex flex-col gap-3">
           <div class="flex items-center justify-between">
             <span class="card-h">{m.stock_step_lines()}</span>
-            <Button variant="outline" size="sm" onclick={() => (pickerOpen = true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onclick={() => (pickerOpen = true)}
+              data-assist="stock_entry.item"
+            >
               <Plus size={14} />
               {m.stock_add_items()}
             </Button>
@@ -240,6 +347,7 @@
                         step="0.01"
                         bind:value={l.qty}
                         aria-label={m.stock_field_qty()}
+                        data-assist="stock_entry.qty"
                       />
                     </td>
                     {#if needsRate}
@@ -251,6 +359,7 @@
                           step="0.01"
                           bind:value={l.rate}
                           aria-label={m.stock_field_rate()}
+                          data-assist="stock_entry.rate"
                         />
                       </td>
                     {/if}
@@ -302,6 +411,7 @@
               size="sm"
               onclick={saveAndSubmit}
               disabled={busy || !allValid}
+              data-assist="stock_entry.submit"
             >
               {m.stock_submit()}
             </Button>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { page } from '$app/state';
   import { invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Receipt, RefreshCw, Plus, Pencil, Trash2, Lock } from 'lucide-svelte';
@@ -56,6 +57,16 @@
   }
 
   let showAdd = $state(false);
+  // ?new=1 (assistant deep link) opens the add dialog — only into an open period.
+  // Reactive (not onMount): the assistant may navigate to ?new=1 while the page is mounted.
+  $effect(() => {
+    if (
+      page.url.searchParams.get('new') === '1' &&
+      canWrite &&
+      data.periods.find((p) => p.period === openPeriod)?.status !== 'closed'
+    )
+      showAdd = true;
+  });
   let editing = $state<Purchase | null>(null);
   let deleting = $state<Purchase | null>(null);
 

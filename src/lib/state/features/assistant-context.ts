@@ -20,6 +20,12 @@ import {
   HUB_ROUTE_MAP,
   HUB_NOTABLE_PARAMS,
 } from '../../../routes/api/gateway/_shared/hub-route-map';
+import { getTools } from '$lib/assistant/model-context';
+import { visiblePages } from '$lib/assistant/site-map';
+import { FORM_CATALOG } from '$lib/assistant/catalog';
+import { uiToolsBriefing } from '$lib/assistant/briefing';
+import { canViewPath } from '$lib/access/can.svelte';
+import { languageTag } from '$lib/paraglide/runtime';
 
 function describeRoute(pathname: string): string {
   for (const [prefix, desc] of HUB_ROUTE_MAP) {
@@ -97,6 +103,12 @@ export function buildAssistantContext(): string {
       `They render as clickable navigation — a click is the user's confirmation. ` +
       `Always link a customer's name to /crm/{id}, and back up any figure with a link to the ` +
       `filtered view that proves it (e.g. [3 invoices](/finances/invoices?contact={id})).`,
+    uiToolsBriefing(
+      getTools(),
+      visiblePages(canViewPath),
+      FORM_CATALOG.filter((f) => canViewPath(f.route)),
+      languageTag(),
+    ),
     `Keep replies tight. Don't restate this context.]`,
   ].filter(Boolean);
 

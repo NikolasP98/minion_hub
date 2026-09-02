@@ -4,6 +4,8 @@
   import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import * as m from '$lib/paraglide/messages';
+  import { registerForm } from '$lib/assistant/forms';
+  import { PURCHASE_FORM } from '$lib/assistant/catalog';
 
   interface Purchase {
     id: string;
@@ -67,6 +69,41 @@
     submitError = '';
   });
 
+  // Assistant fill (never submits) — registered only while the dialog is open.
+  const setters: Record<string, (s: string) => void> = {
+    supplierRuc: (s) => (supplierRuc = s),
+    supplierName: (s) => (supplierName = s),
+    docType: (s) => (docType = s),
+    serie: (s) => (serie = s),
+    numero: (s) => (numero = s),
+    issuedAt: (s) => (issuedAt = s),
+    baseGravada: (s) => (baseGravada = s),
+    igv: (s) => (igv = s),
+    total: (s) => (total = s),
+  };
+  $effect(() => {
+    if (!open) return;
+    return registerForm({
+      def: PURCHASE_FORM,
+      get: () => ({
+        supplierRuc,
+        supplierName,
+        docType,
+        serie,
+        numero,
+        issuedAt,
+        baseGravada,
+        igv,
+        total,
+      }),
+      set: (v) => {
+        const filled = Object.keys(v).filter((k) => v[k] != null && setters[k]);
+        for (const k of filled) setters[k](String(v[k]));
+        return { filled };
+      },
+    });
+  });
+
   const canSubmit = $derived(supplierName.trim().length > 0 || serie.trim().length > 0);
 
   function num(v: string): number | null {
@@ -123,6 +160,7 @@
     <div class="identity-fields">
       <Input
         id="pur-ruc"
+        data-assist="purchase.supplierRuc"
         label={m.fin_purchases_field_ruc()}
         bind:value={supplierRuc}
         maxlength="20"
@@ -130,6 +168,7 @@
       />
       <Input
         id="pur-name"
+        data-assist="purchase.supplierName"
         label={m.fin_purchases_field_supplier()}
         bind:value={supplierName}
         autocomplete="off"
@@ -138,6 +177,7 @@
     <div class="doc-fields">
       <Input
         id="pur-doctype"
+        data-assist="purchase.docType"
         label={m.fin_purchases_field_doctype()}
         bind:value={docType}
         maxlength="10"
@@ -145,6 +185,7 @@
       />
       <Input
         id="pur-serie"
+        data-assist="purchase.serie"
         label={m.fin_purchases_field_serie()}
         bind:value={serie}
         maxlength="20"
@@ -152,6 +193,7 @@
       />
       <Input
         id="pur-numero"
+        data-assist="purchase.numero"
         label={m.fin_purchases_field_numero()}
         bind:value={numero}
         maxlength="20"
@@ -160,6 +202,7 @@
     </div>
     <Input
       id="pur-issued"
+      data-assist="purchase.issuedAt"
       label={m.fin_purchases_field_date()}
       type="text"
       placeholder="YYYY-MM-DD"
@@ -169,6 +212,7 @@
     <div class="amount-fields">
       <Input
         id="pur-base"
+        data-assist="purchase.baseGravada"
         label={m.fin_purchases_field_base()}
         type="number"
         bind:value={baseGravada}
@@ -176,6 +220,7 @@
       />
       <Input
         id="pur-igv"
+        data-assist="purchase.igv"
         label={m.fin_purchases_field_igv()}
         type="number"
         bind:value={igv}
@@ -183,6 +228,7 @@
       />
       <Input
         id="pur-total"
+        data-assist="purchase.total"
         label={m.fin_purchases_field_total()}
         type="number"
         bind:value={total}
@@ -202,6 +248,7 @@
     <Button
       variant="primary"
       size="sm"
+      data-assist="purchase.submit"
       disabled={!canSubmit || saving}
       loading={saving}
       onclick={submit}

@@ -16,6 +16,8 @@
   import { ConfirmDialog } from '$lib/components/ui/foundations';
   import { canAct } from '$lib/access/can.svelte';
   import { buildWarehouseTree, type WarehouseTreeRow } from '$lib/components/stock/stock-ui';
+  import { registerForm } from '$lib/assistant/forms';
+  import { WAREHOUSE_FORM } from '$lib/assistant/catalog';
 
   let { data }: { data: PageData } = $props();
   const tree = $derived(buildWarehouseTree(data.warehouses));
@@ -24,11 +26,29 @@
   // restore) — the modal/ConfirmDialog-scoped actions surface their own error.
   let rowErr = $state<string | null>(null);
 
-  let formOpen = $state(false);
+  // svelte-ignore state_referenced_locally
+  let formOpen = $state(data.openNew ?? false);
+  // ?new=1 while already on the page (assistant deep link): load re-runs, the seed does not.
+  $effect(() => {
+    if (data.openNew) formOpen = true;
+  });
   let formParentId = $state<string | null>(null);
   let formName = $state('');
   let busy = $state(false);
   let err = $state<string | null>(null);
+
+  // Assistant fill tool — registered only while the create modal is open.
+  $effect(() => {
+    if (!formOpen) return;
+    return registerForm({
+      def: WAREHOUSE_FORM,
+      get: () => ({ name: formName }),
+      set: (v) => {
+        if (v.name != null) formName = String(v.name);
+        return {};
+      },
+    });
+  });
 
   function openNew(parentId: string | null) {
     formParentId = parentId;
@@ -258,7 +278,7 @@
   <div class="flex flex-col gap-3">
     <label class="fld">
       <span>{m.stock_field_warehouse_name()}</span>
-      <input class="inp" bind:value={formName} />
+      <input class="inp" bind:value={formName} data-assist="warehouse.name" />
     </label>
     {#if err}<p class="err-msg">{err}</p>{/if}
   </div>
@@ -266,8 +286,12 @@
     <Button variant="outline" size="sm" onclick={() => (formOpen = false)}
       >{m.common_cancel()}</Button
     >
-    <Button variant="primary" size="sm" onclick={save} disabled={busy || !formName.trim()}
-      >{m.stock_create()}</Button
+    <Button
+      variant="primary"
+      size="sm"
+      onclick={save}
+      disabled={busy || !formName.trim()}
+      data-assist="warehouse.submit">{m.stock_create()}</Button
     >
   {/snippet}
 </Modal>

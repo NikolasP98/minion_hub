@@ -37,6 +37,7 @@
   import { extractText, stripTtsTags } from '$lib/utils/text';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
+  import AssistChoice from '$lib/components/assistant/AssistChoice.svelte';
   import {
     isToolResultOnly,
     assistantHasContent,
@@ -860,6 +861,14 @@
     {#if composerMode === 'factory' && (factorySending || factoryIntake || factoryError)}
       <FactoryIntakeCard intake={factoryIntake} pending={factorySending} error={factoryError} />
     {/if}
+
+    <AssistChoice
+      compact
+      onPick={(text) => {
+        const id = assistant.personalAgentId;
+        if (id) sendAssistantTurn(id, text, buildAssistantContext());
+      }}
+    />
 
     <!-- Scope badge + input -->
     <div class="shrink-0 border-t border-border bg-bg3/40">
