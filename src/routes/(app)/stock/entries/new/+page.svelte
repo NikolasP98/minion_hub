@@ -10,6 +10,7 @@
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import { partyPickerSearchParams, type PartyOption } from '$lib/components/crm/party-picker';
   import { registerForm } from '$lib/assistant/forms';
+  import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { STOCK_ENTRY_FORM } from '$lib/assistant/catalog';
 
   let { data }: { data: PageData } = $props();
@@ -166,20 +167,9 @@
 
   // ── Assistant fill tool ──────────────────────────────────────────────────
   // Entity fields arrive as free text; resolve them against what the page has
-  // loaded. `item` always appends a line (lines have no "empty" state); qty /
-  // rate / warehouse land on that line, else on the last one.
-  function findByName<T extends { name: string | null }>(rows: T[], text: string): T | undefined {
-    const q = text.trim().toLowerCase();
-    return (
-      rows.find((r) => r.name?.toLowerCase() === q) ??
-      rows.find((r) => r.name?.toLowerCase().includes(q))
-    );
-  }
-  function candidates(names: string[], text: string): string {
-    const tokens = text.toLowerCase().split(/\s+/).filter(Boolean);
-    const near = names.filter((n) => tokens.some((t) => n.toLowerCase().includes(t)));
-    return (near.length ? near : names).slice(0, 3).join(', ');
-  }
+  // loaded (typo-tolerant, see $lib/assistant/fuzzy). `item` always appends a
+  // line (lines have no "empty" state); qty / rate / warehouse land on that
+  // line, else on the last one.
   $effect(() =>
     registerForm({
       def: STOCK_ENTRY_FORM,
@@ -197,6 +187,11 @@
       },
       set: async (v) => {
         const rejected: Array<{ key: string; reason: string }> = [];
+        const notes: string[] = [];
+        const matched = (typed: string, label: string) => {
+          if (typed.trim().toLowerCase() !== label.trim().toLowerCase())
+            notes.push(`matched "${typed}" → "${label}"`);
+        };
         if (isEntryType(String(v.type ?? '')) && v.type !== type)
           await goto(`/stock/entries/new?type=${v.type}`, { replaceState: true });
         if (!type) return { rejected: [{ key: 'type', reason: 'pick an entry type first' }] };
@@ -208,24 +203,33 @@
             `/api/crm/parties?${partyPickerSearchParams(v.party, undefined)}`,
           );
           const found = res.ok ? ((await res.json()) as PartyOption[]) : [];
-          const hit = findByName(found, v.party) ?? found[0];
-          if (hit) partyPicker?.pick(hit);
-          else rejected.push({ key: 'party', reason: `no party matches "${v.party}"` });
+          const { match, candidates } = fuzzyFind(v.party, found, (p) => [
+            p.name,
+            p.docNumber,
+            p.phone9,
+          ]);
+          if (match) {
+            partyPicker?.pick(match);
+            matched(v.party, match.name ?? '');
+          } else
+            rejected.push({
+              key: 'party',
+              reason: `no party matches "${v.party}"; did you mean: ${candidates.map((p) => p.name ?? p.docNumber ?? '—').join(', ') || 'none'}`,
+            });
         }
 
         if (typeof v.item === 'string' && v.item.trim()) {
-          const q = v.item.trim().toLowerCase();
-          const hit =
-            availableItems.find((it) => it.code.toLowerCase() === q) ??
-            findByName(availableItems, q);
-          if (hit) addItem(hit);
-          else
+          const { match, candidates } = fuzzyFind(v.item, availableItems, (it) => [
+            it.code,
+            it.name,
+          ]);
+          if (match) {
+            addItem(match);
+            matched(v.item, match.name);
+          } else
             rejected.push({
               key: 'item',
-              reason: `no stock item matches "${v.item}"; try: ${candidates(
-                availableItems.map((it) => `${it.code} — ${it.name}`),
-                q,
-              )}`,
+              reason: `no stock item matches "${v.item}"; did you mean: ${candidates.map((it) => `${it.code} — ${it.name}`).join(', ') || 'none'}`,
             });
         }
 
@@ -237,20 +241,21 @@
             continue;
           }
           if (key === 'warehouse') {
-            const w = findByName(data.warehouses, String(v.warehouse));
+            const typed = String(v.warehouse);
+            const { match: w, candidates } = fuzzyFind(typed, data.warehouses, (x) => [x.name]);
             if (!w) {
               rejected.push({
                 key,
-                reason: `no warehouse matches "${v.warehouse}"; try: ${candidates(
-                  data.warehouses.map((x) => x.name),
-                  String(v.warehouse),
-                )}`,
+                reason: `no warehouse matches "${typed}"; did you mean: ${candidates.map((x) => x.name).join(', ') || 'none'}`,
               });
-            } else if (needsTo && type !== 'transfer') line.toWarehouseId = w.id;
-            else line.fromWarehouseId = w.id;
+            } else {
+              matched(typed, w.name);
+              if (needsTo && type !== 'transfer') line.toWarehouseId = w.id;
+              else line.fromWarehouseId = w.id;
+            }
           } else line[key] = String(v[key]);
         }
-        return { rejected };
+        return { rejected, note: notes.join('; ') || undefined };
       },
     }),
   );

@@ -19,6 +19,7 @@
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
   import { registerForm } from '$lib/assistant/forms';
+  import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { BOOKING_FORM } from '$lib/assistant/catalog';
   import {
     bookingsLabels,
@@ -306,20 +307,21 @@
       set: async (v) => {
         const filled: string[] = [];
         const rejected: Array<{ key: string; reason: string }> = [];
+        const notes: string[] = [];
+        const matched = (typed: string, label: string) => {
+          if (typed.trim().toLowerCase() !== label.trim().toLowerCase())
+            notes.push(`matched "${typed}" → "${label}"`);
+        };
         if (typeof v.service === 'string' && v.service.trim()) {
-          const q = v.service.trim().toLowerCase();
-          const et = data.eventTypes.find((e) => e.title.toLowerCase().includes(q));
+          const { match: et, candidates } = fuzzyFind(v.service, data.eventTypes, (e) => [e.title]);
           if (et) {
             nbEventType = et.id;
             filled.push('service');
+            matched(v.service, et.title);
           } else {
-            const opts = data.eventTypes
-              .slice(0, 3)
-              .map((e) => e.title)
-              .join(', ');
             rejected.push({
               key: 'service',
-              reason: `no service matches "${v.service}"; try: ${opts}`,
+              reason: `no service matches "${v.service}"; did you mean: ${candidates.map((e) => e.title).join(', ') || 'none'}`,
             });
           }
         }
@@ -350,10 +352,17 @@
         if (typeof v.client === 'string' && v.client.trim()) {
           nbSearch = v.client.trim();
           await searchContacts();
-          if (nbResults[0]) {
-            await pickContact(nbResults[0]);
+          // ponytail: /api/crm/contacts rows only expose display_name here; phone lives masked in custom_fields.
+          const { match, candidates } = fuzzyFind(nbSearch, nbResults, (c) => [c.name]);
+          if (match) {
+            await pickContact(match);
             filled.push('client');
-          } else rejected.push({ key: 'client', reason: `no client matches "${v.client}"` });
+            matched(v.client, match.name);
+          } else
+            rejected.push({
+              key: 'client',
+              reason: `no client matches "${v.client}"; did you mean: ${candidates.map((c) => c.name).join(', ') || 'none'}`,
+            });
         }
         if (typeof v.name === 'string') {
           nbName = v.name;
@@ -363,7 +372,7 @@
           nbPhone = v.phone;
           filled.push('phone');
         }
-        return { filled, rejected };
+        return { filled, rejected, note: notes.join('; ') || undefined };
       },
     });
   });
