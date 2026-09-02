@@ -92,7 +92,7 @@ describe('form catalog ↔ site map', () => {
 
   it('briefs keywords so the model sees synonyms', () => {
     expect(brief).toMatch(/\/stock\/entries\/new — .*\(.*mercaderia.*\)/);
-    expect(brief).toMatch(/\/team — .*closest page for: .*payroll/);
+    expect(brief).toMatch(/\/team — .*NO MODULE HERE for: .*payroll/);
     expect(brief).not.toContain('~');
   });
 });

@@ -19,7 +19,7 @@ export interface SitePage {
 /**
  * EN + ES synonyms per business page, one line each (Peru vocabulary). A `~word`
  * names a module that does NOT exist here — this page is merely the closest one,
- * so it only scores a weak hit and is briefed as "closest page for".
+ * so it only scores a weak hit and is briefed as "NO MODULE HERE for".
  */
 export const PAGE_KEYWORDS: Record<string, string> = {
   '/home': 'chat assistant asistente inicio',
@@ -208,7 +208,9 @@ export function describePages(pages: SitePage[]): string {
         .filter((w) => w[0] === '~')
         .map((w) => w.slice(1))
         .join(' ');
-      const tail = words.length ? ` (${strong}${weak ? `; closest page for: ${weak}` : ''})` : '';
+      const tail = words.length
+        ? ` (${strong}${weak ? `; NO MODULE HERE for: ${weak} — say that plainly, then offer this page as the nearest` : ''})`
+        : '';
       return `${p.path} — ${p.title}${p.description ? `: ${p.description}` : ''}${tail}`;
     })
     .join('\n');

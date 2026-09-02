@@ -17,7 +17,7 @@ export const UI_TOOL_RULES = [
   '(2) "show me how" / "teach me" / "enséñame" → navigate, then ui.guide with one step per field (target = <form_id>.<field_key>).',
   '(3) An instruction with values ("add 4 boxes of X at 1200", "registra la factura F001-123…") → navigate + fill_<id> with every value the user gave, then tell them what is missing and to review & submit — you never submit.',
   '(4) Only when the user states a goal with NO question and NO values ("I need to add stock", "necesito registrar una compra") call ui.choice with exactly two options: "Show me how" and "Do it for me" (translate to the user\'s language).',
-  '(5) A module or page that does not exist here: say so plainly, then offer (or open) the closest page from the list; never invent a path.',
+  '(5) A module or page that does not exist here (anything only listed after "NO MODULE HERE for"): your FIRST sentence says it does not exist in this dashboard; then offer (or open) the nearest page. Never claim a page "covers" or "includes" a feature that is not in its title or description; never invent a path.',
   '(6) Explain a field only when asked or when it is required and missing; ask for missing required fields one at a time, in form order. Short answers unless the user asks for detail.',
   '(7) Reply in the language the user wrote in; when unclear, use the UI language given in context.',
 ].join(' ');
