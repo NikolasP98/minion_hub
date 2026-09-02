@@ -195,17 +195,28 @@ export function isActionToken(text: string): boolean {
  * block so the bubble shows only what the user actually typed. Safe on already-
  * clean text (no-op) and on assistant replies (they don't carry these blocks).
  */
+const ENVELOPE_START = '[In-app assistant context';
 const ENVELOPE_END = "Don't restate this context.]";
+const METADATA_HEAD = 'Conversation info (untrusted metadata):';
 
 export function cleanInboundForDisplay(text: string): string {
-  // The page envelope always closes with a fixed marker and always comes LAST
-  // among the injected blocks. Whatever the gateway prepends before it
-  // (memories in any layout, metadata fence, timestamp) is context, never the
-  // user's words — so cut at the last marker instead of pattern-matching every
-  // leading block (a flattened memories block broke the anchored loop below).
-  const end = text.lastIndexOf(ENVELOPE_END);
-  if (end >= 0) return text.slice(end + ENVELOPE_END.length).trimStart();
   let t = text;
+  // Gateway-injected prefix: memories (any layout) + metadata fence + timestamp.
+  // Everything up to the end of the metadata fence is machine context.
+  const meta = t.indexOf(METADATA_HEAD);
+  if (meta >= 0) {
+    const open = t.indexOf('```', meta);
+    const close = open >= 0 ? t.indexOf('```', open + 3) : -1;
+    if (close >= 0) t = t.slice(close + 3);
+  }
+  // Our page envelope: the user's text is sent BEFORE it (so gateway history
+  // truncation never eats what they typed); cut from its start to its end
+  // marker, or to the end of the text when the gateway truncated it.
+  const env = t.indexOf(ENVELOPE_START);
+  if (env >= 0) {
+    const end = t.indexOf(ENVELOPE_END, env);
+    t = t.slice(0, env) + (end >= 0 ? t.slice(end + ENVELOPE_END.length) : '');
+  }
   for (let changed = true; changed;) {
     changed = false;
     for (const re of INBOUND_CONTEXT_BLOCKS) {
@@ -216,7 +227,7 @@ export function cleanInboundForDisplay(text: string): string {
       }
     }
   }
-  return t.trimStart();
+  return t.trim();
 }
 
 /**
@@ -265,9 +276,12 @@ export function sendAssistantTurn(
     if (chat.runId === runId) chat.sending = false;
   }, 120_000);
 
+  // Text first, envelope after: the gateway records the whole prompt and
+  // truncates long ones from the END, so the envelope must be the part that
+  // gets cut, never the user's words.
   sendRequest('chat.send', {
     sessionKey,
-    message: context + clean,
+    message: opts.silent ? context : `${clean}\n\n${context.trim()}`,
     deliver: false,
     idempotencyKey: runId,
   }).catch((e) => {

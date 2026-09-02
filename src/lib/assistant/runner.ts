@@ -27,6 +27,9 @@ export function needsFollowUp(outcomes: UiCallOutcome[]): boolean {
       if (Array.isArray(r.missing) && r.missing.length) return true;
       if (Array.isArray(r.rejected) && r.rejected.length) return true;
       if (Array.isArray(r.unknownTargets) && r.unknownTargets.length) return true;
+      // A fuzzy entity match ("yaluronidasa" → "Hialuronidasa"): the model must
+      // confirm with the corrected name, so it needs to see it.
+      if (typeof r.note === 'string' && r.note) return true;
       // hub.navigate onto a form that never mounted: the model must not assume it can fill.
       if (
         r.form &&
