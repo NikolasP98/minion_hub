@@ -87,6 +87,13 @@ function describe(path: string): string {
   return '';
 }
 
+/** Parents that have a `[param]` child in the manifest (e.g. /crm, /stock/entries). */
+const DYNAMIC_PARENTS = new Set(
+  ROUTE_DESIGN_MANIFEST.filter((r) => r.pattern.includes('['))
+    .map((r) => r.pattern.slice(0, r.pattern.indexOf('/[')))
+    .filter(Boolean),
+);
+
 /** All static screens (no `[param]` segments), unfiltered. */
 export function allPages(): SitePage[] {
   return ROUTE_DESIGN_MANIFEST.filter(
@@ -109,11 +116,13 @@ export function resolvePath(
   if (raw.startsWith('//') || raw.includes('\\'))
     return { ok: false, reason: 'off-origin path', suggestions: [] };
   if (pages.some((p) => p.path === path)) return { ok: true, path };
-  // Dynamic record pages (/crm/<id>, /stock/entries/<id>) — allow when the parent collection is visible.
+  // Dynamic record pages (/crm/<id>, /stock/entries/<id>) — only where the manifest
+  // declares a [param] child under a visible parent; anything else is invented.
   const parent = path.split('/').slice(0, -1).join('/');
   if (
     parent &&
     pages.some((p) => p.path === parent) &&
+    DYNAMIC_PARENTS.has(parent) &&
     /^[\w-]+$/.test(path.split('/').pop() ?? '')
   ) {
     return { ok: true, path };
