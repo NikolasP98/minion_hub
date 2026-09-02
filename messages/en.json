@@ -1070,6 +1070,7 @@
   "channel_update": "Update Channel",
   "channel_waitingQr": "Waiting for QR code from server...",
   "chat_addNoteOrSend": "Add a note, or just send the context…",
+  "chat_history_truncated": "(earlier message — its text was cut by the transcript limit)",
   "chat_artifact_invalid": "This interactive card couldn't be displayed.",
   "chat_artifact_title": "Interactive content",
   "chat_askYourAgent": "Ask your agent…",
