@@ -3,6 +3,7 @@ import {
   defaultPickerHidden,
   effectivePickerPickedIds,
   orderPickerColumns,
+  pickerRowAction,
   pickerRowIsDuplicate,
   reconcilePickerHidden,
   type PickerColumn,
@@ -49,5 +50,26 @@ describe('picker configuration', () => {
     expect(effectivePickerPickedIds(controlled, staleSession)).toBe(controlled);
     expect(effectivePickerPickedIds(controlled, staleSession).has('item-1')).toBe(false);
     expect(effectivePickerPickedIds(undefined, staleSession)).toBe(staleSession);
+  });
+});
+
+describe('picker row actions', () => {
+  const picked = { picked: true, canUnpick: true, duplicate: true };
+
+  it('offers removal for a picked row once the consumer can unpick', () => {
+    expect(pickerRowAction(picked)).toBe('remove');
+  });
+
+  it('keeps a picked row blocked when the consumer supplied no unpick handler', () => {
+    expect(pickerRowAction({ ...picked, canUnpick: false })).toBe('blocked');
+  });
+
+  it('adds an unpicked row whether or not unpicking is available', () => {
+    expect(pickerRowAction({ picked: false, canUnpick: true, duplicate: false })).toBe('add');
+    expect(pickerRowAction({ picked: false, canUnpick: false, duplicate: false })).toBe('add');
+  });
+
+  it('lets a duplicate-allowing picker re-add a row it already holds', () => {
+    expect(pickerRowAction({ picked: true, canUnpick: false, duplicate: false })).toBe('add');
   });
 });

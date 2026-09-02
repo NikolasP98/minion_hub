@@ -68,7 +68,7 @@ const RESOURCES = [
   { id: 'r1', name: 'Front chair', active: true },
   { id: 'r2', name: 'Retired chair', active: false },
 ];
-const EVENT_TYPES = [{ id: 'e1', title: 'Haircut', productId: 'p1' }];
+const EVENT_TYPES = [{ id: 'e1', title: 'Haircut', productId: 'p1', active: true, length: 30 }];
 const ACCRUALS = [
   {
     sourceId: 'b1',

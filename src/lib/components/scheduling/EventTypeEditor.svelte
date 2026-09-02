@@ -26,12 +26,15 @@
   }
   let {
     eventType = null,
+    preset = null,
     resources,
     products,
     onsaved,
     oncancel,
   }: {
     eventType?: EventType | null;
+    /** Seeds a NEW event type (e.g. from a dormant catalog service). */
+    preset?: Partial<EventType> | null;
     resources: Array<{ id: string; name: string }>;
     products: Array<{ id: string; name: string }>;
     onsaved: () => void;
@@ -50,7 +53,6 @@
     eventType
       ? { ...eventType }
       : {
-          slug: '',
           title: '',
           description: null,
           length: 30,
@@ -66,6 +68,8 @@
           public: true,
           productId: null,
           resourceIds: [],
+          ...preset,
+          slug: preset?.slug ?? slugify(preset?.title ?? ''),
         },
   );
   // svelte-ignore state_referenced_locally

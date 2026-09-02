@@ -8,7 +8,6 @@
     Badge,
     EmptyState,
     Modal,
-    Select,
     iconSizes,
   } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
@@ -16,6 +15,7 @@
   import { formatMoney } from '$lib/utils/format';
   import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
+  import ServicePickerField from '$lib/components/scheduling/ServicePickerField.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
   import { registerForm } from '$lib/assistant/forms';
@@ -541,23 +541,19 @@
 
 <Modal bind:open={showNew} title={labels.newModalTitle()} onclose={() => (showNew = false)}>
   <div class="flex flex-col gap-3">
-    <label class="field">
+    <div class="field">
       <span class="t-caption">{m.sched_book_choose_service()}</span>
-      <Select
-        class="txt"
-        data-assist="booking.service"
-        bind:value={nbEventType}
-        onchange={() => {
-          loadSlots();
-          loadConsumption();
-        }}
-      >
-        <option value="">—</option>
-        {#each data.eventTypes as e (e.id)}
-          <option value={e.id}>{e.title}</option>
-        {/each}
-      </Select>
-    </label>
+      <div data-assist="booking.service">
+        <ServicePickerField
+          services={data.eventTypes}
+          bind:value={nbEventType}
+          onchange={() => {
+            loadSlots();
+            loadConsumption();
+          }}
+        />
+      </div>
+    </div>
     <label class="field">
       <span class="t-caption">{m.sched_book_pick_time()}</span>
       <input

@@ -44,7 +44,13 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   return {
     bookings,
     resources: resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
-    eventTypes: eventTypes.map((e) => ({ id: e.id, title: e.title, productId: e.productId ?? null })),
+    eventTypes: eventTypes.map((e) => ({
+      id: e.id,
+      title: e.title,
+      productId: e.productId ?? null,
+      active: e.active,
+      length: e.length,
+    })),
     stockEnabled: locals.moduleStates?.stock ?? true,
     accrualSummaries,
   };

@@ -194,6 +194,11 @@
   function removeRow(idx: number) {
     rows = rows.filter((_, i) => i !== idx);
   }
+  /** Unpicking from inside the picker removes the matching consumption row, so
+      the picker's checkmarks and the form's row list stay one shared truth. */
+  function removeRowByItem(item: StockItemOption) {
+    rows = rows.filter((row) => row.itemId !== item.id);
+  }
 
   const canSubmit = $derived(
     name.trim() !== '' &&
@@ -577,6 +582,7 @@
   items={allStockItems}
   title={m.pos_catalog_consumption()}
   onPick={addRow}
+  onUnpick={removeRowByItem}
   selectionMode="multiple"
   duplicatePolicy="prevent"
   pickedIds={pickedConsumptionIds}

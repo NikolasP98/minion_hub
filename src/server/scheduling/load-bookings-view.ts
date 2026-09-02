@@ -51,7 +51,13 @@ type AccrualSummaries = Awaited<ReturnType<typeof accrualSummaryForSources>>;
 export interface BookingsViewLoadData {
   bookings: Bookings;
   resources: Array<{ id: string; name: string }>;
-  eventTypes: Array<{ id: string; title: string; productId: string | null }>;
+  eventTypes: Array<{
+    id: string;
+    title: string;
+    productId: string | null;
+    active: boolean;
+    length: number;
+  }>;
   stockEnabled: boolean;
   accrualSummaries: AccrualSummaries;
 }
@@ -124,6 +130,8 @@ export async function loadBookingsView(
       id: e.id,
       title: e.title,
       productId: e.productId ?? null,
+      active: e.active,
+      length: e.length,
     })),
     stockEnabled,
     accrualSummaries,

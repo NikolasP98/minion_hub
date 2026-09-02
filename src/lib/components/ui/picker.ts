@@ -94,3 +94,24 @@ export function effectivePickerPickedIds(
 ): ReadonlySet<string> {
   return pickedIds ?? sessionPickedIds;
 }
+
+/** What clicking a browse row does, given the picker's current contract. */
+export type PickerRowAction = 'add' | 'remove' | 'blocked';
+
+/**
+ * Resolves a row to its single actionable verb, so the row, its button, its
+ * icon, and its label can never disagree about what a click will do.
+ *
+ * `remove` requires the consumer to have supplied an unpick handler: without a
+ * way to tell the invoking form to drop the row, a picked row stays `blocked`
+ * (the pre-toggle behavior) rather than offering an action that goes nowhere.
+ */
+export function pickerRowAction(input: {
+  picked: boolean;
+  canUnpick: boolean;
+  duplicate: boolean;
+}): PickerRowAction {
+  if (input.picked && input.canUnpick) return 'remove';
+  if (input.duplicate) return 'blocked';
+  return 'add';
+}
