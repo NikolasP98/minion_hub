@@ -233,8 +233,7 @@ export const BOOKING_FORM: FormDef = {
   id: 'booking',
   title: 'New appointment',
   description: 'books a service for a client at a free slot',
-  route: '/scheduling/bookings',
-  open: { new: '1' },
+  route: '/scheduling/bookings/new',
   fields: [
     {
       key: 'service',
@@ -255,10 +254,16 @@ export const BOOKING_FORM: FormDef = {
       key: 'client',
       label: 'Client',
       type: 'entity',
-      entity: 'existing client name or phone',
-      description: 'Links the booking to the CRM contact.',
+      required: true,
+      entity: 'existing client name, phone or DNI',
+      description: 'Picks the CRM customer the booking belongs to.',
     },
-    { key: 'name', label: 'Attendee name', type: 'text', required: true },
+    {
+      key: 'newClientName',
+      label: 'New client name',
+      type: 'text',
+      description: 'Only when the client is not in the CRM yet: registers them (with phone).',
+    },
     { key: 'phone', label: 'Phone', type: 'text' },
   ],
   guide: [
@@ -268,7 +273,10 @@ export const BOOKING_FORM: FormDef = {
     },
     { target: 'booking.date', message: 'Pick the day.' },
     { target: 'booking.time', message: 'Pick a free slot.' },
-    { target: 'booking.client', message: 'Search an existing client, or type a name below.' },
+    {
+      target: 'booking.client',
+      message: 'Search an existing client, browse the list, or quick-add a new one.',
+    },
     { target: 'booking.submit', message: 'Confirm books the slot.' },
   ],
 };

@@ -46,7 +46,6 @@ export type BookingsViewData = {
   /** Contact-scope keys — present only when the loader ran with `contactScope`. */
   contactId?: string | null;
   contactName?: string | null;
-  openNew?: boolean;
 };
 
 /**

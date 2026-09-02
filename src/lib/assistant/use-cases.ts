@@ -127,7 +127,7 @@ export const USE_CASES: UseCase[] = [
     text: 'enséñame a agendar una cita',
     stage: 'II',
     lang: 'es',
-    expectPath: '/scheduling/bookings',
+    expectPath: '/scheduling/bookings/new',
     expectForm: 'booking',
   },
   {
@@ -170,7 +170,7 @@ export const USE_CASES: UseCase[] = [
     text: 'book a cleaning appointment for Ana tomorrow at 10:00',
     stage: 'III',
     lang: 'en',
-    expectPath: '/scheduling/bookings',
+    expectPath: '/scheduling/bookings/new',
     expectForm: 'booking',
   },
   {

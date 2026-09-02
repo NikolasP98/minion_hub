@@ -6,7 +6,11 @@ import { requireAuth } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
-import { listBookings, createBooking, SlotUnavailableError } from '$server/services/scheduling-bookings.service';
+import {
+  listBookings,
+  createBooking,
+  SlotUnavailableError,
+} from '$server/services/scheduling-bookings.service';
 import { parseInclusiveEnd } from '$lib/components/dashboard/date-range/url';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
@@ -37,6 +41,7 @@ const postSchema = z.object({
   attendeePhone: z.string().max(500).nullable().optional(),
   notes: z.string().max(20_000).nullable().optional(),
   crmContactId: z.string().max(200).nullable().optional(),
+  partyId: z.string().max(200).nullable().optional(),
   resourceId: z.string().max(200).nullable().optional(),
   forceResourceId: z.string().max(200).optional(),
   overrideConflicts: z.boolean().optional(),
@@ -62,6 +67,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       attendeePhone: b.attendeePhone ?? null,
       notes: b.notes ?? null,
       crmContactId: b.crmContactId ?? null,
+      partyId: b.partyId ?? null,
       preferredResourceId: b.resourceId ?? null,
       source: 'internal',
       bypassRules: true,
@@ -72,7 +78,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     return json({ booking });
   } catch (e) {
     if (e instanceof SlotUnavailableError) throw error(409, 'slot unavailable');
-    if (e instanceof Error && e.message === 'overrideConflicts requires forceResourceId') throw error(400, e.message);
+    if (e instanceof Error && e.message === 'overrideConflicts requires forceResourceId')
+      throw error(400, e.message);
     throw e;
   }
 };

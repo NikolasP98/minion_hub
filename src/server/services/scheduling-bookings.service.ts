@@ -17,7 +17,11 @@ import { computeSlots } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
 import { emitHubEvent } from '$server/events/emit';
-import { accrueConsumption, releaseAccruals, type AccrualLineInput } from './stock-accruals.service';
+import {
+  accrueConsumption,
+  releaseAccruals,
+  type AccrualLineInput,
+} from './stock-accruals.service';
 import { isModuleEnabled } from './modules.service';
 
 const MS_PER_MIN = 60_000;
@@ -32,7 +36,11 @@ export class SlotUnavailableError extends Error {
 
 // Re-derive availability + busy inline (same txn) so booking creation never
 // nests a withOrgCore transaction. Mirrors scheduling-slots.service helpers.
-async function loadAvailability(tx: CoreTx, orgId: string, resourceIds: string[]): Promise<ResourceAvailability[]> {
+async function loadAvailability(
+  tx: CoreTx,
+  orgId: string,
+  resourceIds: string[],
+): Promise<ResourceAvailability[]> {
   if (!resourceIds.length) return [];
   const scheds = await tx
     .select()
@@ -70,10 +78,20 @@ async function loadAvailability(tx: CoreTx, orgId: string, resourceIds: string[]
   return out;
 }
 
-async function loadBusyInTx(tx: CoreTx, orgId: string, resourceIds: string[], from: Date, to: Date): Promise<BusyInterval[]> {
+async function loadBusyInTx(
+  tx: CoreTx,
+  orgId: string,
+  resourceIds: string[],
+  from: Date,
+  to: Date,
+): Promise<BusyInterval[]> {
   if (!resourceIds.length) return [];
   const rows = await tx
-    .select({ resourceId: schedBookings.resourceId, start: schedBookings.startTime, end: schedBookings.endTime })
+    .select({
+      resourceId: schedBookings.resourceId,
+      start: schedBookings.startTime,
+      end: schedBookings.endTime,
+    })
     .from(schedBookings)
     .where(
       and(
@@ -97,6 +115,9 @@ export interface CreateBookingInput {
   /** Link to a specific CRM contact (internal booking picked one). When set it's
    *  used directly; otherwise the contact is resolved/created from phone/email. */
   crmContactId?: string | null;
+  /** Party-spine pick (CustomerPicker). Resolves to the party's CRM contact when
+   *  no crmContactId is given; a party without a contact falls back to phone/email. */
+  partyId?: string | null;
   source?: 'public_link' | 'internal' | 'import';
   /** Prefer this resource if it's free for the slot. */
   preferredResourceId?: string | null;
@@ -123,7 +144,12 @@ function phone9(raw: string): string {
 }
 
 /** Resolve a CRM contact by phone (whatsapp identity) or email. Null if no match. */
-async function resolveCrmContact(tx: CoreTx, orgId: string, phone: string | null | undefined, email: string | null | undefined): Promise<string | null> {
+async function resolveCrmContact(
+  tx: CoreTx,
+  orgId: string,
+  phone: string | null | undefined,
+  email: string | null | undefined,
+): Promise<string | null> {
   const p9 = phone ? phone9(phone) : '';
   const em = email ? email.trim().toLowerCase() : '';
   if (p9.length < 8 && !em) return null;
@@ -174,13 +200,33 @@ async function ensureCrmContact(
       .values({ orgId, displayName: name?.trim() || null, source: 'booking' })
       .returning({ id: crmContacts.id });
     const identities: Array<typeof crmContactIdentities.$inferInsert> = [];
-    if (digits.length >= 8) identities.push({ orgId, contactId: c.id, channel: 'whatsapp', externalId: `+${digits}`, handle: name?.trim() || null });
-    if (em) identities.push({ orgId, contactId: c.id, channel: 'email', externalId: em, handle: name?.trim() || null });
+    if (digits.length >= 8)
+      identities.push({
+        orgId,
+        contactId: c.id,
+        channel: 'whatsapp',
+        externalId: `+${digits}`,
+        handle: name?.trim() || null,
+      });
+    if (em)
+      identities.push({
+        orgId,
+        contactId: c.id,
+        channel: 'email',
+        externalId: em,
+        handle: name?.trim() || null,
+      });
     if (identities.length)
       await tx
         .insert(crmContactIdentities)
         .values(identities)
-        .onConflictDoNothing({ target: [crmContactIdentities.orgId, crmContactIdentities.channel, crmContactIdentities.externalId] });
+        .onConflictDoNothing({
+          target: [
+            crmContactIdentities.orgId,
+            crmContactIdentities.channel,
+            crmContactIdentities.externalId,
+          ],
+        });
     return c.id;
   } catch {
     // CRM tables absent / disabled — booking still succeeds without the bridge.
@@ -188,13 +234,19 @@ async function ensureCrmContact(
   }
 }
 
-export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Promise<SchedBooking> {
-  if (input.overrideConflicts && !input.forceResourceId) throw new Error('overrideConflicts requires forceResourceId');
+export async function createBooking(
+  ctx: CoreCtx,
+  input: CreateBookingInput,
+): Promise<SchedBooking> {
+  if (input.overrideConflicts && !input.forceResourceId)
+    throw new Error('overrideConflicts requires forceResourceId');
   const { row, created } = await withOrgCore(ctx, async (tx) => {
     const [et] = await tx
       .select()
       .from(schedEventTypes)
-      .where(and(eq(schedEventTypes.id, input.eventTypeId), eq(schedEventTypes.orgId, ctx.tenantId)))
+      .where(
+        and(eq(schedEventTypes.id, input.eventTypeId), eq(schedEventTypes.orgId, ctx.tenantId)),
+      )
       .limit(1);
     if (!et || !et.active) throw new SlotUnavailableError();
 
@@ -208,14 +260,25 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
         .from(schedEventTypeResources)
         .where(eq(schedEventTypeResources.eventTypeId, et.id))
     ).map((r) => r.resourceId);
-    if (input.preferredResourceId) candidateIds = candidateIds.filter((r) => r === input.preferredResourceId);
+    if (input.preferredResourceId)
+      candidateIds = candidateIds.filter((r) => r === input.preferredResourceId);
     // Front-desk walk-in override: narrow to exactly this resource. A non-assignee
     // force id filters candidates to empty → SlotUnavailableError below (no silent reassign).
-    if (input.forceResourceId) candidateIds = candidateIds.filter((r) => r === input.forceResourceId);
+    if (input.forceResourceId)
+      candidateIds = candidateIds.filter((r) => r === input.forceResourceId);
     const active = await tx
       .select({ id: schedResources.id })
       .from(schedResources)
-      .where(and(eq(schedResources.orgId, ctx.tenantId), inArray(schedResources.id, candidateIds.length ? candidateIds : ['00000000-0000-0000-0000-000000000000']), eq(schedResources.active, true)));
+      .where(
+        and(
+          eq(schedResources.orgId, ctx.tenantId),
+          inArray(
+            schedResources.id,
+            candidateIds.length ? candidateIds : ['00000000-0000-0000-0000-000000000000'],
+          ),
+          eq(schedResources.active, true),
+        ),
+      );
     candidateIds = active.map((r) => r.id);
     if (!candidateIds.length) throw new SlotUnavailableError();
 
@@ -229,7 +292,13 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
     } else {
       const availability = await loadAvailability(tx, ctx.tenantId, candidateIds);
       const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + et.length) * MS_PER_MIN;
-      const busy = await loadBusyInTx(tx, ctx.tenantId, candidateIds, new Date(start.getTime() - pad), new Date(end.getTime() + pad));
+      const busy = await loadBusyInTx(
+        tx,
+        ctx.tenantId,
+        candidateIds,
+        new Date(start.getTime() - pad),
+        new Date(end.getTime() + pad),
+      );
 
       const slots = computeSlots({
         eventType: {
@@ -238,9 +307,16 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
           beforeBuffer: et.beforeBuffer,
           afterBuffer: et.afterBuffer,
           minimumBookingNotice: input.bypassRules ? 0 : et.minimumBookingNotice,
-          periodType: input.bypassRules ? 'unlimited' : et.periodType === 'unlimited' ? 'unlimited' : 'rolling',
+          periodType: input.bypassRules
+            ? 'unlimited'
+            : et.periodType === 'unlimited'
+              ? 'unlimited'
+              : 'rolling',
           periodDays: input.bypassRules ? null : et.periodDays,
-          schedulingType: et.schedulingType === 'round_robin' || et.schedulingType === 'collective' ? et.schedulingType : null,
+          schedulingType:
+            et.schedulingType === 'round_robin' || et.schedulingType === 'collective'
+              ? et.schedulingType
+              : null,
         },
         resources: availability,
         bookings: busy,
@@ -259,7 +335,9 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
       } else if (match.resourceIds.length > 1) {
         const loads = new Map<string, number>();
         for (const b of busy) loads.set(b.resourceId, (loads.get(b.resourceId) ?? 0) + 1);
-        chosen = [...match.resourceIds].sort((a, b) => (loads.get(a) ?? 0) - (loads.get(b) ?? 0))[0];
+        chosen = [...match.resourceIds].sort(
+          (a, b) => (loads.get(a) ?? 0) - (loads.get(b) ?? 0),
+        )[0];
       }
     }
 
@@ -275,7 +353,22 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
         .limit(1);
       if (hit) crmContactId = hit.id;
     }
-    if (!crmContactId) crmContactId = await ensureCrmContact(tx, ctx.tenantId, input.attendeeName, input.attendeePhone, input.attendeeEmail);
+    if (!crmContactId && input.partyId) {
+      const [hit] = await tx
+        .select({ id: crmContacts.id })
+        .from(crmContacts)
+        .where(and(eq(crmContacts.partyId, input.partyId), eq(crmContacts.orgId, ctx.tenantId)))
+        .limit(1);
+      if (hit) crmContactId = hit.id;
+    }
+    if (!crmContactId)
+      crmContactId = await ensureCrmContact(
+        tx,
+        ctx.tenantId,
+        input.attendeeName,
+        input.attendeePhone,
+        input.attendeeEmail,
+      );
     const uid = input.uid ?? globalThis.crypto.randomUUID();
     const status = et.requiresConfirmation ? 'pending' : 'accepted';
 
@@ -344,7 +437,10 @@ export interface ListBookingsOpts {
   maskAttendeePii?: boolean;
 }
 
-export async function listBookings(ctx: CoreCtx, opts: ListBookingsOpts = {}): Promise<SchedBooking[]> {
+export async function listBookings(
+  ctx: CoreCtx,
+  opts: ListBookingsOpts = {},
+): Promise<SchedBooking[]> {
   const rows = await withOrgCore(ctx, (tx) => {
     const conds = [eq(schedBookings.orgId, ctx.tenantId)];
     if (opts.from) conds.push(gte(schedBookings.startTime, opts.from));

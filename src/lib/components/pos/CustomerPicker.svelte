@@ -16,6 +16,8 @@
     /** Display + booking attendeePhone passthrough. */
     phone?: string | null;
     required?: boolean;
+    /** Field label; defaults to the POS "Customer" wording. */
+    label?: string;
   }
 
   let {
@@ -23,6 +25,7 @@
     customerName = $bindable(null),
     phone = $bindable(null),
     required = false,
+    label = m.pos_sell_customer(),
   }: Props = $props();
 
   let q = $state('');
@@ -102,7 +105,8 @@
     search.run(q);
   }
 
-  function pick(p: PartyOption) {
+  /** Select a party programmatically (assistant fill) — same path as a click. */
+  export function pick(p: PartyOption) {
     partyId = p.id;
     customerName = p.name ?? '—';
     phone = p.phone9 ?? null;
@@ -148,33 +152,35 @@
     }
   }
 
-  async function applyQuick() {
-    const name = quickName.trim();
+  function applyQuick() {
+    return add(quickName, quickPhone, quickDni.length === 8 ? quickDni : null);
+  }
+
+  /** Quick-add a walk-in customer (also the assistant's path for a new client). */
+  export async function add(rawName: string, rawPhone = '', docNumber: string | null = null) {
+    const name = rawName.trim();
     if (!name || quickBusy) return;
+    const typedPhone = rawPhone.trim() || null;
     quickBusy = true;
     try {
       // Real CRM capture: find-or-create the party (dedup on DNI, then phone).
       const res = await fetch('/api/crm/parties', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          phone: quickPhone.trim() || null,
-          docNumber: quickDni.length === 8 ? quickDni : null,
-        }),
+        body: JSON.stringify({ name, phone: typedPhone, docNumber }),
       });
       if (res.ok) {
         const j = (await res.json()) as { party: { id: string; phone9: string | null } };
         partyId = j.party.id;
-        phone = j.party.phone9 ?? (quickPhone.trim() || null);
+        phone = j.party.phone9 ?? typedPhone;
       } else {
         // No permission / offline — keep the sale moving as a ticket-only name.
         partyId = null;
-        phone = quickPhone.trim() || null;
+        phone = typedPhone;
       }
     } catch {
       partyId = null;
-      phone = quickPhone.trim() || null;
+      phone = typedPhone;
     } finally {
       customerName = name;
       q = name;
@@ -198,7 +204,7 @@
 
 <div class="picker">
   <span class="lbl"
-    >{m.pos_sell_customer()}{#if required}<span class="req">*</span>{/if}</span
+    >{label}{#if required}<span class="req">*</span>{/if}</span
   >
 
   {#if customerName}

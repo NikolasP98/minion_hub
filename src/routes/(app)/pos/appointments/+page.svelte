@@ -165,6 +165,11 @@
   }
 
   // ── New appointment modal (copied from scheduling/bookings + walk-in extras) ──
+  // TODO(handoff): scheduling's booking form moved to the in-page route
+  // `/scheduling/bookings/new` (BookingCreateForm); this POS copy is still a modal
+  // and still carries the staff-force / override-conflicts extras. Fold those into
+  // BookingCreateForm (props) and route "+New" here too — see meta proposal
+  // 2026-09-02-hub-pos-appointments-modal-to-route.
   let showNew = $state(false);
   let nbEventType = $state('');
   let nbDate = $state(new Date().toISOString().slice(0, 10));

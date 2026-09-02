@@ -15,12 +15,8 @@
   import { formatMoney } from '$lib/utils/format';
   import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
-  import ServicePickerField from '$lib/components/scheduling/ServicePickerField.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
-  import { registerForm } from '$lib/assistant/forms';
-  import { fuzzyFind } from '$lib/assistant/fuzzy';
-  import { BOOKING_FORM } from '$lib/assistant/catalog';
   import {
     bookingsLabels,
     type BookingCapabilities,
@@ -178,252 +174,17 @@
     }
   }
 
-  // ── New booking modal ── (opened pre-bound from the Connections "+New")
-  // svelte-ignore state_referenced_locally
-  let showNew = $state(data.openNew ?? false);
-  // ?new=1 while already on the page (assistant deep link): load re-runs, the seed does not.
-  $effect(() => {
-    if (data.openNew) showNew = true;
-  });
-  let nbEventType = $state('');
-  let nbDate = $state(new Date().toISOString().slice(0, 10));
-  let nbSlots = $state<Array<{ start: string; end: string }>>([]);
-  let nbSlot = $state('');
-  // svelte-ignore state_referenced_locally
-  let nbName = $state(data.contactName ?? '');
-  let nbPhone = $state('');
-  let nbLoading = $state(false);
-  let nbErr = $state<string | null>(null);
-
-  // Optional link to an existing CRM contact (better traceability than phone-match).
-  // svelte-ignore state_referenced_locally
-  let nbContactId = $state<string | null>(data.contactId ?? null);
-  // svelte-ignore state_referenced_locally
-  let nbSearch = $state(data.contactName ?? '');
-  let nbResults = $state<Array<{ id: string; name: string }>>([]);
-  async function searchContacts() {
-    nbContactId = null; // typing a new query unpicks any prior choice
-    const q = nbSearch.trim();
-    if (q.length < 2) {
-      nbResults = [];
-      return;
-    }
-    const res = await fetch(`/api/crm/contacts?search=${encodeURIComponent(q)}&limit=8`);
-    const j = res.ok ? await res.json() : { contacts: [] };
-    nbResults = (j.contacts ?? []).map(
-      (c: { contact_id: string; display_name: string | null }) => ({
-        id: c.contact_id,
-        name: c.display_name || '—',
-      }),
-    );
-  }
-
-  let nbLines = $state<ConsumptionLine[]>([]);
-  let nbHasMapping = $state(false);
-  let nbGen = 0; // generation token: guards against a stale fetch overwriting a newer selection
-
   function setLineConsumption(l: ConsumptionLine, qtyConsumption: number) {
     l.qtyConsumption = qtyConsumption;
     l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
   }
 
-  async function loadConsumption() {
-    const gen = ++nbGen;
-    nbLines = [];
-    nbHasMapping = false;
-    const et = data.eventTypes.find((e) => e.id === nbEventType);
-    if (!et?.productId || !data.stockEnabled || !canAct('stock', 'view')) return;
-    try {
-      const res = await fetch('/api/stock/accruals/preview', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ finProductId: et.productId, quantity: 1 }),
-      });
-      if (!res.ok) return; // no warehouse / stock off — block simply stays hidden
-      const j = await res.json();
-      if (gen !== nbGen) return; // a newer selection superseded this fetch
-      nbHasMapping = j.preview.hasMapping;
-      nbLines = j.preview.lines;
-    } catch {
-      /* preview is best-effort */
-    }
-  }
-
-  async function pickContact(c: { id: string; name: string }) {
-    nbContactId = c.id;
-    nbName = c.name;
-    nbSearch = c.name;
-    nbResults = [];
-    // fetch_from: pull the contact's phone/email and fill only what's empty.
-    try {
-      const res = await fetch(`/api/crm/contacts/${c.id}/prefill`);
-      if (res.ok) {
-        const p = await res.json();
-        if (!nbPhone && p.phone) nbPhone = p.phone;
-        if (!nbName && p.name) nbName = p.name;
-      }
-    } catch {
-      /* prefill is best-effort */
-    }
-  }
-
-  async function loadSlots() {
-    if (!nbEventType || !nbDate) return;
-    nbLoading = true;
-    nbErr = null;
-    nbSlot = '';
-    const from = new Date(`${nbDate}T00:00:00`);
-    const to = new Date(from.getTime() + 86_400_000);
-    try {
-      const res = await fetch(
-        `/api/scheduling/slots?eventTypeId=${nbEventType}&from=${from.toISOString()}&to=${to.toISOString()}`,
-      );
-      if (res.ok) {
-        const j = await res.json();
-        nbSlots = j.slots ?? [];
-      } else nbSlots = [];
-    } finally {
-      nbLoading = false;
-    }
-  }
-
-  // ── Assistant fill (never submits) — registered only while the modal is open.
-  const hhmm = (iso: string) => {
-    const d = new Date(iso);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  };
-  $effect(() => {
-    if (!showNew) return;
-    return registerForm({
-      def: BOOKING_FORM,
-      get: () => ({
-        service: nbEventType,
-        date: nbDate,
-        time: nbSlot ? hhmm(nbSlot) : '',
-        client: nbContactId ?? '',
-        name: nbName,
-        phone: nbPhone,
-      }),
-      set: async (v) => {
-        const filled: string[] = [];
-        const rejected: Array<{ key: string; reason: string }> = [];
-        const notes: string[] = [];
-        const matched = (typed: string, label: string) => {
-          if (typed.trim().toLowerCase() !== label.trim().toLowerCase())
-            notes.push(`matched "${typed}" → "${label}"`);
-        };
-        if (typeof v.service === 'string' && v.service.trim()) {
-          const { match: et, candidates } = fuzzyFind(v.service, data.eventTypes, (e) => [e.title]);
-          if (et) {
-            nbEventType = et.id;
-            filled.push('service');
-            matched(v.service, et.title);
-          } else {
-            rejected.push({
-              key: 'service',
-              reason: `no service matches "${v.service}"; did you mean: ${candidates.map((e) => e.title).join(', ') || 'none'}`,
-            });
-          }
-        }
-        if (typeof v.date === 'string' && v.date) {
-          nbDate = v.date;
-          filled.push('date');
-        }
-        if (filled.includes('service')) loadConsumption();
-        if (filled.includes('service') || filled.includes('date')) await loadSlots();
-        if (typeof v.time === 'string' && v.time.trim()) {
-          const mm = /^(\d{1,2}):(\d{2})/.exec(v.time.trim());
-          const want = mm ? `${mm[1].padStart(2, '0')}:${mm[2]}` : v.time.trim();
-          const slot = nbEventType ? nbSlots.find((s) => hhmm(s.start) === want) : undefined;
-          if (slot) {
-            nbSlot = slot.start;
-            filled.push('time');
-          } else {
-            rejected.push({
-              key: 'time',
-              reason: !nbEventType
-                ? 'pick a service first'
-                : nbSlots.length
-                  ? `no free slot at ${want}; free: ${nbSlots.map((s) => hhmm(s.start)).join(', ')}`
-                  : 'no free slots on that date',
-            });
-          }
-        }
-        if (typeof v.client === 'string' && v.client.trim()) {
-          nbSearch = v.client.trim();
-          await searchContacts();
-          // ponytail: /api/crm/contacts rows only expose display_name here; phone lives masked in custom_fields.
-          const { match, candidates } = fuzzyFind(nbSearch, nbResults, (c) => [c.name]);
-          if (match) {
-            await pickContact(match);
-            filled.push('client');
-            matched(v.client, match.name);
-          } else
-            rejected.push({
-              key: 'client',
-              reason: `no client matches "${v.client}"; did you mean: ${candidates.map((c) => c.name).join(', ') || 'none'}`,
-            });
-        }
-        if (typeof v.name === 'string') {
-          nbName = v.name;
-          filled.push('name');
-        }
-        if (typeof v.phone === 'string') {
-          nbPhone = v.phone;
-          filled.push('phone');
-        }
-        return { filled, rejected, note: notes.join('; ') || undefined };
-      },
-    });
-  });
-
-  async function book() {
-    if (!nbEventType || !nbSlot || !nbName.trim()) {
-      nbErr = 'service, time and name required';
-      return;
-    }
-    nbLoading = true;
-    nbErr = null;
-    try {
-      // server requires qtyConsumption > 0 per line; a gauge dragged to 0 (or a typed
-      // negative) must not fail the whole booking — drop those lines instead.
-      const usedLines = nbHasMapping ? nbLines.filter((l) => l.qtyConsumption > 0) : [];
-      const res = await fetch('/api/scheduling/bookings', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          eventTypeId: nbEventType,
-          start: nbSlot,
-          attendeeName: nbName,
-          attendeePhone: nbPhone || null,
-          crmContactId: nbContactId,
-          consumption: usedLines.length
-            ? usedLines.map((l) => ({ itemId: l.itemId, qtyConsumption: l.qtyConsumption }))
-            : null,
-        }),
-      });
-      if (res.status === 409) {
-        nbErr = m.sched_book_unavailable();
-        await loadSlots();
-        return;
-      }
-      if (!res.ok) throw new Error(String(res.status));
-      showNew = false;
-      nbName = '';
-      nbPhone = '';
-      nbSlot = '';
-      nbContactId = null;
-      nbSearch = '';
-      nbResults = [];
-      nbLines = [];
-      nbHasMapping = false;
-      await invalidate(invalidateKey);
-    } catch (e) {
-      nbErr = e instanceof Error ? e.message : 'error';
-    } finally {
-      nbLoading = false;
-    }
-  }
+  // New booking lives on its own route (in-page form, assistant-guidable).
+  const newHref = $derived(
+    data.contactId
+      ? `/scheduling/bookings/new?contact=${data.contactId}`
+      : '/scheduling/bookings/new',
+  );
 </script>
 
 <PageShell archetype="collection" scroll="region" labelledBy={titleId} class={surfaceClass}>
@@ -434,7 +195,7 @@
     {#snippet actions()}
       <Button
         size="sm"
-        onclick={() => (showNew = true)}
+        href={newHref}
         disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
         title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
       >
@@ -552,145 +313,6 @@
   </PageBody>
 </PageShell>
 
-<Modal bind:open={showNew} title={labels.newModalTitle()} onclose={() => (showNew = false)}>
-  <div class="flex flex-col gap-3">
-    <div class="field">
-      <span class="t-caption">{m.sched_book_choose_service()}</span>
-      <div data-assist="booking.service">
-        <ServicePickerField
-          services={data.eventTypes}
-          bind:value={nbEventType}
-          onchange={() => {
-            loadSlots();
-            loadConsumption();
-          }}
-        />
-      </div>
-    </div>
-    <label class="field">
-      <span class="t-caption">{m.sched_book_pick_time()}</span>
-      <input
-        class="txt"
-        type="date"
-        data-assist="booking.date"
-        bind:value={nbDate}
-        onchange={loadSlots}
-      />
-    </label>
-    {#if nbLoading}
-      <p class="t-caption">…</p>
-    {:else if nbEventType && nbSlots.length === 0}
-      <p class="t-caption">{m.sched_book_no_slots()}</p>
-    {:else if nbSlots.length}
-      <div class="slot-grid" data-assist="booking.time">
-        {#each nbSlots as s (s.start)}
-          <Button
-            variant="ghost"
-            size="sm"
-            type="button"
-            class="slot {nbSlot === s.start ? 'slot-on' : ''}"
-            onclick={() => (nbSlot = s.start)}
-          >
-            {new Date(s.start).toLocaleTimeString(undefined, {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </Button>
-        {/each}
-      </div>
-    {/if}
-    {#if nbHasMapping && nbLines.length}
-      <div class="field">
-        <span class="t-caption">{m.sched_stock_consumption()}</span>
-        <div class="flex flex-col gap-2">
-          {#each nbLines as l (l.itemId)}
-            {@const gMax = l.diagramEnabled
-              ? gaugeMax({
-                  uom: l.uom,
-                  unitsPerStockUom: l.unitsPerStockUom,
-                  subunitsPerStockUom: l.subunitsPerStockUom,
-                })
-              : 0}
-            <div class="flex items-center gap-3 flex-wrap">
-              <span class="text-sm min-w-[120px]">{l.itemName}</span>
-              {#if gMax > 0}
-                <ConsumptionGauge
-                  max={gMax}
-                  unit={l.consumptionUom ?? l.uom}
-                  bind:value={() => l.qtyConsumption ?? 0, (v) => setLineConsumption(l, v)}
-                />
-              {:else}
-                <input
-                  class="txt"
-                  style="max-width: 90px"
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={l.qtyConsumption}
-                  oninput={(e) => setLineConsumption(l, Number(e.currentTarget.value) || 0)}
-                />
-                <span class="t-caption">{l.consumptionUom ?? l.uom}</span>
-              {/if}
-              {#if l.qty > l.atp}
-                <span class="t-caption" style="color:var(--color-destructive)"
-                  >{m.sched_stock_atp_warn({ atp: String(l.atp), uom: l.uom })}</span
-                >
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </div>
-    {/if}
-    <div class="field">
-      <span class="t-caption">{m.sched_book_find_client()}</span>
-      <div class="relative">
-        <input
-          class="txt"
-          data-assist="booking.client"
-          bind:value={nbSearch}
-          oninput={searchContacts}
-          placeholder={m.sched_book_find_client_ph()}
-        />
-        {#if nbContactId}<span class="linked">✓ {m.sched_book_linked()}</span>{/if}
-        {#if nbResults.length}
-          <div class="results absolute">
-            {#each nbResults as c (c.id)}
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                class="result"
-                onclick={() => pickContact(c)}>{c.name}</Button
-              >
-            {/each}
-          </div>
-        {/if}
-      </div>
-    </div>
-    <label class="field">
-      <span class="t-caption">{m.sched_book_name()}</span>
-      <input class="txt" data-assist="booking.name" bind:value={nbName} />
-    </label>
-    {#if !nbContactId}
-      <label class="field">
-        <span class="t-caption">{m.sched_book_phone()}</span>
-        <input class="txt" data-assist="booking.phone" bind:value={nbPhone} />
-      </label>
-    {/if}
-    {#if nbErr}<p class="t-caption" style="color:var(--color-destructive)">{nbErr}</p>{/if}
-    <div class="flex gap-2">
-      <Button
-        data-assist="booking.submit"
-        onclick={book}
-        disabled={nbLoading || !nbSlot || !nbName.trim() || !canAct('scheduling', 'edit')}
-        title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
-        >{m.sched_book_confirm()}</Button
-      >
-      <Button variant="ghost" onclick={() => (showNew = false)}>{m.sched_cancel()}</Button>
-    </div>
-  </div>
-</Modal>
-
 <Modal
   open={completeFor !== null}
   title={m.sched_complete_title()}
@@ -738,11 +360,6 @@
 </Modal>
 
 <style>
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1, 4px);
-  }
   .txt {
     border: 1px solid var(--hairline);
     border-radius: var(--radius-lg);
@@ -750,29 +367,5 @@
     background: var(--color-card);
     font-size: var(--font-size-body, 14px);
     width: 100%;
-  }
-  .slot-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-    gap: var(--space-2, 8px);
-    max-height: 200px;
-    overflow: auto;
-  }
-  .linked {
-    font-size: var(--font-size-caption, 12px);
-    color: var(--color-accent);
-  }
-  .results {
-    z-index: var(--layer-sticky, 10);
-    left: 0;
-    right: 0;
-    top: 100%;
-    margin-top: var(--space-0-5, 2px);
-    background: var(--color-card);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-elevation-2);
-    max-height: 180px;
-    overflow: auto;
   }
 </style>
