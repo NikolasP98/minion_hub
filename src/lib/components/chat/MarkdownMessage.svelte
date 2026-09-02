@@ -6,6 +6,7 @@
   import { parseUiBlocks } from '$lib/assistant/ui-blocks';
   import AssistChoice from '$lib/components/assistant/AssistChoice.svelte';
   import type { ChoiceOption } from '$lib/assistant/guide.svelte';
+  import * as m from '$lib/paraglide/messages';
   import 'carta-md/default.css';
 
   interface Props {
@@ -37,6 +38,20 @@
   // and the streaming bubble share.
   const parsed = $derived(parseUiBlocks(value));
   const shown = $derived(parsed.text);
+  // Block-only replies (no prose) show what the assistant did instead of an empty bubble.
+  const actions = $derived.by(() => {
+    if (parsed.text) return [] as string[];
+    return parsed.calls
+      .map((c) => {
+        if (c.tool === 'hub.navigate')
+          return m.assist_action_navigate({ path: String(c.input.path ?? '') });
+        if (c.tool.startsWith('fill_')) return m.assist_action_fill();
+        if (c.tool === 'ui.guide') return m.assist_action_guide();
+        if (c.tool === 'hub.pages') return m.assist_action_pages();
+        return '';
+      })
+      .filter(Boolean);
+  });
   // A `ui.choice` call renders as buttons inside this bubble (the reply that asked).
   const choice = $derived.by(() => {
     const c = parsed.calls.find((x) => x.tool === 'ui.choice');
@@ -115,7 +130,7 @@
   }
 </script>
 
-{#if shown || choice}
+{#if shown || choice || actions.length}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div
     class={`chat-md ${tone === 'user' ? 'chat-md--user' : 'chat-md--assistant'} ${className}`}
@@ -127,6 +142,11 @@
         {@html rendered}
       </div>
     {/if}
+    {#if actions.length}
+      <ul class="actions">
+        {#each actions as a (a)}<li>{a}</li>{/each}
+      </ul>
+    {/if}
     {#if choice}
       <AssistChoice question={choice.question} options={choice.options} onPick={onChoice} />
     {/if}
@@ -134,6 +154,19 @@
 {/if}
 
 <style>
+  .actions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    font-size: var(--font-size-label);
+    color: var(--color-muted);
+  }
+  .actions li::before {
+    content: '✓ ';
+  }
   /* Chat-tuned prose: tighter than default, dark-mode aware via CSS vars. */
   .chat-md :global(p) {
     margin: var(--space-1) 0;
