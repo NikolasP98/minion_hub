@@ -36,6 +36,7 @@
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, ServerQuery } from '$lib/components/data-table/DataTable.svelte';
   import CrmMergeResolver from '$lib/components/crm/CrmMergeResolver.svelte';
+  import PartyCreateForm from '$lib/components/crm/PartyCreateForm.svelte';
   import {
     applyContactMerge,
     type MergeField,
@@ -162,6 +163,12 @@
   let scoreMin = $state<number | null>(qp.has('scoreMin') ? Number(qp.get('scoreMin')) : null);
   let scoreMax = $state<number | null>(qp.has('scoreMax') ? Number(qp.get('scoreMax')) : null);
   let tempFilter = $state<string>(qp.get('temp') ?? '');
+  // ?new=1 (assistant / deep link) opens the party create form as a modal.
+  // TODO(handoff): the assistant opens this party form via ?new=1, but POST
+  // /api/crm/parties creates a `parties` row, not a CRM contact, so the new
+  // party does not appear in this grid — see meta proposal
+  // 2026-09-02-gateway-client-tools-webmcp-bridge (known gaps).
+  let createOpen = $state(qp.get('new') === '1');
   const scoreActive = $derived(scoreMin != null || scoreMax != null);
   const initialFilters = {
     stage: qpArr('stage'),
@@ -942,6 +949,17 @@
   error={bulkErr}
   onConfirm={runMerge}
 />
+
+<Modal bind:open={createOpen} title={m.crm_new_contact()}>
+  <PartyCreateForm
+    allowedTypes={['person', 'company']}
+    oncancel={() => (createOpen = false)}
+    oncreated={async () => {
+      createOpen = false;
+      await invalidate('crm:contacts');
+    }}
+  />
+</Modal>
 
 <Modal bind:open={deleteOpen} title={m.crm_bulk_delete_title()}>
   <p class="t-body">{m.crm_bulk_delete_confirm({ n: deleteIds.length })}</p>

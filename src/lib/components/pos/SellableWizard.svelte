@@ -5,6 +5,8 @@
   import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
+  import { registerForm } from '$lib/assistant/forms';
+  import { SELLABLE_FORM } from '$lib/assistant/catalog';
   import {
     CODE_MAX,
     CODE_PATTERN,
@@ -203,6 +205,85 @@
       !(!editing && source === 'existing-item' && !existingItemId),
   );
 
+  // Assistant `fill_sellable` tool — create mode only (edit locks source/kind).
+  // Writes the same $state the inputs bind to; the user still presses Save.
+  $effect(() => {
+    if (!visible || editing) return;
+    const str = (x: unknown) => (x == null ? '' : String(x));
+    return registerForm({
+      def: SELLABLE_FORM,
+      get: () => ({ name, code, category, unitPrice, source, existingItem: existingItemId }),
+      set: (v) => {
+        const filled: string[] = [];
+        const rejected: { key: string; reason: string }[] = [];
+        if ('name' in v) {
+          name = str(v.name);
+          filled.push('name');
+        }
+        if ('code' in v) {
+          const next = normalizeCode(str(v.code));
+          const err = codeError(next);
+          if (err) rejected.push({ key: 'code', reason: CODE_ERR_MSG[err]() });
+          else {
+            codeTouched = true;
+            code = next;
+            filled.push('code');
+          }
+        }
+        if ('category' in v) {
+          category = str(v.category);
+          filled.push('category');
+        }
+        if ('unitPrice' in v) {
+          unitPrice = str(v.unitPrice);
+          filled.push('unitPrice');
+        }
+        // `source` lands before `existingItem`: the picker only exists once
+        // source is existing-item.
+        if ('source' in v) {
+          const s = str(v.source) as Source;
+          if (s === 'service' || (stockEnabled && (s === 'new-item' || s === 'existing-item'))) {
+            source = s;
+            filled.push('source');
+          } else {
+            rejected.push({
+              key: 'source',
+              reason: stockEnabled
+                ? `unknown source "${s}"`
+                : 'stock module disabled — only "service" is available',
+            });
+          }
+        }
+        if ('existingItem' in v) {
+          const q = str(v.existingItem).trim().toLowerCase();
+          const byField = (f: (i: StockItemLike) => boolean) => availableItems.find(f);
+          const hit =
+            stockEnabled && q
+              ? (byField((i) => i.code.toLowerCase() === q || i.name.toLowerCase() === q) ??
+                byField(
+                  (i) => i.code.toLowerCase().includes(q) || i.name.toLowerCase().includes(q),
+                ))
+              : undefined;
+          if (hit) {
+            source = 'existing-item';
+            existingItemId = hit.id;
+            filled.push('existingItem');
+          } else {
+            const candidates = availableItems
+              .slice(0, 3)
+              .map((i) => `${i.code} — ${i.name}`)
+              .join(', ');
+            rejected.push({
+              key: 'existingItem',
+              reason: `no unlinked stock item matches "${q}"; candidates: ${candidates || 'none'}`,
+            });
+          }
+        }
+        return { filled, rejected };
+      },
+    });
+  });
+
   function cancel() {
     if (presentation === 'modal') open = false;
     onCancel?.();
@@ -288,12 +369,13 @@
 
 {#snippet editorFields()}
   <div class="flex flex-col gap-3">
-    <Input size="sm" label={m.stock_field_name()} bind:value={name} />
+    <Input size="sm" label={m.stock_field_name()} bind:value={name} data-assist="sellable.name" />
     <Input
       size="sm"
       inputClass="font-mono uppercase"
       label={m.stock_field_code()}
       helper={m.catalog_code_helper()}
+      data-assist="sellable.code"
       error={codeErr ? CODE_ERR_MSG[codeErr]() : undefined}
       value={code}
       maxlength={CODE_MAX}
@@ -314,6 +396,7 @@
       size="sm"
       label={m.fin_col_category()}
       list="pos-catalog-categories"
+      data-assist="sellable.category"
       bind:value={category}
     />
     <datalist id="pos-catalog-categories">
@@ -326,6 +409,7 @@
       step="0.01"
       label={m.pos_sell_price()}
       bind:value={unitPrice}
+      data-assist="sellable.unitPrice"
     />
 
     {#if editing}
@@ -333,7 +417,7 @@
            controls here would silently no-op, so they're creation-only. -->
       <p class="t-caption">{m.pos_catalog_kind_locked()}</p>
     {:else}
-      <div class="fld">
+      <div class="fld" data-assist="sellable.source">
         <span>{m.pos_catalog_source()}</span>
         <SegmentedControl
           aria-label={m.pos_catalog_source()}
@@ -365,6 +449,7 @@
             variant="outline"
             size="sm"
             class="wizard-item-picker"
+            data-assist="sellable.existingItem"
             onclick={() => (existingItemPickerOpen = true)}
           >
             {existingItemId
@@ -445,8 +530,12 @@
     {@render editorFields()}
     {#snippet footer()}
       <Button variant="outline" size="sm" onclick={cancel}>{m.common_cancel()}</Button>
-      <Button variant="primary" size="sm" onclick={submit} disabled={!canSubmit}
-        >{m.common_save()}</Button
+      <Button
+        variant="primary"
+        size="sm"
+        onclick={submit}
+        disabled={!canSubmit}
+        data-assist="sellable.submit">{m.common_save()}</Button
       >
     {/snippet}
   </Modal>
@@ -462,8 +551,12 @@
     <div class="editor-actions">
       <Button type="button" variant="outline" size="sm" onclick={cancel}>{m.common_cancel()}</Button
       >
-      <Button type="submit" variant="primary" size="sm" disabled={!canSubmit}
-        >{m.common_save()}</Button
+      <Button
+        type="submit"
+        variant="primary"
+        size="sm"
+        disabled={!canSubmit}
+        data-assist="sellable.submit">{m.common_save()}</Button
       >
     </div>
   </form>

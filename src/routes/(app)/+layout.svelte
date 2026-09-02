@@ -19,6 +19,8 @@
   import { QueryClientProvider } from '@tanstack/svelte-query';
   import { queryClient } from '$lib/query/client';
   import { AppViewport } from '$lib/components/ui/foundations';
+  import AssistGuide from '$lib/components/assistant/AssistGuide.svelte';
+  import { registerGlobalTools } from '$lib/assistant/global-tools';
 
   let { children }: { children: Snippet } = $props();
 
@@ -50,9 +52,12 @@
   onMount(() => {
     void ensurePermissions();
     void hydratePluginNav();
+    // Assistant UI tools (navigate / pages / guide / choice) live for the app shell's lifetime.
+    const disposeTools = registerGlobalTools();
     const markIdle = () => (idleReady = true);
     if ('requestIdleCallback' in window) requestIdleCallback(markIdle, { timeout: 1500 });
     else setTimeout(markIdle, 300);
+    return disposeTools;
   });
 
   // Re-sync hosts whenever the authoritative list lands or changes.
@@ -89,6 +94,8 @@
       <DynamicIsland />
     </div>
   </AppViewport>
+
+  <AssistGuide />
 
   {#if idleReady}
     {#await import('$lib/components/layout/FloatingAssistant.svelte') then { default: FloatingAssistant }}

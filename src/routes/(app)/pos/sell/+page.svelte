@@ -29,6 +29,9 @@
   import PaymentPanel, { type PaymentRow } from '$lib/components/pos/PaymentPanel.svelte';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import { registerForm } from '$lib/assistant/forms';
+  import { POS_SALE_FORM } from '$lib/assistant/catalog';
+  import type { PartyOption } from '$lib/components/crm/party-picker';
 
   let { data }: { data: PageData } = $props();
 
@@ -291,6 +294,86 @@
     return null;
   });
 
+  // ── Assistant: fill the current sale (never charges) ──
+  $effect(() =>
+    registerForm({
+      def: POS_SALE_FORM,
+      get: () => ({
+        customer: customerName ?? '',
+        item: lines[0]?.sellable.name ?? '',
+        qty: lines[0]?.qty ?? '',
+        note: '',
+      }),
+      set: async (v) => {
+        const filled: string[] = [];
+        const rejected: Array<{ key: string; reason: string }> = [];
+        const names = (xs: Array<{ name: string | null }>) =>
+          xs
+            .slice(0, 3)
+            .map((x) => x.name ?? '—')
+            .join(', ');
+        if (typeof v.customer === 'string' && v.customer.trim()) {
+          const q = v.customer.trim();
+          const lc = q.toLowerCase();
+          let found: PartyOption[] = [];
+          try {
+            // Same endpoint CustomerPicker searches (name / DNI / phone / email).
+            const res = await fetch(`/api/crm/parties?q=${encodeURIComponent(q)}&type=person`);
+            if (res.ok) found = (await res.json()) as PartyOption[];
+          } catch {
+            /* treated as no match */
+          }
+          const p =
+            found.find(
+              (x) =>
+                x.name?.toLowerCase() === lc ||
+                x.docNumber === q ||
+                x.phone9 === q.replace(/\D/g, ''),
+            ) ?? found[0];
+          if (p) {
+            // Exactly what CustomerPicker.pick() sets through its bindables.
+            partyId = p.id;
+            customerName = p.name ?? '—';
+            customerPhone = p.phone9 ?? null;
+            filled.push('customer');
+          } else {
+            rejected.push({ key: 'customer', reason: `no customer matches "${q}"` });
+          }
+        }
+        if (typeof v.item === 'string' && v.item.trim()) {
+          const lc = v.item.trim().toLowerCase();
+          const all = data.sellables;
+          const exact =
+            all.find((s) => s.code.toLowerCase() === lc) ??
+            all.find((s) => s.name.toLowerCase() === lc);
+          const loose = exact
+            ? [exact]
+            : all.filter(
+                (s) => s.name.toLowerCase().includes(lc) || s.code.toLowerCase().includes(lc),
+              );
+          const qty = v.qty == null || v.qty === '' ? 1 : Number(v.qty);
+          if (!Number.isFinite(qty) || qty <= 0) {
+            rejected.push({ key: 'qty', reason: 'qty must be a positive number' });
+          } else if (loose.length === 1) {
+            addLine(loose[0]);
+            lines[0].qty += qty - 1;
+            filled.push('item');
+            if (v.qty != null) filled.push('qty');
+          } else {
+            rejected.push({
+              key: 'item',
+              reason: `${loose.length ? 'ambiguous' : 'no'} item "${v.item}"; try: ${names(loose.length ? loose : all)}`,
+            });
+          }
+        } else if (v.qty != null) {
+          rejected.push({ key: 'qty', reason: 'qty applies with item' });
+        }
+        if (v.note != null) rejected.push({ key: 'note', reason: 'no note field' });
+        return { filled, rejected };
+      },
+    }),
+  );
+
   // ── Submit ──
   let stockBanner = $state<{ ticketId: string; message: string } | null>(null);
 
@@ -438,6 +521,7 @@
           <div class="search-row">
             <input
               class="search-inp"
+              data-assist="pos_sale.item"
               placeholder={m.pos_sell_search_placeholder()}
               bind:value={search}
               bind:this={searchEl}
@@ -695,12 +779,14 @@
             >
           </div>
         {/if}
-        <CustomerPicker
-          bind:partyId
-          bind:customerName
-          bind:phone={customerPhone}
-          required={data.posSettings.requireCustomer}
-        />
+        <div data-assist="pos_sale.customer">
+          <CustomerPicker
+            bind:partyId
+            bind:customerName
+            bind:phone={customerPhone}
+            required={data.posSettings.requireCustomer}
+          />
+        </div>
         <div class="cart-scroll">
           <SellCart
             bind:lines
@@ -708,7 +794,9 @@
           />
         </div>
         <div class="charge-bar">
-          <PaymentPanel {total} methods={paymentMethods} bind:payments />
+          <div data-assist="pos_sale.payment">
+            <PaymentPanel {total} methods={paymentMethods} bind:payments />
+          </div>
           <div class="total-row">
             <span>{m.pos_sell_total()}</span>
             <span class="total">{formatMoney(total)}</span>
@@ -721,6 +809,7 @@
             size="lg"
             disabled={chargeDisabled}
             loading={submitting}
+            data-assist="pos_sale.submit"
             onclick={charge}>{chargeBlocker ?? m.pos_sell_charge()}</Button
           >
         </div>

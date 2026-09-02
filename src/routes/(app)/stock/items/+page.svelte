@@ -96,7 +96,8 @@
   ];
 
   // ── Create ───────────────────────────────────────────────────────────────
-  let createOpen = $state(false);
+  // svelte-ignore state_referenced_locally
+  let createOpen = $state(data.openNew ?? false);
 
   async function handleCreated(item: StockItemOption) {
     createOpen = false;

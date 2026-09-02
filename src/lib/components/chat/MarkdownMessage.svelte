@@ -3,6 +3,7 @@
   import DOMPurify from 'dompurify';
   import { goto } from '$lib/navigation';
   import { resolveInternalNav } from '$lib/utils/internal-nav';
+  import { stripUiBlocks } from '$lib/assistant/ui-blocks';
   import 'carta-md/default.css';
 
   interface Props {
@@ -24,11 +25,15 @@
   // the sync (sanitized) parse tracks every value change instantly; the async
   // render (adds syntax highlighting) upgrades it once the text settles,
   // debounced + stale-guarded so streaming doesn't spawn a render per frame.
-  const ssrHtml = $derived(carta.renderSSR(value));
+  // UI tool calls (```minion-ui fences) are executed by the assistant runner,
+  // not read by the user — strip them here, the one render path both surfaces
+  // and the streaming bubble share.
+  const shown = $derived(stripUiBlocks(value));
+  const ssrHtml = $derived(carta.renderSSR(shown));
   let asyncHtml = $state<string | null>(null);
   let renderSeq = 0;
   $effect(() => {
-    const v = value;
+    const v = shown;
     asyncHtml = null;
     const seq = ++renderSeq;
     const t = setTimeout(() => {

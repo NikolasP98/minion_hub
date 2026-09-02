@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { onMount } from 'svelte';
+  import { page } from '$app/state';
   import { invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Receipt, RefreshCw, Plus, Pencil, Trash2, Lock } from 'lucide-svelte';
@@ -56,6 +58,15 @@
   }
 
   let showAdd = $state(false);
+  // ?new=1 (assistant deep link) opens the add dialog — only into an open period.
+  onMount(() => {
+    if (
+      page.url.searchParams.get('new') === '1' &&
+      canWrite &&
+      data.periods.find((p) => p.period === openPeriod)?.status !== 'closed'
+    )
+      showAdd = true;
+  });
   let editing = $state<Purchase | null>(null);
   let deleting = $state<Purchase | null>(null);
 

@@ -216,18 +216,24 @@ export function sendAssistantTurn(
   text: string,
   context: string,
   sessionKey = `agent:${agentId}:main`,
+  opts: { silent?: boolean } = {},
 ) {
   const chat = ensureAgentChat(agentId);
   const clean = text.trim();
-  if (!clean || chat.sending || !conn.connected) return;
+  // Silent turns carry only a context envelope (UI tool results): nothing is
+  // shown in the transcript and the envelope regex hides it on history reload.
+  if (opts.silent ? !context.trim() : !clean) return;
+  if (chat.sending || !conn.connected) return;
 
   const runId = uuid();
 
-  pushChatMessage(chat, {
-    role: 'user',
-    content: [{ type: 'text', text: clean }],
-    timestamp: Date.now(),
-  } as never);
+  if (!opts.silent) {
+    pushChatMessage(chat, {
+      role: 'user',
+      content: [{ type: 'text', text: clean }],
+      timestamp: Date.now(),
+    } as never);
+  }
   chat.inputText = '';
   chat.sending = true;
   chat.streamMessage = null;

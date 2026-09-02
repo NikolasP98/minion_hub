@@ -127,7 +127,8 @@
     search.run(q);
   }
 
-  function pick(party: PartyOption) {
+  /** Select a party programmatically (assistant fill) — keeps the visible name in sync. */
+  export function pick(party: PartyOption) {
     value = party.id;
     q = party.name ?? party.email ?? party.id;
     menuOpen = false;

@@ -11,6 +11,8 @@
 <script lang="ts">
   import { Button, Input } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
+  import { registerForm } from '$lib/assistant/forms';
+  import { STOCK_ITEM_FORM } from '$lib/assistant/catalog';
 
   let {
     oncreated,
@@ -34,6 +36,21 @@
   let createError = $state<string | null>(null);
 
   const valid = $derived(code.trim() !== '' && name.trim() !== '' && uom.trim() !== '');
+
+  // Assistant fill tool — lives exactly as long as this form is mounted.
+  $effect(() =>
+    registerForm({
+      def: STOCK_ITEM_FORM,
+      get: () => ({ code, name, uom, itemGroup }),
+      set: (v) => {
+        if (v.code != null) code = String(v.code);
+        if (v.name != null) name = String(v.name);
+        if (v.uom != null) uom = String(v.uom);
+        if (v.itemGroup != null) itemGroup = String(v.itemGroup);
+        return {};
+      },
+    }),
+  );
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
@@ -67,17 +84,47 @@
 
 <form class="stock-item-create" onsubmit={submit}>
   <div class="stock-item-fields">
-    <Input size="sm" label={m.stock_field_code()} required bind:value={code} />
-    <Input size="sm" label={m.stock_field_name()} required bind:value={name} />
-    <Input size="sm" label={m.stock_field_uom()} required bind:value={uom} />
-    <Input size="sm" label={m.stock_col_group()} bind:value={itemGroup} />
+    <Input
+      size="sm"
+      label={m.stock_field_code()}
+      required
+      bind:value={code}
+      data-assist="stock_item.code"
+    />
+    <Input
+      size="sm"
+      label={m.stock_field_name()}
+      required
+      bind:value={name}
+      data-assist="stock_item.name"
+    />
+    <Input
+      size="sm"
+      label={m.stock_field_uom()}
+      required
+      bind:value={uom}
+      data-assist="stock_item.uom"
+    />
+    <Input
+      size="sm"
+      label={m.stock_col_group()}
+      bind:value={itemGroup}
+      data-assist="stock_item.itemGroup"
+    />
   </div>
   {#if createError}<p class="stock-item-error t-caption" role="alert">{createError}</p>{/if}
   <div class="stock-item-actions">
     <Button type="button" variant="outline" size="sm" onclick={oncancel}>
       {m.common_cancel()}
     </Button>
-    <Button type="submit" variant="primary" size="sm" loading={busy} disabled={!valid}>
+    <Button
+      type="submit"
+      variant="primary"
+      size="sm"
+      loading={busy}
+      disabled={!valid}
+      data-assist="stock_item.submit"
+    >
       {m.stock_create()}
     </Button>
   </div>

@@ -212,6 +212,11 @@
   function openCreate() {
     void goto('/pos/catalog/new');
   }
+  // Deep link: /pos/catalog?new=1 → the editor page (same convention as the
+  // other list pages' ?new=1).
+  $effect(() => {
+    if (page.url.searchParams.get('new') === '1') openCreate();
+  });
   function openEdit(row: Row) {
     void goto(`/pos/catalog/${encodeURIComponent(row.productId)}/edit`);
   }
