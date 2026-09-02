@@ -30,6 +30,7 @@
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { registerForm } from '$lib/assistant/forms';
+  import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { POS_SALE_FORM } from '$lib/assistant/catalog';
   import type { PartyOption } from '$lib/components/crm/party-picker';
 
@@ -307,14 +308,13 @@
       set: async (v) => {
         const filled: string[] = [];
         const rejected: Array<{ key: string; reason: string }> = [];
-        const names = (xs: Array<{ name: string | null }>) =>
-          xs
-            .slice(0, 3)
-            .map((x) => x.name ?? '—')
-            .join(', ');
+        const notes: string[] = [];
+        const matched = (typed: string, label: string) => {
+          if (typed.trim().toLowerCase() !== label.trim().toLowerCase())
+            notes.push(`matched "${typed}" → "${label}"`);
+        };
         if (typeof v.customer === 'string' && v.customer.trim()) {
           const q = v.customer.trim();
-          const lc = q.toLowerCase();
           let found: PartyOption[] = [];
           try {
             // Same endpoint CustomerPicker searches (name / DNI / phone / email).
@@ -323,53 +323,47 @@
           } catch {
             /* treated as no match */
           }
-          const p =
-            found.find(
-              (x) =>
-                x.name?.toLowerCase() === lc ||
-                x.docNumber === q ||
-                x.phone9 === q.replace(/\D/g, ''),
-            ) ?? found[0];
+          const { match: p, candidates } = fuzzyFind(q, found, (x) => [
+            x.name,
+            x.docNumber,
+            x.phone9,
+          ]);
           if (p) {
             // Exactly what CustomerPicker.pick() sets through its bindables.
             partyId = p.id;
             customerName = p.name ?? '—';
             customerPhone = p.phone9 ?? null;
             filled.push('customer');
+            matched(q, p.name ?? '');
           } else {
-            rejected.push({ key: 'customer', reason: `no customer matches "${q}"` });
+            rejected.push({
+              key: 'customer',
+              reason: `no customer matches "${q}"; did you mean: ${candidates.map((x) => x.name ?? x.docNumber ?? '—').join(', ') || 'none'}`,
+            });
           }
         }
         if (typeof v.item === 'string' && v.item.trim()) {
-          const lc = v.item.trim().toLowerCase();
-          const all = data.sellables;
-          const exact =
-            all.find((s) => s.code.toLowerCase() === lc) ??
-            all.find((s) => s.name.toLowerCase() === lc);
-          const loose = exact
-            ? [exact]
-            : all.filter(
-                (s) => s.name.toLowerCase().includes(lc) || s.code.toLowerCase().includes(lc),
-              );
+          const { match, candidates } = fuzzyFind(v.item, data.sellables, (s) => [s.code, s.name]);
           const qty = v.qty == null || v.qty === '' ? 1 : Number(v.qty);
           if (!Number.isFinite(qty) || qty <= 0) {
             rejected.push({ key: 'qty', reason: 'qty must be a positive number' });
-          } else if (loose.length === 1) {
-            addLine(loose[0]);
+          } else if (match) {
+            addLine(match);
             lines[0].qty += qty - 1;
             filled.push('item');
             if (v.qty != null) filled.push('qty');
+            matched(v.item, match.name);
           } else {
             rejected.push({
               key: 'item',
-              reason: `${loose.length ? 'ambiguous' : 'no'} item "${v.item}"; try: ${names(loose.length ? loose : all)}`,
+              reason: `no item matches "${v.item}"; did you mean: ${candidates.map((s) => `${s.code} — ${s.name}`).join(', ') || 'none'}`,
             });
           }
         } else if (v.qty != null) {
           rejected.push({ key: 'qty', reason: 'qty applies with item' });
         }
         if (v.note != null) rejected.push({ key: 'note', reason: 'no note field' });
-        return { filled, rejected };
+        return { filled, rejected, note: notes.join('; ') || undefined };
       },
     }),
   );

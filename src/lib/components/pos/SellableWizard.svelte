@@ -6,6 +6,7 @@
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
   import { registerForm } from '$lib/assistant/forms';
+  import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { SELLABLE_FORM } from '$lib/assistant/catalog';
   import {
     CODE_MAX,
@@ -259,32 +260,28 @@
             });
           }
         }
+        let note: string | undefined;
         if ('existingItem' in v) {
-          const q = str(v.existingItem).trim().toLowerCase();
-          const byField = (f: (i: StockItemLike) => boolean) => availableItems.find(f);
-          const hit =
-            stockEnabled && q
-              ? (byField((i) => i.code.toLowerCase() === q || i.name.toLowerCase() === q) ??
-                byField(
-                  (i) => i.code.toLowerCase().includes(q) || i.name.toLowerCase().includes(q),
-                ))
-              : undefined;
-          if (hit) {
+          const typed = str(v.existingItem).trim();
+          const { match, candidates } = fuzzyFind(
+            typed,
+            stockEnabled ? availableItems : [],
+            (i) => [i.code, i.name],
+          );
+          if (match) {
             source = 'existing-item';
-            existingItemId = hit.id;
+            existingItemId = match.id;
             filled.push('existingItem');
+            if (typed.toLowerCase() !== match.name.toLowerCase())
+              note = `matched "${typed}" → "${match.name}"`;
           } else {
-            const candidates = availableItems
-              .slice(0, 3)
-              .map((i) => `${i.code} — ${i.name}`)
-              .join(', ');
             rejected.push({
               key: 'existingItem',
-              reason: `no unlinked stock item matches "${q}"; candidates: ${candidates || 'none'}`,
+              reason: `no unlinked stock item matches "${typed}"; did you mean: ${candidates.map((i) => `${i.code} — ${i.name}`).join(', ') || 'none'}`,
             });
           }
         }
-        return { filled, rejected };
+        return { filled, rejected, note };
       },
     });
   });

@@ -46,6 +46,8 @@ export interface FormFillResult {
   rejected: Array<{ key: string; reason: string }>;
   /** Required keys still empty after the fill. */
   missing: string[];
+  /** Page-side remark for the model, e.g. a fuzzy match it should confirm. */
+  note?: string;
 }
 
 export interface FormBinding {
@@ -110,6 +112,7 @@ export function registerForm(binding: FormBinding): () => void {
           rejected,
           missing,
         };
+        if (r.note) result.note = r.note;
         return result;
       },
     },
