@@ -125,7 +125,9 @@
               <div class="flex-1 min-w-0">
                 <div class="font-medium truncate">
                   {et.title}
-                  <Badge variant="semantic" value="success" size="sm">{m.sched_service_configured()}</Badge>
+                  <Badge variant="semantic" value="success" size="sm"
+                    >{m.sched_service_configured()}</Badge
+                  >
                   {#if !row.service}<Badge>{m.sched_service_unlinked()}</Badge>{/if}
                   {#if !et.public}<Badge>private</Badge>{/if}
                   {#if !et.active}<Badge>off</Badge>{/if}
