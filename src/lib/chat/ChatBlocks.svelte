@@ -205,7 +205,7 @@
   {@const pending = streaming && !result}
   {@const perm = toolPermission(block.name)}
   <details class="meta">
-    <summary>
+    <summary title={block.name} aria-label={block.name}>
       <Wrench size={12} class="mi" />
       <span class="label tool-name">{block.name}</span>
       {#if perm}
@@ -280,10 +280,11 @@
 <div class="turn" class:compact>
   {#each metaGroups as group, i (i)}
     {#if group.kind === 'thinking'}
+      {@const reasonLabel = streaming ? 'Thinking…' : 'Reasoning'}
       <details class="meta">
-        <summary>
+        <summary title={reasonLabel} aria-label={reasonLabel}>
           <Brain size={12} class="mi" />
-          <span class="label">{streaming ? 'Thinking…' : 'Reasoning'}</span>
+          <span class="label">{reasonLabel}</span>
         </summary>
         <div class="meta-body reason">{group.text}</div>
       </details>
@@ -293,10 +294,11 @@
       {@render toolRow(group.tools[0])}
     {:else}
       {@const status = groupStatus(group.tools)}
+      {@const groupLabel = `${group.tools.length} tool uses`}
       <details class="meta">
-        <summary>
+        <summary title={groupLabel} aria-label={groupLabel}>
           <Wrench size={12} class="mi" />
-          <span class="label">{group.tools.length} tool uses</span>
+          <span class="label">{groupLabel}</span>
           <span class="tool-arg">{[...new Set(group.tools.map((t) => t.name))].join(' · ')}</span>
           <span class="tool-status" class:err={status === 'err'}>
             {#if status === 'pending'}
@@ -372,6 +374,13 @@
   .turn.compact summary {
     padding: 1px var(--space-1);
     font-size: var(--font-size-caption);
+  }
+  /* Compact surfaces (floating panel): meta rows are icon + status only; the
+     label text lives in the summary's title/aria-label. */
+  .turn.compact summary .label,
+  .turn.compact summary .tool-arg,
+  .turn.compact summary .perm-chip {
+    display: none;
   }
   summary::-webkit-details-marker {
     display: none;

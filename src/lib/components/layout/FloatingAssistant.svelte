@@ -97,14 +97,46 @@
     assistant.scope.agentId = ui.selectedAgentId;
   });
 
-  // When opened + connected + we know the agent ID, lazy-load chat history
+  // The panel's active conversation per agent. "New chat" picks a fresh
+  // `agent:<id>:chat:<uuid>` key; persisting it is what makes a refresh reload
+  // the SAME thread instead of falling back to the agent's main session.
+  const sessionStorageKey = (id: string) => `assistant:session:${id}`;
+  const sessionKeyFor = (id: string) => agentChat[id]?.sessionKey ?? `agent:${id}:main`;
+  let restoredFor: string | null = null;
+
+  // When opened + connected + we know the agent ID, lazy-load chat history —
+  // restoring the persisted session key once per agent (before any history load).
   $effect(() => {
-    if (assistant.open && conn.connected && assistant.personalAgentId) {
-      const id = assistant.personalAgentId;
-      const existing = agentChat[id];
-      if (!existing || existing.messages.length === 0) {
-        loadChatHistory(id);
+    if (!(assistant.open && conn.connected && assistant.personalAgentId)) return;
+    const id = assistant.personalAgentId;
+    const existing = agentChat[id];
+    if (restoredFor !== id) {
+      restoredFor = id;
+      let stored: string | null = null;
+      try {
+        stored = localStorage.getItem(sessionStorageKey(id));
+      } catch {
+        /* ignore */
       }
+      if (stored) {
+        loadChatHistory(id, stored);
+        return;
+      }
+    }
+    if (!existing || existing.messages.length === 0) loadChatHistory(id);
+  });
+
+  // Persist whichever key the shared chat state ends up on (new chat here, or a
+  // conversation picked on /home) — only after the restore above has run, so a
+  // pre-restore `main` never overwrites the saved key.
+  $effect(() => {
+    const id = assistant.personalAgentId;
+    const sk = id ? agentChat[id]?.sessionKey : undefined;
+    if (!id || !sk || restoredFor !== id) return;
+    try {
+      localStorage.setItem(sessionStorageKey(id), sk);
+    } catch {
+      /* ignore */
     }
   });
 
@@ -170,7 +202,7 @@
     if (!text) return;
     // Prepend page-context envelope (route + focus + nav instructions) for the
     // model; the clean text is what shows in the transcript.
-    sendAssistantTurn(id, text, buildAssistantContext());
+    sendAssistantTurn(id, text, buildAssistantContext(), sessionKeyFor(id));
     draft = '';
   }
 
@@ -337,6 +369,11 @@
   let launcherEl: HTMLElement | null = $state(null);
   let pos = $state<{ left: number; top: number } | null>(null);
   let dragging = $state(false);
+  let dragMoved = $state(false);
+  // Home zone: dropping the pill within this distance of the bottom-right
+  // corner clears the saved position, so it returns to the hard-refresh default.
+  const HOME_ZONE = 64;
+  let homing = false;
   let vw = $state(typeof window !== 'undefined' ? window.innerWidth : 1280);
   let vh = $state(typeof window !== 'undefined' ? window.innerHeight : 800);
   let drag = { px: 0, py: 0, left: 0, top: 0, moved: false };
@@ -395,6 +432,34 @@
     return () => window.removeEventListener('resize', onResize);
   });
 
+  const inHomeZone = $derived(
+    dragging &&
+      dragMoved &&
+      !!pos &&
+      vw - (pos.left + launcherSize.w) <= HOME_ZONE &&
+      vh - (pos.top + launcherSize.h) <= HOME_ZONE,
+  );
+
+  // Slide to the default corner with the normal snap transition, then drop the
+  // custom position entirely (same state as a hard refresh).
+  function snapHome() {
+    const w = launcherW();
+    const h = launcherH();
+    pos = { left: vw - w - LAUNCH_MARGIN, top: vh - h - LAUNCH_MARGIN };
+    homing = true;
+    try {
+      localStorage.removeItem('assistant-launcher-pos');
+    } catch {
+      /* ignore */
+    }
+    setTimeout(homeSettled, 400); // fallback if no transition fires (already home)
+  }
+  function homeSettled() {
+    if (!homing) return;
+    homing = false;
+    pos = null;
+  }
+
   function snapToEdge() {
     if (!pos) return;
     const w = launcherW();
@@ -427,6 +492,8 @@
     drag = { px: e.clientX, py: e.clientY, left: pos.left, top: pos.top, moved: false };
     launcherEl.setPointerCapture(e.pointerId);
     dragging = true;
+    dragMoved = false;
+    homing = false;
   }
   function onLauncherPointerMove(e: PointerEvent) {
     if (!dragging || !launcherEl) return;
@@ -434,6 +501,7 @@
     if (!drag.moved && Math.abs(e.clientX - drag.px) < 4 && Math.abs(e.clientY - drag.py) < 4)
       return;
     drag.moved = true;
+    dragMoved = true;
     // Centre the COLLAPSED pill on the cursor. Measured size, not a live
     // offsetWidth read: the label collapse is a transition, so reading it
     // mid-drag returns an interpolated width and the pill slides sideways
@@ -454,8 +522,10 @@
     }
     if (drag.moved) {
       suppressClick = true; // a drag is not a click
-      snapToEdge();
+      if (inHomeZone) snapHome();
+      else snapToEdge();
     }
+    dragMoved = false;
   }
   function onLauncherClick() {
     if (suppressClick) {
@@ -527,6 +597,29 @@
     }
   }
 
+  // Hub dialogs are native <dialog>.showModal() (top layer + inert outside), so
+  // z-index alone can never paint the panel over them and it goes unclickable.
+  // The whole surface is a manual popover (top layer) re-parented INTO the open
+  // dialog while one is open, and back to <body> once it closes (a closed dialog
+  // may be removed from the DOM, taking the node with it).
+  let root = $state<HTMLDivElement | null>(null);
+  $effect(() => {
+    if (!root) return;
+    const el = root;
+    const place = () => {
+      const host = document.querySelector<HTMLElement>('dialog[open]') ?? document.body;
+      if (!el.isConnected || el.parentElement !== host) host.appendChild(el);
+      try {
+        if (!el.matches(':popover-open')) el.showPopover();
+      } catch {
+        /* already open or unsupported — z-index fallback still applies */
+      }
+    };
+    place();
+    const poll = setInterval(place, 400);
+    return () => clearInterval(poll);
+  });
+
   // Anchor by the half it sits in so hover-expand grows inward (never off-screen).
   const anchorRight = $derived(!!pos && pos.left + launcherW() / 2 > vw / 2);
   const launcherStyle = $derived.by(() => {
@@ -541,262 +634,298 @@
   });
 </script>
 
-<!-- Pill (collapsed state) -->
-{#if onMyAgentPage}
-  <!-- redundant on /my-agent — the page hosts the same chat inline -->
-{:else if callElsewhere && !assistant.open}
-  <!-- Live-call status pill: keeps the call reachable after navigating away. -->
-  <div
-    class="fixed bottom-[max(var(--space-4,16px),env(safe-area-inset-bottom,0px))] right-[max(var(--space-4,16px),env(safe-area-inset-right,0px))] z-[var(--layer-popover,40)] flex items-center gap-2.5 pl-2 pr-2.5 py-2 rounded-full bg-bg2 border border-accent/40 shadow-[var(--shadow-elevation-3,var(--shadow-md))]"
-  >
-    <Button
-      variant="ghost"
-      size="xs"
-      type="button"
-      onclick={() => (assistant.open = true)}
-      class="flex items-center gap-2 group"
-      title={m.a11y3_openCallTranscript()}
-    >
-      <span
-        class="w-7 h-7 rounded-full overflow-hidden bg-[var(--color-overlay)] ring-1 ring-accent/50 shrink-0"
-      >
-        <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
-      </span>
-      <span class="text-xs font-medium text-foreground tabular-nums">
-        {CALL_STATUS_LABEL[voiceCall.status] ?? m.floatingAssistant_onCall()}
-      </span>
-    </Button>
-    <Button
-      variant="ghost"
-      size="xs"
-      type="button"
-      onclick={toggleMute}
-      class="w-7 h-7 flex items-center justify-center rounded-full border border-border hover:bg-bg3 transition-colors {voiceCall.muted
-        ? 'text-accent border-accent/50'
-        : 'text-foreground'}"
-      title={voiceCall.muted ? m.a11y3_unmute() : m.a11y3_mute()}
-      aria-pressed={voiceCall.muted}
-    >
-      {#if voiceCall.muted}<MicOff size={13} />{:else}<Mic size={13} />{/if}
-    </Button>
-    <Button
-      variant="ghost"
-      size="xs"
-      type="button"
-      onclick={endCall}
-      class="w-7 h-7 flex items-center justify-center rounded-full border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
-      title={m.a11y3_endCall()}
-    >
-      <PhoneOff size={13} />
-    </Button>
-  </div>
-{:else if !assistant.open}
-  <!-- `!fixed` / `!h-auto` below are load-bearing, not cosmetic: Button's base
-         class hardcodes `relative` and `h-[--control-height-xs]`, and Tailwind
-         emits `.relative` AFTER `.fixed`, so class-attribute order does not
-         decide the winner. Un-forced, the pill is position:relative — it renders
-         at its static flow position (document bottom-left) and dragging writes
-         left/top as RELATIVE offsets, throwing it off-screen. -->
-  <Button
-    variant="ghost"
-    size="xs"
-    type="button"
-    {@attach (el: HTMLElement) => {
-      launcherEl = el;
-      measureLauncher();
-    }}
-    onpointerdown={onLauncherPointerDown}
-    onpointermove={onLauncherPointerMove}
-    onpointerup={onLauncherPointerUp}
-    onclick={onLauncherClick}
-    class="!fixed z-[var(--layer-popover,40)] !h-auto flex items-center gap-1.5 p-1.5 rounded-full bg-bg2 border border-border shadow-[var(--shadow-elevation-3,var(--shadow-md))] transition-colors hover:border-accent/50 hover:bg-bg3 group select-none touch-none {dragging
-      ? 'cursor-grabbing shadow-[var(--shadow-elevation-4,var(--shadow-lg))]'
-      : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'}"
-    style={launcherStyle}
-    aria-label={m.floatingAssistant_openLabel()}
-    title={m.floatingAssistant_openTitle()}
-  >
-    <!-- Icon chip — pairs with the kbd as a balanced two-token collapsed pill. -->
-    <span
-      class="flex items-center justify-center w-7 h-7 shrink-0 rounded-full bg-accent/10 text-accent transition-colors group-hover:bg-accent/15"
-    >
-      <Sparkles size={16} />
-    </span>
-    <!-- Label reveals on hover. Grid 0fr→1fr animates to the text's exact width
-             (no hardcoded max-width, no clipping). Flex items-center handles vertical
-             centring; leading-tight + py-0.5 give descenders (g, y) room inside the clip. -->
-    <span
-      class="grid grid-cols-[0fr] transition-[grid-template-columns] duration-[var(--duration-normal)] ease-out {dragging
-        ? ''
-        : 'group-hover:grid-cols-[1fr]'}"
-    >
-      <span class="overflow-hidden min-w-0">
-        <span
-          class="block px-1 py-0.5 whitespace-nowrap text-[length:var(--font-size-body)] font-medium leading-tight text-foreground"
-          >{m.floatingAssistant_askAnything()}</span
-        >
-      </span>
-    </span>
-    <kbd
-      class="shrink-0 flex items-center h-5 px-1.5 rounded-md bg-bg3 text-[length:var(--font-size-telemetry)] font-medium font-mono leading-none text-muted-foreground border border-border"
-      >{kbdToggle}</kbd
-    >
-  </Button>
-{:else}
-  <!-- Expanded panel — grows out of the launcher's corner, draggable by header -->
-  <div
-    class="fixed z-[var(--layer-popover,40)] w-[min(380px,calc(100vw-var(--space-page-gutter,16px)-var(--space-page-gutter,16px)))] h-[min(560px,calc(100dvh-var(--space-page-gutter,16px)-var(--space-page-gutter,16px)-env(safe-area-inset-bottom,0px)))] flex flex-col bg-bg2 border border-border rounded-xl shadow-[var(--shadow-overlay,var(--shadow-xl,var(--shadow-lg)))] overflow-hidden"
-    style={panelStyle}
-  >
-    <!-- Header (drag handle) -->
+<div bind:this={root} popover="manual" class="fa-root">
+  <!-- Pill (collapsed state) -->
+  {#if onMyAgentPage}
+    <!-- redundant on /my-agent — the page hosts the same chat inline -->
+  {:else if callElsewhere && !assistant.open}
+    <!-- Live-call status pill: keeps the call reachable after navigating away. -->
     <div
-      role="toolbar"
-      tabindex="-1"
-      aria-label={m.floatingAssistant_title()}
-      class="shrink-0 flex items-center gap-1 px-2 py-1.5 border-b border-border bg-bg3/40 select-none touch-none {panelDragging
-        ? 'cursor-grabbing'
-        : 'cursor-grab'}"
-      onpointerdown={onPanelHeaderPointerDown}
-      onpointermove={onPanelHeaderPointerMove}
-      onpointerup={onPanelHeaderPointerUp}
+      class="fixed bottom-[max(var(--space-4,16px),env(safe-area-inset-bottom,0px))] right-[max(var(--space-4,16px),env(safe-area-inset-right,0px))] z-[var(--layer-popover,40)] flex items-center gap-2.5 pl-2 pr-2.5 py-2 rounded-full bg-bg2 border border-accent/40 shadow-[var(--shadow-elevation-3,var(--shadow-md))]"
     >
-      <Sparkles size={13} class="text-accent shrink-0 ml-1" />
-      <span
-        class="text-[length:var(--font-size-label)] font-semibold text-foreground flex-1 truncate"
-        >{m.floatingAssistant_title()}</span
-      >
-      {#if !conn.connected && composerMode === 'chat'}
-        <span
-          class="shrink-0 w-1.5 h-1.5 rounded-full bg-warning"
-          title={m.floatingAssistant_offline()}
-        ></span>
-      {/if}
       <Button
         variant="ghost"
         size="xs"
         type="button"
-        onclick={newChat}
-        class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
-        aria-label={m.floatingAssistant_newChat()}
-        title={m.floatingAssistant_newChat()}
+        onclick={() => (assistant.open = true)}
+        class="flex items-center gap-2 group"
+        title={m.a11y3_openCallTranscript()}
       >
-        <SquarePen size={14} />
-      </Button>
-      <Button
-        variant="ghost"
-        size="xs"
-        type="button"
-        onclick={closeAssistant}
-        class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
-        aria-label={m.floatingAssistant_minimize()}
-        title={m.floatingAssistant_minimize()}
-      >
-        <Minus size={15} />
-      </Button>
-    </div>
-
-    {#if callElsewhere}
-      <!-- Live-call strip: status + controls while the call runs in the background -->
-      <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-accent/30 bg-accent/5">
         <span
           class="w-7 h-7 rounded-full overflow-hidden bg-[var(--color-overlay)] ring-1 ring-accent/50 shrink-0"
         >
           <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
         </span>
-        <span
-          class="text-[length:var(--font-size-label)] font-medium text-foreground flex-1 tabular-nums"
-        >
-          On call · {CALL_STATUS_LABEL[voiceCall.status] ?? ''}
-          {#if voiceCall.interim}<span class="text-muted-foreground italic"
-              >“{voiceCall.interim}”</span
-            >{/if}
+        <span class="text-xs font-medium text-foreground tabular-nums">
+          {CALL_STATUS_LABEL[voiceCall.status] ?? m.floatingAssistant_onCall()}
         </span>
+      </Button>
+      <Button
+        variant="ghost"
+        size="xs"
+        type="button"
+        onclick={toggleMute}
+        class="w-7 h-7 flex items-center justify-center rounded-full border border-border hover:bg-bg3 transition-colors {voiceCall.muted
+          ? 'text-accent border-accent/50'
+          : 'text-foreground'}"
+        title={voiceCall.muted ? m.a11y3_unmute() : m.a11y3_mute()}
+        aria-pressed={voiceCall.muted}
+      >
+        {#if voiceCall.muted}<MicOff size={13} />{:else}<Mic size={13} />{/if}
+      </Button>
+      <Button
+        variant="ghost"
+        size="xs"
+        type="button"
+        onclick={endCall}
+        class="w-7 h-7 flex items-center justify-center rounded-full border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
+        title={m.a11y3_endCall()}
+      >
+        <PhoneOff size={13} />
+      </Button>
+    </div>
+  {:else if !assistant.open}
+    {#if inHomeZone}
+      <!-- Drop target: the default bottom-right corner (clears the saved position). -->
+      <div
+        aria-hidden="true"
+        class="fixed z-[var(--layer-popover,40)] rounded-full bg-accent/14 border border-dashed border-accent pointer-events-none"
+        style={`right:${LAUNCH_MARGIN - 12}px; bottom:${LAUNCH_MARGIN - 12}px; width:${launcherSize.w + 24}px; height:${launcherSize.h + 24}px;`}
+      ></div>
+    {/if}
+    <!-- `!fixed` / `!h-auto` below are load-bearing, not cosmetic: Button's base
+         class hardcodes `relative` and `h-[--control-height-xs]`, and Tailwind
+         emits `.relative` AFTER `.fixed`, so class-attribute order does not
+         decide the winner. Un-forced, the pill is position:relative — it renders
+         at its static flow position (document bottom-left) and dragging writes
+         left/top as RELATIVE offsets, throwing it off-screen. -->
+    <Button
+      variant="ghost"
+      size="xs"
+      type="button"
+      {@attach (el: HTMLElement) => {
+        launcherEl = el;
+        measureLauncher();
+      }}
+      onpointerdown={onLauncherPointerDown}
+      onpointermove={onLauncherPointerMove}
+      onpointerup={onLauncherPointerUp}
+      ontransitionend={homeSettled}
+      onclick={onLauncherClick}
+      class="!fixed z-[var(--layer-popover,40)] !h-auto flex items-center gap-1.5 p-1.5 rounded-full bg-bg2 border border-border shadow-[var(--shadow-elevation-3,var(--shadow-md))] transition-colors hover:border-accent/50 hover:bg-bg3 group select-none touch-none {dragging
+        ? 'cursor-grabbing shadow-[var(--shadow-elevation-4,var(--shadow-lg))]'
+        : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'}"
+      style={launcherStyle}
+      aria-label={m.floatingAssistant_openLabel()}
+      title={m.floatingAssistant_openTitle()}
+    >
+      <!-- Icon chip — pairs with the kbd as a balanced two-token collapsed pill. -->
+      <span
+        class="flex items-center justify-center w-7 h-7 shrink-0 rounded-full bg-accent/10 text-accent transition-colors group-hover:bg-accent/15"
+      >
+        <Sparkles size={16} />
+      </span>
+      <!-- Label reveals on hover. Grid 0fr→1fr animates to the text's exact width
+             (no hardcoded max-width, no clipping). Flex items-center handles vertical
+             centring; leading-tight + py-0.5 give descenders (g, y) room inside the clip. -->
+      <span
+        class="grid grid-cols-[0fr] transition-[grid-template-columns] duration-[var(--duration-normal)] ease-out {dragging
+          ? ''
+          : 'group-hover:grid-cols-[1fr]'}"
+      >
+        <span class="overflow-hidden min-w-0">
+          <span
+            class="block px-1 py-0.5 whitespace-nowrap text-[length:var(--font-size-body)] font-medium leading-tight text-foreground"
+            >{m.floatingAssistant_askAnything()}</span
+          >
+        </span>
+      </span>
+      <kbd
+        class="shrink-0 flex items-center h-5 px-1.5 rounded-md bg-bg3 text-[length:var(--font-size-telemetry)] font-medium font-mono leading-none text-muted-foreground border border-border"
+        >{kbdToggle}</kbd
+      >
+    </Button>
+  {:else}
+    <!-- Expanded panel — grows out of the launcher's corner, draggable by header -->
+    <div
+      class="fixed z-[var(--layer-popover,40)] w-[min(380px,calc(100vw-var(--space-page-gutter,16px)-var(--space-page-gutter,16px)))] h-[min(560px,calc(100dvh-var(--space-page-gutter,16px)-var(--space-page-gutter,16px)-env(safe-area-inset-bottom,0px)))] flex flex-col bg-bg2 border border-border rounded-xl shadow-[var(--shadow-overlay,var(--shadow-xl,var(--shadow-lg)))] overflow-hidden"
+      style={panelStyle}
+    >
+      <!-- Header (drag handle) -->
+      <div
+        role="toolbar"
+        tabindex="-1"
+        aria-label={m.floatingAssistant_title()}
+        class="shrink-0 flex items-center gap-1 px-2 py-1.5 border-b border-border bg-bg3/40 select-none touch-none {panelDragging
+          ? 'cursor-grabbing'
+          : 'cursor-grab'}"
+        onpointerdown={onPanelHeaderPointerDown}
+        onpointermove={onPanelHeaderPointerMove}
+        onpointerup={onPanelHeaderPointerUp}
+      >
+        <Sparkles size={13} class="text-accent shrink-0 ml-1" />
+        <span
+          class="text-[length:var(--font-size-label)] font-semibold text-foreground flex-1 truncate"
+          >{m.floatingAssistant_title()}</span
+        >
+        {#if !conn.connected && composerMode === 'chat'}
+          <span
+            class="shrink-0 w-1.5 h-1.5 rounded-full bg-warning"
+            title={m.floatingAssistant_offline()}
+          ></span>
+        {/if}
         <Button
           variant="ghost"
           size="xs"
           type="button"
-          onclick={toggleMute}
-          class="w-6 h-6 flex items-center justify-center rounded-md border border-border hover:bg-bg3 transition-colors {voiceCall.muted
-            ? 'text-accent border-accent/50'
-            : 'text-foreground'}"
-          title={voiceCall.muted ? m.a11y3_unmute() : m.a11y3_mute()}
-          aria-pressed={voiceCall.muted}
+          onclick={newChat}
+          class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
+          aria-label={m.floatingAssistant_newChat()}
+          title={m.floatingAssistant_newChat()}
         >
-          {#if voiceCall.muted}<MicOff size={12} />{:else}<Mic size={12} />{/if}
+          <SquarePen size={14} />
         </Button>
         <Button
           variant="ghost"
           size="xs"
           type="button"
-          onclick={endCall}
-          class="w-6 h-6 flex items-center justify-center rounded-md border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
-          title={m.a11y3_endCall()}
+          onclick={closeAssistant}
+          class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
+          aria-label={m.floatingAssistant_minimize()}
+          title={m.floatingAssistant_minimize()}
         >
-          <PhoneOff size={12} />
+          <Minus size={15} />
         </Button>
       </div>
-    {/if}
 
-    <!-- Messages -->
-    <div
-      class="flex-1 overflow-y-auto px-3 py-3 space-y-2 min-h-0 [scrollbar-width:thin]"
-      bind:this={messagesEl}
-      onscroll={handleScroll}
-    >
-      {#if composerMode === 'factory'}
+      {#if callElsewhere}
+        <!-- Live-call strip: status + controls while the call runs in the background -->
         <div
-          class="h-full flex flex-col items-center justify-center text-center px-7 factory-welcome"
+          class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-accent/30 bg-accent/5"
         >
-          <div class="factory-welcome-mark"><Factory size={20} /></div>
-          <span class="factory-welcome-status"><i></i>{m.factoryDesk_stateQueued()}</span>
-          <h3>{m.factoryDesk_welcomeTitle()}</h3>
-          <p>{m.factoryDesk_welcomeDescription()}</p>
-        </div>
-      {:else if assistant.loading}
-        <div
-          class="h-full flex items-center justify-center text-[length:var(--font-size-label)] text-muted-foreground"
-        >
-          {m.floatingAssistant_loading()}
-        </div>
-      {:else if assistant.error}
-        <div class="h-full flex flex-col items-center justify-center text-center px-6">
-          <AlertCircle size={20} class="text-destructive mb-2" />
-          <p class="text-[length:var(--font-size-label)] text-muted-foreground">
-            {assistant.error}
-          </p>
-        </div>
-      {:else if !assistant.personalAgentId}
-        <div
-          class="h-full flex items-center justify-center text-[length:var(--font-size-label)] text-muted-foreground"
-        >
-          {m.floatingAssistant_connecting()}
-        </div>
-      {:else if messages.length === 0 && !chat?.loading && !stream}
-        <div class="h-full flex flex-col items-center justify-center text-center px-6">
-          <div
-            class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mb-3"
+          <span
+            class="w-7 h-7 rounded-full overflow-hidden bg-[var(--color-overlay)] ring-1 ring-accent/50 shrink-0"
           >
-            <Sparkles size={20} class="text-accent" />
-          </div>
-          <h3 class="text-sm font-semibold text-foreground mb-1">{greeting}</h3>
-          <p class="text-[length:var(--font-size-label)] text-muted-foreground leading-relaxed">
-            {m.floatingAssistant_greeting()}
-          </p>
+            <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
+          </span>
+          <span
+            class="text-[length:var(--font-size-label)] font-medium text-foreground flex-1 tabular-nums"
+          >
+            On call · {CALL_STATUS_LABEL[voiceCall.status] ?? ''}
+            {#if voiceCall.interim}<span class="text-muted-foreground italic"
+                >“{voiceCall.interim}”</span
+              >{/if}
+          </span>
+          <Button
+            variant="ghost"
+            size="xs"
+            type="button"
+            onclick={toggleMute}
+            class="w-6 h-6 flex items-center justify-center rounded-md border border-border hover:bg-bg3 transition-colors {voiceCall.muted
+              ? 'text-accent border-accent/50'
+              : 'text-foreground'}"
+            title={voiceCall.muted ? m.a11y3_unmute() : m.a11y3_mute()}
+            aria-pressed={voiceCall.muted}
+          >
+            {#if voiceCall.muted}<MicOff size={12} />{:else}<Mic size={12} />{/if}
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            type="button"
+            onclick={endCall}
+            class="w-6 h-6 flex items-center justify-center rounded-md border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
+            title={m.a11y3_endCall()}
+          >
+            <PhoneOff size={12} />
+          </Button>
         </div>
-      {:else}
-        {#each messages as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
-          {@const role = msgRole(msg)}
-          {#if isToolResultOnly(msg)}
-            <!-- tool-output carrier turn — folded into the matching tool card, not its own bubble -->
-          {:else if role === 'user'}
-            {@const text = cleanInboundForDisplay(extractText(msg) ?? '')}
-            {#if text && !isActionToken(text)}
-              <div class="flex flex-col gap-0.5 items-end">
-                <div
-                  class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-accent/15 text-foreground border border-accent/20 whitespace-pre-wrap"
-                >
-                  {text}
+      {/if}
+
+      <!-- Messages -->
+      <div
+        class="flex-1 overflow-y-auto px-3 py-3 space-y-2 min-h-0 [scrollbar-width:thin]"
+        bind:this={messagesEl}
+        onscroll={handleScroll}
+      >
+        {#if composerMode === 'factory'}
+          <div
+            class="h-full flex flex-col items-center justify-center text-center px-7 factory-welcome"
+          >
+            <div class="factory-welcome-mark"><Factory size={20} /></div>
+            <span class="factory-welcome-status"><i></i>{m.factoryDesk_stateQueued()}</span>
+            <h3>{m.factoryDesk_welcomeTitle()}</h3>
+            <p>{m.factoryDesk_welcomeDescription()}</p>
+          </div>
+        {:else if assistant.loading}
+          <div
+            class="h-full flex items-center justify-center text-[length:var(--font-size-label)] text-muted-foreground"
+          >
+            {m.floatingAssistant_loading()}
+          </div>
+        {:else if assistant.error}
+          <div class="h-full flex flex-col items-center justify-center text-center px-6">
+            <AlertCircle size={20} class="text-destructive mb-2" />
+            <p class="text-[length:var(--font-size-label)] text-muted-foreground">
+              {assistant.error}
+            </p>
+          </div>
+        {:else if !assistant.personalAgentId}
+          <div
+            class="h-full flex items-center justify-center text-[length:var(--font-size-label)] text-muted-foreground"
+          >
+            {m.floatingAssistant_connecting()}
+          </div>
+        {:else if messages.length === 0 && !chat?.loading && !stream}
+          <div class="h-full flex flex-col items-center justify-center text-center px-6">
+            <div
+              class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mb-3"
+            >
+              <Sparkles size={20} class="text-accent" />
+            </div>
+            <h3 class="text-sm font-semibold text-foreground mb-1">{greeting}</h3>
+            <p class="text-[length:var(--font-size-label)] text-muted-foreground leading-relaxed">
+              {m.floatingAssistant_greeting()}
+            </p>
+          </div>
+        {:else}
+          {#each messages as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
+            {@const role = msgRole(msg)}
+            {#if isToolResultOnly(msg)}
+              <!-- tool-output carrier turn — folded into the matching tool card, not its own bubble -->
+            {:else if role === 'user'}
+              {@const text = cleanInboundForDisplay(extractText(msg) ?? '')}
+              {#if text && !isActionToken(text)}
+                <div class="flex flex-col gap-0.5 items-end">
+                  <div
+                    class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-accent/15 text-foreground border border-accent/20 whitespace-pre-wrap"
+                  >
+                    {text}
+                  </div>
+                  {#if msgTs(msg)}
+                    <span
+                      class="text-[length:var(--font-size-telemetry)] text-muted-strong px-1 tabular-nums"
+                    >
+                      {fmtTime(msgTs(msg))}
+                    </span>
+                  {/if}
                 </div>
+              {/if}
+            {:else if assistantHasContent(msg)}
+              <div class="flex flex-col gap-0.5 items-start">
+                <ChatBlocks
+                  message={msg}
+                  toolResults={toolResultsById}
+                  compact
+                  onArtifactCallback={(cb) => {
+                    const id = assistant.personalAgentId;
+                    if (id) sendAssistantTurn(id, cb, buildAssistantContext(), sessionKeyFor(id));
+                  }}
+                  onChoice={(text) => {
+                    const id = assistant.personalAgentId;
+                    if (id) sendAssistantTurn(id, text, buildAssistantContext(), sessionKeyFor(id));
+                  }}
+                />
                 {#if msgTs(msg)}
                   <span
                     class="text-[length:var(--font-size-telemetry)] text-muted-strong px-1 tabular-nums"
@@ -806,143 +935,147 @@
                 {/if}
               </div>
             {/if}
-          {:else if assistantHasContent(msg)}
+          {/each}
+
+          {#if stream !== null && stream !== ''}
             <div class="flex flex-col gap-0.5 items-start">
-              <ChatBlocks
-                message={msg}
-                toolResults={toolResultsById}
-                compact
-                onArtifactCallback={(cb) => {
-                  const id = assistant.personalAgentId;
-                  if (id) sendAssistantTurn(id, cb, buildAssistantContext());
-                }}
-                onChoice={(text) => {
-                  const id = assistant.personalAgentId;
-                  if (id) sendAssistantTurn(id, text, buildAssistantContext());
-                }}
-              />
-              {#if msgTs(msg)}
+              <div
+                class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-bg3 text-foreground border border-dashed border-border opacity-90"
+              >
+                <MarkdownMessage value={stripTtsTags(stream)} tone="assistant" />
+              </div>
+            </div>
+          {:else if sending}
+            <div
+              class="flex items-center gap-2 px-3 py-2 text-[length:var(--font-size-label)] text-muted-foreground"
+            >
+              <span class="flex gap-1">
+                <span class="w-1 h-1 rounded-full bg-accent animate-pulse"></span>
                 <span
-                  class="text-[length:var(--font-size-telemetry)] text-muted-strong px-1 tabular-nums"
-                >
-                  {fmtTime(msgTs(msg))}
-                </span>
-              {/if}
+                  class="w-1 h-1 rounded-full bg-accent animate-pulse"
+                  style="animation-delay: 100ms"
+                ></span>
+                <span
+                  class="w-1 h-1 rounded-full bg-accent animate-pulse"
+                  style="animation-delay: 200ms"
+                ></span>
+              </span>
+              {m.floatingAssistant_thinking()}
             </div>
           {/if}
-        {/each}
 
-        {#if stream !== null && stream !== ''}
-          <div class="flex flex-col gap-0.5 items-start">
+          {#if chat?.lastError}
             <div
-              class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-bg3 text-foreground border border-dashed border-border opacity-90"
+              class="flex items-start gap-1.5 px-2 py-1.5 text-[length:var(--font-size-label)] text-destructive bg-destructive/10 border border-destructive/20 rounded-md"
             >
-              <MarkdownMessage value={stripTtsTags(stream)} tone="assistant" />
+              <AlertCircle size={11} class="mt-0.5 shrink-0" />
+              <span class="break-words">{chat.lastError}</span>
             </div>
-          </div>
-        {:else if sending}
-          <div
-            class="flex items-center gap-2 px-3 py-2 text-[length:var(--font-size-label)] text-muted-foreground"
-          >
-            <span class="flex gap-1">
-              <span class="w-1 h-1 rounded-full bg-accent animate-pulse"></span>
-              <span
-                class="w-1 h-1 rounded-full bg-accent animate-pulse"
-                style="animation-delay: 100ms"
-              ></span>
-              <span
-                class="w-1 h-1 rounded-full bg-accent animate-pulse"
-                style="animation-delay: 200ms"
-              ></span>
-            </span>
-            {m.floatingAssistant_thinking()}
-          </div>
+          {/if}
         {/if}
+      </div>
 
-        {#if chat?.lastError}
-          <div
-            class="flex items-start gap-1.5 px-2 py-1.5 text-[length:var(--font-size-label)] text-destructive bg-destructive/10 border border-destructive/20 rounded-md"
-          >
-            <AlertCircle size={11} class="mt-0.5 shrink-0" />
-            <span class="break-words">{chat.lastError}</span>
-          </div>
-        {/if}
+      {#if composerMode === 'factory' && (factorySending || factoryIntake || factoryError)}
+        <FactoryIntakeCard intake={factoryIntake} pending={factorySending} error={factoryError} />
       {/if}
-    </div>
 
-    {#if composerMode === 'factory' && (factorySending || factoryIntake || factoryError)}
-      <FactoryIntakeCard intake={factoryIntake} pending={factorySending} error={factoryError} />
-    {/if}
-
-    <!-- Scope badge + input -->
-    <div class="shrink-0 border-t border-border bg-bg3/40">
-      <div class="composer-modes" aria-label={m.factoryDesk_controlDesk()}>
-        <Button
-          variant="ghost"
-          size="xs"
-          type="button"
-          class={composerMode === 'chat' ? 'active' : undefined}
-          aria-pressed={composerMode === 'chat'}
-          onclick={() => (composerMode = 'chat')}
-          ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</Button
-        >
-        <Button
-          variant="ghost"
-          size="xs"
-          type="button"
-          class={composerMode === 'factory' ? 'active' : undefined}
-          aria-pressed={composerMode === 'factory'}
-          onclick={() => (composerMode = 'factory')}
-          ><Factory size={11} /> {m.factoryDesk_modeFactory()}</Button
-        >
-        {#if composerMode === 'factory'}
-          <span>{m.factoryDesk_factoryHint()}</span>
-        {/if}
-      </div>
-      <div
-        class="flex items-center gap-1.5 px-3 py-1.5 text-[length:var(--font-size-telemetry)] text-muted-foreground border-b border-border/60"
-      >
-        <span class="font-semibold uppercase tracking-wider">{m.floatingAssistant_viewing()}:</span>
-        <span class="truncate flex-1">{scopeLabel}</span>
-        <ChevronDown size={10} class="opacity-50" />
-      </div>
-      <div class="p-2.5">
-        <div class="flex items-end gap-2">
-          <textarea
-            bind:this={inputEl}
-            bind:value={draft}
-            onkeydown={onInputKey}
-            rows="1"
-            placeholder={composerMode === 'factory'
-              ? m.factoryDesk_placeholder()
-              : canSend
-                ? m.floatingAssistant_askAnything()
-                : conn.connected
-                  ? m.common_loading()
-                  : m.floatingAssistant_offline()}
-            disabled={!canSubmit}
-            class="flex-1 min-w-0 resize-none bg-bg border border-border rounded-md px-2.5 py-1.5 text-[length:var(--font-size-label)] text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50 max-h-[120px] disabled:opacity-50"
-          ></textarea>
+      <!-- Scope badge + input -->
+      <div class="shrink-0 border-t border-border bg-bg3/40">
+        <div class="composer-modes" aria-label={m.factoryDesk_controlDesk()}>
           <Button
             variant="ghost"
             size="xs"
             type="button"
-            onclick={send}
-            disabled={!draft.trim() || !canSubmit}
-            class="shrink-0 w-7 h-7 flex items-center justify-center rounded-md bg-accent text-bg hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-            aria-label={composerMode === 'factory'
-              ? m.factoryDesk_submit()
-              : m.floatingAssistant_send()}
+            class={composerMode === 'chat' ? 'active' : undefined}
+            aria-pressed={composerMode === 'chat'}
+            onclick={() => (composerMode = 'chat')}
+            ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</Button
           >
-            <Send size={12} />
-          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            type="button"
+            class={composerMode === 'factory' ? 'active' : undefined}
+            aria-pressed={composerMode === 'factory'}
+            onclick={() => (composerMode = 'factory')}
+            ><Factory size={11} /> {m.factoryDesk_modeFactory()}</Button
+          >
+          {#if composerMode === 'factory'}
+            <span>{m.factoryDesk_factoryHint()}</span>
+          {/if}
+        </div>
+        <div
+          class="flex items-center gap-1.5 px-3 py-1.5 text-[length:var(--font-size-telemetry)] text-muted-foreground border-b border-border/60"
+        >
+          <span class="font-semibold uppercase tracking-wider"
+            >{m.floatingAssistant_viewing()}:</span
+          >
+          <span class="truncate flex-1">{scopeLabel}</span>
+          <ChevronDown size={10} class="opacity-50" />
+        </div>
+        <div class="p-2.5">
+          <div class="flex items-end gap-2">
+            <textarea
+              bind:this={inputEl}
+              bind:value={draft}
+              onkeydown={onInputKey}
+              rows="1"
+              placeholder={composerMode === 'factory'
+                ? m.factoryDesk_placeholder()
+                : canSend
+                  ? m.floatingAssistant_askAnything()
+                  : conn.connected
+                    ? m.common_loading()
+                    : m.floatingAssistant_offline()}
+              disabled={!canSubmit}
+              class="flex-1 min-w-0 resize-none bg-bg border border-border rounded-md px-2.5 py-1.5 text-[length:var(--font-size-label)] text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50 max-h-[120px] disabled:opacity-50"
+            ></textarea>
+            <Button
+              variant="ghost"
+              size="xs"
+              type="button"
+              onclick={send}
+              disabled={!draft.trim() || !canSubmit}
+              class="shrink-0 w-7 h-7 flex items-center justify-center rounded-md bg-accent text-bg hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              aria-label={composerMode === 'factory'
+                ? m.factoryDesk_submit()
+                : m.floatingAssistant_send()}
+            >
+              <Send size={12} />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-{/if}
+  {/if}
+</div>
 
 <style>
+  /* Manual popover = top layer. Reset the UA popover box to a transparent,
+     click-through viewport overlay; the pill/panel inside keep their own
+     `position: fixed` coordinates (top-layer boxes are viewport-relative). */
+  .fa-root,
+  .fa-root:popover-open {
+    position: fixed;
+    inset: 0;
+    width: auto;
+    height: auto;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    overflow: visible;
+    z-index: var(--layer-popover);
+    pointer-events: none;
+  }
+  .fa-root::backdrop {
+    background: transparent;
+  }
+  .fa-root > :global(*) {
+    pointer-events: auto;
+  }
   /* Grows out of the launcher: transform-origin is set inline to the bubble's
        corner, so scaling up reads as the chat window emerging from the pill. */
   @keyframes assistant-pop-in {
