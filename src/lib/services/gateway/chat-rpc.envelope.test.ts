@@ -19,6 +19,11 @@ describe('cleanInboundForDisplay', () => {
       cleanInboundForDisplay(`${PREFIX}plus\n\n${ENVELOPE.slice(0, 80)}\n...(truncated)...`),
     ).toBe('plus');
   });
+  it('marks a legacy envelope-first turn the gateway truncated (words unrecoverable)', () => {
+    const out = cleanInboundForDisplay(`${PREFIX}${ENVELOPE.slice(0, 80)}\n...(truncated)...`);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out).not.toContain('In-app assistant');
+  });
   it('still handles the legacy envelope-first layout and silent turns', () => {
     expect(cleanInboundForDisplay(`${PREFIX}${ENVELOPE}\n\nhola`)).toBe('hola');
     expect(

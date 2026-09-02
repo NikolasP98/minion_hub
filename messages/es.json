@@ -1070,6 +1070,7 @@
   "channel_update": "Actualizar canal",
   "channel_waitingQr": "Esperando código QR del servidor...",
   "chat_addNoteOrSend": "Añade una nota o solo envía el contexto…",
+  "chat_history_truncated": "(mensaje anterior: el límite de la transcripción cortó su texto)",
   "chat_artifact_invalid": "No se pudo mostrar esta tarjeta interactiva.",
   "chat_artifact_title": "Contenido interactivo",
   "chat_askYourAgent": "Pregunta a tu agente…",

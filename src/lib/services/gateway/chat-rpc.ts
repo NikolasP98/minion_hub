@@ -4,6 +4,7 @@
 // existing `$lib/services/gateway.svelte` import paths keep working.
 
 import { ensureAgentChat, pushChatMessage } from '$lib/state/chat/chat.svelte';
+import * as m from '$lib/paraglide/messages';
 import { conn } from '$lib/state/gateway/connection.svelte';
 import { uuid } from '@minion-stack/shared';
 import { sendRequest } from '../gateway-rpc';
@@ -209,13 +210,18 @@ export function cleanInboundForDisplay(text: string): string {
     const close = open >= 0 ? t.indexOf('```', open + 3) : -1;
     if (close >= 0) t = t.slice(close + 3);
   }
+  t = t.replace(/^\s*\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\]]*\]\s*/, '');
   // Our page envelope: the user's text is sent BEFORE it (so gateway history
   // truncation never eats what they typed); cut from its start to its end
   // marker, or to the end of the text when the gateway truncated it.
   const env = t.indexOf(ENVELOPE_START);
   if (env >= 0) {
     const end = t.indexOf(ENVELOPE_END, env);
-    t = t.slice(0, env) + (end >= 0 ? t.slice(end + ENVELOPE_END.length) : '');
+    const before = t.slice(0, env);
+    t = before + (end >= 0 ? t.slice(end + ENVELOPE_END.length) : '');
+    // Turns recorded envelope-first (before 2026-09-02) that the gateway
+    // truncated lost the user's words entirely: say so instead of a gap.
+    if (end < 0 && !before.trim()) return m.chat_history_truncated();
   }
   for (let changed = true; changed;) {
     changed = false;
