@@ -38,9 +38,8 @@ export interface LoadBookingsViewOptions {
   /** Row cap handed to `listBookings`. */
   limit: number;
   /**
-   * Honour `?contact=` (show ALL of one contact's bookings, unwindowed) and
-   * `?new=1` (open the New-booking modal pre-bound to that contact). Adds
-   * `contactId` / `contactName` / `openNew` to the returned data.
+   * Honour `?contact=` (show ALL of one contact's bookings, unwindowed). Adds
+   * `contactId` / `contactName` to the returned data.
    */
   contactScope?: boolean;
 }
@@ -65,7 +64,6 @@ export interface BookingsViewLoadData {
 export interface BookingsViewContactScope {
   contactId: string | null;
   contactName: string | null;
-  openNew: boolean;
 }
 
 export async function loadBookingsView(
@@ -84,10 +82,8 @@ export async function loadBookingsView(
   if (!ctx) throw error(401, 'Authentication required');
   depends(opts.dependsKey);
 
-  // Cross-module nav: ?contact= shows ALL of one contact's bookings (no window),
-  // ?new=1 opens the New-appointment modal pre-bound to that contact.
+  // Cross-module nav: ?contact= shows ALL of one contact's bookings (no window).
   const contact = opts.contactScope ? (url.searchParams.get('contact') ?? undefined) : undefined;
-  const openNew = opts.contactScope === true && url.searchParams.get('new') === '1';
 
   const now = Date.now();
   const maskAttendeePii = await shouldMaskSensitive(locals, 'scheduling');
@@ -141,6 +137,5 @@ export async function loadBookingsView(
     ...base,
     contactId: contact ?? null,
     contactName: contactRec?.contact?.displayName ?? null,
-    openNew,
   };
 }

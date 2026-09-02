@@ -82,6 +82,23 @@
   const titleId = `${uid}-title`;
   const instructionsId = `${uid}-instructions`;
   let wide = $state(false);
+  // Hub dialogs are native <dialog>.showModal() (top layer + inert outside): no
+  // z-index paints over them and a portal to <body> is dead to input. The frame
+  // is a manual popover (top layer, shown AFTER the dialog so it stacks above)
+  // and its portal root is re-parented into the open dialog so it is never inert.
+  let frameEl = $state<HTMLDivElement | null>(null);
+  $effect(() => {
+    const el = frameEl;
+    if (!el) return;
+    const host = document.querySelector<HTMLDialogElement>('dialog[open]');
+    const root = el.closest('[data-portal-root]') ?? el;
+    if (host && !host.contains(root)) host.appendChild(root);
+    try {
+      el.showPopover?.();
+    } catch {
+      /* already open or unsupported — z-index fallback still applies */
+    }
+  });
   let dragging = false;
   let resizing = false;
   let startPointerX = 0;
@@ -202,6 +219,8 @@
 {#if open}
   <Layer tier="modal" portal position="fixed" class="draggable-window-layer">
     <div
+      bind:this={frameEl}
+      popover="manual"
       data-component="draggable-window"
       data-part="window"
       data-presentation={presentation}
@@ -284,6 +303,19 @@
     background: var(--color-overlay, var(--elevation-4-bg));
     box-shadow: var(--shadow-overlay, var(--shadow-xl, var(--shadow-lg)));
     outline: none;
+  }
+  /* Undo the UA popover box (inset:0, auto margins, fit-content, padding). */
+  [data-component='draggable-window']:popover-open {
+    margin: 0;
+    padding: 0;
+    width: auto;
+    height: auto;
+  }
+  [data-presentation='floating']:popover-open {
+    inset: auto;
+  }
+  [data-component='draggable-window']::backdrop {
+    background: transparent;
   }
   [data-presentation='fullscreen'] {
     inset: 0;

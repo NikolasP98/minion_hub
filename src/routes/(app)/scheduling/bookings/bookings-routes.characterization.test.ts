@@ -124,7 +124,6 @@ describe('/scheduling/bookings load — pinned key set', () => {
         'stockEnabled',
         'contactId',
         'contactName',
-        'openNew',
         'accrualSummaries',
       ].sort(),
     );
@@ -149,7 +148,6 @@ describe('/scheduling/bookings load — pinned key set', () => {
     ]);
     expect(result.stockEnabled).toBe(true);
     expect(result.contactId).toBeNull();
-    expect(result.openNew).toBe(false);
   });
 
   it('forwards maskAttendeePii: true when the RBAC decision says to mask attendees', async () => {
@@ -174,7 +172,7 @@ describe('/scheduling/bookings load — pinned key set', () => {
   it('switches to a contact-scoped, unwindowed query when ?contact= is present', async () => {
     const { load } = await import('./+page.server');
     mocks.getContact.mockResolvedValue({ contact: { displayName: 'Jane Doe' } });
-    const url = new URL('http://localhost/scheduling/bookings?contact=c1&new=1');
+    const url = new URL('http://localhost/scheduling/bookings?contact=c1');
 
     const result = (await load({
       locals: { orgKind: 'business', moduleStates: {} },
@@ -190,7 +188,14 @@ describe('/scheduling/bookings load — pinned key set', () => {
     expect(result.bookings).toEqual(BOOKINGS);
     expect(result.contactId).toBe('c1');
     expect(result.contactName).toBe('Jane Doe');
-    expect(result.openNew).toBe(true);
+  });
+
+  it('redirects the legacy ?new=1 deep link to the in-page booking form', async () => {
+    const { load } = await import('./+page.server');
+    const url = new URL('http://localhost/scheduling/bookings?contact=c1&new=1');
+    await expect(
+      load({ locals: { orgKind: 'business', moduleStates: {} }, depends: vi.fn(), url } as never),
+    ).rejects.toMatchObject({ status: 302, location: '/scheduling/bookings/new?contact=c1' });
   });
 
   it('skips the stock-accrual read entirely when stock is not effectively enabled (kind-hidden or toggled off)', async () => {

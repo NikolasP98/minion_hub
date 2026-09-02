@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "baseCommit": "f50efd640570a97a4e3891035b20ea10bfc6b5e3",
+  "baseCommit": "326a44760403d05d1745bc3afb8d76ead64b15f6",
   "sourceRef": "HEAD",
-  "sourceCommit": "f50efd640570a97a4e3891035b20ea10bfc6b5e3",
-  "sourceTreeSha": "ea1d25e91e4fd370621c72c98f33c6e1ce9a1af0",
-  "workingTreeFingerprint": "git-tree:ea1d25e91e4fd370621c72c98f33c6e1ce9a1af0",
+  "sourceCommit": "326a44760403d05d1745bc3afb8d76ead64b15f6",
+  "sourceTreeSha": "56c2fb02c5bb60c346a2544e3e6bc8cea54f2600",
+  "workingTreeFingerprint": "git-tree:56c2fb02c5bb60c346a2544e3e6bc8cea54f2600",
   "summary": {
-    "endpoints": 150,
-    "screens": 140,
+    "endpoints": 151,
+    "screens": 141,
     "redirects": 10,
     "dynamicScreens": 28,
-    "appScreens": 130,
+    "appScreens": 131,
     "publicScreens": 10
   },
   "knownBaselineFailures": [
@@ -86,9 +86,13 @@
       "dynamic": false,
       "redirectContract": {
         "probePath": "/ads?utm_source=ui-audit",
-        "statuses": [301],
+        "statuses": [
+          301
+        ],
         "location": "/socials?utm_source=ui-audit",
-        "outcomes": ["preserves-query"]
+        "outcomes": [
+          "preserves-query"
+        ]
       },
       "observations": {
         "pageHeader": false,
@@ -107,9 +111,14 @@
       "dynamic": true,
       "redirectContract": {
         "probePath": "/ads/campaigns/ui-audit?utm_source=ui-audit",
-        "statuses": [301],
+        "statuses": [
+          301
+        ],
         "location": "/socials/campaigns/ui-audit?utm_source=ui-audit",
-        "outcomes": ["preserves-path", "preserves-query"]
+        "outcomes": [
+          "preserves-path",
+          "preserves-query"
+        ]
       },
       "observations": {
         "pageHeader": false,
@@ -353,9 +362,13 @@
       "dynamic": false,
       "redirectContract": {
         "probePath": "/builder",
-        "statuses": [308],
+        "statuses": [
+          308
+        ],
         "location": "/agents/builder",
-        "outcomes": ["legacy-route"]
+        "outcomes": [
+          "legacy-route"
+        ]
       },
       "observations": {
         "pageHeader": false,
@@ -539,9 +552,13 @@
       "dynamic": false,
       "redirectContract": {
         "probePath": "/crm/cleanup",
-        "statuses": [308],
+        "statuses": [
+          308
+        ],
         "location": "/crm/settings?tab=hygiene",
-        "outcomes": ["preserves-tab-target"]
+        "outcomes": [
+          "preserves-tab-target"
+        ]
       },
       "observations": {
         "pageHeader": false,
@@ -965,9 +982,20 @@
       "dynamic": false,
       "redirectContract": {
         "probePath": "/pos",
-        "statuses": [302, 403],
-        "locations": ["/pos/sell", "/pos/appointments", "/pos/catalog", "/pos/refills"],
-        "outcomes": ["first-permitted-child", "permission-denied"]
+        "statuses": [
+          302,
+          403
+        ],
+        "locations": [
+          "/pos/sell",
+          "/pos/appointments",
+          "/pos/catalog",
+          "/pos/refills"
+        ],
+        "outcomes": [
+          "first-permitted-child",
+          "permission-denied"
+        ]
       },
       "observations": {
         "pageHeader": false,
@@ -1166,6 +1194,21 @@
       "dynamic": false,
       "observations": {
         "pageHeader": false,
+        "explicitResponsiveRule": false,
+        "nativeButtons": 0,
+        "nativeInputs": 0,
+        "fetchSites": 0
+      }
+    },
+    {
+      "id": "scheduling.bookings.new",
+      "pattern": "/scheduling/bookings/new",
+      "source": "src/routes/(app)/scheduling/bookings/new/+page.svelte",
+      "family": "app",
+      "kind": "screen",
+      "dynamic": false,
+      "observations": {
+        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
@@ -1496,9 +1539,14 @@
       "dynamic": false,
       "redirectContract": {
         "probePath": "/shells?source=ui-audit",
-        "statuses": [307],
+        "statuses": [
+          307
+        ],
         "location": "/cloud?source=ui-audit",
-        "outcomes": ["preserves-query", "legacy-route"]
+        "outcomes": [
+          "preserves-query",
+          "legacy-route"
+        ]
       },
       "observations": {
         "pageHeader": true,
@@ -1517,9 +1565,14 @@
       "dynamic": true,
       "redirectContract": {
         "probePath": "/shells/ui-audit-shell",
-        "statuses": [307],
+        "statuses": [
+          307
+        ],
         "location": "/cloud?server=ui-audit-shell",
-        "outcomes": ["preserves-parameter", "legacy-route"]
+        "outcomes": [
+          "preserves-parameter",
+          "legacy-route"
+        ]
       },
       "observations": {
         "pageHeader": true,
@@ -1793,9 +1846,14 @@
       "dynamic": false,
       "redirectContract": {
         "probePath": "/terminal?server=ui-audit-shell",
-        "statuses": [307],
+        "statuses": [
+          307
+        ],
         "location": "/cloud/terminal?server=ui-audit-shell",
-        "outcomes": ["preserves-query", "legacy-route"]
+        "outcomes": [
+          "preserves-query",
+          "legacy-route"
+        ]
       },
       "observations": {
         "pageHeader": true,
@@ -1814,9 +1872,13 @@
       "dynamic": false,
       "redirectContract": {
         "probePath": "/tools",
-        "statuses": [307],
+        "statuses": [
+          307
+        ],
         "location": "/capabilities?tab=tools",
-        "outcomes": ["preserves-tab-target"]
+        "outcomes": [
+          "preserves-tab-target"
+        ]
       },
       "observations": {
         "pageHeader": false,
@@ -2180,9 +2242,13 @@
       "dynamic": true,
       "redirectContract": {
         "probePath": "/workshop/ui-audit",
-        "statuses": [308],
+        "statuses": [
+          308
+        ],
         "location": "/agents/workshop/ui-audit",
-        "outcomes": ["preserves-path"]
+        "outcomes": [
+          "preserves-path"
+        ]
       },
       "observations": {
         "pageHeader": false,

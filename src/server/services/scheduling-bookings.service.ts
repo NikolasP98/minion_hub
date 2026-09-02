@@ -97,6 +97,9 @@ export interface CreateBookingInput {
   /** Link to a specific CRM contact (internal booking picked one). When set it's
    *  used directly; otherwise the contact is resolved/created from phone/email. */
   crmContactId?: string | null;
+  /** Party-spine pick (CustomerPicker). Resolves to the party's CRM contact when
+   *  no crmContactId is given; a party without a contact falls back to phone/email. */
+  partyId?: string | null;
   source?: 'public_link' | 'internal' | 'import';
   /** Prefer this resource if it's free for the slot. */
   preferredResourceId?: string | null;
@@ -272,6 +275,14 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
         .select({ id: crmContacts.id })
         .from(crmContacts)
         .where(and(eq(crmContacts.id, input.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
+        .limit(1);
+      if (hit) crmContactId = hit.id;
+    }
+    if (!crmContactId && input.partyId) {
+      const [hit] = await tx
+        .select({ id: crmContacts.id })
+        .from(crmContacts)
+        .where(and(eq(crmContacts.partyId, input.partyId), eq(crmContacts.orgId, ctx.tenantId)))
         .limit(1);
       if (hit) crmContactId = hit.id;
     }

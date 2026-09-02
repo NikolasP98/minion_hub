@@ -60,7 +60,8 @@ export const PAGE_KEYWORDS: Record<string, string> = {
   '/pos/catalog/new': 'product producto service servicio bundle paquete price precio',
   '/pos/appointments': 'checkout cobrar cita',
   '/scheduling': 'citas reservas',
-  '/scheduling/bookings': 'appointments appointment citas cita reservas reserva agendar booking',
+  '/scheduling/bookings': 'appointments appointment citas cita reservas reserva booking',
+  '/scheduling/bookings/new': 'appointment cita reserva',
   '/scheduling/calendar': 'calendario agenda',
   '/scheduling/event-types': 'services servicios duration duracion tipos de evento',
   '/scheduling/links': 'enlaces link publico reserva online',
@@ -194,7 +195,7 @@ const STOP = new Set(
 );
 /** Create-intent verbs (EN + ES conjugations) fold into the token "new", which create pages carry. */
 const CREATE_VERB =
-  /^(add|create|register|registr[aoe]r?|record|agreg[aoe]r?|anad[eio]r?|crear|crea|nuev[oa]s?|alta|ingresar|ingresa)$/;
+  /^(add|create|register|registr[aoe]r?|record|agreg[aoe]r?|anad[eio]r?|crear|crea|nuev[oa]s?|alta|ingresar|ingresa|book|agendar|agendame|reservar)$/;
 
 /** Lowercase, strip accents (almacén → almacen), drop stop words; keeps a leading `~`. */
 function tokens(s: string): string[] {

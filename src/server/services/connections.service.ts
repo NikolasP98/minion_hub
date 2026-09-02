@@ -96,7 +96,7 @@ export async function contactConnections(
             label: 'Bookings',
             count: Number(bk?.n ?? 0),
             href: linkTo('/scheduling/bookings', { contact: contactId }),
-            newHref: linkTo('/scheduling/bookings', { contact: contactId, new: 1 }),
+            newHref: linkTo('/scheduling/bookings/new', { contact: contactId }),
           },
         ],
       });
