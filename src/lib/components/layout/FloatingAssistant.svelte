@@ -31,13 +31,13 @@
     sendAssistantTurn,
     loadChatHistory,
     cleanInboundForDisplay,
+    isActionToken,
     resetChat,
   } from '$lib/services/gateway.svelte';
   import { buildAssistantContext } from '$lib/state/features/assistant-context';
   import { extractText, stripTtsTags } from '$lib/utils/text';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
-  import AssistChoice from '$lib/components/assistant/AssistChoice.svelte';
   import {
     isToolResultOnly,
     assistantHasContent,
@@ -790,7 +790,7 @@
             <!-- tool-output carrier turn — folded into the matching tool card, not its own bubble -->
           {:else if role === 'user'}
             {@const text = cleanInboundForDisplay(extractText(msg) ?? '')}
-            {#if text}
+            {#if text && !isActionToken(text)}
               <div class="flex flex-col gap-0.5 items-end">
                 <div
                   class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-accent/15 text-foreground border border-accent/20 whitespace-pre-wrap"
@@ -815,6 +815,10 @@
                 onArtifactCallback={(cb) => {
                   const id = assistant.personalAgentId;
                   if (id) sendAssistantTurn(id, cb, buildAssistantContext());
+                }}
+                onChoice={(text) => {
+                  const id = assistant.personalAgentId;
+                  if (id) sendAssistantTurn(id, text, buildAssistantContext());
                 }}
               />
               {#if msgTs(msg)}
@@ -869,14 +873,6 @@
     {#if composerMode === 'factory' && (factorySending || factoryIntake || factoryError)}
       <FactoryIntakeCard intake={factoryIntake} pending={factorySending} error={factoryError} />
     {/if}
-
-    <AssistChoice
-      compact
-      onPick={(text) => {
-        const id = assistant.personalAgentId;
-        if (id) sendAssistantTurn(id, text, buildAssistantContext());
-      }}
-    />
 
     <!-- Scope badge + input -->
     <div class="shrink-0 border-t border-border bg-bg3/40">

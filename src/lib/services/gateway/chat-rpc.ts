@@ -182,6 +182,15 @@ const INBOUND_CONTEXT_BLOCKS: RegExp[] = [
 ];
 
 /**
+ * Button callbacks (`chat_artifact` callback_data such as `SHOW_ME_HOW`) land in
+ * the transcript as a user turn. They are machine tokens, not something the
+ * user typed — surfaces hide them.
+ */
+export function isActionToken(text: string): boolean {
+  return /^[A-Z][A-Z0-9_]{2,40}$/.test(text.trim());
+}
+
+/**
  * Clean a USER message for display: strip every leading gateway-injected context
  * block so the bubble shows only what the user actually typed. Safe on already-
  * clean text (no-op) and on assistant replies (they don't carry these blocks).

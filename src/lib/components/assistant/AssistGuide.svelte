@@ -1,9 +1,16 @@
 <script lang="ts">
   /**
-   * Spotlight walkthrough driven by the assistant's `ui.guide` tool: dims the
-   * page, cuts a hole around the current step's target (`data-assist` key),
-   * and shows a coach card with Back / Next / Done. Escape or a click outside the target ends
-   * it. Mounted once in (app)/+layout.
+   * Interactive walkthrough driven by the assistant's `ui.guide` tool.
+   *
+   * Each step spotlights one element (`data-assist` key) with a coach card.
+   * The engine is aware of what is on screen:
+   *  - a step whose element is not mounted yet WAITS for it (polling), showing
+   *    the instruction so the user knows what to do to make it appear;
+   *  - if a LATER step's element is already visible while the current one is
+   *    not (e.g. the type chooser after the type was picked), it skips forward;
+   *  - a step auto-advances once the user interacts with its element (click,
+   *    input, change), so the tutorial follows the user's own actions.
+   * Back / Next / Done and Escape stay available. Mounted once in (app)/+layout.
    */
   import { Button } from '$lib/components/ui';
   import {
@@ -17,35 +24,25 @@
 
   const step = $derived(guide.active ? guide.steps[guide.index] : null);
   let rect = $state<{ top: number; left: number; width: number; height: number } | null>(null);
-  let missing = $state(false);
-  // Hub dialogs are native <dialog>.showModal() (top layer), so z-index alone can
-  // never paint over them. A manual popover joins the top layer above the dialog.
+  let waiting = $state(false);
+  // Hub dialogs are native <dialog>.showModal() (top layer + inert outside), so
+  // z-index alone can never paint over them and outside handlers are dead. The
+  // overlay is a manual popover (top layer) re-parented into the open dialog.
   let root = $state<HTMLDivElement | null>(null);
   $effect(() => {
     if (!root || !guide.active) return;
-    // An open modal <dialog> makes everything outside it inert (no clicks, no
-    // focus). Re-parent the overlay into the dialog so its buttons stay live;
-    // as a top-layer popover it still paints above the dialog itself.
     const host = document.querySelector<HTMLDialogElement>('dialog[open]');
     if (host && root.parentElement !== host) host.appendChild(root);
     try {
       root.showPopover();
     } catch {
-      /* already open or popover unsupported — z-index fallback still applies */
+      /* already open or unsupported — z-index fallback still applies */
     }
   });
 
   const PAD = 6;
 
-  function measure() {
-    if (!step) return;
-    const el = resolveTarget(step.target);
-    if (!el) {
-      rect = null;
-      missing = true;
-      return;
-    }
-    missing = false;
+  function measure(el: HTMLElement) {
     const r = el.getBoundingClientRect();
     rect = {
       top: r.top - PAD,
@@ -55,35 +52,97 @@
     };
   }
 
+  /** Index of the first step at/after `from` whose element is on screen, or -1. */
+  function firstVisibleFrom(from: number): number {
+    for (let i = from; i < guide.steps.length; i++) {
+      if (resolveTarget(guide.steps[i].target)) return i;
+    }
+    return -1;
+  }
+
   $effect(() => {
     if (!step) return;
-    const el = resolveTarget(step.target);
-    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    // Element may still be scrolling/mounting: measure now and again shortly after.
-    measure();
-    const t1 = setTimeout(measure, 350);
-    const t2 = setTimeout(measure, 900);
-    const onChange = () => measure();
-    window.addEventListener('resize', onChange);
-    window.addEventListener('scroll', onChange, true);
+    const idx = guide.index;
+    let el: HTMLElement | null = null;
+    let advanced = false;
+    const stop: Array<() => void> = [];
+
+    const advance = () => {
+      if (advanced) return;
+      advanced = true;
+      // Let the interaction settle (a click that opens a window, a keystroke
+      // that fills a field) before moving on.
+      setTimeout(() => {
+        if (guide.active && guide.index === idx) nextGuideStep();
+      }, 700);
+    };
+
+    const attach = (target: HTMLElement) => {
+      el = target;
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      measure(target);
+      waiting = false;
+      // Fields advance on input/change, everything else on click. A window or
+      // dialog opened by that click is usually what the next step points at.
+      const isField =
+        /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) ||
+        !!target.querySelector('input,textarea,select');
+      const evs = isField ? ['change', 'input'] : ['click'];
+      for (const ev of evs) {
+        const h = () => advance();
+        target.addEventListener(ev, h, { capture: true });
+        stop.push(() => target.removeEventListener(ev, h, { capture: true }));
+      }
+    };
+
+    const tick = () => {
+      if (!guide.active || guide.index !== idx) return;
+      if (el && el.isConnected) {
+        measure(el);
+        return;
+      }
+      const here = resolveTarget(step.target);
+      if (here) {
+        attach(here);
+        return;
+      }
+      // Not on screen. Only at the FIRST step may we skip ahead (e.g. the type
+      // chooser is gone because the form opened with the type preset); later
+      // steps wait — a submit button is visible all along and must not pull the
+      // walkthrough forward past the field the user still has to reach.
+      if (idx === 0) {
+        const later = firstVisibleFrom(1);
+        if (later > 0) {
+          guide.index = later;
+          return;
+        }
+      }
+      rect = null;
+      waiting = true;
+    };
+
+    tick();
+    const poll = setInterval(tick, 400);
+    window.addEventListener('resize', tick);
+    window.addEventListener('scroll', tick, true);
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      window.removeEventListener('resize', onChange);
-      window.removeEventListener('scroll', onChange, true);
+      clearInterval(poll);
+      window.removeEventListener('resize', tick);
+      window.removeEventListener('scroll', tick, true);
+      for (const s of stop) s();
     };
   });
 
   function onKey(e: KeyboardEvent) {
     if (!guide.active) return;
     if (e.key === 'Escape') endGuide();
-    else if (e.key === 'ArrowRight' || e.key === 'Enter') nextGuideStep();
+    else if (e.key === 'ArrowRight') nextGuideStep();
     else if (e.key === 'ArrowLeft') prevGuideStep();
   }
 
-  // Dim everything except the target: four panels (top, bottom, left, right), or one when unknown.
+  // Dim everything except the target: four panels, or none while waiting.
   const panels = $derived.by(() => {
-    if (!rect) return ['inset:0;'];
+    if (!rect) return [];
     const r = rect;
     return [
       `top:0;left:0;right:0;height:${Math.max(0, r.top)}px;`,
@@ -93,9 +152,9 @@
     ];
   });
 
-  // Card below the target when there is room, else above; clamped to viewport.
+  // Card below the target when there is room, else above; bottom-right while waiting.
   const cardStyle = $derived.by(() => {
-    if (!rect) return 'left: 50%; top: 50%; transform: translate(-50%, -50%);';
+    if (!rect) return 'right: 16px; bottom: 16px; width: 320px;';
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
     const width = 300;
@@ -114,14 +173,11 @@
     popover="manual"
     class="assist-guide"
     role="dialog"
-    aria-modal="true"
+    aria-modal="false"
     aria-label={step.message}
   >
-    <!-- Four dim panels around the target instead of a box-shadow cut-out (tokens only).
-         The target itself stays interactive; clicking a dim panel ends the walkthrough. -->
     {#each panels as panel (panel)}
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <div class="dim" style={panel} onclick={endGuide}></div>
+      <div class="dim" style={panel}></div>
     {/each}
     {#if rect}
       <div
@@ -134,8 +190,8 @@
         {m.assist_guide_step({ n: guide.index + 1, total: guide.steps.length })}
       </div>
       <p class="msg">{step.message}</p>
-      {#if missing}
-        <p class="warn">{m.assist_guide_missing()}</p>
+      {#if waiting}
+        <p class="hint">{m.assist_guide_waiting()}</p>
       {/if}
       <div class="actions">
         <Button variant="ghost" size="xs" type="button" onclick={endGuide}
@@ -156,7 +212,6 @@
 {/if}
 
 <style>
-  /* Above dialogs: a walkthrough must be able to point at a field inside a modal. */
   .assist-guide,
   .assist-guide:popover-open {
     position: fixed;
@@ -176,10 +231,11 @@
   .assist-guide::backdrop {
     background: transparent;
   }
+  /* Visual only: the user keeps operating the page underneath (pickers, windows). */
   .dim {
     position: absolute;
     background: color-mix(in srgb, var(--color-overlay) 55%, transparent);
-    pointer-events: auto;
+    pointer-events: none;
   }
   .spot {
     position: absolute;
@@ -215,10 +271,10 @@
     font-size: var(--font-size-label);
     line-height: 1.45;
   }
-  .warn {
+  .hint {
     margin: 0;
     font-size: var(--font-size-telemetry);
-    color: var(--color-warning-fg);
+    color: var(--color-muted);
   }
   .actions {
     display: flex;

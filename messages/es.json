@@ -282,7 +282,7 @@
   "assist_guide_next": "Siguiente",
   "assist_guide_back": "Atrás",
   "assist_guide_done": "Listo",
-  "assist_guide_missing": "Este elemento aún no está en pantalla: abre el formulario e inténtalo de nuevo.",
+  "assist_guide_waiting": "Esperando a que aparezca este elemento: haz el paso de arriba para continuar.",
   "automation_analyze_desc": "Ejecuta inteligencia de conversaciones sobre el historial nuevo.",
   "automation_analyze_title": "Analisis de conversaciones",
   "automation_cadence_daily_3am": "Diario, 3am",
