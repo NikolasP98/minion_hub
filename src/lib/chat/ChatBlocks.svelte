@@ -243,12 +243,15 @@
     {@const clicked = clickedArtifacts.has(block.id)}
     <div class="artifact-block">
       {#if data.title}<div class="artifact-title">{data.title}</div>{/if}
-      <iframe
-        class="artifact-frame"
-        sandbox="allow-scripts"
-        srcdoc={themedSrcdoc(data.html)}
-        title={data.title ?? m.chat_artifact_title()}
-      ></iframe>
+      <!-- Buttons-only artifacts (a choice prompt) skip the empty frame. -->
+      {#if data.html.trim()}
+        <iframe
+          class="artifact-frame"
+          sandbox="allow-scripts"
+          srcdoc={themedSrcdoc(data.html)}
+          title={data.title ?? m.chat_artifact_title()}
+        ></iframe>
+      {/if}
       {#if data.buttons?.length}
         <div class="artifact-buttons">
           {#each data.buttons as row, ri (ri)}
