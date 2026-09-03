@@ -1,5 +1,5 @@
 import postgres from 'postgres';
-import { loadEnv } from 'vite';
+import { testDatabaseUrl } from '$server/test-utils/test-db-url';
 import { describe, expect, it } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
@@ -31,8 +31,7 @@ import { DEPOSIT_TEXT_CASES } from './crm-deposit-rule.fixtures';
 // since SUPABASE_DB_URL is also read by brain-business-corpus.sql.integration.test.ts,
 // pg-client.test.ts, pg-pool.test.ts, brain-business-persistence.service.test.ts and
 // layout.server.test.ts, which expect the full prod schema (hub-supabase-schema-not-reproducible.md).
-const databaseUrl =
-  process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
+const databaseUrl = testDatabaseUrl();
 
 if (process.env.REQUIRE_DEPOSIT_RULE_POSTGRES && !databaseUrl) {
   throw new Error(

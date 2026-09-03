@@ -1,5 +1,5 @@
 import postgres from 'postgres';
-import { loadEnv } from 'vite';
+import { testDatabaseUrl } from '$server/test-utils/test-db-url';
 import { describe, expect, it } from 'vitest';
 import {
   BUSINESS_KNOWLEDGE_DOMAINS,
@@ -7,8 +7,7 @@ import {
   businessTableQueryText,
 } from './brain-business-corpus.service';
 
-const databaseUrl =
-  process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
+const databaseUrl = testDatabaseUrl();
 
 describe.runIf(Boolean(databaseUrl))('business corpus SQL against PostgreSQL', () => {
   it('EXPLAINs every payload and deletion-identity query against the live schema', async () => {

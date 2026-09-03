@@ -1,10 +1,9 @@
 import { readFileSync } from 'node:fs';
+import { testDatabaseUrl } from '$server/test-utils/test-db-url';
 import postgres from 'postgres';
-import { loadEnv } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const databaseUrl =
-  process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
+const databaseUrl = testDatabaseUrl();
 
 if (process.env.REQUIRE_CRM_ACTIVITY_ROLLUP_POSTGRES && !databaseUrl) {
   throw new Error(

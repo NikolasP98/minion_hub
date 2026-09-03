@@ -1,11 +1,10 @@
 import postgres from 'postgres';
-import { loadEnv } from 'vite';
+import { testDatabaseUrl } from '$server/test-utils/test-db-url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { drizzle } from 'drizzle-orm/postgres-js';
 
-const databaseUrl =
-  process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
+const databaseUrl = testDatabaseUrl();
 
 if (process.env.REQUIRE_CRM_CONTACTS_POSTGRES && !databaseUrl) {
   throw new Error(

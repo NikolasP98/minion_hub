@@ -1,6 +1,6 @@
 import postgres from 'postgres';
+import { testDatabaseUrl } from '$server/test-utils/test-db-url';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { loadEnv } from 'vite';
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { crmContacts } from '$server/db/pg-crm-schema';
@@ -29,8 +29,7 @@ import { setContactCustomField, setFunnelStage, updateContact } from './crm-cont
  * Locally it still skips unless SUPABASE_DB_URL is set — point it at the local
  * Supabase stack, a branch DB, or a container seeded with that same fixture.
  */
-const databaseUrl =
-  process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
+const databaseUrl = testDatabaseUrl();
 
 // Same loud-skip convention as the parity suite: when a caller PROMISES a
 // database, an empty URL is a misconfigured job, not a reason to quietly pass.

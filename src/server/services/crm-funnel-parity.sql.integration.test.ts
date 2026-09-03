@@ -1,5 +1,5 @@
 import postgres from 'postgres';
-import { loadEnv } from 'vite';
+import { testDatabaseUrl } from '$server/test-utils/test-db-url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import {
@@ -23,8 +23,7 @@ import {
  * Runs in the CI "Real-PostgreSQL CRM pagination suite" job; skipped (loudly, if
  * REQUIRE_CRM_FUNNEL_PARITY_POSTGRES is set) without a database.
  */
-const databaseUrl =
-  process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
+const databaseUrl = testDatabaseUrl();
 
 if (process.env.REQUIRE_CRM_FUNNEL_PARITY_POSTGRES && !databaseUrl) {
   throw new Error(
