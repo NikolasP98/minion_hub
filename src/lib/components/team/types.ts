@@ -59,6 +59,15 @@ export interface TeamHoliday {
   weeklyOff: boolean;
 }
 
+/** Non-staff `sched_resources` (rooms / equipment) — never linked to an employee. */
+export interface TeamResource {
+  id: string;
+  name: string;
+  kind: 'room' | 'equipment';
+  color: string | null;
+  active: boolean;
+}
+
 export interface TeamBooking {
   id: string;
   resourceId: string;

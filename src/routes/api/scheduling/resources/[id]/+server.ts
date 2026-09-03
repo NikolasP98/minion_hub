@@ -2,7 +2,6 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { requireAdmin } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { updateResource, deleteResource } from '$server/services/scheduling.service';
@@ -13,14 +12,20 @@ const patchSchema = z.object({
   timezone: z.string().max(100).optional(),
   color: z.string().max(50).nullable().optional(),
   active: z.boolean().optional(),
+  /** Removal rides on scheduling:edit (the hook maps DELETE to scheduling:delete). */
+  deleted: z.literal(true).optional(),
 });
 
+// Writes are gated by the central hook (scheduling:edit), same as /api/scheduling/hr/*.
 export const PATCH: RequestHandler = async ({ locals, request, params }) => {
-  requireAdmin(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
   const b = await parseBody(request, patchSchema);
+  if (b.deleted) {
+    await deleteResource(ctx, params.id!);
+    return json({ ok: true });
+  }
   await updateResource(ctx, params.id!, {
     ...(b.name !== undefined ? { name: b.name } : {}),
     ...(b.email !== undefined ? { email: b.email ? b.email : null } : {}),
@@ -32,7 +37,6 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-  requireAdmin(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');

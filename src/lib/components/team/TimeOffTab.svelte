@@ -42,6 +42,7 @@
     members,
     canEdit,
     canDecide,
+    myEmployeeId,
   }: {
     employees: TeamEmployee[];
     leaveTypes: TeamLeaveType[];
@@ -52,6 +53,8 @@
     canEdit: boolean;
     /** users.manage or scheduling:edit — may approve / reject. */
     canDecide: boolean;
+    /** The viewer's own employee row — nobody decides their own request (hrms prevent_self_leave_approval). */
+    myEmployeeId: string | null;
   } = $props();
 
   let error = $state<string | null>(null);
@@ -104,13 +107,15 @@
           })),
       },
     },
-    { key: 'decider', label: m.team_decided_by(), width: 160 },
-    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 60 },
+    { key: 'decider', label: m.team_decided_by(), width: 130 },
+    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 150 },
   ];
 
+  const isMine = (r: Row) => myEmployeeId !== null && r.employeeId === myEmployeeId;
   function rowMenu(r: Row): DropdownItem[] {
     const items: DropdownItem[] = [];
-    if (r.status === 'pending' && canDecide) {
+    // The API answers 409 self_approval as well; hiding the verbs is the UI half.
+    if (r.status === 'pending' && canDecide && !isMine(r)) {
       items.push(
         { value: 'approved', label: m.team_approve(), icon: Check },
         { value: 'rejected', label: m.team_reject(), icon: X },
@@ -352,6 +357,9 @@
       </Badge>
     {:else if col.key === 'actions'}
       {@const items = rowMenu(r)}
+      {#if r.status === 'pending' && canDecide && isMine(r)}
+        <span class="t-caption self-note">{m.team_err_self_approval()}</span>
+      {/if}
       {#if items.length}
         <Dropdown {items} onSelect={(v) => decide(r.id, v)} placement="left">
           {#snippet trigger()}
@@ -522,6 +530,12 @@
     .panels {
       grid-template-columns: 3fr 2fr;
     }
+  }
+  .self-note {
+    color: var(--color-text-secondary);
+    margin-right: var(--space-2);
+    white-space: normal;
+    line-height: 1.2;
   }
   .row-menu {
     display: inline-flex;
