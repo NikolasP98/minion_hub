@@ -11,7 +11,14 @@ import {
   schedBookings,
 } from '$server/db/pg-scheduling-schema';
 import { computeSlots } from '$server/scheduling/slots';
-import type { ResourceAvailability, BusyInterval, Slot, SlotEventType, AvailabilityRule } from '$server/scheduling/slots';
+import { loadDayOffOverrides } from './hr.service';
+import type {
+  ResourceAvailability,
+  BusyInterval,
+  Slot,
+  SlotEventType,
+  AvailabilityRule,
+} from '$server/scheduling/slots';
 
 /**
  * Bridges the DB to the pure slot engine: loads the candidate resources'
@@ -21,12 +28,22 @@ import type { ResourceAvailability, BusyInterval, Slot, SlotEventType, Availabil
 
 /** The service's own weekly windows when it opts into a custom schedule, else
  *  undefined (inherit team availability). Normalizes the jsonb to AvailabilityRule. */
-export function serviceRulesOf(et: { useCustomSchedule?: boolean; scheduleRules?: unknown }): AvailabilityRule[] | undefined {
+export function serviceRulesOf(et: {
+  useCustomSchedule?: boolean;
+  scheduleRules?: unknown;
+}): AvailabilityRule[] | undefined {
   if (!et.useCustomSchedule) return undefined;
-  const raw = Array.isArray(et.scheduleRules) ? (et.scheduleRules as Array<Record<string, unknown>>) : [];
+  const raw = Array.isArray(et.scheduleRules)
+    ? (et.scheduleRules as Array<Record<string, unknown>>)
+    : [];
   const rules = raw
     .filter((r) => Array.isArray(r.days) && r.startTime && r.endTime)
-    .map((r) => ({ days: (r.days as number[]) ?? [], startTime: String(r.startTime), endTime: String(r.endTime), date: null }));
+    .map((r) => ({
+      days: (r.days as number[]) ?? [],
+      startTime: String(r.startTime),
+      endTime: String(r.endTime),
+      date: null,
+    }));
   return rules.length ? rules : undefined;
 }
 
@@ -35,7 +52,11 @@ export function serviceRulesOf(et: { useCustomSchedule?: boolean; scheduleRules?
 type Tx = CoreTx;
 
 /** Load the availability rules (default schedule) for a set of resources. */
-async function loadResourceAvailability(tx: Tx, orgId: string, resourceIds: string[]): Promise<ResourceAvailability[]> {
+async function loadResourceAvailability(
+  tx: Tx,
+  orgId: string,
+  resourceIds: string[],
+): Promise<ResourceAvailability[]> {
   if (!resourceIds.length) return [];
   const scheds = await tx
     .select()
@@ -45,7 +66,12 @@ async function loadResourceAvailability(tx: Tx, orgId: string, resourceIds: stri
   const rules = await tx
     .select()
     .from(schedAvailability)
-    .where(inArray(schedAvailability.scheduleId, scheds.map((s) => s.id)));
+    .where(
+      inArray(
+        schedAvailability.scheduleId,
+        scheds.map((s) => s.id),
+      ),
+    );
   const rulesBySched = new Map<string, typeof rules>();
   for (const r of rules) {
     const list = rulesBySched.get(r.scheduleId) ?? [];
@@ -71,7 +97,14 @@ async function loadResourceAvailability(tx: Tx, orgId: string, resourceIds: stri
 }
 
 /** Load active bookings for resources in [from, to], optionally excluding one booking id. */
-async function loadBusy(tx: Tx, orgId: string, resourceIds: string[], from: Date, to: Date, excludeId?: string): Promise<BusyInterval[]> {
+async function loadBusy(
+  tx: Tx,
+  orgId: string,
+  resourceIds: string[],
+  from: Date,
+  to: Date,
+  excludeId?: string,
+): Promise<BusyInterval[]> {
   if (!resourceIds.length) return [];
   const conds = [
     eq(schedBookings.orgId, orgId),
@@ -82,7 +115,11 @@ async function loadBusy(tx: Tx, orgId: string, resourceIds: string[], from: Date
   ];
   if (excludeId) conds.push(ne(schedBookings.id, excludeId));
   const rows = await tx
-    .select({ resourceId: schedBookings.resourceId, start: schedBookings.startTime, end: schedBookings.endTime })
+    .select({
+      resourceId: schedBookings.resourceId,
+      start: schedBookings.startTime,
+      end: schedBookings.endTime,
+    })
     .from(schedBookings)
     .where(and(...conds));
   return rows.map((r) => ({ resourceId: r.resourceId, start: r.start, end: r.end }));
@@ -98,7 +135,9 @@ function toSlotEventType(et: typeof schedEventTypes.$inferSelect): SlotEventType
     periodType: et.periodType === 'unlimited' ? 'unlimited' : 'rolling',
     periodDays: et.periodDays,
     schedulingType:
-      et.schedulingType === 'round_robin' || et.schedulingType === 'collective' ? et.schedulingType : null,
+      et.schedulingType === 'round_robin' || et.schedulingType === 'collective'
+        ? et.schedulingType
+        : null,
   };
 }
 
@@ -140,14 +179,38 @@ export async function getSlotsForEventType(
     const activeResources = await tx
       .select({ id: schedResources.id })
       .from(schedResources)
-      .where(and(eq(schedResources.orgId, ctx.tenantId), inArray(schedResources.id, resourceIds), eq(schedResources.active, true)));
+      .where(
+        and(
+          eq(schedResources.orgId, ctx.tenantId),
+          inArray(schedResources.id, resourceIds),
+          eq(schedResources.active, true),
+        ),
+      );
     resourceIds = activeResources.map((r) => r.id);
     if (!resourceIds.length) return { eventType: et, resourceIds, slots: [] };
 
     const availability = await loadResourceAvailability(tx, ctx.tenantId, resourceIds);
+    // HR: org holidays + approved leave = empty-range date overrides (day off) per resource.
+    const dayOff = await loadDayOffOverrides(
+      tx,
+      ctx.tenantId,
+      resourceIds,
+      from.toISOString().slice(0, 10),
+      to.toISOString().slice(0, 10),
+    );
+    for (const res of availability) {
+      for (const date of dayOff.get(res.resourceId) ?? [])
+        res.rules.push({ days: [], startTime: '00:00', endTime: '00:00', date });
+    }
     // Pad the busy lookup by the buffers so edge bookings are seen.
     const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + et.length) * 60_000;
-    const busy = await loadBusy(tx, ctx.tenantId, resourceIds, new Date(from.getTime() - pad), new Date(to.getTime() + pad));
+    const busy = await loadBusy(
+      tx,
+      ctx.tenantId,
+      resourceIds,
+      new Date(from.getTime() - pad),
+      new Date(to.getTime() + pad),
+    );
 
     const slots = computeSlots({
       eventType: toSlotEventType(et),
