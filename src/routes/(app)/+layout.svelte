@@ -76,12 +76,14 @@
   <AppViewport density="compact" class="hub-shell-viewport">
     <div
       data-part="primary-shell"
-      class="relative flex flex-1 min-w-0 min-h-0 overflow-hidden text-foreground"
+      class="relative flex flex-1 min-w-0 min-h-0 overflow-clip text-foreground"
     >
       {#if !immersive}
         <Sidebar />
       {/if}
-      <div class="shell-main flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+      <!-- overflow-clip, not hidden: a hidden box is still scrollable programmatically, so a
+           focus()/scrollIntoView on a wide row shifted the whole shell (sidebar off-screen). -->
+      <div class="shell-main flex flex-col flex-1 min-w-0 min-h-0 overflow-clip">
         <Topbar />
         <div data-part="route-viewport" class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {#key moduleKey}
