@@ -7,11 +7,9 @@
   import { Button } from '$lib/components/ui';
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
-  import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import ServicePickerField from '$lib/components/scheduling/ServicePickerField.svelte';
   import type { PartyOption } from '$lib/components/crm/party-picker';
-  import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
@@ -33,12 +31,10 @@
 
   let {
     eventTypes,
-    stockEnabled,
     contact = null,
     returnTo = '/scheduling/bookings',
   }: {
     eventTypes: BookingEventType[];
-    stockEnabled: boolean;
     /** `?contact=` deep link: the customer is pre-picked and the booking keeps that CRM link. */
     contact?: BookingContactPrefill | null;
     returnTo?: string;
@@ -62,49 +58,6 @@
   const crmContactId = $derived(
     contact && customerName === contact.name && partyId === contact.partyId ? contact.id : null,
   );
-
-  type ConsumptionLine = {
-    itemId: string;
-    itemName: string;
-    uom: string;
-    qty: number;
-    qtyConsumption: number;
-    consumptionUom: string | null;
-    unitsPerStockUom: number | null;
-    subunitsPerStockUom: number | null;
-    diagramEnabled: boolean;
-    atp: number;
-  };
-  let lines = $state<ConsumptionLine[]>([]);
-  let hasMapping = $state(false);
-  let gen = 0; // generation token: guards against a stale fetch overwriting a newer selection
-
-  function setLineConsumption(l: ConsumptionLine, qtyConsumption: number) {
-    l.qtyConsumption = qtyConsumption;
-    l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
-  }
-
-  async function loadConsumption() {
-    const g = ++gen;
-    lines = [];
-    hasMapping = false;
-    const et = eventTypes.find((e) => e.id === eventTypeId);
-    if (!et?.productId || !stockEnabled || !canAct('stock', 'view')) return;
-    try {
-      const res = await fetch('/api/stock/accruals/preview', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ finProductId: et.productId, quantity: 1 }),
-      });
-      if (!res.ok) return; // no warehouse / stock off — block simply stays hidden
-      const j = await res.json();
-      if (g !== gen) return; // a newer selection superseded this fetch
-      hasMapping = j.preview.hasMapping;
-      lines = j.preview.lines;
-    } catch {
-      /* preview is best-effort */
-    }
-  }
 
   async function loadSlots() {
     if (!eventTypeId || !date) return;
@@ -164,7 +117,6 @@
           date = v.date;
           filled.push('date');
         }
-        if (filled.includes('service')) loadConsumption();
         if (filled.includes('service') || filled.includes('date')) await loadSlots();
         if (typeof v.time === 'string' && v.time.trim()) {
           const mm = /^(\d{1,2}):(\d{2})/.exec(v.time.trim());
@@ -228,9 +180,6 @@
     loading = true;
     err = null;
     try {
-      // server requires qtyConsumption > 0 per line; a gauge dragged to 0 (or a typed
-      // negative) must not fail the whole booking — drop those lines instead.
-      const usedLines = hasMapping ? lines.filter((l) => l.qtyConsumption > 0) : [];
       const res = await fetch('/api/scheduling/bookings', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -241,9 +190,6 @@
           attendeePhone: phone || null,
           crmContactId,
           partyId,
-          consumption: usedLines.length
-            ? usedLines.map((l) => ({ itemId: l.itemId, qtyConsumption: l.qtyConsumption }))
-            : null,
         }),
       });
       if (res.status === 409) {
@@ -262,29 +208,24 @@
 </script>
 
 <div class="booking-form">
-  <div class="field">
-    <span class="t-caption">{m.sched_book_choose_service()}</span>
-    <div data-assist="booking.service">
-      <ServicePickerField
-        services={eventTypes}
-        bind:value={eventTypeId}
-        onchange={() => {
-          loadSlots();
-          loadConsumption();
-        }}
-      />
+  <div class="top">
+    <div class="field">
+      <span class="t-caption">{m.sched_book_choose_service()}</span>
+      <div data-assist="booking.service">
+        <ServicePickerField services={eventTypes} bind:value={eventTypeId} onchange={loadSlots} />
+      </div>
     </div>
+    <label class="field">
+      <span class="t-caption">{m.sched_book_pick_time()}</span>
+      <input
+        class="txt"
+        type="date"
+        data-assist="booking.date"
+        bind:value={date}
+        onchange={loadSlots}
+      />
+    </label>
   </div>
-  <label class="field">
-    <span class="t-caption">{m.sched_book_pick_time()}</span>
-    <input
-      class="txt"
-      type="date"
-      data-assist="booking.date"
-      bind:value={date}
-      onchange={loadSlots}
-    />
-  </label>
   {#if loading}
     <p class="t-caption">{m.sched_book_loading()}</p>
   {:else if eventTypeId && slots.length === 0}
@@ -293,55 +234,16 @@
     <div class="slot-grid" data-assist="booking.time">
       {#each slots as s (s.start)}
         <Button
-          variant={slot === s.start ? 'primary' : 'ghost'}
+          variant="outline"
           size="sm"
           type="button"
+          class="slot {slot === s.start ? 'slot-on' : ''}"
+          aria-pressed={slot === s.start}
           onclick={() => (slot = s.start)}
         >
           {new Date(s.start).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
         </Button>
       {/each}
-    </div>
-  {/if}
-  {#if hasMapping && lines.length}
-    <div class="field">
-      <span class="t-caption">{m.sched_stock_consumption()}</span>
-      <div class="lines">
-        {#each lines as l (l.itemId)}
-          {@const gMax = l.diagramEnabled
-            ? gaugeMax({
-                uom: l.uom,
-                unitsPerStockUom: l.unitsPerStockUom,
-                subunitsPerStockUom: l.subunitsPerStockUom,
-              })
-            : 0}
-          <div class="line">
-            <span class="line-name">{l.itemName}</span>
-            {#if gMax > 0}
-              <ConsumptionGauge
-                max={gMax}
-                unit={l.consumptionUom ?? l.uom}
-                bind:value={() => l.qtyConsumption ?? 0, (v) => setLineConsumption(l, v)}
-              />
-            {:else}
-              <input
-                class="txt qty"
-                type="number"
-                min="0"
-                step="any"
-                value={l.qtyConsumption}
-                oninput={(e) => setLineConsumption(l, Number(e.currentTarget.value) || 0)}
-              />
-              <span class="t-caption">{l.consumptionUom ?? l.uom}</span>
-            {/if}
-            {#if l.qty > l.atp}
-              <span class="t-caption danger"
-                >{m.sched_stock_atp_warn({ atp: String(l.atp), uom: l.uom })}</span
-              >
-            {/if}
-          </div>
-        {/each}
-      </div>
     </div>
   {/if}
   <div data-assist="booking.client">
@@ -388,8 +290,20 @@
     font-size: var(--font-size-body);
     width: 100%;
   }
-  .qty {
-    max-width: 6rem;
+  .booking-form :global(.slot-on) {
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .top {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+  @media (min-width: 768px) {
+    .top {
+      grid-template-columns: 1fr 1fr;
+    }
   }
   .slot-grid {
     display: grid;
@@ -397,21 +311,6 @@
     gap: var(--space-2);
     max-height: 12.5rem;
     overflow: auto;
-  }
-  .lines {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .line {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-  }
-  .line-name {
-    min-width: 7.5rem;
-    font-size: var(--font-size-body);
   }
   .danger {
     color: var(--color-danger-fg);

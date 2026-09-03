@@ -3,7 +3,6 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listEventTypes } from '$server/services/scheduling.service';
 import { getContact, getContactPrefill } from '$server/services/crm-contacts.service';
-import { effectiveModuleEnabled } from '$lib/modules/availability';
 
 /** `/scheduling/bookings/new[?contact=<crm contact id>]` — the in-page booking form. */
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -23,7 +22,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       active: e.active,
       length: e.length,
     })),
-    stockEnabled: effectiveModuleEnabled(locals.orgKind, locals.moduleStates ?? {}, 'stock'),
     contact:
       contactId && rec?.contact
         ? {
