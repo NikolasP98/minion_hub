@@ -43,25 +43,45 @@
     canEdit: boolean;
   } = $props();
 
-  type Row = TeamEmployee & { roles: string };
+  // A roster row is an employee, or an org member who is not enrolled yet (so the
+  // Roster and the Members tab always list the same people).
+  type Row = Omit<TeamEmployee, 'status'> & {
+    roles: string;
+    status: 'active' | 'left' | 'unenrolled';
+    member?: TeamMember;
+  };
 
   let showLeft = $state(false);
   let error = $state<string | null>(null);
 
   const memberById = $derived(new Map(members.map((mb) => [mb.id, mb])));
-  const rows = $derived<Row[]>(
-    employees
+  // Org members (person accounts) not yet on the roster — inline rows + the Picker's candidates.
+  const enrolled = $derived(new Set(employees.map((e) => e.profileId).filter(Boolean)));
+  const candidates = $derived(
+    members.filter((mb) => mb.accountType !== 'service' && !enrolled.has(mb.id)),
+  );
+  const rows = $derived<Row[]>([
+    ...employees
       .filter((e) => showLeft || e.status === 'active')
       .map((e) => ({
         ...e,
         roles: (e.profileId && memberById.get(e.profileId)?.role) || '',
       })),
-  );
-  // Org members (person accounts) not yet on the roster — the Picker's candidates.
-  const enrolled = $derived(new Set(employees.map((e) => e.profileId).filter(Boolean)));
-  const candidates = $derived(
-    members.filter((mb) => mb.accountType !== 'service' && !enrolled.has(mb.id)),
-  );
+    ...candidates.map((mb): Row => ({
+      id: `member:${mb.id}`,
+      profileId: mb.id,
+      resourceId: null,
+      name: mb.displayName || mb.email || 'Team member',
+      email: mb.email,
+      designation: null,
+      status: 'unenrolled',
+      joinedOn: null,
+      leftOn: null,
+      color: null,
+      roles: mb.role ?? '',
+      member: mb,
+    })),
+  ]);
 
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '';
   function stripBookings(resourceId: string | null) {
@@ -91,11 +111,12 @@
         options: () => [
           { value: 'active', label: m.team_status_active() },
           { value: 'left', label: m.team_status_left() },
+          { value: 'unenrolled', label: m.team_status_unenrolled() },
         ],
       },
     },
     { key: 'week', label: m.team_col_week(), custom: true, sortable: false, width: 340 },
-    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 60 },
+    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 90 },
   ];
 
   async function patch(id: string, body: Record<string, unknown>) {
@@ -263,9 +284,18 @@
         {#if r.email}<div class="t-caption truncate">{r.email}</div>{/if}
       </div>
     {:else if col.key === 'status'}
-      <Badge variant="semantic" value={r.status === 'active' ? 'success' : 'warning'} size="sm" dot>
-        {r.status === 'active' ? m.team_status_active() : m.team_status_left()}
-      </Badge>
+      {#if r.status === 'unenrolled'}
+        <Badge size="sm">{m.team_status_unenrolled()}</Badge>
+      {:else}
+        <Badge
+          variant="semantic"
+          value={r.status === 'active' ? 'success' : 'warning'}
+          size="sm"
+          dot
+        >
+          {r.status === 'active' ? m.team_status_active() : m.team_status_left()}
+        </Badge>
+      {/if}
     {:else if col.key === 'week'}
       {#if r.resourceId}
         <MemberCalendarStrip
@@ -277,7 +307,18 @@
         <span class="t-caption">—</span>
       {/if}
     {:else if col.key === 'actions'}
-      {#if canEdit}
+      {#if r.member}
+        {#if canEdit}
+          <Button
+            size="xs"
+            variant="secondary"
+            disabled={busy}
+            onclick={() => pickMember(r.member!)}
+          >
+            {m.team_enrol()}
+          </Button>
+        {/if}
+      {:else if canEdit}
         <Dropdown items={rowMenu(r)} onSelect={(v) => onRowAction(r, v)} placement="left">
           {#snippet trigger()}
             <span class="row-menu" aria-label={m.team_col_actions()}>
