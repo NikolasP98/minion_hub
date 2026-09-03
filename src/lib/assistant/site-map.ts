@@ -26,7 +26,7 @@ export const PAGE_KEYWORDS: Record<string, string> = {
   '/overview': 'dashboard resumen panel metrics kpis',
   '/work': 'tasks tareas pendientes my work',
   '/team':
-    'equipo staff personal empleados miembros ~payroll ~planilla ~nomina ~hr ~rrhh ~humanos ~asistencia',
+    'team equipo staff personal empleados employees miembros vacaciones vacation time off permiso horario availability disponibilidad feriados holidays roles ~payroll ~planilla ~nomina ~hr ~rrhh ~humanos ~asistencia',
   '/memberships': 'membresias membresia planes plans suscripciones subscriptions',
   '/support': 'tickets soporte reclamos sla help',
   '/workforce': 'agentes agents proyectos projects ai company',
@@ -66,7 +66,6 @@ export const PAGE_KEYWORDS: Record<string, string> = {
   '/scheduling/event-types': 'services servicios duration duracion tipos de evento',
   '/scheduling/links': 'enlaces link publico reserva online',
   '/scheduling/reminders': 'recordatorios reminders whatsapp',
-  '/scheduling/resources': 'rooms salas equipos staff',
   '/stock': 'inventory inventario almacen insumos existencias supplies',
   '/stock/entries':
     'movements movimientos kardex receipts issues transfers adjustments entradas salidas',

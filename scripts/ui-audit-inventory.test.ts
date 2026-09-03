@@ -7,10 +7,10 @@ import { buildRouteInventory } from './ui-audit-inventory.mjs';
 import baseline from '../tests/ui-audit/current-baseline.json';
 
 describe('UI audit route inventory', () => {
-  it('locks the complete endpoint ledger at 141 screens and 10 redirects', async () => {
+  it('locks the complete endpoint ledger at 140 screens and 11 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
-    expect(inventory.summary).toMatchObject({ endpoints: 151, screens: 141, redirects: 10 });
+    expect(inventory.summary).toMatchObject({ endpoints: 151, screens: 140, redirects: 11 });
     expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(151);
     expect(
       inventory.routes.filter((route) => route.kind === 'redirect').map((route) => route.pattern),
@@ -20,6 +20,7 @@ describe('UI audit route inventory', () => {
       '/builder',
       '/crm/cleanup',
       '/pos',
+      '/scheduling/resources',
       '/shells',
       '/shells/[shellId]',
       '/terminal',
@@ -127,7 +128,7 @@ describe('UI audit route inventory', () => {
     // Unlike the pinned-commit ledger above, this reads the WORKTREE (no
     // cleanBaseline flag), so it reflects the route surface at HEAD-with-
     // uncommitted-changes, not the immutable pre-program commit.
-    expect(inventory.summary).toMatchObject({ endpoints: 151, screens: 141, redirects: 10 });
+    expect(inventory.summary).toMatchObject({ endpoints: 151, screens: 140, redirects: 11 });
     expect(terminal).toMatchObject({
       kind: 'redirect',
       source: 'src/routes/(app)/terminal/+page.svelte',

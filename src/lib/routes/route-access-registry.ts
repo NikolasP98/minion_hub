@@ -38,7 +38,8 @@ export const MODULE_SUBRESOURCES: Readonly<Record<string, readonly SubResource[]
   ],
   scheduling: [
     { key: 'scheduling.event-types', label: 'Event Types', route: '/scheduling/event-types' },
-    { key: 'scheduling.resources', label: 'Resources', route: '/scheduling/resources' },
+    // People moved to /team (hub-team-hr-module spec S4); the sub-resource row keeps its key.
+    { key: 'scheduling.resources', label: 'Team (HR)', route: '/team' },
     { key: 'scheduling.reminders', label: 'Reminders', route: '/scheduling/reminders' },
     { key: 'scheduling.settings', label: 'Settings', route: '/scheduling/settings' },
   ],
@@ -103,7 +104,9 @@ export const ROUTE_ACCESS_POLICY_OVERRIDES: Readonly<Record<string, RouteAccessP
   '/settings/roles': 'org-capability:users:manage',
   '/settings/team': 'org-capability:users:manage',
   '/settings/workflows': 'org-capability:settings:manage',
-  '/team': 'capability:users.manage',
+  // HR tabs (roster, availability, time off, holidays) — spec O3 decision; the
+  // Members & access tab is gated client-side by users.manage.
+  '/team': 'permission:scheduling:view',
   '/users/join-requests': 'org-capability:users:manage',
 };
 

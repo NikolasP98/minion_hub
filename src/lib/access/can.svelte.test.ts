@@ -77,7 +77,13 @@ describe('canViewPath — org-kind gating', () => {
   test('business org: Team/Stock/POS/Workforce are visible (RBAC-gated only)', async () => {
     pageData.activeOrgKind = 'business';
     const { canViewPath } = await import('./can.svelte');
-    expect(canViewPath('/team')).toBe(true); // users:manage present
+    // /team is the HR page: gated by scheduling:view (spec 2026-09-02-hub-team-hr-module),
+    // no longer by users:manage — which the fixture has but scheduling:view it lacks.
+    expect(canViewPath('/team')).toBe(false);
+    const saved = pageData.permissions.permissions;
+    pageData.permissions.permissions = [...saved, 'scheduling:view'];
+    expect(canViewPath('/team')).toBe(true);
+    pageData.permissions.permissions = saved;
   });
 
   test('query-string hrefs (archetype filters) resolve to no manifest module (kind-neutral)', async () => {

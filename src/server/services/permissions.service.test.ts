@@ -183,7 +183,7 @@ describe('requiredViewPermForPath — central route guard mapping', () => {
     expect(requiredViewPermForPath('/home')).toBeNull();
     expect(requiredViewPermForPath('/settings')).toBeNull();
     expect(requiredViewPermForPath('/settings/roles')).toBeNull();
-    expect(requiredViewPermForPath('/team')).toBeNull(); // requireOrgCapability(users,manage) on the page
+    expect(requiredViewPermForPath('/team')).toBe('scheduling:view'); // HR page (spec 2026-09-02-hub-team-hr-module)
     expect(requiredViewPermForPath('/crmfoo')).toBeNull(); // not a real prefix boundary
   });
 });

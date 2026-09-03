@@ -200,6 +200,12 @@ export const USE_CASES: UseCase[] = [
   { text: 'ventas', stage: 'ambiguous', lang: 'es', expectPath: '/sales' },
   { text: 'caja', stage: 'ambiguous', lang: 'es', expectPath: '/pos/sell' },
   { text: 'agenda', stage: 'ambiguous', lang: 'es', expectPath: '/scheduling/calendar' },
+  {
+    text: '¿quién está de vacaciones esta semana?',
+    stage: 'I',
+    lang: 'es',
+    expectPath: '/team',
+  },
   { text: 'inventario', stage: 'ambiguous', lang: 'es', expectPath: '/stock' },
   { text: 'facturas', stage: 'ambiguous', lang: 'es', expectPath: '/finances/invoices' },
   { text: 'servicios', stage: 'ambiguous', lang: 'es', expectPath: '/pos/catalog' },

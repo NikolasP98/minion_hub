@@ -40,7 +40,7 @@
         id: 'resources',
         label: m.sched_nav_resources(),
         icon: Users,
-        href: '/scheduling/resources',
+        href: '/team',
       },
       {
         id: 'eventTypes',

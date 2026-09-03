@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "baseCommit": "85f84b8934372d39f7292df72f6b77b050a1f50c",
+  "baseCommit": "e00744cafff2701b9b9288425f85c1ca08604fb9",
   "sourceRef": "HEAD",
-  "sourceCommit": "85f84b8934372d39f7292df72f6b77b050a1f50c",
-  "sourceTreeSha": "572cfac54a173b82556745a642b7395df093ad7f",
-  "workingTreeFingerprint": "git-tree:572cfac54a173b82556745a642b7395df093ad7f",
+  "sourceCommit": "e00744cafff2701b9b9288425f85c1ca08604fb9",
+  "sourceTreeSha": "c4b060cfc326ed343491d79e2c2d925c635830bb",
+  "workingTreeFingerprint": "git-tree:c4b060cfc326ed343491d79e2c2d925c635830bb",
   "summary": {
     "endpoints": 151,
-    "screens": 141,
-    "redirects": 10,
+    "screens": 140,
+    "redirects": 11,
     "dynamicScreens": 28,
-    "appScreens": 131,
+    "appScreens": 130,
     "publicScreens": 10
   },
   "knownBaselineFailures": [
@@ -1250,13 +1250,19 @@
     {
       "id": "scheduling.resources",
       "pattern": "/scheduling/resources",
-      "source": "src/routes/(app)/scheduling/resources/+page.svelte",
+      "source": "src/routes/(app)/scheduling/resources/+page.server.ts",
       "family": "app",
-      "kind": "screen",
+      "kind": "redirect",
       "dynamic": false,
+      "redirectContract": {
+        "probePath": "/scheduling/resources",
+        "statuses": [307],
+        "location": "/team?tab=availability",
+        "outcomes": ["preserves-tab-target"]
+      },
       "observations": {
-        "pageHeader": true,
-        "explicitResponsiveRule": true,
+        "pageHeader": false,
+        "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,
         "fetchSites": 0
