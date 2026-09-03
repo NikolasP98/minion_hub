@@ -3,6 +3,8 @@
 
   import { Button, Toggle } from '$lib/components/ui';
   import WeekHoursEditor from './WeekHoursEditor.svelte';
+  import ResourcePickerField, { type SchedulableResource } from './ResourcePickerField.svelte';
+  import ProcedurePickerField from './ProcedurePickerField.svelte';
   import * as m from '$lib/paraglide/messages';
 
   interface EventType {
@@ -35,7 +37,7 @@
     eventType?: EventType | null;
     /** Seeds a NEW event type (e.g. from a dormant catalog service). */
     preset?: Partial<EventType> | null;
-    resources: Array<{ id: string; name: string }>;
+    resources: SchedulableResource[];
     products: Array<{ id: string; name: string }>;
     onsaved: () => void;
     oncancel: () => void;
@@ -102,12 +104,6 @@
     f.title = v;
     if (!slugTouched) f.slug = slugify(v);
   }
-  function toggleResource(id: string) {
-    f.resourceIds = f.resourceIds.includes(id)
-      ? f.resourceIds.filter((r) => r !== id)
-      : [...f.resourceIds, id];
-  }
-
   async function save() {
     if (!f.title.trim() || !f.slug.trim() || f.length <= 0) {
       err = 'title, slug, length required';
@@ -183,35 +179,16 @@
       </Select>
     </label>
     {#if products.length}
-      <label class="field">
+      <div class="field">
         <span class="t-caption">{m.sched_et_product()}</span>
-        <Select
-          class="txt"
-          value={f.productId ?? ''}
-          onchange={(value) => (f.productId = value === '' ? null : String(value))}
-        >
-          <option value="">{m.sched_none()}</option>
-          {#each products as p (p.id)}
-            <option value={p.id}>{p.name}</option>
-          {/each}
-        </Select>
-      </label>
+        <ProcedurePickerField {products} bind:value={f.productId} />
+      </div>
     {/if}
   </div>
 
-  <div class="mt-3">
+  <div class="field mt-3">
     <span class="t-caption">{m.sched_et_resources()}</span>
-    <div class="flex flex-wrap gap-2 mt-1">
-      {#each resources as r (r.id)}
-        <Button
-          type="button"
-          class="chip {f.resourceIds.includes(r.id) ? 'chip-on' : ''}"
-          onclick={() => toggleResource(r.id)}
-        >
-          {r.name}
-        </Button>
-      {/each}
-    </div>
+    <ResourcePickerField {resources} bind:value={f.resourceIds} />
   </div>
 
   <div class="flex items-center gap-4 mt-3">
@@ -266,17 +243,5 @@
     background: var(--color-card);
     font-size: var(--font-size-body);
     width: 100%;
-  }
-  .editor :global(.chip) {
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-full);
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--font-size-body);
-    background: var(--color-card);
-  }
-  .editor :global(.chip-on) {
-    background: var(--color-accent);
-    color: var(--color-accent-foreground, var(--color-foreground));
-    border-color: var(--color-accent);
   }
 </style>

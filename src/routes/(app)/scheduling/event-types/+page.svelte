@@ -15,7 +15,15 @@
   let editing = $state<string | null>(null);
   let preset = $state<{ title: string; productId: string } | null>(null);
 
-  const resourceOpts = $derived(data.resources.map((r) => ({ id: r.id, name: r.name })));
+  const resourceOpts = $derived(
+    data.resources.map((r) => ({
+      id: r.id,
+      name: r.name,
+      kind: r.kind,
+      email: r.email,
+      active: r.active,
+    })),
+  );
   const rows = $derived(buildServiceRows(data.services, data.eventTypes));
   const canEdit = $derived(canAct('scheduling', 'edit'));
 
