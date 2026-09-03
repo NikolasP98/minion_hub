@@ -12,11 +12,7 @@
   import { hrErrorMessage } from './hr-error';
   import { JSON_HEADERS, todayKey, type TeamHoliday } from './types';
 
-  let {
-    holidays,
-    canEdit,
-    canDelete,
-  }: { holidays: TeamHoliday[]; canEdit: boolean; canDelete: boolean } = $props();
+  let { holidays, canEdit }: { holidays: TeamHoliday[]; canEdit: boolean } = $props();
 
   const year = new Date().getFullYear();
   let error = $state<string | null>(null);
@@ -71,12 +67,9 @@
     if (!newDate || !newName.trim()) return;
     if (await post({ date: newDate, name: newName.trim() })) newName = '';
   }
-  // TODO(handoff): unchecking a weekday does not delete rows already materialised for it
-  // (materializeWeeklyOff only inserts) — delete them per row for now; see proposal
-  // 2026-09-03-hub-team-hr-tabs-followups.
+  // Reconciles both ways: checked weekdays are materialised, unchecked ones are removed.
   async function applyWeeklyOff() {
     const days = WEEKDAYS.filter((w) => weeklyOff[w.dow]).map((w) => w.dow);
-    if (!days.length) return;
     await post({ weeklyOff: days, from: `${year}-01-01`, to: `${year}-12-31` });
   }
   async function remove(id: string) {
@@ -84,7 +77,8 @@
     try {
       await jsonMutation({
         input: `/api/scheduling/hr/holidays/${id}`,
-        init: { method: 'DELETE' },
+        // PATCH so the removal rides on scheduling:edit (DELETE would need scheduling:delete).
+        init: { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ deleted: true }) },
         onSuccess: () => invalidate('team:data'),
       });
     } catch (e) {
@@ -149,7 +143,7 @@
         <Badge variant="semantic" value="info" size="sm">{m.team_holiday()}</Badge>
       {/if}
     {:else if col.key === 'actions'}
-      {#if canDelete}
+      {#if canEdit}
         <Button
           variant="ghost"
           size="xs"

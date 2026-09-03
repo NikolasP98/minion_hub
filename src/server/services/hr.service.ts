@@ -24,6 +24,7 @@ import {
   leaveBalance,
   rangesOverlap,
   weeklyOffDates,
+  staleWeeklyOffDates,
   canTransition,
   BLOCKING_STATUSES,
   type LeaveStatus,
@@ -236,23 +237,52 @@ export async function deleteHoliday(ctx: CoreCtx, id: string): Promise<void> {
   );
 }
 
-/** hrms get_weekly_off_dates: materialise weekly offs as holiday rows for [from, to]; idempotent. */
-export async function materializeWeeklyOff(
+/**
+ * hrms get_weekly_off_dates, reconciled: materialise the chosen weekdays as
+ * weekly-off rows for [from, to] and drop the weekly-off rows in that range
+ * whose weekday is no longer chosen. Named holidays are never touched.
+ */
+export async function setWeeklyOff(
   ctx: CoreCtx,
   weekdays: number[],
   from: string,
   to: string,
-): Promise<number> {
+): Promise<{ created: number; removed: number }> {
   const dates = weeklyOffDates(from, to, weekdays);
-  if (!dates.length) return 0;
   return withOrgCore(ctx, async (tx) => {
-    await tx
-      .insert(hrHolidays)
-      .values(
-        dates.map((date) => ({ orgId: ctx.tenantId, date, name: 'Weekly off', weeklyOff: true })),
-      )
-      .onConflictDoNothing({ target: [hrHolidays.orgId, hrHolidays.date] });
-    return dates.length;
+    if (dates.length)
+      await tx
+        .insert(hrHolidays)
+        .values(
+          dates.map((date) => ({ orgId: ctx.tenantId, date, name: 'Weekly off', weeklyOff: true })),
+        )
+        .onConflictDoNothing({ target: [hrHolidays.orgId, hrHolidays.date] });
+    const existing = await tx
+      .select({ date: hrHolidays.date })
+      .from(hrHolidays)
+      .where(
+        and(
+          eq(hrHolidays.orgId, ctx.tenantId),
+          eq(hrHolidays.weeklyOff, true),
+          gte(hrHolidays.date, from),
+          lte(hrHolidays.date, to),
+        ),
+      );
+    const stale = staleWeeklyOffDates(
+      existing.map((r) => r.date),
+      weekdays,
+    );
+    if (stale.length)
+      await tx
+        .delete(hrHolidays)
+        .where(
+          and(
+            eq(hrHolidays.orgId, ctx.tenantId),
+            eq(hrHolidays.weeklyOff, true),
+            inArray(hrHolidays.date, stale),
+          ),
+        );
+    return { created: dates.length, removed: stale.length };
   });
 }
 

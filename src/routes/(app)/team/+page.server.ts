@@ -3,7 +3,11 @@ import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
-import { getResourceSchedule, listEventTypes } from '$server/services/scheduling.service';
+import {
+  getResourceSchedule,
+  listEventTypes,
+  listResources,
+} from '$server/services/scheduling.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import {
   listEmployees,
@@ -66,7 +70,9 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       myProfileId,
       members: memberRows,
       weekStart: iso(weekStart),
+      myEmployeeId: null,
       employees: [],
+      resources: [],
       schedules: {},
       eventTypes: [],
       bookings: [],
@@ -77,34 +83,51 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     };
   }
 
-  const [employees, holidays, leaveTypes, allocations, requests, eventTypes, bookings] =
-    await Promise.all([
-      listEmployees(ctx, { includeLeft: true }),
-      listHolidays(ctx, yearStart, yearEnd),
-      listLeaveTypes(ctx),
-      listAllocations(ctx),
-      listLeaveRequests(ctx, { from: yearStart, to: yearEnd }),
-      listEventTypes(ctx),
-      listBookings(ctx, {
-        from: weekStart,
-        to: weekEnd,
-        status: ['accepted', 'pending', 'completed'],
-        limit: 1000,
-        maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
-      }),
-    ]);
+  const [
+    employees,
+    allResources,
+    holidays,
+    leaveTypes,
+    allocations,
+    requests,
+    eventTypes,
+    bookings,
+  ] = await Promise.all([
+    listEmployees(ctx, { includeLeft: true }),
+    listResources(ctx),
+    listHolidays(ctx, yearStart, yearEnd),
+    listLeaveTypes(ctx),
+    listAllocations(ctx),
+    listLeaveRequests(ctx, { from: yearStart, to: yearEnd }),
+    listEventTypes(ctx),
+    listBookings(ctx, {
+      from: weekStart,
+      to: weekEnd,
+      status: ['accepted', 'pending', 'completed'],
+      limit: 1000,
+      maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
+    }),
+  ]);
 
+  // Rooms & equipment: non-staff resources (spec §2 — no employee row, ever).
+  const resources = allResources.filter((r) => r.kind !== 'staff');
+  const scheduleIds = [
+    ...employees.flatMap((e) => (e.resourceId ? [e.resourceId] : [])),
+    ...resources.map((r) => r.id),
+  ];
   const schedules = Object.fromEntries(
     await Promise.all(
-      employees
-        .filter((e) => e.resourceId)
-        .map(async (e) => [e.resourceId!, await getResourceSchedule(ctx, e.resourceId!)] as const),
+      scheduleIds.map(async (id) => [id, await getResourceSchedule(ctx, id)] as const),
     ),
   );
 
   return {
     hrEnabled: true as const,
     myProfileId,
+    // The viewer's own employee row — approve/reject are hidden on their own requests.
+    myEmployeeId: myProfileId
+      ? (employees.find((e) => e.profileId === myProfileId)?.id ?? null)
+      : null,
     members: memberRows,
     weekStart: iso(weekStart),
     employees: employees.map((e) => ({
@@ -118,6 +141,13 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       joinedOn: e.joinedOn,
       leftOn: e.leftOn,
       color: e.resource?.color ?? null,
+    })),
+    resources: resources.map((r) => ({
+      id: r.id,
+      name: r.name,
+      kind: (r.kind === 'equipment' ? 'equipment' : 'room') as 'room' | 'equipment',
+      color: r.color,
+      active: r.active,
     })),
     schedules,
     eventTypes: eventTypes.map((e) => ({ id: e.id, title: e.title })),

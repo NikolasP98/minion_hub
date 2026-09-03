@@ -14,6 +14,7 @@
   import AvailabilityTab from '$lib/components/team/AvailabilityTab.svelte';
   import TimeOffTab from '$lib/components/team/TimeOffTab.svelte';
   import HolidaysTab from '$lib/components/team/HolidaysTab.svelte';
+  import ResourcesTab from '$lib/components/team/ResourcesTab.svelte';
   import { canAct, canClient } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -21,8 +22,7 @@
 
   const canManageUsers = $derived(canClient('users.manage'));
   const canEdit = $derived(canAct('scheduling', 'edit'));
-  // DELETE /api/scheduling/* is gated on scheduling:delete by the write hook.
-  const canDelete = $derived(canAct('scheduling', 'delete'));
+  // Members & access is always listed; without users.manage it explains the gate instead of vanishing.
   const tabs = $derived([
     ...(data.hrEnabled
       ? [
@@ -30,9 +30,10 @@
           { value: 'availability', label: m.team_tab_availability() },
           { value: 'timeoff', label: m.team_tab_timeoff() },
           { value: 'holidays', label: m.team_tab_holidays() },
+          { value: 'resources', label: m.team_tab_resources() },
         ]
       : []),
-    ...(canManageUsers ? [{ value: 'members', label: m.team_tab_members() }] : []),
+    { value: 'members', label: m.team_tab_members() },
   ]);
   // `?tab=` is the source of truth; unknown/missing falls back to the first visible tab.
   const tab = $derived.by(() => {
@@ -89,14 +90,25 @@
         members={data.members}
         {canEdit}
         canDecide={canEdit || canManageUsers}
+        myEmployeeId={data.myEmployeeId}
       />
     {:else if tab === 'holidays'}
-      <HolidaysTab holidays={data.holidays} {canEdit} {canDelete} />
+      <HolidaysTab holidays={data.holidays} {canEdit} />
+    {:else if tab === 'resources'}
+      <ResourcesTab resources={data.resources} schedules={data.schedules} {canEdit} />
     {:else if tab === 'members'}
-      <div class="team-stack">
-        <TeamTab />
-        <SharedAccountsPanel />
-      </div>
+      {#if canManageUsers}
+        <div class="team-stack">
+          <TeamTab />
+          <SharedAccountsPanel />
+        </div>
+      {:else}
+        <EmptyState
+          icon={Users}
+          title={m.team_members_locked()}
+          description={m.team_members_locked_hint()}
+        />
+      {/if}
     {:else}
       <EmptyState title={m.team_hr_disabled()} />
     {/if}
