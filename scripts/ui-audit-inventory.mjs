@@ -49,6 +49,12 @@ const REDIRECT_CONTRACTS = {
     location: '/cloud?server=ui-audit-shell',
     outcomes: ['preserves-parameter', 'legacy-route'],
   },
+  '/scheduling/resources': {
+    probePath: '/scheduling/resources',
+    statuses: [307],
+    location: '/team?tab=availability',
+    outcomes: ['preserves-tab-target'],
+  },
   '/tools': {
     probePath: '/tools',
     statuses: [307],

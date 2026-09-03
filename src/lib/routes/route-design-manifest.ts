@@ -495,7 +495,6 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/scheduling/event-types', 'Event types', 'scheduling-pos', 'collection'),
   screen('/scheduling/links', 'Booking links', 'scheduling-pos', 'collection'),
   screen('/scheduling/reminders', 'Reminders', 'scheduling-pos', 'collection'),
-  screen('/scheduling/resources', 'Resources', 'scheduling-pos', 'collection'),
   screen('/scheduling/settings', 'Scheduling settings', 'scheduling-pos', 'form-settings'),
   screen('/pos/appointments', 'POS appointments', 'scheduling-pos', 'workspace-editor'),
   screen('/pos/catalog', 'POS catalog', 'scheduling-pos', 'collection'),
@@ -686,6 +685,17 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     'business-operations',
     '/crm/settings?tab=hygiene',
     308,
+    {
+      preserveQuery: false,
+    },
+  ),
+  // People management moved to /team (hub-team-hr-module spec S4).
+  redirectRoute(
+    '/scheduling/resources',
+    'Resources → Team',
+    'scheduling-pos',
+    '/team?tab=availability',
+    307,
     {
       preserveQuery: false,
     },

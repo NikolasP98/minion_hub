@@ -7,7 +7,7 @@ function source(relativeToSrc: string): string {
 
 describe('high-risk mutation integration contracts', () => {
   it.each([
-    'routes/(app)/scheduling/resources/+page.svelte',
+    'lib/components/team/RosterTab.svelte',
     'routes/(app)/memberships/+page.svelte',
     'routes/(app)/work/+page.svelte',
     'routes/(app)/settings/workflows/+page.svelte',

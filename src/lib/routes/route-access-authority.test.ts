@@ -26,7 +26,7 @@ describe('route access authority', () => {
     expect(routeAccessPolicyIdForPath('/cloud')).toBe('org-capability:workspace:view');
     expect(routeAccessPolicyIdForPath('/cloud/gui')).toBe('org-capability:workspace:edit');
     expect(routeAccessPolicyIdForPath('/cloud/settings')).toBe('org-capability:workspace:manage');
-    expect(routeAccessPolicyIdForPath('/team')).toBe('capability:users.manage');
+    expect(routeAccessPolicyIdForPath('/team')).toBe('permission:scheduling:view');
     expect(routeAccessPolicyIdForPath('/book/public-link')).toBe('public');
     expect(routeAccessPolicyIdForPath('/terminal')).toBe('authenticated');
     expect(resolveRouteAccess('/settings/gateways').deniedStatus).toBe(404);
@@ -48,12 +48,18 @@ describe('route access authority', () => {
     expect(decideRouteAccess('/cloud/gui', workspaceEditor).allowed).toBe(true);
     expect(decideRouteAccess('/team', workspaceEditor).allowed).toBe(false);
 
+    // /team is the HR module: scheduling:view opens it, users:manage alone no longer does.
     const teamManager = {
       ...authenticated,
       permissions: new Set(['users:manage']),
     };
-    expect(decideRouteAccess('/team', teamManager).allowed).toBe(true);
+    expect(decideRouteAccess('/team', teamManager).allowed).toBe(false);
     expect(decideRouteAccess('/notifications', teamManager).allowed).toBe(false);
+    const schedulingViewer = {
+      ...authenticated,
+      permissions: new Set(['scheduling:view']),
+    };
+    expect(decideRouteAccess('/team', schedulingViewer).allowed).toBe(true);
   });
 
   it('resolves every protected renderable route through its manifest policy', () => {

@@ -1,0 +1,78 @@
+/** Serialised shapes the /team loader hands to the HR tabs. */
+export interface TeamEmployee {
+  id: string;
+  profileId: string | null;
+  resourceId: string | null;
+  name: string;
+  email: string | null;
+  designation: string | null;
+  status: 'active' | 'left';
+  joinedOn: string | null;
+  leftOn: string | null;
+  color: string | null;
+}
+
+export interface TeamMember {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  role: string | null;
+  accountType: string;
+}
+
+export interface TeamLeaveType {
+  id: string;
+  code: string;
+  name: string;
+  paid: boolean;
+}
+
+export interface TeamAllocation {
+  id: string;
+  employeeId: string;
+  leaveTypeId: string;
+  periodStart: string;
+  periodEnd: string;
+  days: number;
+}
+
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface TeamLeaveRequest {
+  id: string;
+  employeeId: string;
+  leaveTypeId: string;
+  fromDate: string;
+  toDate: string;
+  halfDay: boolean;
+  days: number;
+  reason: string | null;
+  status: LeaveStatus;
+  decidedBy: string | null;
+  decidedAt: string | null;
+}
+
+export interface TeamHoliday {
+  id: string;
+  date: string;
+  name: string;
+  weeklyOff: boolean;
+}
+
+export interface TeamBooking {
+  id: string;
+  resourceId: string;
+  eventTypeId: string;
+  start: string;
+  end: string;
+  status: string;
+  attendeeName: string | null;
+}
+
+/** Local 'YYYY-MM-DD' for today (the loader's week window is local too). */
+export function todayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export const JSON_HEADERS = { 'content-type': 'application/json' } as const;
