@@ -99,14 +99,14 @@
   }
 
   const columns: DataColumn<Row>[] = [
-    { key: 'name', label: m.team_col_name(), custom: true, width: 220 },
-    { key: 'designation', label: m.team_col_designation(), width: 160 },
-    { key: 'roles', label: m.team_col_roles(), width: 120 },
+    { key: 'name', label: m.team_col_name(), custom: true, width: 200 },
+    { key: 'designation', label: m.team_col_designation(), width: 130 },
+    { key: 'roles', label: m.team_col_roles(), width: 90 },
     {
       key: 'status',
       label: m.team_col_status(),
       custom: true,
-      width: 110,
+      width: 100,
       filter: {
         options: () => [
           { value: 'active', label: m.team_status_active() },
@@ -115,8 +115,8 @@
         ],
       },
     },
-    { key: 'week', label: m.team_col_week(), custom: true, sortable: false, width: 340 },
-    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 90 },
+    { key: 'week', label: m.team_col_week(), custom: true, sortable: false, width: 300 },
+    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 72 },
   ];
 
   async function patch(id: string, body: Record<string, unknown>) {
