@@ -6,6 +6,8 @@ export interface TeamEmployee {
   name: string;
   email: string | null;
   designation: string | null;
+  department: string | null;
+  employmentType: string | null;
   status: 'active' | 'left';
   joinedOn: string | null;
   leftOn: string | null;
@@ -70,7 +72,17 @@ export interface TeamHoliday {
   id: string;
   date: string;
   name: string;
-  weeklyOff: boolean;
+  /** 'manual' | 'country' — imported rows are toggled/moved, never retyped. */
+  source: string;
+  /** `${country}:${originalDate}` for imports (the original date survives a move). */
+  sourceKey: string | null;
+  enabled: boolean;
+}
+
+export interface TeamHrSettings {
+  /** Recurring weekly off, 0=Sun…6=Sat. */
+  weeklyOff: number[];
+  country: string | null;
 }
 
 /** Non-staff `sched_resources` (rooms / equipment) — never linked to an employee. */

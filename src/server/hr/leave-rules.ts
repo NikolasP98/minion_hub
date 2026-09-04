@@ -88,15 +88,6 @@ export function weeklyOffDates(
   return dateKeysBetween(from, to).filter((k) => set.has(new Date(`${k}T00:00:00Z`).getUTCDay()));
 }
 
-/** Materialised weekly-off dates whose weekday is no longer chosen (the rows `setWeeklyOff` removes). */
-export function staleWeeklyOffDates(
-  dates: ReadonlyArray<DateKey>,
-  weeklyOff: ReadonlyArray<number>,
-): DateKey[] {
-  const set = new Set(weeklyOff);
-  return dates.filter((k) => !set.has(new Date(`${k}T00:00:00Z`).getUTCDay()));
-}
-
 export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 /** Status machine: pending → approved | rejected; approved → cancelled; pending → cancelled. */

@@ -20,6 +20,7 @@ import {
   listLeaveTypes,
   listAllocations,
   listLeaveRequests,
+  getHrSettings,
 } from '$server/services/hr.service';
 import { listOrganizations, listUsers } from '$server/services/user.service';
 
@@ -114,6 +115,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       eventTypes: [],
       bookings: [],
       holidays: [],
+      hrSettings: { weeklyOff: [], country: null },
       leaveTypes: [],
       allocations: [],
       requests: [],
@@ -129,6 +131,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     requests,
     eventTypes,
     bookings,
+    hrSettings,
   ] = await Promise.all([
     listEmployees(ctx, { includeLeft: true }),
     listResources(ctx),
@@ -144,6 +147,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       limit: 1000,
       maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
     }),
+    getHrSettings(ctx),
   ]);
 
   // Rooms & equipment: non-staff resources (spec §2 — no employee row, ever).
@@ -176,6 +180,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       name: e.name,
       email: e.email,
       designation: e.designation,
+      department: e.department,
+      employmentType: e.employmentType,
       status: e.status as 'active' | 'left',
       joinedOn: e.joinedOn,
       leftOn: e.leftOn,
@@ -203,8 +209,11 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       id: h.id,
       date: h.date,
       name: h.name,
-      weeklyOff: h.weeklyOff,
+      source: h.source,
+      sourceKey: h.sourceKey,
+      enabled: h.enabled,
     })),
+    hrSettings,
     leaveTypes: leaveTypes
       .filter((t) => t.active)
       .map((t) => ({ id: t.id, code: t.code, name: t.name, paid: t.paid })),

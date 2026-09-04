@@ -1,16 +1,19 @@
 <script lang="ts">
   // /team — the HR system of record (spec 2026-09-02-hub-team-hr-module-spec):
-  // People (roster · availability · access) · Time off (requests · holidays) ·
-  // Rooms & equipment. Members & shared accounts live under /settings/team.
+  // People (roster · availability · access) · Time off (calendar · requests ·
+  // balances) · Rooms & equipment · Settings (holidays · weekly off · leave
+  // types · allocations). The secondary side menu (TeamNav) switches `?tab=`.
   import type { PageData } from './$types';
   import { Users } from 'lucide-svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { PageHeader, SegmentedControl, EmptyState, iconSizes } from '$lib/components/ui';
+  import { PageHeader, EmptyState, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import PeopleView from '$lib/components/team/PeopleView.svelte';
   import TimeOffView from '$lib/components/team/TimeOffView.svelte';
   import ResourcesTab from '$lib/components/team/ResourcesTab.svelte';
+  import TeamSettingsView from '$lib/components/team/TeamSettingsView.svelte';
+  import { resolveTeamTab } from '$lib/components/team/tabs';
   import { canAct, canClient } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -18,60 +21,39 @@
 
   const canManageUsers = $derived(canClient('users.manage'));
   const canEdit = $derived(canAct('scheduling', 'edit'));
-  const tabs = $derived(
-    data.hrEnabled
-      ? [
-          { value: 'people', label: m.team_tab_people() },
-          { value: 'timeoff', label: m.team_tab_timeoff() },
-          { value: 'resources', label: m.team_tab_resources() },
-        ]
-      : [],
-  );
-  // Pre-fold tab values (bookmarks, assistant links) still resolve.
-  const LEGACY: Record<string, string> = {
-    roster: 'people',
-    availability: 'people',
-    members: 'people',
-    holidays: 'timeoff',
-  };
-  // `?tab=` is the source of truth; unknown/missing falls back to People.
-  const tab = $derived.by(() => {
-    const q = page.url.searchParams.get('tab') ?? '';
-    const v = LEGACY[q] ?? q;
-    return tabs.some((t) => t.value === v) ? v : (tabs[0]?.value ?? '');
-  });
-  function selectTab(value: string) {
+  const tab = $derived(resolveTeamTab(page.url.searchParams.get('tab'), canEdit || canManageUsers));
+  const TITLES = {
+    people: m.team_tab_people,
+    timeoff: m.team_tab_timeoff,
+    resources: m.team_tab_resources,
+    settings: m.team_tab_settings,
+  } as const;
+  // People → "Request" jumps to Time off with the employee preselected.
+  const requestFor = $derived(page.url.searchParams.get('request'));
+  function requestTimeOff(employeeId: string) {
     const url = new URL(page.url);
-    url.searchParams.set('tab', value);
-    // A person selection belongs to the People tab only.
-    if (value !== 'people') url.searchParams.delete('person');
-    goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
+    url.search = '';
+    url.searchParams.set('tab', 'timeoff');
+    url.searchParams.set('request', employeeId);
+    goto(`${url.pathname}${url.search}`, { keepFocus: true, noScroll: true });
   }
 </script>
 
 <svelte:head>
-  <title>{m.team_title()} · Minion</title>
+  <title>{TITLES[tab]()} · {m.team_title()} · Minion</title>
 </svelte:head>
 
 <PageShell archetype="collection" scroll="region" labelledBy="team-title">
-  <PageHeader titleId="team-title" title={m.team_title()} subtitle={m.team_subtitle()}>
+  <PageHeader titleId="team-title" title={TITLES[tab]()} subtitle={m.team_subtitle()}>
     {#snippet leading()}
       <Users size={iconSizes.md} class="text-accent shrink-0" aria-hidden="true" />
-    {/snippet}
-    {#snippet actions()}
-      {#if tabs.length > 1}
-        <SegmentedControl
-          items={tabs}
-          value={tab}
-          onValueChange={selectTab}
-          aria-label={m.team_title()}
-        />
-      {/if}
     {/snippet}
   </PageHeader>
 
   <PageBody padding="compact" scroll="region" class="team-body">
-    {#if tab === 'people'}
+    {#if !data.hrEnabled}
+      <EmptyState icon={Users} title={m.team_hr_disabled()} />
+    {:else if tab === 'people'}
       <PeopleView
         employees={data.employees}
         members={data.members}
@@ -81,8 +63,14 @@
         schedules={data.schedules}
         rbacRoles={data.rbacRoles}
         organizations={data.organizations}
+        requests={data.requests}
+        allocations={data.allocations}
+        leaveTypes={data.leaveTypes}
+        holidays={data.holidays}
+        hrSettings={data.hrSettings}
         {canEdit}
         {canManageUsers}
+        onRequestTimeOff={requestTimeOff}
       />
     {:else if tab === 'timeoff'}
       <TimeOffView
@@ -91,15 +79,24 @@
         allocations={data.allocations}
         requests={data.requests}
         holidays={data.holidays}
+        hrSettings={data.hrSettings}
         members={data.members}
         {canEdit}
         canDecide={canEdit || canManageUsers}
         myEmployeeId={data.myEmployeeId}
+        {requestFor}
       />
     {:else if tab === 'resources'}
       <ResourcesTab resources={data.resources} schedules={data.schedules} {canEdit} />
     {:else}
-      <EmptyState icon={Users} title={m.team_hr_disabled()} />
+      <TeamSettingsView
+        employees={data.employees}
+        holidays={data.holidays}
+        hrSettings={data.hrSettings}
+        leaveTypes={data.leaveTypes}
+        allocations={data.allocations}
+        {canEdit}
+      />
     {/if}
   </PageBody>
 </PageShell>
