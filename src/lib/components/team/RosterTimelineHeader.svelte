@@ -10,6 +10,15 @@
 </script>
 
 <div class="tl-head" bind:this={el} onscroll={() => tl.onScroll()}>
+  <!-- Month rail: each month spans its days; the label is sticky to the scroller's
+       left edge, so the next month's label slides the current one out of view. -->
+  <div class="months" style:width="{tl.count * DAY_PX}px">
+    {#each tl.months as mo (mo.key)}
+      <div class="mo" style:width="{mo.days * DAY_PX}px">
+        <span class="ml">{mo.label}</span>
+      </div>
+    {/each}
+  </div>
   <div class="track" style:width="{tl.count * DAY_PX}px">
     {#each tl.days as d (d.key)}
       <div
@@ -43,8 +52,26 @@
     text-transform: none;
     letter-spacing: normal;
   }
-  .track {
+  .track,
+  .months {
     display: flex;
+  }
+  .mo {
+    flex: 0 0 auto;
+    display: flex;
+    min-width: 0;
+  }
+  .ml {
+    position: sticky;
+    left: 0;
+    padding: 0 var(--space-1);
+    font-size: var(--font-size-telemetry);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-accent);
+    white-space: nowrap;
+    line-height: 1.2;
   }
   .d {
     flex: 0 0 auto;
@@ -76,7 +103,10 @@
   .wd {
     font-size: var(--font-size-telemetry);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.02em;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
   }
   .n {
     font-size: var(--font-size-caption);
