@@ -299,6 +299,7 @@
     {:else if col.key === 'week'}
       {#if r.resourceId}
         <MemberCalendarStrip
+          compact
           {weekStart}
           bookings={stripBookings(r.resourceId)}
           color={r.color ?? 'var(--color-accent)'}
