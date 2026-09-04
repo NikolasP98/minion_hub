@@ -76,18 +76,18 @@
   .d {
     flex: 0 0 auto;
     width: 2.5rem;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0;
     padding: var(--space-0-5) 0;
-    border-radius: var(--radius-sm);
+    border-right: 1px solid var(--color-border);
     font-variant-numeric: tabular-nums;
     color: var(--color-text-secondary);
   }
   .d.ms {
     border-left: 1px solid var(--color-border-strong);
-    border-radius: 0;
   }
   .d.off,
   .d.hol {
