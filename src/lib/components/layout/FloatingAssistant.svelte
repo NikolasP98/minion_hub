@@ -617,7 +617,14 @@
     };
     place();
     const poll = setInterval(place, 400);
-    return () => clearInterval(poll);
+    // Teardown removes the node ourselves: once re-parented out of the
+    // component's own DOM range, Svelte's unmount no longer reaches it, and the
+    // app shell is re-keyed per module (root +layout `{#key}`), so every module
+    // switch would otherwise leave an orphan pill behind (shipped: two ⌘J pills).
+    return () => {
+      clearInterval(poll);
+      el.remove();
+    };
   });
 
   // Anchor by the half it sits in so hover-expand grows inward (never off-screen).
