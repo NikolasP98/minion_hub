@@ -18,7 +18,18 @@
     weekStart,
     bookings,
     color = 'var(--color-accent)',
-  }: { weekStart: string; bookings: StripBooking[]; color?: string } = $props();
+    compact = false,
+  }: {
+    weekStart: string;
+    bookings: StripBooking[];
+    color?: string;
+    /** Dense variant for table cells: stacked day header + a booking count instead of chips. */
+    compact?: boolean;
+  } = $props();
+  const dayTitle = (day: (typeof days)[number]) =>
+    day.bookings
+      .map((b) => `${hhmm(b.start)} · ${b.title}${b.attendeeName ? ` · ${b.attendeeName}` : ''}`)
+      .join('\n');
 
   const days = $derived.by(() => {
     const base = new Date(`${weekStart}T00:00:00`);
@@ -40,26 +51,38 @@
     new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 </script>
 
-<div class="week">
+<div class="week" class:compact>
   {#each days as day (day.key)}
-    <div class="day" class:today={day.isToday}>
+    <div
+      class="day"
+      class:today={day.isToday}
+      title={compact ? dayTitle(day) || undefined : undefined}
+    >
       <div class="dh">
         <span class="dl">{day.label}</span>
         <span class="dn">{day.num}</span>
       </div>
       <div class="db">
-        {#each day.bookings as b (b.id)}
-          <div
-            class="chip {b.status}"
-            style="--c:{color}"
-            title="{hhmm(b.start)} · {b.title}{b.attendeeName ? ` · ${b.attendeeName}` : ''}"
-          >
-            <span class="ct">{hhmm(b.start)}</span>
-            <span class="cn truncate">{b.attendeeName ?? b.title}</span>
-          </div>
+        {#if compact}
+          {#if day.bookings.length}
+            <span class="cnt" style="--c:{color}">{day.bookings.length}</span>
+          {:else}
+            <span class="empty">·</span>
+          {/if}
         {:else}
-          <span class="empty">·</span>
-        {/each}
+          {#each day.bookings as b (b.id)}
+            <div
+              class="chip {b.status}"
+              style="--c:{color}"
+              title="{hhmm(b.start)} · {b.title}{b.attendeeName ? ` · ${b.attendeeName}` : ''}"
+            >
+              <span class="ct">{hhmm(b.start)}</span>
+              <span class="cn truncate">{b.attendeeName ?? b.title}</span>
+            </div>
+          {:else}
+            <span class="empty">·</span>
+          {/each}
+        {/if}
       </div>
     </div>
   {/each}
@@ -100,6 +123,39 @@
   .dn {
     font-size: var(--font-size-body);
     font-weight: 600;
+  }
+  /* Compact: one narrow column per day, header stacked, count instead of chips. */
+  .compact .day {
+    padding: var(--space-0-5);
+    gap: var(--space-0-5);
+    align-items: center;
+  }
+  .compact .dh {
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  .compact .dl {
+    font-size: var(--font-size-telemetry);
+    letter-spacing: 0.02em;
+  }
+  .compact .dn {
+    font-size: var(--font-size-caption);
+  }
+  .compact .db {
+    min-height: 1.25rem;
+    align-items: center;
+  }
+  .cnt {
+    min-width: 1.25rem;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--c) 18%, transparent);
+    color: var(--c);
+    font-size: var(--font-size-telemetry);
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.25rem;
   }
   .db {
     display: flex;
