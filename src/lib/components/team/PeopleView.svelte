@@ -106,6 +106,8 @@
     tl.holidays = holidays;
     tl.weeklyOff = hrSettings.weeklyOff;
     tl.locale = languageTag();
+    tl.leaveTypeName = (id) => typeName.get(id) ?? '';
+    tl.eventTitle = eventTitle;
   });
   const typeName = $derived(new Map(leaveTypes.map((t) => [t.id, t.name])));
   const STATUS_LABEL: Record<LeaveStatus, () => string> = {

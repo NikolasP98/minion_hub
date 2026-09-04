@@ -36,6 +36,7 @@ export interface TimelineMonth {
 }
 
 export interface LeaveMark {
+  request: TeamLeaveRequest;
   status: LeaveStatus;
   first: boolean;
   last: boolean;
@@ -52,6 +53,8 @@ const localKey = (iso: string) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+const EMPTY: TeamBooking[] = [];
+
 export class Timeline {
   start = $state(addDays(todayKey(), -PAD));
   count = $state(PAD * 2 + 1);
@@ -61,6 +64,9 @@ export class Timeline {
   holidays = $state<TeamHoliday[]>([]);
   weeklyOff = $state<number[]>([]);
   locale = $state('en');
+  /** Names for tooltips (the People view wires these from its props). */
+  leaveTypeName = $state<(id: string) => string>(() => '');
+  eventTitle = $state<(id: string) => string>(() => '');
 
   #bookings = $state<Record<string, TeamBooking>>({});
   #loadedFrom = '';
@@ -111,13 +117,16 @@ export class Timeline {
     return out;
   });
 
-  /** `${resourceId}:${day}` → bookings that day. */
-  readonly #countByDay = $derived.by(() => {
-    const m = new Map<string, number>();
+  /** `${resourceId}:${day}` → that day's bookings, by start time. */
+  readonly #bookingsByDay = $derived.by(() => {
+    const m = new Map<string, TeamBooking[]>();
     for (const b of Object.values(this.#bookings)) {
       const k = `${b.resourceId}:${localKey(b.start)}`;
-      m.set(k, (m.get(k) ?? 0) + 1);
+      const list = m.get(k) ?? [];
+      list.push(b);
+      m.set(k, list);
     }
+    for (const list of m.values()) list.sort((a, b) => a.start.localeCompare(b.start));
     return m;
   });
 
@@ -128,6 +137,7 @@ export class Timeline {
       if (l.status !== 'pending' && l.status !== 'approved') continue;
       for (let k = l.fromDate; k <= l.toDate; k = addDays(k, 1))
         m.set(`${l.employeeId}:${k}`, {
+          request: l,
           status: l.status,
           first: k === l.fromDate,
           last: k === l.toDate,
@@ -136,8 +146,8 @@ export class Timeline {
     return m;
   });
 
-  bookingCount(resourceId: string | null, day: string): number {
-    return resourceId ? (this.#countByDay.get(`${resourceId}:${day}`) ?? 0) : 0;
+  bookingsAt(resourceId: string | null, day: string): TeamBooking[] {
+    return resourceId ? (this.#bookingsByDay.get(`${resourceId}:${day}`) ?? EMPTY) : EMPTY;
   }
   leaveAt(employeeId: string, day: string): LeaveMark | undefined {
     return this.#leaveByDay.get(`${employeeId}:${day}`);
