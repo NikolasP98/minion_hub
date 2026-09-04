@@ -10,6 +10,8 @@ const postSchema = z.object({
   profileId: z.string().max(200).nullable().optional(),
   partyId: z.string().max(200).nullable().optional(),
   designation: z.string().max(200).nullable().optional(),
+  department: z.string().max(200).nullable().optional(),
+  employmentType: z.enum(['full_time', 'part_time', 'contract', 'intern']).nullable().optional(),
   joinedOn: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)

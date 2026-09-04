@@ -1,9 +1,10 @@
 <script lang="ts">
-  // Time off + holidays in one view (owner: "fold time off and holidays into a single view").
-  // Top: who's-off month grid. Below, ≥1024px: requests + balances (left) · holidays (right).
-  import { ChevronLeft, ChevronRight, MoreVertical, Check, X, Ban, Trash2 } from 'lucide-svelte';
+  // Time off: calendar (month / week / agenda) over leave + holidays, the
+  // requests table and balances. Holidays / weekly off / leave types /
+  // allocations are configured on the Settings tab.
+  import { MediaQuery } from 'svelte/reactivity';
+  import { MoreVertical, Check, X, Ban } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
-  import { Checkbox } from '@minion-stack/ui';
   import {
     Button,
     Badge,
@@ -16,14 +17,15 @@
     iconSizes,
   } from '$lib/components/ui';
   import type { DropdownItem, SelectOption } from '$lib/components/ui';
-  import { FormField } from '$lib/components/ui/foundations';
+  import { FormField, Sheet } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { languageTag } from '$lib/paraglide/runtime';
   import { jsonMutation } from '$lib/api/json-mutation';
   import { fetchJson } from '$lib/api/fetch-json';
   import { hrErrorMessage } from './hr-error';
+  import { leaveBalances } from './balances';
+  import TimeOffCalendar, { type CalendarView } from './TimeOffCalendar.svelte';
   import {
     JSON_HEADERS,
     todayKey,
@@ -31,6 +33,7 @@
     type TeamAllocation,
     type TeamEmployee,
     type TeamHoliday,
+    type TeamHrSettings,
     type TeamLeaveRequest,
     type TeamLeaveType,
     type TeamMember,
@@ -42,26 +45,35 @@
     allocations,
     requests,
     holidays,
+    hrSettings,
     members,
     canEdit,
     canDecide,
     myEmployeeId,
+    requestFor = null,
   }: {
     employees: TeamEmployee[];
     leaveTypes: TeamLeaveType[];
     allocations: TeamAllocation[];
     requests: TeamLeaveRequest[];
     holidays: TeamHoliday[];
+    hrSettings: TeamHrSettings;
     members: TeamMember[];
     canEdit: boolean;
     /** users.manage or scheduling:edit — may approve / reject. */
     canDecide: boolean;
     /** The viewer's own employee row — nobody decides their own request (hrms prevent_self_leave_approval). */
     myEmployeeId: string | null;
+    /** Open the request dialog for this employee on mount (People → "Request"). */
+    requestFor?: string | null;
   } = $props();
 
   let error = $state<string | null>(null);
   let busy = $state(false);
+  // Phones open on the agenda (a 7-column month grid is unreadable at 390px).
+  const phone = new MediaQuery('(max-width: 767px)');
+  // svelte-ignore state_referenced_locally
+  let calView = $state<CalendarView>(phone.current ? 'agenda' : 'month');
 
   const active = $derived(employees.filter((e) => e.status === 'active'));
   const empName = $derived(new Map(employees.map((e) => [e.id, e.name])));
@@ -111,11 +123,11 @@
       },
     },
     { key: 'decider', label: m.team_decided_by(), width: 130 },
-    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 150 },
+    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 60 },
   ];
 
-  const isMine = (r: Row) => myEmployeeId !== null && r.employeeId === myEmployeeId;
-  function rowMenu(r: Row): DropdownItem[] {
+  const isMine = (r: TeamLeaveRequest) => myEmployeeId !== null && r.employeeId === myEmployeeId;
+  function rowMenu(r: TeamLeaveRequest): DropdownItem[] {
     const items: DropdownItem[] = [];
     // The API answers 409 self_approval as well; hiding the verbs is the UI half.
     if (r.status === 'pending' && canDecide && !isMine(r)) {
@@ -132,6 +144,7 @@
   }
   async function decide(id: string, status: string) {
     error = null;
+    busy = true;
     try {
       await jsonMutation({
         input: `/api/scheduling/hr/leave-requests/${id}`,
@@ -140,8 +153,20 @@
       });
     } catch (e) {
       error = hrErrorMessage(e);
+    } finally {
+      busy = false;
     }
   }
+
+  // ── Detail sheet (calendar click / row click) ────────────────────────────────
+  let detailId = $state<string | null>(null);
+  const detail = $derived(
+    detailId?.startsWith('leave:')
+      ? { kind: 'leave' as const, row: requests.find((r) => r.id === detailId!.slice(6)) }
+      : detailId?.startsWith('holiday:')
+        ? { kind: 'holiday' as const, row: holidays.find((h) => h.id === detailId!.slice(8)) }
+        : null,
+  );
 
   // ── New request dialog (hrms leave_application: live balance) ────────────────
   let reqOpen = $state(false);
@@ -164,11 +189,14 @@
     leaveTypes.map((t) => ({ value: t.id, label: t.name })),
   );
 
-  function openRequest() {
-    reqEmployee = reqEmployee || active[0]?.id || '';
+  function openRequest(employeeId?: string) {
+    reqEmployee = employeeId || reqEmployee || active[0]?.id || '';
     reqType = reqType || leaveTypes[0]?.id || '';
     reqOpen = true;
   }
+  $effect(() => {
+    if (requestFor && canEdit) openRequest(requestFor);
+  });
   $effect(() => {
     if (!reqOpen || !reqEmployee || !reqType || !reqFrom) {
       balance = null;
@@ -214,189 +242,10 @@
     }
   }
 
-  // ── Month grid: who is off (approved) + holidays ─────────────────────────────
-  let month = $state(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const monthLabel = $derived(
-    new Intl.DateTimeFormat(languageTag(), { month: 'long', year: 'numeric' }).format(month),
-  );
-  // Monday-first weekday labels in the user's locale (JS getDay: 0 = Sunday).
-  const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0].map((dow) => ({
-    dow,
-    label: new Intl.DateTimeFormat(languageTag(), { weekday: 'short' }).format(
-      new Date(2024, 0, 7 + dow),
-    ),
-  }));
-  const holidayByDate = $derived(new Map(holidays.map((h) => [h.date, h])));
-  const key = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const cells = $derived.by(() => {
-    const first = new Date(month);
-    const lead = (first.getDay() + 6) % 7; // Monday-first
-    const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-    const approved = requests.filter((r) => r.status === 'approved');
-    const out: { key: string | null; day: number; holiday: string | null; off: string[] }[] = [];
-    for (let i = 0; i < lead; i++) out.push({ key: null, day: 0, holiday: null, off: [] });
-    for (let d = 1; d <= daysInMonth; d++) {
-      const k = key(new Date(month.getFullYear(), month.getMonth(), d));
-      out.push({
-        key: k,
-        day: d,
-        holiday: holidayByDate.get(k)?.name ?? null,
-        off: approved
-          .filter((r) => r.fromDate <= k && k <= r.toDate)
-          .map((r) => empName.get(r.employeeId) ?? '—'),
-      });
-    }
-    return out;
-  });
-  const today = todayKey();
-  const shiftMonth = (n: number) =>
-    (month = new Date(month.getFullYear(), month.getMonth() + n, 1));
-
-  // ── Balances (allocation covering today, per employee × type) ────────────────
-  const balances = $derived.by(() =>
-    active.flatMap((e) =>
-      leaveTypes.flatMap((t) => {
-        const allocs = allocations.filter(
-          (a) =>
-            a.employeeId === e.id &&
-            a.leaveTypeId === t.id &&
-            a.periodStart <= today &&
-            today <= a.periodEnd,
-        );
-        if (!allocs.length) return [];
-        const start = allocs.map((a) => a.periodStart).sort()[0];
-        const end = allocs
-          .map((a) => a.periodEnd)
-          .sort()
-          .at(-1)!;
-        const inPeriod = requests.filter(
-          (r) =>
-            r.employeeId === e.id &&
-            r.leaveTypeId === t.id &&
-            r.fromDate <= end &&
-            r.toDate >= start,
-        );
-        const sum = (s: LeaveStatus) =>
-          inPeriod.filter((r) => r.status === s).reduce((n, r) => n + r.days, 0);
-        const allocated = allocs.reduce((n, a) => n + a.days, 0);
-        const approved = sum('approved');
-        const pending = sum('pending');
-        return [
-          {
-            id: `${e.id}:${t.id}`,
-            employee: e.name,
-            type: t.name,
-            allocated,
-            approved,
-            pending,
-            available: allocated - approved - pending,
-          },
-        ];
-      }),
-    ),
-  );
-
-  let allocOpen = $state(false);
-  let allocEmployee = $state('');
-  let allocType = $state('');
-  let allocStart = $state(`${new Date().getFullYear()}-01-01`);
-  let allocEnd = $state(`${new Date().getFullYear()}-12-31`);
-  let allocDays = $state('');
-  function openAllocation() {
-    allocEmployee = allocEmployee || active[0]?.id || '';
-    allocType = allocType || leaveTypes[0]?.id || '';
-    allocOpen = true;
-  }
-  async function submitAllocation() {
-    error = null;
-    busy = true;
-    try {
-      await jsonMutation({
-        input: '/api/scheduling/hr/leave-allocations',
-        init: {
-          method: 'POST',
-          headers: JSON_HEADERS,
-          body: JSON.stringify({
-            employeeId: allocEmployee,
-            leaveTypeId: allocType,
-            periodStart: allocStart,
-            periodEnd: allocEnd,
-            days: Number(allocDays),
-          }),
-        },
-        onSuccess: () => invalidate('team:data'),
-      });
-      allocOpen = false;
-      allocDays = '';
-    } catch (e) {
-      error = hrErrorMessage(e);
-    } finally {
-      busy = false;
-    }
-  }
-
-  // ── Holidays (list, add, weekly-off chooser, delete) ─────────────────────────
-  const year = new Date().getFullYear();
-  // Seed the chooser from the weekdays already materialised as weekly offs.
-  const materialised = $derived(
-    new Set(
-      holidays.filter((h) => h.weeklyOff).map((h) => new Date(`${h.date}T00:00:00`).getDay()),
-    ),
-  );
-  // svelte-ignore state_referenced_locally
-  let weeklyOff = $state<Record<number, boolean>>(
-    Object.fromEntries(WEEKDAYS.map((w) => [w.dow, materialised.has(w.dow)])),
-  );
-  let newDate = $state(todayKey());
-  let newName = $state('');
-
-  const holidayColumns: DataColumn<TeamHoliday>[] = [
-    { key: 'date', label: m.team_holiday_date(), width: 110 },
-    { key: 'name', label: m.team_holiday_name() },
-    { key: 'weeklyOff', label: m.team_col_status(), custom: true, width: 100 },
-    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 50 },
-  ];
-
-  async function postHoliday(body: Record<string, unknown>) {
-    error = null;
-    busy = true;
-    try {
-      await jsonMutation({
-        input: '/api/scheduling/hr/holidays',
-        init: { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) },
-        onSuccess: () => invalidate('team:data'),
-      });
-      return true;
-    } catch (e) {
-      error = hrErrorMessage(e);
-      return false;
-    } finally {
-      busy = false;
-    }
-  }
-  async function addHoliday() {
-    if (!newDate || !newName.trim()) return;
-    if (await postHoliday({ date: newDate, name: newName.trim() })) newName = '';
-  }
-  // Reconciles both ways: checked weekdays are materialised, unchecked ones are removed.
-  async function applyWeeklyOff() {
-    const days = WEEKDAYS.filter((w) => weeklyOff[w.dow]).map((w) => w.dow);
-    await postHoliday({ weeklyOff: days, from: `${year}-01-01`, to: `${year}-12-31` });
-  }
-  async function removeHoliday(id: string) {
-    error = null;
-    try {
-      await jsonMutation({
-        input: `/api/scheduling/hr/holidays/${id}`,
-        // PATCH so the removal rides on scheduling:edit (DELETE would need scheduling:delete).
-        init: { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ deleted: true }) },
-        onSuccess: () => invalidate('team:data'),
-      });
-    } catch (e) {
-      error = hrErrorMessage(e);
-    }
-  }
+  // ── Balances (hrms leave balance report) ─────────────────────────────────────
+  const balances = $derived(leaveBalances(active, leaveTypes, allocations, requests));
+  const pct = (b: { available: number; allocated: number }) =>
+    b.allocated ? Math.max(0, Math.min(100, (b.available / b.allocated) * 100)) : 0;
 </script>
 
 {#if error}
@@ -404,180 +253,154 @@
 {/if}
 
 <Card padding="md">
-  <div class="month-head">
-    <Button variant="ghost" size="xs" shape="icon" aria-label="‹" onclick={() => shiftMonth(-1)}>
-      <ChevronLeft size={iconSizes.sm} aria-hidden="true" />
-    </Button>
-    <span class="t-label">{m.team_whos_off()} · {monthLabel}</span>
-    <Button variant="ghost" size="xs" shape="icon" aria-label="›" onclick={() => shiftMonth(1)}>
-      <ChevronRight size={iconSizes.sm} aria-hidden="true" />
+  <div class="cal-head">
+    <span class="t-label">{m.team_whos_off()}</span>
+    <Button size="sm" onclick={() => openRequest()} disabled={!canEdit || active.length === 0}>
+      + {m.team_request()}
     </Button>
   </div>
-  <div class="grid" role="grid" aria-label={monthLabel}>
-    {#each WEEKDAYS as w (w.dow)}
-      <div class="t-caption dow">{w.label}</div>
-    {/each}
-    {#each cells as c, i (c.key ?? `blank-${i}`)}
-      <div
-        class="cell"
-        class:blank={!c.key}
-        class:today={c.key === today}
-        class:holiday={c.holiday}
-      >
-        {#if c.key}
-          <span class="day">{c.day}</span>
-          {#if c.holiday}<span class="t-caption truncate" title={c.holiday}>{c.holiday}</span>{/if}
-          {#each c.off as name (name)}
-            <span class="off truncate" title={name}>{name}</span>
-          {/each}
-        {/if}
-      </div>
-    {/each}
-  </div>
+  <TimeOffCalendar
+    {requests}
+    {holidays}
+    weeklyOff={hrSettings.weeklyOff}
+    employeeName={(id) => empName.get(id) ?? '—'}
+    typeName={(id) => typeName.get(id) ?? '—'}
+    bind:view={calView}
+    onEventClick={(id) => (detailId = id)}
+  />
 </Card>
 
 <div class="cols">
-  <div class="col">
-    <DataTable
-      class="requests"
-      {columns}
-      data={rows}
-      getRowId={(r) => r.id}
-      searchFields={(r) => `${r.employee} ${r.type} ${r.reason ?? ''}`}
-      storageKey="team-timeoff"
-      canEdit={false}
-      addLabel={m.team_request()}
-      onAdd={openRequest}
-      addDisabled={!canEdit || active.length === 0}
-      emptyMessage={m.team_requests_empty()}
-    >
-      {#snippet cell(r: Row, col: DataColumn<Row>)}
-        {#if col.key === 'dates'}
-          <span class="tabular-nums">{r.fromDate} → {r.toDate}</span>
-          {#if r.halfDay}<Badge size="sm">{m.team_half_day()}</Badge>{/if}
-        {:else if col.key === 'status'}
+  <DataTable
+    class="requests"
+    {columns}
+    data={rows}
+    getRowId={(r) => r.id}
+    searchFields={(r) => `${r.employee} ${r.type} ${r.reason ?? ''}`}
+    storageKey="team-timeoff"
+    canEdit={false}
+    onRowClick={(r) => (detailId = `leave:${r.id}`)}
+    emptyMessage={m.team_requests_empty()}
+  >
+    {#snippet cell(r: Row, col: DataColumn<Row>)}
+      {#if col.key === 'dates'}
+        <span class="tabular-nums">{r.fromDate} → {r.toDate}</span>
+        {#if r.halfDay}<Badge size="sm">{m.team_half_day()}</Badge>{/if}
+      {:else if col.key === 'status'}
+        <Badge variant="semantic" value={STATUS_TONE[r.status]} size="sm" dot>
+          {STATUS_LABEL[r.status]()}
+        </Badge>
+      {:else if col.key === 'actions'}
+        {@const items = rowMenu(r)}
+        {#if items.length}
+          <Dropdown {items} onSelect={(v) => decide(r.id, v)} placement="left">
+            {#snippet trigger()}
+              <span class="row-menu" aria-label={m.team_col_actions()}>
+                <MoreVertical size={iconSizes.md} aria-hidden="true" />
+              </span>
+            {/snippet}
+          </Dropdown>
+        {/if}
+      {/if}
+    {/snippet}
+  </DataTable>
+
+  <Card padding="md">
+    <div class="t-label mb-2">{m.team_balances()}</div>
+    {#if balances.length === 0}
+      <p class="t-caption">{m.team_no_allocation()}</p>
+    {:else}
+      <div class="balances">
+        <div class="t-caption">{m.team_employee()}</div>
+        <div class="t-caption">{m.team_leave_type()}</div>
+        <div class="t-caption num">{m.team_remaining()}</div>
+        <div></div>
+        {#each balances as b (b.id)}
+          <div class="truncate">{b.employee}</div>
+          <div class="truncate t-caption">{b.type}</div>
+          <div class="num">
+            <b>{b.available}</b><span class="t-caption"> / {b.allocated}</span>
+            {#if b.pending}<span class="t-caption pending">
+                · {b.pending} {m.team_pending_short()}</span
+              >{/if}
+          </div>
+          <div class="bar"><span class="fill" style:width="{pct(b)}%"></span></div>
+        {/each}
+      </div>
+    {/if}
+  </Card>
+</div>
+
+<Sheet
+  open={detail !== null}
+  title={detail?.kind === 'holiday' ? m.team_holiday() : m.team_request_title()}
+  placement="right"
+  size="sm"
+  onclose={() => (detailId = null)}
+>
+  {#if detail?.kind === 'leave' && detail.row}
+    {@const r = detail.row}
+    {@const items = rowMenu(r)}
+    <div class="sheet">
+      <dl class="facts">
+        <dt>{m.team_employee()}</dt>
+        <dd>{empName.get(r.employeeId) ?? '—'}</dd>
+        <dt>{m.team_leave_type()}</dt>
+        <dd>{typeName.get(r.leaveTypeId) ?? '—'}</dd>
+        <dt>{m.team_from()}</dt>
+        <dd class="tabular-nums">{r.fromDate} → {r.toDate}</dd>
+        <dt>{m.team_days()}</dt>
+        <dd>
+          {r.days}{#if r.halfDay}
+            · {m.team_half_day()}{/if}
+        </dd>
+        <dt>{m.team_col_status()}</dt>
+        <dd>
           <Badge variant="semantic" value={STATUS_TONE[r.status]} size="sm" dot>
             {STATUS_LABEL[r.status]()}
           </Badge>
-        {:else if col.key === 'actions'}
-          {@const items = rowMenu(r)}
-          {#if r.status === 'pending' && canDecide && isMine(r)}
-            <span class="t-caption self-note">{m.team_err_self_approval()}</span>
-          {/if}
-          {#if items.length}
-            <Dropdown {items} onSelect={(v) => decide(r.id, v)} placement="left">
-              {#snippet trigger()}
-                <span class="row-menu" aria-label={m.team_col_actions()}>
-                  <MoreVertical size={iconSizes.md} aria-hidden="true" />
-                </span>
-              {/snippet}
-            </Dropdown>
-          {/if}
+        </dd>
+        {#if r.reason}
+          <dt>{m.team_reason()}</dt>
+          <dd>{r.reason}</dd>
         {/if}
-      {/snippet}
-    </DataTable>
-
-    <Card padding="md">
-      <div class="flex items-center justify-between gap-2 mb-2">
-        <span class="t-label">{m.team_balances()}</span>
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={openAllocation}
-          disabled={!canEdit || active.length === 0}
-        >
-          + {m.team_allocation()}
-        </Button>
-      </div>
-      {#if balances.length === 0}
-        <p class="t-caption">—</p>
-      {:else}
-        <div class="balances">
-          <div class="t-caption">{m.team_employee()}</div>
-          <div class="t-caption">{m.team_leave_type()}</div>
-          <div class="t-caption num">{m.team_allocated()}</div>
-          <div class="t-caption num">{m.team_used()}</div>
-          <div class="t-caption num">{m.team_pending_short()}</div>
-          <div class="t-caption num">{m.team_remaining()}</div>
-          {#each balances as b (b.id)}
-            <div class="truncate">{b.employee}</div>
-            <div class="truncate">{b.type}</div>
-            <div class="num">{b.allocated}</div>
-            <div class="num">{b.approved}</div>
-            <div class="num">{b.pending}</div>
-            <div class="num font-medium">{b.available}</div>
+        {#if r.decidedBy}
+          <dt>{m.team_decided_by()}</dt>
+          <dd>{memberName.get(r.decidedBy) ?? '—'}</dd>
+        {/if}
+      </dl>
+      {#if r.status === 'pending' && canDecide && isMine(r)}
+        <p class="t-caption">{m.team_err_self_approval()}</p>
+      {/if}
+      {#if items.length}
+        <div class="hr-inline">
+          {#each items.filter((i) => !i.divider) as it (it.value)}
+            <Button
+              size="sm"
+              variant={it.danger ? 'danger' : it.value === 'approved' ? 'primary' : 'secondary'}
+              disabled={busy}
+              onclick={() => decide(r.id, it.value).then(() => (detailId = null))}
+            >
+              {it.label}
+            </Button>
           {/each}
         </div>
       {/if}
-    </Card>
-  </div>
-
-  <section class="col" aria-label={m.team_tab_holidays()}>
-    <Card padding="md">
-      <div class="t-label mb-2">{m.team_tab_holidays()}</div>
-      <div class="hr-inline">
-        <FormField label={m.team_holiday_date()} required>
-          {#snippet children(control)}
-            <input {...control} class="hr-date" type="date" bind:value={newDate} />
-          {/snippet}
-        </FormField>
-        <FormField label={m.team_holiday_name()} required>
-          {#snippet children(control)}
-            <Input {...control} bind:value={newName} />
-          {/snippet}
-        </FormField>
-        <Button onclick={addHoliday} disabled={busy || !canEdit || !newDate || !newName.trim()}>
-          {m.common_add()}
-        </Button>
-      </div>
-    </Card>
-
-    <Card padding="md">
-      <div class="t-label mb-1">{m.team_weekly_off()}</div>
-      <p class="t-caption mb-2">{m.team_weekly_off_hint({ year: String(year) })}</p>
-      <div class="hr-inline">
-        {#each WEEKDAYS as w (w.dow)}
-          <Checkbox bind:checked={weeklyOff[w.dow]} label={w.label} />
-        {/each}
-        <Button variant="outline" onclick={applyWeeklyOff} disabled={busy || !canEdit}>
-          {m.team_weekly_off_apply()}
-        </Button>
-      </div>
-    </Card>
-
-    <DataTable
-      columns={holidayColumns}
-      data={holidays}
-      getRowId={(h) => h.id}
-      storageKey="team-holidays"
-      canEdit={false}
-      initialSort={{ key: 'date', dir: 'asc' }}
-      emptyMessage={m.team_holidays_empty()}
-    >
-      {#snippet cell(h: TeamHoliday, col: DataColumn<TeamHoliday>)}
-        {#if col.key === 'weeklyOff'}
-          {#if h.weeklyOff}
-            <Badge size="sm">{m.team_weekly_off_badge()}</Badge>
-          {:else}
-            <Badge variant="semantic" value="info" size="sm">{m.team_holiday()}</Badge>
-          {/if}
-        {:else if col.key === 'actions'}
-          {#if canEdit}
-            <Button
-              variant="ghost"
-              size="xs"
-              shape="icon"
-              aria-label={m.common_delete()}
-              onclick={() => removeHoliday(h.id)}
-            >
-              <Trash2 size={iconSizes.sm} aria-hidden="true" />
-            </Button>
-          {/if}
-        {/if}
-      {/snippet}
-    </DataTable>
-  </section>
-</div>
+    </div>
+  {:else if detail?.kind === 'holiday' && detail.row}
+    <dl class="facts">
+      <dt>{m.team_holiday_name()}</dt>
+      <dd>{detail.row.name}</dd>
+      <dt>{m.team_holiday_date()}</dt>
+      <dd class="tabular-nums">{detail.row.date}</dd>
+    </dl>
+    {#if canEdit}
+      <p class="t-caption mt-3">
+        <a class="link" href="/team?tab=settings">{m.team_holiday_manage()}</a>
+      </p>
+    {/if}
+  {/if}
+</Sheet>
 
 <Modal bind:open={reqOpen} title={m.team_request_title()} size="sm">
   <div class="hr-form">
@@ -622,61 +445,27 @@
   {/snippet}
 </Modal>
 
-<Modal bind:open={allocOpen} title={m.team_allocation()} size="sm">
-  <div class="hr-form">
-    <Select label={m.team_employee()} options={employeeOptions} bind:value={allocEmployee} />
-    <Select label={m.team_leave_type()} options={typeOptions} bind:value={allocType} />
-    <div class="hr-inline">
-      <FormField label={m.team_period_start()} required>
-        {#snippet children(control)}
-          <input {...control} class="hr-date" type="date" bind:value={allocStart} />
-        {/snippet}
-      </FormField>
-      <FormField label={m.team_period_end()} required>
-        {#snippet children(control)}
-          <input {...control} class="hr-date" type="date" bind:value={allocEnd} />
-        {/snippet}
-      </FormField>
-    </div>
-    <FormField label={m.team_days()} required>
-      {#snippet children(control)}
-        <Input {...control} type="number" bind:value={allocDays} />
-      {/snippet}
-    </FormField>
-  </div>
-  {#snippet footer()}
-    <Button variant="ghost" onclick={() => (allocOpen = false)}>{m.common_cancel()}</Button>
-    <Button
-      onclick={submitAllocation}
-      disabled={busy || !allocEmployee || !allocType || !(Number(allocDays) >= 0) || !allocDays}
-    >
-      {m.common_save()}
-    </Button>
-  {/snippet}
-</Modal>
-
 <style>
+  .cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
   .cols {
     display: grid;
     gap: var(--space-4);
     margin-top: var(--space-4);
     align-items: start;
   }
-  .col {
+  .cols > :global(*) {
     min-width: 0;
-    display: grid;
-    gap: var(--space-4);
   }
   @media (min-width: 1024px) {
     .cols {
-      grid-template-columns: minmax(0, 1fr) minmax(22.5rem, 25rem);
+      grid-template-columns: minmax(0, 1fr) minmax(20rem, 24rem);
     }
-  }
-  .self-note {
-    color: var(--color-text-secondary);
-    margin-right: var(--space-2);
-    white-space: normal;
-    line-height: 1.2;
   }
   .row-menu {
     display: inline-flex;
@@ -689,61 +478,54 @@
   .row-menu:hover {
     background: var(--color-surface-2);
   }
-  .month-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    margin-bottom: var(--space-2);
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: var(--space-0-5);
-  }
-  .dow {
-    text-align: center;
-  }
-  .cell {
-    min-height: 3.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-0-5);
-    padding: var(--space-1);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-2);
-    border: 1px solid transparent;
-    min-width: 0;
-  }
-  .cell.blank {
-    background: transparent;
-  }
-  .cell.today {
-    border-color: var(--color-accent);
-  }
-  .cell.holiday {
-    background: var(--color-info-surface);
-    border-color: var(--color-info-border);
-  }
-  .day {
-    font-size: var(--font-size-caption);
-    color: var(--color-text-secondary);
-  }
-  .off {
-    font-size: var(--font-size-caption);
-    padding: 0 var(--space-1);
-    border-radius: var(--radius-xs);
-    background: var(--color-warning-surface);
-    color: var(--color-warning-fg);
-  }
+  /* Bar-row contract: label | value | bar LAST, one shared 1fr track. */
   .balances {
     display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) repeat(4, max-content);
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) max-content minmax(3rem, 1fr);
     gap: var(--space-1) var(--space-3);
     align-items: center;
+    font-size: var(--font-size-caption);
   }
   .num {
     text-align: right;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .pending {
+    color: var(--color-warning-fg);
+  }
+  .bar {
+    height: 0.375rem;
+    border-radius: var(--radius-full);
+    background: var(--color-surface-3);
+    overflow: hidden;
+  }
+  .fill {
+    display: block;
+    height: 100%;
+    background: var(--color-success-fg);
+  }
+  .link {
+    color: var(--color-accent);
+    text-decoration: underline;
+  }
+  .sheet {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--space-1) var(--space-3);
+    margin: 0;
+    font-size: var(--font-size-caption);
+  }
+  .facts dt {
+    color: var(--color-text-secondary);
+  }
+  .facts dd {
+    margin: 0;
+    min-width: 0;
   }
 </style>

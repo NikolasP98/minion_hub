@@ -19,6 +19,10 @@
      *  (Snippets can't live on the column object — a duplicate-`svelte` brand clash —
      *  so custom cells are switched on `key` inside one `cell` snippet prop.) */
     custom?: boolean;
+    /** Render this column's header via the table's `headerCell` snippet (label stays for menus). */
+    customHeader?: boolean;
+    /** Absorb the pane's leftover width (instead of the trailing spacer); `width` becomes its minimum. */
+    fill?: boolean;
     align?: 'left' | 'right' | 'center';
     /** Initial width in px (user can resize unless `resizable: false`). */
     width?: number;
@@ -184,6 +188,7 @@
     initialExpanded,
     // slots
     cell,
+    headerCell,
     filterOptionIcon,
     toolbar,
     actions,
@@ -237,6 +242,8 @@
      */
     initialExpanded?: string[];
     cell?: Snippet<[T, DataColumn<T>]>;
+    /** Custom header content per column (switch on `col.key`; render nothing to fall back to `label`). */
+    headerCell?: Snippet<[DataColumn<T>]>;
     filterOptionIcon?: Snippet<[string]>;
     toolbar?: Snippet;
     actions?: Snippet;
@@ -337,6 +344,8 @@
   const SEL_W = 40,
     EXP_W = 38,
     EDIT_W = 76;
+  // A `fill` column absorbs leftover width, so the trailing spacer col/cells are dropped.
+  const hasFill = $derived(visibleColumns.some((c) => c.fill));
   const totalWidth = $derived(
     (selectable ? SEL_W : 0) +
       (expandEnabled ? EXP_W : 0) +
@@ -1297,11 +1306,14 @@
         <colgroup>
           {#if selectable}<col style="width:{SEL_W}px" />{/if}
           {#if expandEnabled}<col style="width:{EXP_W}px" />{/if}
-          {#each visibleColumns as c, i (c.key)}<col style="width:{dataWidth(c, i)}px" />{/each}
+          {#each visibleColumns as c, i (c.key)}
+            {#if c.fill}<col />{:else}<col style="width:{dataWidth(c, i)}px" />{/if}
+          {/each}
           {#if hasEdit}<col style="width:{EDIT_W}px" />{/if}
           <!-- spacer: absorbs leftover width when the table is narrower than the pane;
-					     collapses to 0 (min-width forces horizontal scroll) when it overflows -->
-          <col />
+					     collapses to 0 (min-width forces horizontal scroll) when it overflows.
+					     A `fill` column takes that role instead. -->
+          {#if !hasFill}<col />{/if}
         </colgroup>
         <thead
           class="sticky top-0 bg-bg/95 backdrop-blur z-[var(--layer-navigation)]"
@@ -1367,6 +1379,8 @@
                       optionIcon={c.filter.icon ? filterOptionIcon : undefined}
                       onSelect={(s) => setFilter(c.key, s)}
                     />
+                  {:else if c.customHeader && headerCell}
+                    {@render headerCell(c)}
                   {:else if c.sortable !== false}
                     <Button
                       variant="ghost"
@@ -1398,7 +1412,7 @@
               </th>
             {/each}
             {#if hasEdit}<th class="dt-th px-3 py-2"></th>{/if}
-            <th class="dt-th" aria-hidden="true"></th>
+            {#if !hasFill}<th class="dt-th" aria-hidden="true"></th>{/if}
           </tr>
         </thead>
         <tbody>
@@ -1530,7 +1544,7 @@
                       {/if}
                     </td>
                   {/if}
-                  <td aria-hidden="true"></td>
+                  {#if !hasFill}<td aria-hidden="true"></td>{/if}
                 </tr>
               {/if}
             {/each}

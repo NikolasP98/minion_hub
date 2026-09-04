@@ -14,6 +14,7 @@ const CODES: Record<string, () => string> = {
   bad_transition: m.team_err_bad_transition,
   left_needs_date: m.team_err_left_needs_date,
   not_found: m.team_err_not_found,
+  import_failed: m.team_err_import_failed,
 };
 
 export function hrErrorMessage(error: unknown): string {

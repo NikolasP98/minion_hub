@@ -42,6 +42,9 @@ export const hrEmployees = pgTable(
     name: text('name').notNull(),
     email: text('email'),
     designation: text('designation'),
+    department: text('department'),
+    /** hrms employment_type: full_time | part_time | contract | intern. */
+    employmentType: text('employment_type'),
     status: text('status').notNull().default('active'), // 'active' | 'left'
     joinedOn: date('joined_on'),
     leftOn: date('left_on'),
@@ -68,12 +71,25 @@ export const hrHolidays = pgTable(
     orgId: text('org_id').notNull(),
     date: date('date').notNull(),
     name: text('name').notNull(),
+    /** Legacy (always false): weekly offs are a rule in `hr_settings` — TODO(handoff): drop column (proposal #16). */
     weeklyOff: boolean('weekly_off').notNull().default(false),
+    /** 'manual' | 'country' (Nager.Date import) — imported rows are toggled, not retyped. */
+    source: text('source').notNull().default('manual'),
+    /** `${country}:${originalDate}` for imports so a re-import never duplicates a moved holiday. */
+    sourceKey: text('source_key'),
+    enabled: boolean('enabled').notNull().default(true),
   },
   (t) => ({
     dateUniq: uniqueIndex('hr_holidays_org_date_uniq').on(t.orgId, t.date),
   }),
 );
+
+/** One jsonb row per org: `{ weeklyOff: number[] (0=Sun…6=Sat), country: 'PE' }`. Mirrors crm_settings. */
+export const hrSettings = pgTable('hr_settings', {
+  orgId: text('org_id').primaryKey(),
+  value: jsonb('value').notNull().default({}),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const hrLeaveTypes = pgTable(
   'hr_leave_types',

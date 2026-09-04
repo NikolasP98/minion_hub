@@ -3,7 +3,7 @@
  * holidays, leave types / allocations / requests. Rules live in
  * `$server/hr/leave-rules` (pure, tested); this file is the DB glue.
  */
-import { and, eq, gte, lte, inArray, asc, desc } from 'drizzle-orm';
+import { and, eq, gte, lte, inArray, asc, desc, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -12,6 +12,7 @@ import {
   hrLeaveTypes,
   hrLeaveAllocations,
   hrLeaveRequests,
+  hrSettings,
   type HrEmployee,
   type HrHoliday,
   type HrLeaveType,
@@ -24,7 +25,6 @@ import {
   leaveBalance,
   rangesOverlap,
   weeklyOffDates,
-  staleWeeklyOffDates,
   canTransition,
   BLOCKING_STATUSES,
   type LeaveStatus,
@@ -43,6 +43,7 @@ export class HrRuleError extends Error {
       | 'self_approval'
       | 'bad_transition'
       | 'left_needs_date'
+      | 'import_failed'
       | 'not_found',
     message: string,
   ) {
@@ -58,6 +59,8 @@ export interface EmployeeInput {
   profileId?: string | null;
   partyId?: string | null;
   designation?: string | null;
+  department?: string | null;
+  employmentType?: string | null;
   joinedOn?: string | null;
 }
 
@@ -151,6 +154,8 @@ export async function enrolEmployee(ctx: CoreCtx, input: EmployeeInput): Promise
         partyId: input.partyId ?? null,
         resourceId: resource.id,
         designation: input.designation ?? null,
+        department: input.department ?? null,
+        employmentType: input.employmentType ?? null,
         joinedOn: input.joinedOn ?? null,
       })
       .returning();
@@ -177,6 +182,8 @@ export async function updateEmployee(
     if (patch.name !== undefined) set.name = patch.name;
     if (patch.email !== undefined) set.email = patch.email;
     if (patch.designation !== undefined) set.designation = patch.designation;
+    if (patch.department !== undefined) set.department = patch.department;
+    if (patch.employmentType !== undefined) set.employmentType = patch.employmentType;
     if (patch.joinedOn !== undefined) set.joinedOn = patch.joinedOn;
     if (patch.partyId !== undefined) set.partyId = patch.partyId;
     if (patch.status !== undefined) {
@@ -194,8 +201,54 @@ export async function updateEmployee(
   });
 }
 
+// ── Settings (hr_settings.value) ─────────────────────────────────────────────
+
+export interface HrSettings {
+  /** Recurring weekly off (0=Sun…6=Sat) — computed at read time, never materialised. */
+  weeklyOff: number[];
+  /** ISO-3166 alpha-2 used by the holiday import (Nager.Date). */
+  country: string | null;
+}
+
+/** Reads the org's HR settings inside the caller's transaction (missing row ⇒ defaults). */
+async function readHrSettings(tx: CoreTx, orgId: string): Promise<HrSettings> {
+  const [row] = await tx
+    .select({ value: hrSettings.value })
+    .from(hrSettings)
+    .where(eq(hrSettings.orgId, orgId))
+    .limit(1);
+  const v = (row?.value ?? {}) as Record<string, unknown>;
+  const weeklyOff = Array.isArray(v.weeklyOff)
+    ? v.weeklyOff.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6)
+    : [];
+  return { weeklyOff, country: typeof v.country === 'string' ? v.country : null };
+}
+
+export function getHrSettings(ctx: CoreCtx): Promise<HrSettings> {
+  return withOrgCore(ctx, (tx) => readHrSettings(tx, ctx.tenantId));
+}
+
+export function updateHrSettings(ctx: CoreCtx, patch: Partial<HrSettings>): Promise<HrSettings> {
+  return withOrgCore(ctx, async (tx) => {
+    const cur = await readHrSettings(tx, ctx.tenantId);
+    const next: HrSettings = {
+      weeklyOff: patch.weeklyOff ?? cur.weeklyOff,
+      country: patch.country === undefined ? cur.country : patch.country,
+    };
+    await tx
+      .insert(hrSettings)
+      .values({ orgId: ctx.tenantId, value: next })
+      .onConflictDoUpdate({
+        target: hrSettings.orgId,
+        set: { value: next, updatedAt: new Date() },
+      });
+    return next;
+  });
+}
+
 // ── Holidays ─────────────────────────────────────────────────────────────────
 
+/** Stored holidays only (enabled or not); weekly offs come from `getHrSettings().weeklyOff`. */
 export function listHolidays(ctx: CoreCtx, from?: string, to?: string): Promise<HrHoliday[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(hrHolidays.orgId, ctx.tenantId)];
@@ -209,24 +262,37 @@ export function listHolidays(ctx: CoreCtx, from?: string, to?: string): Promise<
   });
 }
 
+/** Manual holiday, upserted by date. */
 export async function upsertHoliday(
   ctx: CoreCtx,
-  input: { date: string; name: string; weeklyOff?: boolean },
+  input: { date: string; name: string },
 ): Promise<HrHoliday> {
   return withOrgCore(ctx, async (tx) => {
     const [row] = await tx
       .insert(hrHolidays)
-      .values({
-        orgId: ctx.tenantId,
-        date: input.date,
-        name: input.name,
-        weeklyOff: input.weeklyOff ?? false,
-      })
+      .values({ orgId: ctx.tenantId, date: input.date, name: input.name, source: 'manual' })
       .onConflictDoUpdate({
         target: [hrHolidays.orgId, hrHolidays.date],
-        set: { name: input.name, weeklyOff: input.weeklyOff ?? false },
+        set: { name: input.name, enabled: true },
       })
       .returning();
+    return row;
+  });
+}
+
+/** Toggle / rename / move the observed date (e.g. a Thursday holiday taken on Friday). */
+export async function updateHoliday(
+  ctx: CoreCtx,
+  id: string,
+  patch: { enabled?: boolean; date?: string; name?: string },
+): Promise<HrHoliday> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .update(hrHolidays)
+      .set(patch)
+      .where(and(eq(hrHolidays.id, id), eq(hrHolidays.orgId, ctx.tenantId)))
+      .returning();
+    if (!row) throw new HrRuleError('not_found', 'holiday not found');
     return row;
   });
 }
@@ -237,53 +303,79 @@ export async function deleteHoliday(ctx: CoreCtx, id: string): Promise<void> {
   );
 }
 
+const NAGER_BASE = 'https://date.nager.at/api/v3';
+
 /**
- * hrms get_weekly_off_dates, reconciled: materialise the chosen weekdays as
- * weekly-off rows for [from, to] and drop the weekly-off rows in that range
- * whose weekday is no longer chosen. Named holidays are never touched.
+ * Imports a country's public holidays for one year from Nager.Date (keyless,
+ * community-run). Rows are keyed `${country}:${originalDate}` so re-importing
+ * never duplicates a holiday the org moved or disabled; a date already taken
+ * by a manual holiday is skipped. Nager repeats some dates under different
+ * English names (Jueves Santo ×2) — first localName per date wins.
  */
-export async function setWeeklyOff(
+export async function importCountryHolidays(
   ctx: CoreCtx,
-  weekdays: number[],
+  country: string,
+  year: number,
+): Promise<{ imported: number; total: number }> {
+  const res = await fetch(`${NAGER_BASE}/PublicHolidays/${year}/${country}`);
+  if (res.status === 404) throw new HrRuleError('not_found', `no holidays for ${country}`);
+  if (!res.ok) throw new HrRuleError('import_failed', `Nager.Date ${res.status}`);
+  const raw = (await res.json()) as { date?: unknown; localName?: unknown; name?: unknown }[];
+  const byDate = new Map<string, string>();
+  for (const h of raw) {
+    if (typeof h.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(h.date)) continue;
+    const name = typeof h.localName === 'string' ? h.localName : String(h.name ?? '');
+    if (name && !byDate.has(h.date)) byDate.set(h.date, name);
+  }
+  // TODO(handoff): a date already held by a manual holiday is skipped silently
+  // (unique (org, date)); only the imported/total counts hint at it (proposal #12).
+  return withOrgCore(ctx, async (tx) => {
+    let imported = 0;
+    for (const [date, name] of byDate) {
+      const rows = await tx
+        .insert(hrHolidays)
+        .values({
+          orgId: ctx.tenantId,
+          date,
+          name,
+          source: 'country',
+          sourceKey: `${country}:${date}`,
+        })
+        .onConflictDoNothing()
+        .returning({ id: hrHolidays.id });
+      imported += rows.length;
+    }
+    await tx
+      .insert(hrSettings)
+      .values({ orgId: ctx.tenantId, value: { country } })
+      .onConflictDoUpdate({
+        target: hrSettings.orgId,
+        set: { value: sql`${hrSettings.value} || ${JSON.stringify({ country })}::jsonb` },
+      });
+    return { imported, total: byDate.size };
+  });
+}
+
+/** Enabled holiday dates in [from, to] ∪ the recurring weekly offs — the ONE non-working-day set. */
+async function nonWorkingDates(
+  tx: CoreTx,
+  orgId: string,
   from: string,
   to: string,
-): Promise<{ created: number; removed: number }> {
-  const dates = weeklyOffDates(from, to, weekdays);
-  return withOrgCore(ctx, async (tx) => {
-    if (dates.length)
-      await tx
-        .insert(hrHolidays)
-        .values(
-          dates.map((date) => ({ orgId: ctx.tenantId, date, name: 'Weekly off', weeklyOff: true })),
-        )
-        .onConflictDoNothing({ target: [hrHolidays.orgId, hrHolidays.date] });
-    const existing = await tx
-      .select({ date: hrHolidays.date })
-      .from(hrHolidays)
-      .where(
-        and(
-          eq(hrHolidays.orgId, ctx.tenantId),
-          eq(hrHolidays.weeklyOff, true),
-          gte(hrHolidays.date, from),
-          lte(hrHolidays.date, to),
-        ),
-      );
-    const stale = staleWeeklyOffDates(
-      existing.map((r) => r.date),
-      weekdays,
+): Promise<Set<string>> {
+  const rows = await tx
+    .select({ date: hrHolidays.date })
+    .from(hrHolidays)
+    .where(
+      and(
+        eq(hrHolidays.orgId, orgId),
+        eq(hrHolidays.enabled, true),
+        gte(hrHolidays.date, from),
+        lte(hrHolidays.date, to),
+      ),
     );
-    if (stale.length)
-      await tx
-        .delete(hrHolidays)
-        .where(
-          and(
-            eq(hrHolidays.orgId, ctx.tenantId),
-            eq(hrHolidays.weeklyOff, true),
-            inArray(hrHolidays.date, stale),
-          ),
-        );
-    return { created: dates.length, removed: stale.length };
-  });
+  const { weeklyOff } = await readHrSettings(tx, orgId);
+  return new Set([...rows.map((r) => r.date), ...weeklyOffDates(from, to, weeklyOff)]);
 }
 
 // ── Leave types ──────────────────────────────────────────────────────────────
@@ -410,19 +502,6 @@ export async function deleteAllocation(ctx: CoreCtx, id: string): Promise<void> 
 
 // ── Leave requests ───────────────────────────────────────────────────────────
 
-async function holidaySet(
-  tx: CoreTx,
-  orgId: string,
-  from: string,
-  to: string,
-): Promise<Set<string>> {
-  const rows = await tx
-    .select({ date: hrHolidays.date })
-    .from(hrHolidays)
-    .where(and(eq(hrHolidays.orgId, orgId), gte(hrHolidays.date, from), lte(hrHolidays.date, to)));
-  return new Set(rows.map((r) => r.date));
-}
-
 async function balanceFor(
   tx: CoreTx,
   orgId: string,
@@ -526,7 +605,7 @@ export async function createLeaveRequest(
     if (input.toDate < input.fromDate)
       throw new HrRuleError('invalid_range', 'to_date is before from_date');
 
-    const holidays = await holidaySet(tx, ctx.tenantId, input.fromDate, input.toDate);
+    const holidays = await nonWorkingDates(tx, ctx.tenantId, input.fromDate, input.toDate);
     const days = leaveDays({
       from: input.fromDate,
       to: input.toDate,
@@ -638,11 +717,8 @@ export async function loadDayOffOverrides(
 ): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>(resourceIds.map((id) => [id, []]));
   if (!resourceIds.length) return out;
-  const holidays = await tx
-    .select({ date: hrHolidays.date })
-    .from(hrHolidays)
-    .where(and(eq(hrHolidays.orgId, orgId), gte(hrHolidays.date, from), lte(hrHolidays.date, to)));
-  for (const id of resourceIds) out.get(id)!.push(...holidays.map((h) => h.date));
+  const holidays = [...(await nonWorkingDates(tx, orgId, from, to))];
+  for (const id of resourceIds) out.get(id)!.push(...holidays);
   const leaves = await tx
     .select({
       resourceId: hrEmployees.resourceId,

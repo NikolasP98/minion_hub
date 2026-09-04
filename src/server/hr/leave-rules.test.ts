@@ -4,7 +4,6 @@ import {
   rangesOverlap,
   leaveBalance,
   weeklyOffDates,
-  staleWeeklyOffDates,
   canTransition,
   dateKeysBetween,
 } from './leave-rules';
@@ -83,12 +82,6 @@ describe('weeklyOffDates (hrms get_weekly_off_dates)', () => {
       '2026-09-20',
       '2026-09-27',
     ]);
-  });
-  it('staleWeeklyOffDates keeps only dates whose weekday was unchecked', () => {
-    const materialised = ['2026-09-05', '2026-09-06', '2026-09-12', '2026-09-13']; // Sat, Sun
-    expect(staleWeeklyOffDates(materialised, [0])).toEqual(['2026-09-05', '2026-09-12']);
-    expect(staleWeeklyOffDates(materialised, [0, 6])).toEqual([]);
-    expect(staleWeeklyOffDates(materialised, [])).toEqual(materialised);
   });
   it('dateKeysBetween is inclusive', () => {
     expect(dateKeysBetween('2026-09-29', '2026-10-01')).toEqual([
