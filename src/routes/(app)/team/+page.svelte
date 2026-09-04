@@ -1,19 +1,15 @@
 <script lang="ts">
   // /team — the HR system of record (spec 2026-09-02-hub-team-hr-module-spec):
-  // Roster · Availability · Time off · Holidays, plus the existing Members &
-  // access panels (TeamTab + SharedAccountsPanel) for users.manage holders.
+  // People (roster · availability · access) · Time off (requests · holidays) ·
+  // Rooms & equipment. Members & shared accounts live under /settings/team.
   import type { PageData } from './$types';
   import { Users } from 'lucide-svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import TeamTab from '$lib/components/users/TeamTab.svelte';
-  import SharedAccountsPanel from '$lib/components/users/SharedAccountsPanel.svelte';
   import { PageHeader, SegmentedControl, EmptyState, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
-  import RosterTab from '$lib/components/team/RosterTab.svelte';
-  import AvailabilityTab from '$lib/components/team/AvailabilityTab.svelte';
-  import TimeOffTab from '$lib/components/team/TimeOffTab.svelte';
-  import HolidaysTab from '$lib/components/team/HolidaysTab.svelte';
+  import PeopleView from '$lib/components/team/PeopleView.svelte';
+  import TimeOffView from '$lib/components/team/TimeOffView.svelte';
   import ResourcesTab from '$lib/components/team/ResourcesTab.svelte';
   import { canAct, canClient } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -22,27 +18,33 @@
 
   const canManageUsers = $derived(canClient('users.manage'));
   const canEdit = $derived(canAct('scheduling', 'edit'));
-  // Members & access is always listed; without users.manage it explains the gate instead of vanishing.
-  const tabs = $derived([
-    ...(data.hrEnabled
+  const tabs = $derived(
+    data.hrEnabled
       ? [
-          { value: 'roster', label: m.team_tab_roster() },
-          { value: 'availability', label: m.team_tab_availability() },
+          { value: 'people', label: m.team_tab_people() },
           { value: 'timeoff', label: m.team_tab_timeoff() },
-          { value: 'holidays', label: m.team_tab_holidays() },
           { value: 'resources', label: m.team_tab_resources() },
         ]
-      : []),
-    { value: 'members', label: m.team_tab_members() },
-  ]);
-  // `?tab=` is the source of truth; unknown/missing falls back to the first visible tab.
+      : [],
+  );
+  // Pre-fold tab values (bookmarks, assistant links) still resolve.
+  const LEGACY: Record<string, string> = {
+    roster: 'people',
+    availability: 'people',
+    members: 'people',
+    holidays: 'timeoff',
+  };
+  // `?tab=` is the source of truth; unknown/missing falls back to People.
   const tab = $derived.by(() => {
-    const q = page.url.searchParams.get('tab');
-    return tabs.some((t) => t.value === q) ? (q as string) : (tabs[0]?.value ?? '');
+    const q = page.url.searchParams.get('tab') ?? '';
+    const v = LEGACY[q] ?? q;
+    return tabs.some((t) => t.value === v) ? v : (tabs[0]?.value ?? '');
   });
   function selectTab(value: string) {
     const url = new URL(page.url);
     url.searchParams.set('tab', value);
+    // A person selection belongs to the People tab only.
+    if (value !== 'people') url.searchParams.delete('person');
     goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
   }
 </script>
@@ -69,19 +71,21 @@
   </PageHeader>
 
   <PageBody padding="compact" scroll="region" class="team-body">
-    {#if tab === 'roster'}
-      <RosterTab
+    {#if tab === 'people'}
+      <PeopleView
         employees={data.employees}
         members={data.members}
         weekStart={data.weekStart}
         bookings={data.bookings}
         eventTypes={data.eventTypes}
+        schedules={data.schedules}
+        rbacRoles={data.rbacRoles}
+        organizations={data.organizations}
         {canEdit}
+        {canManageUsers}
       />
-    {:else if tab === 'availability'}
-      <AvailabilityTab employees={data.employees} schedules={data.schedules} />
     {:else if tab === 'timeoff'}
-      <TimeOffTab
+      <TimeOffView
         employees={data.employees}
         leaveTypes={data.leaveTypes}
         allocations={data.allocations}
@@ -92,35 +96,15 @@
         canDecide={canEdit || canManageUsers}
         myEmployeeId={data.myEmployeeId}
       />
-    {:else if tab === 'holidays'}
-      <HolidaysTab holidays={data.holidays} {canEdit} />
     {:else if tab === 'resources'}
       <ResourcesTab resources={data.resources} schedules={data.schedules} {canEdit} />
-    {:else if tab === 'members'}
-      {#if canManageUsers}
-        <div class="team-stack">
-          <TeamTab />
-          <SharedAccountsPanel />
-        </div>
-      {:else}
-        <EmptyState
-          icon={Users}
-          title={m.team_members_locked()}
-          description={m.team_members_locked_hint()}
-        />
-      {/if}
     {:else}
-      <EmptyState title={m.team_hr_disabled()} />
+      <EmptyState icon={Users} title={m.team_hr_disabled()} />
     {/if}
   </PageBody>
 </PageShell>
 
 <style>
-  .team-stack {
-    display: grid;
-    align-content: start;
-    gap: var(--space-section, 24px);
-  }
   :global(.team-body) {
     display: flex;
     flex-direction: column;

@@ -2,7 +2,12 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
-import { shouldMaskSensitive } from '$server/services/rbac.service';
+import {
+  getOrgMemberRolesAll,
+  hasOrgCapability,
+  listRoleCatalog,
+  shouldMaskSensitive,
+} from '$server/services/rbac.service';
 import {
   getResourceSchedule,
   listEventTypes,
@@ -16,7 +21,7 @@ import {
   listAllocations,
   listLeaveRequests,
 } from '$server/services/hr.service';
-import { listUsers } from '$server/services/user.service';
+import { listOrganizations, listUsers } from '$server/services/user.service';
 
 /** Local midnight `n` days from today (negative = past). */
 function dayOffset(n: number): Date {
@@ -30,8 +35,9 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 /**
  * /team — HR system of record (spec 2026-09-02-hub-team-hr-module-spec S2–S4).
- * Members & access (TeamTab) keep loading through their own /api/users calls;
- * this loader feeds the Roster / Availability / Time off / Holidays tabs.
+ * Feeds the People (roster + availability + access) / Time off / Rooms tabs.
+ * Access data (role catalog, per-member RBAC roles, orgs for join links) only
+ * loads for users.manage holders — the People detail hides the section otherwise.
  */
 export const load: PageServerLoad = async ({ locals, depends }) => {
   const ctx = await getCoreCtx(locals);
@@ -56,19 +62,50 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
         return [] as Awaited<ReturnType<typeof listUsers>>;
       })
     : [];
+  // Access controls (People → Access section) — same sources as settings/team.
+  const manageUsers = await hasOrgCapability(locals, 'users', 'manage');
+  const tenantCtx = locals.tenantCtx;
+  const [rbacRoles, memberRoleMap, organizations] =
+    manageUsers && tenantCtx
+      ? await Promise.all([
+          listRoleCatalog(tenantCtx.tenantId).catch((e) => {
+            console.warn('[team] listRoleCatalog failed, degrading:', e);
+            return [] as Awaited<ReturnType<typeof listRoleCatalog>>;
+          }),
+          getOrgMemberRolesAll(tenantCtx.tenantId).catch((e) => {
+            console.warn('[team] getOrgMemberRolesAll failed, degrading:', e);
+            return new Map<string, string[]>();
+          }),
+          listOrganizations(tenantCtx).catch((e) => {
+            console.warn('[team] listOrganizations failed, degrading:', e);
+            return [] as Awaited<ReturnType<typeof listOrganizations>>;
+          }),
+        ])
+      : [[], new Map<string, string[]>(), []];
   const memberRows = members.map((u) => ({
     id: u.id,
     email: u.email,
     displayName: u.displayName,
     role: u.role,
     accountType: u.accountType,
+    // Falls back to viewer when unassigned (mirrors settings/team).
+    memberRoles: manageUsers ? (memberRoleMap.get(u.id) ?? ['viewer']) : [],
   }));
+  const rbacRoleRows = rbacRoles.map((r) => ({
+    key: r.key,
+    name: r.name,
+    rank: r.rank,
+    description: r.description,
+  }));
+  const organizationRows = organizations.map((o) => ({ id: o.id, name: o.name }));
 
   if (!hrEnabled) {
     return {
       hrEnabled: false as const,
       myProfileId,
       members: memberRows,
+      rbacRoles: rbacRoleRows,
+      organizations: organizationRows,
       weekStart: iso(weekStart),
       myEmployeeId: null,
       employees: [],
@@ -129,6 +166,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       ? (employees.find((e) => e.profileId === myProfileId)?.id ?? null)
       : null,
     members: memberRows,
+    rbacRoles: rbacRoleRows,
+    organizations: organizationRows,
     weekStart: iso(weekStart),
     employees: employees.map((e) => ({
       id: e.id,

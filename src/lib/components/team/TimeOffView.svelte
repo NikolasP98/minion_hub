@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { ChevronLeft, ChevronRight, MoreVertical, Check, X, Ban } from 'lucide-svelte';
+  // Time off + holidays in one view (owner: "fold time off and holidays into a single view").
+  // Top: who's-off month grid. Below, ≥1024px: requests + balances (left) · holidays (right).
+  import { ChevronLeft, ChevronRight, MoreVertical, Check, X, Ban, Trash2 } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
+  import { Checkbox } from '@minion-stack/ui';
   import {
     Button,
     Badge,
@@ -216,9 +219,13 @@
   const monthLabel = $derived(
     new Intl.DateTimeFormat(languageTag(), { month: 'long', year: 'numeric' }).format(month),
   );
-  const weekdayLabels = [1, 2, 3, 4, 5, 6, 0].map((dow) =>
-    new Intl.DateTimeFormat(languageTag(), { weekday: 'short' }).format(new Date(2024, 0, 7 + dow)),
-  );
+  // Monday-first weekday labels in the user's locale (JS getDay: 0 = Sunday).
+  const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0].map((dow) => ({
+    dow,
+    label: new Intl.DateTimeFormat(languageTag(), { weekday: 'short' }).format(
+      new Date(2024, 0, 7 + dow),
+    ),
+  }));
   const holidayByDate = $derived(new Map(holidays.map((h) => [h.date, h])));
   const key = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -328,119 +335,248 @@
       busy = false;
     }
   }
+
+  // ── Holidays (list, add, weekly-off chooser, delete) ─────────────────────────
+  const year = new Date().getFullYear();
+  // Seed the chooser from the weekdays already materialised as weekly offs.
+  const materialised = $derived(
+    new Set(
+      holidays.filter((h) => h.weeklyOff).map((h) => new Date(`${h.date}T00:00:00`).getDay()),
+    ),
+  );
+  // svelte-ignore state_referenced_locally
+  let weeklyOff = $state<Record<number, boolean>>(
+    Object.fromEntries(WEEKDAYS.map((w) => [w.dow, materialised.has(w.dow)])),
+  );
+  let newDate = $state(todayKey());
+  let newName = $state('');
+
+  const holidayColumns: DataColumn<TeamHoliday>[] = [
+    { key: 'date', label: m.team_holiday_date(), width: 110 },
+    { key: 'name', label: m.team_holiday_name() },
+    { key: 'weeklyOff', label: m.team_col_status(), custom: true, width: 100 },
+    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 50 },
+  ];
+
+  async function postHoliday(body: Record<string, unknown>) {
+    error = null;
+    busy = true;
+    try {
+      await jsonMutation({
+        input: '/api/scheduling/hr/holidays',
+        init: { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) },
+        onSuccess: () => invalidate('team:data'),
+      });
+      return true;
+    } catch (e) {
+      error = hrErrorMessage(e);
+      return false;
+    } finally {
+      busy = false;
+    }
+  }
+  async function addHoliday() {
+    if (!newDate || !newName.trim()) return;
+    if (await postHoliday({ date: newDate, name: newName.trim() })) newName = '';
+  }
+  // Reconciles both ways: checked weekdays are materialised, unchecked ones are removed.
+  async function applyWeeklyOff() {
+    const days = WEEKDAYS.filter((w) => weeklyOff[w.dow]).map((w) => w.dow);
+    await postHoliday({ weeklyOff: days, from: `${year}-01-01`, to: `${year}-12-31` });
+  }
+  async function removeHoliday(id: string) {
+    error = null;
+    try {
+      await jsonMutation({
+        input: `/api/scheduling/hr/holidays/${id}`,
+        // PATCH so the removal rides on scheduling:edit (DELETE would need scheduling:delete).
+        init: { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ deleted: true }) },
+        onSuccess: () => invalidate('team:data'),
+      });
+    } catch (e) {
+      error = hrErrorMessage(e);
+    }
+  }
 </script>
 
 {#if error}
   <p class="hr-alert" role="alert">{error}</p>
 {/if}
 
-<DataTable
-  class="requests"
-  {columns}
-  data={rows}
-  getRowId={(r) => r.id}
-  searchFields={(r) => `${r.employee} ${r.type} ${r.reason ?? ''}`}
-  storageKey="team-timeoff"
-  canEdit={false}
-  addLabel={m.team_request()}
-  onAdd={openRequest}
-  addDisabled={!canEdit || active.length === 0}
-  emptyMessage={m.team_requests_empty()}
->
-  {#snippet cell(r: Row, col: DataColumn<Row>)}
-    {#if col.key === 'dates'}
-      <span class="tabular-nums">{r.fromDate} → {r.toDate}</span>
-      {#if r.halfDay}<Badge size="sm">{m.team_half_day()}</Badge>{/if}
-    {:else if col.key === 'status'}
-      <Badge variant="semantic" value={STATUS_TONE[r.status]} size="sm" dot>
-        {STATUS_LABEL[r.status]()}
-      </Badge>
-    {:else if col.key === 'actions'}
-      {@const items = rowMenu(r)}
-      {#if r.status === 'pending' && canDecide && isMine(r)}
-        <span class="t-caption self-note">{m.team_err_self_approval()}</span>
-      {/if}
-      {#if items.length}
-        <Dropdown {items} onSelect={(v) => decide(r.id, v)} placement="left">
-          {#snippet trigger()}
-            <span class="row-menu" aria-label={m.team_col_actions()}>
-              <MoreVertical size={iconSizes.md} aria-hidden="true" />
-            </span>
-          {/snippet}
-        </Dropdown>
-      {/if}
-    {/if}
-  {/snippet}
-</DataTable>
-
-<div class="panels">
-  <Card padding="md">
-    <div class="month-head">
-      <Button variant="ghost" size="xs" shape="icon" aria-label="‹" onclick={() => shiftMonth(-1)}>
-        <ChevronLeft size={iconSizes.sm} aria-hidden="true" />
-      </Button>
-      <span class="t-label">{m.team_whos_off()} · {monthLabel}</span>
-      <Button variant="ghost" size="xs" shape="icon" aria-label="›" onclick={() => shiftMonth(1)}>
-        <ChevronRight size={iconSizes.sm} aria-hidden="true" />
-      </Button>
-    </div>
-    <div class="grid" role="grid" aria-label={monthLabel}>
-      {#each weekdayLabels as w (w)}
-        <div class="t-caption dow">{w}</div>
-      {/each}
-      {#each cells as c, i (c.key ?? `blank-${i}`)}
-        <div
-          class="cell"
-          class:blank={!c.key}
-          class:today={c.key === today}
-          class:holiday={c.holiday}
-        >
-          {#if c.key}
-            <span class="day">{c.day}</span>
-            {#if c.holiday}<span class="t-caption truncate" title={c.holiday}>{c.holiday}</span
-              >{/if}
-            {#each c.off as name (name)}
-              <span class="off truncate" title={name}>{name}</span>
-            {/each}
-          {/if}
-        </div>
-      {/each}
-    </div>
-  </Card>
-
-  <Card padding="md">
-    <div class="flex items-center justify-between gap-2 mb-2">
-      <span class="t-label">{m.team_balances()}</span>
-      <Button
-        variant="outline"
-        size="sm"
-        onclick={openAllocation}
-        disabled={!canEdit || active.length === 0}
+<Card padding="md">
+  <div class="month-head">
+    <Button variant="ghost" size="xs" shape="icon" aria-label="‹" onclick={() => shiftMonth(-1)}>
+      <ChevronLeft size={iconSizes.sm} aria-hidden="true" />
+    </Button>
+    <span class="t-label">{m.team_whos_off()} · {monthLabel}</span>
+    <Button variant="ghost" size="xs" shape="icon" aria-label="›" onclick={() => shiftMonth(1)}>
+      <ChevronRight size={iconSizes.sm} aria-hidden="true" />
+    </Button>
+  </div>
+  <div class="grid" role="grid" aria-label={monthLabel}>
+    {#each WEEKDAYS as w (w.dow)}
+      <div class="t-caption dow">{w.label}</div>
+    {/each}
+    {#each cells as c, i (c.key ?? `blank-${i}`)}
+      <div
+        class="cell"
+        class:blank={!c.key}
+        class:today={c.key === today}
+        class:holiday={c.holiday}
       >
-        + {m.team_allocation()}
-      </Button>
-    </div>
-    {#if balances.length === 0}
-      <p class="t-caption">—</p>
-    {:else}
-      <div class="balances">
-        <div class="t-caption">{m.team_employee()}</div>
-        <div class="t-caption">{m.team_leave_type()}</div>
-        <div class="t-caption num">{m.team_allocated()}</div>
-        <div class="t-caption num">{m.team_used()}</div>
-        <div class="t-caption num">{m.team_pending_short()}</div>
-        <div class="t-caption num">{m.team_remaining()}</div>
-        {#each balances as b (b.id)}
-          <div class="truncate">{b.employee}</div>
-          <div class="truncate">{b.type}</div>
-          <div class="num">{b.allocated}</div>
-          <div class="num">{b.approved}</div>
-          <div class="num">{b.pending}</div>
-          <div class="num font-medium">{b.available}</div>
-        {/each}
+        {#if c.key}
+          <span class="day">{c.day}</span>
+          {#if c.holiday}<span class="t-caption truncate" title={c.holiday}>{c.holiday}</span>{/if}
+          {#each c.off as name (name)}
+            <span class="off truncate" title={name}>{name}</span>
+          {/each}
+        {/if}
       </div>
-    {/if}
-  </Card>
+    {/each}
+  </div>
+</Card>
+
+<div class="cols">
+  <div class="col">
+    <DataTable
+      class="requests"
+      {columns}
+      data={rows}
+      getRowId={(r) => r.id}
+      searchFields={(r) => `${r.employee} ${r.type} ${r.reason ?? ''}`}
+      storageKey="team-timeoff"
+      canEdit={false}
+      addLabel={m.team_request()}
+      onAdd={openRequest}
+      addDisabled={!canEdit || active.length === 0}
+      emptyMessage={m.team_requests_empty()}
+    >
+      {#snippet cell(r: Row, col: DataColumn<Row>)}
+        {#if col.key === 'dates'}
+          <span class="tabular-nums">{r.fromDate} → {r.toDate}</span>
+          {#if r.halfDay}<Badge size="sm">{m.team_half_day()}</Badge>{/if}
+        {:else if col.key === 'status'}
+          <Badge variant="semantic" value={STATUS_TONE[r.status]} size="sm" dot>
+            {STATUS_LABEL[r.status]()}
+          </Badge>
+        {:else if col.key === 'actions'}
+          {@const items = rowMenu(r)}
+          {#if r.status === 'pending' && canDecide && isMine(r)}
+            <span class="t-caption self-note">{m.team_err_self_approval()}</span>
+          {/if}
+          {#if items.length}
+            <Dropdown {items} onSelect={(v) => decide(r.id, v)} placement="left">
+              {#snippet trigger()}
+                <span class="row-menu" aria-label={m.team_col_actions()}>
+                  <MoreVertical size={iconSizes.md} aria-hidden="true" />
+                </span>
+              {/snippet}
+            </Dropdown>
+          {/if}
+        {/if}
+      {/snippet}
+    </DataTable>
+
+    <Card padding="md">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="t-label">{m.team_balances()}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={openAllocation}
+          disabled={!canEdit || active.length === 0}
+        >
+          + {m.team_allocation()}
+        </Button>
+      </div>
+      {#if balances.length === 0}
+        <p class="t-caption">—</p>
+      {:else}
+        <div class="balances">
+          <div class="t-caption">{m.team_employee()}</div>
+          <div class="t-caption">{m.team_leave_type()}</div>
+          <div class="t-caption num">{m.team_allocated()}</div>
+          <div class="t-caption num">{m.team_used()}</div>
+          <div class="t-caption num">{m.team_pending_short()}</div>
+          <div class="t-caption num">{m.team_remaining()}</div>
+          {#each balances as b (b.id)}
+            <div class="truncate">{b.employee}</div>
+            <div class="truncate">{b.type}</div>
+            <div class="num">{b.allocated}</div>
+            <div class="num">{b.approved}</div>
+            <div class="num">{b.pending}</div>
+            <div class="num font-medium">{b.available}</div>
+          {/each}
+        </div>
+      {/if}
+    </Card>
+  </div>
+
+  <section class="col" aria-label={m.team_tab_holidays()}>
+    <Card padding="md">
+      <div class="t-label mb-2">{m.team_tab_holidays()}</div>
+      <div class="hr-inline">
+        <FormField label={m.team_holiday_date()} required>
+          {#snippet children(control)}
+            <input {...control} class="hr-date" type="date" bind:value={newDate} />
+          {/snippet}
+        </FormField>
+        <FormField label={m.team_holiday_name()} required>
+          {#snippet children(control)}
+            <Input {...control} bind:value={newName} />
+          {/snippet}
+        </FormField>
+        <Button onclick={addHoliday} disabled={busy || !canEdit || !newDate || !newName.trim()}>
+          {m.common_add()}
+        </Button>
+      </div>
+    </Card>
+
+    <Card padding="md">
+      <div class="t-label mb-1">{m.team_weekly_off()}</div>
+      <p class="t-caption mb-2">{m.team_weekly_off_hint({ year: String(year) })}</p>
+      <div class="hr-inline">
+        {#each WEEKDAYS as w (w.dow)}
+          <Checkbox bind:checked={weeklyOff[w.dow]} label={w.label} />
+        {/each}
+        <Button variant="outline" onclick={applyWeeklyOff} disabled={busy || !canEdit}>
+          {m.team_weekly_off_apply()}
+        </Button>
+      </div>
+    </Card>
+
+    <DataTable
+      columns={holidayColumns}
+      data={holidays}
+      getRowId={(h) => h.id}
+      storageKey="team-holidays"
+      canEdit={false}
+      initialSort={{ key: 'date', dir: 'asc' }}
+      emptyMessage={m.team_holidays_empty()}
+    >
+      {#snippet cell(h: TeamHoliday, col: DataColumn<TeamHoliday>)}
+        {#if col.key === 'weeklyOff'}
+          {#if h.weeklyOff}
+            <Badge size="sm">{m.team_weekly_off_badge()}</Badge>
+          {:else}
+            <Badge variant="semantic" value="info" size="sm">{m.team_holiday()}</Badge>
+          {/if}
+        {:else if col.key === 'actions'}
+          {#if canEdit}
+            <Button
+              variant="ghost"
+              size="xs"
+              shape="icon"
+              aria-label={m.common_delete()}
+              onclick={() => removeHoliday(h.id)}
+            >
+              <Trash2 size={iconSizes.sm} aria-hidden="true" />
+            </Button>
+          {/if}
+        {/if}
+      {/snippet}
+    </DataTable>
+  </section>
 </div>
 
 <Modal bind:open={reqOpen} title={m.team_request_title()} size="sm">
@@ -520,15 +656,20 @@
 </Modal>
 
 <style>
-  .panels {
+  .cols {
     display: grid;
     gap: var(--space-4);
     margin-top: var(--space-4);
     align-items: start;
   }
+  .col {
+    min-width: 0;
+    display: grid;
+    gap: var(--space-4);
+  }
   @media (min-width: 1024px) {
-    .panels {
-      grid-template-columns: 3fr 2fr;
+    .cols {
+      grid-template-columns: minmax(0, 1fr) minmax(22.5rem, 25rem);
     }
   }
   .self-note {

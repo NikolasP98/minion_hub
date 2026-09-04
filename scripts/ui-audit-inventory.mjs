@@ -52,7 +52,7 @@ const REDIRECT_CONTRACTS = {
   '/scheduling/resources': {
     probePath: '/scheduling/resources',
     statuses: [307],
-    location: '/team?tab=availability',
+    location: '/team?tab=people',
     outcomes: ['preserves-tab-target'],
   },
   '/tools': {
