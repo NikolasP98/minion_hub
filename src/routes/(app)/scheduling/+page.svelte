@@ -83,7 +83,7 @@
     {#if data.summary.resourceCount === 0}
       <EmptyState title={m.sched_empty_resources()}>
         {#snippet action()}
-          <a href="/team?tab=roster" class="text-accent underline text-sm"
+          <a href="/team?tab=people" class="text-accent underline text-sm"
             >{m.sched_resource_new()}</a
           >
         {/snippet}

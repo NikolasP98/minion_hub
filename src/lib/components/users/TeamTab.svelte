@@ -5,9 +5,11 @@
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
-  import { Button, Select, Popover } from '$lib/components/ui';
-  import { MoreVertical, Check, X, Plus } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
+  import { MoreVertical, Check, X } from 'lucide-svelte';
   import UserEditor from './UserEditor.svelte';
+  import MemberAccessControls from './MemberAccessControls.svelte';
+  import JoinLinkForm from './JoinLinkForm.svelte';
 
   type OrgRef = { id: string; name: string; role: string };
 
@@ -41,8 +43,6 @@
     requestedRole?: string | null;
     createdAt: string;
   };
-
-  const INVITE_ROLES = ['member', 'admin'];
 
   type RbacRole = { key: string; name: string; rank: number; description: string | null };
 
@@ -95,14 +95,8 @@
     void invalidate('settings:team');
   }
 
-  // Join-link form state (Better Auth email invitations were retired in favour
-  // of shareable join-links — see the Supabase join_link flow).
+  // Join-link form lives in JoinLinkForm (shared with /team People → Invite).
   let showInvite = $state(false);
-  let inviteRole = $state('member');
-  let inviteOrg = $state('');
-  let inviting = $state(false);
-  let inviteError = $state<string | null>(null);
-  let lastLinkUrl = $state<string | null>(null);
 
   // /api/users (the client-refresh fallback path) doesn't carry RBAC roles —
   // those only come from the settings/team server load. Default to [] so the
@@ -143,43 +137,6 @@
   /** Members holding the `owner` role org-wide — guards the last-owner removal. */
   const ownerCount = $derived(users.filter((u) => u.memberRoles.includes('owner')).length);
 
-  async function addRole(userId: string, roleKey: string) {
-    const prev = users.find((u) => u.id === userId)?.memberRoles ?? [];
-    if (prev.includes(roleKey)) return;
-    users = users.map((u) => (u.id === userId ? { ...u, memberRoles: [...u.memberRoles, roleKey] } : u));
-    try {
-      const res = await fetch(`/api/users/${userId}/member-role`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roleKey }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      void invalidate('settings:team');
-    } catch {
-      users = users.map((u) => (u.id === userId ? { ...u, memberRoles: prev } : u));
-      error = m.users_errorAddRole({ status: 'unknown' });
-    }
-  }
-
-  async function removeRole(userId: string, roleKey: string) {
-    const prev = users.find((u) => u.id === userId)?.memberRoles ?? [];
-    users = users.map((u) =>
-      u.id === userId ? { ...u, memberRoles: u.memberRoles.filter((r) => r !== roleKey) } : u,
-    );
-    try {
-      const res = await fetch(`/api/users/${userId}/member-role`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roleKey }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      void invalidate('settings:team');
-    } catch {
-      users = users.map((u) => (u.id === userId ? { ...u, memberRoles: prev } : u));
-      error = m.users_errorRemoveRole({ status: 'unknown' });
-    }
-  }
-
   async function remove(userId: string) {
     if (!confirm(m.users_confirmRemove())) return;
     try {
@@ -192,34 +149,6 @@
       }
     } catch {
       error = m.users_errorRemove();
-    }
-  }
-
-  async function createJoinLink() {
-    const organizationId = inviteOrg || organizations[0]?.id;
-    if (!organizationId) {
-      inviteError = 'No organization to invite to.';
-      return;
-    }
-    inviting = true;
-    inviteError = null;
-    try {
-      const res = await fetch('/api/join-links', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ organizationId, role: inviteRole }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { url?: string; message?: string };
-      if (!res.ok || !data.url) throw new Error(data.message ?? `HTTP ${res.status}`);
-      lastLinkUrl = data.url;
-      void copyLink(data.url);
-      toastSuccess('Join link created', 'Copied to clipboard — share it to invite a member.');
-      await loadJoinLinks();
-    } catch (e) {
-      inviteError = (e as Error).message;
-      toastError('Could not create join link');
-    } finally {
-      inviting = false;
     }
   }
 
@@ -303,7 +232,6 @@
     if (!hasServerData) {
       load();
     }
-    inviteOrg = organizations[0]?.id ?? '';
     loadJoinLinks();
   });
 </script>
@@ -340,9 +268,18 @@
         <table class="w-full min-w-[420px] text-xs border-collapse">
           <thead>
             <tr class="border-b border-border bg-bg2">
-              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">{m.users_name()}</th>
-              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">{m.users_roles()}</th>
-              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">Company</th>
+              <th
+                class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
+                >{m.users_name()}</th
+              >
+              <th
+                class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
+                >{m.users_roles()}</th
+              >
+              <th
+                class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
+                >Company</th
+              >
               <th class="px-4 py-2.5"></th>
             </tr>
           </thead>
@@ -355,71 +292,29 @@
                 <td class="px-4 py-3">
                   <div class="font-semibold text-foreground">{u.displayName ?? u.email}</div>
                   {#if u.displayName}
-                    <div class="text-muted text-[length:var(--font-size-telemetry)] mt-0.5">{u.email}</div>
+                    <div class="text-muted text-[length:var(--font-size-telemetry)] mt-0.5">
+                      {u.email}
+                    </div>
                   {/if}
                   {#if u.alias}
-                    <div class="text-accent text-[length:var(--font-size-telemetry)] mt-0.5">@{u.alias}</div>
+                    <div class="text-accent text-[length:var(--font-size-telemetry)] mt-0.5">
+                      @{u.alias}
+                    </div>
                   {/if}
                 </td>
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
-                  {#if u.role === 'admin'}
-                    <span
-                      class="inline-flex items-center h-6 px-2 rounded-md text-[length:var(--font-size-telemetry)] font-semibold border bg-bg3 border-border text-muted-foreground"
-                      title="Platform admin — full access"
-                    >
-                      {m.users_role()}: admin
-                    </span>
-                  {:else}
-                    <div class="flex items-center gap-1 flex-wrap">
-                      {#each u.memberRoles as roleKey (roleKey)}
-                        {@const roleName = rbacRoles.find((r) => r.key === roleKey)?.name ?? roleKey}
-                        {@const lastOwner = roleKey === 'owner' && ownerCount <= 1}
-                        <span
-                          class="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md text-[length:var(--font-size-telemetry)] font-semibold border bg-accent/10 text-foreground border-accent/30"
-                        >
-                          {roleName}
-                          <Button variant="ghost" size="xs"
-                            type="button"
-                            aria-label={`Remove ${roleName}`}
-                            disabled={lastOwner}
-                            title={lastOwner ? m.users_cannotRemoveLastOwner() : undefined}
-                            class="flex items-center justify-center w-3.5 h-3.5 rounded-sm hover:bg-bg3 cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                            onclick={() => removeRole(u.id, roleKey)}
-                          >
-                            <X size={10} />
-                          </Button>
-                        </span>
-                      {/each}
-                      {#if rbacRoles.some((r) => !u.memberRoles.includes(r.key))}
-                        <Popover placement="bottom" bare>
-                          {#snippet trigger()}
-                            <span
-                              class="inline-flex items-center gap-0.5 h-6 px-1.5 rounded-md text-[length:var(--font-size-telemetry)] font-medium border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-[var(--color-border-strong)] transition-colors"
-                              title={m.users_addRole()}
-                            >
-                              <Plus size={11} />
-                            </span>
-                          {/snippet}
-                          <div
-                            role="listbox"
-                            class="min-w-[140px] max-h-[240px] overflow-y-auto rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay)] p-1"
-                          >
-                            {#each rbacRoles.filter((r) => !u.memberRoles.includes(r.key)) as r (r.key)}
-                              <Button variant="ghost" size="xs"
-                                type="button"
-                                role="option"
-                                aria-selected="false"
-                                class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[length:var(--font-size-label)] cursor-pointer transition-colors text-muted-foreground hover:text-foreground hover:bg-bg3"
-                                onclick={() => addRole(u.id, r.key)}
-                              >
-                                {r.name}
-                              </Button>
-                            {/each}
-                          </div>
-                        </Popover>
-                      {/if}
-                    </div>
-                  {/if}
+                  <MemberAccessControls
+                    userId={u.id}
+                    platformRole={u.role}
+                    memberRoles={u.memberRoles}
+                    {rbacRoles}
+                    {ownerCount}
+                    onChange={(roles) =>
+                      (users = users.map((x) =>
+                        x.id === u.id ? { ...x, memberRoles: roles } : x,
+                      ))}
+                    onError={(msg) => (error = msg)}
+                  />
                 </td>
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
                   {#if organizations.length === 0}
@@ -428,12 +323,14 @@
                     <div class="flex items-center gap-1 flex-wrap max-w-[250px]">
                       {#each organizations as org (org.id)}
                         {@const isMember = (u.organizations ?? []).some((o) => o.id === org.id)}
-                        <Button variant="ghost" size="xs"
+                        <Button
+                          variant="ghost"
+                          size="xs"
                           type="button"
                           class="inline-flex items-center px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] font-medium border cursor-pointer transition-colors
                             {isMember
-                              ? 'bg-accent/15 text-accent border-accent/30 hover:bg-accent/25'
-                              : 'bg-bg2 text-muted-foreground border-border hover:border-[var(--color-border-strong)] hover:text-foreground'}"
+                            ? 'bg-accent/15 text-accent border-accent/30 hover:bg-accent/25'
+                            : 'bg-bg2 text-muted-foreground border-border hover:border-[var(--color-border-strong)] hover:text-foreground'}"
                           onclick={() => {
                             const current = new Set((u.organizations ?? []).map((o) => o.id));
                             if (current.has(org.id)) {
@@ -456,10 +353,15 @@
                   data-team-actions
                   onclick={(e) => e.stopPropagation()}
                 >
-                  <Button variant="ghost" size="xs"
+                  <Button
+                    variant="ghost"
+                    size="xs"
                     type="button"
                     class="text-muted hover:text-foreground transition-colors bg-transparent border-none cursor-pointer p-1 rounded-md hover:bg-bg2"
-                    onclick={(e) => { e.stopPropagation(); openMenuId = openMenuId === u.id ? null : u.id; }}
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      openMenuId = openMenuId === u.id ? null : u.id;
+                    }}
                     title="Actions"
                   >
                     <MoreVertical size={14} />
@@ -472,28 +374,42 @@
                       onclick={(e) => e.stopPropagation()}
                       onkeydown={(e) => e.stopPropagation()}
                     >
-                      <Button variant="ghost" size="xs"
+                      <Button
+                        variant="ghost"
+                        size="xs"
                         type="button"
                         class="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-bg3 transition-colors"
                         role="menuitem"
-                        onclick={() => { toggleExpand(u.id); openMenuId = null; }}
+                        onclick={() => {
+                          toggleExpand(u.id);
+                          openMenuId = null;
+                        }}
                       >
                         Edit profile
                       </Button>
-                      <Button variant="ghost" size="xs"
+                      <Button
+                        variant="ghost"
+                        size="xs"
                         type="button"
                         class="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-bg3 transition-colors"
                         role="menuitem"
-                        onclick={() => { openMenuId = null; }}
+                        onclick={() => {
+                          openMenuId = null;
+                        }}
                       >
                         Manage permissions
                       </Button>
                       <div class="border-t border-border my-1"></div>
-                      <Button variant="ghost" size="xs"
+                      <Button
+                        variant="ghost"
+                        size="xs"
                         type="button"
                         class="w-full text-left px-3 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors"
                         role="menuitem"
-                        onclick={() => { openMenuId = null; remove(u.id); }}
+                        onclick={() => {
+                          openMenuId = null;
+                          remove(u.id);
+                        }}
                       >
                         Delete user
                       </Button>
@@ -520,7 +436,9 @@
       <!-- Invite section (below table) -->
       {#if can('users:invite')}
         <div class="mt-4 flex justify-end">
-          <Button variant="primary" size="sm"
+          <Button
+            variant="primary"
+            size="sm"
             class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
             onclick={() => (showInvite = !showInvite)}
           >
@@ -530,52 +448,9 @@
       {/if}
 
       {#if showInvite}
-        <form
-          class="bg-card border border-border rounded-lg p-4 mt-3 space-y-3"
-          onsubmit={(e) => { e.preventDefault(); createJoinLink(); }}
-        >
-          <p class="text-xs font-semibold text-foreground">Create a shareable join link</p>
-          <div class="grid grid-cols-2 gap-3">
-            {#if organizations.length > 1}
-              <Select bind:value={inviteOrg} size="sm">
-                {#each organizations as o (o.id)}
-                  <option value={o.id}>{o.name}</option>
-                {/each}
-              </Select>
-            {/if}
-            <Select bind:value={inviteRole} size="sm">
-              {#each INVITE_ROLES as r (r)}
-                <option value={r}>{r}</option>
-              {/each}
-            </Select>
-          </div>
-          {#if lastLinkUrl}
-            <div class="flex items-center gap-2">
-              <input
-                readonly
-                value={lastLinkUrl}
-                class="flex-1 bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-[length:var(--font-size-label)] font-mono outline-none"
-              />
-              <Button variant="ghost" size="xs"
-                type="button"
-                class="text-xs px-2.5 py-1.5 rounded-md bg-bg2 border border-border text-foreground cursor-pointer hover:border-accent/40"
-                onclick={() => copyLink(lastLinkUrl ?? '')}
-              >
-                Copy
-              </Button>
-            </div>
-          {/if}
-          {#if inviteError}
-            <p class="text-xs text-destructive">{inviteError}</p>
-          {/if}
-          <Button variant="primary" size="sm"
-            type="submit"
-            class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-            disabled={inviting}
-          >
-            {inviting ? m.users_creating() : 'Generate link'}
-          </Button>
-        </form>
+        <div class="mt-3">
+          <JoinLinkForm {organizations} onCreated={loadJoinLinks} />
+        </div>
       {/if}
     {/if}
 
@@ -585,28 +460,48 @@
         <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
           Pending Access
           {#if joinLinks.length + pendingRequests.length > 0}
-            <span class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent/20 text-accent text-[length:var(--font-size-telemetry)] font-bold">{joinLinks.length + pendingRequests.length}</span>
+            <span
+              class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent/20 text-accent text-[length:var(--font-size-telemetry)] font-bold"
+              >{joinLinks.length + pendingRequests.length}</span
+            >
           {/if}
         </h3>
 
         {#if joinLinks.length > 0}
           <div class="mb-3">
-            <h4 class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Join Links</h4>
+            <h4
+              class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5"
+            >
+              Join Links
+            </h4>
             <div class="bg-card border border-border rounded-lg overflow-x-auto">
               <table class="w-full min-w-[420px] text-xs border-collapse">
                 <thead>
                   <tr class="border-b border-border bg-bg2">
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">Link</th>
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">{m.users_role()}</th>
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">Uses</th>
+                    <th
+                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
+                      >Link</th
+                    >
+                    <th
+                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
+                      >{m.users_role()}</th
+                    >
+                    <th
+                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
+                      >Uses</th
+                    >
                     <th class="px-4 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {#each joinLinks as link (link.id)}
-                    <tr class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors">
+                    <tr
+                      class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors"
+                    >
                       <td class="px-4 py-2.5">
-                        <Button variant="ghost" size="xs"
+                        <Button
+                          variant="ghost"
+                          size="xs"
                           class="text-accent hover:underline bg-transparent border-none cursor-pointer text-[length:var(--font-size-label)] font-mono p-0 max-w-[220px] truncate inline-block align-bottom"
                           title="Copy link"
                           onclick={() => copyLink(link.url)}
@@ -615,9 +510,13 @@
                         </Button>
                       </td>
                       <td class="px-4 py-2.5 text-muted">{link.role}</td>
-                      <td class="px-4 py-2.5 text-muted">{link.uses_count}{link.max_uses != null ? `/${link.max_uses}` : ''}</td>
+                      <td class="px-4 py-2.5 text-muted"
+                        >{link.uses_count}{link.max_uses != null ? `/${link.max_uses}` : ''}</td
+                      >
                       <td class="px-4 py-2.5 text-right">
-                        <Button variant="ghost" size="xs"
+                        <Button
+                          variant="ghost"
+                          size="xs"
                           class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
                           onclick={() => revokeLink(link.id)}
                         >
@@ -634,31 +533,54 @@
 
         {#if pendingRequests.length > 0}
           <div>
-            <h4 class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Join Requests</h4>
+            <h4
+              class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5"
+            >
+              Join Requests
+            </h4>
             <div class="bg-card border border-border rounded-lg overflow-x-auto">
               <table class="w-full min-w-[420px] text-xs border-collapse">
                 <thead>
                   <tr class="border-b border-border bg-bg2">
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">{m.users_email()}</th>
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">Message</th>
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]">{m.users_status()}</th>
+                    <th
+                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
+                      >{m.users_email()}</th
+                    >
+                    <th
+                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
+                      >Message</th
+                    >
+                    <th
+                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
+                      >{m.users_status()}</th
+                    >
                     <th class="px-4 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {#each pendingRequests as req (req.id)}
-                    <tr class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors">
+                    <tr
+                      class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors"
+                    >
                       <td class="px-4 py-2.5 text-foreground">{req.email}</td>
-                      <td class="px-4 py-2.5 text-muted max-w-[200px] truncate">{req.message ?? '—'}</td>
+                      <td class="px-4 py-2.5 text-muted max-w-[200px] truncate"
+                        >{req.message ?? '—'}</td
+                      >
                       <td class="px-4 py-2.5">
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] font-semibold bg-warning/10 text-warning border border-warning/20">
+                        <span
+                          class="inline-flex items-center px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] font-semibold bg-warning/10 text-warning border border-warning/20"
+                        >
                           Awaiting review
                         </span>
                       </td>
                       <td class="px-4 py-2.5">
                         <div class="flex items-center justify-end gap-2">
-                          <span class="text-muted text-[length:var(--font-size-telemetry)] mr-1">{new Date(req.createdAt).toLocaleDateString()}</span>
-                          <Button variant="ghost" size="xs"
+                          <span class="text-muted text-[length:var(--font-size-telemetry)] mr-1"
+                            >{new Date(req.createdAt).toLocaleDateString()}</span
+                          >
+                          <Button
+                            variant="ghost"
+                            size="xs"
                             type="button"
                             class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[length:var(--font-size-label)] font-semibold bg-success/10 text-success border border-success/20 hover:bg-success/15 transition-colors cursor-pointer disabled:opacity-50"
                             disabled={reviewingId === req.id}
@@ -668,7 +590,9 @@
                             <Check size={13} />
                             {m.notif_approve()}
                           </Button>
-                          <Button variant="ghost" size="xs"
+                          <Button
+                            variant="ghost"
+                            size="xs"
                             type="button"
                             class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[length:var(--font-size-label)] font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/15 transition-colors cursor-pointer disabled:opacity-50"
                             disabled={reviewingId === req.id}

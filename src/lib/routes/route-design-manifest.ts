@@ -694,7 +694,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     '/scheduling/resources',
     'Resources → Team',
     'scheduling-pos',
-    '/team?tab=availability',
+    '/team?tab=people',
     307,
     {
       preserveQuery: false,

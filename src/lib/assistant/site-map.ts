@@ -26,7 +26,7 @@ export const PAGE_KEYWORDS: Record<string, string> = {
   '/overview': 'dashboard resumen panel metrics kpis',
   '/work': 'tasks tareas pendientes my work',
   '/team':
-    'team equipo staff personal empleados employees miembros vacaciones vacation time off permiso horario availability disponibilidad feriados holidays roles ~payroll ~planilla ~nomina ~hr ~rrhh ~humanos ~asistencia',
+    'team equipo staff personal people empleados employees vacaciones vacation time off permiso horario availability disponibilidad feriados holidays rooms salas equipment equipos resources ~payroll ~planilla ~nomina ~hr ~rrhh ~humanos ~asistencia',
   '/memberships': 'membresias membresia planes plans suscripciones subscriptions',
   '/support': 'tickets soporte reclamos sla help',
   '/workforce': 'agentes agents proyectos projects ai company',
@@ -34,6 +34,8 @@ export const PAGE_KEYWORDS: Record<string, string> = {
   '/socials/posts': 'publicaciones posts contenido',
   '/socials/campaigns': 'campanas campaigns ~email ~marketing ~newsletter ~mailing',
   '/settings': 'configuracion ajustes preferences',
+  '/settings/team':
+    'members miembros access acceso shared accounts cuentas compartidas invite invitar',
   '/settings/roles': 'roles permisos permissions rbac',
   '/settings/notifications': 'notificaciones alertas',
   '/settings/appearance': 'theme tema colors colores',

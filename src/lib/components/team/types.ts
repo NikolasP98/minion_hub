@@ -18,6 +18,20 @@ export interface TeamMember {
   displayName: string | null;
   role: string | null;
   accountType: string;
+  /** RBAC roles in the active org — only populated for users.manage holders. */
+  memberRoles: string[];
+}
+
+export interface TeamRbacRole {
+  key: string;
+  name: string;
+  rank: number;
+  description: string | null;
+}
+
+export interface TeamOrganization {
+  id: string;
+  name: string;
 }
 
 export interface TeamLeaveType {

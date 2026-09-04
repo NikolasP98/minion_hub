@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "baseCommit": "e32036165a5c68ecb59178b309d6394d558eb9a5",
+  "baseCommit": "0d7ff442c2dde531a259e67087c201f5309110d9",
   "sourceRef": "HEAD",
-  "sourceCommit": "e32036165a5c68ecb59178b309d6394d558eb9a5",
-  "sourceTreeSha": "3dff65d725e85731513bb66e3f409447dac34464",
-  "workingTreeFingerprint": "git-tree:3dff65d725e85731513bb66e3f409447dac34464",
+  "sourceCommit": "0d7ff442c2dde531a259e67087c201f5309110d9",
+  "sourceTreeSha": "6bdb4a580fbbb963490de6a38e4dab2ffb73da1a",
+  "workingTreeFingerprint": "git-tree:6bdb4a580fbbb963490de6a38e4dab2ffb73da1a",
   "summary": {
     "endpoints": 151,
     "screens": 140,
@@ -1257,7 +1257,7 @@
       "redirectContract": {
         "probePath": "/scheduling/resources",
         "statuses": [307],
-        "location": "/team?tab=availability",
+        "location": "/team?tab=people",
         "outcomes": ["preserves-tab-target"]
       },
       "observations": {
