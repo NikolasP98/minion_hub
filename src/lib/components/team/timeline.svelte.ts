@@ -18,7 +18,7 @@ const EDGE = 7;
 export interface TimelineDay {
   key: string;
   num: number;
-  /** Weekday initial, or the short month name on the 1st. */
+  /** Short weekday (ddd). */
   label: string;
   monthStart: boolean;
   today: boolean;
@@ -26,6 +26,13 @@ export interface TimelineDay {
   off: boolean;
   /** Enabled holiday name, when the org observes one that day. */
   holiday: string | null;
+}
+
+/** One calendar month inside the window — the header's sticky month label rides on it. */
+export interface TimelineMonth {
+  key: string;
+  label: string;
+  days: number;
 }
 
 export interface LeaveMark {
@@ -67,8 +74,7 @@ export class Timeline {
     const today = todayKey();
     const off = new Set(this.weeklyOff);
     const hol = new Map(this.holidays.filter((h) => h.enabled).map((h) => [h.date, h.name]));
-    const wd = new Intl.DateTimeFormat(this.locale, { weekday: 'narrow' });
-    const mo = new Intl.DateTimeFormat(this.locale, { month: 'short' });
+    const wd = new Intl.DateTimeFormat(this.locale, { weekday: 'short' });
     const out: TimelineDay[] = [];
     const d = new Date(`${this.start}T00:00:00`);
     for (let i = 0; i < this.count; i++, d.setDate(d.getDate() + 1)) {
@@ -77,12 +83,30 @@ export class Timeline {
       out.push({
         key,
         num: d.getDate(),
-        label: monthStart ? mo.format(d) : wd.format(d),
+        label: wd.format(d),
         monthStart,
         today: key === today,
         off: off.has(d.getDay()),
         holiday: hol.get(key) ?? null,
       });
+    }
+    return out;
+  });
+
+  /** Consecutive months across the window (label carries the year once it differs from today's). */
+  readonly months = $derived.by<TimelineMonth[]>(() => {
+    const thisYear = String(new Date().getFullYear());
+    const out: TimelineMonth[] = [];
+    for (const d of this.days) {
+      const key = d.key.slice(0, 7);
+      const last = out.at(-1);
+      if (last && last.key === key) last.days++;
+      else {
+        const date = new Date(`${d.key}T00:00:00`);
+        const opts: Intl.DateTimeFormatOptions =
+          key.slice(0, 4) === thisYear ? { month: 'short' } : { month: 'short', year: 'numeric' };
+        out.push({ key, label: new Intl.DateTimeFormat(this.locale, opts).format(date), days: 1 });
+      }
     }
     return out;
   });
