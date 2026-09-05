@@ -145,6 +145,11 @@
   let error = $state<string | null>(null);
 
   const memberById = $derived(new Map(members.map((mb) => [mb.id, mb])));
+  // Org RBAC roles (what gates modules), never the platform user/admin flag.
+  // memberRoles is only populated for users.manage holders — blank otherwise.
+  const roleName = $derived(new Map(rbacRoles.map((r) => [r.key, r.name])));
+  const orgRoles = (mb: TeamMember | undefined) =>
+    mb ? mb.memberRoles.map((k) => roleName.get(k) ?? k).join(', ') : '';
   // Org members (person accounts) not yet on the roster — inline rows + the Picker's candidates.
   const enrolled = $derived(new Set(employees.map((e) => e.profileId).filter(Boolean)));
   const candidates = $derived(
@@ -153,7 +158,7 @@
   const allRows = $derived<Row[]>([
     ...employees.map((e) => ({
       ...e,
-      roles: (e.profileId && memberById.get(e.profileId)?.role) || '',
+      roles: orgRoles(e.profileId ? memberById.get(e.profileId) : undefined),
     })),
     ...candidates.map((mb): Row => ({
       id: `member:${mb.id}`,
@@ -168,7 +173,7 @@
       joinedOn: null,
       leftOn: null,
       color: null,
-      roles: mb.role ?? '',
+      roles: orgRoles(mb),
       member: mb,
     })),
   ]);
@@ -210,12 +215,12 @@
       }));
   }
 
-  const baseColumns: DataColumn<Row>[] = [
+  const baseColumns = $derived<DataColumn<Row>[]>([
     { key: 'name', label: m.team_col_name(), custom: true, width: 180 },
     // Mostly empty for a clinic-sized team; a column-picker click brings them back.
     { key: 'designation', label: m.team_col_designation(), width: 120, defaultHidden: true },
     { key: 'department', label: m.team_department(), width: 120, defaultHidden: true },
-    { key: 'roles', label: m.team_col_roles(), width: 80 },
+    ...(canManageUsers ? [{ key: 'roles', label: m.team_col_roles(), width: 120 }] : []),
     {
       key: 'status',
       label: m.team_col_status(),
@@ -229,7 +234,7 @@
         ],
       },
     },
-  ];
+  ]);
   // The timeline is a desktop affordance; on small screens the detail Sheet shows the week strip.
   const columns = $derived<DataColumn<Row>[]>(
     desktop.current
