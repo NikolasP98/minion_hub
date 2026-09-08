@@ -300,6 +300,47 @@ const OPERATOR_SCOPES = [
  * invoked asynchronously, after the `const client = new GatewayClient(...)`
  * assignment has completed.
  */
+/**
+ * Diagnostic breadcrumbs (2026-09-08): the owner's iPhone stays "connecting"
+ * after the gateway ACCEPTS its connect frame — WebKit-only, not reproducible
+ * on Chromium. Every lifecycle step logs to the console (session replay
+ * captures console lines) and failures reach PostHog with the phase, since
+ * Safari's window.onerror only yields an opaque "Script error." for them.
+ * TODO(handoff): remove once the phone failure is root-caused.
+ */
+function gwTrace(phase: string, detail?: Record<string, unknown>): void {
+  console.info('[gateway:diag]', phase, detail ?? '');
+}
+function gwFail(phase: string, err: unknown, detail?: Record<string, unknown>): void {
+  console.error('[gateway:diag] FAIL', phase, err, detail ?? '');
+  try {
+    const ph = (
+      window as Window & { posthog?: { captureException?: (e: Error, p?: object) => void } }
+    ).posthog;
+    ph?.captureException?.(err instanceof Error ? err : new Error(String(err)), {
+      gateway_phase: phase,
+      ...detail,
+    });
+  } catch {
+    /* diagnostics never throw */
+  }
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (ev) =>
+    gwTrace('window.error', {
+      message: ev.message,
+      source: `${ev.filename}:${ev.lineno}:${ev.colno}`,
+      stack: (ev.error as Error | undefined)?.stack,
+    }),
+  );
+  window.addEventListener('unhandledrejection', (ev) =>
+    gwTrace('window.unhandledrejection', {
+      reason: String(ev.reason),
+      stack: (ev.reason as Error | undefined)?.stack,
+    }),
+  );
+}
+
 function buildGatewayClient(host: Host, token: string): GatewayClient {
   const client: GatewayClient = new GatewayClient({
     url: host.url,
@@ -314,10 +355,16 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // client (cutover) built before it's registered as current, this is a
       // harmless no-op — rawSocket() still resolves the OLD client via
       // getClient() until the atomic swap runs, so nothing gets mis-wired.
-      wireBinaryListener();
+      gwTrace('socket.open', { url: host.url, ua: navigator.userAgent });
+      try {
+        wireBinaryListener();
+      } catch (e) {
+        gwFail('wireBinaryListener', e);
+      }
     },
 
     async onChallenge(_nonce: string): Promise<Record<string, unknown>> {
+      gwTrace('challenge.received');
       // Control-UI auth model: the shared-secret gateway token (carried in WS
       // upgrade headers + the connect frame's auth path) IS the credential.
       // The real access filter is the hub's user_servers link — only users
@@ -340,7 +387,13 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // Best-effort org-identity JWT (gated). Only included when fetched OK; a
       // failed fetch falls back to shared-token auth (orgId undefined => full
       // roster) rather than sending a known-bad credential.
-      const jwt = isJwtAuthEnabled() ? await (takePrefetchedJwt() ?? fetchGatewayJwt()) : null;
+      let jwt: string | null = null;
+      try {
+        jwt = isJwtAuthEnabled() ? await (takePrefetchedJwt() ?? fetchGatewayJwt()) : null;
+      } catch (e) {
+        gwFail('challenge.jwt', e);
+      }
+      gwTrace('challenge.replying', { hasJwt: !!jwt, hasToken: !!token, userId: userId ?? null });
 
       return {
         minProtocol: 3,
@@ -377,7 +430,11 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // per-client scope filter, so a skipped seq means "not for us", not
       // "dropped". Track it for debugging; never warn on gaps.
       if (typeof frame.seq === 'number') gw.lastSeq = frame.seq;
-      handleEvent(frame as unknown as Record<string, unknown>);
+      try {
+        handleEvent(frame as unknown as Record<string, unknown>);
+      } catch (e) {
+        gwFail('event', e, { event: String(frame.event) });
+      }
     },
 
     onClose(code: number, reason: string) {
@@ -386,6 +443,7 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // this a stale close could flip `conn.connected` back to false right
       // after a successful cutover, or spawn a duplicate reconnect loop.
       if (getClient() !== client) return;
+      gwTrace('socket.close', { code, reason });
 
       conn.connected = false;
       conn.connecting = false;
@@ -538,6 +596,16 @@ export async function wsConnect() {
   void newClient
     .connect()
     .then((hello) => {
+      gwTrace('hello.received', {
+        protocol: (hello as { protocol?: unknown })?.protocol ?? null,
+        bytes: (() => {
+          try {
+            return JSON.stringify(hello).length;
+          } catch {
+            return -1;
+          }
+        })(),
+      });
       if (!lifecycleFence.isCurrent(generation) || getClient() !== newClient) {
         newClient.close();
         return;
@@ -592,6 +660,7 @@ export async function wsConnect() {
       resolveServerId();
     })
     .catch((err) => {
+      gwFail('connect', err);
       if (!lifecycleFence.isCurrent(generation) || getClient() !== newClient) return;
       if (isEagerReconnectArmed()) {
         conn.particleHue = 'amber';
