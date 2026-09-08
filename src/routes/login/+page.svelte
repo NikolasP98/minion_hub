@@ -28,8 +28,14 @@
   const SUPABASE_AUTH_ENABLED = publicEnv.PUBLIC_AUTH_PROVIDER === 'supabase';
 
   const redirectTo = $derived.by(() => {
-    const requested = page.url.searchParams.get('redirectTo') ?? '/';
-    return requested.startsWith('/') && !requested.startsWith('//') ? requested : '/';
+    // Default to a real client route: `/` has no page (the server redirects it),
+    // so a client-side goto('/') after a magic-link login 404s in the router,
+    // renders the error page and never mounts the app shell (phones stuck on
+    // an orange "connecting" dot, 2026-09-08).
+    const requested = page.url.searchParams.get('redirectTo') ?? '/home';
+    return requested.startsWith('/') && !requested.startsWith('//') && requested !== '/'
+      ? requested
+      : '/home';
   });
 
   function toggleMode() {
