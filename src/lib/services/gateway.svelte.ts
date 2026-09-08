@@ -309,7 +309,16 @@ const OPERATOR_SCOPES = [
  * TODO(handoff): remove once the phone failure is root-caused.
  */
 function gwTrace(phase: string, detail?: Record<string, unknown>): void {
-  console.info('[gateway:diag]', phase, detail ?? '');
+  // console.log (not info): session replay only records log/warn/error. Also a
+  // first-class PostHog event so it is queryable without waiting for a replay.
+  console.log('[gateway:diag]', phase, detail ?? '');
+  try {
+    const ph = (window as Window & { posthog?: { capture?: (e: string, p?: object) => void } })
+      .posthog;
+    ph?.capture?.('gateway_diag', { gateway_phase: phase, ...detail });
+  } catch {
+    /* diagnostics never throw */
+  }
 }
 function gwFail(phase: string, err: unknown, detail?: Record<string, unknown>): void {
   console.error('[gateway:diag] FAIL', phase, err, detail ?? '');
