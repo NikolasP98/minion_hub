@@ -308,14 +308,28 @@ const OPERATOR_SCOPES = [
  * Safari's window.onerror only yields an opaque "Script error." for them.
  * TODO(handoff): remove once the phone failure is root-caused.
  */
+// PostHog loads lazily (idle import) AFTER the first connect attempt, so
+// crumbs are buffered and flushed once `window.posthog` exists.
+const gwDiagQueue: { phase: string; detail: Record<string, unknown> }[] = [];
+function gwFlush(): boolean {
+  const ph = (window as Window & { posthog?: { capture?: (e: string, p?: object) => void } })
+    .posthog;
+  if (!ph?.capture) return false;
+  for (const c of gwDiagQueue.splice(0))
+    ph.capture('gateway_diag', { gateway_phase: c.phase, ...c.detail });
+  return true;
+}
 function gwTrace(phase: string, detail?: Record<string, unknown>): void {
-  // console.log (not info): session replay only records log/warn/error. Also a
-  // first-class PostHog event so it is queryable without waiting for a replay.
-  console.log('[gateway:diag]', phase, detail ?? '');
+  // console.warn: session replay records ONLY warn/error levels (verified 2026-09-08).
+  console.warn('[gateway:diag]', phase, detail ?? '');
   try {
-    const ph = (window as Window & { posthog?: { capture?: (e: string, p?: object) => void } })
-      .posthog;
-    ph?.capture?.('gateway_diag', { gateway_phase: phase, ...detail });
+    gwDiagQueue.push({ phase, detail: { ...(detail ?? {}), at: Date.now() } });
+    if (!gwFlush()) {
+      const t = setInterval(() => {
+        if (gwFlush()) clearInterval(t);
+      }, 1000);
+      setTimeout(() => clearInterval(t), 60_000);
+    }
   } catch {
     /* diagnostics never throw */
   }
