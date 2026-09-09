@@ -93,13 +93,26 @@ function dateKeysBetween(startKey: string, endKey: string): string[] {
   return keys;
 }
 
+/** Do two half-open ms intervals [aStart,aEnd) and [bStart,bEnd) overlap? Shared
+ *  by the slot engine's busy-interval subtraction (below) and any other
+ *  conflict check that needs the same buffer-padded intersection test — e.g.
+ *  `rescheduleBooking` in scheduling-bookings.service.ts. */
+export function intervalsOverlap(
+  aStart: number,
+  aEnd: number,
+  bStart: number,
+  bEnd: number,
+): boolean {
+  return aStart < bEnd && bStart < aEnd;
+}
+
 /** Subtract `busy` intervals from `free` intervals (both in ms). */
 function subtractIntervals(free: Interval[], busy: Interval[]): Interval[] {
   let result = [...free];
   for (const b of busy) {
     const next: Interval[] = [];
     for (const f of result) {
-      if (b.end <= f.start || b.start >= f.end) {
+      if (!intervalsOverlap(b.start, b.end, f.start, f.end)) {
         next.push(f); // no overlap
         continue;
       }
@@ -125,8 +138,22 @@ function intervalsForDate(res: ResourceAvailability, dateKey: string): Interval[
     const startMin = parseHmToMinutes(rule.startTime);
     const endMin = parseHmToMinutes(rule.endTime);
     if (endMin <= startMin) continue; // day off / empty range
-    const start = zonedTimeToUtc(res.timezone, y, mo, d, Math.floor(startMin / 60), startMin % 60).getTime();
-    const end = zonedTimeToUtc(res.timezone, y, mo, d, Math.floor(endMin / 60), endMin % 60).getTime();
+    const start = zonedTimeToUtc(
+      res.timezone,
+      y,
+      mo,
+      d,
+      Math.floor(startMin / 60),
+      startMin % 60,
+    ).getTime();
+    const end = zonedTimeToUtc(
+      res.timezone,
+      y,
+      mo,
+      d,
+      Math.floor(endMin / 60),
+      endMin % 60,
+    ).getTime();
     out.push({ start, end });
   }
   return mergeIntervals(out);
@@ -163,7 +190,12 @@ function mergeIntervals(intervals: Interval[]): Interval[] {
 }
 
 /** Slice a free interval into length-minute slots stepping by `step` minutes. */
-function sliceSlots(interval: Interval, lengthMin: number, stepMin: number, windowStart: number): number[] {
+function sliceSlots(
+  interval: Interval,
+  lengthMin: number,
+  stepMin: number,
+  windowStart: number,
+): number[] {
   const starts: number[] = [];
   const lengthMs = lengthMin * MS_PER_MIN;
   const stepMs = stepMin * MS_PER_MIN;
@@ -183,11 +215,16 @@ function sliceSlots(interval: Interval, lengthMin: number, stepMin: number, wind
 /** Expand a resource's availability (weekly rules + overrides) into merged UTC
  *  working intervals spanning [windowStart, windowEnd] (ms). Padded ±1 day so a
  *  slot near a timezone boundary isn't missed. */
-function expandFreeIntervals(res: ResourceAvailability, windowStart: number, windowEnd: number): Interval[] {
+function expandFreeIntervals(
+  res: ResourceAvailability,
+  windowStart: number,
+  windowEnd: number,
+): Interval[] {
   const startKey = zonedDateKey(new Date(windowStart - MS_PER_DAY), res.timezone);
   const endKey = zonedDateKey(new Date(windowEnd + MS_PER_DAY), res.timezone);
   const free: Interval[] = [];
-  for (const dateKey of dateKeysBetween(startKey, endKey)) free.push(...intervalsForDate(res, dateKey));
+  for (const dateKey of dateKeysBetween(startKey, endKey))
+    free.push(...intervalsForDate(res, dateKey));
   return mergeIntervals(free);
 }
 
@@ -206,7 +243,8 @@ export function availableMinutes(res: ResourceAvailability, from: Date, to: Date
 export function computeSlots(input: ComputeSlotsInput): Slot[] {
   const { eventType, resources, bookings, rangeStart, rangeEnd, now } = input;
   const length = eventType.length;
-  const step = eventType.slotInterval && eventType.slotInterval > 0 ? eventType.slotInterval : length;
+  const step =
+    eventType.slotInterval && eventType.slotInterval > 0 ? eventType.slotInterval : length;
   const beforeBuffer = eventType.beforeBuffer ?? 0;
   const afterBuffer = eventType.afterBuffer ?? 0;
   const notice = eventType.minimumBookingNotice ?? 0;

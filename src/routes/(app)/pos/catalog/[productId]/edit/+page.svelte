@@ -11,5 +11,6 @@
   consumption={data.consumption}
   categories={data.categories}
   takenCodes={data.takenCodes}
+  tags={data.tags}
   editing={data.editing}
 />

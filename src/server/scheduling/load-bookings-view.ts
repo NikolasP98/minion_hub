@@ -56,6 +56,7 @@ export interface BookingsViewLoadData {
     productId: string | null;
     active: boolean;
     length: number;
+    kindId: string | null;
   }>;
   stockEnabled: boolean;
   accrualSummaries: AccrualSummaries;
@@ -128,6 +129,7 @@ export async function loadBookingsView(
       productId: e.productId ?? null,
       active: e.active,
       length: e.length,
+      kindId: e.kindId ?? null,
     })),
     stockEnabled,
     accrualSummaries,

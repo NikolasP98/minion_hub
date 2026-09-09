@@ -58,6 +58,7 @@
       public: et.public,
       productId: et.productId,
       resourceIds: et.resourceIds,
+      kindId: et.kindId ?? null,
     };
   }
 
@@ -107,6 +108,8 @@
           {preset}
           resources={resourceOpts}
           products={data.services}
+          kinds={data.kinds}
+          tags={data.tags}
           {onsaved}
           oncancel={close}
         />
@@ -125,6 +128,9 @@
               eventType={editorModel(et.id)}
               resources={resourceOpts}
               products={data.services}
+              kinds={data.kinds}
+              tags={data.tags}
+              tagIds={data.eventTypeTags[et.id] ?? []}
               {onsaved}
               oncancel={close}
             />

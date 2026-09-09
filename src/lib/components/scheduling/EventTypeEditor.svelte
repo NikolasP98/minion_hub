@@ -5,6 +5,8 @@
   import WeekHoursEditor from './WeekHoursEditor.svelte';
   import ResourcePickerField, { type SchedulableResource } from './ResourcePickerField.svelte';
   import ProcedurePickerField from './ProcedurePickerField.svelte';
+  import TagsField from '$lib/components/tags/TagsField.svelte';
+  import type { CalKind, CalTag } from '$lib/components/scheduling/calendar/types';
   import * as m from '$lib/paraglide/messages';
 
   interface EventType {
@@ -25,12 +27,16 @@
     public: boolean;
     productId: string | null;
     resourceIds: string[];
+    kindId: string | null;
   }
   let {
     eventType = null,
     preset = null,
     resources,
     products,
+    kinds = [],
+    tags = [],
+    tagIds: initialTagIds = [],
     onsaved,
     oncancel,
   }: {
@@ -39,6 +45,12 @@
     preset?: Partial<EventType> | null;
     resources: SchedulableResource[];
     products: Array<{ id: string; name: string }>;
+    /** Org-defined event kinds (`sched_event_kinds`) — the calendar category. */
+    kinds?: CalKind[];
+    /** Org-wide manual tags. */
+    tags?: CalTag[];
+    /** Tag ids already applied to this event type (edit mode). */
+    tagIds?: string[];
     onsaved: () => void;
     oncancel: () => void;
   } = $props();
@@ -70,12 +82,15 @@
           public: true,
           productId: null,
           resourceIds: [],
+          kindId: kinds.find((k) => k.isDefault)?.id ?? null,
           ...preset,
           slug: preset?.slug ?? slugify(preset?.title ?? ''),
         },
   );
   // svelte-ignore state_referenced_locally
   let slugTouched = $state(!!eventType);
+  // svelte-ignore state_referenced_locally
+  let tagIds = $state<string[]>(initialTagIds);
   let saving = $state(false);
   let err = $state<string | null>(null);
 
@@ -123,6 +138,12 @@
         body: JSON.stringify(f),
       });
       if (!res.ok) throw new Error(await res.text());
+      const savedId = eventType?.id ?? ((await res.json()) as { id: string }).id;
+      await fetch(`/api/tags/event_type/${savedId}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tagIds }),
+      });
       onsaved();
     } catch (e) {
       err = e instanceof Error ? e.message : 'error';
@@ -184,11 +205,28 @@
         <ProcedurePickerField {products} bind:value={f.productId} />
       </div>
     {/if}
+    {#if kinds.length}
+      <label class="field">
+        <span class="t-caption">{m.sched_kind_label()}</span>
+        <Select
+          class="txt"
+          value={f.kindId ?? ''}
+          onchange={(value) => (f.kindId = value === '' ? null : String(value))}
+        >
+          {#each kinds as k (k.id)}<option value={k.id}>{k.name}</option>{/each}
+        </Select>
+      </label>
+    {/if}
   </div>
 
   <div class="field mt-3">
     <span class="t-caption">{m.sched_et_resources()}</span>
     <ResourcePickerField {resources} bind:value={f.resourceIds} />
+  </div>
+
+  <div class="field mt-3">
+    <span class="t-caption">{m.tags_label()}</span>
+    <TagsField allTags={tags} bind:value={tagIds} />
   </div>
 
   <div class="flex items-center gap-4 mt-3">

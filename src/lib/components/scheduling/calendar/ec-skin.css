@@ -1,0 +1,62 @@
+/*
+ * @event-calendar/core semantic-token skin, shared by every calendar instance
+ * in the app (currently TimeOffCalendar.svelte + SchedulingCalendar.svelte).
+ * The library declares its `--ec-*` custom properties ON `.ec` (its own root
+ * class), so this file targets `.ec`/`.ec-*` directly — no scoping wrapper,
+ * since a plain CSS import is already global exactly like the library's own
+ * `@event-calendar/core/index.css`.
+ *
+ * View-specific or component-specific overrides (status colours for leave
+ * requests, agenda-view cell height, …) stay local to that component's
+ * scoped `<style>` block — only the token contract lives here.
+ */
+.ec {
+  color-scheme: inherit;
+  --ec-color-50: var(--color-surface-1);
+  --ec-color-100: var(--color-surface-2);
+  --ec-color-200: var(--color-surface-3);
+  --ec-color-300: var(--color-border);
+  --ec-color-400: var(--color-border-strong);
+  --ec-bg-color: transparent;
+  --ec-border-color: var(--color-border);
+  --ec-text-color: var(--color-text-primary);
+  --ec-today-bg-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  --ec-highlight-color: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  --ec-event-bg-color: var(--color-accent);
+  --ec-event-text-color: var(--color-on-accent);
+  --ec-bg-event-color: var(--color-surface-3);
+  --ec-bg-event-opacity: 1;
+  --ec-popup-bg-color: var(--color-overlay);
+  --ec-button-bg-color: var(--color-surface-2);
+  --ec-button-border-color: var(--color-border);
+  --ec-button-text-color: var(--color-text-primary);
+  --ec-button-active-bg-color: var(--color-accent);
+  --ec-button-active-border-color: var(--color-accent);
+  --ec-button-active-text-color: var(--color-on-accent);
+  --ec-now-indicator-color: var(--color-danger-fg);
+  --ec-last-line-color: var(--color-border);
+  font: inherit;
+  font-size: var(--font-size-caption);
+}
+.ec-day-grid .ec-day {
+  min-height: 5.5rem;
+}
+.ec-day-head,
+.ec-list .ec-day-head {
+  color: var(--color-text-secondary);
+}
+.ec-day.ec-other-month .ec-day-head {
+  color: var(--color-text-disabled);
+}
+.ec-event {
+  border-radius: var(--radius-xs);
+  font-size: var(--font-size-caption);
+}
+.ec-popup {
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-overlay);
+  border-radius: var(--radius-md);
+}
+.ec-no-events {
+  color: var(--color-text-secondary);
+}

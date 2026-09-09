@@ -43,6 +43,7 @@ const postSchema = z.object({
   crmContactId: z.string().max(200).nullable().optional(),
   partyId: z.string().max(200).nullable().optional(),
   resourceId: z.string().max(200).nullable().optional(),
+  kindId: z.string().max(200).nullable().optional(),
   forceResourceId: z.string().max(200).optional(),
   overrideConflicts: z.boolean().optional(),
   consumption: z
@@ -69,6 +70,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       crmContactId: b.crmContactId ?? null,
       partyId: b.partyId ?? null,
       preferredResourceId: b.resourceId ?? null,
+      kindId: b.kindId ?? null,
       source: 'internal',
       bypassRules: true,
       consumption: b.consumption ?? null,
@@ -78,7 +80,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     return json({ booking });
   } catch (e) {
     if (e instanceof SlotUnavailableError) throw error(409, 'slot unavailable');
-    if (e instanceof Error && e.message === 'overrideConflicts requires forceResourceId')
+    if (
+      e instanceof Error &&
+      (e.message === 'overrideConflicts requires forceResourceId' || e.message === 'invalid kindId')
+    )
       throw error(400, e.message);
     throw e;
   }

@@ -4,6 +4,8 @@
   import { Modal, Button, SegmentedControl, Input, Select, Combobox } from '$lib/components/ui';
   import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
+  import TagsField from '$lib/components/tags/TagsField.svelte';
+  import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
@@ -49,6 +51,8 @@
      *  the bundle editor's job); it must merely not choke on editing one. */
     kind: 'product' | 'service' | 'bundle';
     itemId: string | null;
+    /** Tag ids currently applied to this sellable (edit mode prefill). */
+    tags?: string[];
   }
 
   interface Props {
@@ -66,6 +70,8 @@
     /** Existing consumption mappings across the catalog — filtered to the
      *  edited product for prefill (see ★ note below). */
     consumption: ConsumptionLike[];
+    /** Org-wide manual tags. */
+    allTags?: CalTag[];
     /** null = create mode; a row = edit mode, prefilled from it. */
     editing?: SellableLike | null;
     /** Called after a successful save — caller invalidates or navigates. */
@@ -81,6 +87,7 @@
     categories,
     takenCodes = [],
     consumption,
+    allTags = [],
     editing = null,
     onSaved,
     onCancel,
@@ -123,6 +130,7 @@
   /** Only items not already published can be linked. */
   const availableItems = $derived(allStockItems.filter((i) => !i.finProductId));
   let rows = $state<{ itemId: string; qtyPerUnit: string; note: string }[]>([]);
+  let tagIds = $state<string[]>([]);
   let busy = $state(false);
 
   /** Label a row's qty input with the CONSUMPTION uom when the item has one,
@@ -154,6 +162,7 @@
           .filter((c) => c.finProductId === e.productId)
           .map((c) => ({ itemId: c.itemId, qtyPerUnit: String(c.qtyPerUnit), note: c.note ?? '' }))
       : [];
+    tagIds = e?.tags ?? [];
   });
 
   // Auto-suggest the code from the name until the user edits it manually.
@@ -349,6 +358,12 @@
                 : (d.error ?? `Failed (${res.status})`),
             );
           }
+          const { sellable } = (await res.json()) as { sellable: { productId: string } };
+          await fetch(`/api/tags/product/${sellable.productId}`, {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ tagIds }),
+          });
         })(),
         {
           loading: `${m.common_save()}…`,
@@ -413,6 +428,11 @@
       bind:value={unitPrice}
       data-assist="sellable.unitPrice"
     />
+
+    <div class="fld">
+      <span>{m.tags_label()}</span>
+      <TagsField {allTags} bind:value={tagIds} />
+    </div>
 
     {#if editing}
       <!-- updateSellable ignores kind/trackStock/uom on PATCH — showing live

@@ -5,6 +5,7 @@ import {
   jsonb,
   boolean,
   integer,
+  doublePrecision,
   timestamp,
   index,
   uniqueIndex,
@@ -142,6 +143,9 @@ export const schedEventTypes = pgTable(
     color: text('color'),
     /** Soft bridge to fin_products (procedure → revenue). */
     productId: uuid('product_id'),
+    /** Default event kind for bookings of this service (spec §1/§2.1). Nullable
+     *  — a booking's own kindId, then this, then the org default resolve at read time. */
+    kindId: uuid('kind_id').references(() => schedEventKinds.id, { onDelete: 'set null' }),
     active: boolean('active').notNull().default(true),
     metadata: jsonb('metadata').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -150,6 +154,34 @@ export const schedEventTypes = pgTable(
   (t) => ({
     slugUniq: uniqueIndex('sched_event_types_org_slug_uniq').on(t.orgId, t.slug),
     orgIdx: index('sched_event_types_org_idx').on(t.orgId),
+  }),
+);
+
+/**
+ * An org-defined category on every calendar entry (Appointment, Block, Meeting,
+ * Internal…) — independent from `schedEventTypes` (bookable services), which
+ * each carry a default kind via `kindId`. See spec
+ * 2026-09-08-hub-scheduling-calendar-views-tags-spec §1. Default kinds are
+ * lazily seeded by `listEventKinds` when an org has none.
+ */
+export const schedEventKinds = pgTable(
+  'sched_event_kinds',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    name: text('name').notNull(),
+    color: text('color').notNull(), // '#rrggbb' persisted domain data (like crm_tags.color)
+    position: doublePrecision('position').notNull().default(0),
+    isDefault: boolean('is_default').notNull().default(false),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    nameUniq: uniqueIndex('sched_event_kinds_org_name_uniq').on(t.orgId, t.name),
+    defaultUniq: uniqueIndex('sched_event_kinds_org_default_uniq')
+      .on(t.orgId)
+      .where(sql`is_default`),
   }),
 );
 
@@ -199,6 +231,10 @@ export const schedBookings = pgTable(
     partyId: uuid('party_id'),
     /** Snapshot of the event type's product at booking time. */
     productId: uuid('product_id'),
+    /** This booking's own event kind. Null = resolve to the event type's kindId,
+     *  then the org default, at read time (spec §1/§2.1) — never denormalised
+     *  onto the row, so re-assigning a service's kind updates history. */
+    kindId: uuid('kind_id').references(() => schedEventKinds.id, { onDelete: 'set null' }),
     source: text('source').notNull().default('internal'), // 'public_link' | 'internal' | 'import'
     rescheduledFromId: uuid('rescheduled_from_id'),
     metadata: jsonb('metadata').notNull().default({}),
@@ -248,6 +284,7 @@ export const schedLinks = pgTable(
 export type SchedResource = typeof schedResources.$inferSelect;
 export type SchedSchedule = typeof schedSchedules.$inferSelect;
 export type SchedAvailability = typeof schedAvailability.$inferSelect;
+export type SchedEventKind = typeof schedEventKinds.$inferSelect;
 export type SchedEventType = typeof schedEventTypes.$inferSelect;
 export type SchedEventTypeResource = typeof schedEventTypeResources.$inferSelect;
 export type SchedBooking = typeof schedBookings.$inferSelect;

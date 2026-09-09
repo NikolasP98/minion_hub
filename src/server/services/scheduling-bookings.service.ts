@@ -1,4 +1,4 @@
-import { and, eq, inArray, gte, lte, asc, desc, sql } from 'drizzle-orm';
+import { and, eq, ne, inArray, gte, lte, asc, desc, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { maskPii } from '$lib/pii';
 import type { CoreTx } from '$server/db/with-org-core';
@@ -13,9 +13,10 @@ import {
 } from '$server/db/pg-scheduling-schema';
 import { crmContacts, crmContactIdentities } from '$server/db/pg-crm-schema';
 import type { SchedBooking } from '$server/db/pg-scheduling-schema';
-import { computeSlots } from '$server/scheduling/slots';
+import { computeSlots, intervalsOverlap } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
+import { assertOrgEventKind } from './scheduling.service';
 import { emitHubEvent } from '$server/events/emit';
 import {
   accrueConsumption,
@@ -31,6 +32,16 @@ export class SlotUnavailableError extends Error {
   constructor() {
     super('slot no longer available');
     this.name = 'SlotUnavailableError';
+  }
+}
+
+/** Thrown by `rescheduleBooking` when the target resource/time clashes with
+ *  another booking (buffer-padded). Message names the clashing time so it can
+ *  be surfaced verbatim in a 409 response / toast. */
+export class BookingConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BookingConflictError';
   }
 }
 
@@ -136,6 +147,10 @@ export interface CreateBookingInput {
   /** Adjusted stock-consumption lines from the booking modal (consumption uom).
    *  Absent → defaults accrue from the product's stk_consumption mapping. */
   consumption?: AccrualLineInput[] | null;
+  /** This booking's own event kind (spec §1/§2.1). Validated as an org kind
+   *  when set; absent/null leaves the booking resolving to the event type's
+   *  kind (then the org default) at read time. */
+  kindId?: string | null;
 }
 
 /** Last-9-digit (Peru) phone normalizer, matching crm-finance.service. */
@@ -249,6 +264,7 @@ export async function createBooking(
       )
       .limit(1);
     if (!et || !et.active) throw new SlotUnavailableError();
+    if (input.kindId) await assertOrgEventKind(tx, ctx.tenantId, input.kindId);
 
     const start = input.start;
     const end = new Date(start.getTime() + et.length * MS_PER_MIN);
@@ -389,6 +405,7 @@ export async function createBooking(
         attendeePhone: input.attendeePhone ?? null,
         crmContactId,
         productId: et.productId,
+        kindId: input.kindId ?? null,
         source: input.source ?? 'internal',
       })
       .onConflictDoNothing({ target: [schedBookings.orgId, schedBookings.uid] })
@@ -484,6 +501,22 @@ export async function setBookingStatus(ctx: CoreCtx, id: string, status: string)
   }
 }
 
+/** Update a booking's own event kind (spec §1/§2.1); null clears the override
+ *  back to the event type's kind. Validated as an org kind when set. */
+export async function setBookingKind(
+  ctx: CoreCtx,
+  id: string,
+  kindId: string | null,
+): Promise<void> {
+  await withOrgCore(ctx, async (tx) => {
+    if (kindId) await assertOrgEventKind(tx, ctx.tenantId, kindId);
+    await tx
+      .update(schedBookings)
+      .set({ kindId, updatedAt: new Date() })
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
+  });
+}
+
 export async function getBooking(ctx: CoreCtx, id: string): Promise<SchedBooking | null> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
@@ -493,4 +526,118 @@ export async function getBooking(ctx: CoreCtx, id: string): Promise<SchedBooking
       .limit(1),
   );
   return row ?? null;
+}
+
+export interface RescheduleBookingInput {
+  start: Date;
+  end: Date;
+  /** Move to a different resource too (drag onto another staff column). Omit to
+   *  keep the booking's current resource. */
+  resourceId?: string;
+}
+
+/** Statuses a reschedule target must avoid clashing with (spec §3.2b) — wider
+ *  than ACTIVE_STATUSES above (which only gates NEW-booking availability):
+ *  a completed booking still occupies its resource's calendar slot. */
+const CONFLICT_STATUSES = ['accepted', 'pending', 'completed'] as const;
+
+/**
+ * Drag/drop or resize a booking (spec §3.2b). Org-scoped; rejects a
+ * cancelled/rejected booking, a zero/negative-length move, or an inactive/
+ * foreign target resource. Conflict check reuses the same buffer-padded
+ * overlap test the slot engine uses (`intervalsOverlap` in slots.ts) against
+ * every other non-cancelled booking on the target resource, padded by the
+ * booking's own event type buffers (mirrors how `createBooking` pads busy
+ * intervals by the booked event type's buffers before slotting).
+ */
+export async function rescheduleBooking(
+  ctx: CoreCtx,
+  id: string,
+  input: RescheduleBookingInput,
+): Promise<SchedBooking> {
+  if (!(input.end.getTime() > input.start.getTime())) throw new Error('end must be after start');
+  return withOrgCore(ctx, async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!existing) throw new Error('booking not found');
+    if (existing.status === 'cancelled' || existing.status === 'rejected')
+      throw new Error(`cannot reschedule a ${existing.status} booking`);
+
+    const resourceId = input.resourceId ?? existing.resourceId;
+    if (input.resourceId) {
+      const [res] = await tx
+        .select({ id: schedResources.id })
+        .from(schedResources)
+        .where(
+          and(
+            eq(schedResources.id, input.resourceId),
+            eq(schedResources.orgId, ctx.tenantId),
+            eq(schedResources.active, true),
+          ),
+        )
+        .limit(1);
+      if (!res) throw new Error('invalid resourceId');
+    }
+
+    // Buffers come from the booking's own event type (same knobs `createBooking`
+    // pads busy intervals by before handing them to the slot engine).
+    const [et] = await tx
+      .select({
+        beforeBuffer: schedEventTypes.beforeBuffer,
+        afterBuffer: schedEventTypes.afterBuffer,
+      })
+      .from(schedEventTypes)
+      .where(eq(schedEventTypes.id, existing.eventTypeId))
+      .limit(1);
+    const beforeBuffer = (et?.beforeBuffer ?? 0) * MS_PER_MIN;
+    const afterBuffer = (et?.afterBuffer ?? 0) * MS_PER_MIN;
+
+    const others = await tx
+      .select({
+        id: schedBookings.id,
+        start: schedBookings.startTime,
+        end: schedBookings.endTime,
+        title: schedBookings.title,
+      })
+      .from(schedBookings)
+      .where(
+        and(
+          eq(schedBookings.orgId, ctx.tenantId),
+          eq(schedBookings.resourceId, resourceId),
+          inArray(schedBookings.status, [...CONFLICT_STATUSES]),
+          ne(schedBookings.id, id),
+        ),
+      );
+    const targetStart = input.start.getTime();
+    const targetEnd = input.end.getTime();
+    for (const o of others) {
+      if (
+        intervalsOverlap(
+          targetStart,
+          targetEnd,
+          o.start.getTime() - beforeBuffer,
+          o.end.getTime() + afterBuffer,
+        )
+      ) {
+        throw new BookingConflictError(
+          `Conflicts with "${o.title ?? 'a booking'}" from ${o.start.toISOString()} to ${o.end.toISOString()}`,
+        );
+      }
+    }
+
+    // TODO(handoff): spec §3.2b allows a reschedule outside working hours /
+    // on a holiday / during staff leave (a human scheduler decides) — this
+    // never blocks on it, but no warnings payload surfaces it either. Add a
+    // `{ warnings: string[] }` return (checked against schedAvailability /
+    // the org holiday+leave tables) when the calendar UI wants to show one.
+    const [row] = await tx
+      .update(schedBookings)
+      .set({ startTime: input.start, endTime: input.end, resourceId, updatedAt: new Date() })
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .returning();
+    return row;
+  });
 }

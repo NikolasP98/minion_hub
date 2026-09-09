@@ -6,6 +6,7 @@ import { listItems, listAllComponentEdges } from '$server/services/stock.service
 import { billingForProducts, catalogCoverage } from '$server/services/finance-products.service';
 import { costForProducts } from '$server/services/item-cost.service';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
+import { getTagLinks } from '$server/services/tag-links.service';
 
 /** The /pos module gate + 401 live in the (app) route hook guard + this
  *  layout's auth check — this load only adds the merged catalog + (when
@@ -40,12 +41,14 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   ]);
 
   const ids = sellables.map((s) => s.productId);
-  const [billing, costs] = await Promise.all([
+  const [billing, costs, tagsByProduct] = await Promise.all([
     billingForProducts(ctx, ids),
     costForProducts(ctx, ids),
+    getTagLinks(ctx, 'product', ids),
   ]);
 
   const enriched = sellables.map((s) => {
+    const tags = tagsByProduct.get(s.productId) ?? [];
     const b = billing.get(s.productId);
     const billed = b?.billed ?? 0;
     // Field-level RBAC: cost, margin AND revenue are sensitive here — omit the
@@ -53,6 +56,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     if (mask) {
       return {
         ...s,
+        tags,
         billed,
         revenue: null,
         cost: null,
@@ -72,7 +76,18 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       cost != null && s.unitPrice != null ? Math.round((s.unitPrice - cost) * 100) / 100 : null;
     const marginPct =
       margin != null && s.unitPrice ? Math.round((margin / s.unitPrice) * 1000) / 10 : null;
-    return { ...s, billed, revenue, cost, margin, marginPct, costable, partial, costMasked: false };
+    return {
+      ...s,
+      tags,
+      billed,
+      revenue,
+      cost,
+      margin,
+      marginPct,
+      costable,
+      partial,
+      costMasked: false,
+    };
   });
 
   return {

@@ -139,7 +139,7 @@ describe('/scheduling/bookings load — pinned key set', () => {
     // The primary data contract: bookings pass through unmodified, and
     // eventTypes/accrual data are mapped/forwarded as shipped today.
     expect(result.bookings).toEqual(BOOKINGS);
-    expect(result.eventTypes).toEqual(EVENT_TYPES);
+    expect(result.eventTypes).toEqual(EVENT_TYPES.map((e) => ({ ...e, kindId: null })));
     expect(result.accrualSummaries).toEqual(ACCRUALS);
     // Unlike POS, scheduling does NOT pre-filter resources by `active`.
     expect(result.resources).toEqual([
