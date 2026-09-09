@@ -9,6 +9,7 @@
     type SellableLike,
     type StockItemLike,
   } from './SellableWizard.svelte';
+  import type { CalTag } from '$lib/components/scheduling/calendar/types';
 
   let {
     stockEnabled,
@@ -16,6 +17,7 @@
     consumption,
     categories,
     takenCodes,
+    tags = [],
     editing = null,
   }: {
     stockEnabled: boolean;
@@ -23,6 +25,7 @@
     consumption: ConsumptionLike[];
     categories: string[];
     takenCodes: string[];
+    tags?: CalTag[];
     editing?: SellableLike | null;
   } = $props();
 
@@ -66,6 +69,7 @@
         {consumption}
         {categories}
         {takenCodes}
+        allTags={tags}
         {editing}
         onCancel={returnToCatalog}
         onSaved={returnToCatalog}

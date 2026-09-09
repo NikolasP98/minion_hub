@@ -4,6 +4,7 @@ import {
   schedResources,
   schedSchedules,
   schedAvailability,
+  schedEventKinds,
   schedEventTypes,
   schedEventTypeResources,
   schedBookings,
@@ -13,26 +14,56 @@ import {
 describe('pg-scheduling-schema', () => {
   it('sched_resources carries org tenancy + staff fields', () => {
     const cols = Object.keys(getTableColumns(schedResources));
-    for (const c of ['orgId', 'kind', 'profileId', 'name', 'timezone', 'color', 'active', 'metadata'])
+    for (const c of [
+      'orgId',
+      'kind',
+      'profileId',
+      'name',
+      'timezone',
+      'color',
+      'active',
+      'metadata',
+    ])
       expect(cols).toContain(c);
   });
 
   it('sched_schedules belongs to a resource and has a timezone', () => {
     const cols = Object.keys(getTableColumns(schedSchedules));
-    for (const c of ['orgId', 'resourceId', 'name', 'timezone', 'isDefault']) expect(cols).toContain(c);
+    for (const c of ['orgId', 'resourceId', 'name', 'timezone', 'isDefault'])
+      expect(cols).toContain(c);
   });
 
   it('sched_availability supports weekly rules + single-date overrides', () => {
     const cols = Object.keys(getTableColumns(schedAvailability));
-    for (const c of ['orgId', 'scheduleId', 'days', 'startTime', 'endTime', 'date']) expect(cols).toContain(c);
+    for (const c of ['orgId', 'scheduleId', 'days', 'startTime', 'endTime', 'date'])
+      expect(cols).toContain(c);
+  });
+
+  it('sched_event_kinds carries the org-defined category on every calendar entry', () => {
+    const cols = Object.keys(getTableColumns(schedEventKinds));
+    for (const c of ['orgId', 'name', 'color', 'position', 'isDefault', 'active'])
+      expect(cols).toContain(c);
   });
 
   it('sched_event_types ports the cal.diy EventType knobs + bridges to fin_products', () => {
     const cols = Object.keys(getTableColumns(schedEventTypes));
     for (const c of [
-      'orgId', 'slug', 'title', 'length', 'slotInterval', 'beforeBuffer', 'afterBuffer',
-      'minimumBookingNotice', 'periodType', 'periodDays', 'schedulingType', 'requiresConfirmation',
-      'public', 'productId', 'active',
+      'orgId',
+      'slug',
+      'title',
+      'length',
+      'slotInterval',
+      'beforeBuffer',
+      'afterBuffer',
+      'minimumBookingNotice',
+      'periodType',
+      'periodDays',
+      'schedulingType',
+      'requiresConfirmation',
+      'public',
+      'productId',
+      'kindId',
+      'active',
     ])
       expect(cols).toContain(c);
   });
@@ -45,9 +76,21 @@ describe('pg-scheduling-schema', () => {
   it('sched_bookings holds the appointment + CRM/finance bridges + idempotency uid', () => {
     const cols = Object.keys(getTableColumns(schedBookings));
     for (const c of [
-      'orgId', 'uid', 'eventTypeId', 'resourceId', 'startTime', 'endTime', 'status',
-      'attendeeName', 'attendeeEmail', 'attendeePhone', 'crmContactId', 'productId',
-      'source', 'rescheduledFromId',
+      'orgId',
+      'uid',
+      'eventTypeId',
+      'resourceId',
+      'startTime',
+      'endTime',
+      'status',
+      'attendeeName',
+      'attendeeEmail',
+      'attendeePhone',
+      'crmContactId',
+      'productId',
+      'kindId',
+      'source',
+      'rescheduledFromId',
     ])
       expect(cols).toContain(c);
   });

@@ -4,12 +4,15 @@
    * the BookingsView modal so the assistant can guide/fill it on a real route and
    * the customer picker (a top-layer Picker window) never fights a dialog.
    */
-  import { Button } from '$lib/components/ui';
+  import { page } from '$app/state';
+  import { Button, Select } from '$lib/components/ui';
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import ServicePickerField from '$lib/components/scheduling/ServicePickerField.svelte';
+  import TagsField from '$lib/components/tags/TagsField.svelte';
   import type { PartyOption } from '$lib/components/crm/party-picker';
+  import type { CalKind, CalTag } from '$lib/components/scheduling/calendar/types';
   import { canAct } from '$lib/access/can.svelte';
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
@@ -21,6 +24,7 @@
     productId: string | null;
     active?: boolean;
     length?: number;
+    kindId: string | null;
   };
   export type BookingContactPrefill = {
     id: string;
@@ -31,21 +35,52 @@
 
   let {
     eventTypes,
+    kinds = [],
+    tags = [],
     contact = null,
     returnTo = '/scheduling/bookings',
   }: {
     eventTypes: BookingEventType[];
+    /** Org-defined event kinds (`sched_event_kinds`) — the calendar category. */
+    kinds?: CalKind[];
+    /** Org-wide manual tags, for the booking's own tag picker. */
+    tags?: CalTag[];
     /** `?contact=` deep link: the customer is pre-picked and the booking keeps that CRM link. */
     contact?: BookingContactPrefill | null;
     returnTo?: string;
   } = $props();
 
+  // Calendar drag-select deep link: `/scheduling/bookings/new?date=&time=&resource=`
+  // (SchedulingCalendar's `select` handler). `time`/`resource` are applied once,
+  // after the user picks a service and its slots load (below) — the calendar
+  // link never carries a service, so slots can't resolve any earlier than that.
+  const dateParam = page.url.searchParams.get('date');
+  let prefillTime = page.url.searchParams.get('time');
   let eventTypeId = $state('');
-  let date = $state(new Date().toISOString().slice(0, 10));
-  let slots = $state<Array<{ start: string; end: string }>>([]);
+  // svelte-ignore state_referenced_locally -- seed from the deep link once
+  let date = $state(
+    dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
+      ? dateParam
+      : new Date().toISOString().slice(0, 10),
+  );
+  let slots = $state<Array<{ start: string; end: string; resourceIds?: string[] }>>([]);
   let slot = $state('');
+  // svelte-ignore state_referenced_locally
+  let resourceId = $state(page.url.searchParams.get('resource') ?? '');
   let loading = $state(false);
   let err = $state<string | null>(null);
+
+  const orgDefaultKindId = $derived(kinds.find((k) => k.isDefault)?.id ?? '');
+  let kindId = $state('');
+  let kindTouched = $state(false);
+  let tagIds = $state<string[]>([]);
+  // Defaults to the picked service's kind, falling back to the org default —
+  // recomputed only until the user overrides it explicitly.
+  $effect(() => {
+    if (kindTouched) return;
+    const et = eventTypes.find((e) => e.id === eventTypeId);
+    kindId = et?.kindId ?? orgDefaultKindId;
+  });
 
   // svelte-ignore state_referenced_locally -- seed from the deep link once
   let partyId = $state<string | null>(contact?.partyId ?? null);
@@ -71,6 +106,15 @@
         `/api/scheduling/slots?eventTypeId=${eventTypeId}&from=${from.toISOString()}&to=${to.toISOString()}`,
       );
       slots = res.ok ? ((await res.json()).slots ?? []) : [];
+      if (prefillTime) {
+        const want = prefillTime;
+        const hit = slots.find(
+          (s) =>
+            hhmm(s.start) === want && (!resourceId || (s.resourceIds ?? []).includes(resourceId)),
+        );
+        if (hit) slot = hit.start;
+        prefillTime = null; // apply once only
+      }
     } finally {
       loading = false;
     }
@@ -190,6 +234,17 @@
           attendeePhone: phone || null,
           crmContactId,
           partyId,
+          kindId: kindId || null,
+          // TODO(handoff): resourceId is only ever set from the calendar's
+          // ?resource= deep link — there's no visible staff picker in this
+          // form, so it can't be changed or cleared by hand. It's sent as a
+          // "preferred resource" hint on every submit, including a manually
+          // re-picked slot at an unrelated time; the backend just tries that
+          // resource and 409s (refreshing slots) if it's unavailable, so this
+          // is safe but can surprise a user who ignores the pre-filled time.
+          // Add a small "booking for <staff>" chip (need a `resources` list
+          // prop wired from bookings/new/+page.server.ts) if this bites.
+          resourceId: resourceId || undefined,
         }),
       });
       if (res.status === 409) {
@@ -198,6 +253,14 @@
         return;
       }
       if (!res.ok) throw new Error(String(res.status));
+      if (tagIds.length > 0) {
+        const { booking } = (await res.json()) as { booking: { id: string } };
+        await fetch(`/api/tags/booking/${booking.id}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ tagIds }),
+        });
+      }
       await goto(returnTo);
     } catch (e) {
       err = e instanceof Error ? e.message : 'error';
@@ -255,6 +318,24 @@
       required
       label={m.sched_book_find_client()}
     />
+  </div>
+  {#if kinds.length > 0}
+    <label class="field">
+      <span class="t-caption">{m.sched_kind_label()}</span>
+      <Select
+        value={kindId}
+        onchange={(v) => {
+          kindId = String(v);
+          kindTouched = true;
+        }}
+      >
+        {#each kinds as k (k.id)}<option value={k.id}>{k.name}</option>{/each}
+      </Select>
+    </label>
+  {/if}
+  <div class="field">
+    <span class="t-caption">{m.tags_label()}</span>
+    <TagsField allTags={tags} bind:value={tagIds} />
   </div>
   {#if err}<p class="t-caption danger">{err}</p>{/if}
   <div class="actions">

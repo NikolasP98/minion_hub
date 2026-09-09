@@ -5,11 +5,19 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
-import { getEventType, upsertEventType, deleteEventType, parseScheduleRules } from '$server/services/scheduling.service';
+import {
+  getEventType,
+  upsertEventType,
+  deleteEventType,
+  parseScheduleRules,
+} from '$server/services/scheduling.service';
 import type { EventTypeInput } from '$server/services/scheduling.service';
 
 // null/''/undefined -> null (unset), else coerce to number. Mirrors the old num() helper.
-const numOrNull = z.preprocess((v) => (v === '' || v == null ? null : v), z.coerce.number().nullable());
+const numOrNull = z.preprocess(
+  (v) => (v === '' || v == null ? null : v),
+  z.coerce.number().nullable(),
+);
 
 const eventTypeSchema = z.object({
   slug: z.string().trim().min(1).max(200),
@@ -29,6 +37,7 @@ const eventTypeSchema = z.object({
   public: z.boolean().optional(),
   color: z.string().max(50).nullable().optional(),
   productId: z.string().max(200).nullable().optional(),
+  kindId: z.string().max(200).nullable().optional(),
   active: z.boolean().optional(),
   resourceIds: z.array(z.string().max(200)).optional(),
 });
@@ -52,6 +61,7 @@ function toEventTypeInput(b: z.infer<typeof eventTypeSchema>): EventTypeInput {
     public: b.public !== false,
     color: b.color ?? null,
     productId: b.productId ?? null,
+    kindId: b.kindId ?? null,
     active: b.active !== false,
     resourceIds: b.resourceIds ?? [],
   };

@@ -25,6 +25,12 @@
     {/snippet}
   </PageHeader>
   <PageBody padding="compact">
-    <BookingCreateForm eventTypes={data.eventTypes} contact={data.contact} {returnTo} />
+    <BookingCreateForm
+      eventTypes={data.eventTypes}
+      kinds={data.kinds}
+      tags={data.tags}
+      contact={data.contact}
+      {returnTo}
+    />
   </PageBody>
 </PageShell>

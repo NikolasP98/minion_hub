@@ -8,6 +8,7 @@
   // in the options object); the vendor CSS is re-skinned with semantic tokens.
   import { Calendar, DayGrid, List } from '@event-calendar/core';
   import '@event-calendar/core/index.css';
+  import '../scheduling/calendar/ec-skin.css';
   import { ChevronLeft, ChevronRight } from 'lucide-svelte';
   import { Button, SegmentedControl, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
@@ -207,56 +208,15 @@
     border: 1px solid var(--color-border);
   }
 
-  /* Third-party render surface: event-calendar declares its --ec-* hooks ON `.ec`,
-     so the semantic-token mapping must live on the same element to win. */
+  /* Third-party render surface: the shared --ec-* semantic-token skin (and the
+     small set of base .ec-* rules every calendar wants) lives in ec-skin.css,
+     imported above — only this component's OWN overrides stay here. */
   .cal {
     min-width: 0;
   }
-  .cal :global(.ec) {
-    color-scheme: inherit;
-    --ec-color-50: var(--color-surface-1);
-    --ec-color-100: var(--color-surface-2);
-    --ec-color-200: var(--color-surface-3);
-    --ec-color-300: var(--color-border);
-    --ec-color-400: var(--color-border-strong);
-    --ec-bg-color: transparent;
-    --ec-border-color: var(--color-border);
-    --ec-text-color: var(--color-text-primary);
-    --ec-today-bg-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
-    --ec-highlight-color: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    --ec-event-bg-color: var(--color-accent);
-    --ec-event-text-color: var(--color-on-accent);
-    --ec-bg-event-color: var(--color-surface-3);
-    --ec-bg-event-opacity: 1;
-    --ec-popup-bg-color: var(--color-overlay);
-    --ec-button-bg-color: var(--color-surface-2);
-    --ec-button-border-color: var(--color-border);
-    --ec-button-text-color: var(--color-text-primary);
-    --ec-button-active-bg-color: var(--color-accent);
-    --ec-button-active-border-color: var(--color-accent);
-    --ec-button-active-text-color: var(--color-on-accent);
-    --ec-now-indicator-color: var(--color-danger-fg);
-    --ec-last-line-color: var(--color-border);
-    font: inherit;
-    font-size: var(--font-size-caption);
-  }
-  /* Month cells tall enough for two all-day bars before "+N more". */
-  .cal :global(.ec-day-grid .ec-day) {
-    min-height: 5.5rem;
-  }
+  /* Agenda view: the base skin's 5.5rem month-cell min-height doesn't apply. */
   .cal.agenda :global(.ec-day-grid .ec-day) {
     min-height: 0;
-  }
-  .cal :global(.ec-day-head),
-  .cal :global(.ec-list .ec-day-head) {
-    color: var(--color-text-secondary);
-  }
-  .cal :global(.ec-day.ec-other-month .ec-day-head) {
-    color: var(--color-text-disabled);
-  }
-  .cal :global(.ec-event) {
-    border-radius: var(--radius-xs);
-    font-size: var(--font-size-caption);
   }
   .cal :global(.ec-event.ev-approved) {
     background: var(--color-success-surface);
@@ -273,16 +233,8 @@
     color: var(--color-info-fg);
     border-left: 2px solid var(--color-info-fg);
   }
-  .cal :global(.ec-popup) {
-    border: 1px solid var(--color-border);
-    box-shadow: var(--shadow-overlay);
-    border-radius: var(--radius-md);
-  }
   .cal :global(.ec-list .ec-event) {
     background: var(--color-surface-2);
     color: var(--color-text-primary);
-  }
-  .cal :global(.ec-no-events) {
-    color: var(--color-text-secondary);
   }
 </style>

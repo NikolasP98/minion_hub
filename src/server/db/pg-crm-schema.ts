@@ -197,6 +197,36 @@ export const crmTags = pgTable(
   }),
 );
 
+/**
+ * Polymorphic tag application shared by bookings, event types (services), and
+ * catalog products — the org-wide tag registry beyond contacts (spec
+ * 2026-09-08-hub-scheduling-calendar-views-tags-spec §1/§2.2). Contacts keep
+ * their own `crm_contact_tags` (unchanged) — this table never applies to
+ * `entity_kind='contact'`. No `entity_id` FK: polymorphic across three source
+ * tables in three different modules; orphans are tolerated and filtered out
+ * by the reading join.
+ */
+export const tagLinks = pgTable(
+  'tag_links',
+  {
+    orgId: text('org_id').notNull(),
+    /** 'booking' | 'event_type' | 'product' */
+    entityKind: text('entity_kind').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    tagId: uuid('tag_id')
+      .notNull()
+      .references(() => crmTags.id, { onDelete: 'cascade' }),
+    /** profiles.id; null = applied by the system. */
+    appliedBy: uuid('applied_by'),
+    appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.entityKind, t.entityId, t.tagId] }),
+    tagIdx: index('tag_links_org_tag_idx').on(t.orgId, t.tagId),
+    entityIdx: index('tag_links_org_entity_idx').on(t.orgId, t.entityKind, t.entityId),
+  }),
+);
+
 /** Manual tag applications (auto-tags are computed live, not stored here). */
 export const crmContactTags = pgTable(
   'crm_contact_tags',
@@ -367,3 +397,4 @@ export type CrmContactIdentity = typeof crmContactIdentities.$inferSelect;
 export type CrmActivity = typeof crmActivities.$inferSelect;
 export type CrmTag = typeof crmTags.$inferSelect;
 export type CrmContactTag = typeof crmContactTags.$inferSelect;
+export type TagLink = typeof tagLinks.$inferSelect;

@@ -1,10 +1,12 @@
 import { and, eq, asc, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
+import type { CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   schedResources,
   schedSchedules,
   schedAvailability,
+  schedEventKinds,
   schedEventTypes,
   schedEventTypeResources,
   schedLinks,
@@ -15,6 +17,7 @@ import type {
   SchedAvailability,
   SchedLink,
 } from '$server/db/pg-scheduling-schema';
+import type { CalKind } from '$lib/components/scheduling/calendar/types';
 
 /**
  * Data access for the scheduling module's configuration entities: resources
@@ -27,7 +30,11 @@ import type {
 
 export function listResources(ctx: CoreCtx): Promise<SchedResource[]> {
   return withOrgCore(ctx, (tx) =>
-    tx.select().from(schedResources).where(eq(schedResources.orgId, ctx.tenantId)).orderBy(asc(schedResources.name)),
+    tx
+      .select()
+      .from(schedResources)
+      .where(eq(schedResources.orgId, ctx.tenantId))
+      .orderBy(asc(schedResources.name)),
   );
 }
 
@@ -73,7 +80,11 @@ export async function createResource(ctx: CoreCtx, input: ResourceInput): Promis
   });
 }
 
-export async function updateResource(ctx: CoreCtx, id: string, patch: Partial<ResourceInput>): Promise<void> {
+export async function updateResource(
+  ctx: CoreCtx,
+  id: string,
+  patch: Partial<ResourceInput>,
+): Promise<void> {
   await withOrgCore(ctx, (tx) =>
     tx
       .update(schedResources)
@@ -93,7 +104,9 @@ export async function updateResource(ctx: CoreCtx, id: string, patch: Partial<Re
 
 export async function deleteResource(ctx: CoreCtx, id: string): Promise<void> {
   await withOrgCore(ctx, (tx) =>
-    tx.delete(schedResources).where(and(eq(schedResources.id, id), eq(schedResources.orgId, ctx.tenantId))),
+    tx
+      .delete(schedResources)
+      .where(and(eq(schedResources.id, id), eq(schedResources.orgId, ctx.tenantId))),
   );
 }
 
@@ -106,7 +119,10 @@ export interface ResourceSchedule {
 }
 
 /** The default schedule (+ its availability rows) for a resource, if any. */
-export async function getResourceSchedule(ctx: CoreCtx, resourceId: string): Promise<ResourceSchedule | null> {
+export async function getResourceSchedule(
+  ctx: CoreCtx,
+  resourceId: string,
+): Promise<ResourceSchedule | null> {
   return withOrgCore(ctx, async (tx) => {
     const [sched] = await tx
       .select()
@@ -145,7 +161,10 @@ export async function replaceAvailability(
       .where(and(eq(schedSchedules.id, scheduleId), eq(schedSchedules.orgId, ctx.tenantId)))
       .limit(1);
     if (!sched) throw new Error('schedule not found');
-    await tx.update(schedSchedules).set({ timezone, updatedAt: new Date() }).where(eq(schedSchedules.id, scheduleId));
+    await tx
+      .update(schedSchedules)
+      .set({ timezone, updatedAt: new Date() })
+      .where(eq(schedSchedules.id, scheduleId));
     await tx.delete(schedAvailability).where(eq(schedAvailability.scheduleId, scheduleId));
     if (rules.length) {
       await tx.insert(schedAvailability).values(
@@ -160,6 +179,164 @@ export async function replaceAvailability(
       );
     }
   });
+}
+
+// ── Event kinds ──────────────────────────────────────────────────────────────
+// Org-defined category on every calendar entry (booking or event type) — spec
+// 2026-09-08-hub-scheduling-calendar-views-tags-spec §1/§2.1. Independent from
+// event types (bookable services), which each carry a default kind via kindId.
+
+const DEFAULT_KINDS: ReadonlyArray<{ name: string; color: string; isDefault: boolean }> = [
+  { name: 'Appointment', color: '#3b82f6', isDefault: true },
+  { name: 'Block', color: '#6b7280', isDefault: false },
+  { name: 'Meeting', color: '#a855f7', isDefault: false },
+  { name: 'Internal', color: '#f59e0b', isDefault: false },
+];
+
+function toCalKind(row: {
+  id: string;
+  name: string;
+  color: string;
+  isDefault: boolean;
+  position: number;
+}): CalKind {
+  return {
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    isDefault: row.isDefault,
+    position: row.position,
+  };
+}
+
+/** Ordered by position, name; lazily seeds the four default kinds when the org has none.
+ * ponytail: two concurrent first-calls can both see empty and both insert — the second
+ * transaction fails on the (org_id,name) unique index instead of silently duplicating.
+ * Acceptable for a one-time per-org seed; add an advisory lock if it proves noisy. */
+export async function listEventKinds(ctx: CoreCtx): Promise<CalKind[]> {
+  return withOrgCore(ctx, async (tx) => {
+    let rows = await tx
+      .select()
+      .from(schedEventKinds)
+      .where(eq(schedEventKinds.orgId, ctx.tenantId))
+      .orderBy(asc(schedEventKinds.position), asc(schedEventKinds.name));
+    if (!rows.length) {
+      rows = await tx
+        .insert(schedEventKinds)
+        .values(
+          DEFAULT_KINDS.map((k, i) => ({
+            orgId: ctx.tenantId,
+            name: k.name,
+            color: k.color,
+            position: i,
+            isDefault: k.isDefault,
+          })),
+        )
+        .returning();
+      rows.sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+    }
+    return rows.map(toCalKind);
+  });
+}
+
+export interface EventKindInput {
+  name: string;
+  color: string;
+}
+
+export async function createEventKind(ctx: CoreCtx, input: EventKindInput): Promise<CalKind> {
+  const row = await withOrgCore(ctx, async (tx) => {
+    const existing = await tx
+      .select({ position: schedEventKinds.position })
+      .from(schedEventKinds)
+      .where(eq(schedEventKinds.orgId, ctx.tenantId));
+    const nextPosition = existing.length ? Math.max(...existing.map((k) => k.position)) + 1 : 0;
+    const [r] = await tx
+      .insert(schedEventKinds)
+      .values({
+        orgId: ctx.tenantId,
+        name: input.name,
+        color: input.color,
+        position: nextPosition,
+      })
+      .returning();
+    return r;
+  });
+  return toCalKind(row);
+}
+
+export interface EventKindPatch {
+  name?: string;
+  color?: string;
+  position?: number;
+  isDefault?: boolean;
+  active?: boolean;
+}
+
+export async function updateEventKind(
+  ctx: CoreCtx,
+  id: string,
+  patch: EventKindPatch,
+): Promise<CalKind> {
+  const row = await withOrgCore(ctx, async (tx) => {
+    if (patch.isDefault === true) {
+      // Clear the previous default in the same transaction — the partial unique
+      // index on (org_id) where is_default forbids two defaults at once.
+      await tx
+        .update(schedEventKinds)
+        .set({ isDefault: false, updatedAt: new Date() })
+        .where(and(eq(schedEventKinds.orgId, ctx.tenantId), eq(schedEventKinds.isDefault, true)));
+    }
+    const [r] = await tx
+      .update(schedEventKinds)
+      .set({
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.color !== undefined ? { color: patch.color } : {}),
+        ...(patch.position !== undefined ? { position: patch.position } : {}),
+        ...(patch.isDefault !== undefined ? { isDefault: patch.isDefault } : {}),
+        ...(patch.active !== undefined ? { active: patch.active } : {}),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schedEventKinds.id, id), eq(schedEventKinds.orgId, ctx.tenantId)))
+      .returning();
+    if (!r) throw new Error('event kind not found');
+    return r;
+  });
+  return toCalKind(row);
+}
+
+export class DefaultKindDeleteError extends Error {
+  constructor() {
+    super('cannot delete the default event kind');
+    this.name = 'DefaultKindDeleteError';
+  }
+}
+
+/** FK `on delete set null` on sched_bookings/sched_event_types handles references. */
+export async function deleteEventKind(ctx: CoreCtx, id: string): Promise<void> {
+  await withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ isDefault: schedEventKinds.isDefault })
+      .from(schedEventKinds)
+      .where(and(eq(schedEventKinds.id, id), eq(schedEventKinds.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!row) return; // idempotent delete of a missing/foreign id
+    if (row.isDefault) throw new DefaultKindDeleteError();
+    await tx
+      .delete(schedEventKinds)
+      .where(and(eq(schedEventKinds.id, id), eq(schedEventKinds.orgId, ctx.tenantId)));
+  });
+}
+
+/** Validate a kindId belongs to this org, inside an already-open tx — used by
+ *  createBooking/upsertEventType so a stale/foreign kind id never lands on a row. */
+export async function assertOrgEventKind(tx: CoreTx, orgId: string, kindId: string): Promise<void> {
+  const [hit] = await tx
+    .select({ id: schedEventKinds.id })
+    .from(schedEventKinds)
+    .where(and(eq(schedEventKinds.id, kindId), eq(schedEventKinds.orgId, orgId)))
+    .limit(1);
+  if (!hit) throw new Error('invalid kindId');
 }
 
 // ── Event types ──────────────────────────────────────────────────────────────
@@ -198,7 +375,10 @@ export function listEventTypes(ctx: CoreCtx): Promise<EventTypeWithResources[]> 
   });
 }
 
-export async function getEventType(ctx: CoreCtx, id: string): Promise<EventTypeWithResources | null> {
+export async function getEventType(
+  ctx: CoreCtx,
+  id: string,
+): Promise<EventTypeWithResources | null> {
   return withOrgCore(ctx, async (tx) => {
     const [t] = await tx
       .select()
@@ -215,11 +395,17 @@ export async function getEventType(ctx: CoreCtx, id: string): Promise<EventTypeW
 }
 
 /** Normalize the per-service weekly windows payload → {days,startTime,endTime}[]. */
-export function parseScheduleRules(raw: unknown): Array<{ days: number[]; startTime: string; endTime: string }> {
+export function parseScheduleRules(
+  raw: unknown,
+): Array<{ days: number[]; startTime: string; endTime: string }> {
   if (!Array.isArray(raw)) return [];
   return (raw as Array<Record<string, unknown>>)
     .filter((r) => Array.isArray(r.days) && r.startTime && r.endTime)
-    .map((r) => ({ days: (r.days as unknown[]).map(Number), startTime: String(r.startTime), endTime: String(r.endTime) }));
+    .map((r) => ({
+      days: (r.days as unknown[]).map(Number),
+      startTime: String(r.startTime),
+      endTime: String(r.endTime),
+    }));
 }
 
 export interface EventTypeInput {
@@ -240,12 +426,20 @@ export interface EventTypeInput {
   public?: boolean;
   color?: string | null;
   productId?: string | null;
+  /** Default event kind for bookings of this service (spec §1/§2.1). Validated
+   *  as an org kind when set; undefined leaves the column untouched on update. */
+  kindId?: string | null;
   active?: boolean;
   resourceIds: string[];
 }
 
-export async function upsertEventType(ctx: CoreCtx, input: EventTypeInput, id?: string): Promise<string> {
+export async function upsertEventType(
+  ctx: CoreCtx,
+  input: EventTypeInput,
+  id?: string,
+): Promise<string> {
   return withOrgCore(ctx, async (tx) => {
+    if (input.kindId) await assertOrgEventKind(tx, ctx.tenantId, input.kindId);
     const values = {
       orgId: ctx.tenantId,
       slug: input.slug,
@@ -265,22 +459,35 @@ export async function upsertEventType(ctx: CoreCtx, input: EventTypeInput, id?: 
       public: input.public ?? true,
       color: input.color ?? null,
       productId: input.productId ?? null,
+      kindId: input.kindId ?? null,
       active: input.active ?? true,
       updatedAt: new Date(),
     };
     let eventTypeId = id;
     if (id) {
-      await tx.update(schedEventTypes).set(values).where(and(eq(schedEventTypes.id, id), eq(schedEventTypes.orgId, ctx.tenantId)));
+      await tx
+        .update(schedEventTypes)
+        .set(values)
+        .where(and(eq(schedEventTypes.id, id), eq(schedEventTypes.orgId, ctx.tenantId)));
     } else {
-      const [row] = await tx.insert(schedEventTypes).values(values).returning({ id: schedEventTypes.id });
+      const [row] = await tx
+        .insert(schedEventTypes)
+        .values(values)
+        .returning({ id: schedEventTypes.id });
       eventTypeId = row.id;
     }
     if (!eventTypeId) throw new Error('event type upsert failed');
     // Sync the M:N resource assignment.
-    await tx.delete(schedEventTypeResources).where(eq(schedEventTypeResources.eventTypeId, eventTypeId));
+    await tx
+      .delete(schedEventTypeResources)
+      .where(eq(schedEventTypeResources.eventTypeId, eventTypeId));
     if (input.resourceIds.length) {
       await tx.insert(schedEventTypeResources).values(
-        input.resourceIds.map((resourceId) => ({ orgId: ctx.tenantId, eventTypeId: eventTypeId!, resourceId })),
+        input.resourceIds.map((resourceId) => ({
+          orgId: ctx.tenantId,
+          eventTypeId: eventTypeId!,
+          resourceId,
+        })),
       );
     }
     return eventTypeId;
@@ -289,7 +496,9 @@ export async function upsertEventType(ctx: CoreCtx, input: EventTypeInput, id?: 
 
 export async function deleteEventType(ctx: CoreCtx, id: string): Promise<void> {
   await withOrgCore(ctx, (tx) =>
-    tx.delete(schedEventTypes).where(and(eq(schedEventTypes.id, id), eq(schedEventTypes.orgId, ctx.tenantId))),
+    tx
+      .delete(schedEventTypes)
+      .where(and(eq(schedEventTypes.id, id), eq(schedEventTypes.orgId, ctx.tenantId))),
   );
 }
 
@@ -297,7 +506,11 @@ export async function deleteEventType(ctx: CoreCtx, id: string): Promise<void> {
 
 export function listLinks(ctx: CoreCtx): Promise<SchedLink[]> {
   return withOrgCore(ctx, (tx) =>
-    tx.select().from(schedLinks).where(eq(schedLinks.orgId, ctx.tenantId)).orderBy(asc(schedLinks.title)),
+    tx
+      .select()
+      .from(schedLinks)
+      .where(eq(schedLinks.orgId, ctx.tenantId))
+      .orderBy(asc(schedLinks.title)),
   );
 }
 
@@ -325,7 +538,10 @@ export async function upsertLink(ctx: CoreCtx, input: LinkInput, id?: string): P
       updatedAt: new Date(),
     };
     if (id) {
-      await tx.update(schedLinks).set(values).where(and(eq(schedLinks.id, id), eq(schedLinks.orgId, ctx.tenantId)));
+      await tx
+        .update(schedLinks)
+        .set(values)
+        .where(and(eq(schedLinks.id, id), eq(schedLinks.orgId, ctx.tenantId)));
       return id;
     }
     const [row] = await tx.insert(schedLinks).values(values).returning({ id: schedLinks.id });

@@ -144,6 +144,12 @@
       exportValue: (s) => s.unitPrice ?? '',
     },
     { key: 'kind', label: m.pos_catalog_col_kind(), custom: true, accessor: (s) => s.kind },
+    {
+      key: 'tags',
+      label: m.pos_catalog_col_tags(),
+      custom: true,
+      accessor: (s) => s.tags.map((t) => t.name).join(', '),
+    },
     ...(stockEnabled
       ? [
           {
@@ -367,6 +373,16 @@
           <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
         {:else if col.key === 'kind'}
           <Badge variant="semantic" value={kindTone(s.kind)}>{kindLabel(s.kind)}</Badge>
+        {:else if col.key === 'tags'}
+          {#if s.tags.length}
+            <div class="tag-chips">
+              {#each s.tags as t (t.id)}
+                <span class="chip" style:--c={t.color ?? 'var(--color-accent)'}>{t.name}</span>
+              {/each}
+            </div>
+          {:else}
+            <span class="muted">—</span>
+          {/if}
         {:else if col.key === 'stockQty'}
           <span class="tabular-nums"
             >{s.kind === 'product' && s.stockQty != null ? s.stockQty : '—'}</span
@@ -604,6 +620,21 @@
   }
   .muted {
     color: var(--color-text-tertiary);
+  }
+  .tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-0-5, 2px) var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-caption, 12px);
+    color: var(--c);
+    background: color-mix(in srgb, var(--c) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
   }
   .margin-pos {
     color: var(--color-success-fg);
