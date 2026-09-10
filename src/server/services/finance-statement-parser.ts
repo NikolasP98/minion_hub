@@ -7,7 +7,69 @@
  * `rejected` (with a reason). Ambiguous column mapping (can't confidently find
  * date+description+amount) rejects EVERY data row with reason 'needs-llm' —
  * the gateway drone fallback is a later cross-repo wave (R5/WP5).
+ *
+ * DATA-01: every result carries its own provenance (parser version + sha-256
+ * of the exact normalized text that was parsed), and the work is bounded.
+ * Whole-input limits (bytes, data rows) throw `StatementParseLimitError` —
+ * there is no row to attach them to and continuing would be unbounded memory.
+ * Per-record limits reject that record and keep its raw values, so a single
+ * oversized or badly-encoded line never discards the rest of the statement.
+ * Nothing ambiguous is coerced to a default: it is rejected with a reason.
  */
+import { createHash } from 'node:crypto';
+
+/**
+ * Bump whenever accepted/rejected semantics change — a stored parse is only
+ * reproducible against the version that produced it.
+ * v2: bounded input/record work, invalid-encoding and duplicate detection.
+ *
+ * TODO(handoff): `finance-statements.service.ts` keeps its own PARSER_VERSION
+ * (still 1) and writes it to fin_statement_imports.parser_version. That file is
+ * owned by the frozen 10-04 candidate (see .planning/phases/10-durable-jobs-stock/
+ * 10-04-SUMMARY.md), which is not on master, so it is deliberately untouched
+ * here. Whoever lands 10-04 must source the stored version from
+ * STATEMENT_PARSER_VERSION and invalidate cursors whose stored version differs;
+ * see proposals/2026-09-10-hub-finance-parser-version-binding.md.
+ */
+export const STATEMENT_PARSER_VERSION = 2;
+
+/**
+ * Enforced limits. Deliberately generous relative to a real bank statement
+ * (a year of daily transactions is ~400 rows) — these bound a hostile or
+ * corrupt upload, they are not a business policy on statement size.
+ */
+export const STATEMENT_LIMITS = {
+  /** Whole input, in UTF-16 code units. ~8 MB of ASCII. Throws. */
+  maxInputChars: 8_000_000,
+  /** Data rows excluding the header. Throws. */
+  maxDataRows: 100_000,
+  /** One field's characters. Rejects the record. */
+  maxFieldChars: 4_096,
+  /** Columns per record. Rejects the record. */
+  maxColumns: 256,
+} as const;
+
+/** Whole-input limit breach — no single record owns it, so it is thrown. */
+export class StatementParseLimitError extends Error {
+  readonly code = 'statement_limit_exceeded';
+  constructor(
+    readonly reason: 'input-too-large' | 'too-many-rows',
+    readonly limit: number,
+    readonly actual: number,
+  ) {
+    super(`${reason}: ${actual} exceeds the enforced limit of ${limit}`);
+    this.name = 'StatementParseLimitError';
+  }
+}
+
+/** Deterministic identity of the exact text this result was produced from. */
+export interface StatementParseProvenance {
+  parserVersion: number;
+  /** sha-256 of the NORMALIZED text actually parsed (CRLF/CR already folded). */
+  sourceSha256: string;
+  sourceChars: number;
+  dataRows: number;
+}
 
 export interface StatementEntryOk {
   sourceRow: number;
@@ -40,6 +102,8 @@ export interface StatementParseResult {
   rejected: StatementEntryRejected[];
   /** Recognized field keys detected in the header, for diagnostics. */
   headerFields: string[];
+  /** DATA-01: which parser, and which exact bytes, produced this result. */
+  provenance: StatementParseProvenance;
 }
 
 /** Normalize pasted-text line endings so identical content hashes identically
@@ -55,6 +119,9 @@ interface CsvRow {
    *  or a quote was never closed before EOF. The row's cells are best-effort
    *  only — callers should reject the row rather than trust them. */
   malformed: boolean;
+  /** A field or the column count exceeded its enforced limit. Cells are
+   *  truncated to keep memory bounded — reject the record, don't trust them. */
+  oversized: boolean;
 }
 
 // ── CSV tokenizer (minimal RFC4180: quoted fields, "" escape, embedded commas/newlines) ──
@@ -65,19 +132,39 @@ function splitCsvRows(text: string): CsvRow[] {
   let inQuotes = false;
   let fieldStarted = false; // has any char landed in the current field yet?
   let rowMalformed = false;
+  let rowOversized = false;
   let sawAny = false;
 
   const endField = () => {
-    row.push(field);
+    // Column overflow drops the surplus cell rather than growing the row: the
+    // record is already rejected, and an unbounded column count is the whole
+    // point of the limit.
+    if (row.length >= STATEMENT_LIMITS.maxColumns) rowOversized = true;
+    else row.push(field);
     field = '';
     fieldStarted = false;
   };
   const endRow = () => {
     endField();
-    rows.push({ cells: row, malformed: rowMalformed });
+    rows.push({ cells: row, malformed: rowMalformed, oversized: rowOversized });
+    // +1 for the header row.
+    if (rows.length > STATEMENT_LIMITS.maxDataRows + 1) {
+      throw new StatementParseLimitError(
+        'too-many-rows',
+        STATEMENT_LIMITS.maxDataRows,
+        rows.length - 1,
+      );
+    }
     row = [];
     rowMalformed = false;
+    rowOversized = false;
     sawAny = false;
+  };
+
+  /** Bounded field append — past the limit characters are dropped, not stored. */
+  const push = (c: string) => {
+    if (field.length >= STATEMENT_LIMITS.maxFieldChars) rowOversized = true;
+    else field += c;
   };
 
   for (let i = 0; i < text.length; i++) {
@@ -85,7 +172,7 @@ function splitCsvRows(text: string): CsvRow[] {
     if (inQuotes) {
       if (c === '"') {
         if (text[i + 1] === '"') {
-          field += '"';
+          push('"');
           i++;
         } else {
           inQuotes = false;
@@ -96,7 +183,7 @@ function splitCsvRows(text: string): CsvRow[] {
           }
         }
       } else {
-        field += c;
+        push(c);
       }
       continue;
     }
@@ -111,7 +198,7 @@ function splitCsvRows(text: string): CsvRow[] {
     }
     if (c === '"') {
       rowMalformed = true;
-      field += c;
+      push(c);
       fieldStarted = true;
       sawAny = true;
       continue;
@@ -126,7 +213,7 @@ function splitCsvRows(text: string): CsvRow[] {
       continue;
     }
     if (c === '\r') continue; // normalize CRLF/bare-CR
-    field += c;
+    push(c);
     fieldStarted = true;
     sawAny = true;
   }
@@ -134,7 +221,9 @@ function splitCsvRows(text: string): CsvRow[] {
   if (sawAny || field.length > 0 || row.length > 0) {
     endRow();
   }
-  return rows.filter((r) => !(r.cells.length === 1 && r.cells[0].trim() === '' && !r.malformed));
+  return rows.filter(
+    (r) => !(r.cells.length === 1 && r.cells[0].trim() === '' && !r.malformed && !r.oversized),
+  );
 }
 
 function stripAccents(s: string): string {
@@ -280,9 +369,7 @@ function analyzeAmount(raw: string): AmountAnalysis {
 
   if (lastComma !== -1 && lastDot !== -1) {
     const commaIsDecimal = lastDot < lastComma;
-    const canonical = commaIsDecimal
-      ? s.replace(/\./g, '').replace(',', '.')
-      : s.replace(/,/g, '');
+    const canonical = commaIsDecimal ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
     return { negative, canonical, ambiguous: false, decimalChar: commaIsDecimal ? ',' : '.' };
   }
 
@@ -350,13 +437,10 @@ export function parseStatementAmount(raw: string): number | null {
  *  group amount (e.g. "1.234") in the same file can be resolved instead of
  *  guessed. Returns undefined when no convention could be established (no
  *  unambiguous signal, or conflicting signals across rows). */
-function detectAmountConvention(
-  table: CsvRow[],
-  colIdx: number[],
-): ',' | '.' | undefined {
+function detectAmountConvention(table: CsvRow[], colIdx: number[]): ',' | '.' | undefined {
   let found: ',' | '.' | undefined;
   for (let r = 1; r < table.length; r++) {
-    if (table[r].malformed) continue;
+    if (table[r].malformed || table[r].oversized) continue;
     for (const idx of colIdx) {
       const raw = table[r].cells[idx];
       if (raw === undefined) continue;
@@ -378,14 +462,36 @@ function resolveAmountCell(
   if (a.canonical !== null) return { value: toNumber(a), ambiguous: false };
   if (a.ambiguous) {
     const resolved = resolveAmbiguous(a, convention);
-    return resolved === null ? { value: null, ambiguous: true } : { value: resolved, ambiguous: false };
+    return resolved === null
+      ? { value: null, ambiguous: true }
+      : { value: resolved, ambiguous: false };
   }
   return { value: null, ambiguous: false };
 }
 
+/** U+FFFD only appears when a decode already failed — the original bytes are
+ *  gone, so the cell's financial meaning cannot be recovered. Reject, keep raw. */
+const REPLACEMENT_CHAR = '\uFFFD';
+
 export function parseStatementCsv(text: string): StatementParseResult {
-  const table = splitCsvRows(normalizeStatementText(text));
-  if (table.length === 0) return { entries: [], rows: [], rejected: [], headerFields: [] };
+  const normalized = normalizeStatementText(text);
+  if (normalized.length > STATEMENT_LIMITS.maxInputChars) {
+    throw new StatementParseLimitError(
+      'input-too-large',
+      STATEMENT_LIMITS.maxInputChars,
+      normalized.length,
+    );
+  }
+  const provenanceOf = (dataRows: number): StatementParseProvenance => ({
+    parserVersion: STATEMENT_PARSER_VERSION,
+    sourceSha256: createHash('sha256').update(normalized, 'utf8').digest('hex'),
+    sourceChars: normalized.length,
+    dataRows,
+  });
+
+  const table = splitCsvRows(normalized);
+  if (table.length === 0)
+    return { entries: [], rows: [], rejected: [], headerFields: [], provenance: provenanceOf(0) };
 
   const header = table[0].cells;
   const cols = detectColumns(header);
@@ -403,6 +509,7 @@ export function parseStatementCsv(text: string): StatementParseResult {
     : undefined;
 
   const entries: StatementEntry[] = [];
+  const seen = new Map<string, number>();
   for (let r = 1; r < table.length; r++) {
     const sourceRow = r; // 1-based data row index, header excluded
     const cells = table[r].cells;
@@ -411,8 +518,16 @@ export function parseStatementCsv(text: string): StatementParseResult {
       raw[h.trim() || `col${idx}`] = cells[idx] ?? '';
     });
 
+    if (table[r].oversized) {
+      entries.push({ sourceRow, ok: false, reason: 'record-too-large', raw });
+      continue;
+    }
     if (table[r].malformed) {
       entries.push({ sourceRow, ok: false, reason: 'malformed-quoting', raw });
+      continue;
+    }
+    if (cells.some((c) => c.includes(REPLACEMENT_CHAR))) {
+      entries.push({ sourceRow, ok: false, reason: 'invalid-encoding', raw });
       continue;
     }
     if (!canParseDeterministically) {
@@ -448,10 +563,17 @@ export function parseStatementCsv(text: string): StatementParseResult {
       if (debitRaw === '' && creditRaw === '') {
         signedAmount = null;
       } else {
-        const debitR = debitRaw === '' ? { value: 0, ambiguous: false } : resolveAmountCell(debitRaw, amountConvention);
-        const creditR = creditRaw === '' ? { value: 0, ambiguous: false } : resolveAmountCell(creditRaw, amountConvention);
+        const debitR =
+          debitRaw === ''
+            ? { value: 0, ambiguous: false }
+            : resolveAmountCell(debitRaw, amountConvention);
+        const creditR =
+          creditRaw === ''
+            ? { value: 0, ambiguous: false }
+            : resolveAmountCell(creditRaw, amountConvention);
         amountAmbiguous = debitR.ambiguous || creditR.ambiguous;
-        signedAmount = debitR.value === null || creditR.value === null ? null : creditR.value - debitR.value;
+        signedAmount =
+          debitR.value === null || creditR.value === null ? null : creditR.value - debitR.value;
       }
     }
     if (signedAmount === null || Number.isNaN(signedAmount)) {
@@ -464,24 +586,41 @@ export function parseStatementCsv(text: string): StatementParseResult {
       continue;
     }
 
+    // Identical transactions are legitimate on a real statement (two coffees on
+    // one day), so they stay ACCEPTED — the warning makes the repeat traceable
+    // without a policy decision the parser has no authority to make.
+    const fixedAmount = signedAmount.toFixed(2);
+    const dupeKey = `${parsedDate.iso}|${description}|${fixedAmount}`;
+    const firstSeen = seen.get(dupeKey);
+    if (firstSeen === undefined) seen.set(dupeKey, sourceRow);
+
     entries.push({
       sourceRow,
       ok: true,
       postedOn: parsedDate.iso,
       description,
-      signedAmount: signedAmount.toFixed(2),
+      signedAmount: fixedAmount,
       currency: cols.currency !== undefined ? (cells[cols.currency] ?? '').trim() || null : null,
       counterparty:
         cols.counterparty !== undefined ? (cells[cols.counterparty] ?? '').trim() || null : null,
       category: cols.category !== undefined ? (cells[cols.category] ?? '').trim() || null : null,
       reference: cols.reference !== undefined ? (cells[cols.reference] ?? '').trim() || null : null,
       confidence: null, // deterministic path — confidence is an LLM-fallback concept (R5/WP5)
-      warnings: parsedDate.ambiguous ? ['date-format-ambiguous-assumed-dmy'] : [],
+      warnings: [
+        ...(parsedDate.ambiguous ? ['date-format-ambiguous-assumed-dmy'] : []),
+        ...(firstSeen === undefined ? [] : [`duplicate-of-row-${firstSeen}`]),
+      ],
       raw,
     });
   }
 
   const rows = entries.filter((e): e is StatementEntryOk => e.ok);
   const rejected = entries.filter((e): e is StatementEntryRejected => !e.ok);
-  return { entries, rows, rejected, headerFields: Object.keys(cols) };
+  return {
+    entries,
+    rows,
+    rejected,
+    headerFields: Object.keys(cols),
+    provenance: provenanceOf(entries.length),
+  };
 }

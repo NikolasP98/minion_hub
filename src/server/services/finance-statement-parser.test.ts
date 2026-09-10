@@ -4,6 +4,9 @@ import {
   parseStatementDate,
   parseStatementAmount,
   normalizeStatementText,
+  StatementParseLimitError,
+  STATEMENT_LIMITS,
+  STATEMENT_PARSER_VERSION,
 } from './finance-statement-parser';
 
 describe('normalizeStatementText', () => {
@@ -166,11 +169,13 @@ describe('parseStatementCsv', () => {
   });
 
   it('returns empty result for empty input', () => {
-    expect(parseStatementCsv('')).toEqual({
-      entries: [],
-      rows: [],
-      rejected: [],
-      headerFields: [],
+    const result = parseStatementCsv('');
+    expect(result).toMatchObject({ entries: [], rows: [], rejected: [], headerFields: [] });
+    // Provenance is still emitted — an empty parse is a parse.
+    expect(result.provenance).toMatchObject({
+      parserVersion: STATEMENT_PARSER_VERSION,
+      sourceChars: 0,
+      dataRows: 0,
     });
   });
 
@@ -222,5 +227,143 @@ describe('parseStatementCsv', () => {
     const result = parseStatementCsv(csv);
     expect(result.rejected).toHaveLength(0);
     expect(result.rows[0].description).toBe('Grocer"s store');
+  });
+});
+
+// ── DATA-01: provenance and enforced bounds ────────────────────────────────
+
+const HEADER = 'Date,Description,Amount';
+const csv = (...rows: string[]) => [HEADER, ...rows].join('\n');
+
+describe('parse provenance (DATA-01)', () => {
+  it('identifies the parser and the exact normalized text it parsed', () => {
+    const result = parseStatementCsv(csv('2026-03-04,Coffee,-4.50'));
+    expect(result.provenance.parserVersion).toBe(STATEMENT_PARSER_VERSION);
+    expect(result.provenance.sourceSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.provenance.dataRows).toBe(1);
+    expect(result.provenance.sourceChars).toBe(csv('2026-03-04,Coffee,-4.50').length);
+  });
+
+  it('is deterministic for identical content and differs for different content', () => {
+    const a = parseStatementCsv(csv('2026-03-04,Coffee,-4.50')).provenance.sourceSha256;
+    const b = parseStatementCsv(csv('2026-03-04,Coffee,-4.50')).provenance.sourceSha256;
+    const c = parseStatementCsv(csv('2026-03-04,Coffee,-4.51')).provenance.sourceSha256;
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+  });
+
+  it('hashes the NORMALIZED text, so CRLF and LF of the same statement agree', () => {
+    const lf = parseStatementCsv(csv('2026-03-04,Coffee,-4.50'));
+    const crlf = parseStatementCsv(csv('2026-03-04,Coffee,-4.50').replace(/\n/g, '\r\n'));
+    expect(crlf.provenance.sourceSha256).toBe(lf.provenance.sourceSha256);
+    expect(crlf.rows).toEqual(lf.rows);
+  });
+
+  it('counts every data row as accepted or rejected, never dropped', () => {
+    const result = parseStatementCsv(
+      csv('2026-03-04,Coffee,-4.50', '2026-13-40,Bad date,-1.00', 'not,a,row'),
+    );
+    expect(result.entries.length).toBe(3);
+    expect(result.rows.length + result.rejected.length).toBe(result.entries.length);
+    expect(result.provenance.dataRows).toBe(3);
+  });
+});
+
+describe('bounded ingestion (DATA-01)', () => {
+  it('throws a traceable limit error for oversized input instead of parsing it', () => {
+    const huge = 'x'.repeat(STATEMENT_LIMITS.maxInputChars + 1);
+    expect(() => parseStatementCsv(huge)).toThrow(StatementParseLimitError);
+    try {
+      parseStatementCsv(huge);
+      expect.unreachable();
+    } catch (e) {
+      const err = e as StatementParseLimitError;
+      expect(err.reason).toBe('input-too-large');
+      expect(err.limit).toBe(STATEMENT_LIMITS.maxInputChars);
+      expect(err.actual).toBe(huge.length);
+      // The message must stay bounded and content-free — it is persisted on
+      // the import row and surfaced to the operator.
+      expect(err.message.length).toBeLessThan(120);
+      expect(err.message).not.toContain('x'.repeat(20));
+    }
+  });
+
+  it('throws once the data-row limit is passed, without materializing the rest', () => {
+    const rows = Array.from(
+      { length: STATEMENT_LIMITS.maxDataRows + 5 },
+      () => '2026-03-04,Coffee,-4.50',
+    );
+    try {
+      parseStatementCsv(csv(...rows));
+      expect.unreachable();
+    } catch (e) {
+      const err = e as StatementParseLimitError;
+      expect(err).toBeInstanceOf(StatementParseLimitError);
+      expect(err.reason).toBe('too-many-rows');
+      expect(err.limit).toBe(STATEMENT_LIMITS.maxDataRows);
+    }
+  });
+
+  it('accepts a statement exactly at the row limit', () => {
+    const rows = Array.from(
+      { length: STATEMENT_LIMITS.maxDataRows },
+      (_, i) => `2026-03-04,Row ${i},-1.00`,
+    );
+    const result = parseStatementCsv(csv(...rows));
+    expect(result.entries.length).toBe(STATEMENT_LIMITS.maxDataRows);
+    expect(result.rows.length).toBe(STATEMENT_LIMITS.maxDataRows);
+  });
+
+  it('rejects one oversized record and keeps the rest of the statement', () => {
+    const big = 'y'.repeat(STATEMENT_LIMITS.maxFieldChars + 10);
+    const result = parseStatementCsv(
+      csv('2026-03-04,Coffee,-4.50', `2026-03-05,${big},-9.99`, '2026-03-06,Bus,-2.00'),
+    );
+    expect(result.rejected.map((r) => [r.sourceRow, r.reason])).toEqual([[2, 'record-too-large']]);
+    expect(result.rows.map((r) => r.description)).toEqual(['Coffee', 'Bus']);
+    // The rejected record's raw values are retained but bounded.
+    const raw = JSON.stringify(result.rejected[0].raw);
+    expect(raw.length).toBeLessThan(STATEMENT_LIMITS.maxFieldChars + 200);
+  });
+
+  it('rejects a record with more columns than the limit', () => {
+    const wide = Array.from({ length: STATEMENT_LIMITS.maxColumns + 5 }, () => 'v').join(',');
+    const result = parseStatementCsv(csv('2026-03-04,Coffee,-4.50', wide));
+    expect(result.rejected.map((r) => r.reason)).toEqual(['record-too-large']);
+    expect(result.rows.length).toBe(1);
+  });
+
+  it('rejects a record whose bytes failed to decode, with its raw preserved', () => {
+    const result = parseStatementCsv(csv('2026-03-04,Caf\uFFFD,-4.50', '2026-03-05,Clean,-1.00'));
+    expect(result.rejected.map((r) => [r.sourceRow, r.reason])).toEqual([[1, 'invalid-encoding']]);
+    expect(result.rejected[0].raw.Description).toBe('Caf\uFFFD');
+    expect(result.rows.map((r) => r.description)).toEqual(['Clean']);
+  });
+
+  it('does not coerce an ambiguous amount or date into a fabricated default', () => {
+    // No unambiguous amount anywhere in the file, so "1.234" has no column
+    // convention to resolve against — it must stay rejected, not become 1234.
+    const result = parseStatementCsv(csv('2026-03-04,Coffee,1.234', 'nope,Bus,5.678'));
+    expect(result.rejected.map((r) => r.reason)).toEqual(['ambiguous-amount', 'invalid-date']);
+    expect(result.rows).toEqual([]);
+  });
+
+  it('keeps duplicate transactions accepted but traceable to the first row', () => {
+    const result = parseStatementCsv(
+      csv('2026-03-04,Coffee,-4.50', '2026-03-04,Coffee,-4.50', '2026-03-04,Coffee,-4.51'),
+    );
+    expect(result.rows.length).toBe(3);
+    expect(result.rows[0].warnings).toEqual([]);
+    expect(result.rows[1].warnings).toEqual(['duplicate-of-row-1']);
+    expect(result.rows[2].warnings).toEqual([]);
+    // Financial meaning is preserved — a duplicate is still money.
+    expect(result.rows.map((r) => r.signedAmount)).toEqual(['-4.50', '-4.50', '-4.51']);
+  });
+
+  it('keeps quoted multiline fields and the ambiguous-date warning intact', () => {
+    const result = parseStatementCsv(csv('03/04/2026,"Grocer\nSt 5",-4.50'));
+    expect(result.rows[0].description).toBe('Grocer\nSt 5');
+    expect(result.rows[0].postedOn).toBe('2026-04-03');
+    expect(result.rows[0].warnings).toEqual(['date-format-ambiguous-assumed-dmy']);
   });
 });

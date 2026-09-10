@@ -8,7 +8,14 @@ import * as Sentry from '@sentry/sveltekit';
 import { error, type Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
 import { canonicalPath } from '$lib/canonical-path';
-import { getPostHogClient } from '$lib/server/posthog';
+import { captureServerEvent } from '$lib/server/posthog';
+import {
+  UNKNOWN,
+  distinctIdFor,
+  releaseContext,
+  requestIdentity,
+  sanitizeErrorProperties,
+} from '$lib/server/observability-context';
 import { createServerTimingHandle } from '$lib/server/server-timing';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
@@ -497,9 +504,15 @@ const workforceIdentityHandle: Handle = async ({ event, resolve }) => {
 // closes that gap. Client errors still go to PostHog captureException. Upgrade
 // path: move init to instrumentation.server.ts + add sentrySvelteKit() to
 // vite.config for source maps + full request tracing.
+// OBS-01: a validated commit sha or nothing. Never a package version or NODE_ENV
+// standing in for a release — an invented release makes every event
+// unattributable to the code that produced it.
+const sentryRelease = releaseContext().release;
+
 Sentry.init({
   dsn: env.SENTRY_DSN,
   enabled: !!env.SENTRY_DSN,
+  release: sentryRelease === UNKNOWN ? undefined : sentryRelease,
   tracesSampleRate: env.SENTRY_TRACES_SAMPLE_RATE ? Number(env.SENTRY_TRACES_SAMPLE_RATE) : 0.1,
   environment: env.PUBLIC_VERCEL_ENV ?? env.NODE_ENV ?? 'development',
 });
@@ -520,15 +533,11 @@ const aiUsageScopeHandle: Handle = ({ event, resolve }) =>
 const serverTimingHandle = createServerTimingHandle({
   sampleRate: env.SERVER_TIMING_SAMPLE_RATE ? Number(env.SERVER_TIMING_SAMPLE_RATE) : 0.1,
   capture: (eventName, properties, orgId) => {
-    void getPostHogClient()
-      .then((posthog) =>
-        posthog?.capture({
-          distinctId: orgId ? `org:${orgId}` : 'server',
-          event: eventName,
-          properties,
-        }),
-      )
-      .catch(() => {});
+    captureServerEvent({
+      event: eventName,
+      distinctId: orgId ? `org:${orgId}` : 'server',
+      properties,
+    });
   },
   persist: (orgId, sample) => {
     waitUntil(storePerformanceSample(orgId, sample));
@@ -556,29 +565,33 @@ export const handle = sequence(
 
 import type { HandleServerError } from '@sveltejs/kit';
 
-const serverErrorHandler: HandleServerError = ({ error, event, status, message }) => {
+const serverErrorHandler: HandleServerError = ({ error, event, status }) => {
+  // Server log keeps the full error: it stays on the host, unlike telemetry.
   console.error(`[handleError] ${event.request.method} ${event.url.pathname}`, error);
-  // M8: fire-and-forget. Never await the capture (or the client's dynamic
-  // import) on the error path — an error storm must not fan out into synchronous
-  // HTTP round-trips that block each failing request's response. The capture
-  // enqueues into the batched client (flushAt/flushInterval); a `flush()` nudges
-  // it out without blocking. Errors here are swallowed so telemetry can't mask
-  // the original error.
-  void getPostHogClient()
-    .then((posthog) => {
-      posthog?.capture({
-        distinctId: 'server',
-        event: 'server_error',
-        properties: {
-          error: error instanceof Error ? error.message : String(error),
-          status,
-          message,
-          path: event.url.pathname,
-        },
-      });
-      void posthog?.flush?.();
-    })
-    .catch(() => {});
+  // OBS-01: the event carries sanitized execution identity (org/actor/request/
+  // trace/agent-run ids, route TEMPLATE, release) and a digest of the message
+  // — never the message itself, which routinely embeds SQL, tokens, headers or
+  // customer rows. See $lib/server/observability-context.
+  //
+  // Everything below is synchronous and total: an unguarded await or throw in a
+  // hook turns one failing request into a failing subtree. `captureServerEvent`
+  // is fire-and-forget with a non-blocking flush (M8 batching preserved).
+  try {
+    const identity = requestIdentity({
+      routeId: event.route.id,
+      method: event.request.method,
+      headers: event.request.headers,
+      locals: event.locals,
+    });
+    captureServerEvent({
+      event: 'server_error',
+      distinctId: distinctIdFor(identity),
+      properties: sanitizeErrorProperties({ error, status, identity }),
+      flush: true,
+    });
+  } catch {
+    // Telemetry must never mask the original error.
+  }
   return { message: 'Internal Error' };
 };
 

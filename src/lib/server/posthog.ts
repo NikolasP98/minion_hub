@@ -1,5 +1,6 @@
 import { building } from '$app/environment';
 import { env } from '$env/dynamic/public';
+import { sanitizeEventProperties } from './observability-context';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let posthogClient: any = null;
@@ -24,4 +25,28 @@ export async function getPostHogClient() {
     posthogClient.on('error', () => {});
   }
   return posthogClient;
+}
+
+/**
+ * OBS-01: the only server-side capture path. Every property bag goes through
+ * `sanitizeEventProperties` here, so a caller cannot ship an unsanitized
+ * payload by forgetting to call the sanitizer. Fire-and-forget by contract —
+ * never awaited on a request or error path (M8: an error storm must not fan
+ * out into synchronous HTTP round-trips), and never throwing, so telemetry
+ * cannot mask the original failure.
+ */
+export function captureServerEvent(params: {
+  event: string;
+  distinctId: string;
+  properties?: Record<string, unknown>;
+  /** Nudge the batched queue out without blocking — used on the error path. */
+  flush?: boolean;
+}): void {
+  const properties = sanitizeEventProperties(params.properties);
+  void getPostHogClient()
+    .then((posthog) => {
+      posthog?.capture({ distinctId: params.distinctId, event: params.event, properties });
+      if (params.flush) void posthog?.flush?.();
+    })
+    .catch(() => {});
 }
