@@ -3,6 +3,7 @@
   import Chart from '$lib/components/charts/Chart.svelte';
   import { chartColors } from '$lib/utils/chart-colors';
   import * as m from '$lib/paraglide/messages';
+  import { formatSentimentTooltip } from './sentiment-tooltip';
 
   let {
     points,
@@ -37,10 +38,11 @@
         const day = String(p?.axisValue ?? '');
         const rec = byDay.get(day);
         const score = typeof p?.data === 'number' ? p.data : 0;
-        const color = score >= 0 ? 'var(--color-success)' : 'var(--color-destructive)';
-        return `<div style="font-weight:600">${fmtDay(day)}</div>
-          <div style="color:${color};font-weight:700;font-variant-numeric:tabular-nums">${fmtScore(score)}</div>
-          <div style="opacity:0.7;font-size: var(--font-size-body){m.crm_insights_sentiment_n({ count: rec?.n ?? 0 })}</div>`;
+        return formatSentimentTooltip(
+          fmtDay(day),
+          score,
+          m.crm_insights_sentiment_n({ count: rec?.n ?? 0 }),
+        );
       },
     },
     xAxis: {
