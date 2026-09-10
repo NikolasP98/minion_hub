@@ -73,7 +73,8 @@
   function releaseModalState() {
     releaseScrollLock?.();
     releaseScrollLock = undefined;
-    if (returnFocus?.isConnected) queueMicrotask(() => returnFocus?.focus());
+    const target = returnFocus;
+    if (target?.isConnected) queueMicrotask(() => target.focus());
     returnFocus = null;
   }
 
@@ -102,6 +103,9 @@
         queueMicrotask(() => element.querySelector<HTMLElement>(initialFocus)?.focus());
       }
     } else if (!open && element.open) {
+      // Release this opening's state now: the native close event is queued and
+      // may arrive after the same dialog has already been opened again.
+      releaseModalState();
       element.close();
     }
   });
@@ -116,6 +120,8 @@
   }
 
   function handleNativeClose() {
+    // Ignore a queued close event from an earlier opening.
+    if (dialogElement?.open) return;
     releaseModalState();
     if (open) {
       open = false;

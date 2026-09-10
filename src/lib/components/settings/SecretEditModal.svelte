@@ -1,8 +1,9 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
   import type { SecretsProbeStatus } from '$lib/types/secrets';
-  import { Button } from '$lib/components/ui';
+  import { Button } from '@minion-stack/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
+  import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
 
   interface Props {
     open: boolean;
@@ -18,7 +19,6 @@
   let saving = $state(false);
   let result = $state<{ probeStatus: SecretsProbeStatus; probeMessage: string } | null>(null);
   let error = $state<string | null>(null);
-  let inputEl = $state<HTMLInputElement | null>(null);
 
   // Reset when modal opens
   $effect(() => {
@@ -27,17 +27,8 @@
       result = null;
       error = null;
       saving = false;
-      // focus after mount
-      queueMicrotask(() => inputEl?.focus());
     }
   });
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && !saving) {
-      e.preventDefault();
-      onClose();
-    }
-  }
 
   async function handleSave() {
     if (!value || saving) return;
@@ -53,65 +44,48 @@
   }
 </script>
 
-{#if open}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div
-    class="fixed inset-0 z-[var(--layer-modal)] flex items-center justify-center bg-[var(--color-overlay)] backdrop-blur-sm"
-    onclick={onClose}
-    onkeydown={handleKeydown}
-  >
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div
-      class="surface-2 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
-    >
-      <h2 class="text-sm font-semibold text-foreground mb-1">{secretLabel}</h2>
-      <p class="text-[length:var(--font-size-label)] text-muted-foreground mb-4 font-mono">{secretKey}</p>
+<Dialog
+  {open}
+  title={secretLabel}
+  description={secretKey}
+  size="md"
+  dismissible={!saving}
+  hideClose={saving}
+  initialFocus="input[type='password']"
+  onclose={onClose}
+>
+  <label class="block">
+    <span class="text-xs text-muted-foreground mb-1.5 block">{m.secretEditModal_value()}</span>
+    <input
+      bind:value
+      type="password"
+      autocomplete="off"
+      spellcheck="false"
+      disabled={saving}
+      placeholder={m.secretEditModal_placeholder()}
+      class="w-full bg-background border border-border rounded-[var(--radius-sm)] px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:border-accent disabled:opacity-50"
+    />
+  </label>
 
-      <label class="block">
-        <span class="text-xs text-muted-foreground mb-1.5 block">{m.secretEditModal_value()}</span>
-        <input
-          bind:this={inputEl}
-          bind:value
-          type="password"
-          autocomplete="off"
-          spellcheck="false"
-          disabled={saving}
-          placeholder={m.secretEditModal_placeholder()}
-          class="w-full bg-background border border-border rounded-[var(--radius-sm)] px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:border-accent disabled:opacity-50"
-        />
-      </label>
-
-      {#if result}
-        <div class="mt-4 flex items-start gap-2">
-          <SecretStatusPill status={result.probeStatus} message={result.probeMessage} />
-          {#if result.probeMessage}
-            <p class="text-xs text-muted-foreground flex-1">{result.probeMessage}</p>
-          {/if}
-        </div>
+  {#if result}
+    <div class="mt-4 flex items-start gap-2">
+      <SecretStatusPill status={result.probeStatus} message={result.probeMessage} />
+      {#if result.probeMessage}
+        <p class="text-xs text-muted-foreground flex-1">{result.probeMessage}</p>
       {/if}
-
-      {#if error}
-        <p class="mt-3 text-xs text-destructive">{error}</p>
-      {/if}
-
-      <div class="flex gap-2 justify-end mt-5">
-        <Button variant="ghost" size="sm" disabled={saving} onclick={onClose}>
-          {result ? m.common_close() : m.common_cancel()}
-        </Button>
-        <Button
-          variant="primary"
-          size="sm"
-          loading={saving}
-          disabled={!value}
-          onclick={handleSave}
-        >
-          {m.secretEditModal_saveAndProbe()}
-        </Button>
-      </div>
     </div>
+  {/if}
+
+  {#if error}
+    <p class="mt-3 text-xs text-destructive" role="alert">{error}</p>
+  {/if}
+
+  <div class="flex gap-2 justify-end mt-5">
+    <Button variant="ghost" size="sm" disabled={saving} onclick={onClose}>
+      {result ? m.common_close() : m.common_cancel()}
+    </Button>
+    <Button variant="primary" size="sm" loading={saving} disabled={!value} onclick={handleSave}>
+      {m.secretEditModal_saveAndProbe()}
+    </Button>
   </div>
-{/if}
+</Dialog>
