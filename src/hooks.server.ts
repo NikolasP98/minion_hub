@@ -39,6 +39,19 @@ import { isGatewayChannel } from '$server/services/gateway.pg.service';
 import { waitUntil } from '@vercel/functions';
 import { storePerformanceSample } from '$server/services/performance-monitor.service';
 import { isCronAuthPath } from '$lib/server/cron-auth-path';
+import { assertCryptoKeyConfigured } from '$server/auth/crypto';
+
+// Fail closed on crypto configuration at boot (S3 of
+// specs/2026-08-17-pkg-dev-crypto-failopen-spec.md). A server without
+// ENCRYPTION_KEY — and without the explicit MINION_ALLOW_DEV_CRYPTO_KEY opt-in —
+// must not start and quietly seal secrets under the source-visible development
+// key; it fails here, once, with a named error naming both remedies.
+//
+// Runs after `$server/env-hoist` (imported first, above) so `.env` values are in
+// `process.env` already. Skipped while `building`: `vite build` neither seals nor
+// opens a secret, and crashing the build would turn a runtime-configuration check
+// into a packaging failure.
+if (!building) assertCryptoKeyConfigured();
 
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
