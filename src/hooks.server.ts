@@ -11,8 +11,6 @@ import { canonicalPath } from '$lib/canonical-path';
 import { getPostHogClient } from '$lib/server/posthog';
 import { createServerTimingHandle } from '$lib/server/server-timing';
 import { building } from '$app/environment';
-import { getDb } from '$server/db/client';
-import { supabaseAdmin } from '$server/supabase';
 import { resolveIdentity } from '$server/auth/resolve-identity';
 import { env } from '$env/dynamic/private';
 import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
@@ -267,21 +265,16 @@ async function applyModuleAvailabilityGuard(event: Parameters<Handle>[0]['event'
  * Shared tail for appHandle — runs after locals.user/tenantCtx have been set
  * (or left unset) by whichever auth branch handled the request. Both the
  * Better Auth path and the Supabase bridge path route through here so the
- * unauthenticated-API fallback + redirect logic isn't duplicated.
+ * handler-owned API authentication + redirect logic isn't duplicated.
  */
 const finishApp: Handle = async ({ event, resolve }) => {
   // Locale-blind: every comparison below assumes canonical (unprefixed) paths.
   const path = canonicalPath(event.url.pathname);
 
-  // For API routes: unauthenticated fallback is restricted to explicitly safe paths only.
-  // Sensitive routes (workshop, flows, personal-agent, users) require explicit auth and
-  // must NOT fall through to the tenant fallback — individual route handlers call requireAuth().
-  // Each entry is matched both as an exact path and as a prefix (with the
-  // trailing slash appended) so e.g. `/api/servers` AND `/api/servers/123`
-  // both fall through. Previously only the trailing-slash form was matched
-  // which let the LIST endpoint (no slash) silently 401, freezing the
-  // client-side hosts cache in a stale state.
-  const API_UNAUTH_FALLBACK_PATHS = [
+  // These public or separately authenticated handlers may run without a tenant.
+  // Dispatch never supplies organization authority: tenant-scoped handlers must
+  // reject the absent context, while enrollment and public reads can proceed.
+  const API_HANDLER_AUTH_PATHS = [
     '/api/marketplace',
     '/api/registry',
     '/api/servers',
@@ -291,24 +284,15 @@ const finishApp: Handle = async ({ event, resolve }) => {
     '/api/admin',
     // Self-serve join: a no-org (no tenantCtx) but authenticated user must be
     // able to POST a join request. Handlers enforce their own auth (requireAuth
-    // / requireAdmin), so falling through here is safe — mirrors /api/invitations.
+    // / requireAdmin); dispatch does not grant an organization context.
     '/api/join-requests',
     '/api/gateways',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
-    const allowFallback = API_UNAUTH_FALLBACK_PATHS.some(
+    const handlerOwnsAuth = API_HANDLER_AUTH_PATHS.some(
       (p) => path === p || path.startsWith(`${p}/`),
     );
-    if (allowFallback) {
-      // Tenancy source of truth = Supabase organizations (Turso `organization`
-      // was dropped in S7). The Turso db handle stays on the ctx for telemetry/
-      // servers reads; tenantId is the canonical Supabase org id.
-      const { data: org } = await supabaseAdmin()
-        .from('organizations')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
-      if (org) event.locals.tenantCtx = { db: getDb(), tenantId: (org as { id: string }).id };
+    if (handlerOwnsAuth) {
       return resolve(event);
     }
     // Internal server-to-server routes (e.g. /api/internal/*) do their own
@@ -332,11 +316,19 @@ const finishApp: Handle = async ({ event, resolve }) => {
     ) {
       return resolve(event);
     }
-    // All other unauthenticated API requests get an explicit 401
-    return new Response(JSON.stringify({ error: 'Authentication required' }), {
-      status: 401,
-      headers: { 'content-type': 'application/json' },
-    });
+    // Authentication alone does not establish an active organization.
+    const authenticated = Boolean(event.locals.user);
+    return new Response(
+      JSON.stringify({
+        error: authenticated
+          ? 'No active organization for this request'
+          : 'Authentication required',
+      }),
+      {
+        status: authenticated ? 403 : 401,
+        headers: { 'content-type': 'application/json' },
+      },
+    );
   }
 
   // Redirect unauthenticated browser requests to /login
