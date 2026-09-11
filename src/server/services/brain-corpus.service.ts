@@ -11,10 +11,29 @@ import {
   type KnowledgeSource,
 } from '$server/db/pg-schema/brains';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
-import { embedTexts, embeddingsEnabled, toVectorLiteral } from './embeddings';
+import {
+  embedTexts,
+  embeddingsEnabled,
+  prepareEmbeddingRequest,
+  toVectorLiteral,
+} from './embeddings';
 import type { AccessPrincipal } from './brains.service';
+import type { JobExecution } from './bg-runtime';
+import { JobEffectError, jobEffectHeadId, withOwnedJobScope } from './job-effects.service';
+import {
+  bindJobEffectPage,
+  commitJobEffectPage,
+  JobEffectPageError,
+  runJobPageEmbeddings,
+  type LoadedPageSource,
+  type PageDomainGuard,
+  type PageInput,
+} from './job-effect-pages.service';
 
 export const KNOWLEDGE_EMBEDDING_MODEL = 'text-embedding-3-small';
+/** Semantic receipt identity: independent of job id, lease and scheduling type. */
+export const CONVERSATION_CORPUS_FAMILY = 'brain.corpus.conversation';
+const CONVERSATION_CORPUS_PIPELINE = `conversation-corpus-v1/${KNOWLEDGE_EMBEDDING_MODEL}`;
 export const WHATSAPP_CONNECTOR = 'whatsapp';
 export const LEGACY_WHATSAPP_FOCUSED_BRAIN_NAME = 'WhatsApp Conversations';
 export const CONVERSATIONS_FOCUSED_BRAIN_NAME = 'All Conversations';
@@ -33,6 +52,217 @@ const EMBEDDING_BATCH_CONCURRENCY = Math.min(
  * vector generation to the durable serving-index worker. */
 export function qdrantOwnsKnowledgeEmbeddings(): boolean {
   return process.env.BRAIN_VECTOR_STORAGE_MODE === 'qdrant';
+}
+
+// ── Job ownership (shared by the conversation and business corpus jobs) ─────
+
+export type CorpusProgress = Record<string, unknown>;
+
+/** Owned execution for a job-triggered corpus call. Established non-job callers
+ * omit it and keep their `withOrgCore` transactions; they are not job-fenced. */
+export interface CorpusJobContext<Result = unknown> {
+  execution: JobExecution;
+  /** The job's current canonical cursor: intermediate pages re-commit it unchanged. */
+  cursor: CorpusProgress;
+  /** Exact progress committed with the final page/deletion/health effects. */
+  progress: (result: Result) => CorpusProgress;
+}
+
+export type CorpusJobScope = Pick<CorpusJobContext, 'execution'>;
+
+/** A page reservation is held by another live job; retry later without failing. */
+export class CorpusPageBusy extends Error {
+  readonly code = 'busy';
+  constructor(message: string) {
+    super(message);
+    this.name = 'CorpusPageBusy';
+  }
+}
+
+/** Ordinary failures keep the existing bounded per-item accounting; every other
+ * class must not increment failure counts, write source status or advance progress. */
+export function classifyCorpusJobError(
+  error: unknown,
+): 'busy' | 'fenced' | 'superseded' | 'ordinary' {
+  if (error instanceof CorpusPageBusy) return 'busy';
+  if (error instanceof JobEffectError || error instanceof JobEffectPageError) {
+    if (error.code === 'superseded') return 'superseded';
+    if (error.code === 'ownership_lost' || error.code === 'indeterminate') return 'fenced';
+    if (error instanceof JobEffectPageError && error.code === 'owner_missing') return 'fenced';
+  }
+  return 'ordinary';
+}
+
+/** Rethrow a fenced outcome with its code in the message so the persisted job
+ * error is self-classifying (ownership_lost / indeterminate / owner_missing). */
+export function corpusJobFailure(cause: unknown, handler: string): Error {
+  if (cause instanceof JobEffectPageError)
+    return new JobEffectPageError(cause.code, `${handler} ${cause.code}: ${cause.message}`);
+  if (cause instanceof JobEffectError)
+    return new JobEffectError(cause.code, `${handler} ${cause.code}: ${cause.message}`);
+  return cause instanceof Error ? cause : new Error(String(cause));
+}
+
+/** One short tenant-scoped transaction: owned by the current job when a job
+ * context is present, otherwise the established `withOrgCore` path. */
+export function corpusScope<T>(
+  ctx: CoreCtx,
+  job: CorpusJobScope | undefined,
+  fn: (tx: CoreTx) => Promise<T>,
+  nextProgress?: CorpusProgress,
+): Promise<T> {
+  if (!job) return withOrgCore(ctx, fn);
+  return withOwnedJobScope(job.execution, ctx, async (tx) => ({
+    value: await fn(tx),
+    nextProgress,
+  }));
+}
+
+export type CorpusEmbeddingPolicy = Pick<
+  PageInput,
+  'mode' | 'expectedProvider' | 'servingGeneration'
+>;
+
+/** Active vector mode is part of the receipt identity. */
+export function corpusEmbeddingPolicy(qdrantOwned: boolean): CorpusEmbeddingPolicy {
+  if (qdrantOwned) return { mode: 'qdrant', expectedProvider: null, servingGeneration: 'qdrant' };
+  if (!embeddingsEnabled())
+    return { mode: 'disabled', expectedProvider: null, servingGeneration: null };
+  const { endpoint, model, normalization, dimensions } = prepareEmbeddingRequest([
+    'corpus-policy',
+  ]).descriptor;
+  return {
+    mode: 'embedded',
+    expectedProvider: { endpoint, model, normalization, dimensions },
+    servingGeneration: null,
+  };
+}
+
+export interface CorpusPageItem<T> {
+  item: T;
+  source: LoadedPageSource;
+}
+
+const PAGE_LIMITS = { heads: 64, chunks: 256, chars: 2_097_152 } as const;
+
+/** Greedy split of one prepared corpus page into foundation-sized effect pages.
+ * A single source above the limits cannot be embedded through this path. */
+export function packCorpusPages<T>(items: CorpusPageItem<T>[]): CorpusPageItem<T>[][] {
+  const pages: CorpusPageItem<T>[][] = [];
+  let page: CorpusPageItem<T>[] = [];
+  let chunks = 0;
+  let chars = 0;
+  for (const entry of items) {
+    const count = entry.source.chunks.length;
+    const length = entry.source.chunks.reduce((sum, chunk) => sum + chunk.text.length, 0);
+    // TODO(handoff): a single month segment/business record above the foundation
+    // page limits (256 chunks or 2 MiB of chunk text) cannot be embedded through
+    // the job path and surfaces as an ordinary bounded failure; the pre-adoption
+    // path had no ceiling. Needs a multi-page-per-source manifest decision
+    // (job-effect-pages.service LIMIT) before such a source can publish again.
+    if (count > PAGE_LIMITS.chunks || length > PAGE_LIMITS.chars)
+      throw new JobEffectPageError('capacity', 'Corpus document exceeds one effect page');
+    if (
+      page.length >= PAGE_LIMITS.heads ||
+      chunks + count > PAGE_LIMITS.chunks ||
+      chars + length > PAGE_LIMITS.chars
+    ) {
+      pages.push(page);
+      page = [];
+      chunks = 0;
+      chars = 0;
+    }
+    page.push(entry);
+    chunks += count;
+    chars += length;
+  }
+  if (page.length > 0) pages.push(page);
+  return pages;
+}
+
+export interface CorpusPagePublication<T extends { documentId: string }> {
+  pageKeyPrefix: string;
+  pipelineVersion: string;
+  policy: CorpusEmbeddingPolicy;
+  /** Only items that need a write; unchanged documents never bind a head. */
+  items: CorpusPageItem<T>[];
+  /** Rechecks the observed source snapshot under head/domain locks. */
+  validateDomain: PageDomainGuard;
+  /** Publishes one effect page's documents/chunks; vectors keyed `${documentId}\0${chunkKey}`. */
+  publish: (tx: CoreTx, items: T[], vectors: Map<string, number[]>) => Promise<void>;
+  /** Terminal deletion/health effects, committed with the last page and progress. */
+  finalize: (tx: CoreTx) => Promise<void>;
+  nextProgress: CorpusProgress;
+}
+
+/** Bind, embed and publish the prepared items page by page. Every provider
+ * call runs outside database transactions through the shared receipt
+ * foundation; the last commit also carries `finalize` and the exact progress. */
+export async function publishCorpusPages<T extends { documentId: string }>(
+  ctx: CoreCtx,
+  job: Pick<CorpusJobContext, 'execution' | 'cursor'>,
+  publication: CorpusPagePublication<T>,
+): Promise<{ embeddedChunks: number }> {
+  const { execution } = job;
+  const pages = packCorpusPages(publication.items);
+  if (pages.length === 0) {
+    await corpusScope(ctx, job, publication.finalize, publication.nextProgress);
+    return { embeddedChunks: 0 };
+  }
+  let embeddedChunks = 0;
+  for (const [index, page] of pages.entries()) {
+    const last = index === pages.length - 1;
+    const sources = page.map((entry) => entry.source);
+    const pageKey = `${publication.pageKeyPrefix}:${sha256(
+      JSON.stringify(
+        sources.map((source) => [source.entityId, source.sourceHash, source.requiredChunkKeys]),
+      ),
+    )}`;
+    const handle = await bindJobEffectPage(
+      execution,
+      ctx,
+      { pageKey, pipelineVersion: publication.pipelineVersion, ...publication.policy, sources },
+      publication.validateDomain,
+    );
+    const embedded = await runJobPageEmbeddings(
+      execution,
+      ctx,
+      handle,
+      sources,
+      publication.validateDomain,
+    );
+    if (embedded.state === 'busy') {
+      // ponytail: brief pause then yield the same cursor; the runtime re-advances.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      throw new CorpusPageBusy(`Corpus page reservation is ${embedded.reason}`);
+    }
+    // Head ids derive from tenant/family/entity and match each value's sourceKey.
+    const bySourceKey = new Map(
+      page.map((entry) => [jobEffectHeadId(ctx.tenantId, entry.source), entry.item]),
+    );
+    const committed = await commitJobEffectPage(
+      execution,
+      ctx,
+      handle,
+      publication.validateDomain,
+      async (tx, _current, values) => {
+        const vectors = new Map<string, number[]>();
+        for (const value of values) {
+          const item = bySourceKey.get(value.sourceKey);
+          if (!item) throw new JobEffectPageError('conflict', 'Published vector has no document');
+          vectors.set(`${item.documentId}\u0000${value.chunkKey}`, [...value.vector]);
+        }
+        await publication.publish(tx, [...bySourceKey.values()], vectors);
+        if (last) await publication.finalize(tx);
+        return vectors.size;
+      },
+      last ? publication.nextProgress : job.cursor,
+    );
+    embeddedChunks += committed.replayed
+      ? sources.reduce((sum, source) => sum + source.requiredChunkKeys.length, 0)
+      : committed.value;
+  }
+  return { embeddedChunks };
 }
 
 export type BrainKind = 'master' | 'focused';
@@ -559,8 +789,12 @@ export function eligibleConversationMessagePredicate(alias: string): SQL {
 
 export const eligibleWhatsAppMessagePredicate = eligibleConversationMessagePredicate;
 
-export async function ensureMasterBrain(ctx: CoreCtx, createdBy?: string | null): Promise<Brain> {
-  return withOrgCore(ctx, async (tx) => {
+export async function ensureMasterBrain(
+  ctx: CoreCtx,
+  createdBy?: string | null,
+  job?: CorpusJobScope,
+): Promise<Brain> {
+  return corpusScope(ctx, job, async (tx) => {
     await tx
       .insert(brains)
       .values({
@@ -586,8 +820,11 @@ export async function ensureMasterBrain(ctx: CoreCtx, createdBy?: string | null)
 
 /** Discover one deterministic source for every content-bearing 1:1 chat
  * channel/account pair in the org-scoped ledger. */
-export async function discoverConversationSources(ctx: CoreCtx): Promise<KnowledgeSource[]> {
-  return withOrgCore(ctx, async (tx) => {
+export async function discoverConversationSources(
+  ctx: CoreCtx,
+  job?: CorpusJobScope,
+): Promise<KnowledgeSource[]> {
+  return corpusScope(ctx, job, async (tx) => {
     // The composite count(distinct (chat_id, month)) below sorts the org's
     // whole eligible ledger; at the server default work_mem (2MB) that sort
     // spilled ~88GB of temp file I/O per reconcile tick (2026-07 IO alert).
@@ -680,12 +917,13 @@ export async function ensureConversationSource(
   ctx: CoreCtx,
   channel: string,
   accountId: string,
+  job?: CorpusJobScope,
 ): Promise<KnowledgeSource> {
   const normalizedChannel = channel.trim().toLowerCase();
   const normalizedAccountId = accountId.trim();
   if (!normalizedChannel) throw new Error('conversation source requires a non-empty channel');
   if (!normalizedAccountId) throw new Error('conversation source requires a non-empty accountId');
-  const source = await withOrgCore(ctx, async (tx) => {
+  const source = await corpusScope(ctx, job, async (tx) => {
     await tx
       .insert(knowledgeSources)
       .values({
@@ -731,8 +969,8 @@ export async function ensureConversationSource(
   });
   // Master membership is implicit; the standard conversations focused scope needs
   // an explicit reference when an account first appears after bootstrap.
-  await ensureMasterBrain(ctx);
-  await ensureConversationsFocusedBrain(ctx, [source.id]);
+  await ensureMasterBrain(ctx, undefined, job);
+  await ensureConversationsFocusedBrain(ctx, [source.id], undefined, job);
   return source;
 }
 
@@ -745,12 +983,16 @@ export async function markConversationSourceFailure(
   channel: string | null,
   accountId: string | null,
   cause: unknown,
+  job?: CorpusJobScope & { nextProgress?: CorpusProgress },
 ): Promise<void> {
   const message = cause instanceof Error ? cause.message : String(cause);
-  await withOrgCore(ctx, (tx) => {
-    const channelFilter = channel ? sql`and connector = ${channel}` : sql``;
-    const accountFilter = accountId ? sql`and external_key = ${accountId}` : sql``;
-    return tx.execute(sql`
+  await corpusScope(
+    ctx,
+    job,
+    (tx) => {
+      const channelFilter = channel ? sql`and connector = ${channel}` : sql``;
+      const accountFilter = accountId ? sql`and external_key = ${accountId}` : sql``;
+      return tx.execute(sql`
       update knowledge_sources
       set status = 'failed', last_error = ${message.slice(0, 1000)}, updated_at = now()
       where org_id = current_setting('app.current_org_id', true)
@@ -761,7 +1003,9 @@ export async function markConversationSourceFailure(
         ${channelFilter}
         ${accountFilter}
     `);
-  });
+    },
+    job?.nextProgress,
+  );
 }
 
 export function markWhatsAppSourceFailure(
@@ -784,7 +1028,11 @@ export function canPromoteVerifiedEmptyWhatsAppSource(status: string): boolean {
 }
 
 export async function markVerifiedEmptyConversationSourcesReady(ctx: CoreCtx): Promise<number> {
-  return withOrgCore(ctx, async (tx) => {
+  return withOrgCore(ctx, (tx) => markVerifiedEmptyConversationSourcesReadyTx(tx));
+}
+
+async function markVerifiedEmptyConversationSourcesReadyTx(tx: CoreTx): Promise<number> {
+  {
     const promoted = (await tx.execute(sql`
       update knowledge_sources source
       set status = 'ready', last_synced_at = now(), last_error = null, updated_at = now()
@@ -811,7 +1059,7 @@ export async function markVerifiedEmptyConversationSourcesReady(ctx: CoreCtx): P
       returning source.id
     `)) as unknown as Array<{ id: string }>;
     return promoted.length;
-  });
+  }
 }
 
 export function markVerifiedEmptyWhatsAppSourcesReady(ctx: CoreCtx): Promise<number> {
@@ -822,9 +1070,10 @@ export async function ensureConversationsFocusedBrain(
   ctx: CoreCtx,
   sourceIds: string[],
   createdBy?: string | null,
+  job?: CorpusJobScope,
 ): Promise<Brain | null> {
   if (sourceIds.length === 0) return null;
-  return withOrgCore(ctx, async (tx) => {
+  return corpusScope(ctx, job, async (tx) => {
     let [brain] = await tx
       .select()
       .from(brains)
@@ -1289,7 +1538,17 @@ async function persistConversations(
 ): Promise<{ deletedChunks: number }> {
   if (prepared.length === 0) return { deletedChunks: 0 };
   const qdrantStorage = qdrantOwnsKnowledgeEmbeddings();
-  return withOrgCore(ctx, async (tx) => {
+  return withOrgCore(ctx, (tx) => persistConversationsTx(tx, prepared, vectors, qdrantStorage));
+}
+
+/** One transaction per prepared page; the caller owns it (org-scoped or job-owned). */
+async function persistConversationsTx(
+  tx: CoreTx,
+  prepared: PreparedConversation[],
+  vectors: Map<string, number[]>,
+  qdrantStorage: boolean,
+): Promise<{ deletedChunks: number }> {
+  {
     if (qdrantStorage) {
       const generations = (await tx.execute(sql`
         select public.brain_vector_app_generation_mode() as storage_mode
@@ -1392,7 +1651,7 @@ async function persistConversations(
     const sourceIds = Array.from(new Set(prepared.map((item) => item.key.sourceId)));
     await refreshConversationSourceStateTx(tx, sourceIds, qdrantStorage);
     return { deletedChunks };
-  });
+  }
 }
 
 async function refreshConversationSourceStateTx(
@@ -1429,6 +1688,119 @@ async function refreshConversationSourceState(ctx: CoreCtx, sourceId: string): P
   await withOrgCore(ctx, (tx) =>
     refreshConversationSourceStateTx(tx, [sourceId], qdrantOwnsKnowledgeEmbeddings()),
   );
+}
+
+/** Progress input for a job-owned conversation page; deletions are not known
+ * before the final commit and never change the cursor. */
+export type ConversationPageProgress = Pick<
+  WhatsAppBackfillResult,
+  'processed' | 'changedChunks' | 'embeddedChunks' | 'nextCursor' | 'hasMore'
+>;
+
+function conversationPageSource(item: PreparedConversation): LoadedPageSource {
+  return {
+    family: CONVERSATION_CORPUS_FAMILY,
+    entityId: `${item.key.sourceId}:${item.document.externalId}`,
+    sourceHash: item.document.contentHash,
+    chunks: item.document.chunks.map((chunk) => ({
+      key: chunk.chunkKey,
+      text: `${chunk.contextPrefix}\n\n${chunk.chunkText}`,
+    })),
+    requiredChunkKeys: [...item.changedChunkKeys],
+  };
+}
+
+/** The observed source snapshot is the re-normalized ledger content: an older
+ * prepared page cannot bind or publish once the conversation changed.
+ * ponytail: re-normalizes the page's messages on every guard call; a cheaper
+ * ledger fingerprint can replace it if guard cost shows in profiles. */
+function conversationSnapshotGuard(
+  keys: WhatsAppConversationKey[],
+  onlyMonths: string[] | undefined,
+  exactSource: boolean,
+  prepared: PreparedConversation[],
+): PageDomainGuard {
+  const expected = new Map(
+    prepared.map((item) => [
+      `${item.key.sourceId}\u0000${item.document.externalId}`,
+      item.document.contentHash,
+    ]),
+  );
+  return async (tx) => {
+    if (expected.size === 0) return;
+    const [rowsByKey, contextByKey] = await Promise.all([
+      loadConversationRows(tx, keys, onlyMonths, exactSource),
+      loadConversationRelationshipContexts(tx, keys),
+    ]);
+    const current = new Map<string, string>();
+    for (const key of keys) {
+      const rows = rowsByKey.get(`${key.channel}\u0000${key.accountId}\u0000${key.chatId}`) ?? [];
+      if (rows.length === 0) continue;
+      for (const document of normalizeConversationSegments(
+        key.channel,
+        key.accountId,
+        key.chatId,
+        rows,
+        contextByKey.get(`${key.channel}\u0000${key.chatId}`) ?? null,
+      ))
+        current.set(`${key.sourceId}\u0000${document.externalId}`, document.contentHash);
+    }
+    for (const [id, hash] of expected)
+      if (current.get(id) !== hash)
+        throw new JobEffectPageError('superseded', 'Conversation source changed after preparation');
+  };
+}
+
+/** Job-owned replacement for runPreparedBatch: shared receipts, page-atomic
+ * publication and exact progress. Failure state is written by the job wrapper. */
+async function publishOwnedConversations(
+  ctx: CoreCtx,
+  job: CorpusJobContext<ConversationPageProgress>,
+  prepared: PreparedConversation[],
+  input: {
+    pageKeyPrefix: string;
+    guard: PageDomainGuard;
+    finalize: (tx: CoreTx) => Promise<void>;
+    page: Pick<ConversationPageProgress, 'nextCursor' | 'hasMore'>;
+  },
+): Promise<Omit<WhatsAppBackfillResult, 'nextCursor' | 'hasMore'>> {
+  const qdrantStorage = qdrantOwnsKnowledgeEmbeddings();
+  const policy = corpusEmbeddingPolicy(qdrantStorage);
+  const changedChunks = prepared.reduce((sum, row) => sum + row.changedChunkKeys.size, 0);
+  const expectedEmbedded = policy.mode === 'embedded' ? changedChunks : 0;
+  const progress = job.progress({
+    processed: prepared.length,
+    changedChunks,
+    embeddedChunks: expectedEmbedded,
+    ...input.page,
+  });
+  let deletedChunks = 0;
+  const published = await publishCorpusPages(ctx, job, {
+    pageKeyPrefix: input.pageKeyPrefix,
+    pipelineVersion: CONVERSATION_CORPUS_PIPELINE,
+    policy,
+    items: prepared
+      .filter(preparedConversationNeedsWrite)
+      .map((item) => ({ item, source: conversationPageSource(item) })),
+    validateDomain: input.guard,
+    publish: async (tx, items, vectors) => {
+      deletedChunks += (await persistConversationsTx(tx, items, vectors, qdrantStorage))
+        .deletedChunks;
+    },
+    finalize: input.finalize,
+    nextProgress: progress,
+  });
+  return {
+    processed: prepared.length,
+    changedDocuments: prepared.filter((row) => row.changedDocument).length,
+    changedChunks,
+    embeddedChunks: published.embeddedChunks,
+    unchangedChunks: prepared.reduce(
+      (sum, row) => sum + row.document.chunks.length - row.changedChunkKeys.size,
+      0,
+    ),
+    deletedChunks,
+  };
 }
 
 async function runPreparedBatch(
@@ -1477,7 +1849,14 @@ export async function reconcileDeletedConversationDocuments(
   ctx: CoreCtx,
   only?: { channel: string; accountId: string; chatId?: string; months?: string[] },
 ): Promise<WhatsAppReconcileResult> {
-  return withOrgCore(ctx, async (tx) => {
+  return withOrgCore(ctx, (tx) => reconcileDeletedConversationDocumentsTx(tx, only));
+}
+
+async function reconcileDeletedConversationDocumentsTx(
+  tx: CoreTx,
+  only?: { channel: string; accountId: string; chatId?: string; months?: string[] },
+): Promise<WhatsAppReconcileResult> {
+  {
     const monthScope = only?.months?.length
       ? sql`and (
           document.metadata->>'segmentMonth' is null
@@ -1529,7 +1908,7 @@ export async function reconcileDeletedConversationDocuments(
       returning id
     `)) as unknown as Array<{ id: string }>;
     return { deletedDocuments: tombstones.length, deletedChunks: chunks.length };
-  });
+  }
 }
 
 export function reconcileDeletedWhatsAppDocuments(
@@ -1546,24 +1925,54 @@ export function reconcileDeletedWhatsAppDocuments(
 export async function backfillConversations(
   ctx: CoreCtx,
   opts?: { cursor?: string | null; limit?: number },
+  job?: CorpusJobContext<ConversationPageProgress>,
 ): Promise<WhatsAppBackfillResult> {
   const limit = Math.max(1, Math.min(500, Math.floor(opts?.limit ?? DEFAULT_CONVERSATION_BATCH)));
-  await ensureMasterBrain(ctx);
-  const sources = await discoverConversationSources(ctx);
+  await ensureMasterBrain(ctx, undefined, job);
+  const sources = await discoverConversationSources(ctx, job);
   await ensureConversationsFocusedBrain(
     ctx,
     sources.map((source) => source.id),
+    undefined,
+    job,
   );
   const sourceByChannelAccount = new Map(
     sources.map((source) => [`${source.connector}\u0000${source.externalKey}`, source.id]),
   );
   const cursor = decodeConversationCursor(opts?.cursor);
-  const preparedPage = await withOrgCore(ctx, async (tx) => {
+  const preparedPage = await corpusScope(ctx, job, async (tx) => {
     const page = await scanConversationKeys(tx, sourceByChannelAccount, cursor, limit);
     return { ...page, prepared: await prepareConversations(tx, page.keys) };
   });
-  const counts = await runPreparedBatch(ctx, preparedPage.prepared);
   const last = preparedPage.keys.at(-1) ?? null;
+  const nextCursor =
+    preparedPage.hasMore && last
+      ? encodeConversationCursor({
+          channel: last.channel,
+          accountId: last.accountId,
+          chatId: last.chatId,
+        })
+      : null;
+  if (job) {
+    const reconciled = { deletedDocuments: 0, deletedChunks: 0 };
+    const counts = await publishOwnedConversations(ctx, job, preparedPage.prepared, {
+      pageKeyPrefix: 'conv:reconcile',
+      guard: conversationSnapshotGuard(preparedPage.keys, undefined, false, preparedPage.prepared),
+      finalize: async (tx) => {
+        if (preparedPage.hasMore) return;
+        Object.assign(reconciled, await reconcileDeletedConversationDocumentsTx(tx));
+        await markVerifiedEmptyConversationSourcesReadyTx(tx);
+      },
+      page: { nextCursor, hasMore: preparedPage.hasMore },
+    });
+    return {
+      ...counts,
+      deletedChunks: counts.deletedChunks + reconciled.deletedChunks,
+      nextCursor,
+      hasMore: preparedPage.hasMore,
+    };
+  }
+  const counts = await runPreparedBatch(ctx, preparedPage.prepared);
   let reconciled = { deletedDocuments: 0, deletedChunks: 0 };
   if (!preparedPage.hasMore) {
     reconciled = await reconcileDeletedConversationDocuments(ctx);
@@ -1572,14 +1981,7 @@ export async function backfillConversations(
   return {
     ...counts,
     deletedChunks: counts.deletedChunks + reconciled.deletedChunks,
-    nextCursor:
-      preparedPage.hasMore && last
-        ? encodeConversationCursor({
-            channel: last.channel,
-            accountId: last.accountId,
-            chatId: last.chatId,
-          })
-        : null,
+    nextCursor,
     hasMore: preparedPage.hasMore,
   };
 }
@@ -1656,11 +2058,34 @@ export async function syncConversation(
   accountId: string,
   chatId: string,
   opts?: { months?: string[] },
+  job?: CorpusJobContext<ConversationPageProgress>,
 ): Promise<WhatsAppBackfillResult> {
-  const source = await ensureConversationSource(ctx, channel, accountId);
+  const source = await ensureConversationSource(ctx, channel, accountId, job);
   const key = { channel, accountId, chatId, sourceId: source.id };
   const months = opts?.months?.filter((month) => /^\d{4}-\d{2}$/.test(month));
-  const prepared = await withOrgCore(ctx, (tx) => prepareConversations(tx, [key], months, true));
+  const prepared = await corpusScope(ctx, job, (tx) =>
+    prepareConversations(tx, [key], months, true),
+  );
+  if (job) {
+    const reconciled = { deletedDocuments: 0, deletedChunks: 0 };
+    const counts = await publishOwnedConversations(ctx, job, prepared, {
+      pageKeyPrefix: 'conv:dirty',
+      guard: conversationSnapshotGuard([key], months, true, prepared),
+      finalize: async (tx) => {
+        Object.assign(
+          reconciled,
+          await reconcileDeletedConversationDocumentsTx(tx, { channel, accountId, chatId, months }),
+        );
+      },
+      page: { nextCursor: null, hasMore: false },
+    });
+    return {
+      ...counts,
+      deletedChunks: counts.deletedChunks + reconciled.deletedChunks,
+      nextCursor: null,
+      hasMore: false,
+    };
+  }
   if (prepared.length === 0) {
     const reconciled = await reconcileDeletedConversationDocuments(ctx, {
       channel,
