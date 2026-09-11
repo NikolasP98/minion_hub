@@ -1,0 +1,31 @@
+<script lang="ts">
+  import type { ComponentProps } from 'svelte';
+  import Shell from './Shell.svelte';
+  // Mounts the ACTUAL scheduling calendar route component with synthetic data.
+  import CalendarPage from '../../../src/routes/(app)/scheduling/calendar/+page.svelte';
+  import { RESOURCES, KINDS, EVENTS, FROM, TO, FIXTURE_DAY } from './seed';
+  import type { CalendarView } from '$lib/components/scheduling/calendar/types';
+
+  const params = new URLSearchParams(location.search);
+  const view = (params.get('view') ?? 'day') as CalendarView;
+  const staffParam = params.get('staff');
+
+  // The route's PageData also carries the whole (app) layout bundle; this
+  // fixture only needs the page's own slice.
+  const data = {
+    view,
+    day: FIXTURE_DAY,
+    staff: staffParam ? staffParam.split(',').filter(Boolean) : [],
+    kindId: null,
+    resources: params.get('resources') === '0' ? [] : RESOURCES,
+    kinds: KINDS,
+    tags: [],
+    from: FROM,
+    to: TO,
+    events: EVENTS,
+  } as unknown as ComponentProps<typeof CalendarPage>['data'];
+</script>
+
+<Shell>
+  <CalendarPage {data} />
+</Shell>
