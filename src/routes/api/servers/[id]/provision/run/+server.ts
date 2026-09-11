@@ -3,15 +3,17 @@ import { json } from '@sveltejs/kit';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
 import {
+  PHASES,
   getProvisionConfig,
   runSetupPhase,
   savePhaseStatuses,
   markProvisionRun,
   type PhaseStatus,
 } from '$server/services/provision.service';
-import { getPostHogClient } from '$lib/server/posthog';
+import { captureServerEvent } from '$lib/server/posthog';
+import { requestIdentity, distinctIdFor, correlationId } from '$lib/server/observability-context';
 
-export const POST: RequestHandler = async ({ locals, params, request }) => {
+export const POST: RequestHandler = async ({ locals, params, request, route }) => {
   requireAdmin(locals);
   const ctx = await requireCoreCtx(locals);
   try {
@@ -23,16 +25,25 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     const body = await request.json().catch(() => ({}));
     const startFrom = (body as { startFrom?: string }).startFrom;
 
-    const posthog = await getPostHogClient();
-    posthog?.capture({
-      distinctId: locals.user?.id ?? 'server',
-      event: 'provision_run_started',
-      properties: {
-        server_id: params.id,
-        ssh_host: config.sshHost,
-        start_from: startFrom ?? null,
-      },
-    });
+    try {
+      const identity = requestIdentity({
+        routeId: route.id,
+        method: request.method,
+        headers: request.headers,
+        locals,
+      });
+      captureServerEvent({
+        distinctId: distinctIdFor(identity),
+        event: 'provision_run_started',
+        properties: {
+          ...identity,
+          server_id: correlationId('server', params.id),
+          start_from: PHASES.some((phase) => phase.id === startFrom) ? startFrom : null,
+        },
+      });
+    } catch {
+      // Telemetry metadata must not change the application outcome.
+    }
 
     const controller = new AbortController();
     const stream = runSetupPhase(config, startFrom, controller.signal);
@@ -126,6 +137,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
       },
     });
   } catch (e) {
+    // TODO(handoff): host error-log scrubbing is separate from the sanitized
+    // PostHog boundary; review this payload under meta-repo
+    // proposals/2026-09-11-hub-telemetry-boundary-followups.md.
     console.error(`[POST /api/servers/${params.id}/provision/run]`, e);
     return json(
       { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },

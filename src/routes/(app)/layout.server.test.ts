@@ -1,4 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+const telemetry = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock('$app/environment', () => ({ building: false, dev: false, browser: false }));
+vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_POSTHOG_KEY: 'synthetic-test-key' } }));
+vi.mock('posthog-node', () => ({
+  PostHog: class {
+    capture = telemetry.capture;
+    on = vi.fn();
+  },
+}));
 
 // Mock all service load helpers BEFORE importing the module under test.
 vi.mock('$server/services/permissions.service', () => ({
@@ -128,5 +137,55 @@ describe('(app)/+layout.server load', () => {
   it('throws when locals.user is not set (requireAuth gate)', async () => {
     const ev = makeEvent({ user: undefined }) as unknown as Parameters<typeof load>[0];
     await expect(load(ev)).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+describe('slow layout telemetry boundary', () => {
+  it('exports only the route template and preserves the authenticated load when capture fails', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(10_000);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      telemetry.capture.mockImplementationOnce(() => {
+        throw new Error('private-telemetry-error');
+      });
+      const ev = makeEvent({
+        user: { id: 'u-1', role: 'admin' },
+        session: { activeOrganizationId: 'tenant-x' },
+      });
+      ev.url = new URL('http://fixture.invalid/crm/customers/private-customer-sentinel');
+      let untracked = false;
+      let trackedRouteReads = 0;
+      ev.untrack = (fn) => {
+        untracked = true;
+        try {
+          return fn();
+        } finally {
+          untracked = false;
+        }
+      };
+      ev.route = {
+        get id() {
+          if (!untracked) trackedRouteReads++;
+          return '/(app)/crm/customers/[id]';
+        },
+      };
+      const result = await load(ev as unknown as Parameters<typeof load>[0]);
+      expect(result).toHaveProperty('user.id', 'u-1');
+      expect(trackedRouteReads).toBe(0);
+      await vi.dynamicImportSettled();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(telemetry.capture).toHaveBeenCalledOnce();
+      expect(telemetry.capture.mock.calls[0][0].properties).toMatchObject({
+        route: '/(app)/crm/customers/[id]',
+        duration_ms: 10_000,
+      });
+      expect(JSON.stringify(telemetry.capture.mock.calls)).not.toContain(
+        'private-customer-sentinel',
+      );
+    } finally {
+      clock.mockRestore();
+      warn.mockRestore();
+      telemetry.capture.mockReset();
+    }
   });
 });
