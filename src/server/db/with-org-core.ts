@@ -19,6 +19,49 @@ export interface OrgScope {
   profileId?: string | null;
 }
 
+/** Reuse an owned transaction for RLS SQL, then restore its bookkeeping role.
+ * Callers must await the callback; never run external requests inside it. */
+export async function withOrgCoreTransaction<T>(
+  scope: Pick<OrgScope, 'tenantId' | 'profileId'>,
+  tx: CoreTx,
+  fn: (tx: CoreTx) => Promise<T>,
+): Promise<T> {
+  const { tenantId, profileId } = scope;
+  if (!tenantId) throw new Error('withOrgCore requires a non-empty tenantId');
+  const [previous] = await tx.execute<{
+    role: string;
+    org: string | null;
+    profile: string | null;
+    timeout: string;
+  }>(sql`select current_setting('role') as role,
+    current_setting('app.current_org_id', true) as org,
+    current_setting('app.current_profile_id', true) as profile,
+    current_setting('idle_in_transaction_session_timeout') as timeout`);
+  if (!previous) throw new Error('Cannot capture transaction scope');
+  await tx.execute(sql`select set_config('idle_in_transaction_session_timeout', '20s', true),
+    set_config('role', 'app_ledger', true),
+    set_config('app.current_org_id', ${tenantId}, true),
+    set_config('app.current_profile_id', ${profileId ?? ''}, true)`);
+  let failed = false;
+  try {
+    return await fn(tx);
+  } catch (error) {
+    failed = true;
+    throw error;
+  } finally {
+    try {
+      await tx.execute(sql`select set_config('role', ${previous.role}, true),
+        set_config('app.current_org_id', ${previous.org ?? ''}, true),
+        set_config('app.current_profile_id', ${previous.profile ?? ''}, true),
+        set_config('idle_in_transaction_session_timeout', ${previous.timeout}, true)`);
+    } catch (restoreError) {
+      // SQL errors leave PostgreSQL in an aborted transaction. Preserve the
+      // original failure; the outer transaction must roll back before reuse.
+      if (!failed) throw restoreError;
+    }
+  }
+}
+
 /**
  * Run `fn` in a core-db transaction scoped to one org, with RLS ENFORCED.
  *

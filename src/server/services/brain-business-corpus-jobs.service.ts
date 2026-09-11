@@ -8,6 +8,7 @@ import {
   registerJobHandler,
   type AdvanceResult,
   type BgJob,
+  type JobExecution,
 } from './bg-runtime';
 import {
   backfillBusinessKnowledgeDomain,
@@ -15,11 +16,16 @@ import {
   ensureBusinessKnowledgeSources,
   recordBusinessKnowledgeDomainError,
   type BusinessKnowledgeDomainKey,
+  type BusinessPageProgress,
 } from './brain-business-corpus.service';
+import { classifyCorpusJobError, corpusJobFailure } from './brain-corpus.service';
 
 export const BRAIN_BUSINESS_CORPUS_JOB_TYPE = 'brain_corpus_business';
 const RECONCILE_REF = 'business:reconcile';
 const RECONCILE_BATCH = 50;
+/** A page whose observed records changed is re-prepared this many times before
+ * it counts as an ordinary domain failure. */
+const SUPERSEDED_RETRIES = 2;
 
 interface BusinessReconcileCursor {
   domainIndex: number;
@@ -28,6 +34,8 @@ interface BusinessReconcileCursor {
   changedChunks: number;
   embeddedChunks: number;
   failedDomains: number;
+  /** Re-preparations of the current page after its source superseded it. */
+  attempts?: number;
 }
 
 function initialCursor(): BusinessReconcileCursor {
@@ -59,6 +67,7 @@ function parseCursor(job: BgJob): BusinessReconcileCursor {
     changedChunks: Math.max(0, Number(value.changedChunks) || 0),
     embeddedChunks: Math.max(0, Number(value.embeddedChunks) || 0),
     failedDomains: Math.max(0, Number(value.failedDomains) || 0),
+    attempts: Math.max(0, Number(value.attempts) || 0),
   };
 }
 
@@ -93,42 +102,67 @@ export async function ensureBusinessReconcileJob(
   };
 }
 
-export async function advanceBusinessCorpusJob(job: BgJob): Promise<AdvanceResult> {
+export async function advanceBusinessCorpusJob(
+  job: BgJob,
+  execution: JobExecution,
+): Promise<AdvanceResult> {
   const cursor = parseCursor(job);
   const domain = BUSINESS_KNOWLEDGE_DOMAINS[cursor.domainIndex];
   if (!domain) return { done: true };
   const ctx: CoreCtx = { db: getCoreDb(), tenantId: job.tenantId };
-  let page: Awaited<ReturnType<typeof backfillBusinessKnowledgeDomain>>;
-  try {
-    page = await backfillBusinessKnowledgeDomain(ctx, domain.key, {
-      cursor: cursor.domainCursor,
-      limit: RECONCILE_BATCH,
-    });
-  } catch (cause) {
-    // backfill records its own source-local failure. Repeat the idempotent
-    // update here so mocked/early failures cannot turn into an invisible skip.
-    await recordBusinessKnowledgeDomainError(ctx, domain.key, cause);
-    const next: BusinessReconcileCursor = {
-      ...cursor,
-      domainIndex: cursor.domainIndex + 1,
-      domainCursor: null,
-      failedDomains: cursor.failedDomains + 1,
-    };
-    return next.domainIndex >= BUSINESS_KNOWLEDGE_DOMAINS.length
-      ? businessCompletion(next.failedDomains)
-      : { done: false, cursor: next };
-  }
-  const next: BusinessReconcileCursor = {
+  const progress = (page: BusinessPageProgress): BusinessReconcileCursor => ({
     domainIndex: page.hasMore ? cursor.domainIndex : cursor.domainIndex + 1,
     domainCursor: page.hasMore ? page.nextCursor : null,
     processed: cursor.processed + page.processed,
     changedChunks: cursor.changedChunks + page.changedChunks,
     embeddedChunks: cursor.embeddedChunks + page.embeddedChunks,
     failedDomains: cursor.failedDomains,
-  };
-  return next.domainIndex >= BUSINESS_KNOWLEDGE_DOMAINS.length
-    ? businessCompletion(next.failedDomains)
-    : { done: false, cursor: next };
+    attempts: 0,
+  });
+  const finish = (next: BusinessReconcileCursor): AdvanceResult =>
+    next.domainIndex >= BUSINESS_KNOWLEDGE_DOMAINS.length
+      ? businessCompletion(next.failedDomains)
+      : { done: false, cursor: next };
+  let page: Awaited<ReturnType<typeof backfillBusinessKnowledgeDomain>>;
+  try {
+    page = await backfillBusinessKnowledgeDomain(
+      ctx,
+      domain.key,
+      { cursor: cursor.domainCursor, limit: RECONCILE_BATCH },
+      {
+        execution,
+        cursor: cursor as unknown as Record<string, unknown>,
+        progress: (result) => progress(result) as unknown as Record<string, unknown>,
+      },
+    );
+  } catch (cause) {
+    // Lost ownership, indeterminate provider outcomes and reservation contention
+    // are separated BEFORE ordinary domain failure accounting: no failedDomains
+    // increment, no source status write, no progress past uncommitted work.
+    const kind = classifyCorpusJobError(cause);
+    if (kind === 'fenced') throw corpusJobFailure(cause, 'brain_corpus_business');
+    const attempts = cursor.attempts ?? 0;
+    if (kind === 'busy' || (kind === 'superseded' && attempts < SUPERSEDED_RETRIES))
+      return {
+        done: false,
+        cursor: { ...cursor, attempts: kind === 'superseded' ? attempts + 1 : attempts },
+      };
+    const next: BusinessReconcileCursor = {
+      ...cursor,
+      domainIndex: cursor.domainIndex + 1,
+      domainCursor: null,
+      failedDomains: cursor.failedDomains + 1,
+      attempts: 0,
+    };
+    // The domain-local failure and the exact next cursor commit together under
+    // ownership; a stale worker cannot record either.
+    await recordBusinessKnowledgeDomainError(ctx, domain.key, cause, {
+      execution,
+      nextProgress: next as unknown as Record<string, unknown>,
+    });
+    return finish(next);
+  }
+  return finish(progress(page));
 }
 
 registerJobHandler({ type: BRAIN_BUSINESS_CORPUS_JOB_TYPE, advance: advanceBusinessCorpusJob });

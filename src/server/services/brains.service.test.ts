@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 vi.mock('./embeddings', () => ({
@@ -49,6 +49,10 @@ import { resolveCapabilities } from './rbac.service';
 import type { BrainDocument } from '$server/db/pg-schema/brains';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 const brainRow = (
   over: Partial<{ id: string; createdBy: string | null; visibility: string }> = {},
@@ -314,6 +318,64 @@ describe('brains.service — loadDocumentContent upload branch', () => {
   it('returns an empty string when contentMd is null', async () => {
     const doc = docRow({ contentMd: null });
     expect(await loadDocumentContent(ctx(undefined), doc)).toBe('');
+  });
+});
+
+describe('brain source cancellation and URL boundaries', () => {
+  const urlDoc = () => docRow({ sourceType: 'url', sourceRef: 'https://8.8.8.8/synthetic' });
+  it('does no loading or fetch for pre-aborted work', async () => {
+    const abort = new AbortController();
+    abort.abort(new Error('cancelled before loading'));
+    vi.stubGlobal('fetch', vi.fn());
+    await expect(loadDocumentContent(ctx(undefined), urlDoc(), abort.signal)).rejects.toThrow(
+      'cancelled before loading',
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('settles cancellation even if fetch ignores abort and later rejects', async () => {
+    let reject!: (error: Error) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((_resolve, no) => {
+            reject = no;
+          }),
+      ),
+    );
+    const abort = new AbortController();
+    const loading = loadDocumentContent(ctx(undefined), urlDoc(), abort.signal);
+    const rejection = expect(loading).rejects.toThrow('cancelled fetch');
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    abort.abort(new Error('cancelled fetch'));
+    await rejection;
+    expect(vi.mocked(fetch).mock.calls[0]![1]?.signal?.aborted).toBe(true);
+    reject(new Error('late transport failure'));
+    await Promise.resolve();
+  });
+  it('cancels a stalled response body and retains the URL timeout', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, text: () => new Promise<string>(() => {}) })),
+    );
+    const loading = loadDocumentContent(ctx(undefined), urlDoc());
+    const rejection = expect(loading).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.advanceTimersByTimeAsync(15001);
+    await rejection;
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('rejects a redirect to an internal URL before another fetch', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/private' } }),
+      ),
+    );
+    await expect(loadDocumentContent(ctx(undefined), urlDoc())).rejects.toThrow('Blocked');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(fetch).mock.calls[0]![1]?.redirect).toBe('manual');
   });
 });
 

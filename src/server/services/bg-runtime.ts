@@ -9,11 +9,25 @@
  * consumer.
  */
 
-import { and, asc, eq, inArray, lt, or } from 'drizzle-orm';
-import { getCoreDb } from '$server/db/pg-client';
+import { and, asc, eq, gt, inArray, lte, or, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { getCoreDb, getOrgTransactionDb } from '$server/db/pg-client';
 import { bgJobs } from '$server/db/pg-schema/bg-jobs';
 
 export type BgJob = typeof bgJobs.$inferSelect;
+export type JobTransaction = Parameters<
+  Parameters<ReturnType<typeof getCoreDb>['transaction']>[0]
+>[0];
+export type JobExecution = {
+  jobId: string;
+  tenantId: string;
+  leaseGeneration: number;
+  signal: AbortSignal;
+  /** Stable across lease generations. Entity scope also joins duplicate jobs. */
+  effectKey: (logicalStep: string, entityId?: string) => string;
+  /** Short database-only transaction. Never hold this across a provider call. */
+  withOwnership: <T>(operation: (tx: JobTransaction, current: BgJob) => Promise<T>) => Promise<T>;
+};
 
 export type AdvanceResult = {
   /** True when the job is complete and should be marked done. */
@@ -27,7 +41,7 @@ export type AdvanceResult = {
 export type JobHandler = {
   type: string;
   /** Advance the job by one bounded step. Persist domain changes here. */
-  advance: (job: BgJob) => Promise<AdvanceResult>;
+  advance: (job: BgJob, execution: JobExecution) => Promise<AdvanceResult>;
 };
 
 const handlers = new Map<string, JobHandler>();
@@ -37,7 +51,10 @@ export function registerJobHandler(h: JobHandler): void {
   handlers.set(h.type, h);
 }
 
+// TODO(handoff): Adopt JobExecution in statement_ingest, brain_ingest, brain_corpus_conversations/whatsapp and brain_corpus_business; their domain effects still need ownership gates. See meta proposals/2026-09-08-platform-qc-remediation.md (HDS-05).
 const LEASE_MS = 60_000; // a claimed job is owned for this long before reclaim
+const HEARTBEAT_MS = LEASE_MS / 3;
+type Lease = Pick<BgJob, 'id' | 'tenantId' | 'leaseGeneration'>;
 
 export async function enqueueJob(input: {
   tenantId: string;
@@ -68,42 +85,115 @@ export async function enqueueJob(input: {
 export async function cancelJobsByRef(refId: string): Promise<void> {
   await getCoreDb()
     .update(bgJobs)
-    .set({ status: 'cancelled', finishedAt: Date.now(), updatedAt: Date.now() })
+    .set({
+      status: 'cancelled',
+      finishedAt: Date.now(),
+      updatedAt: Date.now(),
+      leaseUntil: null,
+      leaseGeneration: sql`${bgJobs.leaseGeneration} + 1`,
+    })
     .where(and(eq(bgJobs.refId, refId), inArray(bgJobs.status, ['queued', 'running'])));
 }
 
-/** Mark a job as our lease (claim). Returns false if it was claimed elsewhere. */
-async function claim(job: BgJob): Promise<boolean> {
-  const db = getCoreDb();
+/** Claim atomically and return the committed ownership generation. */
+async function claim(job: BgJob): Promise<Lease | null> {
   const now = Date.now();
-  const res = await db
+  const [lease] = await getCoreDb()
     .update(bgJobs)
-    .set({ status: 'running', leaseUntil: now + LEASE_MS, startedAt: job.startedAt ?? now, updatedAt: now })
-    // Re-check the claim precondition to avoid two ticks grabbing the same row.
+    .set({
+      status: 'running',
+      leaseUntil: now + LEASE_MS,
+      leaseGeneration: sql`${bgJobs.leaseGeneration} + 1`,
+      startedAt: sql`coalesce(${bgJobs.startedAt}, ${now})`,
+      updatedAt: now,
+    })
     .where(
       and(
         eq(bgJobs.id, job.id),
-        or(eq(bgJobs.status, 'queued'), and(eq(bgJobs.status, 'running'), lt(bgJobs.leaseUntil, now))),
+        eq(bgJobs.tenantId, job.tenantId),
+        or(
+          eq(bgJobs.status, 'queued'),
+          and(eq(bgJobs.status, 'running'), lte(bgJobs.leaseUntil, now)),
+        ),
       ),
     )
-    .returning({ id: bgJobs.id });
-  return res.length > 0;
+    .returning({
+      id: bgJobs.id,
+      tenantId: bgJobs.tenantId,
+      leaseGeneration: bgJobs.leaseGeneration,
+    });
+  return lease ?? null;
 }
 
-async function finish(jobId: string, status: 'done' | 'failed' | 'cancelled', error?: string) {
+/** Expired ownership cannot be revived, even before a replacement claims it. */
+function ownsLease(lease: Lease, now: number) {
+  return and(
+    eq(bgJobs.id, lease.id),
+    eq(bgJobs.tenantId, lease.tenantId),
+    eq(bgJobs.status, 'running'),
+    eq(bgJobs.leaseGeneration, lease.leaseGeneration),
+    gt(bgJobs.leaseUntil, now),
+  );
+}
+
+async function finish(lease: Lease, status: 'done' | 'failed', error?: string) {
   const now = Date.now();
   await getCoreDb()
     .update(bgJobs)
     .set({ status, error: error ?? null, finishedAt: now, updatedAt: now, leaseUntil: null })
-    .where(eq(bgJobs.id, jobId));
+    .where(ownsLease(lease, now));
 }
 
-async function persistProgress(jobId: string, cursor: unknown) {
+async function persistProgress(lease: Lease, cursor: unknown): Promise<boolean> {
   const now = Date.now();
-  await getCoreDb()
+  const rows = await getCoreDb()
     .update(bgJobs)
-    .set({ cursor: cursor !== undefined ? JSON.stringify(cursor) : null, leaseUntil: now + LEASE_MS, updatedAt: now })
-    .where(eq(bgJobs.id, jobId));
+    .set({
+      cursor: cursor !== undefined ? JSON.stringify(cursor) : null,
+      leaseUntil: now + LEASE_MS,
+      updatedAt: now,
+    })
+    .where(ownsLease(lease, now))
+    .returning({ id: bgJobs.id });
+  return rows.length === 1;
+}
+
+function heartbeat(lease: Lease) {
+  let stopped = false;
+  let pending = false;
+  let lose!: () => void;
+  const lost = new Promise<void>((resolve) => {
+    lose = resolve;
+  });
+  const timer = setInterval(() => {
+    if (stopped || pending) return;
+    pending = true;
+    const renew = async () => {
+      try {
+        const now = Date.now();
+        const rows = await getCoreDb()
+          .update(bgJobs)
+          .set({ leaseUntil: now + LEASE_MS, updatedAt: now })
+          .where(ownsLease(lease, now))
+          .returning({ id: bgJobs.id });
+        if (rows.length !== 1) lose();
+      } catch {
+        // Ownership cannot be established after a storage error: stop admission.
+        lose();
+      } finally {
+        pending = false;
+      }
+    };
+    void renew();
+  }, HEARTBEAT_MS);
+  timer.unref?.();
+  return {
+    lost,
+    stop: () => {
+      stopped = true;
+      clearInterval(timer);
+    },
+  };
 }
 
 async function freshJob(jobId: string): Promise<BgJob | null> {
@@ -117,31 +207,91 @@ async function freshJob(jobId: string): Promise<BgJob | null> {
  */
 export async function advanceJob(jobId: string, budgetMs = 25_000): Promise<void> {
   const deadline = Date.now() + budgetMs;
-  let job = await freshJob(jobId);
-  if (!job) return;
-  const handler = handlers.get(job.type);
-  if (!handler) return;
-  if (job.status !== 'queued' && job.status !== 'running') return;
-  if (!(await claim(job))) return;
-
-  while (Date.now() < deadline) {
-    job = await freshJob(jobId);
-    if (!job || job.status === 'cancelled') return;
-    let result: AdvanceResult;
-    try {
-      result = await handler.advance(job);
-    } catch (err) {
-      await finish(jobId, 'failed', err instanceof Error ? err.message : String(err));
-      return;
+  const initial = await freshJob(jobId);
+  if (!initial || Date.now() >= deadline) return;
+  const handler = handlers.get(initial.type);
+  if (!handler || (initial.status !== 'queued' && initial.status !== 'running')) return;
+  const lease = await claim(initial);
+  if (!lease) return;
+  const pulse = heartbeat(lease);
+  const abort = new AbortController();
+  const execution: JobExecution = {
+    jobId: lease.id,
+    tenantId: lease.tenantId,
+    leaseGeneration: lease.leaseGeneration,
+    signal: abort.signal,
+    effectKey: (step, entityId = lease.id) =>
+      createHash('sha256')
+        .update(JSON.stringify([lease.tenantId, initial.type, entityId, step]))
+        .digest('hex'),
+    withOwnership: async (operation) =>
+      getOrgTransactionDb(getCoreDb()).transaction(async (tx) => {
+        const [current] = await tx
+          .select()
+          .from(bgJobs)
+          .where(and(eq(bgJobs.id, lease.id), eq(bgJobs.tenantId, lease.tenantId)))
+          .for('update');
+        // Recheck after acquiring the lock: time spent waiting cannot extend authority.
+        if (
+          abort.signal.aborted ||
+          !current ||
+          current.status !== 'running' ||
+          current.leaseGeneration !== lease.leaseGeneration ||
+          (current.leaseUntil ?? 0) <= Date.now()
+        ) {
+          abort.abort();
+          throw new Error('background job ownership lost');
+        }
+        const result = await operation(tx, current);
+        if (abort.signal.aborted || (current.leaseUntil ?? 0) <= Date.now()) {
+          abort.abort();
+          throw new Error('background job ownership lost');
+        }
+        return result;
+      }),
+  };
+  let lost = false;
+  const leaseLost = Symbol('lease-lost');
+  const loss: Promise<typeof leaseLost> = pulse.lost.then(() => {
+    lost = true;
+    abort.abort();
+    return leaseLost;
+  });
+  try {
+    while (!lost && Date.now() < deadline) {
+      const job = await freshJob(jobId);
+      if (
+        lost ||
+        !job ||
+        job.status !== 'running' ||
+        job.tenantId !== lease.tenantId ||
+        job.leaseGeneration !== lease.leaseGeneration ||
+        (job.leaseUntil ?? 0) <= Date.now()
+      )
+        return;
+      let result: AdvanceResult;
+      try {
+        // Losing the lease ends our wait, not the external operation. Promise.race
+        // retains a rejection handler for a callback that settles after cancellation.
+        const outcome = await Promise.race([handler.advance(job, execution), loss]);
+        if (outcome === leaseLost || lost) return;
+        result = outcome;
+      } catch (err) {
+        if (!lost) await finish(lease, 'failed', err instanceof Error ? err.message : String(err));
+        return;
+      }
+      if (result.done) {
+        await finish(lease, result.error ? 'failed' : 'done', result.error);
+        return;
+      }
+      if (!(await persistProgress(lease, result.cursor))) return;
     }
-    if (result.done) {
-      await finish(jobId, result.error ? 'failed' : 'done', result.error);
-      return;
-    }
-    await persistProgress(jobId, result.cursor);
+    // The budget bounds admission, not a callback already in flight. Leave the
+    // final lease to expire so a future tick resumes the persisted cursor.
+  } finally {
+    pulse.stop();
+    abort.abort();
   }
-  // Budget spent mid-flight: leave it 'running' with a lease so the next tick
-  // (or an on-demand advance) reclaims and continues it.
 }
 
 /** Cron entrypoint: advance every resumable job within an overall budget. */
@@ -151,7 +301,12 @@ export async function runTick(budgetMs = 50_000): Promise<{ advanced: number }> 
   const resumable = await db
     .select({ id: bgJobs.id })
     .from(bgJobs)
-    .where(or(eq(bgJobs.status, 'queued'), and(eq(bgJobs.status, 'running'), lt(bgJobs.leaseUntil, now))))
+    .where(
+      or(
+        eq(bgJobs.status, 'queued'),
+        and(eq(bgJobs.status, 'running'), lte(bgJobs.leaseUntil, now)),
+      ),
+    )
     .orderBy(asc(bgJobs.updatedAt))
     .limit(20);
   const deadline = Date.now() + budgetMs;

@@ -4,15 +4,29 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { knowledgeSources, type KnowledgeSource } from '$server/db/pg-schema/brains';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import {
+  corpusEmbeddingPolicy,
+  corpusScope,
   ensureMasterBrain,
   KNOWLEDGE_EMBEDDING_MODEL,
   knowledgeContentHash,
+  publishCorpusPages,
+  type CorpusJobContext,
+  type CorpusJobScope,
+  type CorpusProgress,
   type NormalizedKnowledgeChunk,
 } from './brain-corpus.service';
 import { embedTexts, embeddingsEnabled, toVectorLiteral } from './embeddings';
+import {
+  JobEffectPageError,
+  type LoadedPageSource,
+  type PageDomainGuard,
+} from './job-effect-pages.service';
 import type { Module } from './rbac.service';
 
 export const BUSINESS_CONNECTOR = 'hub-business';
+/** Semantic receipt identity: independent of job id, lease and scheduling type. */
+export const BUSINESS_CORPUS_FAMILY = 'brain.corpus.business';
+const BUSINESS_CORPUS_PIPELINE = `business-corpus-v1/${KNOWLEDGE_EMBEDDING_MODEL}`;
 const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_CHUNK_MAX_CHARS = 6000;
 const EMBEDDING_BATCH_SIZE = 64;
@@ -1713,9 +1727,12 @@ export function businessKnowledgeSourceConfig(domain: BusinessKnowledgeDomainDef
 
 /** Cheap discovery for page loads/new orgs. It never starts embedding work or
  * regresses an existing source's status; the durable reconcile job does that. */
-export async function ensureBusinessKnowledgeSources(ctx: CoreCtx): Promise<KnowledgeSource[]> {
-  await ensureMasterBrain(ctx);
-  return withOrgCore(ctx, async (tx) => {
+export async function ensureBusinessKnowledgeSources(
+  ctx: CoreCtx,
+  job?: CorpusJobScope,
+): Promise<KnowledgeSource[]> {
+  await ensureMasterBrain(ctx, undefined, job);
+  return corpusScope(ctx, job, async (tx) => {
     await tx
       .insert(knowledgeSources)
       .values(
@@ -1758,10 +1775,11 @@ export async function ensureBusinessKnowledgeSources(ctx: CoreCtx): Promise<Know
 export async function ensureBusinessKnowledgeSource(
   ctx: CoreCtx,
   domainKey: BusinessKnowledgeDomainKey,
+  job?: CorpusJobScope,
 ): Promise<KnowledgeSource> {
   const domain = getBusinessKnowledgeDomain(domainKey);
-  await ensureBusinessKnowledgeSources(ctx);
-  return withOrgCore(ctx, async (tx) => {
+  await ensureBusinessKnowledgeSources(ctx, job);
+  return corpusScope(ctx, job, async (tx) => {
     await tx
       .insert(knowledgeSources)
       .values({
@@ -1805,16 +1823,21 @@ export async function recordBusinessKnowledgeDomainError(
   ctx: CoreCtx,
   domainKey: BusinessKnowledgeDomainKey,
   cause: unknown,
+  job?: CorpusJobScope & { nextProgress?: CorpusProgress },
 ): Promise<void> {
   const message = cause instanceof Error ? cause.message : String(cause);
-  await withOrgCore(ctx, (tx) =>
-    tx.execute(sql`
+  await corpusScope(
+    ctx,
+    job,
+    (tx) =>
+      tx.execute(sql`
       update knowledge_sources
       set status = 'failed', last_error = ${message.slice(0, 1000)}, updated_at = now()
       where org_id = current_setting('app.current_org_id', true)
         and connector = ${BUSINESS_CONNECTOR}
         and external_key = ${domainKey}
     `),
+    job?.nextProgress,
   );
 }
 
@@ -1846,17 +1869,61 @@ async function loadBusinessPage(
     selected.at(-1)?.cursor_id ?? cursor?.lastId ?? null,
     hasMoreInTable,
   );
+  return { hasMore: nextCursor !== null, nextCursor, records: selected.map(businessRecord) };
+}
+
+function businessRecord(row: BusinessRecordRow): BusinessKnowledgeRecord {
   return {
-    hasMore: nextCursor !== null,
-    nextCursor,
-    records: selected.map((row) => ({
-      externalId: row.external_id,
-      recordType: row.record_type,
-      title: row.title,
-      payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
-      occurredAt: parseDate(row.occurred_at),
-      sourceUpdatedAt: parseDate(row.source_updated_at),
+    externalId: row.external_id,
+    recordType: row.record_type,
+    title: row.title,
+    payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
+    occurredAt: parseDate(row.occurred_at),
+    sourceUpdatedAt: parseDate(row.source_updated_at),
+  };
+}
+
+/** The observed source snapshot is the re-normalized record set of the page's
+ * table: a stale page cannot bind or publish once a record changed or vanished.
+ * ponytail: re-reads the page's records on every guard call; acceptable at 50/page. */
+function businessSnapshotGuard(
+  domain: BusinessKnowledgeDomainDefinition,
+  definition: BusinessTableDefinition,
+  prepared: PreparedBusinessDocument[],
+): PageDomainGuard {
+  const expected = new Map(
+    prepared.map((item) => [item.document.externalId, item.document.contentHash]),
+  );
+  return async (tx) => {
+    if (expected.size === 0) return;
+    const rows = (await tx.execute(sql`
+      select records.external_id, records.record_type, records.title, records.payload,
+        records.occurred_at, records.source_updated_at, records.cursor_id
+      from (${tableQuery(definition)}) records
+      where records.external_id = any(${textArray([...expected.keys()])})
+    `)) as unknown as BusinessRecordRow[];
+    const current = new Map(
+      rows.map((row) => {
+        const record = businessRecord(row);
+        return [record.externalId, normalizeBusinessKnowledgeRecord(domain, record).contentHash];
+      }),
+    );
+    for (const [id, hash] of expected)
+      if (current.get(id) !== hash)
+        throw new JobEffectPageError('superseded', 'Business record changed after preparation');
+  };
+}
+
+function businessPageSource(item: PreparedBusinessDocument): LoadedPageSource {
+  return {
+    family: BUSINESS_CORPUS_FAMILY,
+    entityId: `${item.sourceId}:${item.document.externalId}`,
+    sourceHash: item.document.contentHash,
+    chunks: item.document.chunks.map((chunk) => ({
+      key: chunk.chunkKey,
+      text: `${chunk.contextPrefix}\n\n${chunk.chunkText}`,
     })),
+    requiredChunkKeys: [...item.changedChunkKeys],
   };
 }
 
@@ -1982,7 +2049,15 @@ export async function persistBusinessDocuments(
   vectors: Map<string, number[]>,
 ): Promise<number> {
   if (prepared.length === 0) return 0;
-  return withOrgCore(ctx, async (tx) => {
+  return withOrgCore(ctx, (tx) => persistBusinessDocumentsTx(tx, prepared, vectors));
+}
+
+async function persistBusinessDocumentsTx(
+  tx: CoreTx,
+  prepared: PreparedBusinessDocument[],
+  vectors: Map<string, number[]>,
+): Promise<number> {
+  {
     const changedByIdentity = new Map<string, PreparedBusinessDocument>();
     for (const item of prepared) {
       if (
@@ -2086,7 +2161,7 @@ export async function persistBusinessDocuments(
       deletedChunks += deleted.length;
     }
     return deletedChunks;
-  });
+  }
 }
 
 async function reconcileBusinessDeletions(
@@ -2094,7 +2169,15 @@ async function reconcileBusinessDeletions(
   source: KnowledgeSource,
   domain: BusinessKnowledgeDomainDefinition,
 ): Promise<{ deletedDocuments: number; deletedChunks: number; expectedDocuments: number }> {
-  return withOrgCore(ctx, async (tx) => {
+  return withOrgCore(ctx, (tx) => reconcileBusinessDeletionsTx(tx, source, domain));
+}
+
+async function reconcileBusinessDeletionsTx(
+  tx: CoreTx,
+  source: KnowledgeSource,
+  domain: BusinessKnowledgeDomainDefinition,
+): Promise<{ deletedDocuments: number; deletedChunks: number; expectedDocuments: number }> {
+  {
     const [reconciled] = (await tx.execute(sql`
       with current_records as materialized (
         select records.external_id from (${deletionDomainQuery(domain)}) records
@@ -2140,28 +2223,37 @@ async function reconcileBusinessDeletions(
       deletedChunks: Number(reconciled?.deleted_chunks ?? 0),
       expectedDocuments,
     };
-  });
+  }
 }
+
+/** Progress input for a job-owned business page; deletions are not known
+ * before the final commit and never change the cursor. */
+export type BusinessPageProgress = Pick<
+  BusinessBackfillResult,
+  'domain' | 'processed' | 'changedChunks' | 'embeddedChunks' | 'nextCursor' | 'hasMore'
+>;
 
 export async function backfillBusinessKnowledgeDomain(
   ctx: CoreCtx,
   domainKey: BusinessKnowledgeDomainKey,
   opts?: { cursor?: string | null; limit?: number },
+  job?: CorpusJobContext<BusinessPageProgress>,
 ): Promise<BusinessBackfillResult> {
   const domain = getBusinessKnowledgeDomain(domainKey);
-  const source = await ensureBusinessKnowledgeSource(ctx, domainKey);
+  const source = await ensureBusinessKnowledgeSource(ctx, domainKey, job);
   const decoded = decodeBusinessKnowledgeCursor(opts?.cursor);
   if (decoded && decoded.domain !== domainKey)
     throw new Error(`Cursor belongs to ${decoded.domain}, not ${domainKey}`);
   const limit = Math.max(1, Math.min(500, Math.floor(opts?.limit ?? DEFAULT_BATCH_SIZE)));
   try {
-    const page = await withOrgCore(ctx, async (tx) => {
+    const page = await corpusScope(ctx, job, async (tx) => {
       const loaded = await loadBusinessPage(tx, domain, decoded, limit);
       return {
         ...loaded,
         prepared: await prepareBusinessDocuments(tx, source.id, domain, loaded.records),
       };
     });
+    if (job) return publishOwnedBusinessPage(ctx, job, domain, source, decoded, page);
     const vectors = await embedBusinessDocuments(page.prepared);
     const deletedChunks = await persistBusinessDocuments(ctx, page.prepared, vectors);
     const reconciled = page.hasMore
@@ -2183,9 +2275,78 @@ export async function backfillBusinessKnowledgeDomain(
       hasMore: page.hasMore,
     };
   } catch (cause) {
-    await recordBusinessKnowledgeDomainError(ctx, domainKey, cause);
+    // Job-owned pages leave failure state to the wrapper, which commits it with
+    // the exact progress and never records fenced/indeterminate outcomes.
+    if (!job) await recordBusinessKnowledgeDomainError(ctx, domainKey, cause);
     throw cause;
   }
+}
+
+/** Job-owned page: shared receipts, page-atomic publication/deletion and exact progress. */
+async function publishOwnedBusinessPage(
+  ctx: CoreCtx,
+  job: CorpusJobContext<BusinessPageProgress>,
+  domain: BusinessKnowledgeDomainDefinition,
+  source: KnowledgeSource,
+  decoded: BusinessKnowledgeCursor | null,
+  page: {
+    prepared: PreparedBusinessDocument[];
+    hasMore: boolean;
+    nextCursor: BusinessKnowledgeCursor | null;
+  },
+): Promise<BusinessBackfillResult> {
+  const policy = corpusEmbeddingPolicy(false);
+  const changedChunks = page.prepared.reduce((sum, item) => sum + item.changedChunkKeys.size, 0);
+  const nextCursor = page.nextCursor ? encodeBusinessKnowledgeCursor(page.nextCursor) : null;
+  const progress = job.progress({
+    domain: domain.key,
+    processed: page.prepared.length,
+    changedChunks,
+    embeddedChunks: policy.mode === 'embedded' ? changedChunks : 0,
+    nextCursor,
+    hasMore: page.hasMore,
+  });
+  const definition = domain.tables[Math.max(0, decoded?.tableIndex ?? 0)];
+  if (!definition) throw new Error(`Business cursor table is out of range for ${domain.key}`);
+  const changedByIdentity = new Map<string, PreparedBusinessDocument>();
+  for (const item of page.prepared)
+    if (item.changedDocument || item.changedChunkKeys.size > 0 || item.staleChunkKeys.length > 0)
+      changedByIdentity.set(`${item.sourceId}\u0000${item.document.externalId}`, item);
+  let deletedChunks = 0;
+  const reconciled = { deletedDocuments: 0, deletedChunks: 0 };
+  const published = await publishCorpusPages(ctx, job, {
+    pageKeyPrefix: `biz:${domain.key}`,
+    pipelineVersion: BUSINESS_CORPUS_PIPELINE,
+    policy,
+    items: [...changedByIdentity.values()].map((item) => ({
+      item,
+      source: businessPageSource(item),
+    })),
+    validateDomain: businessSnapshotGuard(domain, definition, page.prepared),
+    publish: async (tx, items, vectors) => {
+      deletedChunks += await persistBusinessDocumentsTx(tx, items, vectors);
+    },
+    finalize: async (tx) => {
+      if (page.hasMore) return;
+      Object.assign(reconciled, await reconcileBusinessDeletionsTx(tx, source, domain));
+    },
+    nextProgress: progress,
+  });
+  return {
+    domain: domain.key,
+    processed: page.prepared.length,
+    changedDocuments: page.prepared.filter((item) => item.changedDocument).length,
+    changedChunks,
+    embeddedChunks: published.embeddedChunks,
+    unchangedChunks: page.prepared.reduce(
+      (sum, item) => sum + item.document.chunks.length - item.changedChunkKeys.size,
+      0,
+    ),
+    deletedDocuments: reconciled.deletedDocuments,
+    deletedChunks: deletedChunks + reconciled.deletedChunks,
+    nextCursor,
+    hasMore: page.hasMore,
+  };
 }
 
 export async function reconcileAllBusinessKnowledge(

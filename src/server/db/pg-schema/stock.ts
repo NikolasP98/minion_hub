@@ -124,6 +124,14 @@ export const stkEntries = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    // Invoice ID is UUID text in metadata: normalize legacy case/space variants.
+    // Companion migration 20260909090200_stock_invoice_issue_identity.sql.
+    uniqueIndex('stk_entries_org_active_invoice_issue_uniq').on(
+      t.orgId,
+      sql`lower(btrim(${t.metadata}->>'invoiceId'))`,
+    ).where(sql`type='issue' AND status IN ('draft', 'submitted')
+        AND jsonb_typeof(metadata->'invoiceId') = 'string'
+        AND btrim(metadata->>'invoiceId') <> ''`),
     index('stk_entries_org_status_idx').on(t.orgId, t.status),
     index('stk_entries_org_created_idx').on(t.orgId, t.createdAt),
   ],

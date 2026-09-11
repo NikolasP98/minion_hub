@@ -9,11 +9,16 @@ import {
   registerJobHandler,
   type AdvanceResult,
   type BgJob,
+  type JobExecution,
 } from './bg-runtime';
 import {
   backfillConversations,
+  classifyCorpusJobError,
+  corpusJobFailure,
   markConversationSourceFailure,
   syncConversation,
+  type ConversationPageProgress,
+  type CorpusJobContext,
 } from './brain-corpus.service';
 
 export const BRAIN_CORPUS_JOB_TYPE = 'brain_corpus_conversations';
@@ -21,6 +26,10 @@ export const LEGACY_BRAIN_CORPUS_JOB_TYPE = 'brain_corpus_whatsapp';
 const RECONCILE_REF = 'conversations:reconcile';
 const DIRTY_REF = 'conversations:dirty';
 const RECONCILE_BATCH = 25;
+/** A page whose observed source changed is re-prepared this many times before
+ * it counts as an ordinary failure; the changed conversation's own dirty job
+ * covers the newer content. */
+const SUPERSEDED_RETRIES = 2;
 
 export interface DirtyConversation {
   channel: string;
@@ -36,6 +45,8 @@ interface DirtyCursor {
   next: number;
   /** Durable, bounded failure notes accumulated while later items continue. */
   failures: string[];
+  /** Re-preparations of the current item after its source superseded the page. */
+  attempts?: number;
 }
 
 interface ReconcileCursor {
@@ -44,6 +55,7 @@ interface ReconcileCursor {
   processed: number;
   changedChunks: number;
   embeddedChunks: number;
+  attempts?: number;
 }
 
 type BrainCorpusCursor = DirtyCursor | ReconcileCursor;
@@ -218,6 +230,7 @@ function parseCursor(job: BgJob): BrainCorpusCursor {
     conversations?: ParsedDirtyConversation[];
     next?: unknown;
     failures?: unknown;
+    attempts?: unknown;
     cursor?: unknown;
     processed?: unknown;
     changedChunks?: unknown;
@@ -250,6 +263,7 @@ function parseCursor(job: BgJob): BrainCorpusCursor {
             .filter((failure): failure is string => typeof failure === 'string')
             .slice(-20)
         : [],
+      attempts: Math.max(0, Number(value.attempts) || 0),
     };
   }
   if (value.kind === 'reconcile') {
@@ -259,12 +273,31 @@ function parseCursor(job: BgJob): BrainCorpusCursor {
       processed: Math.max(0, Number(value.processed) || 0),
       changedChunks: Math.max(0, Number(value.changedChunks) || 0),
       embeddedChunks: Math.max(0, Number(value.embeddedChunks) || 0),
+      attempts: Math.max(0, Number(value.attempts) || 0),
     };
   }
   throw new Error('brain corpus job has an invalid cursor');
 }
 
-export async function advanceBrainCorpusJob(job: BgJob): Promise<AdvanceResult> {
+/** Ownership loss, indeterminate provider outcomes and reservation contention
+ * are classified BEFORE ordinary per-conversation failure handling: they never
+ * count as failures, never write source status and never advance progress. */
+function nonOrdinary(cause: unknown, cursor: BrainCorpusCursor): AdvanceResult | null {
+  const kind = classifyCorpusJobError(cause);
+  if (kind === 'ordinary') return null;
+  if (kind === 'fenced') throw corpusJobFailure(cause, 'brain_corpus');
+  const attempts = cursor.attempts ?? 0;
+  if (kind === 'superseded' && attempts >= SUPERSEDED_RETRIES) return null;
+  return {
+    done: false,
+    cursor: { ...cursor, attempts: kind === 'superseded' ? attempts + 1 : attempts },
+  };
+}
+
+export async function advanceBrainCorpusJob(
+  job: BgJob,
+  execution: JobExecution,
+): Promise<AdvanceResult> {
   const cursor = parseCursor(job);
   const ctx: CoreCtx = { db: getCoreDb(), tenantId: job.tenantId };
   if (cursor.kind === 'dirty') {
@@ -275,26 +308,49 @@ export async function advanceBrainCorpusJob(job: BgJob): Promise<AdvanceResult> 
         error: cursor.failures.length > 0 ? cursor.failures.join('; ') : undefined,
       };
     }
-    let failure: string | null = null;
+    const next = cursor.next + 1;
+    const advanced = (failures: string[]): DirtyCursor => ({
+      ...cursor,
+      next,
+      failures,
+      attempts: 0,
+    });
+    const result = (failures: string[]): AdvanceResult =>
+      next >= cursor.conversations.length
+        ? { done: true, error: failures.length > 0 ? failures.join('; ') : undefined }
+        : { done: false, cursor: advanced(failures) };
+    const owned: CorpusJobContext<ConversationPageProgress> = {
+      execution,
+      cursor: cursor as unknown as Record<string, unknown>,
+      progress: () => advanced(cursor.failures) as unknown as Record<string, unknown>,
+    };
     try {
       await syncConversation(
         ctx,
         conversation.channel,
         conversation.accountId,
         conversation.chatId,
-        {
-          months: conversation.months,
-        },
+        { months: conversation.months },
+        owned,
       );
     } catch (cause) {
+      const retry = nonOrdinary(cause, cursor);
+      if (retry) return retry;
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      const failure = `${conversation.channel}/${conversation.accountId}/${conversation.chatId}: ${reason}`;
+      const failures = [...cursor.failures, failure].slice(-20);
       try {
+        // Failure state and the exact next cursor commit together under ownership.
         await markConversationSourceFailure(
           ctx,
           conversation.channel,
           conversation.accountId,
           cause,
+          { execution, nextProgress: advanced(failures) as unknown as Record<string, unknown> },
         );
       } catch (markCause) {
+        if (classifyCorpusJobError(markCause) === 'fenced')
+          throw corpusJobFailure(markCause, 'brain_corpus');
         console.error('[brain-corpus] failed to expose source failure', markCause);
       }
       console.error('[brain-corpus] isolated dirty conversation failure', {
@@ -303,33 +359,38 @@ export async function advanceBrainCorpusJob(job: BgJob): Promise<AdvanceResult> 
         chatId: conversation.chatId,
         cause,
       });
-      const reason = cause instanceof Error ? cause.message : String(cause);
-      failure = `${conversation.channel}/${conversation.accountId}/${conversation.chatId}: ${reason}`;
+      return result(failures);
     }
-    const next = cursor.next + 1;
-    const failures = failure ? [...cursor.failures, failure].slice(-20) : cursor.failures;
-    return next >= cursor.conversations.length
-      ? { done: true, error: failures.length > 0 ? failures.join('; ') : undefined }
-      : { done: false, cursor: { ...cursor, next, failures } satisfies DirtyCursor };
+    return result(cursor.failures);
   }
 
+  const progress = (page: ConversationPageProgress): ReconcileCursor => ({
+    kind: 'reconcile',
+    cursor: page.nextCursor,
+    processed: cursor.processed + page.processed,
+    changedChunks: cursor.changedChunks + page.changedChunks,
+    embeddedChunks: cursor.embeddedChunks + page.embeddedChunks,
+    attempts: 0,
+  });
   try {
-    const page = await backfillConversations(ctx, {
-      cursor: cursor.cursor,
-      limit: RECONCILE_BATCH,
-    });
-    const next: ReconcileCursor = {
-      kind: 'reconcile',
-      cursor: page.nextCursor,
-      processed: cursor.processed + page.processed,
-      changedChunks: cursor.changedChunks + page.changedChunks,
-      embeddedChunks: cursor.embeddedChunks + page.embeddedChunks,
-    };
-    return page.hasMore ? { done: false, cursor: next } : { done: true };
+    const page = await backfillConversations(
+      ctx,
+      { cursor: cursor.cursor, limit: RECONCILE_BATCH },
+      {
+        execution,
+        cursor: cursor as unknown as Record<string, unknown>,
+        progress: (result) => progress(result) as unknown as Record<string, unknown>,
+      },
+    );
+    return page.hasMore ? { done: false, cursor: progress(page) } : { done: true };
   } catch (cause) {
+    const retry = nonOrdinary(cause, cursor);
+    if (retry) return retry;
     try {
-      await markConversationSourceFailure(ctx, null, null, cause);
+      await markConversationSourceFailure(ctx, null, null, cause, { execution });
     } catch (markCause) {
+      if (classifyCorpusJobError(markCause) === 'fenced')
+        throw corpusJobFailure(markCause, 'brain_corpus');
       console.error('[brain-corpus] failed to expose reconcile failure', markCause);
     }
     throw cause;
