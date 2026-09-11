@@ -38,7 +38,10 @@ describe('paraglide locale parity (baseline, pre-migration)', () => {
     const requests = Array.from({ length: 20 }, (_, i) => {
       const tag = i % 2 === 0 ? ('en' as const) : ('es' as const);
       return new Promise<{ tag: 'en' | 'es'; text: string }>((resolve) => {
-        setTimeout(() => resolve({ tag, text: m.a11y0_alerts({}, { languageTag: tag }) }), Math.random() * 5);
+        setTimeout(
+          () => resolve({ tag, text: m.a11y0_alerts({}, { languageTag: tag }) }),
+          Math.random() * 5,
+        );
       });
     });
     const results = await Promise.all(requests);
