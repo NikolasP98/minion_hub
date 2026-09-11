@@ -1,0 +1,15 @@
+@import '../../../node_modules/tailwindcss/index.css' source(none);
+@import '../../../node_modules/@minion-stack/design-tokens/tokens.css';
+@source '../../../src/lib/components/charts/Chart.svelte';
+@source '../../../src/lib/components/crm/CrmSentimentTrend.svelte';
+html,
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-text-primary);
+  font-family: system-ui;
+}
+main {
+  padding: 24px;
+  max-width: 480px;
+}
