@@ -5,7 +5,7 @@ const fetchJson = vi.fn<(...args: unknown[]) => Promise<CalendarPayload>>();
 vi.mock('$lib/api/fetch-json', () => ({ fetchJson: (...args: unknown[]) => fetchJson(...args) }));
 vi.mock('$lib/state/ui', () => ({ toastError: vi.fn() }));
 
-const { CalendarStore } = await import('./calendar.svelte');
+const { CalendarStore, offsetIso } = await import('./calendar.svelte');
 
 function ev(id: string, patch: Partial<CalEvent> = {}): CalEvent {
   return {
@@ -103,5 +103,31 @@ describe('CalendarStore', () => {
 
     store.patchEvent('missing', { start: '2026-01-01T00:00:00.000Z' });
     expect(store.events['missing']).toBeUndefined(); // no-op on an unknown id
+  });
+});
+
+describe('offsetIso', () => {
+  /** @event-calendar/core's `parseOffset` — src/lib/date.js. A `Z` suffix does not match. */
+  const EC_PARSE_OFFSET = /([+-])(\d{2}):(\d{2})$/;
+
+  it('keeps the instant but states the offset the calendar library can parse', () => {
+    const d = new Date('2026-09-08T13:00:00.000Z');
+    const iso = offsetIso(d);
+    expect(iso).toBe('2026-09-08T13:00:00.000+00:00');
+    expect(new Date(iso).getTime()).toBe(d.getTime());
+    expect(EC_PARSE_OFFSET.test(iso)).toBe(true);
+    // The bug: the same instant via toISOString() carries no parseable offset, so
+    // a chip patched with it after a drag jumps back to its UTC wall clock.
+    expect(EC_PARSE_OFFSET.test(d.toISOString())).toBe(false);
+  });
+
+  it('is what a moved event is written back with, so it survives a store patch', () => {
+    const store = new CalendarStore();
+    store.mergeEvents([ev('a')], '2026-09-08T00:00:00.000Z', '2026-09-09T00:00:00.000Z');
+    // Dropped one hour later: the library hands back a local Date for the new slot.
+    const dropped = new Date('2026-09-08T14:00:00.000Z');
+    store.patchEvent('a', { start: offsetIso(dropped) });
+    expect(EC_PARSE_OFFSET.test(store.events['a']!.start)).toBe(true);
+    expect(new Date(store.events['a']!.start).getTime()).toBe(dropped.getTime());
   });
 });

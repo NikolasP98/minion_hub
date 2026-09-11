@@ -17,10 +17,20 @@ export type CalKind = {
   position: number;
 };
 
-/** One calendar entry = one booking, denormalised for display. ISO strings, never Dates. */
+/**
+ * One calendar entry = one booking, denormalised for display. ISO strings, never Dates.
+ *
+ * `start`/`end` MUST carry an explicit `±HH:MM` offset (the resource's timezone at
+ * that instant) — never a `Z` suffix. `@event-calendar/core` drops any offset it
+ * cannot match with `/([+-])(\d{2}):(\d{2})$/` and then draws the raw digits, so a
+ * `Z` string is rendered at its UTC wall clock. Server side that is
+ * `toOffsetIsoString`; client side (drag/resize write-back) it is `offsetIso`.
+ */
 export type CalEvent = {
   id: string;
+  /** ISO 8601 with an explicit `±HH:MM` offset (never `Z`). */
   start: string;
+  /** ISO 8601 with an explicit `±HH:MM` offset (never `Z`). */
   end: string;
   status: string;
   resourceId: string;

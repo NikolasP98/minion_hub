@@ -20,6 +20,17 @@ export function addDays(day: string, n: number): string {
   d.setDate(d.getDate() + n);
   return ymd(d);
 }
+/**
+ * Same instant as `d`, as an ISO string with an explicit `±HH:MM` offset.
+ * `@event-calendar/core` only honours an offset it can match with
+ * `/([+-])(\d{2}):(\d{2})$/`, so a plain `toISOString()` ("…Z") makes it draw the
+ * UTC digits verbatim. `+00:00` says the same thing in a form it parses — the
+ * library then shifts to the viewer's own offset, exactly like the server's
+ * `toOffsetIsoString` payloads.
+ */
+export function offsetIso(d: Date): string {
+  return d.toISOString().replace('Z', '+00:00');
+}
 export function hhmm(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }

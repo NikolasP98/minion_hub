@@ -114,3 +114,27 @@ export function zonedDateKey(instant: Date, timeZone: string): string {
   const dd = String(p.day).padStart(2, '0');
   return `${p.year}-${mm}-${dd}`;
 }
+
+/**
+ * ISO 8601 with an explicit `±HH:MM` offset — the wall clock of `instant` in
+ * `timeZone`, followed by that zone's offset AT that instant (so DST is handled
+ * per event, not per payload).
+ *
+ * Why not `Date.toISOString()`: `@event-calendar/core` parses event dates with
+ * `parseOffset`, which only matches a trailing `([+-])(\d{2}):(\d{2})$`
+ * (node_modules/@event-calendar/core/src/lib/date.js). A `Z` suffix yields
+ * `undefined`, the offset correction is skipped entirely, and the UTC digits are
+ * drawn verbatim — an 08:00 Lima booking lands on the 13:00 row.
+ */
+export function toOffsetIsoString(instant: Date, timeZone: string): string {
+  const p = utcToZonedParts(instant, timeZone);
+  const offset = tzOffsetMinutes(instant, timeZone);
+  const sign = offset < 0 ? '-' : '+';
+  const abs = Math.abs(offset);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${p.year}-${pad(p.month)}-${pad(p.day)}` +
+    `T${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}` +
+    `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+  );
+}

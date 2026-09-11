@@ -18,7 +18,7 @@
   import { canAct } from '$lib/access/can.svelte';
   import EventHoverCard from './EventHoverCard.svelte';
   import MoveConfirmDialog from './MoveConfirmDialog.svelte';
-  import { hhmm, ymd, type CalendarStore } from './calendar.svelte';
+  import { hhmm, offsetIso, ymd, type CalendarStore } from './calendar.svelte';
   import type { CalendarView, CalEvent } from './types';
 
   let {
@@ -123,10 +123,13 @@
   }
   function openMove(info: DropOrResizeInfo) {
     moveEvent = info.event.extendedProps;
-    moveOldStart = info.oldEvent.start.toISOString();
-    moveOldEnd = info.oldEvent.end.toISOString();
-    moveNewStart = info.event.start.toISOString();
-    moveNewEnd = info.event.end.toISOString();
+    // `offsetIso`, not `toISOString()`: these strings go back into the store on
+    // save (MoveConfirmDialog's `onSaved`), and a `Z` suffix would make the
+    // library re-draw the moved chip at its UTC wall clock.
+    moveOldStart = offsetIso(info.oldEvent.start);
+    moveOldEnd = offsetIso(info.oldEvent.end);
+    moveNewStart = offsetIso(info.event.start);
+    moveNewEnd = offsetIso(info.event.end);
     moveNewResourceId = info.newResource?.id ?? null;
     moveRevert = info.revert;
     moveOpen = true;
