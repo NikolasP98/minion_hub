@@ -1,3 +1,6 @@
+import { createRequire } from 'node:module';
+import { dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { CalEvent, CalendarPayload } from './types';
 
@@ -5,7 +8,8 @@ const fetchJson = vi.fn<(...args: unknown[]) => Promise<CalendarPayload>>();
 vi.mock('$lib/api/fetch-json', () => ({ fetchJson: (...args: unknown[]) => fetchJson(...args) }));
 vi.mock('$lib/state/ui', () => ({ toastError: vi.fn() }));
 
-const { CalendarStore, offsetIso } = await import('./calendar.svelte');
+const { CalendarStore, offsetIso, calendarWallTime, calendarMoveIso, hhmm } =
+  await import('./calendar.svelte');
 
 function ev(id: string, patch: Partial<CalEvent> = {}): CalEvent {
   return {
@@ -106,28 +110,149 @@ describe('CalendarStore', () => {
   });
 });
 
-describe('offsetIso', () => {
-  /** @event-calendar/core's `parseOffset` — src/lib/date.js. A `Z` suffix does not match. */
-  const EC_PARSE_OFFSET = /([+-])(\d{2}):(\d{2})$/;
+// Exercise the installed library's real date/event boundaries, not a copied parser.
+const coreRoot = dirname(
+  createRequire(import.meta.url).resolve('@event-calendar/core/package.json'),
+);
+interface CoreEvent {
+  start: Date;
+  end: Date;
+  extendedProps: CalEvent;
+}
+const { createEvents, toEventWithLocalDates } = (await import(
+  /* @vite-ignore */ pathToFileURL(`${coreRoot}/src/lib/events.js`).href
+)) as {
+  createEvents(
+    input: { start: string; end: string; extendedProps: CalEvent }[],
+    offset: number,
+  ): CoreEvent[];
+  toEventWithLocalDates(event: CoreEvent): CoreEvent;
+};
+const { createDate, toLocalDate } = (await import(
+  /* @vite-ignore */ pathToFileURL(`${coreRoot}/src/lib/date.js`).href
+)) as { createDate(input: Date, offset: number): Date; toLocalDate(input: Date): Date };
 
-  it('keeps the instant but states the offset the calendar library can parse', () => {
-    const d = new Date('2026-09-08T13:00:00.000Z');
-    const iso = offsetIso(d);
-    expect(iso).toBe('2026-09-08T13:00:00.000+00:00');
-    expect(new Date(iso).getTime()).toBe(d.getTime());
-    expect(EC_PARSE_OFFSET.test(iso)).toBe(true);
-    // The bug: the same instant via toISOString() carries no parseable offset, so
-    // a chip patched with it after a drag jumps back to its UTC wall clock.
-    expect(EC_PARSE_OFFSET.test(d.toISOString())).toBe(false);
+function rendered(event: CalEvent): CoreEvent {
+  return createEvents(
+    [
+      {
+        start: calendarWallTime(event.start),
+        end: calendarWallTime(event.end),
+        extendedProps: event,
+      },
+    ],
+    0,
+  )[0]!;
+}
+
+describe('viewer-local calendar boundary', () => {
+  it.each(['2026-01-15T14:00:00.123Z', '2026-07-15T14:00:00.999Z', '2026-09-08T03:15:00Z'])(
+    'projects %s into the same local day and time used by the chip, regardless of current DST',
+    (iso) => {
+      const original = new Date(iso);
+      const internal = rendered(
+        ev('a', { start: iso, end: new Date(+original + 3600000).toISOString() }),
+      );
+      expect([
+        internal.start.getUTCFullYear(),
+        internal.start.getUTCMonth(),
+        internal.start.getUTCDate(),
+        internal.start.getUTCHours(),
+        internal.start.getUTCMinutes(),
+      ]).toEqual([
+        original.getFullYear(),
+        original.getMonth(),
+        original.getDate(),
+        original.getHours(),
+        original.getMinutes(),
+      ]);
+      const callback = toEventWithLocalDates(internal);
+      expect(hhmm(callback.start.toISOString())).toBe(hhmm(iso));
+      expect(internal.extendedProps.start).toBe(iso);
+    },
+  );
+
+  it('writes a changed drag through native callbacks, store patch and projection without shifting', () => {
+    const event = ev('a', { start: '2026-01-15T14:00:00.123Z', end: '2026-01-15T15:00:00.456Z' });
+    const old = rendered(event);
+    const moved = {
+      ...old,
+      start: new Date(+old.start + 3600000),
+      end: new Date(+old.end + 3600000),
+    };
+    const before = toEventWithLocalDates(old);
+    const after = toEventWithLocalDates(moved);
+    const store = new CalendarStore();
+    store.mergeEvents([event], event.start, event.end);
+    store.patchEvent(event.id, {
+      start: calendarMoveIso(after.start, before.start, event.start),
+      end: calendarMoveIso(after.end, before.end, event.end),
+    });
+    expect(new Date(store.events.a!.start).getTime()).toBe(after.start.getTime());
+    expect(rendered(store.events.a!).start.getTime()).toBe(moved.start.getTime());
+    expect(new Date(offsetIso(new Date(event.start))).getTime()).toBe(Date.parse(event.start));
   });
 
-  it('is what a moved event is written back with, so it survives a store patch', () => {
-    const store = new CalendarStore();
-    store.mergeEvents([ev('a')], '2026-09-08T00:00:00.000Z', '2026-09-09T00:00:00.000Z');
-    // Dropped one hour later: the library hands back a local Date for the new slot.
-    const dropped = new Date('2026-09-08T14:00:00.000Z');
-    store.patchEvent('a', { start: offsetIso(dropped) });
-    expect(EC_PARSE_OFFSET.test(store.events['a']!.start)).toBe(true);
-    expect(new Date(store.events['a']!.start).getTime()).toBe(dropped.getTime());
+  it('preserves the untouched endpoint and milliseconds when resizing in the repeated fall-back hour', () => {
+    const event = ev('fold', {
+      start: '2026-11-01T06:30:00.123Z',
+      end: '2026-11-01T07:30:00.456Z',
+    });
+    const internal = rendered(event);
+    const old = toEventWithLocalDates(internal);
+    const resized = toEventWithLocalDates({ ...internal, end: new Date(+internal.end + 900000) });
+    expect(calendarMoveIso(resized.start, old.start, event.start)).toBe(event.start);
+    expect(calendarMoveIso(old.end, old.end, event.end)).toBe(event.end);
+    expect(new Date(calendarMoveIso(resized.end, old.end, event.end)).getTime()).toBe(
+      resized.end.getTime(),
+    );
+    if (process.env.TZ === 'America/New_York') {
+      // Core recreates the earlier 01:30, even when storage names the later occurrence.
+      expect(old.start.toISOString()).toBe('2026-11-01T05:30:00.000Z');
+    }
+  });
+
+  it('uses existing native Date disambiguation for a changed fold/gap target', () => {
+    for (const [month, day, hour] of [
+      [10, 1, 1],
+      [2, 8, 2],
+    ]) {
+      const internal = createEvents(
+        [
+          {
+            start: `2026-${String(month! + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T0${hour}:30:00`,
+            end: '2026-11-02T12:00:00',
+            extendedProps: ev('a'),
+          },
+        ],
+        0,
+      )[0]!;
+      const callback = toEventWithLocalDates(internal);
+      const native = new Date(2026, month!, day!, hour!, 30);
+      expect(
+        new Date(calendarMoveIso(callback.start, new Date(0), '1970-01-01T00:00:00Z')).getTime(),
+      ).toBe(+native);
+      if (process.env.TZ === 'America/New_York') {
+        expect(callback.start.toISOString()).toBe(
+          month === 10 ? '2026-11-01T05:30:00.000Z' : '2026-03-08T07:30:00.000Z',
+        );
+      }
+    }
+  });
+
+  it('queries actual native local-midnight callback boundaries across a DST day', async () => {
+    fetchJson.mockReset();
+    const from = new Date(2026, 2, 8);
+    const to = new Date(2026, 2, 9);
+    const callbackFrom = toLocalDate(createDate(from, 0));
+    const callbackTo = toLocalDate(createDate(to, 0));
+    expect(+callbackFrom).toBe(+from);
+    expect(+callbackTo).toBe(+to);
+    fetchJson.mockResolvedValue({ events: [], from: from.toISOString(), to: to.toISOString() });
+    await new CalendarStore().ensure(callbackFrom, callbackTo);
+    const url = new URL(String(fetchJson.mock.calls[0]![0]), 'https://fixture.invalid');
+    expect(url.searchParams.get('from')).toBe(from.toISOString());
+    expect(url.searchParams.get('to')).toBe(to.toISOString());
+    if (process.env.TZ === 'America/New_York') expect(+to - +from).toBe(23 * 3600000);
   });
 });

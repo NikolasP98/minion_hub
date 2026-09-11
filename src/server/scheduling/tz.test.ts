@@ -60,19 +60,6 @@ describe('tz helpers', () => {
   });
 });
 
-/**
- * `toOffsetIsoString` is the calendar payload's serializer. `@event-calendar/core`
- * reads an event date's offset with this exact regex — a `Z` suffix does not match,
- * so the library skips its offset correction and draws the raw UTC digits, which is
- * how an 08:00 Lima booking ended up on the 13:00 row.
- * Source: node_modules/@event-calendar/core/src/lib/date.js `parseOffset`.
- */
-const EC_PARSE_OFFSET = /([+-])(\d{2}):(\d{2})$/;
-function ecOffsetMinutes(iso: string): number | undefined {
-  const parts = iso.match(EC_PARSE_OFFSET);
-  return parts ? Number(parts[1] + '1') * (Number(parts[2]) * 60 + Number(parts[3])) : undefined;
-}
-
 describe('toOffsetIsoString', () => {
   it('renders an 08:00 Lima booking as 08:00 with a -05:00 offset, not 13:00Z', () => {
     // The booking row as Postgres hands it back: an absolute instant.
@@ -81,12 +68,11 @@ describe('toOffsetIsoString', () => {
     expect(toOffsetIsoString(stored, 'America/Lima')).toBe('2026-09-08T08:00:00-05:00');
   });
 
-  it('emits an offset the calendar library can actually parse', () => {
-    const iso = toOffsetIsoString(new Date('2026-09-08T13:00:00.000Z'), 'America/Lima');
-    expect(iso.endsWith('Z')).toBe(false);
-    expect(ecOffsetMinutes(iso)).toBe(-300);
-    // …which is what a plain toISOString() fails to do — the defect in one line.
-    expect(ecOffsetMinutes(new Date('2026-09-08T13:00:00.000Z').toISOString())).toBeUndefined();
+  it('states the resource offset while preserving the wire instant', () => {
+    const instant = new Date('2026-09-08T13:00:00.000Z');
+    const iso = toOffsetIsoString(instant, 'America/Lima');
+    expect(iso.endsWith('-05:00')).toBe(true);
+    expect(new Date(iso).getTime()).toBe(instant.getTime());
   });
 
   it('round-trips back to the same instant (drag/resize write-back)', () => {
@@ -117,4 +103,20 @@ describe('toOffsetIsoString', () => {
       '2026-09-08T18:30:00+05:30',
     );
   });
+});
+
+describe('lossless calendar serialization', () => {
+  it.each(['America/Lima', 'America/New_York', 'Asia/Kathmandu', 'UTC'])(
+    'preserves milliseconds and both transition instants in %s',
+    (zone) => {
+      for (const iso of [
+        '2026-03-08T06:59:59.999Z',
+        '2026-03-08T07:00:00.123Z',
+        '2026-11-01T05:30:00.123Z',
+        '2026-11-01T06:30:00.999Z',
+      ]) {
+        expect(new Date(toOffsetIsoString(new Date(iso), zone)).toISOString()).toBe(iso);
+      }
+    },
+  );
 });

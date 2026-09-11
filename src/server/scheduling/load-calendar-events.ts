@@ -73,6 +73,8 @@ export async function loadCalendarEvents(
         and(
           eq(schedBookings.orgId, ctx.tenantId),
           inArray(schedBookings.status, [...CALENDAR_STATUSES]),
+          // TODO(handoff): decide overlap-window inclusion for bookings starting before from;
+          // see proposals/2026-09-10-hub-calendar-utc-offset-dropped.md.
           gte(schedBookings.startTime, opts.from),
           lt(schedBookings.startTime, opts.to),
         ),

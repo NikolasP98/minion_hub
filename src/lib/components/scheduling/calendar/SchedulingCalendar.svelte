@@ -18,7 +18,13 @@
   import { canAct } from '$lib/access/can.svelte';
   import EventHoverCard from './EventHoverCard.svelte';
   import MoveConfirmDialog from './MoveConfirmDialog.svelte';
-  import { hhmm, offsetIso, ymd, type CalendarStore } from './calendar.svelte';
+  import {
+    hhmm,
+    calendarWallTime,
+    calendarMoveIso,
+    ymd,
+    type CalendarStore,
+  } from './calendar.svelte';
   import type { CalendarView, CalEvent } from './types';
 
   let {
@@ -89,11 +95,13 @@
     );
   }
 
+  // TODO(handoff): define fold-spanning event rendering when local end <= start;
+  // preserve stored instants. See proposals/2026-09-10-hub-calendar-utc-offset-dropped.md.
   const ecEvents = $derived(
     store.visible.map((ev) => ({
       id: ev.id,
-      start: ev.start,
-      end: ev.end,
+      start: calendarWallTime(ev.start),
+      end: calendarWallTime(ev.end),
       resourceIds: [ev.resourceId],
       backgroundColor: store.kindOf(ev)?.color ?? ev.resourceColor ?? undefined,
       classNames: [ev.status],
@@ -123,13 +131,11 @@
   }
   function openMove(info: DropOrResizeInfo) {
     moveEvent = info.event.extendedProps;
-    // `offsetIso`, not `toISOString()`: these strings go back into the store on
-    // save (MoveConfirmDialog's `onSaved`), and a `Z` suffix would make the
-    // library re-draw the moved chip at its UTC wall clock.
-    moveOldStart = offsetIso(info.oldEvent.start);
-    moveOldEnd = offsetIso(info.oldEvent.end);
-    moveNewStart = offsetIso(info.event.start);
-    moveNewEnd = offsetIso(info.event.end);
+    // Callback Dates are lossy during a fold; unchanged endpoints come from storage.
+    moveOldStart = moveEvent.start;
+    moveOldEnd = moveEvent.end;
+    moveNewStart = calendarMoveIso(info.event.start, info.oldEvent.start, moveOldStart);
+    moveNewEnd = calendarMoveIso(info.event.end, info.oldEvent.end, moveOldEnd);
     moveNewResourceId = info.newResource?.id ?? null;
     moveRevert = info.revert;
     moveOpen = true;
@@ -158,6 +164,8 @@
   // later change (documented pattern — see hub CLAUDE.md "Green baseline").
   // svelte-ignore state_referenced_locally
   let options = $state<Record<string, unknown>>({
+    // Neutral internal axis; ecEvents supplies viewer-local wall fields.
+    timeZone: 'UTC',
     view: VIEW_ID[view],
     date: new Date(`${day}T00:00:00`),
     headerToolbar: { start: '', center: '', end: '' },
