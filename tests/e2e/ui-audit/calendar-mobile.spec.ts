@@ -9,8 +9,9 @@
  *
  * See mobile-fixture.ts for how to run this.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import {
+  test,
   MOBILE_FIXTURE_URL,
   MOBILE_FIXTURE_HINT,
   MOBILE_WIDTHS,
@@ -33,6 +34,7 @@ const FIXTURE_STAFF = [
 async function openCalendar(page: Page, width: number, height: number, query = '') {
   await page.setViewportSize({ width, height });
   await page.goto(`${MOBILE_FIXTURE_URL}/calendar.html${query}`);
+  await page.evaluate(() => document.fonts.ready);
   // Positive control: the real route component mounted with its toolbar.
   await expect(page.getByRole('button', { name: 'Today' })).toBeVisible();
   await expect(page.locator('.cal-body .ec')).toBeVisible();
@@ -99,7 +101,7 @@ for (const viewport of MOBILE_WIDTHS) {
   });
 }
 
-test('Scheduling actions stay operable at 390px', async ({ page }) => {
+test('Scheduling navigation controls expose their view intents at 390px', async ({ page }) => {
   const compact = MOBILE_WIDTHS[1];
   await openCalendar(page, compact.width, compact.height);
 
@@ -110,6 +112,13 @@ test('Scheduling actions stay operable at 390px', async ({ page }) => {
     await expect(control).toBeVisible();
     const rect = await control.boundingBox();
     expect((rect?.x ?? 0) + (rect?.width ?? 0)).toBeLessThanOrEqual(compact.width);
+    if (name !== 'Today' && name !== 'Day') {
+      await control.click();
+      const intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
+      expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('view')).toBe(
+        name.toLowerCase(),
+      );
+    }
   }
   await expect(page.getByRole('button', { name: /staff/i }).first()).toBeVisible();
 });
@@ -140,4 +149,147 @@ test('Desktop calendar composition is unchanged by the compact repair', async ({
   // The minimum-width floor is inert once the lanes already exceed it.
   expect(m.bodyScrollWidth).toBe(m.bodyClientWidth);
   for (const lane of m.lanes) expect(lane).toBeGreaterThan(MIN_LANE_PX);
+});
+
+test('The first booking aligns with its viewer-local 08:00 slot', async ({ page }) => {
+  await openCalendar(page, 390, 844);
+  const event = page.locator('.ec-event').filter({ hasText: 'Paciente 1A' });
+  await expect(event).toContainText('08:00');
+  const position = await event.evaluate((el) => {
+    const body = document.querySelector('.ec-body')!;
+    return {
+      top: parseFloat((el as HTMLElement).style.insetBlockStart),
+      hourHeight: body.getBoundingClientRect().height / 14,
+    };
+  });
+  // The real fixture displays 07:00–21:00; 08:00 is one hour below its origin.
+  expect(position.top).toBeCloseTo(position.hourHeight, 0);
+  await page.screenshot({ path: test.info().outputPath('calendar-viewer-local.png') });
+});
+
+for (const viewport of [
+  { width: 320, height: 740 },
+  { width: 390, height: 844 },
+  { width: 600, height: 390 },
+]) {
+  test(`Calendar toolbar targets remain usable at ${viewport.width}x${viewport.height}`, async ({
+    page,
+  }) => {
+    await openCalendar(page, viewport.width, viewport.height);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
+    const toolbar = page.locator('.cal-toolbar');
+    const targets = toolbar.locator('button, select');
+    expect(await targets.count()).toBeGreaterThanOrEqual(9);
+    for (const target of await targets.all()) {
+      if (!(await target.isVisible())) continue; // Closed staff popover options are not active targets.
+      const rect = await target.boundingBox();
+      if (!rect) throw new Error('Missing toolbar target');
+      expect(rect.height, (await target.textContent()) ?? 'toolbar control').toBeGreaterThanOrEqual(
+        44,
+      );
+      expect(rect.width).toBeGreaterThanOrEqual(44);
+      expect(rect.x).toBeGreaterThanOrEqual(0);
+      expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width);
+    }
+    await page.screenshot({ path: test.info().outputPath('calendar-toolbar.png') });
+  });
+}
+
+test.describe('fine-pointer toolbar', () => {
+  test.use({ hasTouch: false });
+  test('retains compact desktop controls and keyboard view intent', async ({ page }) => {
+    await openCalendar(page, 1440, 900);
+    expect(await page.evaluate(() => matchMedia('(pointer: fine)').matches)).toBe(true);
+    const today = page.getByRole('button', { name: 'Today', exact: true });
+    expect((await today.boundingBox())?.height).toBe(28);
+    const week = page.getByRole('button', { name: 'Week', exact: true });
+    expect((await week.boundingBox())?.height).toBe(26);
+    await week.focus();
+    await page.keyboard.press('Enter');
+    const intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
+    expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('view')).toBe('week');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1440);
+  });
+});
+
+test('Date and staff/type filters retain native keyboard and URL intent behavior', async ({
+  page,
+}) => {
+  await openCalendar(page, 390, 844);
+  const staff = page.getByRole('button', { name: /Staff.*All staff/i });
+  await staff.focus();
+  await page.keyboard.press('Enter');
+  const leiva = page.getByRole('option', { name: 'Leiva', exact: true });
+  await expect(leiva).toBeVisible();
+  expect((await leiva.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  await leiva.focus();
+  await page.keyboard.press('Enter');
+  let intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
+  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('staff')).toBe('r1');
+  await page.keyboard.press('Escape');
+  await expect(leiva).not.toBeVisible();
+  await expect(staff).toBeFocused();
+
+  const kind = page.getByRole('combobox', { name: 'Event type', exact: true });
+  await kind.focus();
+  await expect(kind).toBeFocused();
+  await kind.selectOption('k2');
+  intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
+  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('kind')).toBe('k2');
+
+  const dateButton = page.locator('.cal-date-wrap').getByRole('button');
+  await dateButton.focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+  const date = page.getByLabel('Pick a date', { exact: true });
+  await date.fill('2026-09-10');
+  intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
+  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('date')).toBe('2026-09-10');
+});
+
+test('Selected staff targets fit and keyboard traversal skips an invisible date input', async ({
+  page,
+}) => {
+  await openCalendar(page, 320, 740, '?staff=r5');
+  const remove = page.getByRole('button', {
+    name: 'Remove Nikolas Sebastian Pinon Sarria',
+    exact: true,
+  });
+  await expect(remove).toBeVisible();
+  const box = await remove.boundingBox();
+  if (!box) throw new Error('Missing staff removal target');
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(box.width).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  await remove.focus();
+  await page.keyboard.press('Enter');
+  const intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
+  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.has('staff')).toBe(false);
+
+  const dateButton = page.locator('.cal-date-wrap').getByRole('button');
+  await dateButton.focus();
+  await page.keyboard.press('Tab');
+  if (await page.evaluate(() => 'showPicker' in HTMLInputElement.prototype)) {
+    await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeFocused();
+  } else {
+    await expect(page.getByLabel('Pick a date', { exact: true })).toBeFocused();
+  }
+});
+
+test('Date picker absence keeps a visible usable fallback at 320px', async ({ page }) => {
+  await page.addInitScript(() => {
+    Reflect.deleteProperty(HTMLInputElement.prototype, 'showPicker');
+  });
+  await openCalendar(page, 320, 740);
+  expect(await page.evaluate(() => 'showPicker' in HTMLInputElement.prototype)).toBe(false);
+  const input = page.getByLabel('Pick a date', { exact: true });
+  await expect(input).toBeVisible();
+  expect(await input.evaluate((element) => getComputedStyle(element).opacity)).toBe('1');
+  expect((await input.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  await page.locator('.cal-date-wrap').getByRole('button').click();
+  await expect(input).toBeFocused();
+  await input.fill('2026-09-12');
+  const intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
+  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('date')).toBe('2026-09-12');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
 });
