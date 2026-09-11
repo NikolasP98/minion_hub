@@ -11,7 +11,7 @@ export default defineConfig({
     conditions: ['node', 'module', 'browser', 'development|production'],
   },
   test: {
-    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts', 'tests/dependencies/**/*.test.ts'],
     setupFiles: ['src/server/test-utils/setup.ts'],
     alias: {
       $lib: path.resolve('src/lib'),
