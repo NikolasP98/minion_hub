@@ -131,8 +131,8 @@ describe('requestIdentity', () => {
       }),
     });
     expect(id.trace_id).toBe('4bf92f3577b34da6a3ce929d0e0e4736');
-    expect(id.request_id).toBe('req_123');
-    expect(id.agent_run_id).toBe('run_abc');
+    expect(id.request_id).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(id.agent_run_id).toMatch(/^sha256:[a-f0-9]{64}$/);
   });
 
   it('rejects malformed, zeroed and oversized correlation hints', () => {
@@ -207,7 +207,7 @@ describe('sanitizeEventProperties', () => {
       db: 'SELECT card_number FROM customers WHERE id = 3',
       ok: 'plain-value',
     });
-    expect(out).toEqual({ ok: 'plain-value' });
+    expect(out).toEqual({});
   });
 
   it('drops non-scalars, oversized strings, bad keys and unbounded bags', () => {
@@ -221,7 +221,7 @@ describe('sanitizeEventProperties', () => {
       nan: Number.NaN,
       kept: 1,
     });
-    expect(out).toEqual({ kept: 1 });
+    expect(out).toEqual({});
 
     const many = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`k${i}`, i]));
     expect(Object.keys(sanitizeEventProperties(many)).length).toBeLessThanOrEqual(48);
@@ -321,5 +321,106 @@ describe('sanitizeErrorProperties', () => {
 
     expect(sanitizeErrorProperties({ error: null, identity: identity() }).error_type).toBe('null');
     expect(sanitizeErrorProperties({ error: undefined, identity: identity() }).status).toBe(0);
+  });
+});
+
+describe('untrusted correlation boundary', () => {
+  it('never emits arbitrary raw request/run hints, including credential-shaped values', () => {
+    for (const value of [
+      'ghp_privateCredential123',
+      'eyJhbGciOiJIUzI1NiJ9.aaa.bbb',
+      'sk-privateabcdefgh',
+      'req_123',
+    ]) {
+      const input = { headers: headers({ 'x-request-id': value, 'x-minion-run-id': value }) };
+      const id = requestIdentity(input);
+      expect(id.request_id).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(id.agent_run_id).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(id.agent_run_id).not.toBe(id.request_id);
+      expect(id.request_id).toBe(requestIdentity(input).request_id);
+      expect(JSON.stringify(id)).not.toContain(value);
+    }
+  });
+
+  it('rejects a traceparent whose parent span is zero', () => {
+    expect(
+      requestIdentity({
+        headers: headers({
+          traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01',
+        }),
+      }).trace_id,
+    ).toBe(UNKNOWN);
+  });
+});
+
+describe('event field profiles', () => {
+  it('rejects wrong metric types, negative counts and event-inappropriate fields', () => {
+    expect(
+      sanitizeEventProperties(
+        {
+          duration_ms: '1',
+          status: 999,
+          cache_hits: -1,
+          cache_status: 'private-sentinel',
+          sample_reason: 'other',
+          isolate_cold: 1,
+        },
+        'server_timing',
+      ),
+    ).toEqual({});
+    expect(
+      sanitizeEventProperties(
+        { duration_ms: 1, server_id: 'sha256:' + 'a'.repeat(64), error_digest: 'a'.repeat(16) },
+        'server_added',
+      ),
+    ).toEqual({ server_id: 'sha256:' + 'a'.repeat(64) });
+    expect(sanitizeEventProperties({ duration_ms: 1 }, 'unknown-event')).toEqual({});
+  });
+
+  it('does not enumerate arbitrary bags or read inherited/accessor values', () => {
+    let touched = 0;
+    const properties = Object.defineProperty(Object.create({ cache_hits: 9 }), 'duration_ms', {
+      get() {
+        touched++;
+        throw new Error('private-sentinel');
+      },
+    });
+    Object.defineProperty(properties, 'status', { value: 200 });
+    const proxy = new Proxy(properties, {
+      ownKeys() {
+        throw new Error('must not enumerate');
+      },
+    });
+    expect(sanitizeEventProperties(proxy, 'server_timing')).toEqual({ status: 200 });
+    expect(touched).toBe(0);
+  });
+
+  it('keeps the complete actual performance producer contract', async () => {
+    const { createServerTimingHandle } = await import('./server-timing');
+    let captured: Record<string, unknown> | undefined;
+    const handle = createServerTimingHandle({
+      sampleRate: 1,
+      nextOrdinal: () => 1,
+      now: () => 20,
+      wallClock: () => 30,
+      instanceStartedAt: 10,
+      capture: (event, properties) => {
+        captured = properties;
+        expect(sanitizeEventProperties(properties, event)).toEqual(properties);
+      },
+    });
+    const event = {
+      url: new URL('http://fixture.invalid/private-customer-sentinel'),
+      route: { id: '/(app)/crm/customers/[id]' },
+      locals: { orgId: 'org_1' },
+      request: new Request('http://fixture.invalid/'),
+    };
+    await handle({
+      event: event as unknown as Parameters<typeof handle>[0]['event'],
+      resolve: async () => new Response('ok', { status: 200 }),
+    });
+    expect(captured?.route).toBe('/(app)/crm/customers/[id]');
+    expect(captured).toHaveProperty('db_total_ms');
+    expect(JSON.stringify(captured)).not.toContain('private-customer-sentinel');
   });
 });

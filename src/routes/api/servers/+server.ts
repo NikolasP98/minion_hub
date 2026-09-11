@@ -4,7 +4,8 @@ import { upsertServer } from '$server/services/server.service';
 import { loadHostsForUser } from '$server/services/hosts.service';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { requireAuth } from '$server/auth/authorize';
-import { getPostHogClient } from '$lib/server/posthog';
+import { captureServerEvent } from '$lib/server/posthog';
+import { requestIdentity, distinctIdFor, correlationId } from '$lib/server/observability-context';
 import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 
 export const GET: RequestHandler = async ({ locals }) => {
@@ -21,10 +22,7 @@ export const GET: RequestHandler = async ({ locals }) => {
   }
 };
 
-export const POST: RequestHandler = async ({ locals, request }) => {
-  console.log('[POST /api/servers] ENTRY user=', locals.user?.email ?? 'NONE');
-  console.log('[POST /api/servers] env.SSRF_ALLOWED_HOSTNAME_SUFFIXES=', process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES);
-  console.log('[POST /api/servers] env.SSRF_ALLOW_TAILSCALE_CGNAT=', process.env.SSRF_ALLOW_TAILSCALE_CGNAT);
+export const POST: RequestHandler = async ({ locals, request, route }) => {
   // Per-user host ownership: only authenticated users can add hosts so
   // every new server gets a `user_servers` link. Anonymous adds would
   // leave the row orphaned (visible only to admins, invisible to the
@@ -33,30 +31,33 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const body = await request.json();
-    console.log('[POST /api/servers] body=', JSON.stringify(body));
     try {
       await assertSafeUrl(body.url, 'server URL');
-      console.log('[POST /api/servers] SSRF check PASSED for url=', body.url);
     } catch (err) {
-      console.log('[POST /api/servers] SSRF check FAILED:', err instanceof Error ? err.message : String(err));
       if (err instanceof SsrfBlockedError) {
         return json({ ok: false, error: err.message }, { status: 422 });
       }
       throw err;
     }
-    await upsertServer(ctx, body, user.id);
-    const posthog = await getPostHogClient();
-    posthog?.capture({
-      distinctId: user.id,
-      event: 'server_added',
-      properties: {
-        server_name: body.name,
-        server_url: body.url,
-      },
-    });
+    const serverId = await upsertServer(ctx, body, user.id);
+    try {
+      const identity = requestIdentity({
+        routeId: route.id,
+        method: request.method,
+        headers: request.headers,
+        locals,
+      });
+      captureServerEvent({
+        distinctId: distinctIdFor(identity),
+        event: 'server_added',
+        properties: { ...identity, server_id: correlationId('server', serverId) },
+      });
+    } catch {
+      // Telemetry metadata must not change the application outcome.
+    }
     return json({ ok: true });
   } catch (e) {
-    console.error('[POST /api/servers]', e);
+    console.error('[POST /api/servers] request failed');
     return json(
       { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
       { status: 500 },

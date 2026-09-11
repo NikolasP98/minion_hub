@@ -17,7 +17,8 @@ import { listBrainAgentIds } from '$server/services/brain-agents.service';
 import { dev } from '$app/environment';
 import { withCoreDbRecovery, withCriticalCoreDb } from '$server/db/pg-client';
 import { shareInflight } from '$server/utils/inflight-singleflight';
-import { getPostHogClient } from '$lib/server/posthog';
+import { captureServerEvent } from '$lib/server/posthog';
+import { requestIdentity, distinctIdFor } from '$lib/server/observability-context';
 
 const SLOW_LOAD_WARNING_MS = 3_000;
 
@@ -59,7 +60,15 @@ async function traceLayoutLoad<T>(name: string, promise: Promise<T>): Promise<T>
  * sessions that bypass the login/callback/invite client-side
  * `setActive()` flows (legacy users, session-table drift, manual SQL).
  */
-export const load: LayoutServerLoad = async ({ locals, depends, url, cookies, untrack }) => {
+export const load: LayoutServerLoad = async ({
+  locals,
+  depends,
+  url,
+  cookies,
+  untrack,
+  route,
+  request,
+}) => {
   // Navigation independence (perf spec 2026-08-22 §S3): every `url` read below
   // is wrapped in `untrack` so this load does NOT re-run on every navigation.
   // The route-policy guard that needed a tracked pathname moved to
@@ -187,18 +196,22 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies, un
 
   const loadMs = Date.now() - loadStartedAt;
   if (loadMs > SLOW_LOAD_WARNING_MS) {
-    console.warn(`[app-layout] load ${pathname} took ${loadMs}ms`);
-    // The console.warn dies in stdout on Vercel — ship the one prod slow-load
-    // signal somewhere queryable. Fire-and-forget, same as server_error.
-    void getPostHogClient()
-      .then((posthog) =>
-        posthog?.capture({
-          distinctId: 'server',
-          event: 'app_layout_slow_load',
-          properties: { path: pathname, duration_ms: loadMs },
-        }),
-      )
-      .catch(() => {});
+    try {
+      const identity = requestIdentity({
+        routeId: untrack(() => route.id),
+        method: request.method,
+        headers: request.headers,
+        locals,
+      });
+      console.warn(`[app-layout] load ${identity.route} took ${loadMs}ms`);
+      captureServerEvent({
+        distinctId: distinctIdFor(identity),
+        event: 'app_layout_slow_load',
+        properties: { ...identity, duration_ms: loadMs },
+      });
+    } catch {
+      // Telemetry metadata must not change the application outcome.
+    }
   }
 
   return {

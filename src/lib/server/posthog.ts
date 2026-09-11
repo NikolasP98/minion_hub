@@ -1,52 +1,66 @@
 import { building } from '$app/environment';
 import { env } from '$env/dynamic/public';
-import { sanitizeEventProperties } from './observability-context';
+import type { PostHog } from 'posthog-node';
+import { isServerEvent, sanitizeEventProperties } from './observability-context';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let posthogClient: any = null;
+let clientPromise: Promise<PostHog> | null = null;
 
-export async function getPostHogClient() {
-  if (building || !env.PUBLIC_POSTHOG_KEY) return null;
-  if (!posthogClient) {
-    const { PostHog } = await import('posthog-node');
-    posthogClient = new PostHog(env.PUBLIC_POSTHOG_KEY, {
-      host: env.PUBLIC_POSTHOG_HOST,
-      // M8: flushAt:1/flushInterval:0 made every capture a synchronous HTTP
-      // round-trip — during an error storm that fans out one request per error.
-      // Batch instead: send when 20 events queue OR every 10s, whichever first.
-      // The posthog-node client flushes its queue on shutdown, so batching does
-      // not drop events on a clean exit.
-      flushAt: 20,
-      flushInterval: 10_000,
-      requestTimeout: 3000,
-      fetchRetryCount: 0,
-      fetchRetryDelay: 0,
-    });
-    posthogClient.on('error', () => {});
+// Private: every server producer must use the bounded capture boundary below.
+function getPostHogClient(): Promise<PostHog | null> {
+  if (building || !env.PUBLIC_POSTHOG_KEY) return Promise.resolve(null);
+  if (!clientPromise) {
+    clientPromise = import('posthog-node')
+      .then(({ PostHog }) => {
+        const client = new PostHog(env.PUBLIC_POSTHOG_KEY!, {
+          host: env.PUBLIC_POSTHOG_HOST,
+          flushAt: 20,
+          flushInterval: 10_000,
+          requestTimeout: 3000,
+          fetchRetryCount: 0,
+          fetchRetryDelay: 0,
+        });
+        client.on('error', () => {});
+        return client;
+      })
+      .catch((error: unknown) => {
+        clientPromise = null;
+        throw error;
+      });
   }
-  return posthogClient;
+  return clientPromise;
 }
 
-/**
- * OBS-01: the only server-side capture path. Every property bag goes through
- * `sanitizeEventProperties` here, so a caller cannot ship an unsanitized
- * payload by forgetting to call the sanitizer. Fire-and-forget by contract —
- * never awaited on a request or error path (M8: an error storm must not fan
- * out into synchronous HTTP round-trips), and never throwing, so telemetry
- * cannot mask the original failure.
- */
+/** Fixed server events only. Telemetry never throws into, or waits on, business
+ * operations. Error-path flushes are observed without changing SDK batching. */
 export function captureServerEvent(params: {
   event: string;
   distinctId: string;
   properties?: Record<string, unknown>;
-  /** Nudge the batched queue out without blocking — used on the error path. */
   flush?: boolean;
 }): void {
-  const properties = sanitizeEventProperties(params.properties);
-  void getPostHogClient()
-    .then((posthog) => {
-      posthog?.capture({ distinctId: params.distinctId, event: params.event, properties });
-      if (params.flush) void posthog?.flush?.();
-    })
-    .catch(() => {});
+  try {
+    const descriptor = (key: keyof typeof params) => Object.getOwnPropertyDescriptor(params, key);
+    const event: unknown = descriptor('event')?.value;
+    const distinctId: unknown = descriptor('distinctId')?.value;
+    if (
+      !isServerEvent(event) ||
+      typeof distinctId !== 'string' ||
+      !/^(?:server|(?:org|user):[A-Za-z0-9_.:-]{1,128})$/.test(distinctId)
+    )
+      return;
+    const properties = sanitizeEventProperties(descriptor('properties')?.value, event);
+    const flush = descriptor('flush')?.value === true;
+    void getPostHogClient()
+      .then(async (client) => {
+        if (!client) return;
+        client.capture({ distinctId, event, properties });
+        // TODO(handoff): qualify error-storm flush fan-out and serverless delivery;
+        // promise containment alone does not prove either. See meta-repo
+        // proposals/2026-09-11-hub-telemetry-boundary-followups.md.
+        if (flush) await client.flush();
+      })
+      .catch(() => {});
+  } catch {
+    // Includes hostile top-level proxies and SDK/configuration access failures.
+  }
 }

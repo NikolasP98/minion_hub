@@ -11,7 +11,7 @@
  *   concrete pathname: `/crm/customers/[id]` is safe, the resolved path is a
  *   customer identifier.
  * - Client-supplied correlation headers (traceparent, x-request-id) are
- *   accepted as correlation hints ONLY, after charset/length validation. They
+ *   hashed as correlation hints ONLY, after charset/length validation. They
  *   are never authority: org and actor come from server-resolved locals.
  * - Unknown attribution stays explicit (`'unknown'`). A release is never
  *   invented from NODE_ENV or a package version.
@@ -31,7 +31,7 @@ const ROUTE_ID_RE = /^[A-Za-z0-9_/[\]().=+-]{1,256}$/;
 const COMMIT_SHA_RE = /^[0-9a-f]{7,40}$/;
 const TRACE_ID_RE = /^[0-9a-f]{32}$/;
 const ZERO_TRACE_ID = '0'.repeat(32);
-const TRACEPARENT_RE = /^00-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/;
+const TRACEPARENT_RE = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/;
 const HTTP_METHODS = new Set([
   'GET',
   'HEAD',
@@ -45,18 +45,20 @@ const HTTP_METHODS = new Set([
 ]);
 const ENVIRONMENTS = new Set(['production', 'preview', 'development', 'test']);
 
-/** Property keys whose VALUE is never safe to ship, whatever it holds. */
-const SENSITIVE_KEY_RE =
-  /(token|secret|password|passwd|cookie|auth|apikey|api_key|credential|session|email|phone|sql|query|statement|body|payload|dsn|bearer|message|stack|raw|name)/i;
 /** Values that look like a credential, an address or a statement, whatever key carries them. */
 const SENSITIVE_VALUE_RE =
   /(eyJ[\w-]{6,}|bearer\s+\S+|sk-[A-Za-z0-9_-]{8,}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\b(?:select|insert|update|delete|drop|alter)\b[\s\S]*\b(?:from|into|table|set|where)\b)/i;
 
-/** Snake_case identifiers only — anything else is a caller mistake, so drop it. */
-const PROPERTY_KEY_RE = /^[a-z][a-z0-9_]*$/;
-const MAX_STRING_LENGTH = 256;
-const MAX_PROPERTIES = 48;
 const MAX_CAUSE_DEPTH = 4;
+
+/** Stable correlation pseudonym, not authentication or protection against guessing. */
+export function correlationId(
+  domain: 'request' | 'agent-run' | 'server' | 'agent',
+  value: unknown,
+): string | null {
+  if (typeof value !== 'string' || !OPAQUE_ID_RE.test(value)) return null;
+  return `sha256:${createHash('sha256').update(`minion.telemetry.${domain}\0`).update(value).digest('hex')}`;
+}
 
 function opaque(value: unknown): string | null {
   return typeof value === 'string' && OPAQUE_ID_RE.test(value) ? value : null;
@@ -116,8 +118,8 @@ function header(input: RequestIdentityInput, name: string): string | null {
 }
 
 /**
- * Build the identity envelope for one request. Pure, total, never throws —
- * it runs on the error path, where a second failure would mask the first.
+ * Build the envelope from SvelteKit-owned route/locals and bounded header hints.
+ * Header getter failures are contained; route and locals are trusted server inputs.
  */
 export function requestIdentity(input: RequestIdentityInput): ObservabilityIdentity {
   const routeId = input.routeId;
@@ -126,7 +128,9 @@ export function requestIdentity(input: RequestIdentityInput): ObservabilityIdent
   const traceMatch = TRACEPARENT_RE.exec(traceparent.trim());
   const traceId = traceMatch?.[1];
   const requestId =
-    opaque(header(input, 'x-vercel-id')) ?? opaque(header(input, 'x-request-id')) ?? UNKNOWN;
+    correlationId('request', header(input, 'x-vercel-id')) ??
+    correlationId('request', header(input, 'x-request-id')) ??
+    UNKNOWN;
 
   return {
     ...releaseContext(),
@@ -136,9 +140,15 @@ export function requestIdentity(input: RequestIdentityInput): ObservabilityIdent
     org_id: opaque(input.locals?.orgId) ?? opaque(input.locals?.tenantCtx?.tenantId),
     actor_id: opaque(input.locals?.user?.id),
     request_id: requestId,
-    trace_id: traceId && traceId !== ZERO_TRACE_ID && TRACE_ID_RE.test(traceId) ? traceId : UNKNOWN,
+    trace_id:
+      traceId &&
+      traceId !== ZERO_TRACE_ID &&
+      traceMatch?.[2] !== '0'.repeat(16) &&
+      TRACE_ID_RE.test(traceId)
+        ? traceId
+        : UNKNOWN,
     // Correlation hint stamped by an agent producer; see 16-PRODUCER-MATRIX.md.
-    agent_run_id: opaque(header(input, 'x-minion-run-id')),
+    agent_run_id: correlationId('agent-run', header(input, 'x-minion-run-id')),
   };
 }
 
@@ -149,33 +159,168 @@ export function distinctIdFor(identity: ObservabilityIdentity): string {
   return 'server';
 }
 
-/**
- * Filter an open-shaped property bag down to safe scalars. Used for metric
- * events whose keys are produced by hub code but whose values may embed
- * request-derived data. Anything not provably safe is dropped, not truncated.
- */
+type Scalar = string | number | boolean | null;
+type Rule = (value: unknown) => value is Scalar;
+const token: Rule = (v): v is string =>
+  typeof v === 'string' && OPAQUE_ID_RE.test(v) && !SENSITIVE_VALUE_RE.test(v);
+const nullable =
+  (rule: Rule): Rule =>
+  (v): v is Scalar =>
+    v === null || rule(v);
+const oneOf =
+  (...values: string[]): Rule =>
+  (v): v is string =>
+    typeof v === 'string' && values.includes(v);
+const count: Rule = (v): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+const duration: Rule = (v): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= Number.MAX_SAFE_INTEGER;
+const hash: Rule = (v): v is string => typeof v === 'string' && /^sha256:[a-f0-9]{64}$/.test(v);
+const unknownOr =
+  (rule: Rule): Rule =>
+  (v): v is Scalar =>
+    v === UNKNOWN || rule(v);
+const errorType: Rule = (v): v is string =>
+  typeof v === 'string' &&
+  /^(?:[A-Za-z][A-Za-z0-9]{0,58}Error|Error|null|undefined|string|object|number|boolean|symbol|bigint|function|unknown)$/.test(
+    v,
+  );
+const fields: Record<string, Rule> = {
+  environment: oneOf(...ENVIRONMENTS, UNKNOWN),
+  release: unknownOr((v): v is string => typeof v === 'string' && COMMIT_SHA_RE.test(v)),
+  commit_sha: nullable((v): v is string => typeof v === 'string' && COMMIT_SHA_RE.test(v)),
+  deployment_id: nullable(
+    unknownOr((v): v is string => typeof v === 'string' && /^dpl_[A-Za-z0-9_-]{1,124}$/.test(v)),
+  ),
+  region: nullable(
+    unknownOr(
+      (v): v is string =>
+        typeof v === 'string' && /^[a-z]{2,12}[0-9](?:-[a-z0-9-]{1,20})?$/.test(v),
+    ),
+  ),
+  // Trust boundary: callers must supply SvelteKit event.route.id. A character
+  // check cannot distinguish a static route from a resolved customer path.
+  route: (v): v is string =>
+    typeof v === 'string' &&
+    (v === '[unmatched]' || ROUTE_ID_RE.test(v)) &&
+    !SENSITIVE_VALUE_RE.test(v),
+  method: oneOf(...HTTP_METHODS, UNKNOWN),
+  org_id: nullable(token),
+  actor_id: nullable(token),
+  request_id: unknownOr(hash),
+  agent_run_id: nullable(hash),
+  trace_id: unknownOr(
+    (v): v is string => typeof v === 'string' && TRACE_ID_RE.test(v) && v !== ZERO_TRACE_ID,
+  ),
+  server_id: nullable(hash),
+  agent_id: nullable(hash),
+  status: (v): v is number =>
+    typeof v === 'number' && Number.isInteger(v) && (v === 0 || (v >= 100 && v <= 599)),
+  duration_ms: duration,
+  request_ordinal: count,
+  instance_age_ms: duration,
+  sample_reason: oneOf('isolate+cache-miss', 'isolate-cold', 'cache-miss', 'slow', 'sampled-warm'),
+  isolate_cold: (v): v is boolean => typeof v === 'boolean',
+  cache_status: oneOf('none', 'hit', 'stale', 'miss', 'error'),
+  cache_hits: count,
+  cache_stale_hits: count,
+  cache_misses: count,
+  cache_errors: count,
+  cache_lookup_ms: duration,
+  db_transactions: count,
+  db_acquire_ms: duration,
+  db_setup_ms: duration,
+  db_query_ms: duration,
+  db_total_ms: duration,
+  // Producer validates against the existing PHASES catalog; bound the wire type too.
+  start_from: nullable((v): v is string => typeof v === 'string' && /^[0-9]{2}$/.test(v)),
+  error_type: errorType,
+  error_code: nullable(
+    (v): v is string =>
+      typeof v === 'string' &&
+      /^(?:[A-Z0-9]{5}|E[A-Z][A-Z0-9_]{0,62}|ERR_[A-Z0-9_]{1,60})$/.test(v),
+  ),
+  error_digest: (v): v is string => typeof v === 'string' && /^[a-f0-9]{16}$/.test(v),
+  error_length: count,
+  error_cause_chain: (v): v is string =>
+    typeof v === 'string' &&
+    (v === '' || (v.split('>').length <= MAX_CAUSE_DEPTH && v.split('>').every(errorType))),
+};
+const identityFields = [
+  'environment',
+  'release',
+  'deployment_id',
+  'region',
+  'route',
+  'method',
+  'org_id',
+  'actor_id',
+  'request_id',
+  'trace_id',
+  'agent_run_id',
+];
+const eventFields: Record<string, readonly string[]> = {
+  server_error: [
+    ...identityFields,
+    'status',
+    'error_type',
+    'error_code',
+    'error_digest',
+    'error_length',
+    'error_cause_chain',
+  ],
+  server_timing: [
+    ...identityFields,
+    'commit_sha',
+    'status',
+    'duration_ms',
+    'sample_reason',
+    'isolate_cold',
+    'request_ordinal',
+    'instance_age_ms',
+    'cache_status',
+    'cache_hits',
+    'cache_stale_hits',
+    'cache_misses',
+    'cache_errors',
+    'cache_lookup_ms',
+    'db_transactions',
+    'db_acquire_ms',
+    'db_setup_ms',
+    'db_query_ms',
+    'db_total_ms',
+  ],
+  app_layout_slow_load: [...identityFields, 'duration_ms'],
+  server_added: [...identityFields, 'server_id'],
+  provision_run_started: [...identityFields, 'server_id', 'start_from'],
+  agent_installed_from_marketplace: [...identityFields, 'server_id', 'agent_id'],
+};
+
+export function isServerEvent(event: unknown): event is string {
+  return typeof event === 'string' && Object.hasOwn(eventFields, event);
+}
+
+/** Fixed key iteration bounds work and never evaluates accessor values. Unknown
+ * events/fields are denied; the optional event selects a narrower producer profile. */
 export function sanitizeEventProperties(
   properties: Record<string, unknown> | null | undefined,
+  event?: string,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  if (!properties || typeof properties !== 'object') return out;
-  for (const [key, value] of Object.entries(properties)) {
-    if (Object.keys(out).length >= MAX_PROPERTIES) break;
-    if (!PROPERTY_KEY_RE.test(key) || SENSITIVE_KEY_RE.test(key)) continue;
-    if (value === null || typeof value === 'boolean') {
-      out[key] = value;
-      continue;
+  if (
+    !properties ||
+    typeof properties !== 'object' ||
+    (event !== undefined && !isServerEvent(event))
+  )
+    return out;
+  for (const key of event === undefined ? Object.keys(fields) : eventFields[event]) {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(properties, key);
+      if (!descriptor || !Object.hasOwn(descriptor, 'value')) continue;
+      const value: unknown = descriptor.value;
+      if (fields[key](value)) out[key] = value;
+    } catch {
+      // A hostile proxy cannot make telemetry fail a request.
     }
-    if (typeof value === 'number') {
-      if (Number.isFinite(value)) out[key] = value;
-      continue;
-    }
-    if (typeof value === 'string') {
-      if (value.length > MAX_STRING_LENGTH || SENSITIVE_VALUE_RE.test(value)) continue;
-      out[key] = value;
-      continue;
-    }
-    // Objects, arrays, functions, symbols, bigints and undefined: dropped.
   }
   return out;
 }
@@ -232,7 +377,7 @@ export function sanitizeErrorProperties({
     status: typeof status === 'number' && Number.isFinite(status) ? status : 0,
     error_type: typeToken(error),
     error_code: code,
-    // sha-256/16 of the message: correlatable, not reversible to content.
+    // Correlation fingerprint only: low-entropy messages remain guessable.
     error_digest: createHash('sha256').update(message, 'utf8').digest('hex').slice(0, 16),
     error_length: message.length,
     error_cause_chain: causeChain.join('>'),
