@@ -25,12 +25,12 @@
 
   const { active, muted, status, disabled = false, onstart, onend, ontoggleMute }: Props = $props();
 
-  const STATUS_LABEL: Record<AgentVoiceState, string> = {
+  const STATUS_LABEL = $derived<Record<AgentVoiceState, string>>({
     idle: m.call_muted(),
     listening: m.call_listening(),
     thinking: m.call_thinking(),
     speaking: m.call_speaking(),
-  };
+  });
 
   // Speech-recognition + synthesis language — the shared transcription pref
   // (same one the note editor uses), surfaced as the standard ui Dropdown.
@@ -51,9 +51,10 @@
 <div class="call-cluster">
   <Dropdown items={langItems} onSelect={(v) => setNoteLang(v as NoteLang)} placement="top">
     {#snippet trigger()}
-      <span class="lang-pill" title={m.settings_language()} aria-label={m.settings_language()}>
-        <Globe size={14} />
-        <span class="lang-code">{langBadge}</span>
+      <span class="lang-pill">
+        <span class="sr-only">{m.settings_language()}: {LANG_LABEL[txPrefs.lang]()}</span>
+        <Globe size={14} aria-hidden="true" />
+        <span class="lang-code" aria-hidden="true">{langBadge}</span>
       </span>
     {/snippet}
     {#snippet item({ item })}
@@ -86,11 +87,18 @@
         class="icon-btn {muted ? 'muted' : ''}"
         onclick={ontoggleMute}
         title={muted ? m.call_unmute() : m.call_mute()}
+        aria-label={muted ? m.call_unmute() : m.call_mute()}
         aria-pressed={muted}
       >
         {#if muted}<MicOff size={14} />{:else}<Mic size={14} />{/if}
       </Button>
-      <Button type="button" class="icon-btn end" onclick={onend} title={m.call_endCall()}>
+      <Button
+        type="button"
+        class="icon-btn end"
+        onclick={onend}
+        title={m.call_endCall()}
+        aria-label={m.call_endCall()}
+      >
         <PhoneOff size={14} />
       </Button>
     </div>
@@ -100,6 +108,8 @@
 <style>
   .call-cluster {
     display: inline-flex;
+    flex-wrap: wrap;
+    max-width: 100%;
     align-items: center;
     gap: var(--space-2);
   }
@@ -133,7 +143,7 @@
     letter-spacing: 0.04em;
   }
 
-  :global(.call-btn) {
+  .call-cluster :global(.call-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -152,21 +162,23 @@
       background var(--duration-fast) ease,
       border-color var(--duration-fast) ease;
   }
-  :global(.call-btn):hover:not(:disabled) {
+  .call-cluster :global(.call-btn):hover:not(:disabled) {
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
     border-color: color-mix(in srgb, var(--color-accent) 70%, transparent);
   }
-  :global(.call-btn):disabled {
+  .call-cluster :global(.call-btn):disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }
-  :global(.call-btn):focus-visible {
+  .call-cluster :global(.call-btn):focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 
   .call-live {
     display: inline-flex;
+    flex-wrap: wrap;
+    max-width: 100%;
     align-items: center;
     gap: var(--space-2);
   }
@@ -193,7 +205,7 @@
     animation: pulse 1.4s infinite;
   }
 
-  :global(.icon-btn) {
+  .call-cluster :global(.icon-btn) {
     width: 30px;
     height: 30px;
     display: inline-flex;
@@ -206,21 +218,46 @@
     color: var(--color-foreground);
     transition: background var(--duration-fast) ease;
   }
-  :global(.icon-btn):hover {
+  .call-cluster :global(.icon-btn):hover {
     background: color-mix(in srgb, var(--color-foreground) 10%, transparent);
   }
-  :global(.icon-btn.muted) {
+  .call-cluster :global(.icon-btn.muted) {
     color: var(--color-accent);
     border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
-  :global(.icon-btn.end) {
+  .call-cluster :global(.icon-btn.end) {
     color: var(--color-brand);
     border-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
     background: color-mix(in srgb, var(--color-brand) 10%, transparent);
   }
-  :global(.icon-btn.end):hover {
+  .call-cluster :global(.icon-btn.end):hover {
     background: color-mix(in srgb, var(--color-brand) 20%, transparent);
+  }
+
+  @media (max-width: 768px), (pointer: coarse) {
+    .call-cluster :global(button) {
+      min-width: var(--control-height-touch);
+      min-height: var(--control-height-touch);
+      flex-shrink: 0;
+    }
+    .lang-pill {
+      min-width: var(--control-height-touch);
+      min-height: var(--control-height-touch);
+    }
+    .call-cluster :global(.icon-btn) {
+      padding: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pulse.on {
+      animation: none;
+    }
+    .lang-pill,
+    .call-cluster :global(button) {
+      transition: none;
+    }
   }
 
   @keyframes pulse {

@@ -17,10 +17,19 @@ export type CalKind = {
   position: number;
 };
 
-/** One calendar entry = one booking, denormalised for display. ISO strings, never Dates. */
+/**
+ * One calendar entry = one booking, denormalised for display. ISO strings, never Dates.
+ *
+ * `start`/`end` identify absolute instants (ISO 8601, Z or numeric offset).
+ * The loader emits resource-zone offsets; local moves emit UTC offsets.
+ * Only SchedulingCalendar's rendering boundary projects viewer-local wall
+ * fields. Never store the renderer's floating strings as booking instants.
+ */
 export type CalEvent = {
   id: string;
+  /** Absolute ISO 8601 instant, including any fractional milliseconds. */
   start: string;
+  /** Absolute ISO 8601 instant, including any fractional milliseconds. */
   end: string;
   status: string;
   resourceId: string;

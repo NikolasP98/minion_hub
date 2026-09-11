@@ -131,6 +131,7 @@
         type="date"
         class="cal-date-input"
         class:visible={!pickerSupported}
+        tabindex={pickerSupported ? -1 : 0}
         value={day}
         onchange={onDateChange}
         aria-label={m.sched_cal_pick_date()}
@@ -147,6 +148,7 @@
   </div>
   <div class="cal-filters">
     <MultiSelectFilter
+      class="cal-staff-filter"
       label={m.sched_cal_staff()}
       options={staffOptions}
       selected={staffSet}
@@ -160,6 +162,7 @@
       allLabel={m.sched_cal_all_staff()}
     />
     <Select
+      aria-label={m.sched_kind_label()}
       size="sm"
       value={kindId ?? ''}
       options={kindOptions}
@@ -214,5 +217,40 @@
     pointer-events: auto;
     width: auto;
     height: auto;
+  }
+  @media (max-width: 767.98px), (pointer: coarse) {
+    .cal-toolbar :global(button),
+    .cal-toolbar :global(select),
+    .cal-date-input.visible {
+      min-width: var(--control-height-touch);
+      min-height: var(--control-height-touch);
+    }
+    .cal-nav {
+      display: grid;
+      grid-template-columns:
+        var(--control-height-touch) minmax(0, 1fr) var(--control-height-touch)
+        max-content;
+      width: 100%;
+      min-width: 0;
+    }
+    .cal-date-wrap {
+      min-width: 0;
+    }
+    .cal-date-wrap :global(button) {
+      width: 100%;
+      height: auto;
+      white-space: normal;
+    }
+    .cal-date-wrap :global(button > span) {
+      min-width: 0;
+    }
+    .cal-date-wrap :global(.t-title) {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .cal-toolbar :global(.cal-staff-filter > span),
+    .cal-toolbar :global(.cal-staff-filter [aria-haspopup='listbox']) {
+      min-height: var(--control-height-touch);
+    }
   }
 </style>

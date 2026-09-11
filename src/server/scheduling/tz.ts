@@ -114,3 +114,28 @@ export function zonedDateKey(instant: Date, timeZone: string): string {
   const dd = String(p.day).padStart(2, '0');
   return `${p.year}-${mm}-${dd}`;
 }
+
+/**
+ * ISO 8601 with an explicit `±HH:MM` offset — the wall clock of `instant` in
+ * `timeZone`, followed by that zone's offset AT that instant (so DST is handled
+ * per event, not per payload).
+ *
+ * This is a lossless wire value, not the renderer's wall-time projection. The
+ * client projects it to the viewer's local calendar independently of the
+ * resource timezone and the browser's current DST offset.
+ */
+export function toOffsetIsoString(instant: Date, timeZone: string): string {
+  const p = utcToZonedParts(instant, timeZone);
+  const offset = tzOffsetMinutes(instant, timeZone);
+  const sign = offset < 0 ? '-' : '+';
+  const abs = Math.abs(offset);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fraction = instant.getMilliseconds()
+    ? `.${String(instant.getMilliseconds()).padStart(3, '0')}`
+    : '';
+  return (
+    `${p.year}-${pad(p.month)}-${pad(p.day)}` +
+    `T${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}${fraction}` +
+    `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+  );
+}

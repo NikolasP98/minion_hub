@@ -11,6 +11,7 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { schedBookings, schedResources, schedEventTypes } from '$server/db/pg-scheduling-schema';
 import { finProducts } from '$server/db/pg-finance-schema';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
+import { toOffsetIsoString } from './tz';
 import type { CalEvent } from '$lib/components/scheduling/calendar/types';
 
 const DAY_MS = 86_400_000;
@@ -57,6 +58,7 @@ export async function loadCalendarEvents(
         bookingKindId: schedBookings.kindId,
         resourceId: schedResources.id,
         resourceName: schedResources.name,
+        resourceTimezone: schedResources.timezone,
         resourceColor: schedResources.color,
         eventTypeId: schedEventTypes.id,
         eventTypeTitle: schedEventTypes.title,
@@ -71,6 +73,8 @@ export async function loadCalendarEvents(
         and(
           eq(schedBookings.orgId, ctx.tenantId),
           inArray(schedBookings.status, [...CALENDAR_STATUSES]),
+          // TODO(handoff): decide overlap-window inclusion for bookings starting before from;
+          // see proposals/2026-09-10-hub-calendar-utc-offset-dropped.md.
           gte(schedBookings.startTime, opts.from),
           lt(schedBookings.startTime, opts.to),
         ),
@@ -90,8 +94,9 @@ export async function loadCalendarEvents(
 
   return rows.map((r) => ({
     id: r.id,
-    start: r.start.toISOString(),
-    end: r.end.toISOString(),
+    // Wall clock + explicit offset, never `Z` — see toOffsetIsoString.
+    start: toOffsetIsoString(r.start, r.resourceTimezone),
+    end: toOffsetIsoString(r.end, r.resourceTimezone),
     status: r.status,
     resourceId: r.resourceId,
     resourceName: r.resourceName,

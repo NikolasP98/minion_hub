@@ -12,6 +12,7 @@ import {
   resolveGatewayId,
   updateGatewayForOrgByServerId,
 } from '$server/services/gateway.pg.service';
+import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 
 type AccessResult = { ok: true; gatewayId: string | null } | { ok: false; status: 404 | 503 };
 
@@ -107,6 +108,17 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
     const access = await assertOwnsOrAdmin(ctx, user, orgId, id);
     if (!access.ok) return accessDeniedResponse(access);
     const body = await request.json();
+    if (body.url !== undefined) {
+      try {
+        if (typeof body.url !== 'string') throw new SsrfBlockedError('Invalid server URL');
+        await assertSafeUrl(body.url, 'server URL');
+      } catch (err) {
+        if (err instanceof SsrfBlockedError) {
+          return json({ ok: false, error: 'Server URL is not allowed.' }, { status: 422 });
+        }
+        throw err;
+      }
+    }
     const updatedId = access.gatewayId
       ? orgId
         ? await updateGatewayForOrgByServerId(id, orgId, body)
@@ -116,12 +128,10 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
       return json({ ok: false, error: 'Not found' }, { status: 404 });
     }
     return json({ ok: true });
-  } catch (e) {
-    console.error(`[PUT /api/servers/${params.id}]`, e);
-    return json(
-      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
-      { status: 500 },
-    );
+  } catch {
+    // A failed token update may include bound credentials in the DB error.
+    console.error('[PUT /api/servers/:id] Unable to update server.');
+    return json({ ok: false, error: 'Unable to update server.' }, { status: 500 });
   }
 };
 
@@ -141,11 +151,8 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
       await deleteServer(ctx, id);
     }
     return json({ ok: true });
-  } catch (e) {
-    console.error(`[DELETE /api/servers/${params.id}]`, e);
-    return json(
-      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
-      { status: 500 },
-    );
+  } catch {
+    console.error('[DELETE /api/servers/:id] Unable to delete server.');
+    return json({ ok: false, error: 'Unable to delete server.' }, { status: 500 });
   }
 };
