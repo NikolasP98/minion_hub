@@ -4,7 +4,8 @@ import { upsertServer } from '$server/services/server.service';
 import { loadHostsForUser } from '$server/services/hosts.service';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { requireAuth } from '$server/auth/authorize';
-import { getPostHogClient } from '$lib/server/posthog';
+import { captureServerEvent } from '$lib/server/posthog';
+import { requestIdentity, distinctIdFor, correlationId } from '$lib/server/observability-context';
 import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 
 export const GET: RequestHandler = async ({ locals }) => {
@@ -21,7 +22,7 @@ export const GET: RequestHandler = async ({ locals }) => {
   }
 };
 
-export const POST: RequestHandler = async ({ locals, request }) => {
+export const POST: RequestHandler = async ({ locals, request, route }) => {
   // Per-user host ownership: only authenticated users can add hosts so
   // every new server gets a `user_servers` link. Anonymous adds would
   // leave the row orphaned (visible only to admins, invisible to the
@@ -38,17 +39,28 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       }
       throw err;
     }
-    await upsertServer(ctx, body, user.id);
-    const posthog = await getPostHogClient();
-    posthog?.capture({
-      distinctId: user.id,
-      event: 'server_added',
-    });
+    const serverId = await upsertServer(ctx, body, user.id);
+    try {
+      const identity = requestIdentity({
+        routeId: route.id,
+        method: request.method,
+        headers: request.headers,
+        locals,
+      });
+      captureServerEvent({
+        distinctId: distinctIdFor(identity),
+        event: 'server_added',
+        properties: { ...identity, server_id: correlationId('server', serverId) },
+      });
+    } catch {
+      // Telemetry metadata must not change the application outcome.
+    }
     return json({ ok: true });
-  } catch {
-    // Database/URL error messages can contain request values or bound tokens.
-    // Keep diagnostics independent of the request and the exception payload.
-    console.error('[POST /api/servers] Unable to save server.');
-    return json({ ok: false, error: 'Unable to save server.' }, { status: 500 });
+  } catch (e) {
+    console.error('[POST /api/servers] request failed');
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };

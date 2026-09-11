@@ -6,9 +6,10 @@ import { getAgentWithFiles, recordInstall } from '$server/services/marketplace.s
 import { upsertAgents } from '$server/services/agent.service';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { getPostHogClient } from '$lib/server/posthog';
+import { captureServerEvent } from '$lib/server/posthog';
+import { requestIdentity, distinctIdFor, correlationId } from '$lib/server/observability-context';
 
-export const POST: RequestHandler = async ({ locals, request }) => {
+export const POST: RequestHandler = async ({ locals, request, route }) => {
   const tenantCtx = await getTenantCtx(locals);
   if (!tenantCtx) throw error(401, 'No tenant configured');
   // The marketplace catalog + installs live on the relational-core (Supabase) DB.
@@ -62,18 +63,25 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
   // Record the install in the hub DB
   await recordInstall(coreCtx, agentId, serverId);
-  const posthog = await getPostHogClient();
-  posthog?.capture({
-    distinctId: locals.user?.id ?? 'anonymous',
-    event: 'agent_installed_from_marketplace',
-    properties: {
-      agent_id: agentId,
-      agent_name: agent.name,
-      agent_category: agent.category,
-      agent_version: agent.version,
-      server_id: serverId,
-    },
-  });
+  try {
+    const identity = requestIdentity({
+      routeId: route.id,
+      method: request.method,
+      headers: request.headers,
+      locals,
+    });
+    captureServerEvent({
+      distinctId: distinctIdFor(identity),
+      event: 'agent_installed_from_marketplace',
+      properties: {
+        ...identity,
+        agent_id: correlationId('agent', agentId),
+        server_id: correlationId('server', serverId),
+      },
+    });
+  } catch {
+    // Telemetry metadata must not change the application outcome.
+  }
 
   // Build agent.json content from DB fields for gateway delivery
   const agentJson = JSON.stringify(
