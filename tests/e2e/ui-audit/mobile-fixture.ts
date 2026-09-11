@@ -1,3 +1,4 @@
+import { test as base, expect } from '@playwright/test';
 /**
  * Shared entry point for the two mobile-composition specs.
  *
@@ -31,4 +32,48 @@ export const MOBILE_WIDTHS = [
 export const DESKTOP_CONTROL = { id: 'wide-1440', width: 1440, height: 900 } as const;
 
 /** Contract floor for a pointer target on a compact viewport. */
-export const MIN_TARGET_PX = 40;
+export const MIN_TARGET_PX = 44;
+
+/** Only the test-owned literal loopback server may receive requests. */
+export const test = base.extend<{ fixtureNetwork: void }>({
+  fixtureNetwork: [
+    async ({ context }, use) => {
+      const url = new URL(MOBILE_FIXTURE_URL);
+      if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port) {
+        throw new Error('Mobile fixture requires an owned literal loopback URL');
+      }
+      const denied: string[] = [];
+      await context.route('**/*', async (route) => {
+        if (new URL(route.request().url()).origin === url.origin) await route.continue();
+        else {
+          denied.push('external request');
+          await route.abort();
+        }
+      });
+      await context.routeWebSocket('**/*', (socket) => {
+        denied.push('websocket');
+        socket.close();
+      });
+      await context.addInitScript(() => {
+        const attempts: string[] = [];
+        Object.defineProperty(window, '__fixtureDeniedMedia', { value: attempts });
+        if (navigator.mediaDevices) {
+          navigator.mediaDevices.getUserMedia = async () => {
+            attempts.push('microphone');
+            throw new Error('Fixture microphone denied');
+          };
+        }
+      });
+      await use();
+      expect(denied, 'No external or websocket traffic').toEqual([]);
+      for (const page of context.pages()) {
+        if (!page.isClosed())
+          expect(
+            await page.evaluate(() => Reflect.get(window, '__fixtureDeniedMedia') ?? []),
+            'No microphone request',
+          ).toEqual([]);
+      }
+    },
+    { auto: true },
+  ],
+});

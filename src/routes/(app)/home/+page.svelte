@@ -1435,8 +1435,21 @@
     min-width: 0;
   }
   .composer-call {
+    max-width: 100%;
     flex-shrink: 0;
     display: flex;
+  }
+
+  @container agentcol (max-width: 460px) {
+    .composer {
+      flex-wrap: wrap;
+    }
+    .composer-input {
+      flex-basis: 100%;
+    }
+    .composer-call {
+      margin-inline-start: auto;
+    }
   }
 
   .mini-avatar {
@@ -1753,7 +1766,8 @@
      `--active-control-min-height` contract, which these two controls (a popover
      trigger and an icon-only Button) do not pick up on their own. */
   @media (max-width: 768px), (pointer: coarse) {
-    .chat-header-actions :global(button) {
+    .chat-header-actions :global(button),
+    .composer :global(button) {
       min-width: var(--control-height-touch, 44px);
       min-height: var(--control-height-touch, 44px);
     }

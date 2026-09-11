@@ -9,8 +9,9 @@
  *
  * See mobile-fixture.ts for how to run this.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import {
+  test,
   MOBILE_FIXTURE_URL,
   MOBILE_FIXTURE_HINT,
   MOBILE_WIDTHS,
@@ -30,6 +31,7 @@ interface Box {
 async function openHome(page: Page, width: number, height: number) {
   await page.setViewportSize({ width, height });
   await page.goto(`${MOBILE_FIXTURE_URL}/home.html`);
+  await page.evaluate(() => document.fonts.ready);
   // Positive control: the real route component mounted. A blank fixture must
   // fail here rather than pass every geometry assertion vacuously.
   await expect(page.locator('.composer .composer-call')).toBeVisible();
