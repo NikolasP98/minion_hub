@@ -5,8 +5,8 @@ import { isModuleEnabled } from '$server/services/modules.service';
 import { retryImport, requirePersonalOrg } from '$server/services/finance-statements.service';
 
 /** POST /api/finances/statement-imports/:id/retry — reuse the same import;
- *  resumes from its existing next_chunk (no-op unless status is 'failed' or
- *  'undone'; an undone import restarts from chunk 0). */
+ *  replaces queued/parsing/failed/undone requests with a fresh revision,
+ *  preserving rows/counts/next_chunk; completed imports remain unchanged. */
 export const POST: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);

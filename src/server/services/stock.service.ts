@@ -590,7 +590,8 @@ export async function updateEntry(
     const [cur] = await tx
       .select()
       .from(stkEntries)
-      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)));
+      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)))
+      .for('update');
     if (!cur) return null;
     if (cur.status !== 'draft')
       throw new StockError('only draft entries can be edited', 'not_draft');
@@ -623,7 +624,8 @@ export async function deleteEntry(ctx: CoreCtx, id: string): Promise<boolean> {
     const [cur] = await tx
       .select({ status: stkEntries.status })
       .from(stkEntries)
-      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)));
+      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)))
+      .for('update');
     if (!cur) return false;
     if (cur.status !== 'draft')
       throw new StockError('only draft entries can be deleted', 'not_draft');
@@ -688,7 +690,19 @@ async function writeBins(tx: CoreTx, orgId: string, bins: Map<string, BinState>)
  * part of the atomic invariant).
  */
 export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promise<StkEntry> {
+  return submitEntryInternal(ctx, id, actor, false);
+}
+
+/** Invoice retries may observe a submission committed by a competing caller. */
+async function submitEntryInternal(
+  ctx: CoreCtx,
+  id: string,
+  actor: Actor,
+  acceptSubmitted: boolean,
+  expectedInvoice?: { invoiceId: string; lines: string[] },
+): Promise<StkEntry> {
   const orgId = ctx.tenantId;
+  let newlySubmitted = false;
   const result = await withOrgCore(ctx, async (tx) => {
     const [entry] = await tx
       .select()
@@ -696,10 +710,30 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
       .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, orgId)))
       .for('update');
     if (!entry) throw new StockError('entry not found', 'not_found');
+    // Recheck under the entry lock: a draft can be edited between its creation
+    // transaction and this submission transaction. Never post a changed payload.
+    const checkedLines = expectedInvoice
+      ? await tx
+          .select()
+          .from(stkEntryLines)
+          .where(and(eq(stkEntryLines.entryId, id), eq(stkEntryLines.orgId, orgId)))
+      : undefined;
+    if (
+      expectedInvoice &&
+      (entry.type !== 'issue' ||
+        String((entry.metadata as { invoiceId?: unknown }).invoiceId ?? '')
+          .trim()
+          .toLowerCase() !== expectedInvoice.invoiceId ||
+        JSON.stringify(invoiceLineIdentity(checkedLines ?? [])) !==
+          JSON.stringify(expectedInvoice.lines))
+    )
+      throw new StockError('invoice issue changed before submission', 'duplicate_invoice');
+    if (acceptSubmitted && entry.status === 'submitted') return entry;
     if (entry.status !== 'draft')
       throw new StockError(`entry is ${entry.status}, not draft`, 'not_draft'); // double-submit guard
 
-    const lines = await tx.select().from(stkEntryLines).where(eq(stkEntryLines.entryId, id));
+    const lines =
+      checkedLines ?? (await tx.select().from(stkEntryLines).where(eq(stkEntryLines.entryId, id)));
     if (!lines.length) throw new StockError('entry has no lines', 'no_lines');
     if (!isEntryType(entry.type)) throw new StockError('invalid entry type', 'invalid_type');
     const type = entry.type;
@@ -798,16 +832,18 @@ export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
     // atomicity as the ledger/bin writes above (unlike recordAudit below, which
     // runs in its own tx per the codebase's existing convention).
     await emitHubEvent(tx, { type: 'stock.entry_submitted', orgId, entryId: id, entryType: type });
+    newlySubmitted = true;
     return updated;
   });
 
-  await recordAudit(ctx, {
-    refType: 'stk_entry',
-    refId: id,
-    op: 'workflow',
-    changes: [{ field: 'status', label: 'Submit', old: 'draft', new: 'submitted' }],
-    actor,
-  });
+  if (newlySubmitted)
+    await recordAudit(ctx, {
+      refType: 'stk_entry',
+      refId: id,
+      op: 'workflow',
+      changes: [{ field: 'status', label: 'Submit', old: 'draft', new: 'submitted' }],
+      actor,
+    });
   return result;
 }
 
@@ -1698,41 +1734,96 @@ export interface CreateIssueFromInvoiceInput {
   actor: Actor;
 }
 
-/** Creates (and optionally submits) an `issue` stk_entry for an invoice's
- *  computed stock lines. Guards against double-issuing the same invoice via
- *  a non-cancelled entry with the same metadata.invoiceId — checked and
- *  inserted in the same withOrgCore tx, so two concurrent calls still race on
- *  the row lock rather than both slipping through (ponytail: no partial
- *  unique index on metadata->>'invoiceId' backs this — the migration's
- *  already applied to prod, so add one in a follow-up if this guard is ever
- *  found to lose the race in practice). */
+function invoiceLineIdentity(
+  lines: {
+    itemId: string;
+    qty: number | string;
+    fromWarehouseId: string | null;
+    toWarehouseId: string | null;
+  }[],
+): string[] {
+  return lines
+    .map((line) =>
+      JSON.stringify([
+        line.itemId.trim().toLowerCase(),
+        Number(line.qty),
+        line.fromWarehouseId?.trim().toLowerCase() ?? null,
+        line.toWarehouseId?.trim().toLowerCase() ?? null,
+      ]),
+    )
+    .sort();
+}
+
+/** Invoice-row locking serializes creation; the partial unique index is the
+ * database-wide final boundary. A matching draft resumes; a matching submitted
+ * issue returns its committed identity. Cancelled history remains append-only.
+ * Missing source labels on legacy invoice issues do not bypass the identity. */
+// TODO(handoff): Qualify separate-connection invoice/stock crash races in plan 10-03 before rollout; embedded PostgreSQL verifies predicates and replay but not multi-process contention. See meta proposals/2026-09-08-platform-qc-remediation.md (HDS-06).
 export async function createIssueFromInvoice(
   ctx: CoreCtx,
   input: CreateIssueFromInvoiceInput,
 ): Promise<StkEntry> {
   if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
+  // PostgreSQL accepts additional UUID spellings. Restrict item/warehouse inputs
+  // before draft creation so conversion-map lookups and persisted line identity
+  // cannot disagree. Invoice identity is taken from its actual locked DB row.
+  const canonicalId = (value: string): string => {
+    const id = value.trim().toLowerCase();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))
+      throw new StockError('item and warehouse IDs must use grouped UUID spelling', 'invalid_line');
+    return id;
+  };
+  input = {
+    ...input,
+    warehouseId: canonicalId(input.warehouseId),
+    lines: input.lines.map((line) => ({ ...line, itemId: canonicalId(line.itemId) })),
+  };
 
-  const entry = await withOrgCore(ctx, async (tx) => {
+  const { entry, expectedLines, invoiceId } = await withOrgCore(ctx, async (tx) => {
     const [invoice] = await tx
       .select({ id: finInvoices.id, providerRef: finInvoices.providerRef })
       .from(finInvoices)
-      .where(and(eq(finInvoices.id, input.invoiceId), eq(finInvoices.orgId, ctx.tenantId)));
+      .where(and(eq(finInvoices.id, input.invoiceId), eq(finInvoices.orgId, ctx.tenantId)))
+      .for('update');
     if (!invoice) throw new StockError('invoice not found', 'invoice_not_found');
 
     const [dup] = await tx
-      .select({ id: stkEntries.id })
+      .select()
       .from(stkEntries)
       .where(
         and(
           eq(stkEntries.orgId, ctx.tenantId),
-          ne(stkEntries.status, 'cancelled'),
-          sql`${stkEntries.metadata}->>'invoiceId' = ${input.invoiceId}`,
+          eq(stkEntries.type, 'issue'),
+          inArray(stkEntries.status, ['draft', 'submitted']),
+          sql`lower(btrim(${stkEntries.metadata}->>'invoiceId')) = ${invoice.id}`,
         ),
       );
-    if (dup)
-      throw new StockError('a stock issue already exists for this invoice', 'duplicate_invoice');
 
     const resolvedLines = await resolveConsumptionLines(tx, ctx.tenantId, input.lines);
+    if (resolvedLines.some((line) => !Number.isFinite(line.qty) || line.qty <= 0))
+      throw new StockError('issue quantities must be positive finite values', 'invalid_line');
+    const expected = invoiceLineIdentity(
+      resolvedLines.map((line) => ({
+        ...line,
+        fromWarehouseId: input.warehouseId,
+        toWarehouseId: null,
+      })),
+    );
+    if (dup) {
+      const existing = await tx
+        .select()
+        .from(stkEntryLines)
+        .where(and(eq(stkEntryLines.entryId, dup.id), eq(stkEntryLines.orgId, ctx.tenantId)));
+      // Match the persisted effect, never silently replace an existing draft.
+      // Stable sorting accepts reorderings but preserves distinct/split line intent.
+      const actual = invoiceLineIdentity(existing);
+      if (JSON.stringify(actual) !== JSON.stringify(expected))
+        throw new StockError(
+          'invoice issue retry has a different stock payload',
+          'duplicate_invoice',
+        );
+      return { entry: dup, expectedLines: expected, invoiceId: invoice.id };
+    }
 
     const [row] = await tx
       .insert(stkEntries)
@@ -1744,7 +1835,7 @@ export async function createIssueFromInvoice(
         createdBy: input.actor.id,
         metadata: {
           source: 'invoice',
-          invoiceId: input.invoiceId,
+          invoiceId: invoice.id,
           providerRef: invoice.providerRef,
         },
       })
@@ -1760,10 +1851,15 @@ export async function createIssueFromInvoice(
         })),
       ),
     );
-    return row;
+    return { entry: row, expectedLines: expected, invoiceId: invoice.id };
   });
 
-  return input.submit ? submitEntry(ctx, entry.id, input.actor) : entry;
+  return input.submit
+    ? submitEntryInternal(ctx, entry.id, input.actor, true, {
+        invoiceId,
+        lines: expectedLines,
+      })
+    : entry;
 }
 
 export interface EntryByInvoiceSummary {
@@ -1794,7 +1890,7 @@ export async function findEntryByInvoice(
       .where(
         and(
           eq(stkEntries.orgId, ctx.tenantId),
-          sql`${stkEntries.metadata}->>'invoiceId' = ${invoiceId}`,
+          sql`lower(btrim(${stkEntries.metadata}->>'invoiceId')) = ${invoiceId.trim().toLowerCase()}`,
         ),
       )
       .orderBy(desc(stkEntries.createdAt))

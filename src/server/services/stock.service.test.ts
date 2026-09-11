@@ -324,8 +324,8 @@ describe('createIssueFromInvoice — duplicate guard + happy path', () => {
     await expect(
       createIssueFromInvoice(ctx(db), {
         invoiceId: 'inv1',
-        warehouseId: 'wh1',
-        lines: [{ itemId: 'item1', qty: 5 }],
+        warehouseId: '40000000-0000-4000-8000-000000000001',
+        lines: [{ itemId: '30000000-0000-4000-8000-000000000001', qty: 5 }],
         actor,
       }),
     ).rejects.toMatchObject({ code: 'duplicate_invoice' });
@@ -335,7 +335,12 @@ describe('createIssueFromInvoice — duplicate guard + happy path', () => {
   it('rejects with no_lines before touching the db when lines is empty', async () => {
     const { db } = createMockDb();
     await expect(
-      createIssueFromInvoice(ctx(db), { invoiceId: 'inv1', warehouseId: 'wh1', lines: [], actor }),
+      createIssueFromInvoice(ctx(db), {
+        invoiceId: 'inv1',
+        warehouseId: '40000000-0000-4000-8000-000000000001',
+        lines: [],
+        actor,
+      }),
     ).rejects.toMatchObject({
       code: 'no_lines',
     });
@@ -351,8 +356,8 @@ describe('createIssueFromInvoice — duplicate guard + happy path', () => {
     ]);
     const entry = await createIssueFromInvoice(ctx(db), {
       invoiceId: 'inv1',
-      warehouseId: 'wh1',
-      lines: [{ itemId: 'item1', qty: 5 }],
+      warehouseId: '40000000-0000-4000-8000-000000000001',
+      lines: [{ itemId: '30000000-0000-4000-8000-000000000001', qty: 5 }],
       actor,
     });
     expect(entry).toMatchObject({ id: 'entry1', status: 'draft', type: 'issue' });

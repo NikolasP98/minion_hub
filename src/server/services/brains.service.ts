@@ -1,8 +1,9 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { error } from '@sveltejs/kit';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { getCoreDb } from '$server/db/pg-client';
-import { withOrgCore } from '$server/db/with-org-core';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import {
   brainAccess,
   brainChunks,
@@ -13,11 +14,33 @@ import {
   type BrainDocument,
 } from '$server/db/pg-schema/brains';
 import { recordAudit, type FieldChange } from './activity.service';
-import { embeddingsEnabled, embedTexts, toVectorLiteral } from './embeddings';
+import {
+  embeddingsEnabled,
+  embedTexts,
+  prepareEmbeddingRequest,
+  toVectorLiteral,
+} from './embeddings';
 import { listProducts } from './finance-products.service';
 import { listContactsCached, listTags } from './crm-contacts.service';
 import { listItems, getBins } from './stock.service';
-import { enqueueJob, registerJobHandler, type AdvanceResult, type BgJob } from './bg-runtime';
+import {
+  registerJobHandler,
+  type AdvanceResult,
+  type BgJob,
+  type JobExecution,
+} from './bg-runtime';
+import {
+  createJobRequest,
+  revokeJobRequest,
+  readJobRequest,
+  withJobRequest,
+  bindJobManifest,
+  runJobEmbedding,
+  commitJobEffects,
+  jobRequestAdvanceResult,
+  JobEffectError,
+  type JobRequest,
+} from './job-effects.service';
 import {
   resolveCapabilities,
   type Capabilities,
@@ -276,6 +299,39 @@ export async function deleteBrain(
 
 // ── Documents ────────────────────────────────────────────────────────────
 
+const BRAIN_INGEST_FAMILY = 'brain.document';
+const BRAIN_INGEST_PIPELINE = 'brain-chunks-v1-size3000-overlap300-batch64';
+type DocumentSource = Pick<
+  BrainDocument,
+  'id' | 'brainId' | 'orgId' | 'sourceType' | 'sourceRef' | 'contentMd'
+>;
+function documentSourceHash(doc: DocumentSource): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        doc.id,
+        doc.brainId,
+        doc.orgId,
+        doc.sourceType,
+        doc.sourceRef,
+        doc.contentMd,
+      ]),
+    )
+    .digest('hex');
+}
+
+async function lockedDocument(tx: CoreTx, tenantId: string, request: JobRequest) {
+  const [doc] = await tx
+    .select()
+    .from(brainDocuments)
+    .where(and(eq(brainDocuments.id, request.entityId), eq(brainDocuments.orgId, tenantId)))
+    .for('update');
+  if (!doc) throw new JobEffectError('superseded', 'Brain document no longer exists');
+  if (documentSourceHash(doc) !== request.sourceHash)
+    throw new JobEffectError('conflict', 'Brain document source changed');
+  return doc;
+}
+
 export async function listDocuments(
   ctx: CoreCtx,
   brainId: string,
@@ -304,27 +360,38 @@ export async function addDocument(
   actor: Actor,
 ): Promise<BrainDocument> {
   await requireAccess(ctx, brainId, 'write', principal);
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
-      .insert(brainDocuments)
-      .values({
-        brainId,
-        orgId: ctx.tenantId,
-        title: input.title,
-        sourceType: input.sourceType,
-        sourceRef: input.sourceRef ?? null,
-        contentMd: input.contentMd ?? null,
-        status: 'pending',
-        createdBy: actor.id,
-      })
-      .returning(),
+  const id = randomUUID();
+  const brain = await loadBrain(ctx, brainId);
+  if (!brain) throw error(404, 'brain not found');
+  const source: DocumentSource = {
+    id,
+    brainId: brain.id,
+    orgId: ctx.tenantId,
+    sourceType: input.sourceType,
+    sourceRef: input.sourceRef ?? null,
+    contentMd: input.contentMd ?? null,
+  };
+  const { value: row } = await createJobRequest(
+    ctx,
+    { family: BRAIN_INGEST_FAMILY, entityId: id },
+    documentSourceHash(source),
+    { type: 'brain_ingest', userId: actor.id, refId: id },
+    async (tx) => {
+      const [created] = await tx
+        .insert(brainDocuments)
+        .values({
+          ...source,
+          title: input.title,
+          sourceType: input.sourceType,
+          sourceRef: input.sourceRef ?? null,
+          contentMd: input.contentMd ?? null,
+          status: 'pending',
+          createdBy: actor.id,
+        })
+        .returning();
+      return created;
+    },
   );
-  await enqueueJob({
-    tenantId: ctx.tenantId,
-    userId: actor.id,
-    type: 'brain_ingest',
-    refId: row.id,
-  });
   await recordAudit(ctx, {
     refType: 'brain_document',
     refId: row.id,
@@ -355,9 +422,10 @@ export async function removeDocument(
   actor: Actor,
 ): Promise<boolean> {
   await requireAccess(ctx, brainId, 'write', principal);
-  const res = await withOrgCore(ctx, (tx) =>
+  const [before] = await withOrgCore(ctx, (tx) =>
     tx
-      .delete(brainDocuments)
+      .select()
+      .from(brainDocuments)
       .where(
         and(
           eq(brainDocuments.id, docId),
@@ -366,6 +434,20 @@ export async function removeDocument(
         ),
       ),
   );
+  const res = before
+    ? await revokeJobRequest(ctx, { family: BRAIN_INGEST_FAMILY, entityId: before.id }, (tx) =>
+        tx
+          .delete(brainDocuments)
+          .where(
+            and(
+              eq(brainDocuments.id, docId),
+              eq(brainDocuments.brainId, brainId),
+              eq(brainDocuments.orgId, ctx.tenantId),
+            ),
+          )
+          .returning({ id: brainDocuments.id }),
+      )
+    : [];
   await recordAudit(ctx, {
     refType: 'brain_document',
     refId: docId,
@@ -373,11 +455,11 @@ export async function removeDocument(
     changes: [{ field: 'deleted', label: 'Deleted', old: false, new: true }],
     actor,
   });
-  return ((res as unknown as { rowCount?: number })?.rowCount ?? 0) > 0;
+  return res.length > 0;
 }
 
-/** Reset a document to `pending` and re-enqueue ingestion (the handler is
- *  idempotent — it deletes+reinserts the doc's chunks on every run). */
+/** Explicit new intent: atomically revise the request, reset and enqueue.
+ * Existing published chunks remain visible until the new revision commits. */
 export async function reingestDocument(
   ctx: CoreCtx,
   brainId: string,
@@ -385,21 +467,40 @@ export async function reingestDocument(
   principal: AccessPrincipal,
 ): Promise<void> {
   await requireAccess(ctx, brainId, 'write', principal);
-  const res = await withOrgCore(ctx, (tx) =>
+  const [before] = await withOrgCore(ctx, (tx) =>
     tx
-      .update(brainDocuments)
-      .set({ status: 'pending', error: null, updatedAt: new Date() })
+      .select()
+      .from(brainDocuments)
       .where(
         and(
           eq(brainDocuments.id, docId),
           eq(brainDocuments.brainId, brainId),
           eq(brainDocuments.orgId, ctx.tenantId),
         ),
-      )
-      .returning({ id: brainDocuments.id }),
+      ),
   );
-  if (res.length === 0) throw error(404, 'document not found');
-  await enqueueJob({ tenantId: ctx.tenantId, type: 'brain_ingest', refId: docId });
+  if (!before) throw error(404, 'document not found');
+  await createJobRequest(
+    ctx,
+    { family: BRAIN_INGEST_FAMILY, entityId: before.id },
+    documentSourceHash(before),
+    { type: 'brain_ingest', refId: before.id },
+    async (tx, request) => {
+      await lockedDocument(tx, ctx.tenantId, request);
+      const res = await tx
+        .update(brainDocuments)
+        .set({ status: 'pending', error: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(brainDocuments.id, docId),
+            eq(brainDocuments.brainId, brainId),
+            eq(brainDocuments.orgId, ctx.tenantId),
+          ),
+        )
+        .returning({ id: brainDocuments.id });
+      if (res.length === 0) throw error(404, 'document not found');
+    },
+  );
 }
 
 // ── Search ───────────────────────────────────────────────────────────────
@@ -539,16 +640,6 @@ export function chunkText(text: string, size = 3000, overlap = 300): string[] {
   return chunks;
 }
 
-/** Embed in bounded batches so one huge document can't blow past the
- *  embeddings provider's per-request item cap. */
-async function embedInBatches(texts: string[], batchSize = 64): Promise<number[][]> {
-  const out: number[][] = [];
-  for (let i = 0; i < texts.length; i += batchSize) {
-    out.push(...(await embedTexts(texts.slice(i, i + batchSize))));
-  }
-  return out;
-}
-
 // ── module_ref rendering ─────────────────────────────────────────────────
 
 /** Renders the org's product catalog to markdown rows. */
@@ -684,16 +775,38 @@ const URL_FETCH_MAX_REDIRECTS = 3;
  * for a note-ingestion source; the existing guard is what every other
  * user-supplied-URL fetch in this codebase relies on.
  */
-async function fetchUrlContent(url: string): Promise<string> {
+/** Observe late fulfillment/rejection while bounding the caller by cancellation. */
+function loadWithSignal<T>(operation: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  let abort!: () => void;
+  return new Promise<T>((resolve, reject) => {
+    abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    Promise.resolve()
+      .then(() => {
+        signal.throwIfAborted();
+        return operation();
+      })
+      .then(resolve, reject);
+  }).finally(() => signal.removeEventListener('abort', abort));
+}
+
+async function fetchUrlContent(url: string, signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted();
   let current = url;
   const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS);
   let html: string;
   try {
     for (let hop = 0; ; hop++) {
       if (hop > URL_FETCH_MAX_REDIRECTS) throw new Error('too many redirects');
-      await assertSafeUrl(current, 'brain document URL');
-      const res = await fetch(current, { redirect: 'manual', signal: controller.signal });
+      await loadWithSignal(() => assertSafeUrl(current, 'brain document URL'), controller.signal);
+      const res = await loadWithSignal(
+        () => fetch(current, { redirect: 'manual', signal: controller.signal }),
+        controller.signal,
+      );
       if (res.status >= 300 && res.status < 400) {
         const loc = res.headers.get('location');
         if (!loc) throw new Error('redirect without a location');
@@ -701,11 +814,12 @@ async function fetchUrlContent(url: string): Promise<string> {
         continue;
       }
       if (!res.ok) throw new Error(`fetch failed (${res.status})`);
-      html = (await res.text()).slice(0, 100_000);
+      html = (await loadWithSignal(() => res.text(), controller.signal)).slice(0, 100_000);
       break;
     }
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
   // ponytail: regex tag-strip, not a real HTML parser — good enough for
   // "give the model readable text", not for structure-sensitive extraction.
@@ -722,15 +836,22 @@ async function fetchUrlContent(url: string): Promise<string> {
 
 /** Load a document's raw text for ingestion. Exported for direct unit testing
  *  (mirrors chunkText/canAccessBrain being exported for the same reason). */
-export async function loadDocumentContent(ctx: CoreCtx, doc: BrainDocument): Promise<string> {
+export async function loadDocumentContent(
+  ctx: CoreCtx,
+  doc: BrainDocument,
+  signal?: AbortSignal,
+): Promise<string> {
+  signal?.throwIfAborted();
   switch (doc.sourceType) {
     case 'note':
       return doc.contentMd ?? '';
     case 'url':
       if (!doc.sourceRef) throw new Error('url document is missing source_ref');
-      return fetchUrlContent(doc.sourceRef);
+      return fetchUrlContent(doc.sourceRef, signal);
     case 'module_ref':
-      return renderModuleRef(ctx, doc.sourceRef);
+      return signal
+        ? loadWithSignal(() => renderModuleRef(ctx, doc.sourceRef), signal)
+        : renderModuleRef(ctx, doc.sourceRef);
     case 'upload':
       // v1: small text files read client-side (FileReader) and posted as-is —
       // content_md already holds the file's text, source_ref is the filename.
@@ -750,34 +871,133 @@ export async function loadDocumentContent(ctx: CoreCtx, doc: BrainDocument): Pro
  * `job.tenantId` is the org — reconstructed into a CoreCtx so the handler can
  * run inside `withOrgCore` (brain_documents/brain_chunks are force-RLS'd).
  */
-async function advanceBrainIngest(job: BgJob): Promise<AdvanceResult> {
+class BrainAlreadyPublished extends Error {}
+
+async function advanceBrainIngest(job: BgJob, execution: JobExecution): Promise<AdvanceResult> {
   const documentId = job.refId;
   if (!documentId) return { done: true, error: 'brain_ingest job is missing refId (document id)' };
+  // A pending status cannot prove which historical reset admitted an old job.
+  // Explicit reingest establishes a fresh revision without executing old intent.
+  const request = readJobRequest(job);
+  if (!request) return { done: true, error: 'brain_ingest legacy job requires explicit reingest' };
+  if (request.family !== BRAIN_INGEST_FAMILY || request.entityId !== documentId)
+    throw new JobEffectError('conflict', 'Brain job request identity mismatch');
   const ctx: CoreCtx = { db: getCoreDb(), tenantId: job.tenantId };
-
-  const [doc] = await withOrgCore(ctx, (tx) =>
-    tx.select().from(brainDocuments).where(eq(brainDocuments.id, documentId)).limit(1),
-  );
-  if (!doc) return { done: true, error: 'document not found' };
-
-  await withOrgCore(ctx, (tx) =>
-    tx
-      .update(brainDocuments)
-      .set({ status: 'ingesting', updatedAt: new Date() })
-      .where(eq(brainDocuments.id, documentId)),
-  );
-
+  let stage: 'loading' | 'embedding' | 'publishing' = 'loading';
+  const assertUnpublished = async (tx: CoreTx) => {
+    const current = await lockedDocument(tx, ctx.tenantId, request);
+    if (current.status === 'ready') throw new BrainAlreadyPublished();
+  };
+  const finishPublished = async () => {
+    await withJobRequest(
+      execution,
+      ctx,
+      request,
+      async (tx, current) => {
+        const document = await lockedDocument(tx, ctx.tenantId, request);
+        if (document.status !== 'ready')
+          throw new JobEffectError('conflict', 'Brain publication no longer current');
+        const saved = JSON.parse(current.cursor ?? '{}') as Record<string, unknown>;
+        const prior = saved.brainIngest;
+        return {
+          ...saved,
+          brainIngest: {
+            ...(prior && typeof prior === 'object' && !Array.isArray(prior) ? prior : {}),
+            phase: 'complete',
+          },
+        };
+      },
+      (saved) => saved,
+    );
+    return jobRequestAdvanceResult(execution, ctx, request, true);
+  };
   try {
-    const text = await loadDocumentContent(ctx, doc);
+    const doc = await withJobRequest(execution, ctx, request, async (tx) => {
+      const current = await lockedDocument(tx, ctx.tenantId, request);
+      if (current.status !== 'ready')
+        await tx
+          .update(brainDocuments)
+          .set({ status: 'ingesting', error: null, updatedAt: new Date() })
+          .where(and(eq(brainDocuments.id, current.id), eq(brainDocuments.orgId, ctx.tenantId)));
+      return current;
+    });
+    if (doc.status === 'ready') return finishPublished();
+    const text = await loadDocumentContent(ctx, doc, execution.signal);
+    execution.signal.throwIfAborted();
     const pieces = chunkText(text);
-    const vectors = pieces.length > 0 && embeddingsEnabled() ? await embedInBatches(pieces) : [];
-
-    await withOrgCore(ctx, async (tx) => {
-      await tx.delete(brainChunks).where(eq(brainChunks.documentId, documentId));
+    const enabled = pieces.length > 0 && embeddingsEnabled();
+    if (pieces.length > 64 * 1024) throw new Error('Brain document exceeds receipt batch limit');
+    const provider = enabled
+      ? (() => {
+          const { endpoint, model, normalization, dimensions } = prepareEmbeddingRequest(
+            pieces.slice(0, 64),
+          ).descriptor;
+          return { endpoint, model, normalization, dimensions };
+        })()
+      : null;
+    const mode = pieces.length === 0 ? 'empty' : enabled ? 'embedded' : 'disabled';
+    const manifest = createHash('sha256')
+      .update(JSON.stringify([BRAIN_INGEST_PIPELINE, pieces, mode, provider]))
+      .digest('hex');
+    const progress = (phase: string, receivedBatches = 0) => ({
+      brainIngest: { manifest, phase, chunks: pieces.length, receivedBatches },
+    });
+    // Cursor fields describe progress; only the shared head arbitrates duplicates.
+    await bindJobManifest(
+      execution,
+      ctx,
+      request,
+      manifest,
+      assertUnpublished,
+      progress('prepared'),
+    );
+    const vectors: number[][] = [];
+    const units: string[] = [];
+    stage = 'embedding';
+    if (provider)
+      for (let offset = 0; offset < pieces.length; offset += 64) {
+        const unit = `batch:${offset / 64}`;
+        vectors.push(
+          ...(await runJobEmbedding(
+            execution,
+            ctx,
+            request,
+            unit,
+            pieces.slice(offset, offset + 64),
+            BRAIN_INGEST_PIPELINE,
+            {
+              expectedManifestHash: manifest,
+              expectedProvider: provider,
+              validateDomain: assertUnpublished,
+            },
+          )),
+        );
+        units.push(unit);
+        await withJobRequest(
+          execution,
+          ctx,
+          request,
+          assertUnpublished,
+          progress('received', units.length),
+          manifest,
+        );
+      }
+    if (
+      provider &&
+      (vectors.length !== pieces.length || units.length !== Math.ceil(pieces.length / 64))
+    )
+      throw new JobEffectError('conflict', 'Brain publication requires its complete manifest');
+    stage = 'publishing';
+    const publish = async (tx: CoreTx) => {
+      const current = await lockedDocument(tx, ctx.tenantId, request);
+      if (current.status === 'ready') return;
+      await tx
+        .delete(brainChunks)
+        .where(and(eq(brainChunks.documentId, documentId), eq(brainChunks.orgId, ctx.tenantId)));
       if (pieces.length > 0) {
         await tx.insert(brainChunks).values(
           pieces.map((chunk, i) => ({
-            brainId: doc.brainId,
+            brainId: current.brainId,
             documentId,
             orgId: job.tenantId,
             seq: i,
@@ -789,19 +1009,51 @@ async function advanceBrainIngest(job: BgJob): Promise<AdvanceResult> {
       await tx
         .update(brainDocuments)
         .set({ status: 'ready', error: null, updatedAt: new Date() })
-        .where(eq(brainDocuments.id, documentId));
-    });
-    return { done: true };
+        .where(and(eq(brainDocuments.id, documentId), eq(brainDocuments.orgId, ctx.tenantId)));
+    };
+    if (units.length)
+      await commitJobEffects(
+        execution,
+        ctx,
+        request,
+        units,
+        publish,
+        progress('complete', units.length),
+        manifest,
+      );
+    else await withJobRequest(execution, ctx, request, publish, progress('complete'), manifest);
+    return finishPublished();
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await withOrgCore(ctx, (tx) =>
-      tx
+    if (execution.signal.aborted) throw err;
+    if (err instanceof BrainAlreadyPublished) return finishPublished();
+    if (err instanceof JobEffectError)
+      throw new JobEffectError(err.code, `brain_ingest ${err.code}: ${err.message}`);
+    if (stage === 'embedding') {
+      // TODO(handoff): Indeterminate admissions need an explicit recovery/UI and
+      // retention policy; never replay or infer another duplicate's remote outcome.
+      // See meta proposals/2026-09-08-platform-qc-remediation.md (JOB-02).
+      throw new JobEffectError('indeterminate', 'brain_ingest embedding outcome is indeterminate');
+    }
+    const message =
+      stage === 'loading'
+        ? 'brain_ingest content loading failed'
+        : 'brain_ingest publication failed; received batches retained';
+    const alreadyPublished = await withJobRequest(execution, ctx, request, async (tx) => {
+      const current = await lockedDocument(tx, ctx.tenantId, request);
+      if (current.status === 'ready') return true;
+      await tx
         .update(brainDocuments)
         .set({ status: 'failed', error: message, updatedAt: new Date() })
-        .where(eq(brainDocuments.id, documentId)),
-    );
-    return { done: true, error: message };
+        .where(and(eq(brainDocuments.id, documentId), eq(brainDocuments.orgId, ctx.tenantId)));
+      return false;
+    });
+    if (alreadyPublished) return finishPublished();
+    return { ...(await jobRequestAdvanceResult(execution, ctx, request, true)), error: message };
   }
 }
+
+// TODO(handoff): JOB-02 still requires driver-recovery and deployed migration/drain
+// qualification plus an explicit indeterminate-request recovery policy. Receipt-backed
+// source tests do not close those gates. See meta proposals/2026-09-08-platform-qc-remediation.md.
 
 registerJobHandler({ type: 'brain_ingest', advance: advanceBrainIngest });
