@@ -2,14 +2,21 @@ import { build } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const hub = fileURLToPath(new URL('../../../', import.meta.url));
 const fixture = fileURLToPath(new URL('./', import.meta.url));
-const out = process.env.MINION_CHART_FIXTURE_OUT ?? '/tmp/minion-chart-accessibility-fixture';
+const out =
+  process.env.MINION_CHART_FIXTURE_OUT ??
+  fs.mkdtempSync(path.join(os.tmpdir(), 'minion-chart-fixture-'));
+const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'minion-chart-cache-'));
 
 await build({
   configFile: false,
+  envDir: false,
+  cacheDir: cache,
   root: hub,
   plugins: [tailwindcss(), svelte({ configFile: false })],
   resolve: {
