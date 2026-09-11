@@ -20,6 +20,31 @@ export function addDays(day: string, n: number): string {
   d.setDate(d.getDate() + n);
   return ymd(d);
 }
+/** Lossless wire/store instant; display projection is a separate boundary. */
+export function offsetIso(d: Date): string {
+  return d.toISOString().replace('Z', '+00:00');
+}
+
+/**
+ * Viewer-local wall fields for core's neutral `timeZone: 'UTC'` axis. Core's
+ * `local` option uses today's offset for every event, which misplaces events
+ * in another DST season. Keep the original instant in extendedProps/store.
+ */
+export function calendarWallTime(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
+ * Core callbacks reconstruct native Dates, dropping fractions and choosing the
+ * earlier occurrence of an ambiguous wall time. Preserve an untouched endpoint
+ * from storage (including its fold occurrence and milliseconds). Changed targets
+ * retain the existing native Date policy: earlier in a fold, forward in a gap.
+ */
+export function calendarMoveIso(next: Date, previous: Date, originalIso: string): string {
+  return next.getTime() === previous.getTime() ? originalIso : offsetIso(next);
+}
 export function hhmm(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }

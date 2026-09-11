@@ -35,7 +35,7 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
       await assertSafeUrl(body.url, 'server URL');
     } catch (err) {
       if (err instanceof SsrfBlockedError) {
-        return json({ ok: false, error: err.message }, { status: 422 });
+        return json({ ok: false, error: 'Server URL is not allowed.' }, { status: 422 });
       }
       throw err;
     }
