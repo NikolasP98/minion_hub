@@ -10,9 +10,10 @@
  *
  * DATA-01: every result carries its own provenance (parser version + sha-256
  * of the exact normalized text that was parsed), and the work is bounded.
- * Whole-input limits (bytes, data rows) throw `StatementParseLimitError` —
+ * Whole-input limits (characters, data rows) throw `StatementParseLimitError` —
  * there is no row to attach them to and continuing would be unbounded memory.
- * Per-record limits reject that record and keep its raw values, so a single
+ * Invalid headers throw a content-free `StatementParseHeaderError` before mapping.
+ * Per-data-record limits reject that record and keep its raw values, so a single
  * oversized or badly-encoded line never discards the rest of the statement.
  * Nothing ambiguous is coerced to a default: it is rejected with a reason.
  */
@@ -22,6 +23,7 @@ import { createHash } from 'node:crypto';
  * Bump whenever accepted/rejected semantics change — a stored parse is only
  * reproducible against the version that produced it.
  * v2: bounded input/record work, invalid-encoding and duplicate detection.
+ * v3: reject unusable headers and count data records after excluding genuine blanks.
  *
  * TODO(handoff): `finance-statements.service.ts` keeps its own PARSER_VERSION
  * (still 1) and writes it to fin_statement_imports.parser_version. That file is
@@ -31,7 +33,7 @@ import { createHash } from 'node:crypto';
  * STATEMENT_PARSER_VERSION and invalidate cursors whose stored version differs;
  * see proposals/2026-09-10-hub-finance-parser-version-binding.md.
  */
-export const STATEMENT_PARSER_VERSION = 2;
+export const STATEMENT_PARSER_VERSION = 3;
 
 /**
  * Enforced limits. Deliberately generous relative to a real bank statement
@@ -59,6 +61,16 @@ export class StatementParseLimitError extends Error {
   ) {
     super(`${reason}: ${actual} exceeds the enforced limit of ${limit}`);
     this.name = 'StatementParseLimitError';
+  }
+}
+
+/** An unusable header cannot assign trustworthy meaning to any data row.
+ * Only a fixed reason is exposed: never echo a header containing customer data. */
+export class StatementParseHeaderError extends Error {
+  readonly code = 'statement_header_invalid';
+  constructor(readonly reason: 'record-too-large' | 'malformed-quoting' | 'invalid-encoding') {
+    super(`Invalid statement header: ${reason}`);
+    this.name = 'StatementParseHeaderError';
   }
 }
 
@@ -146,14 +158,29 @@ function splitCsvRows(text: string): CsvRow[] {
   };
   const endRow = () => {
     endField();
-    rows.push({ cells: row, malformed: rowMalformed, oversized: rowOversized });
-    // +1 for the header row.
-    if (rows.length > STATEMENT_LIMITS.maxDataRows + 1) {
-      throw new StatementParseLimitError(
-        'too-many-rows',
-        STATEMENT_LIMITS.maxDataRows,
-        rows.length - 1,
-      );
+    // Match the existing logical-row convention, but discard genuine blanks
+    // before allocating/counting them. Malformed or truncated empty-looking
+    // records remain evidence and consume capacity like any other data record.
+    const blank = row.length === 1 && row[0].trim() === '' && !rowMalformed && !rowOversized;
+    if (!blank) {
+      if (rows.length === 0) {
+        // The first nonblank row owns the column mapping. Truncated characters
+        // or columns are never trusted, even if a dropped suffix hid U+FFFD.
+        if (rowOversized) throw new StatementParseHeaderError('record-too-large');
+        if (rowMalformed) throw new StatementParseHeaderError('malformed-quoting');
+        if (row.some((cell) => cell.includes(REPLACEMENT_CHAR))) {
+          throw new StatementParseHeaderError('invalid-encoding');
+        }
+      }
+      rows.push({ cells: row, malformed: rowMalformed, oversized: rowOversized });
+      // +1 for the validated header; rejected data records count too.
+      if (rows.length > STATEMENT_LIMITS.maxDataRows + 1) {
+        throw new StatementParseLimitError(
+          'too-many-rows',
+          STATEMENT_LIMITS.maxDataRows,
+          rows.length - 1,
+        );
+      }
     }
     row = [];
     rowMalformed = false;
@@ -221,9 +248,7 @@ function splitCsvRows(text: string): CsvRow[] {
   if (sawAny || field.length > 0 || row.length > 0) {
     endRow();
   }
-  return rows.filter(
-    (r) => !(r.cells.length === 1 && r.cells[0].trim() === '' && !r.malformed && !r.oversized),
-  );
+  return rows;
 }
 
 function stripAccents(s: string): string {

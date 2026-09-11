@@ -367,3 +367,128 @@ describe('bounded ingestion (DATA-01)', () => {
     expect(result.rows[0].warnings).toEqual(['date-format-ambiguous-assumed-dmy']);
   });
 });
+
+describe('header admission and logical capacity (15-06)', () => {
+  it('accepts a header field exactly at its decoded-character limit', () => {
+    const result = parseStatementCsv(
+      `${HEADER},${'h'.repeat(STATEMENT_LIMITS.maxFieldChars)}\n2026-03-04,Coffee,-4.50,x`,
+    );
+    expect(result.rows.map((row) => row.signedAmount)).toEqual(['-4.50']);
+  });
+
+  it('refuses a truncated header field before returning any parsed rows', () => {
+    expect(() =>
+      parseStatementCsv(
+        `${HEADER},${'h'.repeat(STATEMENT_LIMITS.maxFieldChars + 1)}\n2026-03-04,Coffee,-4.50,x`,
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: 'statement_header_invalid', reason: 'record-too-large' }),
+    );
+  });
+
+  it('accepts exactly 256 header columns but rejects a 257th even if data fits the truncated header', () => {
+    const extras = Array.from({ length: STATEMENT_LIMITS.maxColumns - 3 }, (_, i) => `extra${i}`);
+    const header = [HEADER, ...extras].join(',');
+    const row = ['2026-03-04,Coffee,-4.50', ...extras.map(() => 'x')].join(',');
+    expect(parseStatementCsv(`${header}\n${row}`).rows).toHaveLength(1);
+    expect(() => parseStatementCsv(`${header},surplus\n${row}`)).toThrowError(
+      expect.objectContaining({ code: 'statement_header_invalid', reason: 'record-too-large' }),
+    );
+  });
+
+  it.each([
+    'Date,Description,Amount,Ex"tra',
+    'Date,Description,Amount,"Extra"oops',
+    'Date,Description,Amount,"Extra',
+  ])('refuses malformed header %s', (header) => {
+    expect(() => parseStatementCsv(`${header}\n2026-03-04,Coffee,-4.50,x`)).toThrowError(
+      expect.objectContaining({ code: 'statement_header_invalid', reason: 'malformed-quoting' }),
+    );
+  });
+
+  it('refuses a header whose decoding was already damaged with a bounded content-free diagnostic', () => {
+    try {
+      parseStatementCsv(`${HEADER},private-header-\uFFFD\n2026-03-04,Coffee,-4.50,x`);
+      expect.unreachable('damaged header must not establish a mapping');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'statement_header_invalid', reason: 'invalid-encoding' });
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message.length).toBeLessThan(120);
+      expect((error as Error).message).not.toContain('private-header');
+    }
+  });
+
+  it('counts 100000 actual records, excluding leading/interspersed/trailing genuine blanks', () => {
+    const rows = Array.from(
+      { length: STATEMENT_LIMITS.maxDataRows },
+      (_, i) => `2026-03-04,Row ${i},-1.00\n${i % 10 === 0 ? ' \t\n""\n' : ''}`,
+    ).join('');
+    const text = `\n \t\n${HEADER}\n\n${rows}\n \t\n`;
+    const result = parseStatementCsv(text);
+    expect(result.provenance.dataRows).toBe(STATEMENT_LIMITS.maxDataRows);
+    expect(result.rows).toHaveLength(STATEMENT_LIMITS.maxDataRows);
+    expect(result.rejected).toHaveLength(0);
+    expect(result.entries[0].sourceRow).toBe(1);
+    expect(result.entries.at(-1)?.sourceRow).toBe(STATEMENT_LIMITS.maxDataRows);
+    expect(result.provenance.sourceChars).toBe(text.length);
+  });
+
+  it('rejects 100001 actual records even when interspersed blank rows are present', () => {
+    const text =
+      `\n${HEADER}\n` + '2026-03-04,Coffee,-1.00\n\n'.repeat(STATEMENT_LIMITS.maxDataRows + 1);
+    expect(() => parseStatementCsv(text)).toThrowError(
+      expect.objectContaining({
+        code: 'statement_limit_exceeded',
+        reason: 'too-many-rows',
+        limit: STATEMENT_LIMITS.maxDataRows,
+        actual: STATEMENT_LIMITS.maxDataRows + 1,
+      }),
+    );
+  });
+
+  it('preserves logical source rows, duplicate warnings, money and normalized-text identity across blanks', () => {
+    const text = `\n${HEADER}\n2026-03-04,Coffee,-4.50\n \t\n""\n2026-03-04,Coffee,-4.50\n,,\n${' '.repeat(STATEMENT_LIMITS.maxFieldChars + 1)}\n""oops\n2026-03-05,Bus,-2.00\n`;
+    const result = parseStatementCsv(text);
+    expect(result.entries.map((row) => row.sourceRow)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.rows.map((row) => [row.sourceRow, row.signedAmount])).toEqual([
+      [1, '-4.50'],
+      [2, '-4.50'],
+      [6, '-2.00'],
+    ]);
+    expect(result.rows[1].warnings).toEqual(['duplicate-of-row-1']);
+    expect(result.rejected.map((row) => [row.sourceRow, row.reason])).toEqual([
+      [3, 'invalid-date'],
+      [4, 'record-too-large'],
+      [5, 'malformed-quoting'],
+    ]);
+    expect(result.rows.length + result.rejected.length).toBe(result.provenance.dataRows);
+    expect(parseStatementCsv(text.replace(/\n/g, '\r\n')).provenance.sourceSha256).toBe(
+      result.provenance.sourceSha256,
+    );
+    expect(parseStatementCsv(text.replace('\n \t\n""\n', '\n')).provenance.sourceSha256).not.toBe(
+      result.provenance.sourceSha256,
+    );
+  });
+});
+
+it.each(['field', 'column'])(
+  'does not hide invalid encoding in a truncated header suffix: %s',
+  (kind) => {
+    const header =
+      kind === 'field'
+        ? `${HEADER},${'h'.repeat(STATEMENT_LIMITS.maxFieldChars)}\uFFFD`
+        : [
+            HEADER,
+            ...Array.from({ length: STATEMENT_LIMITS.maxColumns - 3 }, (_, i) => `extra${i}`),
+            '\uFFFD',
+          ].join(',');
+    expect(() => parseStatementCsv(`${header}\n2026-03-04,Coffee,-4.50,x`)).toThrowError(
+      expect.objectContaining({ code: 'statement_header_invalid', reason: 'record-too-large' }),
+    );
+  },
+);
+
+it('bounds decoded header characters rather than CSV quote-escaping bytes', () => {
+  const quoted = `"${'""'.repeat(STATEMENT_LIMITS.maxFieldChars)}"`;
+  expect(parseStatementCsv(`${HEADER},${quoted}\n2026-03-04,Coffee,-4.50,x`).rows).toHaveLength(1);
+});
