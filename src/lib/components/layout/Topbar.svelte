@@ -2,6 +2,8 @@
   import { canonicalPath } from '$lib/canonical-path';
   // Mobile-only header (< md). At md+ the sidebar carries brand + host + nav,
   // and the floating DynamicIsland carries the global actions.
+  import Sheet from '$lib/components/ui/foundations/Sheet.svelte';
+  import { utilityLinks, hasVisibleSectionItems } from './utility-links';
   import HostPill from '../hosts/HostPill.svelte';
   import ProfileMenu from './ProfileMenu.svelte';
   import NotificationsPopup from './NotificationsPopup.svelte';
@@ -14,7 +16,7 @@
   import { togglePalette } from '$lib/state/ui/command-palette.svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { Activity, Cloud, Settings, Menu, X, Search, Bell, LogOut, User } from 'lucide-svelte';
+  import { Settings, Menu, X, Search, Bell, LogOut, User } from 'lucide-svelte';
   import NavIcon from './NavIcon.svelte';
   import {
     notifications,
@@ -43,13 +45,13 @@
       ? item.activeWhen(page.url)
       : item.matcher(canonicalPath(page.url.pathname));
   }
-  const isReliability = $derived(canonicalPath(page.url.pathname).startsWith('/reliability'));
-  const isCloud = $derived(canonicalPath(page.url.pathname).startsWith('/cloud'));
+  const topItems = $derived(utilityLinks(canViewPath));
   const isSettings = $derived(canonicalPath(page.url.pathname).startsWith('/settings'));
   const isWorkforce = $derived(canonicalPath(page.url.pathname).startsWith('/workforce'));
 
   let mobileMenuOpen = $state(false);
   function toggleMobileMenu() {
+    notificationsOpen = false;
     mobileMenuOpen = !mobileMenuOpen;
   }
   function closeMobileMenu() {
@@ -62,14 +64,27 @@
   const email = $derived(userState.user?.email ?? '');
 
   onMount(() => {
-    return subscribeNotificationsPolling();
+    const stopNotifications = subscribeNotificationsPolling();
+    const desktop = window.matchMedia('(min-width: 48rem)');
+    const closeOnDesktop = () => {
+      if (desktop.matches) {
+        mobileMenuOpen = false;
+        notificationsOpen = false;
+      }
+    };
+    closeOnDesktop();
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => {
+      desktop.removeEventListener('change', closeOnDesktop);
+      stopNotifications();
+    };
   });
 </script>
 
 <header
-  class="md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] h-14"
+  class="mobile-topbar md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] h-14"
 >
-  <div class="relative flex items-center h-full px-3 gap-2">
+  <div class="topbar-controls relative flex items-center h-full px-3 gap-2">
     <Button
       variant="ghost"
       size="xs"
@@ -84,7 +99,7 @@
 
     <a href="/" class="flex items-center gap-2 no-underline group shrink-0" aria-label="Minion Hub">
       <MinionLogo size="sm" />
-      <span class="flex items-center leading-none">
+      <span class="mobile-brand-wordmark flex items-center leading-none">
         <span class="font-black text-sm tracking-wide uppercase text-brand-pink">MINION</span>
         <span class="font-semibold text-sm text-foreground/80 ml-1">hub</span>
       </span>
@@ -134,123 +149,29 @@
     <div class="shrink-0"><ProfileMenu /></div>
   </div>
 
-  {#if mobileMenuOpen}
-    <!-- Backdrop (below the header bar) -->
-    <Button
-      variant="ghost"
-      size="xs"
-      class="fixed inset-0 !h-auto top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-[var(--layer-base,0)] bg-[color-mix(in_srgb,var(--color-canvas,var(--color-bg))_40%,transparent)] cursor-default"
-      onclick={closeMobileMenu}
-      aria-label="Close menu"
-      tabindex="-1"
-    ></Button>
-
-    <!-- Menu panel -->
-    <div
-      class="mobile-menu-panel absolute top-full left-0 right-0 z-[var(--layer-navigation,20)] bg-bg2/98 backdrop-blur-xl border-b border-border shadow-[var(--shadow-overlay,var(--shadow-xl,var(--shadow-lg)))]"
-    >
-      <!-- Scroll body: domains + sections -->
-      <nav
-        class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 overflow-y-auto px-2 pt-2 pb-1"
-      >
-        <div class="flex-1 min-w-0">
-          {#each orderedSections as section (section.id)}
-            {@const items = orderItems(section, navOrder).filter((i) => canViewPath(i.href))}
-            {@const hasSubs = (section.subsections?.length ?? 0) > 0}
-            {#if items.length || hasSubs}
-              <div
-                class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
-              >
-                {section.label}
-              </div>
-              {#each items as item (item.href)}
-                <a
-                  href={item.href}
-                  class="mobile-nav-link {section.tone === 'brand' ? 'brand' : ''} {isActive(item)
-                    ? section.tone === 'brand'
-                      ? 'active-brand'
-                      : 'active'
-                    : ''}"
-                  onclick={closeMobileMenu}
-                >
-                  <NavIcon icon={item.icon} size={16} />
-                  <span>{item.label}</span>
-                </a>
-              {/each}
-              {#each section.subsections ?? [] as sub (sub.id)}
-                {@const subItems = sub.items.filter((i) => canViewPath(i.href))}
-                {#if subItems.length}
-                  <div
-                    class="px-5 py-1 text-[length:var(--font-size-telemetry)] font-medium uppercase tracking-wider text-muted mt-0.5"
-                  >
-                    {sub.label}
-                  </div>
-                  {#each subItems as item (item.href)}
-                    <a
-                      href={item.href}
-                      class="mobile-nav-link {isActive(item) ? 'active' : ''}"
-                      onclick={closeMobileMenu}
-                    >
-                      <NavIcon icon={item.icon} size={16} />
-                      <span>{item.label}</span>
-                    </a>
-                  {/each}
-                {/if}
-              {/each}
-            {/if}
-          {/each}
-        </div>
-
-        <!-- Standalone items (reliability, notifications) -->
-        <div class="sm:hidden mt-1 pt-1 border-t border-[var(--hairline)]">
-          {#if canViewPath('/cloud')}
-            <a
-              href="/cloud"
-              class="mobile-nav-link {isCloud ? 'active' : ''}"
-              onclick={closeMobileMenu}
-            >
-              <Cloud size={16} />
-              <span>{m.nav_cloud()}</span>
-            </a>
-          {/if}
-          {#if canViewPath('/reliability')}
-            <a
-              href="/reliability"
-              class="mobile-nav-link {isReliability ? 'active' : ''}"
-              onclick={closeMobileMenu}
-            >
-              <Activity size={16} />
-              <span>{m.nav_reliability()}</span>
-            </a>
-          {/if}
-        </div>
-      </nav>
-
-      <!-- Pinned footer -->
+  <Sheet
+    bind:open={mobileMenuOpen}
+    title={m.a11y4_sectionNavigation()}
+    placement="left"
+    size="sm"
+    class="mobile-navigation-sheet"
+  >
+    {#snippet footer()}
       <div
         class="mobile-menu-footer shrink-0 border-t border-[var(--hairline)] px-2 py-2 flex flex-col gap-1 bg-bg2"
       >
-        {#if canViewPath('/cloud')}
+        {#each topItems as item (item.href)}
+          {@const Icon = item.icon}
+          {@const active = canonicalPath(page.url.pathname).startsWith(item.href)}
           <a
-            href="/cloud"
-            class="mobile-nav-link text-xs hidden sm:flex {isCloud ? 'active' : ''}"
+            href={item.href}
+            class="mobile-nav-link {active ? 'active' : ''}"
+            aria-current={active ? 'page' : undefined}
             onclick={closeMobileMenu}
           >
-            <Cloud size={15} />
-            <span>{m.nav_cloud()}</span>
+            <Icon size={16} /><span>{item.label}</span>
           </a>
-        {/if}
-        <!-- Reliability (sm+) -->
-        {#if canViewPath('/reliability')}
-          <a
-            href="/reliability"
-            class="mobile-nav-link text-xs hidden sm:flex {isReliability ? 'active' : ''}"
-            onclick={closeMobileMenu}
-          >
-            <Activity size={15} />
-            <span>{m.nav_reliability()}</span>
-          </a>
-        {/if}
+        {/each}
 
         <!-- Settings -->
         <a
@@ -266,7 +187,7 @@
         {#if canViewPath('/notifications')}
           <a href="/notifications" class="mobile-nav-link text-xs" onclick={closeMobileMenu}>
             <Bell size={15} />
-            <span>Notifications</span>
+            <span>{m.misc_notifications()}</span>
             {#if notifications.hasPending}
               <span
                 class="ml-auto text-[length:var(--font-size-telemetry)] font-bold px-1.5 py-0.5 rounded-full bg-destructive text-accent-foreground leading-none"
@@ -292,42 +213,92 @@
           class="mobile-nav-link text-xs text-muted hover:text-destructive"
         >
           <LogOut size={15} />
-          <span>Log out</span>
+          <span>{m.profile_logout()}</span>
         </Button>
 
         {#if isWorkforce}
           <div class="px-3 py-2"><CompanySwitcher /></div>
         {/if}
       </div>
-    </div>
-  {/if}
+    {/snippet}
+    <nav class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 px-2 pt-2 pb-1">
+      <div class="flex-1 min-w-0">
+        {#each orderedSections as section (section.id)}
+          {@const items = orderItems(section, navOrder).filter((i) => canViewPath(i.href))}
+
+          {#if hasVisibleSectionItems(section, canViewPath)}
+            <div
+              class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
+            >
+              {section.label}
+            </div>
+            {#each items as item (item.href)}
+              <a
+                href={item.href}
+                aria-current={isActive(item) ? 'page' : undefined}
+                class="mobile-nav-link {section.tone === 'brand' ? 'brand' : ''} {isActive(item)
+                  ? section.tone === 'brand'
+                    ? 'active-brand'
+                    : 'active'
+                  : ''}"
+                onclick={closeMobileMenu}
+              >
+                <NavIcon icon={item.icon} size={16} />
+                <span>{item.label}</span>
+              </a>
+            {/each}
+            {#each section.subsections ?? [] as sub (sub.id)}
+              {@const subItems = sub.items.filter((i) => canViewPath(i.href))}
+              {#if subItems.length}
+                <div
+                  class="px-5 py-1 text-[length:var(--font-size-telemetry)] font-medium uppercase tracking-wider text-muted mt-0.5"
+                >
+                  {sub.label}
+                </div>
+                {#each subItems as item (item.href)}
+                  <a
+                    href={item.href}
+                    aria-current={isActive(item) ? 'page' : undefined}
+                    class="mobile-nav-link {isActive(item) ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                  >
+                    <NavIcon icon={item.icon} size={16} />
+                    <span>{item.label}</span>
+                  </a>
+                {/each}
+              {/if}
+            {/each}
+          {/if}
+        {/each}
+      </div>
+    </nav>
+  </Sheet>
 </header>
 
 <style>
-  .mobile-menu-panel {
-    animation: menu-slide-in 200ms cubic-bezier(0.2, 0, 0, 1);
+  .mobile-topbar :global(button) {
+    min-width: var(--control-height-touch);
+    min-height: var(--control-height-touch);
+    flex-shrink: 0;
+  }
+  @media (max-width: 400px) {
+    .mobile-brand-wordmark {
+      display: none;
+    }
   }
   .mobile-menu-nav {
-    max-height: calc(70dvh - 3.5rem - env(safe-area-inset-bottom, 0px));
     overscroll-behavior: contain;
   }
-  @media (min-width: 640px) {
-    .mobile-menu-nav {
-      max-height: calc(75dvh - 3.5rem - env(safe-area-inset-bottom, 0px));
-    }
-  }
-  @keyframes menu-slide-in {
-    from {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  .mobile-menu-footer {
+    width: 100%;
+    max-width: 100%;
+    max-height: 50dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .mobile-nav-link {
+    min-height: var(--control-height-touch);
     display: flex;
     align-items: center;
     gap: var(--space-3);
@@ -385,5 +356,13 @@
   /* Pinned footer: slightly different hover bg for contrast */
   .mobile-menu-footer .mobile-nav-link:hover {
     background: var(--color-bg3);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mobile-nav-link,
+    .mobile-nav-link.active::before,
+    .mobile-nav-link.active-brand::before {
+      animation: none;
+      transition: none;
+    }
   }
 </style>

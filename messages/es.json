@@ -1,6 +1,10 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "a11y0_alerts": "Alertas",
+  "a11y0_chartDataTable": "Ver los datos del gráfico como tabla",
+  "a11y0_chartRegion": "Gráfico",
+  "a11y0_chartSeriesN": "Serie {index}",
+  "a11y0_chartTableCategory": "Categoría",
   "a11y0_copySnippet": "Copiar fragmento",
   "a11y0_dailySpendTrend": "Gasto diario durante los últimos 14 días",
   "a11y0_recentActivity": "Actividad reciente",
