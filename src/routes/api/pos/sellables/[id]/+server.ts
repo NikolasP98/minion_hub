@@ -9,7 +9,7 @@ import { handlePosError } from '../../_errors';
 
 const consumptionSchema = z.object({
   itemId: z.string().min(1),
-  qtyPerUnit: z.number().finite(),
+  qtyPerUnit: z.number().finite().positive(),
   note: z.string().max(2000).nullable().optional(),
 });
 
@@ -20,12 +20,23 @@ const patchSchema = z.object({
   unitPrice: z.number().finite().nullable().optional(),
   kind: z.enum(['product', 'service']).optional(),
   trackStock: z.boolean().optional(),
-  uom: z.string().min(1).max(50).optional(),
+  // See the POST schema: trim before the length check so a whitespace-only
+  // unit of measure is a 400, not a stored unit.
+  uom: z.string().trim().min(1).max(50).optional(),
   consumption: z.array(consumptionSchema).optional(),
   active: z.boolean().optional(),
 });
 
-/** PATCH /api/pos/sellables/:id */
+/**
+ * PATCH /api/pos/sellables/:id
+ *
+ * Applies the Slice-1 transition: an untracked SERVICE starts tracking stock.
+ * The response's `.sellable` carries `trackStock`/`uom` back. The approved
+ * slice excludes the catalog UI, so callers currently reach this through the
+ * API/service boundary. Every other kind/trackStock/uom change is still
+ * refused with a typed code rather than silently dropped — see
+ * `updateSellable`.
+ */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);

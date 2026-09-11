@@ -20,7 +20,12 @@ const postSchema = z.object({
   unitPrice: z.number().finite().nullable(),
   kind: z.enum(['product', 'service']),
   trackStock: z.boolean().optional(),
-  uom: z.string().min(1).max(50).optional(),
+  // `.trim()` BEFORE `.min(1)`: a bare `min(1)` admits "   ", which then
+  // reaches `syncSellableItem` — whose `?? 'unit'` default only fires on
+  // nullish — and is stored as the item's unit. Trimming here refuses
+  // whitespace-only input at the trust boundary; `normalizeUom` in
+  // pos.service.ts is the matching defence for non-HTTP callers.
+  uom: z.string().trim().min(1).max(50).optional(),
   /** Publish an existing stk_item instead of creating one — see SellableInput. */
   itemId: z.string().uuid().optional(),
   consumption: z.array(consumptionSchema).optional(),
