@@ -55,3 +55,21 @@ on an OS-assigned literal `127.0.0.1` port, runs only `home-mobile.spec.ts` and
 `call-controls.spec.ts` with one headless worker, then closes its server. These
 fixtures establish component/composition behavior; they do not establish real
 voice/provider operation or authenticated product journeys.
+
+### Calendar toolbar touch qualification (13-10)
+
+The toolbar fixture additionally checks 320px and 390px portrait, 600×390
+landscape, and a fine-pointer 1440px desktop. Narrow/coarse controls use the
+semantic 44px touch floor; fine desktop buttons and view segments retain their
+28px/26px density. Staff options, the native event-type select, and the date input
+emit recorded URL intents. The fixture does not perform real route navigation.
+The hidden native date input is omitted from Tab order when the visible button
+can open its picker; the visible fallback input remains keyboard reachable.
+Existing viewer-local 08:00 booking alignment remains tested in Lima, New York,
+and Kathmandu browser timezones.
+
+Run the built Calendar fixture with one headless Playwright worker and explicit
+private `PWTEST_CACHE_DIR` and `TMPDIR`; keep all traffic on its owned literal
+loopback origin. Use a private config selecting only `calendar-mobile.spec.ts`
+and the installed Chromium/Firefox/WebKit executables. No application environment,
+account, provider, or production scheduling endpoint is needed.
