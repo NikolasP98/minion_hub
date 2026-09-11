@@ -1,13 +1,10 @@
 <script lang="ts">
+  import { utilityLinks, hasVisibleSectionItems } from './utility-links';
   import { canonicalPath } from '$lib/canonical-path';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
   import {
-    Activity,
-    Store,
-    Cloud,
-    Power,
     Settings,
     PanelLeftClose,
     PanelLeft,
@@ -39,34 +36,15 @@
   // getNavSections composes static + dynamic sections kind-aware (personal
   // orgs get the R2 regrouping); Topbar's mobile hamburger uses the same call.
   const navSections = $derived<Section[]>(
-    getNavSections(page.data.activeOrgKind, pluginNavState.controlCenters, pluginNavState.enabledByPluginId),
+    getNavSections(
+      page.data.activeOrgKind,
+      pluginNavState.controlCenters,
+      pluginNavState.enabledByPluginId,
+    ),
   );
 
-  const showReliability = $derived(canViewPath('/reliability'));
-  const showCloud = $derived(canViewPath('/cloud'));
   const isSettings = $derived(canonicalPath(page.url.pathname).startsWith('/settings'));
-
-  // Top utility row: icon-only pills that expand inline to icon+label when the
-  // user is on that page. Reliability is gated by the monitor policy.
-  type TopItem = { href: string; label: string; icon: typeof Activity; show: boolean };
-  const topItems = $derived<TopItem[]>(
-    [
-      { href: '/reliability', label: m.nav_reliability(), icon: Activity, show: showReliability },
-      {
-        href: '/marketplace',
-        label: m.nav_marketplace(),
-        icon: Store,
-        show: canViewPath('/marketplace'),
-      },
-      { href: '/cloud', label: m.nav_cloud(), icon: Cloud, show: showCloud },
-      {
-        href: '/killswitches',
-        label: m.nav_killSwitches(),
-        icon: Power,
-        show: canViewPath('/killswitches'),
-      },
-    ].filter((t) => t.show),
-  );
+  const topItems = $derived(utilityLinks(canViewPath));
 
   // The user's chosen landing page (right-click → Set as home). Falls back to
   // /home. Stored per-user in Supabase prefs (section "landingPage").
@@ -110,7 +88,9 @@
 
   // Active-state resolver: archetype roster filters are query-aware.
   function isActive(item: SectionItem): boolean {
-    return item.activeWhen ? item.activeWhen(page.url) : item.matcher(canonicalPath(page.url.pathname));
+    return item.activeWhen
+      ? item.activeWhen(page.url)
+      : item.matcher(canonicalPath(page.url.pathname));
   }
 
   // Collapsible subsection state (Customer Support → Channels). Default open.
@@ -322,8 +302,8 @@
   >
     {#each orderedSections as section (section.id)}
       {@const items = orderedItems(section).filter((it) => canViewPath(it.href))}
-      {@const hasSubs = (section.subsections?.length ?? 0) > 0}
-      {#if items.length || hasSubs}
+
+      {#if hasVisibleSectionItems(section, canViewPath)}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="nav-group-head t-label {headCls} {reorderable ? 'grab' : ''} {drag?.type ===
@@ -407,7 +387,9 @@
           {#if subItems.length}
             {@const open = !collapsedSubs[sub.id]}
             {#if !collapsed}
-              <Button variant="ghost" size="xs"
+              <Button
+                variant="ghost"
+                size="xs"
                 type="button"
                 class="nav-subhead {rowJustify} {headCls}"
                 onclick={() => toggleSub(sub.id)}
@@ -491,7 +473,9 @@
       asChild
     >
       {#snippet children(trigger)}
-        <Button variant="ghost" size="xs"
+        <Button
+          variant="ghost"
+          size="xs"
           type="button"
           {...trigger}
           onclick={toggle}
@@ -518,7 +502,9 @@
         <span>{m.nav_isHome()}</span>
       </div>
     {:else}
-      <Button variant="ghost" size="xs"
+      <Button
+        variant="ghost"
+        size="xs"
         type="button"
         class="ctx-item"
         role="menuitem"

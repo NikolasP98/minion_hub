@@ -1,41 +1,28 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { runReadOnlyOrgQuery, QueryRejected } from './assistant-query.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
-// Validation throws BEFORE any DB access, so a db that explodes on use proves a
-// rejected query never reached the transaction.
-const ctx = {
-	db: {
-		transaction: () => {
-			throw new Error('DB MUST NOT BE TOUCHED for a rejected query');
-		},
-	},
-	tenantId: 'org-1',
-} as unknown as CoreCtx;
+describe('raw assistant SQL containment', () => {
+  test.each([
+    'select 1',
+    'WITH totals AS (SELECT count(*) FROM fin_invoices) SELECT * FROM totals',
+    'select * from parties',
+    'delete from fin_invoices',
+    'select 1; select 2',
+    '',
+  ])('rejects every input without a transaction: %s', async (query) => {
+    const transaction = vi.fn(() => {
+      throw new Error('Database access is forbidden for the disabled SQL surface');
+    });
+    const ctx = { db: { transaction }, tenantId: 'org-1' } as unknown as CoreCtx;
 
-describe('runReadOnlyOrgQuery validation (security guards)', () => {
-	test('rejects writes / DDL (not SELECT) — incl. comma-join write attempts', async () => {
-		for (const q of [
-			'delete from fin_invoices',
-			'update fin_invoices set total = 0',
-			'drop table fin_invoices',
-			'insert into fin_invoices (id) values (1)',
-		]) {
-			await expect(runReadOnlyOrgQuery(ctx, q)).rejects.toBeInstanceOf(QueryRejected);
-		}
-	});
-
-	test('rejects multiple statements', async () => {
-		await expect(runReadOnlyOrgQuery(ctx, 'select 1; drop table fin_invoices')).rejects.toThrow(
-			/single statement/i,
-		);
-	});
-
-	test('a valid SELECT passes validation and reaches the DB (admin path)', async () => {
-		// Including a comma-join: there is NO in-process table allowlist anymore
-		// (admin-only access makes it moot), so this passes validation → hits db.
-		await expect(
-			runReadOnlyOrgQuery(ctx, 'select count(*) from fin_invoices, profiles'),
-		).rejects.toThrow(/MUST NOT BE TOUCHED/);
-	});
+    const rejection = runReadOnlyOrgQuery(ctx, query);
+    await expect(rejection).rejects.toBeInstanceOf(QueryRejected);
+    await expect(rejection).rejects.toMatchObject({
+      code: 'ASSISTANT_SQL_DISABLED',
+      status: 503,
+      retryable: false,
+    });
+    expect(transaction).not.toHaveBeenCalled();
+  });
 });

@@ -1,15 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { getDb } from '$server/db/client';
-import { supabaseAdmin } from '$server/supabase';
 import { setAiUsageOrg } from '$server/ai-usage';
 import type { TenantContext } from '$server/services/base';
 
 /**
- * Resolve tenant context: use existing locals, else fall back to the first
- * Supabase organization. Returns null only if no organization exists at all.
- * The fallback is rare — resolveIdentity normally sets locals.tenantCtx. The
- * Turso `db` handle is kept on the ctx for telemetry/servers reads; only the
- * tenantId needs to be the canonical Supabase org id.
+ * Use only the tenant resolved by the authenticated identity provider.
+ * A user or orgId alone does not establish organization authority. No-tenant
+ * callers must enroll or resolve membership before accessing tenant data.
  */
 export async function getTenantCtx(locals: App.Locals): Promise<TenantContext | null> {
   if (locals.tenantCtx) {
@@ -19,11 +15,7 @@ export async function getTenantCtx(locals: App.Locals): Promise<TenantContext | 
     setAiUsageOrg(locals.tenantCtx.tenantId);
     return locals.tenantCtx;
   }
-  const { data } = await supabaseAdmin().from('organizations').select('id').limit(1).maybeSingle();
-  if (!data) return null;
-  const tenantId = (data as { id: string }).id;
-  setAiUsageOrg(tenantId);
-  return { db: getDb(), tenantId };
+  return null;
 }
 
 /**
