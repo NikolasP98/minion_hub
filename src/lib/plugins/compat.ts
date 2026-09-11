@@ -1,5 +1,5 @@
-import { BRIDGE_PROTOCOL_VERSION } from "./bridge-protocol";
-import type { PluginCompat } from "./plugin-types";
+import { BRIDGE_PROTOCOL_VERSION } from './bridge-protocol';
+import type { PluginCompat } from './plugin-types';
 
 /**
  * Host-side plugin compatibility gating.
@@ -12,8 +12,8 @@ import type { PluginCompat } from "./plugin-types";
  * incompatible plugin renders an explanatory "needs newer gateway" panel
  * instead of an iframe whose RPC calls would fail one by one.
  *
- * All checks are permissive when the relevant fact is unknown (missing gateway
- * version, no advertised methods yet) — we only block on a *positive* mismatch.
+ * Declared requirements must be verifiable; unknown constrained facts deny.
+ * Unconstrained legacy plugins remain supported.
  */
 
 export interface GatewayCapabilities {
@@ -27,20 +27,25 @@ export interface GatewayCapabilities {
 
 export type CompatVerdict = { ok: true } | { ok: false; reasons: string[] };
 
+function validVersion(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^\d+(?:\.\d+)*(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/.test(value.trim()) &&
+    value
+      .trim()
+      .split('-')[0]
+      .split('.')
+      .every((part) => Number.isSafeInteger(Number(part)))
+  );
+}
+
 /**
  * Compare two CalVer-ish version strings ("2026.6.0", "2026.6.14-dev").
  * Strips any `-suffix`, compares dot segments numerically. Returns -1/0/1.
  */
 export function compareVersionStrings(a: string, b: string): number {
-  const segments = (v: string): number[] =>
-    v
-      .trim()
-      .split("-")[0]
-      .split(".")
-      .map((p) => {
-        const n = Number.parseInt(p, 10);
-        return Number.isFinite(n) ? n : 0;
-      });
+  if (!validVersion(a) || !validVersion(b)) throw new Error('invalid gateway version');
+  const segments = (v: string): number[] => v.trim().split('-')[0].split('.').map(Number);
   const pa = segments(a);
   const pb = segments(b);
   const len = Math.max(pa.length, pb.length);
@@ -54,7 +59,7 @@ export function compareVersionStrings(a: string, b: string): number {
 /**
  * Evaluate a plugin's compat constraints against the connected gateway.
  * Returns `{ ok: true }` when every declared constraint is satisfied (or
- * absent / not checkable), else `{ ok: false, reasons }` listing each failure.
+ * absent), else `{ ok: false, reasons }` listing each failure.
  */
 export function checkPluginCompat(
   compat: PluginCompat | undefined,
@@ -63,28 +68,42 @@ export function checkPluginCompat(
   const reasons: string[] = [];
   const hostBridge = caps.bridgeProtocol ?? BRIDGE_PROTOCOL_VERSION;
 
-  const min = compat?.minGatewayVersion?.trim();
-  if (min && caps.version) {
-    if (compareVersionStrings(caps.version, min) < 0) {
+  // TODO(handoff): PluginIframe currently mounts before capabilities load; admit that component,
+  // manifest normalization/projection and browser/release tests before claiming end-to-end enforcement.
+  // See .planning/phases/14-sdk-transport/14-PLUGIN-BRIDGE-MATRIX.md in the meta-repo.
+  const min = compat?.minGatewayVersion;
+  if (min !== undefined) {
+    if (!validVersion(min)) reasons.push('invalid minimum gateway version');
+    else if (!validVersion(caps.version)) reasons.push('gateway version is unknown or invalid');
+    else if (compareVersionStrings(caps.version, min) < 0)
       reasons.push(`requires gateway ≥ ${min} (running ${caps.version})`);
-    }
   }
 
   const required = compat?.requiredRpc;
-  if (required && required.length > 0 && caps.methods.length > 0) {
-    const have = new Set(caps.methods);
-    const missing = required.filter((m) => !have.has(m));
-    if (missing.length > 0) {
-      reasons.push(`gateway is missing required method(s): ${missing.join(", ")}`);
+  if (required !== undefined) {
+    if (
+      !Array.isArray(required) ||
+      required.some((method) => typeof method !== 'string' || !method.trim())
+    )
+      reasons.push('invalid required RPC methods');
+    else if (required.length) {
+      const have = new Set(caps.methods);
+      const missing = required.filter((method) => !have.has(method));
+      if (missing.length)
+        reasons.push(`gateway is missing required method(s): ${missing.join(', ')}`);
     }
   }
 
-  const bridge = compat?.bridgeProtocol?.trim();
-  if (bridge) {
-    const need = Number.parseInt(bridge, 10);
-    if (Number.isFinite(need) && need > hostBridge) {
-      reasons.push(`requires plugin bridge protocol ≥ ${need} (host speaks ${hostBridge})`);
-    }
+  const bridge = compat?.bridgeProtocol;
+  if (bridge !== undefined) {
+    if (
+      typeof bridge !== 'string' ||
+      !/^[1-9]\d*$/.test(bridge.trim()) ||
+      !Number.isSafeInteger(Number(bridge))
+    )
+      reasons.push('invalid plugin bridge protocol major');
+    else if (!Number.isSafeInteger(hostBridge) || Number(bridge) !== hostBridge)
+      reasons.push(`requires plugin bridge protocol ${bridge} (host speaks ${hostBridge})`);
   }
 
   return reasons.length > 0 ? { ok: false, reasons } : { ok: true };

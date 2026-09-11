@@ -63,8 +63,11 @@ describe('Wave D route composition contract', () => {
     expect(home).toContain('direction="row"');
     expect(home).toMatch(/\.column\s*\{[\s\S]*?order:\s*1;/);
     expect(home).toMatch(/\.notes-dock\s*\{[\s\S]*?order:\s*2;/);
+    // Compact: only the OPEN dock overlays the column. The collapsed rail stays
+    // a real flex item — overlaying it clipped the composer's call control
+    // (UI-04, plan 13-02).
     expect(home).toMatch(
-      /@media \(max-width:\s*768px\)[\s\S]*?\.notes-dock\s*\{[\s\S]*?position:\s*absolute;/,
+      /@media \(max-width:\s*768px\)[\s\S]*?\.notes-dock:not\(\.collapsed\)\s*\{[\s\S]*?position:\s*absolute;/,
     );
     expect(home).toMatch(/\.notes-dock\.collapsed\s*\{[\s\S]*?width:\s*46px;/);
   });
