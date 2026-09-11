@@ -1,0 +1,7 @@
+/* The fixture reproduces only the (app) shell height chain (see Shell.svelte).
+   No page style is redeclared here. */
+html,
+body {
+  height: 100%;
+  margin: 0;
+}

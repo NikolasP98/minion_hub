@@ -1338,9 +1338,11 @@
       position: relative;
     }
 
-    /* On compact screens the trailing inspector becomes a right drawer. It no
-       longer consumes the chat column's width, including when restored open. */
-    .notes-dock {
+    /* On compact screens the OPEN inspector becomes a right drawer, so it no
+       longer consumes the chat column's width. The collapsed rail stays a real
+       flex item: it is permanently visible, so overlaying it clipped the
+       composer's call control underneath it (QC 2026-09-08, Home at 390px). */
+    .notes-dock:not(.collapsed) {
       position: absolute;
       inset: 0 0 0 auto;
       width: min(320px, calc(100% - var(--space-12)));
@@ -1363,6 +1365,12 @@
     .notes-dock.collapsed {
       width: 46px;
       box-shadow: none;
+    }
+
+    /* Compact gutters: the collapsed rail now takes real width, so the column
+       gives its horizontal padding back to the composer row. */
+    .inner {
+      padding-inline: var(--space-4);
     }
   }
 
@@ -1733,8 +1741,21 @@
     cursor: default;
   }
   @container agentcol (max-width: 460px) {
-    :global(.new-chat span) {
+    /* Button wraps its children in one layout span, so `.new-chat span` also
+       hid the icon and left an 18x28 invisible-but-focusable control
+       (QC 2026-09-08). Hide only the label and keep a full touch target. */
+    :global(.new-chat > span > span) {
       display: none;
+    }
+  }
+
+  /* Touch/compact target floor for the header cluster. Mirrors AppViewport's own
+     `--active-control-min-height` contract, which these two controls (a popover
+     trigger and an icon-only Button) do not pick up on their own. */
+  @media (max-width: 768px), (pointer: coarse) {
+    .chat-header-actions :global(button) {
+      min-width: var(--control-height-touch, 44px);
+      min-height: var(--control-height-touch, 44px);
     }
   }
 
