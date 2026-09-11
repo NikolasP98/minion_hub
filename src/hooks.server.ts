@@ -8,11 +8,16 @@ import * as Sentry from '@sentry/sveltekit';
 import { error, type Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
 import { canonicalPath } from '$lib/canonical-path';
-import { getPostHogClient } from '$lib/server/posthog';
+import { captureServerEvent } from '$lib/server/posthog';
+import {
+  UNKNOWN,
+  distinctIdFor,
+  releaseContext,
+  requestIdentity,
+  sanitizeErrorProperties,
+} from '$lib/server/observability-context';
 import { createServerTimingHandle } from '$lib/server/server-timing';
 import { building } from '$app/environment';
-import { getDb } from '$server/db/client';
-import { supabaseAdmin } from '$server/supabase';
 import { resolveIdentity } from '$server/auth/resolve-identity';
 import { env } from '$env/dynamic/private';
 import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
@@ -267,21 +272,16 @@ async function applyModuleAvailabilityGuard(event: Parameters<Handle>[0]['event'
  * Shared tail for appHandle — runs after locals.user/tenantCtx have been set
  * (or left unset) by whichever auth branch handled the request. Both the
  * Better Auth path and the Supabase bridge path route through here so the
- * unauthenticated-API fallback + redirect logic isn't duplicated.
+ * handler-owned API authentication + redirect logic isn't duplicated.
  */
 const finishApp: Handle = async ({ event, resolve }) => {
   // Locale-blind: every comparison below assumes canonical (unprefixed) paths.
   const path = canonicalPath(event.url.pathname);
 
-  // For API routes: unauthenticated fallback is restricted to explicitly safe paths only.
-  // Sensitive routes (workshop, flows, personal-agent, users) require explicit auth and
-  // must NOT fall through to the tenant fallback — individual route handlers call requireAuth().
-  // Each entry is matched both as an exact path and as a prefix (with the
-  // trailing slash appended) so e.g. `/api/servers` AND `/api/servers/123`
-  // both fall through. Previously only the trailing-slash form was matched
-  // which let the LIST endpoint (no slash) silently 401, freezing the
-  // client-side hosts cache in a stale state.
-  const API_UNAUTH_FALLBACK_PATHS = [
+  // These public or separately authenticated handlers may run without a tenant.
+  // Dispatch never supplies organization authority: tenant-scoped handlers must
+  // reject the absent context, while enrollment and public reads can proceed.
+  const API_HANDLER_AUTH_PATHS = [
     '/api/marketplace',
     '/api/registry',
     '/api/servers',
@@ -291,24 +291,15 @@ const finishApp: Handle = async ({ event, resolve }) => {
     '/api/admin',
     // Self-serve join: a no-org (no tenantCtx) but authenticated user must be
     // able to POST a join request. Handlers enforce their own auth (requireAuth
-    // / requireAdmin), so falling through here is safe — mirrors /api/invitations.
+    // / requireAdmin); dispatch does not grant an organization context.
     '/api/join-requests',
     '/api/gateways',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
-    const allowFallback = API_UNAUTH_FALLBACK_PATHS.some(
+    const handlerOwnsAuth = API_HANDLER_AUTH_PATHS.some(
       (p) => path === p || path.startsWith(`${p}/`),
     );
-    if (allowFallback) {
-      // Tenancy source of truth = Supabase organizations (Turso `organization`
-      // was dropped in S7). The Turso db handle stays on the ctx for telemetry/
-      // servers reads; tenantId is the canonical Supabase org id.
-      const { data: org } = await supabaseAdmin()
-        .from('organizations')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
-      if (org) event.locals.tenantCtx = { db: getDb(), tenantId: (org as { id: string }).id };
+    if (handlerOwnsAuth) {
       return resolve(event);
     }
     // Internal server-to-server routes (e.g. /api/internal/*) do their own
@@ -332,11 +323,19 @@ const finishApp: Handle = async ({ event, resolve }) => {
     ) {
       return resolve(event);
     }
-    // All other unauthenticated API requests get an explicit 401
-    return new Response(JSON.stringify({ error: 'Authentication required' }), {
-      status: 401,
-      headers: { 'content-type': 'application/json' },
-    });
+    // Authentication alone does not establish an active organization.
+    const authenticated = Boolean(event.locals.user);
+    return new Response(
+      JSON.stringify({
+        error: authenticated
+          ? 'No active organization for this request'
+          : 'Authentication required',
+      }),
+      {
+        status: authenticated ? 403 : 401,
+        headers: { 'content-type': 'application/json' },
+      },
+    );
   }
 
   // Redirect unauthenticated browser requests to /login
@@ -497,9 +496,15 @@ const workforceIdentityHandle: Handle = async ({ event, resolve }) => {
 // closes that gap. Client errors still go to PostHog captureException. Upgrade
 // path: move init to instrumentation.server.ts + add sentrySvelteKit() to
 // vite.config for source maps + full request tracing.
+// OBS-01: a validated commit sha or nothing. Never a package version or NODE_ENV
+// standing in for a release — an invented release makes every event
+// unattributable to the code that produced it.
+const sentryRelease = releaseContext().release;
+
 Sentry.init({
   dsn: env.SENTRY_DSN,
   enabled: !!env.SENTRY_DSN,
+  release: sentryRelease === UNKNOWN ? undefined : sentryRelease,
   tracesSampleRate: env.SENTRY_TRACES_SAMPLE_RATE ? Number(env.SENTRY_TRACES_SAMPLE_RATE) : 0.1,
   environment: env.PUBLIC_VERCEL_ENV ?? env.NODE_ENV ?? 'development',
 });
@@ -520,15 +525,11 @@ const aiUsageScopeHandle: Handle = ({ event, resolve }) =>
 const serverTimingHandle = createServerTimingHandle({
   sampleRate: env.SERVER_TIMING_SAMPLE_RATE ? Number(env.SERVER_TIMING_SAMPLE_RATE) : 0.1,
   capture: (eventName, properties, orgId) => {
-    void getPostHogClient()
-      .then((posthog) =>
-        posthog?.capture({
-          distinctId: orgId ? `org:${orgId}` : 'server',
-          event: eventName,
-          properties,
-        }),
-      )
-      .catch(() => {});
+    captureServerEvent({
+      event: eventName,
+      distinctId: orgId ? `org:${orgId}` : 'server',
+      properties,
+    });
   },
   persist: (orgId, sample) => {
     waitUntil(storePerformanceSample(orgId, sample));
@@ -556,29 +557,33 @@ export const handle = sequence(
 
 import type { HandleServerError } from '@sveltejs/kit';
 
-const serverErrorHandler: HandleServerError = ({ error, event, status, message }) => {
+const serverErrorHandler: HandleServerError = ({ error, event, status }) => {
+  // Server log keeps the full error: it stays on the host, unlike telemetry.
   console.error(`[handleError] ${event.request.method} ${event.url.pathname}`, error);
-  // M8: fire-and-forget. Never await the capture (or the client's dynamic
-  // import) on the error path — an error storm must not fan out into synchronous
-  // HTTP round-trips that block each failing request's response. The capture
-  // enqueues into the batched client (flushAt/flushInterval); a `flush()` nudges
-  // it out without blocking. Errors here are swallowed so telemetry can't mask
-  // the original error.
-  void getPostHogClient()
-    .then((posthog) => {
-      posthog?.capture({
-        distinctId: 'server',
-        event: 'server_error',
-        properties: {
-          error: error instanceof Error ? error.message : String(error),
-          status,
-          message,
-          path: event.url.pathname,
-        },
-      });
-      void posthog?.flush?.();
-    })
-    .catch(() => {});
+  // OBS-01: the event carries sanitized execution identity (org/actor/request/
+  // trace/agent-run ids, route TEMPLATE, release) and a digest of the message
+  // — never the message itself, which routinely embeds SQL, tokens, headers or
+  // customer rows. See $lib/server/observability-context.
+  //
+  // Everything below is synchronous and total: an unguarded await or throw in a
+  // hook turns one failing request into a failing subtree. `captureServerEvent`
+  // is fire-and-forget with a non-blocking flush (M8 batching preserved).
+  try {
+    const identity = requestIdentity({
+      routeId: event.route.id,
+      method: event.request.method,
+      headers: event.request.headers,
+      locals: event.locals,
+    });
+    captureServerEvent({
+      event: 'server_error',
+      distinctId: distinctIdFor(identity),
+      properties: sanitizeErrorProperties({ error, status, identity }),
+      flush: true,
+    });
+  } catch {
+    // Telemetry must never mask the original error.
+  }
   return { message: 'Internal Error' };
 };
 
