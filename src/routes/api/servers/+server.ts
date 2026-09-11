@@ -22,9 +22,6 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-  console.log('[POST /api/servers] ENTRY user=', locals.user?.email ?? 'NONE');
-  console.log('[POST /api/servers] env.SSRF_ALLOWED_HOSTNAME_SUFFIXES=', process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES);
-  console.log('[POST /api/servers] env.SSRF_ALLOW_TAILSCALE_CGNAT=', process.env.SSRF_ALLOW_TAILSCALE_CGNAT);
   // Per-user host ownership: only authenticated users can add hosts so
   // every new server gets a `user_servers` link. Anonymous adds would
   // leave the row orphaned (visible only to admins, invisible to the
@@ -33,14 +30,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const body = await request.json();
-    console.log('[POST /api/servers] body=', JSON.stringify(body));
     try {
       await assertSafeUrl(body.url, 'server URL');
-      console.log('[POST /api/servers] SSRF check PASSED for url=', body.url);
     } catch (err) {
-      console.log('[POST /api/servers] SSRF check FAILED:', err instanceof Error ? err.message : String(err));
       if (err instanceof SsrfBlockedError) {
-        return json({ ok: false, error: err.message }, { status: 422 });
+        return json({ ok: false, error: 'Server URL is not allowed.' }, { status: 422 });
       }
       throw err;
     }
@@ -49,17 +43,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     posthog?.capture({
       distinctId: user.id,
       event: 'server_added',
-      properties: {
-        server_name: body.name,
-        server_url: body.url,
-      },
     });
     return json({ ok: true });
-  } catch (e) {
-    console.error('[POST /api/servers]', e);
-    return json(
-      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
-      { status: 500 },
-    );
+  } catch {
+    // Database/URL error messages can contain request values or bound tokens.
+    // Keep diagnostics independent of the request and the exception payload.
+    console.error('[POST /api/servers] Unable to save server.');
+    return json({ ok: false, error: 'Unable to save server.' }, { status: 500 });
   }
 };

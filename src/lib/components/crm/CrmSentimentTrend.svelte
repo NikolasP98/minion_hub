@@ -61,6 +61,7 @@
     },
     series: [
       {
+        name: m.crm_insights_sentiment_title(),
         type: 'line',
         smooth: true,
         showSymbol: points.length <= 60,
@@ -96,5 +97,10 @@
 </header>
 
 {#if points.length > 0}
-  <Chart options={option} height="220px" />
+  <Chart
+    options={option}
+    height="220px"
+    ariaLabel={m.crm_insights_sentiment_trend()}
+    tableCategoryLabel={m.misc_date()}
+  />
 {/if}
