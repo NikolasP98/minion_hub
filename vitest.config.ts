@@ -1,6 +1,8 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import path from 'node:path';
+
+const sqlLane = Object.keys(process.env).some((key) => /^REQUIRE_[A-Z_]+_POSTGRES$/.test(key));
 
 export default defineConfig({
   plugins: [svelte({ compilerOptions: { hmr: false } })],
@@ -11,7 +13,19 @@ export default defineConfig({
     conditions: ['node', 'module', 'browser', 'development|production'],
   },
   test: {
-    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts', 'tests/dependencies/**/*.test.ts'],
+    // SQL fixtures belong to the explicit marked-runtime qualification lane: the CI
+    // Postgres jobs opt in by setting a REQUIRE_*_POSTGRES marker; an ordinary run
+    // (including a full local run with .env present) never discovers them.
+    exclude: sqlLane
+      ? configDefaults.exclude
+      : [
+          ...configDefaults.exclude,
+          '**/*.sql.integration.test.ts',
+          // Eager application-environment SQL fixture; split/migrate before admission.
+          'src/server/services/brain-business-persistence.service.test.ts',
+          'src/server/services/crm-funnel.concurrent.integration.test.ts',
+        ],
     setupFiles: ['src/server/test-utils/setup.ts'],
     alias: {
       $lib: path.resolve('src/lib'),
