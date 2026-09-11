@@ -1,13 +1,35 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { PluginBridge as BuiltPlugin } from '../../../../minion/packages/plugin-ui-bridge/dist/index';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  PluginBridge as CandidatePlugin,
-  HostBridge as PackageHost,
-} from '../../../../minion/packages/plugin-ui-bridge/src/index';
 import { PluginBridge as InstalledPlugin } from '@nikolasp98/plugin-ui-bridge';
 import { HostBridge } from './bridge-protocol';
+
+// The candidate package lives in the sibling gateway checkout (minion/packages/plugin-ui-bridge).
+// Hub CI checks out Hub alone, so the source/built candidate comparisons run only where that
+// checkout exists (or are forced off with HUB_SKIP_SIBLING_BRIDGE=1); the installed 0.4.0
+// baseline is always available through node_modules.
+type PluginCtor = typeof InstalledPlugin;
+const siblingRoot = new URL('../../../../minion/packages/plugin-ui-bridge/', import.meta.url);
+const siblingFile = (rel: string) => fileURLToPath(new URL(rel, siblingRoot));
+const siblingPresent =
+  !process.env.HUB_SKIP_SIBLING_BRIDGE &&
+  existsSync(siblingFile('src/index.ts')) &&
+  existsSync(siblingFile('dist/index.js'));
+const siblingSource = siblingPresent
+  ? ((await import(/* @vite-ignore */ siblingFile('src/index.ts'))) as {
+      PluginBridge: PluginCtor;
+      HostBridge: typeof HostBridge;
+    })
+  : undefined;
+const siblingBuilt = siblingPresent
+  ? ((await import(/* @vite-ignore */ siblingFile('dist/index.js'))) as {
+      PluginBridge: PluginCtor;
+    })
+  : undefined;
+const CandidatePlugin: PluginCtor = siblingSource?.PluginBridge ?? InstalledPlugin;
+const BuiltPlugin: PluginCtor = siblingBuilt?.PluginBridge ?? InstalledPlugin;
+const PackageHost: typeof HostBridge = siblingSource?.HostBridge ?? HostBridge;
 
 const HOST = 'https://hub.example';
 const PLUGIN = 'https://plugin.example';
@@ -40,10 +62,7 @@ class Peer {
 const drain = async () => {
   for (let i = 0; i < 12; i++) await Promise.resolve();
 };
-function pair(
-  Plugin: typeof CandidatePlugin | typeof InstalledPlugin | typeof BuiltPlugin = CandidatePlugin,
-  opaque = false,
-) {
+function pair(Plugin: PluginCtor = CandidatePlugin, opaque = false) {
   const parent = new Peer(HOST),
     child = new Peer(opaque ? 'null' : PLUGIN);
   parent.other = child;
@@ -66,7 +85,7 @@ function pair(
   return { parent, child, host, plugin, forward };
 }
 
-describe('actual host/plugin boundary', () => {
+describe.skipIf(!siblingPresent)('actual host/plugin boundary', () => {
   it.each([
     ['source', CandidatePlugin],
     ['built candidate', BuiltPlugin],
@@ -84,7 +103,7 @@ describe('actual host/plugin boundary', () => {
       const { parent, child, host, plugin: first, forward } = pair(Plugin, true);
       const replies: Array<(value: unknown) => void> = [];
       forward.mockImplementation(() => new Promise((resolve) => replies.push(resolve)));
-      let successor: CandidatePlugin | BuiltPlugin | undefined;
+      let successor: InstanceType<PluginCtor> | undefined;
       try {
         host.sendHelloOnReady(hello);
         first.notifyReady();
