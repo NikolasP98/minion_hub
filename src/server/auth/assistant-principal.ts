@@ -1,38 +1,41 @@
 import { error } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
+import { gateway, personalAgents } from '@minion-stack/db/pg';
 import { supabaseAdmin } from '$server/supabase';
 import { getCoreDb } from '$server/db/pg-client';
 import { brains } from '$server/db/pg-schema/brains';
 import { resolveCapabilities, type Capabilities } from '$server/services/rbac.service';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Managing-agent id pattern for AI-Brains agents (`deriveBrainAgentId` in
- *  brain-agents.service.ts) — `brain-<brainUuid>`. */
 const BRAIN_AGENT_RE = /^brain-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
 export interface AssistantPrincipal {
-  /** Supabase profile uuid of the agent's owner, or (for a brain agent) the
-   *  brain agent's own gateway agentId — see `resolveBrainAgentPrincipal`. */
+  /** Owning profile UUID, or the managing brain agent id for brain capabilities. */
   principalId: string;
-  /** Resolved org to scope to (membership-checked for personal agents; the
-   *  brain's own org for brain agents). */
+  /** Authorized organization; gateway callers must also be assigned to it. */
   orgId: string;
-  /** The principal's legacy org role ('admin' | 'owner' | 'member' | …), or
-   *  'agent' for a brain agent (never a real org role — can't collide). */
   role: string | null;
-  /** Effective RBAC capabilities in that org — what the agent is allowed to do. */
   capabilities: Capabilities;
 }
 
-/**
- * Minimal, explicitly-built capability set for a brain-managing agent
- * (`brain-<uuid>`). Deliberately NOT derived from `resolveCapabilities`/a
- * fake profile — every module but `brains` is hard `false` so a brain agent
- * can list/search/remember on the brains it has `brain_access` grants for
- * (enforced separately by `canAccessBrain`) and nothing else: no CRM/finance
- * reads, no analytics SQL (`canRunAnalytics` is forced false even though
- * `brains` is itself a BUSINESS_MODULES entry), no comms/scheduling actions.
- */
+function rejectAssistant(status: 400 | 401 | 403 | 503, code: string, message: string): never {
+  const body = { code, message };
+  throw error(status, body);
+}
+
+/** Identity lookup failures never grant authority or expose backend error details. */
+async function readIdentity<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch {
+    rejectAssistant(
+      503,
+      'ASSISTANT_IDENTITY_UNAVAILABLE',
+      'Assistant identity is temporarily unavailable.',
+    );
+  }
+}
+
 function brainAgentCapabilities(): Capabilities {
   return {
     roles: [],
@@ -44,32 +47,31 @@ function brainAgentCapabilities(): Capabilities {
   };
 }
 
-/**
- * Resolve a `brain-<uuid>` agentId to its principal: org comes FROM the brain
- * row (`brains.agent_id`), looked up globally (no org filter — mirrors the
- * personal-agent `profiles.personal_agent_id` lookup below) since the request
- * carries no trusted org. No matching brain → fail closed, exactly like an
- * unknown personal agent id.
- */
 async function resolveBrainAgentPrincipal(
   locals: App.Locals,
   agentId: string,
+  requestedOrg: string | null,
 ): Promise<AssistantPrincipal> {
-  const [row] = await getCoreDb()
-    .select({ orgId: brains.orgId })
-    .from(brains)
-    .where(eq(brains.agentId, agentId))
-    .limit(1);
-  if (!row) throw error(400, 'unresolvable principal');
+  if (!locals.user) throw error(401, 'Authentication required');
+  if (locals.user.role !== 'admin' && locals.user.supabaseId !== agentId)
+    throw error(403, 'forbidden');
 
-  const isGateway = Boolean(locals.serverId);
-  if (!isGateway) {
-    if (!locals.user) throw error(401, 'Authentication required');
-    if (locals.user.role !== 'admin' && locals.user.supabaseId !== agentId) {
-      throw error(403, 'forbidden');
-    }
+  const rows = await readIdentity(() =>
+    getCoreDb()
+      .select({ orgId: brains.orgId })
+      .from(brains)
+      .where(eq(brains.agentId, agentId))
+      .limit(2),
+  );
+  if (rows.length !== 1) throw error(400, 'unresolvable principal');
+  const row = rows[0];
+  if (requestedOrg && requestedOrg !== row.orgId) {
+    rejectAssistant(
+      403,
+      'ASSISTANT_ORG_NOT_ASSIGNED',
+      'The assistant is not assigned to the requested organization.',
+    );
   }
-
   return {
     principalId: agentId,
     orgId: row.orgId,
@@ -79,86 +81,176 @@ async function resolveBrainAgentPrincipal(
 }
 
 /**
- * Resolve + authorize the assistant caller for the gateway data endpoints
- * (/api/gateway/insight, /api/gateway/query, /api/gateway/brains*). Shared so
- * the security-critical auth can't drift between them.
- *
- * Trusted identity: a gateway caller passes the session's personal agent id
- * (`personal-<uuid>`); we resolve the owning profile via profiles.personal_agent_id
- * (authoritative, handles legacy non-uuid agent ids). A self/admin browser caller
- * may pass ?userId=<profile-uuid>. A `brain-<uuid>` agentId resolves to a
- * brains-only principal via `resolveBrainAgentPrincipal` instead (P4.2).
- *
- * Multi-org without bleed: `orgId` arrives through the (untrusted) model, so we
- * only honour it when the principal is actually a member — else fall back to their
- * primary org. They can never reach an org they don't belong to.
+ * A personal_agents row is the persisted agent/owner/gateway assignment written
+ * by provisionPersonalAgent. Read the current gateway row on every request:
+ * cached server-id or token resolution is not evidence of a current org lease.
+ * The comparison uses equality, never ILIKE wildcards, for legacy agent ids.
+ */
+async function resolveGatewayPrincipal(
+  locals: App.Locals,
+  agentId: string | null,
+  userId: string | null,
+  requestedOrg: string | null,
+): Promise<AssistantPrincipal> {
+  const serverId = locals.serverId;
+  const tokenOrg = locals.tenantCtx?.tenantId;
+  if (!serverId || !tokenOrg || !agentId || userId) {
+    rejectAssistant(
+      403,
+      'ASSISTANT_GATEWAY_ASSIGNMENT_REQUIRED',
+      'A current gateway assignment for this assistant is required.',
+    );
+  }
+  if (BRAIN_AGENT_RE.test(agentId)) {
+    // TODO(handoff): Persist and verify a brain-agent/gateway/org assignment before restoring gateway brain calls; brain_access alone does not bind a gateway. See meta proposals/2026-09-09-assistant-query-delegation-restoration.md (SEC-06 / Phase 15).
+    rejectAssistant(
+      403,
+      'ASSISTANT_BRAIN_ASSIGNMENT_REQUIRED',
+      'A verified gateway assignment for this brain assistant is required.',
+    );
+  }
+
+  // legacy_server_id is not unique in the current schema. Resolve it before
+  // looking at the requested agent so an assignment cannot disambiguate a
+  // credential that arrived under an ambiguous gateway alias.
+  const gateways = await readIdentity(() =>
+    getCoreDb()
+      .select({
+        gatewayId: gateway.id,
+        legacyServerId: gateway.legacyServerId,
+        orgId: gateway.orgId,
+      })
+      .from(gateway)
+      .where(or(eq(gateway.legacyServerId, serverId), sql`${gateway.id}::text = ${serverId}`))
+      .limit(2),
+  );
+  const assignedGateway = gateways[0];
+  if (
+    gateways.length !== 1 ||
+    !assignedGateway ||
+    !assignedGateway.orgId ||
+    assignedGateway.orgId !== tokenOrg ||
+    (assignedGateway.gatewayId !== serverId && assignedGateway.legacyServerId !== serverId)
+  ) {
+    rejectAssistant(
+      403,
+      'ASSISTANT_GATEWAY_ASSIGNMENT_REQUIRED',
+      'A current gateway assignment for this assistant is required.',
+    );
+  }
+  if (requestedOrg && requestedOrg !== assignedGateway.orgId) {
+    rejectAssistant(
+      403,
+      'ASSISTANT_ORG_NOT_ASSIGNED',
+      'The assistant is not assigned to the requested organization.',
+    );
+  }
+
+  const rows = await readIdentity(() =>
+    getCoreDb()
+      .select({
+        principalId: personalAgents.profileId,
+        agentId: personalAgents.agentId,
+        provisioningStatus: personalAgents.provisioningStatus,
+        gatewayId: personalAgents.gatewayId,
+        orgId: gateway.orgId,
+      })
+      .from(personalAgents)
+      .innerJoin(gateway, eq(gateway.id, personalAgents.gatewayId))
+      .where(
+        and(
+          eq(personalAgents.gatewayId, assignedGateway.gatewayId),
+          eq(gateway.orgId, tokenOrg),
+          sql`lower(${personalAgents.agentId}) = lower(${agentId})`,
+        ),
+      )
+      .limit(2),
+  );
+  const row = rows[0];
+  if (
+    rows.length !== 1 ||
+    !row ||
+    row.provisioningStatus !== 'active' ||
+    row.agentId.toLowerCase() !== agentId.toLowerCase() ||
+    row.gatewayId !== assignedGateway.gatewayId ||
+    row.orgId !== assignedGateway.orgId
+  ) {
+    rejectAssistant(
+      403,
+      'ASSISTANT_GATEWAY_ASSIGNMENT_REQUIRED',
+      'A current gateway assignment for this assistant is required.',
+    );
+  }
+  return resolveMemberPrincipal(row.principalId, assignedGateway.orgId);
+}
+
+async function resolveMemberPrincipal(
+  principalId: string,
+  requestedOrg: string | null,
+): Promise<AssistantPrincipal> {
+  const response = await readIdentity(async () => {
+    const result = await supabaseAdmin()
+      .from('organization_members')
+      .select('organization_id, role')
+      .eq('profile_id', principalId);
+    if (result.error) throw result.error;
+    return result;
+  });
+  const rows = (response.data ?? []) as Array<{ organization_id: string; role: string | null }>;
+  const chosen = requestedOrg ? rows.find((row) => row.organization_id === requestedOrg) : rows[0];
+  if (!chosen) {
+    rejectAssistant(
+      403,
+      'ASSISTANT_ORG_NOT_ASSIGNED',
+      'The assistant is not assigned to the requested organization.',
+    );
+  }
+  const capabilities = await readIdentity(() =>
+    resolveCapabilities(chosen.organization_id, principalId),
+  );
+  return { principalId, orgId: chosen.organization_id, role: chosen.role, capabilities };
+}
+
+/**
+ * Resolve the actor shared by assistant reads and actions. Gateway possession
+ * grants no implicit delegation: only an active persisted personal-agent
+ * assignment on that gateway and its current org can authorize a gateway call.
+ * Browser callers remain self/admin-only and membership-checked. This resolver
+ * never self-heals identity pointers or accepts a requested org as authority.
  */
 export async function resolveAssistantPrincipal(
   locals: App.Locals,
   url: URL,
 ): Promise<AssistantPrincipal> {
   const agentId = url.searchParams.get('agentId');
-  const userIdParam = url.searchParams.get('userId');
-  if (!agentId && !userIdParam) throw error(400, 'agentId or userId query param required');
+  const userId = url.searchParams.get('userId');
+  const requestedOrg = url.searchParams.get('orgId');
 
-  if (agentId && BRAIN_AGENT_RE.test(agentId)) {
-    return resolveBrainAgentPrincipal(locals, agentId);
-  }
+  if (locals.serverId) return resolveGatewayPrincipal(locals, agentId, userId, requestedOrg);
+  if (!locals.user) throw error(401, 'Authentication required');
+  if ((!agentId && !userId) || (agentId && userId))
+    throw error(400, 'Provide one agentId or userId.');
+  if (agentId && BRAIN_AGENT_RE.test(agentId))
+    return resolveBrainAgentPrincipal(locals, agentId, requestedOrg);
 
-  const admin = supabaseAdmin();
-
-  let principalId: string | null = null;
+  let principalId: string;
   if (agentId) {
-    const { data } = await admin
-      .from('profiles')
-      .select('id')
-      .eq('personal_agent_id', agentId)
-      .maybeSingle();
-    principalId = (data as { id: string } | null)?.id ?? null;
-    if (!principalId) {
-      // Fallback: the denormalized profiles pointer can be missing or stale
-      // (seen in prod: agent provisioned pre-GoTrue under a mixed-case legacy
-      // id, pointer never written → every tool call 400'd). `personal_agents`
-      // is the authoritative mapping; match case-insensitively because the
-      // gateway lowercases agent ids while legacy rows kept the original case.
-      const { data: paRow } = await admin
-        .from('personal_agents')
-        .select('profile_id')
-        .ilike('agent_id', agentId)
-        .maybeSingle();
-      principalId = (paRow as { profile_id: string } | null)?.profile_id ?? null;
-      if (principalId) {
-        // Self-heal the pointer (with the id the gateway actually sends) so
-        // the fast path works next time. Best-effort.
-        await admin
-          .from('profiles')
-          .update({ personal_agent_id: agentId })
-          .eq('id', principalId)
-          .then(() => undefined);
-      }
+    const rows = await readIdentity(() =>
+      getCoreDb()
+        .select({ principalId: personalAgents.profileId, agentId: personalAgents.agentId })
+        .from(personalAgents)
+        .where(sql`lower(${personalAgents.agentId}) = lower(${agentId})`)
+        .limit(2),
+    );
+    if (rows.length !== 1 || rows[0].agentId.toLowerCase() !== agentId.toLowerCase()) {
+      throw error(400, 'unresolvable principal');
     }
-  } else if (userIdParam && UUID_RE.test(userIdParam)) {
-    principalId = userIdParam;
+    principalId = rows[0].principalId;
+  } else {
+    if (!userId || !UUID_RE.test(userId)) throw error(400, 'unresolvable principal');
+    principalId = userId;
   }
-  if (!principalId) throw error(400, 'unresolvable principal');
-
-  const isGateway = Boolean(locals.serverId);
-  if (!isGateway) {
-    if (!locals.user) throw error(401, 'Authentication required');
-    if (locals.user.role !== 'admin' && locals.user.supabaseId !== principalId) {
-      throw error(403, 'forbidden');
-    }
-  }
-
-  const { data: mems } = await admin
-    .from('organization_members')
-    .select('organization_id, role')
-    .eq('profile_id', principalId);
-  const rows = (mems ?? []) as Array<{ organization_id: string; role: string | null }>;
-  if (rows.length === 0) throw error(404, 'no organization for user');
-
-  const requested = url.searchParams.get('orgId');
-  const chosen = (requested && rows.find((r) => r.organization_id === requested)) || rows[0];
-  const capabilities = await resolveCapabilities(chosen.organization_id, principalId);
-  return { principalId, orgId: chosen.organization_id, role: chosen.role, capabilities };
+  if (locals.user.role !== 'admin' && locals.user.supabaseId !== principalId)
+    throw error(403, 'forbidden');
+  return resolveMemberPrincipal(principalId, requestedOrg);
 }

@@ -11,7 +11,7 @@ import { loadHostsForUser } from '$server/services/hosts.service';
 export const load: PageServerLoad = async ({ locals }) => {
   const user = requireAuth(locals);
   const ctx = await getTenantCtx(locals as App.Locals);
-  if (!ctx) throw redirect(303, '/login');
+  if (!ctx) throw redirect(303, '/join');
   // personal_agents + identities both on Supabase (pg). coreCtx for the agent.
   const coreCtx = { db: getCoreDb(), tenantId: ctx.tenantId };
 
@@ -64,17 +64,17 @@ export const load: PageServerLoad = async ({ locals }) => {
     ),
   };
 
-  const identities = (
-    await listChannelIdentitiesFromSupabase(user.supabaseId ?? user.id)
-  ).map((i) => ({
-    id: i.id,
-    source: 'supabase' as const,
-    provider: i.channel,
-    kind: 'channel' as const,
-    externalId: i.channelUserId,
-    displayName: i.displayName,
-    verifiedAt: i.verifiedAt,
-  }));
+  const identities = (await listChannelIdentitiesFromSupabase(user.supabaseId ?? user.id)).map(
+    (i) => ({
+      id: i.id,
+      source: 'supabase' as const,
+      provider: i.channel,
+      kind: 'channel' as const,
+      externalId: i.channelUserId,
+      displayName: i.displayName,
+      verifiedAt: i.verifiedAt,
+    }),
+  );
 
   return {
     user: {
