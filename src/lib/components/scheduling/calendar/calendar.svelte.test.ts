@@ -30,6 +30,8 @@ function ev(id: string, patch: Partial<CalEvent> = {}): CalEvent {
     attendeePhone: null,
     productId: null,
     productName: null,
+    invoiceId: null,
+    invoiceLabel: null,
     tags: [],
     contactTags: [],
     productTags: [],

@@ -49,6 +49,7 @@ const existing = {
   attendeeName: 'Jane',
   attendeeEmail: null,
   attendeePhone: null,
+  invoiceId: null,
 };
 
 describe('updateBooking', () => {
@@ -105,6 +106,47 @@ describe('updateBooking', () => {
     await expect(updateBooking(ctx(db), 'b1', { resourceId: 'staff-2' })).rejects.toBeInstanceOf(
       BookingConflictError,
     );
+  });
+
+  it('accepts a valid invoiceId belonging to the org (spec S6)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [existing], // getBooking (existing)
+      [{ id: 'inv-1' }], // invoice org-scope check — a hit
+      [], // update(schedBookings)...set(...)
+      [], // recordAuditInTx insert
+      [{ ...existing, invoiceId: 'inv-1' }], // getBooking (final)
+    ]);
+
+    const row = await updateBooking(ctx(db), 'b1', { invoiceId: 'inv-1' });
+
+    expect(row.invoiceId).toBe('inv-1');
+  });
+
+  it('throws "invalid invoiceId" when the invoice does not belong to this org', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [existing], // getBooking
+      [], // invoice org-scope check — no hit
+    ]);
+
+    await expect(updateBooking(ctx(db), 'b1', { invoiceId: 'inv-other-org' })).rejects.toThrow(
+      'invalid invoiceId',
+    );
+  });
+
+  it('clears invoiceId when null is passed explicitly (no org-scope check needed)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ ...existing, invoiceId: 'inv-1' }], // getBooking
+      [], // update(schedBookings)...set(...)
+      [], // recordAuditInTx insert
+      [{ ...existing, invoiceId: null }], // getBooking (final)
+    ]);
+
+    const row = await updateBooking(ctx(db), 'b1', { invoiceId: null });
+
+    expect(row.invoiceId).toBeNull();
   });
 });
 

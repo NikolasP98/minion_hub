@@ -34,6 +34,7 @@
   const crmContactId = $derived(data.crmContactId);
   const stockEntry = $derived(data.stockEntry);
   const stockStatusV = $derived(stockEntry ? entryStatusVariant(stockEntry.status) : null);
+  const bookings = $derived(data.bookings);
 
   const isVoid = $derived(inv.status === 'void');
 
@@ -541,6 +542,37 @@
             {/if}
           </section>
         {/if}
+
+        <!-- Appointments (spec S6: booking↔invoice link, not mandatory) -->
+        {#if bookings.length > 0}
+          <section class="doc-sec">
+            <header class="panel-h">{m.fin_bookings_section_title()}</header>
+            <div class="booking-rows">
+              {#each bookings as b (b.id)}
+                <div class="booking-row">
+                  <div class="booking-row-main">
+                    <a class="booking-row-link" href="/scheduling/bookings?focus={b.id}">
+                      {b.title ?? b.resourceName}
+                    </a>
+                    <span class="t-caption"
+                      >{fmtDate(b.startTime)} · {b.resourceName} · {b.status}</span
+                    >
+                  </div>
+                  {#if b.via === 'ticket'}
+                    <Badge size="sm">{m.fin_bookings_via_pos()}</Badge>
+                  {/if}
+                  <a
+                    class="booking-row-edit"
+                    href="/scheduling/bookings/{b.id}/edit"
+                    title={m.sched_edit_booking()}
+                  >
+                    {m.sched_edit_booking()}
+                  </a>
+                </div>
+              {/each}
+            </div>
+          </section>
+        {/if}
       </div>
 
       {#if hasVal(inv.documentId)}
@@ -969,6 +1001,39 @@
   }
   :global(.stock-link .stock-link-ico) {
     opacity: 0.6;
+  }
+
+  /* Appointments card */
+  .booking-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+  }
+  .booking-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    flex-wrap: wrap;
+  }
+  .booking-row-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+  .booking-row-link {
+    color: var(--color-foreground);
+    font-weight: 500;
+  }
+  .booking-row-link:hover {
+    color: var(--color-accent);
+  }
+  .booking-row-edit {
+    color: var(--color-accent);
+    font-size: var(--font-size-caption, 12px);
+  }
+  .booking-row-edit:hover {
+    text-decoration: underline;
   }
 
   /* Stock issue dialog */

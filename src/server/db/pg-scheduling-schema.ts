@@ -231,6 +231,9 @@ export const schedBookings = pgTable(
     partyId: uuid('party_id'),
     /** Snapshot of the event type's product at booking time. */
     productId: uuid('product_id'),
+    /** Soft bridge to fin_invoices (spec S6, "not mandatory"). No FK —
+     *  invoices are provider-synced and may be re-imported. */
+    invoiceId: uuid('invoice_id'),
     /** This booking's own event kind. Null = resolve to the event type's kindId,
      *  then the org default, at read time (spec §1/§2.1) — never denormalised
      *  onto the row, so re-assigning a service's kind updates history. */

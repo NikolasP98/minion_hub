@@ -15,6 +15,7 @@
     type SchedulableResource,
   } from '$lib/components/scheduling/ResourcePickerField.svelte';
   import TagsField from '$lib/components/tags/TagsField.svelte';
+  import InvoicePickerField from '$lib/components/finances/InvoicePickerField.svelte';
   import type { CalKind, CalTag } from '$lib/components/scheduling/calendar/types';
   import { canAct } from '$lib/access/can.svelte';
 
@@ -32,6 +33,10 @@
     attendeeName: string | null;
     attendeeEmail: string | null;
     attendeePhone: string | null;
+    invoiceId: string | null;
+    /** Display label for `invoiceId` (documentId ?? number) — the loader
+     *  resolves it once so the edit form never re-fetches just to render it. */
+    invoiceLabel: string | null;
   };
   export type EditableEventType = {
     id: string;
@@ -86,6 +91,8 @@
   let phone = $state<string | null>(booking.attendeePhone ?? null);
   // svelte-ignore state_referenced_locally
   let attendeeEmail = $state(booking.attendeeEmail ?? '');
+  // svelte-ignore state_referenced_locally
+  let invoiceId = $state<string | null>(booking.invoiceId);
   // The CRM link only survives while the customer picker still points at the
   // booking's original contact — pick a different party/name and the edit
   // just clears the link rather than guessing a new one (createBooking's
@@ -132,6 +139,7 @@
           attendeeName: customerName,
           attendeeEmail: attendeeEmail.trim() || null,
           attendeePhone: phone || null,
+          invoiceId,
         }),
       });
       if (res.status === 409) {
@@ -234,6 +242,10 @@
     <span class="t-caption">{m.sched_edit_attendee_email()}</span>
     <input class="txt" type="email" bind:value={attendeeEmail} />
   </label>
+  <div class="field">
+    <span class="t-caption">{m.sched_invoice_label()}</span>
+    <InvoicePickerField bind:value={invoiceId} initialLabel={booking.invoiceLabel} />
+  </div>
   <div class="field">
     <span class="t-caption">{m.tags_label()}</span>
     <TagsField allTags={tags} bind:value={tagIds} />

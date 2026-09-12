@@ -88,6 +88,7 @@ describe('pg-scheduling-schema', () => {
       'attendeePhone',
       'crmContactId',
       'productId',
+      'invoiceId',
       'kindId',
       'source',
       'rescheduledFromId',
