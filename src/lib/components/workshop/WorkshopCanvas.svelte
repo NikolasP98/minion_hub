@@ -1736,10 +1736,11 @@
     onselect={selectAgent}
     onassign={(id) => {
       const agent = workshopState.agents[id];
-      if (agent) handleContextAction('assignTask', undefined, {
-        instanceId: id,
-        agentName: resolveAgentName(agent.agentId),
-      });
+      if (agent)
+        handleContextAction('assignTask', undefined, {
+          instanceId: id,
+          agentName: resolveAgentName(agent.agentId),
+        });
     }}
   />
   <!-- Gateway-offline ribbon: slides down from the top of the canvas while disconnected -->

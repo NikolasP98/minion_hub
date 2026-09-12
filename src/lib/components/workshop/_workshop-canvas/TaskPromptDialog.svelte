@@ -29,8 +29,7 @@
       class="t-body"
       {value}
       oninput={(e) => onValueChange((e.target as HTMLTextAreaElement).value)}
-      {@attach submitOnModEnter(onSubmit)}
-    ></textarea>
+      {@attach submitOnModEnter(onSubmit)}></textarea>
   </label>
   <p class="task-hint t-caption">{m.workshop_taskPromptHint()}</p>
   {#snippet footer()}
