@@ -1,9 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
-import { createMockDb } from '$server/test-utils/mock-db';
-import { files } from '@minion-stack/db/pg';
-import { attachmentLinks } from '$server/db/pg-attachments-schema';
+import type { CoreTx } from '$server/db/with-org-core';
+import type { CoreCtx } from '$server/auth/core-ctx';
+import {
+  ATTACHMENT_FIXTURE_DDL,
+  migrationSource,
+  access,
+  ORG,
+  USER,
+  CONTACT,
+} from '$server/test-utils/attachment-postgres-fixture';
 import {
   createUploadIntent,
   finalizeUpload,
@@ -13,319 +20,236 @@ import {
   sweepAbandonedUploads,
   AttachmentError,
 } from './attachments.service';
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
-
-vi.mock('$server/db/utils', () => ({
-  newId: () => 'mock-file-id-0000000001',
-  nowMs: () => 1_700_000_000_000,
-}));
-
-// sweepAbandonedUploads' anti-join (notExists) is real drizzle-orm SQL — a
-// mocked chain proxy can't prove it actually excludes linked rows, so those
-// tests run against a real embedded Postgres (PGlite), same precedent as
-// crm-contacts.service.test.ts's cross-org isolation cases. Bypassing the
-// role/GUC dance this way is behaviorally identical to the createMockDb path
-// every other test in this file already relies on (real `withOrgCore` calls
-// `fn(scope.db.transaction(cb => cb(scope.db)))`, and createMockDb's
-// `transaction` mock IS `cb => cb(db)` — the two bookend `execute()` calls
-// this skips don't consume resolveSequence slots either way).
+import { ATTACHMENT_LIMITS } from './file.service';
+// Fast embedded service seam tests; these do not qualify production ACL/RLS.
+// Native authority/lifecycle suites load the independently reviewed catalog.
 vi.mock('$server/db/with-org-core', () => ({
-  withOrgCore: (scope: { db: unknown }, fn: (tx: unknown) => unknown) => fn(scope.db),
+  withOrgCore: (scope: CoreCtx, fn: (tx: CoreTx) => Promise<unknown>) => scope.db.transaction(fn),
 }));
-
-const mockPresignPut = vi
-  .fn<(k: string, ct: string, expiresIn?: number, opts?: unknown) => Promise<string>>()
-  .mockResolvedValue('https://signed-put.example.com/upload');
-const mockHead =
-  vi.fn<(k: string) => Promise<{ size: number; contentType: string | null } | null>>();
-const mockDelete = vi.fn<(k: string) => Promise<void>>();
-const mockGetSignedUrl = vi
-  .fn<(k: string, expiresIn?: number) => Promise<string>>()
-  .mockResolvedValue('https://signed-get.example.com/download');
-
-vi.mock('$server/storage/blob', () => ({
-  getStorage: () => ({
-    presignPut: (k: string, ct: string, e?: number, o?: unknown) => mockPresignPut(k, ct, e, o),
-    head: (k: string) => mockHead(k),
-    delete: (k: string) => mockDelete(k),
-    getSignedUrl: (k: string, e?: number) => mockGetSignedUrl(k, e),
-    put: vi.fn(),
-  }),
+vi.mock('$server/services/rbac.service', () => ({
+  hasOrgCapability: vi.fn(),
+  ownerFilter: vi.fn(),
 }));
-
-const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
-const CONTACT_ID = '11111111-1111-4111-8111-111111111111';
-
-describe('createUploadIntent', () => {
-  it('rejects a file over the size cap without touching storage', async () => {
-    const { db } = createMockDb();
+const store = vi.hoisted(() => ({
+  presignPut: vi.fn(async () => 'https://signed-put.invalid/upload'),
+  head: vi.fn<() => Promise<{ size: number; contentType: string } | null>>(),
+  delete: vi.fn<() => Promise<void>>(),
+  getSignedUrl: vi.fn(async () => 'https://signed-get.invalid/download'),
+}));
+vi.mock('$server/storage/blob', () => ({ getStorage: () => store }));
+let client: PGlite;
+let ctx: CoreCtx;
+beforeEach(async () => {
+  vi.clearAllMocks();
+  store.head.mockResolvedValue({ size: 42, contentType: 'application/pdf' });
+  store.delete.mockResolvedValue();
+  client = new PGlite();
+  await client.exec(`CREATE ROLE app_ledger;${ATTACHMENT_FIXTURE_DDL}`);
+  await client.exec(migrationSource('20260912090100_attachment_links.sql'));
+  await client.exec(migrationSource('20260913020000_attachment_file_state.sql'));
+  await client.query('INSERT INTO crm_contacts(id,org_id,owner_id) VALUES ($1,$2,$3)', [
+    CONTACT,
+    ORG,
+    USER,
+  ]);
+  ctx = { db: drizzle(client) as unknown as CoreCtx['db'], tenantId: ORG, profileId: USER };
+});
+afterEach(async () => {
+  await client?.close();
+});
+async function seed(
+  id = 'file-a',
+  options: { category?: string; old?: boolean; size?: number; key?: string } = {},
+) {
+  await client.query(
+    "INSERT INTO files VALUES ($1,$2,$3,$4,'file.pdf','application/pdf',$5,$6,$7)",
+    [
+      id,
+      ORG,
+      USER,
+      options.key ?? `${ORG}/attachments/${id}/file.pdf`,
+      options.size ?? 42,
+      options.category ?? 'attachment',
+      options.old ? new Date(Date.now() - 48 * 3600000) : new Date(),
+    ],
+  );
+  if ((options.category ?? 'attachment') === 'attachment')
+    await client.query(
+      "INSERT INTO attachment_file_state(file_id,org_id,file_key,access_modules) VALUES ($1,$2,$3,ARRAY['crm','scheduling','pos','stock','finance'])",
+      [id, ORG, options.key ?? `${ORG}/attachments/${id}/file.pdf`],
+    );
+}
+const ref = { objectType: 'crm_contact' as const, objectId: CONTACT };
+describe('attachment upload validation and reservation', () => {
+  it('rejects oversized input before reserving or signing', async () => {
     await expect(
-      createUploadIntent(ctx(db), {
-        fileName: 'huge.zip',
-        contentType: 'application/zip',
-        sizeBytes: 999_999_999,
-      }),
-    ).rejects.toThrow(AttachmentError);
-    expect(mockPresignPut).not.toHaveBeenCalled();
+      createUploadIntent(
+        ctx,
+        { fileName: 'huge.pdf', contentType: 'application/pdf', sizeBytes: 999999999 },
+        access(),
+      ),
+    ).rejects.toBeInstanceOf(AttachmentError);
+    expect(store.presignPut).not.toHaveBeenCalled();
   });
-
-  it('rejects a disallowed MIME type', async () => {
-    const { db } = createMockDb();
+  it('rejects disallowed MIME types', async () => {
     await expect(
-      createUploadIntent(ctx(db), {
-        fileName: 'script.exe',
-        contentType: 'application/x-msdownload',
-        sizeBytes: 100,
-      }),
+      createUploadIntent(
+        ctx,
+        { fileName: 'script.exe', contentType: 'application/x-msdownload', sizeBytes: 100 },
+        access(),
+      ),
     ).rejects.toMatchObject({ code: 'mime_not_allowed' });
   });
-
-  it('rejects when the org quota would be exceeded', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([{ total: 2 * 1024 * 1024 * 1024 - 10 }]); // quota check
+  it('enforces the existing organization quota', async () => {
+    await seed('full', { size: ATTACHMENT_LIMITS.orgQuotaBytes });
     await expect(
-      createUploadIntent(ctx(db), {
-        fileName: 'ok.pdf',
-        contentType: 'application/pdf',
-        sizeBytes: 1000,
-      }),
-    ).rejects.toThrow(/quota/i);
-    expect(mockPresignPut).not.toHaveBeenCalled();
+      createUploadIntent(
+        ctx,
+        { fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 100 },
+        access(),
+      ),
+    ).rejects.toMatchObject({ code: 'quota_exceeded' });
+    expect(store.presignPut).not.toHaveBeenCalled();
   });
-
-  it('inserts a files row and returns a presigned PUT url', async () => {
-    const { db, resolveSequence } = createMockDb();
-    resolveSequence([
-      [{ total: 0 }], // quota check
-      [], // insert files
-    ]);
-    const intent = await createUploadIntent(ctx(db), {
-      fileName: 'doc.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 1000,
-    });
-    expect(intent.fileId).toBe('mock-file-id-0000000001');
-    expect(intent.uploadUrl).toBe('https://signed-put.example.com/upload');
-    expect(mockPresignPut).toHaveBeenCalledWith(
-      expect.stringContaining('org-1/attachments/mock-file-id-0000000001/doc.pdf'),
+  it('reserves file and durable identity atomically and signs the actual size limit', async () => {
+    const intent = await createUploadIntent(
+      ctx,
+      { fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 100, links: [ref] },
+      access(),
+    );
+    expect(intent.uploadUrl).toBe('https://signed-put.invalid/upload');
+    expect(store.presignPut).toHaveBeenCalledWith(
+      `${ORG}/attachments/${intent.fileId}/a.pdf`,
       'application/pdf',
       900,
-      { contentLength: 1000 },
+      { contentLength: 100 },
     );
+    expect((await client.query('SELECT * FROM attachment_file_state')).rows).toHaveLength(1);
   });
 });
-
-describe('finalizeUpload', () => {
-  it('deletes the files row and throws upload_missing when the object never landed', async () => {
-    const { db, resolveSequence } = createMockDb();
-    resolveSequence([
-      [{ id: 'f1', b2FileKey: 'org-1/attachments/f1/doc.pdf' }], // select file
-      [], // delete files
-    ]);
-    mockHead.mockResolvedValueOnce(null);
-    await expect(finalizeUpload(ctx(db), { fileId: 'f1' })).rejects.toMatchObject({
+describe('finalize and link', () => {
+  it('rejects missing files without inspecting storage', async () => {
+    await expect(finalizeUpload(ctx, { fileId: 'missing' }, access())).rejects.toMatchObject({
+      code: 'not_found',
+    });
+    expect(store.head).not.toHaveBeenCalled();
+  });
+  it('claims and removes a missing upload without leaving a file registration', async () => {
+    await seed();
+    store.head.mockResolvedValue(null);
+    await expect(finalizeUpload(ctx, { fileId: 'file-a' }, access())).rejects.toMatchObject({
       code: 'upload_missing',
     });
+    expect((await client.query('SELECT * FROM files')).rows).toHaveLength(0);
+    expect((await client.query('SELECT * FROM attachment_file_state')).rows).toHaveLength(0);
   });
-
-  it('throws not_found for an unknown fileId', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([]); // select file -> none
-    await expect(finalizeUpload(ctx(db), { fileId: 'missing' })).rejects.toMatchObject({
-      code: 'not_found',
+  it('updates actual object size and creates authorized links', async () => {
+    await seed();
+    store.head.mockResolvedValue({ size: 4321, contentType: 'application/pdf' });
+    expect(await finalizeUpload(ctx, { fileId: 'file-a', links: [ref] }, access())).toMatchObject({
+      sizeBytes: 4321,
+      links: [ref],
     });
-  });
-
-  it('updates size_bytes to the real object size and links requested objects', async () => {
-    const { db, resolveSequence } = createMockDb();
-    resolveSequence([
-      [{ id: 'f1', b2FileKey: 'org-1/attachments/f1/doc.pdf' }], // select file
-      [], // update size
-      [], // insert link
-      [], // audit
+    expect((await client.query('SELECT size_bytes FROM files')).rows).toEqual([
+      { size_bytes: 4321 },
     ]);
-    mockHead.mockResolvedValueOnce({ size: 4321, contentType: 'application/pdf' });
-    const result = await finalizeUpload(ctx(db), {
-      fileId: 'f1',
-      links: [{ objectType: 'crm_contact', objectId: CONTACT_ID }],
-    });
-    expect(result.sizeBytes).toBe(4321);
-    expect(db.update).toHaveBeenCalled();
-    expect(db.insert).toHaveBeenCalled();
   });
-});
-
-describe('linkAttachment', () => {
-  it('inserts an idempotent link row and an audit entry', async () => {
-    const { db, resolveSequence } = createMockDb();
-    resolveSequence([[], []]); // insert link, audit insert
-    await linkAttachment(ctx(db), { fileId: 'f1', objectType: 'booking', objectId: CONTACT_ID });
-    expect(db.insert).toHaveBeenCalled();
+  it('idempotently links and audits an existing authorized record', async () => {
+    await seed();
+    await linkAttachment(ctx, { fileId: 'file-a', ...ref }, access());
+    await linkAttachment(ctx, { fileId: 'file-a', ...ref }, access());
+    expect((await client.query('SELECT * FROM attachment_links')).rows).toHaveLength(1);
+    expect((await client.query('SELECT * FROM doc_audit_log')).rows).toHaveLength(2);
   });
-});
-
-describe('deleteAttachment', () => {
-  it('refuses when links remain and force is not set', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([{ fileId: 'f1' }]); // link check finds a row
-    await expect(deleteAttachment(ctx(db), 'f1')).rejects.toMatchObject({ code: 'still_linked' });
-    expect(mockDelete).not.toHaveBeenCalled();
+  it('returns no attachments for an existing empty record', async () => {
+    expect(await listAttachmentsFor(ctx, 'crm_contact', CONTACT, access())).toEqual([]);
   });
-
-  it('deletes links, storage object, and the files row when forced', async () => {
-    const { db, resolveSequence } = createMockDb();
-    resolveSequence([
-      [{ fileId: 'f1' }], // link check finds a row
-      [{ b2FileKey: 'org-1/attachments/f1/doc.pdf' }], // select file
-      [], // delete links
-      [], // delete files
-    ]);
-    await deleteAttachment(ctx(db), 'f1', { force: true });
-    expect(mockDelete).toHaveBeenCalledWith('org-1/attachments/f1/doc.pdf');
-  });
-
-  it('throws not_found when the file row is gone', async () => {
-    const { db, resolveSequence } = createMockDb();
-    resolveSequence([
-      [], // no links
-      [], // no file row
-    ]);
-    await expect(deleteAttachment(ctx(db), 'missing')).rejects.toMatchObject({
-      code: 'not_found',
-    });
-  });
-});
-
-describe('listAttachmentsFor', () => {
-  it('returns [] without extra queries when nothing is linked', async () => {
-    const { db, resolve } = createMockDb();
-    resolve([]); // own links query
-    const result = await listAttachmentsFor(ctx(db), 'crm_contact', CONTACT_ID);
-    expect(result).toEqual([]);
-  });
-
-  it('groups every link (own + other objects) per file', async () => {
-    const { db, resolveSequence } = createMockDb();
-    resolveSequence([
-      [{ fileId: 'f1' }], // own links
-      [{ id: 'f1', b2FileKey: 'k', fileName: 'doc.pdf' }], // file rows
-      [
-        { fileId: 'f1', objectType: 'crm_contact', objectId: CONTACT_ID },
-        { fileId: 'f1', objectType: 'booking', objectId: 'b-1' },
-      ], // all links for f1
-    ]);
-    const result = await listAttachmentsFor(ctx(db), 'crm_contact', CONTACT_ID);
+  it('returns authorized file metadata and its visible link set', async () => {
+    await seed();
+    await linkAttachment(ctx, { fileId: 'file-a', ...ref }, access());
+    const result = await listAttachmentsFor(ctx, 'crm_contact', CONTACT, access());
     expect(result).toHaveLength(1);
-    expect(result[0].links).toEqual([
-      { objectType: 'crm_contact', objectId: CONTACT_ID },
-      { objectType: 'booking', objectId: 'b-1' },
-    ]);
+    expect(result[0].links).toEqual([ref]);
   });
 });
-
-const TENANT_ID = '22222222-2222-4222-8222-222222222222';
-const sweepCtx = (db: unknown) => ({ db: db as never, tenantId: TENANT_ID });
-const OLD = new Date(Date.now() - 48 * 60 * 60 * 1000); // 48h ago
-const RECENT = new Date(Date.now() - 1 * 60 * 60 * 1000); // 1h ago
-
-/** Only `files` + `attachment_links` — the two tables sweepAbandonedUploads
- *  touches — against a real embedded Postgres (see the with-org-core mock
- *  comment above for why). */
-async function createRealFilesDb() {
-  const client = new PGlite();
-  const db = drizzle(client);
-  await client.exec(`
-    create table files (
-      id text primary key,
-      tenant_id uuid not null,
-      uploaded_by uuid,
-      b2_file_key text not null,
-      file_name text not null,
-      content_type text not null,
-      size_bytes bigint not null,
-      category text not null default 'general',
-      created_at timestamptz not null default now()
-    );
-    create table attachment_links (
-      org_id text not null,
-      file_id text not null,
-      object_type text not null,
-      object_id uuid not null,
-      linked_by uuid,
-      linked_at timestamptz not null default now(),
-      primary key (object_type, object_id, file_id)
-    );
-  `);
-  return db;
-}
-
-async function insertFile(
-  db: Awaited<ReturnType<typeof createRealFilesDb>>,
-  row: { id: string; createdAt: Date; category?: string; b2FileKey?: string },
-) {
-  await db.insert(files).values({
-    id: row.id,
-    tenantId: TENANT_ID,
-    b2FileKey: row.b2FileKey ?? `${TENANT_ID}/attachments/${row.id}/doc.pdf`,
-    fileName: 'doc.pdf',
-    contentType: 'application/pdf',
-    sizeBytes: 100,
-    category: row.category ?? 'attachment',
-    createdAt: row.createdAt,
-  });
-}
-
-describe('sweepAbandonedUploads', () => {
-  it('reaps only unlinked attachment rows past the age cutoff, leaving age/category/link mismatches alone', async () => {
-    const db = await createRealFilesDb();
-    await insertFile(db, { id: 'sweep-me', createdAt: OLD });
-    await insertFile(db, { id: 'still-linked', createdAt: OLD });
-    await db.insert(attachmentLinks).values({
-      orgId: TENANT_ID,
-      fileId: 'still-linked',
-      objectType: 'booking',
-      objectId: CONTACT_ID,
+describe('claimed attachment deletion', () => {
+  it('refuses ordinary deletion while linked without touching storage', async () => {
+    await seed();
+    await linkAttachment(ctx, { fileId: 'file-a', ...ref }, access());
+    await expect(deleteAttachment(ctx, 'file-a', access())).rejects.toMatchObject({
+      code: 'still_linked',
     });
-    await insertFile(db, { id: 'wrong-category', createdAt: OLD, category: 'avatar' });
-    await insertFile(db, { id: 'too-recent', createdAt: RECENT });
-    mockHead.mockResolvedValueOnce({ size: 5, contentType: 'application/pdf' });
-
-    const result = await sweepAbandonedUploads(sweepCtx(db), {});
-
-    expect(result).toEqual({ scanned: 1, deleted: 1, storageObjectsDeleted: 1 });
-    const remaining = await db.select({ id: files.id }).from(files);
-    expect(remaining.map((r) => r.id).sort()).toEqual([
-      'still-linked',
-      'too-recent',
-      'wrong-category',
+    expect(store.delete).not.toHaveBeenCalled();
+  });
+  it('force deletion removes authorized links before the external effect', async () => {
+    await seed();
+    await linkAttachment(ctx, { fileId: 'file-a', ...ref }, access());
+    store.delete.mockImplementationOnce(async () => {
+      expect((await client.query('SELECT * FROM attachment_links')).rows).toHaveLength(0);
+      expect((await client.query('SELECT state FROM attachment_file_state')).rows).toEqual([
+        { state: 'deleting' },
+      ]);
+    });
+    await deleteAttachment(ctx, 'file-a', access(), { force: true });
+    expect((await client.query('SELECT * FROM files')).rows).toHaveLength(0);
+  });
+  it('rejects a missing file', async () => {
+    await expect(deleteAttachment(ctx, 'missing', access())).rejects.toMatchObject({
+      code: 'not_found',
+    });
+  });
+  it('retains a failed claim and retries that exact immutable key', async () => {
+    await seed();
+    store.delete.mockRejectedValueOnce(new Error('disposable-store-failure'));
+    await expect(deleteAttachment(ctx, 'file-a', access())).rejects.toThrow(
+      'disposable-store-failure',
+    );
+    expect((await client.query('SELECT state FROM attachment_file_state')).rows).toEqual([
+      { state: 'deleting' },
     ]);
+    await deleteAttachment(ctx, 'file-a', access());
+    expect(store.delete).toHaveBeenCalledTimes(2);
   });
-
-  it('deletes the row without touching storage when the object never landed', async () => {
-    const db = await createRealFilesDb();
-    await insertFile(db, { id: 'ghost', createdAt: OLD });
-    mockHead.mockResolvedValueOnce(null);
-
-    const result = await sweepAbandonedUploads(sweepCtx(db), {});
-
-    expect(result).toEqual({ scanned: 1, deleted: 1, storageObjectsDeleted: 0 });
-    expect(mockDelete).not.toHaveBeenCalled();
+});
+describe('bounded abandoned upload sweep', () => {
+  it('retains linked/recent/unmanaged files and reaps old managed files', async () => {
+    await seed('old', { old: true });
+    await seed('linked', { old: true });
+    await linkAttachment(ctx, { fileId: 'linked', ...ref }, access());
+    await seed('recent');
+    await seed('avatar', { old: true, category: 'avatar', key: `${ORG}/avatar/avatar/file` });
+    expect(await sweepAbandonedUploads(ctx)).toEqual({
+      scanned: 1,
+      deleted: 1,
+      storageObjectsDeleted: 1,
+      failed: 0,
+    });
+    expect(
+      (await client.query<{ id: string }>('SELECT id FROM files ORDER BY id')).rows.map(
+        (row) => row.id,
+      ),
+    ).toEqual(['avatar', 'linked', 'recent']);
   });
-
-  it('respects the limit, leaving the rest for the next tick', async () => {
-    const db = await createRealFilesDb();
-    await insertFile(db, { id: 'a', createdAt: OLD });
-    await insertFile(db, { id: 'b', createdAt: OLD });
-    await insertFile(db, { id: 'c', createdAt: OLD });
-    mockHead.mockResolvedValue(null);
-
-    const result = await sweepAbandonedUploads(sweepCtx(db), { limit: 2 });
-
-    expect(result).toEqual({ scanned: 2, deleted: 2, storageObjectsDeleted: 0 });
-    const remaining = await db.select({ id: files.id }).from(files);
-    expect(remaining).toHaveLength(1);
+  it('idempotently deletes a missing storage object and its row', async () => {
+    await seed('ghost', { old: true });
+    store.head.mockResolvedValue(null);
+    expect(await sweepAbandonedUploads(ctx)).toEqual({
+      scanned: 1,
+      deleted: 1,
+      storageObjectsDeleted: 0,
+      failed: 0,
+    });
+    expect(store.delete).toHaveBeenCalledTimes(1);
+  });
+  it('respects per-tick bounds', async () => {
+    for (const id of ['a', 'b', 'c']) await seed(id, { old: true });
+    expect((await sweepAbandonedUploads(ctx, { limit: 2 })).deleted).toBe(2);
+    expect((await client.query('SELECT * FROM files')).rows).toHaveLength(1);
+  });
+  it('resumes a failed deletion on the next tick without marking it active', async () => {
+    await seed('old', { old: true });
+    store.delete.mockRejectedValueOnce(new Error('store unavailable'));
+    expect((await sweepAbandonedUploads(ctx)).failed).toBe(1);
+    expect((await sweepAbandonedUploads(ctx)).deleted).toBe(1);
   });
 });

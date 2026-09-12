@@ -109,7 +109,12 @@ export async function uploadAttachment(
     intent = await fetchJson<UploadIntent>('/api/attachments/intent', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ fileName: file.name, contentType: file.type, sizeBytes: file.size }),
+      body: JSON.stringify({
+        fileName: file.name,
+        contentType: file.type,
+        sizeBytes: file.size,
+        links,
+      }),
     });
   } catch (e) {
     throw toUploadError(e);
@@ -148,6 +153,7 @@ async function uploadViaProxy(
   const form = new FormData();
   form.set('file', file);
   form.set('category', 'attachment');
+  form.set('links', JSON.stringify(links));
   let id: string;
   try {
     ({ id } = await fetchJson<{ ok: true; id: string }>('/api/files', {

@@ -12,6 +12,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   quota_exceeded: 413,
   mime_not_allowed: 415,
   still_linked: 409,
+  busy: 409,
 };
 
 /** Maps an AttachmentError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */

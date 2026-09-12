@@ -1,0 +1,564 @@
+{
+  "provenance": {
+    "observedAt": "2026-09-12T22:50:15.714Z",
+    "scope": "schema-only; no application table rows read",
+    "sourceFile": "configured-hub-auth-users-catalog.json",
+    "sourceSha256": "d27514af87cc4879e14d7917ac271a6c92a70d4d5b338b79c1b8eb101ce43442",
+    "sourceServerVersion": "17.6"
+  },
+  "catalog": {
+    "relations": [
+      {
+        "relname": "users",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "owner": "supabase_auth_admin",
+        "acl": "{supabase_auth_admin=arwdDxtm/supabase_auth_admin,dashboard_user=arwdDxtm/supabase_auth_admin,postgres=ar*wdDxtm/supabase_auth_admin}"
+      }
+    ],
+    "columns": [
+      {
+        "relname": "users",
+        "attnum": 1,
+        "attname": "instance_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 2,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 3,
+        "attname": "aud",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 4,
+        "attname": "role",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 5,
+        "attname": "email",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 6,
+        "attname": "encrypted_password",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 7,
+        "attname": "email_confirmed_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 8,
+        "attname": "invited_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 9,
+        "attname": "confirmation_token",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 10,
+        "attname": "confirmation_sent_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 11,
+        "attname": "recovery_token",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 12,
+        "attname": "recovery_sent_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 13,
+        "attname": "email_change_token_new",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 14,
+        "attname": "email_change",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 15,
+        "attname": "email_change_sent_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 16,
+        "attname": "last_sign_in_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 17,
+        "attname": "raw_app_meta_data",
+        "type": "jsonb",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 18,
+        "attname": "raw_user_meta_data",
+        "type": "jsonb",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 19,
+        "attname": "is_super_admin",
+        "type": "boolean",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 20,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 21,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 22,
+        "attname": "phone",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "NULL::character varying"
+      },
+      {
+        "relname": "users",
+        "attnum": 23,
+        "attname": "phone_confirmed_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 24,
+        "attname": "phone_change",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::character varying"
+      },
+      {
+        "relname": "users",
+        "attnum": 25,
+        "attname": "phone_change_token",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::character varying"
+      },
+      {
+        "relname": "users",
+        "attnum": 26,
+        "attname": "phone_change_sent_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 27,
+        "attname": "confirmed_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "s",
+        "default_expression": "LEAST(email_confirmed_at, phone_confirmed_at)"
+      },
+      {
+        "relname": "users",
+        "attnum": 28,
+        "attname": "email_change_token_current",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::character varying"
+      },
+      {
+        "relname": "users",
+        "attnum": 29,
+        "attname": "email_change_confirm_status",
+        "type": "smallint",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "0"
+      },
+      {
+        "relname": "users",
+        "attnum": 30,
+        "attname": "banned_until",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 31,
+        "attname": "reauthentication_token",
+        "type": "character varying(255)",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::character varying"
+      },
+      {
+        "relname": "users",
+        "attnum": 32,
+        "attname": "reauthentication_sent_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 33,
+        "attname": "is_sso_user",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "users",
+        "attnum": 34,
+        "attname": "deleted_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "users",
+        "attnum": 35,
+        "attname": "is_anonymous",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      }
+    ],
+    "constraints": [
+      {
+        "relname": "users",
+        "conname": "users_email_change_confirm_status_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK (email_change_confirm_status >= 0 AND email_change_confirm_status <= 2)"
+      },
+      {
+        "relname": "users",
+        "conname": "users_phone_key",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (phone)"
+      },
+      {
+        "relname": "users",
+        "conname": "users_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      }
+    ],
+    "indexes": [
+      {
+        "relname": "users",
+        "indexname": "confirmation_token_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX confirmation_token_idx ON auth.users USING btree (confirmation_token) WHERE ((confirmation_token)::text !~ '^[0-9 ]*$'::text)",
+        "predicate": "((confirmation_token)::text !~ '^[0-9 ]*$'::text)"
+      },
+      {
+        "relname": "users",
+        "indexname": "email_change_token_current_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX email_change_token_current_idx ON auth.users USING btree (email_change_token_current) WHERE ((email_change_token_current)::text !~ '^[0-9 ]*$'::text)",
+        "predicate": "((email_change_token_current)::text !~ '^[0-9 ]*$'::text)"
+      },
+      {
+        "relname": "users",
+        "indexname": "email_change_token_new_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX email_change_token_new_idx ON auth.users USING btree (email_change_token_new) WHERE ((email_change_token_new)::text !~ '^[0-9 ]*$'::text)",
+        "predicate": "((email_change_token_new)::text !~ '^[0-9 ]*$'::text)"
+      },
+      {
+        "relname": "users",
+        "indexname": "idx_users_created_at_desc",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_users_created_at_desc ON auth.users USING btree (created_at DESC)",
+        "predicate": null
+      },
+      {
+        "relname": "users",
+        "indexname": "idx_users_email",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_users_email ON auth.users USING btree (email)",
+        "predicate": null
+      },
+      {
+        "relname": "users",
+        "indexname": "idx_users_last_sign_in_at_desc",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_users_last_sign_in_at_desc ON auth.users USING btree (last_sign_in_at DESC)",
+        "predicate": null
+      },
+      {
+        "relname": "users",
+        "indexname": "idx_users_name",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_users_name ON auth.users USING btree (((raw_user_meta_data ->> 'name'::text))) WHERE ((raw_user_meta_data ->> 'name'::text) IS NOT NULL)",
+        "predicate": "((raw_user_meta_data ->> 'name'::text) IS NOT NULL)"
+      },
+      {
+        "relname": "users",
+        "indexname": "reauthentication_token_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX reauthentication_token_idx ON auth.users USING btree (reauthentication_token) WHERE ((reauthentication_token)::text !~ '^[0-9 ]*$'::text)",
+        "predicate": "((reauthentication_token)::text !~ '^[0-9 ]*$'::text)"
+      },
+      {
+        "relname": "users",
+        "indexname": "recovery_token_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX recovery_token_idx ON auth.users USING btree (recovery_token) WHERE ((recovery_token)::text !~ '^[0-9 ]*$'::text)",
+        "predicate": "((recovery_token)::text !~ '^[0-9 ]*$'::text)"
+      },
+      {
+        "relname": "users",
+        "indexname": "users_email_partial_key",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX users_email_partial_key ON auth.users USING btree (email) WHERE (is_sso_user = false)",
+        "predicate": "(is_sso_user = false)"
+      },
+      {
+        "relname": "users",
+        "indexname": "users_instance_id_email_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX users_instance_id_email_idx ON auth.users USING btree (instance_id, lower((email)::text))",
+        "predicate": null
+      },
+      {
+        "relname": "users",
+        "indexname": "users_instance_id_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX users_instance_id_idx ON auth.users USING btree (instance_id)",
+        "predicate": null
+      },
+      {
+        "relname": "users",
+        "indexname": "users_is_anonymous_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX users_is_anonymous_idx ON auth.users USING btree (is_anonymous)",
+        "predicate": null
+      },
+      {
+        "relname": "users",
+        "indexname": "users_phone_key",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX users_phone_key ON auth.users USING btree (phone)",
+        "predicate": null
+      },
+      {
+        "relname": "users",
+        "indexname": "users_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX users_pkey ON auth.users USING btree (id)",
+        "predicate": null
+      }
+    ],
+    "policies": [],
+    "triggers": [
+      {
+        "relname": "users",
+        "tgname": "on_auth_user_created",
+        "tgenabled": "O",
+        "definition": "CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION handle_new_auth_user()"
+      }
+    ],
+    "functionDependencies": [
+      {
+        "relation": "users",
+        "function": "handle_new_auth_user()",
+        "function_schema": "public",
+        "proname": "handle_new_auth_user",
+        "prosecdef": true,
+        "proconfig": [
+          "search_path=public"
+        ],
+        "acl": "{postgres=X/postgres,service_role=X/postgres}",
+        "dependency_kind": "trigger"
+      }
+    ],
+    "expressionFunctionDependencies": [],
+    "foreignDependencies": []
+  }
+}

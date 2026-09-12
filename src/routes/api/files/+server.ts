@@ -2,11 +2,16 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import {
   uploadFile,
-  listFiles,
+  listAuthorizedFiles,
   validateAttachment,
   assertOrgQuota,
   ATTACHMENT_LIMITS,
 } from '$server/services/file.service';
+import { z } from 'zod';
+import { ATTACHMENT_OBJECT_TYPES } from '$server/db/pg-attachments-schema';
+import { uploadProxiedAttachment } from '$server/services/attachments.service';
+import { handleAttachmentError } from '../attachments/_errors';
+import { resolveAttachmentAccess } from '$server/services/attachment-access';
 import { getCoreCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
@@ -14,7 +19,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   if (!ctx) throw error(401);
 
   const category = url.searchParams.get('category') ?? undefined;
-  const files = await listFiles(ctx, category);
+  const access = await resolveAttachmentAccess(locals, ctx);
+  const files = await listAuthorizedFiles(ctx, category, access);
   return json({ files });
 };
 
@@ -48,6 +54,30 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!quota.ok) throw error(413, quota.message);
 
   const data = new Uint8Array(await file.arrayBuffer());
+  if (category === 'attachment' || category === 'attachments') {
+    const access = await resolveAttachmentAccess(locals, ctx);
+    let targets: unknown;
+    try {
+      targets = JSON.parse(String(formData.get('links') ?? '[]'));
+    } catch {
+      throw error(400, 'Invalid attachment targets');
+    }
+    const parsed = z
+      .array(z.object({ objectType: z.enum(ATTACHMENT_OBJECT_TYPES), objectId: z.string().uuid() }))
+      .max(50)
+      .safeParse(targets);
+    if (!parsed.success) throw error(400, 'Invalid attachment targets');
+    try {
+      const id = await uploadProxiedAttachment(
+        ctx,
+        { fileName: file.name, contentType, sizeBytes: file.size, data, links: parsed.data },
+        access,
+      );
+      return json({ ok: true, id });
+    } catch (e) {
+      return handleAttachmentError(e);
+    }
+  }
   const id = await uploadFile(ctx, {
     fileName: file.name,
     contentType,

@@ -6,12 +6,13 @@ import { parseBody } from '$server/api/validate';
 import { finalizeUpload } from '$server/services/attachments.service';
 import { ATTACHMENT_OBJECT_TYPES } from '$server/db/pg-attachments-schema';
 import { handleAttachmentError } from '../_errors';
-import { assertCanEditLinks } from '../_guard';
+import { getAttachmentAccess } from '../_guard';
 
 const finalizeSchema = z.object({
   fileId: z.string().min(1).max(200),
   links: z
     .array(z.object({ objectType: z.enum(ATTACHMENT_OBJECT_TYPES), objectId: z.string().uuid() }))
+    .max(50)
     .optional(),
 });
 
@@ -22,16 +23,20 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
 
   const body = await parseBody(request, finalizeSchema);
-  await assertCanEditLinks(locals, body.links ?? []);
+  const access = await getAttachmentAccess(locals, ctx, 'edit');
   try {
-    const result = await finalizeUpload(ctx, {
-      fileId: body.fileId,
-      links: body.links,
-      actor: {
-        id: ctx.profileId ?? null,
-        name: locals.user?.displayName ?? locals.user?.email ?? null,
+    const result = await finalizeUpload(
+      ctx,
+      {
+        fileId: body.fileId,
+        links: body.links,
+        actor: {
+          id: ctx.profileId ?? null,
+          name: locals.user?.displayName ?? locals.user?.email ?? null,
+        },
       },
-    });
+      access,
+    );
     return json(result);
   } catch (e) {
     return handleAttachmentError(e);

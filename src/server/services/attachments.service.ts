@@ -1,65 +1,38 @@
-import { and, eq, inArray, lt, notExists } from 'drizzle-orm';
+import { and, eq, lt, notExists, sql } from 'drizzle-orm';
 import { files } from '@minion-stack/db/pg';
 import { invalidateTags, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { getStorage } from '$server/storage/blob';
 import { recordAuditInTx } from './activity.service';
-import { getFileUrl, ATTACHMENT_LIMITS, validateAttachment, assertOrgQuota } from './file.service';
+import { ATTACHMENT_LIMITS, validateAttachment, assertOrgQuota } from './file.service';
 import { attachmentLinks, type AttachmentObjectType } from '$server/db/pg-attachments-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import type { Module } from './rbac.service';
 
-/** Which module's `edit` capability gates linking/unlinking a document to an
- *  object of this type — attachments have no module of their own. */
-export const ATTACHMENT_OBJECT_MODULE: Record<AttachmentObjectType, Module> = {
-  crm_contact: 'crm',
-  booking: 'scheduling',
-  event_type: 'scheduling',
-  product: 'pos',
-  stk_item: 'stock',
-  stk_entry: 'stock',
-  fin_invoice: 'finance',
-  pos_ticket: 'pos',
-};
-
-/**
- * Attachments — the polymorphic "document ↔ object" primitive (spec
- * 2026-09-12-erp-core-modules-attachments-spec §D). A document is a `files`
- * row; `attachment_links` is the join table so one file can attach to a CRM
- * contact, a booking and an invoice at once. `object_id` is never verified
- * against its own table — the link is deliberately no-FK/polymorphic across
- * modules, same posture as `tag_links`.
- */
-export type AttachmentErrorCode =
-  | 'not_found'
-  | 'upload_missing'
-  | 'too_large'
-  | 'mime_not_allowed'
-  | 'quota_exceeded'
-  | 'still_linked';
-
-export class AttachmentError extends Error {
-  constructor(
-    public code: AttachmentErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'AttachmentError';
-  }
-}
-
-/** Validated at the API boundary (each route's zod schema); the service
- *  trusts its caller, same posture as tag-links.service's `TagEntityKind`. */
-export interface AttachmentObjectRef {
-  objectType: AttachmentObjectType;
-  objectId: string;
-}
-
-export interface Actor {
-  id: string | null;
-  name: string | null;
-}
+export { ATTACHMENT_OBJECT_MODULE, AttachmentError } from './attachment-access';
+export type { AttachmentObjectRef, Actor, AttachmentErrorCode } from './attachment-access';
+import {
+  AttachmentError,
+  ATTACHMENT_OBJECT_MODULE,
+  requireAccessIdentity,
+  requireAnyAttachmentCapability,
+  requireAttachmentObject,
+  lockAttachmentObjectsInTx,
+  type AttachmentAccess,
+  type AttachmentObjectRef,
+  type Actor,
+} from './attachment-access';
+import {
+  withLockedAttachmentFile,
+  requireActiveFile,
+  registerAttachmentInTx,
+  requireReadableAttachmentFile,
+  visibleLinksInTx,
+  deleteManagedAttachment,
+  claimDeletionInTx,
+  finishAttachmentDeletion,
+} from './attachment-lifecycle';
+import { attachmentFileState } from '$server/db/pg-attachments-schema';
 
 async function linkInTx(
   tx: CoreTx,
@@ -93,6 +66,7 @@ export interface CreateUploadIntentInput {
   sizeBytes: number;
   category?: string;
   uploadedBy?: string | null;
+  links?: AttachmentObjectRef[];
 }
 
 export interface UploadIntent {
@@ -106,37 +80,97 @@ export interface UploadIntent {
  *  object may never actually land (abandoned upload) — `finalizeUpload`
  *  cleans up the row when the storage HEAD comes back empty; `sweepAbandonedUploads`
  *  below reaps rows where the browser closed before `finalizeUpload` ever ran. */
-export async function createUploadIntent(
+async function reserveAttachmentUpload(
   ctx: CoreCtx,
   input: CreateUploadIntentInput,
-): Promise<UploadIntent> {
+  access: AttachmentAccess,
+  presigned = false,
+) {
+  requireAccessIdentity(ctx, access);
+  requireAnyAttachmentCapability(access, 'edit');
   const validation = validateAttachment(input);
   if (!validation.ok) throw new AttachmentError(validation.code, validation.message);
   const quota = await assertOrgQuota(ctx, input.sizeBytes);
   if (!quota.ok) throw new AttachmentError(quota.code, quota.message);
 
   const id = newId();
-  const category = input.category ?? 'attachment';
+  const category = 'attachment';
   const key = `${ctx.tenantId}/attachments/${id}/${input.fileName}`;
 
-  await withOrgCore(ctx, (tx) =>
-    tx.insert(files).values({
+  await withOrgCore(ctx, async (tx) => {
+    await lockAttachmentObjectsInTx(tx, ctx, input.links ?? []);
+    for (const ref of input.links ?? [])
+      await requireAttachmentObject(tx, ctx, access, ref, 'edit');
+    await tx.insert(files).values({
       id,
       tenantId: ctx.tenantId,
-      uploadedBy: input.uploadedBy ?? null,
+      uploadedBy: access.profileId,
       b2FileKey: key,
       fileName: input.fileName,
       contentType: input.contentType,
       sizeBytes: input.sizeBytes,
       category,
-    }),
-  );
-
-  const uploadUrl = await getStorage().presignPut(key, input.contentType, 900, {
-    contentLength: input.sizeBytes,
+    });
+    // Untyped uploads are explicit personal staging: retain only modules the
+    // uploader can edit now. Record upload callers must pass their known targets.
+    const accessModules = input.links?.length
+      ? [...new Set(input.links.map((ref) => ATTACHMENT_OBJECT_MODULE[ref.objectType]))]
+      : Object.entries(access.modules)
+          .filter(([, cap]) => cap.view && cap.edit)
+          .map(([module]) => module);
+    await tx.insert(attachmentFileState).values({
+      fileId: id,
+      orgId: ctx.tenantId,
+      fileKey: key,
+      accessModules,
+      uploadExpiresAt: presigned ? new Date(Date.now() + 900_000) : null,
+    });
   });
 
-  return { fileId: id, key, uploadUrl, maxBytes: ATTACHMENT_LIMITS.maxFileBytes };
+  return { fileId: id, key, maxBytes: ATTACHMENT_LIMITS.maxFileBytes };
+}
+
+export async function createUploadIntent(
+  ctx: CoreCtx,
+  input: CreateUploadIntentInput,
+  access: AttachmentAccess,
+): Promise<UploadIntent> {
+  const reserved = await reserveAttachmentUpload(ctx, input, access, true);
+  const uploadUrl = await getStorage().presignPut(reserved.key, input.contentType, 900, {
+    contentLength: input.sizeBytes,
+  });
+  // Persist a conservative deadline after signing and before exposing the URL.
+  // If deletion won during signing, no write capability is returned to the caller.
+  await withLockedAttachmentFile(ctx, reserved.fileId, [], async (tx, locked) => {
+    requireActiveFile(locked);
+    await tx
+      .update(attachmentFileState)
+      .set({ uploadExpiresAt: new Date(Date.now() + 900_000) })
+      .where(
+        and(
+          eq(attachmentFileState.fileId, reserved.fileId),
+          eq(attachmentFileState.orgId, ctx.tenantId),
+        ),
+      );
+  });
+  return { ...reserved, uploadUrl };
+}
+
+/** The fallback reserves with the same target authority before touching storage.
+ * A failed/uncertain PUT leaves a durable unlinked reservation for the sweeper. */
+export async function uploadProxiedAttachment(
+  ctx: CoreCtx,
+  input: CreateUploadIntentInput & { data: Uint8Array },
+  access: AttachmentAccess,
+) {
+  const reserved = await reserveAttachmentUpload(
+    ctx,
+    { ...input, sizeBytes: input.data.byteLength },
+    access,
+  );
+  await getStorage().put(reserved.key, input.data, input.contentType);
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
+  return reserved.fileId;
 }
 
 export interface FinalizeUploadInput {
@@ -147,41 +181,56 @@ export interface FinalizeUploadInput {
 
 /** Confirm the presigned PUT landed, correct `size_bytes` to the real object
  *  size, and create any requested links — all in one transaction. */
-export async function finalizeUpload(ctx: CoreCtx, input: FinalizeUploadInput) {
-  const actor: Actor = input.actor ?? { id: null, name: null };
+export async function finalizeUpload(
+  ctx: CoreCtx,
+  input: FinalizeUploadInput,
+  access: AttachmentAccess,
+) {
+  requireAccessIdentity(ctx, access);
+  requireAnyAttachmentCapability(access, 'edit');
+  const actor: Actor = input.actor ?? { id: access.profileId, name: null };
   const links = input.links ?? [];
-
-  const fileRows = await withOrgCore(ctx, (tx) =>
-    tx
-      .select()
-      .from(files)
-      .where(and(eq(files.id, input.fileId), eq(files.tenantId, ctx.tenantId))),
-  );
-  const file = fileRows[0];
-  if (!file) throw new AttachmentError('not_found', 'file not found');
-
-  const head = await getStorage().head(file.b2FileKey);
-  if (!head) {
-    await withOrgCore(ctx, (tx) => tx.delete(files).where(eq(files.id, input.fileId)));
-    throw new AttachmentError('upload_missing', 'uploaded object not found in storage');
-  }
-  if (head.size > ATTACHMENT_LIMITS.maxFileBytes) {
-    await getStorage().delete(file.b2FileKey);
-    await withOrgCore(ctx, (tx) => tx.delete(files).where(eq(files.id, input.fileId)));
+  const authorize = async (
+    tx: CoreTx,
+    locked: Parameters<Parameters<typeof withLockedAttachmentFile>[3]>[1],
+  ) => {
+    requireActiveFile(locked);
+    // Finalize changes metadata and may reject/delete a malformed upload, so
+    // sharing a readable file does not confer uploader authority.
+    if (locked.file.uploadedBy !== access.profileId)
+      throw new AttachmentError('not_found', 'file not found');
+    await requireReadableAttachmentFile(tx, ctx, access, locked);
+    for (const ref of [...locked.refs, ...links])
+      await requireAttachmentObject(tx, ctx, access, ref, 'edit');
+  };
+  const key = await withLockedAttachmentFile(ctx, input.fileId, links, async (tx, locked) => {
+    await authorize(tx, locked);
+    return locked.file.b2FileKey;
+  });
+  const head = await getStorage().head(key);
+  if (!head || head.size > ATTACHMENT_LIMITS.maxFileBytes) {
+    const claimed = await withLockedAttachmentFile(ctx, input.fileId, links, async (tx, locked) => {
+      await authorize(tx, locked);
+      if (locked.refs.length) return false;
+      await claimDeletionInTx(tx, ctx, locked, access.profileId);
+      return true;
+    });
+    if (claimed) await finishAttachmentDeletion(ctx, input.fileId, key);
     throw new AttachmentError(
-      'too_large',
-      `uploaded object exceeds ${ATTACHMENT_LIMITS.maxFileBytes} bytes`,
+      head ? 'too_large' : 'upload_missing',
+      head ? 'uploaded object exceeds attachment limit' : 'uploaded object not found in storage',
     );
   }
-
-  await withOrgCore(ctx, async (tx) => {
-    await tx.update(files).set({ sizeBytes: head.size }).where(eq(files.id, input.fileId));
-    for (const ref of links) {
-      await linkInTx(tx, ctx, input.fileId, ref, actor);
-    }
+  await withLockedAttachmentFile(ctx, input.fileId, links, async (tx, locked) => {
+    await authorize(tx, locked);
+    await registerAttachmentInTx(tx, ctx, locked, [...locked.refs, ...links]);
+    await tx
+      .update(files)
+      .set({ sizeBytes: head.size })
+      .where(and(eq(files.id, input.fileId), eq(files.tenantId, ctx.tenantId)));
+    for (const ref of links) await linkInTx(tx, ctx, input.fileId, ref, actor);
   });
   await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
-
   return { fileId: input.fileId, sizeBytes: head.size, links };
 }
 
@@ -191,23 +240,43 @@ export interface LinkInput extends AttachmentObjectRef {
 }
 
 /** Idempotent upsert on the (objectType, objectId, fileId) PK. */
-export async function linkAttachment(ctx: CoreCtx, input: LinkInput): Promise<void> {
-  const actor = input.actor ?? { id: null, name: null };
-  await withOrgCore(ctx, (tx) =>
-    linkInTx(
+export async function linkAttachment(
+  ctx: CoreCtx,
+  input: LinkInput,
+  access: AttachmentAccess,
+): Promise<void> {
+  requireAccessIdentity(ctx, access);
+  await withLockedAttachmentFile(ctx, input.fileId, [input], async (tx, locked) => {
+    requireActiveFile(locked);
+    await requireReadableAttachmentFile(tx, ctx, access, locked);
+    await requireAttachmentObject(tx, ctx, access, input, 'edit');
+    await registerAttachmentInTx(tx, ctx, locked, [...locked.refs, input]);
+    await linkInTx(
       tx,
       ctx,
       input.fileId,
-      { objectType: input.objectType, objectId: input.objectId },
-      actor,
-    ),
-  );
+      input,
+      input.actor ?? { id: access.profileId, name: null },
+    );
+  });
   await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
 }
-
-export async function unlinkAttachment(ctx: CoreCtx, input: LinkInput): Promise<void> {
-  const actor = input.actor ?? { id: null, name: null };
-  await withOrgCore(ctx, async (tx) => {
+export async function unlinkAttachment(
+  ctx: CoreCtx,
+  input: LinkInput,
+  access: AttachmentAccess,
+): Promise<void> {
+  requireAccessIdentity(ctx, access);
+  await withLockedAttachmentFile(ctx, input.fileId, [input], async (tx, locked) => {
+    requireActiveFile(locked);
+    await requireAttachmentObject(tx, ctx, access, input, 'edit');
+    if (
+      !locked.refs.some(
+        (ref) => ref.objectType === input.objectType && ref.objectId === input.objectId,
+      )
+    )
+      throw new AttachmentError('not_found', 'attachment link not found');
+    await registerAttachmentInTx(tx, ctx, locked);
     await tx
       .delete(attachmentLinks)
       .where(
@@ -223,7 +292,7 @@ export async function unlinkAttachment(ctx: CoreCtx, input: LinkInput): Promise<
       refId: input.objectId,
       op: 'attachment.unlink',
       changes: [{ field: 'fileId', label: 'Attachment', old: input.fileId, new: null }],
-      actor,
+      actor: input.actor ?? { id: access.profileId, name: null },
     });
   });
   await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
@@ -234,15 +303,18 @@ export interface AttachmentWithLinks {
   links: Array<{ objectType: AttachmentObjectType; objectId: string }>;
 }
 
-/** Files linked to (objectType, objectId), each with its FULL link set (so
- *  the UI can show "also linked to invoice X"). */
+/** Return only links the acting user can actually read; shared files do not
+ * expose identities of hidden records in other modules or owner scopes. */
 export async function listAttachmentsFor(
   ctx: CoreCtx,
   objectType: AttachmentObjectType,
   objectId: string,
+  access: AttachmentAccess,
 ): Promise<AttachmentWithLinks[]> {
-  return withOrgCore(ctx, async (tx) => {
-    const own = await tx
+  requireAccessIdentity(ctx, access);
+  const ids = await withOrgCore(ctx, async (tx) => {
+    await requireAttachmentObject(tx, ctx, access, { objectType, objectId }, 'view');
+    return tx
       .select({ fileId: attachmentLinks.fileId })
       .from(attachmentLinks)
       .where(
@@ -252,96 +324,57 @@ export async function listAttachmentsFor(
           eq(attachmentLinks.objectId, objectId),
         ),
       );
-    const fileIds = [...new Set(own.map((r) => r.fileId))];
-    if (!fileIds.length) return [];
-
-    const [fileRows, linkRows] = await Promise.all([
-      tx
-        .select()
-        .from(files)
-        .where(and(eq(files.tenantId, ctx.tenantId), inArray(files.id, fileIds))),
-      tx
-        .select({
-          fileId: attachmentLinks.fileId,
-          objectType: attachmentLinks.objectType,
-          objectId: attachmentLinks.objectId,
-        })
-        .from(attachmentLinks)
-        .where(
-          and(eq(attachmentLinks.orgId, ctx.tenantId), inArray(attachmentLinks.fileId, fileIds)),
-        ),
-    ]);
-
-    const linksByFile = new Map<string, AttachmentWithLinks['links']>();
-    for (const l of linkRows) {
-      const list = linksByFile.get(l.fileId) ?? [];
-      list.push({ objectType: l.objectType as AttachmentObjectType, objectId: l.objectId });
-      linksByFile.set(l.fileId, list);
+  });
+  const result: AttachmentWithLinks[] = [];
+  for (const id of [...new Set(ids.map((row) => row.fileId))]) {
+    try {
+      const found = await withLockedAttachmentFile(ctx, id, [], async (tx, locked) => {
+        await requireAttachmentObject(tx, ctx, access, { objectType, objectId }, 'view');
+        if (!locked.refs.some((ref) => ref.objectType === objectType && ref.objectId === objectId))
+          return null;
+        await requireReadableAttachmentFile(tx, ctx, access, locked);
+        return { file: locked.file, links: await visibleLinksInTx(tx, ctx, access, locked.refs) };
+      });
+      if (found) result.push(found);
+    } catch (e) {
+      if (!(e instanceof AttachmentError) || e.code !== 'not_found') throw e;
     }
-    return fileRows.map((file) => ({ file, links: linksByFile.get(file.id) ?? [] }));
+  }
+  return result;
+}
+export async function listLinksForFile(ctx: CoreCtx, fileId: string, access: AttachmentAccess) {
+  return withLockedAttachmentFile(ctx, fileId, [], async (tx, locked) => {
+    await requireReadableAttachmentFile(tx, ctx, access, locked);
+    return visibleLinksInTx(tx, ctx, access, locked.refs);
   });
 }
-
-export async function listLinksForFile(
-  ctx: CoreCtx,
-  fileId: string,
-): Promise<Array<{ objectType: AttachmentObjectType; objectId: string }>> {
-  const rows = await withOrgCore(ctx, (tx) =>
-    tx
-      .select({ objectType: attachmentLinks.objectType, objectId: attachmentLinks.objectId })
-      .from(attachmentLinks)
-      .where(and(eq(attachmentLinks.orgId, ctx.tenantId), eq(attachmentLinks.fileId, fileId))),
-  );
-  return rows.map((r) => ({
-    objectType: r.objectType as AttachmentObjectType,
-    objectId: r.objectId,
-  }));
-}
-
-/** Deletes the file + storage object. Refuses (409-style `still_linked`)
- *  while any link remains, unless `force`. */
 export async function deleteAttachment(
   ctx: CoreCtx,
   fileId: string,
+  access: AttachmentAccess,
   opts: { force?: boolean } = {},
-): Promise<void> {
-  await withOrgCore(ctx, async (tx) => {
-    const linkRows = await tx
-      .select({ fileId: attachmentLinks.fileId })
-      .from(attachmentLinks)
-      .where(and(eq(attachmentLinks.orgId, ctx.tenantId), eq(attachmentLinks.fileId, fileId)))
-      .limit(1);
-    if (linkRows.length && !opts.force) {
-      throw new AttachmentError('still_linked', 'attachment still linked to one or more objects');
-    }
-
-    const rows = await tx
-      .select({ b2FileKey: files.b2FileKey })
-      .from(files)
-      .where(and(eq(files.id, fileId), eq(files.tenantId, ctx.tenantId)));
-    const found = rows[0];
-    if (!found) throw new AttachmentError('not_found', 'file not found');
-
-    await tx
-      .delete(attachmentLinks)
-      .where(and(eq(attachmentLinks.orgId, ctx.tenantId), eq(attachmentLinks.fileId, fileId)));
-    await getStorage().delete(found.b2FileKey);
-    await tx.delete(files).where(eq(files.id, fileId));
-  });
+) {
+  await deleteManagedAttachment(ctx, fileId, access, opts.force);
   await invalidateTags([
     ...tags.tenantDomain(ctx.tenantId, 'files'),
     ...tags.entity('file', fileId),
   ]);
 }
-
-/** Presigned download URL for one attachment (404-style `not_found` when missing). */
-export async function getAttachmentDownloadUrl(ctx: CoreCtx, fileId: string) {
-  const file = await getFileUrl(ctx, fileId);
-  if (!file) throw new AttachmentError('not_found', 'file not found');
-  return { url: file.url };
+export async function getAttachmentDownloadUrl(
+  ctx: CoreCtx,
+  fileId: string,
+  access: AttachmentAccess,
+) {
+  const key = await withLockedAttachmentFile(ctx, fileId, [], async (tx, locked) => {
+    await requireReadableAttachmentFile(tx, ctx, access, locked);
+    return locked.file.b2FileKey;
+  });
+  return { url: await getStorage().getSignedUrl(key) };
 }
 
 export interface SweepAbandonedUploadsOptions {
+  /** Only replay already-authorized deleting claims; never claim active orphans. */
+  pendingOnly?: boolean;
   /** Age past which an unlinked `files` row is considered abandoned. */
   olderThanHours?: number;
   /** Rows reaped per call — the tick loop drives this to drain the backlog. */
@@ -352,6 +385,7 @@ export interface SweepAbandonedUploadsResult {
   scanned: number;
   deleted: number;
   storageObjectsDeleted: number;
+  failed: number;
 }
 
 /**
@@ -366,39 +400,116 @@ export async function sweepAbandonedUploads(
 ): Promise<SweepAbandonedUploadsResult> {
   const olderThanHours = opts.olderThanHours ?? 24;
   const limit = opts.limit ?? 200;
+  if (
+    !Number.isFinite(olderThanHours) ||
+    olderThanHours < 0 ||
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > 1000
+  )
+    throw new Error('Invalid attachment sweep bounds');
   const cutoff = new Date(Date.now() - olderThanHours * 60 * 60 * 1000);
-
-  const candidates = await withOrgCore(ctx, (tx) =>
+  const pending = await withOrgCore(ctx, (tx) =>
     tx
-      .select({ id: files.id, b2FileKey: files.b2FileKey })
-      .from(files)
+      .select({
+        id: attachmentFileState.fileId,
+        b2FileKey: attachmentFileState.fileKey,
+        attemptAt: sql<Date>`coalesce(${attachmentFileState.deleteAttemptedAt},${attachmentFileState.deleteRequestedAt})`,
+      })
+      .from(attachmentFileState)
       .where(
         and(
-          eq(files.tenantId, ctx.tenantId),
-          eq(files.category, 'attachment'),
-          lt(files.createdAt, cutoff),
-          notExists(
-            tx
-              .select({ fileId: attachmentLinks.fileId })
-              .from(attachmentLinks)
-              .where(eq(attachmentLinks.fileId, files.id)),
-          ),
+          eq(attachmentFileState.orgId, ctx.tenantId),
+          eq(attachmentFileState.state, 'deleting'),
+          sql`(${attachmentFileState.uploadExpiresAt} IS NULL OR ${attachmentFileState.uploadExpiresAt} <= now())`,
+          sql`(${attachmentFileState.deleteReconciledAt} IS NULL OR coalesce(${attachmentFileState.deleteAttemptedAt},${attachmentFileState.deleteReconciledAt}) <= now()-interval '1 hour')`,
         ),
+      )
+      .orderBy(
+        sql`coalesce(${attachmentFileState.deleteAttemptedAt},${attachmentFileState.deleteRequestedAt})`,
+        attachmentFileState.fileId,
       )
       .limit(limit),
   );
-
-  let deleted = 0;
-  let storageObjectsDeleted = 0;
-  for (const row of candidates) {
-    const head = await getStorage().head(row.b2FileKey);
-    if (head) {
-      await getStorage().delete(row.b2FileKey);
-      storageObjectsDeleted++;
+  const candidates = opts.pendingOnly
+    ? []
+    : await withOrgCore(ctx, (tx) =>
+        tx
+          .select({ id: files.id, b2FileKey: files.b2FileKey, attemptAt: files.createdAt })
+          .from(files)
+          .where(
+            and(
+              eq(files.tenantId, ctx.tenantId),
+              lt(files.createdAt, cutoff),
+              // Durable registration includes files adopted from generic categories.
+              sql`(${files.category}='attachment' OR ${files.b2FileKey} LIKE ${ctx.tenantId + '/attachments/%'} OR EXISTS (SELECT 1 FROM ${attachmentFileState} WHERE ${attachmentFileState.fileId}=${files.id}))`,
+              notExists(
+                tx
+                  .select({ fileId: attachmentLinks.fileId })
+                  .from(attachmentLinks)
+                  .where(eq(attachmentLinks.fileId, files.id)),
+              ),
+              notExists(
+                tx
+                  .select({ fileId: attachmentFileState.fileId })
+                  .from(attachmentFileState)
+                  .where(
+                    and(
+                      eq(attachmentFileState.fileId, files.id),
+                      eq(attachmentFileState.state, 'deleting'),
+                    ),
+                  ),
+              ),
+            ),
+          )
+          .orderBy(files.createdAt, files.id)
+          .limit(limit),
+      );
+  let deleted = 0,
+    storageObjectsDeleted = 0,
+    failed = 0;
+  // Merge bounded fresh/claimed candidates by last attempt. A permanently failed
+  // object rotates behind untouched work instead of monopolizing every tick.
+  const batch = [...pending, ...candidates]
+    .sort(
+      (a, b) =>
+        new Date(a.attemptAt).getTime() - new Date(b.attemptAt).getTime() ||
+        a.id.localeCompare(b.id),
+    )
+    .slice(0, limit);
+  for (const row of batch) {
+    try {
+      if (!pending.some((p) => p.id === row.id)) {
+        const claimed = await withLockedAttachmentFile(ctx, row.id, [], async (tx, locked) => {
+          if (locked.refs.length || locked.file.createdAt >= cutoff) return false;
+          await claimDeletionInTx(tx, ctx, locked, null);
+          return true;
+        });
+        if (!claimed) continue;
+      }
+      await withOrgCore(ctx, (tx) =>
+        tx
+          .update(attachmentFileState)
+          .set({ deleteAttemptedAt: new Date() })
+          .where(
+            and(
+              eq(attachmentFileState.fileId, row.id),
+              eq(attachmentFileState.orgId, ctx.tenantId),
+              eq(attachmentFileState.state, 'deleting'),
+            ),
+          ),
+      );
+      const head = await getStorage().head(row.b2FileKey);
+      const result = await finishAttachmentDeletion(ctx, row.id, row.b2FileKey);
+      if (result) {
+        if (result.fileDeleted) deleted++;
+        if (head) storageObjectsDeleted++;
+      }
+    } catch (e) {
+      if (e instanceof AttachmentError && e.code === 'not_found') continue;
+      failed++;
     }
-    await withOrgCore(ctx, (tx) => tx.delete(files).where(eq(files.id, row.id)));
-    deleted++;
   }
   if (deleted > 0) await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
-  return { scanned: candidates.length, deleted, storageObjectsDeleted };
+  return { scanned: batch.length, deleted, storageObjectsDeleted, failed };
 }

@@ -91,3 +91,50 @@ describe('uploadAttachment — server error mapping', () => {
     expect(err).toMatchObject({ code: 'unknown' });
   });
 });
+
+describe('uploadAttachment target propagation', () => {
+  test.each([200, 500])(
+    'retains real record targets through intent and upload transport status %i',
+    async (status) => {
+      const targets = [
+        { objectType: 'booking' as const, objectId: '30000000-0000-4000-8000-000000000002' },
+      ];
+      const fetchSpy = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === '/api/attachments/intent')
+          return Response.json({
+            fileId: 'intent',
+            key: 'key',
+            uploadUrl: 'http://fixture.invalid/put',
+            maxBytes: 1000,
+          });
+        if (url === '/api/files') return Response.json({ ok: true, id: 'proxy' });
+        if (url === '/api/attachments/finalize')
+          return Response.json({ fileId: 'intent', sizeBytes: 10, links: targets });
+        return Response.json({ ok: true });
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+      class XHR {
+        upload = { onprogress: null };
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        status = status;
+        open() {}
+        setRequestHeader() {}
+        send() {
+          this.onload?.();
+        }
+      }
+      vi.stubGlobal('XMLHttpRequest', XHR);
+      await uploadAttachment(file('a.pdf', 'application/pdf', 10), targets);
+      const intent = fetchSpy.mock.calls.find(([url]) => url === '/api/attachments/intent')!;
+      expect(JSON.parse(intent[1]!.body as string).links).toEqual(targets);
+      if (status === 500) {
+        const proxy = fetchSpy.mock.calls.find(([url]) => url === '/api/files')!;
+        expect(JSON.parse(String((proxy[1]!.body as FormData).get('links')))).toEqual(targets);
+      } else {
+        const finalize = fetchSpy.mock.calls.find(([url]) => url === '/api/attachments/finalize')!;
+        expect(JSON.parse(finalize[1]!.body as string).links).toEqual(targets);
+      }
+    },
+  );
+});

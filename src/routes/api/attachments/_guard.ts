@@ -1,20 +1,17 @@
-import { error } from '@sveltejs/kit';
-import { hasOrgCapability } from '$server/services/rbac.service';
+import type { CoreCtx } from '$server/auth/core-ctx';
 import {
-  ATTACHMENT_OBJECT_MODULE,
-  type AttachmentObjectRef,
-} from '$server/services/attachments.service';
+  resolveAttachmentAccess,
+  requireAnyAttachmentCapability,
+} from '$server/services/attachment-access';
 
-/** Attachments are cross-module, so the central `/api/*` prefix guard cannot
- *  gate them: each link/unlink requires `edit` on the LINKED OBJECT's module. */
-export async function assertCanEditLinks(
+/** Request capabilities are resolved once. Actual record/file ownership is
+ * checked again inside the service's transaction, including force deletion. */
+export async function getAttachmentAccess(
   locals: App.Locals,
-  refs: readonly AttachmentObjectRef[],
-): Promise<void> {
-  const modules = new Set(refs.map((r) => ATTACHMENT_OBJECT_MODULE[r.objectType]));
-  for (const module of modules) {
-    if (!(await hasOrgCapability(locals, module, 'edit'))) {
-      throw error(403, 'You do not have permission to perform this action.');
-    }
-  }
+  ctx: CoreCtx,
+  action: 'view' | 'edit' = 'view',
+) {
+  const access = await resolveAttachmentAccess(locals, ctx);
+  requireAnyAttachmentCapability(access, action);
+  return access;
 }
