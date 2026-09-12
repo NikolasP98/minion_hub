@@ -3,6 +3,8 @@ import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listAttachmentsFor } from '$server/services/attachments.service';
+import { getAttachmentAccess } from './_guard';
+import { handleAttachmentError } from './_errors';
 import { ATTACHMENT_OBJECT_TYPES } from '$server/db/pg-attachments-schema';
 
 const querySchema = z.object({
@@ -22,6 +24,16 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   });
   if (!parsed.success) throw error(400, 'objectType and objectId are required');
 
-  const attachments = await listAttachmentsFor(ctx, parsed.data.objectType, parsed.data.objectId);
-  return json({ attachments });
+  const access = await getAttachmentAccess(locals, ctx);
+  try {
+    const attachments = await listAttachmentsFor(
+      ctx,
+      parsed.data.objectType,
+      parsed.data.objectId,
+      access,
+    );
+    return json({ attachments });
+  } catch (e) {
+    return handleAttachmentError(e);
+  }
 };

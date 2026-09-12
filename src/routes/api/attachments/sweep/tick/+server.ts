@@ -23,18 +23,35 @@ const OLDER_THAN_HOURS = 24;
  * per run.
  *
  * No abandoned rows ⇒ the fanout selects no orgs ⇒ the run is a no-op.
- * Wire on netcup: add an hourly crontab line hitting this URL.
+ * Production admission may schedule only `?mode=deletion-claims`, which replays
+ * already-authorized deletions. The default abandoned-upload sweep remains off
+ * until its existing customer backlog has been reviewed separately.
+ * `drained` describes work eligible now, excluding live upload URLs/hourly tombstones.
  */
-export const GET: RequestHandler = async ({ request }) => {
+export const GET: RequestHandler = async ({ request, url }) => {
   const secret = env.CRON_SECRET;
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
 
+  const mode = url.searchParams.get('mode') ?? 'abandoned';
+  if (!['abandoned', 'deletion-claims'].includes(mode))
+    throw error(400, 'Invalid attachment sweep mode');
+  const pendingOnly = mode === 'deletion-claims';
+
   // Interval literal MUST mirror OLDER_THAN_HOURS above — it's a fixed constant
   // (not user input), so a hardcoded literal keeps the SQL simple and safe.
-  const orgs = (await getCoreDb().execute(sql`
+  const orgs = (await getCoreDb().execute(
+    pendingOnly
+      ? sql`SELECT DISTINCT org_id::uuid AS org_id FROM attachment_file_state WHERE state='deleting'`
+      : sql`
     select distinct tenant_id as org_id from files
-    where category = 'attachment' and created_at < now() - interval '24 hours'
-  `)) as unknown as { org_id: string }[];
+    where created_at < now() - interval '24 hours'
+      and (category = 'attachment' or b2_file_key like tenant_id::text || '/attachments/%'
+        or exists (select 1 from attachment_file_state s where s.file_id=files.id))
+      and not exists (select 1 from attachment_links l where l.file_id=files.id)
+    union
+    select org_id::uuid from attachment_file_state where state='deleting'
+  `,
+  )) as unknown as { org_id: string }[];
 
   const deadline = Date.now() + BUDGET_MS;
   const totals = { orgs: orgs.length, scanned: 0, deleted: 0, storageObjectsDeleted: 0, error: 0 };
@@ -52,18 +69,25 @@ export const GET: RequestHandler = async ({ request }) => {
         const r = await sweepAbandonedUploads(ctx, {
           olderThanHours: OLDER_THAN_HOURS,
           limit: BATCH,
+          pendingOnly,
         });
         totals.scanned += r.scanned;
         totals.deleted += r.deleted;
         totals.storageObjectsDeleted += r.storageObjectsDeleted;
+        if (r.failed > 0) {
+          totals.error += r.failed;
+          drained = false;
+          break;
+        }
         if (r.scanned < BATCH) break; // short batch ⇒ org drained
       }
     } catch (e) {
-      console.error('[attachments-sweep] tick failed for org', org_id, e);
+      console.error('[attachments-sweep] tick failed for org', org_id);
+      drained = false;
       totals.error++;
     }
-    if (!drained) break;
+    if (Date.now() >= deadline) break;
   }
 
-  return json({ ok: true, drained, ...totals });
+  return json({ ok: true, mode, drained, ...totals });
 };

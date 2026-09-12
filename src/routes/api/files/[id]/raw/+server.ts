@@ -1,6 +1,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { error } from '@sveltejs/kit';
-import { getFileUrl } from '$server/services/file.service';
+import { getAuthorizedFileUrl } from '$server/services/file.service';
+import { resolveAttachmentAccess } from '$server/services/attachment-access';
+import { handleAttachmentError } from '../../../attachments/_errors';
 import { getCoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -22,10 +24,18 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const file = await getFileUrl(ctx, params.id!, 86_400);
-  if (!file?.url) throw error(404);
-  return new Response(null, {
-    status: 302,
-    headers: { Location: file.url, 'Cache-Control': 'private, max-age=3600' },
-  });
+  const access = await resolveAttachmentAccess(locals, ctx);
+  try {
+    const file = await getAuthorizedFileUrl(ctx, params.id!, access, 86_400);
+    if (!file?.url) throw error(404);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: file.url,
+        'Cache-Control': file.attachmentManaged ? 'private, no-store' : 'private, max-age=3600',
+      },
+    });
+  } catch (e) {
+    return handleAttachmentError(e);
+  }
 };

@@ -1,0 +1,4026 @@
+{
+  "provenance": {
+    "observedAt": "2026-09-12T22:51:47.818Z",
+    "scope": "schema-only; no application table rows read",
+    "sourceFile": "configured-hub-attachment-closure.json",
+    "sourceSha256": "82ae9ed158909a81441492d7475326e93d1f9a972a4b887986b8b8bd2d9abd18",
+    "sourceServerVersion": "17.6"
+  },
+  "catalog": {
+    "closure": [
+      {
+        "schema": "auth",
+        "relname": "users",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "attachment_links",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "crm_contacts",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "doc_audit_log",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "files",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "fin_clients",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "fin_invoices",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "fin_products",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "organization_members",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "organizations",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "pos_shifts",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "pos_tickets",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "profiles",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "sched_bookings",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "sched_event_kinds",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "sched_event_types",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "sched_resources",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "stk_entries",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "stk_items",
+        "relkind": "r"
+      }
+    ],
+    "relations": [
+      {
+        "relname": "attachment_links",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}"
+      },
+      {
+        "relname": "crm_contacts",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres,app_assistant_ro=r/postgres}"
+      },
+      {
+        "relname": "doc_audit_log",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=ar/postgres}"
+      },
+      {
+        "relname": "files",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}"
+      },
+      {
+        "relname": "fin_clients",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres,app_assistant_ro=r/postgres}"
+      },
+      {
+        "relname": "fin_invoices",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres,app_assistant_ro=r/postgres}"
+      },
+      {
+        "relname": "fin_products",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres,app_assistant_ro=r/postgres}"
+      },
+      {
+        "relname": "organization_members",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=r/postgres}"
+      },
+      {
+        "relname": "organizations",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+      },
+      {
+        "relname": "pos_shifts",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}"
+      },
+      {
+        "relname": "pos_tickets",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}"
+      },
+      {
+        "relname": "profiles",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=r/postgres}"
+      },
+      {
+        "relname": "sched_bookings",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres,app_assistant_ro=r/postgres}"
+      },
+      {
+        "relname": "sched_event_kinds",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}"
+      },
+      {
+        "relname": "sched_event_types",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres,app_assistant_ro=r/postgres}"
+      },
+      {
+        "relname": "sched_resources",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres,app_assistant_ro=r/postgres}"
+      },
+      {
+        "relname": "stk_entries",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}"
+      },
+      {
+        "relname": "stk_items",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}"
+      }
+    ],
+    "columns": [
+      {
+        "relname": "attachment_links",
+        "attnum": 1,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "attachment_links",
+        "attnum": 2,
+        "attname": "file_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "attachment_links",
+        "attnum": 3,
+        "attname": "object_type",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "attachment_links",
+        "attnum": 4,
+        "attname": "object_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "attachment_links",
+        "attnum": 5,
+        "attname": "linked_by",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "attachment_links",
+        "attnum": 6,
+        "attname": "linked_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 3,
+        "attname": "display_name",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 4,
+        "attname": "profile_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 5,
+        "attname": "owner_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 6,
+        "attname": "lifecycle_override",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 7,
+        "attname": "source",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'harvested'::text"
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 8,
+        "attname": "custom_fields",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 9,
+        "attname": "deleted_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 10,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 11,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 12,
+        "attname": "party_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "crm_contacts",
+        "attnum": 13,
+        "attname": "human_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 3,
+        "attname": "ref_type",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 4,
+        "attname": "ref_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 5,
+        "attname": "actor_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 6,
+        "attname": "actor_name",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 7,
+        "attname": "op",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'update'::text"
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 8,
+        "attname": "changes",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'[]'::jsonb"
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 9,
+        "attname": "occurred_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "files",
+        "attnum": 1,
+        "attname": "id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "files",
+        "attnum": 2,
+        "attname": "tenant_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "files",
+        "attnum": 3,
+        "attname": "uploaded_by",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "files",
+        "attnum": 4,
+        "attname": "b2_file_key",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "files",
+        "attnum": 5,
+        "attname": "file_name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "files",
+        "attnum": 6,
+        "attname": "content_type",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "files",
+        "attnum": 7,
+        "attname": "size_bytes",
+        "type": "bigint",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "files",
+        "attnum": 8,
+        "attname": "category",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'general'::text"
+      },
+      {
+        "relname": "files",
+        "attnum": 9,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 3,
+        "attname": "provider",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 4,
+        "attname": "provider_ref",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 5,
+        "attname": "name",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 6,
+        "attname": "doc_type",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 7,
+        "attname": "doc_number",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 8,
+        "attname": "email",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 9,
+        "attname": "phone",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 10,
+        "attname": "metadata",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "fin_clients",
+        "attnum": 11,
+        "attname": "party_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 3,
+        "attname": "provider",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 4,
+        "attname": "provider_ref",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 5,
+        "attname": "number",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 6,
+        "attname": "document_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 7,
+        "attname": "issued_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 8,
+        "attname": "client_name",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 9,
+        "attname": "client_doc_type",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 10,
+        "attname": "client_doc_number",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 11,
+        "attname": "client_email",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 12,
+        "attname": "currency",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'PEN'::text"
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 13,
+        "attname": "subtotal",
+        "type": "numeric",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 14,
+        "attname": "tax",
+        "type": "numeric",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 15,
+        "attname": "discount",
+        "type": "numeric",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 16,
+        "attname": "total",
+        "type": "numeric",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 17,
+        "attname": "status",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 18,
+        "attname": "seller",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 19,
+        "attname": "note",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 20,
+        "attname": "metadata",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 21,
+        "attname": "synced_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 22,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 23,
+        "attname": "client_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_invoices",
+        "attnum": 24,
+        "attname": "shadowed",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 3,
+        "attname": "code",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 4,
+        "attname": "name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 5,
+        "attname": "category",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 6,
+        "attname": "unit_price",
+        "type": "numeric",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 7,
+        "attname": "active",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "true"
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 8,
+        "attname": "metadata",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 9,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 10,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "fin_products",
+        "attnum": 11,
+        "attname": "sku",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "organization_members",
+        "attnum": 1,
+        "attname": "organization_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "organization_members",
+        "attnum": 2,
+        "attname": "profile_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "organization_members",
+        "attnum": 3,
+        "attname": "role",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'member'::text"
+      },
+      {
+        "relname": "organization_members",
+        "attnum": 4,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "organizations",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "organizations",
+        "attnum": 2,
+        "attname": "name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "organizations",
+        "attnum": 3,
+        "attname": "slug",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "organizations",
+        "attnum": 4,
+        "attname": "status",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'active'::text"
+      },
+      {
+        "relname": "organizations",
+        "attnum": 5,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "organizations",
+        "attnum": 6,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "organizations",
+        "attnum": 7,
+        "attname": "paperclip_company_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "organizations",
+        "attnum": 8,
+        "attname": "kind",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'business'::text"
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 3,
+        "attname": "status",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'open'::text"
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 4,
+        "attname": "opened_by",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 5,
+        "attname": "opened_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 6,
+        "attname": "opening_float",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 7,
+        "attname": "closed_by",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 8,
+        "attname": "closed_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 9,
+        "attname": "expected",
+        "type": "jsonb",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 10,
+        "attname": "counted",
+        "type": "jsonb",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 11,
+        "attname": "note",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 12,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "pos_shifts",
+        "attnum": 13,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 3,
+        "attname": "human_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 4,
+        "attname": "shift_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 5,
+        "attname": "party_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 6,
+        "attname": "crm_contact_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 7,
+        "attname": "customer_name",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 8,
+        "attname": "status",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'submitted'::text"
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 9,
+        "attname": "subtotal",
+        "type": "numeric",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 10,
+        "attname": "discount",
+        "type": "numeric",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "0"
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 11,
+        "attname": "total",
+        "type": "numeric",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 12,
+        "attname": "currency",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'PEN'::text"
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 13,
+        "attname": "note",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 14,
+        "attname": "stock_entry_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 15,
+        "attname": "stock_warning",
+        "type": "jsonb",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 16,
+        "attname": "invoice_provider_ref",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 17,
+        "attname": "created_by",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 18,
+        "attname": "submitted_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 19,
+        "attname": "voided_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 20,
+        "attname": "voided_by",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "pos_tickets",
+        "attnum": 21,
+        "attname": "metadata",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "profiles",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 2,
+        "attname": "email",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 3,
+        "attname": "display_name",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 4,
+        "attname": "role",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'user'::text"
+      },
+      {
+        "relname": "profiles",
+        "attnum": 5,
+        "attname": "personal_agent_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 6,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "profiles",
+        "attnum": 7,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "profiles",
+        "attnum": 9,
+        "attname": "avatar_url",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 10,
+        "attname": "alias",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 11,
+        "attname": "role_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 12,
+        "attname": "account_type",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'person'::text"
+      },
+      {
+        "relname": "profiles",
+        "attnum": 13,
+        "attname": "username",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 3,
+        "attname": "uid",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 4,
+        "attname": "event_type_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 5,
+        "attname": "resource_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 6,
+        "attname": "start_time",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 7,
+        "attname": "end_time",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 8,
+        "attname": "status",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'accepted'::text"
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 9,
+        "attname": "title",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 10,
+        "attname": "notes",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 11,
+        "attname": "attendee_name",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 12,
+        "attname": "attendee_email",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 13,
+        "attname": "attendee_phone",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 14,
+        "attname": "crm_contact_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 15,
+        "attname": "product_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 16,
+        "attname": "source",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'internal'::text"
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 17,
+        "attname": "rescheduled_from_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 18,
+        "attname": "metadata",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 19,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 20,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 21,
+        "attname": "party_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 22,
+        "attname": "kind_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_bookings",
+        "attnum": 23,
+        "attname": "invoice_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_kinds",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "sched_event_kinds",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_kinds",
+        "attnum": 3,
+        "attname": "name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_kinds",
+        "attnum": 4,
+        "attname": "color",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_kinds",
+        "attnum": 5,
+        "attname": "position",
+        "type": "double precision",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "0"
+      },
+      {
+        "relname": "sched_event_kinds",
+        "attnum": 6,
+        "attname": "is_default",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "sched_event_kinds",
+        "attnum": 7,
+        "attname": "active",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "true"
+      },
+      {
+        "relname": "sched_event_kinds",
+        "attnum": 8,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "sched_event_kinds",
+        "attnum": 9,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 3,
+        "attname": "slug",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 4,
+        "attname": "title",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 5,
+        "attname": "description",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 6,
+        "attname": "length",
+        "type": "integer",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 7,
+        "attname": "slot_interval",
+        "type": "integer",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 8,
+        "attname": "before_buffer",
+        "type": "integer",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "0"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 9,
+        "attname": "after_buffer",
+        "type": "integer",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "0"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 10,
+        "attname": "minimum_booking_notice",
+        "type": "integer",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "120"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 11,
+        "attname": "period_type",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'rolling'::text"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 12,
+        "attname": "period_days",
+        "type": "integer",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 13,
+        "attname": "scheduling_type",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 14,
+        "attname": "requires_confirmation",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 15,
+        "attname": "public",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "true"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 16,
+        "attname": "color",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 17,
+        "attname": "product_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 18,
+        "attname": "active",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "true"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 19,
+        "attname": "metadata",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 20,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 21,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 22,
+        "attname": "use_custom_schedule",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 23,
+        "attname": "schedule_rules",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'[]'::jsonb"
+      },
+      {
+        "relname": "sched_event_types",
+        "attnum": 24,
+        "attname": "kind_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 3,
+        "attname": "kind",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'staff'::text"
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 4,
+        "attname": "profile_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 5,
+        "attname": "name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 6,
+        "attname": "email",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 7,
+        "attname": "timezone",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'America/Lima'::text"
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 8,
+        "attname": "color",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 9,
+        "attname": "active",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "true"
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 10,
+        "attname": "metadata",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 11,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "sched_resources",
+        "attnum": 12,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 3,
+        "attname": "human_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 4,
+        "attname": "type",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 5,
+        "attname": "status",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'draft'::text"
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 6,
+        "attname": "party_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 7,
+        "attname": "note",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 8,
+        "attname": "posted_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 9,
+        "attname": "created_by",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 10,
+        "attname": "metadata",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 11,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "stk_entries",
+        "attnum": 12,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 3,
+        "attname": "code",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 4,
+        "attname": "name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 5,
+        "attname": "uom",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'unit'::text"
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 6,
+        "attname": "item_group",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 7,
+        "attname": "is_stock_item",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "true"
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 8,
+        "attname": "reorder_level",
+        "type": "numeric",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 9,
+        "attname": "reorder_qty",
+        "type": "numeric",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 10,
+        "attname": "valuation_method",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'moving_avg'::text"
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 11,
+        "attname": "fin_product_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 12,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 13,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 14,
+        "attname": "consumption_uom",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 15,
+        "attname": "units_per_stock_uom",
+        "type": "numeric",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 16,
+        "attname": "subunits_per_stock_uom",
+        "type": "numeric",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 17,
+        "attname": "diagram_enabled",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 18,
+        "attname": "unit_svg",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 19,
+        "attname": "subunit_svg",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 20,
+        "attname": "moq",
+        "type": "numeric",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 21,
+        "attname": "default_supplier_party_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 22,
+        "attname": "sku",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "stk_items",
+        "attnum": 23,
+        "attname": "metadata",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      }
+    ],
+    "constraints": [
+      {
+        "relname": "attachment_links",
+        "conname": "attachment_links_object_type_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK (object_type = ANY (ARRAY['crm_contact'::text, 'booking'::text, 'event_type'::text, 'product'::text, 'stk_item'::text, 'fin_invoice'::text, 'stk_entry'::text, 'pos_ticket'::text]))"
+      },
+      {
+        "relname": "attachment_links",
+        "conname": "attachment_links_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (object_type, object_id, file_id)"
+      },
+      {
+        "relname": "crm_contacts",
+        "conname": "crm_contacts_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "doc_audit_log",
+        "conname": "doc_audit_log_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "files",
+        "conname": "files_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "files",
+        "conname": "files_uploaded_by_profiles_id_fk",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (uploaded_by) REFERENCES profiles(id) ON DELETE SET NULL"
+      },
+      {
+        "relname": "fin_clients",
+        "conname": "fin_clients_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "fin_invoices",
+        "conname": "fin_invoices_client_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (client_id) REFERENCES fin_clients(id) ON DELETE SET NULL"
+      },
+      {
+        "relname": "fin_invoices",
+        "conname": "fin_invoices_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "fin_products",
+        "conname": "fin_products_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "organization_members",
+        "conname": "organization_members_organization_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "organization_members",
+        "conname": "organization_members_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (organization_id, profile_id)"
+      },
+      {
+        "relname": "organization_members",
+        "conname": "organization_members_profile_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "organizations",
+        "conname": "organizations_kind_check",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK (kind = ANY (ARRAY['business'::text, 'personal'::text]))"
+      },
+      {
+        "relname": "organizations",
+        "conname": "organizations_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "organizations",
+        "conname": "organizations_slug_key",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (slug)"
+      },
+      {
+        "relname": "pos_shifts",
+        "conname": "pos_shifts_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "pos_tickets",
+        "conname": "pos_tickets_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "pos_tickets",
+        "conname": "pos_tickets_shift_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (shift_id) REFERENCES pos_shifts(id) ON DELETE RESTRICT"
+      },
+      {
+        "relname": "profiles",
+        "conname": "profiles_account_type_chk",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK (account_type = ANY (ARRAY['person'::text, 'service'::text]))"
+      },
+      {
+        "relname": "profiles",
+        "conname": "profiles_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "profiles",
+        "conname": "profiles_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "sched_bookings",
+        "conname": "sched_bookings_event_type_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (event_type_id) REFERENCES sched_event_types(id) ON DELETE RESTRICT"
+      },
+      {
+        "relname": "sched_bookings",
+        "conname": "sched_bookings_kind_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (kind_id) REFERENCES sched_event_kinds(id) ON DELETE SET NULL"
+      },
+      {
+        "relname": "sched_bookings",
+        "conname": "sched_bookings_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "sched_bookings",
+        "conname": "sched_bookings_resource_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (resource_id) REFERENCES sched_resources(id) ON DELETE RESTRICT"
+      },
+      {
+        "relname": "sched_event_kinds",
+        "conname": "sched_event_kinds_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "sched_event_types",
+        "conname": "sched_event_types_kind_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (kind_id) REFERENCES sched_event_kinds(id) ON DELETE SET NULL"
+      },
+      {
+        "relname": "sched_event_types",
+        "conname": "sched_event_types_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "sched_resources",
+        "conname": "sched_resources_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "stk_entries",
+        "conname": "stk_entries_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "stk_items",
+        "conname": "stk_items_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      }
+    ],
+    "indexes": [
+      {
+        "relname": "attachment_links",
+        "indexname": "attachment_links_org_file_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX attachment_links_org_file_idx ON public.attachment_links USING btree (org_id, file_id)",
+        "predicate": null
+      },
+      {
+        "relname": "attachment_links",
+        "indexname": "attachment_links_org_object_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX attachment_links_org_object_idx ON public.attachment_links USING btree (org_id, object_type, object_id)",
+        "predicate": null
+      },
+      {
+        "relname": "attachment_links",
+        "indexname": "attachment_links_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX attachment_links_pkey ON public.attachment_links USING btree (object_type, object_id, file_id)",
+        "predicate": null
+      },
+      {
+        "relname": "crm_contacts",
+        "indexname": "crm_contacts_human_id_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX crm_contacts_human_id_uniq ON public.crm_contacts USING btree (org_id, human_id) WHERE (human_id IS NOT NULL)",
+        "predicate": "(human_id IS NOT NULL)"
+      },
+      {
+        "relname": "crm_contacts",
+        "indexname": "crm_contacts_org_recent_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX crm_contacts_org_recent_idx ON public.crm_contacts USING btree (org_id, updated_at)",
+        "predicate": null
+      },
+      {
+        "relname": "crm_contacts",
+        "indexname": "crm_contacts_party_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX crm_contacts_party_idx ON public.crm_contacts USING btree (party_id)",
+        "predicate": null
+      },
+      {
+        "relname": "crm_contacts",
+        "indexname": "crm_contacts_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX crm_contacts_pkey ON public.crm_contacts USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "crm_contacts",
+        "indexname": "crm_contacts_profile_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX crm_contacts_profile_idx ON public.crm_contacts USING btree (profile_id)",
+        "predicate": null
+      },
+      {
+        "relname": "doc_audit_log",
+        "indexname": "doc_audit_log_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX doc_audit_log_pkey ON public.doc_audit_log USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "doc_audit_log",
+        "indexname": "doc_audit_log_ref_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX doc_audit_log_ref_idx ON public.doc_audit_log USING btree (org_id, ref_type, ref_id, occurred_at)",
+        "predicate": null
+      },
+      {
+        "relname": "files",
+        "indexname": "files_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX files_pkey ON public.files USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "files",
+        "indexname": "idx_files_tenant",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_files_tenant ON public.files USING btree (tenant_id)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_clients",
+        "indexname": "fin_clients_org_dni_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX fin_clients_org_dni_idx ON public.fin_clients USING btree (org_id, doc_number)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_clients",
+        "indexname": "fin_clients_party_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX fin_clients_party_idx ON public.fin_clients USING btree (party_id)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_clients",
+        "indexname": "fin_clients_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX fin_clients_pkey ON public.fin_clients USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_clients",
+        "indexname": "fin_clients_provider_ref_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX fin_clients_provider_ref_uniq ON public.fin_clients USING btree (org_id, provider, provider_ref)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_invoices",
+        "indexname": "fin_invoices_client_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX fin_invoices_client_idx ON public.fin_invoices USING btree (client_id)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_invoices",
+        "indexname": "fin_invoices_org_dni_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX fin_invoices_org_dni_idx ON public.fin_invoices USING btree (org_id, client_doc_number)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_invoices",
+        "indexname": "fin_invoices_org_issued_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX fin_invoices_org_issued_idx ON public.fin_invoices USING btree (org_id, issued_at)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_invoices",
+        "indexname": "fin_invoices_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX fin_invoices_pkey ON public.fin_invoices USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_invoices",
+        "indexname": "fin_invoices_provider_ref_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX fin_invoices_provider_ref_uniq ON public.fin_invoices USING btree (org_id, provider, provider_ref)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_products",
+        "indexname": "fin_products_org_aliases_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX fin_products_org_aliases_idx ON public.fin_products USING gin (((metadata -> 'aliases'::text)) jsonb_path_ops)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_products",
+        "indexname": "fin_products_org_code_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX fin_products_org_code_uniq ON public.fin_products USING btree (org_id, code)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_products",
+        "indexname": "fin_products_org_sku_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX fin_products_org_sku_idx ON public.fin_products USING btree (org_id, sku)",
+        "predicate": null
+      },
+      {
+        "relname": "fin_products",
+        "indexname": "fin_products_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX fin_products_pkey ON public.fin_products USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "organization_members",
+        "indexname": "idx_org_members_org",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_org_members_org ON public.organization_members USING btree (organization_id)",
+        "predicate": null
+      },
+      {
+        "relname": "organization_members",
+        "indexname": "idx_org_members_profile",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_org_members_profile ON public.organization_members USING btree (profile_id)",
+        "predicate": null
+      },
+      {
+        "relname": "organization_members",
+        "indexname": "organization_members_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX organization_members_pkey ON public.organization_members USING btree (organization_id, profile_id)",
+        "predicate": null
+      },
+      {
+        "relname": "organizations",
+        "indexname": "organizations_paperclip_company_id_key",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX organizations_paperclip_company_id_key ON public.organizations USING btree (paperclip_company_id) WHERE (paperclip_company_id IS NOT NULL)",
+        "predicate": "(paperclip_company_id IS NOT NULL)"
+      },
+      {
+        "relname": "organizations",
+        "indexname": "organizations_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX organizations_pkey ON public.organizations USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "organizations",
+        "indexname": "organizations_slug_key",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX organizations_slug_key ON public.organizations USING btree (slug)",
+        "predicate": null
+      },
+      {
+        "relname": "pos_shifts",
+        "indexname": "pos_shifts_one_open_per_org",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX pos_shifts_one_open_per_org ON public.pos_shifts USING btree (org_id) WHERE (status = 'open'::text)",
+        "predicate": "(status = 'open'::text)"
+      },
+      {
+        "relname": "pos_shifts",
+        "indexname": "pos_shifts_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX pos_shifts_pkey ON public.pos_shifts USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "pos_tickets",
+        "indexname": "pos_tickets_org_party_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX pos_tickets_org_party_idx ON public.pos_tickets USING btree (org_id, party_id)",
+        "predicate": null
+      },
+      {
+        "relname": "pos_tickets",
+        "indexname": "pos_tickets_org_shift_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX pos_tickets_org_shift_idx ON public.pos_tickets USING btree (org_id, shift_id)",
+        "predicate": null
+      },
+      {
+        "relname": "pos_tickets",
+        "indexname": "pos_tickets_org_submitted_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX pos_tickets_org_submitted_idx ON public.pos_tickets USING btree (org_id, submitted_at)",
+        "predicate": null
+      },
+      {
+        "relname": "pos_tickets",
+        "indexname": "pos_tickets_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX pos_tickets_pkey ON public.pos_tickets USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "profiles",
+        "indexname": "profiles_alias_key",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX profiles_alias_key ON public.profiles USING btree (alias) WHERE (alias IS NOT NULL)",
+        "predicate": "(alias IS NOT NULL)"
+      },
+      {
+        "relname": "profiles",
+        "indexname": "profiles_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX profiles_pkey ON public.profiles USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "profiles",
+        "indexname": "profiles_username_key",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX profiles_username_key ON public.profiles USING btree (username)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_bookings",
+        "indexname": "sched_bookings_crm_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX sched_bookings_crm_idx ON public.sched_bookings USING btree (crm_contact_id)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_bookings",
+        "indexname": "sched_bookings_org_invoice_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX sched_bookings_org_invoice_idx ON public.sched_bookings USING btree (org_id, invoice_id) WHERE (invoice_id IS NOT NULL)",
+        "predicate": "(invoice_id IS NOT NULL)"
+      },
+      {
+        "relname": "sched_bookings",
+        "indexname": "sched_bookings_org_start_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX sched_bookings_org_start_idx ON public.sched_bookings USING btree (org_id, start_time)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_bookings",
+        "indexname": "sched_bookings_org_status_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX sched_bookings_org_status_idx ON public.sched_bookings USING btree (org_id, status)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_bookings",
+        "indexname": "sched_bookings_org_uid_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX sched_bookings_org_uid_uniq ON public.sched_bookings USING btree (org_id, uid)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_bookings",
+        "indexname": "sched_bookings_party_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX sched_bookings_party_idx ON public.sched_bookings USING btree (party_id)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_bookings",
+        "indexname": "sched_bookings_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX sched_bookings_pkey ON public.sched_bookings USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_bookings",
+        "indexname": "sched_bookings_resource_start_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX sched_bookings_resource_start_idx ON public.sched_bookings USING btree (resource_id, start_time)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_bookings",
+        "indexname": "sched_bookings_resource_status_start_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX sched_bookings_resource_status_start_idx ON public.sched_bookings USING btree (resource_id, status, start_time)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_event_kinds",
+        "indexname": "sched_event_kinds_org_default_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX sched_event_kinds_org_default_uniq ON public.sched_event_kinds USING btree (org_id) WHERE is_default",
+        "predicate": "is_default"
+      },
+      {
+        "relname": "sched_event_kinds",
+        "indexname": "sched_event_kinds_org_name_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX sched_event_kinds_org_name_uniq ON public.sched_event_kinds USING btree (org_id, name)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_event_kinds",
+        "indexname": "sched_event_kinds_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX sched_event_kinds_pkey ON public.sched_event_kinds USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_event_types",
+        "indexname": "sched_event_types_org_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX sched_event_types_org_idx ON public.sched_event_types USING btree (org_id)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_event_types",
+        "indexname": "sched_event_types_org_slug_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX sched_event_types_org_slug_uniq ON public.sched_event_types USING btree (org_id, slug)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_event_types",
+        "indexname": "sched_event_types_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX sched_event_types_pkey ON public.sched_event_types USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_resources",
+        "indexname": "sched_resources_org_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX sched_resources_org_idx ON public.sched_resources USING btree (org_id)",
+        "predicate": null
+      },
+      {
+        "relname": "sched_resources",
+        "indexname": "sched_resources_org_profile_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX sched_resources_org_profile_uniq ON public.sched_resources USING btree (org_id, profile_id) WHERE (profile_id IS NOT NULL)",
+        "predicate": "(profile_id IS NOT NULL)"
+      },
+      {
+        "relname": "sched_resources",
+        "indexname": "sched_resources_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX sched_resources_pkey ON public.sched_resources USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "stk_entries",
+        "indexname": "stk_entries_org_active_invoice_issue_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX stk_entries_org_active_invoice_issue_uniq ON public.stk_entries USING btree (org_id, lower(btrim((metadata ->> 'invoiceId'::text)))) WHERE ((type = 'issue'::text) AND (status = ANY (ARRAY['draft'::text, 'submitted'::text])) AND (jsonb_typeof((metadata -> 'invoiceId'::text)) = 'string'::text) AND (btrim((metadata ->> 'invoiceId'::text)) <> ''::text))",
+        "predicate": "((type = 'issue'::text) AND (status = ANY (ARRAY['draft'::text, 'submitted'::text])) AND (jsonb_typeof((metadata -> 'invoiceId'::text)) = 'string'::text) AND (btrim((metadata ->> 'invoiceId'::text)) <> ''::text))"
+      },
+      {
+        "relname": "stk_entries",
+        "indexname": "stk_entries_org_created_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX stk_entries_org_created_idx ON public.stk_entries USING btree (org_id, created_at)",
+        "predicate": null
+      },
+      {
+        "relname": "stk_entries",
+        "indexname": "stk_entries_org_human_id_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX stk_entries_org_human_id_uniq ON public.stk_entries USING btree (org_id, human_id) WHERE (human_id IS NOT NULL)",
+        "predicate": "(human_id IS NOT NULL)"
+      },
+      {
+        "relname": "stk_entries",
+        "indexname": "stk_entries_org_status_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX stk_entries_org_status_idx ON public.stk_entries USING btree (org_id, status)",
+        "predicate": null
+      },
+      {
+        "relname": "stk_entries",
+        "indexname": "stk_entries_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX stk_entries_pkey ON public.stk_entries USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "stk_items",
+        "indexname": "stk_items_org_aliases_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX stk_items_org_aliases_idx ON public.stk_items USING gin (((metadata -> 'aliases'::text)) jsonb_path_ops)",
+        "predicate": null
+      },
+      {
+        "relname": "stk_items",
+        "indexname": "stk_items_org_code_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX stk_items_org_code_uniq ON public.stk_items USING btree (org_id, code)",
+        "predicate": null
+      },
+      {
+        "relname": "stk_items",
+        "indexname": "stk_items_org_fin_product_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX stk_items_org_fin_product_uniq ON public.stk_items USING btree (org_id, fin_product_id) WHERE (fin_product_id IS NOT NULL)",
+        "predicate": "(fin_product_id IS NOT NULL)"
+      },
+      {
+        "relname": "stk_items",
+        "indexname": "stk_items_org_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX stk_items_org_idx ON public.stk_items USING btree (org_id)",
+        "predicate": null
+      },
+      {
+        "relname": "stk_items",
+        "indexname": "stk_items_org_sku_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX stk_items_org_sku_idx ON public.stk_items USING btree (org_id, sku)",
+        "predicate": null
+      },
+      {
+        "relname": "stk_items",
+        "indexname": "stk_items_org_supplier_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX stk_items_org_supplier_idx ON public.stk_items USING btree (org_id, default_supplier_party_id) WHERE (default_supplier_party_id IS NOT NULL)",
+        "predicate": "(default_supplier_party_id IS NOT NULL)"
+      },
+      {
+        "relname": "stk_items",
+        "indexname": "stk_items_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX stk_items_pkey ON public.stk_items USING btree (id)",
+        "predicate": null
+      }
+    ],
+    "policies": [
+      {
+        "schemaname": "public",
+        "tablename": "attachment_links",
+        "policyname": "attachment_links_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "crm_contacts",
+        "policyname": "crm_contacts_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "doc_audit_log",
+        "policyname": "doc_audit_log_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "files",
+        "policyname": "admin_all",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = 'admin'::text))))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "files",
+        "policyname": "files_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "((tenant_id)::text = current_setting('app.current_org_id'::text, true))",
+        "with_check": "((tenant_id)::text = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "files",
+        "policyname": "member_sel",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "SELECT",
+        "qual": "(EXISTS ( SELECT 1\n   FROM organization_members m\n  WHERE ((m.organization_id = files.tenant_id) AND (m.profile_id = auth.uid()))))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "fin_clients",
+        "policyname": "fin_clients_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "fin_invoices",
+        "policyname": "fin_invoices_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "fin_products",
+        "policyname": "fin_products_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "organization_members",
+        "policyname": "organization_members_admin_all",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = 'admin'::text))))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "organization_members",
+        "policyname": "organization_members_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["app_ledger"],
+        "cmd": "SELECT",
+        "qual": "((organization_id)::text = current_setting('app.current_org_id'::text, true))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "organization_members",
+        "policyname": "organization_members_self_select",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "SELECT",
+        "qual": "(profile_id = auth.uid())",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "organizations",
+        "policyname": "organizations_admin_all",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = 'admin'::text))))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "organizations",
+        "policyname": "organizations_member_select",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "SELECT",
+        "qual": "(EXISTS ( SELECT 1\n   FROM organization_members m\n  WHERE ((m.organization_id = organizations.id) AND (m.profile_id = auth.uid()))))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "pos_shifts",
+        "policyname": "pos_shifts_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "pos_tickets",
+        "policyname": "pos_tickets_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "profiles",
+        "policyname": "profiles_self_select",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "SELECT",
+        "qual": "(auth.uid() = id)",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "profiles",
+        "policyname": "profiles_self_update",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "UPDATE",
+        "qual": "(auth.uid() = id)",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "sched_bookings",
+        "policyname": "sched_bookings_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "sched_event_kinds",
+        "policyname": "sched_event_kinds_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "sched_event_types",
+        "policyname": "sched_event_types_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "sched_resources",
+        "policyname": "sched_resources_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "stk_entries",
+        "policyname": "stk_entries_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "stk_items",
+        "policyname": "stk_items_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      }
+    ],
+    "triggers": [],
+    "functionDependencies": [],
+    "expressionFunctionDependencies": [
+      {
+        "relation": "files",
+        "function": "auth.uid()",
+        "function_schema": "auth",
+        "proname": "uid",
+        "prosecdef": false,
+        "proconfig": null,
+        "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+        "dependency_kind": "policy"
+      },
+      {
+        "relation": "organization_members",
+        "function": "auth.uid()",
+        "function_schema": "auth",
+        "proname": "uid",
+        "prosecdef": false,
+        "proconfig": null,
+        "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+        "dependency_kind": "policy"
+      },
+      {
+        "relation": "organizations",
+        "function": "auth.uid()",
+        "function_schema": "auth",
+        "proname": "uid",
+        "prosecdef": false,
+        "proconfig": null,
+        "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+        "dependency_kind": "policy"
+      },
+      {
+        "relation": "profiles",
+        "function": "auth.uid()",
+        "function_schema": "auth",
+        "proname": "uid",
+        "prosecdef": false,
+        "proconfig": null,
+        "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+        "dependency_kind": "policy"
+      }
+    ],
+    "foreignDependencies": [
+      {
+        "relation": "files",
+        "conname": "files_uploaded_by_profiles_id_fk",
+        "referenced_schema": "public",
+        "referenced_table": "profiles",
+        "definition": "FOREIGN KEY (uploaded_by) REFERENCES profiles(id) ON DELETE SET NULL"
+      },
+      {
+        "relation": "fin_invoices",
+        "conname": "fin_invoices_client_id_fkey",
+        "referenced_schema": "public",
+        "referenced_table": "fin_clients",
+        "definition": "FOREIGN KEY (client_id) REFERENCES fin_clients(id) ON DELETE SET NULL"
+      },
+      {
+        "relation": "organization_members",
+        "conname": "organization_members_organization_id_fkey",
+        "referenced_schema": "public",
+        "referenced_table": "organizations",
+        "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE"
+      },
+      {
+        "relation": "organization_members",
+        "conname": "organization_members_profile_id_fkey",
+        "referenced_schema": "public",
+        "referenced_table": "profiles",
+        "definition": "FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE"
+      },
+      {
+        "relation": "pos_tickets",
+        "conname": "pos_tickets_shift_id_fkey",
+        "referenced_schema": "public",
+        "referenced_table": "pos_shifts",
+        "definition": "FOREIGN KEY (shift_id) REFERENCES pos_shifts(id) ON DELETE RESTRICT"
+      },
+      {
+        "relation": "profiles",
+        "conname": "profiles_id_fkey",
+        "referenced_schema": "auth",
+        "referenced_table": "users",
+        "definition": "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE"
+      },
+      {
+        "relation": "sched_bookings",
+        "conname": "sched_bookings_event_type_id_fkey",
+        "referenced_schema": "public",
+        "referenced_table": "sched_event_types",
+        "definition": "FOREIGN KEY (event_type_id) REFERENCES sched_event_types(id) ON DELETE RESTRICT"
+      },
+      {
+        "relation": "sched_bookings",
+        "conname": "sched_bookings_kind_id_fkey",
+        "referenced_schema": "public",
+        "referenced_table": "sched_event_kinds",
+        "definition": "FOREIGN KEY (kind_id) REFERENCES sched_event_kinds(id) ON DELETE SET NULL"
+      },
+      {
+        "relation": "sched_bookings",
+        "conname": "sched_bookings_resource_id_fkey",
+        "referenced_schema": "public",
+        "referenced_table": "sched_resources",
+        "definition": "FOREIGN KEY (resource_id) REFERENCES sched_resources(id) ON DELETE RESTRICT"
+      },
+      {
+        "relation": "sched_event_types",
+        "conname": "sched_event_types_kind_id_fkey",
+        "referenced_schema": "public",
+        "referenced_table": "sched_event_kinds",
+        "definition": "FOREIGN KEY (kind_id) REFERENCES sched_event_kinds(id) ON DELETE SET NULL"
+      }
+    ],
+    "policyRelations": [
+      {
+        "relation": "files",
+        "policy": "admin_all",
+        "referenced_schema": "public",
+        "referenced_relation": "profiles"
+      },
+      {
+        "relation": "files",
+        "policy": "member_sel",
+        "referenced_schema": "public",
+        "referenced_relation": "organization_members"
+      },
+      {
+        "relation": "organization_members",
+        "policy": "organization_members_admin_all",
+        "referenced_schema": "public",
+        "referenced_relation": "profiles"
+      },
+      {
+        "relation": "organizations",
+        "policy": "organizations_admin_all",
+        "referenced_schema": "public",
+        "referenced_relation": "profiles"
+      },
+      {
+        "relation": "organizations",
+        "policy": "organizations_member_select",
+        "referenced_schema": "public",
+        "referenced_relation": "organization_members"
+      }
+    ],
+    "admittedFunctionBodies": [
+      {
+        "schema": "auth",
+        "function": "auth.uid()",
+        "definition": "CREATE OR REPLACE FUNCTION auth.uid()\n RETURNS uuid\n LANGUAGE sql\n STABLE\nAS $function$\n  select \n  coalesce(\n    nullif(current_setting('request.jwt.claim.sub', true), ''),\n    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')\n  )::uuid\n$function$\n",
+        "prosecdef": false,
+        "proconfig": null,
+        "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}"
+      },
+      {
+        "schema": "public",
+        "function": "handle_new_auth_user()",
+        "definition": "CREATE OR REPLACE FUNCTION public.handle_new_auth_user()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.email is null then\n    return new;\n  end if;\n  insert into public.profiles (id, email, display_name)\n  values (\n    new.id,\n    new.email,\n    coalesce(\n      nullif(new.raw_user_meta_data->>'full_name', ''),\n      nullif(new.raw_user_meta_data->>'name', ''),\n      split_part(new.email, '@', 1)\n    )\n  )\n  on conflict (id) do nothing;\n  return new;\nend;\n$function$\n",
+        "prosecdef": true,
+        "proconfig": ["search_path=public"],
+        "acl": "{postgres=X/postgres,service_role=X/postgres}"
+      }
+    ]
+  }
+}

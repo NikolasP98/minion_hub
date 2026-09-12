@@ -293,6 +293,42 @@ jobs:
           path: test-results/jobs-postgres.json
           if-no-files-found: error
 
+      - name: Exact attachment authority and lifecycle PostgreSQL lane
+        run: |
+          env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" \
+            MINION_QC_DISPOSABLE=1 \
+            MINION_QC_DATABASE_URL=postgres://minion_qc:disposable-ci-only@127.0.0.1:55461/minion_qc_corpus \
+            node node_modules/vitest/vitest.mjs run --config vitest.attachments-postgres.config.ts \
+              --reporter=default --reporter=json --outputFile.json=test-results/attachments-postgres.json
+      - name: Refuse incomplete attachment native reports
+        if: always()
+        run: bun scripts/qc/attachments-postgres-contract.ts test-results/attachments-postgres.json
+      - name: Retain attachment native assertion results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attachments-postgres
+          path: test-results/attachments-postgres.json
+          if-no-files-found: error
+
+      - name: Exact assistant principal PostgreSQL lane
+        run: |
+          env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" \
+            MINION_QC_DISPOSABLE=1 \
+            MINION_QC_DATABASE_URL=postgres://minion_qc:disposable-ci-only@127.0.0.1:55461/minion_qc_corpus \
+            node node_modules/vitest/vitest.mjs run --config vitest.principal-postgres.config.ts \
+              --reporter=default --reporter=json --outputFile.json=test-results/principal-postgres.json
+      - name: Refuse incomplete principal native reports
+        if: always()
+        run: bun scripts/qc/principal-postgres-contract.ts test-results/principal-postgres.json
+      - name: Retain principal native assertion results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: principal-postgres
+          path: test-results/principal-postgres.json
+          if-no-files-found: error
+
       - name: Stop only the owned disposable PostgreSQL
         if: always()
         run: docker rm --force --volumes minion-jobs-postgres

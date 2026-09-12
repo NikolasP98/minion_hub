@@ -6,7 +6,7 @@ import { parseBody } from '$server/api/validate';
 import { linkAttachment, unlinkAttachment } from '$server/services/attachments.service';
 import { ATTACHMENT_OBJECT_TYPES } from '$server/db/pg-attachments-schema';
 import { handleAttachmentError } from '../../_errors';
-import { assertCanEditLinks } from '../../_guard';
+import { getAttachmentAccess } from '../../_guard';
 
 const linkSchema = z.object({
   objectType: z.enum(ATTACHMENT_OBJECT_TYPES),
@@ -26,9 +26,13 @@ export const POST: RequestHandler = async ({ locals, request, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, linkSchema);
-  await assertCanEditLinks(locals, [body]);
+  const access = await getAttachmentAccess(locals, ctx, 'edit');
   try {
-    await linkAttachment(ctx, { fileId: params.fileId!, ...body, actor: actorOf(locals, ctx) });
+    await linkAttachment(
+      ctx,
+      { fileId: params.fileId!, ...body, actor: actorOf(locals, ctx) },
+      access,
+    );
     return json({ ok: true });
   } catch (e) {
     return handleAttachmentError(e);
@@ -40,9 +44,13 @@ export const DELETE: RequestHandler = async ({ locals, request, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, linkSchema);
-  await assertCanEditLinks(locals, [body]);
+  const access = await getAttachmentAccess(locals, ctx, 'edit');
   try {
-    await unlinkAttachment(ctx, { fileId: params.fileId!, ...body, actor: actorOf(locals, ctx) });
+    await unlinkAttachment(
+      ctx,
+      { fileId: params.fileId!, ...body, actor: actorOf(locals, ctx) },
+      access,
+    );
     return json({ ok: true });
   } catch (e) {
     return handleAttachmentError(e);

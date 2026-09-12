@@ -1,3 +1,11 @@
+import { AttachmentError, type AttachmentAccess } from './attachment-access';
+import {
+  withLockedAttachmentFile,
+  isManagedAttachment,
+  requireReadableAttachmentFile,
+  canReadAttachmentFile,
+  deleteManagedAttachment,
+} from './attachment-lifecycle';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { files } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
@@ -138,4 +146,58 @@ export async function listFiles(ctx: CoreCtx, category?: string) {
         return query.limit(200);
       }),
   );
+}
+
+/** Browser file routes must use these policy-aware operations. Internal callers
+ * of getFileUrl establish their own domain authority (for example imports).
+ * A durable attachment registration prevents generic/raw routes bypassing it. */
+export async function getAuthorizedFileUrl(
+  ctx: CoreCtx,
+  id: string,
+  access: AttachmentAccess,
+  expiresIn?: number,
+) {
+  const result = await withLockedAttachmentFile(ctx, id, [], async (tx, locked) => {
+    const attachmentManaged = isManagedAttachment(locked);
+    if (attachmentManaged) await requireReadableAttachmentFile(tx, ctx, access, locked);
+    return { ...locked.file, attachmentManaged };
+  });
+  const url = await getStorage().getSignedUrl(
+    result.b2FileKey,
+    result.attachmentManaged ? 900 : expiresIn,
+  );
+  return { ...result, url };
+}
+export async function listAuthorizedFiles(
+  ctx: CoreCtx,
+  category: string | undefined,
+  access: AttachmentAccess,
+) {
+  const candidates = await listFiles(ctx, category);
+  const result: typeof candidates = [];
+  for (const candidate of candidates) {
+    try {
+      const file = await withLockedAttachmentFile(ctx, candidate.id, [], async (tx, locked) => {
+        if (isManagedAttachment(locked) && !(await canReadAttachmentFile(tx, ctx, access, locked)))
+          return null;
+        return locked.file;
+      });
+      if (file) result.push(file);
+    } catch (e) {
+      if (!(e instanceof AttachmentError) || e.code !== 'not_found') throw e;
+    }
+  }
+  return result;
+}
+export async function deleteAuthorizedFile(ctx: CoreCtx, id: string, access: AttachmentAccess) {
+  const managed = await withLockedAttachmentFile(ctx, id, [], async (tx, locked) => {
+    if (isManagedAttachment(locked)) return true;
+    // Preserve generic-file behavior, but hold its row lock so attachment
+    // registration cannot race the old generic deletion path.
+    await getStorage().delete(locked.file.b2FileKey);
+    await tx.delete(files).where(and(eq(files.id, id), eq(files.tenantId, ctx.tenantId)));
+    return false;
+  });
+  if (managed) await deleteManagedAttachment(ctx, id, access);
+  await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'files'), ...tags.entity('file', id)]);
 }

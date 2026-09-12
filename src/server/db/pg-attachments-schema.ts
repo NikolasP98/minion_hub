@@ -41,3 +41,19 @@ export const attachmentLinks = pgTable(
 );
 
 export type AttachmentLink = typeof attachmentLinks.$inferSelect;
+
+/** Registration survives the last unlink. A committed deleting state is a
+ * tombstone: no caller may relink or issue a new download while storage retries. */
+export const attachmentFileState = pgTable('attachment_file_state', {
+  fileId: text('file_id').primaryKey(),
+  orgId: text('org_id').notNull(),
+  fileKey: text('file_key').notNull(),
+  accessModules: text('access_modules').array().notNull().default([]),
+  uploadExpiresAt: timestamp('upload_expires_at', { withTimezone: true }),
+  deleteReconciledAt: timestamp('delete_reconciled_at', { withTimezone: true }),
+  deleteAttemptedAt: timestamp('delete_attempted_at', { withTimezone: true }),
+  state: text('state').$type<'active' | 'deleting'>().notNull().default('active'),
+  deleteRequestedBy: uuid('delete_requested_by'),
+  deleteRequestedAt: timestamp('delete_requested_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

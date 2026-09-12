@@ -1,20 +1,17 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import {
-  getAttachmentDownloadUrl,
-  deleteAttachment,
-  listLinksForFile,
-} from '$server/services/attachments.service';
-import { assertCanEditLinks } from '../_guard';
+import { getAttachmentDownloadUrl, deleteAttachment } from '$server/services/attachments.service';
+import { getAttachmentAccess } from '../_guard';
 import { handleAttachmentError } from '../_errors';
 
 /** GET /api/attachments/[fileId] — presigned download url. */
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
+  const access = await getAttachmentAccess(locals, ctx);
   try {
-    const result = await getAttachmentDownloadUrl(ctx, params.fileId!);
+    const result = await getAttachmentDownloadUrl(ctx, params.fileId!, access);
     return json(result);
   } catch (e) {
     return handleAttachmentError(e);
@@ -28,9 +25,8 @@ export const DELETE: RequestHandler = async ({ locals, params, url }) => {
   if (!ctx) throw error(401);
   const force = url.searchParams.get('force') === '1';
   try {
-    // Force-delete severs live links: needs edit on every linked object's module.
-    if (force) await assertCanEditLinks(locals, await listLinksForFile(ctx, params.fileId!));
-    await deleteAttachment(ctx, params.fileId!, { force });
+    const access = await getAttachmentAccess(locals, ctx, 'edit');
+    await deleteAttachment(ctx, params.fileId!, access, { force });
     return json({ ok: true });
   } catch (e) {
     return handleAttachmentError(e);
