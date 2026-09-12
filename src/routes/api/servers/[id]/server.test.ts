@@ -1,3 +1,4 @@
+import { inspect } from 'node:util';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -380,6 +381,54 @@ describe('server update diagnostics', () => {
     expect(mocks.getTenant).not.toHaveBeenCalled();
     expect(mocks.updateServer).not.toHaveBeenCalled();
   });
+});
+
+describe('ownership lookup diagnostic containment', () => {
+  beforeEach(unbridgedDefaults);
+  test.each(
+    ['registry', 'organization', 'personal-link'].flatMap((stage) =>
+      ['PUT', 'DELETE'].map((method) => ({ stage, method })),
+    ),
+  )(
+    '$method sanitizes $stage lookup failures including nested exceptions and request IDs',
+    async ({ stage, method }) => {
+      currentUser = { id: 'user-1', role: 'user', supabaseId: 'profile-1' };
+      mocks.resolveGatewayId.mockResolvedValue('gateway-1');
+      mocks.gatewayBelongsToOrg.mockResolvedValue(true);
+      mocks.userHasGatewayAccess.mockResolvedValue(true);
+      const credential = 'disposable-bound-credential-sentinel';
+      const nested = 'disposable-nested-request-sentinel';
+      const requestId = 'disposable-sensitive-server-id-sentinel';
+      const failure = Object.assign(new Error(credential), {
+        cause: new Error(nested),
+        request: { url: `https://private.invalid/${nested}` },
+      });
+      const lookup =
+        stage === 'registry'
+          ? mocks.resolveGatewayId
+          : stage === 'organization'
+            ? mocks.gatewayBelongsToOrg
+            : mocks.userHasGatewayAccess;
+      lookup.mockRejectedValueOnce(failure);
+      const response = await (method === 'PUT' ? PUT : DELETE)(event(requestId));
+      expect(response.status).toBe(503);
+      const body = await response.text();
+      const logs = inspect(
+        [
+          vi.mocked(console.warn).mock.calls,
+          vi.mocked(console.error).mock.calls,
+          vi.mocked(console.log).mock.calls,
+        ],
+        { depth: null },
+      );
+      for (const sentinel of [credential, nested, requestId]) {
+        expect(body).not.toContain(sentinel);
+        expect(logs).not.toContain(sentinel);
+      }
+      expect(mocks.updateGatewayForOrgByServerId).not.toHaveBeenCalled();
+      expect(mocks.deleteGatewayForOrgByServerId).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('server update URL policy with the real guard', () => {

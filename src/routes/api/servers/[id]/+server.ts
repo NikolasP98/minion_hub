@@ -50,7 +50,7 @@ async function assertOwnsOrAdmin(
   try {
     gatewayId = await resolveGatewayId(serverId);
   } catch (err) {
-    console.warn(`[servers/${serverId}] gateway registry lookup failed`, err);
+    console.warn('[servers] SERVER_GATEWAY_REGISTRY_UNAVAILABLE');
     return { ok: false, status: 503 };
   }
 
@@ -60,7 +60,7 @@ async function assertOwnsOrAdmin(
         return { ok: false, status: 404 };
       }
     } catch (err) {
-      console.warn(`[servers/${serverId}] gateway org-scope lookup failed`, err);
+      console.warn('[servers] SERVER_GATEWAY_ORG_SCOPE_UNAVAILABLE');
       return { ok: false, status: 503 };
     }
     if (user.role === 'admin') return { ok: true, gatewayId };
@@ -69,7 +69,7 @@ async function assertOwnsOrAdmin(
         ? { ok: true, gatewayId }
         : { ok: false, status: 404 };
     } catch (err) {
-      console.warn(`[servers/${serverId}] gateway user-scope lookup failed`, err);
+      console.warn('[servers] SERVER_GATEWAY_USER_SCOPE_UNAVAILABLE');
       return { ok: false, status: 503 };
     }
   }
