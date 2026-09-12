@@ -545,7 +545,9 @@ const cacheDataPlaneHandle: Handle = async ({ event, resolve }) => {
 };
 
 const workerRequestHandle: Handle = ({ event, resolve }) =>
-  !building && env.DESKTOP === '1' ? trackWorkerRequest(resolve(event)) : resolve(event);
+  !building && env.DESKTOP === '1'
+    ? trackWorkerRequest(Promise.resolve(resolve(event)))
+    : resolve(event);
 
 export const handle = sequence(
   workerRequestHandle,
