@@ -2,12 +2,15 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
-const hub = fileURLToPath(new URL('../../../', import.meta.url));
-const outputBase = fs.realpathSync(path.resolve(hub, '..', 'output'));
 const requestedRoot = process.env.MINION_CRITICAL_OUT;
 const root = requestedRoot ? fs.realpathSync(requestedRoot) : undefined;
-if (!root || !root.startsWith(outputBase + path.sep)) throw Error('Unexpected fixture root');
+if (
+  !root ||
+  !requestedRoot ||
+  !path.isAbsolute(requestedRoot) ||
+  root !== path.resolve(requestedRoot)
+)
+  throw Error('Expected an absolute, non-symlink fixture root');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 const files = new Map();
 for (const item of manifest.files) {

@@ -10,6 +10,7 @@
  */
 
 import * as PIXI from 'pixi.js';
+import { observeReducedMotion } from './motion-preference';
 import type { ElementType } from '$lib/state/workshop/workshop.svelte';
 import { TEXT_RESOLUTION } from './texture-cache';
 
@@ -62,6 +63,7 @@ const iconPhases = new Map<string, number>();
 
 /** Shared ticker that drives all icon hover animations. */
 let hoverTicker: PIXI.Ticker | null = null;
+let stopMotionObservation: (() => void) | null = null;
 
 function ensureHoverTicker(): void {
   if (hoverTicker) return;
@@ -75,10 +77,20 @@ function ensureHoverTicker(): void {
       icon.y = -Math.abs(Math.sin(now * HOVER_SPEED + phase)) * HOVER_AMPLITUDE;
     }
   });
-  hoverTicker.start();
+  stopMotionObservation = observeReducedMotion((reduced) => {
+    if (reduced) {
+      hoverTicker?.stop();
+      for (const container of sprites.values()) {
+        const icon = container.getChildByLabel('icon');
+        if (icon) icon.y = 0; // Icons are created at the top-center baseline.
+      }
+    } else hoverTicker?.start();
+  });
 }
 
 function stopHoverTicker(): void {
+  stopMotionObservation?.();
+  stopMotionObservation = null;
   if (hoverTicker) {
     hoverTicker.stop();
     hoverTicker.destroy();
@@ -230,6 +242,12 @@ export function createHabboElementSprite(
 
   stage.addChild(container);
   sprites.set(instanceId, container);
+  container.once('destroyed', () => {
+    if (sprites.get(instanceId) !== container) return;
+    sprites.delete(instanceId);
+    iconPhases.delete(instanceId);
+    if (sprites.size === 0) stopHoverTicker();
+  });
   iconPhases.set(instanceId, Math.random() * Math.PI * 2);
   ensureHoverTicker();
 
@@ -243,6 +261,7 @@ export function removeHabboElementSprite(instanceId: string): void {
   container.destroy({ children: true });
   iconPhases.delete(instanceId);
   sprites.delete(instanceId);
+  if (sprites.size === 0) stopHoverTicker();
 }
 
 export function updateHabboElementSpritePosition(instanceId: string, x: number, y: number): void {

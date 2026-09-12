@@ -2,6 +2,7 @@
 // Creates a playful, game-like visualization with isometric projection
 
 import * as PIXI from 'pixi.js';
+import { pulseSprite, floatReaction } from './motion-preference';
 import { agentArchetype } from '$lib/utils/agent-display';
 import {
   getAvatarTexture,
@@ -440,30 +441,14 @@ export function setSpriteGlowColor(instanceId: string, color: number): void {
 
 /**
  * Animate a brief scale pulse on the avatar (heartbeat).
- * Scale: 1.0 → 1.2 → 1.0 over 600ms.
+ * Pulses 20% above the current scale over 600 ms, then restores it.
+ * Reduced motion suppresses the pulse.
  */
 export function triggerHeartbeatPulse(instanceId: string): void {
   const sprite = sprites.get(instanceId);
   if (!sprite) return;
 
-  const DURATION = 600;
-  let elapsed = 0;
-
-  const onTick = (ticker: PIXI.Ticker) => {
-    if (sprite.destroyed) {
-      PIXI.Ticker.shared.remove(onTick);
-      return;
-    }
-    elapsed += ticker.deltaMS;
-    const t = Math.min(elapsed / DURATION, 1);
-    const scale = 1 + 0.2 * Math.sin(t * Math.PI);
-    sprite.scale.set(scale);
-    if (t >= 1) {
-      sprite.scale.set(1);
-      PIXI.Ticker.shared.remove(onTick);
-    }
-  };
-  PIXI.Ticker.shared.add(onTick);
+  pulseSprite(sprite, 0.2);
 }
 
 /**
@@ -484,24 +469,7 @@ export function showReactionEmoji(instanceId: string, emoji: string): void {
   text.y = -30;
   sprite.addChild(text);
 
-  const DURATION = 1200;
-  let elapsed = 0;
-
-  const onTick = (ticker: PIXI.Ticker) => {
-    if (sprite.destroyed || text.destroyed) {
-      PIXI.Ticker.shared.remove(onTick);
-      return;
-    }
-    elapsed += ticker.deltaMS;
-    const t = Math.min(elapsed / DURATION, 1);
-    text.y = -30 - t * 40;
-    text.alpha = 1 - t;
-    if (t >= 1) {
-      text.destroy();
-      PIXI.Ticker.shared.remove(onTick);
-    }
-  };
-  PIXI.Ticker.shared.add(onTick);
+  floatReaction(text, 40);
 }
 
 /** Cached app reference for room resize calls. */
