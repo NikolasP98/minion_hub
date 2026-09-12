@@ -3,6 +3,22 @@ import { quiesceJobs, drainJobs } from '$server/services/bg-runtime';
 import { closePgPools } from '$server/db/pg-pool';
 import { closeCache } from '$lib/server/cache';
 
+const requests = new Set<Promise<unknown>>();
+
+/** Socket closure does not settle the corresponding asynchronous route handler. */
+export function trackWorkerRequest<T>(request: Promise<T>): Promise<T> {
+  requests.add(request);
+  void request.then(
+    () => requests.delete(request),
+    () => requests.delete(request),
+  );
+  return request;
+}
+
+async function drainRequests(): Promise<void> {
+  while (requests.size) await Promise.allSettled([...requests]);
+}
+
 interface WorkerResources {
   quiesce(): void;
   drain(): Promise<void>;
@@ -12,7 +28,8 @@ interface WorkerResources {
 }
 
 /** Adapter-node owns HTTP shutdown. Signals stop job admission immediately;
- * its shutdown event confirms HTTP draining before background/resource cleanup.
+ * its shutdown event stops socket admission, then actual route promises and
+ * background callbacks must settle before resource cleanup.
  * No forced deadline: a stuck callback requires an operator's explicit decision.
  */
 export function installWorkerLifecycle(
@@ -30,6 +47,7 @@ export function installWorkerLifecycle(
   const finish = () => {
     quiesce();
     shutdown ??= (async () => {
+      await drainRequests();
       await resources.drain();
       await resources.closeCache();
       await resources.closePools();
