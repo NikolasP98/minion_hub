@@ -8,9 +8,12 @@ const entry = vi.hoisted(() => ({ db: vi.fn() }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: entry.db }));
 import {
   advanceJob,
+  drainJobs,
+  quiesceJobs,
   cancelJobsByRef,
   enqueueJob,
   registerJobHandler,
+  RetryableJobError,
   type AdvanceResult,
 } from './bg-runtime';
 
@@ -50,13 +53,18 @@ async function row(id: string) {
   }>('SELECT * FROM bg_jobs WHERE id=$1', [id]);
   return result.rows[0];
 }
-async function seed() {
-  return enqueueJob({ tenantId: 'tenant-a', type, refId: 'ref-a', cursor: { initial: true } });
+async function seed(jobType = type) {
+  return enqueueJob({
+    tenantId: 'tenant-a',
+    type: jobType,
+    refId: 'ref-a',
+    cursor: { initial: true },
+  });
 }
-function handler() {
+function handler(jobType = type) {
   const pending = deferred<AdvanceResult>();
   const advance = vi.fn(() => pending.promise);
-  registerJobHandler({ type, advance });
+  registerJobHandler({ type: jobType, advance });
   return { ...pending, advance };
 }
 
@@ -231,6 +239,61 @@ describe('heartbeat lifecycle', () => {
     await nextTurn();
     expect((await row(id)).lease_generation).toBe(2);
   });
+  it('leaves booking transient failures resumable with cursor preserved and no heartbeat leak', async () => {
+    const h = handler('booking_stock');
+    const id = await seed('booking_stock');
+    const run = advanceJob(id);
+    await until(() => h.advance.mock.calls.length === 1);
+    h.reject(new RetryableJobError());
+    await run;
+    expect(await row(id)).toMatchObject({
+      status: 'running',
+      lease_generation: 1,
+      cursor: '{"initial":true}',
+      attempts: 1,
+    });
+    expect(vi.getTimerCount()).toBe(0);
+    await advanceJob(id);
+    expect(h.advance).toHaveBeenCalledOnce(); // Current lease remains, no immediate retry.
+    await client.query('UPDATE bg_jobs SET lease_until=0 WHERE id=$1', [id]);
+    const replacement = handler('booking_stock');
+    const resumed = advanceJob(id);
+    await until(() => replacement.advance.mock.calls.length === 1);
+    replacement.resolve({ done: true });
+    await resumed;
+    expect(await row(id)).toMatchObject({ status: 'done', lease_generation: 2, error: null });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not admit retry signals for other job types or let late retry diagnostics alter a new owner', async () => {
+    const other = handler();
+    const otherId = await seed();
+    const run = advanceJob(otherId);
+    await until(() => other.advance.mock.calls.length === 1);
+    other.reject(new RetryableJobError());
+    await run;
+    expect((await row(otherId)).status).toBe('failed');
+    const old = handler('booking_stock');
+    const id = await seed('booking_stock');
+    const oldRun = advanceJob(id);
+    await until(() => old.advance.mock.calls.length === 1);
+    await client.query('UPDATE bg_jobs SET lease_until=0 WHERE id=$1', [id]);
+    const current = handler('booking_stock');
+    const currentRun = advanceJob(id);
+    await until(() => current.advance.mock.calls.length === 1);
+    old.reject(new RetryableJobError());
+    await oldRun;
+    expect(await row(id)).toMatchObject({
+      status: 'running',
+      lease_generation: 2,
+      attempts: 0,
+      error: null,
+    });
+    current.resolve({ done: true });
+    await currentRun;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('cleans up after handler failure and budget exhaustion', async () => {
     const h = handler();
     const id = await seed();
@@ -250,4 +313,39 @@ describe('heartbeat lifecycle', () => {
     expect((await row(id2)).cursor).toBe('{"page":1}');
     expect(vi.getTimerCount()).toBe(0);
   });
+});
+
+// Quiescing is deliberately irreversible within a worker process; keep this last.
+it('drains late lease-lost callbacks and admitted progress while preserving new queued intent', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+  vi.setSystemTime(NOW);
+  const old = handler();
+  const oldId = await seed();
+  const oldRun = advanceJob(oldId);
+  await until(() => old.advance.mock.calls.length === 1);
+  await client.query('UPDATE bg_jobs SET lease_until=0 WHERE id=$1', [oldId]);
+  await vi.advanceTimersByTimeAsync(20_000);
+  await oldRun;
+  const active = handler();
+  const activeId = await seed();
+  const activeRun = advanceJob(activeId);
+  await until(() => active.advance.mock.calls.length === 1);
+  quiesceJobs();
+  const queuedId = await seed();
+  await advanceJob(queuedId);
+  expect((await row(queuedId)).status).toBe('queued');
+  let drained = false;
+  const drain = drainJobs().then(() => {
+    drained = true;
+  });
+  active.resolve({ done: false, cursor: { final: true } });
+  await activeRun;
+  expect((await row(activeId)).cursor).toBe('{"final":true}');
+  expect(active.advance).toHaveBeenCalledOnce();
+  expect(drained).toBe(false); // Lease loss returned, but provider callback is still alive.
+  old.resolve({ done: true });
+  await drain;
+  expect(drained).toBe(true);
+  expect((await row(oldId)).status).toBe('running');
+  expect((await row(queuedId)).lease_generation).toBe(0);
 });

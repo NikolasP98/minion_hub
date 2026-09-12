@@ -44,6 +44,9 @@ import { isGatewayChannel } from '$server/services/gateway.pg.service';
 import { waitUntil } from '@vercel/functions';
 import { storePerformanceSample } from '$server/services/performance-monitor.service';
 import { isCronAuthPath } from '$lib/server/cron-auth-path';
+import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifecycle';
+
+if (!building && env.DESKTOP === '1') installWorkerLifecycle(process);
 
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
@@ -541,7 +544,13 @@ const cacheDataPlaneHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
+const workerRequestHandle: Handle = ({ event, resolve }) =>
+  !building && env.DESKTOP === '1'
+    ? trackWorkerRequest(Promise.resolve(resolve(event)))
+    : resolve(event);
+
 export const handle = sequence(
+  workerRequestHandle,
   aiUsageScopeHandle,
   serverTimingHandle,
   cacheDataPlaneHandle,
