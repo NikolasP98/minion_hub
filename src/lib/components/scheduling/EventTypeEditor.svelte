@@ -6,6 +6,8 @@
   import ResourcePickerField, { type SchedulableResource } from './ResourcePickerField.svelte';
   import ProcedurePickerField from './ProcedurePickerField.svelte';
   import TagsField from '$lib/components/tags/TagsField.svelte';
+  import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
+  import { canAct } from '$lib/access/can.svelte';
   import type { CalKind, CalTag } from '$lib/components/scheduling/calendar/types';
   import * as m from '$lib/paraglide/messages';
 
@@ -93,6 +95,7 @@
   let tagIds = $state<string[]>(initialTagIds);
   let saving = $state(false);
   let err = $state<string | null>(null);
+  let attachmentsRefreshKey = $state(0);
 
   // Per-service weekly schedule (only used when f.useCustomSchedule). 0=Sun…6=Sat.
   type DayState = { enabled: boolean; start: string; end: string };
@@ -228,6 +231,27 @@
     <span class="t-caption">{m.tags_label()}</span>
     <TagsField allTags={tags} bind:value={tagIds} />
   </div>
+
+  {#if eventType?.id}
+    <div class="field mt-3">
+      <div class="flex items-center justify-between gap-2">
+        <span class="t-caption">{m.attachments_title()}</span>
+        <AttachmentButton
+          objectType="event_type"
+          objectId={eventType.id}
+          size="sm"
+          disabled={!canAct('scheduling', 'edit')}
+          onuploaded={() => (attachmentsRefreshKey += 1)}
+        />
+      </div>
+      <AttachmentList
+        objectType="event_type"
+        objectId={eventType.id}
+        refreshKey={attachmentsRefreshKey}
+        compact
+      />
+    </div>
+  {/if}
 
   <div class="flex items-center gap-4 mt-3">
     <label class="t-caption flex items-center gap-2">
