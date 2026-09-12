@@ -40,8 +40,16 @@ import {
   getImportStatus,
   STATEMENT_JOB_TYPE,
 } from './finance-statements.service';
-import { parseStatementCsv } from './finance-statement-parser';
+import {
+  parseStatementCsv,
+  STATEMENT_PARSER_VERSION,
+  STATEMENT_LIMITS,
+} from './finance-statement-parser';
 import { finStatementImports } from '$server/db/pg-finance-schema';
+vi.mock('$server/auth/core-ctx', () => ({ getCoreCtx: async () => scope() }));
+vi.mock('./modules.service', () => ({ isModuleEnabled: async () => true }));
+vi.mock('./tenant.service', () => ({ getTenant: async () => ({ kind: 'personal' }) }));
+import { GET as statusRoute } from '../../routes/api/finances/statement-imports/[id]/+server';
 
 type Client = ReturnType<typeof postgres>;
 const context = new AsyncLocalStorage<Client>();
@@ -50,6 +58,7 @@ let harness: Awaited<ReturnType<typeof openDisposablePostgres>>;
 let owner: Client, a: Client, b: Client;
 let backendIds: number[];
 let originalHandler: JobHandler;
+let setupFailure: unknown;
 const ORG = 'qc-finance-a',
   OTHER = 'qc-finance-b';
 const CSV =
@@ -91,7 +100,12 @@ async function state(id: string) {
   const [head] = await owner`select * from job_effects where entity_id=${id} and kind='head'`;
   return { row: row!, transactions, jobs, head };
 }
-async function seed(text = CSV, status = 'queued', next = 0) {
+async function seed(
+  text = CSV,
+  status = 'queued',
+  next = 0,
+  parserVersion = STATEMENT_PARSER_VERSION,
+) {
   const id = randomUUID(),
     file = randomUUID();
   files.set(file, text);
@@ -100,12 +114,12 @@ async function seed(text = CSV, status = 'queued', next = 0) {
     createJobRequest(
       scope(),
       { family: 'finance.statement', entityId: id },
-      hash(JSON.stringify([contentHash, 1])),
+      hash(JSON.stringify([contentHash, parserVersion])),
       { type: STATEMENT_JOB_TYPE, refId: id },
       async (tx) => {
         await tx.execute(sql`insert into fin_statement_imports
         (id,org_id,file_id,source_kind,content_sha256,parser_version,status,next_chunk,inserted_count,rejected_count)
-        values (${id},${ORG},${file},'csv',${contentHash},1,${status},${next},0,0)`);
+        values (${id},${ORG},${file},'csv',${contentHash},${parserVersion},${status},${next},0,0)`);
       },
     ),
   );
@@ -127,51 +141,56 @@ async function idleJobs(id: string) {
   );
 }
 beforeAll(async () => {
-  harness = await openDisposablePostgres();
-  owner = harness.owner;
-  await owner.unsafe(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}";
+  try {
+    harness = await openDisposablePostgres();
+    owner = harness.owner;
+    await owner.unsafe(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}";
     CREATE TABLE bg_jobs (id text primary key, tenant_id text not null, user_id text, type text not null,
       ref_id text, status text not null default 'queued', cursor text, error text, attempts integer not null default 0,
       lease_until bigint, created_at bigint not null, updated_at bigint not null, started_at bigint, finished_at bigint);`);
-  for (const file of [
-    '20260909090100_bg_job_lease_generation.sql',
-    '20260909090300_job_effect_receipts.sql',
-    '20260909090400_job_request_manifest.sql',
-    '20260722234500_fin_statement_imports.sql',
-  ]) {
-    const ddl = readFileSync(
-      new URL(`../../../supabase/migrations/${file}`, import.meta.url),
-      'utf8',
-    );
-    await owner.unsafe(ddl.replaceAll('public.', `"${schema}".`));
-  }
-  await owner.unsafe(`GRANT USAGE ON SCHEMA "${schema}" TO app_ledger`);
-  a = harness.createConnection(schema);
-  b = harness.createConnection(schema);
-  const ids = await Promise.all(
-    [a, b].map(
-      async (client) =>
-        (
-          await client`select pg_backend_pid() pid,
+    for (const file of [
+      '20260909090100_bg_job_lease_generation.sql',
+      '20260909090300_job_effect_receipts.sql',
+      '20260909090400_job_request_manifest.sql',
+      '20260722234500_fin_statement_imports.sql',
+    ]) {
+      const ddl = readFileSync(
+        new URL(`../../../supabase/migrations/${file}`, import.meta.url),
+        'utf8',
+      );
+      await owner.unsafe(ddl.replaceAll('public.', `"${schema}".`));
+    }
+    await owner.unsafe(`GRANT USAGE ON SCHEMA "${schema}" TO app_ledger`);
+    a = harness.createConnection(schema);
+    b = harness.createConnection(schema);
+    const ids = await Promise.all(
+      [a, b].map(
+        async (client) =>
+          (
+            await client`select pg_backend_pid() pid,
     current_database() as database, shobj_description(oid,'pg_database') as marker
     from pg_database where datname=current_database()`
-        )[0],
-    ),
-  );
-  ids.forEach((id) =>
-    expect(id).toMatchObject({
-      database: harness.identity.database,
-      marker: harness.identity.marker,
-    }),
-  );
-  expect(ids[0]?.pid).not.toBe(ids[1]?.pid);
-  backendIds = ids.map((id) => Number(id!.pid));
-  owner = harness.createConnection(schema);
-  boundary.pool.mockImplementation(() => context.getStore() ?? a);
-  originalHandler = boundary.registered.mock.calls
-    .map(([handler]) => handler as JobHandler)
-    .find((handler) => handler.type === STATEMENT_JOB_TYPE)!;
-  expect(originalHandler).toBeDefined();
+          )[0],
+      ),
+    );
+    ids.forEach((id) =>
+      expect(id).toMatchObject({
+        database: harness.identity.database,
+        marker: harness.identity.marker,
+      }),
+    );
+    expect(ids[0]?.pid).not.toBe(ids[1]?.pid);
+    backendIds = ids.map((id) => Number(id!.pid));
+    owner = harness.createConnection(schema);
+    boundary.pool.mockImplementation(() => context.getStore() ?? a);
+    originalHandler = boundary.registered.mock.calls
+      .map(([handler]) => handler as JobHandler)
+      .find((handler) => handler.type === STATEMENT_JOB_TYPE)!;
+    expect(originalHandler).toBeDefined();
+  } catch (error) {
+    setupFailure = error;
+    throw error;
+  }
 }, 20000);
 beforeEach(async () => {
   await owner.unsafe('TRUNCATE fin_transactions,fin_statement_imports,bg_jobs,job_effects');
@@ -206,8 +225,32 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 afterAll(async () => {
-  if (owner) await owner.unsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-  await harness?.close();
+  if (!harness) return;
+  const failures: unknown[] = [];
+  try {
+    for (const release of releases) release();
+    releases.clear();
+    await Promise.allSettled([...outstanding]);
+    // Setup may fail inside an authored BEGIN. A fresh marked connection owns
+    // cleanup after rollback, even when the setup owner's transaction aborted.
+    await harness.owner.unsafe('ROLLBACK');
+    const cleanup = harness.createConnection();
+    await cleanup.unsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    expect(await cleanup`select nspname from pg_namespace where nspname=${schema}`).toEqual([]);
+  } catch (error) {
+    failures.push(error);
+  } finally {
+    try {
+      await harness.close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length)
+    throw new AggregateError(
+      setupFailure === undefined ? failures : [setupFailure, ...failures],
+      'Finance fixture cleanup failed',
+    );
 });
 
 describe('native statement ownership', () => {
@@ -250,6 +293,10 @@ describe('native statement ownership', () => {
       inserted_count: 2,
       rejected_count: 1,
     });
+    expect(current.row.parser_version).toBe(STATEMENT_PARSER_VERSION);
+    expect(current.head?.source_hash).toBe(
+      hash(JSON.stringify([hash(CSV), STATEMENT_PARSER_VERSION])),
+    );
     expect(current.transactions.map((row) => row.signed_amount)).toEqual(['-45.90', '2500.00']);
     expect(JSON.parse(current.jobs[0]!.cursor).nextChunk).toBe(3);
     expect(current.head?.revision).toBe(
@@ -579,5 +626,184 @@ describe('native statement ownership', () => {
       error_code: null,
     });
     expect(current.transactions).toHaveLength(2);
+  });
+});
+
+const VERSION_CONFLICT =
+  'Statement parser version mismatch; historical import recovery requires explicit review';
+describe('native parser version/provenance integration', () => {
+  it.each(
+    [1, 2].flatMap((version) =>
+      ['queued', 'parsing'].flatMap((status) =>
+        [0, 500].map((next) => ({ version, status, next })),
+      ),
+    ),
+  )(
+    'stale v$version $status cursor $next preserves all domain effects',
+    async ({ version, status, next }) => {
+      const created = await seed(CSV, status, next, version);
+      if (next) {
+        await owner`insert into fin_transactions(org_id,import_id,source_row,posted_on,description,signed_amount)
+          values(${ORG},${created.id},1,'2026-01-05','Historical',-45.90)`;
+        await owner`update fin_statement_imports set inserted_count=1,rejected_count=2,row_count=503 where id=${created.id}`;
+      }
+      const before = await state(created.id);
+      await on(a, () => advanceJob(created.jobId));
+      const after = await state(created.id);
+      expect(after.row).toEqual(before.row);
+      expect(after.transactions).toEqual(before.transactions);
+      expect(after.head).toEqual(before.head);
+      expect(after.jobs[0]?.cursor).toBe(before.jobs[0]?.cursor);
+      expect(after.jobs[0]?.error).toContain(VERSION_CONFLICT);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(boundary.file).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['queued', 'parsing', 'failed', 'undone'])(
+    'historical %s retry refuses before admission',
+    async (status) => {
+      const created = await seed(CSV, status, 0, 1);
+      const before = await state(created.id);
+      await expect(on(a, () => retryImport(scope(), created.id))).rejects.toMatchObject({
+        status: 409,
+        body: { message: VERSION_CONFLICT },
+      });
+      expect(await state(created.id)).toEqual(before);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it('a version change while retry waits rolls back head replacement and enqueue', async () => {
+    const created = await seed(),
+      locked = deferred<void>(),
+      release = deferred<void>();
+    const transaction = owner.begin(async (tx) => {
+      await tx`select id from job_effects where entity_id=${created.id} for update`;
+      locked.resolve();
+      await release.promise;
+      await tx`update fin_statement_imports set parser_version=2 where id=${created.id}`;
+    });
+    await locked.promise;
+    const retry = on(b, () => retryImport(scope(), created.id));
+    const observed = retry.then(
+      () => ({ resolved: true }),
+      (error) => ({ error }),
+    );
+    await until(
+      async () =>
+        (
+          await a`select pid from pg_stat_activity where pid=${backendIds[1]!} and wait_event_type='Lock'`
+        ).length === 1,
+    );
+    release.resolve();
+    await transaction;
+    expect(await observed).toMatchObject({
+      error: { status: 409, body: { message: VERSION_CONFLICT } },
+    });
+    const current = await state(created.id);
+    expect(current.jobs).toHaveLength(1);
+    expect(current.head?.revision).toBe(created.request.revision);
+    expect(current.row.parser_version).toBe(2);
+    expect(current.row.status).toBe('queued');
+    expect(current.transactions).toEqual([]);
+  });
+  it.each(['done', 'failed'])(
+    'historical %s returns persisted terminal outcome without parsing',
+    async (status) => {
+      const created = await seed(CSV, status, 500, 1);
+      await owner`update fin_statement_imports set error_message=${status === 'failed' ? 'Historical fixed failure' : null} where id=${created.id}`;
+      const before = await state(created.id);
+      await on(a, () => advanceJob(created.jobId));
+      const after = await state(created.id);
+      expect(after.row).toEqual(before.row);
+      expect(after.head).toEqual(before.head);
+      expect(fetch).not.toHaveBeenCalled();
+      const result = await on(a, () => getImportStatus(scope(), created.id));
+      expect(result?.rejections).toEqual([]);
+      expect(result?.import.parserVersion).toBe(1);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    'Date,Description,Amount\r\n2026-01-01,Sample,1',
+    '\uFEFFDate,Description,Amount\n2026-01-01,Sample,1',
+  ])(
+    'raw source and decoded normalized provenance may differ without corrupting accounting',
+    async (text) => {
+      const created = await seed(text);
+      await on(a, () => advanceJob(created.jobId));
+      const current = await state(created.id);
+      expect(current.row).toMatchObject({
+        parser_version: STATEMENT_PARSER_VERSION,
+        content_sha256: hash(text),
+        status: 'done',
+        next_chunk: 1,
+        inserted_count: 1,
+      });
+      expect(current.transactions[0]).toMatchObject({ source_row: 1, signed_amount: '1.00' });
+      expect(created.request.sourceHash).toBe(
+        hash(JSON.stringify([hash(text), STATEMENT_PARSER_VERSION])),
+      );
+    },
+  );
+  it.each([
+    ['record-too-large', 'Date,Description,' + 'S'.repeat(4097) + 'SECRET_HEADER'],
+    ['malformed-quoting', 'Date,"SECRET_HEADER'],
+    ['invalid-encoding', 'Date,Description,Amount\uFFFDSECRET_HEADER'],
+  ])(
+    'actual %s header keeps fixed classification through persisted status route',
+    async (reason, header) => {
+      const text = header + '\n2026-01-01,Sample,1';
+      const created = await seed(text);
+      await on(a, () => advanceJob(created.jobId));
+      const current = await state(created.id);
+      expect(current.row).toMatchObject({
+        status: 'failed',
+        error_code: 'statement_header_invalid',
+        error_message: `Invalid statement header: ${reason}`,
+        next_chunk: 0,
+        inserted_count: 0,
+        rejected_count: 0,
+      });
+      expect(current.transactions).toEqual([]);
+      const response = await on(a, async () =>
+        statusRoute({ locals: {}, params: { id: created.id } } as Parameters<
+          typeof statusRoute
+        >[0]),
+      );
+      const body = await response.json();
+      expect(body.import.errorCode).toBe('statement_header_invalid');
+      expect(body.import.errorMessage).toBe(`Invalid statement header: ${reason}`);
+      expect(JSON.stringify(body)).not.toContain('SECRET_HEADER');
+    },
+  );
+  it('actual whole-input limit persists only fixed bounded classification', async () => {
+    const created = await seed('S'.repeat(STATEMENT_LIMITS.maxInputChars + 1));
+    await on(a, () => advanceJob(created.jobId));
+    const current = await state(created.id);
+    expect(current.row).toMatchObject({
+      status: 'failed',
+      error_code: 'statement_limit_exceeded',
+      error_message: 'Statement input limit exceeded: input-too-large',
+      next_chunk: 0,
+      inserted_count: 0,
+    });
+    expect(current.transactions).toEqual([]);
+  });
+
+  it('late invalid-header result cannot fail a replaced request', async () => {
+    const text = 'Date,"SECRET_HEADER';
+    const created = await seed(text),
+      file = deferred<Response>();
+    vi.mocked(fetch).mockImplementationOnce(() => file.promise);
+    const run = on(a, () => advanceJob(created.jobId));
+    await until(() => vi.mocked(fetch).mock.calls.length === 1);
+    await on(b, () => undoImport(scope(), created.id));
+    const before = await state(created.id);
+    file.resolve(new Response(text));
+    await run;
+    const after = await state(created.id);
+    expect(after.row).toEqual(before.row);
+    expect(after.head).toEqual(before.head);
+    expect(after.transactions).toEqual([]);
   });
 });

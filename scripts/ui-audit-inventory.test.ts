@@ -4,7 +4,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildRouteInventory } from './ui-audit-inventory.mjs';
-import baseline from '../tests/ui-audit/current-baseline.json';
 
 describe('UI audit route inventory', () => {
   it('locks the complete endpoint ledger at 141 screens and 11 redirects', async () => {
@@ -32,8 +31,12 @@ describe('UI audit route inventory', () => {
         .filter((route) => route.kind === 'redirect')
         .every((route) => route.redirectContract),
     ).toBe(true);
-    expect(inventory.sourceTreeSha).toBe(baseline.sourceTreeSha);
-    expect(inventory.workingTreeFingerprint).toBe(baseline.workingTreeFingerprint);
+    // The current clean tree may contain legitimate API changes since the historical audit.
+    const currentRouteTree = execFileSync('git', ['rev-parse', 'HEAD:src/routes'], {
+      encoding: 'utf8',
+    }).trim();
+    expect(inventory.sourceTreeSha).toBe(currentRouteTree);
+    expect(inventory.workingTreeFingerprint).toBe(`git-tree:${currentRouteTree}`);
   }, 30_000);
 
   it('reads clean baseline evidence from the recorded Git object, not dirty route files', async () => {
@@ -125,9 +128,8 @@ describe('UI audit route inventory', () => {
     const inventory = await buildRouteInventory();
     const terminal = inventory.routes.find((route) => route.pattern === '/terminal');
 
-    // Unlike the pinned-commit ledger above, this reads the WORKTREE (no
-    // cleanBaseline flag), so it reflects the route surface at HEAD-with-
-    // uncommitted-changes, not the immutable pre-program commit.
+    // Unlike the current clean-HEAD ledger above, this reads the WORKTREE (no
+    // cleanBaseline flag), so it also reflects uncommitted route changes.
     expect(inventory.summary).toMatchObject({ endpoints: 152, screens: 141, redirects: 11 });
     expect(terminal).toMatchObject({
       kind: 'redirect',

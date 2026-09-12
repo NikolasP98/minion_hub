@@ -38,6 +38,9 @@ import {
 } from './job-effects.service';
 import {
   parseStatementCsv,
+  STATEMENT_PARSER_VERSION,
+  StatementParseHeaderError,
+  StatementParseLimitError,
   normalizeStatementText,
   type StatementParseResult,
   type StatementEntryOk,
@@ -56,14 +59,13 @@ export async function requirePersonalOrg(ctx: CoreCtx): Promise<void> {
 }
 
 export const STATEMENT_JOB_TYPE = 'statement_ingest';
-const PARSER_VERSION = 1;
+const PARSER_VERSION_CONFLICT =
+  'Statement parser version mismatch; historical import recovery requires explicit review';
 // ponytail: bounded rows-per-advance() step, not a hard system limit — raise
 // if real statements regularly need more than a couple of ticks to ingest.
 const CHUNK_SIZE = 500;
-// ponytail: rejections are recomputed by re-parsing on every status read
-// (deterministic + cheap for statement-sized files) rather than persisted in
-// a new table/column — cap what we return so a huge rejected set can't bloat
-// the response.
+// Rejections are recomputed from the full stored input on eligible status reads.
+// This cap bounds the response sample, not the cost of fetching or parsing it.
 const MAX_REJECTIONS_IN_STATUS = 200;
 
 function sha256Hex(bytes: Uint8Array | string): string {
@@ -175,7 +177,7 @@ export async function createImport(
     const created = await createJobRequest(
       ctx,
       importEntity(id),
-      sourceIdentity({ contentSha256: sha, parserVersion: PARSER_VERSION }),
+      sourceIdentity({ contentSha256: sha, parserVersion: STATEMENT_PARSER_VERSION }),
       { type: STATEMENT_JOB_TYPE, userId: ctx.profileId, refId: id },
       async (tx) => {
         const [inserted] = await tx
@@ -186,7 +188,7 @@ export async function createImport(
             fileId,
             sourceKind: input.sourceKind,
             contentSha256: sha,
-            parserVersion: PARSER_VERSION,
+            parserVersion: STATEMENT_PARSER_VERSION,
             status: 'queued',
             nextChunk: 0,
             createdBy: input.createdBy ?? null,
@@ -221,6 +223,40 @@ export async function createImport(
   return { import: row, created: true };
 }
 
+class StatementSourceIntegrityError extends Error {
+  constructor() {
+    super('stored statement content hash mismatch');
+  }
+}
+
+function parseFailure(error: unknown): { errorCode: string; message: string } {
+  if (
+    error instanceof StatementParseHeaderError &&
+    ['record-too-large', 'malformed-quoting', 'invalid-encoding'].includes(error.reason)
+  ) {
+    return {
+      errorCode: 'statement_header_invalid',
+      message: `Invalid statement header: ${error.reason}`,
+    };
+  }
+  if (
+    error instanceof StatementParseLimitError &&
+    ['input-too-large', 'too-many-rows'].includes(error.reason)
+  ) {
+    return {
+      errorCode: 'statement_limit_exceeded',
+      message: `Statement input limit exceeded: ${error.reason}`,
+    };
+  }
+  return {
+    errorCode: 'parse_failed',
+    message:
+      error instanceof StatementSourceIntegrityError
+        ? 'stored statement content hash mismatch'
+        : 'Statement parsing failed',
+  };
+}
+
 async function loadImportText(
   ctx: CoreCtx,
   row: FinStatementImport,
@@ -233,15 +269,19 @@ async function loadImportText(
   signal?.throwIfAborted();
   const res = await fetch(file.url, { signal });
   if (!res.ok) throw new Error(`failed to fetch statement content (${res.status})`);
+  // TODO(handoff): Bound streamed response bytes before allocation; arrayBuffer()
+  // currently buffers the full response before the parser character limit applies.
+  // Also measure repeated full fetch/parse per 500-row chunk and eligible status
+  // read; follow-up: proposals/2026-09-10-hub-finance-parser-version-binding.md.
   const bytes = new Uint8Array(await res.arrayBuffer());
   signal?.throwIfAborted();
-  if (signal && sha256Hex(bytes) !== row.contentSha256)
-    throw new Error('stored statement content hash mismatch');
+  if (sha256Hex(bytes) !== row.contentSha256) throw new StatementSourceIntegrityError();
   return new TextDecoder().decode(bytes);
 }
 
-/** One bounded step: parse (deterministic, re-run every call — cheap for
- *  statement-sized files) and persist the next CHUNK_SIZE rows starting at
+/** One step bounds persisted rows, while fetching and parsing the full input
+ *  again on each call; its read/parse cost has not been measured. Persist the
+ *  next CHUNK_SIZE rows starting at
  *  `next_chunk`. Insert uses onConflictDoNothing on (import_id, source_row),
  *  so re-running the same chunk (retry, or a resumed lease) never duplicates. */
 export async function persistImportChunk(
@@ -278,8 +318,10 @@ export async function persistImportChunk(
     const row = await lockedImport(tx, ctx, importId);
     if (!row || row.status === 'undone')
       throw new JobEffectError('superseded', 'Statement import is missing or undone');
-    if (row.parserVersion !== PARSER_VERSION || sourceIdentity(row) !== request.sourceHash)
+    if (sourceIdentity(row) !== request.sourceHash)
       throw new JobEffectError('conflict', 'Statement content or parser identity changed');
+    if (!['done', 'failed'].includes(row.status) && row.parserVersion !== STATEMENT_PARSER_VERSION)
+      throw new JobEffectError('conflict', PARSER_VERSION_CONFLICT);
     return row;
   };
   const initial = await withJobRequest(execution, ctx, request, readCurrent);
@@ -291,14 +333,15 @@ export async function persistImportChunk(
   }
 
   let parsed: StatementParseResult;
+  let text: string;
   try {
-    const text = await loadImportText(ctx, initial, execution.signal);
+    text = await loadImportText(ctx, initial, execution.signal);
     checkCancelled();
     parsed = parseStatementCsv(text);
     checkCancelled();
   } catch (e) {
     checkCancelled();
-    const message = e instanceof Error ? e.message : String(e);
+    const { message, errorCode } = parseFailure(e);
     await withJobRequest(
       execution,
       ctx,
@@ -314,7 +357,7 @@ export async function persistImportChunk(
           .update(finStatementImports)
           .set({
             status: 'failed',
-            errorCode: 'parse_failed',
+            errorCode,
             errorMessage: message,
             finishedAt: new Date(),
           })
@@ -324,6 +367,14 @@ export async function persistImportChunk(
     );
     return { ...(await jobRequestAdvanceResult(execution, ctx, request, true)), error: message };
   }
+
+  // Uploaded bytes and normalized decoded parser text have distinct identities
+  // (e.g. BOM/CRLF). An invalid parser result must not enter failure persistence.
+  if (
+    parsed.provenance.parserVersion !== STATEMENT_PARSER_VERSION ||
+    parsed.provenance.sourceSha256 !== sha256Hex(normalizeStatementText(text))
+  )
+    throw new JobEffectError('conflict', 'Statement parse provenance mismatch');
 
   const outcome = await withJobRequest(
     execution,
@@ -421,8 +472,8 @@ export interface ImportStatus {
   rejections: Array<{ sourceRow: number; reason: string; raw: Record<string, string> }>;
 }
 
-/** Status incl. counts + a bounded sample of rejections (recomputed by
- *  re-parsing the stored content — cheap, deterministic, no extra table). */
+/** Status incl. counts + a bounded sample of rejections. Eligible reads fetch
+ *  and re-parse the full content; the sample cap does not bound that work. */
 export async function getImportStatus(
   ctx: CoreCtx,
   importId: string,
@@ -442,7 +493,10 @@ export async function getImportStatus(
   // explicit retry is available through the authenticated API, but status/UI
   // reconciliation is separate. See meta proposals/2026-09-08-platform-qc-remediation.md (finance job recovery).
   let rejections: ImportStatus['rejections'] = [];
-  if (row.status === 'done' || row.status === 'parsing') {
+  if (
+    row.parserVersion === STATEMENT_PARSER_VERSION &&
+    (row.status === 'done' || row.status === 'parsing')
+  ) {
     try {
       const text = await loadImportText(ctx, row);
       rejections = parseStatementCsv(text)
@@ -472,6 +526,10 @@ export async function retryImport(
   });
   if (!row) return null;
   if (!['queued', 'parsing', 'failed', 'undone'].includes(row.status)) return row;
+  // TODO(handoff): Historical version replacement needs an explicit data contract;
+  // preserve rows/cursors instead of silently relabeling or claiming retry recovery.
+  // See meta proposals/2026-09-10-hub-finance-parser-version-binding.md (D360-20).
+  if (row.parserVersion !== STATEMENT_PARSER_VERSION) throw error(409, PARSER_VERSION_CONFLICT);
 
   try {
     const created = await createJobRequest(
@@ -483,6 +541,8 @@ export async function retryImport(
         const current = await lockedImport(tx, ctx, importId);
         if (!current || !['queued', 'parsing', 'failed', 'undone'].includes(current.status))
           throw new UnchangedImport(current);
+        if (current.parserVersion !== STATEMENT_PARSER_VERSION)
+          throw error(409, PARSER_VERSION_CONFLICT);
         if (sourceIdentity(current) !== sourceIdentity(row))
           throw new JobEffectError('conflict', 'Statement identity changed during retry');
         const [r] = await tx

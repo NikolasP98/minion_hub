@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type postgres from 'postgres';
@@ -74,7 +73,7 @@ CREATE TABLE bg_jobs (id text PRIMARY KEY, tenant_id text NOT NULL, user_id text
   lease_until bigint, created_at bigint NOT NULL, updated_at bigint NOT NULL, started_at bigint, finished_at bigint);
 CREATE TABLE fin_invoices (id uuid PRIMARY KEY, org_id text NOT NULL, provider_ref text);
 CREATE TABLE stk_items (id uuid PRIMARY KEY, org_id text NOT NULL, units_per_stock_uom numeric);
-CREATE TABLE stk_warehouses (id uuid PRIMARY KEY, org_id text NOT NULL);
+CREATE TABLE stk_warehouses (id uuid PRIMARY KEY, org_id text NOT NULL, archived_at timestamptz);
 CREATE TABLE stk_entries (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), org_id text NOT NULL,
   human_id text, type text NOT NULL, status text NOT NULL DEFAULT 'draft', party_id uuid, note text,
   posted_at timestamptz, created_by text, metadata jsonb NOT NULL DEFAULT '{}',
@@ -207,7 +206,7 @@ beforeEach(async () => {
     workshop_groupchat_agents, workshop_groupchat_messages CASCADE`);
   await owner`INSERT INTO fin_invoices VALUES (${INVOICE}, ${ORG}, 'synthetic-invoice')`;
   await owner`INSERT INTO stk_items VALUES (${ITEM}, ${ORG}, 10)`;
-  await owner`INSERT INTO stk_warehouses VALUES (${WH}, ${ORG})`;
+  await owner`INSERT INTO stk_warehouses (id,org_id) VALUES (${WH}, ${ORG})`;
   await owner`INSERT INTO stk_bins (org_id,item_id,warehouse_id,qty,valuation_rate)
     VALUES (${ORG}, ${ITEM}, ${WH}, 10, 5)`;
 });
@@ -447,83 +446,6 @@ if (crashChildSchema) {
       expect(await owner`SELECT * FROM stk_ledger ORDER BY id`).toEqual(before);
       expect(await counts()).toEqual({ entries: 1, ledger: 1, qty: '8' });
     });
-    it('isolates a killed submission backend and verifies committed draft rollback/retry from a new process', async () => {
-      const hold = await connection();
-      const locked = deferred<void>();
-      const release = deferred<void>();
-      const blocker = hold.begin(async (tx) => {
-        await tx`SELECT item_id FROM stk_bins WHERE org_id=${ORG} FOR UPDATE`;
-        locked.resolve();
-        await release.promise;
-      });
-      await locked.promise;
-      const child = spawn(
-        process.execPath,
-        [
-          'node_modules/vitest/vitest.mjs',
-          'run',
-          '--config',
-          'vitest.disposable.config.ts',
-          'src/server/services/job-stock-concurrency.sql.integration.test.ts',
-          '--testNamePattern=disposable crash child',
-          '--maxWorkers=1',
-          '--fileParallelism=false',
-        ],
-        {
-          cwd: process.cwd(),
-          timeout: 40_000,
-          env: {
-            PATH: process.env.PATH,
-            NODE_ENV: 'test',
-            MINION_QC_DISPOSABLE: '1',
-            MINION_QC_DATABASE_URL: process.env.MINION_QC_DATABASE_URL,
-            MINION_QC_CRASH_CHILD_SCHEMA: schema,
-          },
-        },
-      );
-      let output = '';
-      child.stdout.on('data', (chunk: Buffer) => {
-        output = (output + chunk.toString()).slice(-100_000);
-      });
-      child.stderr.on('data', (chunk: Buffer) => {
-        output = (output + chunk.toString()).slice(-100_000);
-      });
-      const exited = new Promise<number | null>((resolve, reject) => {
-        child.on('error', reject);
-        child.on('exit', resolve);
-      });
-      let childPid = 0;
-      let draftId: string | undefined;
-      try {
-        await until(async () => {
-          if (child.exitCode !== null)
-            throw new Error(`Crash child exited before admission: ${output}`);
-          childPid = (await owner`SELECT pid FROM qc_crash_process`)[0]?.pid ?? 0;
-          return childPid > 0 && (await blocked(childPid));
-        }, 30_000);
-        const [draft] = await owner`SELECT id,status FROM stk_entries`;
-        draftId = draft.id;
-        expect(draft.status).toBe('draft');
-        // PID came from this suite's marked child fixture, never an application pool.
-        expect(
-          (await owner`SELECT pg_terminate_backend(${childPid}) AS terminated`)[0].terminated,
-        ).toBe(true);
-        expect(await exited).toBe(1);
-        expect(output).toContain('disposable crash child');
-        // TODO(handoff): Qualify/fix postgres-js nextWrite null-socket crash on backend loss before rollout. See meta proposals/2026-09-08-platform-qc-remediation.md (HDS-05).
-        expect(output).toContain('nextWrite');
-        expect(output).toContain("Cannot read properties of null (reading 'write')");
-      } finally {
-        if (child.exitCode === null) child.kill('SIGTERM');
-        release.resolve();
-        await blocker;
-        await exited;
-      }
-      expect(await counts()).toEqual({ entries: 1, ledger: 0, qty: '10' });
-      const resumed = await issue(b);
-      expect(resumed.id).toBe(draftId);
-      expect(await counts()).toEqual({ entries: 1, ledger: 1, qty: '8' });
-    }, 50_000);
   });
 
   describe('native groupchat admission and message persistence', () => {
@@ -668,3 +590,22 @@ if (crashChildSchema) {
     });
   });
 }
+
+// Reused only by the separately excluded, explicitly gated fault fixture.
+// TODO(handoff): Backend-loss qualification remains gated by HDS-05; see meta proposals/2026-09-08-platform-qc-remediation.md.
+export const stockNativeFaultContext = {
+  get owner() {
+    return owner;
+  },
+  get b() {
+    return b;
+  },
+  connection,
+  deferred,
+  until,
+  schema,
+  blocked,
+  counts,
+  issue,
+  ORG,
+};
