@@ -33,6 +33,7 @@
   import CrmSimilarWins from '$lib/components/crm/CrmSimilarWins.svelte';
   import Connections from '$lib/components/crm/Connections.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
+  import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import {
     contactLabel,
     isRecencyNever,
@@ -454,6 +455,7 @@
       data.finance ? { id: 'financials', w: 2, h: 2 } : null,
       data.finance ? { id: 'wins', w: 2, h: 2 } : null,
       { id: 'bookings', w: 2, h: 2 },
+      { id: 'attachments', w: 2, h: 2 },
     ].filter((x): x is { id: string; w: number; h: number } => x !== null),
   );
 
@@ -482,6 +484,8 @@
     completed: () => m.sched_status_completed(),
     no_show: () => m.sched_status_no_show(),
   };
+
+  let attachmentsRefreshKey = $state(0);
 </script>
 
 <svelte:head><title>{contactLabel(c.displayName)} — {m.crm_title()}</title></svelte:head>
@@ -910,6 +914,20 @@
       {:else}
         <p class="t-caption">{m.crm_bookings_empty()}</p>
       {/if}
+    </section>
+  {:else if idv === 'attachments'}
+    <section class="card">
+      <header class="card-h">
+        <span>{m.attachments_title()}</span>
+        <AttachmentButton
+          objectType="crm_contact"
+          objectId={c.id}
+          size="sm"
+          disabled={!canAct('crm', 'edit')}
+          onuploaded={() => (attachmentsRefreshKey += 1)}
+        />
+      </header>
+      <AttachmentList objectType="crm_contact" objectId={c.id} refreshKey={attachmentsRefreshKey} />
     </section>
   {/if}
 {/snippet}

@@ -7,65 +7,19 @@ import { getStorage } from '$server/storage/blob';
 import { scopeData } from './base';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
-/**
- * Attachment upload limits (spec 2026-09-12-erp-core-modules-attachments-spec
- * §D). `maxFileBytes` gates the presigned (browser-direct) path; `proxiedMaxBytes`
- * gates the server-proxied `POST /api/files` path — Vercel's serverless request
- * body cap (~4.5 MB, undocumented in this repo, see recon §4.3) makes anything
- * above it presign-only. `orgQuotaBytes` is a soft per-tenant ceiling on
- * `sum(files.size_bytes)`. Env overrides are optional escape hatches, not required.
- */
-export const ATTACHMENT_LIMITS = {
-  maxFileBytes: Number(process.env.ATTACHMENT_MAX_FILE_BYTES) || 25 * 1024 * 1024,
-  proxiedMaxBytes: Number(process.env.ATTACHMENT_PROXIED_MAX_BYTES) || 4 * 1024 * 1024,
-  orgQuotaBytes: Number(process.env.ATTACHMENT_ORG_QUOTA_BYTES) || 2 * 1024 * 1024 * 1024,
-};
-
-export const ATTACHMENT_MIME_ALLOWLIST = new Set([
-  'application/pdf',
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/gif',
-  'image/heic',
-  'text/plain',
-  'text/csv',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
-  'application/msword', // doc
-  'application/vnd.ms-excel', // xls
-  'application/zip',
-  'video/mp4',
-  'audio/mpeg', // mp3
-  'audio/mp4', // m4a
-  'audio/x-m4a',
-  'audio/wav',
-]);
-
-export type AttachmentValidationCode = 'too_large' | 'mime_not_allowed' | 'quota_exceeded';
-export type AttachmentValidationResult =
-  { ok: true } | { ok: false; code: AttachmentValidationCode; message: string };
-
-/** Pure per-file cap + MIME allowlist check. `maxBytes` defaults to the
- *  presigned-path cap; the proxied route passes `proxiedMaxBytes` instead. */
-export function validateAttachment(
-  input: { fileName: string; contentType: string; sizeBytes: number },
-  opts: { maxBytes?: number } = {},
-): AttachmentValidationResult {
-  const maxBytes = opts.maxBytes ?? ATTACHMENT_LIMITS.maxFileBytes;
-  if (input.sizeBytes > maxBytes) {
-    return { ok: false, code: 'too_large', message: `file exceeds ${maxBytes} bytes` };
-  }
-  if (!ATTACHMENT_MIME_ALLOWLIST.has(input.contentType)) {
-    return {
-      ok: false,
-      code: 'mime_not_allowed',
-      message: `unsupported content type: ${input.contentType}`,
-    };
-  }
-  return { ok: true };
-}
+// Limits + MIME allowlist + the pure validator live in a client-safe module
+// (`$lib/attachments/limits`) so `AttachmentButton`'s pre-check can import the
+// same constants without pulling in server-only code. Re-exported here so
+// every existing server import site (this file's callers, routes, tests)
+// keeps working unchanged.
+export {
+  ATTACHMENT_LIMITS,
+  ATTACHMENT_MIME_ALLOWLIST,
+  validateAttachment,
+  type AttachmentValidationCode,
+  type AttachmentValidationResult,
+} from '$lib/attachments/limits';
+import { ATTACHMENT_LIMITS, type AttachmentValidationResult } from '$lib/attachments/limits';
 
 /** Org storage quota check — sums `files.size_bytes` for this tenant (no
  *  dedicated quota column; the running total IS the source of truth). */

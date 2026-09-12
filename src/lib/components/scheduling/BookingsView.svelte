@@ -17,6 +17,7 @@
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
+  import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import {
     bookingsLabels,
     type BookingCapabilities,
@@ -179,6 +180,8 @@
     l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
   }
 
+  let attachmentsRefreshKey = $state<Record<string, number>>({});
+
   // New booking lives on its own route (in-page form, assistant-guidable).
   const newHref = $derived(
     data.contactId
@@ -319,6 +322,25 @@
                   </Button>
                 {/if}
               </div>
+            </div>
+            <div class="mt-2 pt-2 border-t border-[var(--hairline)] flex flex-col gap-2">
+              <AttachmentButton
+                objectType="booking"
+                objectId={b.id}
+                size="sm"
+                disabled={!canAct('scheduling', 'edit')}
+                onuploaded={() =>
+                  (attachmentsRefreshKey = {
+                    ...attachmentsRefreshKey,
+                    [b.id]: (attachmentsRefreshKey[b.id] ?? 0) + 1,
+                  })}
+              />
+              <AttachmentList
+                objectType="booking"
+                objectId={b.id}
+                refreshKey={attachmentsRefreshKey[b.id] ?? 0}
+                compact
+              />
             </div>
           </Card>
         {/each}
