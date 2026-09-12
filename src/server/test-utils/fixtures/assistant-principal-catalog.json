@@ -1,0 +1,1239 @@
+{
+  "provenance": {
+    "observedAt": "2026-09-12T23:15:38.315Z",
+    "scope": "schema-only; no application table rows read",
+    "sourceFile": "configured-hub-principal-catalog.json",
+    "sourceSha256": "00afc786bc4c23429b941a8ef0eb791baec8054843a478d7fbdba5a032246a5c",
+    "sourceServerVersion": "17.6"
+  },
+  "catalog": {
+    "closure": [
+      {
+        "schema": "auth",
+        "relname": "users",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "gateway",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "member_roles",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "permission_rules",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "personal_agents",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "profiles",
+        "relkind": "r"
+      },
+      {
+        "schema": "public",
+        "relname": "user_gateway",
+        "relkind": "r"
+      }
+    ],
+    "relations": [
+      {
+        "relname": "gateway",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+      },
+      {
+        "relname": "member_roles",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}"
+      },
+      {
+        "relname": "permission_rules",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}"
+      },
+      {
+        "relname": "personal_agents",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+      },
+      {
+        "relname": "profiles",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=r/postgres}"
+      },
+      {
+        "relname": "user_gateway",
+        "relkind": "r",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+      }
+    ],
+    "columns": [
+      {
+        "relname": "gateway",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "gateway",
+        "attnum": 2,
+        "attname": "legacy_server_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "gateway",
+        "attnum": 3,
+        "attname": "name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "gateway",
+        "attnum": 4,
+        "attname": "url",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "gateway",
+        "attnum": 5,
+        "attname": "token_ciphertext",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::text"
+      },
+      {
+        "relname": "gateway",
+        "attnum": 6,
+        "attname": "token_iv",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "''::text"
+      },
+      {
+        "relname": "gateway",
+        "attnum": 7,
+        "attname": "auth_mode",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'token'::text"
+      },
+      {
+        "relname": "gateway",
+        "attnum": 8,
+        "attname": "last_connected_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "gateway",
+        "attnum": 9,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "gateway",
+        "attnum": 10,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "gateway",
+        "attnum": 11,
+        "attname": "org_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "gateway",
+        "attnum": 12,
+        "attname": "channel",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'prd'::text"
+      },
+      {
+        "relname": "member_roles",
+        "attnum": 1,
+        "attname": "org_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "member_roles",
+        "attnum": 2,
+        "attname": "profile_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "member_roles",
+        "attnum": 3,
+        "attname": "role_key",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "member_roles",
+        "attnum": 4,
+        "attname": "granted_by",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "member_roles",
+        "attnum": 5,
+        "attname": "granted_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "gen_random_uuid()"
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 2,
+        "attname": "org_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 3,
+        "attname": "role_key",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 4,
+        "attname": "module",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 5,
+        "attname": "can_view",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 6,
+        "attname": "can_create",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 7,
+        "attname": "can_edit",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 8,
+        "attname": "can_delete",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 9,
+        "attname": "can_export",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 10,
+        "attname": "can_manage",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 11,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 12,
+        "attname": "if_owner",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "permission_rules",
+        "attnum": 13,
+        "attname": "field_level",
+        "type": "smallint",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "0"
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 1,
+        "attname": "id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 2,
+        "attname": "profile_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 3,
+        "attname": "agent_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 4,
+        "attname": "gateway_id",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 5,
+        "attname": "display_name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 6,
+        "attname": "conversation_name",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 7,
+        "attname": "avatar_url",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 8,
+        "attname": "personality_preset",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 9,
+        "attname": "personality_text",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 10,
+        "attname": "personality_configured",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 11,
+        "attname": "provisioning_status",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'pending'::text"
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 12,
+        "attname": "provisioning_error",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 13,
+        "attname": "last_retry_at",
+        "type": "timestamp with time zone",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 14,
+        "attname": "retry_count",
+        "type": "integer",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "0"
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 15,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "personal_agents",
+        "attnum": 16,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "profiles",
+        "attnum": 1,
+        "attname": "id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 2,
+        "attname": "email",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 3,
+        "attname": "display_name",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 4,
+        "attname": "role",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'user'::text"
+      },
+      {
+        "relname": "profiles",
+        "attnum": 5,
+        "attname": "personal_agent_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 6,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "profiles",
+        "attnum": 7,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "profiles",
+        "attnum": 9,
+        "attname": "avatar_url",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 10,
+        "attname": "alias",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 11,
+        "attname": "role_id",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "profiles",
+        "attnum": 12,
+        "attname": "account_type",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'person'::text"
+      },
+      {
+        "relname": "profiles",
+        "attnum": 13,
+        "attname": "username",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "user_gateway",
+        "attnum": 1,
+        "attname": "profile_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "user_gateway",
+        "attnum": 2,
+        "attname": "gateway_id",
+        "type": "uuid",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "user_gateway",
+        "attnum": 3,
+        "attname": "is_default",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "false"
+      },
+      {
+        "relname": "user_gateway",
+        "attnum": 4,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      }
+    ],
+    "constraints": [
+      {
+        "relname": "gateway",
+        "conname": "gateway_channel_valid",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK (channel = ANY (ARRAY['dev'::text, 'prd'::text]))"
+      },
+      {
+        "relname": "gateway",
+        "conname": "gateway_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "member_roles",
+        "conname": "member_roles_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (org_id, profile_id, role_key)"
+      },
+      {
+        "relname": "permission_rules",
+        "conname": "permission_rules_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "personal_agents",
+        "conname": "personal_agents_gateway_id_gateway_id_fk",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (gateway_id) REFERENCES gateway(id) ON DELETE SET NULL"
+      },
+      {
+        "relname": "personal_agents",
+        "conname": "personal_agents_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "personal_agents",
+        "conname": "personal_agents_profile_id_profiles_id_fk",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "personal_agents",
+        "conname": "personal_agents_profile_id_unique",
+        "contype": "u",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "UNIQUE (profile_id)"
+      },
+      {
+        "relname": "profiles",
+        "conname": "profiles_account_type_chk",
+        "contype": "c",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "CHECK (account_type = ANY (ARRAY['person'::text, 'service'::text]))"
+      },
+      {
+        "relname": "profiles",
+        "conname": "profiles_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "profiles",
+        "conname": "profiles_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relname": "user_gateway",
+        "conname": "user_gateway_gateway_id_gateway_id_fk",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (gateway_id) REFERENCES gateway(id) ON DELETE CASCADE"
+      },
+      {
+        "relname": "user_gateway",
+        "conname": "user_gateway_profile_id_gateway_id_pk",
+        "contype": "p",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "PRIMARY KEY (profile_id, gateway_id)"
+      },
+      {
+        "relname": "user_gateway",
+        "conname": "user_gateway_profile_id_profiles_id_fk",
+        "contype": "f",
+        "convalidated": true,
+        "condeferrable": false,
+        "condeferred": false,
+        "definition": "FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE"
+      }
+    ],
+    "indexes": [
+      {
+        "relname": "gateway",
+        "indexname": "gateway_org_channel_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX gateway_org_channel_idx ON public.gateway USING btree (org_id, channel)",
+        "predicate": null
+      },
+      {
+        "relname": "gateway",
+        "indexname": "gateway_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX gateway_pkey ON public.gateway USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "gateway",
+        "indexname": "gateway_uniq_url_org_channel",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX gateway_uniq_url_org_channel ON public.gateway USING btree (url, COALESCE(org_id, '00000000-0000-0000-0000-000000000000'::uuid), channel)",
+        "predicate": null
+      },
+      {
+        "relname": "gateway",
+        "indexname": "idx_gateway_legacy",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_gateway_legacy ON public.gateway USING btree (legacy_server_id)",
+        "predicate": null
+      },
+      {
+        "relname": "member_roles",
+        "indexname": "member_roles_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX member_roles_pkey ON public.member_roles USING btree (org_id, profile_id, role_key)",
+        "predicate": null
+      },
+      {
+        "relname": "member_roles",
+        "indexname": "member_roles_profile_idx",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX member_roles_profile_idx ON public.member_roles USING btree (org_id, profile_id)",
+        "predicate": null
+      },
+      {
+        "relname": "permission_rules",
+        "indexname": "permission_rules_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX permission_rules_pkey ON public.permission_rules USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "permission_rules",
+        "indexname": "permission_rules_scope_uniq",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX permission_rules_scope_uniq ON public.permission_rules USING btree (org_id, role_key, module)",
+        "predicate": null
+      },
+      {
+        "relname": "personal_agents",
+        "indexname": "idx_personal_agents_agent",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_personal_agents_agent ON public.personal_agents USING btree (agent_id)",
+        "predicate": null
+      },
+      {
+        "relname": "personal_agents",
+        "indexname": "idx_personal_agents_profile",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_personal_agents_profile ON public.personal_agents USING btree (profile_id)",
+        "predicate": null
+      },
+      {
+        "relname": "personal_agents",
+        "indexname": "idx_personal_agents_status",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_personal_agents_status ON public.personal_agents USING btree (provisioning_status)",
+        "predicate": null
+      },
+      {
+        "relname": "personal_agents",
+        "indexname": "personal_agents_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX personal_agents_pkey ON public.personal_agents USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "personal_agents",
+        "indexname": "personal_agents_profile_id_unique",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX personal_agents_profile_id_unique ON public.personal_agents USING btree (profile_id)",
+        "predicate": null
+      },
+      {
+        "relname": "profiles",
+        "indexname": "profiles_alias_key",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX profiles_alias_key ON public.profiles USING btree (alias) WHERE (alias IS NOT NULL)",
+        "predicate": "(alias IS NOT NULL)"
+      },
+      {
+        "relname": "profiles",
+        "indexname": "profiles_pkey",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX profiles_pkey ON public.profiles USING btree (id)",
+        "predicate": null
+      },
+      {
+        "relname": "profiles",
+        "indexname": "profiles_username_key",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX profiles_username_key ON public.profiles USING btree (username)",
+        "predicate": null
+      },
+      {
+        "relname": "user_gateway",
+        "indexname": "idx_user_gateway_gateway",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": false,
+        "definition": "CREATE INDEX idx_user_gateway_gateway ON public.user_gateway USING btree (gateway_id)",
+        "predicate": null
+      },
+      {
+        "relname": "user_gateway",
+        "indexname": "user_gateway_profile_id_gateway_id_pk",
+        "indisvalid": true,
+        "indisready": true,
+        "indisunique": true,
+        "definition": "CREATE UNIQUE INDEX user_gateway_profile_id_gateway_id_pk ON public.user_gateway USING btree (profile_id, gateway_id)",
+        "predicate": null
+      }
+    ],
+    "policies": [
+      {
+        "schemaname": "public",
+        "tablename": "gateway",
+        "policyname": "gateway_admin_all",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = 'admin'::text))))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "gateway",
+        "policyname": "gateway_linked_select",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "SELECT",
+        "qual": "(EXISTS ( SELECT 1\n   FROM user_gateway ug\n  WHERE ((ug.gateway_id = gateway.id) AND (ug.profile_id = auth.uid()))))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "member_roles",
+        "policyname": "member_roles_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["app_ledger"],
+        "cmd": "SELECT",
+        "qual": "((org_id)::text = current_setting('app.current_org_id'::text, true))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "permission_rules",
+        "policyname": "permission_rules_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "((org_id)::text = current_setting('app.current_org_id'::text, true))",
+        "with_check": "((org_id)::text = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "schemaname": "public",
+        "tablename": "personal_agents",
+        "policyname": "personal_agents_admin_all",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = 'admin'::text))))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "personal_agents",
+        "policyname": "personal_agents_self_select",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "SELECT",
+        "qual": "(profile_id = auth.uid())",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "profiles",
+        "policyname": "profiles_self_select",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "SELECT",
+        "qual": "(auth.uid() = id)",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "profiles",
+        "policyname": "profiles_self_update",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "UPDATE",
+        "qual": "(auth.uid() = id)",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "user_gateway",
+        "policyname": "user_gateway_admin_all",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = 'admin'::text))))",
+        "with_check": null
+      },
+      {
+        "schemaname": "public",
+        "tablename": "user_gateway",
+        "policyname": "user_gateway_self_select",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "SELECT",
+        "qual": "(profile_id = auth.uid())",
+        "with_check": null
+      }
+    ],
+    "triggers": [],
+    "functionDependencies": [],
+    "expressionFunctionDependencies": [
+      {
+        "relation": "gateway",
+        "function": "auth.uid()",
+        "function_schema": "auth",
+        "proname": "uid",
+        "prosecdef": false,
+        "proconfig": null,
+        "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+        "dependency_kind": "policy"
+      },
+      {
+        "relation": "personal_agents",
+        "function": "auth.uid()",
+        "function_schema": "auth",
+        "proname": "uid",
+        "prosecdef": false,
+        "proconfig": null,
+        "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+        "dependency_kind": "policy"
+      },
+      {
+        "relation": "profiles",
+        "function": "auth.uid()",
+        "function_schema": "auth",
+        "proname": "uid",
+        "prosecdef": false,
+        "proconfig": null,
+        "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+        "dependency_kind": "policy"
+      },
+      {
+        "relation": "user_gateway",
+        "function": "auth.uid()",
+        "function_schema": "auth",
+        "proname": "uid",
+        "prosecdef": false,
+        "proconfig": null,
+        "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+        "dependency_kind": "policy"
+      }
+    ],
+    "foreignDependencies": [
+      {
+        "relation": "personal_agents",
+        "conname": "personal_agents_gateway_id_gateway_id_fk",
+        "referenced_schema": "public",
+        "referenced_table": "gateway",
+        "definition": "FOREIGN KEY (gateway_id) REFERENCES gateway(id) ON DELETE SET NULL"
+      },
+      {
+        "relation": "personal_agents",
+        "conname": "personal_agents_profile_id_profiles_id_fk",
+        "referenced_schema": "public",
+        "referenced_table": "profiles",
+        "definition": "FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE"
+      },
+      {
+        "relation": "profiles",
+        "conname": "profiles_id_fkey",
+        "referenced_schema": "auth",
+        "referenced_table": "users",
+        "definition": "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE"
+      },
+      {
+        "relation": "user_gateway",
+        "conname": "user_gateway_gateway_id_gateway_id_fk",
+        "referenced_schema": "public",
+        "referenced_table": "gateway",
+        "definition": "FOREIGN KEY (gateway_id) REFERENCES gateway(id) ON DELETE CASCADE"
+      },
+      {
+        "relation": "user_gateway",
+        "conname": "user_gateway_profile_id_profiles_id_fk",
+        "referenced_schema": "public",
+        "referenced_table": "profiles",
+        "definition": "FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE"
+      }
+    ],
+    "policyRelations": [
+      {
+        "relation": "gateway",
+        "policy": "gateway_admin_all",
+        "referenced_schema": "public",
+        "referenced_relation": "profiles"
+      },
+      {
+        "relation": "gateway",
+        "policy": "gateway_linked_select",
+        "referenced_schema": "public",
+        "referenced_relation": "user_gateway"
+      },
+      {
+        "relation": "personal_agents",
+        "policy": "personal_agents_admin_all",
+        "referenced_schema": "public",
+        "referenced_relation": "profiles"
+      },
+      {
+        "relation": "user_gateway",
+        "policy": "user_gateway_admin_all",
+        "referenced_schema": "public",
+        "referenced_relation": "profiles"
+      }
+    ],
+    "admittedFunctionBodies": [
+      {
+        "schema": "auth",
+        "function": "auth.uid()",
+        "definition": "CREATE OR REPLACE FUNCTION auth.uid()\n RETURNS uuid\n LANGUAGE sql\n STABLE\nAS $function$\n  select \n  coalesce(\n    nullif(current_setting('request.jwt.claim.sub', true), ''),\n    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')\n  )::uuid\n$function$\n",
+        "prosecdef": false,
+        "proconfig": null,
+        "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}"
+      },
+      {
+        "schema": "public",
+        "function": "handle_new_auth_user()",
+        "definition": "CREATE OR REPLACE FUNCTION public.handle_new_auth_user()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.email is null then\n    return new;\n  end if;\n  insert into public.profiles (id, email, display_name)\n  values (\n    new.id,\n    new.email,\n    coalesce(\n      nullif(new.raw_user_meta_data->>'full_name', ''),\n      nullif(new.raw_user_meta_data->>'name', ''),\n      split_part(new.email, '@', 1)\n    )\n  )\n  on conflict (id) do nothing;\n  return new;\nend;\n$function$\n",
+        "prosecdef": true,
+        "proconfig": ["search_path=public"],
+        "acl": "{postgres=X/postgres,service_role=X/postgres}"
+      }
+    ]
+  }
+}
