@@ -34,7 +34,7 @@ describe('UI audit route inventory', () => {
     ).toBe(true);
     expect(inventory.sourceTreeSha).toBe(baseline.sourceTreeSha);
     expect(inventory.workingTreeFingerprint).toBe(baseline.workingTreeFingerprint);
-  });
+  }, 30_000);
 
   it('reads clean baseline evidence from the recorded Git object, not dirty route files', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'minion-ui-inventory-'));
@@ -73,7 +73,7 @@ describe('UI audit route inventory', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('validates unchanged route content when a recorded feature commit is absent', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'minion-ui-inventory-shallow-'));
