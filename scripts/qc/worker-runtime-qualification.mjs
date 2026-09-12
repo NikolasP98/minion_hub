@@ -20,7 +20,10 @@ const target = new URL(databaseUrl);
 assert.equal(target.hostname, '127.0.0.1');
 assert.equal(target.username, 'minion_qc');
 assert.equal(target.pathname, '/minion_qc_worker');
-assert.notEqual(target.port, '5432', 'Use a dedicated private fixture port');
+assert.ok(
+  Number(target.port) > 1024 && target.port !== '5432',
+  'Use a dedicated private fixture port',
+);
 const db = postgres(databaseUrl, { max: 1, prepare: false, connect_timeout: 3 });
 try {
   const [identity] = await db`select current_database() as db, current_user as owner,
