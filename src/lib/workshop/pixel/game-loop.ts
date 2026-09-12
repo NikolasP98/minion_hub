@@ -1,7 +1,8 @@
 /**
  * Game loop: requestAnimationFrame-based update/render cycle with delta time capping.
  *
- * The loop calls `update(dt)` then `render(ctx)` each frame.
+ * Every frame synchronizes live state and renders. Decorative updates pause
+ * while the user prefers reduced motion.
  * Delta time is clamped to MAX_DELTA_TIME_SEC (0.1s) to prevent physics
  * explosions when the tab is backgrounded or the frame takes too long.
  *
@@ -13,6 +14,8 @@
 const MAX_DELTA_TIME_SEC = 0.1;
 
 export interface GameLoopCallbacks {
+  /** Read live state even when decorative movement is paused. */
+  sync?: () => void;
   update: (dt: number) => void;
   render: (ctx: CanvasRenderingContext2D) => void;
 }
@@ -29,6 +32,14 @@ export function startGameLoop(canvas: HTMLCanvasElement, callbacks: GameLoopCall
   // Disable image smoothing once at init for crisp pixel art rendering
   ctx.imageSmoothingEnabled = false;
 
+  const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let reduceMotion = motion.matches;
+  const motionChanged = () => {
+    reduceMotion = motion.matches;
+    lastTime = 0; // Resuming never integrates time spent with motion paused.
+  };
+  motion.addEventListener('change', motionChanged);
+
   let lastTime = 0;
   let rafId = 0;
   let stopped = false;
@@ -38,7 +49,8 @@ export function startGameLoop(canvas: HTMLCanvasElement, callbacks: GameLoopCall
     const dt = lastTime === 0 ? 0 : Math.min((time - lastTime) / 1000, MAX_DELTA_TIME_SEC);
     lastTime = time;
 
-    callbacks.update(dt);
+    callbacks.sync?.();
+    if (!reduceMotion) callbacks.update(dt);
     callbacks.render(ctx);
 
     rafId = requestAnimationFrame(frame);
@@ -48,6 +60,7 @@ export function startGameLoop(canvas: HTMLCanvasElement, callbacks: GameLoopCall
 
   return () => {
     stopped = true;
+    motion.removeEventListener('change', motionChanged);
     cancelAnimationFrame(rafId);
   };
 }

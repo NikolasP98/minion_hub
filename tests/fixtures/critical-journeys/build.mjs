@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { build } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
@@ -8,9 +9,9 @@ import { fileURLToPath } from 'node:url';
 
 const hub = fileURLToPath(new URL('../../../', import.meta.url));
 const fixture = fileURLToPath(new URL('./', import.meta.url));
-const base = path.resolve(hub, '..');
+const base = fs.mkdtempSync(path.join(os.tmpdir(), 'minion-critical-build-'));
 const out = process.env.MINION_CRITICAL_OUT;
-if (!out || !path.resolve(out).startsWith(base + '/output/') || fs.existsSync(out))
+if (!out || !path.isAbsolute(out) || fs.existsSync(out))
   throw Error('Fresh private output required');
 const sha = (data) => crypto.createHash('sha256').update(data).digest('hex');
 const authority = [

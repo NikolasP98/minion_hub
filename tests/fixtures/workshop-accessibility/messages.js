@@ -1,0 +1,10 @@
+export const nav_agents = () => 'Agents';
+export const workshop_assignTask = () => 'Assign task';
+export const workshop_startConversation = () => 'Start conversation';
+export const workshop_describeTask = () => 'Describe task';
+export const workshop_whatToDiscuss = () => 'What to discuss';
+export const workshop_taskPromptHint = () => 'Ctrl+Enter to send';
+export const workshop_send = () => 'Send';
+export const workshop_start = () => 'Start';
+export const common_cancel = () => 'Cancel';
+export const common_close = () => 'Close';

@@ -63,6 +63,7 @@
   import PortalOverlay from './PortalOverlay.svelte';
   import DebugOverlay from './DebugOverlay.svelte';
   import TaskPromptDialog from './_workshop-canvas/TaskPromptDialog.svelte';
+  import WorkshopAgentControls from './_workshop-canvas/WorkshopAgentControls.svelte';
   import ConversationsToggleButton from './_workshop-canvas/ConversationsToggleButton.svelte';
   import WorkshopConfigPanel from './_workshop-canvas/WorkshopConfigPanel.svelte';
   import CanvasHtmlOverlays from './_workshop-canvas/CanvasHtmlOverlays.svelte';
@@ -426,18 +427,21 @@
 
       // Start the render loop
       stopPixelLoop = startGameLoop(pixelCanvas, {
-        update: (dt) => {
+        sync: () => {
           if (!pixelOffice) return;
           // Sync gateway agent state → pixel character state
           // isInitialLoad=false: runtime connects spawn at entrance tile (D-14)
           syncAgentList(pixelOffice, false);
           syncAgentState(pixelOffice);
+        },
+        update: (dt) => {
+          if (!pixelOffice) return;
           pixelOffice.update(dt);
-          // Sync pixel character positions → workshopState for proximity/banter
-          syncPositionsToWorkshop(pixelOffice);
         },
         render: (ctx) => {
           if (!pixelOffice || !pixelCanvas) return;
+          // Pointer moves and live positions still synchronize with motion disabled.
+          syncPositionsToWorkshop(pixelOffice);
           resizePixelCanvas();
           ctx.imageSmoothingEnabled = false;
           const office = pixelOffice;
@@ -1717,7 +1721,26 @@
   }
 </script>
 
+<!-- TODO(handoff): Pixi/simulation motion and keyboard relationship/element editing remain
+  unqualified; this slice covers pixel motion and agent selection/task assignment only.
+  See meta proposals/2026-09-08-platform-qc-remediation.md (Workshop accessibility). -->
 <div class="flex-1 relative overflow-hidden">
+  <WorkshopAgentControls
+    agents={Object.values(workshopState.agents).map((agent) => ({
+      id: agent.instanceId,
+      name: resolveAgentName(agent.agentId),
+    }))}
+    selectedId={selectedInstanceId}
+    connected={conn.connected}
+    onselect={selectAgent}
+    onassign={(id) => {
+      const agent = workshopState.agents[id];
+      if (agent) handleContextAction('assignTask', undefined, {
+        instanceId: id,
+        agentName: resolveAgentName(agent.agentId),
+      });
+    }}
+  />
   <!-- Gateway-offline ribbon: slides down from the top of the canvas while disconnected -->
   {#if !conn.connected}
     <div
@@ -1746,7 +1769,7 @@
   <div
     use:pixiCanvas
     class="w-full h-full"
-    role="application"
+    role="region"
     aria-label={m.workshop_canvasAriaLabel()}
     onpointerdown={handlePointerDown}
     onpointermove={handlePointerMove}
