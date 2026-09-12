@@ -7,3 +7,15 @@
 // (scryptSync(ENCRYPTION_KEY, 'minion-hub-salt', 32)) — existing encrypted
 // tokens at rest remain readable.
 export { encrypt, decrypt, encryptToken, decryptToken } from '@minion-stack/db/crypto';
+
+// Key-configuration policy (S3 of the 2026-08-17 crypto fail-open spec). Kept
+// beside the re-export so every caller has one import path for "can this
+// process legitimately touch secrets?".
+export {
+  assertCryptoKeyConfigured,
+  cryptoKeyMode,
+  DEV_KEY_OPT_IN_VAR,
+  DEV_KEY_REFUSED_MESSAGE,
+  PRODUCTION_KEY_REQUIRED_MESSAGE,
+  type CryptoKeyMode,
+} from './crypto-key';

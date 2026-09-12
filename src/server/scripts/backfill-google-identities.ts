@@ -10,7 +10,7 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
 import { account, user } from '@minion-stack/db/schema';
-import { attachGoogleIdentity } from '../services/identity.service';
+import { assertCryptoKeyConfigured } from '../auth/crypto';
 import type { Db } from '../db/client';
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -20,6 +20,17 @@ if (!CLIENT_ID || !CLIENT_SECRET) {
 }
 
 async function main() {
+  // Fail closed on crypto configuration (S3 follow-up of
+  // specs/2026-08-17-pkg-dev-crypto-failopen-spec.md). hooks.server.ts's boot
+  // assertion only covers the SvelteKit server process; this script is a
+  // standalone entrypoint that reaches the same encryptAdc() path (via
+  // attachGoogleIdentity), so it needs its own call — before anything else
+  // runs. `identity.service` is imported dynamically, after this check, so a
+  // refused key throws here rather than while resolving that module's own
+  // import chain.
+  assertCryptoKeyConfigured();
+  const { attachGoogleIdentity } = await import('../services/identity.service');
+
   const url = process.env.TURSO_DB_URL ?? 'file:./data/minion_hub.db';
   const authToken = process.env.TURSO_DB_AUTH_TOKEN;
   const db = drizzle(createClient({ url, authToken })) as unknown as Db;
