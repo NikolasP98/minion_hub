@@ -29,6 +29,22 @@ describe('tag-links.service', () => {
       ]);
       expect(map.get('b-2')).toEqual([{ id: 't-1', name: 'VIP', color: '#fff' }]);
     });
+
+    it('preserves the query result order (position then name) within a group', async () => {
+      // The mock returns rows verbatim (no client-side re-sort) — ordering is
+      // owned by the query's `.orderBy(crmTags.position, crmTags.name)`; this
+      // asserts the service doesn't reorder what the DB already sorted.
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          { entityId: 'b-1', id: 't-2', name: 'Alpha', color: '#111' }, // position 0
+          { entityId: 'b-1', id: 't-1', name: 'Zulu', color: '#222' }, // position 1
+          { entityId: 'b-1', id: 't-3', name: 'Beta', color: '#333' }, // position 1, name tiebreak
+        ],
+      ]);
+      const map = await getTagLinks(ctx(db), 'booking', ['b-1']);
+      expect(map.get('b-1')?.map((t) => t.id)).toEqual(['t-2', 't-1', 't-3']);
+    });
   });
 
   describe('setTagLinks', () => {
@@ -73,6 +89,18 @@ describe('tag-links.service', () => {
       resolveSequence([[{ contactId: 'c-1', id: 't-1', name: 'Loyal', color: '#0f0' }]]);
       const map = await getContactTagsBulk(ctx(db), ['c-1']);
       expect(map.get('c-1')).toEqual([{ id: 't-1', name: 'Loyal', color: '#0f0' }]);
+    });
+
+    it('preserves the query result order (position then name) within a group', async () => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [
+          { contactId: 'c-1', id: 't-2', name: 'Alpha', color: '#111' },
+          { contactId: 'c-1', id: 't-1', name: 'Zulu', color: '#222' },
+        ],
+      ]);
+      const map = await getContactTagsBulk(ctx(db), ['c-1']);
+      expect(map.get('c-1')?.map((t) => t.id)).toEqual(['t-2', 't-1']);
     });
   });
 });

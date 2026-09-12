@@ -44,10 +44,19 @@
   } from '$lib/components/crm/crm-merge';
   import { CustomerPageCache, isAbortError } from '$lib/components/crm/customer-page-cache';
   import { crmCountScopeFingerprint } from '$lib/components/crm/customer-query';
+  import TagDot from '$lib/components/tags/TagDot.svelte';
+  import { summarizeTags } from '$lib/components/tags/tag-summary';
 
   let { data }: { data: PageData } = $props();
   const tags = $derived(data.tags);
   type Row = (typeof data.contacts)[number];
+
+  // Manual + auto tags, resolved against the already-loaded org tag registry
+  // (`tags`, ordered by position) — no per-row query needed.
+  function contactTagList(c: Row) {
+    const ids = new Set([...c.tag_ids, ...(c.auto_tag_ids ?? [])]);
+    return tags.filter((t) => ids.has(t.id));
+  }
 
   // ── Server-mode rows (spec 2026-08-13 §S5) ─────────────────────────────────
   // `data.contacts` is ONE page resolved by the server load from the URL;
@@ -457,6 +466,21 @@
               width: 110,
             } satisfies DataColumn<Row>,
           ]),
+      {
+        key: 'tags',
+        label: m.tags_label(),
+        custom: true,
+        sortable: false,
+        accessor: (c) =>
+          contactTagList(c)
+            .map((t) => t.name)
+            .join(', '),
+        exportValue: (c) =>
+          contactTagList(c)
+            .map((t) => t.name)
+            .join(', '),
+        width: 120,
+      },
     ];
     for (const k of metaKeys)
       cols.push({
@@ -904,6 +928,17 @@
         {:else}
           <span class="t-caption">—</span>
         {/if}
+      {:else if col.key === 'tags'}
+        {@const list = contactTagList(c)}
+        {#if list.length}
+          {@const { shown, extra } = summarizeTags(list)}
+          <div class="tag-dots" title={list.map((t) => t.name).join(', ')}>
+            {#each shown as t (t.id)}<TagDot name={t.name} color={t.color} />{/each}
+            {#if extra > 0}<span class="t-caption">+{extra}</span>{/if}
+          </div>
+        {:else}
+          <span class="t-caption">—</span>
+        {/if}
       {:else if col.key.startsWith('meta:')}
         {@const v = metaDisplay(col.key.slice(5), c.custom_fields?.[col.key.slice(5)])}
         <span class="meta-cell" title={v}>{v || '—'}</span>
@@ -1112,6 +1147,11 @@
     align-items: center;
     gap: var(--space-0-5, 2px);
     color: var(--color-muted-foreground);
+  }
+  .tag-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
   }
   .meta-cell {
     display: inline-block;

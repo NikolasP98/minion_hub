@@ -22,6 +22,7 @@
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
   import RecipeEditor from '$lib/components/pos/RecipeEditor.svelte';
+  import TagChip from '$lib/components/tags/TagChip.svelte';
 
   let { data }: { data: PageData } = $props();
   const sellables = $derived(data.sellables);
@@ -396,7 +397,7 @@
           {#if s.tags.length}
             <div class="tag-chips">
               {#each s.tags as t (t.id)}
-                <span class="chip" style:--c={t.color ?? 'var(--color-accent)'}>{t.name}</span>
+                <TagChip size="sm" name={t.name} color={t.color} />
               {/each}
             </div>
           {:else}
@@ -644,16 +645,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-1);
-  }
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    padding: var(--space-0-5, 2px) var(--space-2);
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-caption, 12px);
-    color: var(--c);
-    background: color-mix(in srgb, var(--c) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
   }
   .margin-pos {
     color: var(--color-success-fg);
