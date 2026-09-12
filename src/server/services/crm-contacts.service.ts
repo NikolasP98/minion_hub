@@ -1690,8 +1690,15 @@ export async function softDeleteContact(ctx: CoreCtx, id: string) {
   await bustCrmList(ctx.tenantId);
 }
 
-/** One transaction, one UPDATE, and one audit INSERT for a bulk soft-delete. */
-export async function softDeleteContacts(ctx: CoreCtx, ids: string[]): Promise<number> {
+/** One transaction, one UPDATE, and one audit INSERT for a bulk soft-delete.
+ *  `ownerId` mirrors {@link getContact}'s record-level scoping: when set, ids
+ *  owned by someone else are silently excluded from the delete (never a 403 —
+ *  same not-found-shaped treatment as the single-contact path). */
+export async function softDeleteContacts(
+  ctx: CoreCtx,
+  ids: string[],
+  ownerId?: string,
+): Promise<number> {
   const uniqueIds = [...new Set(ids)];
   if (uniqueIds.length === 0) return 0;
   const count = await withOrgCore(ctx, async (tx) => {
@@ -1703,6 +1710,7 @@ export async function softDeleteContacts(ctx: CoreCtx, ids: string[]): Promise<n
           eq(crmContacts.orgId, ctx.tenantId),
           inArray(crmContacts.id, uniqueIds),
           isNull(crmContacts.deletedAt),
+          ...(ownerId ? [eq(crmContacts.ownerId, ownerId)] : []),
         ),
       )
       .returning({ id: crmContacts.id });

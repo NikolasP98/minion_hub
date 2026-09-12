@@ -3,16 +3,21 @@
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
   import { CalendarClock } from 'lucide-svelte';
-  import { PageHeader } from '$lib/components/ui';
+  import { PageHeader, EmptyState } from '$lib/components/ui';
 
   let { data }: { data: PageData } = $props();
+  const noCommitments = $derived(data.open.length === 0 && data.realized.length === 0);
 
   const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
   // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
   const fmtMoney = (n: string | number) => formatMoney(Number(n));
 
-  const realizedSpend = $derived(data.realized.reduce((sum, r) => sum + Number(r.realizedValue ?? 0), 0));
-  const variance = $derived(data.realized.reduce((sum, r) => sum + (Number(r.realizedValue ?? 0) - Number(r.estValue)), 0));
+  const realizedSpend = $derived(
+    data.realized.reduce((sum, r) => sum + Number(r.realizedValue ?? 0), 0),
+  );
+  const variance = $derived(
+    data.realized.reduce((sum, r) => sum + (Number(r.realizedValue ?? 0) - Number(r.estValue)), 0),
+  );
 </script>
 
 <svelte:head><title>{m.stock_commitments_title()} — {m.nav_stock()}</title></svelte:head>
@@ -23,107 +28,178 @@
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-auto p-4">
-    <div class="w-full max-w-5xl mx-auto flex flex-col gap-4">
-      <div class="kpi-row">
-        <div class="kpi">
-          <div class="kpi-val">{fmtMoney(data.committed)}</div>
-          <div class="kpi-label">{m.stock_commitments_committed()}</div>
+    {#if noCommitments}
+      <EmptyState
+        icon={CalendarClock}
+        title={m.stock_commitments_empty_title()}
+        description={m.stock_commitments_empty_hint()}
+      />
+    {:else}
+      <div class="w-full max-w-5xl mx-auto flex flex-col gap-4">
+        <div class="kpi-row">
+          <div class="kpi">
+            <div class="kpi-val">{fmtMoney(data.committed)}</div>
+            <div class="kpi-label">{m.stock_commitments_committed()}</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val">{fmtMoney(realizedSpend)}</div>
+            <div class="kpi-label">{m.stock_commitments_realized()}</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val" class:warn={variance > 0}>{fmtMoney(variance)}</div>
+            <div class="kpi-label">{m.stock_commitments_variance()}</div>
+          </div>
         </div>
-        <div class="kpi">
-          <div class="kpi-val">{fmtMoney(realizedSpend)}</div>
-          <div class="kpi-label">{m.stock_commitments_realized()}</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-val" class:warn={variance > 0}>{fmtMoney(variance)}</div>
-          <div class="kpi-label">{m.stock_commitments_variance()}</div>
-        </div>
-      </div>
 
-      <div class="card">
-        <div class="card-h">{m.stock_nav_commitments()}</div>
-        {#if data.open.length === 0}
-          <p class="t-caption">{m.stock_commitments_empty()}</p>
-        {:else}
-          <table class="mini-table">
-            <thead>
-              <tr>
-                <th>{m.stock_field_item()}</th>
-                <th>{m.misc_source()}</th>
-                <th class="num">{m.stock_field_qty()}</th>
-                <th class="num">{m.stock_col_value()}</th>
-                <th>{m.stock_col_created()}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each data.open as r (r.id)}
+        <div class="card">
+          <div class="card-h">{m.stock_nav_commitments()}</div>
+          {#if data.open.length === 0}
+            <p class="t-caption">{m.stock_commitments_empty()}</p>
+          {:else}
+            <table class="mini-table">
+              <thead>
                 <tr>
-                  <td>
-                    <span class="item-name">{r.itemName}</span>
-                    <span class="item-code">{r.itemCode}</span>
-                  </td>
-                  <td class="t-caption">{r.source}</td>
-                  <td class="num">{fmt(Number(r.qtyConsumption))} {r.consumptionUom ?? r.itemUom}</td>
-                  <td class="num">{fmtMoney(Number(r.estValue))}</td>
-                  <td class="t-caption">{new Date(r.createdAt).toLocaleDateString()}</td>
+                  <th>{m.stock_field_item()}</th>
+                  <th>{m.misc_source()}</th>
+                  <th class="num">{m.stock_field_qty()}</th>
+                  <th class="num">{m.stock_col_value()}</th>
+                  <th>{m.stock_col_created()}</th>
                 </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
-      </div>
+              </thead>
+              <tbody>
+                {#each data.open as r (r.id)}
+                  <tr>
+                    <td>
+                      <span class="item-name">{r.itemName}</span>
+                      <span class="item-code">{r.itemCode}</span>
+                    </td>
+                    <td class="t-caption">{r.source}</td>
+                    <td class="num"
+                      >{fmt(Number(r.qtyConsumption))} {r.consumptionUom ?? r.itemUom}</td
+                    >
+                    <td class="num">{fmtMoney(Number(r.estValue))}</td>
+                    <td class="t-caption">{new Date(r.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+        </div>
 
-      <div class="card">
-        <div class="card-h">{m.stock_commitments_realized()}</div>
-        {#if data.realized.length === 0}
-          <p class="t-caption">{m.stock_commitments_empty()}</p>
-        {:else}
-          <table class="mini-table">
-            <thead>
-              <tr>
-                <th>{m.stock_field_item()}</th>
-                <th class="num">{m.stock_field_qty()}</th>
-                <th class="num">{m.stock_col_value()}</th>
-                <th class="num">{m.stock_commitments_realized()}</th>
-                <th class="num">{m.stock_commitments_variance()}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each data.realized as r (r.id)}
-                {@const rowVariance = Number(r.realizedValue ?? 0) - Number(r.estValue)}
+        <div class="card">
+          <div class="card-h">{m.stock_commitments_realized()}</div>
+          {#if data.realized.length === 0}
+            <p class="t-caption">{m.stock_commitments_empty()}</p>
+          {:else}
+            <table class="mini-table">
+              <thead>
                 <tr>
-                  <td>
-                    <span class="item-name">{r.itemName}</span>
-                    <span class="item-code">{r.itemCode}</span>
-                  </td>
-                  <td class="num">
-                    {fmt(Number(r.qtyConsumption))} / {fmt(Number(r.realizedQty ?? 0))} {r.consumptionUom ?? r.itemUom}
-                  </td>
-                  <td class="num">{fmtMoney(Number(r.estValue))}</td>
-                  <td class="num">{fmtMoney(Number(r.realizedValue ?? 0))}</td>
-                  <td class="num" class:warn={rowVariance > 0}>{fmtMoney(rowVariance)}</td>
+                  <th>{m.stock_field_item()}</th>
+                  <th class="num">{m.stock_field_qty()}</th>
+                  <th class="num">{m.stock_col_value()}</th>
+                  <th class="num">{m.stock_commitments_realized()}</th>
+                  <th class="num">{m.stock_commitments_variance()}</th>
                 </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
+              </thead>
+              <tbody>
+                {#each data.realized as r (r.id)}
+                  {@const rowVariance = Number(r.realizedValue ?? 0) - Number(r.estValue)}
+                  <tr>
+                    <td>
+                      <span class="item-name">{r.itemName}</span>
+                      <span class="item-code">{r.itemCode}</span>
+                    </td>
+                    <td class="num">
+                      {fmt(Number(r.qtyConsumption))} / {fmt(Number(r.realizedQty ?? 0))}
+                      {r.consumptionUom ?? r.itemUom}
+                    </td>
+                    <td class="num">{fmtMoney(Number(r.estValue))}</td>
+                    <td class="num">{fmtMoney(Number(r.realizedValue ?? 0))}</td>
+                    <td class="num" class:warn={rowVariance > 0}>{fmtMoney(rowVariance)}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+        </div>
       </div>
-    </div>
+    {/if}
   </div>
 </div>
 
 <style>
-  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--space-3); }
-  .kpi { display: flex; flex-direction: column; justify-content: center; padding: var(--space-3) var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); }
-  .kpi-val { font-size: var(--font-size-display); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .kpi-val.warn { color: var(--color-warning); }
-  .kpi-label { font-size: var(--font-size-caption); color: var(--color-muted-foreground); margin-top: var(--space-1); }
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-3) var(--space-4); }
-  .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: var(--space-3); }
-  .mini-table { width: 100%; font-size: var(--font-size-body); border-collapse: collapse; }
-  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
-  .mini-table td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
-  .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .mini-table .num.warn { color: var(--color-warning); font-weight: 600; }
-  .item-name { display: block; }
-  .item-code { display: block; font-size: var(--font-size-caption); color: var(--color-muted-foreground); font-family: var(--font-mono, monospace); }
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: var(--space-3);
+  }
+  .kpi {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    background: var(--color-card);
+  }
+  .kpi-val {
+    font-size: var(--font-size-display);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-val.warn {
+    color: var(--color-warning);
+  }
+  .kpi-label {
+    font-size: var(--font-size-caption);
+    color: var(--color-muted-foreground);
+    margin-top: var(--space-1);
+  }
+  .card {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    background: var(--color-card);
+    padding: var(--space-3) var(--space-4);
+  }
+  .card-h {
+    font-size: var(--font-size-body);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-muted-foreground);
+    margin-bottom: var(--space-3);
+  }
+  .mini-table {
+    width: 100%;
+    font-size: var(--font-size-body);
+    border-collapse: collapse;
+  }
+  .mini-table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--color-muted-foreground);
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .mini-table td {
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .mini-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .mini-table .num.warn {
+    color: var(--color-warning);
+    font-weight: 600;
+  }
+  .item-name {
+    display: block;
+  }
+  .item-code {
+    display: block;
+    font-size: var(--font-size-caption);
+    color: var(--color-muted-foreground);
+    font-family: var(--font-mono, monospace);
+  }
 </style>
