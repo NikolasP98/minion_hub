@@ -5,6 +5,14 @@ type State = {
   renders: number;
   liveSeen: number;
   stopped: boolean;
+  characters: {
+    id: number;
+    effect: string | null;
+    bubble: string | null;
+    bubbleTimer: number;
+    x: number;
+    y: number;
+  }[];
 };
 const snapshot = (page: Page) =>
   page.evaluate(() =>
@@ -108,3 +116,44 @@ for (const width of [390, 1280]) {
     await expect(assign).toBeDisabled();
   });
 }
+
+test('actual OfficeState settles arrivals/departures and waiting bubbles with motion reduced', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect.poll(async () => (await snapshot(page)).characters[0]?.effect).toBeNull();
+  await page.evaluate(() => {
+    const api = (
+      window as unknown as { __workshop: { addAgent(id: number): void; waiting(id: number): void } }
+    ).__workshop;
+    api.addAgent(2);
+    api.waiting(2);
+  });
+  await expect
+    .poll(async () => (await snapshot(page)).characters.find((ch) => ch.id === 2)?.effect)
+    .toBeNull();
+  await expect
+    .poll(async () => (await snapshot(page)).characters.find((ch) => ch.id === 2)?.bubble, {
+      timeout: 5000,
+    })
+    .toBeNull();
+  await page.evaluate(() =>
+    (window as unknown as { __workshop: { removeAgent(id: number): void } }).__workshop.removeAgent(
+      2,
+    ),
+  );
+  await expect.poll(async () => (await snapshot(page)).characters.map((ch) => ch.id)).toEqual([1]);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.evaluate(() =>
+    (window as unknown as { __workshop: { addAgent(id: number): void } }).__workshop.addAgent(3),
+  );
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect
+    .poll(async () => (await snapshot(page)).characters.find((ch) => ch.id === 3)?.effect)
+    .toBeNull();
+  const before = (await snapshot(page)).characters;
+  const renders = (await snapshot(page)).renders;
+  await expect.poll(async () => (await snapshot(page)).renders).toBeGreaterThan(renders + 5);
+  expect((await snapshot(page)).characters).toEqual(before);
+});

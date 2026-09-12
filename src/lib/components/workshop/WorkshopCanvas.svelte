@@ -434,9 +434,9 @@
           syncAgentList(pixelOffice, false);
           syncAgentState(pixelOffice);
         },
-        update: (dt) => {
+        update: (dt, reducedMotion) => {
           if (!pixelOffice) return;
-          pixelOffice.update(dt);
+          pixelOffice.update(dt, reducedMotion);
         },
         render: (ctx) => {
           if (!pixelOffice || !pixelCanvas) return;

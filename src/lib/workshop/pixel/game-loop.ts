@@ -1,8 +1,8 @@
 /**
  * Game loop: requestAnimationFrame-based update/render cycle with delta time capping.
  *
- * Every frame synchronizes live state and renders. Decorative updates pause
- * while the user prefers reduced motion.
+ * Every frame synchronizes live state, updates lifecycle and renders. The update
+ * callback receives the preference so it can suppress decoration without freezing lifecycle.
  * Delta time is clamped to MAX_DELTA_TIME_SEC (0.1s) to prevent physics
  * explosions when the tab is backgrounded or the frame takes too long.
  *
@@ -16,7 +16,7 @@ const MAX_DELTA_TIME_SEC = 0.1;
 export interface GameLoopCallbacks {
   /** Read live state even when decorative movement is paused. */
   sync?: () => void;
-  update: (dt: number) => void;
+  update: (dt: number, reducedMotion: boolean) => void;
   render: (ctx: CanvasRenderingContext2D) => void;
 }
 
@@ -50,7 +50,7 @@ export function startGameLoop(canvas: HTMLCanvasElement, callbacks: GameLoopCall
     lastTime = time;
 
     callbacks.sync?.();
-    if (!reduceMotion) callbacks.update(dt);
+    callbacks.update(dt, reduceMotion);
     callbacks.render(ctx);
 
     rafId = requestAnimationFrame(frame);

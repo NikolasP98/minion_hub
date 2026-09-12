@@ -1,7 +1,7 @@
 # Workshop accessibility qualification
 
 This fixture mounts the production agent controls, task dialog and pixel game loop.
-Its agents and submit callbacks are synthetic. It exercises no authentication,
+Its agent inputs and submit callbacks are synthetic; the pixel OfficeState is real. It exercises no authentication,
 server, gateway or customer data. It does not mount the full Workshop renderer.
 
 Install the frozen Bun lockfile, run `bun run i18n:compile` and
@@ -24,9 +24,9 @@ node node_modules/@playwright/test/cli.js test --config playwright.workshop.conf
 ```
 
 `MINION_WEBKIT_EXECUTABLE` optionally selects an explicit WebKit executable.
-Missing browsers fail. Fifteen cases cover Chromium, Firefox and WebKit: initial
+Missing browsers fail. Eighteen cases cover Chromium, Firefox and WebKit: initial
 and live motion preferences at the actual game-loop callback boundary, continued
-state synchronization, resumption and disposal; keyboard agent selection and task
+state synchronization, resumption and disposal; actual OfficeState arrival/departure settlement and waiting-bubble expiry; keyboard agent selection and task
 submission at 390/1280 pixels; native dialog focus, Escape, focus return and offline
 submission controls. These are engine/component checks, not authenticated journeys.
 

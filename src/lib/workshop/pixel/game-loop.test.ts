@@ -36,11 +36,12 @@ function harness(initial = false) {
 }
 afterEach(() => vi.unstubAllGlobals());
 describe('pixel engine motion preference', () => {
-  it('suppresses actual movement initially while syncing and rendering live data', () => {
+  it('passes initial reduced motion into lifecycle updates while syncing and rendering', () => {
     const h = harness(true);
     h.frame(100);
     h.frame(200);
-    expect(h.update).not.toHaveBeenCalled();
+    expect(h.update).toHaveBeenCalledTimes(2);
+    expect(h.update).toHaveBeenLastCalledWith(0.1, true);
     expect(h.sync).toHaveBeenCalledTimes(2);
     expect(h.render).toHaveBeenCalledTimes(2);
     h.stop();
@@ -49,13 +50,14 @@ describe('pixel engine motion preference', () => {
     const h = harness();
     h.frame(100);
     h.frame(150);
-    expect(h.update).toHaveBeenLastCalledWith(0.05);
+    expect(h.update).toHaveBeenLastCalledWith(0.05, false);
     h.motion(true);
     h.frame(10000);
-    expect(h.update).toHaveBeenCalledTimes(2);
+    expect(h.update).toHaveBeenCalledTimes(3);
+    expect(h.update).toHaveBeenLastCalledWith(0, true);
     h.motion(false);
     h.frame(20000);
-    expect(h.update).toHaveBeenLastCalledWith(0);
+    expect(h.update).toHaveBeenLastCalledWith(0, false);
     h.stop();
   });
   it('removes the preference listener and pending frame on disposal', () => {

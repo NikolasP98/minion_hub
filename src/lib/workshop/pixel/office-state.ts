@@ -694,10 +694,10 @@ export class OfficeState {
     }
   }
 
-  update(dt: number): void {
+  update(dt: number, reducedMotion = false): void {
     // Furniture animation cycling
     const prevFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC);
-    this.furnitureAnimTimer += dt;
+    if (!reducedMotion) this.furnitureAnimTimer += dt;
     const newFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC);
     if (newFrame !== prevFrame) {
       this.rebuildFurnitureInstances();
@@ -705,6 +705,21 @@ export class OfficeState {
 
     const toDelete: number[] = [];
     for (const ch of this.characters.values()) {
+      // Motion preferences must not strand spawned/departed agents or status bubbles.
+      if (reducedMotion) {
+        if (ch.matrixEffect === 'despawn') {
+          toDelete.push(ch.id);
+          continue;
+        }
+        ch.matrixEffect = null;
+        ch.matrixEffectTimer = 0;
+        ch.matrixEffectSeeds = [];
+        if (ch.bubbleType === 'waiting') {
+          ch.bubbleTimer = Math.max(0, ch.bubbleTimer - dt);
+          if (ch.bubbleTimer === 0) ch.bubbleType = null;
+        }
+        continue; // Keep positions and decorative FSM/furniture frames stable.
+      }
       // Handle matrix effect animation
       if (ch.matrixEffect) {
         ch.matrixEffectTimer += dt;

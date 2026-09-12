@@ -1,0 +1,62 @@
+import { describe, expect, it } from 'vitest';
+import { OfficeState } from './office-state';
+
+describe('reduced-motion OfficeState lifecycle', () => {
+  it('settles new arrivals and removes departed agents without waiting for animation', () => {
+    const office = new OfficeState();
+    office.addAgent(1, 0);
+    const ch = office.characters.get(1)!;
+    expect(ch.matrixEffect).toBe('spawn');
+    const cached = office.getCharacters();
+    const position = { x: ch.x, y: ch.y };
+    office.update(0, true);
+    expect(ch.matrixEffect).toBeNull();
+    expect(ch.matrixEffectSeeds).toEqual([]);
+    expect({ x: ch.x, y: ch.y }).toEqual(position);
+    office.selectedAgentId = 1;
+    office.cameraFollowId = 1;
+    office.removeAgent(1);
+    office.update(0, true);
+    expect(office.characters.has(1)).toBe(false);
+    expect(office.getCharacters()).toEqual([]);
+    expect(office.getCharacters()).not.toBe(cached);
+    expect(office.selectedAgentId).toBeNull();
+    expect(office.cameraFollowId).toBeNull();
+    if (ch.seatId) expect(office.seats.get(ch.seatId)?.assigned).toBe(false);
+  });
+  it('live preference settles in-flight effects and expires waiting but preserves permission state', () => {
+    const office = new OfficeState();
+    office.addAgent(1, 0);
+    office.update(0.05);
+    expect(office.characters.get(1)?.matrixEffect).toBe('spawn');
+    office.update(0, true);
+    office.showWaitingBubble(1);
+    const ch = office.characters.get(1)!;
+    const remaining = ch.bubbleTimer;
+    office.update(remaining / 2, true);
+    expect(ch.bubbleType).toBe('waiting');
+    expect(ch.bubbleTimer).toBeCloseTo(remaining / 2);
+    office.update(remaining / 2, true);
+    expect(ch.bubbleType).toBeNull();
+    office.showPermissionBubble(1);
+    office.update(20, true);
+    expect(ch.bubbleType).toBe('permission');
+    office.removeAgent(1);
+    office.update(0.05);
+    expect(office.characters.has(1)).toBe(true);
+    office.update(0, true);
+    expect(office.characters.has(1)).toBe(false);
+  });
+  it('freezes only decorative position/frame progress and resumes normal update behavior', () => {
+    const office = new OfficeState();
+    office.addAgent(1, 0);
+    office.update(0, true);
+    const ch = office.characters.get(1)!;
+    const before = { x: ch.x, y: ch.y, frame: ch.frame, timer: ch.frameTimer };
+    office.update(0.5, true);
+    expect({ x: ch.x, y: ch.y, frame: ch.frame, timer: ch.frameTimer }).toEqual(before);
+    expect(office.furnitureAnimTimer).toBe(0);
+    office.update(0.1, false);
+    expect(office.furnitureAnimTimer).toBe(0.1);
+  });
+});
