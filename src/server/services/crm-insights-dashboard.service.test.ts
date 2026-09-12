@@ -98,4 +98,47 @@ describe('crmInsightsDashboard', () => {
 
     expect(mocks.cached.mock.calls[0][0]).not.toBe(mocks.cached.mock.calls[1][0]);
   });
+
+  it('keeps ownerId in the cache identity', async () => {
+    const common = {
+      range: '90d' as const,
+      sentimentGranularity: 'day' as const,
+      fromIso: '2026-05-01T12:00:00.000Z',
+      toIso: '2026-08-01T12:00:00.000Z',
+    };
+    const ctx = { tenantId: 'org-a' } as never;
+    await crmInsightsDashboard(ctx, common);
+    await crmInsightsDashboard(ctx, { ...common, ownerId: 'owner-1' });
+
+    expect(mocks.cached.mock.calls[0][0]).not.toBe(mocks.cached.mock.calls[1][0]);
+  });
+
+  it('gates the org-wide rollups for an owner-scoped caller instead of computing/caching them', async () => {
+    const ctx = { tenantId: 'org-a' } as never;
+    const dashboard = await crmInsightsDashboard(ctx, {
+      range: '90d',
+      sentimentGranularity: 'day',
+      fromIso: '2026-05-01T12:00:00.000Z',
+      toIso: '2026-08-01T12:00:00.000Z',
+      ownerId: 'owner-1',
+    });
+
+    expect(mocks.wordFrequencyRollup).not.toHaveBeenCalled();
+    expect(mocks.sentimentByDayRollup).not.toHaveBeenCalled();
+    expect(mocks.currentSentiment).not.toHaveBeenCalled();
+    expect(mocks.winIndexStatus).not.toHaveBeenCalled();
+    expect(mocks.getWinAnalysis).not.toHaveBeenCalled();
+    expect(dashboard.words).toEqual([]);
+    expect(dashboard.sentiment).toEqual([]);
+    expect(dashboard.current).toBeNull();
+    expect(dashboard.winIndex).toEqual({ count: 0, builtAt: null, thin: false });
+    expect(dashboard.winAnalysis).toBeNull();
+
+    // The two sub-services that CAN be scoped for real still run, with ownerId forwarded.
+    expect(mocks.conversationThemes).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({ ownerId: 'owner-1' }),
+    );
+    expect(mocks.pendingAnalysisCount).toHaveBeenCalledWith(ctx, 'owner-1');
+  });
 });

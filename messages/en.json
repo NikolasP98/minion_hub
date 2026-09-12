@@ -293,6 +293,8 @@
   "assist_guide_waiting": "Waiting for this element to appear — do the step above to continue.",
   "automation_analyze_desc": "Runs conversation intelligence over new chat history.",
   "automation_analyze_title": "Conversation analysis",
+  "automation_attachment_sweep_desc": "Reaps files rows whose upload was never finalized (abandoned mid-upload).",
+  "automation_attachment_sweep_title": "Abandoned upload sweep",
   "automation_cadence_daily_3am": "Daily, 3am",
   "automation_cadence_hourly": "Hourly",
   "automation_cadence_minute": "Every minute",

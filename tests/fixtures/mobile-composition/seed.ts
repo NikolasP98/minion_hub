@@ -96,6 +96,8 @@ function extraEvent(
     attendeePhone: null,
     productId: null,
     productName: null,
+    invoiceId: null,
+    invoiceLabel: null,
     tags: [],
     contactTags: [],
     productTags: [],

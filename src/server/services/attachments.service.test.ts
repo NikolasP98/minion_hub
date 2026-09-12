@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PGlite } from '@electric-sql/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
 import { createMockDb } from '$server/test-utils/mock-db';
+import { files } from '@minion-stack/db/pg';
+import { attachmentLinks } from '$server/db/pg-attachments-schema';
 import {
   createUploadIntent,
   finalizeUpload,
   linkAttachment,
   deleteAttachment,
   listAttachmentsFor,
+  sweepAbandonedUploads,
   AttachmentError,
 } from './attachments.service';
 
@@ -16,6 +21,19 @@ beforeEach(() => {
 vi.mock('$server/db/utils', () => ({
   newId: () => 'mock-file-id-0000000001',
   nowMs: () => 1_700_000_000_000,
+}));
+
+// sweepAbandonedUploads' anti-join (notExists) is real drizzle-orm SQL — a
+// mocked chain proxy can't prove it actually excludes linked rows, so those
+// tests run against a real embedded Postgres (PGlite), same precedent as
+// crm-contacts.service.test.ts's cross-org isolation cases. Bypassing the
+// role/GUC dance this way is behaviorally identical to the createMockDb path
+// every other test in this file already relies on (real `withOrgCore` calls
+// `fn(scope.db.transaction(cb => cb(scope.db)))`, and createMockDb's
+// `transaction` mock IS `cb => cb(db)` — the two bookend `execute()` calls
+// this skips don't consume resolveSequence slots either way).
+vi.mock('$server/db/with-org-core', () => ({
+  withOrgCore: (scope: { db: unknown }, fn: (tx: unknown) => unknown) => fn(scope.db),
 }));
 
 const mockPresignPut = vi
@@ -205,5 +223,109 @@ describe('listAttachmentsFor', () => {
       { objectType: 'crm_contact', objectId: CONTACT_ID },
       { objectType: 'booking', objectId: 'b-1' },
     ]);
+  });
+});
+
+const TENANT_ID = '22222222-2222-4222-8222-222222222222';
+const sweepCtx = (db: unknown) => ({ db: db as never, tenantId: TENANT_ID });
+const OLD = new Date(Date.now() - 48 * 60 * 60 * 1000); // 48h ago
+const RECENT = new Date(Date.now() - 1 * 60 * 60 * 1000); // 1h ago
+
+/** Only `files` + `attachment_links` — the two tables sweepAbandonedUploads
+ *  touches — against a real embedded Postgres (see the with-org-core mock
+ *  comment above for why). */
+async function createRealFilesDb() {
+  const client = new PGlite();
+  const db = drizzle(client);
+  await client.exec(`
+    create table files (
+      id text primary key,
+      tenant_id uuid not null,
+      uploaded_by uuid,
+      b2_file_key text not null,
+      file_name text not null,
+      content_type text not null,
+      size_bytes bigint not null,
+      category text not null default 'general',
+      created_at timestamptz not null default now()
+    );
+    create table attachment_links (
+      org_id text not null,
+      file_id text not null,
+      object_type text not null,
+      object_id uuid not null,
+      linked_by uuid,
+      linked_at timestamptz not null default now(),
+      primary key (object_type, object_id, file_id)
+    );
+  `);
+  return db;
+}
+
+async function insertFile(
+  db: Awaited<ReturnType<typeof createRealFilesDb>>,
+  row: { id: string; createdAt: Date; category?: string; b2FileKey?: string },
+) {
+  await db.insert(files).values({
+    id: row.id,
+    tenantId: TENANT_ID,
+    b2FileKey: row.b2FileKey ?? `${TENANT_ID}/attachments/${row.id}/doc.pdf`,
+    fileName: 'doc.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 100,
+    category: row.category ?? 'attachment',
+    createdAt: row.createdAt,
+  });
+}
+
+describe('sweepAbandonedUploads', () => {
+  it('reaps only unlinked attachment rows past the age cutoff, leaving age/category/link mismatches alone', async () => {
+    const db = await createRealFilesDb();
+    await insertFile(db, { id: 'sweep-me', createdAt: OLD });
+    await insertFile(db, { id: 'still-linked', createdAt: OLD });
+    await db.insert(attachmentLinks).values({
+      orgId: TENANT_ID,
+      fileId: 'still-linked',
+      objectType: 'booking',
+      objectId: CONTACT_ID,
+    });
+    await insertFile(db, { id: 'wrong-category', createdAt: OLD, category: 'avatar' });
+    await insertFile(db, { id: 'too-recent', createdAt: RECENT });
+    mockHead.mockResolvedValueOnce({ size: 5, contentType: 'application/pdf' });
+
+    const result = await sweepAbandonedUploads(sweepCtx(db), {});
+
+    expect(result).toEqual({ scanned: 1, deleted: 1, storageObjectsDeleted: 1 });
+    const remaining = await db.select({ id: files.id }).from(files);
+    expect(remaining.map((r) => r.id).sort()).toEqual([
+      'still-linked',
+      'too-recent',
+      'wrong-category',
+    ]);
+  });
+
+  it('deletes the row without touching storage when the object never landed', async () => {
+    const db = await createRealFilesDb();
+    await insertFile(db, { id: 'ghost', createdAt: OLD });
+    mockHead.mockResolvedValueOnce(null);
+
+    const result = await sweepAbandonedUploads(sweepCtx(db), {});
+
+    expect(result).toEqual({ scanned: 1, deleted: 1, storageObjectsDeleted: 0 });
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('respects the limit, leaving the rest for the next tick', async () => {
+    const db = await createRealFilesDb();
+    await insertFile(db, { id: 'a', createdAt: OLD });
+    await insertFile(db, { id: 'b', createdAt: OLD });
+    await insertFile(db, { id: 'c', createdAt: OLD });
+    mockHead.mockResolvedValue(null);
+
+    const result = await sweepAbandonedUploads(sweepCtx(db), { limit: 2 });
+
+    expect(result).toEqual({ scanned: 2, deleted: 2, storageObjectsDeleted: 0 });
+    const remaining = await db.select({ id: files.id }).from(files);
+    expect(remaining).toHaveLength(1);
   });
 });

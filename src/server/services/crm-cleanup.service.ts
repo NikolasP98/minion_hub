@@ -77,12 +77,15 @@ export interface NameFix {
   confidence: number;
 }
 
-/** Scan all contacts; return only those whose name changes or has an issue, most-confident first. */
-export async function scanStandardization(ctx: CoreCtx): Promise<NameFix[]> {
+/** Scan contacts (all, or only `ownerId`'s own — same record-level scope as
+ *  findDuplicates/findBlanks); return only those whose name changes or has an
+ *  issue, most-confident first. */
+export async function scanStandardization(ctx: CoreCtx, ownerId?: string): Promise<NameFix[]> {
+  const ownerClause = ownerId ? sql`and owner_id = ${ownerId}` : sql``;
   const rows = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       select id, display_name from crm_contacts
-      where org_id = ${ctx.tenantId} and deleted_at is null
+      where org_id = ${ctx.tenantId} and deleted_at is null ${ownerClause}
     `),
   )) as unknown as Array<{ id: string; display_name: string | null }>;
 
@@ -107,34 +110,48 @@ export async function scanStandardization(ctx: CoreCtx): Promise<NameFix[]> {
   return fixes;
 }
 
-/** Apply chosen name fixes (each { contactId, name, before? }). Returns count updated. */
+export interface ApplyStandardizationResult {
+  updated: number;
+  /** Submitted fixes that did not apply: blank/empty name, or (when `ownerId`
+   *  is set) a contact the caller doesn't own — the scoped predicate simply
+   *  drops those rows from the update rather than a 403 per id. */
+  skipped: number;
+}
+
+/** Apply chosen name fixes (each { contactId, name, before? }), optionally
+ *  scoped to `ownerId`'s own contacts (same record-level scope as
+ *  findDuplicates/findBlanks). */
 export async function applyStandardization(
   ctx: CoreCtx,
   fixes: Array<{ contactId: string; name: string; before?: string | null }>,
-): Promise<number> {
-  if (fixes.length === 0) return 0;
-  // Trim + drop empties first (same skip the per-row loop did); count = number of
-  // valid fixes submitted (unchanged from the loop, which incremented per attempt).
+  ownerId?: string,
+): Promise<ApplyStandardizationResult> {
+  if (fixes.length === 0) return { updated: 0, skipped: 0 };
+  // Trim + drop empties first (same skip the per-row loop did).
   const valid = fixes
     .map((f) => ({ id: f.contactId, name: f.name.trim(), before: (f.before ?? '').trim() }))
     .filter((f) => f.name);
   if (valid.length === 0) {
     await bust(ctx.tenantId);
-    return 0;
+    return { updated: 0, skipped: fixes.length };
   }
-  await withOrgCore(ctx, async (tx) => {
+  const ownerClause = ownerId ? sql`and c.owner_id = ${ownerId}` : sql``;
+  const updatedCount = await withOrgCore(ctx, async (tx) => {
     const rows = sql.join(
       valid.map((f) => sql`(${f.id}::uuid, ${f.name})`),
       sql`, `,
     );
-    await tx.execute(sql`
+    const updated = (await tx.execute(sql`
       update crm_contacts c set display_name = v.name, updated_at = now()
       from (values ${rows}) as v(id, name)
-      where c.id = v.id and c.org_id = ${ctx.tenantId}
-    `);
+      where c.id = v.id and c.org_id = ${ctx.tenantId} ${ownerClause}
+      returning c.id::text as id
+    `)) as unknown as Array<{ id: string }>;
+    const updatedIds = new Set(updated.map((r) => r.id));
     // Log the before→after pairs as training data for future AI reviews (reuses
-    // crm_activities; only real changes). Best-effort — never blocks the rename.
-    const examples = valid.filter((f) => f.before && f.before !== f.name);
+    // crm_activities; only rows actually renamed — an owner-dropped id never
+    // gets a fake audit entry). Best-effort — never blocks the rename.
+    const examples = valid.filter((f) => updatedIds.has(f.id) && f.before && f.before !== f.name);
     if (examples.length > 0) {
       await tx.execute(sql`
         insert into crm_activities (org_id, contact_id, kind, data)
@@ -147,9 +164,10 @@ export async function applyStandardization(
         )}
       `);
     }
+    return updatedIds.size;
   });
   await bust(ctx.tenantId);
-  return valid.length;
+  return { updated: updatedCount, skipped: fixes.length - updatedCount };
 }
 
 /** Recent accepted before→after name fixes for this org — few-shot examples for AI review. */
