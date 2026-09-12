@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest';
 vi.mock('$server/services/bg-runtime', () => ({ quiesceJobs: vi.fn(), drainJobs: vi.fn() }));
 vi.mock('$server/db/pg-pool', () => ({ closePgPools: vi.fn() }));
 vi.mock('$lib/server/cache', () => ({ closeCache: vi.fn() }));
-import { installWorkerLifecycle } from './worker-lifecycle';
+import { installWorkerLifecycle, trackWorkerRequest } from './worker-lifecycle';
 
 it('quiesces immediately but closes resources once only after HTTP and callbacks drain', async () => {
   const events = new EventEmitter();
@@ -54,4 +54,31 @@ it('reports drain failure without closing pools or terminating the process', asy
   expect(resources.closePools).not.toHaveBeenCalled();
   expect(exit).not.toHaveBeenCalled();
   exit.mockRestore();
+});
+
+it('waits for a real route promise after the adapter closes its socket at the deadline', async () => {
+  const events = new EventEmitter();
+  let finish!: () => void;
+  const route = trackWorkerRequest(
+    new Promise<void>((resolve) => {
+      finish = resolve;
+    }),
+  );
+  const resources = {
+    quiesce: vi.fn(),
+    drain: vi.fn().mockResolvedValue(undefined),
+    closeCache: vi.fn().mockResolvedValue(undefined),
+    closePools: vi.fn().mockResolvedValue(undefined),
+    failed: vi.fn(),
+  };
+  installWorkerLifecycle(events, resources);
+  events.emit('SIGTERM');
+  // Simulate adapter30s closeAllConnections without a wall-clock sleep.
+  events.emit('sveltekit:shutdown');
+  await Promise.resolve();
+  expect(resources.drain).not.toHaveBeenCalled();
+  expect(resources.closePools).not.toHaveBeenCalled();
+  finish();
+  await route;
+  await vi.waitFor(() => expect(resources.closePools).toHaveBeenCalledOnce());
 });

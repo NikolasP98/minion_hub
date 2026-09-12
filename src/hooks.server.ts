@@ -44,7 +44,7 @@ import { isGatewayChannel } from '$server/services/gateway.pg.service';
 import { waitUntil } from '@vercel/functions';
 import { storePerformanceSample } from '$server/services/performance-monitor.service';
 import { isCronAuthPath } from '$lib/server/cron-auth-path';
-import { installWorkerLifecycle } from '$server/worker-lifecycle';
+import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifecycle';
 
 if (!building && env.DESKTOP === '1') installWorkerLifecycle(process);
 
@@ -544,7 +544,11 @@ const cacheDataPlaneHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
+const workerRequestHandle: Handle = ({ event, resolve }) =>
+  !building && env.DESKTOP === '1' ? trackWorkerRequest(resolve(event)) : resolve(event);
+
 export const handle = sequence(
+  workerRequestHandle,
   aiUsageScopeHandle,
   serverTimingHandle,
   cacheDataPlaneHandle,
