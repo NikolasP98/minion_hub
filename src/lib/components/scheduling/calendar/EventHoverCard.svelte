@@ -122,7 +122,12 @@
       >
     </div>
     {#if event.notes}<div class="hc-row hc-notes">{event.notes}</div>{/if}
-    <a class="hc-link" href="/scheduling/bookings?focus={event.id}">{m.sched_cal_open_booking()}</a>
+    <div class="hc-links">
+      <a class="hc-link" href="/scheduling/bookings?focus={event.id}"
+        >{m.sched_cal_open_booking()}</a
+      >
+      <a class="hc-link" href="/scheduling/bookings/{event.id}/edit">{m.sched_edit_booking()}</a>
+    </div>
   </div>
 {/if}
 
@@ -180,6 +185,10 @@
   .hc-notes {
     color: var(--color-text-secondary);
     font-style: italic;
+  }
+  .hc-links {
+    display: flex;
+    gap: var(--space-3);
   }
   .hc-link {
     margin-top: var(--space-1);
