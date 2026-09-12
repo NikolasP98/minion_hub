@@ -10,6 +10,8 @@
     type StockItemLike,
   } from './SellableWizard.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
+  import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
+  import { canAct } from '$lib/access/can.svelte';
 
   let {
     stockEnabled,
@@ -34,6 +36,7 @@
   const subtitle = $derived(
     isEditing ? m.pos_catalog_edit_subtitle() : m.pos_catalog_new_subtitle(),
   );
+  let attachmentsRefreshKey = $state(0);
 
   function returnToCatalog() {
     return goto('/pos/catalog');
@@ -75,5 +78,25 @@
         onSaved={returnToCatalog}
       />
     </Card>
+
+    {#if editing}
+      <Card padding="lg">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <span class="t-caption">{m.attachments_title()}</span>
+          <AttachmentButton
+            objectType="product"
+            objectId={editing.productId}
+            size="sm"
+            disabled={!canAct('pos', 'edit')}
+            onuploaded={() => (attachmentsRefreshKey += 1)}
+          />
+        </div>
+        <AttachmentList
+          objectType="product"
+          objectId={editing.productId}
+          refreshKey={attachmentsRefreshKey}
+        />
+      </Card>
+    {/if}
   </PageBody>
 </PageShell>

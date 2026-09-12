@@ -25,8 +25,10 @@
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
+  import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
 
   let { data }: { data: PageData } = $props();
+  let attachmentsRefreshKey = $state(0);
   const back = createBackNav('/finances/invoices', m.fin_back_to_invoices);
   const inv = $derived(data.invoice);
   const items = $derived(data.items);
@@ -573,6 +575,24 @@
             </div>
           </section>
         {/if}
+        <!-- Attachments -->
+        <section class="doc-sec">
+          <header class="panel-h flex items-center justify-between gap-2">
+            <span>{m.attachments_title()}</span>
+            <AttachmentButton
+              objectType="fin_invoice"
+              objectId={inv.id}
+              size="sm"
+              disabled={!canAct('finance', 'edit')}
+              onuploaded={() => (attachmentsRefreshKey += 1)}
+            />
+          </header>
+          <AttachmentList
+            objectType="fin_invoice"
+            objectId={inv.id}
+            refreshKey={attachmentsRefreshKey}
+          />
+        </section>
       </div>
 
       {#if hasVal(inv.documentId)}
