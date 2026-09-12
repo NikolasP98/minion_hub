@@ -25,13 +25,10 @@ import { createHash } from 'node:crypto';
  * v2: bounded input/record work, invalid-encoding and duplicate detection.
  * v3: reject unusable headers and count data records after excluding genuine blanks.
  *
- * TODO(handoff): `finance-statements.service.ts` keeps its own PARSER_VERSION
- * (still 1) and writes it to fin_statement_imports.parser_version. That file is
- * owned by the frozen 10-04 candidate (see .planning/phases/10-durable-jobs-stock/
- * 10-04-SUMMARY.md), which is not on master, so it is deliberately untouched
- * here. Whoever lands 10-04 must source the stored version from
- * STATEMENT_PARSER_VERSION and invalidate cursors whose stored version differs;
- * see proposals/2026-09-10-hub-finance-parser-version-binding.md.
+ * TODO(handoff): The service now binds this version and verifies normalized
+ * parse provenance separately from uploaded-byte integrity. Historical version
+ * replacement and durable normalized-provenance storage remain separately gated;
+ * see proposals/2026-09-10-hub-finance-parser-version-binding.md (D360-20).
  */
 export const STATEMENT_PARSER_VERSION = 3;
 
