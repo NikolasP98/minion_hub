@@ -2,13 +2,13 @@ import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { CalEvent, CalendarPayload } from './types';
+import type { CalEvent, CalendarPayload, CalKind } from './types';
 
 const fetchJson = vi.fn<(...args: unknown[]) => Promise<CalendarPayload>>();
 vi.mock('$lib/api/fetch-json', () => ({ fetchJson: (...args: unknown[]) => fetchJson(...args) }));
 vi.mock('$lib/state/ui', () => ({ toastError: vi.fn() }));
 
-const { CalendarStore, offsetIso, calendarWallTime, calendarMoveIso, hhmm } =
+const { CalendarStore, offsetIso, calendarWallTime, calendarMoveIso, hhmm, resolveEventColor } =
   await import('./calendar.svelte');
 
 function ev(id: string, patch: Partial<CalEvent> = {}): CalEvent {
@@ -107,6 +107,38 @@ describe('CalendarStore', () => {
 
     store.patchEvent('missing', { start: '2026-01-01T00:00:00.000Z' });
     expect(store.events['missing']).toBeUndefined(); // no-op on an unknown id
+  });
+});
+
+function kind(patch: Partial<CalKind> = {}): CalKind {
+  return { id: 'k1', name: 'Appointment', color: '#00f', isDefault: true, position: 0, ...patch };
+}
+
+describe('resolveEventColor', () => {
+  it("prefers the event's own tag colour over kind and resource", () => {
+    const event = ev('a', {
+      tags: [{ id: 't1', name: 'VIP', color: '#f00' }],
+      resourceColor: '#0f0',
+    });
+    expect(resolveEventColor(event, kind())).toBe('#f00');
+  });
+
+  it('falls back to the kind colour when the event has no coloured own tag', () => {
+    const event = ev('a', { tags: [], resourceColor: '#0f0' });
+    expect(resolveEventColor(event, kind({ color: '#00f' }))).toBe('#00f');
+  });
+
+  it('falls back to the resource colour when there is no kind', () => {
+    const event = ev('a', { tags: [], resourceColor: '#0f0' });
+    expect(resolveEventColor(event, undefined)).toBe('#0f0');
+  });
+
+  it('skips an own tag with no colour and falls through to the kind', () => {
+    const event = ev('a', {
+      tags: [{ id: 't1', name: 'Untagged colour', color: null }],
+      resourceColor: '#0f0',
+    });
+    expect(resolveEventColor(event, kind({ color: '#00f' }))).toBe('#00f');
   });
 });
 

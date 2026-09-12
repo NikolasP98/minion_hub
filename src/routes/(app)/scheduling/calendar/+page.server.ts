@@ -19,10 +19,16 @@ function mondayOf(d: Date): Date {
   return m;
 }
 
-export const load: PageServerLoad = async ({ locals, depends, url }) => {
+export const load: PageServerLoad = async ({ locals, depends, url, parent }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('scheduling:data');
+
+  // Reuse the (app) layout's already-loaded preferences bundle (no extra query).
+  const { preferences } = await parent();
+  const calendarPrefs = preferences.preferences.calendar as
+    { showInheritedTags?: boolean } | undefined;
+  const showInheritedTags = calendarPrefs?.showInheritedTags ?? true;
 
   // Default "today" in the ORG's timezone (resources carry it; the server runs
   // in UTC, so a bare toISOString() would show tomorrow late at night).
@@ -77,6 +83,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     day,
     staff,
     kindId,
+    showInheritedTags,
     resources: resources
       .filter((r) => r.active)
       .map((r) => ({ id: r.id, name: r.name, color: r.color })),
