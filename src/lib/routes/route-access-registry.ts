@@ -44,6 +44,12 @@ export const MODULE_SUBRESOURCES: Readonly<Record<string, readonly SubResource[]
     { key: 'scheduling.settings', label: 'Settings', route: '/scheduling/settings' },
   ],
   ads: [{ key: 'ads.settings', label: 'Settings', route: '/socials/settings' }],
+  stock: [
+    { key: 'stock.items', label: 'Items', route: '/stock/items' },
+    { key: 'stock.entries', label: 'Entries', route: '/stock/entries' },
+    { key: 'stock.warehouses', label: 'Warehouses', route: '/stock/warehouses' },
+    { key: 'stock.commitments', label: 'Commitments', route: '/stock/commitments' },
+  ],
   pos: [
     { key: 'pos.sell', label: 'Sell', route: '/pos/sell' },
     { key: 'pos.appointments', label: 'Appointments', route: '/pos/appointments' },

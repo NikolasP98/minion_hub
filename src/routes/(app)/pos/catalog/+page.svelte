@@ -11,6 +11,7 @@
     Button,
     Toggle,
     SegmentedControl,
+    EmptyState,
     iconSizes,
   } from '$lib/components/ui';
   import { groupBy, type GroupAxis } from '$lib/catalog/grouping';
@@ -301,7 +302,25 @@
     </div>
   {/if}
 
-  {#if view === 'board'}
+  {#if sellables.length === 0}
+    <EmptyState
+      icon={LayoutGrid}
+      title={m.pos_catalog_empty()}
+      description={m.pos_catalog_empty_hint()}
+    >
+      {#snippet action()}
+        <Button
+          variant="primary"
+          size="sm"
+          onclick={openCreate}
+          disabled={!canWrite}
+          title={canWrite ? undefined : m.no_permission()}
+        >
+          {m.pos_catalog_new()}
+        </Button>
+      {/snippet}
+    </EmptyState>
+  {:else if view === 'board'}
     <!-- Board: one column per group on the chosen axis, empty groups omitted.
          Cards open the dedicated editor page, so the board remains a real
          editing surface rather than a read-only visualization. -->

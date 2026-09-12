@@ -17,6 +17,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   default_warehouse: 409,
   has_stock: 409,
   has_children: 409,
+  warehouse_archived: 409,
 };
 
 /** Maps a StockError to the right HTTP error; re-throws anything else untouched.

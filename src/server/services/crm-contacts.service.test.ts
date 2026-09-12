@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
@@ -1051,5 +1052,24 @@ describe('softDeleteContacts', () => {
       expect.objectContaining({ refId: ids[2], op: 'delete', actorId: 'profile-1' }),
     ]);
     expect(mockWithOrgCore).toHaveBeenCalledOnce();
+  });
+
+  it('restricts the delete to owned contacts when an ownerId is passed', async () => {
+    mockWithOrgCore.mockReset();
+    const returning = vi.fn().mockResolvedValue([]);
+    const where = vi.fn((_cond: SQL | undefined) => ({ returning }));
+    const set = vi.fn(() => ({ where }));
+    const update = vi.fn(() => ({ set }));
+    const values = vi.fn().mockResolvedValue(undefined);
+    const insert = vi.fn(() => ({ values }));
+    const tx = { update, insert };
+    mockWithOrgCore.mockImplementationOnce((_scope, fn) => fn(tx as never));
+    const ctx = { db: {} as never, tenantId: 'org-1', profileId: 'profile-1' };
+
+    await softDeleteContacts(ctx, ['00000000-0000-4000-8000-000000000001'], 'owner-1');
+
+    const query = new PgDialect().sqlToQuery(where.mock.calls[0][0]!);
+    expect(query.sql).toContain('owner_id');
+    expect(query.params).toContain('owner-1');
   });
 });

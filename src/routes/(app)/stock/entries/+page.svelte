@@ -4,7 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
   import { ArrowLeftRight, X } from 'lucide-svelte';
-  import { PageHeader, Badge, Button } from '$lib/components/ui';
+  import { PageHeader, Badge, Button, EmptyState } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
@@ -108,76 +108,108 @@
     {#snippet leading()}<ArrowLeftRight size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
-  <DataTable
-    class="flex-1 min-h-0"
-    {columns}
-    data={entries}
-    getRowId={(e) => e.id}
-    searchFields={(e) =>
-      `${idLabel(e)} ${typeLabel(e.type)} ${statusLabel(e.status)} ${e.partyName ?? ''}`}
-    initialSort={{ key: 'created', dir: 'desc' }}
-    exportable
-    exportName="stock-entries"
-    selectable
-    storageKey="stock-entries"
-    addLabel={m.stock_new_entry()}
-    addMenu={canAct('stock', 'create')
-      ? [
-          { value: 'receipt', label: m.stock_type_receipt() },
-          { value: 'issue', label: m.stock_type_issue() },
-          // Transfer needs somewhere to transfer TO — hidden entirely with a
-          // single warehouse (spec 2026-08-23 §S6 logic-gating).
-          ...(data.warehouseCount > 1
-            ? [{ value: 'transfer', label: m.stock_type_transfer() }]
-            : []),
-          { value: 'adjustment', label: m.stock_type_adjustment() },
-        ]
-      : undefined}
-    onAddSelect={(t) => goto(`/stock/entries/new?type=${t}`)}
-    addDisabled={!canAct('stock', 'create')}
-    onRowClick={(e) => goto(`/stock/entries/${e.id}`)}
-    emptyMessage={m.stock_entries_empty()}
-  >
-    {#snippet expandedContent(e: Row)}
-      <div class="lines">
-        {#await entryLines(e.id)}
-          <div class="lines-msg">…</div>
-        {:then lines}
-          {#if lines.length === 0}
-            <div class="lines-msg">{m.stock_entries_empty()}</div>
-          {:else}
-            <table class="lines-tbl">
-              <tbody>
-                {#each lines as ln (ln.itemId + ':' + ln.lineNo)}
-                  <tr>
-                    <td class="li-item">{itemLabel(ln.itemId)}</td>
-                    <td class="li-num">{fmtNum(ln.qty)}{ln.uom ? ` ${ln.uom}` : ''}</td>
-                    <td class="li-num">{ln.rate == null ? '—' : formatMoney(ln.rate)}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          {/if}
-        {/await}
-      </div>
-    {/snippet}
-    {#snippet cell(e: Row, col: DataColumn<Row>)}
-      {#if col.key === 'status'}
-        {@const sv = entryStatusVariant(e.status)}
-        <Badge variant={sv.variant} value={sv.value}>{statusLabel(e.status)}</Badge>
-      {:else if col.key === 'created'}
-        <span class="t-caption">{new Date(e.createdAt).toLocaleDateString()}</span>
-      {/if}
-    {/snippet}
-    {#snippet toolbar()}
-      {#if data.partyFilter}
-        <Button variant="ghost" class="chip" onclick={() => goto('/stock/entries')}>
-          {m.stock_col_party()}: {data.entries[0]?.partyName ?? data.partyFilter}
-          <X size={11} />
+  {#if entries.length === 0 && data.partyFilter}
+    <EmptyState
+      icon={ArrowLeftRight}
+      title={m.stock_entries_empty()}
+      description={m.stock_entries_empty_filtered_hint()}
+    >
+      {#snippet action()}
+        <Button variant="outline" size="sm" onclick={() => goto('/stock/entries')}>
+          {m.a11y3_clearFilter()}
         </Button>
-      {/if}
-    {/snippet}
-  </DataTable>
+      {/snippet}
+    </EmptyState>
+  {:else if entries.length === 0}
+    <EmptyState
+      icon={ArrowLeftRight}
+      title={m.stock_entries_empty()}
+      description={m.stock_entries_empty_hint()}
+    >
+      {#snippet action()}
+        <Button
+          variant="primary"
+          size="sm"
+          href="/stock/entries/new"
+          disabled={!canAct('stock', 'create')}
+          title={canAct('stock', 'create') ? undefined : m.no_permission()}
+        >
+          {m.stock_new_entry()}
+        </Button>
+      {/snippet}
+    </EmptyState>
+  {:else}
+    <DataTable
+      class="flex-1 min-h-0"
+      {columns}
+      data={entries}
+      getRowId={(e) => e.id}
+      searchFields={(e) =>
+        `${idLabel(e)} ${typeLabel(e.type)} ${statusLabel(e.status)} ${e.partyName ?? ''}`}
+      initialSort={{ key: 'created', dir: 'desc' }}
+      exportable
+      exportName="stock-entries"
+      selectable
+      storageKey="stock-entries"
+      addLabel={m.stock_new_entry()}
+      addMenu={canAct('stock', 'create')
+        ? [
+            { value: 'receipt', label: m.stock_type_receipt() },
+            { value: 'issue', label: m.stock_type_issue() },
+            // Transfer needs somewhere to transfer TO — hidden entirely with a
+            // single warehouse (spec 2026-08-23 §S6 logic-gating).
+            ...(data.warehouseCount > 1
+              ? [{ value: 'transfer', label: m.stock_type_transfer() }]
+              : []),
+            { value: 'adjustment', label: m.stock_type_adjustment() },
+          ]
+        : undefined}
+      onAddSelect={(t) => goto(`/stock/entries/new?type=${t}`)}
+      addDisabled={!canAct('stock', 'create')}
+      onRowClick={(e) => goto(`/stock/entries/${e.id}`)}
+      emptyMessage={m.stock_entries_empty()}
+    >
+      {#snippet expandedContent(e: Row)}
+        <div class="lines">
+          {#await entryLines(e.id)}
+            <div class="lines-msg">…</div>
+          {:then lines}
+            {#if lines.length === 0}
+              <div class="lines-msg">{m.stock_entries_empty()}</div>
+            {:else}
+              <table class="lines-tbl">
+                <tbody>
+                  {#each lines as ln (ln.itemId + ':' + ln.lineNo)}
+                    <tr>
+                      <td class="li-item">{itemLabel(ln.itemId)}</td>
+                      <td class="li-num">{fmtNum(ln.qty)}{ln.uom ? ` ${ln.uom}` : ''}</td>
+                      <td class="li-num">{ln.rate == null ? '—' : formatMoney(ln.rate)}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {/if}
+          {/await}
+        </div>
+      {/snippet}
+      {#snippet cell(e: Row, col: DataColumn<Row>)}
+        {#if col.key === 'status'}
+          {@const sv = entryStatusVariant(e.status)}
+          <Badge variant={sv.variant} value={sv.value}>{statusLabel(e.status)}</Badge>
+        {:else if col.key === 'created'}
+          <span class="t-caption">{new Date(e.createdAt).toLocaleDateString()}</span>
+        {/if}
+      {/snippet}
+      {#snippet toolbar()}
+        {#if data.partyFilter}
+          <Button variant="ghost" class="chip" onclick={() => goto('/stock/entries')}>
+            {m.stock_col_party()}: {data.entries[0]?.partyName ?? data.partyFilter}
+            <X size={11} />
+          </Button>
+        {/if}
+      {/snippet}
+    </DataTable>
+  {/if}
 </div>
 
 <style>

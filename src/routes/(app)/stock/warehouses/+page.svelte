@@ -11,7 +11,7 @@
     RotateCcw,
     MoreVertical,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Badge, Modal, Dropdown } from '$lib/components/ui';
+  import { PageHeader, Button, Badge, Modal, Dropdown, EmptyState } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
   import { ConfirmDialog } from '$lib/components/ui/foundations';
   import { canAct } from '$lib/access/can.svelte';
@@ -240,10 +240,23 @@
   <div class="flex-1 min-h-0 overflow-auto p-4">
     {#if rowErr}<p class="err-msg">{rowErr}</p>{/if}
     {#if tree.length === 0}
-      <div class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center">
-        <WarehouseIcon size={32} class="text-muted-foreground" />
-        <p class="t-caption">{m.stock_warehouses_empty()}</p>
-      </div>
+      <EmptyState
+        icon={WarehouseIcon}
+        title={m.stock_warehouses_empty()}
+        description={m.stock_warehouses_empty_hint()}
+      >
+        {#snippet action()}
+          <Button
+            variant="primary"
+            size="sm"
+            onclick={() => openNew(null)}
+            disabled={!canAct('stock', 'create')}
+            title={canAct('stock', 'create') ? undefined : m.no_permission()}
+          >
+            {m.stock_new_warehouse()}
+          </Button>
+        {/snippet}
+      </EmptyState>
     {:else}
       <ul class="tree">
         {#each tree as w (w.id)}
