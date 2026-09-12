@@ -4,7 +4,7 @@
  * bookings for display: resource + event type (kind fallback) + product,
  * batched tag reads (own tags, contact tags, product tags).
  */
-import { and, eq, gte, lt, inArray } from 'drizzle-orm';
+import { and, eq, gt, lt, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { maskPii } from '$lib/pii';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -73,9 +73,9 @@ export async function loadCalendarEvents(
         and(
           eq(schedBookings.orgId, ctx.tenantId),
           inArray(schedBookings.status, [...CALENDAR_STATUSES]),
-          // TODO(handoff): decide overlap-window inclusion for bookings starting before from;
-          // see proposals/2026-09-10-hub-calendar-utc-offset-dropped.md.
-          gte(schedBookings.startTime, opts.from),
+          // Include bookings that start before `from` but are still in progress
+          // (end after `from`), not just ones that start inside the window.
+          gt(schedBookings.endTime, opts.from),
           lt(schedBookings.startTime, opts.to),
         ),
       ),

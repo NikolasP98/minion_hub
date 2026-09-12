@@ -22,10 +22,12 @@
     hhmm,
     calendarWallTime,
     calendarMoveIso,
+    resolveEventColor,
     ymd,
     type CalendarStore,
   } from './calendar.svelte';
-  import type { CalendarView, CalEvent } from './types';
+  import * as m from '$lib/paraglide/messages';
+  import type { CalendarView, CalEvent, CalTag } from './types';
 
   let {
     store,
@@ -69,19 +71,38 @@
     );
   }
 
-  /** hh:mm · service · client, staff dot, up to 3 tag dots + "+N". Raw HTML —
-   *  the library injects it outside Svelte's render tree (no scoped class
-   *  hashing reaches it), so its styling lives in `:global(.ec-chip*)` below. */
+  /** Recomputed per call (not cached) so a locale switch is picked up without remount. */
+  function originLabel(origin: 'own' | 'contact' | 'product'): string {
+    if (origin === 'contact') return m.calendar_tag_origin_contact();
+    if (origin === 'product') return m.calendar_tag_origin_service();
+    return m.calendar_tag_origin_own();
+  }
+
+  /** hh:mm · service · client, staff dot, up to 4 tag dots + "+N" grouped by
+   *  origin (own → contact → product, contact/product only when the
+   *  per-user "linked tags" toggle is on). Raw HTML — the library injects it
+   *  outside Svelte's render tree (no scoped class hashing reaches it), so
+   *  its styling lives in `:global(.ec-chip*)` below. */
   function chipHtml(ev: CalEvent): string {
-    const seen = new Map<string, { id: string; name: string; color: string | null }>();
-    for (const t of [...ev.tags, ...ev.contactTags, ...ev.productTags])
-      if (!seen.has(t.id)) seen.set(t.id, t);
-    const tags = [...seen.values()];
-    const shown = tags.slice(0, 3);
-    const extra = Math.max(0, tags.length - 3);
+    const seen = new Set<string>();
+    const grouped: { tag: CalTag; origin: 'own' | 'contact' | 'product' }[] = [];
+    const groups: [CalTag[], 'own' | 'contact' | 'product'][] = [[ev.tags, 'own']];
+    if (store.showInheritedTags) {
+      groups.push([ev.contactTags, 'contact'], [ev.productTags, 'product']);
+    }
+    for (const [tags, origin] of groups) {
+      for (const tag of tags) {
+        if (seen.has(tag.id)) continue;
+        seen.add(tag.id);
+        grouped.push({ tag, origin });
+      }
+    }
+    const shown = grouped.slice(0, 4);
+    const extra = Math.max(0, grouped.length - 4);
     const dots = shown
       .map(
-        (t) => `<span class="ec-chip-tag" style="--c:${t.color ?? 'var(--color-accent)'}"></span>`,
+        ({ tag, origin }) =>
+          `<span class="ec-chip-tag" data-origin="${origin}" style="--c:${tag.color ?? 'var(--color-accent)'}" title="${escapeHtml(tag.name)} · ${escapeHtml(originLabel(origin))}"></span>`,
       )
       .join('');
     const more = extra > 0 ? `<span class="ec-chip-more">+${extra}</span>` : '';
@@ -103,7 +124,7 @@
       start: calendarWallTime(ev.start),
       end: calendarWallTime(ev.end),
       resourceIds: [ev.resourceId],
-      backgroundColor: store.kindOf(ev)?.color ?? ev.resourceColor ?? undefined,
+      backgroundColor: resolveEventColor(ev, store.kindOf(ev)),
       classNames: [ev.status],
       extendedProps: ev,
     })),
@@ -260,6 +281,7 @@
   event={hoverEvent}
   kind={hoverEvent ? store.kindOf(hoverEvent) : undefined}
   anchor={hoverAnchor}
+  showInheritedTags={store.showInheritedTags}
 />
 
 <MoveConfirmDialog
@@ -322,6 +344,15 @@
     border-radius: var(--radius-full);
     background: var(--c);
     flex-shrink: 0;
+  }
+  /* Inherited (contact/product) tag dots get a ring so they read as distinct
+     from the event's own tags, which stay plain. */
+  :global(.ec-chip-tag[data-origin='contact']) {
+    box-shadow: 0 0 0 1.5px var(--color-surface-1);
+    outline: 1px solid var(--c);
+  }
+  :global(.ec-chip-tag[data-origin='product']) {
+    border-radius: var(--radius-xs);
   }
   :global(.ec-chip-more) {
     font-size: var(--font-size-telemetry);
