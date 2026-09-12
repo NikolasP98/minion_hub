@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { getInvoice } from '$server/services/finance.service';
 import { findEntryByInvoice, listWarehouses, listItems } from '$server/services/stock.service';
+import { listBookingsForInvoice } from '$server/services/scheduling-bookings.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
@@ -17,9 +18,13 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   // Reads the hook's per-request module-state snapshot instead of
   // re-querying (routing-simplification spec R5).
   const stockEnabled = locals.moduleStates?.stock ?? true;
-  const [stockEntry, stockWarehouses, stockItems] = stockEnabled
-    ? await Promise.all([findEntryByInvoice(ctx, params.id), listWarehouses(ctx), listItems(ctx)])
-    : [null, [], []];
+  const schedulingEnabled = locals.moduleStates?.scheduling ?? true;
+  const [stockEntry, stockWarehouses, stockItems, bookings] = await Promise.all([
+    stockEnabled ? findEntryByInvoice(ctx, params.id) : Promise.resolve(null),
+    stockEnabled ? listWarehouses(ctx) : Promise.resolve([]),
+    stockEnabled ? listItems(ctx) : Promise.resolve([]),
+    schedulingEnabled ? listBookingsForInvoice(ctx, params.id) : Promise.resolve([]),
+  ]);
 
-  return { ...data, stockEnabled, stockEntry, stockWarehouses, stockItems };
+  return { ...data, stockEnabled, stockEntry, stockWarehouses, stockItems, bookings };
 };

@@ -19,6 +19,7 @@ import { listBookings } from '$server/services/scheduling-bookings.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
 import { getContact } from '$server/services/crm-contacts.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
+import { getInvoiceLabelsByIds } from '$server/services/finance.service';
 import { effectiveModuleEnabled } from '$lib/modules/availability';
 
 const DAY = 86_400_000;
@@ -44,7 +45,12 @@ export interface LoadBookingsViewOptions {
   contactScope?: boolean;
 }
 
-type Bookings = Awaited<ReturnType<typeof listBookings>>;
+type Bookings = Array<
+  Awaited<ReturnType<typeof listBookings>>[number] & {
+    /** documentId ?? number for the linked invoice (spec S6); null when unlinked. */
+    invoiceLabel: string | null;
+  }
+>;
 type AccrualSummaries = Awaited<ReturnType<typeof accrualSummaryForSources>>;
 
 export interface BookingsViewLoadData {
@@ -96,12 +102,25 @@ export async function loadBookingsView(
         limit: opts.limit,
         maskAttendeePii,
       };
-  const [bookings, resources, eventTypes, contactRec] = await Promise.all([
+  const [rawBookings, resources, eventTypes, contactRec] = await Promise.all([
     listBookings(ctx, bookingsOpts),
     listResources(ctx),
     listEventTypes(ctx),
     contact ? getContact(ctx, contact) : Promise.resolve(null),
   ]);
+
+  // Batched id→label lookup so the row/hover-card surfaces can show a
+  // linked invoice's document id without loading the full invoice (spec S6).
+  const invoiceIds = [
+    ...new Set(rawBookings.map((b) => b.invoiceId).filter((v): v is string => !!v)),
+  ];
+  const invoiceLabels = invoiceIds.length
+    ? await getInvoiceLabelsByIds(ctx, invoiceIds)
+    : new Map<string, string>();
+  const bookings: Bookings = rawBookings.map((b) => ({
+    ...b,
+    invoiceLabel: b.invoiceId ? (invoiceLabels.get(b.invoiceId) ?? null) : null,
+  }));
 
   // S3/WP1 R6: stock is now kind-hidden for personal orgs (not just
   // toggle-gated) — skip the accrual read entirely instead of relying on the

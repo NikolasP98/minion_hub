@@ -13,6 +13,7 @@ import { evaluateTagRule } from '$server/services/crm-scoring';
 import { contactFinanceSummary, contactCashflow } from '$server/services/crm-finance.service';
 import { contactConnections } from '$server/services/connections.service';
 import { contactJourney } from '$server/services/crm-journey.service';
+import { listBookings } from '$server/services/scheduling-bookings.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 
 export const load: PageServerLoad = async ({ locals, params, depends, parent }) => {
@@ -28,9 +29,10 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
   // Record-level (if-owner) scope: a scoped caller can only open contacts they
   // own — a non-owned id 404s rather than leaking existence. Field-level scope
   // masks the contact's PII (phone/email) below the crm sensitive field level.
-  const [ownerId, maskPii] = await Promise.all([
+  const [ownerId, maskPii, maskBookingPii] = await Promise.all([
     ownerFilter(locals, 'crm'),
     shouldMaskSensitive(locals, 'crm'),
+    shouldMaskSensitive(locals, 'scheduling'),
   ]);
   const record = await getContact(ctx, id, ownerId, maskPii);
   if (!record) throw error(404, 'Contact not found');
@@ -53,11 +55,17 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
       )
     : [];
 
-  const [finance, cashflow, connections, journey] = await Promise.all([
+  const [finance, cashflow, connections, journey, bookings] = await Promise.all([
     isPersonal ? Promise.resolve(null) : contactFinanceSummary(ctx, id),
     isPersonal ? contactCashflow(ctx, id) : Promise.resolve(null),
     contactConnections(ctx, id, activeOrgKind),
     contactJourney(ctx, id),
+    // Fail-soft: scheduling can be disabled/absent for this org — the contact
+    // page must not 500 over an optional section (mirrors the stock-accrual
+    // try/catch in load-bookings-view.ts).
+    listBookings(ctx, { crmContactId: id, limit: 20, maskAttendeePii: maskBookingPii }).catch(
+      () => [],
+    ),
   ]);
 
   return {
@@ -76,5 +84,6 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
     cashflow,
     connections,
     journey,
+    bookings,
   };
 };

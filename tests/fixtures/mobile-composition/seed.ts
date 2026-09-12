@@ -51,6 +51,8 @@ export const EVENTS: CalEvent[] = RESOURCES.flatMap((r, i) =>
       attendeePhone: null,
       productId: null,
       productName: null,
+      invoiceId: null,
+      invoiceLabel: null,
       tags: [{ id: 't1', name: 'VIP', color: '#f7d24f' }],
       contactTags: [],
       productTags: [],

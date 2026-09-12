@@ -19,6 +19,16 @@ export interface BlobStorageDriver {
   ): Promise<void>;
   getSignedUrl(key: string, expiresIn?: number): Promise<string>;
   delete(key: string): Promise<void>;
+  /** Browser-direct upload URL (attachments intent flow) — the caller PUTs the
+   *  file straight to storage, bypassing Vercel's serverless body cap. */
+  presignPut(
+    key: string,
+    contentType: string,
+    expiresIn?: number,
+    opts?: { contentLength?: number },
+  ): Promise<string>;
+  /** Verify an object landed after a presigned PUT. Null when it doesn't exist. */
+  head(key: string): Promise<{ size: number; contentType: string | null } | null>;
 }
 
 let _driver: BlobStorageDriver | null = null;

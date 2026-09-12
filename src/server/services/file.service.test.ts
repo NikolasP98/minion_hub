@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { uploadFile, getFileUrl, deleteFile } from './file.service';
+import {
+  uploadFile,
+  getFileUrl,
+  deleteFile,
+  validateAttachment,
+  assertOrgQuota,
+  ATTACHMENT_LIMITS,
+} from './file.service';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 beforeEach(() => {
@@ -126,5 +133,59 @@ describe('deleteFile', () => {
     await deleteFile({ db: db as never, tenantId: 't1' }, 'f1');
     expect(mockDeleteFromB2).toHaveBeenCalledWith('some/key');
     expect(db.delete).toHaveBeenCalled();
+  });
+});
+
+describe('validateAttachment', () => {
+  it('accepts an allowed MIME type under the default cap', () => {
+    expect(
+      validateAttachment({ fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 1000 }),
+    ).toEqual({ ok: true });
+  });
+
+  it('rejects a file over the default (presigned) cap', () => {
+    const result = validateAttachment({
+      fileName: 'a.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: ATTACHMENT_LIMITS.maxFileBytes + 1,
+    });
+    expect(result).toEqual({ ok: false, code: 'too_large', message: expect.any(String) });
+  });
+
+  it('rejects a file over a caller-supplied cap (proxied path)', () => {
+    const result = validateAttachment(
+      { fileName: 'a.pdf', contentType: 'application/pdf', sizeBytes: 5 * 1024 * 1024 },
+      { maxBytes: ATTACHMENT_LIMITS.proxiedMaxBytes },
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a disallowed MIME type', () => {
+    const result = validateAttachment({
+      fileName: 'a.exe',
+      contentType: 'application/x-msdownload',
+      sizeBytes: 10,
+    });
+    expect(result).toEqual({
+      ok: false,
+      code: 'mime_not_allowed',
+      message: expect.any(String),
+    });
+  });
+});
+
+describe('assertOrgQuota', () => {
+  it('passes when the org is well under quota', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ total: 1000 }]);
+    const result = await assertOrgQuota({ db: db as never, tenantId: 't1' }, 500);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('fails when adding the file would exceed the org quota', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ total: ATTACHMENT_LIMITS.orgQuotaBytes - 10 }]);
+    const result = await assertOrgQuota({ db: db as never, tenantId: 't1' }, 1000);
+    expect(result).toEqual({ ok: false, code: 'quota_exceeded', message: expect.any(String) });
   });
 });

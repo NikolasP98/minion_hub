@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl as presignGetUrl } from '@aws-sdk/s3-request-presigner';
 import type { BlobStorageDriver } from '../blob';
@@ -126,5 +127,34 @@ export const s3Driver: BlobStorageDriver = {
     await sendWithRetry((signal) =>
       client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: signal }),
     );
+  },
+
+  async presignPut(key, contentType, expiresIn = 900, opts) {
+    const { client, bucket } = getClient();
+    return presignGetUrl(
+      client,
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        ContentType: contentType,
+        ContentLength: opts?.contentLength,
+      }),
+      { expiresIn },
+    );
+  },
+
+  async head(key) {
+    const { client, bucket } = getClient();
+    try {
+      const res = await sendWithRetry((signal) =>
+        client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: signal }),
+      );
+      return { size: res.ContentLength ?? 0, contentType: res.ContentType ?? null };
+    } catch (err) {
+      const status = (err as { $metadata?: { httpStatusCode?: number } } | undefined)?.$metadata
+        ?.httpStatusCode;
+      if (status === 404) return null;
+      throw err;
+    }
   },
 };

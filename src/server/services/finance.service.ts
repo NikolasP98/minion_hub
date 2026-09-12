@@ -382,6 +382,8 @@ export interface PageOpts {
   /** Filter to one CRM contact's records via the shared party spine (Connections
    *  "count → filtered list"). Resolves contact → party → fin_clients. */
   contactId?: string;
+  /** Free-text search over number / document id / client name (invoice picker, spec S6). */
+  q?: string;
 }
 
 export interface InvoiceListRow {
@@ -420,10 +422,17 @@ export function listInvoices(
         join crm_contacts c on c.party_id = fc.party_id and c.party_id is not null
         where c.id = ${opts.contactId} and c.org_id = ${ctx.tenantId})`
     : undefined;
+  const term = opts.q?.trim();
+  const qCond = term
+    ? sql`(${finInvoices.number} ilike ${'%' + term + '%'}
+        or ${finInvoices.documentId} ilike ${'%' + term + '%'}
+        or ${finInvoices.clientName} ilike ${'%' + term + '%'})`
+    : undefined;
   const where = and(
     eq(finInvoices.orgId, ctx.tenantId),
     eq(finInvoices.shadowed, false),
     contactCond,
+    qCond,
   );
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx
@@ -458,6 +467,29 @@ export function listInvoices(
       .from(finInvoices)
       .where(where);
     return { rows, total };
+  });
+}
+
+/**
+ * Batched id→display-label lookup (booking edit form / hover card / bookings
+ * list, spec S6) — a compact reference without loading the full invoice row.
+ */
+export async function getInvoiceLabelsByIds(
+  ctx: CoreCtx,
+  ids: string[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return new Map();
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: finInvoices.id,
+        documentId: finInvoices.documentId,
+        number: finInvoices.number,
+      })
+      .from(finInvoices)
+      .where(and(eq(finInvoices.orgId, ctx.tenantId), inArray(finInvoices.id, unique)));
+    return new Map(rows.map((r) => [r.id, r.documentId ?? r.number ?? r.id]));
   });
 }
 

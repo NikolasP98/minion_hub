@@ -1076,6 +1076,9 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/builder/agents', 'agents'],
   ['/api/builder/skills', 'agents'],
   ['/api/builder/tools', 'tools'],
+  // /api/attachments and /api/files are deliberately absent: attachments cut
+  // across modules, so their routes gate on the LINKED OBJECT's module via
+  // ATTACHMENT_OBJECT_MODULE (attachments.service) + hasOrgCapability.
   ['/api/crm', 'crm'],
   // Deliberately NOT the whole /api/messages prefix — /api/messages/ingest is
   // the gateway's server-token ingest path and must stay capability-free.

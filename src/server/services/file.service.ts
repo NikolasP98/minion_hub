@@ -1,4 +1,4 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { files } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
@@ -6,6 +6,43 @@ import { withOrgCore } from '$server/db/with-org-core';
 import { getStorage } from '$server/storage/blob';
 import { scopeData } from './base';
 import type { CoreCtx } from '$server/auth/core-ctx';
+
+// Limits + MIME allowlist + the pure validator live in a client-safe module
+// (`$lib/attachments/limits`) so `AttachmentButton`'s pre-check can import the
+// same constants without pulling in server-only code. Re-exported here so
+// every existing server import site (this file's callers, routes, tests)
+// keeps working unchanged.
+export {
+  ATTACHMENT_LIMITS,
+  ATTACHMENT_MIME_ALLOWLIST,
+  validateAttachment,
+  type AttachmentValidationCode,
+  type AttachmentValidationResult,
+} from '$lib/attachments/limits';
+import { ATTACHMENT_LIMITS, type AttachmentValidationResult } from '$lib/attachments/limits';
+
+/** Org storage quota check — sums `files.size_bytes` for this tenant (no
+ *  dedicated quota column; the running total IS the source of truth). */
+export async function assertOrgQuota(
+  ctx: CoreCtx,
+  additionalBytes: number,
+): Promise<AttachmentValidationResult> {
+  const used = await withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({ total: sql<number>`coalesce(sum(${files.sizeBytes}), 0)` })
+      .from(files)
+      .where(eq(files.tenantId, ctx.tenantId));
+    return Number(rows[0]?.total ?? 0);
+  });
+  if (used + additionalBytes > ATTACHMENT_LIMITS.orgQuotaBytes) {
+    return {
+      ok: false,
+      code: 'quota_exceeded',
+      message: `org storage quota exceeded (limit ${ATTACHMENT_LIMITS.orgQuotaBytes} bytes)`,
+    };
+  }
+  return { ok: true };
+}
 
 export interface FileUploadInput {
   fileName: string;
@@ -74,10 +111,7 @@ export async function deleteFile(ctx: CoreCtx, id: string) {
   });
   if (!file) return;
 
-  await invalidateTags([
-    ...tags.tenantDomain(ctx.tenantId, 'files'),
-    ...tags.entity('file', id),
-  ]);
+  await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'files'), ...tags.entity('file', id)]);
 }
 
 export async function listFiles(ctx: CoreCtx, category?: string) {

@@ -46,6 +46,9 @@ export type CalEvent = {
   attendeePhone: string | null;
   productId: string | null;
   productName: string | null;
+  /** Soft-linked invoice (spec S6) + its resolved label; both null when unlinked. */
+  invoiceId: string | null;
+  invoiceLabel: string | null;
   /** Tags applied to the booking itself. */
   tags: CalTag[];
   /** Manual tags of the linked CRM contact (empty when no contact). */

@@ -1,4 +1,4 @@
-import { and, eq, ne, inArray, gte, lte, asc, desc, sql } from 'drizzle-orm';
+import { and, eq, ne, inArray, gte, lte, asc, desc, sql, isNotNull } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { maskPii } from '$lib/pii';
 import type { CoreTx } from '$server/db/with-org-core';
@@ -11,8 +11,13 @@ import {
   schedEventTypeResources,
   schedBookings,
 } from '$server/db/pg-scheduling-schema';
-import { crmContacts, crmContactIdentities } from '$server/db/pg-crm-schema';
+import { crmContacts, crmContactIdentities, tagLinks } from '$server/db/pg-crm-schema';
 import type { SchedBooking } from '$server/db/pg-scheduling-schema';
+import { schedReminders } from '$server/db/pg-reminders-schema';
+import { posTickets, posTicketLines } from '$server/db/pg-pos-schema';
+import { finInvoices } from '$server/db/pg-finance-schema';
+import { salesOrders } from '$server/db/pg-sales-schema';
+import { stkAccruals } from '$server/db/pg-schema/stock';
 import { computeSlots, intervalsOverlap } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
@@ -24,6 +29,7 @@ import {
   type AccrualLineInput,
 } from './stock-accruals.service';
 import { isModuleEnabled } from './modules.service';
+import { recordAuditInTx, type FieldChange } from './activity.service';
 
 const MS_PER_MIN = 60_000;
 const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
@@ -639,5 +645,308 @@ export async function rescheduleBooking(
       .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
       .returning();
     return row;
+  });
+}
+
+export interface UpdateBookingInput {
+  title?: string | null;
+  notes?: string | null;
+  crmContactId?: string | null;
+  partyId?: string | null;
+  eventTypeId?: string;
+  productId?: string | null;
+  resourceId?: string;
+  kindId?: string | null;
+  attendeeName?: string | null;
+  attendeeEmail?: string | null;
+  attendeePhone?: string | null;
+  /** Soft bridge to fin_invoices (spec S6); null clears it. Never mandatory. */
+  invoiceId?: string | null;
+  /** Shallow-merged into the row's existing metadata object. */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * General edit of an existing booking (spec S5): title/notes/contact/service/
+ * product/resource/kind/attendee fields. A `resourceId` change is delegated to
+ * `rescheduleBooking` (same start/end) so the buffer-padded conflict check
+ * never gets a second implementation; the calendar's own drag/resize keeps
+ * going through `rescheduleBooking` directly when the time changes too.
+ */
+export async function updateBooking(
+  ctx: CoreCtx,
+  id: string,
+  patch: UpdateBookingInput,
+): Promise<SchedBooking> {
+  const existing = await getBooking(ctx, id);
+  if (!existing) throw new Error('booking not found');
+
+  const resourceChanged =
+    patch.resourceId !== undefined && patch.resourceId !== existing.resourceId;
+  if (resourceChanged) {
+    // Same start/end — this is a reassignment, not a move. Reuses the
+    // reschedule path's active-resource + buffer-padded overlap checks
+    // (throws BookingConflictError on a clash) instead of duplicating them.
+    await rescheduleBooking(ctx, id, {
+      start: existing.startTime,
+      end: existing.endTime,
+      resourceId: patch.resourceId!,
+    });
+  }
+
+  // A service (event type) change snapshots that service's product onto the
+  // booking, same rule createBooking uses — unless the caller passed an
+  // explicit productId of its own.
+  let productId = patch.productId;
+  if (patch.eventTypeId !== undefined && patch.eventTypeId !== existing.eventTypeId) {
+    const [et] = await withOrgCore(ctx, (tx) =>
+      tx
+        .select({ productId: schedEventTypes.productId })
+        .from(schedEventTypes)
+        .where(
+          and(eq(schedEventTypes.id, patch.eventTypeId!), eq(schedEventTypes.orgId, ctx.tenantId)),
+        )
+        .limit(1),
+    );
+    if (!et) throw new Error('invalid eventTypeId');
+    if (productId === undefined) productId = et.productId;
+  }
+
+  await withOrgCore(ctx, async (tx) => {
+    // A client-supplied crmContactId must belong to this org (same guard
+    // createBooking applies) — never trusted verbatim.
+    if (patch.crmContactId) {
+      const [hit] = await tx
+        .select({ id: crmContacts.id })
+        .from(crmContacts)
+        .where(and(eq(crmContacts.id, patch.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
+        .limit(1);
+      if (!hit) throw new Error('invalid crmContactId');
+    }
+    if (patch.kindId) await assertOrgEventKind(tx, ctx.tenantId, patch.kindId);
+    // A client-supplied invoiceId must belong to this org — soft ref, no FK,
+    // so nothing else enforces it (spec S6).
+    if (patch.invoiceId) {
+      const [hit] = await tx
+        .select({ id: finInvoices.id })
+        .from(finInvoices)
+        .where(and(eq(finInvoices.id, patch.invoiceId), eq(finInvoices.orgId, ctx.tenantId)))
+        .limit(1);
+      if (!hit) throw new Error('invalid invoiceId');
+    }
+
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    const changes: FieldChange[] = [];
+    const setField = (field: string, value: unknown, oldValue: unknown) => {
+      if (value === (oldValue ?? null)) return;
+      set[field] = value;
+      changes.push({ field, label: field, old: oldValue ?? null, new: value });
+    };
+    if (patch.title !== undefined) setField('title', patch.title, existing.title);
+    if (patch.notes !== undefined) setField('notes', patch.notes, existing.notes);
+    if (patch.crmContactId !== undefined)
+      setField('crmContactId', patch.crmContactId, existing.crmContactId);
+    if (patch.partyId !== undefined) setField('partyId', patch.partyId, existing.partyId);
+    if (patch.eventTypeId !== undefined)
+      setField('eventTypeId', patch.eventTypeId, existing.eventTypeId);
+    if (productId !== undefined) setField('productId', productId, existing.productId);
+    if (patch.kindId !== undefined) setField('kindId', patch.kindId, existing.kindId);
+    if (patch.attendeeName !== undefined)
+      setField('attendeeName', patch.attendeeName, existing.attendeeName);
+    if (patch.attendeeEmail !== undefined)
+      setField('attendeeEmail', patch.attendeeEmail, existing.attendeeEmail);
+    if (patch.attendeePhone !== undefined)
+      setField('attendeePhone', patch.attendeePhone, existing.attendeePhone);
+    if (patch.invoiceId !== undefined) setField('invoiceId', patch.invoiceId, existing.invoiceId);
+    if (patch.metadata !== undefined) {
+      set.metadata = sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) || ${JSON.stringify(patch.metadata)}::jsonb`;
+      changes.push({ field: 'metadata', label: 'metadata', old: null, new: patch.metadata });
+    }
+    if (resourceChanged)
+      changes.push({
+        field: 'resourceId',
+        label: 'resourceId',
+        old: existing.resourceId,
+        new: patch.resourceId,
+      });
+
+    if (Object.keys(set).length > 1) {
+      await tx
+        .update(schedBookings)
+        .set(set)
+        .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
+    }
+    if (changes.length) {
+      await recordAuditInTx(tx, ctx, {
+        refType: 'sched_booking',
+        refId: id,
+        op: 'update',
+        changes,
+        actor: { id: ctx.profileId ?? null, name: null },
+      });
+    }
+  });
+
+  const row = await getBooking(ctx, id);
+  if (!row) throw new Error('booking not found');
+  return row;
+}
+
+/** Thrown by `deleteBooking` when the booking is still referenced elsewhere
+ *  (a POS ticket line, a sales order, or a realized stock accrual) — the UI
+ *  offers "cancel instead" for these. */
+export class BookingReferencedError extends Error {
+  references: Array<'ticket' | 'order' | 'accrual'>;
+  constructor(references: Array<'ticket' | 'order' | 'accrual'>) {
+    super(`booking is referenced by: ${references.join(', ')}`);
+    this.name = 'BookingReferencedError';
+    this.references = references;
+  }
+}
+
+/**
+ * Hard delete (spec S5) — only when nothing downstream points at this
+ * booking. Open (not yet realized) accruals are released exactly like a
+ * cancel does, post-commit and fail-soft, never blocking the delete itself.
+ */
+export async function deleteBooking(ctx: CoreCtx, id: string): Promise<void> {
+  await withOrgCore(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({ id: schedBookings.id, status: schedBookings.status })
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!existing) throw new Error('booking not found');
+
+    const references: Array<'ticket' | 'order' | 'accrual'> = [];
+    const [ticket] = await tx
+      .select({ id: posTicketLines.id })
+      .from(posTicketLines)
+      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.bookingId, id)))
+      .limit(1);
+    if (ticket) references.push('ticket');
+    const [order] = await tx
+      .select({ id: salesOrders.id })
+      .from(salesOrders)
+      .where(and(eq(salesOrders.orgId, ctx.tenantId), eq(salesOrders.sourceBookingId, id)))
+      .limit(1);
+    if (order) references.push('order');
+    const [accrual] = await tx
+      .select({ id: stkAccruals.id })
+      .from(stkAccruals)
+      .where(
+        and(
+          eq(stkAccruals.orgId, ctx.tenantId),
+          eq(stkAccruals.source, 'booking'),
+          eq(stkAccruals.sourceId, id),
+          eq(stkAccruals.status, 'realized'),
+        ),
+      )
+      .limit(1);
+    if (accrual) references.push('accrual');
+    if (references.length) throw new BookingReferencedError(references);
+
+    await tx
+      .delete(tagLinks)
+      .where(
+        and(
+          eq(tagLinks.orgId, ctx.tenantId),
+          eq(tagLinks.entityKind, 'booking'),
+          eq(tagLinks.entityId, id),
+        ),
+      );
+    // sched_reminders holds only a soft reference to the booking (no FK/cascade —
+    // see pg-reminders-schema.ts) so it needs its own explicit cleanup here.
+    await tx
+      .delete(schedReminders)
+      .where(and(eq(schedReminders.orgId, ctx.tenantId), eq(schedReminders.bookingId, id)));
+    // TODO(handoff): when attachment_links (spec S1) lands, delete this
+    // booking's rows there too — this slice predates attachments, so none
+    // can exist yet.
+    await recordAuditInTx(tx, ctx, {
+      refType: 'sched_booking',
+      refId: id,
+      op: 'delete',
+      changes: [{ field: 'status', label: 'status', old: existing.status, new: 'deleted' }],
+      actor: { id: ctx.profileId ?? null, name: null },
+    });
+    await tx
+      .delete(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
+  });
+  // Post-commit, fail-soft — mirrors setBookingStatus's release-on-cancel path.
+  try {
+    await releaseAccruals(ctx, 'booking', id);
+  } catch (e) {
+    console.error('[scheduling] releaseAccruals failed (delete stands)', e);
+  }
+}
+
+export interface InvoiceBookingRow {
+  id: string;
+  title: string | null;
+  startTime: Date;
+  endTime: Date;
+  status: string;
+  resourceName: string;
+  /** 'explicit' = booking.invoice_id points here; 'ticket' = reached only via
+   *  a POS ticket line's booking, transitively (spec S6). */
+  via: 'explicit' | 'ticket';
+}
+
+/**
+ * Bookings linked to one invoice (spec S6, invoice detail page) — the
+ * explicit `sched_bookings.invoice_id` route unioned with the transitive
+ * route through a reconciled POS ticket (`pos_tickets.invoice_provider_ref`
+ * matches this invoice's `provider_ref`) whose lines carry a booking. An
+ * explicit link always wins the `via` label when a booking has both.
+ */
+export async function listBookingsForInvoice(
+  ctx: CoreCtx,
+  invoiceId: string,
+): Promise<InvoiceBookingRow[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const [invoice] = await tx
+      .select({ providerRef: finInvoices.providerRef })
+      .from(finInvoices)
+      .where(and(eq(finInvoices.id, invoiceId), eq(finInvoices.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!invoice) return [];
+
+    const cols = {
+      id: schedBookings.id,
+      title: schedBookings.title,
+      startTime: schedBookings.startTime,
+      endTime: schedBookings.endTime,
+      status: schedBookings.status,
+      resourceName: schedResources.name,
+    };
+
+    const explicit = await tx
+      .select(cols)
+      .from(schedBookings)
+      .innerJoin(schedResources, eq(schedResources.id, schedBookings.resourceId))
+      .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.invoiceId, invoiceId)));
+
+    const ticketDerived = invoice.providerRef
+      ? await tx
+          .select(cols)
+          .from(posTicketLines)
+          .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
+          .innerJoin(schedBookings, eq(schedBookings.id, posTicketLines.bookingId))
+          .innerJoin(schedResources, eq(schedResources.id, schedBookings.resourceId))
+          .where(
+            and(
+              eq(posTicketLines.orgId, ctx.tenantId),
+              eq(posTickets.invoiceProviderRef, invoice.providerRef),
+              isNotNull(posTicketLines.bookingId),
+            ),
+          )
+      : [];
+
+    const byId = new Map<string, InvoiceBookingRow>();
+    for (const r of explicit) byId.set(r.id, { ...r, via: 'explicit' });
+    for (const r of ticketDerived) if (!byId.has(r.id)) byId.set(r.id, { ...r, via: 'ticket' });
+    return [...byId.values()].sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
   });
 }

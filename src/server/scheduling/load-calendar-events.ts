@@ -9,7 +9,7 @@ import { withOrgCore } from '$server/db/with-org-core';
 import { maskPii } from '$lib/pii';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { schedBookings, schedResources, schedEventTypes } from '$server/db/pg-scheduling-schema';
-import { finProducts } from '$server/db/pg-finance-schema';
+import { finProducts, finInvoices } from '$server/db/pg-finance-schema';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
 import { toOffsetIsoString } from './tz';
 import type { CalEvent } from '$lib/components/scheduling/calendar/types';
@@ -64,11 +64,15 @@ export async function loadCalendarEvents(
         eventTypeTitle: schedEventTypes.title,
         eventTypeKindId: schedEventTypes.kindId,
         productName: finProducts.name,
+        invoiceId: schedBookings.invoiceId,
+        invoiceDocumentId: finInvoices.documentId,
+        invoiceNumber: finInvoices.number,
       })
       .from(schedBookings)
       .innerJoin(schedResources, eq(schedResources.id, schedBookings.resourceId))
       .innerJoin(schedEventTypes, eq(schedEventTypes.id, schedBookings.eventTypeId))
       .leftJoin(finProducts, eq(finProducts.id, schedBookings.productId))
+      .leftJoin(finInvoices, eq(finInvoices.id, schedBookings.invoiceId))
       .where(
         and(
           eq(schedBookings.orgId, ctx.tenantId),
@@ -112,6 +116,8 @@ export async function loadCalendarEvents(
       opts.maskAttendeePii && r.attendeePhone ? maskPii(r.attendeePhone) : r.attendeePhone,
     productId: r.productId,
     productName: r.productName ?? null,
+    invoiceId: r.invoiceId,
+    invoiceLabel: r.invoiceDocumentId ?? r.invoiceNumber ?? null,
     tags: bookingTags.get(r.id) ?? [],
     contactTags: r.crmContactId ? (contactTags.get(r.crmContactId) ?? []) : [],
     productTags: r.productId ? (productTags.get(r.productId) ?? []) : [],

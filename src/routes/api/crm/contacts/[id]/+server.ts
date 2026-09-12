@@ -26,7 +26,11 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
   ]);
   const record = await getContact(ctx, id, ownerId, maskPii);
   if (!record) throw error(404, 'Contact not found');
-  const timeline = await getContactTimeline(ctx, id, Number(url.searchParams.get('timelineLimit') ?? 100));
+  const timeline = await getContactTimeline(
+    ctx,
+    id,
+    Number(url.searchParams.get('timelineLimit') ?? 100),
+  );
   const tags = await getContactTags(ctx, id);
   return json({ ...record, timeline, tags });
 };
@@ -44,7 +48,15 @@ const patchSchema = z.object({
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const maskSensitive = await shouldMaskSensitive(locals, 'crm');
+  const [ownerId, maskSensitive] = await Promise.all([
+    ownerFilter(locals, 'crm'),
+    shouldMaskSensitive(locals, 'crm'),
+  ]);
+  // Record-level scope: an owner-scoped role may only mutate contacts it owns
+  // (same 404-not-403 posture as GET, so existence is not leaked).
+  if (ownerId && !(await getContact(ctx, params.id!, ownerId, true))) {
+    throw error(404, 'Contact not found');
+  }
   const body = await parseBody(request, patchSchema);
   try {
     const contact = await updateContact(
@@ -66,16 +78,24 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     return json({
       contact: {
         ...contact,
-        customFields: sanitizeContactFields(contact.customFields as Record<string, unknown>, maskSensitive),
+        customFields: sanitizeContactFields(
+          contact.customFields as Record<string, unknown>,
+          maskSensitive,
+        ),
       },
     });
   } catch (e) {
     if (e instanceof StaleWriteError) {
-      const current = e.current as Record<string, unknown> & { customFields?: Record<string, unknown> | null };
+      const current = e.current as Record<string, unknown> & {
+        customFields?: Record<string, unknown> | null;
+      };
       return json(
         {
           error: 'stale',
-          current: { ...current, customFields: sanitizeContactFields(current.customFields, maskSensitive) },
+          current: {
+            ...current,
+            customFields: sanitizeContactFields(current.customFields, maskSensitive),
+          },
         },
         { status: 409 },
       );
@@ -88,6 +108,10 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 export const DELETE: RequestHandler = async ({ locals, params, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
+  const ownerId = await ownerFilter(locals, 'crm');
+  if (ownerId && !(await getContact(ctx, params.id!, ownerId, true))) {
+    throw error(404, 'Contact not found');
+  }
   if (url.searchParams.get('hard') === 'true') {
     await hardDeleteContact(ctx, params.id!);
   } else {

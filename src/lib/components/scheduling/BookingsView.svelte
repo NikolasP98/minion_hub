@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CalendarClock, Plus, Check, X, UserX, ClipboardList } from 'lucide-svelte';
+  import { CalendarClock, Plus, Check, X, UserX, ClipboardList, Pencil } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
   import {
     PageHeader,
@@ -17,6 +17,7 @@
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
+  import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import {
     bookingsLabels,
     type BookingCapabilities,
@@ -179,6 +180,8 @@
     l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
   }
 
+  let attachmentsRefreshKey = $state<Record<string, number>>({});
+
   // New booking lives on its own route (in-page form, assistant-guidable).
   const newHref = $derived(
     data.contactId
@@ -219,6 +222,11 @@
               <div class="flex-1 min-w-[180px]">
                 <div class="font-medium">{eventTitle(b.eventTypeId)}</div>
                 <div class="t-caption">{fmt(b.startTime)} · {resourceName(b.resourceId)}</div>
+                {#if b.invoiceId && b.invoiceLabel}
+                  <a class="t-caption invoice-link" href="/finances/invoices/{b.invoiceId}">
+                    {m.sched_invoice_label()}: {b.invoiceLabel}
+                  </a>
+                {/if}
               </div>
               <div class="min-w-[120px]">
                 <div class="text-sm">{b.attendeeName ?? '—'}</div>
@@ -256,6 +264,15 @@
                 </span>
               {/if}
               <div class="flex gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="act"
+                  title={m.sched_edit_booking()}
+                  href="/scheduling/bookings/{b.id}/edit"
+                >
+                  <Pencil size={iconSizes.sm} />
+                </Button>
                 {#if b.status === 'accepted' || b.status === 'pending'}
                   <Button
                     variant="ghost"
@@ -305,6 +322,25 @@
                   </Button>
                 {/if}
               </div>
+            </div>
+            <div class="mt-2 pt-2 border-t border-[var(--hairline)] flex flex-col gap-2">
+              <AttachmentButton
+                objectType="booking"
+                objectId={b.id}
+                size="sm"
+                disabled={!canAct('scheduling', 'edit')}
+                onuploaded={() =>
+                  (attachmentsRefreshKey = {
+                    ...attachmentsRefreshKey,
+                    [b.id]: (attachmentsRefreshKey[b.id] ?? 0) + 1,
+                  })}
+              />
+              <AttachmentList
+                objectType="booking"
+                objectId={b.id}
+                refreshKey={attachmentsRefreshKey[b.id] ?? 0}
+                compact
+              />
             </div>
           </Card>
         {/each}
@@ -367,5 +403,13 @@
     background: var(--color-card);
     font-size: var(--font-size-body, 14px);
     width: 100%;
+  }
+  .invoice-link {
+    display: block;
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  .invoice-link:hover {
+    text-decoration: underline;
   }
 </style>

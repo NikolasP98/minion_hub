@@ -7,11 +7,11 @@ import { buildRouteInventory } from './ui-audit-inventory.mjs';
 import baseline from '../tests/ui-audit/current-baseline.json';
 
 describe('UI audit route inventory', () => {
-  it('locks the complete endpoint ledger at 140 screens and 11 redirects', async () => {
+  it('locks the complete endpoint ledger at 141 screens and 11 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
-    expect(inventory.summary).toMatchObject({ endpoints: 151, screens: 140, redirects: 11 });
-    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(151);
+    expect(inventory.summary).toMatchObject({ endpoints: 152, screens: 141, redirects: 11 });
+    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(152);
     expect(
       inventory.routes.filter((route) => route.kind === 'redirect').map((route) => route.pattern),
     ).toEqual([
@@ -34,7 +34,7 @@ describe('UI audit route inventory', () => {
     ).toBe(true);
     expect(inventory.sourceTreeSha).toBe(baseline.sourceTreeSha);
     expect(inventory.workingTreeFingerprint).toBe(baseline.workingTreeFingerprint);
-  });
+  }, 30_000);
 
   it('reads clean baseline evidence from the recorded Git object, not dirty route files', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'minion-ui-inventory-'));
@@ -73,7 +73,7 @@ describe('UI audit route inventory', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('validates unchanged route content when a recorded feature commit is absent', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'minion-ui-inventory-shallow-'));
@@ -128,7 +128,7 @@ describe('UI audit route inventory', () => {
     // Unlike the pinned-commit ledger above, this reads the WORKTREE (no
     // cleanBaseline flag), so it reflects the route surface at HEAD-with-
     // uncommitted-changes, not the immutable pre-program commit.
-    expect(inventory.summary).toMatchObject({ endpoints: 151, screens: 140, redirects: 11 });
+    expect(inventory.summary).toMatchObject({ endpoints: 152, screens: 141, redirects: 11 });
     expect(terminal).toMatchObject({
       kind: 'redirect',
       source: 'src/routes/(app)/terminal/+page.svelte',

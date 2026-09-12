@@ -19,7 +19,7 @@
     MessageCircle,
     Bookmark,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Select, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Button, Select, Badge, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { formatMoney } from '$lib/utils/format';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
@@ -33,6 +33,7 @@
   import CrmSimilarWins from '$lib/components/crm/CrmSimilarWins.svelte';
   import Connections from '$lib/components/crm/Connections.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
+  import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import {
     contactLabel,
     isRecencyNever,
@@ -233,9 +234,22 @@
         dniLookup = { state: 'error' };
         return;
       }
-      const data = (await res.json()) as { found: boolean; name?: string | null; sex?: 'M' | 'F' | null; age?: number | null };
+      const data = (await res.json()) as {
+        found: boolean;
+        name?: string | null;
+        sex?: 'M' | 'F' | null;
+        age?: number | null;
+      };
       dniLookup = data.found
-        ? { state: 'hit', hit: { found: true, name: data.name ?? null, sex: data.sex ?? null, age: data.age ?? null } }
+        ? {
+            state: 'hit',
+            hit: {
+              found: true,
+              name: data.name ?? null,
+              sex: data.sex ?? null,
+              age: data.age ?? null,
+            },
+          }
         : { state: 'miss' };
     } catch {
       dniLookup = { state: 'error' };
@@ -370,8 +384,7 @@
   function messageBelongsToContact(event: MessageCommittedEvent): boolean {
     if (!event.chatId) return false;
     return data.identities.some(
-      (identity) =>
-        identity.channel === event.channel && identity.externalId === event.chatId,
+      (identity) => identity.channel === event.channel && identity.externalId === event.chatId,
     );
   }
 
@@ -441,8 +454,38 @@
       isPersonal && data.cashflow ? { id: 'cashflow', w: 2, h: 2 } : null,
       data.finance ? { id: 'financials', w: 2, h: 2 } : null,
       data.finance ? { id: 'wins', w: 2, h: 2 } : null,
+      { id: 'bookings', w: 2, h: 2 },
+      { id: 'attachments', w: 2, h: 2 },
     ].filter((x): x is { id: string; w: number; h: number } => x !== null),
   );
+
+  /** Local day key (matches `fmt`'s local-time display) for the
+   *  `/scheduling/calendar?date=` deep link. */
+  function dayKey(d: Date | string): string {
+    const dt = typeof d === 'string' ? new Date(d) : d;
+    const y = dt.getFullYear();
+    const mo = String(dt.getMonth() + 1).padStart(2, '0');
+    const da = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${mo}-${da}`;
+  }
+
+  function fmtBooking(d: Date | string): string {
+    const dt = typeof d === 'string' ? new Date(d) : d;
+    return dt.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  // Mirrors BookingsView.svelte's STATUS_LABEL map (kept local — this page
+  // doesn't need the rest of that component).
+  const BOOKING_STATUS_LABEL: Record<string, () => string> = {
+    accepted: () => m.sched_status_accepted(),
+    pending: () => m.sched_status_pending(),
+    cancelled: () => m.sched_status_cancelled(),
+    rejected: () => m.sched_status_rejected(),
+    completed: () => m.sched_status_completed(),
+    no_show: () => m.sched_status_no_show(),
+  };
+
+  let attachmentsRefreshKey = $state(0);
 </script>
 
 <svelte:head><title>{contactLabel(c.displayName)} — {m.crm_title()}</title></svelte:head>
@@ -566,7 +609,8 @@
                   </span>
                 </div>
                 <Button variant="primary" size="sm" onclick={() => applyDniHit(hit)}>
-                  <Check size={iconSizes.sm} /> {m.crm_dni_apply()}
+                  <Check size={iconSizes.sm} />
+                  {m.crm_dni_apply()}
                 </Button>
               {:else if dniLookup.state === 'miss'}
                 <span class="dni-msg">{m.crm_dni_not_found()}</span>
@@ -783,11 +827,11 @@
           </div>
           <div>
             <dt>{m.crm_cashflow_last()}</dt>
-            <dd
-              >{data.cashflow.lastTransactionAt
+            <dd>
+              {data.cashflow.lastTransactionAt
                 ? relativeTime(data.cashflow.lastTransactionAt)
-                : '—'}</dd
-            >
+                : '—'}
+            </dd>
           </div>
         </dl>
         <p class="fin-recent-h">{m.crm_cashflow_count({ n: data.cashflow.transactions })}</p>
@@ -837,6 +881,54 @@
     {/if}
   {:else if idv === 'wins'}
     {#if data.finance}<CrmSimilarWins contactId={c.id} />{/if}
+  {:else if idv === 'bookings'}
+    <section class="card">
+      <header class="card-h">
+        <span>{m.sched_bookings_title()}</span>
+        <a href="/scheduling/bookings/new?contact={c.id}" class="bk-new">{m.pos_appt_new()}</a>
+      </header>
+      {#if data.bookings.length > 0}
+        <ul class="bk-list">
+          {#each data.bookings as b (b.id)}
+            <li class="bk-row">
+              <a
+                href="/scheduling/bookings?focus={b.id}"
+                class="bk-title"
+                title={b.title ?? m.crm_bookings_untitled()}
+              >
+                {b.title ?? m.crm_bookings_untitled()}
+              </a>
+              <span class="bk-date t-caption">{fmtBooking(b.startTime)}</span>
+              <Badge>{(BOOKING_STATUS_LABEL[b.status] ?? (() => b.status))()}</Badge>
+              <a
+                href="/scheduling/calendar?view=day&date={dayKey(b.startTime)}"
+                class="bk-cal"
+                aria-label={m.crm_bookings_view_calendar()}
+                title={m.crm_bookings_view_calendar()}
+              >
+                <CalendarClock size={iconSizes.sm} />
+              </a>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="t-caption">{m.crm_bookings_empty()}</p>
+      {/if}
+    </section>
+  {:else if idv === 'attachments'}
+    <section class="card">
+      <header class="card-h">
+        <span>{m.attachments_title()}</span>
+        <AttachmentButton
+          objectType="crm_contact"
+          objectId={c.id}
+          size="sm"
+          disabled={!canAct('crm', 'edit')}
+          onuploaded={() => (attachmentsRefreshKey += 1)}
+        />
+      </header>
+      <AttachmentList objectType="crm_contact" objectId={c.id} refreshKey={attachmentsRefreshKey} />
+    </section>
   {/if}
 {/snippet}
 
@@ -910,12 +1002,20 @@
               <div class="jms" data-type={ms.type}>
                 <span class="jms-ic">
                   {#if ms.type === 'purchase'}<ShoppingBag size={14} />
-                  {:else if ms.type === 'booking'}<CalendarClock size={14} />
+                  {:else if ms.type === 'booking'}<CalendarClock size={iconSizes.sm} />
                   {:else if ms.type === 'reserve'}<Bookmark size={14} />
                   {:else if ms.type === 'ai'}<Sparkles size={14} />
                   {:else}<MessageCircle size={14} />{/if}
                 </span>
-                <span class="jms-label" title={ms.label}>{ms.label}</span>
+                {#if ms.type === 'booking'}
+                  <a
+                    class="jms-label jms-link"
+                    href="/scheduling/bookings?focus={ms.id.slice(3)}"
+                    title={ms.label}>{ms.label}</a
+                  >
+                {:else}
+                  <span class="jms-label" title={ms.label}>{ms.label}</span>
+                {/if}
                 {#if ms.detail}<span class="jms-detail">{ms.detail}</span>{/if}
                 <span class="jms-date">{ms.at ? relativeTime(ms.at) : ''}</span>
               </div>
@@ -1282,6 +1382,12 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  .jms-link {
+    color: var(--color-accent);
+  }
+  .jms-link:hover {
+    text-decoration: underline;
+  }
   .jms-detail {
     font-size: var(--font-size-caption, 12px);
     color: var(--color-muted-foreground);
@@ -1577,11 +1683,49 @@
     color: var(--color-warning);
   }
   .fin-status[data-status='void'] {
-    background: color-mix(
-      in srgb,
-      var(--color-destructive) 14%,
-      transparent
-    );
+    background: color-mix(in srgb, var(--color-destructive) 14%, transparent);
     color: var(--color-destructive);
+  }
+
+  /* Bookings card */
+  :global(.crm-contact-surface .bk-new) {
+    font-size: var(--font-size-caption, 12px);
+    color: var(--color-accent);
+  }
+  :global(.crm-contact-surface .bk-new:hover) {
+    text-decoration: underline;
+  }
+  .bk-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5, 2px);
+  }
+  .bk-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    padding: var(--space-1, 4px) 0;
+    font-size: var(--font-size-body, 14px);
+    border-top: 1px solid var(--hairline);
+  }
+  .bk-title {
+    color: var(--color-accent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bk-title:hover {
+    text-decoration: underline;
+  }
+  .bk-date {
+    white-space: nowrap;
+  }
+  .bk-cal {
+    display: inline-flex;
+    color: var(--color-muted-foreground);
+  }
+  .bk-cal:hover {
+    color: var(--color-accent);
   }
 </style>

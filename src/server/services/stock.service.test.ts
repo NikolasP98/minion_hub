@@ -87,6 +87,61 @@ describe('submitEntry — guards', () => {
     ]);
     await expect(submitEntry(ctx(db), 'e1', actor)).rejects.toMatchObject({ code: 'no_lines' });
   });
+
+  it('rejects a submit against an archived warehouse before touching bins', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'e1', orgId: 'org-1', status: 'draft', type: 'issue', humanId: null }], // entry (for update)
+      [
+        {
+          id: 'l1',
+          entryId: 'e1',
+          itemId: 'i1',
+          qty: '10',
+          uom: null,
+          rate: null,
+          fromWarehouseId: 'w1',
+          toWarehouseId: null,
+          lineNo: 0,
+        },
+      ], // lines
+      [{ id: 'i1' }], // item existence
+      [{ id: 'w1', archivedAt: new Date('2026-01-01') }], // warehouse existence — archived
+    ]);
+    await expect(submitEntry(ctx(db), 'e1', actor)).rejects.toMatchObject({
+      code: 'warehouse_archived',
+    });
+    // Guard fires before the bin lock / ledger insert.
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('lets a submit against an active warehouse continue past the archived-warehouse guard', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'e1', orgId: 'org-1', status: 'draft', type: 'issue', humanId: null }], // entry (for update)
+      [
+        {
+          id: 'l1',
+          entryId: 'e1',
+          itemId: 'i1',
+          qty: '10',
+          uom: null,
+          rate: null,
+          fromWarehouseId: 'w1',
+          toWarehouseId: null,
+          lineNo: 0,
+        },
+      ], // lines
+      [{ id: 'i1' }], // item existence
+      [{ id: 'w1', archivedAt: null }], // warehouse existence — active
+      [{ qty: '2', valuationRate: '1' }], // locked bin: only 2 in stock, issuing 10
+    ]);
+    // Reaches the (unrelated) negative-stock guard, proving the archived check
+    // let an active warehouse through instead of blocking it.
+    await expect(submitEntry(ctx(db), 'e1', actor)).rejects.toMatchObject({
+      code: 'negative_stock',
+    });
+  });
 });
 
 describe('cancelEntry — guards', () => {
