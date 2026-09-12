@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "baseCommit": "3cf45f590dc1c0e209a622abd968e55b19aa8687",
+  "baseCommit": "aa28c6113b9c8bdbcc22f553236288b4861e7cc1",
   "sourceRef": "HEAD",
-  "sourceCommit": "3cf45f590dc1c0e209a622abd968e55b19aa8687",
-  "sourceTreeSha": "e92a5989b390dce6f18d232ea5536100c505e7e5",
-  "workingTreeFingerprint": "git-tree:e92a5989b390dce6f18d232ea5536100c505e7e5",
+  "sourceCommit": "aa28c6113b9c8bdbcc22f553236288b4861e7cc1",
+  "sourceTreeSha": "7ad1e917a1cb4c2b836cc182aeb8a204d586a240",
+  "workingTreeFingerprint": "git-tree:7ad1e917a1cb4c2b836cc182aeb8a204d586a240",
   "summary": {
-    "endpoints": 152,
-    "screens": 141,
+    "endpoints": 151,
+    "screens": 140,
     "redirects": 11,
-    "dynamicScreens": 29,
-    "appScreens": 131,
+    "dynamicScreens": 28,
+    "appScreens": 130,
     "publicScreens": 10
   },
   "knownBaselineFailures": [
@@ -1166,21 +1166,6 @@
       "dynamic": false,
       "observations": {
         "pageHeader": false,
-        "explicitResponsiveRule": false,
-        "nativeButtons": 0,
-        "nativeInputs": 0,
-        "fetchSites": 0
-      }
-    },
-    {
-      "id": "scheduling.bookings.id.edit",
-      "pattern": "/scheduling/bookings/[id]/edit",
-      "source": "src/routes/(app)/scheduling/bookings/[id]/edit/+page.svelte",
-      "family": "app",
-      "kind": "screen",
-      "dynamic": true,
-      "observations": {
-        "pageHeader": true,
         "explicitResponsiveRule": false,
         "nativeButtons": 0,
         "nativeInputs": 0,

@@ -49,6 +49,15 @@ export function hhmm(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * Event background colour: first of the event's own tags with a colour
+ * (`ev.tags`, server-ordered), else the event kind's colour, else the
+ * resource's colour, else the renderer's own default (`undefined`).
+ */
+export function resolveEventColor(ev: CalEvent, kind: CalKind | undefined): string | undefined {
+  return ev.tags.find((t) => t.color)?.color ?? kind?.color ?? ev.resourceColor ?? undefined;
+}
+
 interface Span {
   from: number;
   to: number;
@@ -60,6 +69,8 @@ export class CalendarStore {
   /** Empty = all staff. */
   staff = $state<Set<string>>(new Set());
   kindId = $state<string | null>(null);
+  /** Per-user toggle: show contact/product-inherited tag dots on chips + hover card. */
+  showInheritedTags = $state(true);
 
   #loaded: Span[] = [];
   #pending = new Set<string>();

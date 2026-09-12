@@ -14,10 +14,13 @@
     event,
     kind,
     anchor,
+    showInheritedTags = true,
   }: {
     event: CalEvent | null;
     kind: CalKind | undefined;
     anchor: HTMLElement | null;
+    /** When false, contact/product-inherited tags are omitted (own tags always show). */
+    showInheritedTags?: boolean;
   } = $props();
 
   let pos = $state<{ top: number; left: number; above: boolean } | null>(null);
@@ -78,9 +81,21 @@
         <span class="hc-label">{m.sched_cal_client()}</span><span>{event.attendeeName}</span>
       </div>
     {/if}
-    {#if event.contactTags.length}
+    {#if showInheritedTags && event.contactTags.length}
       <div class="hc-tags">
+        <span class="hc-tags-origin">{m.calendar_tag_origin_contact()}</span>
         {#each event.contactTags as t (t.id)}
+          <Chip
+            ><span class="hc-tag-dot" style:background={t.color ?? 'var(--color-accent)'}
+            ></span>{t.name}</Chip
+          >
+        {/each}
+      </div>
+    {/if}
+    {#if event.tags.length}
+      <div class="hc-tags">
+        <span class="hc-tags-origin">{m.calendar_tag_origin_own()}</span>
+        {#each event.tags as t (t.id)}
           <Chip
             ><span class="hc-tag-dot" style:background={t.color ?? 'var(--color-accent)'}
             ></span>{t.name}</Chip
@@ -96,19 +111,10 @@
         <span class="hc-label">{m.sched_cal_product()}</span><span>{event.productName}</span>
       </div>
     {/if}
-    {#if event.productTags.length}
+    {#if showInheritedTags && event.productTags.length}
       <div class="hc-tags">
+        <span class="hc-tags-origin">{m.calendar_tag_origin_service()}</span>
         {#each event.productTags as t (t.id)}
-          <Chip
-            ><span class="hc-tag-dot" style:background={t.color ?? 'var(--color-accent)'}
-            ></span>{t.name}</Chip
-          >
-        {/each}
-      </div>
-    {/if}
-    {#if event.tags.length}
-      <div class="hc-tags">
-        {#each event.tags as t (t.id)}
           <Chip
             ><span class="hc-tag-dot" style:background={t.color ?? 'var(--color-accent)'}
             ></span>{t.name}</Chip
@@ -180,7 +186,12 @@
   .hc-tags {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-1);
+  }
+  .hc-tags-origin {
+    font-size: var(--font-size-telemetry);
+    color: var(--color-text-secondary);
   }
   .hc-notes {
     color: var(--color-text-secondary);

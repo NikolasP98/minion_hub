@@ -3,7 +3,7 @@
   import { invalidate, goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
-  import { PageHeader, Modal } from '$lib/components/ui';
+  import { PageHeader, Modal, Button, EmptyState } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
@@ -121,35 +121,55 @@
     {#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
-  <DataTable
-    class="flex-1 min-h-0"
-    {columns}
-    data={items}
-    getRowId={(it) => it.id}
-    searchPlaceholder={m.data_table_search()}
-    exportable
-    exportName="stock-items"
-    selectable
-    storageKey="stock-items"
-    canEdit={canAct('stock', 'edit')}
-    onSaveRow={saveRow}
-    addLabel={m.stock_new_item()}
-    onAdd={() => (createOpen = true)}
-    addDisabled={!canAct('stock', 'create')}
-    emptyMessage={m.stock_items_empty()}
-  >
-    {#snippet cell(it: Row, col: DataColumn<Row>)}
-      {#if col.key === 'code'}
-        <a href="/stock/items/{it.id}" class="hover:underline">{it.code}</a>
-      {:else if col.key === 'name'}
-        <span class="truncate block max-w-[16rem]">{it.name}</span>
-      {:else if col.key === 'lastRestockCost'}
-        <span class="tabular-nums"
-          >{it.lastRestockCost != null ? formatMoney(it.lastRestockCost) : '—'}</span
+  {#if items.length === 0}
+    <EmptyState
+      icon={Package}
+      title={m.stock_items_empty()}
+      description={m.stock_items_empty_hint()}
+    >
+      {#snippet action()}
+        <Button
+          variant="primary"
+          size="sm"
+          onclick={() => (createOpen = true)}
+          disabled={!canAct('stock', 'create')}
+          title={canAct('stock', 'create') ? undefined : m.no_permission()}
         >
-      {/if}
-    {/snippet}
-  </DataTable>
+          {m.stock_new_item()}
+        </Button>
+      {/snippet}
+    </EmptyState>
+  {:else}
+    <DataTable
+      class="flex-1 min-h-0"
+      {columns}
+      data={items}
+      getRowId={(it) => it.id}
+      searchPlaceholder={m.data_table_search()}
+      exportable
+      exportName="stock-items"
+      selectable
+      storageKey="stock-items"
+      canEdit={canAct('stock', 'edit')}
+      onSaveRow={saveRow}
+      addLabel={m.stock_new_item()}
+      onAdd={() => (createOpen = true)}
+      addDisabled={!canAct('stock', 'create')}
+      emptyMessage={m.stock_items_empty()}
+    >
+      {#snippet cell(it: Row, col: DataColumn<Row>)}
+        {#if col.key === 'code'}
+          <a href="/stock/items/{it.id}" class="hover:underline">{it.code}</a>
+        {:else if col.key === 'name'}
+          <span class="truncate block max-w-[16rem]">{it.name}</span>
+        {:else if col.key === 'lastRestockCost'}
+          <span class="tabular-nums"
+            >{it.lastRestockCost != null ? formatMoney(it.lastRestockCost) : '—'}</span
+          >
+        {/if}
+      {/snippet}
+    </DataTable>
+  {/if}
 </PageShell>
 
 <Modal bind:open={createOpen} title={m.stock_create_item_title()}>

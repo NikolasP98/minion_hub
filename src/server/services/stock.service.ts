@@ -749,21 +749,20 @@ async function submitEntryInternal(
         lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x),
       ),
     ];
-    // TODO(handoff): existence-only — doesn't exclude archived warehouses (PR-C,
-    // spec 2026-08-23-hub-stock-crm-ux-consolidation). The warehouses page and
-    // every listWarehouses() caller now hide archived rows by default, so the UI
-    // can't pick one, but a direct API call can still submit an entry against an
-    // archived warehouse id, silently reintroducing stock into something the
-    // archive guard required to be empty. Add an isNull(archivedAt) check here
-    // (or reject when the resolved warehouse row is archived) if that's worth
-    // closing — no proposal filed yet.
     const warehouses = warehouseIds.length
       ? await tx
-          .select({ id: stkWarehouses.id })
+          .select({ id: stkWarehouses.id, archivedAt: stkWarehouses.archivedAt })
           .from(stkWarehouses)
           .where(and(eq(stkWarehouses.orgId, orgId), inArray(stkWarehouses.id, warehouseIds)))
       : [];
     const warehouseIdSet = new Set(warehouses.map((w) => w.id));
+    // A direct API call could otherwise submit against an archived warehouse
+    // id even though the UI hides archived rows from every picker — silently
+    // reintroducing stock into something the archive guard required to be
+    // empty (PR-C, spec 2026-08-23-hub-stock-crm-ux-consolidation).
+    const archivedWarehouse = warehouses.find((w) => w.archivedAt != null);
+    if (archivedWarehouse)
+      throw new StockError(`warehouse ${archivedWarehouse.id} is archived`, 'warehouse_archived');
 
     const lineLikes = lines.map((l) => ({
       itemId: l.itemId,
