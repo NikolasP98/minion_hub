@@ -231,21 +231,6 @@ jobs:
   jobs-stock-finance-postgres:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    services:
-      postgres:
-        # pgvector 0.8.6 / PostgreSQL 18, immutable upstream multi-architecture manifest.
-        image: pgvector/pgvector:0.8.6-pg18-trixie@sha256:78bf48b801e792f99e3ac62b5036fd3876e9be48afda16c1e331af1c75ceb2ff
-        env:
-          POSTGRES_USER: minion_qc
-          POSTGRES_PASSWORD: disposable-ci-only
-          POSTGRES_DB: minion_qc_corpus
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U minion_qc -d minion_qc_corpus"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -259,11 +244,31 @@ jobs:
           bun install --frozen-lockfile
           bun run i18n:compile
           bunx svelte-kit sync
+      # The disposable guard verifies inet_server_addr(), not just the client URL.
+      # Host networking keeps PostgreSQL's observed endpoint on loopback as well.
+      - name: Start the pinned disposable PostgreSQL on loopback
+        env:
+          PGPASSWORD: disposable-ci-only
+        run: |
+          docker run --detach --rm --name minion-jobs-postgres --network host \
+            -e POSTGRES_USER=minion_qc -e POSTGRES_PASSWORD=disposable-ci-only \
+            -e POSTGRES_DB=minion_qc_corpus \
+            pgvector/pgvector:0.8.6-pg18-trixie@sha256:78bf48b801e792f99e3ac62b5036fd3876e9be48afda16c1e331af1c75ceb2ff \
+            postgres -c listen_addresses=127.0.0.1 -c port=55461
+          for attempt in {1..30}; do
+            if psql -h 127.0.0.1 -p 55461 -U minion_qc -d minion_qc_corpus \
+              -Atc 'select 1' >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs minion-jobs-postgres
+          exit 1
       - name: Mark only the disposable service database and prepare restricted roles
         env:
           PGPASSWORD: disposable-ci-only
         run: |
-          psql -h 127.0.0.1 -p 5432 -U minion_qc -d minion_qc_corpus -v ON_ERROR_STOP=1 <<'SQL'
+          psql -h 127.0.0.1 -p 55461 -U minion_qc -d minion_qc_corpus -v ON_ERROR_STOP=1 <<'SQL'
           COMMENT ON DATABASE minion_qc_corpus IS 'minion-360-disposable:v1';
           CREATE ROLE app_ledger NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           CREATE ROLE anon NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
@@ -274,7 +279,7 @@ jobs:
           mkdir -p test-results
           env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" \
             MINION_QC_DISPOSABLE=1 REQUIRE_JOBS_POSTGRES=1 \
-            MINION_QC_DATABASE_URL=postgres://minion_qc:disposable-ci-only@127.0.0.1:5432/minion_qc_corpus \
+            MINION_QC_DATABASE_URL=postgres://minion_qc:disposable-ci-only@127.0.0.1:55461/minion_qc_corpus \
             node node_modules/vitest/vitest.mjs run --config vitest.jobs-postgres.config.ts \
               --reporter=default --reporter=json --outputFile.json=test-results/jobs-postgres.json
       - name: Refuse missing, empty, failed or skipped native suites
@@ -287,6 +292,10 @@ jobs:
           name: jobs-stock-finance-postgres
           path: test-results/jobs-postgres.json
           if-no-files-found: error
+
+      - name: Stop only the owned disposable PostgreSQL
+        if: always()
+        run: docker rm --force --volumes minion-jobs-postgres
 
   check-and-build:
     runs-on: ubuntu-latest
