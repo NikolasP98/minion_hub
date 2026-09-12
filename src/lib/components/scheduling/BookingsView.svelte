@@ -219,6 +219,11 @@
               <div class="flex-1 min-w-[180px]">
                 <div class="font-medium">{eventTitle(b.eventTypeId)}</div>
                 <div class="t-caption">{fmt(b.startTime)} · {resourceName(b.resourceId)}</div>
+                {#if b.invoiceId && b.invoiceLabel}
+                  <a class="t-caption invoice-link" href="/finances/invoices/{b.invoiceId}">
+                    {m.sched_invoice_label()}: {b.invoiceLabel}
+                  </a>
+                {/if}
               </div>
               <div class="min-w-[120px]">
                 <div class="text-sm">{b.attendeeName ?? '—'}</div>
@@ -376,5 +381,13 @@
     background: var(--color-card);
     font-size: var(--font-size-body, 14px);
     width: 100%;
+  }
+  .invoice-link {
+    display: block;
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  .invoice-link:hover {
+    text-decoration: underline;
   }
 </style>

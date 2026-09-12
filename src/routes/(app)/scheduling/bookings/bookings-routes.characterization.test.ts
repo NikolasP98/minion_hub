@@ -64,6 +64,10 @@ const BOOKINGS = [
     notes: 'Color + cut',
   },
 ];
+// loadBookingsView (spec S6) maps every booking through a batched invoice-id
+// lookup and merges `invoiceLabel` — null here since none of the fixture rows
+// carry an invoiceId, and the lookup is skipped entirely in that case.
+const BOOKINGS_WITH_INVOICE_LABEL = BOOKINGS.map((b) => ({ ...b, invoiceLabel: null }));
 const RESOURCES = [
   { id: 'r1', name: 'Front chair', active: true },
   { id: 'r2', name: 'Retired chair', active: false },
@@ -138,7 +142,7 @@ describe('/scheduling/bookings load — pinned key set', () => {
     });
     // The primary data contract: bookings pass through unmodified, and
     // eventTypes/accrual data are mapped/forwarded as shipped today.
-    expect(result.bookings).toEqual(BOOKINGS);
+    expect(result.bookings).toEqual(BOOKINGS_WITH_INVOICE_LABEL);
     expect(result.eventTypes).toEqual(EVENT_TYPES.map((e) => ({ ...e, kindId: null })));
     expect(result.accrualSummaries).toEqual(ACCRUALS);
     // Unlike POS, scheduling does NOT pre-filter resources by `active`.
@@ -185,7 +189,7 @@ describe('/scheduling/bookings load — pinned key set', () => {
       limit: 500,
       maskAttendeePii: false,
     });
-    expect(result.bookings).toEqual(BOOKINGS);
+    expect(result.bookings).toEqual(BOOKINGS_WITH_INVOICE_LABEL);
     expect(result.contactId).toBe('c1');
     expect(result.contactName).toBe('Jane Doe');
   });
@@ -238,7 +242,9 @@ describe('/pos/appointments load — pinned key set', () => {
       maskAttendeePii: false,
     });
     // The primary data contract: bookings pass through unmodified, and
-    // eventTypes/accrual data are mapped/forwarded as shipped today.
+    // eventTypes/accrual data are mapped/forwarded as shipped today. Unlike
+    // scheduling, POS does NOT go through loadBookingsView (independent fork
+    // — spec S6's invoice-label batching never touches this route).
     expect(result.bookings).toEqual(BOOKINGS);
     expect(result.eventTypes).toEqual(EVENT_TYPES);
     expect(result.accrualSummaries).toEqual(ACCRUALS);

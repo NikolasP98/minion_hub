@@ -1,4 +1,4 @@
-import { and, eq, ne, inArray, gte, lte, asc, desc, sql } from 'drizzle-orm';
+import { and, eq, ne, inArray, gte, lte, asc, desc, sql, isNotNull } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { maskPii } from '$lib/pii';
 import type { CoreTx } from '$server/db/with-org-core';
@@ -14,7 +14,8 @@ import {
 import { crmContacts, crmContactIdentities, tagLinks } from '$server/db/pg-crm-schema';
 import type { SchedBooking } from '$server/db/pg-scheduling-schema';
 import { schedReminders } from '$server/db/pg-reminders-schema';
-import { posTicketLines } from '$server/db/pg-pos-schema';
+import { posTickets, posTicketLines } from '$server/db/pg-pos-schema';
+import { finInvoices } from '$server/db/pg-finance-schema';
 import { salesOrders } from '$server/db/pg-sales-schema';
 import { stkAccruals } from '$server/db/pg-schema/stock';
 import { computeSlots, intervalsOverlap } from '$server/scheduling/slots';
@@ -659,6 +660,8 @@ export interface UpdateBookingInput {
   attendeeName?: string | null;
   attendeeEmail?: string | null;
   attendeePhone?: string | null;
+  /** Soft bridge to fin_invoices (spec S6); null clears it. Never mandatory. */
+  invoiceId?: string | null;
   /** Shallow-merged into the row's existing metadata object. */
   metadata?: Record<string, unknown>;
 }
@@ -721,6 +724,16 @@ export async function updateBooking(
       if (!hit) throw new Error('invalid crmContactId');
     }
     if (patch.kindId) await assertOrgEventKind(tx, ctx.tenantId, patch.kindId);
+    // A client-supplied invoiceId must belong to this org — soft ref, no FK,
+    // so nothing else enforces it (spec S6).
+    if (patch.invoiceId) {
+      const [hit] = await tx
+        .select({ id: finInvoices.id })
+        .from(finInvoices)
+        .where(and(eq(finInvoices.id, patch.invoiceId), eq(finInvoices.orgId, ctx.tenantId)))
+        .limit(1);
+      if (!hit) throw new Error('invalid invoiceId');
+    }
 
     const set: Record<string, unknown> = { updatedAt: new Date() };
     const changes: FieldChange[] = [];
@@ -744,6 +757,7 @@ export async function updateBooking(
       setField('attendeeEmail', patch.attendeeEmail, existing.attendeeEmail);
     if (patch.attendeePhone !== undefined)
       setField('attendeePhone', patch.attendeePhone, existing.attendeePhone);
+    if (patch.invoiceId !== undefined) setField('invoiceId', patch.invoiceId, existing.invoiceId);
     if (patch.metadata !== undefined) {
       set.metadata = sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) || ${JSON.stringify(patch.metadata)}::jsonb`;
       changes.push({ field: 'metadata', label: 'metadata', old: null, new: patch.metadata });
@@ -866,4 +880,73 @@ export async function deleteBooking(ctx: CoreCtx, id: string): Promise<void> {
   } catch (e) {
     console.error('[scheduling] releaseAccruals failed (delete stands)', e);
   }
+}
+
+export interface InvoiceBookingRow {
+  id: string;
+  title: string | null;
+  startTime: Date;
+  endTime: Date;
+  status: string;
+  resourceName: string;
+  /** 'explicit' = booking.invoice_id points here; 'ticket' = reached only via
+   *  a POS ticket line's booking, transitively (spec S6). */
+  via: 'explicit' | 'ticket';
+}
+
+/**
+ * Bookings linked to one invoice (spec S6, invoice detail page) — the
+ * explicit `sched_bookings.invoice_id` route unioned with the transitive
+ * route through a reconciled POS ticket (`pos_tickets.invoice_provider_ref`
+ * matches this invoice's `provider_ref`) whose lines carry a booking. An
+ * explicit link always wins the `via` label when a booking has both.
+ */
+export async function listBookingsForInvoice(
+  ctx: CoreCtx,
+  invoiceId: string,
+): Promise<InvoiceBookingRow[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const [invoice] = await tx
+      .select({ providerRef: finInvoices.providerRef })
+      .from(finInvoices)
+      .where(and(eq(finInvoices.id, invoiceId), eq(finInvoices.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!invoice) return [];
+
+    const cols = {
+      id: schedBookings.id,
+      title: schedBookings.title,
+      startTime: schedBookings.startTime,
+      endTime: schedBookings.endTime,
+      status: schedBookings.status,
+      resourceName: schedResources.name,
+    };
+
+    const explicit = await tx
+      .select(cols)
+      .from(schedBookings)
+      .innerJoin(schedResources, eq(schedResources.id, schedBookings.resourceId))
+      .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.invoiceId, invoiceId)));
+
+    const ticketDerived = invoice.providerRef
+      ? await tx
+          .select(cols)
+          .from(posTicketLines)
+          .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
+          .innerJoin(schedBookings, eq(schedBookings.id, posTicketLines.bookingId))
+          .innerJoin(schedResources, eq(schedResources.id, schedBookings.resourceId))
+          .where(
+            and(
+              eq(posTicketLines.orgId, ctx.tenantId),
+              eq(posTickets.invoiceProviderRef, invoice.providerRef),
+              isNotNull(posTicketLines.bookingId),
+            ),
+          )
+      : [];
+
+    const byId = new Map<string, InvoiceBookingRow>();
+    for (const r of explicit) byId.set(r.id, { ...r, via: 'explicit' });
+    for (const r of ticketDerived) if (!byId.has(r.id)) byId.set(r.id, { ...r, via: 'ticket' });
+    return [...byId.values()].sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
+  });
 }

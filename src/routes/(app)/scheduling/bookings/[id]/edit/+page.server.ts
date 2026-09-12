@@ -5,6 +5,7 @@ import { getBooking } from '$server/services/scheduling-bookings.service';
 import { listEventTypes, listEventKinds, listResources } from '$server/services/scheduling.service';
 import { listTags } from '$server/services/crm-contacts.service';
 import { getTagLinks } from '$server/services/tag-links.service';
+import { getInvoiceLabelsByIds } from '$server/services/finance.service';
 
 /** `/scheduling/bookings/[id]/edit` — full CRUD edit for one booking (spec S5). */
 export const load: PageServerLoad = async ({ locals, params }) => {
@@ -13,12 +14,13 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const booking = await getBooking(ctx, params.id);
   if (!booking) throw error(404, 'Booking not found');
 
-  const [eventTypes, kinds, resources, tags, tagsById] = await Promise.all([
+  const [eventTypes, kinds, resources, tags, tagsById, invoiceLabels] = await Promise.all([
     listEventTypes(ctx),
     listEventKinds(ctx),
     listResources(ctx),
     listTags(ctx),
     getTagLinks(ctx, 'booking', [booking.id]),
+    booking.invoiceId ? getInvoiceLabelsByIds(ctx, [booking.invoiceId]) : Promise.resolve(null),
   ]);
 
   return {
@@ -36,6 +38,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       attendeeName: booking.attendeeName,
       attendeeEmail: booking.attendeeEmail,
       attendeePhone: booking.attendeePhone,
+      invoiceId: booking.invoiceId,
+      invoiceLabel: booking.invoiceId ? (invoiceLabels?.get(booking.invoiceId) ?? null) : null,
     },
     eventTypes: eventTypes.map((e) => ({
       id: e.id,

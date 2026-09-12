@@ -22,6 +22,9 @@ export type BookingsViewBooking = {
   resourceId: string;
   attendeeName: string | null;
   attendeePhone: string | null;
+  /** Soft-linked invoice (spec S6) + its resolved display label; both null when unlinked. */
+  invoiceId?: string | null;
+  invoiceLabel?: string | null;
 };
 
 export type BookingsViewResource = { id: string; name: string };

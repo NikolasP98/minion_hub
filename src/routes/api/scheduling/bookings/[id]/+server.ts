@@ -52,6 +52,7 @@ const patchSchema = z
       z.string().max(320).email().nullable().optional(),
     ),
     attendeePhone: trimmedNullable(32),
+    invoiceId: z.string().uuid().nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .refine((b) => (b.start === undefined) === (b.end === undefined), {
@@ -74,6 +75,7 @@ const GENERAL_FIELDS = [
   'attendeeName',
   'attendeeEmail',
   'attendeePhone',
+  'invoiceId',
   'metadata',
 ] as const;
 
@@ -112,6 +114,7 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
         attendeeName: b.attendeeName,
         attendeeEmail: b.attendeeEmail,
         attendeePhone: b.attendeePhone,
+        invoiceId: b.invoiceId,
         metadata: b.metadata,
       });
     } else if (b.kindId !== undefined) {

@@ -111,6 +111,11 @@
         <span class="hc-label">{m.sched_cal_product()}</span><span>{event.productName}</span>
       </div>
     {/if}
+    {#if event.invoiceLabel}
+      <div class="hc-row">
+        <span class="hc-label">{m.sched_invoice_label()}</span><span>{event.invoiceLabel}</span>
+      </div>
+    {/if}
     {#if showInheritedTags && event.productTags.length}
       <div class="hc-tags">
         <span class="hc-tags-origin">{m.calendar_tag_origin_service()}</span>
