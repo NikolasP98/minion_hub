@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, lt, notExists } from 'drizzle-orm';
 import { files } from '@minion-stack/db/pg';
 import { invalidateTags, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
@@ -104,9 +104,8 @@ export interface UploadIntent {
 
 /** Validate + reserve a `files` row, then hand back a presigned PUT url. The
  *  object may never actually land (abandoned upload) — `finalizeUpload`
- *  cleans up the row when the storage HEAD comes back empty.
- *  TODO(handoff): no sweeper for `files` rows whose finalize never runs
- *  (browser closed mid-upload); needs a cron to reap stale unlinked rows. */
+ *  cleans up the row when the storage HEAD comes back empty; `sweepAbandonedUploads`
+ *  below reaps rows where the browser closed before `finalizeUpload` ever ran. */
 export async function createUploadIntent(
   ctx: CoreCtx,
   input: CreateUploadIntentInput,
@@ -340,4 +339,66 @@ export async function getAttachmentDownloadUrl(ctx: CoreCtx, fileId: string) {
   const file = await getFileUrl(ctx, fileId);
   if (!file) throw new AttachmentError('not_found', 'file not found');
   return { url: file.url };
+}
+
+export interface SweepAbandonedUploadsOptions {
+  /** Age past which an unlinked `files` row is considered abandoned. */
+  olderThanHours?: number;
+  /** Rows reaped per call — the tick loop drives this to drain the backlog. */
+  limit?: number;
+}
+
+export interface SweepAbandonedUploadsResult {
+  scanned: number;
+  deleted: number;
+  storageObjectsDeleted: number;
+}
+
+/**
+ * Reap `files` rows created by `createUploadIntent` whose `finalizeUpload`
+ * never ran (browser closed mid-upload) — unlinked (no `attachment_links`
+ * row), older than the cutoff, `category = 'attachment'`. The storage object
+ * may or may not have landed; delete it first when present, then the row.
+ */
+export async function sweepAbandonedUploads(
+  ctx: CoreCtx,
+  opts: SweepAbandonedUploadsOptions = {},
+): Promise<SweepAbandonedUploadsResult> {
+  const olderThanHours = opts.olderThanHours ?? 24;
+  const limit = opts.limit ?? 200;
+  const cutoff = new Date(Date.now() - olderThanHours * 60 * 60 * 1000);
+
+  const candidates = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: files.id, b2FileKey: files.b2FileKey })
+      .from(files)
+      .where(
+        and(
+          eq(files.tenantId, ctx.tenantId),
+          eq(files.category, 'attachment'),
+          lt(files.createdAt, cutoff),
+          notExists(
+            tx
+              .select({ fileId: attachmentLinks.fileId })
+              .from(attachmentLinks)
+              .where(eq(attachmentLinks.fileId, files.id)),
+          ),
+        ),
+      )
+      .limit(limit),
+  );
+
+  let deleted = 0;
+  let storageObjectsDeleted = 0;
+  for (const row of candidates) {
+    const head = await getStorage().head(row.b2FileKey);
+    if (head) {
+      await getStorage().delete(row.b2FileKey);
+      storageObjectsDeleted++;
+    }
+    await withOrgCore(ctx, (tx) => tx.delete(files).where(eq(files.id, row.id)));
+    deleted++;
+  }
+  if (deleted > 0) await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
+  return { scanned: candidates.length, deleted, storageObjectsDeleted };
 }

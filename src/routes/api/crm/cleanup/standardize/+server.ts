@@ -3,21 +3,16 @@ import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
+import { ownerFilter } from '$server/services/rbac.service';
 import { scanStandardization, applyStandardization } from '$server/services/crm-cleanup.service';
-
-// TODO(handoff): no ownerFilter on this scan/apply pair, unlike the sibling
-// GET /api/crm/cleanup/duplicates. scanStandardization/applyStandardization
-// take no ownerId and operate org-wide by contactId — an owner-scoped role
-// currently sees (GET) and can rename (POST) contacts they don't own. Fixing
-// this needs ownerId support added to both service functions (a service
-// change out of this slice's scope; spec 2026-09-12-erp-core-modules-
-// attachments, S11 B3 audit).
 
 /** GET /api/crm/cleanup/standardize — deterministic name-fix proposals. */
 export const GET: RequestHandler = async ({ locals }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  return json({ fixes: await scanStandardization(ctx) });
+  // Same record-level scope as the sibling GET /api/crm/cleanup/duplicates.
+  const ownerId = await ownerFilter(locals, 'crm');
+  return json({ fixes: await scanStandardization(ctx, ownerId) });
 };
 
 const postSchema = z.object({
@@ -33,15 +28,20 @@ const postSchema = z.object({
     .default([]),
 });
 
-/** POST /api/crm/cleanup/standardize { fixes: [{contactId, name, before?}] } — apply. */
+/** POST /api/crm/cleanup/standardize { fixes: [{contactId, name, before?}] } — apply.
+ *  An owner-scoped caller's fixes for a contact they don't own are silently
+ *  dropped by the scoped predicate rather than 403'd per id — `skipped`
+ *  reports how many. */
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
+  const ownerId = await ownerFilter(locals, 'crm');
   const body = await parseBody(request, postSchema);
   const valid = body.fixes.map((f) => ({
     contactId: f.contactId,
     name: f.name,
     before: f.before ?? null,
   }));
-  return json({ updated: await applyStandardization(ctx, valid) });
+  const result = await applyStandardization(ctx, valid, ownerId);
+  return json(result);
 };

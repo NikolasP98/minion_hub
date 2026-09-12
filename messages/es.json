@@ -293,6 +293,8 @@
   "assist_guide_waiting": "Esperando a que aparezca este elemento: haz el paso de arriba para continuar.",
   "automation_analyze_desc": "Ejecuta inteligencia de conversaciones sobre el historial nuevo.",
   "automation_analyze_title": "Analisis de conversaciones",
+  "automation_attachment_sweep_desc": "Elimina filas de archivos cuya subida nunca se finalizo (abandonada a medias).",
+  "automation_attachment_sweep_title": "Limpieza de subidas abandonadas",
   "automation_cadence_daily_3am": "Diario, 3am",
   "automation_cadence_hourly": "Cada hora",
   "automation_cadence_minute": "Cada minuto",

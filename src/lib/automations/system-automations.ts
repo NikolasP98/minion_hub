@@ -82,6 +82,15 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
     cadence: 'hourly',
     wiring: 'unscheduled',
   },
+  // Abandoned-upload sweeper: reaps `files` rows whose `finalizeUpload` never
+  // ran. Route + hooks.server.ts allowlist entry exist (2026-09-12), no
+  // crontab line yet — add one, then flip this to `netcup`.
+  {
+    path: '/api/attachments/sweep/tick',
+    key: 'attachment_sweep',
+    cadence: 'hourly',
+    wiring: 'unscheduled',
+  },
 ];
 
 /** Scheduled first, unscheduled last — the gaps are what need attention. */

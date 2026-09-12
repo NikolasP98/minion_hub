@@ -40,7 +40,10 @@ const DEFAULT_ANALYZE_BATCH = 120; // LLM cost cap (spec: "Cap 120/run").
 const CONCURRENCY = 10;
 
 const ANALYSIS_MODEL =
-  env.CRM_SENTIMENT_MODEL || env.CRM_FUNNEL_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
+  env.CRM_SENTIMENT_MODEL ||
+  env.CRM_FUNNEL_MODEL ||
+  env.NOTES_POLISH_MODEL ||
+  'google/gemini-2.5-flash';
 
 const analysisResultSchema = z.object({
   primary_intent: z.string().default(''),
@@ -128,7 +131,9 @@ async function mapWithConcurrency<T, R>(
   limit: number,
   fn: (item: T) => Promise<R>,
 ): Promise<Array<{ ok: true; value: R } | { ok: false; error: unknown }>> {
-  const results: Array<{ ok: true; value: R } | { ok: false; error: unknown }> = new Array(items.length);
+  const results: Array<{ ok: true; value: R } | { ok: false; error: unknown }> = new Array(
+    items.length,
+  );
   let next = 0;
   async function worker() {
     for (;;) {
@@ -181,20 +186,30 @@ export async function analyzeConversationsTick(
     const { synced, total } = await syncConversationIndex(tx, { full, batch, offset });
     const needsAnalyze = synced.filter((s) => s.dirty || s.analyzedAt === null);
     if (needsAnalyze.length === 0) {
-      return { locked: true as const, synced, total, targets: [] as { convo: SyncedConvo; text: string }[] };
+      return {
+        locked: true as const,
+        synced,
+        total,
+        targets: [] as { convo: SyncedConvo; text: string }[],
+      };
     }
 
     const rowsByConvo = await loadRowsForConvos(tx, needsAnalyze);
     const targets = needsAnalyze
-      .map((s) => ({ convo: s, text: chunkConversation(rowsByConvo.get(convoKeyOf(s)) ?? [])[0] ?? '' }))
+      .map((s) => ({
+        convo: s,
+        text: chunkConversation(rowsByConvo.get(convoKeyOf(s)) ?? [])[0] ?? '',
+      }))
       .filter((t) => t.text.length > 0);
     return { locked: true as const, synced, total, targets };
   });
 
-  if (!prepared.locked) return { skipped: 'locked', processed: 0, dirty: 0, analyzed: 0, failed: 0, remaining: 0 };
+  if (!prepared.locked)
+    return { skipped: 'locked', processed: 0, dirty: 0, analyzed: 0, failed: 0, remaining: 0 };
   const { synced, total, targets } = prepared;
   const remaining = Math.max(0, total - offset - synced.length);
-  if (targets.length === 0) return { processed: synced.length, dirty: 0, analyzed: 0, failed: 0, remaining };
+  if (targets.length === 0)
+    return { processed: synced.length, dirty: 0, analyzed: 0, failed: 0, remaining };
 
   // Phase 2 (out-of-tx): the actual LLM calls — network-bound, concurrency-
   // limited, no DB handle involved so a slow model call can't hold a txn open.
@@ -250,7 +265,13 @@ export async function analyzeConversationsTick(
     });
   }
 
-  return { processed: synced.length, dirty: targets.length, analyzed: successes.length, failed, remaining };
+  return {
+    processed: synced.length,
+    dirty: targets.length,
+    analyzed: successes.length,
+    failed,
+    remaining,
+  };
 }
 
 // ── Themes aggregate (WP-B calls this — signature is load-bearing) ─────────
@@ -266,19 +287,29 @@ export interface ConversationThemes {
  * count), intent distribution, and the over-explaining rate. This — not
  * semantic search — is what answers "are we giving too much info vs. what
  * customers ask for."
+ *
+ * `ownerId` (record-level/if-owner scope) joins to `crm_contacts` via the
+ * table's own `contact_id` column — a row with no `contact_id` (never
+ * resolved to a contact) is excluded rather than guessed at.
  */
 export async function conversationThemes(
   ctx: CoreCtx,
-  opts: { channel?: string; since?: string },
+  opts: { channel?: string; since?: string; ownerId?: string },
 ): Promise<ConversationThemes> {
   const whereChannel = opts.channel ? sql`and channel = ${opts.channel}` : sql``;
   const whereSince = opts.since ? sql`and last_at >= ${opts.since}::timestamptz` : sql``;
+  const ownerJoin = opts.ownerId
+    ? sql`join crm_contacts c on c.id = a.contact_id
+        and c.org_id = current_setting('app.current_org_id', true) and c.owner_id = ${opts.ownerId}`
+    : sql``;
 
   return withOrgCore(ctx, async (tx) => {
     const painRows = (await tx.execute(sql`
       select lower(trim(pp)) as point, count(*)::int as count
-      from crm_conversation_analysis, jsonb_array_elements_text(pain_points) as pp
-      where org_id = current_setting('app.current_org_id', true) ${whereChannel} ${whereSince}
+      from crm_conversation_analysis a
+      ${ownerJoin}
+      , jsonb_array_elements_text(a.pain_points) as pp
+      where a.org_id = current_setting('app.current_org_id', true) ${whereChannel} ${whereSince}
         and trim(pp) <> ''
       group by 1
       order by 2 desc
@@ -286,9 +317,11 @@ export async function conversationThemes(
     `)) as unknown as Array<{ point: string; count: number }>;
 
     const intentRows = (await tx.execute(sql`
-      select primary_intent as intent, count(*)::int as count
-      from crm_conversation_analysis
-      where org_id = current_setting('app.current_org_id', true) and primary_intent is not null and trim(primary_intent) <> ''
+      select a.primary_intent as intent, count(*)::int as count
+      from crm_conversation_analysis a
+      ${ownerJoin}
+      where a.org_id = current_setting('app.current_org_id', true)
+        and a.primary_intent is not null and trim(a.primary_intent) <> ''
         ${whereChannel} ${whereSince}
       group by 1
       order by 2 desc
@@ -296,9 +329,10 @@ export async function conversationThemes(
     `)) as unknown as Array<{ intent: string; count: number }>;
 
     const [overRow] = (await tx.execute(sql`
-      select count(*) filter (where over_answered)::int as over_count, count(*)::int as total
-      from crm_conversation_analysis
-      where org_id = current_setting('app.current_org_id', true) ${whereChannel} ${whereSince}
+      select count(*) filter (where a.over_answered)::int as over_count, count(*)::int as total
+      from crm_conversation_analysis a
+      ${ownerJoin}
+      where a.org_id = current_setting('app.current_org_id', true) ${whereChannel} ${whereSince}
     `)) as unknown as Array<{ over_count: number; total: number }>;
 
     const total = Number(overRow?.total ?? 0);
@@ -313,13 +347,20 @@ export async function conversationThemes(
 
 /** Conversations indexed (`crm_conversation_index`) but not yet analyzed — the
  *  "N conversations pending" count for the Insights empty-state before the
- *  paid `analyzeConversationsTick` pass has run. */
-export function pendingAnalysisCount(ctx: CoreCtx): Promise<number> {
+ *  paid `analyzeConversationsTick` pass has run. `ownerId` scopes to
+ *  `contact_id`-linked conversations owned by that profile (same posture as
+ *  `conversationThemes`). */
+export function pendingAnalysisCount(ctx: CoreCtx, ownerId?: string): Promise<number> {
+  const ownerJoin = ownerId
+    ? sql`join crm_contacts c on c.id = i.contact_id
+        and c.org_id = current_setting('app.current_org_id', true) and c.owner_id = ${ownerId}`
+    : sql``;
   return withOrgCore(ctx, async (tx) => {
     const [row] = (await tx.execute(sql`
       select count(*)::int as n
-      from crm_conversation_index
-      where org_id = current_setting('app.current_org_id', true) and analyzed_at is null
+      from crm_conversation_index i
+      ${ownerJoin}
+      where i.org_id = current_setting('app.current_org_id', true) and i.analyzed_at is null
     `)) as unknown as Array<{ n: number }>;
     return Number(row?.n ?? 0);
   });

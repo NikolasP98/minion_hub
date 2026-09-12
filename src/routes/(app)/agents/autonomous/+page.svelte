@@ -75,17 +75,27 @@
   const copy: Record<string, { title: () => string; desc: () => string }> = {
     reminders: { title: m.automation_reminders_title, desc: m.automation_reminders_desc },
     finance_sync: { title: m.automation_finance_sync_title, desc: m.automation_finance_sync_desc },
-    notifications: { title: m.automation_notifications_title, desc: m.automation_notifications_desc },
+    notifications: {
+      title: m.automation_notifications_title,
+      desc: m.automation_notifications_desc,
+    },
     jobs: { title: m.automation_jobs_title, desc: m.automation_jobs_desc },
     org_config: { title: m.automation_org_config_title, desc: m.automation_org_config_desc },
     retention: { title: m.automation_retention_title, desc: m.automation_retention_desc },
     memberships: { title: m.automation_memberships_title, desc: m.automation_memberships_desc },
-    finance_daily: { title: m.automation_finance_daily_title, desc: m.automation_finance_daily_desc },
+    finance_daily: {
+      title: m.automation_finance_daily_title,
+      desc: m.automation_finance_daily_desc,
+    },
     dni: { title: m.automation_dni_title, desc: m.automation_dni_desc },
     meta_sync: { title: m.automation_meta_sync_title, desc: m.automation_meta_sync_desc },
     email_ledger: { title: m.automation_email_ledger_title, desc: m.automation_email_ledger_desc },
     vectorize: { title: m.automation_vectorize_title, desc: m.automation_vectorize_desc },
     analyze: { title: m.automation_analyze_title, desc: m.automation_analyze_desc },
+    attachment_sweep: {
+      title: m.automation_attachment_sweep_title,
+      desc: m.automation_attachment_sweep_desc,
+    },
   };
 
   const pageState = $derived(
@@ -145,7 +155,9 @@
              to a chip reads as two unrelated things. Hues match the CARD ramp:
              scheduled=success, unscheduled=warning, same meaning same colour. -->
           <Badge variant="semantic" value="success" size="sm"
-            >{m.automation_scheduled_count({ count: systemAutomations.length - unscheduled })}</Badge
+            >{m.automation_scheduled_count({
+              count: systemAutomations.length - unscheduled,
+            })}</Badge
           >
           {#if unscheduled > 0}
             <Badge variant="semantic" value="warning" size="sm"

@@ -17,6 +17,7 @@ const CRON_AUTH_PATHS = new Set([
   '/api/crm/insights/word-frequency/refresh',
   '/api/crm/insights/word-frequency/refresh/full',
   '/api/reliability/retention/tick',
+  '/api/attachments/sweep/tick',
 ]);
 
 /** Routes authenticated by their own CRON_SECRET bearer rather than a user session. */
