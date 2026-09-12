@@ -7,11 +7,12 @@
    * selected id list — the caller PUTs `/api/tags/[kind]/[id]` after its own
    * save.
    */
-  import { X, Plus } from 'lucide-svelte';
+  import { Plus } from 'lucide-svelte';
   import { Select, Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
+  import TagChip from './TagChip.svelte';
 
   let {
     allTags,
@@ -76,14 +77,7 @@
 
 <div class="tags-field">
   {#each selected as t (t.id)}
-    <span class="tag" style:--c={t.color ?? 'var(--color-accent)'}>
-      {t.name}
-      {#if !disabled}
-        <Button variant="ghost" size="sm" onclick={() => remove(t.id)} aria-label={m.tags_remove()}
-          ><X size={iconSizes.xs} /></Button
-        >
-      {/if}
-    </span>
+    <TagChip name={t.name} color={t.color} onremove={disabled ? undefined : () => remove(t.id)} />
   {/each}
   {#if !disabled}
     {#if available.length > 0}
@@ -120,25 +114,6 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     align-items: center;
-  }
-  .tag {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    padding: var(--space-0-5, 2px) var(--space-2);
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-caption, 12px);
-    color: var(--c);
-    background: color-mix(in srgb, var(--c) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
-  }
-  .tags-field :global(.tag button) {
-    display: grid;
-    place-items: center;
-    opacity: 0.7;
-  }
-  .tags-field :global(.tag button:hover) {
-    opacity: 1;
   }
   .tags-field :global(.add-select) {
     height: 1.6rem;

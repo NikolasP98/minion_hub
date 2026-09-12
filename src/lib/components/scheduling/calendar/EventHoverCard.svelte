@@ -5,7 +5,7 @@
   // library renders chips as raw HTML via `eventContent`, so there's no Svelte
   // element per chip to attach a Tooltip trigger to — one positioned card is
   // simpler and cheaper than mounting N tooltip instances.)
-  import { Chip } from '$lib/components/ui';
+  import TagChip from '$lib/components/tags/TagChip.svelte';
   import * as m from '$lib/paraglide/messages';
   import { hhmm } from './calendar.svelte';
   import type { CalEvent, CalKind } from './types';
@@ -83,23 +83,15 @@
     {/if}
     {#if showInheritedTags && event.contactTags.length}
       <div class="hc-tags">
-        <span class="hc-tags-origin">{m.calendar_tag_origin_contact()}</span>
         {#each event.contactTags as t (t.id)}
-          <Chip
-            ><span class="hc-tag-dot" style:background={t.color ?? 'var(--color-accent)'}
-            ></span>{t.name}</Chip
-          >
+          <TagChip size="sm" name={t.name} color={t.color} origin="contact" />
         {/each}
       </div>
     {/if}
     {#if event.tags.length}
       <div class="hc-tags">
-        <span class="hc-tags-origin">{m.calendar_tag_origin_own()}</span>
         {#each event.tags as t (t.id)}
-          <Chip
-            ><span class="hc-tag-dot" style:background={t.color ?? 'var(--color-accent)'}
-            ></span>{t.name}</Chip
-          >
+          <TagChip size="sm" name={t.name} color={t.color} origin="own" />
         {/each}
       </div>
     {/if}
@@ -118,12 +110,8 @@
     {/if}
     {#if showInheritedTags && event.productTags.length}
       <div class="hc-tags">
-        <span class="hc-tags-origin">{m.calendar_tag_origin_service()}</span>
         {#each event.productTags as t (t.id)}
-          <Chip
-            ><span class="hc-tag-dot" style:background={t.color ?? 'var(--color-accent)'}
-            ></span>{t.name}</Chip
-          >
+          <TagChip size="sm" name={t.name} color={t.color} origin="product" />
         {/each}
       </div>
     {/if}
@@ -182,21 +170,11 @@
     border-radius: var(--radius-full);
     flex-shrink: 0;
   }
-  .hc-tag-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: var(--radius-full);
-    display: inline-block;
-  }
   .hc-tags {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-1);
-  }
-  .hc-tags-origin {
-    font-size: var(--font-size-telemetry);
-    color: var(--color-text-secondary);
   }
   .hc-notes {
     color: var(--color-text-secondary);

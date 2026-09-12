@@ -34,6 +34,7 @@
   import Connections from '$lib/components/crm/Connections.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
+  import TagChip from '$lib/components/tags/TagChip.svelte';
   import {
     contactLabel,
     isRecencyNever,
@@ -757,24 +758,12 @@
       </label>
       <div class="tags">
         {#each contactTags as t (t.id)}
-          <span class="tag" style:--c={t.color ?? 'var(--color-accent)'}>
-            {t.name}
-            <Button
-              variant="ghost"
-              size="sm"
-              onclick={() => removeTag(t.id)}
-              aria-label={m.crm_delete()}><X size={11} /></Button
-            >
-          </span>
+          <TagChip name={t.name} color={t.color} onremove={() => removeTag(t.id)} />
         {/each}
         {#each autoTags as t (t.id)}
-          <span
-            class="tag auto"
-            style:--c={t.color ?? 'var(--color-accent)'}
-            title={m.crm_auto_badge()}
-          >
-            <Sparkles size={10} />{t.name}
-          </span>
+          <TagChip name={t.name} color={t.color} dashed title={m.crm_auto_badge()}>
+            {#snippet children()}<Sparkles size={10} />{/snippet}
+          </TagChip>
         {/each}
         {#if availableTags.length > 0}
           <Select class="addtag" onchange={(value) => addTag(String(value))}>
@@ -1250,29 +1239,6 @@
     flex-wrap: wrap;
     gap: var(--space-2, 8px);
     align-items: center;
-  }
-  .tag {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1, 4px);
-    padding: var(--space-0-5, 2px) var(--space-2, 8px);
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-caption, 12px);
-    color: var(--c);
-    background: color-mix(in srgb, var(--c) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
-  }
-  :global(.crm-contact-surface .tag button) {
-    display: grid;
-    place-items: center;
-    opacity: 0.7;
-  }
-  :global(.crm-contact-surface .tag button:hover) {
-    opacity: 1;
-  }
-  .tag.auto {
-    border-style: dashed;
-    opacity: 0.92;
   }
   :global(.crm-contact-surface .addtag) {
     height: 1.6rem;

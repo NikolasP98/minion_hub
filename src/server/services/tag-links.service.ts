@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { tagLinks, crmTags, crmContactTags } from '$server/db/pg-crm-schema';
@@ -41,7 +41,8 @@ export async function getTagLinks(
           eq(tagLinks.entityKind, kind),
           inArray(tagLinks.entityId, ids),
         ),
-      ),
+      )
+      .orderBy(asc(crmTags.position), asc(crmTags.name)),
   );
   for (const r of rows) {
     const list = out.get(r.entityId) ?? [];
@@ -121,7 +122,8 @@ export async function getContactTagsBulk(
       })
       .from(crmContactTags)
       .innerJoin(crmTags, eq(crmTags.id, crmContactTags.tagId))
-      .where(inArray(crmContactTags.contactId, contactIds)),
+      .where(inArray(crmContactTags.contactId, contactIds))
+      .orderBy(asc(crmTags.position), asc(crmTags.name)),
   );
   for (const r of rows) {
     const list = out.get(r.contactId) ?? [];
