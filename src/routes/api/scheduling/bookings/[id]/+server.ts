@@ -6,12 +6,8 @@ import { requireAuth } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import {
-  setBookingStatus,
-  setBookingKind,
-  rescheduleBooking,
-  updateBooking,
+  patchBooking,
   deleteBooking,
-  getBooking,
   BookingConflictError,
   BookingReferencedError,
 } from '$server/services/scheduling-bookings.service';
@@ -62,74 +58,27 @@ const patchSchema = z
     message: 'at least one field is required',
   });
 
-// Fields that only `updateBooking` (the general edit, spec S5) knows about —
-// their presence is what routes a PATCH there instead of the legacy
-// single-purpose `setBookingKind` call.
-const GENERAL_FIELDS = [
-  'title',
-  'notes',
-  'crmContactId',
-  'partyId',
-  'eventTypeId',
-  'productId',
-  'attendeeName',
-  'attendeeEmail',
-  'attendeePhone',
-  'invoiceId',
-  'metadata',
-] as const;
-
 export const PATCH: RequestHandler = async ({ locals, request, params }) => {
   requireAuth(locals); // capability gate is central: /api/scheduling → scheduling:edit
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
   const b = await parseBody(request, patchSchema);
-  // resourceId alone (no time change) is a staff reassignment — routed through
-  // updateBooking, which delegates its conflict check to rescheduleBooking.
-  // resourceId alongside start/end stays on the existing drag/resize path.
-  const hasReschedule = b.start !== undefined && b.end !== undefined;
-  const hasGeneral =
-    GENERAL_FIELDS.some((f) => b[f] !== undefined) ||
-    (!hasReschedule && b.resourceId !== undefined);
+  let booking: Awaited<ReturnType<typeof patchBooking>>;
   try {
-    if (hasReschedule) {
-      await rescheduleBooking(ctx, params.id!, {
-        start: b.start!,
-        end: b.end!,
-        resourceId: b.resourceId,
-      });
-    }
-    if (b.status !== undefined) await setBookingStatus(ctx, params.id!, b.status);
-    if (hasGeneral) {
-      await updateBooking(ctx, params.id!, {
-        title: b.title,
-        notes: b.notes,
-        crmContactId: b.crmContactId,
-        partyId: b.partyId,
-        eventTypeId: b.eventTypeId,
-        productId: b.productId,
-        resourceId: hasReschedule ? undefined : b.resourceId,
-        kindId: b.kindId,
-        attendeeName: b.attendeeName,
-        attendeeEmail: b.attendeeEmail,
-        attendeePhone: b.attendeePhone,
-        invoiceId: b.invoiceId,
-        metadata: b.metadata,
-      });
-    } else if (b.kindId !== undefined) {
-      await setBookingKind(ctx, params.id!, b.kindId);
-    }
+    booking = await patchBooking(ctx, params.id!, b);
   } catch (e) {
     if (e instanceof BookingConflictError) {
       return json({ error: 'conflict', message: e.message }, { status: 409 });
     }
     throw error(400, e instanceof Error ? e.message : 'invalid');
   }
-  const booking = await getBooking(ctx, params.id!);
   // Plain one-click complete: best-effort realize from the open accruals.
   // Never blocks the status change — a short bin surfaces as stockWarning.
   let stockWarning: { code: string; message: string; draftEntryId?: string } | null = null;
+  // TODO(handoff): Persist realization admission with the status change; this
+  // postcommit attempt is still vulnerable to process loss, see meta
+  // proposals/2026-09-12-hub-booking-stock-postcommit-recovery.md.
   if (b.status === 'completed') {
     try {
       const r = await realizeAccruals(ctx, {

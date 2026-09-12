@@ -1406,7 +1406,8 @@ describe('native complete foreign companion closure', () => {
         total,
       );
     },
-    20_000,
+    // Materializes 1024/1025 real cross-head rows; keep assertions and a bounded native fixture budget.
+    120_000,
   );
 });
 
@@ -1633,10 +1634,12 @@ describe('native full foreign metadata capacity', () => {
       );
       expect(fetch).not.toHaveBeenCalled();
     },
-    20_000,
+    // Materializing the 1 MiB native metadata boundary can exceed 20s on CI; no retries.
+    120_000,
   );
 });
 
+// Fixture setup materializes hundreds of native owners/heads; allow bounded CI time, no retries.
 describe('native maximum owner frontier and independent head limit', () => {
   it('admits256 distinct historical batches and prelocks256 actual finished owner jobs', async () => {
     const value = input(Array.from({ length: 64 }, (_, index) => source(`owner-${index}`, 4)));
@@ -1774,7 +1777,7 @@ describe('native maximum owner frontier and independent head limit', () => {
         await owner`select count(*)::integer as count from job_effect_batches where state='reserved'`
       )[0]!.count,
     ).toBe(256);
-  }, 20_000);
+  }, 120_000);
   it('rejects1025 heads independently when unchanged page members expand a1024-unit companion closure', async () => {
     const selected: LoadedPageSource[] = [];
     for (let group = 0; group < 16; group++) {
@@ -1806,7 +1809,7 @@ describe('native maximum owner frontier and independent head limit', () => {
       )[0]!.count,
     ).toBe(16);
     expect(fetch).not.toHaveBeenCalled();
-  }, 20_000);
+  }, 120_000);
 });
 
 describe('native legacy and empty-page compatibility', () => {

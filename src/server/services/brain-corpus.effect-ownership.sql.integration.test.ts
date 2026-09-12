@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type postgres from 'postgres';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -72,18 +73,20 @@ function embeddingResponse(init?: RequestInit) {
     usage: { prompt_tokens: body.input.length },
   });
 }
-/** pgvector is unavailable on this substrate: `vector(1536)` becomes a text
- * domain and ANN indexes are dropped. Vector storage semantics stay pending. */
-function ddl(file: string) {
-  return readFileSync(new URL(`../../../supabase/migrations/${file}`, import.meta.url), 'utf8')
-    .replace('create extension if not exists vector;', '')
-    .replaceAll('vector(1536)', 'vector')
-    .replace(
-      /create index if not exists \w+_embedding_hnsw\s+on public\.\w+ using hnsw \(embedding vector_cosine_ops\);/g,
-      '',
-    )
-    .replaceAll('public.', `"${schema}".`);
+/** Relocate only the fixture namespace; preserve types, indexes and function bodies. */
+function relocateDdl(sql: string) {
+  return sql
+    .replaceAll('public.', `"${schema}".`)
+    .replaceAll('search_path = public, pg_catalog', `search_path = "${schema}", pg_catalog`)
+    .replaceAll('search_path = pg_catalog, public', `search_path = pg_catalog, "${schema}"`)
+    .replaceAll("n.nspname = 'public'", `n.nspname = '${schema}'`);
 }
+function ddl(file: string) {
+  return relocateDdl(
+    readFileSync(new URL(`../../../supabase/migrations/${file}`, import.meta.url), 'utf8'),
+  );
+}
+
 async function message(
   input: {
     org?: string;
@@ -167,7 +170,7 @@ async function retry(id: string, client = a) {
 const documents = (org = ORG) =>
   owner`select external_id,status,content_hash from knowledge_documents where org_id=${org} order by external_id`;
 const chunks = (org = ORG) =>
-  owner`select document_id,chunk_key,content_hash,(embedding is not null) as embedded,embedding_model,left(embedding,12) as head
+  owner`select document_id,chunk_key,content_hash,(embedding is not null) as embedded,embedding_model,left(embedding::text,12) as head
     from knowledge_chunks where org_id=${org} order by document_id,chunk_key`;
 const sources = (org = ORG) =>
   owner`select connector,external_key,status,last_error,watermark from knowledge_sources where org_id=${org} order by connector,external_key`;
@@ -180,11 +183,9 @@ beforeAll(async () => {
   harness = await openDisposablePostgres();
   owner = harness.owner;
   expect(harness.identity.database).toBe('minion_qc_corpus');
-  const [vector] = await owner`select extversion from pg_extension where extname='vector'`;
-  // Pending evidence, not a pass: no pgvector on this substrate (see ddl()).
-  expect(vector).toBeUndefined();
+
   await owner.unsafe(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}",pg_catalog;
-    CREATE DOMAIN vector AS text;
+    CREATE EXTENSION vector WITH SCHEMA "${schema}";
     CREATE TABLE bg_jobs(id text primary key,tenant_id text not null,user_id text,type text not null,ref_id text,status text not null default 'queued',
       cursor text,error text,attempts integer not null default 0,lease_until bigint,created_at bigint not null,updated_at bigint not null,started_at bigint,finished_at bigint);
     CREATE TABLE organizations(id uuid primary key default gen_random_uuid());
@@ -215,6 +216,25 @@ beforeAll(async () => {
     '20260725195000_qdrant_ack_active_generation_guard.sql',
   ])
     await owner.unsafe(ddl(file));
+  // Exact gateway serving-worker migration: minion-ai@064b4d34444274275be61e8e707982b772ca3543.
+  // This copy is fixture input, never a Hub production migration.
+  const servingDdl = readFileSync(
+    new URL('../../../supabase/ci-fixtures/brain-vector-worker-001.sql', import.meta.url),
+    'utf8',
+  );
+  expect(createHash('sha256').update(servingDdl).digest('hex')).toBe(
+    '45a4e1143843d3685b8cfa8f6e73b653b0e9a98d1f0d470c429aecca629aefc6',
+  );
+  await owner.unsafe(relocateDdl(servingDdl));
+  const [vector] = await owner`select extversion from pg_extension where extname='vector'`;
+  expect(vector?.extversion).toBeTruthy();
+  const [catalog] = await owner`select format_type(a.atttypid,a.atttypmod) as embedding_type
+    from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname=${schema} and c.relname='knowledge_chunks' and a.attname='embedding'`;
+  expect(catalog?.embedding_type).toBe('vector(1536)');
+  expect(
+    await owner`select count(*)::int as n from pg_indexes where schemaname=${schema} and indexdef like '%USING hnsw%'`,
+  ).toEqual([{ n: 2 }]);
   // Later production declaration read by the Drizzle brains schema (20260703130000).
   await owner.unsafe('ALTER TABLE brains ADD agent_id text');
   // The Hub source calls these three RPCs with an explicit public. prefix; the
@@ -251,7 +271,12 @@ beforeAll(async () => {
   expect(restricted).toEqual({ rolsuper: false, rolbypassrls: false, job_update: false });
   console.log(
     'QC_CORPUS_CATALOG',
-    JSON.stringify({ version: harness.identity.version, schema, pgvector: null, restricted }),
+    JSON.stringify({
+      version: harness.identity.version,
+      schema,
+      pgvector: vector!.extversion,
+      restricted,
+    }),
   );
   boundary.pool.mockImplementation(() => context.getStore() ?? a);
 }, 30_000);
@@ -572,11 +597,20 @@ describe('conversation corpus native effect ownership', { timeout: 30_000 }, () 
       expect.objectContaining({ embedded: false, embedding_model: null }),
     ]);
     expect(await documents()).toEqual([expect.objectContaining({ status: 'ready' })]);
-    // Hub's base outbox trigger ignores inserted text-only chunks; the serving
-    // worker's replacement trigger (gateway repo) is not part of this fixture.
-    expect(await owner`select count(*)::int as n from brain_vector_outbox`).toEqual([{ n: 0 }]);
+    expect(
+      await owner`select count(*)::int as n from brain_vector_outbox where desired_operation='upsert'`,
+    ).toEqual([{ n: 1 }]);
+    const [enqueued] = await owner`select o.chunk_id,o.org_id,o.collection_generation,o.revision,
+      g.generation from brain_vector_outbox o join brain_vector_generations g on g.generation=o.collection_generation where g.is_active`;
+    expect(enqueued?.org_id).toBe(ORG);
+    expect(enqueued?.collection_generation).toBe(enqueued?.generation);
     expect(await sources()).toEqual([expect.objectContaining({ status: 'queued' })]);
     expect(await batches()).toEqual([]);
+    await owner`delete from knowledge_chunks where id=${String(enqueued!.chunk_id)}::uuid`;
+    const [deleted] =
+      await owner`select desired_operation,revision from brain_vector_outbox where chunk_id=${String(enqueued!.chunk_id)}::uuid`;
+    expect(deleted?.desired_operation).toBe('delete');
+    expect(Number(deleted?.revision)).toBe(Number(enqueued?.revision) + 1);
     await owner`update brain_vector_generations set storage_mode='pgvector'`;
     await message({
       chat: 'chat-12',

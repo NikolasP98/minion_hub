@@ -12,13 +12,10 @@ export const GET: RequestHandler = async ({ locals }) => {
   try {
     return json(await loadHostsForUser(locals, locals.user?.id, locals.user?.role));
   } catch (e) {
-    console.error('[GET /api/servers]', e);
+    console.error('[GET /api/servers] request failed');
     // Non-authoritative failure (decrypt error, schema drift, etc.).
     // Return 500 so the client preserves its cached hosts.
-    return json(
-      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
-      { status: 500 },
-    );
+    return json({ ok: false, error: 'Unable to load servers.' }, { status: 500 });
   }
 };
 
@@ -58,9 +55,6 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
     return json({ ok: true });
   } catch (e) {
     console.error('[POST /api/servers] request failed');
-    return json(
-      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
-      { status: 500 },
-    );
+    return json({ ok: false, error: 'Unable to save server.' }, { status: 500 });
   }
 };

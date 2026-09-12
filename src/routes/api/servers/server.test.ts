@@ -6,20 +6,21 @@ const mocks = vi.hoisted(() => ({
   upsertServer: vi.fn(),
   safeUrl: vi.fn(),
   capture: vi.fn(),
+  loadHosts: vi.fn(),
 }));
 vi.mock('$server/auth/authorize', () => ({ requireAuth: mocks.requireAuth }));
 vi.mock('$server/auth/tenant-ctx', () => ({ getOrCreateTenantCtx: mocks.getTenant }));
 vi.mock('$server/services/server.service', () => ({ upsertServer: mocks.upsertServer }));
-vi.mock('$server/services/hosts.service', () => ({ loadHostsForUser: vi.fn() }));
+vi.mock('$server/services/hosts.service', () => ({ loadHostsForUser: mocks.loadHosts }));
 vi.mock('$lib/server/posthog', () => ({
-  getPostHogClient: async () => ({ capture: mocks.capture }),
+  captureServerEvent: mocks.capture,
 }));
 vi.mock('$server/services/ssrf-guard', () => ({
   assertSafeUrl: mocks.safeUrl,
   SsrfBlockedError: class SsrfBlockedError extends Error {},
 }));
 
-import { POST } from './+server';
+import { POST, GET } from './+server';
 import { SsrfBlockedError } from '$server/services/ssrf-guard';
 
 const secret = 'synthetic-gateway-credential-DO-NOT-LOG';
@@ -32,6 +33,7 @@ const ctx = { db: {}, tenantId: 'org-1' };
 
 function event() {
   return {
+    route: { id: '/api/servers' },
     locals: { user: { id: 'user-1', email: 'person@example.test' } },
     request: new Request('https://hub.test/api/servers', {
       method: 'POST',
@@ -75,7 +77,13 @@ describe('POST /api/servers credential containment', () => {
     expect(mocks.safeUrl).toHaveBeenCalledWith(body.url, 'server URL');
     expect(mocks.upsertServer).toHaveBeenCalledWith(ctx, body, 'user-1');
     expect(recordedDiagnostics()).not.toContain(secret);
-    expect(mocks.capture).toHaveBeenCalledWith({ distinctId: 'user-1', event: 'server_added' });
+    expect(mocks.capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        distinctId: 'user:user-1',
+        event: 'server_added',
+        properties: expect.objectContaining({ route: '/api/servers' }),
+      }),
+    );
   });
 
   test('sanitizes persistence errors rather than logging or returning bound credential values', async () => {
@@ -108,5 +116,15 @@ describe('POST /api/servers credential containment', () => {
     expect(mocks.safeUrl).not.toHaveBeenCalled();
     expect(mocks.upsertServer).not.toHaveBeenCalled();
     expect(recordedDiagnostics()).not.toContain('person@example.test');
+  });
+});
+
+describe('GET /api/servers credential containment', () => {
+  test('does not expose bound secrets in a load failure', async () => {
+    mocks.loadHosts.mockRejectedValue(new Error(`database token ${secret}`));
+    const response = await GET(event());
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ ok: false, error: 'Unable to load servers.' });
+    expect(recordedDiagnostics()).not.toContain(secret);
   });
 });
