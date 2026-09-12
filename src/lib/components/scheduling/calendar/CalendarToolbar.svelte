@@ -8,6 +8,7 @@
     SegmentedControl,
     Select,
     MultiSelectFilter,
+    Toggle,
     iconSizes,
   } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
@@ -23,6 +24,8 @@
     kindId,
     title = '',
     cal,
+    showInheritedTags,
+    onShowInheritedTagsChange,
   }: {
     view: CalendarView;
     day: string;
@@ -35,6 +38,8 @@
     /** The live calendar instance — prev/next/today/date-picker drive it directly
      *  for an instant move, on top of the `?date=` URL update that keeps state in sync. */
     cal?: { prev(): void; next(): void; gotoDate(d: string): void };
+    showInheritedTags: boolean;
+    onShowInheritedTagsChange: (next: boolean) => void;
   } = $props();
 
   const viewItems = $derived([
@@ -173,6 +178,12 @@
       value={view}
       aria-label={m.sched_cal_view()}
       onValueChange={(v) => navigate({ view: v })}
+    />
+    <Toggle
+      size="sm"
+      checked={showInheritedTags}
+      label={m.sched_cal_show_linked_tags()}
+      onchange={onShowInheritedTagsChange}
     />
   </div>
 </div>

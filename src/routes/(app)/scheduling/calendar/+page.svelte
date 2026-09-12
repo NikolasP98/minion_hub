@@ -4,6 +4,8 @@
   import { PageHeader, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
+  import { fetchJson } from '$lib/api/fetch-json';
+  import { toastError } from '$lib/state/ui';
   import { CalendarStore } from '$lib/components/scheduling/calendar/calendar.svelte';
   import CalendarToolbar from '$lib/components/scheduling/calendar/CalendarToolbar.svelte';
   import SchedulingCalendar from '$lib/components/scheduling/calendar/SchedulingCalendar.svelte';
@@ -21,18 +23,24 @@
     store.mergeEvents(data.events, data.from, data.to);
     store.staff = new Set(data.staff);
     store.kindId = data.kindId;
+    store.showInheritedTags = data.showInheritedTags;
   });
 
-  // TODO(handoff): appointments render at their UTC wall-clock, not the org's
-  // local time. `loadCalendarEvents` (src/server/scheduling/load-calendar-events.ts)
-  // emits `Date.toISOString()` ("…Z"), and @event-calendar/core's `parseOffset`
-  // only matches a trailing `±HH:MM`, so the Z offset is dropped and an 08:00
-  // Lima booking is drawn on the 13:00 row (chip label, from `hhmm()`, still
-  // says 08:00). Measured on tests/fixtures/mobile-composition at 390x844:
-  // inset-block-start 576px of a 1344px 07:00–21:00 grid. Out of plan 13-02's
-  // scope (composition only; the fix belongs to the server serializer or to
-  // SchedulingCalendar's `timeZone` option) — see meta-repo proposal
-  // 2026-09-10-hub-calendar-utc-offset-dropped.md.
+  async function onShowInheritedTagsChange(next: boolean) {
+    const previous = store.showInheritedTags;
+    store.showInheritedTags = next; // optimistic
+    try {
+      await fetchJson('/api/me/preferences/calendar', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: { showInheritedTags: next } }),
+      });
+    } catch {
+      store.showInheritedTags = previous;
+      toastError(m.sched_cal_show_linked_tags_error());
+    }
+  }
+
   let calRef = $state<ReturnType<typeof SchedulingCalendar>>();
   let libraryTitle = $state('');
 
@@ -74,6 +82,8 @@
     kindId={data.kindId}
     title={libraryTitle}
     cal={calRef}
+    showInheritedTags={store.showInheritedTags}
+    {onShowInheritedTagsChange}
   />
 
   <PageBody padding="compact" scroll="region" class="cal-body">
