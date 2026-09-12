@@ -54,6 +54,28 @@ export type JobHandler = {
 };
 
 const handlers = new Map<string, JobHandler>();
+let quiescing = false;
+const outstanding = new Set<Promise<unknown>>();
+
+function track<T>(work: Promise<T>): Promise<T> {
+  outstanding.add(work);
+  void work.then(
+    () => outstanding.delete(work),
+    () => outstanding.delete(work),
+  );
+  return work;
+}
+
+/** Stop execution admission without deleting durable queued intent. */
+export function quiesceJobs(): void {
+  quiescing = true;
+}
+
+/** Include callbacks still running after the lease-loss race has returned. */
+export async function drainJobs(): Promise<void> {
+  quiesceJobs();
+  while (outstanding.size) await Promise.allSettled([...outstanding]);
+}
 
 /** Register a handler for a job `type`. Idempotent (last wins). */
 export function registerJobHandler(h: JobHandler): void {
@@ -193,7 +215,7 @@ function heartbeat(lease: Lease) {
         pending = false;
       }
     };
-    void renew();
+    void track(renew());
   }, HEARTBEAT_MS);
   timer.unref?.();
   return {
@@ -214,7 +236,12 @@ async function freshJob(jobId: string): Promise<BgJob | null> {
  * Advance a single job until it completes, is cancelled, or the time budget is
  * spent. Each handler.advance() is one model call / one bounded step.
  */
-export async function advanceJob(jobId: string, budgetMs = 25_000): Promise<void> {
+export function advanceJob(jobId: string, budgetMs = 25_000): Promise<void> {
+  if (quiescing) return Promise.resolve();
+  return track(advanceAdmittedJob(jobId, budgetMs));
+}
+
+async function advanceAdmittedJob(jobId: string, budgetMs: number): Promise<void> {
   const deadline = Date.now() + budgetMs;
   const initial = await freshJob(jobId);
   if (!initial || Date.now() >= deadline) return;
@@ -267,9 +294,10 @@ export async function advanceJob(jobId: string, budgetMs = 25_000): Promise<void
     return leaseLost;
   });
   try {
-    while (!lost && Date.now() < deadline) {
+    while (!quiescing && !lost && Date.now() < deadline) {
       const job = await freshJob(jobId);
       if (
+        quiescing ||
         lost ||
         !job ||
         job.status !== 'running' ||
@@ -282,7 +310,7 @@ export async function advanceJob(jobId: string, budgetMs = 25_000): Promise<void
       try {
         // Losing the lease ends our wait, not the external operation. Promise.race
         // retains a rejection handler for a callback that settles after cancellation.
-        const outcome = await Promise.race([handler.advance(job, execution), loss]);
+        const outcome = await Promise.race([track(handler.advance(job, execution)), loss]);
         if (outcome === leaseLost || lost) return;
         result = outcome;
       } catch (err) {
@@ -325,6 +353,7 @@ export async function advanceJob(jobId: string, budgetMs = 25_000): Promise<void
 
 /** Cron entrypoint: advance every resumable job within an overall budget. */
 export async function runTick(budgetMs = 50_000): Promise<{ advanced: number }> {
+  if (quiescing) return { advanced: 0 };
   const db = getCoreDb();
   const now = Date.now();
   const resumable = await db
@@ -341,7 +370,7 @@ export async function runTick(budgetMs = 50_000): Promise<{ advanced: number }> 
   const deadline = Date.now() + budgetMs;
   let advanced = 0;
   for (const { id } of resumable) {
-    if (Date.now() >= deadline) break;
+    if (quiescing || Date.now() >= deadline) break;
     const remaining = deadline - Date.now();
     await advanceJob(id, Math.min(remaining, 25_000));
     advanced += 1;

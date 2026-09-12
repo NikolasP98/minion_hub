@@ -175,3 +175,17 @@ export async function resetPgClient(expectedClient?: PgClient): Promise<void> {
     }
   }
 }
+
+/** Close idle pools only after HTTP and background work have drained.
+ * Unlike recovery reset, end() waits for pending queries and never destroys them.
+ */
+export async function closePgPools(): Promise<void> {
+  const pools = new Set([
+    globalThis.__minionHubPgPool?.client,
+    globalThis.__minionHubPgCriticalPool?.client,
+    globalThis.__minionHubPgRlsPool?.client,
+  ]);
+  await Promise.all(
+    [...pools].filter((client) => client !== undefined).map((client) => client.end()),
+  );
+}

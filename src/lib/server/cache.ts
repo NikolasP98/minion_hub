@@ -180,3 +180,12 @@ async function doInitCache(): Promise<void> {
     `[cache] initialized — backend=${runtime.backendName} sourceId=${sourceId.slice(0, 8)}`,
   );
 }
+
+/** Drain boot-time discovery before closing the existing backend; never create one here. */
+export async function closeCache(): Promise<void> {
+  if (initPromise) await initPromise.catch(() => undefined);
+  if (dataPlanePromise) {
+    const runtime = await dataPlanePromise;
+    await runtime.backend.close?.();
+  }
+}

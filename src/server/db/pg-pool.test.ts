@@ -32,6 +32,15 @@ describe('getPgClient', () => {
       .__minionHubPgPoolReset;
   });
 
+  test('graceful shutdown closes every distinct pool without a destructive timeout', async () => {
+    const pg = await import('./pg-pool');
+    pg.getPgClient();
+    pg.getCriticalPgClient();
+    pg.getRlsPgClient();
+    await pg.closePgPools();
+    expect(mocks.client.end).toHaveBeenCalledExactlyOnceWith();
+  });
+
   test('reuses one physical pool across server-module reloads', async () => {
     const firstModule = await import('./pg-pool');
     const first = firstModule.getPgClient();

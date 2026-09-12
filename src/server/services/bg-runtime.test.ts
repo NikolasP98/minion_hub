@@ -8,6 +8,8 @@ const entry = vi.hoisted(() => ({ db: vi.fn() }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: entry.db }));
 import {
   advanceJob,
+  drainJobs,
+  quiesceJobs,
   cancelJobsByRef,
   enqueueJob,
   registerJobHandler,
@@ -311,4 +313,39 @@ describe('heartbeat lifecycle', () => {
     expect((await row(id2)).cursor).toBe('{"page":1}');
     expect(vi.getTimerCount()).toBe(0);
   });
+});
+
+// Quiescing is deliberately irreversible within a worker process; keep this last.
+it('drains late lease-lost callbacks and admitted progress while preserving new queued intent', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+  vi.setSystemTime(NOW);
+  const old = handler();
+  const oldId = await seed();
+  const oldRun = advanceJob(oldId);
+  await until(() => old.advance.mock.calls.length === 1);
+  await client.query('UPDATE bg_jobs SET lease_until=0 WHERE id=$1', [oldId]);
+  await vi.advanceTimersByTimeAsync(20_000);
+  await oldRun;
+  const active = handler();
+  const activeId = await seed();
+  const activeRun = advanceJob(activeId);
+  await until(() => active.advance.mock.calls.length === 1);
+  quiesceJobs();
+  const queuedId = await seed();
+  await advanceJob(queuedId);
+  expect((await row(queuedId)).status).toBe('queued');
+  let drained = false;
+  const drain = drainJobs().then(() => {
+    drained = true;
+  });
+  active.resolve({ done: false, cursor: { final: true } });
+  await activeRun;
+  expect((await row(activeId)).cursor).toBe('{"final":true}');
+  expect(active.advance).toHaveBeenCalledOnce();
+  expect(drained).toBe(false); // Lease loss returned, but provider callback is still alive.
+  old.resolve({ done: true });
+  await drain;
+  expect(drained).toBe(true);
+  expect((await row(oldId)).status).toBe('running');
+  expect((await row(queuedId)).lease_generation).toBe(0);
 });
