@@ -561,91 +561,98 @@ export async function rescheduleBooking(
   id: string,
   input: RescheduleBookingInput,
 ): Promise<SchedBooking> {
+  return withOrgCore(ctx, (tx) => rescheduleBookingInTx(tx, ctx, id, input));
+}
+
+async function rescheduleBookingInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  id: string,
+  input: RescheduleBookingInput,
+): Promise<SchedBooking> {
   if (!(input.end.getTime() > input.start.getTime())) throw new Error('end must be after start');
-  return withOrgCore(ctx, async (tx) => {
-    const [existing] = await tx
-      .select()
-      .from(schedBookings)
-      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
-      .limit(1);
-    if (!existing) throw new Error('booking not found');
-    if (existing.status === 'cancelled' || existing.status === 'rejected')
-      throw new Error(`cannot reschedule a ${existing.status} booking`);
+  const [existing] = await tx
+    .select()
+    .from(schedBookings)
+    .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+    .limit(1);
+  if (!existing) throw new Error('booking not found');
+  if (existing.status === 'cancelled' || existing.status === 'rejected')
+    throw new Error(`cannot reschedule a ${existing.status} booking`);
 
-    const resourceId = input.resourceId ?? existing.resourceId;
-    if (input.resourceId) {
-      const [res] = await tx
-        .select({ id: schedResources.id })
-        .from(schedResources)
-        .where(
-          and(
-            eq(schedResources.id, input.resourceId),
-            eq(schedResources.orgId, ctx.tenantId),
-            eq(schedResources.active, true),
-          ),
-        )
-        .limit(1);
-      if (!res) throw new Error('invalid resourceId');
-    }
-
-    // Buffers come from the booking's own event type (same knobs `createBooking`
-    // pads busy intervals by before handing them to the slot engine).
-    const [et] = await tx
-      .select({
-        beforeBuffer: schedEventTypes.beforeBuffer,
-        afterBuffer: schedEventTypes.afterBuffer,
-      })
-      .from(schedEventTypes)
-      .where(eq(schedEventTypes.id, existing.eventTypeId))
-      .limit(1);
-    const beforeBuffer = (et?.beforeBuffer ?? 0) * MS_PER_MIN;
-    const afterBuffer = (et?.afterBuffer ?? 0) * MS_PER_MIN;
-
-    const others = await tx
-      .select({
-        id: schedBookings.id,
-        start: schedBookings.startTime,
-        end: schedBookings.endTime,
-        title: schedBookings.title,
-      })
-      .from(schedBookings)
+  const resourceId = input.resourceId ?? existing.resourceId;
+  if (input.resourceId) {
+    const [res] = await tx
+      .select({ id: schedResources.id })
+      .from(schedResources)
       .where(
         and(
-          eq(schedBookings.orgId, ctx.tenantId),
-          eq(schedBookings.resourceId, resourceId),
-          inArray(schedBookings.status, [...CONFLICT_STATUSES]),
-          ne(schedBookings.id, id),
+          eq(schedResources.id, input.resourceId),
+          eq(schedResources.orgId, ctx.tenantId),
+          eq(schedResources.active, true),
         ),
-      );
-    const targetStart = input.start.getTime();
-    const targetEnd = input.end.getTime();
-    for (const o of others) {
-      if (
-        intervalsOverlap(
-          targetStart,
-          targetEnd,
-          o.start.getTime() - beforeBuffer,
-          o.end.getTime() + afterBuffer,
-        )
-      ) {
-        throw new BookingConflictError(
-          `Conflicts with "${o.title ?? 'a booking'}" from ${o.start.toISOString()} to ${o.end.toISOString()}`,
-        );
-      }
-    }
+      )
+      .limit(1);
+    if (!res) throw new Error('invalid resourceId');
+  }
 
-    // TODO(handoff): spec §3.2b allows a reschedule outside working hours /
-    // on a holiday / during staff leave (a human scheduler decides) — this
-    // never blocks on it, but no warnings payload surfaces it either. Add a
-    // `{ warnings: string[] }` return (checked against schedAvailability /
-    // the org holiday+leave tables) when the calendar UI wants to show one.
-    const [row] = await tx
-      .update(schedBookings)
-      .set({ startTime: input.start, endTime: input.end, resourceId, updatedAt: new Date() })
-      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
-      .returning();
-    return row;
-  });
+  // Buffers come from the booking's own event type (same knobs `createBooking`
+  // pads busy intervals by before handing them to the slot engine).
+  const [et] = await tx
+    .select({
+      beforeBuffer: schedEventTypes.beforeBuffer,
+      afterBuffer: schedEventTypes.afterBuffer,
+    })
+    .from(schedEventTypes)
+    .where(eq(schedEventTypes.id, existing.eventTypeId))
+    .limit(1);
+  const beforeBuffer = (et?.beforeBuffer ?? 0) * MS_PER_MIN;
+  const afterBuffer = (et?.afterBuffer ?? 0) * MS_PER_MIN;
+
+  const others = await tx
+    .select({
+      id: schedBookings.id,
+      start: schedBookings.startTime,
+      end: schedBookings.endTime,
+      title: schedBookings.title,
+    })
+    .from(schedBookings)
+    .where(
+      and(
+        eq(schedBookings.orgId, ctx.tenantId),
+        eq(schedBookings.resourceId, resourceId),
+        inArray(schedBookings.status, [...CONFLICT_STATUSES]),
+        ne(schedBookings.id, id),
+      ),
+    );
+  const targetStart = input.start.getTime();
+  const targetEnd = input.end.getTime();
+  for (const o of others) {
+    if (
+      intervalsOverlap(
+        targetStart,
+        targetEnd,
+        o.start.getTime() - beforeBuffer,
+        o.end.getTime() + afterBuffer,
+      )
+    ) {
+      throw new BookingConflictError(
+        `Conflicts with "${o.title ?? 'a booking'}" from ${o.start.toISOString()} to ${o.end.toISOString()}`,
+      );
+    }
+  }
+
+  // TODO(handoff): spec §3.2b allows a reschedule outside working hours /
+  // on a holiday / during staff leave (a human scheduler decides) — this
+  // never blocks on it, but no warnings payload surfaces it either. Add a
+  // `{ warnings: string[] }` return (checked against schedAvailability /
+  // the org holiday+leave tables) when the calendar UI wants to show one.
+  const [row] = await tx
+    .update(schedBookings)
+    .set({ startTime: input.start, endTime: input.end, resourceId, updatedAt: new Date() })
+    .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+    .returning();
+  return row;
 }
 
 export interface UpdateBookingInput {
@@ -678,7 +685,21 @@ export async function updateBooking(
   id: string,
   patch: UpdateBookingInput,
 ): Promise<SchedBooking> {
-  const existing = await getBooking(ctx, id);
+  return withOrgCore(ctx, (tx) => updateBookingInTx(tx, ctx, id, patch));
+}
+
+async function updateBookingInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  id: string,
+  patch: UpdateBookingInput,
+): Promise<SchedBooking> {
+  const [existing] = await tx
+    .select()
+    .from(schedBookings)
+    .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+    .limit(1)
+    .for('update');
   if (!existing) throw new Error('booking not found');
 
   const resourceChanged =
@@ -687,7 +708,7 @@ export async function updateBooking(
     // Same start/end — this is a reassignment, not a move. Reuses the
     // reschedule path's active-resource + buffer-padded overlap checks
     // (throws BookingConflictError on a clash) instead of duplicating them.
-    await rescheduleBooking(ctx, id, {
+    await rescheduleBookingInTx(tx, ctx, id, {
       start: existing.startTime,
       end: existing.endTime,
       resourceId: patch.resourceId!,
@@ -699,96 +720,147 @@ export async function updateBooking(
   // explicit productId of its own.
   let productId = patch.productId;
   if (patch.eventTypeId !== undefined && patch.eventTypeId !== existing.eventTypeId) {
-    const [et] = await withOrgCore(ctx, (tx) =>
-      tx
-        .select({ productId: schedEventTypes.productId })
-        .from(schedEventTypes)
-        .where(
-          and(eq(schedEventTypes.id, patch.eventTypeId!), eq(schedEventTypes.orgId, ctx.tenantId)),
-        )
-        .limit(1),
-    );
+    const [et] = await tx
+      .select({ productId: schedEventTypes.productId })
+      .from(schedEventTypes)
+      .where(
+        and(eq(schedEventTypes.id, patch.eventTypeId!), eq(schedEventTypes.orgId, ctx.tenantId)),
+      )
+      .limit(1);
     if (!et) throw new Error('invalid eventTypeId');
     if (productId === undefined) productId = et.productId;
   }
 
-  await withOrgCore(ctx, async (tx) => {
-    // A client-supplied crmContactId must belong to this org (same guard
-    // createBooking applies) — never trusted verbatim.
-    if (patch.crmContactId) {
-      const [hit] = await tx
-        .select({ id: crmContacts.id })
-        .from(crmContacts)
-        .where(and(eq(crmContacts.id, patch.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
-        .limit(1);
-      if (!hit) throw new Error('invalid crmContactId');
-    }
-    if (patch.kindId) await assertOrgEventKind(tx, ctx.tenantId, patch.kindId);
-    // A client-supplied invoiceId must belong to this org — soft ref, no FK,
-    // so nothing else enforces it (spec S6).
-    if (patch.invoiceId) {
-      const [hit] = await tx
-        .select({ id: finInvoices.id })
-        .from(finInvoices)
-        .where(and(eq(finInvoices.id, patch.invoiceId), eq(finInvoices.orgId, ctx.tenantId)))
-        .limit(1);
-      if (!hit) throw new Error('invalid invoiceId');
-    }
+  // A client-supplied crmContactId must belong to this org (same guard
+  // createBooking applies) — never trusted verbatim.
+  if (patch.crmContactId) {
+    const [hit] = await tx
+      .select({ id: crmContacts.id })
+      .from(crmContacts)
+      .where(and(eq(crmContacts.id, patch.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!hit) throw new Error('invalid crmContactId');
+  }
+  if (patch.kindId) await assertOrgEventKind(tx, ctx.tenantId, patch.kindId);
+  // A client-supplied invoiceId must belong to this org — soft ref, no FK,
+  // so nothing else enforces it (spec S6).
+  if (patch.invoiceId) {
+    const [hit] = await tx
+      .select({ id: finInvoices.id })
+      .from(finInvoices)
+      .where(and(eq(finInvoices.id, patch.invoiceId), eq(finInvoices.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!hit) throw new Error('invalid invoiceId');
+  }
 
-    const set: Record<string, unknown> = { updatedAt: new Date() };
-    const changes: FieldChange[] = [];
-    const setField = (field: string, value: unknown, oldValue: unknown) => {
-      if (value === (oldValue ?? null)) return;
-      set[field] = value;
-      changes.push({ field, label: field, old: oldValue ?? null, new: value });
-    };
-    if (patch.title !== undefined) setField('title', patch.title, existing.title);
-    if (patch.notes !== undefined) setField('notes', patch.notes, existing.notes);
-    if (patch.crmContactId !== undefined)
-      setField('crmContactId', patch.crmContactId, existing.crmContactId);
-    if (patch.partyId !== undefined) setField('partyId', patch.partyId, existing.partyId);
-    if (patch.eventTypeId !== undefined)
-      setField('eventTypeId', patch.eventTypeId, existing.eventTypeId);
-    if (productId !== undefined) setField('productId', productId, existing.productId);
-    if (patch.kindId !== undefined) setField('kindId', patch.kindId, existing.kindId);
-    if (patch.attendeeName !== undefined)
-      setField('attendeeName', patch.attendeeName, existing.attendeeName);
-    if (patch.attendeeEmail !== undefined)
-      setField('attendeeEmail', patch.attendeeEmail, existing.attendeeEmail);
-    if (patch.attendeePhone !== undefined)
-      setField('attendeePhone', patch.attendeePhone, existing.attendeePhone);
-    if (patch.invoiceId !== undefined) setField('invoiceId', patch.invoiceId, existing.invoiceId);
-    if (patch.metadata !== undefined) {
-      set.metadata = sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) || ${JSON.stringify(patch.metadata)}::jsonb`;
-      changes.push({ field: 'metadata', label: 'metadata', old: null, new: patch.metadata });
-    }
-    if (resourceChanged)
-      changes.push({
-        field: 'resourceId',
-        label: 'resourceId',
-        old: existing.resourceId,
-        new: patch.resourceId,
-      });
+  const set: Record<string, unknown> = { updatedAt: new Date() };
+  const changes: FieldChange[] = [];
+  const setField = (field: string, value: unknown, oldValue: unknown) => {
+    if (value === (oldValue ?? null)) return;
+    set[field] = value;
+    changes.push({ field, label: field, old: oldValue ?? null, new: value });
+  };
+  if (patch.title !== undefined) setField('title', patch.title, existing.title);
+  if (patch.notes !== undefined) setField('notes', patch.notes, existing.notes);
+  if (patch.crmContactId !== undefined)
+    setField('crmContactId', patch.crmContactId, existing.crmContactId);
+  if (patch.partyId !== undefined) setField('partyId', patch.partyId, existing.partyId);
+  if (patch.eventTypeId !== undefined)
+    setField('eventTypeId', patch.eventTypeId, existing.eventTypeId);
+  if (productId !== undefined) setField('productId', productId, existing.productId);
+  if (patch.kindId !== undefined) setField('kindId', patch.kindId, existing.kindId);
+  if (patch.attendeeName !== undefined)
+    setField('attendeeName', patch.attendeeName, existing.attendeeName);
+  if (patch.attendeeEmail !== undefined)
+    setField('attendeeEmail', patch.attendeeEmail, existing.attendeeEmail);
+  if (patch.attendeePhone !== undefined)
+    setField('attendeePhone', patch.attendeePhone, existing.attendeePhone);
+  if (patch.invoiceId !== undefined) setField('invoiceId', patch.invoiceId, existing.invoiceId);
+  if (patch.metadata !== undefined) {
+    set.metadata = sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) || ${JSON.stringify(patch.metadata)}::jsonb`;
+    changes.push({ field: 'metadata', label: 'metadata', old: null, new: patch.metadata });
+  }
+  if (resourceChanged)
+    changes.push({
+      field: 'resourceId',
+      label: 'resourceId',
+      old: existing.resourceId,
+      new: patch.resourceId,
+    });
 
-    if (Object.keys(set).length > 1) {
-      await tx
-        .update(schedBookings)
-        .set(set)
-        .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
-    }
-    if (changes.length) {
-      await recordAuditInTx(tx, ctx, {
-        refType: 'sched_booking',
-        refId: id,
-        op: 'update',
-        changes,
-        actor: { id: ctx.profileId ?? null, name: null },
-      });
-    }
-  });
-
-  const row = await getBooking(ctx, id);
+  if (Object.keys(set).length > 1) {
+    await tx
+      .update(schedBookings)
+      .set(set)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
+  }
+  if (changes.length) {
+    await recordAuditInTx(tx, ctx, {
+      refType: 'sched_booking',
+      refId: id,
+      op: 'update',
+      changes,
+      actor: { id: ctx.profileId ?? null, name: null },
+    });
+  }
+  const [row] = await tx
+    .select()
+    .from(schedBookings)
+    .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+    .limit(1);
   if (!row) throw new Error('booking not found');
+  return row;
+}
+
+/** Apply a complete PATCH in one transaction; failure rolls back every field.
+ * Stock accrual release happens only after that transaction commits. */
+export async function patchBooking(
+  ctx: CoreCtx,
+  id: string,
+  patch: UpdateBookingInput & { start?: Date; end?: Date; status?: string },
+): Promise<SchedBooking> {
+  if ((patch.start === undefined) !== (patch.end === undefined))
+    throw new Error('start and end must be provided together');
+  if (patch.status !== undefined && !SETTABLE.has(patch.status))
+    throw new Error(`invalid status: ${patch.status}`);
+  const row = await withOrgCore(ctx, async (tx) => {
+    // Lock before any component write so concurrent PATCHes cannot interleave.
+    const [existing] = await tx
+      .select({ id: schedBookings.id })
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1)
+      .for('update');
+    if (!existing) throw new Error('booking not found');
+    if (patch.start && patch.end) {
+      await rescheduleBookingInTx(tx, ctx, id, {
+        start: patch.start,
+        end: patch.end,
+        resourceId: patch.resourceId,
+      });
+    }
+    const updated = await updateBookingInTx(tx, ctx, id, {
+      ...patch,
+      resourceId: patch.start ? undefined : patch.resourceId,
+    });
+    if (patch.status === undefined) return updated;
+    const [result] = await tx
+      .update(schedBookings)
+      .set({ status: patch.status, updatedAt: new Date() })
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .returning();
+    return result;
+  });
+  // TODO(handoff): Admit stock release durably with the booking commit; process
+  // loss between commit and this best-effort call can strand accruals. See meta
+  // proposals/2026-09-12-hub-booking-stock-postcommit-recovery.md.
+  if (patch.status !== undefined && RELEASING.has(patch.status)) {
+    try {
+      await releaseAccruals(ctx, 'booking', id);
+    } catch (e) {
+      console.error('[scheduling] releaseAccruals failed (status change stands)', e);
+    }
+  }
   return row;
 }
 

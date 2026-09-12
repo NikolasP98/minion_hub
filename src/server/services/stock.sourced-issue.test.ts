@@ -88,7 +88,7 @@ beforeAll(async () => {
   await client.exec(`CREATE ROLE app_ledger;
     CREATE TABLE fin_invoices (id uuid PRIMARY KEY, org_id text NOT NULL, provider_ref text);
     CREATE TABLE stk_items (id uuid PRIMARY KEY, org_id text NOT NULL, units_per_stock_uom numeric);
-    CREATE TABLE stk_warehouses (id uuid PRIMARY KEY, org_id text NOT NULL);
+    CREATE TABLE stk_warehouses (id uuid PRIMARY KEY, org_id text NOT NULL, archived_at timestamptz);
     CREATE TABLE stk_entries (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), org_id text NOT NULL,
       human_id text, type text NOT NULL, status text NOT NULL DEFAULT 'draft', party_id uuid,
       note text, posted_at timestamptz, created_by text, metadata jsonb NOT NULL DEFAULT '{}',
@@ -137,7 +137,7 @@ beforeEach(async () => {
     'synthetic-invoice',
   ]);
   await client.query('INSERT INTO stk_items VALUES ($1,$2,10)', [ITEM, ORG]);
-  await client.query('INSERT INTO stk_warehouses VALUES ($1,$2)', [WH, ORG]);
+  await client.query('INSERT INTO stk_warehouses (id, org_id) VALUES ($1,$2)', [WH, ORG]);
   await client.query(
     'INSERT INTO stk_bins (org_id,item_id,warehouse_id,qty,valuation_rate) VALUES ($1,$2,$3,10,5)',
     [ORG, ITEM, WH],
