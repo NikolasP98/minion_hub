@@ -11,6 +11,7 @@ import {
   cancelJobsByRef,
   enqueueJob,
   registerJobHandler,
+  RetryableJobError,
   type AdvanceResult,
 } from './bg-runtime';
 
@@ -50,13 +51,18 @@ async function row(id: string) {
   }>('SELECT * FROM bg_jobs WHERE id=$1', [id]);
   return result.rows[0];
 }
-async function seed() {
-  return enqueueJob({ tenantId: 'tenant-a', type, refId: 'ref-a', cursor: { initial: true } });
+async function seed(jobType = type) {
+  return enqueueJob({
+    tenantId: 'tenant-a',
+    type: jobType,
+    refId: 'ref-a',
+    cursor: { initial: true },
+  });
 }
-function handler() {
+function handler(jobType = type) {
   const pending = deferred<AdvanceResult>();
   const advance = vi.fn(() => pending.promise);
-  registerJobHandler({ type, advance });
+  registerJobHandler({ type: jobType, advance });
   return { ...pending, advance };
 }
 
@@ -231,6 +237,61 @@ describe('heartbeat lifecycle', () => {
     await nextTurn();
     expect((await row(id)).lease_generation).toBe(2);
   });
+  it('leaves booking transient failures resumable with cursor preserved and no heartbeat leak', async () => {
+    const h = handler('booking_stock');
+    const id = await seed('booking_stock');
+    const run = advanceJob(id);
+    await until(() => h.advance.mock.calls.length === 1);
+    h.reject(new RetryableJobError());
+    await run;
+    expect(await row(id)).toMatchObject({
+      status: 'running',
+      lease_generation: 1,
+      cursor: '{"initial":true}',
+      attempts: 1,
+    });
+    expect(vi.getTimerCount()).toBe(0);
+    await advanceJob(id);
+    expect(h.advance).toHaveBeenCalledOnce(); // Current lease remains, no immediate retry.
+    await client.query('UPDATE bg_jobs SET lease_until=0 WHERE id=$1', [id]);
+    const replacement = handler('booking_stock');
+    const resumed = advanceJob(id);
+    await until(() => replacement.advance.mock.calls.length === 1);
+    replacement.resolve({ done: true });
+    await resumed;
+    expect(await row(id)).toMatchObject({ status: 'done', lease_generation: 2, error: null });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not admit retry signals for other job types or let late retry diagnostics alter a new owner', async () => {
+    const other = handler();
+    const otherId = await seed();
+    const run = advanceJob(otherId);
+    await until(() => other.advance.mock.calls.length === 1);
+    other.reject(new RetryableJobError());
+    await run;
+    expect((await row(otherId)).status).toBe('failed');
+    const old = handler('booking_stock');
+    const id = await seed('booking_stock');
+    const oldRun = advanceJob(id);
+    await until(() => old.advance.mock.calls.length === 1);
+    await client.query('UPDATE bg_jobs SET lease_until=0 WHERE id=$1', [id]);
+    const current = handler('booking_stock');
+    const currentRun = advanceJob(id);
+    await until(() => current.advance.mock.calls.length === 1);
+    old.reject(new RetryableJobError());
+    await oldRun;
+    expect(await row(id)).toMatchObject({
+      status: 'running',
+      lease_generation: 2,
+      attempts: 0,
+      error: null,
+    });
+    current.resolve({ done: true });
+    await currentRun;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('cleans up after handler failure and budget exhaustion', async () => {
     const h = handler();
     const id = await seed();

@@ -38,6 +38,15 @@ export type AdvanceResult = {
   error?: string;
 };
 
+/** Explicit database-only transient signal. Currently admitted only for booking_stock;
+ * provider and arbitrary handler exceptions retain terminal-failure behavior. */
+export class RetryableJobError extends Error {
+  constructor() {
+    super('Temporary database failure; waiting for lease expiry before retry');
+    this.name = 'RetryableJobError';
+  }
+}
+
 export type JobHandler = {
   type: string;
   /** Advance the job by one bounded step. Persist domain changes here. */
@@ -277,6 +286,26 @@ export async function advanceJob(jobId: string, budgetMs = 25_000): Promise<void
         if (outcome === leaseLost || lost) return;
         result = outcome;
       } catch (err) {
+        if (err instanceof RetryableJobError && job.type === 'booking_stock') {
+          // One attempt per lease: no hot loop and no cursor mutation. The normal
+          // expiry/reclaim path resumes the last committed domain checkpoint.
+          if (!lost) {
+            try {
+              await getCoreDb()
+                .update(bgJobs)
+                .set({
+                  attempts: sql`${bgJobs.attempts} + 1`,
+                  error: err.message,
+                  updatedAt: Date.now(),
+                })
+                .where(ownsLease(lease, Date.now()));
+            } catch {
+              // The outage may also prevent this diagnostic write. Retaining
+              // the persisted lease is sufficient for a later tick to reclaim.
+            }
+          }
+          return;
+        }
         if (!lost) await finish(lease, 'failed', err instanceof Error ? err.message : String(err));
         return;
       }
