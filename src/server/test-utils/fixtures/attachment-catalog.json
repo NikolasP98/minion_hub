@@ -3620,9 +3620,7 @@
         "tablename": "attachment_links",
         "policyname": "attachment_links_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3632,9 +3630,7 @@
         "tablename": "crm_contacts",
         "policyname": "crm_contacts_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3644,9 +3640,7 @@
         "tablename": "doc_audit_log",
         "policyname": "doc_audit_log_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3656,9 +3650,7 @@
         "tablename": "files",
         "policyname": "admin_all",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = 'admin'::text))))",
         "with_check": null
@@ -3668,9 +3660,7 @@
         "tablename": "files",
         "policyname": "files_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "((tenant_id)::text = current_setting('app.current_org_id'::text, true))",
         "with_check": "((tenant_id)::text = current_setting('app.current_org_id'::text, true))"
@@ -3680,9 +3670,7 @@
         "tablename": "files",
         "policyname": "member_sel",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "SELECT",
         "qual": "(EXISTS ( SELECT 1\n   FROM organization_members m\n  WHERE ((m.organization_id = files.tenant_id) AND (m.profile_id = auth.uid()))))",
         "with_check": null
@@ -3692,9 +3680,7 @@
         "tablename": "fin_clients",
         "policyname": "fin_clients_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3704,9 +3690,7 @@
         "tablename": "fin_invoices",
         "policyname": "fin_invoices_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3716,9 +3700,7 @@
         "tablename": "fin_products",
         "policyname": "fin_products_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3728,9 +3710,7 @@
         "tablename": "organization_members",
         "policyname": "organization_members_admin_all",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = 'admin'::text))))",
         "with_check": null
@@ -3740,9 +3720,7 @@
         "tablename": "organization_members",
         "policyname": "organization_members_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "app_ledger"
-        ],
+        "roles": ["app_ledger"],
         "cmd": "SELECT",
         "qual": "((organization_id)::text = current_setting('app.current_org_id'::text, true))",
         "with_check": null
@@ -3752,9 +3730,7 @@
         "tablename": "organization_members",
         "policyname": "organization_members_self_select",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "SELECT",
         "qual": "(profile_id = auth.uid())",
         "with_check": null
@@ -3764,9 +3740,7 @@
         "tablename": "organizations",
         "policyname": "organizations_admin_all",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = 'admin'::text))))",
         "with_check": null
@@ -3776,9 +3750,7 @@
         "tablename": "organizations",
         "policyname": "organizations_member_select",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "SELECT",
         "qual": "(EXISTS ( SELECT 1\n   FROM organization_members m\n  WHERE ((m.organization_id = organizations.id) AND (m.profile_id = auth.uid()))))",
         "with_check": null
@@ -3788,9 +3760,7 @@
         "tablename": "pos_shifts",
         "policyname": "pos_shifts_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3800,9 +3770,7 @@
         "tablename": "pos_tickets",
         "policyname": "pos_tickets_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3812,9 +3780,7 @@
         "tablename": "profiles",
         "policyname": "profiles_self_select",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "SELECT",
         "qual": "(auth.uid() = id)",
         "with_check": null
@@ -3824,9 +3790,7 @@
         "tablename": "profiles",
         "policyname": "profiles_self_update",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "UPDATE",
         "qual": "(auth.uid() = id)",
         "with_check": null
@@ -3836,9 +3800,7 @@
         "tablename": "sched_bookings",
         "policyname": "sched_bookings_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3848,9 +3810,7 @@
         "tablename": "sched_event_kinds",
         "policyname": "sched_event_kinds_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3860,9 +3820,7 @@
         "tablename": "sched_event_types",
         "policyname": "sched_event_types_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3872,9 +3830,7 @@
         "tablename": "sched_resources",
         "policyname": "sched_resources_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3884,9 +3840,7 @@
         "tablename": "stk_entries",
         "policyname": "stk_entries_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -3896,9 +3850,7 @@
         "tablename": "stk_items",
         "policyname": "stk_items_org_guc",
         "permissive": "PERMISSIVE",
-        "roles": [
-          "public"
-        ],
+        "roles": ["public"],
         "cmd": "ALL",
         "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
         "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
@@ -4066,9 +4018,7 @@
         "function": "handle_new_auth_user()",
         "definition": "CREATE OR REPLACE FUNCTION public.handle_new_auth_user()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.email is null then\n    return new;\n  end if;\n  insert into public.profiles (id, email, display_name)\n  values (\n    new.id,\n    new.email,\n    coalesce(\n      nullif(new.raw_user_meta_data->>'full_name', ''),\n      nullif(new.raw_user_meta_data->>'name', ''),\n      split_part(new.email, '@', 1)\n    )\n  )\n  on conflict (id) do nothing;\n  return new;\nend;\n$function$\n",
         "prosecdef": true,
-        "proconfig": [
-          "search_path=public"
-        ],
+        "proconfig": ["search_path=public"],
         "acl": "{postgres=X/postgres,service_role=X/postgres}"
       }
     ]
