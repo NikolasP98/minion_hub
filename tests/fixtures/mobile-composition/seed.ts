@@ -60,5 +60,64 @@ export const EVENTS: CalEvent[] = RESOURCES.flatMap((r, i) =>
   }),
 );
 
+// Extra events for the calendar-interactions spec (S9): own-tag colour is
+// already covered by every event above (`tags: [t1]`). These add the three
+// cases that aren't: a contact-inherited tag with no own tag, an overlapping
+// pair for the 409-conflict path, and an event starting before the grid's
+// 07:00 floor (clipped-but-present rendering).
+export const CONTACT_TAG_EVENT_ID = 'r4-contact-tag';
+export const OVERLAP_EVENT_A_ID = 'r5-overlap-a';
+export const OVERLAP_EVENT_B_ID = 'r5-overlap-b';
+export const PRE_WINDOW_EVENT_ID = 'r6-pre-window';
+
+function extraEvent(
+  id: string,
+  resource: (typeof RESOURCES)[number],
+  start: string,
+  end: string,
+  attendeeName: string,
+  overrides: Partial<CalEvent> = {},
+): CalEvent {
+  return {
+    id,
+    start,
+    end,
+    status: 'confirmed',
+    resourceId: resource.id,
+    resourceName: resource.name,
+    resourceColor: resource.color,
+    kindId: 'k1',
+    eventTypeId: 'et0',
+    eventTypeTitle: 'Consulta inicial',
+    title: null,
+    notes: null,
+    crmContactId: null,
+    attendeeName,
+    attendeePhone: null,
+    productId: null,
+    productName: null,
+    tags: [],
+    contactTags: [],
+    productTags: [],
+    ...overrides,
+  } satisfies CalEvent;
+}
+
+EVENTS.push(
+  // No own tag; a coloured tag inherited from the linked CRM contact.
+  extraEvent(CONTACT_TAG_EVENT_ID, RESOURCES[3], iso(16, 0), iso(16, 45), 'Paciente ContactTag', {
+    crmContactId: 'c-contact-tag',
+    contactTags: [{ id: 'ct1', name: 'VIP Cliente', color: '#22c55e' }],
+  }),
+  // Two bookings on the same staff lane, overlapping in time, so a move onto
+  // one from the other reads as a real conflict (the PATCH stub decides the
+  // response; the fixture data just makes the scenario legible).
+  extraEvent(OVERLAP_EVENT_A_ID, RESOURCES[4], iso(18, 0), iso(18, 45), 'Paciente Overlap A'),
+  extraEvent(OVERLAP_EVENT_B_ID, RESOURCES[4], iso(18, 20), iso(19, 5), 'Paciente Overlap B'),
+  // Starts before the day grid's 07:00 floor (slotMinTime) — the renderer
+  // clips its chunk to the grid start, so it must still render, just short.
+  extraEvent(PRE_WINDOW_EVENT_ID, RESOURCES[5], iso(6, 0), iso(7, 20), 'Paciente PreWindow'),
+);
+
 export const FROM = iso(0, 0);
 export const TO = new Date(new Date(FROM).getTime() + 86_400_000).toISOString();

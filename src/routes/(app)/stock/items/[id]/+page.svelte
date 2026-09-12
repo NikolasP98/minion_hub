@@ -14,8 +14,10 @@
   import UnitDiagram from '$lib/components/stock/UnitDiagram.svelte';
   import ShapePicker from '$lib/components/stock/ShapePicker.svelte';
   import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
+  import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
 
   let { data }: { data: PageData } = $props();
+  let attachmentsRefreshKey = $state(0);
   // ponytail: backend contract fields (consumptionUom/unitsPerStockUom/subunitsPerStockUom/
   // diagramEnabled) are landing via a parallel migration — intersect optionally so this
   // page compiles against the contract before the columns exist server-side.
@@ -626,6 +628,19 @@
           </tbody>
         </table>
       {/if}
+    </div>
+    <div class="card">
+      <div class="card-h flex items-center justify-between gap-2">
+        <span>{m.attachments_title()}</span>
+        <AttachmentButton
+          objectType="stk_item"
+          objectId={item.id}
+          size="sm"
+          disabled={!canAct('stock', 'edit')}
+          onuploaded={() => (attachmentsRefreshKey += 1)}
+        />
+      </div>
+      <AttachmentList objectType="stk_item" objectId={item.id} refreshKey={attachmentsRefreshKey} />
     </div>
   </div>
 </div>
