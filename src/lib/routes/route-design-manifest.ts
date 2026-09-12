@@ -487,10 +487,14 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   }),
   screen('/work', 'My work', 'business-operations', 'dashboard'),
 
-  // Scheduling and POS (14)
+  // Scheduling and POS (15)
   screen('/scheduling', 'Scheduling', 'scheduling-pos', 'dashboard'),
   screen('/scheduling/bookings', 'Bookings', 'scheduling-pos', 'collection'),
   screen('/scheduling/bookings/new', 'New booking', 'scheduling-pos', 'form-settings'),
+  screen('/scheduling/bookings/[id]/edit', 'Edit booking', 'scheduling-pos', 'form-settings', {
+    params: { id: 'booking-detail' },
+    states: MUTATING_DETAIL_STATES,
+  }),
   screen('/scheduling/calendar', 'Calendar', 'scheduling-pos', 'workspace-editor'),
   screen('/scheduling/event-types', 'Event types', 'scheduling-pos', 'collection'),
   screen('/scheduling/links', 'Booking links', 'scheduling-pos', 'collection'),

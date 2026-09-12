@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CalendarClock, Plus, Check, X, UserX, ClipboardList } from 'lucide-svelte';
+  import { CalendarClock, Plus, Check, X, UserX, ClipboardList, Pencil } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
   import {
     PageHeader,
@@ -256,6 +256,15 @@
                 </span>
               {/if}
               <div class="flex gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="act"
+                  title={m.sched_edit_booking()}
+                  href="/scheduling/bookings/{b.id}/edit"
+                >
+                  <Pencil size={iconSizes.sm} />
+                </Button>
                 {#if b.status === 'accepted' || b.status === 'pending'}
                   <Button
                     variant="ghost"
