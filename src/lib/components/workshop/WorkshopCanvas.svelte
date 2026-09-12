@@ -1721,8 +1721,9 @@
   }
 </script>
 
-<!-- TODO(handoff): Pixi/simulation motion and keyboard relationship/element editing remain
-  unqualified; this slice covers pixel motion and agent selection/task assignment only.
+<!-- TODO(handoff): Full Workshop composition/camera and keyboard relationship/element
+  editing remain unqualified; isolated pixel lifecycle and Pixi decoration fixtures
+  do not establish all business simulation or canvas task equivalence.
   See meta proposals/2026-09-08-platform-qc-remediation.md (Workshop accessibility). -->
 <div class="flex-1 relative overflow-hidden">
   <WorkshopAgentControls
