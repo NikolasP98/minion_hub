@@ -14,6 +14,7 @@ const VALID_SECTIONS = new Set([
   'locale',
   'landingPage',
   'navOrder',
+  'calendar',
 ]);
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
@@ -35,6 +36,12 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
     const v = body.value;
     if (typeof v !== 'string' || !/^\/(?![/\\])[A-Za-z0-9/_\-?=&.]*$/.test(v)) {
       throw error(400, 'Invalid landing page path');
+    }
+  }
+  if (section === 'calendar') {
+    const v = body.value;
+    if (!v || typeof v !== 'object' || typeof v.showInheritedTags !== 'boolean') {
+      throw error(400, 'Invalid calendar preference');
     }
   }
 
