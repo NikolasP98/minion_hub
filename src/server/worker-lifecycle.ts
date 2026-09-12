@@ -6,6 +6,10 @@ import { closeCache } from '$lib/server/cache';
 const requests = new Set<Promise<unknown>>();
 
 /** Socket closure does not settle the corresponding asynchronous route handler. */
+// TODO(handoff): A resolved streaming Response can retain body/deferred work beyond
+// this promise; qualify stream body lifetime separately before certifying all Node
+// routes. Buffered cron JSON and tracked job callbacks are the current boundary.
+// See meta proposals/2026-09-12-360-continuation-review-followups.md (SDK/transport).
 export function trackWorkerRequest<T>(request: Promise<T>): Promise<T> {
   requests.add(request);
   void request.then(
