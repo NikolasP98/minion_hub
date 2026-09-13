@@ -208,7 +208,7 @@ export async function openAttachmentFixture() {
     };
   } catch (e) {
     try {
-      await owner.unsafe(
+      await ddl.unsafe(
         `DROP SCHEMA IF EXISTS "${schema}" CASCADE; DROP SCHEMA IF EXISTS "${schema}_auth" CASCADE`,
       );
     } finally {
