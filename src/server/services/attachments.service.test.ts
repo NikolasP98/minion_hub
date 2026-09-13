@@ -47,6 +47,7 @@ beforeEach(async () => {
   await client.exec(`CREATE ROLE app_ledger;${ATTACHMENT_FIXTURE_DDL}`);
   await client.exec(migrationSource('20260912090100_attachment_links.sql'));
   await client.exec(migrationSource('20260913020000_attachment_file_state.sql'));
+  await client.exec(migrationSource('20260913030000_attachment_trash.sql'));
   await client.query('INSERT INTO crm_contacts(id,org_id,owner_id) VALUES ($1,$2,$3)', [
     CONTACT,
     ORG,

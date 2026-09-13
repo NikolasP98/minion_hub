@@ -20,6 +20,8 @@ import {
   getAttachmentDownloadUrl,
   finalizeUpload,
   sweepAbandonedUploads,
+  restoreAttachmentLink,
+  listTrashedAttachmentsFor,
 } from './attachments.service';
 import { detachObjectAttachmentsInTx } from './attachment-lifecycle';
 import {
@@ -440,5 +442,73 @@ describe('native attachment deletion lifecycle', () => {
     await expect(f.owner.unsafe(migration)).rejects.toThrow(
       'attachment links require tenant/file reconciliation',
     );
+  });
+});
+
+describe('native two-layer deletion (trash, then claim)', () => {
+  const trash = async () =>
+    f.owner`SELECT file_id,object_type,object_id,hidden_by FROM attachment_trash ORDER BY hidden_at`;
+  it('unlink hides the link in the trash and restore moves it back with its original link identity', async () => {
+    await f.seedFile();
+    await linkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    const [before] = await f.owner`SELECT linked_by,linked_at FROM attachment_links`;
+    await unlinkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    expect(await counts()).toEqual({ files: 1, links: 0, states: 1 });
+    expect(await trash()).toMatchObject([
+      { file_id: 'file-a', object_type: 'booking', object_id: BOOKING, hidden_by: USER },
+    ]);
+    const listed = await listTrashedAttachmentsFor(f.ctx, 'booking', BOOKING, access());
+    expect(listed.map((row) => row.file.id)).toEqual(['file-a']);
+    await restoreAttachmentLink(f.ctx, { fileId: 'file-a', ...ref }, access());
+    expect(await counts()).toEqual({ files: 1, links: 1, states: 1 });
+    expect(await trash()).toHaveLength(0);
+    const [after] = await f.owner`SELECT linked_by,linked_at FROM attachment_links`;
+    expect(after).toEqual(before);
+    expect(store.delete).not.toHaveBeenCalled();
+  });
+  it('a plain relink of a trashed file clears its trash row; restoring a link that is not trashed is refused', async () => {
+    await f.seedFile();
+    await linkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    await unlinkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    await linkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    expect(await trash()).toHaveLength(0);
+    await expect(
+      restoreAttachmentLink(f.ctx, { fileId: 'file-a', ...ref }, access()),
+    ).rejects.toMatchObject({ code: 'not_found' });
+  });
+  it('the record DELETE trigger hides links as system-trashed rows that cannot be restored to the missing record', async () => {
+    await f.seedFile();
+    await linkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    await withOrgCore(f.ctx, (tx) =>
+      tx.execute(sql`DELETE FROM sched_bookings WHERE id=${BOOKING}`),
+    );
+    expect(await counts()).toEqual({ files: 1, links: 0, states: 1 });
+    expect(await trash()).toMatchObject([{ file_id: 'file-a', hidden_by: null }]);
+    await expect(
+      restoreAttachmentLink(f.ctx, { fileId: 'file-a', ...ref }, access()),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(store.delete).not.toHaveBeenCalled();
+  });
+  it('the sweeper leaves a trashed file alone inside the retention window and claims it after', async () => {
+    await f.seedFile('file-a', { old: true });
+    await linkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    await unlinkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    expect(await sweepAbandonedUploads(f.ctx)).toMatchObject({ scanned: 0, deleted: 0 });
+    expect(await counts()).toEqual({ files: 1, links: 0, states: 1 });
+    await f.owner`UPDATE attachment_trash SET hidden_at=now()-interval '31 days'`;
+    expect(await sweepAbandonedUploads(f.ctx)).toMatchObject({ scanned: 1, deleted: 1, failed: 0 });
+    expect(store.delete).toHaveBeenCalledTimes(1);
+    expect(await counts()).toEqual({ files: 0, links: 0, states: 0 });
+    expect(await trash()).toHaveLength(0);
+  });
+  it('re-hiding a restored link restarts its retention clock', async () => {
+    await f.seedFile('file-a', { old: true });
+    await linkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    await unlinkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    await f.owner`UPDATE attachment_trash SET hidden_at=now()-interval '31 days'`;
+    await restoreAttachmentLink(f.ctx, { fileId: 'file-a', ...ref }, access());
+    await unlinkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    expect(await sweepAbandonedUploads(f.ctx)).toMatchObject({ scanned: 0, deleted: 0 });
+    expect(await counts()).toEqual({ files: 1, links: 0, states: 1 });
   });
 });

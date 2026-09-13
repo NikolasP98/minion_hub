@@ -1,19 +1,20 @@
 <script lang="ts">
   import { FileText, FileSpreadsheet, Image, Music, Paperclip, Video } from 'lucide-svelte';
   import { Button, Chip, Popover, Select, iconSizes } from '$lib/components/ui';
-  import { ConfirmDialog } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatBytes, fmtTimeAgo } from '$lib/utils/format';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import {
     attachmentDownloadUrl,
-    deleteAttachment,
     linkAttachment,
     listAttachments,
+    listTrashedAttachments,
+    restoreAttachment,
     unlinkAttachment,
     type AttachmentObjectRef,
     type AttachmentObjectType,
     type AttachmentWithLinks,
+    type TrashedAttachment,
   } from '$lib/attachments/upload';
 
   interface Props {
@@ -56,12 +57,17 @@
   }
 
   let rows = $state<AttachmentWithLinks[]>([]);
+  let trashed = $state<TrashedAttachment[]>([]);
+  let showTrash = $state(false);
   let loading = $state(true);
 
   async function load() {
     loading = true;
     try {
-      rows = await listAttachments(objectType, objectId);
+      [rows, trashed] = await Promise.all([
+        listAttachments(objectType, objectId),
+        listTrashedAttachments(objectType, objectId).catch(() => []),
+      ]);
     } catch {
       rows = [];
     } finally {
@@ -81,27 +87,26 @@
     return row.links.filter((l) => !(l.objectType === objectType && l.objectId === objectId));
   }
 
-  let pendingDeleteFileId = $state<string | null>(null);
-
-  async function onUnlink(row: AttachmentWithLinks) {
-    const remaining = otherLinks(row);
+  // Two-layer deletion: "Delete" only hides this record's link (restorable
+  // for 30 days from the list below); the file is reaped server-side once
+  // every link has been hidden for the whole retention window.
+  async function onDelete(row: AttachmentWithLinks) {
     try {
       await unlinkAttachment(row.file.id, { objectType, objectId });
     } catch {
-      toastError(m.attachments_unlink_failed());
+      toastError(m.attachments_delete_failed());
       return;
     }
-    if (remaining.length === 0) {
-      pendingDeleteFileId = row.file.id;
-    } else {
-      await load();
-    }
+    await load();
   }
 
-  async function confirmDelete() {
-    if (!pendingDeleteFileId) return;
-    await deleteAttachment(pendingDeleteFileId);
-    pendingDeleteFileId = null;
+  async function onRestore(row: TrashedAttachment) {
+    try {
+      await restoreAttachment(row.file.id, { objectType, objectId });
+    } catch {
+      toastError(m.attachments_restore_failed());
+      return;
+    }
     await load();
   }
 
@@ -201,24 +206,40 @@
               </Button>
             </div>
           </Popover>
-          <Button variant="ghost" size="sm" class="danger" onclick={() => onUnlink(row)}>
-            {m.attachments_unlink()}
+          <Button variant="ghost" size="sm" class="danger" onclick={() => onDelete(row)}>
+            {m.attachments_delete()}
           </Button>
         </div>
       </div>
     {/each}
   {/if}
+  {#if trashed.length > 0}
+    <div class="trash">
+      <Button variant="ghost" size="sm" onclick={() => (showTrash = !showTrash)}>
+        {m.attachments_deleted_toggle({ n: trashed.length })}
+      </Button>
+      {#if showTrash}
+        <p class="t-caption text-muted">{m.attachments_trash_hint()}</p>
+        {#each trashed as row (row.file.id)}
+          {@const Icon = iconFor(row.file.contentType)}
+          <div class="row text-muted">
+            <Icon size={iconSizes.sm} class="shrink-0" />
+            <span class="name">{row.file.fileName}</span>
+            <span class="t-caption meta">{formatBytes(row.file.sizeBytes)}</span>
+            <span class="t-caption meta">
+              {m.attachments_deleted_ago({ ago: fmtTimeAgo(new Date(row.hiddenAt).getTime()) })}
+            </span>
+            <div class="actions">
+              <Button variant="ghost" size="sm" onclick={() => onRestore(row)}>
+                {m.attachments_restore()}
+              </Button>
+            </div>
+          </div>
+        {/each}
+      {/if}
+    </div>
+  {/if}
 </div>
-
-<ConfirmDialog
-  open={pendingDeleteFileId !== null}
-  title={m.attachments_delete_confirm_title()}
-  message={m.attachments_delete_confirm_message()}
-  failureMessage={m.attachments_delete_confirm_failure()}
-  tone="danger"
-  onconfirm={confirmDelete}
-  onclose={() => (pendingDeleteFileId = null)}
-/>
 
 <style>
   .attachment-list {
@@ -249,6 +270,15 @@
   }
   .meta {
     white-space: nowrap;
+  }
+  .trash {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    align-items: flex-start;
+  }
+  .trash .row {
+    align-self: stretch;
   }
   .also-linked {
     display: flex;

@@ -179,6 +179,24 @@ export async function listAttachments(
   return attachments;
 }
 
+export interface TrashedAttachment {
+  file: AttachmentFile;
+  /** ISO timestamp — when the link was hidden. */
+  hiddenAt: string;
+  hiddenBy: string | null;
+}
+/** Hidden (restorable) links of one object, newest first. */
+export async function listTrashedAttachments(
+  objectType: AttachmentObjectType,
+  objectId: string,
+): Promise<TrashedAttachment[]> {
+  const params = new URLSearchParams({ objectType, objectId, trashed: '1' });
+  const { attachments } = await fetchJson<{ attachments: TrashedAttachment[] }>(
+    `/api/attachments?${params}`,
+  );
+  return attachments;
+}
+
 export async function attachmentDownloadUrl(fileId: string): Promise<string> {
   const { url } = await fetchJson<{ url: string }>(`/api/attachments/${fileId}`);
   return url;
@@ -192,6 +210,17 @@ export async function linkAttachment(fileId: string, ref: AttachmentObjectRef): 
   });
 }
 
+/** Bring a hidden link back from the trash (see `unlinkAttachment`). */
+export async function restoreAttachment(fileId: string, ref: AttachmentObjectRef): Promise<void> {
+  await fetchJson(`/api/attachments/${fileId}/links`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...ref, restore: true }),
+  });
+}
+
+/** Hides the link (moves it to the trash, restorable for 30 days); never
+ *  deletes the file. */
 export async function unlinkAttachment(fileId: string, ref: AttachmentObjectRef): Promise<void> {
   await fetchJson(`/api/attachments/${fileId}/links`, {
     method: 'DELETE',
@@ -200,8 +229,8 @@ export async function unlinkAttachment(fileId: string, ref: AttachmentObjectRef)
   });
 }
 
-/** `force` severs any remaining links too (caller confirms first — see
- *  `AttachmentList`'s "delete the file too?" prompt). */
+/** Permanent, file-level deletion. Used to clean up a failed upload; `force`
+ *  severs any remaining links too. Not offered in the UI — users hide links. */
 export async function deleteAttachment(fileId: string, force = false): Promise<void> {
   await fetchJson(`/api/attachments/${fileId}${force ? '?force=1' : ''}`, { method: 'DELETE' });
 }

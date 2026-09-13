@@ -1,8 +1,12 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, sql, type SQL } from 'drizzle-orm';
 import { files } from '@minion-stack/db/pg';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
-import { attachmentLinks, attachmentFileState } from '$server/db/pg-attachments-schema';
+import {
+  attachmentLinks,
+  attachmentFileState,
+  attachmentTrash,
+} from '$server/db/pg-attachments-schema';
 import { getStorage } from '$server/storage/blob';
 import {
   AttachmentError,
@@ -27,6 +31,55 @@ export async function linksInTx(
     .from(attachmentLinks)
     .where(and(eq(attachmentLinks.orgId, ctx.tenantId), eq(attachmentLinks.fileId, fileId)));
   return refs as AttachmentObjectRef[];
+}
+/** Layer 1 of deletion. Hidden links stay restorable this long; the sweeper
+ * may claim a file only once its newest trash row is older than this. Mirror
+ * the literal in /api/attachments/sweep/tick and the migration header. */
+export const TRASH_RETENTION_DAYS = 30;
+export const trashCutoff = () => new Date(Date.now() - TRASH_RETENTION_DAYS * 86_400_000);
+/** Hide links by moving them to the trash. A row keeps its link identity, so
+ * restore is the reverse move; re-hiding an already-trashed link restarts its
+ * clock. The `where` clause must already be org-scoped. */
+export async function trashLinksInTx(
+  tx: CoreTx,
+  where: SQL,
+  hiddenBy: string | null,
+): Promise<number> {
+  const rows = await tx.select().from(attachmentLinks).where(where);
+  if (!rows.length) return 0;
+  await tx
+    .insert(attachmentTrash)
+    .values(rows.map((row) => ({ ...row, hiddenBy, hiddenAt: new Date() })))
+    .onConflictDoUpdate({
+      target: [attachmentTrash.objectType, attachmentTrash.objectId, attachmentTrash.fileId],
+      set: {
+        hiddenAt: sql`EXCLUDED.hidden_at`,
+        hiddenBy: sql`EXCLUDED.hidden_by`,
+        linkedBy: sql`EXCLUDED.linked_by`,
+        linkedAt: sql`EXCLUDED.linked_at`,
+      },
+    });
+  await tx.delete(attachmentLinks).where(where);
+  return rows.length;
+}
+/** True while any trash row for the file is inside the retention window. */
+export async function hasRecentTrashInTx(
+  tx: CoreTx,
+  ctx: Pick<CoreCtx, 'tenantId'>,
+  fileId: string,
+) {
+  const [row] = await tx
+    .select({ fileId: attachmentTrash.fileId })
+    .from(attachmentTrash)
+    .where(
+      and(
+        eq(attachmentTrash.orgId, ctx.tenantId),
+        eq(attachmentTrash.fileId, fileId),
+        gt(attachmentTrash.hiddenAt, trashCutoff()),
+      ),
+    )
+    .limit(1);
+  return !!row;
 }
 const refKey = (refs: readonly AttachmentObjectRef[]) =>
   refs
@@ -162,8 +215,9 @@ export async function visibleLinksInTx(
     if (await canAccessAttachmentObject(tx, ctx, access, ref, 'view')) result.push(ref);
   return result;
 }
-/** Caller holds the record row before invoking this. Retain durable file
- * registrations after the last unlink; a future sweeper may claim them. */
+/** Caller holds the record row before invoking this. Links move to the trash
+ * (layer 1); durable file registration is retained so the sweeper can claim the
+ * file once the retention window has passed. */
 export async function detachObjectAttachmentsInTx(
   tx: CoreTx,
   ctx: Pick<CoreCtx, 'tenantId'>,
@@ -211,15 +265,15 @@ export async function detachObjectAttachmentsInTx(
         });
     }
   }
-  await tx
-    .delete(attachmentLinks)
-    .where(
-      and(
-        eq(attachmentLinks.orgId, ctx.tenantId),
-        eq(attachmentLinks.objectType, ref.objectType),
-        eq(attachmentLinks.objectId, ref.objectId),
-      ),
-    );
+  await trashLinksInTx(
+    tx,
+    and(
+      eq(attachmentLinks.orgId, ctx.tenantId),
+      eq(attachmentLinks.objectType, ref.objectType),
+      eq(attachmentLinks.objectId, ref.objectId),
+    )!,
+    null,
+  );
 }
 export async function claimDeletionInTx(
   tx: CoreTx,
@@ -242,6 +296,12 @@ export async function claimDeletionInTx(
     .delete(attachmentLinks)
     .where(
       and(eq(attachmentLinks.orgId, ctx.tenantId), eq(attachmentLinks.fileId, locked.file.id)),
+    );
+  // Layer 2: a claimed file has nothing left to restore.
+  await tx
+    .delete(attachmentTrash)
+    .where(
+      and(eq(attachmentTrash.orgId, ctx.tenantId), eq(attachmentTrash.fileId, locked.file.id)),
     );
 }
 /** S3 DeleteObject is idempotent for the immutable key. Failed/interrupted

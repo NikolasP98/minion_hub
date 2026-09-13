@@ -5601,5 +5601,12 @@
   "attachments_object_stk_item": "Stock item",
   "attachments_object_fin_invoice": "Invoice",
   "attachments_object_stk_entry": "Stock entry",
-  "attachments_object_pos_ticket": "Sale"
+  "attachments_object_pos_ticket": "Sale",
+  "attachments_delete": "Delete",
+  "attachments_delete_failed": "Couldn't delete the attachment",
+  "attachments_deleted_toggle": "{n} deleted",
+  "attachments_deleted_ago": "Deleted {ago}",
+  "attachments_restore": "Restore",
+  "attachments_restore_failed": "Couldn't restore the attachment",
+  "attachments_trash_hint": "Deleted files are kept for 30 days, then removed permanently."
 }

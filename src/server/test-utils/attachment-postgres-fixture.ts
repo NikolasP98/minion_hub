@@ -36,6 +36,7 @@ export const INVOICE = '30000000-0000-4000-8000-000000000003';
 export const migrations = [
   '20260912090100_attachment_links.sql',
   '20260913020000_attachment_file_state.sql',
+  '20260913030000_attachment_trash.sql',
 ] as const;
 export function migrationSource(name: (typeof migrations)[number]) {
   return readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8');
@@ -81,12 +82,13 @@ export async function openAttachmentFixture() {
     await owner.unsafe(
       `ALTER DEFAULT PRIVILEGES FOR ROLE minion_qc IN SCHEMA "${schema}" GRANT ALL ON TABLES TO anon,authenticated;`,
     );
-    // attachment_links already exists exactly as captured; apply the new migration only.
-    await owner.unsafe(
-      migrationSource(migrations[1])
-        .replaceAll('public.', `"${schema}".`)
-        .replaceAll("schemaname='public'", `schemaname='${schema}'`),
-    );
+    // attachment_links already exists exactly as captured; apply the newer migrations only.
+    for (const file of migrations.slice(1))
+      await owner.unsafe(
+        migrationSource(file)
+          .replaceAll('public.', `"${schema}".`)
+          .replaceAll("schemaname='public'", `schemaname='${schema}'`),
+      );
     const client = harness.createConnection(schema);
     const db = drizzle(client, { schema: pgSchema });
     const ctx: CoreCtx = { db, tenantId: ORG, profileId: USER };
@@ -102,7 +104,7 @@ export async function openAttachmentFixture() {
       },
       reset: async () => {
         await owner.unsafe(
-          `TRUNCATE ${domainCatalog.catalog.relations.map((r) => qi(r.relname)).join(',')},attachment_file_state,${qi(authSchema)}.users`,
+          `TRUNCATE ${domainCatalog.catalog.relations.map((r) => qi(r.relname)).join(',')},attachment_file_state,attachment_trash,${qi(authSchema)}.users`,
         );
         await owner.unsafe(
           `INSERT INTO ${qi(authSchema)}.users(id,email) VALUES ('${USER}','owner@example.invalid'),('${OTHER_USER}','other@example.invalid')`,

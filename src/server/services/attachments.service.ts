@@ -1,4 +1,4 @@
-import { and, eq, lt, notExists, sql } from 'drizzle-orm';
+import { and, eq, gt, lt, notExists, sql } from 'drizzle-orm';
 import { files } from '@minion-stack/db/pg';
 import { invalidateTags, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
@@ -6,7 +6,11 @@ import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { getStorage } from '$server/storage/blob';
 import { recordAuditInTx } from './activity.service';
 import { ATTACHMENT_LIMITS, validateAttachment, assertOrgQuota } from './file.service';
-import { attachmentLinks, type AttachmentObjectType } from '$server/db/pg-attachments-schema';
+import {
+  attachmentLinks,
+  attachmentTrash,
+  type AttachmentObjectType,
+} from '$server/db/pg-attachments-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 export { ATTACHMENT_OBJECT_MODULE, AttachmentError } from './attachment-access';
@@ -31,6 +35,9 @@ import {
   deleteManagedAttachment,
   claimDeletionInTx,
   finishAttachmentDeletion,
+  trashLinksInTx,
+  hasRecentTrashInTx,
+  trashCutoff,
 } from './attachment-lifecycle';
 import { attachmentFileState } from '$server/db/pg-attachments-schema';
 
@@ -258,9 +265,19 @@ export async function linkAttachment(
       input,
       input.actor ?? { id: access.profileId, name: null },
     );
+    await tx.delete(attachmentTrash).where(trashRefWhere(ctx, input));
   });
   await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
 }
+const trashRefWhere = (ctx: CoreCtx, ref: AttachmentObjectRef & { fileId: string }) =>
+  and(
+    eq(attachmentTrash.orgId, ctx.tenantId),
+    eq(attachmentTrash.fileId, ref.fileId),
+    eq(attachmentTrash.objectType, ref.objectType),
+    eq(attachmentTrash.objectId, ref.objectId),
+  )!;
+/** Layer 1 of deletion: the link is hidden, not dropped. It stays restorable for
+ * TRASH_RETENTION_DAYS; the file itself is never touched here. */
 export async function unlinkAttachment(
   ctx: CoreCtx,
   input: LinkInput,
@@ -277,16 +294,16 @@ export async function unlinkAttachment(
     )
       throw new AttachmentError('not_found', 'attachment link not found');
     await registerAttachmentInTx(tx, ctx, locked);
-    await tx
-      .delete(attachmentLinks)
-      .where(
-        and(
-          eq(attachmentLinks.orgId, ctx.tenantId),
-          eq(attachmentLinks.fileId, input.fileId),
-          eq(attachmentLinks.objectType, input.objectType),
-          eq(attachmentLinks.objectId, input.objectId),
-        ),
-      );
+    await trashLinksInTx(
+      tx,
+      and(
+        eq(attachmentLinks.orgId, ctx.tenantId),
+        eq(attachmentLinks.fileId, input.fileId),
+        eq(attachmentLinks.objectType, input.objectType),
+        eq(attachmentLinks.objectId, input.objectId),
+      )!,
+      input.actor?.id ?? access.profileId ?? null,
+    );
     await recordAuditInTx(tx, ctx, {
       refType: input.objectType,
       refId: input.objectId,
@@ -296,6 +313,86 @@ export async function unlinkAttachment(
     });
   });
   await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
+}
+
+/** Reverse of `unlinkAttachment`: move the trash row back. Authority is the
+ * record (edit) plus the trash row itself, not `canReadAttachmentFile` — a file
+ * whose every link is hidden is otherwise readable only by its uploader. The
+ * record must still exist; a hard-deleted record leaves its rows to expire. */
+export async function restoreAttachmentLink(
+  ctx: CoreCtx,
+  input: LinkInput,
+  access: AttachmentAccess,
+): Promise<void> {
+  requireAccessIdentity(ctx, access);
+  await withLockedAttachmentFile(ctx, input.fileId, [input], async (tx, locked) => {
+    requireActiveFile(locked);
+    await requireAttachmentObject(tx, ctx, access, input, 'edit');
+    const [row] = await tx.select().from(attachmentTrash).where(trashRefWhere(ctx, input));
+    if (!row) throw new AttachmentError('not_found', 'deleted attachment not found');
+    await registerAttachmentInTx(tx, ctx, locked, [...locked.refs, input]);
+    await tx
+      .insert(attachmentLinks)
+      .values({
+        orgId: ctx.tenantId,
+        fileId: input.fileId,
+        objectType: input.objectType,
+        objectId: input.objectId,
+        linkedBy: row.linkedBy,
+        linkedAt: row.linkedAt,
+      })
+      .onConflictDoNothing();
+    await tx.delete(attachmentTrash).where(trashRefWhere(ctx, input));
+    await recordAuditInTx(tx, ctx, {
+      refType: input.objectType,
+      refId: input.objectId,
+      op: 'attachment.restore',
+      changes: [{ field: 'fileId', label: 'Attachment', old: null, new: input.fileId }],
+      actor: input.actor ?? { id: access.profileId, name: null },
+    });
+  });
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
+}
+
+export interface TrashedAttachment {
+  file: typeof files.$inferSelect;
+  hiddenAt: Date;
+  hiddenBy: string | null;
+}
+/** Hidden links of one record, newest first. Viewing the record is the
+ * authority (the same one the visible link granted); claimed files are gone
+ * from the trash already, so nothing here is mid-deletion. */
+export async function listTrashedAttachmentsFor(
+  ctx: CoreCtx,
+  objectType: AttachmentObjectType,
+  objectId: string,
+  access: AttachmentAccess,
+): Promise<TrashedAttachment[]> {
+  requireAccessIdentity(ctx, access);
+  return withOrgCore(ctx, async (tx) => {
+    await requireAttachmentObject(tx, ctx, access, { objectType, objectId }, 'view');
+    const rows = await tx
+      .select({
+        file: files,
+        hiddenAt: attachmentTrash.hiddenAt,
+        hiddenBy: attachmentTrash.hiddenBy,
+      })
+      .from(attachmentTrash)
+      .innerJoin(
+        files,
+        and(eq(files.id, attachmentTrash.fileId), eq(files.tenantId, attachmentTrash.orgId)),
+      )
+      .where(
+        and(
+          eq(attachmentTrash.orgId, ctx.tenantId),
+          eq(attachmentTrash.objectType, objectType),
+          eq(attachmentTrash.objectId, objectId),
+          gt(attachmentTrash.hiddenAt, trashCutoff()),
+        ),
+      )
+      .orderBy(sql`${attachmentTrash.hiddenAt} desc`);
+    return rows;
+  });
 }
 
 export interface AttachmentWithLinks {
@@ -389,9 +486,10 @@ export interface SweepAbandonedUploadsResult {
 }
 
 /**
- * Reap `files` rows created by `createUploadIntent` whose `finalizeUpload`
- * never ran (browser closed mid-upload) — unlinked (no `attachment_links`
- * row), older than the cutoff, `category = 'attachment'`. The storage object
+ * Layer 2 of deletion. Reap `files` rows that are unlinked (no `attachment_links`
+ * row), older than the cutoff, attachment-shaped, and whose trash rows — if any —
+ * are all past TRASH_RETENTION_DAYS. That covers both abandoned uploads (never
+ * linked) and files whose last link was hidden 30+ days ago. The storage object
  * may or may not have landed; delete it first when present, then the row.
  */
 export async function sweepAbandonedUploads(
@@ -460,6 +558,17 @@ export async function sweepAbandonedUploads(
                     ),
                   ),
               ),
+              notExists(
+                tx
+                  .select({ fileId: attachmentTrash.fileId })
+                  .from(attachmentTrash)
+                  .where(
+                    and(
+                      eq(attachmentTrash.fileId, files.id),
+                      gt(attachmentTrash.hiddenAt, trashCutoff()),
+                    ),
+                  ),
+              ),
             ),
           )
           .orderBy(files.createdAt, files.id)
@@ -482,6 +591,7 @@ export async function sweepAbandonedUploads(
       if (!pending.some((p) => p.id === row.id)) {
         const claimed = await withLockedAttachmentFile(ctx, row.id, [], async (tx, locked) => {
           if (locked.refs.length || locked.file.createdAt >= cutoff) return false;
+          if (await hasRecentTrashInTx(tx, ctx, row.id)) return false;
           await claimDeletionInTx(tx, ctx, locked, null);
           return true;
         });
