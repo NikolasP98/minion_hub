@@ -25,9 +25,10 @@ const OLDER_THAN_HOURS = 24;
  * Default mode also reaps files whose last link was hidden (trashed) more than
  * TRASH_RETENTION_DAYS ago; a file with any recent trash row is left alone.
  * No abandoned rows ⇒ the fanout selects no orgs ⇒ the run is a no-op.
- * Production admission may schedule only `?mode=deletion-claims`, which replays
- * already-authorized deletions. The default abandoned-upload sweep remains off
- * until its existing customer backlog has been reviewed separately.
+ * Two schedules: `?mode=deletion-claims` hourly (replays already-authorized
+ * deletions, never claims new files) and the default mode daily (abandoned
+ * uploads + the 30-day trash purge; enabled 2026-09-13 after a read-only
+ * preflight found nothing reapable).
  * `drained` describes work eligible now, excluding live upload URLs/hourly tombstones.
  */
 export const GET: RequestHandler = async ({ request, url }) => {
