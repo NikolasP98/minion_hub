@@ -36,6 +36,7 @@ export const INVOICE = '30000000-0000-4000-8000-000000000003';
 export const migrations = [
   '20260912090100_attachment_links.sql',
   '20260913020000_attachment_file_state.sql',
+  '20260913030000_attachment_trash.sql',
 ] as const;
 export function migrationSource(name: (typeof migrations)[number]) {
   return readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8');
@@ -72,21 +73,26 @@ export function capturedAttachmentDdl(schema: string, authSchema: string) {
 export async function openAttachmentFixture() {
   const harness = await openDisposablePostgres();
   const schema = `qc_job_stock_${crypto.randomUUID().replaceAll('-', '')}`;
-  const owner = harness.owner;
+  // DDL runs on the harness owner; the fixture then talks to the schema over a
+  // connection whose search_path is a startup parameter, so it survives the
+  // harness's 5 s idle reconnect (a session-level SET would not).
+  const ddl = harness.owner;
   try {
     const authSchema = `${schema}_auth`;
-    await owner.unsafe(capturedAttachmentDdl(schema, authSchema));
+    await ddl.unsafe(capturedAttachmentDdl(schema, authSchema));
     // Adversarial default grants on the NEW table exercise the migration's
     // explicit revocation; existing captured table ACLs above remain exact.
-    await owner.unsafe(
+    await ddl.unsafe(
       `ALTER DEFAULT PRIVILEGES FOR ROLE minion_qc IN SCHEMA "${schema}" GRANT ALL ON TABLES TO anon,authenticated;`,
     );
-    // attachment_links already exists exactly as captured; apply the new migration only.
-    await owner.unsafe(
-      migrationSource(migrations[1])
-        .replaceAll('public.', `"${schema}".`)
-        .replaceAll("schemaname='public'", `schemaname='${schema}'`),
-    );
+    // attachment_links already exists exactly as captured; apply the newer migrations only.
+    for (const file of migrations.slice(1))
+      await ddl.unsafe(
+        migrationSource(file)
+          .replaceAll('public.', `"${schema}".`)
+          .replaceAll("schemaname='public'", `schemaname='${schema}'`),
+      );
+    const owner = harness.createConnection(schema);
     const client = harness.createConnection(schema);
     const db = drizzle(client, { schema: pgSchema });
     const ctx: CoreCtx = { db, tenantId: ORG, profileId: USER };
@@ -102,7 +108,7 @@ export async function openAttachmentFixture() {
       },
       reset: async () => {
         await owner.unsafe(
-          `TRUNCATE ${domainCatalog.catalog.relations.map((r) => qi(r.relname)).join(',')},attachment_file_state,${qi(authSchema)}.users`,
+          `TRUNCATE ${domainCatalog.catalog.relations.map((r) => qi(r.relname)).join(',')},attachment_file_state,attachment_trash,${qi(authSchema)}.users`,
         );
         await owner.unsafe(
           `INSERT INTO ${qi(authSchema)}.users(id,email) VALUES ('${USER}','owner@example.invalid'),('${OTHER_USER}','other@example.invalid')`,
@@ -202,7 +208,7 @@ export async function openAttachmentFixture() {
     };
   } catch (e) {
     try {
-      await owner.unsafe(
+      await ddl.unsafe(
         `DROP SCHEMA IF EXISTS "${schema}" CASCADE; DROP SCHEMA IF EXISTS "${schema}_auth" CASCADE`,
       );
     } finally {

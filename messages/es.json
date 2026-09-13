@@ -5601,5 +5601,12 @@
   "attachments_object_stk_item": "Ítem de stock",
   "attachments_object_fin_invoice": "Factura",
   "attachments_object_stk_entry": "Movimiento de stock",
-  "attachments_object_pos_ticket": "Venta"
+  "attachments_object_pos_ticket": "Venta",
+  "attachments_delete": "Eliminar",
+  "attachments_delete_failed": "No se pudo eliminar el adjunto",
+  "attachments_deleted_toggle": "{n} eliminados",
+  "attachments_deleted_ago": "Eliminado {ago}",
+  "attachments_restore": "Restaurar",
+  "attachments_restore_failed": "No se pudo restaurar el adjunto",
+  "attachments_trash_hint": "Los archivos eliminados se conservan 30 días y luego se borran definitivamente."
 }

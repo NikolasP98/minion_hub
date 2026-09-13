@@ -22,6 +22,8 @@ const OLDER_THAN_HOURS = 24;
  * (bounded by the wall-clock budget) rather than trickling one batch per org
  * per run.
  *
+ * Default mode also reaps files whose last link was hidden (trashed) more than
+ * TRASH_RETENTION_DAYS ago; a file with any recent trash row is left alone.
  * No abandoned rows ⇒ the fanout selects no orgs ⇒ the run is a no-op.
  * Production admission may schedule only `?mode=deletion-claims`, which replays
  * already-authorized deletions. The default abandoned-upload sweep remains off
@@ -37,8 +39,9 @@ export const GET: RequestHandler = async ({ request, url }) => {
     throw error(400, 'Invalid attachment sweep mode');
   const pendingOnly = mode === 'deletion-claims';
 
-  // Interval literal MUST mirror OLDER_THAN_HOURS above — it's a fixed constant
-  // (not user input), so a hardcoded literal keeps the SQL simple and safe.
+  // Interval literals MUST mirror OLDER_THAN_HOURS above and TRASH_RETENTION_DAYS
+  // (attachment-lifecycle.ts) — fixed constants, not user input, so hardcoded
+  // literals keep the SQL simple and safe.
   const orgs = (await getCoreDb().execute(
     pendingOnly
       ? sql`SELECT DISTINCT org_id::uuid AS org_id FROM attachment_file_state WHERE state='deleting'`
@@ -48,6 +51,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
       and (category = 'attachment' or b2_file_key like tenant_id::text || '/attachments/%'
         or exists (select 1 from attachment_file_state s where s.file_id=files.id))
       and not exists (select 1 from attachment_links l where l.file_id=files.id)
+      and not exists (select 1 from attachment_trash t where t.file_id=files.id
+        and t.hidden_at > now() - interval '30 days')
     union
     select org_id::uuid from attachment_file_state where state='deleting'
   `,

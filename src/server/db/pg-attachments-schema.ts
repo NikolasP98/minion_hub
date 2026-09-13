@@ -42,6 +42,29 @@ export const attachmentLinks = pgTable(
 
 export type AttachmentLink = typeof attachmentLinks.$inferSelect;
 
+/** Layer 1 of deletion: a hidden link keeps its identity here for the retention
+ * window so restore is a move back. Rows are dropped when the file is claimed. */
+export const attachmentTrash = pgTable(
+  'attachment_trash',
+  {
+    orgId: text('org_id').notNull(),
+    fileId: text('file_id').notNull(),
+    objectType: text('object_type').notNull(),
+    objectId: uuid('object_id').notNull(),
+    linkedBy: uuid('linked_by'),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull(),
+    /** profiles.id; null = hidden by the system (record deletion). */
+    hiddenBy: uuid('hidden_by'),
+    hiddenAt: timestamp('hidden_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.objectType, t.objectId, t.fileId] }),
+    objectIdx: index('attachment_trash_org_object_idx').on(t.orgId, t.objectType, t.objectId),
+    fileIdx: index('attachment_trash_org_file_hidden_idx').on(t.orgId, t.fileId, t.hiddenAt),
+  }),
+);
+export type AttachmentTrashRow = typeof attachmentTrash.$inferSelect;
+
 /** Registration survives the last unlink. A committed deleting state is a
  * tombstone: no caller may relink or issue a new download while storage retries. */
 export const attachmentFileState = pgTable('attachment_file_state', {
