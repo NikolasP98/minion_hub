@@ -145,11 +145,28 @@ async function step(
   operation: (job: BgJob, execution: JobExecution) => Promise<void>,
   client = a,
 ) {
-  await owner`update bg_jobs set lease_until=0 where id=${jobId} and status='running'`;
-  operations.set(jobId, operation);
-  failures.delete(jobId);
-  await on(client, () => advanceJob(jobId, 100));
-  if (failures.has(jobId)) throw failures.get(jobId);
+  // The 100ms budget bounds the fixture to one handler pass, but advanceJob spends
+  // it on the lease read too: under load that read alone can exhaust it, so nothing
+  // is admitted and the step silently no-ops (the missing row only fails much later).
+  // Retry while the job is still admissible; a non-admissible job returns as before.
+  let ran = false;
+  const admit = async (job: BgJob, execution: JobExecution) => {
+    ran = true;
+    await operation(job, execution);
+  };
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    await owner`update bg_jobs set lease_until=0 where id=${jobId} and status='running'`;
+    operations.set(jobId, admit);
+    failures.delete(jobId);
+    await on(client, () => advanceJob(jobId, 100));
+    if (failures.has(jobId)) throw failures.get(jobId);
+    if (ran) return;
+    const [row] = await owner`select status from bg_jobs where id=${jobId}`;
+    if (row?.status !== 'queued' && row?.status !== 'running') return;
+    if (Date.now() > deadline)
+      throw new Error(`step(${jobId}) never admitted the fixture operation`);
+  }
 }
 async function bind(jobId: string, value: PageInput, client = a) {
   let page!: PageHandle;
