@@ -60,15 +60,20 @@
   const unscheduled = unscheduledCount();
   const cadenceLabel: Record<string, () => string> = {
     minute: m.automation_cadence_minute,
+    ten_minutes: m.automation_cadence_ten_minutes,
+    quarter_hourly: m.automation_cadence_quarter_hourly,
     hourly: m.automation_cadence_hourly,
+    daily: m.automation_cadence_daily,
     daily_3am: m.automation_cadence_daily_3am,
     semimonthly: m.automation_cadence_semimonthly,
   };
   const wiringLabel: Record<string, () => string> = {
     netcup: m.automation_wiring_netcup,
     vercel: m.automation_wiring_vercel,
+    paused: m.automation_wiring_paused,
     unscheduled: m.automation_wiring_unscheduled,
   };
+  const isLive = (w: string) => w === 'netcup' || w === 'vercel';
   // Static per-key lookups: paraglide messages are referenced by name so unused-
   // message tooling still sees them (a dynamic `m[\`automation_${key}\`]` would
   // hide every one of them and doesn't typecheck against the generated module).
@@ -95,6 +100,26 @@
     attachment_sweep: {
       title: m.automation_attachment_sweep_title,
       desc: m.automation_attachment_sweep_desc,
+    },
+    attachment_sweep_claims: {
+      title: m.automation_attachment_sweep_claims_title,
+      desc: m.automation_attachment_sweep_claims_desc,
+    },
+    crm_relationship: {
+      title: m.automation_crm_relationship_title,
+      desc: m.automation_crm_relationship_desc,
+    },
+    brains_reconcile: {
+      title: m.automation_brains_reconcile_title,
+      desc: m.automation_brains_reconcile_desc,
+    },
+    word_frequency: {
+      title: m.automation_word_frequency_title,
+      desc: m.automation_word_frequency_desc,
+    },
+    word_frequency_full: {
+      title: m.automation_word_frequency_full_title,
+      desc: m.automation_word_frequency_full_desc,
     },
   };
 
@@ -168,13 +193,11 @@
         <p class="mb-3 t-caption">{m.automation_system_desc()}</p>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {#each systemAutomations as a (a.path)}
-            <article class="auto-card" class:unwired={a.wiring === 'unscheduled'}>
+            <article class="auto-card" class:unwired={!isLive(a.wiring)}>
               <header class="mb-1 flex items-baseline justify-between gap-2">
                 <h3 class="t-label">{copy[a.key].title()}</h3>
-                <Badge
-                  variant="semantic"
-                  value={a.wiring === 'unscheduled' ? 'warning' : 'success'}
-                  size="sm">{wiringLabel[a.wiring]()}</Badge
+                <Badge variant="semantic" value={isLive(a.wiring) ? 'success' : 'warning'} size="sm"
+                  >{wiringLabel[a.wiring]()}</Badge
                 >
               </header>
               <p class="t-caption">{copy[a.key].desc()}</p>
