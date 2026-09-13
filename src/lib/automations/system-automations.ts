@@ -48,6 +48,15 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
     cadence: 'hourly',
     wiring: 'netcup',
   },
+  // Default mode, daily 03:37: never-linked uploads older than 24 h plus files
+  // whose every link has sat in the trash for 30+ days (the recycle-bin purge).
+  // Scheduled 2026-09-13 after a read-only preflight found 0 reapable files.
+  {
+    path: '/api/attachments/sweep/tick',
+    key: 'attachment_sweep',
+    cadence: 'daily',
+    wiring: 'netcup',
+  },
 
   // ── Paused on purpose — line kept in the crontab, commented out ──────────
   // Paused 2026-09-12 for the fenced Node worker adoption
@@ -129,14 +138,6 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
   {
     path: '/api/crm/relationship/tick',
     key: 'crm_relationship',
-    cadence: 'hourly',
-    wiring: 'unscheduled',
-  },
-  // Default sweep mode: abandoned uploads + files whose last link was deleted
-  // more than 30 days ago. Enable only after reviewing what it would reap.
-  {
-    path: '/api/attachments/sweep/tick',
-    key: 'attachment_sweep',
     cadence: 'hourly',
     wiring: 'unscheduled',
   },
