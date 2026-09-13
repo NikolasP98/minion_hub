@@ -380,7 +380,11 @@ export async function listTrashedAttachmentsFor(
       .from(attachmentTrash)
       .innerJoin(
         files,
-        and(eq(files.id, attachmentTrash.fileId), eq(files.tenantId, attachmentTrash.orgId)),
+        and(
+          eq(files.id, attachmentTrash.fileId),
+          // files.tenant_id is uuid; the ERP link tables carry org_id as text.
+          sql`${files.tenantId}::text = ${attachmentTrash.orgId}`,
+        ),
       )
       .where(
         and(

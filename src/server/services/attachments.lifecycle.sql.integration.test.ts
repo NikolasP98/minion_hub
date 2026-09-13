@@ -442,6 +442,14 @@ describe('native attachment deletion lifecycle', () => {
     await expect(f.owner.unsafe(migration)).rejects.toThrow(
       'attachment links require tenant/file reconciliation',
     );
+    // The replay CREATE OR REPLACEd the record-deletion trigger function back to
+    // this migration's body; re-apply the later (idempotent) migration so the
+    // schema is whole again for the tests that follow.
+    await f.owner.unsafe(
+      migrationSource('20260913030000_attachment_trash.sql')
+        .replaceAll('public.', `"${f.schema}".`)
+        .replaceAll("schemaname='public'", `schemaname='${f.schema}'`),
+    );
   });
 });
 

@@ -73,22 +73,26 @@ export function capturedAttachmentDdl(schema: string, authSchema: string) {
 export async function openAttachmentFixture() {
   const harness = await openDisposablePostgres();
   const schema = `qc_job_stock_${crypto.randomUUID().replaceAll('-', '')}`;
-  const owner = harness.owner;
+  // DDL runs on the harness owner; the fixture then talks to the schema over a
+  // connection whose search_path is a startup parameter, so it survives the
+  // harness's 5 s idle reconnect (a session-level SET would not).
+  const ddl = harness.owner;
   try {
     const authSchema = `${schema}_auth`;
-    await owner.unsafe(capturedAttachmentDdl(schema, authSchema));
+    await ddl.unsafe(capturedAttachmentDdl(schema, authSchema));
     // Adversarial default grants on the NEW table exercise the migration's
     // explicit revocation; existing captured table ACLs above remain exact.
-    await owner.unsafe(
+    await ddl.unsafe(
       `ALTER DEFAULT PRIVILEGES FOR ROLE minion_qc IN SCHEMA "${schema}" GRANT ALL ON TABLES TO anon,authenticated;`,
     );
     // attachment_links already exists exactly as captured; apply the newer migrations only.
     for (const file of migrations.slice(1))
-      await owner.unsafe(
+      await ddl.unsafe(
         migrationSource(file)
           .replaceAll('public.', `"${schema}".`)
           .replaceAll("schemaname='public'", `schemaname='${schema}'`),
       );
+    const owner = harness.createConnection(schema);
     const client = harness.createConnection(schema);
     const db = drizzle(client, { schema: pgSchema });
     const ctx: CoreCtx = { db, tenantId: ORG, profileId: USER };
