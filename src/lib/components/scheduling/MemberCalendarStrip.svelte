@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { formatDate } from '$lib/utils/format';
+
   /**
    * Compact 7-day calendar strip for a single team member, centred on today
    * (3 days behind + today + 3 ahead). Shows their bookings as chips grouped by
@@ -42,7 +44,9 @@
         .filter((b) => new Date(b.start).toDateString() === key)
         .sort((a, b) => a.start.localeCompare(b.start));
       // Label by the day's actual weekday so any 7-day window reads correctly.
-      const label = d.toLocaleDateString(undefined, { weekday: 'short' });
+      // Via formatDate, not toLocaleDateString(undefined, …): the latter asks the
+      // BROWSER for the locale, so a Spanish UI on an English OS reads "Mon".
+      const label = formatDate(d, { weekday: 'short' });
       return { key, label, num: d.getDate(), isToday: key === todayKey, bookings: dayBookings };
     });
   });
