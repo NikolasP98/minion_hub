@@ -20,19 +20,6 @@ const UNIVERSAL = new Set(['/home', '/overview', '/settings']);
 
 const ctx = (perms: string[]) => ({ authenticated: true, permissions: new Set(perms) });
 
-/**
- * TODO(handoff): EMPTY in this tree. The ported commit a3cd2799 ships the
- * client-account SERVICE layer (pos-accounts.service.ts, pos-packages.service.ts)
- * and its UI (ClientAccountDrawer, PackageEditor, the sell-page account panel)
- * but NOT `src/routes/api/pos/{accounts,packages,plans}` — those endpoints were
- * never in the commit. The gate assertion below therefore has nothing to certify
- * and is skipped rather than deleted: it re-arms by itself the moment the first
- * of those route files lands, which is where it must hold.
- */
-const CLIENT_ACCOUNT_ROUTES = import.meta.glob(
-  '/src/routes/api/pos/{accounts,packages,plans}/**/+server.ts',
-  { query: '?raw', import: 'default', eager: true },
-) as Record<string, string>;
 
 describe('module registry ↔ RBAC', () => {
   it('gates every module page behind a permission or capability', () => {
@@ -129,15 +116,17 @@ describe('module registry ↔ RBAC', () => {
    * `/api/scheduling/bookings` are older catalog/appointment reads that gate on
    * module-enabled + PII masking, and are not this spec's to change.
    */
-  it.runIf(Object.keys(CLIENT_ACCOUNT_ROUTES).length > 0)(
-    'gives every client-account read route an explicit pos:view gate',
-    () => {
-      const routes = CLIENT_ACCOUNT_ROUTES;
-      const ungatedReads = Object.entries(routes)
-        .filter(([, src]) => /export const GET/.test(src))
-        .filter(([, src]) => !/requireOrgCapability\(\s*locals,\s*'pos',\s*'view'/.test(src))
-        .map(([path]) => path);
-      expect(ungatedReads).toEqual([]);
-    },
-  );
+  it('gives every client-account read route an explicit pos:view gate', () => {
+    const routes = import.meta.glob('/src/routes/api/pos/{accounts,packages,plans}/**/+server.ts', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }) as Record<string, string>;
+    expect(Object.keys(routes).length).toBeGreaterThan(0);
+    const ungatedReads = Object.entries(routes)
+      .filter(([, src]) => /export const GET/.test(src))
+      .filter(([, src]) => !/requireOrgCapability\(\s*locals,\s*'pos',\s*'view'/.test(src))
+      .map(([path]) => path);
+    expect(ungatedReads).toEqual([]);
+  });
 });

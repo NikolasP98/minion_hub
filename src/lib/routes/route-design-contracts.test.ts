@@ -65,8 +65,10 @@ describe('route design contracts', () => {
     // (hub-stock-crm-ux-consolidation spec) — B lost four more. The dedicated
     // POS catalog create and edit pages add two Wave-B form surfaces.
     // /scheduling/bookings/[id]/edit (erp-core-modules-attachments spec S5)
-    // added one more Wave-B form surface.
-    expect(counts).toEqual({ A: 32, B: 70, C: 17, D: 23, E: 10 });
+    // added one more Wave-B form surface. /pos/accounts (client credit,
+    // packages and instalment plans) and /pos/appointments/new (the
+    // new-appointment modal became a page) add two more Wave-B surfaces.
+    expect(counts).toEqual({ A: 32, B: 72, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

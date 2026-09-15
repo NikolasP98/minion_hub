@@ -134,13 +134,13 @@ export function getAreaItems(area: AreaId, data: ModuleNavData = {}): ModuleNavI
               },
             ]
           : []),
-        // TODO(handoff): the client-accounts nav entry is withheld until the page
-        // exists. `pos.accounts` is registered in route-access-registry and the
-        // service layer (pos-accounts.service.ts, pos-packages.service.ts,
-        // ClientAccountDrawer) ships here, but `src/routes/(app)/pos/accounts/`
-        // and `/api/pos/{accounts,packages,plans}` were NOT part of the ported
-        // commit a3cd2799 — a nav link to them would 404. Restore this item in
-        // the same change that lands those routes.
+        {
+          id: 'accounts',
+          href: '/pos/accounts',
+          label: m.pos_nav_accounts(),
+          icon: Wallet,
+          matcher: own('/pos/accounts'),
+        },
         {
           id: 'catalog',
           href: '/pos/catalog',

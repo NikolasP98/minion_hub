@@ -10,7 +10,6 @@
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import BookingCalendar from '$lib/components/scheduling/BookingCalendar.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
-  import AppointmentForm from '$lib/components/scheduling/AppointmentForm.svelte';
   import type { CalendarView } from '$lib/components/scheduling/calendar-window';
   import { canAct } from '$lib/access/can.svelte';
   import { formatMoney } from '$lib/utils/format';
@@ -31,25 +30,11 @@
     return goto(`?${params}`, { keepFocus: true, noScroll: true });
   }
 
-  /**
-   * Empty grid space → the new-appointment form, prefilled with that slot.
-   *
-   * TODO(handoff): the ported commit a3cd2799 pointed this (and the "+New"
-   * button) at `/pos/appointments/new`, a route it declared in the route
-   * manifest but never added — the link 404s. `AppointmentForm` is the same
-   * component that page would render, so it opens here in a Modal, which is
-   * also the surface master shipped. Move it back to a dedicated page in the
-   * change that actually adds `src/routes/(app)/pos/appointments/new/`.
-   */
-  let newOpen = $state(false);
-  let prefill = $state<{ date: string | null; time: string | null; resourceId: string | null }>({
-    date: null,
-    time: null,
-    resourceId: null,
-  });
+  /** Empty grid space → the new-appointment PAGE with the slot prefilled. */
   function newAt(day: string, time: string, resourceId: string | null) {
-    prefill = { date: day, time, resourceId };
-    newOpen = true;
+    const params = new URLSearchParams({ date: day, time, view: data.view });
+    if (resourceId) params.set('resourceId', resourceId);
+    return goto(`/pos/appointments/new?${params}`);
   }
 
   async function setStatus(id: string, status: string) {
@@ -186,10 +171,7 @@
     {#snippet primaryActions()}
       <Button
         size="sm"
-        onclick={() => {
-          prefill = { date: data.day, time: null, resourceId: null };
-          newOpen = true;
-        }}
+        href="/pos/appointments/new?date={data.day}&view={data.view}"
         disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
         title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
       >
@@ -292,22 +274,6 @@
   onchanged={() => invalidate('pos:appointments')}
   onnavigate={(id) => (detailId = id)}
 />
-
-<Modal open={newOpen} title={m.pos_appt_new()} onclose={() => (newOpen = false)}>
-  <AppointmentForm
-    eventTypes={data.eventTypes}
-    resources={data.resources}
-    stockEnabled={data.stockEnabled}
-    initialDate={prefill.date}
-    initialTime={prefill.time}
-    initialResourceId={prefill.resourceId}
-    onbooked={async () => {
-      newOpen = false;
-      await invalidate('pos:appointments');
-    }}
-    oncancel={() => (newOpen = false)}
-  />
-</Modal>
 
 <Modal
   open={completeFor !== null}
