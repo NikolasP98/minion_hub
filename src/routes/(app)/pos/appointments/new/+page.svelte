@@ -21,7 +21,7 @@
     else if (params.get('date')) query.set('date', params.get('date')!);
     if (view) query.set('view', view);
     const qs = query.toString();
-    return goto(`/pos/appointments${qs ? `?${qs}` : ''}`);
+    return goto(qs ? `/pos/appointments?${qs}` : '/pos/appointments');
   }
 
   function localDay(iso: string): string {
