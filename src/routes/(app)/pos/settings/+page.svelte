@@ -165,7 +165,12 @@
               disabled={!canManage}
               bind:value={row.label}
             />
-            <Toggle size="sm" bind:checked={row.enabled} disabled={!canManage} label={m.pos_settings_enabled()} />
+            <Toggle
+              size="sm"
+              bind:checked={row.enabled}
+              disabled={!canManage}
+              label={m.pos_settings_enabled()}
+            />
             <Toggle
               size="sm"
               bind:checked={row.takesTendered}
@@ -319,7 +324,11 @@
           </div>
           {#each data.series as s (s.id)}
             <div class="series-row">
-              <span>{s.docType === '01' ? m.pos_settings_document_factura() : m.pos_settings_document_boleta()}</span>
+              <span
+                >{s.docType === '01'
+                  ? m.pos_settings_document_factura()
+                  : m.pos_settings_document_boleta()}</span
+              >
               <span class="series-code">{s.serie}</span>
               <span>{s.nextNumber}</span>
               <span>{s.environment}</span>

@@ -42,7 +42,9 @@ describe('checkout money', () => {
   });
 
   it('sums change across tenders without float drift', () => {
-    expect(changeDue([tender({ amount: 0.1, tendered: 0.3 }), tender({ amount: 0.1, tendered: 0.3 })])).toBe(0.4);
+    expect(
+      changeDue([tender({ amount: 0.1, tendered: 0.3 }), tender({ amount: 0.1, tendered: 0.3 })]),
+    ).toBe(0.4);
   });
 
   it('exempts a redeemed session from the "needs a price" block', () => {

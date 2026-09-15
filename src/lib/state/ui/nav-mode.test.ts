@@ -37,11 +37,30 @@ describe('resolveModuleForNav', () => {
 
   it('covers every nav surface', () => {
     const paths = [
-      '/home', '/overview', '/team',
-      '/pos/sell', '/crm', '/socials', '/agents', '/capabilities', '/brains',
-      '/scheduling', '/stock', '/finances', '/sales', '/memberships',
-      '/work', '/pulse', '/workforce', '/support', '/channels',
-      '/reliability', '/marketplace', '/cloud', '/killswitches', '/settings',
+      '/home',
+      '/overview',
+      '/team',
+      '/pos/sell',
+      '/crm',
+      '/socials',
+      '/agents',
+      '/capabilities',
+      '/brains',
+      '/scheduling',
+      '/stock',
+      '/finances',
+      '/sales',
+      '/memberships',
+      '/work',
+      '/pulse',
+      '/workforce',
+      '/support',
+      '/channels',
+      '/reliability',
+      '/marketplace',
+      '/cloud',
+      '/killswitches',
+      '/settings',
     ];
     for (const path of paths) {
       expect(resolveModuleForNav(path), path).not.toBeNull();
@@ -63,7 +82,15 @@ describe('resolveModuleForNav', () => {
   });
 
   it('gives every path at most one module', () => {
-    const paths = ['/pos/sell', '/crm', '/socials', '/agents', '/capabilities', '/scheduling', '/stock'];
+    const paths = [
+      '/pos/sell',
+      '/crm',
+      '/socials',
+      '/agents',
+      '/capabilities',
+      '/scheduling',
+      '/stock',
+    ];
     for (const path of paths) {
       expect(getModules().filter((mod) => mod.matcher(path))).toHaveLength(1);
     }
@@ -84,7 +111,11 @@ describe('resolveModuleForNav', () => {
 
   it('groups the marketing module by area', () => {
     const groups = [
-      ...new Set(getModules().find((mod) => mod.id === 'marketing')!.items.map((i) => i.group)),
+      ...new Set(
+        getModules()
+          .find((mod) => mod.id === 'marketing')!
+          .items.map((i) => i.group),
+      ),
     ];
     expect(groups).toEqual(['CRM', 'Socials']);
   });

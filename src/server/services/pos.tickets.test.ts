@@ -805,4 +805,3 @@ describe('submitTicket — identity-document requirement', () => {
     await expect(submitTicket(ctx(db), oneLine)).rejects.toMatchObject({ code: 'no_open_shift' });
   });
 });
-

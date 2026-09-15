@@ -10,9 +10,9 @@ import { PosError } from './pos.service';
  * and every cross-service side effect are stubbed, so what's under test is the
  * ORDERING and the TRANSACTION BOUNDARY the booking service owns.
  */
-const computeSlotsMock = vi.fn<(input: { rangeStart: Date }) => Array<{ start: Date; resourceIds: string[] }>>(
-  (input) => [{ start: input.rangeStart, resourceIds: ['staff-1'] }],
-);
+const computeSlotsMock = vi.fn<
+  (input: { rangeStart: Date }) => Array<{ start: Date; resourceIds: string[] }>
+>((input) => [{ start: input.rangeStart, resourceIds: ['staff-1'] }]);
 vi.mock('$server/scheduling/slots', () => ({
   computeSlots: (input: { rangeStart: Date }) => computeSlotsMock(input),
 }));
@@ -31,15 +31,20 @@ vi.mock('drizzle-orm', async (importOriginal) => {
   };
 });
 
-const redeemMock = vi.fn<(grantId: string) => Promise<{ id: string }>>(async () => ({ id: 'red-1' }));
+const redeemMock = vi.fn<(grantId: string) => Promise<{ id: string }>>(async () => ({
+  id: 'red-1',
+}));
 const reverseMock = vi.fn<(id: string) => Promise<{ id: string }>>(async (id) => ({ id }));
 vi.mock('./pos-packages.service', () => ({
-  redeemSessionInTx: (_tx: unknown, _org: string, input: { grantId: string }) => redeemMock(input.grantId),
+  redeemSessionInTx: (_tx: unknown, _org: string, input: { grantId: string }) =>
+    redeemMock(input.grantId),
   reverseRedemptionInTx: (_tx: unknown, _org: string, id: string) => reverseMock(id),
   getGrant: async () => null,
 }));
 vi.mock('./pos-accounts.service', () => ({ getPlan: async () => null }));
-vi.mock('./finance.service', () => ({ getFinSettings: async () => ({ timezone: 'America/Lima' }) }));
+vi.mock('./finance.service', () => ({
+  getFinSettings: async () => ({ timezone: 'America/Lima' }),
+}));
 vi.mock('./scheduling-slots.service', () => ({ serviceRulesOf: () => undefined }));
 vi.mock('$server/events/emit', () => ({ emitHubEvent: async () => {} }));
 
@@ -61,7 +66,9 @@ import {
 beforeEach(() => {
   vi.clearAllMocks();
   captured.gt.length = 0;
-  computeSlotsMock.mockImplementation((input) => [{ start: input.rangeStart, resourceIds: ['staff-1'] }]);
+  computeSlotsMock.mockImplementation((input) => [
+    { start: input.rangeStart, resourceIds: ['staff-1'] },
+  ]);
   redeemMock.mockImplementation(async () => ({ id: 'red-1' }));
 });
 
@@ -145,7 +152,11 @@ describe('createBookingSeries', () => {
       ...occurrence(bookingRow('b-3', slots[2])),
     ]);
 
-    const rows = await createBookingSeries(ctx(db), { eventTypeId: 'et-1', slots, packageGrantId: 'grant-1' });
+    const rows = await createBookingSeries(ctx(db), {
+      eventTypeId: 'et-1',
+      slots,
+      packageGrantId: 'grant-1',
+    });
 
     expect(rows.map((r) => r.id)).toEqual(['b-1', 'b-2', 'b-3']);
     expect(redeemMock).toHaveBeenCalledTimes(3);
@@ -236,9 +247,18 @@ describe('cancelBooking — series scope', () => {
       [{ id: 'b-2', seriesId: 's-1', seriesIndex: 1 }], // the target occurrence
       [{ id: 'b-3' }, { id: 'b-4' }], // later, still-live occurrences
       // three setBookingStatus round-trips (b-2, b-3, b-4)
-      [{ status: 'accepted' }], [], [], [],
-      [{ status: 'accepted' }], [], [], [],
-      [{ status: 'accepted' }], [], [], [],
+      [{ status: 'accepted' }],
+      [],
+      [],
+      [],
+      [{ status: 'accepted' }],
+      [],
+      [],
+      [],
+      [{ status: 'accepted' }],
+      [],
+      [],
+      [],
     ]);
 
     const cancelled = await cancelBooking(ctx(db), 'b-2', { scope: 'following' });
@@ -254,7 +274,10 @@ describe('cancelBooking — series scope', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ id: 'b-2', seriesId: 's-1', seriesIndex: 1 }],
-      [{ status: 'accepted' }], [], [], [],
+      [{ status: 'accepted' }],
+      [],
+      [],
+      [],
     ]);
 
     const cancelled = await cancelBooking(ctx(db), 'b-2', { scope: 'one' });

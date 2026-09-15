@@ -8,9 +8,7 @@
 
   // Page list + active matchers come from the module registry ($lib/nav/modules)
   // — the sidebar's module view renders the SAME list, so the two can't drift.
-  const items = $derived(
-    getAreaItems('stock').filter((i) => canViewPath(i.href)),
-  );
+  const items = $derived(getAreaItems('stock').filter((i) => canViewPath(i.href)));
   const navItems = $derived<SectionNavItem[]>(
     items.map((i) => ({ id: i.id, label: i.label, icon: i.icon, href: i.href, indent: i.indent })),
   );

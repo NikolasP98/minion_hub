@@ -310,7 +310,10 @@
           <ul class="rows">
             {#each d.plans as p (p.plan.id)}
               <li class="row wrap">
-                <Badge variant="semantic" value={p.plan.status === 'open' ? 'info' : p.isPaid ? 'success' : 'error'}>
+                <Badge
+                  variant="semantic"
+                  value={p.plan.status === 'open' ? 'info' : p.isPaid ? 'success' : 'error'}
+                >
                   {(PLAN_STATUS[p.plan.status] ?? (() => p.plan.status))()}
                 </Badge>
                 <span class="grow">{p.plan.title}</span>

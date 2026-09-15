@@ -195,9 +195,7 @@
       // a typed negative) must not fail the whole booking — drop non-positive
       // lines instead.
       const positiveLines = hasMapping ? lines.filter((l) => l.qtyConsumption > 0) : [];
-      const start = overrideActive
-        ? new Date(`${day}T${overrideTime}:00`).toISOString()
-        : slot;
+      const start = overrideActive ? new Date(`${day}T${overrideTime}:00`).toISOString() : slot;
       const res = await fetch(bookEndpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

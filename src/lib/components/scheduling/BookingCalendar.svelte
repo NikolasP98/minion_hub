@@ -27,7 +27,14 @@
    */
   import type { Snippet } from 'svelte';
   import { ChevronLeft, ChevronRight, Plus } from 'lucide-svelte';
-  import { Badge, Button, EmptyState, SegmentedControl, Tooltip, iconSizes } from '$lib/components/ui';
+  import {
+    Badge,
+    Button,
+    EmptyState,
+    SegmentedControl,
+    Tooltip,
+    iconSizes,
+  } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { formatDate } from '$lib/utils/format';
   import {
@@ -259,7 +266,9 @@
       <div class="axis">
         <div class="axis-head"></div>
         {#each HOURS as h (h)}
-          <div class="hour-label" style="height:{PX_PER_HOUR}px">{String(h).padStart(2, '0')}:00</div>
+          <div class="hour-label" style="height:{PX_PER_HOUR}px">
+            {String(h).padStart(2, '0')}:00
+          </div>
         {/each}
       </div>
 
@@ -307,7 +316,9 @@
                       <div class="hc-head">
                         <span class="t-label hc-time">{hhmm(b.start)} – {hhmm(b.end)}</span>
                         {#if tone}
-                          <Badge variant="semantic" value={tone} size="sm">{statusLabel(b.status)}</Badge>
+                          <Badge variant="semantic" value={tone} size="sm"
+                            >{statusLabel(b.status)}</Badge
+                          >
                         {:else}
                           <Badge size="sm">{statusLabel(b.status)}</Badge>
                         {/if}
@@ -339,7 +350,8 @@
                       class="evt {b.status} {tone ? `tone-${tone}` : 'tone-neutral'}"
                       style="top:{b.top}px;height:{b.height}px;left:calc({(b.lane / b.lanes) *
                         100}% + var(--space-0-5));width:calc({100 /
-                        b.lanes}% - var(--space-2));border-left-color:{color ?? 'var(--color-accent)'}"
+                        b.lanes}% - var(--space-2));border-left-color:{color ??
+                        'var(--color-accent)'}"
                       onclick={() => onopen(b.id)}
                     >
                       <span class="evt-in">

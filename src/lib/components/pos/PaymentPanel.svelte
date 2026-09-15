@@ -74,7 +74,9 @@
   }
 
   function allocated(id: string): number {
-    return payments.reduce((s, p) => (p.method === id ? s + Math.round(p.amount * 100) : s), 0) / 100;
+    return (
+      payments.reduce((s, p) => (p.method === id ? s + Math.round(p.amount * 100) : s), 0) / 100
+    );
   }
   function isOn(id: string): boolean {
     return payments.some((p) => p.method === id);
@@ -107,7 +109,9 @@
 
   function tenderInvalid(p: PaymentRow): boolean {
     return (
-      p.takesTendered && p.tendered != null && Math.round(p.tendered * 100) < Math.round(p.amount * 100)
+      p.takesTendered &&
+      p.tendered != null &&
+      Math.round(p.tendered * 100) < Math.round(p.amount * 100)
     );
   }
 

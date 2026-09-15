@@ -10,7 +10,14 @@
    * pointerdown + Escape dismissal come from the primitive, never hand-rolled.
    */
   import { Check, ExternalLink, UserX, X } from 'lucide-svelte';
-  import { Badge, Button, EmptyState, SegmentedControl, Spinner, iconSizes } from '$lib/components/ui';
+  import {
+    Badge,
+    Button,
+    EmptyState,
+    SegmentedControl,
+    Spinner,
+    iconSizes,
+  } from '$lib/components/ui';
   import { Sheet } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
@@ -241,7 +248,7 @@
   title={m.sched_detail_title()}
   size="lg"
   placement="right"
-  onclose={onclose}
+  {onclose}
 >
   {#if loading}
     <div class="center"><Spinner /></div>
@@ -266,8 +273,12 @@
           <dt class="t-caption">{m.sched_booking_attendee()}</dt>
           <dd>
             {d.contact?.displayName ?? d.booking.attendeeName ?? '—'}
-            {#if d.booking.attendeePhone}<span class="t-caption"> · {d.booking.attendeePhone}</span>{/if}
-            {#if d.booking.attendeeEmail}<span class="t-caption"> · {d.booking.attendeeEmail}</span>{/if}
+            {#if d.booking.attendeePhone}<span class="t-caption">
+                · {d.booking.attendeePhone}</span
+              >{/if}
+            {#if d.booking.attendeeEmail}<span class="t-caption">
+                · {d.booking.attendeeEmail}</span
+              >{/if}
             {#if d.booking.crmContactId}
               <a class="crm-link t-caption" href={`/crm/${d.booking.crmContactId}`}>
                 <ExternalLink size={iconSizes.xs} />{m.sched_detail_open_contact()}

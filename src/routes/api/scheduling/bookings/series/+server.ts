@@ -59,7 +59,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       consumption: b.consumption ?? null,
       packageGrantId: b.packageGrantId ?? null,
       paymentPlanId: b.paymentPlanId ?? null,
-      actor: { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null },
+      actor: {
+        id: ctx.profileId ?? null,
+        name: locals.user?.displayName ?? locals.user?.email ?? null,
+      },
     });
     return json({ bookings, seriesId: bookings[0]?.seriesId ?? null });
   } catch (e) {

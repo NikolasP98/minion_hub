@@ -467,7 +467,7 @@
        package — one grant per child service is minted when it is rung up. -->
   <PackageEditor
     productId={s.productId}
-    sellables={sellables}
+    {sellables}
     canEdit={canWrite}
     onChanged={() => invalidate('pos:catalog')}
   />

@@ -100,14 +100,7 @@ const own = (href: string) => (p: string) => p === href || p.startsWith(`${href}
  * Per-area page lists. An "area" is one route subtree (/crm, /socials, …); a
  * module is one or more areas. Section navs read their own area from here.
  */
-export type AreaId =
-  | 'pos'
-  | 'crm'
-  | 'socials'
-  | 'scheduling'
-  | 'stock'
-  | 'finances'
-  | 'workforce';
+export type AreaId = 'pos' | 'crm' | 'socials' | 'scheduling' | 'stock' | 'finances' | 'workforce';
 
 export function getAreaItems(area: AreaId, data: ModuleNavData = {}): ModuleNavItem[] {
   switch (area) {
@@ -571,7 +564,8 @@ export function getModules(data: ModuleNavData = {}): ModuleDef[] {
       label: m.nav_organization(),
       icon: Building2,
       href: '/home',
-      matcher: (p) => p === '/' || p.startsWith('/home') || p.startsWith('/overview') || p.startsWith('/team'),
+      matcher: (p) =>
+        p === '/' || p.startsWith('/home') || p.startsWith('/overview') || p.startsWith('/team'),
       items: sectionItems('organization', data),
     },
     {

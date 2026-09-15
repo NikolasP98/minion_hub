@@ -171,7 +171,7 @@
             lockCustomer
             bookEndpoint={`/api/pos/tickets/${ticketId}/schedule`}
             bookPayload={{ lineId: active.id }}
-            onbooked={onbooked}
+            {onbooked}
             oncancel={() => (activeLineId = null)}
           />
         </div>

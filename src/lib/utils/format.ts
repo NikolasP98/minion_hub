@@ -74,7 +74,10 @@ export function formatMoney(
   if (!Number.isFinite(n)) return '—';
   const cur = (currency || 'PEN').toUpperCase();
   const maximumFractionDigits = opts.decimals ?? (opts.compact ? 0 : 2);
-  const minimumFractionDigits = Math.min(opts.compact ? 0 : maximumFractionDigits, maximumFractionDigits);
+  const minimumFractionDigits = Math.min(
+    opts.compact ? 0 : maximumFractionDigits,
+    maximumFractionDigits,
+  );
   try {
     return new Intl.NumberFormat('es-PE', {
       style: 'currency',
@@ -91,7 +94,10 @@ export function formatMoney(
 }
 
 /** Compact money for dense chart axes / KPIs: "S/ 1.2M". */
-export function formatMoneyShort(value: number | string | null | undefined, currency: string = 'PEN'): string {
+export function formatMoneyShort(
+  value: number | string | null | undefined,
+  currency: string = 'PEN',
+): string {
   return formatMoney(value, currency, { compact: true });
 }
 

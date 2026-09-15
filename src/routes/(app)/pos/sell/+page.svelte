@@ -121,7 +121,10 @@
         : 'cart',
   );
   const scheduleTicketId = $derived(page.url.searchParams.get('ticket'));
-  function goStep(next: 'cart' | 'pay' | 'schedule', opts: { replaceState?: boolean; ticketId?: string } = {}) {
+  function goStep(
+    next: 'cart' | 'pay' | 'schedule',
+    opts: { replaceState?: boolean; ticketId?: string } = {},
+  ) {
     const url = new URL(page.url);
     url.searchParams.delete('ticket');
     if (next === 'cart') url.searchParams.delete('step');
@@ -473,7 +476,9 @@
    *  and no `drawsOnCredit` flag to read instead. See meta
    *  proposals/2026-09-13-pos-packages-plans-s1-followups.md §22. */
   const creditPaid = $derived(
-    payments.filter((p) => p.method === 'credit').reduce((s, p) => s + Math.round(p.amount * 100), 0),
+    payments
+      .filter((p) => p.method === 'credit')
+      .reduce((s, p) => s + Math.round(p.amount * 100), 0),
   );
   const creditOverdrawn = $derived(
     creditPaid > 0 && creditPaid > Math.round((account?.balance ?? 0) * 100),
@@ -525,11 +530,15 @@
 
   // Enter settles the ticket once it is fully tendered — fires inside the
   // amount inputs too, which is where the cashier's hands already are.
-  createHotkey('Enter', () => void charge(), () => ({
-    enabled: step === 'pay' && !chargeDisabled,
-    ignoreInputs: false,
-    meta: { name: m.pos_pay_finish() },
-  }));
+  createHotkey(
+    'Enter',
+    () => void charge(),
+    () => ({
+      enabled: step === 'pay' && !chargeDisabled,
+      ignoreInputs: false,
+      meta: { name: m.pos_pay_finish() },
+    }),
+  );
 
   // ── Assistant: fill the current sale (never charges) ──
   $effect(() =>
@@ -670,8 +679,7 @@
           onError: (err) => {
             const code = (err as { code?: string } | undefined)?.code;
             if (code === 'no_open_shift') return { title: m.pos_no_open_shift() };
-            if (code === 'insufficient_credit')
-              return { title: m.pos_acct_insufficient_credit() };
+            if (code === 'insufficient_credit') return { title: m.pos_acct_insufficient_credit() };
             if (code === 'package_requires_customer')
               return { title: m.pos_pkg_requires_customer() };
             if (code === 'identity_document_required')
@@ -691,8 +699,7 @@
       // booking (charged from the appointments tab, or a package session drawn
       // at booking time) is already scheduled and never re-asks.
       const needsSchedule =
-        data.schedulingEnabled &&
-        lines.some((l) => l.sellable.kind !== 'product' && !l.bookingId);
+        data.schedulingEnabled && lines.some((l) => l.sellable.kind !== 'product' && !l.bookingId);
       lines = [];
       payments = [];
       partyId = null;
@@ -704,8 +711,7 @@
       account = null;
       // REPLACES the pay step: Back from scheduling must reach the fresh cart,
       // never a settled ticket's tender screen.
-      if (needsSchedule)
-        goStep('schedule', { replaceState: true, ticketId: result.ticket.id });
+      if (needsSchedule) goStep('schedule', { replaceState: true, ticketId: result.ticket.id });
     } catch {
       // toastAsync already surfaced the failure
     } finally {
@@ -796,343 +802,347 @@
         onFinish={charge}
       />
     {:else}
-    <div class="layout">
-      <div class="catalog">
-        <div class="catalog-head">
-          <div class="search-row">
-            <input
-              class="search-inp"
-              data-assist="pos_sale.item"
-              placeholder={m.pos_sell_search_placeholder()}
-              bind:value={search}
-              bind:this={searchEl}
-            />
+      <div class="layout">
+        <div class="catalog">
+          <div class="catalog-head">
+            <div class="search-row">
+              <input
+                class="search-inp"
+                data-assist="pos_sale.item"
+                placeholder={m.pos_sell_search_placeholder()}
+                bind:value={search}
+                bind:this={searchEl}
+              />
 
-            <Popover placement="bottom">
-              {#snippet trigger()}
-                <span class="hbtn" title={m.pos_recent_sales()}>
-                  <Receipt size={iconSizes.sm} />
-                  <span class="hbtn-label">{m.pos_recent_sales()}</span>
-                </span>
-              {/snippet}
-              <div class="hpanel">
-                <h2 class="section-h">{m.pos_recent_sales()}</h2>
-                {#if data.recentTickets.length === 0}
-                  <EmptyState title={m.common_noMatches()} compact />
-                {:else}
-                  <div class="ticket-list">
-                    {#each data.recentTickets as t (t.id)}
-                      <div class="ticket-row">
-                        <span class="tid">{t.humanId ?? '—'}</span>
-                        <span class="ttime">{fmtTime(t.submittedAt)}</span>
-                        <span class="ttotal">{formatMoney(t.total)}</span>
-                        <span class="tcust">{t.customerName ?? '—'}</span>
-                        {#if t.status === 'void'}
-                          <Badge variant="semantic" value="error" size="sm">{m.pos_void()}</Badge>
-                        {:else if t.stockEntryId}
-                          <a
-                            href={`/stock/entries/${t.stockEntryId}`}
-                            title={m.pos_sell_view_entry()}
-                            class="stock-chip ok">✓</a
-                          >
-                        {:else if t.stockWarning}
-                          <span
-                            class="stock-chip warn"
-                            title={(t.stockWarning as { message: string }).message}>⚠</span
-                          >
-                        {/if}
-                        {#if t.status !== 'void' && canAct('pos', 'manage')}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            type="button"
-                            class="void-btn"
-                            onclick={() => voidTicketRow(t.id)}>{m.pos_void()}</Button
-                          >
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            </Popover>
+              <Popover placement="bottom">
+                {#snippet trigger()}
+                  <span class="hbtn" title={m.pos_recent_sales()}>
+                    <Receipt size={iconSizes.sm} />
+                    <span class="hbtn-label">{m.pos_recent_sales()}</span>
+                  </span>
+                {/snippet}
+                <div class="hpanel">
+                  <h2 class="section-h">{m.pos_recent_sales()}</h2>
+                  {#if data.recentTickets.length === 0}
+                    <EmptyState title={m.common_noMatches()} compact />
+                  {:else}
+                    <div class="ticket-list">
+                      {#each data.recentTickets as t (t.id)}
+                        <div class="ticket-row">
+                          <span class="tid">{t.humanId ?? '—'}</span>
+                          <span class="ttime">{fmtTime(t.submittedAt)}</span>
+                          <span class="ttotal">{formatMoney(t.total)}</span>
+                          <span class="tcust">{t.customerName ?? '—'}</span>
+                          {#if t.status === 'void'}
+                            <Badge variant="semantic" value="error" size="sm">{m.pos_void()}</Badge>
+                          {:else if t.stockEntryId}
+                            <a
+                              href={`/stock/entries/${t.stockEntryId}`}
+                              title={m.pos_sell_view_entry()}
+                              class="stock-chip ok">✓</a
+                            >
+                          {:else if t.stockWarning}
+                            <span
+                              class="stock-chip warn"
+                              title={(t.stockWarning as { message: string }).message}>⚠</span
+                            >
+                          {/if}
+                          {#if t.status !== 'void' && canAct('pos', 'manage')}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              type="button"
+                              class="void-btn"
+                              onclick={() => voidTicketRow(t.id)}>{m.pos_void()}</Button
+                            >
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              </Popover>
 
-            <Popover placement="bottom">
-              {#snippet trigger()}
-                <span class="hbtn" title={m.pos_sell_shifts_history()}>
-                  <History size={iconSizes.sm} />
-                  <span class="hbtn-label">{m.pos_sell_shifts_history()}</span>
-                </span>
-              {/snippet}
-              <div class="hpanel">
-                <h2 class="section-h">{m.pos_sell_shifts_history()}</h2>
-                {#if data.shifts.length === 0}
-                  <EmptyState title={m.common_noMatches()} compact />
-                {:else}
-                  <div class="shift-list">
-                    {#each data.shifts as s (s.id)}
-                      <div class="shift-row">
-                        <span class="stime">{fmtTime(s.openedAt)}</span>
-                        <span class="stime"
-                          >{s.closedAt ? fmtTime(s.closedAt) : m.pos_sell_shift_status_open()}</span
-                        >
-                        {#if s.expected}
-                          <div class="diffs">
-                            {#each Object.keys(s.expected as Record<string, number>) as mth (mth)}
-                              {@const exp = (s.expected as Record<string, number>)[mth] ?? 0}
-                              {@const cnt =
-                                (s.counted as Record<string, number> | null)?.[mth] ?? 0}
-                              {@const diff = Math.round((cnt - exp) * 100) / 100}
-                              <Badge
-                                variant="semantic"
-                                value={Math.abs(diff) < 0.01 ? 'success' : 'warning'}
-                                size="sm">{mth}: {formatMoney(diff)}</Badge
-                              >
-                            {/each}
-                          </div>
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            </Popover>
-          </div>
-          <div class="chips-row">
-            <div class="chips">
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                class={`chip-btn ${activeCategory === null ? 'on' : ''}`}
-                aria-pressed={activeCategory === null}
-                onclick={() => (activeCategory = null)}
-              >
-                {m.pos_sell_all_categories()}
-              </Button>
-              {#each categories as c (c)}
+              <Popover placement="bottom">
+                {#snippet trigger()}
+                  <span class="hbtn" title={m.pos_sell_shifts_history()}>
+                    <History size={iconSizes.sm} />
+                    <span class="hbtn-label">{m.pos_sell_shifts_history()}</span>
+                  </span>
+                {/snippet}
+                <div class="hpanel">
+                  <h2 class="section-h">{m.pos_sell_shifts_history()}</h2>
+                  {#if data.shifts.length === 0}
+                    <EmptyState title={m.common_noMatches()} compact />
+                  {:else}
+                    <div class="shift-list">
+                      {#each data.shifts as s (s.id)}
+                        <div class="shift-row">
+                          <span class="stime">{fmtTime(s.openedAt)}</span>
+                          <span class="stime"
+                            >{s.closedAt
+                              ? fmtTime(s.closedAt)
+                              : m.pos_sell_shift_status_open()}</span
+                          >
+                          {#if s.expected}
+                            <div class="diffs">
+                              {#each Object.keys(s.expected as Record<string, number>) as mth (mth)}
+                                {@const exp = (s.expected as Record<string, number>)[mth] ?? 0}
+                                {@const cnt =
+                                  (s.counted as Record<string, number> | null)?.[mth] ?? 0}
+                                {@const diff = Math.round((cnt - exp) * 100) / 100}
+                                <Badge
+                                  variant="semantic"
+                                  value={Math.abs(diff) < 0.01 ? 'success' : 'warning'}
+                                  size="sm">{mth}: {formatMoney(diff)}</Badge
+                                >
+                              {/each}
+                            </div>
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              </Popover>
+            </div>
+            <div class="chips-row">
+              <div class="chips">
                 <Button
                   variant="ghost"
                   size="sm"
                   type="button"
-                  class={`chip-btn ${activeCategory === c ? 'on' : ''}`}
-                  aria-pressed={activeCategory === c}
-                  onclick={() => (activeCategory = c)}>{c}</Button
+                  class={`chip-btn ${activeCategory === null ? 'on' : ''}`}
+                  aria-pressed={activeCategory === null}
+                  onclick={() => (activeCategory = null)}
                 >
-              {/each}
-            </div>
-            <SegmentedControl
-              class="group-seg"
-              aria-label={m.catalog_group_by()}
-              value={groupAxis}
-              items={groupItems}
-              onValueChange={(v) => (groupAxis = v as GroupAxis)}
-            />
-            <div class="view-toggle" role="group" aria-label={m.pos_sell_view_gallery()}>
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                class={`vt-btn ${view === 'gallery' ? 'on' : ''}`}
-                aria-pressed={view === 'gallery'}
-                title={m.pos_sell_view_gallery()}
-                aria-label={m.pos_sell_view_gallery()}
-                onclick={() => (view = 'gallery')}
-              >
-                <LayoutGrid size={iconSizes.sm} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                class={`vt-btn ${view === 'table' ? 'on' : ''}`}
-                aria-pressed={view === 'table'}
-                title={m.pos_sell_view_table()}
-                aria-label={m.pos_sell_view_table()}
-                onclick={() => (view = 'table')}
-              >
-                <List size={iconSizes.sm} />
-              </Button>
+                  {m.pos_sell_all_categories()}
+                </Button>
+                {#each categories as c (c)}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    class={`chip-btn ${activeCategory === c ? 'on' : ''}`}
+                    aria-pressed={activeCategory === c}
+                    onclick={() => (activeCategory = c)}>{c}</Button
+                  >
+                {/each}
+              </div>
+              <SegmentedControl
+                class="group-seg"
+                aria-label={m.catalog_group_by()}
+                value={groupAxis}
+                items={groupItems}
+                onValueChange={(v) => (groupAxis = v as GroupAxis)}
+              />
+              <div class="view-toggle" role="group" aria-label={m.pos_sell_view_gallery()}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  class={`vt-btn ${view === 'gallery' ? 'on' : ''}`}
+                  aria-pressed={view === 'gallery'}
+                  title={m.pos_sell_view_gallery()}
+                  aria-label={m.pos_sell_view_gallery()}
+                  onclick={() => (view = 'gallery')}
+                >
+                  <LayoutGrid size={iconSizes.sm} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  class={`vt-btn ${view === 'table' ? 'on' : ''}`}
+                  aria-pressed={view === 'table'}
+                  title={m.pos_sell_view_table()}
+                  aria-label={m.pos_sell_view_table()}
+                  onclick={() => (view = 'table')}
+                >
+                  <List size={iconSizes.sm} />
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {#if view === 'gallery'}
-          <div class="catalog-scroll">
-            {#if filtered.length === 0}
-              <EmptyState title={m.pos_sell_no_results()} compact />
-            {:else}
-              <!-- Grouped GALLERY sections rather than a collapsible tree: at the
+          {#if view === 'gallery'}
+            <div class="catalog-scroll">
+              {#if filtered.length === 0}
+                <EmptyState title={m.pos_sell_no_results()} compact />
+              {:else}
+                <!-- Grouped GALLERY sections rather than a collapsible tree: at the
                    till, one tap must add a product, so nothing is ever hidden
                    behind an expand. Ungrouped renders a single unlabelled group. -->
-              {#each galleryGroups as g (g.key)}
-                {#if g.label}
-                  <div class="grp-head">
-                    <span class="grp-name">{g.label}</span>
-                    <span class="grp-count">{m.catalog_group_count({ count: g.rows.length })}</span>
-                  </div>
-                {/if}
-                <div class="grid">
-                  {#each g.rows as s (s.productId)}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      type="button"
-                      class="card"
-                      onclick={() => addLine(s)}
-                    >
-                      <span class="cname">{s.name}</span>
-                      <span class="cprice"
-                        >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
+                {#each galleryGroups as g (g.key)}
+                  {#if g.label}
+                    <div class="grp-head">
+                      <span class="grp-name">{g.label}</span>
+                      <span class="grp-count"
+                        >{m.catalog_group_count({ count: g.rows.length })}</span
                       >
-                      {#if s.kind === 'product' && s.stockQty != null}
-                        <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
-                          >{s.stockQty}</Badge
+                    </div>
+                  {/if}
+                  <div class="grid">
+                    {#each g.rows as s (s.productId)}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        class="card"
+                        onclick={() => addLine(s)}
+                      >
+                        <span class="cname">{s.name}</span>
+                        <span class="cprice"
+                          >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
                         >
-                      {/if}
-                    </Button>
-                  {/each}
+                        {#if s.kind === 'product' && s.stockQty != null}
+                          <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
+                            >{s.stockQty}</Badge
+                          >
+                        {/if}
+                      </Button>
+                    {/each}
+                  </div>
+                {/each}
+              {/if}
+            </div>
+          {:else}
+            <!-- Shared DataTable, stripped for POS: no toolbar chrome, row click adds. -->
+            <div class="table-wrap">
+              <DataTable
+                class="flex-1 min-h-0"
+                columns={tableColumns}
+                data={tableRows}
+                getRowId={(s) => s.productId}
+                getSubRows={(s) => s.__children}
+                initialExpanded={expandedGroupIds}
+                searchable={false}
+                columnMenu={false}
+                reorderable={false}
+                resizable={false}
+                onRowClick={(s) => {
+                  // ★ Group headers are the SAME row type as products (DataTable's
+                  // getSubRows walks one type), so without this guard clicking
+                  // "Labios" would add a fictional product to the ticket.
+                  if (!isGroupRow(s)) addLine(s);
+                }}
+                emptyMessage={m.pos_sell_no_results()}
+              >
+                {#snippet cell(s: TableRow, col: DataColumn<TableRow>)}
+                  {#if col.key === 'name'}
+                    {#if s.__group}
+                      <span class="tgroup"
+                        >{s.__group.label}<span class="tcount"
+                          >{m.catalog_group_count({ count: s.__group.count })}</span
+                        ></span
+                      >
+                    {:else}
+                      <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
+                    {/if}
+                  {:else if s.__group}
+                    <!-- A header has no price, stock or category of its own. -->
+                    <span></span>
+                  {:else if col.key === 'unitPrice'}
+                    <span class="tabular-nums"
+                      >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
+                    >
+                  {:else if col.key === 'stockQty'}
+                    {#if s.kind === 'product' && s.stockQty != null}
+                      <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
+                        >{s.stockQty}</Badge
+                      >
+                    {:else}
+                      —
+                    {/if}
+                  {/if}
+                {/snippet}
+              </DataTable>
+            </div>
+          {/if}
+        </div>
+
+        <div class="cart-panel">
+          {#if stockBanner}
+            <div class="banner">
+              <span>{m.pos_stock_warning({ message: stockBanner.message })}</span>
+              <Button size="sm" variant="outline" onclick={retryStock}
+                >{m.pos_post_stock_retry()}</Button
+              >
+            </div>
+          {/if}
+          <div data-assist="pos_sale.customer">
+            <CustomerPicker
+              bind:partyId
+              bind:customerName
+              bind:phone={customerPhone}
+              bind:docNumber={customerDocNumber}
+              required={data.posSettings.requireCustomer}
+              documentRequirement={data.posSettings.requirements?.identityDocument ?? 'off'}
+            />
+          </div>
+          <!-- Client account: stored value the cashier can tender, sessions this
+             client already paid for, and instalment plans awaiting payment. -->
+          {#if account && (account.balance !== 0 || liveGrants.length || openPlans.length)}
+            <div class="acct">
+              <div class="acct-row">
+                <span class="t-caption">{m.pos_acct_balance()}</span>
+                <span class="acct-balance">{formatMoney(account.balance)}</span>
+                <a class="acct-link t-caption" href="/pos/accounts">{m.pos_acct_open()}</a>
+              </div>
+              {#each liveGrants as g (g.grant.id)}
+                <div class="acct-row">
+                  <Badge variant="semantic" value="success" size="sm">
+                    {m.pos_pkg_sessions({
+                      remaining: String(g.sessionsRemaining),
+                      total: String(g.grant.sessionsTotal),
+                    })}
+                  </Badge>
+                  <span class="acct-name"
+                    >{data.sellables.find((sl) => sl.productId === g.grant.serviceProductId)
+                      ?.name ?? '—'}</span
+                  >
+                  <Button size="sm" variant="outline" onclick={() => billSession(g.grant.id)}>
+                    {m.pos_pkg_redeem()}
+                  </Button>
                 </div>
               {/each}
-            {/if}
-          </div>
-        {:else}
-          <!-- Shared DataTable, stripped for POS: no toolbar chrome, row click adds. -->
-          <div class="table-wrap">
-            <DataTable
-              class="flex-1 min-h-0"
-              columns={tableColumns}
-              data={tableRows}
-              getRowId={(s) => s.productId}
-              getSubRows={(s) => s.__children}
-              initialExpanded={expandedGroupIds}
-              searchable={false}
-              columnMenu={false}
-              reorderable={false}
-              resizable={false}
-              onRowClick={(s) => {
-                // ★ Group headers are the SAME row type as products (DataTable's
-                // getSubRows walks one type), so without this guard clicking
-                // "Labios" would add a fictional product to the ticket.
-                if (!isGroupRow(s)) addLine(s);
-              }}
-              emptyMessage={m.pos_sell_no_results()}
-            >
-              {#snippet cell(s: TableRow, col: DataColumn<TableRow>)}
-                {#if col.key === 'name'}
-                  {#if s.__group}
-                    <span class="tgroup"
-                      >{s.__group.label}<span class="tcount"
-                        >{m.catalog_group_count({ count: s.__group.count })}</span
-                      ></span
-                    >
-                  {:else}
-                    <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
-                  {/if}
-                {:else if s.__group}
-                  <!-- A header has no price, stock or category of its own. -->
-                  <span></span>
-                {:else if col.key === 'unitPrice'}
-                  <span class="tabular-nums"
-                    >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
-                  >
-                {:else if col.key === 'stockQty'}
-                  {#if s.kind === 'product' && s.stockQty != null}
-                    <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
-                      >{s.stockQty}</Badge
-                    >
-                  {:else}
-                    —
-                  {/if}
-                {/if}
-              {/snippet}
-            </DataTable>
-          </div>
-        {/if}
-      </div>
-
-      <div class="cart-panel">
-        {#if stockBanner}
-          <div class="banner">
-            <span>{m.pos_stock_warning({ message: stockBanner.message })}</span>
-            <Button size="sm" variant="outline" onclick={retryStock}
-              >{m.pos_post_stock_retry()}</Button
-            >
-          </div>
-        {/if}
-        <div data-assist="pos_sale.customer">
-          <CustomerPicker
-            bind:partyId
-            bind:customerName
-            bind:phone={customerPhone}
-            bind:docNumber={customerDocNumber}
-            required={data.posSettings.requireCustomer}
-            documentRequirement={data.posSettings.requirements?.identityDocument ?? 'off'}
-          />
-        </div>
-        <!-- Client account: stored value the cashier can tender, sessions this
-             client already paid for, and instalment plans awaiting payment. -->
-        {#if account && (account.balance !== 0 || liveGrants.length || openPlans.length)}
-          <div class="acct">
-            <div class="acct-row">
-              <span class="t-caption">{m.pos_acct_balance()}</span>
-              <span class="acct-balance">{formatMoney(account.balance)}</span>
-              <a class="acct-link t-caption" href="/pos/accounts">{m.pos_acct_open()}</a>
+              {#each openPlans as p (p.plan.id)}
+                <div class="acct-row">
+                  <Badge variant="semantic" value="info" size="sm">
+                    {m.pos_plan_remaining({ value: formatMoney(p.remaining, p.plan.currency) })}
+                  </Badge>
+                  <span class="acct-name">{p.plan.title}</span>
+                  <Button size="sm" variant="outline" onclick={() => addInstalment(p)}>
+                    {m.pos_plan_pay()}
+                  </Button>
+                </div>
+              {/each}
             </div>
-            {#each liveGrants as g (g.grant.id)}
-              <div class="acct-row">
-                <Badge variant="semantic" value="success" size="sm">
-                  {m.pos_pkg_sessions({
-                    remaining: String(g.sessionsRemaining),
-                    total: String(g.grant.sessionsTotal),
-                  })}
-                </Badge>
-                <span class="acct-name"
-                  >{data.sellables.find((sl) => sl.productId === g.grant.serviceProductId)?.name ??
-                    '—'}</span
-                >
-                <Button size="sm" variant="outline" onclick={() => billSession(g.grant.id)}>
-                  {m.pos_pkg_redeem()}
-                </Button>
-              </div>
-            {/each}
-            {#each openPlans as p (p.plan.id)}
-              <div class="acct-row">
-                <Badge variant="semantic" value="info" size="sm">
-                  {m.pos_plan_remaining({ value: formatMoney(p.remaining, p.plan.currency) })}
-                </Badge>
-                <span class="acct-name">{p.plan.title}</span>
-                <Button size="sm" variant="outline" onclick={() => addInstalment(p)}>
-                  {m.pos_plan_pay()}
-                </Button>
-              </div>
-            {/each}
+          {/if}
+          <div class="cart-scroll">
+            <SellCart
+              bind:lines
+              settings={{ allowPriceOverride: data.posSettings.allowPriceOverride }}
+            />
           </div>
-        {/if}
-        <div class="cart-scroll">
-          <SellCart
-            bind:lines
-            settings={{ allowPriceOverride: data.posSettings.allowPriceOverride }}
-          />
-        </div>
-        <div class="charge-bar">
-          <div class="total-row">
-            <span>{m.pos_sell_total()}</span>
-            <span class="total">{formatMoney(total)}</span>
-          </div>
-          <!-- Step 1 never settles the ticket: it hands a valid cart to the
+          <div class="charge-bar">
+            <div class="total-row">
+              <span>{m.pos_sell_total()}</span>
+              <span class="total">{formatMoney(total)}</span>
+            </div>
+            <!-- Step 1 never settles the ticket: it hands a valid cart to the
                pay step, where the tenders live. -->
-          <Button
-            variant="primary"
-            size="lg"
-            disabled={cartBlocker != null}
-            data-assist="pos_sale.submit"
-            onclick={() => goStep('pay')}
-            >{cartBlocker ?? m.pos_pay_charge_amount({ amount: formatMoney(total) })}</Button
-          >
+            <Button
+              variant="primary"
+              size="lg"
+              disabled={cartBlocker != null}
+              data-assist="pos_sale.submit"
+              onclick={() => goStep('pay')}
+              >{cartBlocker ?? m.pos_pay_charge_amount({ amount: formatMoney(total) })}</Button
+            >
+          </div>
         </div>
       </div>
-    </div>
     {/if}
   </PageBody>
 </PageShell>

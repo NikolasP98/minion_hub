@@ -6,7 +6,10 @@ import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { PosError } from '$server/services/pos.service';
-import { bookAndLinkTicketLine, SlotUnavailableError } from '$server/services/scheduling-bookings.service';
+import {
+  bookAndLinkTicketLine,
+  SlotUnavailableError,
+} from '$server/services/scheduling-bookings.service';
 import { handlePosError } from '../../../_errors';
 
 const postSchema = z.object({
@@ -76,14 +79,19 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
       overrideConflicts: b.overrideConflicts ?? undefined,
       packageGrantId: b.packageGrantId ?? null,
       paymentPlanId: b.paymentPlanId ?? null,
-      actor: { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null },
+      actor: {
+        id: ctx.profileId ?? null,
+        name: locals.user?.displayName ?? locals.user?.email ?? null,
+      },
     });
     // `created: false` = idempotent replay of a double-submit; the caller gets
     // the SAME appointment back, not a second one.
     return json({ booking, created });
   } catch (e) {
-    if (e instanceof SlotUnavailableError) return handlePosError(new PosError('slot unavailable', 'slot_unavailable'));
-    if (e instanceof Error && e.message === 'overrideConflicts requires forceResourceId') throw error(400, e.message);
+    if (e instanceof SlotUnavailableError)
+      return handlePosError(new PosError('slot unavailable', 'slot_unavailable'));
+    if (e instanceof Error && e.message === 'overrideConflicts requires forceResourceId')
+      throw error(400, e.message);
     return handlePosError(e);
   }
 };

@@ -20,7 +20,6 @@ const UNIVERSAL = new Set(['/home', '/overview', '/settings']);
 
 const ctx = (perms: string[]) => ({ authenticated: true, permissions: new Set(perms) });
 
-
 describe('module registry ↔ RBAC', () => {
   it('gates every module page behind a permission or capability', () => {
     const ungated = ALL_ITEMS.filter(

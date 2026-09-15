@@ -1,19 +1,30 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { fmtTokens, fmtTimeAgo, fmtUptime, truncKey, escHtml, formatMoney, formatDate } from './format';
+import {
+  fmtTokens,
+  fmtTimeAgo,
+  fmtUptime,
+  truncKey,
+  escHtml,
+  formatMoney,
+  formatDate,
+} from './format';
 import { setLanguageTag } from '$lib/paraglide/runtime';
 
 describe('formatMoney', () => {
   const strip = (s: string) => s.replace(/ /g, ' '); // NBSP → space for stable asserts
-  it('formats PEN by default with S/ symbol', () => expect(strip(formatMoney(1234.5))).toBe('S/ 1,234.50'));
+  it('formats PEN by default with S/ symbol', () =>
+    expect(strip(formatMoney(1234.5))).toBe('S/ 1,234.50'));
   it('defaults currency to PEN when omitted', () => expect(formatMoney(50)).toContain('S/'));
   it('honors an explicit currency', () => expect(formatMoney(10, 'USD')).toMatch(/US\$|USD|\$/));
-  it('accepts numeric strings (DB numeric)', () => expect(strip(formatMoney('800'))).toBe('S/ 800.00'));
+  it('accepts numeric strings (DB numeric)', () =>
+    expect(strip(formatMoney('800'))).toBe('S/ 800.00'));
   it('returns em-dash for null/NaN', () => {
     expect(formatMoney(null)).toBe('—');
     expect(formatMoney(undefined)).toBe('—');
     expect(formatMoney('not a number')).toBe('—');
   });
-  it('compact drops decimals', () => expect(formatMoney(1600, 'PEN', { compact: true })).not.toContain('.00'));
+  it('compact drops decimals', () =>
+    expect(formatMoney(1600, 'PEN', { compact: true })).not.toContain('.00'));
 });
 
 describe('fmtTokens', () => {

@@ -10,21 +10,26 @@ import { crmContacts } from '$server/db/pg-crm-schema';
  * claim either all land or none do. Mock style mirrors
  * `scheduling-bookings-packages.test.ts`.
  */
-const computeSlotsMock = vi.fn<(input: { rangeStart: Date }) => Array<{ start: Date; resourceIds: string[] }>>(
-  (input) => [{ start: input.rangeStart, resourceIds: ['staff-1'] }],
-);
+const computeSlotsMock = vi.fn<
+  (input: { rangeStart: Date }) => Array<{ start: Date; resourceIds: string[] }>
+>((input) => [{ start: input.rangeStart, resourceIds: ['staff-1'] }]);
 vi.mock('$server/scheduling/slots', () => ({
   computeSlots: (input: { rangeStart: Date }) => computeSlotsMock(input),
 }));
 
-const redeemMock = vi.fn<(grantId: string) => Promise<{ id: string }>>(async () => ({ id: 'red-1' }));
+const redeemMock = vi.fn<(grantId: string) => Promise<{ id: string }>>(async () => ({
+  id: 'red-1',
+}));
 vi.mock('./pos-packages.service', () => ({
-  redeemSessionInTx: (_tx: unknown, _org: string, input: { grantId: string }) => redeemMock(input.grantId),
+  redeemSessionInTx: (_tx: unknown, _org: string, input: { grantId: string }) =>
+    redeemMock(input.grantId),
   reverseRedemptionInTx: async (_tx: unknown, _org: string, id: string) => ({ id }),
   getGrant: async () => null,
 }));
 vi.mock('./pos-accounts.service', () => ({ getPlan: async () => null }));
-vi.mock('./finance.service', () => ({ getFinSettings: async () => ({ timezone: 'America/Lima' }) }));
+vi.mock('./finance.service', () => ({
+  getFinSettings: async () => ({ timezone: 'America/Lima' }),
+}));
 vi.mock('./scheduling-slots.service', () => ({ serviceRulesOf: () => undefined }));
 vi.mock('$server/events/emit', () => ({ emitHubEvent: async () => {} }));
 
@@ -40,7 +45,9 @@ import { bookAndLinkTicketLine } from './scheduling-bookings.service';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  computeSlotsMock.mockImplementation((input) => [{ start: input.rangeStart, resourceIds: ['staff-1'] }]);
+  computeSlotsMock.mockImplementation((input) => [
+    { start: input.rangeStart, resourceIds: ['staff-1'] },
+  ]);
   redeemMock.mockImplementation(async () => ({ id: 'red-1' }));
 });
 
@@ -86,7 +93,9 @@ const occurrence = (row: unknown, crm: unknown[] = []) => [
 ];
 
 /** ticket → line → (optional party phone lookup). */
-const preamble = (opts: { partyId?: string | null; status?: string; kind?: string; bookingId?: string | null } = {}) => [
+const preamble = (
+  opts: { partyId?: string | null; status?: string; kind?: string; bookingId?: string | null } = {},
+) => [
   [{ status: opts.status ?? 'submitted', partyId: opts.partyId ?? null }],
   [{ kind: opts.kind ?? 'service', bookingId: opts.bookingId ?? null }],
 ];
@@ -146,14 +155,18 @@ describe('bookAndLinkTicketLine', () => {
   it("refuses a ticket that is not this org's", async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[]]); // org-scoped ticket read: no row
-    await expect(bookAndLinkTicketLine(ctx(db), input)).rejects.toMatchObject({ code: 'not_found' });
+    await expect(bookAndLinkTicketLine(ctx(db), input)).rejects.toMatchObject({
+      code: 'not_found',
+    });
     expect(db.insert).not.toHaveBeenCalled();
   });
 
   it('refuses a void ticket', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[{ status: 'voided', partyId: null }]]);
-    await expect(bookAndLinkTicketLine(ctx(db), input)).rejects.toMatchObject({ code: 'ticket_void' });
+    await expect(bookAndLinkTicketLine(ctx(db), input)).rejects.toMatchObject({
+      code: 'ticket_void',
+    });
   });
 
   it('refuses a line that is not a service', async () => {

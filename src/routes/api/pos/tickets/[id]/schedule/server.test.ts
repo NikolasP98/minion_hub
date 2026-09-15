@@ -13,7 +13,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('$server/auth/core-ctx', () => ({
   getCoreCtx: () => Promise.resolve({ db: {}, tenantId: 'org-1', profileId: 'p-1' }),
 }));
-vi.mock('$server/services/modules.service', () => ({ isModuleEnabled: () => Promise.resolve(true) }));
+vi.mock('$server/services/modules.service', () => ({
+  isModuleEnabled: () => Promise.resolve(true),
+}));
 vi.mock('$server/services/rbac.service', () => ({
   requireOrgCapability: () => Promise.resolve(null),
 }));
@@ -37,7 +39,11 @@ async function call() {
     request: new Request('http://x', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lineId: LINE, eventTypeId: 'et-1', start: '2026-09-21T15:00:00.000Z' }),
+      body: JSON.stringify({
+        lineId: LINE,
+        eventTypeId: 'et-1',
+        start: '2026-09-21T15:00:00.000Z',
+      }),
     }),
   } as unknown as Parameters<typeof POST>[0]);
 }

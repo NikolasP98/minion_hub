@@ -1,17 +1,4 @@
-import {
-  and,
-  eq,
-  ne,
-  inArray,
-  gt,
-  gte,
-  isNull,
-  isNotNull,
-  lte,
-  asc,
-  desc,
-  sql,
-} from 'drizzle-orm';
+import { and, eq, ne, inArray, gt, gte, isNull, isNotNull, lte, asc, desc, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { maskPii } from '$lib/pii';
 import type { CoreTx } from '$server/db/with-org-core';
@@ -348,14 +335,24 @@ async function bookOccurrenceInTx(
       .from(schedEventTypeResources)
       .where(eq(schedEventTypeResources.eventTypeId, et.id))
   ).map((r) => r.resourceId);
-  if (input.preferredResourceId) candidateIds = candidateIds.filter((r) => r === input.preferredResourceId);
+  if (input.preferredResourceId)
+    candidateIds = candidateIds.filter((r) => r === input.preferredResourceId);
   // Front-desk walk-in override: narrow to exactly this resource. A non-assignee
   // force id filters candidates to empty → SlotUnavailableError below (no silent reassign).
   if (input.forceResourceId) candidateIds = candidateIds.filter((r) => r === input.forceResourceId);
   const active = await tx
     .select({ id: schedResources.id })
     .from(schedResources)
-    .where(and(eq(schedResources.orgId, ctx.tenantId), inArray(schedResources.id, candidateIds.length ? candidateIds : ['00000000-0000-0000-0000-000000000000']), eq(schedResources.active, true)));
+    .where(
+      and(
+        eq(schedResources.orgId, ctx.tenantId),
+        inArray(
+          schedResources.id,
+          candidateIds.length ? candidateIds : ['00000000-0000-0000-0000-000000000000'],
+        ),
+        eq(schedResources.active, true),
+      ),
+    );
   candidateIds = active.map((r) => r.id);
   if (!candidateIds.length) throw new SlotUnavailableError();
 
@@ -369,7 +366,13 @@ async function bookOccurrenceInTx(
   } else {
     const availability = await loadAvailability(tx, ctx.tenantId, candidateIds);
     const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + et.length) * MS_PER_MIN;
-    const busy = await loadBusyInTx(tx, ctx.tenantId, candidateIds, new Date(start.getTime() - pad), new Date(end.getTime() + pad));
+    const busy = await loadBusyInTx(
+      tx,
+      ctx.tenantId,
+      candidateIds,
+      new Date(start.getTime() - pad),
+      new Date(end.getTime() + pad),
+    );
 
     const slots = computeSlots({
       eventType: {
@@ -378,9 +381,16 @@ async function bookOccurrenceInTx(
         beforeBuffer: et.beforeBuffer,
         afterBuffer: et.afterBuffer,
         minimumBookingNotice: input.bypassRules ? 0 : et.minimumBookingNotice,
-        periodType: input.bypassRules ? 'unlimited' : et.periodType === 'unlimited' ? 'unlimited' : 'rolling',
+        periodType: input.bypassRules
+          ? 'unlimited'
+          : et.periodType === 'unlimited'
+            ? 'unlimited'
+            : 'rolling',
         periodDays: input.bypassRules ? null : et.periodDays,
-        schedulingType: et.schedulingType === 'round_robin' || et.schedulingType === 'collective' ? et.schedulingType : null,
+        schedulingType:
+          et.schedulingType === 'round_robin' || et.schedulingType === 'collective'
+            ? et.schedulingType
+            : null,
       },
       resources: availability,
       bookings: busy,
@@ -441,7 +451,9 @@ async function bookOccurrenceInTx(
     const [plan] = await tx
       .select({ id: posPaymentPlans.id })
       .from(posPaymentPlans)
-      .where(and(eq(posPaymentPlans.id, input.paymentPlanId), eq(posPaymentPlans.orgId, ctx.tenantId)))
+      .where(
+        and(eq(posPaymentPlans.id, input.paymentPlanId), eq(posPaymentPlans.orgId, ctx.tenantId)),
+      )
       .limit(1);
     paymentPlanId = plan?.id ?? null;
   }
@@ -517,7 +529,10 @@ async function bookOccurrenceInTx(
  * booking transaction opens — `getFinSettings` runs its own `withOrgCore`, and
  * withOrgCore must never nest.
  */
-async function orgDateKey(ctx: CoreCtx, grantId: string | null | undefined): Promise<string | null> {
+async function orgDateKey(
+  ctx: CoreCtx,
+  grantId: string | null | undefined,
+): Promise<string | null> {
   if (!grantId) return null;
   return grantToday((await getFinSettings(ctx)).timezone);
 }
@@ -528,19 +543,32 @@ async function orgDateKey(ctx: CoreCtx, grantId: string | null | undefined): Pro
  * and fail-soft — a booking must never fail because of accrual bookkeeping.
  * Idempotent uid retries have created=false and never re-accrue.
  */
-async function accrueForBooking(ctx: CoreCtx, row: SchedBooking, lines: AccrualLineInput[] | null): Promise<void> {
+async function accrueForBooking(
+  ctx: CoreCtx,
+  row: SchedBooking,
+  lines: AccrualLineInput[] | null,
+): Promise<void> {
   if (!row.productId) return;
   try {
     if (await isModuleEnabled(ctx, 'stock')) {
-      await accrueConsumption(ctx, { source: 'booking', sourceId: row.id, finProductId: row.productId, lines });
+      await accrueConsumption(ctx, {
+        source: 'booking',
+        sourceId: row.id,
+        finProductId: row.productId,
+        lines,
+      });
     }
   } catch (e) {
     console.error('[scheduling] accrueConsumption failed (booking stands)', e);
   }
 }
 
-export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Promise<SchedBooking> {
-  if (input.overrideConflicts && !input.forceResourceId) throw new Error('overrideConflicts requires forceResourceId');
+export async function createBooking(
+  ctx: CoreCtx,
+  input: CreateBookingInput,
+): Promise<SchedBooking> {
+  if (input.overrideConflicts && !input.forceResourceId)
+    throw new Error('overrideConflicts requires forceResourceId');
   const today = await orgDateKey(ctx, input.packageGrantId);
   const { row, created } = await withOrgCore(ctx, (tx) =>
     bookOccurrenceInTx(tx, ctx, input, { start: input.start, today }),
@@ -602,7 +630,8 @@ export async function bookAndLinkTicketLine(
   ctx: CoreCtx,
   input: BookTicketLineInput,
 ): Promise<BookTicketLineResult> {
-  if (input.overrideConflicts && !input.forceResourceId) throw new Error('overrideConflicts requires forceResourceId');
+  if (input.overrideConflicts && !input.forceResourceId)
+    throw new Error('overrideConflicts requires forceResourceId');
   // Resolved BEFORE the transaction opens — `getFinSettings` runs its own
   // `withOrgCore`, and withOrgCore must never nest.
   const today = await orgDateKey(ctx, input.packageGrantId);
@@ -638,7 +667,8 @@ export async function bookAndLinkTicketLine(
         .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.id, line.bookingId)))
         .limit(1);
       // Replay of the same submit → the same appointment, 200, nothing created.
-      if (existing && !DEAD_BOOKING_STATUSES.has(existing.status)) return { booking: existing, created: false };
+      if (existing && !DEAD_BOOKING_STATUSES.has(existing.status))
+        return { booking: existing, created: false };
       // Linked to a cancelled/rejected (or vanished) booking: the line is stuck
       // and the `is null` claim below could never fire — say so explicitly.
       throw new PosError('line already scheduled', 'line_already_scheduled');
@@ -657,7 +687,12 @@ export async function bookAndLinkTicketLine(
       attendeePhone = party?.phone9 ?? null;
     }
 
-    const booked = await bookOccurrenceInTx(tx, ctx, { ...input, attendeePhone }, { start: input.start, today });
+    const booked = await bookOccurrenceInTx(
+      tx,
+      ctx,
+      { ...input, attendeePhone },
+      { start: input.start, today },
+    );
 
     const [claimed] = await tx
       .update(posTicketLines)
@@ -698,10 +733,15 @@ export interface CreateBookingSeriesInput extends Omit<CreateBookingInput, 'star
  * package on the last one — rolls back every booking and every redemption, so
  * the client is never left with half a course and 3 sessions gone.
  */
-export async function createBookingSeries(ctx: CoreCtx, input: CreateBookingSeriesInput): Promise<SchedBooking[]> {
-  if (input.overrideConflicts && !input.forceResourceId) throw new Error('overrideConflicts requires forceResourceId');
+export async function createBookingSeries(
+  ctx: CoreCtx,
+  input: CreateBookingSeriesInput,
+): Promise<SchedBooking[]> {
+  if (input.overrideConflicts && !input.forceResourceId)
+    throw new Error('overrideConflicts requires forceResourceId');
   if (!input.slots.length) throw new Error('a series needs at least one slot');
-  if (input.slots.length > MAX_SERIES_SLOTS) throw new Error(`a series is capped at ${MAX_SERIES_SLOTS} slots`);
+  if (input.slots.length > MAX_SERIES_SLOTS)
+    throw new Error(`a series is capped at ${MAX_SERIES_SLOTS} slots`);
   const slots = [...input.slots].sort((a, b) => a.getTime() - b.getTime());
   const today = await orgDateKey(ctx, input.packageGrantId);
   const seriesId = globalThis.crypto.randomUUID();
@@ -709,12 +749,17 @@ export async function createBookingSeries(ctx: CoreCtx, input: CreateBookingSeri
   const rows = await withOrgCore(ctx, async (tx) => {
     const out: SchedBooking[] = [];
     for (let i = 0; i < slots.length; i++) {
-      const { row, created } = await bookOccurrenceInTx(tx, ctx, { ...input, start: slots[i] }, {
-        start: slots[i],
-        seriesId,
-        seriesIndex: i,
-        today,
-      });
+      const { row, created } = await bookOccurrenceInTx(
+        tx,
+        ctx,
+        { ...input, start: slots[i] },
+        {
+          start: slots[i],
+          seriesId,
+          seriesIndex: i,
+          today,
+        },
+      );
       // Every occurrence generates its own uid, so "not created" means a uid
       // collision — treat it as a failed occurrence rather than silently
       // adopting someone else's booking into this series.
@@ -805,7 +850,10 @@ async function reverseBookingRedemptionsInTx(
       ),
     );
   for (const r of live)
-    await reverseRedemptionInTx(tx, orgId, r.id, { reason: opts.reason ?? null, actor: opts.actor });
+    await reverseRedemptionInTx(tx, orgId, r.id, {
+      reason: opts.reason ?? null,
+      actor: opts.actor,
+    });
 }
 
 export async function setBookingStatus(
@@ -928,7 +976,9 @@ export async function updateBookingNotes(
   id: string,
   patch: { notes?: string | null; clientNote?: string | null },
 ): Promise<SchedBooking | null> {
-  const set: { notes?: string | null; clientNote?: string | null; updatedAt: Date } = { updatedAt: new Date() };
+  const set: { notes?: string | null; clientNote?: string | null; updatedAt: Date } = {
+    updatedAt: new Date(),
+  };
   if ('notes' in patch) set.notes = patch.notes ?? null;
   if ('clientNote' in patch) set.clientNote = patch.clientNote ?? null;
   const [row] = await withOrgCore(ctx, (tx) =>
@@ -1516,7 +1566,9 @@ export async function getBookingDetail(
     const [eventType] = await tx
       .select()
       .from(schedEventTypes)
-      .where(and(eq(schedEventTypes.id, booking.eventTypeId), eq(schedEventTypes.orgId, ctx.tenantId)))
+      .where(
+        and(eq(schedEventTypes.id, booking.eventTypeId), eq(schedEventTypes.orgId, ctx.tenantId)),
+      )
       .limit(1);
     const [resource] = await tx
       .select()
@@ -1533,7 +1585,9 @@ export async function getBookingDetail(
     const statusHistory = await tx
       .select()
       .from(schedBookingStatusLog)
-      .where(and(eq(schedBookingStatusLog.orgId, ctx.tenantId), eq(schedBookingStatusLog.bookingId, id)))
+      .where(
+        and(eq(schedBookingStatusLog.orgId, ctx.tenantId), eq(schedBookingStatusLog.bookingId, id)),
+      )
       .orderBy(asc(schedBookingStatusLog.changedAt));
     const occurrences = booking.seriesId
       ? await tx
@@ -1545,18 +1599,34 @@ export async function getBookingDetail(
             status: schedBookings.status,
           })
           .from(schedBookings)
-          .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.seriesId, booking.seriesId)))
+          .where(
+            and(
+              eq(schedBookings.orgId, ctx.tenantId),
+              eq(schedBookings.seriesId, booking.seriesId),
+            ),
+          )
           .orderBy(asc(schedBookings.seriesIndex))
       : [];
-    return { booking, eventType: eventType ?? null, resource: resource ?? null, contact: contacts[0] ?? null, statusHistory, occurrences };
+    return {
+      booking,
+      eventType: eventType ?? null,
+      resource: resource ?? null,
+      contact: contacts[0] ?? null,
+      statusHistory,
+      occurrences,
+    };
   });
   if (!base) return null;
 
   const booking = opts.maskAttendeePii
     ? {
         ...base.booking,
-        attendeeEmail: base.booking.attendeeEmail ? maskPii(base.booking.attendeeEmail) : base.booking.attendeeEmail,
-        attendeePhone: base.booking.attendeePhone ? maskPii(base.booking.attendeePhone) : base.booking.attendeePhone,
+        attendeeEmail: base.booking.attendeeEmail
+          ? maskPii(base.booking.attendeeEmail)
+          : base.booking.attendeeEmail,
+        attendeePhone: base.booking.attendeePhone
+          ? maskPii(base.booking.attendeePhone)
+          : base.booking.attendeePhone,
       }
     : base.booking;
 
