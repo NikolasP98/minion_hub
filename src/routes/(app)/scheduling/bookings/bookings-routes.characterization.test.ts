@@ -54,8 +54,8 @@ const BOOKINGS = [
   {
     id: 'b1',
     status: 'accepted',
-    startTime: '2026-08-20T09:00:00.000Z',
-    endTime: '2026-08-20T09:30:00.000Z',
+    startTime: new Date('2026-08-20T09:00:00.000Z'),
+    endTime: new Date('2026-08-20T09:30:00.000Z'),
     resourceId: 'r1',
     eventTypeId: 'e1',
     contactId: 'c1',
@@ -69,8 +69,8 @@ const BOOKINGS = [
 // carry an invoiceId, and the lookup is skipped entirely in that case.
 const BOOKINGS_WITH_INVOICE_LABEL = BOOKINGS.map((b) => ({ ...b, invoiceLabel: null }));
 const RESOURCES = [
-  { id: 'r1', name: 'Front chair', active: true },
-  { id: 'r2', name: 'Retired chair', active: false },
+  { id: 'r1', name: 'Front chair', active: true, color: '#abcdef' },
+  { id: 'r2', name: 'Retired chair', active: false, color: null },
 ];
 const EVENT_TYPES = [{ id: 'e1', title: 'Haircut', productId: 'p1', active: true, length: 30 }];
 const ACCRUALS = [
@@ -89,10 +89,23 @@ const ACCRUALS = [
 const SCHEDULING_FROM = new Date(NOW.getTime() - 30 * DAY);
 const SCHEDULING_TO = new Date(NOW.getTime() + 90 * DAY);
 
-// The POS route's fixed preset window: today's server-local midnight..+7d.
-const POS_FROM = new Date(NOW.getTime());
-POS_FROM.setHours(0, 0, 0, 0);
-const POS_TO = new Date(POS_FROM.getTime() + 7 * DAY);
+/**
+ * The POS route's window is now VIEW-DERIVED, not a fixed preset: it resolves
+ * `?view`/`?date` through `calendarInstantWindow` in the org timezone, exactly
+ * like /scheduling/calendar, because both calendars render the same
+ * `BookingCalendar` and must agree on the window for the same query.
+ *
+ * With no query params, `NOW` (2026-08-18T12:00Z = Tue 18 Aug in America/Lima,
+ * the fallback tz when no active resource carries one) and the default
+ * `workweek` view give Mon 17 Aug .. Fri 21 Aug, resolved in Lima (UTC-5) as a
+ * window INCLUSIVE of the last day — `to` is the last instant before the start
+ * of Sat 22 Aug, because `listBookings` compares `startTime` with `lte` and a
+ * bare midnight bound would drop every booking in the final column.
+ */
+const POS_FROM = new Date('2026-08-17T05:00:00.000Z');
+const POS_TO = new Date('2026-08-22T04:59:59.999Z');
+/** No query params — the loader falls back to the default view and today. */
+const POS_URL = () => new URL('http://localhost/pos/appointments');
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -219,37 +232,87 @@ describe('/scheduling/bookings load — pinned key set', () => {
 });
 
 describe('/pos/appointments load — pinned key set', () => {
-  it('returns a POS-shaped key set with a fixed 7-day window and no contact scoping', async () => {
+  it('returns a POS-shaped key set with a view-derived window and no contact scoping', async () => {
     const { load } = await import('../../pos/appointments/+page.server');
     const depends = vi.fn();
 
     const result = (await load({
       locals: { orgKind: 'business', moduleStates: { stock: true } },
       depends,
+      url: POS_URL(),
     } as never)) as Record<string, unknown>;
 
-    // POS has no `contactId`/`contactName`/`openNew` — those are a scheduling-only affordance.
+    // POS has no `contactId`/`contactName`/`openNew` — those are a scheduling-only
+    // affordance. It DOES now carry `day`/`view`: the page is a calendar whose
+    // focused date and view live in the URL, so the load must echo what it
+    // resolved (the old 732-line fork had neither, because its window was fixed).
     expect(Object.keys(result).sort()).toEqual(
-      ['bookings', 'resources', 'eventTypes', 'stockEnabled', 'accrualSummaries'].sort(),
+      [
+        'bookings',
+        'resources',
+        'eventTypes',
+        'stockEnabled',
+        'accrualSummaries',
+        'day',
+        'view',
+      ].sort(),
     );
     expect(depends).toHaveBeenCalledWith('pos:appointments');
-    // Fixed today→+7d preset, always applied — not overridable by a query param —
-    // with the RBAC-derived maskAttendeePii flag forwarded exactly like scheduling.
+    expect(result.day).toBe('2026-08-18');
+    expect(result.view).toBe('workweek');
+    // The old pin — a fixed today→+7d preset not overridable by a query param —
+    // no longer describes this route: it shares `BookingCalendar` with
+    // /scheduling/calendar, so the window is derived from ?view/?date in the org
+    // timezone. `limit` rose 500 → 2000 with it, because a week view of a busy
+    // clinic can exceed 500 rows. The maskAttendeePii forwarding is unchanged.
     expect(mocks.listBookings).toHaveBeenCalledWith(CTX, {
       from: POS_FROM,
       to: POS_TO,
-      limit: 500,
+      limit: 2000,
       maskAttendeePii: false,
     });
-    // The primary data contract: bookings pass through unmodified, and
-    // eventTypes/accrual data are mapped/forwarded as shipped today. Unlike
-    // scheduling, POS does NOT go through loadBookingsView (independent fork
-    // — spec S6's invoice-label batching never touches this route).
-    expect(result.bookings).toEqual(BOOKINGS);
+    // The primary data contract. Bookings are no longer passed through verbatim:
+    // they are projected to `BookingCalendar`'s compact shape with ISO instants.
+    // Unlike scheduling, POS still does NOT go through loadBookingsView
+    // (spec S6's invoice-label batching never touches this route).
+    expect(result.bookings).toEqual([
+      {
+        id: 'b1',
+        resourceId: 'r1',
+        eventTypeId: 'e1',
+        start: '2026-08-20T09:00:00.000Z',
+        end: '2026-08-20T09:30:00.000Z',
+        status: 'accepted',
+        attendeeName: undefined,
+        attendeePhone: undefined,
+        partyId: null,
+        productId: null,
+      },
+    ]);
     expect(result.eventTypes).toEqual(EVENT_TYPES);
     expect(result.accrualSummaries).toEqual(ACCRUALS);
     // POS-only: inactive resources are filtered out before reaching the view.
-    expect(result.resources).toEqual([{ id: 'r1', name: 'Front chair' }]);
+    // `color` rides along now — the calendar tints each staff column with it.
+    expect(result.resources).toEqual([{ id: 'r1', name: 'Front chair', color: '#abcdef' }]);
+  });
+
+  it('honours ?view and ?date, resolving the window in the org timezone', async () => {
+    const { load } = await import('../../pos/appointments/+page.server');
+
+    const result = (await load({
+      locals: { orgKind: 'business', moduleStates: { stock: true } },
+      depends: vi.fn(),
+      url: new URL('http://localhost/pos/appointments?view=day&date=2026-09-01'),
+    } as never)) as Record<string, unknown>;
+
+    expect(result.view).toBe('day');
+    expect(result.day).toBe('2026-09-01');
+    expect(mocks.listBookings).toHaveBeenCalledWith(CTX, {
+      from: new Date('2026-09-01T05:00:00.000Z'),
+      to: new Date('2026-09-02T04:59:59.999Z'),
+      limit: 2000,
+      maskAttendeePii: false,
+    });
   });
 
   it('forwards maskAttendeePii: true when the RBAC decision says to mask attendees', async () => {
@@ -259,12 +322,13 @@ describe('/pos/appointments load — pinned key set', () => {
     await load({
       locals: { orgKind: 'business', moduleStates: { stock: true } },
       depends: vi.fn(),
+      url: POS_URL(),
     } as never);
 
     expect(mocks.listBookings).toHaveBeenCalledWith(CTX, {
       from: POS_FROM,
       to: POS_TO,
-      limit: 500,
+      limit: 2000,
       maskAttendeePii: true,
     });
   });
@@ -279,6 +343,7 @@ describe('/pos/appointments load — pinned key set', () => {
     const result = (await load({
       locals: { orgKind: 'personal', moduleStates: { stock: true } },
       depends: vi.fn(),
+      url: POS_URL(),
     } as never)) as Record<string, unknown>;
 
     expect(result.stockEnabled).toBe(true);
@@ -290,6 +355,7 @@ describe('/pos/appointments load — pinned key set', () => {
     const result = (await load({
       locals: { orgKind: 'business', moduleStates: {} },
       depends: vi.fn(),
+      url: POS_URL(),
     } as never)) as Record<string, unknown>;
 
     expect(result.stockEnabled).toBe(true);
@@ -301,6 +367,7 @@ describe('/pos/appointments load — pinned key set', () => {
     await load({
       locals: { orgKind: 'business', moduleStates: { stock: false } },
       depends: vi.fn(),
+      url: POS_URL(),
     } as never);
 
     expect(mocks.accrualSummaryForSources).toHaveBeenCalledWith(CTX, 'booking', ['b1']);

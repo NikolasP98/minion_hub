@@ -16,6 +16,8 @@ const lineSchema = z.object({
   qty: z.number().finite(),
   unitPrice: z.number().finite(),
   discount: z.number().finite().optional(),
+  planId: z.string().uuid().nullable().optional(),
+  redemptionId: z.string().uuid().nullable().optional(),
 });
 
 const paymentSchema = z.object({
@@ -24,9 +26,13 @@ const paymentSchema = z.object({
   tendered: z.number().finite().nullable().optional(),
 });
 
+// `payments` may be EMPTY: a ticket made up only of package-redeemed lines
+// totals 0, and its money moved when the package was sold (spec §3.2). The
+// service's `sum(payments) === total` invariant covers that case exactly —
+// a 0-total ticket with a non-empty payment set still fails `payment_mismatch`.
 const postSchema = z.object({
   lines: z.array(lineSchema).min(1),
-  payments: z.array(paymentSchema).min(1),
+  payments: z.array(paymentSchema),
   partyId: z.string().max(200).nullable().optional(),
   crmContactId: z.string().max(200).nullable().optional(),
   customerName: z.string().max(500).nullable().optional(),
@@ -62,7 +68,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
   const body = await parseBody(request, postSchema);
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const actor = {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
   try {
     const { ticket, stockWarning } = await submitTicket(ctx, {
       lines: body.lines,

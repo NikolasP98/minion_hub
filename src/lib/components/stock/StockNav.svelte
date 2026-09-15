@@ -1,48 +1,20 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
-  import {
-    LayoutDashboard,
-    Package,
-    Warehouse,
-    ArrowLeftRight,
-    CalendarClock,
-  } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
   import { canViewPath } from '$lib/access/can.svelte';
+  import { getAreaItems } from '$lib/nav/modules';
 
-  // Hide subpage links the role can't view — same behaviour as FinanceNav/CrmNav
-  // (all of /stock/* share the single stock:view gate, so this is mostly a no-op
-  // today, but keeps the pattern consistent if a sub-resource gate is added later).
-  const items = $derived<SectionNavItem[]>(
-    [
-      { id: 'overview', label: m.stock_nav_overview(), icon: LayoutDashboard, href: '/stock' },
-      { id: 'items', label: m.stock_nav_items(), icon: Package, href: '/stock/items' },
-      {
-        id: 'warehouses',
-        label: m.stock_nav_warehouses(),
-        icon: Warehouse,
-        href: '/stock/warehouses',
-      },
-      { id: 'entries', label: m.stock_nav_entries(), icon: ArrowLeftRight, href: '/stock/entries' },
-      {
-        id: 'commitments',
-        label: m.stock_nav_commitments(),
-        icon: CalendarClock,
-        href: '/stock/commitments',
-      },
-    ].filter((i) => canViewPath(i.href)),
+  // Page list + active matchers come from the module registry ($lib/nav/modules)
+  // — the sidebar's module view renders the SAME list, so the two can't drift.
+  const items = $derived(getAreaItems('stock').filter((i) => canViewPath(i.href)));
+  const navItems = $derived<SectionNavItem[]>(
+    items.map((i) => ({ id: i.id, label: i.label, icon: i.icon, href: i.href, indent: i.indent })),
   );
 
   const pathname = $derived(canonicalPath(page.url.pathname));
-
-  function isActive(id: string, href: string): boolean {
-    if (id === 'overview') return pathname === '/stock';
-    return pathname.startsWith(href);
-  }
-
-  const activeId = $derived(items.find((i) => isActive(i.id, i.href ?? ''))?.id);
+  const activeId = $derived(items.find((i) => i.matcher(pathname))?.id);
 </script>
 
-<SectionNav {items} {activeId} ariaLabel={m.nav_stock()} />
+<SectionNav items={navItems} {activeId} ariaLabel={m.nav_stock()} />

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, notInArray, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -8,6 +8,10 @@ import {
   posTicketLines,
   posPayments,
   posEmissions,
+  posClientLedger,
+  posPackageGrants,
+  posPackageRedemptions,
+  posPaymentPlans,
   type PosShift,
   type PosTicket,
   type PosTicketLine,
@@ -41,9 +45,31 @@ import {
   type LineModifier,
 } from './stock.logic';
 import { stkItems, stkConsumption } from '$server/db/pg-schema/stock';
-import { finProducts } from '$server/db/pg-finance-schema';
+import { schedBookings } from '$server/db/pg-scheduling-schema';
+import { finProducts, finProductComponents } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
-import { bustFinanceCache } from './finance.service';
+import { getParty } from './party.service';
+import { bustFinanceCache, getFinSettings } from './finance.service';
+// Packages / plans / client credit (spec 2026-09-13-pos-scheduling-packages-
+// payment-plans-spec.md §3). These three modules import PosError + getPosSettings
+// back from here — the same deliberate cycle pos-emission.service.ts already
+// lives in, and safe for the same reason: nothing is touched at module-eval
+// time, only inside functions.
+import {
+  addLedgerEntryInTx,
+  clientKeyOf,
+  clientMatch,
+  settlePlanIfPaid,
+  type ClientRef,
+} from './pos-accounts.service';
+import { createGrantsForTicketLine, reverseRedemptionInTx } from './pos-packages.service';
+import {
+  expiryFrom,
+  grantToday,
+  ledgerBalance,
+  toAmount,
+  type PackageEdge,
+} from './pos-accounts.logic';
 import { emitHubEvent } from '$server/events/emit';
 // Deliberate circular import: pos-emission.service.ts imports PosError/
 // PosSettings (types + a class, never touched at module-eval time) back from
@@ -112,12 +138,28 @@ export interface EmissionSettings {
   docTypeDefault: EmissionDocType;
 }
 
+/** How hard an org asks for one thing on a ticket. `'optional'` is a nudge the
+ *  UI may surface; only `'required'` blocks a submit. */
+export const REQUIREMENT_LEVELS = ['off', 'optional', 'required'] as const;
+export type RequirementLevel = (typeof REQUIREMENT_LEVELS)[number];
+
+/**
+ * Per-org ticket requirements. An OPEN map rather than one boolean column per
+ * rule: FACES needs an identity document on every invoice, other orgs need
+ * none, and the next one will need something else again. Absent key = `'off'`.
+ */
+export interface PosRequirements {
+  /** A DNI/RUC on the ticket's customer (party spine `doc_number`). */
+  identityDocument: RequirementLevel;
+}
+
 export interface PosSettings {
   methods: PaymentMethod[];
   currency: string;
   requireCustomer: boolean;
   allowPriceOverride: boolean;
   emission: EmissionSettings;
+  requirements: PosRequirements;
 }
 
 function capitalize(s: string): string {
@@ -169,6 +211,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
   requireCustomer: false,
   allowPriceOverride: true,
   emission: Object.freeze({ mode: 'off', docTypeDefault: '03' }) as EmissionSettings,
+  requirements: Object.freeze({ identityDocument: 'off' }) as PosRequirements,
 });
 
 /** Tolerant of a row whose `emission` column predates this slice's migration
@@ -182,6 +225,15 @@ function normalizeEmission(raw: unknown): EmissionSettings {
   };
 }
 
+/** A row written before the requirements migration (or by hand) holds `{}` —
+ *  every unknown or absent level reads as `'off'`, never as a silent block. */
+function normalizeRequirements(raw: unknown): PosRequirements {
+  const r = raw as Partial<Record<keyof PosRequirements, unknown>> | null | undefined;
+  const level = (v: unknown): RequirementLevel =>
+    (REQUIREMENT_LEVELS as readonly unknown[]).includes(v) ? (v as RequirementLevel) : 'off';
+  return { identityDocument: level(r?.identityDocument) };
+}
+
 export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx.select().from(posSettings).where(eq(posSettings.orgId, ctx.tenantId)).limit(1),
@@ -192,6 +244,7 @@ export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
       ...DEFAULT_POS_SETTINGS,
       methods: DEFAULT_POS_SETTINGS.methods.map((m) => ({ ...m })),
       emission: { ...DEFAULT_POS_SETTINGS.emission },
+      requirements: { ...DEFAULT_POS_SETTINGS.requirements },
     };
   return {
     methods: normalizeMethods(row.methods),
@@ -199,6 +252,7 @@ export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
     requireCustomer: row.requireCustomer,
     allowPriceOverride: row.allowPriceOverride,
     emission: normalizeEmission(row.emission),
+    requirements: normalizeRequirements(row.requirements),
   };
 }
 
@@ -246,6 +300,7 @@ export async function updatePosSettings(
   const next: PosSettings = { ...current, ...patch };
   validateMethods(next.methods);
   validateEmission(next.emission);
+  next.requirements = normalizeRequirements(next.requirements);
   const [row] = await withOrgCore(ctx, async (tx) => {
     const [updated] = await tx
       .insert(posSettings)
@@ -263,6 +318,7 @@ export async function updatePosSettings(
     requireCustomer: row.requireCustomer,
     allowPriceOverride: row.allowPriceOverride,
     emission: normalizeEmission(row.emission),
+    requirements: normalizeRequirements(row.requirements),
   };
 }
 
@@ -428,6 +484,13 @@ export interface TicketLineInput {
   qty: number;
   unitPrice: number;
   discount?: number;
+  /** Instalment line: this line pays down `pos_payment_plans.id` (spec §3.4).
+   *  The ticket still balances exactly — a plan is N fully-paid tickets. */
+  planId?: string | null;
+  /** This line is covered by a package session already drawn at booking time
+   *  (`pos_package_redemptions.id`, spec §3.2). Such a line may be priced at 0
+   *  — it is the ONE case `zero_price` does not apply. */
+  redemptionId?: string | null;
 }
 
 export interface TicketPaymentInput {
@@ -737,6 +800,196 @@ export async function postTicketStock(
   }
 }
 
+// ---- packages, plans, client credit (spec §3) ----
+
+/**
+ * The payment-method id that draws on `pos_client_ledger` instead of a real
+ * tender. Registered per-org as an ordinary `pos_settings.methods` entry with
+ * `takesTendered = false` (spec §3.5), so the ID IS the contract — an org must
+ * not name a credit-CARD method `credit`.
+ */
+// TODO(handoff): the id is the ONLY signal. An org that names a credit-CARD
+// method `credit` would silently draw down stored value on every card sale.
+// Needs a `drawsOnCredit: true` flag on PaymentMethod (and a settings guard)
+// rather than a magic id — see meta
+// proposals/2026-09-13-pos-packages-plans-s1-followups.md.
+export const CREDIT_METHOD_ID = 'credit';
+
+/** `fin_products.metadata.packageValidityDays` — absent/invalid = no expiry. */
+export function packageValidityDays(metadata: unknown): number | null {
+  const raw = (metadata as Record<string, unknown> | null | undefined)?.packageValidityDays;
+  const n = Number(raw);
+  return raw == null || !Number.isFinite(n) || n <= 0 ? null : Math.floor(n);
+}
+
+interface PackageSpec {
+  edges: PackageEdge[];
+  validityDays: number | null;
+}
+
+/**
+ * Which of these sellables are PACKAGES — i.e. carry `fin_product_components`
+ * edges — plus their validity window.
+ *
+ * Read OUTSIDE the money transaction on purpose: catalog composition is
+ * slow-moving config, while the grant rows it drives are still written inside
+ * the tx, so a sale can never half-commit. Costs nothing for a ticket whose
+ * lines carry no product at all.
+ */
+async function resolvePackageSpecs(
+  ctx: CoreCtx,
+  productIds: string[],
+): Promise<Map<string, PackageSpec>> {
+  if (!productIds.length) return new Map();
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        bundleProductId: finProductComponents.bundleProductId,
+        childProductId: finProductComponents.childProductId,
+        qty: finProductComponents.qty,
+        metadata: finProducts.metadata,
+      })
+      .from(finProductComponents)
+      .innerJoin(finProducts, eq(finProducts.id, finProductComponents.bundleProductId))
+      .where(
+        and(
+          eq(finProductComponents.orgId, ctx.tenantId),
+          inArray(finProductComponents.bundleProductId, productIds),
+        ),
+      ),
+  );
+  const out = new Map<string, PackageSpec>();
+  for (const r of rows) {
+    const spec = out.get(r.bundleProductId) ?? {
+      edges: [],
+      validityDays: packageValidityDays(r.metadata),
+    };
+    spec.edges.push({ childProductId: r.childProductId, qty: Number(r.qty) });
+    out.set(r.bundleProductId, spec);
+  }
+  return out;
+}
+
+/**
+ * Every plan a ticket's lines claim must exist IN THIS ORG and still be open —
+ * `plan_id` is a plain uuid column, so an unchecked id from the wire would
+ * otherwise let a caller attach money to another tenant's plan.
+ */
+async function assertPlansUsable(ctx: CoreCtx, planIds: string[]): Promise<void> {
+  if (!planIds.length) return;
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: posPaymentPlans.id, status: posPaymentPlans.status })
+      .from(posPaymentPlans)
+      .where(and(eq(posPaymentPlans.orgId, ctx.tenantId), inArray(posPaymentPlans.id, planIds))),
+  );
+  if (rows.length !== planIds.length) throw new PosError('plan not found', 'not_found');
+  if (rows.some((r) => r.status === 'cancelled'))
+    throw new PosError('plan is cancelled', 'plan_cancelled');
+}
+
+/**
+ * Same trust-boundary check for `redemption_id`: ours, not already handed back,
+ * and not already billed on another ticket.
+ *
+ * This is the EARLY, friendly check. The race-free one is the conditional
+ * `set ticket_id where ticket_id is null` inside the money transaction
+ * (`stampRedemptionInTx`) — two clerks ringing the same drawn session up at
+ * once both pass here and the second one loses at the UPDATE.
+ */
+async function assertRedemptionsUsable(ctx: CoreCtx, redemptionIds: string[]): Promise<void> {
+  if (!redemptionIds.length) return;
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: posPackageRedemptions.id, ticketId: posPackageRedemptions.ticketId })
+      .from(posPackageRedemptions)
+      .where(
+        and(
+          eq(posPackageRedemptions.orgId, ctx.tenantId),
+          inArray(posPackageRedemptions.id, redemptionIds),
+          isNull(posPackageRedemptions.reversedAt),
+        ),
+      ),
+  );
+  if (rows.length !== redemptionIds.length)
+    throw new PosError('redemption not found or already reversed', 'not_found');
+  if (rows.some((r) => r.ticketId))
+    throw new PosError('session is already billed on another ticket', 'redemption_already_billed');
+}
+
+/**
+ * Back-link one drawn session to the line that billed it, inside the money tx.
+ *
+ * `where ticket_id is null` is the whole point: it is an atomic claim, so a
+ * session can never carry two live ticket lines (spec §3.2, proposals §20).
+ * `voidTicket` clears the stamp again, which is what makes a corrected re-ring
+ * possible.
+ */
+async function stampRedemptionInTx(
+  tx: CoreTx,
+  orgId: string,
+  args: { redemptionId: string; ticketId: string; ticketLineId: string },
+): Promise<void> {
+  const claimed = await tx
+    .update(posPackageRedemptions)
+    .set({ ticketId: args.ticketId, ticketLineId: args.ticketLineId })
+    .where(
+      and(
+        eq(posPackageRedemptions.orgId, orgId),
+        eq(posPackageRedemptions.id, args.redemptionId),
+        isNull(posPackageRedemptions.reversedAt),
+        isNull(posPackageRedemptions.ticketId),
+      ),
+    )
+    .returning({ id: posPackageRedemptions.id });
+  if (!claimed.length)
+    throw new PosError('session is already billed on another ticket', 'redemption_already_billed');
+}
+
+/**
+ * Spend stored value on this ticket, inside the money tx.
+ *
+ * The advisory lock is what makes the balance check real: two clerks charging
+ * the same client's credit at once serialise on it, so the second one sees the
+ * first one's negative row instead of both passing a stale balance.
+ */
+async function chargeClientCredit(
+  tx: CoreTx,
+  orgId: string,
+  args: {
+    client: ClientRef;
+    amount: number;
+    currency: string;
+    ticketId: string;
+    note: string;
+    actor: Actor;
+  },
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext(${`pos-credit:${orgId}:${clientKeyOf(args.client)}`}))`,
+  );
+  const rows = await tx
+    .select({ amount: posClientLedger.amount })
+    .from(posClientLedger)
+    .where(and(eq(posClientLedger.orgId, orgId), clientMatch(args.client, posClientLedger)));
+  const balance = ledgerBalance(rows);
+  // Same 1-cent tolerance the payment_mismatch guard uses.
+  if (balance + 0.005 < args.amount)
+    throw new PosError(
+      `credit balance ${balance} does not cover ${args.amount}`,
+      'insufficient_credit',
+    );
+  await addLedgerEntryInTx(tx, orgId, {
+    client: args.client,
+    kind: 'redemption',
+    amount: -args.amount,
+    currency: args.currency,
+    ticketId: args.ticketId,
+    note: args.note,
+    actor: args.actor,
+  });
+}
+
 /**
  * Submit a ticket: money commits first (one tx — ticket + lines + payments +
  * humanId + event), stock is post-commit and fail-soft (mirrors the accrual
@@ -753,7 +1006,11 @@ export async function submitTicket(
   if (!input.lines.length) throw new PosError('ticket needs lines', 'no_lines');
   for (const l of input.lines) {
     if (!(l.qty > 0)) throw new PosError('invalid qty', 'invalid_qty');
-    if (!(l.unitPrice > 0)) throw new PosError('line needs a price', 'zero_price');
+    // A line covered by a package session is legitimately FREE — its money
+    // moved when the package was sold (spec §3.2). That is the only exemption;
+    // a negative price is still a bug either way.
+    if (l.unitPrice < 0 || (!(l.unitPrice > 0) && !l.redemptionId))
+      throw new PosError('line needs a price', 'zero_price');
   }
   for (const p of input.payments) {
     if (p.amount < 0) throw new PosError('payment amount must be >= 0', 'invalid_amount');
@@ -773,6 +1030,55 @@ export async function submitTicket(
     throw new PosError(`paid ${paid} != total ${total}`, 'payment_mismatch');
   if (settings.requireCustomer && !input.partyId && !input.customerName)
     throw new PosError('customer required', 'customer_required');
+  // Identity document (FACES: a DNI/RUC per invoice). The party spine is the
+  // authority — a typed-in `customerName` is not an identity, and the number
+  // the browser claims is not evidence. Only queried when the org asked for it,
+  // so an org with the requirement off pays nothing for it.
+  // TODO(handoff): `'optional'` is STORED and surfaced in /pos/settings but is
+  // inert here and in the till — it behaves exactly like `'off'`. It exists so
+  // the level is already modelled when the nudge (a non-blocking warning on the
+  // charge button) is built. See meta
+  // proposals/2026-09-13-pos-packages-plans-s1-followups.md §30.
+  if (settings.requirements.identityDocument === 'required') {
+    const party = input.partyId ? await getParty(ctx, input.partyId) : null;
+    if (!party?.docNumber)
+      throw new PosError(
+        'this organization requires an identity document on every ticket',
+        'identity_document_required',
+      );
+  }
+
+  // ---- packages / plans / credit: resolve + validate before any write ----
+  const client: ClientRef = {
+    partyId: input.partyId ?? null,
+    crmContactId: input.crmContactId ?? null,
+  };
+  const hasClient = Boolean(client.partyId || client.crmContactId);
+  const packages = await resolvePackageSpecs(ctx, [
+    ...new Set(input.lines.map((l) => l.finProductId).filter((v): v is string => Boolean(v))),
+  ]);
+  // A grant belongs to somebody. Selling sessions to an anonymous walk-in
+  // would mint credit nobody can ever redeem.
+  if (packages.size && !hasClient)
+    throw new PosError('a package sale needs an identified client', 'package_requires_customer');
+  const expiryByProduct = new Map<string, string | null>();
+  if (packages.size) {
+    const today = grantToday((await getFinSettings(ctx)).timezone);
+    for (const [productId, spec] of packages)
+      expiryByProduct.set(productId, expiryFrom(today, spec.validityDays));
+  }
+  const planIds = [
+    ...new Set(input.lines.map((l) => l.planId).filter((v): v is string => Boolean(v))),
+  ];
+  await assertPlansUsable(ctx, planIds);
+  await assertRedemptionsUsable(ctx, [
+    ...new Set(input.lines.map((l) => l.redemptionId).filter((v): v is string => Boolean(v))),
+  ]);
+  const creditPaid = round2(
+    input.payments.filter((p) => p.method === CREDIT_METHOD_ID).reduce((a, p) => a + p.amount, 0),
+  );
+  if (creditPaid > 0 && !hasClient)
+    throw new PosError('paying with credit needs an identified client', 'client_required');
 
   // ---- money tx ----
   const ticket = await withOrgCore(ctx, async (tx) => {
@@ -803,21 +1109,63 @@ export async function submitTicket(
       })
       .returning();
 
-    await tx.insert(posTicketLines).values(
-      input.lines.map((l, i) => ({
-        orgId: ctx.tenantId,
+    const insertedLines = await tx
+      .insert(posTicketLines)
+      .values(
+        input.lines.map((l, i) => ({
+          orgId: ctx.tenantId,
+          ticketId: row.id,
+          kind: l.kind,
+          finProductId: l.finProductId ?? null,
+          bookingId: l.bookingId ?? null,
+          description: l.description,
+          qty: String(l.qty),
+          unitPrice: String(l.unitPrice),
+          discount: String(l.discount ?? 0),
+          total: String(lineTotals[i]),
+          lineNo: i,
+          planId: l.planId ?? null,
+          redemptionId: l.redemptionId ?? null,
+        })),
+      )
+      // Keyed back by lineNo, not by array position — RETURNING order is not a
+      // contract, lineNo is.
+      .returning({ id: posTicketLines.id, lineNo: posTicketLines.lineNo });
+    const lineIdByNo = new Map(insertedLines.map((r) => [r.lineNo, r.id]));
+
+    // Back-link every drawn session to the line that bills it, in THIS
+    // transaction — the atomic claim that stops one session being billed twice.
+    for (const [i, l] of input.lines.entries()) {
+      if (!l.redemptionId) continue;
+      const lineId = lineIdByNo.get(i);
+      if (!lineId) throw new PosError('ticket line was not persisted', 'line_insert_failed');
+      await stampRedemptionInTx(tx, ctx.tenantId, {
+        redemptionId: l.redemptionId,
         ticketId: row.id,
-        kind: l.kind,
-        finProductId: l.finProductId ?? null,
-        bookingId: l.bookingId ?? null,
-        description: l.description,
-        qty: String(l.qty),
-        unitPrice: String(l.unitPrice),
-        discount: String(l.discount ?? 0),
-        total: String(lineTotals[i]),
-        lineNo: i,
-      })),
-    );
+        ticketLineId: lineId,
+      });
+    }
+
+    // Bundle explosion: every package line mints one grant per child edge,
+    // inside THIS transaction, so sessions commit with the money (spec §3.1).
+    for (const [i, l] of input.lines.entries()) {
+      const spec = l.finProductId ? packages.get(l.finProductId) : undefined;
+      if (!spec) continue;
+      const lineId = lineIdByNo.get(i);
+      if (!lineId) throw new PosError('ticket line was not persisted', 'line_insert_failed');
+      await createGrantsForTicketLine(tx, ctx.tenantId, {
+        line: {
+          ticketId: row.id,
+          lineId,
+          packageProductId: l.finProductId as string,
+          qty: l.qty,
+          total: lineTotals[i],
+        },
+        edges: spec.edges,
+        client,
+        expiresAt: expiryByProduct.get(l.finProductId as string) ?? null,
+      });
+    }
 
     if (input.payments.length) {
       await tx.insert(posPayments).values(
@@ -830,6 +1178,19 @@ export async function submitTicket(
           tendered: p.tendered == null ? null : String(p.tendered),
         })),
       );
+    }
+
+    // `credit` is just another tender: the sum(payments) === total invariant
+    // above already held, this only moves the stored value that backs it.
+    if (creditPaid > 0) {
+      await chargeClientCredit(tx, ctx.tenantId, {
+        client,
+        amount: creditPaid,
+        currency: settings.currency,
+        ticketId: row.id,
+        note: humanId,
+        actor: input.actor,
+      });
     }
 
     // ponytail: HubEvent's union lives in $server/events/emit.ts, a shared
@@ -859,6 +1220,18 @@ export async function submitTicket(
     };
   }
 
+  // ---- POST-COMMIT plan settlement, fail-soft ----
+  // Derived from the lines that just committed, so a failure here only leaves a
+  // fully-paid plan sitting at `open` until the next write recomputes it — it
+  // never un-takes the money.
+  for (const planId of planIds) {
+    try {
+      await settlePlanIfPaid(ctx, planId);
+    } catch (e) {
+      console.error('[pos] plan settle failed', planId, e);
+    }
+  }
+
   // ---- POST-COMMIT shadow emission, fail-soft (spec 2026-08-14-pos-shadow-
   // emission-spec.md §4) — invisible to the cashier, never blocks checkout.
   if (settings.emission.mode === 'shadow') {
@@ -869,10 +1242,72 @@ export async function submitTicket(
 }
 
 /**
+ * What a void has to undo on the package side: the sessions this ticket drew,
+ * and the grants it minted.
+ *
+ * A grant may only be cancelled while nothing has been drawn from it ELSEWHERE
+ * — a redemption belonging to this same ticket doesn't count, because the void
+ * hands it back in the same breath. Anything else is 409 `package_in_use`
+ * (spec §3.6): the client must never silently lose a session they already took.
+ */
+async function packageReversalPlan(
+  tx: CoreTx,
+  orgId: string,
+  ticketId: string,
+): Promise<{ redemptionIds: string[]; stampedIds: string[]; grantIds: string[] }> {
+  // Every redemption this ticket touched — the ones it DREW at the till
+  // (no booking) and the ones it merely BILLED for an existing appointment.
+  const redemptions = await tx
+    .select({
+      id: posPackageRedemptions.id,
+      bookingId: posPackageRedemptions.bookingId,
+      reversedAt: posPackageRedemptions.reversedAt,
+    })
+    .from(posPackageRedemptions)
+    .where(
+      and(eq(posPackageRedemptions.orgId, orgId), eq(posPackageRedemptions.ticketId, ticketId)),
+    );
+  // Only a session this ticket itself drew goes back on the void. One drawn at
+  // BOOKING time stays drawn — the appointment still stands; the void only
+  // un-bills it (the stamp is cleared below), so it can be rung up again.
+  const reverseIds = redemptions.filter((r) => !r.bookingId && !r.reversedAt).map((r) => r.id);
+  const grants = await tx
+    .select({ id: posPackageGrants.id })
+    .from(posPackageGrants)
+    .where(
+      and(
+        eq(posPackageGrants.orgId, orgId),
+        eq(posPackageGrants.sourceTicketId, ticketId),
+        ne(posPackageGrants.status, 'cancelled'),
+      ),
+    );
+  const grantIds = grants.map((g) => g.id);
+  if (grantIds.length) {
+    const live = await tx
+      .select({ id: posPackageRedemptions.id })
+      .from(posPackageRedemptions)
+      .where(
+        and(
+          eq(posPackageRedemptions.orgId, orgId),
+          inArray(posPackageRedemptions.grantId, grantIds),
+          isNull(posPackageRedemptions.reversedAt),
+          // "Live ELSEWHERE" = not one of the sessions this void hands back.
+          ...(reverseIds.length ? [notInArray(posPackageRedemptions.id, reverseIds)] : []),
+        ),
+      )
+      .limit(1);
+    if (live.length)
+      throw new PosError('a session of this package is already booked', 'package_in_use');
+  }
+  return { redemptionIds: reverseIds, stampedIds: redemptions.map((r) => r.id), grantIds };
+}
+
+/**
  * Void guard order: not_found → already_void → reconciled (invoice already
- * points at this ticket) → shift_closed → cancel the linked stock entry
- * (StockError degrades to a stored void_stock_failed warning but the void
- * PROCEEDS) → mark void.
+ * points at this ticket) → shift_closed → package_in_use → cancel the linked
+ * stock entry (StockError degrades to a stored void_stock_failed warning but
+ * the void PROCEEDS) → reverse redemptions + cancel grants + write opposing
+ * ledger rows + mark void, in one transaction.
  */
 export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promise<PosTicket> {
   const ticket = await loadTicketRow(ctx, id);
@@ -890,6 +1325,13 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
   );
   if (!shift || shift.status !== 'open') throw new PosError('shift is closed', 'shift_closed');
 
+  // ponytail: read once, BEFORE the stock cancel, so a package_in_use refusal
+  // never leaves a cancelled stock entry behind on a ticket that stays live.
+  // The residual window (a booking redeeming one of these grants between this
+  // read and the tx below) is milliseconds wide and costs a re-void at worst;
+  // re-checking inside the tx is the upgrade if it ever bites.
+  const reversal = await withOrgCore(ctx, (tx) => packageReversalPlan(tx, ctx.tenantId, id));
+
   let stockWarning: StockWarning | null = null;
   if (ticket.stockEntryId) {
     try {
@@ -900,8 +1342,60 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
     }
   }
 
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  const reason = `void of ${ticket.humanId}`;
+  const [row] = await withOrgCore(ctx, async (tx) => {
+    for (const redemptionId of reversal.redemptionIds)
+      await reverseRedemptionInTx(tx, ctx.tenantId, redemptionId, { reason, actor });
+    // Un-bill: the sessions this ticket charged for are free to be rung up on a
+    // corrected ticket. Without this a void would strand them as "already
+    // billed" forever (`redemption_already_billed`).
+    if (reversal.stampedIds.length) {
+      await tx
+        .update(posPackageRedemptions)
+        .set({ ticketId: null, ticketLineId: null })
+        .where(
+          and(
+            eq(posPackageRedemptions.orgId, ctx.tenantId),
+            inArray(posPackageRedemptions.id, reversal.stampedIds),
+          ),
+        );
+    }
+    if (reversal.grantIds.length) {
+      await tx
+        .update(posPackageGrants)
+        .set({ status: 'cancelled', cancelledAt: new Date(), cancelledBy: actor.id })
+        .where(
+          and(
+            eq(posPackageGrants.orgId, ctx.tenantId),
+            inArray(posPackageGrants.id, reversal.grantIds),
+          ),
+        );
+    }
+    // The ledger is append-only, so unwinding stored value is an opposing row,
+    // never an edit. `metadata.voidOf` keeps it idempotent if this ever runs
+    // twice (it cannot today — `already_void` guards the entry).
+    const ledgerRows = await tx
+      .select()
+      .from(posClientLedger)
+      .where(and(eq(posClientLedger.orgId, ctx.tenantId), eq(posClientLedger.ticketId, id)));
+    for (const entry of ledgerRows) {
+      if ((entry.metadata as Record<string, unknown> | null)?.voidOf) continue;
+      const amount = round2(-toAmount(entry.amount));
+      if (!amount) continue;
+      await addLedgerEntryInTx(tx, ctx.tenantId, {
+        client: { partyId: entry.partyId, crmContactId: entry.crmContactId },
+        kind: 'adjustment',
+        amount,
+        currency: entry.currency,
+        ticketId: id,
+        planId: entry.planId,
+        bookingId: entry.bookingId,
+        note: reason,
+        metadata: { voidOf: entry.id },
+        actor,
+      });
+    }
+    return tx
       .update(posTickets)
       .set({
         status: 'void',
@@ -910,8 +1404,13 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
         ...(stockWarning ? { stockWarning } : {}),
       })
       .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
-      .returning(),
-  );
+      .returning();
+  });
+  // TODO(handoff): voiding an instalment ticket un-pays its plan (paid-to-date
+  // is derived over non-void tickets) but does NOT flip a `settled` plan back
+  // to `open` — settlePlanIfPaid only ever settles. Harmless today (the derived
+  // progress on every read is correct); the stored status can lie. See meta
+  // proposals/2026-09-13-pos-packages-plans-s1-followups.md.
   return row;
 }
 
@@ -1559,6 +2058,48 @@ export async function setBundleComponent(
       do update set qty = excluded.qty, line_no = excluded.line_no, updated_at = now()`),
   );
   await bustFinanceCache(ctx);
+}
+
+/**
+ * `packageValidityDays` lives in `fin_products.metadata` rather than a column:
+ * it is meaningful only for a sellable that HAS bundle edges, and the catalog
+ * already carries per-product metadata (aliases, taxonomy). Null clears it.
+ */
+export async function setPackageValidityDays(
+  ctx: CoreCtx,
+  productId: string,
+  days: number | null,
+): Promise<void> {
+  const value = days == null || !(days > 0) ? null : Math.floor(days);
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .update(finProducts)
+      .set({
+        // Merge, never replace — metadata holds aliases the invoice sync
+        // resolves through.
+        metadata: sql`coalesce(${finProducts.metadata}, '{}'::jsonb) || ${JSON.stringify({ packageValidityDays: value })}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId)))
+      .returning({ id: finProducts.id }),
+  );
+  if (!row) throw new PosError('product not found', 'not_found');
+  await bustFinanceCache(ctx);
+}
+
+export async function getPackageValidityDays(
+  ctx: CoreCtx,
+  productId: string,
+): Promise<number | null> {
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ metadata: finProducts.metadata })
+      .from(finProducts)
+      .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId)))
+      .limit(1),
+  );
+  if (!row) throw new PosError('product not found', 'not_found');
+  return packageValidityDays(row.metadata);
 }
 
 export async function deleteBundleComponent(ctx: CoreCtx, id: string): Promise<boolean> {

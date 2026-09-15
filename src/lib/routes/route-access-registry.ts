@@ -53,6 +53,7 @@ export const MODULE_SUBRESOURCES: Readonly<Record<string, readonly SubResource[]
   pos: [
     { key: 'pos.sell', label: 'Sell', route: '/pos/sell' },
     { key: 'pos.appointments', label: 'Appointments', route: '/pos/appointments' },
+    { key: 'pos.accounts', label: 'Client accounts', route: '/pos/accounts' },
     { key: 'pos.items', label: 'Catalog', route: '/pos/catalog' },
     { key: 'pos.settings', label: 'Settings', route: '/pos/settings' },
   ],
@@ -129,6 +130,10 @@ const ROUTE_PERMISSION_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ['/brains', 'brains:view'],
   ['/socials', 'ads:view'],
   ['/pos', 'pos:view'],
+  ['/pulse', 'pulse:view'],
+  // "My Work" is the personal view over project tasks — same module as
+  // /workforce (its writes already route to `projects` via API_WRITE_PREFIXES).
+  ['/work', 'projects:view'],
   // platform modules
   ['/agents', 'agents:view'],
   ['/capabilities', 'agents:view'],

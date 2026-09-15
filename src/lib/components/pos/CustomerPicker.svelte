@@ -1,13 +1,18 @@
 <script lang="ts">
-  import { Button, Badge, Input, Picker, iconSizes, type PickerColumn } from '$lib/components/ui';
-
-  import { onDestroy } from 'svelte';
-  import { Search, X, UserPlus } from 'lucide-svelte';
+  import { Phone, UserPlus, Wallet, X } from 'lucide-svelte';
+  import {
+    Badge,
+    Button,
+    Input,
+    Picker,
+    iconSizes,
+    type PickerColumn,
+    type PickerCreateContext,
+  } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
-  import PartyCreateForm from '$lib/components/crm/PartyCreateForm.svelte';
   import type { PartyOption } from '$lib/components/crm/party-picker';
   import * as m from '$lib/paraglide/messages';
-  import { createAsyncDebouncer } from '$lib/pacer/index.svelte';
+  import CustomerQuickAdd from './CustomerQuickAdd.svelte';
 
   interface Props {
     /** Party-spine linkage — set when the customer exists (or was created) in CRM. */
@@ -15,34 +20,42 @@
     customerName: string | null;
     /** Display + booking attendeePhone passthrough. */
     phone?: string | null;
+    /** The selected customer's identity document, so the caller can gate on it
+     *  without a second fetch (`pos_settings.requirements.identityDocument`). */
+    docNumber?: string | null;
     required?: boolean;
     /** Field label; defaults to the POS "Customer" wording. */
     label?: string;
+    /** Org requirement level for an identity document. `'required'` shows the
+     *  blocking state on the selected customer; the SERVER is the authority
+     *  (submitTicket → `identity_document_required`). */
+    documentRequirement?: 'off' | 'optional' | 'required';
   }
 
   let {
     partyId = $bindable(null),
     customerName = $bindable(null),
     phone = $bindable(null),
+    docNumber = $bindable(null),
     required = false,
     label = m.pos_sell_customer(),
+    documentRequirement = 'off',
   }: Props = $props();
 
-  let q = $state('');
-  let results = $state<PartyOption[]>([]);
-  let open = $state(false);
+  /** The whole control is a two-state machine: EMPTY (one button that opens the
+   *  picker) or SELECTED (a summary). There is no third "searching" state on
+   *  the rail any more — search and create both live inside the picker, so the
+   *  cashier never has two competing inputs in front of them. */
+  const selected = $derived(customerName !== null);
+  const identityBlocking = $derived(documentRequirement === 'required' && !docNumber);
+
   let pickerOpen = $state(false);
-  let quickAdd = $state(false);
-  let quickName = $state('');
-  let quickPhone = $state('');
-  let quickDni = $state('');
-  let quickBusy = $state(false);
-  const canCreateCustomer = $derived(canAct('crm', 'create'));
-  const pickerColumns: PickerColumn<PartyOption>[] = [
+
+  const columns = $derived<PickerColumn<PartyOption>[]>([
     {
       key: 'name',
       label: m.party_picker_name(),
-      value: (party) => party.name ?? m.party_picker_unnamed(),
+      value: (p) => p.name ?? m.party_picker_unnamed(),
       priority: 10,
       emphasis: 'primary',
       hideable: false,
@@ -50,59 +63,31 @@
     {
       key: 'docNumber',
       label: m.party_picker_document_number(),
-      value: (party) => party.docNumber ?? '',
+      value: (p) => p.docNumber ?? '',
       priority: 20,
     },
     {
       key: 'phone9',
       label: m.party_picker_phone(),
-      value: (party) => party.phone9 ?? '',
+      value: (p) => p.phone9 ?? '',
       priority: 30,
     },
     {
       key: 'email',
       label: m.party_picker_email(),
-      value: (party) => party.email ?? '',
+      value: (p) => p.email ?? '',
       priority: 40,
       defaultHidden: true,
     },
-  ];
+  ]);
 
-  async function loadCustomers(term: string): Promise<PartyOption[]> {
+  /** One server-side search over name / email / document / phone — the same
+   *  endpoint the DNI ladder's first rung uses, which is why the two paths can
+   *  never disagree about who is already a client. */
+  async function loadParties(term: string): Promise<PartyOption[]> {
     const res = await fetch(`/api/crm/parties?q=${encodeURIComponent(term)}&type=person`);
-    if (!res.ok) throw new Error('customer search failed');
+    if (!res.ok) throw new Error('party search failed');
     return (await res.json()) as PartyOption[];
-  }
-
-  // Party search covers name / email / DNI / phone9 server-side — one input,
-  // digits or letters. Async-debounce + seq-guard: a slow response for an
-  // earlier keystroke must not overwrite a newer one.
-  let searchSeq = 0;
-  const search = createAsyncDebouncer(
-    async (term: string) => {
-      const seq = ++searchSeq;
-      if (term.trim().length < 2) {
-        results = [];
-        return;
-      }
-      try {
-        const found = await loadCustomers(term);
-        if (seq !== searchSeq) return;
-        results = found;
-        open = true;
-      } catch {
-        if (seq !== searchSeq) return;
-        results = [];
-        open = false;
-      }
-    },
-    { wait: 200 },
-  );
-  onDestroy(() => search.cancel());
-
-  function onInput(e: Event) {
-    q = (e.currentTarget as HTMLInputElement).value;
-    search.run(q);
   }
 
   /** Select a party programmatically (assistant fill) — same path as a click. */
@@ -110,358 +95,382 @@
     partyId = p.id;
     customerName = p.name ?? '—';
     phone = p.phone9 ?? null;
-    q = customerName;
-    open = false;
-    results = [];
+    docNumber = p.docNumber ?? null;
   }
 
-  function openPicker() {
-    open = false;
-    pickerOpen = true;
+  /**
+   * Quick-add a walk-in customer without opening the picker — the assistant's
+   * path for a new client (`BookingCreateForm`). Find-or-creates the party
+   * (dedup on document, then phone); a refusal degrades to a ticket-only name
+   * exactly like the picker's own quick-add.
+   */
+  let addBusy = false;
+  export async function add(rawName: string, rawPhone = '', doc: string | null = null) {
+    const name = rawName.trim();
+    if (!name || addBusy) return;
+    const typedPhone = rawPhone.trim() || null;
+    addBusy = true;
+    try {
+      const res = await fetch('/api/crm/parties', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, phone: typedPhone, docNumber: doc }),
+      });
+      if (res.ok) {
+        const j = (await res.json()) as {
+          party: { id: string; phone9: string | null; docNumber?: string | null };
+        };
+        partyId = j.party.id;
+        phone = j.party.phone9 ?? typedPhone;
+        docNumber = j.party.docNumber ?? doc;
+      } else {
+        // No permission / offline — keep the sale moving as a ticket-only name.
+        partyId = null;
+        phone = typedPhone;
+        docNumber = doc;
+      }
+    } catch {
+      partyId = null;
+      phone = typedPhone;
+      docNumber = doc;
+    } finally {
+      customerName = name;
+      pickerOpen = false;
+      addBusy = false;
+    }
+  }
+
+  /** `POST /api/crm/parties` refused — keep the sale moving as a ticket-only
+   *  name, exactly as the old inline quick-add did. */
+  function ticketOnly(name: string, typedPhone: string | null) {
+    partyId = null;
+    customerName = name;
+    phone = typedPhone;
+    docNumber = null;
+    pickerOpen = false;
   }
 
   function clear() {
     partyId = null;
     customerName = null;
     phone = null;
-    q = '';
-    results = [];
-    open = false;
-    quickAdd = false;
-    quickName = '';
-    quickPhone = '';
-    quickDni = '';
+    docNumber = null;
+    phoneOpen = false;
   }
 
-  // 8 digits typed → registry preview autofills the name (best-effort: the
-  // endpoint may be unconfigured or the user may lack crm:edit — stay silent).
-  async function onDniInput(e: Event) {
-    quickDni = (e.currentTarget as HTMLInputElement).value.replace(/\D/g, '').slice(0, 8);
-    if (quickDni.length !== 8) return;
+  /**
+   * Fill in the phone of a client ALREADY on file, from the till.
+   *
+   * The quick-add's optional phone only reaches `POST /api/crm/parties` on the
+   * create path, so a long-standing client with no number on file used to book a
+   * reminder-less appointment with no way to fix it from here. This PATCHes the
+   * CRM's own party-edit route (`PATCH /api/crm/parties/[id]`, gated `crm:edit`
+   * centrally) — NOT a second write path — and takes the stored phone9 back so
+   * the binding matches what the spine now holds.
+   */
+  const canEditParty = $derived(canAct('crm', 'edit'));
+  let phoneOpen = $state(false);
+  let phoneDraft = $state('');
+  let phoneBusy = $state(false);
+  let phoneErr = $state<string | null>(null);
+
+  function openPhone() {
+    phoneDraft = '';
+    phoneErr = null;
+    phoneOpen = true;
+  }
+
+  function onPhoneInput() {
+    // Peru local number — the spine keys on the last 9 digits (phone9).
+    phoneDraft = phoneDraft.replace(/\D/g, '').slice(0, 9);
+  }
+
+  async function savePhone() {
+    if (phoneBusy || !partyId) return;
+    const typed = phoneDraft.trim();
+    if (!typed) return;
+    phoneBusy = true;
+    phoneErr = null;
     try {
-      const res = await fetch('/api/crm/dni-lookup', {
-        method: 'POST',
+      const res = await fetch(`/api/crm/parties/${partyId}`, {
+        method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ dni: quickDni }),
+        body: JSON.stringify({ phone: typed }),
       });
-      if (!res.ok) return;
-      const j = (await res.json()) as { found: boolean; name?: string };
-      if (j.found && j.name && !quickName.trim()) quickName = j.name;
-    } catch {
-      /* best-effort */
-    }
-  }
-
-  function applyQuick() {
-    return add(quickName, quickPhone, quickDni.length === 8 ? quickDni : null);
-  }
-
-  /** Quick-add a walk-in customer (also the assistant's path for a new client). */
-  export async function add(rawName: string, rawPhone = '', docNumber: string | null = null) {
-    const name = rawName.trim();
-    if (!name || quickBusy) return;
-    const typedPhone = rawPhone.trim() || null;
-    quickBusy = true;
-    try {
-      // Real CRM capture: find-or-create the party (dedup on DNI, then phone).
-      const res = await fetch('/api/crm/parties', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, phone: typedPhone, docNumber }),
-      });
-      if (res.ok) {
-        const j = (await res.json()) as { party: { id: string; phone9: string | null } };
-        partyId = j.party.id;
-        phone = j.party.phone9 ?? typedPhone;
-      } else {
-        // No permission / offline — keep the sale moving as a ticket-only name.
-        partyId = null;
-        phone = typedPhone;
+      if (!res.ok) {
+        phoneErr = m.pos_customer_phone_save_failed();
+        return;
       }
+      const j = (await res.json()) as { phone?: string };
+      phone = j.phone ?? typed;
+      phoneOpen = false;
     } catch {
-      partyId = null;
-      phone = typedPhone;
+      phoneErr = m.pos_customer_phone_save_failed();
     } finally {
-      customerName = name;
-      q = name;
-      quickAdd = false;
-      quickBusy = false;
+      phoneBusy = false;
     }
   }
 </script>
 
-{#snippet createCustomerForm(context: {
-  oncreated: (party: PartyOption) => void;
-  oncancel: () => void;
-})}
-  <PartyCreateForm
-    allowedTypes={['person']}
-    initialName={q}
-    oncreated={context.oncreated}
-    oncancel={context.oncancel}
+<!-- A DNI typed in the picker's BROWSE search seeds the quick-add, so the
+     cashier types the number once. `PickerCreateContext.query` carries it. -->
+{#snippet quickAddForm(ctx: PickerCreateContext<PartyOption>)}
+  <CustomerQuickAdd
+    oncreated={ctx.oncreated}
+    oncancel={ctx.oncancel}
+    onticketonly={ticketOnly}
+    initialQuery={ctx.query}
   />
 {/snippet}
 
-<div class="picker">
-  <span class="lbl"
-    >{label}{#if required}<span class="req">*</span>{/if}</span
+<div class="customer">
+  <span class="lbl t-label"
+    >{label}{#if required}<span class="req" aria-hidden="true">*</span>{/if}</span
   >
 
-  {#if customerName}
-    <div class="chip">
-      <span class="cname">{customerName}</span>
-      {#if phone}<span class="cphone">{phone}</span>{/if}
-      {#if partyId}
-        <Badge variant="semantic" value="success" size="sm">{m.pos_customer_saved_crm()}</Badge>
-      {:else}
-        <span class="ticket-only">{m.pos_customer_ticket_only()}</span>
-      {/if}
-      <Button type="button" class="clr" title={m.common_remove()} onclick={clear}
-        ><X size={13} /></Button
-      >
-    </div>
-  {:else}
-    <div class="field">
-      <Input
-        size="sm"
-        inputClass="customer-quick-search"
-        placeholder={m.pos_sell_customer_ph()}
-        value={q}
-        oninput={onInput}
-        onfocus={() => q && search.run(q)}
-        onblur={() => setTimeout(() => (open = false), 150)}
-      />
-      <div class="field-action">
+  {#if selected}
+    <div class="summary" class:blocking={identityBlocking}>
+      <div class="head">
+        <span class="name">{customerName}</span>
         <Button
-          type="button"
           variant="ghost"
           size="xs"
           shape="icon"
-          aria-label={m.pos_sell_customer_browse()}
-          onclick={openPicker}
+          class="clear"
+          aria-label={m.common_remove()}
+          onclick={clear}
         >
-          <Search size={iconSizes.sm} aria-hidden="true" />
+          <X size={iconSizes.sm} aria-hidden="true" />
         </Button>
       </div>
-      {#if open && results.length}
-        <ul class="menu">
-          {#each results as p (p.id)}
-            <li>
-              <Button type="button" onclick={() => pick(p)}>
-                <span class="rname">{p.name ?? '—'}</span>
-                {#if p.docNumber || p.phone9}
-                  <span class="rmeta">{p.docNumber ?? p.phone9}</span>
-                {/if}
-              </Button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
 
-    {#if !quickAdd}
-      <Button type="button" class="quick-toggle" onclick={() => (quickAdd = true)}>
-        <UserPlus size={13} />
-        {m.pos_sell_customer_quick_add()}
-      </Button>
-    {:else}
-      <div class="quick-col">
-        <div class="quick-row">
-          <input
-            class="inp"
-            inputmode="numeric"
-            placeholder={m.pos_sell_customer_dni_ph()}
-            value={quickDni}
-            oninput={onDniInput}
-          />
-          <input
-            class="inp"
-            inputmode="tel"
-            placeholder={m.pos_sell_customer_phone_ph()}
-            bind:value={quickPhone}
-          />
+      <dl class="meta t-caption">
+        <div class="meta-row">
+          <dt>{m.party_picker_document_number()}</dt>
+          <dd class="num" class:absent={!docNumber}>{docNumber ?? m.pos_customer_no_document()}</dd>
         </div>
-        <div class="quick-row">
-          <input class="inp" placeholder={m.pos_sell_customer_name_ph()} bind:value={quickName} />
-          <Button type="button" class="quick-toggle" disabled={quickBusy} onclick={applyQuick}
-            >{m.common_add()}</Button
-          >
+        <div class="meta-row">
+          <dt>{m.party_picker_phone()}</dt>
+          <dd class="num" class:absent={!phone}>{phone ?? m.pos_customer_no_phone()}</dd>
         </div>
+      </dl>
+
+      <div class="tags">
+        {#if partyId}
+          <Badge variant="semantic" value="success" size="sm">{m.pos_customer_saved_crm()}</Badge>
+        {:else}
+          <Badge variant="neutral" size="sm">{m.pos_customer_ticket_only()}</Badge>
+        {/if}
+        {#if identityBlocking}
+          <Badge variant="semantic" value="error" size="sm">
+            {m.pos_customer_identity_missing()}
+          </Badge>
+        {/if}
       </div>
-    {/if}
 
+      {#if identityBlocking}
+        <p class="alert t-caption" role="alert">{m.pos_customer_identity_required()}</p>
+      {:else if !phone}
+        <p class="note t-caption">{m.pos_customer_phone_reminder_hint()}</p>
+      {/if}
+
+      <!-- A client already on file can now get a phone from the till: the same
+           CRM party-edit route the customers table uses, gated by the same
+           `crm:edit` capability, so the affordance is absent for a role that
+           would only 403 on it. -->
+      {#if !phone && partyId && canEditParty}
+        {#if phoneOpen}
+          <div class="phone-edit">
+            <Input
+              size="sm"
+              type="tel"
+              inputmode="numeric"
+              autocomplete="off"
+              label={m.party_picker_phone()}
+              placeholder={m.pos_customer_phone_optional_ph()}
+              bind:value={phoneDraft}
+              oninput={onPhoneInput}
+            />
+            <Button variant="primary" size="xs" loading={phoneBusy} onclick={savePhone}>
+              {m.common_save()}
+            </Button>
+            <Button variant="ghost" size="xs" onclick={() => (phoneOpen = false)}>
+              {m.common_cancel()}
+            </Button>
+          </div>
+          {#if phoneErr}<p class="alert t-caption" role="alert">{phoneErr}</p>{/if}
+        {:else}
+          <Button variant="outline" size="xs" class="add-phone" onclick={openPhone}>
+            <Phone size={iconSizes.xs} aria-hidden="true" />
+            {m.pos_customer_add_phone()}
+          </Button>
+        {/if}
+      {/if}
+
+      <div class="actions">
+        <Button variant="outline" size="xs" onclick={() => (pickerOpen = true)}>
+          {m.pos_customer_change()}
+        </Button>
+        {#if partyId}
+          <!-- The accounts load resolves this key off the party spine when the
+               client has no movements yet, so the link always opens THAT
+               client's account rather than the plain list. -->
+          <a class="acct t-caption" href={`/pos/accounts?client=party:${partyId}`}>
+            <Wallet size={iconSizes.xs} aria-hidden="true" />
+            {m.pos_customer_open_account()}
+          </a>
+        {/if}
+      </div>
+    </div>
+  {:else}
+    <Button variant="outline" size="sm" class="select-btn" onclick={() => (pickerOpen = true)}>
+      <UserPlus size={iconSizes.sm} aria-hidden="true" />
+      {m.pos_customer_select()}
+    </Button>
     {#if required}
-      <span class="hint">{m.pos_customer_required()}</span>
+      <p class="alert t-caption">{m.pos_customer_required()}</p>
+    {:else if documentRequirement === 'required'}
+      <p class="note t-caption">{m.pos_customer_identity_required()}</p>
     {/if}
   {/if}
 </div>
 
 <Picker
   bind:open={pickerOpen}
-  title={m.pos_sell_customer_browse()}
-  columns={pickerColumns}
-  loadRows={loadCustomers}
-  getRowId={(party) => party.id}
-  searchText={(party) =>
-    `${party.name ?? ''} ${party.docNumber ?? ''} ${party.phone9 ?? ''} ${party.email ?? ''}`}
+  title={m.pos_customer_picker_title()}
+  subtitle={m.pos_customer_picker_subtitle()}
+  {columns}
+  loadRows={loadParties}
+  getRowId={(p) => p.id}
   onPick={pick}
   selectionMode="single"
   columnsConfigurable
-  initialSearch={q}
-  searchPlaceholder={m.pos_sell_customer_ph()}
-  storageKey="pos-sell-customer"
-  create={canCreateCustomer
-    ? {
-        label: m.party_picker_new(),
-        tabLabel: m.party_picker_new(),
-        form: createCustomerForm,
-      }
-    : undefined}
+  pickedIds={partyId ? new Set([partyId]) : undefined}
+  searchPlaceholder={m.pos_customer_search_ph()}
+  emptyLabel={m.pos_customer_picker_empty()}
+  storageKey="pos-customer"
+  create={{
+    label: m.pos_sell_customer_quick_add(),
+    tabLabel: m.pos_customer_quick_add_title(),
+    description: m.pos_customer_quick_add_desc(),
+    form: quickAddForm,
+  }}
 />
 
 <style>
-  .picker {
+  .customer {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
   }
   .lbl {
-    font-size: var(--font-size-caption);
-    color: var(--color-muted-foreground);
+    color: var(--color-text-secondary);
   }
   .req {
-    color: var(--color-destructive);
     margin-left: var(--space-0-5);
+    color: var(--color-danger-fg);
   }
-  .field {
-    position: relative;
+  .customer :global(.select-btn) {
+    width: 100%;
+    justify-content: flex-start;
   }
-  .field :global(.customer-quick-search) {
-    padding-right: calc(var(--control-height-xs) + var(--space-2));
-  }
-  .field-action {
-    position: absolute;
-    right: var(--space-1);
-    bottom: 0;
+  .summary {
     display: flex;
-    height: var(--control-height-sm);
-    align-items: center;
-  }
-  .inp {
-    width: 100%;
-    min-height: 2rem;
-    padding: var(--space-2) var(--space-2);
-    font-size: var(--font-size-body);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg3);
-    border: 1px solid var(--hairline);
-    color: var(--color-foreground);
-  }
-  .menu {
-    position: absolute;
-    z-index: var(--layer-navigation);
-    top: calc(100% + 2px);
-    left: 0;
-    right: 0;
-    max-height: 12rem;
-    overflow: auto;
-    margin: 0;
-    padding: var(--space-1);
-    list-style: none;
-    background: var(--color-card);
-    border: 1px solid var(--hairline);
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-overlay);
   }
-  .menu li :global([data-part='button']) {
-    width: 100%;
-    text-align: left;
-    background: none;
-    border: none;
-    padding: var(--space-2) var(--space-2);
-    border-radius: var(--radius-sm, 4px);
-    cursor: pointer;
-    font-size: var(--font-size-body);
-    color: var(--color-foreground);
+  .summary.blocking {
+    border-color: var(--color-danger-border);
   }
-  .menu li :global([data-part='button']):hover {
-    background: var(--color-bg3);
-  }
-  .menu li :global([data-part='button'] > span) {
-    width: 100%;
-    justify-content: space-between;
+  .head {
+    display: flex;
+    align-items: center;
     gap: var(--space-2);
   }
-  .rname {
+  .name {
     min-width: 0;
+    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .rmeta {
-    font-size: var(--font-size-caption);
-    color: var(--color-muted-foreground);
-    font-variant-numeric: tabular-nums;
-    flex-shrink: 0;
-  }
-  .chip {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-2);
-    border-radius: var(--radius-md);
-    background: var(--color-bg3);
-    border: 1px solid var(--hairline);
-  }
-  .cname {
+    color: var(--color-text-primary);
     font-size: var(--font-size-body);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
   }
-  .cphone {
-    font-size: var(--font-size-caption);
-    color: var(--color-muted-foreground);
+  .summary :global(.clear) {
+    flex: none;
+  }
+  .meta {
+    display: grid;
+    margin: 0;
+    gap: var(--space-0-5);
+  }
+  .meta-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .meta-row dt {
+    color: var(--color-text-tertiary);
+  }
+  .meta-row dd {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-secondary);
+  }
+  .meta-row dd.num {
     font-variant-numeric: tabular-nums;
   }
-  .ticket-only {
-    font-size: var(--font-size-caption);
-    color: var(--color-muted-foreground);
+  .meta-row dd.absent {
+    color: var(--color-text-tertiary);
     font-style: italic;
   }
-  .picker :global(.clr) {
-    margin-left: auto;
-    background: none;
-    border: none;
-    color: var(--color-muted-foreground);
-    cursor: pointer;
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
   }
-  .picker :global(.clr):hover {
-    color: var(--color-destructive);
+  .alert {
+    margin: 0;
+    color: var(--color-danger-fg);
   }
-  .picker :global(.quick-toggle) {
+  .note {
+    margin: 0;
+    color: var(--color-text-tertiary);
+  }
+  .phone-edit {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-2);
+  }
+  .phone-edit :global([data-part='field']) {
+    min-width: 0;
+    flex: 1;
+  }
+  .summary :global(.add-phone) {
+    align-self: flex-start;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .acct {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-    align-self: flex-start;
-    background: none;
-    border: none;
     color: var(--color-accent);
-    font-size: var(--font-size-caption);
-    cursor: pointer;
-    padding: var(--space-1) 0;
+    text-decoration: none;
   }
-  .quick-col {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .quick-row {
-    display: flex;
-    gap: var(--space-2);
-    align-items: center;
-  }
-  .hint {
-    font-size: var(--font-size-caption);
-    color: var(--color-destructive);
+  .acct:hover {
+    text-decoration: underline;
   }
 </style>

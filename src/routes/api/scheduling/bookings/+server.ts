@@ -12,6 +12,7 @@ import {
   SlotUnavailableError,
 } from '$server/services/scheduling-bookings.service';
 import { parseInclusiveEnd } from '$lib/components/dashboard/date-range/url';
+import { rethrowPosError } from '../_errors';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
   const ctx = await getCoreCtx(locals);
@@ -50,6 +51,11 @@ const postSchema = z.object({
     .array(z.object({ itemId: z.string().min(1), qtyConsumption: z.number().positive() }))
     .nullable()
     .optional(),
+  // Session package / instalment plan links (spec §3.2, §3.4). A grant redeems
+  // one session inside the booking transaction.
+  packageGrantId: z.string().uuid().nullable().optional(),
+  paymentPlanId: z.string().uuid().nullable().optional(),
+  clientNote: z.string().max(20_000).nullable().optional(),
 });
 
 /** Internal staff booking (on behalf of a customer). Bypasses min-notice. */
@@ -76,6 +82,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       consumption: b.consumption ?? null,
       forceResourceId: b.forceResourceId ?? undefined,
       overrideConflicts: b.overrideConflicts ?? undefined,
+      packageGrantId: b.packageGrantId ?? null,
+      paymentPlanId: b.paymentPlanId ?? null,
+      clientNote: b.clientNote ?? null,
+      actor: {
+        id: ctx.profileId ?? null,
+        name: locals.user?.displayName ?? locals.user?.email ?? null,
+      },
     });
     return json({ booking });
   } catch (e) {
@@ -85,6 +98,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       (e.message === 'overrideConflicts requires forceResourceId' || e.message === 'invalid kindId')
     )
       throw error(400, e.message);
-    throw e;
+    rethrowPosError(e);
   }
 };

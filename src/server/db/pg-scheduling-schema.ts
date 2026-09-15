@@ -240,6 +240,17 @@ export const schedBookings = pgTable(
     kindId: uuid('kind_id').references(() => schedEventKinds.id, { onDelete: 'set null' }),
     source: text('source').notNull().default('internal'), // 'public_link' | 'internal' | 'import'
     rescheduledFromId: uuid('rescheduled_from_id'),
+    /** The package session this booking drew down (pos_package_grants.id).
+     *  The redemption row itself is the ledger; this is the read shortcut. */
+    packageGrantId: uuid('package_grant_id'),
+    /** The instalment plan funding this event (pos_payment_plans.id). */
+    paymentPlanId: uuid('payment_plan_id'),
+    /** Recurring-course grouping: N bookings created in one transaction share
+     *  a `seriesId` and carry their 0-based `seriesIndex`. */
+    seriesId: uuid('series_id'),
+    seriesIndex: integer('series_index'),
+    /** Client-visible note — `notes` stays internal. */
+    clientNote: text('client_note'),
     metadata: jsonb('metadata').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -258,6 +269,42 @@ export const schedBookings = pgTable(
     statusIdx: index('sched_bookings_org_status_idx').on(t.orgId, t.status),
     crmIdx: index('sched_bookings_crm_idx').on(t.crmContactId),
     partyIdx: index('sched_bookings_party_idx').on(t.partyId),
+    orgSeriesIdx: index('sched_bookings_org_series_idx')
+      .on(t.orgId, t.seriesId, t.seriesIndex)
+      .where(sqlNotNull('series_id')),
+    orgGrantIdx: index('sched_bookings_org_grant_idx')
+      .on(t.orgId, t.packageGrantId)
+      .where(sqlNotNull('package_grant_id')),
+    orgPlanIdx: index('sched_bookings_org_plan_idx')
+      .on(t.orgId, t.paymentPlanId)
+      .where(sqlNotNull('payment_plan_id')),
+  }),
+);
+
+/**
+ * Append-only status history for a booking — what the detail drawer's timeline
+ * reads (spec 2026-09-13-…-spec.md §2.4/§4.1). Writes land in S3; nothing
+ * populates this table yet.
+ */
+export const schedBookingStatusLog = pgTable(
+  'sched_booking_status_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    bookingId: uuid('booking_id').notNull(),
+    /** null on the row recording creation. */
+    fromStatus: text('from_status'),
+    toStatus: text('to_status').notNull(),
+    reason: text('reason'),
+    changedBy: uuid('changed_by'),
+    changedAt: timestamp('changed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgBookingIdx: index('sched_booking_status_log_org_booking_idx').on(
+      t.orgId,
+      t.bookingId,
+      t.changedAt,
+    ),
   }),
 );
 
@@ -291,4 +338,5 @@ export type SchedEventKind = typeof schedEventKinds.$inferSelect;
 export type SchedEventType = typeof schedEventTypes.$inferSelect;
 export type SchedEventTypeResource = typeof schedEventTypeResources.$inferSelect;
 export type SchedBooking = typeof schedBookings.$inferSelect;
+export type SchedBookingStatusLog = typeof schedBookingStatusLog.$inferSelect;
 export type SchedLink = typeof schedLinks.$inferSelect;

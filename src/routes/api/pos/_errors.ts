@@ -16,6 +16,22 @@ const STATUS_BY_CODE: Record<string, number> = {
   already_void: 409,
   reconciled: 409,
   duplicate_source: 409,
+  // packages / plans / client credit (spec 2026-09-13-pos-scheduling-packages-
+  // payment-plans-spec.md §3) — all "the row exists, the state forbids it".
+  insufficient_credit: 409,
+  package_in_use: 409,
+  package_exhausted: 409,
+  package_expired: 409,
+  package_cancelled: 409,
+  redemption_already_billed: 409,
+  plan_settled: 409,
+  plan_cancelled: 409,
+  // the line exists, another booking already claimed it
+  line_already_scheduled: 409,
+  // book-and-link (POST /api/pos/tickets/:id/schedule) refusals
+  ticket_void: 409,
+  line_not_service: 400,
+  slot_unavailable: 409,
 };
 
 /** Maps a PosError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */

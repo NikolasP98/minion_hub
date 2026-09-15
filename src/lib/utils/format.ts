@@ -1,3 +1,5 @@
+import { languageTag } from '$lib/paraglide/runtime';
+
 /**
  * Human-readable byte formatter per Phase 20 CONTEXT specifics: `523 B`, `2.3 KB`,
  * `14.1 KB`, `1.2 MB`. Used by PreviewPanel totals + breakdown.
@@ -72,7 +74,10 @@ export function formatMoney(
   if (!Number.isFinite(n)) return '—';
   const cur = (currency || 'PEN').toUpperCase();
   const maximumFractionDigits = opts.decimals ?? (opts.compact ? 0 : 2);
-  const minimumFractionDigits = Math.min(opts.compact ? 0 : maximumFractionDigits, maximumFractionDigits);
+  const minimumFractionDigits = Math.min(
+    opts.compact ? 0 : maximumFractionDigits,
+    maximumFractionDigits,
+  );
   try {
     return new Intl.NumberFormat('es-PE', {
       style: 'currency',
@@ -89,7 +94,10 @@ export function formatMoney(
 }
 
 /** Compact money for dense chart axes / KPIs: "S/ 1.2M". */
-export function formatMoneyShort(value: number | string | null | undefined, currency: string = 'PEN'): string {
+export function formatMoneyShort(
+  value: number | string | null | undefined,
+  currency: string = 'PEN',
+): string {
   return formatMoney(value, currency, { compact: true });
 }
 
@@ -105,4 +113,44 @@ export function escHtml(s: string | null | undefined): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * Canonical date/time label formatter. The locale is the ACTIVE PARAGLIDE one,
+ * never the browser's: `toLocaleDateString(undefined, …)` renders "Mon Sep 7"
+ * inside a fully Spanish UI whenever the OS is English, which is exactly what
+ * the scheduling calendar shipped. Same rule as `formatMoney` — one formatter,
+ * every surface routes through it.
+ */
+export function formatDate(
+  value: Date | string | number | null | undefined,
+  opts: Intl.DateTimeFormatOptions,
+): string {
+  if (value == null) return '—';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat(languageTag() === 'es' ? 'es-PE' : 'en-US', opts).format(d);
+}
+
+/**
+ * 24-hour clock label ("09:00"), locale-pinned exactly like `formatDate`. The
+ * scheduling calendar's time axis is 24-hour, so the chips sitting on it must be
+ * too — `toLocaleTimeString(undefined, …)` rendered "09:00 AM" against an "09:00"
+ * gutter, and asked the BROWSER for the locale on top of that.
+ */
+export function formatTime(value: Date | string | number | null | undefined): string {
+  return formatDate(value, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/**
+ * Short weekday names indexed 0=Sun..6=Sat — the `AvailabilityRule.days`
+ * convention (`src/server/scheduling/slots.ts`) that the weekly hours editor
+ * indexes by. 2024-01-07 was a Sunday, so `+i` walks one week from it; LOCAL
+ * midnights, so a negative-offset zone can't roll a label back a day.
+ * Call from a `$derived`, never module scope — module scope SSR-bakes one locale.
+ */
+export function weekdayLabels(): string[] {
+  return Array.from({ length: 7 }, (_, i) =>
+    formatDate(new Date(2024, 0, 7 + i), { weekday: 'short' }),
+  );
 }

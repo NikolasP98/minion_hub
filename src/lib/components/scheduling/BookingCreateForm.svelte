@@ -8,6 +8,7 @@
   import { Button, Select } from '$lib/components/ui';
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
+  import { formatTime } from '$lib/utils/format';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import ServicePickerField from '$lib/components/scheduling/ServicePickerField.svelte';
   import TagsField from '$lib/components/tags/TagsField.svelte';
@@ -304,7 +305,7 @@
           aria-pressed={slot === s.start}
           onclick={() => (slot = s.start)}
         >
-          {new Date(s.start).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+          {formatTime(s.start)}
         </Button>
       {/each}
     </div>

@@ -2,7 +2,13 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vites
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { schedBookings, schedEventTypes, schedResources } from '$server/db/pg-scheduling-schema';
+import {
+  schedBookingStatusLog,
+  schedBookings,
+  schedEventTypes,
+  schedResources,
+} from '$server/db/pg-scheduling-schema';
+import { posPackageRedemptions } from '$server/db/pg-pos-schema';
 import { finInvoices } from '$server/db/pg-finance-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
@@ -37,7 +43,14 @@ const missing = '40000000-0000-4000-8000-000000000001';
 const start = new Date('2026-09-12T14:00:00Z');
 const end = new Date('2026-09-12T15:00:00Z');
 beforeAll(async () => {
-  for (const table of [schedBookings, schedEventTypes, schedResources, finInvoices]) {
+  for (const table of [
+    schedBookings,
+    schedBookingStatusLog,
+    schedEventTypes,
+    schedResources,
+    finInvoices,
+    posPackageRedemptions,
+  ]) {
     const config = getTableConfig(table);
     await client.exec(
       `CREATE TABLE "${config.name}" (${config.columns.map((c) => `"${c.name}" ${c.getSQLType()}`).join(',')})`,
@@ -49,7 +62,9 @@ beforeEach(async () => {
   vi.clearAllMocks();
   effects.audit.mockResolvedValue(undefined);
   effects.release.mockResolvedValue(0);
-  await client.exec('TRUNCATE sched_bookings, sched_resources, sched_event_types, fin_invoices');
+  await client.exec(
+    'TRUNCATE sched_bookings, sched_booking_status_log, sched_resources, sched_event_types, fin_invoices, pos_package_redemptions',
+  );
   await client.query(
     'INSERT INTO sched_bookings (id,org_id,uid,event_type_id,resource_id,start_time,end_time,status,title,metadata) VALUES ($1::uuid,$2,($1::uuid)::text,$3,$4,$5,$6,$7,$8,$9)',
     [id, ctx.tenantId, eventType, resource, start, end, 'accepted', 'Original', '{}'],

@@ -1,18 +1,32 @@
-import { describe, it, expect } from 'vitest';
-import { fmtTokens, fmtTimeAgo, fmtUptime, truncKey, escHtml, formatMoney } from './format';
+import { describe, it, expect, afterEach } from 'vitest';
+import {
+  fmtTokens,
+  fmtTimeAgo,
+  fmtUptime,
+  truncKey,
+  escHtml,
+  formatMoney,
+  formatDate,
+  formatTime,
+  weekdayLabels,
+} from './format';
+import { setLanguageTag } from '$lib/paraglide/runtime';
 
 describe('formatMoney', () => {
   const strip = (s: string) => s.replace(/ /g, ' '); // NBSP → space for stable asserts
-  it('formats PEN by default with S/ symbol', () => expect(strip(formatMoney(1234.5))).toBe('S/ 1,234.50'));
+  it('formats PEN by default with S/ symbol', () =>
+    expect(strip(formatMoney(1234.5))).toBe('S/ 1,234.50'));
   it('defaults currency to PEN when omitted', () => expect(formatMoney(50)).toContain('S/'));
   it('honors an explicit currency', () => expect(formatMoney(10, 'USD')).toMatch(/US\$|USD|\$/));
-  it('accepts numeric strings (DB numeric)', () => expect(strip(formatMoney('800'))).toBe('S/ 800.00'));
+  it('accepts numeric strings (DB numeric)', () =>
+    expect(strip(formatMoney('800'))).toBe('S/ 800.00'));
   it('returns em-dash for null/NaN', () => {
     expect(formatMoney(null)).toBe('—');
     expect(formatMoney(undefined)).toBe('—');
     expect(formatMoney('not a number')).toBe('—');
   });
-  it('compact drops decimals', () => expect(formatMoney(1600, 'PEN', { compact: true })).not.toContain('.00'));
+  it('compact drops decimals', () =>
+    expect(formatMoney(1600, 'PEN', { compact: true })).not.toContain('.00'));
 });
 
 describe('fmtTokens', () => {
@@ -87,4 +101,64 @@ describe('escHtml', () => {
   });
   it('escapes &', () => expect(escHtml('a & b')).toBe('a &amp; b'));
   it('passes through safe text', () => expect(escHtml('hello')).toBe('hello'));
+});
+
+/** The bug this exists to stop: the scheduling calendar rendered "Mon Sep 7"
+ *  inside a fully Spanish UI because it asked the BROWSER for the locale
+ *  (`toLocaleDateString(undefined, …)`) instead of paraglide. */
+describe('formatDate — follows the paraglide locale, not the browser', () => {
+  const monday = '2026-09-07T00:00:00';
+  afterEach(() => setLanguageTag(() => 'en'));
+
+  it('renders English weekday/month for `en`', () => {
+    setLanguageTag(() => 'en');
+    expect(formatDate(monday, { weekday: 'short' })).toBe('Mon');
+    expect(formatDate(monday, { day: 'numeric', month: 'short' })).toBe('Sep 7');
+  });
+
+  it('renders Spanish weekday/month for `es`', () => {
+    setLanguageTag(() => 'es');
+    expect(formatDate(monday, { weekday: 'short' }).toLowerCase()).toContain('lun');
+    // Peru abbreviates septiembre as "set." — proof the locale really is es-PE,
+    // the same one `formatMoney` uses, and not generic `es`.
+    expect(formatDate(monday, { day: 'numeric', month: 'short' })).toBe('7 set.');
+  });
+
+  it('returns em-dash for null / unparseable input', () => {
+    expect(formatDate(null, { weekday: 'short' })).toBe('—');
+    expect(formatDate('not a date', { weekday: 'short' })).toBe('—');
+  });
+});
+
+/** The calendar's time axis is 24-hour; chips rendered "09:00 AM" next to it. */
+describe('formatTime — 24-hour, locale-pinned', () => {
+  afterEach(() => setLanguageTag(() => 'en'));
+
+  it('never renders AM/PM, in either locale', () => {
+    for (const tag of ['en', 'es'] as const) {
+      setLanguageTag(() => tag);
+      expect(formatTime('2026-09-15T09:05:00')).toBe('09:05');
+      expect(formatTime('2026-09-15T13:30:00')).toBe('13:30');
+      expect(formatTime('2026-09-15T00:00:00')).toBe('00:00'); // not "24:00"
+    }
+  });
+});
+
+/** WeekHoursEditor indexes these 0=Sun..6=Sat (`AvailabilityRule.days`). If the
+ *  reference date ever stops landing on a Sunday, every row is mislabelled. */
+describe('weekdayLabels — index 0 is Sunday', () => {
+  afterEach(() => setLanguageTag(() => 'en'));
+
+  it('walks Sun→Sat in English', () => {
+    setLanguageTag(() => 'en');
+    expect(weekdayLabels()).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+  });
+
+  it('walks dom→sáb in Spanish', () => {
+    setLanguageTag(() => 'es');
+    const labels = weekdayLabels();
+    expect(labels[0].toLowerCase()).toContain('dom');
+    expect(labels[6].toLowerCase()).toContain('sáb');
+    expect(new Set(labels).size).toBe(7);
+  });
 });

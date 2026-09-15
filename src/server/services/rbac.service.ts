@@ -1111,6 +1111,12 @@ const CREATE_COLLECTION_ENDPOINTS = new Set([
   '/api/builder/skills',
   '/api/builder/tools',
   '/api/crm/parties',
+  // Opening an instalment plan moves no money — each instalment is a
+  // fully-paid ticket of its own — so it is ordinary `create` work, which is
+  // also the capability the UI gates its "Open plan" control on. Without this
+  // the POST fell through to `edit` and a role split between the two would see
+  // an enabled button and take a 403.
+  '/api/pos/plans',
 ]);
 
 export function apiWriteCapability(

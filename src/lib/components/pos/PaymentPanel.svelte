@@ -17,13 +17,23 @@
      *  UI never flips mid-transaction if settings change elsewhere. */
     takesTendered: boolean;
   }
+
+  /** Change owed on one cash-like row (0 for everything else). */
+  export function rowChange(p: PaymentRow): number {
+    if (!p.takesTendered || p.tendered == null) return 0;
+    return Math.max(0, Math.round(p.tendered * 100) - Math.round(p.amount * 100)) / 100;
+  }
+
+  /** Total change owed across the ticket — the figure the drawer hands back. */
+  export function changeDue(payments: PaymentRow[]): number {
+    return payments.reduce((s, p) => s + Math.round(rowChange(p) * 100), 0) / 100;
+  }
 </script>
 
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-
   import { X } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { Button, iconSizes } from '$lib/components/ui';
   import { formatMoney } from '$lib/utils/format';
 
   interface Props {
@@ -38,7 +48,18 @@
   const paidCents = $derived(payments.reduce((s, p) => s + Math.round(p.amount * 100), 0));
   const remainingCents = $derived(totalCents - paidCents);
 
-  function addMethod(mth: PaymentMethodOption) {
+  /**
+   * A method tile is a toggle, not an "add row" button: the common ticket is
+   * ONE tender paying everything, so the first tap prefills the whole
+   * remaining amount and a second tap on the same tile takes it back off
+   * (resetting remaining) instead of stacking a second zero row.
+   */
+  function toggleMethod(mth: PaymentMethodOption) {
+    const last = payments.findLastIndex((p) => p.method === mth.id);
+    if (last >= 0) {
+      payments = payments.filter((_, idx) => idx !== last);
+      return;
+    }
     const amount = Math.max(0, remainingCents) / 100;
     payments = [
       ...payments,
@@ -50,6 +71,15 @@
         takesTendered: mth.takesTendered,
       },
     ];
+  }
+
+  function allocated(id: string): number {
+    return (
+      payments.reduce((s, p) => (p.method === id ? s + Math.round(p.amount * 100) : s), 0) / 100
+    );
+  }
+  function isOn(id: string): boolean {
+    return payments.some((p) => p.method === id);
   }
 
   // Over-allocation clamp: this row's amount can never push Σ past total.
@@ -77,14 +107,11 @@
     payments = payments.filter((_, idx) => idx !== i);
   }
 
-  function change(p: PaymentRow): number {
-    if (!p.takesTendered || p.tendered == null) return 0;
-    return Math.max(0, Math.round(p.tendered * 100) - Math.round(p.amount * 100)) / 100;
-  }
-
   function tenderInvalid(p: PaymentRow): boolean {
     return (
-      p.takesTendered && p.tendered != null && Math.round(p.tendered * 100) < Math.round(p.amount * 100)
+      p.takesTendered &&
+      p.tendered != null &&
+      Math.round(p.tendered * 100) < Math.round(p.amount * 100)
     );
   }
 
@@ -96,18 +123,29 @@
 <div class="panel">
   <div class="methods">
     {#each methods as mth (mth.id)}
-      <Button type="button" class="mbtn" onclick={() => addMethod(mth)}>{mth.label}</Button>
+      <Button
+        variant="ghost"
+        type="button"
+        class={`mtile ${isOn(mth.id) ? 'on' : ''}`}
+        aria-pressed={isOn(mth.id)}
+        onclick={() => toggleMethod(mth)}
+      >
+        <span class="mtile-label">{mth.label}</span>
+        <span class="mtile-amount" class:on={isOn(mth.id)}
+          >{isOn(mth.id) ? formatMoney(allocated(mth.id)) : '—'}</span
+        >
+      </Button>
     {/each}
   </div>
 
-  <!-- Remaining is shown in the page's pinned charge bar, next to the Charge button. -->
+  <!-- Remaining + change due are shown by the payment step, next to Finish sale. -->
   {#if payments.length}
     <div class="rows">
       {#each payments as p, i (p.id ?? i)}
         <div class="row" class:invalid={tenderInvalid(p)}>
           <span class="mname">{labelFor(p.method)}</span>
           <label class="fld">
-            <span class="lbl">{m.pos_sell_price()}</span>
+            <span class="lbl">{m.pos_pay_amount()}</span>
             <input
               class="inp"
               type="number"
@@ -129,10 +167,15 @@
                 oninput={(e) => setTendered(i, Number((e.currentTarget as HTMLInputElement).value))}
               />
             </label>
-            <span class="change">{m.pos_sell_change()}: {formatMoney(change(p))}</span>
+            <span class="change">{m.pos_sell_change()}: {formatMoney(rowChange(p))}</span>
           {/if}
-          <Button class="rm" title={m.common_remove()} onclick={() => removeRow(i)}
-            ><X size={13} /></Button
+          <Button
+            variant="ghost"
+            size="xs"
+            shape="icon"
+            class="rm"
+            title={m.common_remove()}
+            onclick={() => removeRow(i)}><X size={iconSizes.xs} /></Button
           >
         </div>
       {/each}
@@ -144,49 +187,78 @@
   .panel {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-3);
   }
+  /* Tiles, not chips: at the till this is the primary target of the pay step. */
   .methods {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
     gap: var(--space-2);
   }
-  .panel :global(.mbtn) {
-    padding: var(--space-1) var(--space-3);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--hairline);
-    background: var(--color-bg3);
-    color: var(--color-foreground);
-    font-size: var(--font-size-caption);
-    cursor: pointer;
+  .panel :global(.mtile) {
+    height: auto;
+    align-items: stretch;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-2);
+    color: var(--color-text-primary);
+    text-align: left;
   }
-  .panel :global(.mbtn):hover {
+  /* Button renders slotted children inside an inner fixed-height row <span>. */
+  .panel :global(.mtile > span) {
+    width: 100%;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-0-5);
+  }
+  .panel :global(.mtile):hover {
     border-color: var(--color-accent);
+  }
+  /* Selected tender = accent-TINTED surface + accent text (selection, not action). */
+  .panel :global(.mtile.on) {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    color: var(--color-accent);
+  }
+  .mtile-label {
+    font-size: var(--font-size-body);
+    font-weight: 500;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .mtile-amount {
+    font-size: var(--font-size-caption);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-tertiary);
+  }
+  .mtile-amount.on {
+    color: var(--color-accent);
   }
   .rows {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-    /* Lives in the pinned charge section — cap so many rows scroll instead of
-       squeezing the cart above out of view. */
-    max-height: 11rem;
-    overflow-y: auto;
   }
   .row {
     display: flex;
     align-items: flex-end;
-    flex-wrap: wrap; /* cash rows (price + tendered + change) exceed the panel width */
+    flex-wrap: wrap;
     gap: var(--space-2);
-    padding: var(--space-1);
-    border: 1px solid var(--hairline);
+    padding: var(--space-2);
+    border: 1px solid var(--color-border-default);
     border-radius: var(--radius-md);
+    background: var(--color-surface-1);
   }
   .row.invalid {
-    border-color: color-mix(in srgb, var(--color-destructive) 55%, transparent);
+    border-color: color-mix(in srgb, var(--color-danger-fg) 55%, transparent);
   }
   .mname {
-    font-size: var(--font-size-caption);
-    min-width: 3.5rem;
+    flex: 1;
+    min-width: 5rem;
+    font-size: var(--font-size-body);
+    font-weight: 500;
     padding-bottom: var(--space-1);
   }
   .fld {
@@ -198,34 +270,31 @@
     font-size: var(--font-size-telemetry);
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: var(--color-muted-foreground);
+    color: var(--color-text-tertiary);
   }
   .inp {
-    width: 5.5rem;
-    min-height: 1.8rem;
+    width: 6.5rem;
+    min-height: var(--control-height-sm);
     padding: var(--space-1) var(--space-2);
     font-size: var(--font-size-body);
     border-radius: var(--radius-sm);
-    background: var(--color-bg3);
-    border: 1px solid var(--hairline);
-    color: var(--color-foreground);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border-default);
+    color: var(--color-text-primary);
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
   .change {
     font-size: var(--font-size-caption);
-    color: var(--color-muted-foreground);
+    color: var(--color-text-secondary);
     padding-bottom: var(--space-1);
     white-space: nowrap;
   }
   .panel :global(.rm) {
-    background: none;
-    border: none;
-    color: var(--color-muted-foreground);
-    cursor: pointer;
+    color: var(--color-text-tertiary);
     margin-bottom: var(--space-1);
   }
   .panel :global(.rm):hover {
-    color: var(--color-destructive);
+    color: var(--color-danger-fg);
   }
 </style>
