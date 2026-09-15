@@ -6,6 +6,54 @@
  * soles-and-centimos rows drifts.
  */
 
+/** One row of a plan's `dueSchedule` — the wire shape `POST /api/pos/plans` takes. */
+export interface PlanInstalment {
+  dueOn: string;
+  amount: number;
+}
+
+/**
+ * Split a plan total into `count` monthly instalments, the first due on `from`.
+ *
+ * Cent-exact by construction: the total becomes integer cents ONCE and the
+ * remainder is handed out a cent at a time to the earliest instalments, so
+ * Σ amounts === round2(total) for every (total, count). Dividing in floats and
+ * rounding each row drifts by a centimo, and then the last instalment never
+ * settles the plan.
+ *
+ * Rows that would be zero (total smaller than the instalment count) are dropped
+ * — the server rejects `amount <= 0`, so a 3-way split of 0.01 is ONE instalment.
+ *
+ * Due dates walk month by month from `from`, clamping the day to the target
+ * month's length (Jan 31 → Feb 28/29). `dueOn` is a plain local YYYY-MM-DD
+ * business date, never an instant.
+ */
+export function planDueSchedule(
+  total: number,
+  count: number,
+  from: Date = new Date(),
+): PlanInstalment[] {
+  const n = Math.max(1, Math.floor(count));
+  const totalCents = Math.round(total * 100);
+  if (totalCents <= 0) return [];
+  const base = Math.floor(totalCents / n);
+  const extra = totalCents - base * n; // 0..n-1 cents left over
+  const pad = (v: number) => String(v).padStart(2, '0');
+  const year = from.getFullYear();
+  const month = from.getMonth();
+  const day = from.getDate();
+  const out: PlanInstalment[] = [];
+  for (let i = 0; i < n; i++) {
+    const cents = base + (i < extra ? 1 : 0);
+    if (cents === 0) continue; // the server rejects a zero instalment
+    const y = year + Math.floor((month + i) / 12);
+    const mo = (month + i) % 12;
+    const lastDay = new Date(y, mo + 1, 0).getDate(); // day 0 of the next month
+    out.push({ dueOn: `${y}-${pad(mo + 1)}-${pad(Math.min(day, lastDay))}`, amount: cents / 100 });
+  }
+  return out;
+}
+
 /** The tender shape these rules need — structurally satisfied by `PaymentRow`
  *  (PaymentPanel.svelte) without dragging a component import into a pure file. */
 export interface TenderLike {

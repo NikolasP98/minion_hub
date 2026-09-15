@@ -36,7 +36,7 @@
     iconSizes,
   } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
-  import { formatDate } from '$lib/utils/format';
+  import { formatDate, formatTime } from '$lib/utils/format';
   import {
     calendarDays,
     shiftCalendarDate,
@@ -98,9 +98,9 @@
     const d = new Date(iso);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
-  function hhmm(iso: string): string {
-    return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  }
+  /** 24-hour, like the `{h}:00` gutter these chips are laid over — and pinned to
+   *  the paraglide locale rather than the browser's. */
+  const hhmm = (iso: string) => formatTime(iso);
   function minutesOf(iso: string): number {
     const d = new Date(iso);
     return d.getHours() * 60 + d.getMinutes();

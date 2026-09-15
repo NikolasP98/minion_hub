@@ -11,7 +11,7 @@ import {
 // Deliberate circular import — see the note in pos-accounts.service.ts.
 import { PosError, type Actor } from './pos.service';
 import { getFinSettings } from './finance.service';
-import { clientMatch, type ClientRef } from './pos-accounts.service';
+import { clientMatch, widenClient, type ClientRef } from './pos-accounts.service';
 import {
   allocateGrants,
   grantStatus,
@@ -193,7 +193,11 @@ export async function listGrants(
 ): Promise<GrantView[]> {
   const today = await orgToday(ctx);
   return withOrgCore(ctx, async (tx) => {
-    const conds = [eq(posPackageGrants.orgId, ctx.tenantId), clientMatch(client, posPackageGrants)];
+    // Widened first: a grant minted for a POS quick-add client carries only the
+    // party spine, so a lookup by CRM contact must resolve the party through
+    // `crm_contacts.party_id` or the sessions are unreachable. See widenClient.
+    const ref = await widenClient(tx, ctx.tenantId, client);
+    const conds = [eq(posPackageGrants.orgId, ctx.tenantId), clientMatch(ref, posPackageGrants)];
     if (opts.serviceProductId)
       conds.push(eq(posPackageGrants.serviceProductId, opts.serviceProductId));
     const grants = await tx

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatDate } from '$lib/utils/format';
+  import { formatDate, formatTime } from '$lib/utils/format';
 
   /**
    * Compact 7-day calendar strip for a single team member, centred on today
@@ -51,8 +51,7 @@
     });
   });
 
-  const hhmm = (iso: string) =>
-    new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const hhmm = (iso: string) => formatTime(iso);
 </script>
 
 <div class="week" class:compact>

@@ -18,6 +18,7 @@
   import * as m from '$lib/paraglide/messages';
   import { Badge, Button, EmptyState, Spinner, iconSizes } from '$lib/components/ui';
   import { formatDate } from '$lib/utils/format';
+  import { isPendingScheduling, isScheduled } from './schedule-lines';
   import AppointmentForm, {
     type AppointmentEventType,
     type AppointmentResource,
@@ -41,6 +42,8 @@
     description: string;
     finProductId: string | null;
     bookingId: string | null;
+    /** Set when the line is an instalment against a payment plan, not a sale. */
+    planId: string | null;
   };
 
   let loading = $state(true);
@@ -49,10 +52,11 @@
   let partyId = $state<string | null>(null);
   let activeLineId = $state<string | null>(null);
 
-  /** A service line with no booking is the ONE definition of "pending
-   *  scheduling" — the same derivation /pos/accounts runs in SQL. */
-  const pending = $derived(lines.filter((l) => l.kind === 'service' && !l.bookingId));
-  const scheduled = $derived(lines.filter((l) => l.kind === 'service' && l.bookingId));
+  /** ONE definition of "pending scheduling", shared with the /pos/accounts SQL
+   *  derivation — and it excludes plan instalments, which ride as `kind:
+   *  'service'` but are money, not an appointment. See ./schedule-lines. */
+  const pending = $derived(lines.filter(isPendingScheduling));
+  const scheduled = $derived(lines.filter(isScheduled));
   const active = $derived(pending.find((l) => l.id === activeLineId) ?? null);
   /** The event type that sells this line's product, so the form opens on it. */
   const eventTypeFor = (l: Line) =>

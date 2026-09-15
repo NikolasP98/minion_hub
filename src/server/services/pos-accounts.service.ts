@@ -12,6 +12,7 @@ import {
 } from '$server/db/pg-pos-schema';
 import { parties } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
+import { schedBookings } from '$server/db/pg-scheduling-schema';
 // Deliberate circular import, same rationale as pos-emission.service.ts:
 // PosError (a class) and getPosSettings (a function) are only touched when a
 // function actually runs, never at module-eval time, so ESM resolves this
@@ -118,6 +119,44 @@ function requireClient(client: ClientRef): ClientRef {
 export interface ClientColumns {
   partyId: PgColumn;
   crmContactId: PgColumn;
+}
+
+/**
+ * Fill in the facet the caller did not supply, so a lookup by EITHER identity
+ * finds rows recorded under the other.
+ *
+ * A client can exist as a bare party (POS quick-add writes only the party
+ * spine) or as a CRM contact, and `crm_contacts.party_id` is the bridge between
+ * them. Without this widening a read keyed on one facet silently misses every
+ * row stamped with the other — a package sold to a POS-created client, looked
+ * up later by CRM contact, would come back empty and the sessions would be
+ * unreachable. Resolving once here fixes it for every caller instead of leaving
+ * each read to remember.
+ *
+ * Fail-soft: no bridge row just means the ref stays as it came in, which is the
+ * old behaviour. Org-scoped, so a foreign id widens to nothing.
+ */
+export async function widenClient(
+  tx: CoreTx,
+  orgId: string,
+  client: ClientRef,
+): Promise<ClientRef> {
+  requireClient(client);
+  if (client.partyId && client.crmContactId) return client;
+  if (client.crmContactId) {
+    const [hit] = await tx
+      .select({ partyId: crmContacts.partyId })
+      .from(crmContacts)
+      .where(and(eq(crmContacts.orgId, orgId), eq(crmContacts.id, client.crmContactId)))
+      .limit(1);
+    return hit?.partyId ? { ...client, partyId: hit.partyId } : client;
+  }
+  const [hit] = await tx
+    .select({ id: crmContacts.id })
+    .from(crmContacts)
+    .where(and(eq(crmContacts.orgId, orgId), eq(crmContacts.partyId, client.partyId!)))
+    .limit(1);
+  return hit?.id ? { ...client, crmContactId: hit.id } : client;
 }
 
 export function clientMatch(client: ClientRef, cols: ClientColumns): SQL {
@@ -232,6 +271,12 @@ export async function listClientAccounts(
          where tl.org_id = ${ctx.tenantId}
            and tl.kind = 'service'
            and tl.booking_id is null
+           -- An INSTALMENT rides as kind='service' with a null booking (it is
+           -- money against a plan, not a treatment), so without this the till
+           -- offers a payment for scheduling. plan_id is the discriminator;
+           -- a real service line never carries one. Mirrors the same rule in
+           -- $lib/components/pos/schedule-lines.ts.
+           and tl.plan_id is null
            and t.status <> 'void'
            and (t.party_id is not null or t.crm_contact_id is not null)
          group by 1
@@ -345,12 +390,13 @@ export async function resolveClientAccount(
  * ledger is tens of rows, not millions.
  */
 export async function creditBalance(ctx: CoreCtx, client: ClientRef): Promise<number> {
-  const rows = await withOrgCore(ctx, (tx) =>
-    tx
+  const rows = await withOrgCore(ctx, async (tx) => {
+    const ref = await widenClient(tx, ctx.tenantId, client);
+    return tx
       .select({ amount: posClientLedger.amount })
       .from(posClientLedger)
-      .where(and(eq(posClientLedger.orgId, ctx.tenantId), clientMatch(client, posClientLedger))),
-  );
+      .where(and(eq(posClientLedger.orgId, ctx.tenantId), clientMatch(ref, posClientLedger)));
+  });
   return ledgerBalance(rows);
 }
 
@@ -359,14 +405,15 @@ export function listLedger(
   client: ClientRef,
   opts: { limit?: number } = {},
 ): Promise<PosClientLedgerRow[]> {
-  return withOrgCore(ctx, (tx) =>
-    tx
+  return withOrgCore(ctx, async (tx) => {
+    const ref = await widenClient(tx, ctx.tenantId, client);
+    return tx
       .select()
       .from(posClientLedger)
-      .where(and(eq(posClientLedger.orgId, ctx.tenantId), clientMatch(client, posClientLedger)))
+      .where(and(eq(posClientLedger.orgId, ctx.tenantId), clientMatch(ref, posClientLedger)))
       .orderBy(desc(posClientLedger.createdAt))
-      .limit(opts.limit ?? 200),
-  );
+      .limit(opts.limit ?? 200);
+  });
 }
 
 /**
@@ -427,8 +474,8 @@ export async function createPlan(ctx: CoreCtx, input: PlanInput): Promise<PosPay
     }
   }
   const currency = input.currency ?? (await getPosSettings(ctx)).currency;
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  const [row] = await withOrgCore(ctx, async (tx) => {
+    const [plan] = await tx
       .insert(posPaymentPlans)
       .values({
         orgId: ctx.tenantId,
@@ -444,8 +491,42 @@ export async function createPlan(ctx: CoreCtx, input: PlanInput): Promise<PosPay
         note: input.note ?? null,
         createdBy: input.actor?.id ?? null,
       })
-      .returning(),
-  );
+      .returning();
+
+    // The link is TWO columns and they must agree: `pos_payment_plans.booking_id`
+    // is how the plan finds its treatment, `sched_bookings.payment_plan_id` is
+    // what `getBookingDetail` reads to render "paying in instalments". Writing
+    // only the first left every booking looking unfunded in the drawer. Same
+    // transaction, so a plan can never exist half-linked.
+    //
+    // Org-scoped and `is null`-guarded: a foreign booking id is simply not
+    // updated (never someone else's row), and a booking already funded by
+    // another plan keeps its first plan rather than being silently re-pointed.
+    if (plan.bookingId) {
+      const linked = await tx
+        .update(schedBookings)
+        .set({ paymentPlanId: plan.id, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schedBookings.orgId, ctx.tenantId),
+            eq(schedBookings.id, plan.bookingId),
+            isNull(schedBookings.paymentPlanId),
+          ),
+        )
+        .returning({ id: schedBookings.id });
+      if (!linked.length) {
+        const [exists] = await tx
+          .select({ paymentPlanId: schedBookings.paymentPlanId })
+          .from(schedBookings)
+          .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.id, plan.bookingId)))
+          .limit(1);
+        // Rolls the plan insert back with it — both throws leave no orphan.
+        if (!exists) throw new PosError('booking not found', 'not_found');
+        throw new PosError('booking already has a payment plan', 'booking_already_planned');
+      }
+    }
+    return [plan];
+  });
   return row;
 }
 
@@ -458,9 +539,10 @@ export function listPlans(
     limit?: number;
   } = {},
 ): Promise<PosPaymentPlan[]> {
-  return withOrgCore(ctx, (tx) => {
+  return withOrgCore(ctx, async (tx) => {
     const conds = [eq(posPaymentPlans.orgId, ctx.tenantId)];
-    if (opts.client) conds.push(clientMatch(opts.client, posPaymentPlans));
+    if (opts.client)
+      conds.push(clientMatch(await widenClient(tx, ctx.tenantId, opts.client), posPaymentPlans));
     if (opts.status) conds.push(eq(posPaymentPlans.status, opts.status));
     if (opts.bookingId) conds.push(eq(posPaymentPlans.bookingId, opts.bookingId));
     return tx

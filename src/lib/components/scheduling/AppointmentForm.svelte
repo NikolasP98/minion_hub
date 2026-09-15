@@ -35,6 +35,7 @@
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { formatTime } from '$lib/utils/format';
 
   interface Props {
     eventTypes: AppointmentEventType[];
@@ -128,13 +129,10 @@
     l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
   }
 
-  function hhmm(iso: string): string {
-    return new Date(iso).toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-  }
+  /** Same 24-hour "HH:MM" as before — now via the shared locale-pinned helper,
+   *  so the slot grid, the calendar chips and the axis can't drift apart.
+   *  Also the key `pendingTime` is matched against, hence the stable 2-digit form. */
+  const hhmm = (iso: string) => formatTime(iso);
 
   async function loadConsumption() {
     const token = ++gen;

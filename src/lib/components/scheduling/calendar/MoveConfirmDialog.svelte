@@ -7,6 +7,7 @@
   import { fetchJson, ApiError } from '$lib/api/fetch-json';
   import { toastError } from '$lib/state/ui';
   import * as m from '$lib/paraglide/messages';
+  import { formatDate } from '$lib/utils/format';
   import { hhmm } from './calendar.svelte';
   import type { CalEvent } from './types';
 
@@ -45,8 +46,7 @@
   const newResource = $derived(
     newResourceId ? resources.find((r) => r.id === newResourceId) : null,
   );
-  const dateLabel = (iso: string) =>
-    new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const dateLabel = (iso: string) => formatDate(iso, { day: 'numeric', month: 'short' });
   const rangeLabel = (start: string, end: string) =>
     `${dateLabel(start)} ${hhmm(start)}–${hhmm(end)}`;
 

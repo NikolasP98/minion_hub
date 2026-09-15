@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { changeDue, rowChange, type PaymentRow } from './PaymentPanel.svelte';
 import { lineCents, lineNeedsPrice, type CartLine } from './SellCart.svelte';
-import { fitTendersToTotal, tenderedCents } from './checkout-money';
+import { fitTendersToTotal, planDueSchedule, tenderedCents } from './checkout-money';
 
 function tender(over: Partial<PaymentRow> = {}): PaymentRow {
   return { method: 'cash', amount: 100, tendered: 100, takesTendered: true, ...over };
@@ -55,6 +55,55 @@ describe('checkout money', () => {
   it('totals a line in integer cents, discount included', () => {
     expect(lineCents(line({ qty: 3, unitPrice: 19.99, discount: 5 }))).toBe(5497);
     expect(lineCents(line({ unitPrice: 0, redemptionId: 'r1' }))).toBe(0);
+  });
+});
+
+/**
+ * The instalment split is money: the plan is only settleable when the schedule
+ * sums to the total to the cent, and the server rejects a zero instalment.
+ */
+describe('planDueSchedule', () => {
+  const sumCents = (rows: { amount: number }[]) =>
+    rows.reduce((s, r) => s + Math.round(r.amount * 100), 0);
+
+  it('sums exactly to the total, however awkward the division', () => {
+    for (const total of [100, 100.01, 0.07, 999.99, 1234.56]) {
+      for (const n of [1, 2, 3, 6, 7, 12]) {
+        expect(sumCents(planDueSchedule(total, n))).toBe(Math.round(total * 100));
+      }
+    }
+  });
+
+  it('spreads the leftover cents over the earliest instalments', () => {
+    expect(planDueSchedule(100, 3, new Date(2026, 0, 10)).map((r) => r.amount)).toEqual([
+      33.34, 33.33, 33.33,
+    ]);
+  });
+
+  it('never emits a zero instalment (the server rejects amount <= 0)', () => {
+    const rows = planDueSchedule(0.02, 5);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.amount > 0)).toBe(true);
+    expect(sumCents(rows)).toBe(2);
+  });
+
+  it('walks months from the first due date, clamping short months', () => {
+    expect(planDueSchedule(300, 3, new Date(2026, 0, 31)).map((r) => r.dueOn)).toEqual([
+      '2026-01-31',
+      '2026-02-28',
+      '2026-03-31',
+    ]);
+  });
+
+  it('rolls over the year', () => {
+    expect(planDueSchedule(200, 2, new Date(2026, 11, 5)).map((r) => r.dueOn)).toEqual([
+      '2026-12-05',
+      '2027-01-05',
+    ]);
+  });
+
+  it('has nothing to schedule for a non-positive total', () => {
+    expect(planDueSchedule(0, 3)).toEqual([]);
   });
 });
 

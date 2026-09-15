@@ -13,8 +13,9 @@
   import { Badge, Button, EmptyState, Input, Spinner, iconSizes } from '$lib/components/ui';
   import { Sheet } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney } from '$lib/utils/format';
+  import { formatDate, formatMoney } from '$lib/utils/format';
   import { canAct } from '$lib/access/can.svelte';
+  import PlanOpenForm from './PlanOpenForm.svelte';
 
   /**
    * Serialized `GET /api/pos/accounts/[clientKey]` — a client component must not
@@ -79,8 +80,11 @@
   let topupOpen = $state(false);
   let topupAmount = $state('');
   let topupNote = $state('');
+  let planOpen = $state(false);
 
   const canManage = $derived(canAct('pos', 'manage'));
+  // Opening a plan is ordinary POS creation work — it moves no money.
+  const canCreate = $derived(canAct('pos', 'create'));
 
   let gen = 0;
   async function reload(): Promise<void> {
@@ -114,6 +118,7 @@
     topupOpen = false;
     topupAmount = '';
     topupNote = '';
+    planOpen = false;
     void reload();
   });
 
@@ -145,7 +150,7 @@
 
   const productName = (id: string) => productNames[id] ?? id;
   const fmtDateTime = (iso: string) =>
-    new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    formatDate(iso, { dateStyle: 'medium', timeStyle: 'short', hour12: false });
 
   /** Business-rule codes reach the UI as words, never as `package_in_use`. */
   function messageFor(code: string | undefined, fallback: string): string {
@@ -341,6 +346,30 @@
               </li>
             {/each}
           </ul>
+        {/if}
+        {#if planOpen}
+          <PlanOpenForm
+            partyId={d.client.partyId}
+            crmContactId={d.client.crmContactId}
+            oncreated={async () => {
+              planOpen = false;
+              await reload();
+              await onchanged?.();
+            }}
+            oncancel={() => (planOpen = false)}
+          />
+        {:else}
+          <div class="row">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || !canCreate}
+              title={canCreate ? undefined : m.no_permission()}
+              onclick={() => (planOpen = true)}
+            >
+              <PlusCircle size={iconSizes.sm} />{m.pos_plan_open()}
+            </Button>
+          </div>
         {/if}
       </section>
 

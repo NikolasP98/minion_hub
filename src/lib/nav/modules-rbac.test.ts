@@ -102,6 +102,12 @@ describe('module registry ↔ RBAC', () => {
       module: 'pos',
       action: 'delete',
     });
+    // Opening a plan is `create`, which is what the UI gates its control on —
+    // the two must not disagree or the button 403s for a create-less role.
+    expect(apiWriteCapability('/api/pos/plans', 'POST')).toMatchObject({
+      module: 'pos',
+      action: 'create',
+    });
   });
 
   /**

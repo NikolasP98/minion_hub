@@ -12,6 +12,7 @@
     iconSizes,
   } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
+  import { formatDate } from '$lib/utils/format';
   import { addDays, ymd } from './calendar.svelte';
   import type { CalendarView, CalKind } from './types';
 
@@ -107,7 +108,7 @@
   }
 
   const prettyDay = $derived(
-    new Date(`${day}T00:00:00`).toLocaleDateString(undefined, {
+    formatDate(new Date(`${day}T00:00:00`), {
       weekday: view === 'day' ? 'long' : undefined,
       day: 'numeric',
       month: 'long',

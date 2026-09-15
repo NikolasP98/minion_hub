@@ -131,3 +131,26 @@ export function formatDate(
   if (Number.isNaN(d.getTime())) return '—';
   return new Intl.DateTimeFormat(languageTag() === 'es' ? 'es-PE' : 'en-US', opts).format(d);
 }
+
+/**
+ * 24-hour clock label ("09:00"), locale-pinned exactly like `formatDate`. The
+ * scheduling calendar's time axis is 24-hour, so the chips sitting on it must be
+ * too — `toLocaleTimeString(undefined, …)` rendered "09:00 AM" against an "09:00"
+ * gutter, and asked the BROWSER for the locale on top of that.
+ */
+export function formatTime(value: Date | string | number | null | undefined): string {
+  return formatDate(value, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/**
+ * Short weekday names indexed 0=Sun..6=Sat — the `AvailabilityRule.days`
+ * convention (`src/server/scheduling/slots.ts`) that the weekly hours editor
+ * indexes by. 2024-01-07 was a Sunday, so `+i` walks one week from it; LOCAL
+ * midnights, so a negative-offset zone can't roll a label back a day.
+ * Call from a `$derived`, never module scope — module scope SSR-bakes one locale.
+ */
+export function weekdayLabels(): string[] {
+  return Array.from({ length: 7 }, (_, i) =>
+    formatDate(new Date(2024, 0, 7 + i), { weekday: 'short' }),
+  );
+}

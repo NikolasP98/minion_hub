@@ -9,7 +9,7 @@
    * Built on the `Sheet` foundation (native `<dialog showModal>`): backdrop
    * pointerdown + Escape dismissal come from the primitive, never hand-rolled.
    */
-  import { Check, ExternalLink, UserX, X } from 'lucide-svelte';
+  import { Check, ExternalLink, PlusCircle, UserX, X } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -20,8 +20,9 @@
   } from '$lib/components/ui';
   import { Sheet } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney } from '$lib/utils/format';
+  import { formatDate, formatMoney, formatTime } from '$lib/utils/format';
   import { canAct } from '$lib/access/can.svelte';
+  import PlanOpenForm from '$lib/components/pos/PlanOpenForm.svelte';
 
   /**
    * The serialized shape of `BookingDetail` — a client component must not import
@@ -118,6 +119,9 @@
   let clientNote = $state('');
   let notesSaved = $state(false);
 
+  // "Pay this treatment in instalments", inline inside the drawer.
+  let planOpen = $state(false);
+
   // Cancel confirmation, inline inside the drawer.
   let cancelOpen = $state(false);
   let cancelReason = $state('');
@@ -134,6 +138,7 @@
     }
     loading = true;
     err = null;
+    planOpen = false;
     cancelOpen = false;
     cancelReason = '';
     cancelScope = 'one';
@@ -181,19 +186,41 @@
   // lists them, but `getBookingDetail` carries no ticket→booking join. The
   // other three §15 gaps (actor name, next instalment, package name) are closed.
   // See proposals/2026-09-13-pos-packages-plans-s1-followups.md §15.
-  // TODO(handoff): spec §4.1 also lists reschedule, "charge in POS",
-  // "pay in instalments" and "book the next session from the remaining grant" as
-  // drawer actions. S4's scheduling half wires complete / no-show / cancel only;
-  // the other four need POS surfaces this slice must not touch. Same proposal §16.
+  // TODO(handoff): spec §4.1 also lists reschedule, "charge in POS" and "book the
+  // next session from the remaining grant" as drawer actions. Complete / no-show /
+  // cancel and "pay in instalments" (the plan form below) are wired; the other
+  // three need POS surfaces this slice must not touch. Same proposal §16.
+  // TODO(handoff): the plan button is gated on `pos:create`, but server-side
+  // `apiWriteCapability` resolves POST /api/pos/plans to `pos:edit` (the path is
+  // not in CREATE_COLLECTION_ENDPOINTS, rbac.service.ts). Every default role
+  // preset grants the two together, so only a hand-made org override can split
+  // them — such a role would see the button and get a 403. Fix by listing
+  // '/api/pos/plans' in CREATE_COLLECTION_ENDPOINTS. Same proposal §16.
+  // Locale-pinned, 24-hour: `toLocaleString(undefined, …)` asked the BROWSER and
+  // printed "Sep 15, 2026, 9:00 AM" inside an otherwise Spanish drawer.
   const fmtDateTime = (iso: string) =>
-    new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  const fmtTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    formatDate(iso, { dateStyle: 'medium', timeStyle: 'short', hour12: false });
+  const fmtTime = (iso: string) => formatTime(iso);
 
   const isLive = $derived(
     detail?.booking.status === 'accepted' || detail?.booking.status === 'pending',
   );
   const canEdit = $derived(canAct('scheduling', 'edit'));
+  /**
+   * "Pay in instalments" is a POS write, so it carries the POS capability even
+   * on a scheduling surface. Offered only for a treatment that has no plan yet,
+   * is still on (a cancelled booking has nothing to pay off) and has an
+   * identified CRM contact — `POST /api/pos/plans` needs a client ref, and the
+   * booking payload only ever carries `crmContactId`.
+   */
+  const canCreatePlan = $derived(canAct('pos', 'create'));
+  const planOfferable = $derived(
+    detail !== null &&
+      detail.plan === null &&
+      detail.booking.crmContactId !== null &&
+      detail.booking.status !== 'cancelled' &&
+      detail.booking.status !== 'rejected',
+  );
 
   async function patchStatus(status: string, extra: Record<string, unknown> = {}) {
     if (!bookingId) return;
@@ -340,6 +367,37 @@
               </span>
             {/if}
           </div>
+        </section>
+      {:else if planOfferable}
+        <!-- No plan yet: open one against THIS booking -->
+        <section class="blk">
+          <h4 class="t-label">{m.sched_detail_plan()}</h4>
+          {#if planOpen}
+            <PlanOpenForm
+              crmContactId={d.booking.crmContactId}
+              bookingId={d.booking.id}
+              defaultTitle={d.eventType?.title ?? d.booking.title ?? ''}
+              oncreated={async () => {
+                planOpen = false;
+                const again = await fetch(`/api/scheduling/bookings/${d.booking.id}`);
+                if (again.ok) detail = await again.json();
+                await onchanged?.();
+              }}
+              oncancel={() => (planOpen = false)}
+            />
+          {:else}
+            <div class="row">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy || !canCreatePlan}
+                title={canCreatePlan ? undefined : m.no_permission()}
+                onclick={() => (planOpen = true)}
+              >
+                <PlusCircle size={iconSizes.sm} />{m.sched_detail_plan_open()}
+              </Button>
+            </div>
+          {/if}
         </section>
       {/if}
 

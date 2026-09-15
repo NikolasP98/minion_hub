@@ -7,6 +7,8 @@ import {
   escHtml,
   formatMoney,
   formatDate,
+  formatTime,
+  weekdayLabels,
 } from './format';
 import { setLanguageTag } from '$lib/paraglide/runtime';
 
@@ -125,5 +127,38 @@ describe('formatDate — follows the paraglide locale, not the browser', () => {
   it('returns em-dash for null / unparseable input', () => {
     expect(formatDate(null, { weekday: 'short' })).toBe('—');
     expect(formatDate('not a date', { weekday: 'short' })).toBe('—');
+  });
+});
+
+/** The calendar's time axis is 24-hour; chips rendered "09:00 AM" next to it. */
+describe('formatTime — 24-hour, locale-pinned', () => {
+  afterEach(() => setLanguageTag(() => 'en'));
+
+  it('never renders AM/PM, in either locale', () => {
+    for (const tag of ['en', 'es'] as const) {
+      setLanguageTag(() => tag);
+      expect(formatTime('2026-09-15T09:05:00')).toBe('09:05');
+      expect(formatTime('2026-09-15T13:30:00')).toBe('13:30');
+      expect(formatTime('2026-09-15T00:00:00')).toBe('00:00'); // not "24:00"
+    }
+  });
+});
+
+/** WeekHoursEditor indexes these 0=Sun..6=Sat (`AvailabilityRule.days`). If the
+ *  reference date ever stops landing on a Sunday, every row is mislabelled. */
+describe('weekdayLabels — index 0 is Sunday', () => {
+  afterEach(() => setLanguageTag(() => 'en'));
+
+  it('walks Sun→Sat in English', () => {
+    setLanguageTag(() => 'en');
+    expect(weekdayLabels()).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+  });
+
+  it('walks dom→sáb in Spanish', () => {
+    setLanguageTag(() => 'es');
+    const labels = weekdayLabels();
+    expect(labels[0].toLowerCase()).toContain('dom');
+    expect(labels[6].toLowerCase()).toContain('sáb');
+    expect(new Set(labels).size).toBe(7);
   });
 });

@@ -12,7 +12,7 @@
   } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney } from '$lib/utils/format';
+  import { formatDate, formatMoney } from '$lib/utils/format';
   import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
   import BookingDetailDrawer from './BookingDetailDrawer.svelte';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
@@ -63,7 +63,7 @@
 
   function fmt(d: string | Date): string {
     const dt = typeof d === 'string' ? new Date(d) : d;
-    return dt.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return formatDate(dt, { dateStyle: 'medium', timeStyle: 'short', hour12: false });
   }
 
   async function setStatus(id: string, status: string) {
